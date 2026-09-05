@@ -1,11 +1,11 @@
 // `rux lint`: run source-level lint checks for the current package.
 
+#include "Cli/BuildReport.h"
 #include "Cli/Cli.h"
 #include "Cli/ManifestInput.h"
 #include "Cli/Reporter.h"
 #include "Cli/TerminalStyle.h"
 #include "Diagnostics/Diagnostics.h"
-#include "Driver/BuildReport.h"
 #include "Driver/BuildTarget.h"
 #include "Linter/Linter.h"
 #include "Reporting/Reporting.h"

@@ -1,9 +1,9 @@
-#include "Driver/PackageResolution.h"
+#include "Package/PackageResolution.h"
 
 #include <unordered_set>
 #include <utility>
 
-namespace Rux::Driver {
+namespace Rux::Packages {
 namespace {
 /// The normalized key two references to the same package share, so `Rux/My_Pkg` and `rux/my-pkg` resolve to one entry
 /// rather than being fetched twice.
@@ -110,4 +110,4 @@ PackageResolver::Resolve(const std::span<const PackageRequirement> seeds, const 
     }
     return resolved;
 }
-} // namespace Rux::Driver
+} // namespace Rux::Packages

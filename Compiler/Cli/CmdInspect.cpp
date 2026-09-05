@@ -1,20 +1,21 @@
 // Package inspection and cache lifecycle commands: list, info, and uninstall.
 //
-// Registry lookups use the versioned API in Driver/Registry. Installed packages
+// Registry lookups use the versioned API in Package/Registry. Installed packages
 // are cached per exact version, so one host can hold several versions of the
 // same package and a build picks the one its manifest asks for without
 // contacting the registry.
 
+#include "Cli/BuildReport.h"
 #include "Cli/Cli.h"
 #include "Cli/ManifestInput.h"
 #include "Cli/Reporter.h"
 #include "Diagnostics/Diagnostics.h"
-#include "Driver/BuildReport.h"
 #include "Driver/BuildTarget.h"
-#include "Driver/Credentials.h"
-#include "Driver/PackageResolution.h"
-#include "Driver/Registry.h"
+#include "Package/Cache.h"
+#include "Package/Credentials.h"
 #include "Package/Manifest.h"
+#include "Package/PackageResolution.h"
+#include "Package/Registry.h"
 #include "Reporting/Reporting.h"
 
 #include <algorithm>
@@ -29,6 +30,8 @@
 #include <string_view>
 #include <utility>
 #include <vector>
+
+using namespace Rux::Packages;
 
 using namespace Rux;
 using namespace CliSupport;

@@ -8,6 +8,8 @@ Each release groups its entries under **Added**, **Changed**, **Removed**, and *
 
 ## [Unreleased]
 
+- Give package services, HTTP transport and CLI build reports explicit component ownership; hide driver implementation state and register compiler sources beside their owners.
+
 - Split backend module emission, x86-64 instruction families, parser attributes, and the larger unit-test groups into focused files; give formatting and documentation commands their own owners.
 
 - **Semantic analysis ownership** — a concrete analysis context and grouped result facts replace the private analyzer hierarchy and positional output parameters. Conditional folding, accepted models, and focused checking passes have separate source owners.

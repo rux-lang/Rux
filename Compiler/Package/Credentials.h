@@ -19,7 +19,11 @@
 #include <string>
 #include <string_view>
 
-namespace Rux::Driver {
+namespace Rux::Packages {
+/// Base URL of the versioned registry API, whose routes live below /v1. The package commands override it with
+/// --registry or RUX_REGISTRY_URL to reach a local registry.
+inline constexpr std::string_view kRegistryApiBase = "https://api.rux-lang.dev";
+
 /// Environment variable holding the registry bearer credential.
 inline constexpr const char *kCredentialVariable = "RUX_TOKEN";
 
@@ -76,4 +80,4 @@ struct CredentialVerification {
 /// Remove the entry for `registryBase`. The result reports whether one was there; erasing a registry that was never
 /// stored is not an error.
 [[nodiscard]] std::expected<bool, std::string> EraseCredential(std::string_view registryBase);
-} // namespace Rux::Driver
+} // namespace Rux::Packages

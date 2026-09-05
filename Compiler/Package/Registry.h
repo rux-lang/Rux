@@ -3,11 +3,11 @@
 // Read side of the package registry contract: the resolver index, an exact
 // version's checksum, and the artifact bytes themselves.
 //
-// The write side lives in Cli/CmdPublish and Driver/Credentials. Everything here
+// The write side lives in Cli/CmdPublish and Package/Credentials. Everything here
 // is public and unauthenticated, so no credential is involved: installing a
 // package never needs a token.
 //
-// Routes are relative to the base URL Driver::ResolveRegistryBase produces, so
+// Routes are relative to the base URL Packages::ResolveRegistryBase produces, so
 // --registry and RUX_REGISTRY_URL retarget resolution and download exactly as
 // they retarget publication.
 
@@ -23,7 +23,7 @@
 #include <string_view>
 #include <vector>
 
-namespace Rux::Driver {
+namespace Rux::Packages {
 /// One dependency edge as the index reports it.
 struct RegistryDependencyEdge {
     IdentitySegment alias;
@@ -182,4 +182,4 @@ SelectVersion(const RegistryIndexEntry &entry, std::span<const VersionRange> ran
 
 /// The compiler's own release, used as the `MinRux` ceiling during resolution.
 [[nodiscard]] SemanticVersion CompilerVersion();
-} // namespace Rux::Driver
+} // namespace Rux::Packages

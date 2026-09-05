@@ -1,12 +1,13 @@
-#include "Driver/PackageResolution.h"
+#include "Package/PackageResolution.h"
 #include "ThirdParty/doctest.h"
 
 #include <map>
 #include <string>
 #include <utility>
 
+using namespace Rux::Packages;
+
 using namespace Rux;
-using namespace Rux::Driver;
 
 namespace {
 IdentitySegment Segment(const std::string_view text) {

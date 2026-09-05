@@ -1,6 +1,8 @@
+#include "Cli/BuildReport.h"
 #include "CompilerDriverTestSupport.h"
 
 using namespace Rux;
+using namespace Rux::CliSupport;
 using namespace Rux::Testing::CompilerDriverTestSupport;
 
 TEST_CASE("compiler driver builds one architecture for a foreign operating system") {

@@ -1,8 +1,8 @@
 // `rux new` and `rux init` — package scaffolding.
 
+#include "Cli/BuildReport.h"
 #include "Cli/Cli.h"
 #include "Cli/Reporter.h"
-#include "Driver/BuildReport.h"
 #include "Package/Package.h"
 #include "Reporting/Reporting.h"
 
@@ -18,6 +18,7 @@
 #include <utility>
 
 using namespace Rux;
+using namespace CliSupport;
 using namespace Rux::Driver;
 
 namespace {

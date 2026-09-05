@@ -1,11 +1,11 @@
 // `rux run` — build the package, then execute the resulting binary.
 
+#include "Cli/BuildReport.h"
 #include "Cli/Cli.h"
 #include "Cli/CompilerProgress.h"
 #include "Cli/DefineOption.h"
 #include "Cli/ManifestInput.h"
 #include "Cli/Reporter.h"
-#include "Driver/BuildReport.h"
 #include "Driver/BuildTarget.h"
 #include "Driver/CompilerDriver.h"
 #include "System/Process.h"

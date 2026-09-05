@@ -4,6 +4,8 @@
 // that must work with no registry in reach.
 
 #include "Driver/BuildTarget.h"
+#include "Package/Cache.h"
+#include "Package/Installation.h"
 #include "System/Os.h"
 #include "Target/Target.h"
 
@@ -15,6 +17,8 @@
 #include <string>
 #include <string_view>
 #include <vector>
+
+using namespace Rux::Packages;
 
 using namespace Rux;
 using namespace Rux::Driver;
@@ -296,4 +300,22 @@ TEST_CASE("build metadata breaks a tie between otherwise equal versions") {
     // Ascending order puts the higher build metadata last, and the last of a
     // precedence tie wins, so the choice is deterministic rather than arbitrary.
     CHECK(found->version.Text() == "1.0.0+2");
+}
+
+TEST_CASE("installation reuses a verified cache identity without starting a download") {
+    ScopedPackageCache cache;
+    const ResolvedPackage resolved{Segment("Rux"), Segment("CacheProbe"), Version("1.2.3")};
+    Install("Rux", "CacheProbe", "1.2.3");
+    Manifest manifest;
+    manifest.package.ns = resolved.ns;
+    manifest.package.name = resolved.package;
+    manifest.package.version = resolved.version;
+    manifest.package.type = ManifestPackageType::SourceLibrary;
+    REQUIRE(manifest.Save(RegistryPackageDir(resolved.ns, resolved.package, resolved.version) / "Rux.toml"));
+    bool started = false;
+    const auto result = InstallPackage("unused://cache-test", resolved, [&] { started = true; });
+    REQUIRE(result.has_value());
+    CHECK(result->alreadyInstalled);
+    CHECK(result->fileCount == 0);
+    CHECK_FALSE(started);
 }

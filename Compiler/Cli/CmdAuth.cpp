@@ -5,10 +5,10 @@
 // history or the process list. That is the same reasoning that keeps `publish`
 // free of a --token flag.
 
+#include "Cli/BuildReport.h"
 #include "Cli/Cli.h"
 #include "Cli/Reporter.h"
-#include "Driver/BuildReport.h"
-#include "Driver/Credentials.h"
+#include "Package/Credentials.h"
 #include "Reporting/Reporting.h"
 #include "System/Os.h"
 
@@ -21,8 +21,11 @@
 #include <string>
 #include <string_view>
 
+using namespace Rux::Packages;
+
 using namespace Rux;
-using namespace Driver;
+using namespace Rux::Driver;
+using namespace CliSupport;
 using namespace System;
 
 namespace {

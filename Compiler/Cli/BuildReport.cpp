@@ -1,8 +1,7 @@
-#include "Driver/BuildReport.h"
+#include "Cli/BuildReport.h"
 
 #include "BuildInfo/CompilerMetadata.h"
-#include "Driver/BuildTarget.h"
-#include "Driver/CompilerDriver.h"
+#include "Driver/CompileEvents.h"
 #include "Reporting/Reporting.h"
 
 #include <algorithm>
@@ -15,7 +14,9 @@
 #include <utility>
 #include <vector>
 
-namespace Rux::Driver {
+namespace Rux::CliSupport {
+using namespace Driver;
+
 namespace {
 /// The triple a report names. An embedder that leaves it unset built for the host, which is what the report said before
 /// it carried a target at all.
@@ -148,30 +149,6 @@ std::string RenderSourceSection(const BuildStats &stats, const Reporting::Style 
     return rendered;
 }
 } // namespace
-
-std::size_t CountLines(std::string_view source) {
-    if (source.empty()) {
-        return 0;
-    }
-
-    std::size_t lines = 0;
-    for (const char ch : source) {
-        if (ch == '\n') {
-            ++lines;
-        }
-    }
-    if (source.back() != '\n') {
-        ++lines;
-    }
-    return lines;
-}
-
-std::size_t CountTokens(const LexerResult &result) {
-    if (result.tokens.empty()) {
-        return 0;
-    }
-    return result.tokens.back().IsEof() ? result.tokens.size() - 1 : result.tokens.size();
-}
 
 std::string FormatNumber(std::uintmax_t value) {
     std::string digits = std::to_string(value);
@@ -414,4 +391,4 @@ std::string FormatBuildMatrixReport(const std::string_view packageName, const st
     return output.str();
 }
 
-} // namespace Rux::Driver
+} // namespace Rux::CliSupport

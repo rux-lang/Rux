@@ -1,10 +1,9 @@
-#include "Driver/CompilerDriver.h"
-
 #include "BuildInfo/CompilerMetadata.h"
 #include "CodeGen/AArch64/RcuEmitter.h"
 #include "CodeGen/X86_64/AssemblyPrinter.h"
 #include "CodeGen/X86_64/RcuEmitter.h"
 #include "Driver/BuildTarget.h"
+#include "Driver/CompileContext.h"
 #include "Ir/Hir/Hir.h"
 #include "Ir/Hir/HirPrinter.h"
 #include "Ir/Lir/Lir.h"
@@ -17,6 +16,7 @@
 #include "Object/Rcu/RcuDumper.h"
 #include "Object/Rcu/RcuWriter.h"
 #include "Optimization/Pipeline.h"
+#include "Package/Cache.h"
 #include "Semantic/Conditional/ConditionalCompilation.h"
 #include "Semantic/Model/SemanticPrinter.h"
 #include "Semantic/SemanticAnalyzer.h"
@@ -34,49 +34,31 @@
 #include <unordered_set>
 #include <utility>
 
+using namespace Rux::Packages;
+
 namespace Rux::Driver {
 using namespace Target;
 using namespace System;
 
-std::string_view CompilePhaseName(const CompilePhase phase) noexcept {
-    static constexpr std::string_view names[]{
-        "Configuring",       "Loading sources",      "Lexing",         "Parsing",         "Loading dependency",
-        "Analyzing",         "Lowering to HIR",      "Optimizing HIR", "Lowering to LIR", "Optimizing LIR",
-        "Emitting assembly", "Emitting RCU objects", "Linking"};
-    return names[std::to_underlying(phase)];
-}
-
-std::string_view InspectionHeading(const InspectionKind kind) noexcept {
-    static constexpr std::string_view headings[]{"token inspection output",
-                                                 "AST inspection output",
-                                                 "semantic inspection output",
-                                                 "HIR inspection output",
-                                                 "LIR inspection output",
-                                                 "assembly inspection output",
-                                                 "RCU object",
-                                                 "RCU inspection output"};
-    return headings[std::to_underlying(kind)];
-}
-
-std::string_view InspectionDescription(const InspectionKind kind) noexcept {
-    static constexpr std::string_view descriptions[]{"lexical tokens and source locations",
-                                                     "parsed abstract syntax tree",
-                                                     "resolved symbols, signatures, type capabilities, and diagnostics",
-                                                     "high-level intermediate representation",
-                                                     "low-level intermediate representation",
-                                                     "x86-64 textual assembly",
-                                                     "binary Rux Compiled Unit",
-                                                     "human-readable Rux Compiled Unit"};
-    return descriptions[std::to_underlying(kind)];
-}
-
 CompilerDriver::CompilerDriver(CompileOptions options)
+    : impl(std::make_unique<Impl>(std::move(options))) {
+}
+
+CompilerDriver::~CompilerDriver() = default;
+CompilerDriver::CompilerDriver(CompilerDriver &&) noexcept = default;
+CompilerDriver &CompilerDriver::operator=(CompilerDriver &&) noexcept = default;
+
+CompileResult CompilerDriver::Compile() {
+    return impl->Compile();
+}
+
+CompilerDriver::Impl::Impl(CompileOptions options)
     : opts(std::move(options)) {
     root = opts.manifestPath.parent_path();
     InitializeCompileTimeContext();
 }
 
-void CompilerDriver::InitializeCompileTimeContext() {
+void CompilerDriver::Impl::InitializeCompileTimeContext() {
     compileTimeContext.target = TargetContextForTriple(opts.target);
     compileTimeContext.targetTriple = opts.target.CanonicalName();
     compileTimeContext.profile = opts.profile;
@@ -115,7 +97,7 @@ void CompilerDriver::InitializeCompileTimeContext() {
     compileTimeContext.buildInfo = BuildInfo(std::string(CompilerBuild::compilerVersion), buildTimestamp);
 }
 
-void CompilerDriver::Emit(const Diagnostic &diag) {
+void CompilerDriver::Impl::Emit(const Diagnostic &diag) {
     Diagnostic contextual = diag;
     if (currentPhase) {
         contextual.notes.push_back("compiler phase: " + std::string(CompilePhaseName(*currentPhase)));
@@ -129,20 +111,20 @@ void CompilerDriver::Emit(const Diagnostic &diag) {
     }
 }
 
-void CompilerDriver::BeginPhase(const CompilePhase phase, const std::string_view subject,
-                                const std::filesystem::path &path) {
+void CompilerDriver::Impl::BeginPhase(const CompilePhase phase, const std::string_view subject,
+                                      const std::filesystem::path &path) {
     currentPhase = phase;
     EmitProgress(phase, subject, path);
 }
 
-void CompilerDriver::EmitProgress(const CompilePhase phase, const std::string_view subject,
-                                  const std::filesystem::path &path) const {
+void CompilerDriver::Impl::EmitProgress(const CompilePhase phase, const std::string_view subject,
+                                        const std::filesystem::path &path) const {
     if (opts.emitProgress) {
         opts.emitProgress({.phase = phase, .subject = subject, .path = path});
     }
 }
 
-bool CompilerDriver::EmitAll(std::span<const Diagnostic> diags) {
+bool CompilerDriver::Impl::EmitAll(std::span<const Diagnostic> diags) {
     bool hasErrors = false;
     for (const auto &diag : diags) {
         Emit(diag);
@@ -151,14 +133,14 @@ bool CompilerDriver::EmitAll(std::span<const Diagnostic> diags) {
     return hasErrors;
 }
 
-void CompilerDriver::RememberSources(const std::span<const SourceFile> sources) {
+void CompilerDriver::Impl::RememberSources(const std::span<const SourceFile> sources) {
     for (const auto &source : sources) {
         loadedSourceTexts.insert_or_assign(source.path.string(), source.source);
     }
 }
 
-bool CompilerDriver::WriteInspectionOutput(const InspectionKind kind, const std::filesystem::path &path,
-                                           const std::function<bool()> &write) {
+bool CompilerDriver::Impl::WriteInspectionOutput(const InspectionKind kind, const std::filesystem::path &path,
+                                                 const std::function<bool()> &write) {
     std::error_code directoryError;
     std::filesystem::create_directories(path.parent_path(), directoryError);
     if (directoryError) {
@@ -183,8 +165,8 @@ bool CompilerDriver::WriteInspectionOutput(const InspectionKind kind, const std:
     return true;
 }
 
-std::optional<std::string_view> CompilerDriver::LookupSourceLine(const std::string_view sourceName,
-                                                                 const std::size_t lineNumber) const {
+std::optional<std::string_view> CompilerDriver::Impl::LookupSourceLine(const std::string_view sourceName,
+                                                                       const std::size_t lineNumber) const {
     const auto found = loadedSourceTexts.find(std::string(sourceName));
     if (found == loadedSourceTexts.end()) {
         return std::nullopt;
@@ -192,11 +174,11 @@ std::optional<std::string_view> CompilerDriver::LookupSourceLine(const std::stri
     return FindSourceLine(found->second, lineNumber);
 }
 
-std::string CompilerDriver::TargetSystemName() const {
+std::string CompilerDriver::Impl::TargetSystemName() const {
     return std::string(Target::ToString(opts.target.Os()));
 }
 
-CompileResult CompilerDriver::Compile() {
+CompileResult CompilerDriver::Impl::Compile() {
     CompileResult result;
     const auto t0 = std::chrono::steady_clock::now();
     auto finish = [&]() {
@@ -275,7 +257,7 @@ CompileResult CompilerDriver::Compile() {
     return result;
 }
 
-bool CompilerDriver::LexAndParseSources() {
+bool CompilerDriver::Impl::LexAndParseSources() {
     BeginPhase(CompilePhase::LoadingSources, opts.manifest.package.name.Text(), root / "Src");
     auto loadResult = SourceLoader::Load(root);
     RememberSources(loadResult.files);
@@ -301,7 +283,7 @@ bool CompilerDriver::LexAndParseSources() {
         BeginPhase(CompilePhase::Lexing, file.path.string(), file.path);
         Lexer lexer(file.source, file.path.string());
         auto lexResult = lexer.Tokenize();
-        stats.localTokens += CountTokens(lexResult);
+        stats.localTokens += CountTokens(lexResult.tokens);
         if (EmitAll(lexResult.diagnostics)) {
             lexErrors = true;
         }
@@ -369,7 +351,7 @@ bool CompilerDriver::LexAndParseSources() {
     return true;
 }
 
-bool CompilerDriver::LoadDependencies() {
+bool CompilerDriver::Impl::LoadDependencies() {
     BeginPhase(CompilePhase::LoadingDependency, opts.manifest.package.name.Text(), root);
 
     struct PendingPackage {
@@ -527,7 +509,7 @@ bool CompilerDriver::LoadDependencies() {
             Lexer depLexer(depFile.source, depFile.path.string());
             auto depLex = depLexer.Tokenize();
             stats.lexing += ElapsedMs(depLexingStart);
-            stats.dependencyTokens += CountTokens(depLex);
+            stats.dependencyTokens += CountTokens(depLex.tokens);
             EmitAll(depLex.diagnostics);
             if (depLex.HasErrors()) {
                 return false;
@@ -572,7 +554,7 @@ bool CompilerDriver::LoadDependencies() {
     return true;
 }
 
-bool CompilerDriver::Analyze() {
+bool CompilerDriver::Impl::Analyze() {
     const auto semanticStart = std::chrono::steady_clock::now();
     BeginPhase(CompilePhase::Analyzing, opts.manifest.package.name.Text());
     std::vector<Module *> userModules;
@@ -612,8 +594,8 @@ bool CompilerDriver::Analyze() {
     return true;
 }
 
-bool CompilerDriver::GenerateArtifact(std::filesystem::path &artifactPath,
-                                      std::vector<std::filesystem::path> &secondaryArtifactPaths) {
+bool CompilerDriver::Impl::GenerateArtifact(std::filesystem::path &artifactPath,
+                                            std::vector<std::filesystem::path> &secondaryArtifactPaths) {
     // HIR
     const auto hirStart = std::chrono::steady_clock::now();
     BeginPhase(CompilePhase::LoweringToHir, opts.manifest.package.name.Text());
