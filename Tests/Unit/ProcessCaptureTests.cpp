@@ -1,3 +1,4 @@
+#include "ProcessProbe.h"
 #include "System/Os.h"
 #include "System/Process.h"
 #include "System/WinApi.h"
@@ -8,14 +9,61 @@
 #include <cstdint>
 #include <doctest.h>
 #include <future>
+#include <span>
 #include <string>
 #include <vector>
+
+#if !RUX_OS_WINDOWS
+    #include <spawn.h>
+    #include <sys/stat.h>
+    #include <sys/wait.h>
+    #include <unistd.h>
+extern char **environ;
+#endif
 
 using namespace Rux::System;
 
 namespace {
 std::filesystem::path ProbeExecutable() {
     return std::filesystem::path(RUX_TEST_BIN_DIR) / "Unit" / ExecutableFileName("rux-tests");
+}
+
+// Launch the probe the way the System layer must not: every inheritable handle or descriptor reaches the child. The
+// isolation checks below mean nothing unless the probe detects this leak.
+int RunLeaking(const std::filesystem::path &exe, const std::span<const std::string_view> args) {
+#if RUX_OS_WINDOWS
+    std::string command = '"' + exe.string() + '"';
+    for (const auto argument : args) {
+        command += ' ';
+        command += argument;
+    }
+    STARTUPINFOA startup{};
+    startup.cb = sizeof(startup);
+    PROCESS_INFORMATION process{};
+    if (!CreateProcessA(nullptr, command.data(), nullptr, nullptr, TRUE, 0, nullptr, nullptr, &startup, &process))
+        return -1;
+    WaitForSingleObject(process.hProcess, INFINITE);
+    DWORD code = 0;
+    const bool known = GetExitCodeProcess(process.hProcess, &code) != FALSE;
+    CloseHandle(process.hThread);
+    CloseHandle(process.hProcess);
+    return known ? static_cast<int>(code) : -1;
+#else
+    std::vector<std::string> strings{exe.string()};
+    for (const auto argument : args)
+        strings.emplace_back(argument);
+    std::vector<char *> argv;
+    for (auto &argument : strings)
+        argv.push_back(argument.data());
+    argv.push_back(nullptr);
+    pid_t pid = 0;
+    if (posix_spawn(&pid, strings.front().c_str(), nullptr, nullptr, argv.data(), environ) != 0)
+        return -1;
+    int status = 0;
+    if (waitpid(pid, &status, 0) != pid || !WIFEXITED(status))
+        return -1;
+    return WEXITSTATUS(status);
+#endif
 }
 } // namespace
 
@@ -54,15 +102,42 @@ TEST_CASE("failed subprocess launches return an error on every host") {
 #if RUX_OS_WINDOWS
 TEST_CASE("Windows children inherit only explicitly selected standard handles") {
     SECURITY_ATTRIBUTES security{sizeof(SECURITY_ATTRIBUTES), nullptr, TRUE};
-    HANDLE event = CreateEventA(&security, TRUE, FALSE, nullptr);
-    REQUIRE(event != nullptr);
-    const std::string value = std::to_string(reinterpret_cast<std::uintptr_t>(event));
+    HANDLE read = nullptr;
+    HANDLE write = nullptr;
+    REQUIRE(CreatePipe(&read, &write, &security, 0));
+    DWORD written = 0;
+    REQUIRE(WriteFile(write, Rux::Testing::handleProbeToken.data(),
+                      static_cast<DWORD>(Rux::Testing::handleProbeToken.size()), &written, nullptr));
+    const std::string value = std::to_string(reinterpret_cast<std::uintptr_t>(read));
     const std::array<std::string_view, 2> args{"--rux-handle-probe", value};
     const auto captured = RunCaptured(ProbeExecutable(), args);
     const auto inherited = RunInherited(ProbeExecutable(), args);
-    CloseHandle(event);
+    const int leaking = RunLeaking(ProbeExecutable(), args);
+    CloseHandle(write);
+    CloseHandle(read);
     REQUIRE(captured.has_value());
     CHECK(captured->exitCode == 0);
     CHECK(inherited == 0);
+    CHECK(leaking == 1);
+}
+#else
+TEST_CASE("POSIX children inherit only the standard descriptors") {
+    // Like an artifact stream, the pipe is deliberately not close-on-exec.
+    int fds[2];
+    REQUIRE(pipe(fds) == 0);
+    struct stat status{};
+    REQUIRE(fstat(fds[0], &status) == 0);
+    const std::string descriptor = std::to_string(fds[0]);
+    const std::string inode = std::to_string(static_cast<unsigned long long>(status.st_ino));
+    const std::array<std::string_view, 3> args{"--rux-descriptor-probe", descriptor, inode};
+    const auto captured = RunCaptured(ProbeExecutable(), args);
+    const auto inherited = RunInherited(ProbeExecutable(), args);
+    const int leaking = RunLeaking(ProbeExecutable(), args);
+    close(fds[1]);
+    close(fds[0]);
+    REQUIRE(captured.has_value());
+    CHECK(captured->exitCode == 0);
+    CHECK(inherited == 0);
+    CHECK(leaking == 1);
 }
 #endif

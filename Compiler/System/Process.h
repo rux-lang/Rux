@@ -17,14 +17,14 @@ struct RunResult {
     std::string output; // combined stdout + stderr
 };
 
-/// Run `exe` with `args`, inheriting this process's stdin/stdout/stderr (used by `rux run`). Returns the child's exit
-/// code, or nullopt when the process could not be launched.
+/// Run `exe` with `args`, inheriting this process's stdin/stdout/stderr (used by `rux run`) and no other descriptor
+/// or handle. Returns the child's exit code, or nullopt when the process could not be launched.
 [[nodiscard]] std::optional<int> RunInherited(const std::filesystem::path &exe,
                                               std::span<const std::string_view> args = {},
                                               std::error_code *launchError = nullptr);
 
 /// Run `exe`, stdin redirected from the null device, and its combined stdout+stderr captured (used by tests and `rux
-/// test`). Returns nullopt when the process could not be launched.
+/// test`). The child receives no other descriptor or handle. Returns nullopt when the process could not be launched.
 [[nodiscard]] std::optional<RunResult> RunCaptured(const std::filesystem::path &exe,
                                                    std::span<const std::string_view> args = {},
                                                    std::error_code *launchError = nullptr);
