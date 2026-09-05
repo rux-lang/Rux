@@ -339,8 +339,8 @@ import Provider::string;
 const Greeting: string = "hello";
 func Main() -> uint { return Greeting.length; }
 )");
-    const auto model = SemanticAnalyzer({&consumer.module},
-        {{"Provider", {{"provider.rux", &provider.module}}}}, "App").Analyze();
+    const auto model =
+        SemanticAnalyzer({&consumer.module}, {{"Provider", {{"provider.rux", &provider.module}}}}, "App").Analyze();
     REQUIRE_FALSE(model.HasErrors());
     CHECK(AstToHirLowering(model).Generate().modules.size() == 2);
 }
@@ -363,16 +363,19 @@ TEST_CASE("extension signatures resolve string annotations in their owning file 
     auto provider = ParseIntrinsicSource(StringDeclaration, "provider.rux");
     auto caller = ParseIntrinsicSource(R"(
 func Main() -> int { return Factory::Create("hello"); }
-)", "caller.rux");
+)",
+                                       "caller.rux");
     auto implementation = ParseIntrinsicSource(R"(
 import Provider::string;
 struct Factory {}
 extend Factory {
     pub func Create(text: string) -> int { return text.length as int; }
 }
-)", "factory.rux");
+)",
+                                               "factory.rux");
     const auto model = SemanticAnalyzer({&caller.module, &implementation.module},
-        {{"Provider", {{"provider.rux", &provider.module}}}}, "App").Analyze();
+                                        {{"Provider", {{"provider.rux", &provider.module}}}}, "App")
+                           .Analyze();
     REQUIRE_FALSE(model.HasErrors());
     (void)AstToHirLowering(model).Generate();
 }
@@ -383,4 +386,101 @@ TEST_CASE("ordinary declarations cannot replace reserved primitive names") {
         const auto model = SemanticAnalyzer({&parsed.module}, {}, "App").Analyze();
         CHECK(model.HasErrors());
     }
+}
+
+TEST_CASE("wide extrema are evaluated from declarations and recorded for lowering") {
+    for (const unsigned width : {128U, 256U, 512U}) {
+        const std::string signedName = "int" + std::to_string(width);
+        const std::string unsignedName = "uint" + std::to_string(width);
+        const std::string minimum = "-" + WideInteger::MinMagnitude(width, true).ToDecimal();
+        const std::string maximum = WideInteger::MaxValue(width, true).ToDecimal();
+        const std::string unsignedMaximum = WideInteger::AllOnes(width).ToDecimal();
+        auto parsed = ParseIntrinsicSource(
+            "intrinsic type " + signedName + "; intrinsic type " + unsignedName + "; " + "extend " + signedName +
+            " { pub const Min: " + signedName + " = " + minimum + "i" + std::to_string(width) +
+            "; pub const Max: " + signedName + " = " + maximum + "i" + std::to_string(width) + "; } " + "extend " +
+            unsignedName + " { pub const Max: " + unsignedName + " = " + unsignedMaximum + "u" + std::to_string(width) +
+            "; } " + "when " + signedName + "::Min < 0 && " + signedName + "::Max > 0 && " + unsignedName + "::Max > " +
+            signedName + "::Max { " + "func Value() -> " + signedName + " { return " + signedName +
+            "::Min; } } else { func Bad() { Missing(); } }");
+        const auto model = SemanticAnalyzer({&parsed.module}, {}, "App").Analyze();
+        REQUIRE_FALSE(model.HasErrors());
+        const auto *extension = dynamic_cast<const ImplDecl *>(parsed.module.items[2].get());
+        REQUIRE(extension);
+        const auto *value = model.TryGetConstantValue(*extension->constants[0]);
+        REQUIRE(value);
+        CHECK_EQ(value->literal, minimum);
+        (void)AstToHirLowering(model).Generate();
+    }
+}
+
+TEST_CASE("inferred range and slice fields require their declarations") {
+    for (const std::string source :
+         {"func Main() { let range = 1..3; let start = range.start; }",
+          "func Main() { let array = [1, 2]; let slice = array[0..1]; let length = slice.length; }"}) {
+        auto parsed = ParseIntrinsicSource(source);
+        const auto model = SemanticAnalyzer({&parsed.module}, {}, "App").Analyze();
+        CHECK(model.HasErrors());
+    }
+    auto parsed = ParseIntrinsicSource(R"(
+intrinsic struct Range<T> { pub start: T; pub end: T; }
+intrinsic struct Slice<T> { pub data: *T; pub length: uint; }
+func Main() { let range = 1..3; let start = range.start;
+    let array = [1, 2]; let slice = array[0..1]; let length = slice.length; }
+)");
+    CHECK_FALSE(SemanticAnalyzer({&parsed.module}, {}, "App").Analyze().HasErrors());
+}
+
+TEST_CASE("conditional constant evaluation retains earlier declarations while folding") {
+    auto parsed = ParseIntrinsicSource(R"(
+const Base: int8 = 126i8;
+intrinsic type int8;
+extend int8 { pub const Max: int8 = Base + 1i8; }
+when int8::Max == 127i8 { func Main() -> int8 { return int8::Max; } }
+else { func Main() { Missing(); } }
+)");
+    const auto model = SemanticAnalyzer({&parsed.module}, {}, "App").Analyze();
+    REQUIRE_FALSE(model.HasErrors());
+    const auto *extension = dynamic_cast<const ImplDecl *>(parsed.module.items[2].get());
+    REQUIRE(extension);
+    REQUIRE(model.TryGetConstantValue(*extension->constants[0]));
+    CHECK_EQ(model.TryGetConstantValue(*extension->constants[0])->literal, "127");
+    (void)AstToHirLowering(model).Generate();
+}
+
+TEST_CASE("intrinsic bindings reject alias spellings and mismatched special float owners") {
+    for (const std::string source :
+         {"intrinsic type float;", "intrinsic struct string { pub data: *char8; pub length: uint; }",
+          "intrinsic type int8; extend int8 { pub intrinsic const Infinity: float64; }"}) {
+        auto parsed = ParseIntrinsicSource(source);
+        CHECK(SemanticAnalyzer({&parsed.module}, {}, "App").Analyze().HasErrors());
+    }
+}
+
+TEST_CASE("local aliases retain their provider identity for literal fields") {
+    auto provider = ParseIntrinsicSource(StringDeclaration, "provider.rux");
+    auto parsed = ParseIntrinsicSource(R"(
+import Provider::string8;
+type Text = string8;
+func Main() -> uint { let value: Text = "hello"; return value.length; }
+)");
+    const auto model =
+        SemanticAnalyzer({&parsed.module}, {{"Provider", {{"provider.rux", &provider.module}}}}, "App").Analyze();
+    REQUIRE_FALSE(model.HasErrors());
+    (void)AstToHirLowering(model).Generate();
+}
+
+TEST_CASE("ordinary names do not inherit intrinsic layout or copy properties") {
+    auto parsed = ParseIntrinsicSource(R"(
+struct Slice<T> { pub value: T; }
+struct SystemTime { pub value: uint8; }
+struct StringArray { pub value: uint8; }
+func Main() -> uint { return sizeof(Slice<uint8>) + sizeof(SystemTime) + sizeof(StringArray); }
+)");
+    const auto model = SemanticAnalyzer({&parsed.module}, {}, "App").Analyze();
+    REQUIRE_FALSE(model.HasErrors());
+    const auto *layout = model.TryGetLayout(TypeRef::MakeNamed("Slice<uint8>"));
+    REQUIRE(layout);
+    CHECK_EQ(layout->size, 1);
+    (void)AstToHirLowering(model).Generate();
 }

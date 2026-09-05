@@ -393,12 +393,14 @@ private:
     const CompileTimeContext &context;
     std::unordered_map<const Expr *, TypeRef> &expressionTypes;
     std::unordered_map<const Expr *, const ConstDecl *> &associatedConstants;
+    std::unordered_map<const ConstDecl *, EvaluatedAssociatedConstant> &evaluatedAssociatedConstants;
     std::unordered_set<const ConstDecl *> checkingAssociatedConstants;
     [[nodiscard]] const ConstDecl *LookupAssociatedConstant(const Symbol &type, const std::string &name) const;
     [[nodiscard]] TypeRef CheckAssociatedConstant(const ConstDecl &declaration);
     void CheckIntrinsicType(const Decl &declaration);
     std::unordered_map<std::string, std::unordered_set<const Decl *>> explicitTypeImports;
     [[nodiscard]] bool IsVisibleTypeSymbol(const Symbol &symbol) const;
+    [[nodiscard]] const Decl *IntrinsicTypeBinding(const Symbol &symbol) const;
     [[nodiscard]] const Decl *VisibleIntrinsicType(const TypeRef &type, SourceLocation location) const;
     std::unordered_map<const TypeExpr *, TypeRef> &typeNodeTypes;
     std::unordered_map<const Pattern *, TypeRef> &patternTypes;

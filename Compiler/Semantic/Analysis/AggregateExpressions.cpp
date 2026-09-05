@@ -677,6 +677,9 @@ std::optional<TypeRef> AnalysisContext::CheckAggregateExpression(const Expr &exp
             return TypeRef::MakeUInt();
         }
         if (auto elementType = SliceElementType(objectValueType)) {
+            if (!VisibleIntrinsicType(objectValueType, field->location)) {
+                return TypeRef::MakeUnknown();
+            }
             if (field->field == "data") {
                 return TypeRef::MakePointer(*elementType);
             }
@@ -688,8 +691,7 @@ std::optional<TypeRef> AnalysisContext::CheckAggregateExpression(const Expr &exp
                       {"available slice members are 'data' and 'length'"});
             return TypeRef::MakeUnknown();
         }
-        // A string has no struct declaration to read fields from, so the view's two members are answered here. They
-        // are the escape hatch to the raw code units: a `Slice` built from them is a sequence of units again.
+        // A visible declaration grants access to the compiler-owned text representation.
         if (objectValueType.IsString()) {
             if (!VisibleIntrinsicType(objectValueType, field->location)) {
                 return TypeRef::MakeUnknown();
@@ -706,6 +708,9 @@ std::optional<TypeRef> AnalysisContext::CheckAggregateExpression(const Expr &exp
             return TypeRef::MakeUnknown();
         }
         if (objectValueType.IsRange()) {
+            if (!VisibleIntrinsicType(objectValueType, field->location)) {
+                return TypeRef::MakeUnknown();
+            }
             const TypeRef elementType = objectValueType.inner.empty() ? TypeRef::MakeInt64() : objectValueType.inner[0];
             if (field->field == "start" && objectValueType.RangeHasStart()) {
                 return elementType;

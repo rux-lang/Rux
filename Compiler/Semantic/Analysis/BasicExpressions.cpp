@@ -1084,7 +1084,7 @@ void AnalysisContext::CheckMutability(const Expr &target) {
             // through a read-only pointer, so declaring the slice `var` lets it be re-pointed, never rewritten.
             EmitError(target.location,
                       std::format("cannot modify elements through read-only slice '{}'", objectType.ToString()), {},
-                      "declare the sequence as a 'MutableSlice' from 'Rux/Core' to write through it");
+                      "use a writable view to write through the sequence");
         }
         else {
             CheckMutability(*index->object);

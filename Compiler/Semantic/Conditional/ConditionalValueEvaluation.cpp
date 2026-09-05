@@ -63,6 +63,8 @@ std::optional<std::string> ParseStringLiteral(const std::string_view text) {
 
 namespace {
 std::string_view ValueTypeName(const CompileTimeValue &value) {
+    if (std::holds_alternative<CompileTimeWideInteger>(value))
+        return "wide integer";
     if (std::holds_alternative<bool>(value))
         return "bool";
     if (std::holds_alternative<std::int64_t>(value))
@@ -333,6 +335,11 @@ std::optional<CompileTimeValue> ConditionalEvaluator::Impl::EvalBinary(const Bin
     const auto right = Eval(*e.right);
     if (!right) {
         return std::nullopt;
+    }
+
+    if (std::holds_alternative<CompileTimeWideInteger>(*left) ||
+        std::holds_alternative<CompileTimeWideInteger>(*right)) {
+        return EvalWideBinary(e, *left, *right);
     }
 
     const bool leftInteger =
@@ -657,6 +664,10 @@ bool ConditionalEvaluator::Impl::EvalCondition(const Expr *condition, const Sour
 
 /// The compile-time value against an arm pattern, for the no-match diagnostic.
 std::string ConditionalEvaluator::Impl::FormatValue(const Value &value) {
+    if (const auto *wide = std::get_if<CompileTimeWideInteger>(&value)) {
+        return (wide->isSigned && wide->bits.IsNegative() ? "-" : "") +
+               wide->bits.Magnitude(wide->isSigned).ToDecimal();
+    }
     if (const auto *e = std::get_if<EnumValue>(&value)) {
         return "." + e->variant;
     }

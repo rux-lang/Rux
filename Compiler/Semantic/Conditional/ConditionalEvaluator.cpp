@@ -443,7 +443,9 @@ void ConditionalEvaluator::Impl::SetRuxImportsForModule(const Module &module) {
     intrinsicBindings.clear();
     for (const Module *local : localModules) {
         for (const auto &declaration : local->items) {
-            BindImportedDeclaration(*declaration, localModules, *local, false);
+            if (declaration) {
+                BindImportedDeclaration(*declaration, localModules, *local, false);
+            }
         }
     }
     CollectRuxImports(module.items);
@@ -794,6 +796,12 @@ std::optional<CompileTimeValue> ConditionalEvaluator::Impl::Eval(const Expr &exp
         case TokenKind::BoolLiteral:
             return Value{e->token.text == "true"};
         case TokenKind::IntLiteral:
+            if (const auto *suffix = FindNumericLiteralSuffix(NumericLiteralSuffixOf(e->token.text));
+                suffix && !suffix->isFloat && suffix->bits > 64) {
+                if (const auto magnitude = DecodeIntegerLiteral(e->token.text, suffix->bits)) {
+                    return Value{CompileTimeWideInteger{*magnitude, suffix->isSigned}};
+                }
+            }
             if (const auto value = ParseIntLiteral(e->token.text)) {
                 return *value;
             }
@@ -1033,6 +1041,17 @@ std::optional<CompileTimeValue> ConditionalEvaluator::Impl::Eval(const Expr &exp
         const auto operand = Eval(*e->operand);
         if (!operand) {
             return std::nullopt;
+        }
+        if (const auto *wide = std::get_if<CompileTimeWideInteger>(&*operand)) {
+            if (e->op == TokenKind::Minus && wide->isSigned) {
+                return Value{CompileTimeWideInteger{wide->bits.Negated(), true}};
+            }
+            if (e->op == TokenKind::Tilde) {
+                return Value{CompileTimeWideInteger{wide->bits.BitwiseNot(), wide->isSigned}};
+            }
+            if (e->op == TokenKind::Plus) {
+                return operand;
+            }
         }
         switch (e->op) {
         case TokenKind::Bang:

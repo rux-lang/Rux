@@ -764,13 +764,15 @@ HirExprPtr AstToHirContext::LowerAggregateExpr(const Expr &expression) {
     }
     if (const auto *path = dynamic_cast<const PathExpr *>(&expression)) {
         if (const ConstDecl *constant = model.TryGetAssociatedConstant(expression)) {
+            if (const auto *value = model.TryGetConstantValue(*constant)) {
+                return CompilerLiteral(path->location, value->type, value->literal);
+            }
             if (constant->value) {
                 auto value = LowerExpr(*constant->value);
                 value->type = ResolvedExpressionType(expression);
                 return value;
             }
-            return CompilerLiteral(path->location, ResolvedExpressionType(expression),
-                                   constant->name == "Infinity" ? "inf" : "nan");
+            return nullptr;
         }
         if (path->segments.size() == 2) {
             if (HirSymbol *first = currentScope->Lookup(path->segments[0]);

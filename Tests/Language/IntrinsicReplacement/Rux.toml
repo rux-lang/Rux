@@ -1,0 +1,14 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "IntrinsicReplacement"
+Version = "0.1.0"
+Type = "Executable"
+Description = "A renamed replacement provider without Core"
+
+[Dependencies]
+Foundation = { Path = "Provider" }
+
+[Build]
+Output = "../../../Bin/Tests/Language"

@@ -422,9 +422,8 @@ void AstToHirContext::NoteStructInstantiation(const TypeRef &type) const {
         return;
     }
     const std::string base = BaseTypeNameImpl(type.name);
-    // The fat pointers below have a shape the runtime fixes rather than a declaration, so an instantiated declaration
-    // would restate what the back ends already know and could only disagree with it.
-    if (base == "Slice" || base == "StringArray" || base == "SystemTime") {
+    // Intrinsic slices already carry the fixed view representation.
+    if (type.isIntrinsicSlice) {
         return;
     }
     const auto declaration = structDecls.find(base);

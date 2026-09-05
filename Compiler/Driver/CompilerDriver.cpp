@@ -478,7 +478,7 @@ bool CompilerDriver::Impl::LoadDependencies() {
             return {};
         }
         // Recursive loading may reallocate pendingPackages, so retain an owning copy.
-        const PendingPackage pending = *found;
+        const PendingPackage pending = *found; // NOLINT(performance-unnecessary-copy-initialization)
         loadingPackages.insert(name);
         BeginPhase(CompilePhase::LoadingDependency, name, pending.root);
         auto loaded = SourceLoader::Load(pending.root);

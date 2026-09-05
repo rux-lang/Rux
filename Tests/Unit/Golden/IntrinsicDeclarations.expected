@@ -1,0 +1,12 @@
+1:1: error: 'Mystery' is not a supported intrinsic scalar type
+2:1: error: 'float' is not a supported intrinsic scalar type
+4:5: error: intrinsic struct 'string8' requires field 1 to be 'pub data: *char8;'
+5:5: error: intrinsic struct 'string8' requires field 2 to be 'pub length: uint;'
+7:11: error: intrinsic struct 'Slice' requires 1 type parameters
+10:9: error: intrinsic associated constants support only floating-point Infinity and NaN
+10:9: error: intrinsic associated constant must have its owning floating-point type
+12:9: error: associated constant 'Bits' is already declared
+15:23: error: 'Min' not found in extend for type 'int8'
+15:5: warning: cannot infer type of 'missing'
+17:22: error: type 'Range<int>' requires a visible intrinsic declaration
+17:5: warning: cannot infer type of 'start'

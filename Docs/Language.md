@@ -223,6 +223,8 @@ A string is an immutable, validity-guaranteed view: a pointer to its code units 
 A string exposes exactly two members and one operation:
 
 ```rux
+import Core::string;
+
 func Main() {
     let text = "Hello";
     let first = text[0];       // char8, read-only and bounds-checked

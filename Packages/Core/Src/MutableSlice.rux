@@ -3,7 +3,7 @@
 // counterpart and AsSlice converts to it; the reverse is deliberately not
 // offered, because widening a read-only pointer would discard its guarantee.
 //
-// Unlike Slice, this is an ordinary struct rather than a compiler built-in: it
+// Its intrinsic declaration validates the writable view layout. Unlike Slice, it
 // has no `values[i]` indexing, no `values[1..3]` sub-slicing and no `for x in`
 // support. Use At, Set and Sub, or index the data pointer directly.
 /// https://rux-lang.dev/docs/api/core/mutable-slice

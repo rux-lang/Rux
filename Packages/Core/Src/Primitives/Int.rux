@@ -7,7 +7,7 @@ extend int {
     /// The target representation size in bytes.
     pub const Bytes: uint = sizeof(int);
     /// The smallest representable value.
-    pub const Min: int = (-1 as int) << (sizeof(int) * 8u - 1u);
+    pub const Min: int = -(((~0u) >> 1u) as int) - 1;
     /// The largest representable value.
     pub const Max: int = ((~0u) >> 1u) as int;
 }
