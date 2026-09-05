@@ -72,6 +72,10 @@ The current architecture is protected by focused unit and regression tests plus 
 
 These are maintained contracts, not a one-time migration record. Changes to them belong in this guide and in the tests or policy checks that enforce the affected boundary.
 
+## Shared models
+
+`RuxTypes` owns resolved type values, primitive descriptions, value-property records, case forms, and destruction recipes. Semantic analysis computes these facts; HIR, LIR, optimization and backends consume them without linking the analyzer. `RuxTokens` owns token values and spellings, `RuxAst` owns syntax data and documentation values, and `RuxSemanticModel` owns accepted semantic results and compile-time value descriptions. Parser results have their own header, independent of parser state. The stage facades and `RuxCore` compatibility target remain available.
+
 ## Component Ownership
 
 | Component              | Owns                                                                                                      | May depend on                              |

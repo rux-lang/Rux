@@ -2,9 +2,9 @@
 #include "Numeric/FloatEncoding.h"
 #include "Numeric/FloatFormat.h"
 #include "Numeric/FloatLiteral.h"
-#include "Semantic/PrimitiveCatalog.h"
 #include "Semantic/SemanticAnalyzer.h"
 #include "Syntax/Parser/Parser.h"
+#include "Types/PrimitiveCatalog.h"
 
 #include <array>
 #include <cstdint>

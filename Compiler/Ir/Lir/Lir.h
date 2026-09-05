@@ -1,10 +1,10 @@
 #pragma once
 
-#include "Ir/CaseTypeForm.h"
-#include "Semantic/DropGlue.h"
-#include "Semantic/Type.h"
 #include "Target/AsmInstr.h"
 #include "Target/CallingConvention.h"
+#include "Types/CaseTypeForm.h"
+#include "Types/DropGlue.h"
+#include "Types/Type.h"
 
 #include <cstdint>
 #include <filesystem>

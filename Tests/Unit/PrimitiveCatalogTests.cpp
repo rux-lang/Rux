@@ -1,5 +1,5 @@
-#include "Semantic/PrimitiveCatalog.h"
 #include "Syntax/Parser/Parser.h"
+#include "Types/PrimitiveCatalog.h"
 
 #include <algorithm>
 #include <doctest.h>

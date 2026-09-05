@@ -1,7 +1,7 @@
 // Checking for struct, enum, union, array, slice and index expressions.
 
 #include "Semantic/Detail/SemanticAnalyzerContext.h"
-#include "Semantic/PrimitiveCatalog.h"
+#include "Types/PrimitiveCatalog.h"
 
 #include <algorithm>
 #include <format>

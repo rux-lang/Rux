@@ -6,10 +6,10 @@
 #include "Numeric/IntegerLiteral.h"
 #include "Semantic/ConditionalCompilation.h"
 #include "Semantic/Detail/SemanticAnalyzerContext.h"
-#include "Semantic/PrimitiveConstants.h"
-#include "Semantic/Type.h"
+#include "Semantic/Model/PrimitiveConstants.h"
 #include "Target/Layout.h"
 #include "Target/Target.h"
+#include "Types/Type.h"
 
 #include <algorithm>
 #include <cassert>

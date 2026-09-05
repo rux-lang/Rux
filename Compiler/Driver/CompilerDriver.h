@@ -9,9 +9,9 @@
 #include "Diagnostics/Diagnostics.h"
 #include "Driver/BuildReport.h"
 #include "Package/Manifest.h"
-#include "Semantic/SemanticModel.h"
+#include "Semantic/Model/SemanticModel.h"
 #include "SourceModel/SourceFile.h"
-#include "Syntax/Parser/Parser.h"
+#include "Syntax/ParseResult.h"
 #include "Target/TargetTriple.h"
 
 #include <filesystem>

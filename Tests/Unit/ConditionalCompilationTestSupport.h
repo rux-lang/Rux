@@ -1,8 +1,8 @@
 #pragma once
 
-#include "Semantic/CompileTimeContext.h"
+#include "Semantic/Model/CompileTimeContext.h"
+#include "Semantic/Model/SemanticModel.h"
 #include "Semantic/SemanticAnalyzer.h"
-#include "Semantic/SemanticModel.h"
 #include "Syntax/Parser/Parser.h"
 
 #include <string>

@@ -3,7 +3,7 @@
 
 #include "Semantic/Detail/SemanticAnalyzerContext.h"
 
-#include "Semantic/PrimitiveCatalog.h"
+#include "Types/PrimitiveCatalog.h"
 
 #include <algorithm>
 #include <array>

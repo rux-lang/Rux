@@ -1,11 +1,11 @@
 #pragma once
 
 #include "Diagnostics/Diagnostics.h"
-#include "Semantic/CompileTimeContext.h"
-#include "Semantic/DropGlue.h"
-#include "Semantic/Type.h"
-#include "Semantic/TypeProperties.h"
+#include "Semantic/Model/CompileTimeContext.h"
 #include "Syntax/Ast/Ast.h"
+#include "Types/DropGlue.h"
+#include "Types/Type.h"
+#include "Types/TypeProperties.h"
 
 #include <optional>
 #include <string>

@@ -4,7 +4,7 @@
 #include "Numeric/IntegerLiteral.h"
 #include "Semantic/ConditionalCompilation.h"
 #include "Semantic/ConditionalEvaluatorInternal.h"
-#include "Semantic/PrimitiveConstants.h"
+#include "Semantic/Model/PrimitiveConstants.h"
 #include "Semantic/SemanticVersion.h"
 #include "Target/Target.h"
 

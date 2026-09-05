@@ -1,7 +1,7 @@
 // Aggregate initialization, pattern, and match lowering.
 
 #include "Lowering/HirToLir/HirToLirContext.h"
-#include "Semantic/PrimitiveCatalog.h"
+#include "Types/PrimitiveCatalog.h"
 #include "Unicode/Utf.h"
 
 #include <algorithm>

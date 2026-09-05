@@ -1,7 +1,7 @@
 #pragma once
 
-#include "Ir/CaseTypeForm.h"
-#include "Semantic/Type.h"
+#include "Types/CaseTypeForm.h"
+#include "Types/Type.h"
 
 #include <cstdint>
 #include <string>

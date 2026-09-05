@@ -3,7 +3,7 @@
 #include "Numeric/FloatParsing.h"
 #include "Numeric/IntegerLiteral.h"
 #include "Numeric/SoftwareFloat.h"
-#include "Semantic/PrimitiveCatalog.h"
+#include "Types/PrimitiveCatalog.h"
 
 #include <utility>
 

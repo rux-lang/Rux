@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Semantic/SemanticModel.h"
+#include "Semantic/Model/SemanticModel.h"
 
 #include <functional>
 #include <memory>

@@ -2,7 +2,7 @@
 
 #include "Lexer/Token.h"
 #include "Numeric/WideInteger.h"
-#include "Semantic/Type.h"
+#include "Types/Type.h"
 
 #include <cstdint>
 #include <optional>

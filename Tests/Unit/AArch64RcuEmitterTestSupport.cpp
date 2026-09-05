@@ -5,7 +5,7 @@
 #include "Lowering/AstToHir/AstToHir.h"
 #include "Lowering/HirToLir/HirToLir.h"
 #include "Optimization/Pipeline.h"
-#include "Semantic/CompileTimeContext.h"
+#include "Semantic/Model/CompileTimeContext.h"
 #include "Semantic/SemanticAnalyzer.h"
 #include "Syntax/Parser/Parser.h"
 

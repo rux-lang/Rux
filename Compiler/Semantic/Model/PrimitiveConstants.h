@@ -1,8 +1,8 @@
 #pragma once
 
-#include "Semantic/CompileTimeContext.h"
-#include "Semantic/PrimitiveCatalog.h"
-#include "Semantic/Type.h"
+#include "Semantic/Model/CompileTimeContext.h"
+#include "Types/PrimitiveCatalog.h"
+#include "Types/Type.h"
 
 #include <optional>
 #include <string>

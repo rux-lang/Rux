@@ -1,7 +1,7 @@
 #include "Numeric/FloatEncoding.h"
 #include "Numeric/FloatParsing.h"
 #include "Optimization/ConstantEvaluator.h"
-#include "Semantic/PrimitiveCatalog.h"
+#include "Types/PrimitiveCatalog.h"
 
 #include <array>
 #include <doctest.h>
