@@ -268,7 +268,7 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
                 }
                 if (isVariadic) {
                     const TypeRef varElemType = ResolveType(*decl->params.back().type);
-                    const TypeRef sliceType = TypeRef::MakeNamed(SliceTypeName(varElemType));
+                    const TypeRef sliceType = TypeRef::MakeSlice(varElemType);
                     const bool isSingleSpread = (argTypes.size() == paramCount + 1 &&
                                                  dynamic_cast<const SpreadExpr *>(e->args[paramCount].get()));
                     if (isSingleSpread) {

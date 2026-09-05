@@ -84,8 +84,7 @@ void AnalysisContext::CheckFuncDecl(const FuncDecl &d, bool isMethod) {
         sym.kind = Symbol::Kind::Var;
         sym.name = param.name;
         sym.location = param.location;
-        sym.type =
-            param.isVariadic ? TypeRef::MakeNamed(SliceTypeName(ResolveType(*param.type))) : ResolveType(*param.type);
+        sym.type = param.isVariadic ? TypeRef::MakeSlice(ResolveType(*param.type)) : ResolveType(*param.type);
         if (sym.type.kind != TypeRef::Kind::Reference) {
             ValidateStoredType(sym.type, param.location, "function parameter");
         }
@@ -107,7 +106,7 @@ void AnalysisContext::CheckFuncDecl(const FuncDecl &d, bool isMethod) {
 
     if (d.isAsm) {
         // An asm function's body is raw machine instructions, not Rux
-        // statements, so it is validated when the assembler encodes it —
+        // statements, so it is validated when the assembler encodes it â€”
         // except for the one thing the assembler for the target cannot
         // say, which is that the body was written for the other one.
         CheckAsmBodyArchitecture(d);
@@ -295,8 +294,7 @@ void AnalysisContext::CheckImplDecl(const ImplDecl &d) {
     }
     const bool receiverMayResolve = extendedSymbol != nullptr || d.typeName.starts_with("Slice<");
     TypeRef extendedType = d.extendedType && receiverMayResolve ? ResolveType(*d.extendedType) : TypeRef::MakeUnknown();
-    const bool isSliceReceiver = extendedType.kind == TypeRef::Kind::Array ||
-                                 (extendedType.kind == TypeRef::Kind::Named && extendedType.name.starts_with("Slice<"));
+    const bool isSliceReceiver = extendedType.kind == TypeRef::Kind::Array || (extendedType.isIntrinsicSlice);
     if (!isSliceReceiver && !extendedSymbol) {
         std::optional<std::string> help;
         if (const Symbol *suggestion = currentScope->Suggest(typeName)) {
@@ -391,7 +389,7 @@ void AnalysisContext::CheckModuleDecl(const ModuleDecl &d) {
 }
 
 bool AnalysisContext::IsSliceTypeRef(const TypeRef &type) {
-    return type.kind == TypeRef::Kind::Named && type.name.starts_with("Slice<");
+    return type.isIntrinsicSlice;
 }
 
 // An element of a constant array must reduce to a literal, since the array

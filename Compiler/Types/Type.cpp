@@ -80,7 +80,7 @@ bool TypeRef::IsAssignableTo(const TypeRef &other) const noexcept {
     if (*this == other) {
         return true;
     }
-    if (kind == Kind::Array && arrayLength && !inner.empty() && other.kind == Kind::Named &&
+    if (kind == Kind::Array && arrayLength && !inner.empty() && other.isIntrinsicSlice &&
         other.name == "Slice<" + inner[0].ToString() + ">") {
         return true;
     }
@@ -224,7 +224,7 @@ std::optional<std::uint64_t> TypeRef::SizeInBytes() const noexcept {
         return layout->first;
     }
     case Kind::Named:
-        if (name.starts_with("Slice<") || name == "Slice") {
+        if (isIntrinsicSlice) {
             return 16;
         }
         if (!inner.empty()) {
@@ -337,7 +337,7 @@ std::string TypeRef::ToString() const {
 }
 
 bool TypeRef::operator==(const TypeRef &o) const noexcept {
-    if (kind != o.kind || name != o.name) {
+    if (kind != o.kind || name != o.name || isIntrinsicSlice != o.isIntrinsicSlice) {
         return false;
     }
     // Named types are identified by their concrete name. Their `inner` value

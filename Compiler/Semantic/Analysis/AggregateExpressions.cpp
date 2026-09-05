@@ -173,7 +173,7 @@ std::string AnalysisContext::NamedBaseTypeName(const TypeRef &type) const {
         // (e.g. `Slice<int>`) so `extend int[]` stays distinct from `extend
         // str[]`; other named types collapse to their base name so generic
         // instantiations share one method set.
-        if (named->name.starts_with("Slice<")) {
+        if (named->isIntrinsicSlice) {
             return named->name;
         }
         return BaseTypeName(named->name);
@@ -186,7 +186,7 @@ std::string AnalysisContext::NamedBaseTypeName(const TypeRef &type) const {
 }
 
 std::optional<TypeRef> AnalysisContext::SliceElementType(const TypeRef &type) const {
-    if (type.kind != TypeRef::Kind::Named) {
+    if (!type.isIntrinsicSlice) {
         return std::nullopt;
     }
     constexpr std::string_view prefix = "Slice<";
@@ -308,6 +308,11 @@ TypeRef AnalysisContext::StructFieldType(const TypeRef &objectType, const std::s
 }
 
 void AnalysisContext::CheckStructInitExpression(const StructInitExpr &expression) {
+    if (const auto type = PrimitiveTypeFromName(expression.typeName); type && type->IsString()) {
+        EmitError(expression.location, "a string view cannot be constructed from raw fields",
+                  {"string literals provide validated text; raw code units belong in a slice"});
+        return;
+    }
     const auto structure = structDecls.find(expression.typeName);
     if (structure == structDecls.end()) {
         if (const auto unionType = unionDecls.find(expression.typeName); unionType != unionDecls.end()) {
@@ -623,7 +628,7 @@ std::optional<TypeRef> AnalysisContext::CheckAggregateExpression(const Expr &exp
                 elementType = SliceElementType(objectValueType);
             }
             if (elementType) {
-                return TypeRef::MakeNamed(SliceTypeName(*elementType));
+                return TypeRef::MakeSlice(*elementType);
             }
             if (objectValueType.IsString()) {
                 EmitError(index->location,
@@ -686,6 +691,9 @@ std::optional<TypeRef> AnalysisContext::CheckAggregateExpression(const Expr &exp
         // A string has no struct declaration to read fields from, so the view's two members are answered here. They
         // are the escape hatch to the raw code units: a `Slice` built from them is a sequence of units again.
         if (objectValueType.IsString()) {
+            if (!VisibleIntrinsicType(objectValueType, field->location)) {
+                return TypeRef::MakeUnknown();
+            }
             if (field->field == "data") {
                 return TypeRef::MakePointer(TypeRef::MakePrimitive(StringCodeUnitKind(objectValueType.kind)));
             }
@@ -806,7 +814,7 @@ std::optional<TypeRef> AnalysisContext::CheckAggregateExpression(const Expr &exp
         }
         const std::string typeName = GenericStructInitName(*initializer);
         TypeRef type = ParseTypeRefFromString(typeName);
-        return type.IsRange() ? type : TypeRef::MakeNamed(typeName);
+        return type.IsRange() || type.isIntrinsicSlice ? type : TypeRef::MakeNamed(typeName);
     }
 
     if (const auto *array = dynamic_cast<const ArrayExpr *>(&expression)) {

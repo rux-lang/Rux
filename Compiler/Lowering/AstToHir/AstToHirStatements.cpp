@@ -98,7 +98,7 @@ HirStmtPtr AstToHirContext::LowerStmt(const Stmt &stmt) {
                     auto empty = std::make_unique<HirArrayExpr>();
                     empty->location = statement->location;
                     empty->elementType = elementType;
-                    empty->type = TypeRef::MakeNamed(SliceTypeName(elementType));
+                    empty->type = TypeRef::MakeSlice(elementType);
                     call->args.push_back(std::move(empty));
                     continue;
                 }

@@ -121,7 +121,7 @@ std::vector<std::string> AstToHirContext::ImplTypeParams(const ImplDecl &decl) c
     return params;
 }
 
-TypeRef AstToHirContext::ParseTypeRefFromString(std::string str) {
+TypeRef AstToHirContext::ParseTypeRefFromString(std::string str) const {
     auto trim = [](std::string &s) {
         s.erase(0, s.find_first_not_of(" \t\r\n"));
         s.erase(s.find_last_not_of(" \t\r\n") + 1);
@@ -195,26 +195,17 @@ TypeRef AstToHirContext::ParseTypeRefFromString(std::string str) {
         return TypeRef::MakeTuple(elems);
     }
 
-    const auto rangeElement = [&](const std::string_view prefix) {
-        return ParseTypeRefFromString(str.substr(prefix.size(), str.size() - prefix.size() - 1));
-    };
-    if (str.rfind("Range<", 0) == 0 && str.back() == '>') {
-        return TypeRef::MakeRange(rangeElement("Range<"));
-    }
-    if (str.rfind("RangeInclusive<", 0) == 0 && str.back() == '>') {
-        return TypeRef::MakeRange(rangeElement("RangeInclusive<"), true, true, true);
-    }
-    if (str.rfind("RangeFrom<", 0) == 0 && str.back() == '>') {
-        return TypeRef::MakeRange(rangeElement("RangeFrom<"), true, false);
-    }
-    if (str.rfind("RangeTo<", 0) == 0 && str.back() == '>') {
-        return TypeRef::MakeRange(rangeElement("RangeTo<"), false, true);
-    }
-    if (str.rfind("RangeToInclusive<", 0) == 0 && str.back() == '>') {
-        return TypeRef::MakeRange(rangeElement("RangeToInclusive<"), false, true, true);
-    }
-    if (str == "RangeFull") {
-        return TypeRef::MakeRangeFull();
+    const std::string aggregateName = str.substr(0, str.find('<'));
+    if (const auto declaration = structDecls.find(aggregateName);
+        declaration != structDecls.end() && !declaration->second->intrinsicName.empty()) {
+        std::vector<TypeRef> arguments;
+        const auto begin = str.find('<');
+        if (begin != std::string::npos && str.back() == '>') {
+            arguments.push_back(ParseTypeRefFromString(str.substr(begin + 1, str.size() - begin - 2)));
+        }
+        if (const auto aggregate = IntrinsicAggregateType(declaration->second->intrinsicName, arguments)) {
+            return *aggregate;
+        }
     }
 
     return TypeRef::MakeNamed(str);
@@ -519,7 +510,7 @@ std::string AstToHirContext::NamedBaseTypeName(const TypeRef &type) {
     if (named->kind == TypeRef::Kind::Named) {
         // Keep the full element-specific name for slices so `extend int[]`
         // methods are found on `int[]` receivers (see SemanticAnalyzer).
-        if (named->name.starts_with("Slice<")) {
+        if (named->isIntrinsicSlice) {
             return named->name;
         }
         return BaseTypeNameImpl(named->name);
@@ -571,7 +562,7 @@ std::optional<TypeRef> AstToHirContext::BuiltinTypeFromName(const std::string &n
 }
 
 std::optional<TypeRef> AstToHirContext::SliceElementType(const TypeRef &type) const {
-    if (type.kind != TypeRef::Kind::Named) {
+    if (!type.isIntrinsicSlice) {
         return std::nullopt;
     }
     constexpr std::string_view prefix = "Slice<";
@@ -616,29 +607,21 @@ TypeRef AstToHirContext::ResolveTypeWithSubstitution(const TypeExpr &expr,
             return ResolvedType(expr);
         }
 
-        if (t->typeArgs.size() == 1) {
-            TypeRef elemType = ResolveTypeWithSubstitution(*t->typeArgs[0], substitutions);
-            if (t->name == "Range") {
-                return TypeRef::MakeRange(std::move(elemType));
-            }
-            if (t->name == "RangeInclusive") {
-                return TypeRef::MakeRange(std::move(elemType), true, true, true);
-            }
-            if (t->name == "RangeFrom") {
-                return TypeRef::MakeRange(std::move(elemType), true, false);
-            }
-            if (t->name == "RangeTo") {
-                return TypeRef::MakeRange(std::move(elemType), false, true);
-            }
-            if (t->name == "RangeToInclusive") {
-                return TypeRef::MakeRange(std::move(elemType), false, true, true);
-            }
-        }
-
         std::vector<TypeRef> resolvedArgs;
         resolvedArgs.reserve(t->typeArgs.size());
         for (const auto &typeArg : t->typeArgs) {
             resolvedArgs.push_back(ResolveTypeWithSubstitution(*typeArg, substitutions));
+        }
+
+        if (const TypeRef *accepted = model.TryGetType(expr); accepted && resolvedArgs.size() == 1) {
+            if (accepted->isIntrinsicSlice) {
+                return TypeRef::MakeSlice(resolvedArgs[0]);
+            }
+            if (accepted->IsRange()) {
+                TypeRef instantiated = *accepted;
+                instantiated.inner = resolvedArgs;
+                return instantiated;
+            }
         }
 
         // An enum instantiation is composed in exactly one place, so that a type reached through a substitution

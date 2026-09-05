@@ -308,9 +308,17 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
         symbol.modulePath = modulePath;
         symbol.declaration = alias;
         symbol.intrinsicName = alias->intrinsicName;
-        symbol.type = alias->intrinsicName.empty()
-                        ? resolveType(*alias->type)
-                        : PrimitiveTypeFromName(alias->intrinsicName).value_or(TypeRef::MakeUnknown());
+        if (!alias->intrinsicName.empty()) {
+            symbol.type = PrimitiveTypeFromName(alias->intrinsicName).value_or(TypeRef::MakeUnknown());
+        }
+        else if (const auto *named = dynamic_cast<const NamedTypeExpr *>(alias->type.get());
+                 named && named->typeArgs.empty() && PrimitiveTypeFromName(named->name)) {
+            // Provisional representation only. Checking the alias still resolves and validates its source type.
+            symbol.type = *PrimitiveTypeFromName(named->name);
+        }
+        else {
+            symbol.type = resolveType(*alias->type);
+        }
         if (scope.Define(symbol, diagnostics, sourceName) && isGlobal) {
             publicSymbols.push_back({SemanticSymbol::Kind::Type, alias->name, sourceName, alias->location,
                                      symbol.type.IsUnknown() ? "" : symbol.type.ToString(), false});

@@ -69,7 +69,7 @@ bool AstToHirContext::ReceiverIsByValue(const FuncDecl &method) const {
     }
     const TypeRef &declared = ResolvedType(*receiver->type);
     return declared.kind != TypeRef::Kind::Pointer && declared.kind != TypeRef::Kind::Reference &&
-           !(declared.kind == TypeRef::Kind::Named && declared.name.starts_with("Slice<"));
+           !(declared.isIntrinsicSlice);
 }
 
 /// The receiver as the callee actually takes it. Every call site has a value or a pointer in hand and the signature
@@ -164,7 +164,7 @@ std::vector<HirExprPtr> AstToHirContext::LowerBoundArguments(const CallExpr &cal
         call.args.size() == fixedCount + 1 && dynamic_cast<const SpreadExpr *>(call.args[fixedCount].get()) != nullptr;
     if (singleSpread) {
         HirExprPtr slice = LowerExpr(*call.args[fixedCount]);
-        slice->type = TypeRef::MakeNamed(SliceTypeName(elementType));
+        slice->type = TypeRef::MakeSlice(elementType);
         arguments.push_back(std::move(slice));
         return arguments;
     }
@@ -172,7 +172,7 @@ std::vector<HirExprPtr> AstToHirContext::LowerBoundArguments(const CallExpr &cal
     auto slice = std::make_unique<HirArrayExpr>();
     slice->location = call.location;
     slice->elementType = elementType;
-    slice->type = TypeRef::MakeNamed(SliceTypeName(elementType));
+    slice->type = TypeRef::MakeSlice(elementType);
     for (std::size_t i = fixedCount; i < call.args.size(); ++i) {
         slice->elements.push_back(LowerExprAs(*call.args[i], elementType));
     }
@@ -430,7 +430,7 @@ HirExprPtr AstToHirContext::LowerCallExpr(const CallExpr &call) {
         lowered->sourceLine = call.location.line;
         lowered->sourceColumn = call.location.column;
 
-        const TypeRef stringType = TypeRef::MakeNamed(SliceTypeName(TypeRef::MakeChar8()));
+        const TypeRef stringType = TypeRef::MakeSlice(TypeRef::MakeChar8());
         auto callee = std::make_unique<HirVarExpr>();
         callee->location = builtinIdentifier->location;
         callee->type = isPanic ? TypeRef::MakeFunc({stringType}, TypeRef::MakeOpaque())

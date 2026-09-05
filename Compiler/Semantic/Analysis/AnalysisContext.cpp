@@ -174,6 +174,7 @@ TypeRef AnalysisContext::SubstituteTypeParameters(TypeRef type,
         if (changed) {
             TypeRef rebuilt = TypeRef::MakeNamed(TypeRef::InstantiationName(BaseTypeName(type.name), arguments));
             rebuilt.isMut = type.isMut;
+            rebuilt.isIntrinsicSlice = type.isIntrinsicSlice;
             return rebuilt;
         }
         return type;
@@ -266,8 +267,16 @@ std::optional<TypeRef> AnalysisContext::ResolveStructTypeReference(const TypeExp
         return std::nullopt;
     }
     if (!declaration->second->intrinsicName.empty()) {
+        const Symbol *symbol = currentScope ? currentScope->Lookup(name) : nullptr;
+        if (!symbol || !IsVisibleTypeSymbol(*symbol)) {
+            EmitError(expression.location, std::format("intrinsic type '{}' is not imported into this scope", name));
+            return TypeRef::MakeUnknown();
+        }
         if (const auto primitive = PrimitiveTypeFromName(declaration->second->intrinsicName)) {
             return *primitive;
+        }
+        if (const auto aggregate = IntrinsicAggregateType(declaration->second->intrinsicName, typeArguments)) {
+            return *aggregate;
         }
     }
     if (typeArguments.size() != declaration->second->typeParams.size()) {
@@ -303,9 +312,15 @@ void AnalysisContext::RegisterBuiltins() {
     // A reserved primitive is still a declared name, so a use of it is diagnosed as unimplemented rather than as an
     // unknown type; it binds to Unknown because it has no representation to bind to yet.
     for (const PrimitiveInfo &primitive : PrimitiveCatalog()) {
+        if (primitive.category == PrimitiveCategory::String) {
+            continue;
+        }
         add(primitive.name, primitive.implemented ? TypeRef::MakePrimitive(primitive.kind) : TypeRef::MakeUnknown());
     }
     for (const PrimitiveAlias &alias : PrimitiveAliases()) {
+        if (TypeRef::MakePrimitive(alias.kind).IsString()) {
+            continue;
+        }
         add(alias.name, TypeRef::MakePrimitive(alias.kind));
     }
 }
@@ -322,6 +337,7 @@ void AnalysisContext::IndexDeclarations() {
     for (auto &package : deps) {
         currentPackage = package.name;
         Scope &rootScope = programIndex.CreatePackageRoot(package.name);
+        currentScope = &rootScope;
         for (auto &entry : package.modules) {
             currentFile = entry.module->name;
             for (const auto &declaration : entry.module->items) {
@@ -335,6 +351,7 @@ void AnalysisContext::IndexDeclarations() {
     if (!packageName.empty()) {
         programIndex.RegisterPackageRoot(packageName, globalScope);
     }
+    currentScope = &globalScope;
     for (const Module *module : modules) {
         CollectModule(*module);
     }
@@ -392,7 +409,8 @@ bool AnalysisContext::DeduceTypeArgument(const TypeRef &paramType, const TypeRef
     if (paramType.IsUnknown() || argType.IsUnknown()) {
         return true;
     }
-    if (paramType.kind == TypeRef::Kind::TypeParam) {
+    if (paramType.kind == TypeRef::Kind::TypeParam ||
+        (paramType.kind == TypeRef::Kind::Named && typeParamNames.contains(paramType.name))) {
         if (typeParamNames.contains(paramType.name)) {
             TypeRef target = argType;
             if (const auto it = substitutions.find(paramType.name); it != substitutions.end()) {
@@ -484,10 +502,10 @@ bool AnalysisContext::DeduceTypeArgument(const TypeRef &paramType, const TypeRef
     }
 
     if (paramType.kind == TypeRef::Kind::Named) {
-        const std::string paramBase = NamedBaseTypeName(paramType);
+        const std::string paramBase = BaseTypeName(paramType.name);
         if (argType.kind == TypeRef::Kind::Named) {
-            const std::string argBase = NamedBaseTypeName(argType);
-            if (paramBase == argBase) {
+            const std::string argBase = BaseTypeName(argType.name);
+            if (paramBase == argBase && paramType.isIntrinsicSlice == argType.isIntrinsicSlice) {
                 const auto paramArgs = ParseTypeArgsFromTypeName(paramType.name);
                 const auto argArgs = ParseTypeArgsFromTypeName(argType.name);
                 if (paramArgs.size() == argArgs.size() && !paramArgs.empty()) {
@@ -500,7 +518,7 @@ bool AnalysisContext::DeduceTypeArgument(const TypeRef &paramType, const TypeRef
                 }
             }
         }
-        if (paramBase == "Slice" && argType.kind == TypeRef::Kind::Array && !argType.inner.empty()) {
+        if (paramType.isIntrinsicSlice && argType.kind == TypeRef::Kind::Array && !argType.inner.empty()) {
             const auto paramArgs = ParseTypeArgsFromTypeName(paramType.name);
             if (paramArgs.size() == 1) {
                 return DeduceTypeArgument(paramArgs[0], argType.inner[0], typeParamNames, substitutions);

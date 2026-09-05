@@ -281,7 +281,7 @@ private:
     [[nodiscard]] std::string GenericTypeName(const NamedTypeExpr &type);
     [[nodiscard]] static std::string SliceTypeName(const TypeRef &elementType);
     [[nodiscard]] static std::string BaseTypeNameImpl(const std::string &name);
-    [[nodiscard]] static TypeRef ParseTypeRefFromString(std::string text);
+    [[nodiscard]] TypeRef ParseTypeRefFromString(std::string text) const;
     [[nodiscard]] static TypeRef StringLiteralType(const Token &token);
     [[nodiscard]] static TypeRef CharLiteralType(const Token &token);
     [[nodiscard]] static std::string NumericLiteralSuffix(std::string_view text);

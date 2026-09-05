@@ -197,6 +197,16 @@ in ordinary source initializers.
 
 ### Literal views
 
+The names `string`, `string8`, `string16`, and `string32` require local declarations or explicit imports. A literal
+still has an inferred compiler representation without any package dependency. Reading `.data` or `.length` requires
+a visible declaration for that encoding; `import Core::string;` provides the UTF-8 declaration through its alias.
+An import in another source file does not expose those members. Calling an imported function that accepts text does
+not require separately importing its signature types.
+
+The Core `Slice`, `MutableSlice`, and range declarations explicitly use `intrinsic struct`. An ordinary struct with
+one of those names receives no compiler operations from its spelling. Range syntax and array operations themselves
+remain available without Core.
+
 A string literal is text. `"Hello"` has type `string`, and the `s16` and `s32` prefixes spell the same text in the other two encodings:
 
 ```text

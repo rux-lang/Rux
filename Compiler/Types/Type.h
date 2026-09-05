@@ -81,6 +81,8 @@ struct TypeRef {
 
     Kind kind = Kind::Unknown;
     std::string name;
+    /// True only for the intrinsic slice representation, never inferred from a source type's spelling.
+    bool isIntrinsicSlice = false;
     std::vector<TypeRef> inner; // C++17: vector<incomplete T> is valid
     std::optional<std::uint64_t> arrayLength;
     bool isVariadic = false; // Func kind: trailing C-style ... (extern) or
@@ -92,6 +94,14 @@ struct TypeRef {
                         // identity handles it at the enclosing type.
 
     // Factories
+    static TypeRef MakeSlice(const TypeRef &element) {
+        TypeRef type;
+        type.kind = Kind::Named;
+        type.name = "Slice<" + element.ToString() + ">";
+        type.isIntrinsicSlice = true;
+        return type;
+    }
+
     static TypeRef MakeUnknown() {
         return {};
     }

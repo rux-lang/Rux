@@ -18,7 +18,7 @@
 /// bounds outlive their source. A range whose `start` is not below its `end` is empty rather than invalid.
 ///
 /// https://rux-lang.dev/docs/api/core/range
-pub struct Range<T> {
+pub intrinsic struct Range<T> {
     /// The first value the range covers.
     pub start: T;
     /// The first value past the range, which the range does not cover.
@@ -32,7 +32,7 @@ pub struct Range<T> {
 /// name without an `end` one past it.
 ///
 /// https://rux-lang.dev/docs/api/core/range-inclusive
-pub struct RangeInclusive<T> {
+pub intrinsic struct RangeInclusive<T> {
     /// The first value the range covers.
     pub start: T;
     /// The last value the range covers, which the range does cover.
@@ -46,7 +46,7 @@ pub struct RangeInclusive<T> {
 /// bound type running out.
 ///
 /// https://rux-lang.dev/docs/api/core/range-from
-pub struct RangeFrom<T> {
+pub intrinsic struct RangeFrom<T> {
     /// The first value the range covers.
     pub start: T;
 }
@@ -58,7 +58,7 @@ pub struct RangeFrom<T> {
 /// beginning.
 ///
 /// https://rux-lang.dev/docs/api/core/range-to
-pub struct RangeTo<T> {
+pub intrinsic struct RangeTo<T> {
     /// The first value past the range, which the range does not cover.
     pub end: T;
 }
@@ -69,7 +69,7 @@ pub struct RangeTo<T> {
 /// The bound is held by value.
 ///
 /// https://rux-lang.dev/docs/api/core/range-to-inclusive
-pub struct RangeToInclusive<T> {
+pub intrinsic struct RangeToInclusive<T> {
     /// The last value the range covers, which the range does cover.
     pub end: T;
 }
@@ -81,4 +81,4 @@ pub struct RangeToInclusive<T> {
 /// take a view of a sequence whose length the caller does not have.
 ///
 /// https://rux-lang.dev/docs/api/core/range-full
-pub struct RangeFull {}
+pub intrinsic struct RangeFull {}

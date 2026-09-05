@@ -139,26 +139,17 @@ TypeRef AnalysisContext::ParseTypeRefFromString(std::string str) const {
         return TypeRef::MakeTuple(elems);
     }
 
-    const auto rangeElement = [&](const std::string_view prefix) {
-        return ParseTypeRefFromString(str.substr(prefix.size(), str.size() - prefix.size() - 1));
-    };
-    if (str.rfind("Range<", 0) == 0 && str.back() == '>') {
-        return TypeRef::MakeRange(rangeElement("Range<"));
-    }
-    if (str.rfind("RangeInclusive<", 0) == 0 && str.back() == '>') {
-        return TypeRef::MakeRange(rangeElement("RangeInclusive<"), true, true, true);
-    }
-    if (str.rfind("RangeFrom<", 0) == 0 && str.back() == '>') {
-        return TypeRef::MakeRange(rangeElement("RangeFrom<"), true, false);
-    }
-    if (str.rfind("RangeTo<", 0) == 0 && str.back() == '>') {
-        return TypeRef::MakeRange(rangeElement("RangeTo<"), false, true);
-    }
-    if (str.rfind("RangeToInclusive<", 0) == 0 && str.back() == '>') {
-        return TypeRef::MakeRange(rangeElement("RangeToInclusive<"), false, true, true);
-    }
-    if (str == "RangeFull") {
-        return TypeRef::MakeRangeFull();
+    const std::string aggregateName = str.substr(0, str.find('<'));
+    if (const auto declaration = structDecls.find(aggregateName);
+        declaration != structDecls.end() && !declaration->second->intrinsicName.empty()) {
+        std::vector<TypeRef> arguments;
+        const auto begin = str.find('<');
+        if (begin != std::string::npos && str.back() == '>') {
+            arguments.push_back(ParseTypeRefFromString(str.substr(begin + 1, str.size() - begin - 2)));
+        }
+        if (const auto aggregate = IntrinsicAggregateType(declaration->second->intrinsicName, arguments)) {
+            return *aggregate;
+        }
     }
 
     // A type parameter in scope is that parameter, not a type that happens to share its name. This path reads a
@@ -202,6 +193,19 @@ std::vector<TypeRef> AnalysisContext::ParseTypeArgsFromTypeName(const std::strin
 
 TypeRef AnalysisContext::ResolveTypeImpl(const TypeExpr &expr) {
     if (const auto *t = dynamic_cast<const NamedTypeExpr *>(&expr)) {
+        if (const auto primitive = PrimitiveTypeFromName(t->name); primitive && primitive->IsString()) {
+            const Symbol *symbol = currentScope ? currentScope->Lookup(t->name) : nullptr;
+            if (!symbol || !IsVisibleTypeSymbol(*symbol) || symbol->type != *primitive) {
+                EmitError(expr.location,
+                          std::format("type '{}' requires an imported or local intrinsic declaration", t->name));
+                return TypeRef::MakeUnknown();
+            }
+            if (!t->typeArgs.empty()) {
+                EmitGenericArityError(expr, std::format("string type '{}'", t->name), 0, t->typeArgs.size());
+                return TypeRef::MakeUnknown();
+            }
+            return *primitive;
+        }
         if (IsUnimplementedPrimitiveType(t->name)) {
             EmitError(expr.location, std::format("primitive type '{}' is reserved but is not implemented in this "
                                                  "compiler version",
@@ -233,27 +237,6 @@ TypeRef AnalysisContext::ResolveTypeImpl(const TypeExpr &expr) {
 
         if (hasUnknownArgs) {
             return TypeRef::MakeUnknown();
-        }
-
-        if (t->name == "RangeFull" && resolvedArgs.empty()) {
-            return TypeRef::MakeRangeFull();
-        }
-        if (resolvedArgs.size() == 1) {
-            if (t->name == "Range") {
-                return TypeRef::MakeRange(resolvedArgs[0]);
-            }
-            if (t->name == "RangeInclusive") {
-                return TypeRef::MakeRange(resolvedArgs[0], true, true, true);
-            }
-            if (t->name == "RangeFrom") {
-                return TypeRef::MakeRange(resolvedArgs[0], true, false);
-            }
-            if (t->name == "RangeTo") {
-                return TypeRef::MakeRange(resolvedArgs[0], false, true);
-            }
-            if (t->name == "RangeToInclusive") {
-                return TypeRef::MakeRange(resolvedArgs[0], false, true, true);
-            }
         }
 
         if (const EnumDecl *enumeration = EnumNamed(t->name)) {
@@ -389,6 +372,11 @@ TypeRef AnalysisContext::ResolveTypeImpl(const TypeExpr &expr) {
 
 TypeRef AnalysisContext::ResolveTypeWithSubstitution(const TypeExpr &expr,
                                                      const std::unordered_map<std::string, TypeRef> &substitutions) {
+    if (const auto accepted = typeNodeTypes.find(&expr);
+        accepted != typeNodeTypes.end() &&
+        (accepted->second.IsString() || accepted->second.isIntrinsicSlice || accepted->second.IsRange())) {
+        return SubstituteTypeParameters(accepted->second, substitutions);
+    }
     if (auto *t = dynamic_cast<const NamedTypeExpr *>(&expr)) {
         if (t->typeArgs.empty()) {
             if (auto it = substitutions.find(t->name); it != substitutions.end()) {
@@ -397,29 +385,16 @@ TypeRef AnalysisContext::ResolveTypeWithSubstitution(const TypeExpr &expr,
             return ResolveType(expr);
         }
 
-        if (t->typeArgs.size() == 1) {
-            TypeRef elemType = ResolveTypeWithSubstitution(*t->typeArgs[0], substitutions);
-            if (t->name == "Range") {
-                return TypeRef::MakeRange(std::move(elemType));
-            }
-            if (t->name == "RangeInclusive") {
-                return TypeRef::MakeRange(std::move(elemType), true, true, true);
-            }
-            if (t->name == "RangeFrom") {
-                return TypeRef::MakeRange(std::move(elemType), true, false);
-            }
-            if (t->name == "RangeTo") {
-                return TypeRef::MakeRange(std::move(elemType), false, true);
-            }
-            if (t->name == "RangeToInclusive") {
-                return TypeRef::MakeRange(std::move(elemType), false, true, true);
-            }
-        }
-
         std::vector<TypeRef> resolvedArgs;
         resolvedArgs.reserve(t->typeArgs.size());
         for (const auto &typeArg : t->typeArgs) {
             resolvedArgs.push_back(ResolveTypeWithSubstitution(*typeArg, substitutions));
+        }
+        if (const Symbol *symbol = currentScope->Lookup(t->name);
+            symbol && symbol->declaration && !symbol->intrinsicName.empty() && IsVisibleTypeSymbol(*symbol)) {
+            if (const auto aggregate = IntrinsicAggregateType(symbol->intrinsicName, resolvedArgs)) {
+                return *aggregate;
+            }
         }
         // An enum instantiation is composed in one place, so that a type reached through a substitution -- a
         // return type resolved while a signature is built -- carries the layout marker one resolved directly has.

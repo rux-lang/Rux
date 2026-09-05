@@ -87,7 +87,7 @@ int SizeOf(const TypeRef &t) {
         return 0;
     case TypeRef::Kind::Named: {
         const auto baseName = BaseTypeName(t.name);
-        if (baseName == "Slice" || baseName.starts_with("Slice<")) {
+        if (t.isIntrinsicSlice) {
             return 16;
         }
         if (baseName == "StringArray" || baseName == "SystemTime") {
@@ -100,7 +100,7 @@ int SizeOf(const TypeRef &t) {
         return 8;
     default:
         return 8; // int, uint, int64, uint64, float64, pointer, str,
-        // named, …
+        // named, â€¦
     }
 }
 
@@ -182,7 +182,7 @@ StructLayout ComputeStructLayout(const LirStructDecl &s, const LayoutMap &known,
                 sz = it->second.totalSize;
                 al = it->second.alignment;
             }
-            else if (baseName == "Slice" || baseName.starts_with("Slice<")) {
+            else if (f.type.isIntrinsicSlice) {
                 sz = 16;
                 al = 8;
             }

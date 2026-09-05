@@ -210,6 +210,9 @@ void AnalysisContext::PromoteFromPackage(const UseDecl &d, const std::string &pk
         return;
     }
     DefineImportedSymbol(*accessible);
+    if (accessible->kind == Symbol::Kind::Type && accessible->declaration) {
+        explicitTypeImports[currentFile].insert(accessible->declaration);
+    }
     ImportSignatureDependencies(*accessible, *scope.table);
 }
 
@@ -387,6 +390,9 @@ void AnalysisContext::CheckUseDecl(const UseDecl &d) {
         for (const auto &[name, sym] : *scope.table) {
             if (const std::optional<Symbol> accessible = AccessibleImport(sym)) {
                 DefineImportedSymbol(*accessible);
+                if (accessible->kind == Symbol::Kind::Type && accessible->declaration) {
+                    explicitTypeImports[currentFile].insert(accessible->declaration);
+                }
             }
         }
     }

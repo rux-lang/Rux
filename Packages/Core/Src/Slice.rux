@@ -1,7 +1,7 @@
 /// A borrowed read-only view over contiguous elements.
 ///
 /// https://rux-lang.dev/docs/api/core/slice
-pub struct Slice<T> {
+pub intrinsic struct Slice<T> {
     pub data: *T;
     pub length: uint;
 }

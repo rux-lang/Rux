@@ -130,7 +130,7 @@ std::string AstToHirContext::DecodeCharLiteral(const std::string &text) {
                 cp = '"';
                 break;
             case 'u': {
-                // \u{XXXX} — Unicode escape ('u' sits at i + 1)
+                // \u{XXXX} â€” Unicode escape ('u' sits at i + 1)
                 std::uint32_t u = 0;
                 if (ParseUnicodeEscape(text, i + 1, u) != i + 1) {
                     cp = u;
@@ -150,7 +150,7 @@ std::string AstToHirContext::DecodeCharLiteral(const std::string &text) {
 }
 
 std::string AstToHirContext::DecodeStringLiteral(const std::string &text) {
-    // text is raw source like "hello\n" — strip quotes and decode
+    // text is raw source like "hello\n" â€” strip quotes and decode
     // escapes
     std::string out;
     if (text.size() < 2) {
@@ -203,7 +203,7 @@ std::string AstToHirContext::DecodeStringLiteral(const std::string &text) {
             out += '"';
             break;
         case 'u': {
-            // \u{XXXX} — Unicode escape, encoded as UTF-8 ('u' sits at
+            // \u{XXXX} â€” Unicode escape, encoded as UTF-8 ('u' sits at
             // i)
             std::uint32_t u = 0;
             if (const std::size_t end = ParseUnicodeEscape(text, i, u); end != i) {
@@ -292,7 +292,7 @@ std::vector<HirParam> AstToHirContext::LowerParams(const std::vector<Param> &par
         HirParam hp;
         hp.name = p.name;
         hp.isVariadic = p.isVariadic;
-        hp.type = p.isVariadic ? TypeRef::MakeNamed(SliceTypeName(ResolveType(*p.type))) : ResolveType(*p.type);
+        hp.type = p.isVariadic ? TypeRef::MakeSlice(ResolveType(*p.type)) : ResolveType(*p.type);
         if (const HirSymbol *symbol = currentScope->Lookup(hp.name)) {
             hp.bindingId = symbol->bindingId;
         }
@@ -351,8 +351,7 @@ HirFunc AstToHirContext::LowerFunc(const FuncDecl &d, bool isMethod,
         HirSymbol sym;
         sym.kind = HirSymbol::Kind::Var;
         sym.name = param.name;
-        sym.type =
-            param.isVariadic ? TypeRef::MakeNamed(SliceTypeName(ResolveType(*param.type))) : ResolveType(*param.type);
+        sym.type = param.isVariadic ? TypeRef::MakeSlice(ResolveType(*param.type)) : ResolveType(*param.type);
         sym.isMut = false;
         sym.bindingId = RegisterCleanupBinding(sym.name, sym.type, param.location);
         Define(sym);
@@ -540,8 +539,7 @@ HirImplBlock AstToHirContext::LowerImpl(const ImplDecl &d) {
     TypeRef savedSelfType = currentSelfType;
     inImpl = true;
     TypeRef extendedType = d.extendedType ? ResolveType(*d.extendedType) : TypeRef::MakeUnknown();
-    const bool isSliceReceiver = extendedType.kind == TypeRef::Kind::Array ||
-                                 (extendedType.kind == TypeRef::Kind::Named && extendedType.name.starts_with("Slice<"));
+    const bool isSliceReceiver = extendedType.kind == TypeRef::Kind::Array || (extendedType.isIntrinsicSlice);
     if (isSliceReceiver) {
         // `self` is the slice value; the slice ABI passes its address, so
         // slice indexing and iteration inside the method work as usual.
