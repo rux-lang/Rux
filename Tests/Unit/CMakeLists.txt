@@ -107,7 +107,6 @@ set(RUX_TEST_SOURCES
     PlatformAsmTests.cpp
     ProcessTests.cpp
     PropagationLoweringTests.cpp
-    PrimitiveConstantsTests.cpp
     PublicationValidationTests.cpp
     ReporterTests.cpp
     ReportingTests.cpp

@@ -3,7 +3,7 @@
 // A receiver is an ordinary parameter named `self`, so most of what governs it is the parameter machinery elsewhere in
 // this component. What is left is the part no other parameter has: it names the type being extended, it is the argument
 // the call site writes to the left of the dot rather than inside the parentheses, and it reaches the method by a route
-// the signature chooses â€” copied, or addressed.
+// the signature chooses — copied, or addressed.
 
 #include "Semantic/Analysis/AnalysisContext.h"
 
@@ -54,7 +54,7 @@ TypeRef AnalysisContext::DeclareReceiver(const FuncDecl &declaration, const bool
 /// A receiver in `extend T` is written `T`, `&T`, `&var T`, or a legacy pointer form and nothing else: it names the
 /// type being extended, so
 /// anything else is a typo rather than a conversion to work out. An extend block that names an interface is narrower
-/// still â€” dispatch reaches the method through a vtable slot that is handed an address, so the receiver has to be
+/// still — dispatch reaches the method through a vtable slot that is handed an address, so the receiver has to be
 /// one.
 void AnalysisContext::CheckReceiverType(const FuncDecl &declaration, const Param &receiver, const TypeRef &declared) {
     if (!currentImpl || declared.IsUnknown() || currentExtendedType.IsUnknown()) {

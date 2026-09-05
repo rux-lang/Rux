@@ -79,32 +79,6 @@ const std::string &DependencyPackageName(const ManifestDependency &dep) {
     return dep.package.Text();
 }
 
-std::set<std::string> IntrinsicsAliases(const Manifest &manifest, const std::filesystem::path &root) {
-    std::set<std::string> aliases;
-    if (manifest.IsWorkspace()) {
-        return aliases;
-    }
-    const std::string wantedNamespace = NormalizeIdentity(intrinsicsPackageNamespace);
-    const std::string wantedName = NormalizeIdentity(intrinsicsPackageName);
-
-    for (const auto &dep : manifest.dependencies) {
-        if (const RegistryDependencySource *registry = dep.Registry()) {
-            if (registry->ns.Normalized() == wantedNamespace && dep.package.Normalized() == wantedName) {
-                aliases.insert(dep.importName.Text());
-            }
-            continue;
-        }
-        // A path entry names no package, so the only way to know what it points
-        // at is to read it. Repository test packages reach the first-party
-        // packages this way, so it is the common case rather than a corner.
-        const auto target = Manifest::Load((root / dep.Path() / "Rux.toml").lexically_normal());
-        if (target.Ok() && IsIntrinsicsPackage(*target.manifest)) {
-            aliases.insert(dep.importName.Text());
-        }
-    }
-    return aliases;
-}
-
 std::filesystem::path ResolveRawOutputRoot(const std::filesystem::path &root, const Manifest &manifest) {
     std::filesystem::path output =
         manifest.build.output.empty() ? std::filesystem::path("Bin") : std::filesystem::path(manifest.build.output);

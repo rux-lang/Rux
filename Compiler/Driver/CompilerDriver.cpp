@@ -25,6 +25,7 @@
 #include "Syntax/Parser/Parser.h"
 #include "System/Os.h"
 
+#include <algorithm>
 #include <cerrno>
 #include <charconv>
 #include <chrono>
@@ -67,7 +68,6 @@ void CompilerDriver::Impl::InitializeCompileTimeContext() {
     compileTimeContext.config = opts.manifest.build.ConfigValues();
     // Which import name means the intrinsics package is the root manifest's
     // choice; each dependency's own manifest answers it again below.
-    compileTimeContext.intrinsicsAliases = IntrinsicsAliases(opts.manifest, root);
     for (const auto &[name, value] : opts.defines) {
         compileTimeContext.config[name] = value;
     }
@@ -331,22 +331,6 @@ bool CompilerDriver::Impl::LexAndParseSources() {
         if (parseResult.HasErrors()) {
             continue;
         }
-        // Fold `when` before anything reads the module: which imports a file has
-        // depends on which branches survive, and dependency loading below is the
-        // first thing to ask.
-        {
-            std::vector<Diagnostic> foldDiagnostics;
-            ResolveConditionalCompilation({&parseResult.module}, compileTimeContext, foldDiagnostics);
-            if (EmitAll(foldDiagnostics)) {
-                parseErrors = true;
-            }
-        }
-        if (opts.dumpAst) {
-            auto rel = std::filesystem::relative(file.path, root / "Src");
-            auto astPath = (root / "Temp" / "Ast" / rel).replace_extension(".ast");
-            inspectionErrors |= !WriteInspectionOutput(InspectionKind::Ast, astPath,
-                                                       [&] { return Parser::DumpAst(parseResult, astPath); });
-        }
         parseResults.push_back(std::move(parseResult));
     }
     stats.parsing += ElapsedMs(parsingStart);
@@ -458,104 +442,113 @@ bool CompilerDriver::Impl::LoadDependencies() {
         return true;
     };
 
-    std::vector<std::string> imports;
-    auto collectImports = [&](this auto &&self, const Decl &decl) -> void {
-        if (const auto *ud = dynamic_cast<const UseDecl *>(&decl)) {
-            if (!ud->path.empty()) {
-                imports.push_back(ud->path[0]);
-            }
-            return;
+    // Packages are parsed into stable storage before their conditionals ask for imported declarations.
+    // The resolver loads only imports in surviving branches, including imports needed by a condition itself.
+    std::unordered_map<std::string, std::vector<ParseResult>> parsedPackages;
+    std::unordered_set<std::string> loadingPackages;
+    std::vector<std::string> packageOrder;
+    bool failed = false;
+    const auto modulesOf = [](std::vector<ParseResult> &parsed) {
+        std::vector<Module *> modules;
+        for (auto &result : parsed) {
+            modules.push_back(&result.module);
         }
-        if (const auto *mod = dynamic_cast<const ModuleDecl *>(&decl)) {
-            for (const auto &item : mod->items) {
-                if (item) {
-                    self(*item);
-                }
-            }
+        return modules;
+    };
+    const auto loadPackage = [&](this auto &&self, const std::string &name, const Manifest &owner,
+                                 const std::filesystem::path &ownerRoot) -> std::vector<Module *> {
+        if (loadingPackages.contains(name)) {
+            Emit(ErrorDiagnostic("cyclic dependency while resolving declarations from package '" + name + "'"));
+            failed = true;
+            return {};
         }
+        if (const auto loaded = parsedPackages.find(name); loaded != parsedPackages.end()) {
+            return modulesOf(loaded->second);
+        }
+        if (!enqueueDependency(name, owner, ownerRoot)) {
+            failed = true;
+            return {};
+        }
+        const auto found = std::ranges::find(pendingPackages, name, &PendingPackage::name);
+        if (found == pendingPackages.end()) {
+            failed = true;
+            return {};
+        }
+        // Recursive loading may reallocate pendingPackages, so retain an owning copy.
+        const PendingPackage pending = *found;
+        loadingPackages.insert(name);
+        BeginPhase(CompilePhase::LoadingDependency, name, pending.root);
+        auto loaded = SourceLoader::Load(pending.root);
+        const auto files = RememberSources(loaded.files);
+        stats.dependencyFiles += files.size();
+        if (EmitAll(loaded.diagnostics)) {
+            failed = true;
+            return {};
+        }
+        auto &parsed = parsedPackages[name];
+        parsed.reserve(files.size());
+        for (const auto &file : files) {
+            stats.dependencyLines += CountLines(file.source.Text());
+            stats.dependencySourceSize += file.source.Text().size();
+            const auto lexingStart = std::chrono::steady_clock::now();
+            auto lexed = Lexer::TokenizeSource(file.source.Text(), file.path.string());
+            stats.lexing += ElapsedMs(lexingStart);
+            stats.dependencyTokens += CountTokens(lexed.tokens);
+            if (EmitAll(lexed.diagnostics)) {
+                failed = true;
+                return {};
+            }
+            const auto parsingStart = std::chrono::steady_clock::now();
+            Parser parser(std::move(lexed.tokens), file.path.string(), compileTimeContext.target.arch);
+            auto result = parser.Parse();
+            stats.parsing += ElapsedMs(parsingStart);
+            if (EmitAll(result.diagnostics)) {
+                failed = true;
+                return {};
+            }
+            parsed.push_back(std::move(result));
+        }
+        const auto modules = modulesOf(parsed);
+        std::vector<Diagnostic> foldDiagnostics;
+        ResolveConditionalCompilation(modules, compileTimeContext, foldDiagnostics,
+                                      [&](const std::string_view imported) {
+                                          if (imported == name || imported == pending.manifest.package.name.Text()) {
+                                              return modules;
+                                          }
+                                          return self(std::string(imported), pending.manifest, pending.root);
+                                      });
+        failed = EmitAll(foldDiagnostics) || failed;
+        loadingPackages.erase(name);
+        packageOrder.push_back(name);
+        return modules;
     };
 
-    for (const auto &pr : parseResults) {
-        imports.clear();
-        for (const auto &decl : pr.module.items) {
-            if (decl) {
-                collectImports(*decl);
-            }
+    const auto modules = modulesOf(parseResults);
+    std::vector<Diagnostic> foldDiagnostics;
+    ResolveConditionalCompilation(modules, compileTimeContext, foldDiagnostics, [&](const std::string_view imported) {
+        if (imported == opts.manifest.package.name.Text()) {
+            return modules;
         }
-        for (const auto &pkgName : imports) {
-            if (pkgName == opts.manifest.package.name.Text()) {
-                continue;
-            }
-            if (!enqueueDependency(pkgName, opts.manifest, root)) {
-                return false;
-            }
+        return loadPackage(std::string(imported), opts.manifest, root);
+    });
+    failed = EmitAll(foldDiagnostics) || failed;
+    if (failed) {
+        return false;
+    }
+    for (const std::string &name : packageOrder) {
+        for (auto &parsed : parsedPackages.at(name)) {
+            loadedModuleNames.push_back(parsed.module.name);
+            depParseResults.push_back(std::move(parsed));
+            loadedPackages.push_back(name);
         }
     }
-
-    for (std::size_t pendingIndex = 0; pendingIndex < pendingPackages.size(); ++pendingIndex) {
-        const std::filesystem::path pendingRoot = pendingPackages[pendingIndex].root;
-        const Manifest pendingManifest = pendingPackages[pendingIndex].manifest;
-        const std::string packageName = pendingPackages[pendingIndex].name;
-        // A dependency's `when` conditions are written against the import names
-        // its own manifest chose, which need not match the root's.
-        compileTimeContext.intrinsicsAliases = IntrinsicsAliases(pendingManifest, pendingRoot);
-        BeginPhase(CompilePhase::LoadingDependency, packageName, pendingRoot);
-        auto depLoadResult = SourceLoader::Load(pendingRoot);
-        const auto dependencyFiles = RememberSources(depLoadResult.files);
-        stats.dependencyFiles += dependencyFiles.size();
-        for (const auto &depFile : dependencyFiles) {
-            stats.dependencyLines += CountLines(depFile.source.Text());
-            stats.dependencySourceSize += depFile.source.Text().size();
-        }
-        if (EmitAll(depLoadResult.diagnostics)) {
-            return false;
-        }
-        std::vector<ParseResult> packageParseResults;
-        packageParseResults.reserve(dependencyFiles.size());
-        for (const auto &depFile : dependencyFiles) {
-            const auto depLexingStart = std::chrono::steady_clock::now();
-            auto depLex = Lexer::TokenizeSource(depFile.source.Text(), depFile.path.string());
-            stats.lexing += ElapsedMs(depLexingStart);
-            stats.dependencyTokens += CountTokens(depLex.tokens);
-            EmitAll(depLex.diagnostics);
-            if (depLex.HasErrors()) {
+    if (opts.dumpAst) {
+        for (const auto &parsed : parseResults) {
+            const auto relative = std::filesystem::relative(parsed.module.name, root / "Src");
+            const auto path = (root / "Temp" / "Ast" / relative).replace_extension(".ast");
+            if (!WriteInspectionOutput(InspectionKind::Ast, path, [&] { return Parser::DumpAst(parsed, path); })) {
                 return false;
             }
-            const auto depParsingStart = std::chrono::steady_clock::now();
-            Parser depParser(std::move(depLex.tokens), depFile.path.string(), compileTimeContext.target.arch);
-            auto depParse = depParser.Parse();
-            stats.parsing += ElapsedMs(depParsingStart);
-            EmitAll(depParse.diagnostics);
-            if (depParse.HasErrors()) {
-                return false;
-            }
-            std::vector<Diagnostic> foldDiagnostics;
-            ResolveConditionalCompilation({&depParse.module}, compileTimeContext, foldDiagnostics);
-            if (EmitAll(foldDiagnostics)) {
-                return false;
-            }
-            packageParseResults.push_back(std::move(depParse));
-        }
-        imports.clear();
-        for (const auto &pr : packageParseResults) {
-            for (const auto &decl : pr.module.items) {
-                if (decl) {
-                    collectImports(*decl);
-                }
-            }
-        }
-        for (const auto &pkgName : imports) {
-            if (pkgName == pendingManifest.package.name.Text() || pkgName == packageName) {
-                continue;
-            }
-            if (!enqueueDependency(pkgName, pendingManifest, pendingRoot)) {
-                return false;
-            }
-        }
-        for (auto &depParse : packageParseResults) {
-            loadedModuleNames.push_back(depParse.module.name);
-            depParseResults.push_back(std::move(depParse));
-            loadedPackages.push_back(packageName);
         }
     }
     return true;

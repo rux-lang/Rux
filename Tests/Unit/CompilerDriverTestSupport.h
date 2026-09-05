@@ -80,6 +80,10 @@ func Main() -> int {
         REQUIRE(WriteFile(appRoot / "Src" / "Main.rux", source));
     }
 
+    void SetDependencySource(const std::string_view source) const {
+        REQUIRE(WriteFile(depRoot / "Src" / "Api.rux", source));
+    }
+
     void SetApplicationType(const ManifestPackageType type) {
         application.package.type = type;
     }

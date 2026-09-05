@@ -100,7 +100,7 @@ int SizeOf(const TypeRef &t) {
         return 8;
     default:
         return 8; // int, uint, int64, uint64, float64, pointer, str,
-        // named, â€¦
+        // named, …
     }
 }
 
