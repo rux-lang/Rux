@@ -1,3 +1,4 @@
+#include "ConditionalCompilationTestSupport.h"
 // The inline assembly the first-party packages ship, read out of the packages
 // themselves rather than out of a copy: each source is lexed, parsed for the
 // architecture being compiled for, folded through `when` the way the driver
@@ -92,7 +93,11 @@ std::string ReadFileText(const std::filesystem::path &path) {
     context.target = target;
     context.targetTriple = triple;
     std::vector<Module *> modules = {&parsed.module};
-    ResolveConditionalCompilation(modules, context, result.diagnostics);
+    ParseResult provider;
+    const DepPackage dependency = Testing::ConditionalCoreDependency(provider);
+    ResolveConditionalCompilation(modules, context, result.diagnostics, [&](std::string_view name) {
+        return name == dependency.name ? std::vector<Module *>{&provider.module} : std::vector<Module *>{};
+    });
 
     std::vector<std::uint8_t> code;
     for (const auto &item : parsed.module.items) {

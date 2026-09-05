@@ -1,3 +1,4 @@
+import Core::Slice;
 import Algorithms::{ CopyTo, IsSorted, Reverse, SequenceEqual, Sort, SortDescending };
 import Core::MutableSlice;
 // InsertionSortRange and HeapSortRange are internal helpers rather than public

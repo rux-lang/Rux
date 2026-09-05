@@ -1,3 +1,4 @@
+import Core::Slice;
 // Searching a sequence that is already in order, and asking whether it is.
 //
 // Everything here assumes the slice is sorted by the same order the search uses. That is the caller's promise, and

@@ -1,3 +1,4 @@
+import Core::Slice;
 // The float conversions all funnel through here. What separates a float32
 // from a float64 is only how many digits it can carry before the noise of
 // the binary representation shows through, so that count is a parameter and

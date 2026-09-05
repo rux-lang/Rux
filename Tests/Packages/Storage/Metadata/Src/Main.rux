@@ -1,3 +1,4 @@
+import Core::{ string, string8 };
 // What the filesystem says about a file, and what it will not say. Every claim is checked against something the
 // test itself just did -- a file of known length, a directory it made, a timestamp it wrote -- and the fields
 // the running system cannot answer are checked to be reported as unanswerable rather than quietly zero.

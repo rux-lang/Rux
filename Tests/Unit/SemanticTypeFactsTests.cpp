@@ -378,7 +378,7 @@ TEST_CASE("semantic model retains declared self parameter type facts") {
 
 TEST_CASE("semantic model retains validated compile-time layouts and folded sizeof values") {
     Lexer lexer(R"(
-        struct Slice<T> { data: *T; length: uint; }
+        intrinsic struct Slice<T> { pub data: *T; pub length: uint; }
         struct Box<T> { value: T; }
         variant Choice<T> {
             None,

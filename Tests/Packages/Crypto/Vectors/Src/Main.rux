@@ -1,3 +1,4 @@
+import Core::{ string, string8 };
 // The checks that are the same for every algorithm, applied to every algorithm.
 //
 // Each algorithm's own test carries its known-answer vectors, because those are specific to it. What this adds

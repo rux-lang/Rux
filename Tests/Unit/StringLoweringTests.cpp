@@ -1,3 +1,4 @@
+#include "IntrinsicTestDeclarations.h"
 // What a string literal becomes: the address of its transcoded data, and a length counted in the code units of its
 // own encoding rather than in the bytes of the source spelling.
 
@@ -18,7 +19,7 @@ using namespace Rux;
 
 namespace {
 LirPackage CompileToLir(const std::string &source) {
-    Lexer lexer(source, "strings.rux");
+    Lexer lexer(source + std::string(Rux::Testing::StringDeclarations), "strings.rux");
     auto lexed = lexer.Tokenize();
     REQUIRE_FALSE(lexed.HasErrors());
     Parser parser(std::move(lexed.tokens), "strings.rux");

@@ -1,3 +1,4 @@
+import Core::Slice;
 import Algorithms::{ Clamp, ClampBy, Max, MaxIndex, MaxIndexBy, Min, MinIndex, MinIndexBy, MinMaxIndex,
                      MinMaxIndexBy };
 import Core::{ Assert, Ordering };

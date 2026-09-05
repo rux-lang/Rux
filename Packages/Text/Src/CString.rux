@@ -1,3 +1,4 @@
+import Core::string;
 // Crossing the boundary to C, where a string is a pointer and a promise.
 //
 // A C string carries no length: it ends at the first zero byte, and the byte itself is not part of the text. That

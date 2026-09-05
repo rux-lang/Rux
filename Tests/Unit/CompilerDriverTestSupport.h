@@ -179,6 +179,8 @@ pub module Api {
         SetApplicationSource(R"(
 import Dependency::Api::Answer;
 
+intrinsic struct string8 { pub data: *char8; pub length: uint; }
+
 #Link("libc.so.7")
 extern func puts(str: *char8) -> int32;
 

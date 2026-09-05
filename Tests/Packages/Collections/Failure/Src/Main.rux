@@ -1,3 +1,4 @@
+import Core::{ Slice, uint };
 import Allocator::{ Allocator, SystemAllocator };
 import Collections::CollectionError;
 import Collections::Deque;

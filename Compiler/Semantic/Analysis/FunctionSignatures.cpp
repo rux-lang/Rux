@@ -71,6 +71,14 @@ void AnalysisContext::ResolveDeclSignature(const Decl &declaration) {
                 MakeFuncType(function->params, function->returnType, TypeParameterNames(function->typeParams));
         }
     }
+    else if (const auto *extension = dynamic_cast<const ImplDecl *>(&declaration)) {
+        const auto receiverParameters = ImplTypeParams(*extension);
+        for (const auto &method : extension->methods) {
+            auto parameters = receiverParameters;
+            AppendTypeParameterNames(parameters, method->typeParams);
+            (void)MakeFuncType(method->params, method->returnType, parameters);
+        }
+    }
     else if (const auto *enumeration = dynamic_cast<const EnumDecl *>(&declaration)) {
         if (Symbol *symbol = globalScope.Lookup(enumeration->name)) {
             symbol->type = EnumType(*enumeration);
@@ -110,6 +118,14 @@ void AnalysisContext::ResolveDeclSignatureInScope(const Decl &declaration, Scope
         if (Symbol *symbol = scope.Lookup(function->name)) {
             symbol->type =
                 MakeFuncType(function->params, function->returnType, TypeParameterNames(function->typeParams));
+        }
+    }
+    else if (const auto *extension = dynamic_cast<const ImplDecl *>(&declaration)) {
+        const auto receiverParameters = ImplTypeParams(*extension);
+        for (const auto &method : extension->methods) {
+            auto parameters = receiverParameters;
+            AppendTypeParameterNames(parameters, method->typeParams);
+            (void)MakeFuncType(method->params, method->returnType, parameters);
         }
     }
     else if (const auto *enumeration = dynamic_cast<const EnumDecl *>(&declaration)) {

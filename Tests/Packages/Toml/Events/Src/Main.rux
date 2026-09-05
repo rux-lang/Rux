@@ -1,3 +1,4 @@
+import Core::{ string, string8 };
 // Streaming exists so that reading one setting out of a large file does not cost the whole file, so what is
 // tested here is that the events arrive in document order and that the reader still refuses malformed structure.
 // It cannot refuse a table defined twice -- that needs the tree it is avoiding -- and pretending otherwise would

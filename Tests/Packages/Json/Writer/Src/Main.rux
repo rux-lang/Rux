@@ -1,3 +1,4 @@
+import Core::string;
 // Writing is checked by round-tripping and by the exact text of the escapes, since an escape that is merely
 // legal rather than conventional makes output differ from every other writer for no benefit.
 

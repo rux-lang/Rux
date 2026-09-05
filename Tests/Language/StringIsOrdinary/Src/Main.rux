@@ -1,3 +1,4 @@
+import Core::string8;
 import Core::Assert;
 
 // `String` is a name like any other.

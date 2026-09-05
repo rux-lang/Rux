@@ -1,3 +1,5 @@
+import Core::float64;
+
 /**
     Computes the inverse sine of `x` in radians. The result lies in `[-Pi / 2, Pi / 2]`. A signed zero returns itself,
     either endpoint maps to the matching endpoint of the result range, an input outside `[-1, 1]` returns a NaN, and a

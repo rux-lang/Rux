@@ -1,3 +1,4 @@
+import Core::string;
 import Allocator::{ Allocator, SystemAllocator };
 import Core::{ #target, Assert, Slice };
 import Path::{ HasRoot, IsAbsolute, OsString, OsStringView, OsUnit, Path, PrefixKind, PrefixLength };

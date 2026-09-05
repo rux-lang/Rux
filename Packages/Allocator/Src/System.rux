@@ -1,3 +1,4 @@
+import Core::uint;
 // The allocator that asks the operating system, and is the one everything else falls back to.
 //
 // It is built on `Rux/Memory`'s page layer rather than on a C heap, which is what lets it honour an alignment

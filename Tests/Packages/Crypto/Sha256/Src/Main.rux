@@ -1,3 +1,4 @@
+import Core::{ string, string8 };
 // The published vectors, and the incremental promise. A hash that passes only the one-shot vectors can still be
 // wrong about buffering, and a hash that passes short messages can still be wrong about the padding block --
 // so every message length from zero to two hundred is fed in every possible split against the one-shot answer.

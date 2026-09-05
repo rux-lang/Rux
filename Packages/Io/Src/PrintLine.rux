@@ -1,3 +1,4 @@
+import Core::string;
 // The line-ending variants: the value, then a newline, with the first failure returned.
 
 import Format::Display;

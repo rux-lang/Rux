@@ -1,3 +1,4 @@
+import Core::{ string, string8 };
 // Parsing the two values whose text is a word or a character rather than digits.
 //
 // A boolean is exactly `true` or `false` -- not `True`, not `1`, not `yes`. Every widening of that set has to

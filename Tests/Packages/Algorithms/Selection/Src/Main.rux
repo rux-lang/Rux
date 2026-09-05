@@ -1,3 +1,4 @@
+import Core::Slice;
 import Algorithms::{ CopyTo, IsSorted, NthElement, PartialSort, SequenceEqual };
 import Core::MutableSlice;
 

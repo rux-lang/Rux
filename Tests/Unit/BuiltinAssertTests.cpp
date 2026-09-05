@@ -1,5 +1,6 @@
 #include "CodeGen/X86_64/AssemblyPrinter.h"
 #include "CodeGen/X86_64/RcuEmitter.h"
+#include "IntrinsicTestDeclarations.h"
 #include "Lexer/Lexer.h"
 #include "Lowering/AstToHir/AstToHir.h"
 #include "Lowering/HirToLir/HirToLir.h"
@@ -17,7 +18,7 @@ using namespace Rux;
 
 namespace {
 
-constexpr std::string_view SliceDecl = "struct Slice<T> { data: *T; length: uint; }\n";
+constexpr std::string_view SliceDecl = "intrinsic struct Slice<T> { pub data: *T; pub length: uint; }\n";
 
 constexpr std::string_view AssertIntrinsics = R"(
     intrinsic func Assert(condition: bool, message: string);
@@ -26,7 +27,9 @@ constexpr std::string_view AssertIntrinsics = R"(
 )";
 
 LirPackage CompileToLir(const std::string &source, const bool debugAssertions) {
-    Lexer lexer(std::string(SliceDecl) + std::string(AssertIntrinsics) + source, "test.rux");
+    Lexer lexer(std::string(SliceDecl) + std::string(AssertIntrinsics) + source +
+                    std::string(Rux::Testing::StringDeclarations),
+                "test.rux");
     auto lexed = lexer.Tokenize();
     REQUIRE_FALSE(lexed.HasErrors());
 
@@ -49,7 +52,7 @@ LirPackage CompileToLir(const std::string &source, const bool debugAssertions) {
 }
 
 std::vector<SemanticDiagnostic> Analyze(const std::string &source) {
-    Lexer lexer(std::string(SliceDecl) + source, "test.rux");
+    Lexer lexer(std::string(SliceDecl) + source + std::string(Rux::Testing::StringDeclarations), "test.rux");
     auto lexed = lexer.Tokenize();
     REQUIRE_FALSE(lexed.HasErrors());
 

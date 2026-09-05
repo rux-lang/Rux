@@ -1,3 +1,4 @@
+import Core::{ RangeFrom, Slice, string8 };
 import Core::Assert;
 
 const HI: uint32 = 5;

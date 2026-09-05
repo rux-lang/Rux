@@ -1,3 +1,4 @@
+import Core::{ float32, float64 };
 import Core::{ #target, #Error };
 import C::c_long;
 

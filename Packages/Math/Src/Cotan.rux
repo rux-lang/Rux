@@ -1,3 +1,5 @@
+import Core::float64;
+
 /**
     Computes the cotangent of `x`, where `x` is in radians. The reciprocal is computed directly instead of as
     `1 / Tan(x)`, avoiding a second rounding near a pole. A signed zero maps to an infinity with the same sign; an

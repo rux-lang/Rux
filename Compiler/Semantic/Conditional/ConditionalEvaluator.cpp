@@ -846,6 +846,10 @@ std::optional<CompileTimeValue> ConditionalEvaluator::Impl::Eval(const Expr &exp
             }
             return EvalCompilerParamField(*root, e->field, e->location);
         }
+        if (const auto *identifier = dynamic_cast<const IdentExpr *>(e->object.get());
+            identifier && identifier->name.starts_with("#")) {
+            (void)RequireRuxImport(identifier->name, identifier->location);
+        }
         return std::nullopt;
     }
 

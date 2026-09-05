@@ -1,3 +1,4 @@
+import Core::string;
 // Reading decimal text into a wide float, exactly.
 //
 // The grammar is the one `ParseFloat64` accepts, so what one width reads the others read. The conversion is not

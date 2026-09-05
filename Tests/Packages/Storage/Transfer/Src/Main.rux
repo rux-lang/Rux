@@ -1,3 +1,4 @@
+import Core::{ string, string8 };
 // A copy is the bytes and not an alias, a rename is the same name moved, a hard link is a second equal name,
 // and a symbolic link is a stored pointer -- each proven by mutating one side and watching the other.
 

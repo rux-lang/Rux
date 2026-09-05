@@ -1,3 +1,4 @@
+import Core::{ Slice, string, string8 };
 import Core::Assert;
 import Hash::{ Crc32, Crc32Of, Crc32Table, Crc32c, Crc32cOf, Crc32cPolynomial, Crc32cTable, Crc32Initial,
                Crc32Polynomial, HashBytes };

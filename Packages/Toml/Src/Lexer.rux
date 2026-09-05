@@ -1,3 +1,4 @@
+import Core::{ string, string8 };
 // Turning TOML text into tokens, with the position of each one.
 //
 // TOML has more lexical surface than JSON and almost all of it is string and number forms. There are four ways

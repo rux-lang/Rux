@@ -1,3 +1,4 @@
+import Core::string;
 // What a TOML value is, and what a table remembers about how it was made.
 //
 // TOML has real types where JSON has one number and a great deal of hope: an integer is an integer, a float is a

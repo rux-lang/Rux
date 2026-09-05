@@ -1,3 +1,5 @@
+import Core::float64;
+
 /*
     log(1 + x), computed without ever forming that sum.
     Accuracy: error at most 1 ulp, and the relative error stays that small as the argument approaches zero. That

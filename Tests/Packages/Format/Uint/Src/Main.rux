@@ -1,3 +1,4 @@
+import Core::{ string, string8 };
 import Text::StringView;
 import Core::{ MutableSlice, Slice };
 import Format::{ ByteCursor, FormatSpec, Display, TextWriter };

@@ -1,3 +1,4 @@
+import Core::{ string, string8 };
 // Text that owns the bytes it holds.
 //
 // A `String` owns one block, knows the allocator to give it back to, and never writes to it again. Every operation

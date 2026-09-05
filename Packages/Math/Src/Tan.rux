@@ -1,3 +1,5 @@
+import Core::float64;
+
 /**
     Computes the tangent of `x`, where `x` is in radians. The error is at most one ulp for finite arguments away from
     poles. Exact argument reduction retains all available information near an odd multiple of `Pi / 2`. A signed zero

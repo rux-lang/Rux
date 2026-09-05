@@ -1,3 +1,4 @@
+import Core::Slice;
 import Algorithms::{ Fold, Partition, PartitionPoint, RemoveWhere, Transform };
 import Core::MutableSlice;
 import Algorithms::{ AllOf, IsSorted, NoneOf, SequenceEqual };

@@ -1,3 +1,4 @@
+import Core::string;
 // Where formatted text goes.
 //
 // Formatting used to answer with a `String`, which meant every value rendered allocated a block, had its bytes

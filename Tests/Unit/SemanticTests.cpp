@@ -255,7 +255,7 @@ TEST_CASE("fixed arrays require matching literal extents") {
 
 TEST_CASE("array repeat expressions infer extents and use contextual element types") {
     CHECK(AnalyzeSource(R"(
-        struct Slice<T> { data: *T; length: uint; }
+        intrinsic struct Slice<T> { pub data: *T; pub length: uint; }
         const Zeros: uint8[4] = [0; 4];
 
         func Sum(values: Slice<int>) -> int {

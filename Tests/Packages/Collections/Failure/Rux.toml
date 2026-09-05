@@ -10,6 +10,7 @@ Description = "Package test for Collections: Failure"
 [Dependencies]
 Allocator = { Path = "../../../../Packages/Allocator" }
 Collections = { Path = "../../../../Packages/Collections" }
+Core = { Path = "../../../../Packages/Core" }
 
 [Build]
 Output = "../../../../Bin/Tests/Packages/Collections"

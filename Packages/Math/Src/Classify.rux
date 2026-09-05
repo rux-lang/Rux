@@ -1,3 +1,5 @@
+import Core::{ float32, float64, int64, uint64 };
+
 /*
     What a floating-point value *is*, before any arithmetic is done to it. IEEE 754 sorts every bit pattern
     into five kinds, and most of the bugs in floating-point code come from treating one of them as another:

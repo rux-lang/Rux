@@ -1,3 +1,4 @@
+import Core::{ Slice, string, string8 };
 import Core::Assert;
 import Hash::{ Fnv1a32, Fnv1a32Of, Fnv1a64, Fnv1a64Of, FnvOffsetBasis32, FnvOffsetBasis64, HashBytes, WriteByte,
                WriteUint32, WriteUint64 };

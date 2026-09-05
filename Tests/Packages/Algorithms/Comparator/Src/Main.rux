@@ -1,3 +1,4 @@
+import Core::Slice;
 import Algorithms::{ SortBy, SortDescendingBy, NthElementBy, PartialSortBy };
 import Algorithms::{ IsSorted, IsSortedBy };
 import Core::Ordering;

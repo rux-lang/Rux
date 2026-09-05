@@ -1,3 +1,4 @@
+import Core::{ string, string8 };
 // The text form, parsed strictly and written canonically.
 //
 // RFC 9562 defines exactly one textual representation: thirty-two hexadecimal digits in five hyphen-separated

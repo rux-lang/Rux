@@ -1,3 +1,4 @@
+import Core::string;
 // The number type is the interesting part: JSON declines to say what precision a number has, so the failure to
 // test for is one that an implementation converting everything to a double would pass -- an identifier past two
 // to the fifty-third coming back as a different identifier.

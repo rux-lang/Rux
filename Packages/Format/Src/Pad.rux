@@ -1,3 +1,4 @@
+import Core::string;
 // Applying a spec's width, fill and alignment to text that is already rendered.
 //
 // Padding is the one part of a spec every type applies the same way, so it is written once: measure the rendering,

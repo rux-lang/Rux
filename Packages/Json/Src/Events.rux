@@ -1,3 +1,4 @@
+import Core::{ string, string8 };
 // Reading a document as a stream of events, without building a tree.
 //
 // The tree is convenient and it is also the thing that makes a large document expensive: a gigabyte of JSON

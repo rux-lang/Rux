@@ -1,3 +1,4 @@
+import Core::{ string, string8 };
 // The coverage that is about the package as a whole rather than about one part of it.
 //
 // Two checks here are worth more than the rest. Every accepted document is written back out, read again and

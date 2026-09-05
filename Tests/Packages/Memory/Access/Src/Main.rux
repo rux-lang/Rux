@@ -1,3 +1,4 @@
+import Core::uint;
 import Core::Assert;
 import Memory::{ AlignDown, AlignUp, AlignUpChecked, Alloc, Free, IsAligned, IsPointerAligned, LoadBigEndian,
                  LoadLittleEndian, LoadUnaligned, ReverseBlock, Set, StoreBigEndian, StoreLittleEndian,

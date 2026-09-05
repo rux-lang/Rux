@@ -1,3 +1,4 @@
+import Core::string;
 import Allocator::{ Allocator, SystemAllocator };
 import Core::Slice;
 import Format::{ Debug, Display, Format, FormatSpec, TextWriter };

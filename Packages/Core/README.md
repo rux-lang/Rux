@@ -1,8 +1,8 @@
 # Core
 
-Core language intrinsics: the declarations the compiler itself supplies, and the primitive types every other package builds on.
+Core declares primitive associated APIs, intrinsic text and collection views, and compile-time context.
 
-This is the one package almost everything depends on. Importing it is what turns compiler-backed names into ordinary Rux declarations you can call.
+Core is optional. Scalar types, arithmetic, arrays, inferred string literals, and range syntax work without it. Import a declaration to use its associated constants or declared fields. A replacement package can provide the same intrinsic declarations; the compiler assigns no privilege to the name or manifest identity of Core.
 
 ## Installation
 
@@ -25,6 +25,48 @@ rux add Rux/Core
 - **Float classification** — `IsNaN`, `IsZero`, `IsInfinite`, `IsFinite`, `IsNegativeZero`, `IsSignNegative`, `IsSignPositive`, and `SignOf`. All are arithmetic rather than bit inspection, so one implementation serves every float width including the software-lowered ones, whose storage carries padding no generic function could locate a sign bit inside of. The sign of a zero, which comparison cannot see, is read from the infinity it divides into.
 - **Primitive associated constants** — `Bits`, `Bytes`, `Min`, `Max` and the floating-point set (`Lowest`, `MinPositive`, `Epsilon`, `Infinity`, `NaN`) for every integer, floating-point, boolean, and character width. The string widths expose none: a string is a view over code units rather than a value with a width, so a width or a limit would describe neither it nor the units.
 - **Strings** — `string`, an alias for `string8`, plus `string16` and `string32`: immutable, validity-guaranteed views over UTF-8, UTF-16, and UTF-32 code units, with `.data`, `.length` counted in those units, and read-only indexing. Text and bytes are separate types and neither converts implicitly into the other; a caller that needs the raw units builds `Slice<char8> { data: text.data, length: text.length }` at the call, which is the only crossing in that direction. Every Core entry point that carries text — the four diagnostics, `#config.Get`, and the `#source`, `#build`, `#target`, and `#compiler` members — takes or answers with a string.
+
+## Primitive declarations and imports
+
+```rux
+import Core::{ int8, string };
+
+func Main() -> int {
+    let minimum = int8::Min;
+    let message: string = "hello";
+    return message.length as int + minimum as int;
+}
+```
+
+Without the `int8` import, `int8` still names the scalar type, but `int8::Min`
+is unavailable. Loading a dependency that imports it does not import its APIs
+into the caller. The same rule applies between source files.
+
+Core defines integer and character limits, width metadata, and finite floating
+constants using ordinary constant expressions. Native integer metadata uses
+`sizeof`, so it follows the compilation target. Only floating-point `Infinity`
+and `NaN` use bodyless `intrinsic const` declarations inside extensions.
+
+The string declarations expose their representation explicitly:
+
+```rux
+pub intrinsic struct string8 {
+    pub data: *char8;
+    pub length: uint;
+}
+pub type string = string8;
+```
+
+`string16` and `string32` use `*char16` and `*char32`. Importing `string`
+exposes the UTF-8 view, including its fields. Literal inference works without
+these declarations; writing an annotation or reading its fields requires a
+visible declaration. The representation remains immutable and validity checked:
+raw field construction and casts cannot manufacture a string.
+
+`Slice<T>`, `MutableSlice<T>`, and the six range structs also declare intrinsic
+representations. Their names alone do not make an ordinary struct intrinsic.
+The compiler validates the canonical binding, generic arity, and public fields
+against its representation contract. Aliases keep the resolved binding.
 
 ## Ownership and borrowing
 

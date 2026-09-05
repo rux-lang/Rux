@@ -1,3 +1,4 @@
+import Core::{ string, string8 };
 // Streaming exists so a large document costs little, so the test that matters is the one measuring cost: a
 // document far larger than the buffer must stream through it without the buffer growing.
 

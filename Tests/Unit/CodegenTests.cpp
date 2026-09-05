@@ -5,6 +5,7 @@
 #include "CodeGen/X86_64/FramePlan.h"
 #include "CodeGen/X86_64/RcuEmitter.h"
 #include "Driver/BuildTarget.h"
+#include "IntrinsicTestDeclarations.h"
 #include "Ir/Hir/Hir.h"
 #include "Ir/Lir/LirPrinter.h"
 #include "Lexer/Lexer.h"
@@ -28,10 +29,10 @@
 
 using namespace Rux;
 
-static constexpr std::string_view SliceDecl = "struct Slice<T> { data: *T; length: uint; }\n";
+static constexpr std::string_view SliceDecl = "intrinsic struct Slice<T> { pub data: *T; pub length: uint; }\n";
 
 static LirPackage CompileToLirFor(const std::string &source, const std::string &platform, const TargetContext &target) {
-    Lexer lexer(std::string(SliceDecl) + source, "test.rux");
+    Lexer lexer(std::string(SliceDecl) + source + std::string(Rux::Testing::StringDeclarations), "test.rux");
     auto lexed = lexer.Tokenize();
     REQUIRE_FALSE(lexed.HasErrors());
 
@@ -58,7 +59,7 @@ static LirPackage CompileToLir(const std::string &source) {
 }
 
 static HirPackage CompileToHir(const std::string &source) {
-    Lexer lexer(std::string(SliceDecl) + source, "test.rux");
+    Lexer lexer(std::string(SliceDecl) + source + std::string(Rux::Testing::StringDeclarations), "test.rux");
     auto lexed = lexer.Tokenize();
     REQUIRE_FALSE(lexed.HasErrors());
 
@@ -505,7 +506,7 @@ TEST_CASE("array literals infer fixed inline arrays and coerce to Slice views") 
             }
             hasInlineArray |= instruction.type.kind == TypeRef::Kind::Array && instruction.type.arrayLength == 4 &&
                               instruction.type.inner == std::vector{TypeRef::MakeInt()};
-            hasSliceView |= instruction.type == TypeRef::MakeNamed("Slice<int>");
+            hasSliceView |= instruction.type == TypeRef::MakeSlice(TypeRef::MakeInt());
         }
     }
 

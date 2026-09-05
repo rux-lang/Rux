@@ -1,3 +1,4 @@
+import Core::{ string, string8 };
 // A writer whose output depends on anything but the tree produces a diff every time it runs, which trains
 // everyone to stop reading the diffs. So what is tested here is sameness: the same tree writes the same bytes,
 // and a document written, read and written again is the same the second time.

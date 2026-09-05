@@ -1,3 +1,4 @@
+import Core::{ string, string8 };
 import Core::{ Assert, #source };
 
 // A dependency-free slice comparison, so the test can check the exact strings

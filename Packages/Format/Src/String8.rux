@@ -1,3 +1,4 @@
+import Core::string;
 // A `string` is text, so rendering it is writing it.
 //
 // The bytes go straight through with no conversion and nothing copied: a string is UTF-8 by construction, which is

@@ -1,3 +1,4 @@
+import Core::Slice;
 import Algorithms::{ AllOf, AnyOf, Compare, CompareBy, Contains, Count, CountWhere, IndexOf, IndexWhere,
                      LastIndexOf, LastIndexWhere, Mismatch, NoneOf, SequenceEqual };
 import Core::{ Assert, Ordering };

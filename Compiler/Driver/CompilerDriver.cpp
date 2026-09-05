@@ -457,6 +457,9 @@ bool CompilerDriver::Impl::LoadDependencies() {
     };
     const auto loadPackage = [&](this auto &&self, const std::string &name, const Manifest &owner,
                                  const std::filesystem::path &ownerRoot) -> std::vector<Module *> {
+        if (failed) {
+            return {};
+        }
         if (loadingPackages.contains(name)) {
             Emit(ErrorDiagnostic("cyclic dependency while resolving declarations from package '" + name + "'"));
             failed = true;

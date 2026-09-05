@@ -1,3 +1,4 @@
+import Core::uint;
 import Allocator::{ AllocError, Allocator, EmptyBlockAddress, IsEmptyBlock, Layout, LayoutOf, LayoutOfArray,
                     NaturalAlignment, SystemAllocator };
 import Core::Assert;

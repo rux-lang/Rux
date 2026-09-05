@@ -1,3 +1,4 @@
+import Core::uint;
 import Allocator::{ Allocator, SystemAllocator };
 import Collections::{ CollectionError, EqualsInt32, HashInt32, HashSet, TableSeed };
 import Core::Assert;

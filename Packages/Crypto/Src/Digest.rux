@@ -1,3 +1,4 @@
+import Core::string8;
 // What a digest is, and the two operations every user of one gets wrong.
 //
 // **This package has not been independently reviewed.** Every algorithm matches its published vectors, and that

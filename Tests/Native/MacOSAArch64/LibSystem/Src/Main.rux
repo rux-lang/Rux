@@ -1,3 +1,6 @@
+// This native ABI fixture provides its own literal view declaration.
+intrinsic struct string8 { pub data: *char8; pub length: uint; }
+
 #Link("libSystem.B.dylib")
 extern {
     func strlen(text: *char8) -> uint;

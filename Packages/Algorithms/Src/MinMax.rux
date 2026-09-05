@@ -1,3 +1,4 @@
+import Core::Slice;
 // The smallest and largest elements of a sequence, and clamping a value into a range.
 //
 // Every search here answers with an index rather than a value, because the index is the more useful answer and the

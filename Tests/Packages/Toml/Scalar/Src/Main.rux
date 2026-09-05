@@ -1,3 +1,4 @@
+import Core::{ string, string8 };
 // Most of this is refusals, because the numbers TOML declines to accept are exactly the ones two readers would
 // disagree about. `010` is eight in one language and ten in another, so TOML says it is neither -- and a port
 // number that means two things is a bug waiting for a deployment.

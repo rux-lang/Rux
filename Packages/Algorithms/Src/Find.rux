@@ -1,3 +1,4 @@
+import Core::Slice;
 // Linear queries over a sequence that is in no particular order.
 //
 // Everything here reads a `Slice<T>` and returns an answer about it. A search that found something answers with the

@@ -1,3 +1,4 @@
+import Core::Range;
 import Allocator::{ Allocator, SystemAllocator };
 import Collections::{ CollectionError, CompareInt32, KeyValue, TreeMap };
 import Core::{ Assert, Option };

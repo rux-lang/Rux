@@ -1,3 +1,4 @@
+import Core::{ string, string8 };
 // The property that matters for modes is separation: the same bytes under different modes, keys or contexts must
 // give unrelated output, and a mode that quietly ignored its flag would produce identical results here. So most
 // of this test is inequalities, which is unusual and is exactly right for what is being checked.

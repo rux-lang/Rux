@@ -1,3 +1,4 @@
+import Core::{ string, string8 };
 // Text as the operating system stores it, kept lossless.
 //
 // A filename is not text. On the Unix systems it is bytes with two exclusions -- no slash, no NUL -- and nothing

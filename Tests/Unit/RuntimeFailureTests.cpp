@@ -2,6 +2,7 @@
 #include "CodeGen/RuntimeFailure.h"
 #include "CodeGen/X86_64/RcuEmitter.h"
 #include "Driver/BuildTarget.h"
+#include "IntrinsicTestDeclarations.h"
 #include "Ir/Lir/Lir.h"
 #include "Lexer/Lexer.h"
 #include "Linker/Linker.h"
@@ -25,7 +26,7 @@
 using namespace Rux;
 
 namespace {
-constexpr std::string_view kRuntimePrelude = "struct Slice<T> { data: *T; length: uint; }\n"
+constexpr std::string_view kRuntimePrelude = "intrinsic struct Slice<T> { pub data: *T; pub length: uint; }\n"
                                              "intrinsic func Assert(condition: bool, message: string);\n"
                                              "intrinsic func Panic(message: string);\n";
 
@@ -55,7 +56,7 @@ func Main() -> int {
     Assert(false, "");
     Panic("Помилка 🚨");
 }
-)",
+)" + std::string(Rux::Testing::StringDeclarations),
                 "Project/Src/Runtime.rux");
     auto lexed = lexer.Tokenize();
     CAPTURE(lexed.diagnostics.empty() ? std::string{} : lexed.diagnostics.front().message);

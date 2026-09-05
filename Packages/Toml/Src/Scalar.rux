@@ -1,3 +1,4 @@
+import Core::{ string, string8 };
 // Turning a scalar token's text into a value, with TOML's grammar applied rather than assumed.
 //
 // Every rule here is one a permissive reader would let through and a strict one would not: an underscore has to

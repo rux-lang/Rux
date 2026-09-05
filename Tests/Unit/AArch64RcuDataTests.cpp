@@ -214,7 +214,7 @@ TEST_CASE("AArch64 RCU emitter publishes a constant slice as a header pointing a
     // Slice is the standard library's, and this suite compiles no packages, so
     // the declaration the constant needs is written out here.
     const auto package = CompileToAArch64Lir(R"(
-        struct Slice<T> { data: *T; length: uint; }
+        intrinsic struct Slice<T> { pub data: *T; pub length: uint; }
 
         const TEXT: string = "abc";
 

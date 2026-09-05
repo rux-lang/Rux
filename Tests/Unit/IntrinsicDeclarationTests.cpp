@@ -331,3 +331,56 @@ extend uint {
         CHECK_EQ(std::get<std::uint64_t>(*maximum.value), bytes == 4 ? 0xffffffffULL : 0xffffffffffffffffULL);
     }
 }
+
+TEST_CASE("a forward string constant validates its annotation after imports") {
+    auto provider = ParseIntrinsicSource(StringDeclaration, "provider.rux");
+    auto consumer = ParseIntrinsicSource(R"(
+import Provider::string;
+const Greeting: string = "hello";
+func Main() -> uint { return Greeting.length; }
+)");
+    const auto model = SemanticAnalyzer({&consumer.module},
+        {{"Provider", {{"provider.rux", &provider.module}}}}, "App").Analyze();
+    REQUIRE_FALSE(model.HasErrors());
+    CHECK(AstToHirLowering(model).Generate().modules.size() == 2);
+}
+
+TEST_CASE("a string constant annotation without a declaration is rejected after indexing") {
+    auto parsed = ParseIntrinsicSource(R"(
+const Greeting: string = "hello";
+func Main() {}
+)");
+    const auto model = SemanticAnalyzer({&parsed.module}, {}, "App").Analyze();
+    REQUIRE(model.HasErrors());
+    bool missing = false;
+    for (const auto &diagnostic : model.diagnostics) {
+        missing |= diagnostic.message.contains("requires an imported or local intrinsic declaration");
+    }
+    CHECK(missing);
+}
+
+TEST_CASE("extension signatures resolve string annotations in their owning file before calls") {
+    auto provider = ParseIntrinsicSource(StringDeclaration, "provider.rux");
+    auto caller = ParseIntrinsicSource(R"(
+func Main() -> int { return Factory::Create("hello"); }
+)", "caller.rux");
+    auto implementation = ParseIntrinsicSource(R"(
+import Provider::string;
+struct Factory {}
+extend Factory {
+    pub func Create(text: string) -> int { return text.length as int; }
+}
+)", "factory.rux");
+    const auto model = SemanticAnalyzer({&caller.module, &implementation.module},
+        {{"Provider", {{"provider.rux", &provider.module}}}}, "App").Analyze();
+    REQUIRE_FALSE(model.HasErrors());
+    (void)AstToHirLowering(model).Generate();
+}
+
+TEST_CASE("ordinary declarations cannot replace reserved primitive names") {
+    for (const std::string source : {"struct float128 {}", "type int8 = int32;"}) {
+        auto parsed = ParseIntrinsicSource(source);
+        const auto model = SemanticAnalyzer({&parsed.module}, {}, "App").Analyze();
+        CHECK(model.HasErrors());
+    }
+}

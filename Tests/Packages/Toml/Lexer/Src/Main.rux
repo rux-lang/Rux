@@ -1,3 +1,4 @@
+import Core::{ string, string8 };
 // TOML's lexical surface is mostly strings and numbers, and that is where implementations disagree. The four
 // string forms differ in whether escapes are honoured and whether a newline may appear raw; a lexer that treats
 // them alike turns a Windows path into a string with a tab in it. Numbers and date-times share a prefix, so

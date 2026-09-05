@@ -1,3 +1,4 @@
+import Core::{ Slice, string8 };
 import Algorithms::{ BinarySearch, BinarySearchBy, EqualRange, EqualRangeBy, IsSorted, IsSortedBy, IsSortedUntil,
                      IsSortedUntilBy, LowerBound, LowerBoundBy, UpperBound, UpperBoundBy };
 import Core::{ Assert, Ordering };

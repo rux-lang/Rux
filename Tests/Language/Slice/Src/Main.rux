@@ -1,3 +1,4 @@
+import Core::{ Range, RangeFrom, RangeFull, RangeInclusive, RangeTo, RangeToInclusive, Slice, string8 };
 import Core::Assert;
 
 // A literal is text, so a slice over its code units is built from the text's own members. That spelling is the

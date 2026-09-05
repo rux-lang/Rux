@@ -1,3 +1,4 @@
+import Core::{ string, string8 };
 // The RFC 5869 vectors, both stages separately, plus the length limit and the separation properties that are
 // the reason to use HKDF rather than hashing a secret and hoping.
 

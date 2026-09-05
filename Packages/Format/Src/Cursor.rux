@@ -1,3 +1,4 @@
+import Core::string;
 // A fixed run of bytes being filled from the front.
 //
 // Every primitive has a longest possible rendering that is known in advance -- twenty digits for a `uint64`, a

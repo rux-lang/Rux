@@ -1,3 +1,4 @@
+import Core::{ string, string8 };
 // A file is a stream with a position: written through the Writer everything already speaks, read back through
 // the Reader, measured, cut, and stacked under the buffered machinery that has no idea it left memory.
 

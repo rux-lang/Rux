@@ -1,3 +1,4 @@
+import Core::{ string, string8 };
 // A strict parser is only worth having if it actually refuses things, so most of this test is refusals -- the
 // forms that circulate widely and are not the standard's, each rejected with the reason that names what is
 // wrong rather than a single catch-all.

@@ -1,3 +1,4 @@
+import Core::string;
 // Strictness is the point, so most of this is documents that must be refused -- and the ones worth writing down
 // are the ones that are perfectly good JavaScript and are not JSON.
 
