@@ -1,4 +1,4 @@
-#include "Driver/Credentials.h"
+#include "Package/Credentials.h"
 #include "System/Os.h"
 #include "Target/Target.h"
 
@@ -8,7 +8,8 @@
 #include <optional>
 #include <string>
 
-using namespace Rux::Driver;
+using namespace Rux::Packages;
+
 using namespace Rux::System;
 using namespace Rux::Target;
 

@@ -1,3 +1,4 @@
+#include "System/Http.h"
 #include "System/Process.h"
 #include "Target/Platform.h"
 

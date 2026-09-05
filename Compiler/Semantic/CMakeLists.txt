@@ -1,0 +1,42 @@
+# Sources and dependencies owned by Semantic.
+
+rux_add_component(RuxSemantic
+    Analysis/Imports.cpp
+    Analysis/TypeResolution.cpp
+    Analysis/ConstantChecking.cpp
+    Analysis/Assignments.cpp
+    Analysis/CallableResolution.cpp
+    Analysis/TypeLayout.cpp
+    Analysis/Declarations.cpp
+    Analysis/SymbolIdentities.cpp
+    Analysis/ExpressionDispatch.cpp
+    Analysis/GenericInstantiation.cpp
+    Conditional/ConditionalCompilation.cpp
+    Conditional/ConditionalDeclarationFolding.cpp
+    Conditional/ConditionalEvaluator.cpp
+    Conditional/ConditionalValueEvaluation.cpp
+    Conditional/ConditionalStatementFolding.cpp
+    Analysis/MoveStateTracker.cpp
+    Analysis/MovePlace.cpp
+    Analysis/TypePropertyClassifier.cpp
+    SemanticAnalyzer.cpp
+    Analysis/AnalysisContext.cpp
+    Analysis/AggregateExpressions.cpp
+    Analysis/AllocationMath.cpp
+    Analysis/Zeroization.cpp
+    Analysis/BasicExpressions.cpp
+    Analysis/BorrowState.cpp
+    Analysis/CallExpressions.cpp
+    Analysis/Constraints.cpp
+    Analysis/MoveState.cpp
+    Analysis/DropGlue.cpp
+    Analysis/FunctionSignatures.cpp
+    Analysis/Iteration.cpp
+    Analysis/Statements.cpp
+    Analysis/ProgramIndex.cpp
+    Analysis/Propagation.cpp
+    Analysis/PublicApi.cpp
+    Analysis/Receivers.cpp
+    Analysis/TypeProperties.cpp
+)
+target_link_libraries(RuxSemantic PUBLIC RuxSemanticModel RuxNumeric RuxSyntax RuxDiagnostics)

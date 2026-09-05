@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Driver/BuildReport.h"
+#include "Driver/BuildStats.h"
 #include "Driver/BuildTarget.h"
 #include "Driver/CompilerDriver.h"
 #include "ElfReader.h"

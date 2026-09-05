@@ -1,5 +1,7 @@
-#include "Driver/Credentials.h"
+#include "Package/Credentials.h"
 
+#include "Package/Cache.h"
+#include "System/Http.h"
 #include "System/Json.h"
 #include "System/Os.h"
 #include "System/Process.h"
@@ -12,7 +14,7 @@
 #include <utility>
 #include <vector>
 
-namespace Rux::Driver {
+namespace Rux::Packages {
 using namespace Target;
 using namespace System;
 
@@ -316,4 +318,4 @@ CredentialVerification VerifyCredential(const std::string_view registryBase, con
     }
     return DecodeCredentialVerification(response->status, response->body);
 }
-} // namespace Rux::Driver
+} // namespace Rux::Packages

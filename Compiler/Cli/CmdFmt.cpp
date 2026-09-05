@@ -1,14 +1,9 @@
 // `rux fmt`.
 
+#include "Cli/BuildReport.h"
 #include "Cli/Cli.h"
-#include "Cli/CompilerProgress.h"
-#include "Cli/DefineOption.h"
 #include "Cli/ManifestInput.h"
 #include "Cli/Reporter.h"
-#include "Documentation/Generator.h"
-#include "Driver/BuildReport.h"
-#include "Driver/BuildTarget.h"
-#include "Driver/CompilerDriver.h"
 #include "Formatter/Formatter.h"
 #include "Reporting/Reporting.h"
 #include "System/Os.h"

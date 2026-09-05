@@ -2,9 +2,10 @@
 
 #include "BuildInfo/CompilerMetadata.h"
 #include "Driver/BuildTarget.h"
-#include "Driver/Credentials.h"
 #include "ElfReader.h"
 #include "MachOReader.h"
+#include "Package/Cache.h"
+#include "Package/Credentials.h"
 #include "System/Os.h"
 #include "System/Process.h"
 
@@ -19,6 +20,8 @@
 #include <string>
 #include <string_view>
 #include <vector>
+
+using namespace Rux::Packages;
 
 namespace Rux::Testing::CliProcessTestSupport {
 using namespace Rux;
@@ -73,7 +76,7 @@ public:
         std::filesystem::create_directories(root, error);
         REQUIRE(!error);
         REQUIRE(System::SetEnvPath(packageCacheHomeVariable, root));
-        REQUIRE(Driver::RegistryPackagesDir().string().starts_with(root.string()));
+        REQUIRE(Packages::RegistryPackagesDir().string().starts_with(root.string()));
     }
 
     ScopedCliPackageCache(const ScopedCliPackageCache &) = delete;
@@ -126,7 +129,7 @@ inline std::filesystem::path WriteCachedPackage(const std::string_view packageNa
     REQUIRE(name.has_value());
     REQUIRE(semanticVersion.has_value());
 
-    const auto packageDir = Driver::RegistryPackageDir(*ns, *name, *semanticVersion);
+    const auto packageDir = Packages::RegistryPackageDir(*ns, *name, *semanticVersion);
     std::error_code error;
     std::filesystem::create_directories(packageDir, error);
     REQUIRE(!error);

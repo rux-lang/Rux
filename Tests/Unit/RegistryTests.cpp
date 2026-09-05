@@ -2,14 +2,15 @@
 // here is pure: no request is made, so the cases pin the shape of the documents
 // the API promises rather than the behavior of a live server.
 
-#include "Driver/Registry.h"
+#include "Package/Registry.h"
 
 #include <array>
 #include <doctest.h>
 #include <string>
 
+using namespace Rux::Packages;
+
 using namespace Rux;
-using namespace Rux::Driver;
 
 namespace {
 constexpr const char *kIndexBody = R"({

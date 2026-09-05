@@ -366,15 +366,15 @@ Local = { Path = "Local" }
     CHECK(invalid.output.contains("help: update '"));
 
     const ScopedCliPackageCache cache;
-    const ScopedEnvironmentValue token(Driver::kCredentialVariable);
-    REQUIRE(System::UnsetEnv(Driver::kCredentialVariable));
+    const ScopedEnvironmentValue token(Packages::kCredentialVariable);
+    REQUIRE(System::UnsetEnv(Packages::kCredentialVariable));
     const auto missingCredential = Run(std::array<std::string_view, 6>{"--manifest", manifest, "publish", "--registry",
                                                                        "http://127.0.0.1:1", "--color=never"});
     CHECK(missingCredential.exitCode == 1);
     CHECK(missingCredential.output.contains("no publication credential was found"));
     CHECK(missingCredential.output.contains("rux login --registry http://127.0.0.1:1"));
 
-    REQUIRE(System::SetEnv(Driver::kCredentialVariable, "bad token"));
+    REQUIRE(System::SetEnv(Packages::kCredentialVariable, "bad token"));
     const auto invalidCredential = Run(std::array<std::string_view, 6>{"--manifest", manifest, "publish", "--registry",
                                                                        "http://127.0.0.1:1", "--color=never"});
     CHECK(invalidCredential.exitCode == 1);

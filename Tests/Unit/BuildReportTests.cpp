@@ -1,9 +1,10 @@
-#include "Driver/BuildReport.h"
+#include "Cli/BuildReport.h"
 #include "Driver/BuildTarget.h"
 
 #include <doctest.h>
 
 using namespace Rux::Driver;
+using namespace Rux::CliSupport;
 
 namespace {
 // Column alignment is pinned exactly by the Source grid and by the shared

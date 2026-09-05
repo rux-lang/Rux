@@ -7,67 +7,23 @@
 
 #include "BuildInfo/BuildProfile.h"
 #include "Diagnostics/Diagnostics.h"
-#include "Driver/BuildReport.h"
+#include "Driver/BuildStats.h"
+#include "Driver/CompileEvents.h"
 #include "Package/Manifest.h"
-#include "Semantic/Model/SemanticModel.h"
-#include "SourceModel/SourceFile.h"
 #include "Syntax/ParseResult.h"
 #include "Target/TargetTriple.h"
 
 #include <filesystem>
 #include <functional>
 #include <map>
+#include <memory>
 #include <optional>
 #include <span>
 #include <string>
 #include <string_view>
-#include <unordered_map>
 #include <vector>
 
 namespace Rux::Driver {
-enum class CompilePhase {
-    Configuring,
-    LoadingSources,
-    Lexing,
-    Parsing,
-    LoadingDependency,
-    Analyzing,
-    LoweringToHir,
-    OptimizingHir,
-    LoweringToLir,
-    OptimizingLir,
-    EmittingAssembly,
-    EmittingObjects,
-    Linking,
-};
-
-enum class InspectionKind {
-    Tokens,
-    Ast,
-    Semantic,
-    Hir,
-    Lir,
-    Assembly,
-    RcuObject,
-    Rcu,
-};
-
-struct InspectionOutput {
-    InspectionKind kind;
-    std::filesystem::path path;
-};
-
-[[nodiscard]] std::string_view InspectionHeading(InspectionKind kind) noexcept;
-[[nodiscard]] std::string_view InspectionDescription(InspectionKind kind) noexcept;
-
-struct CompileProgress {
-    CompilePhase phase;
-    std::string_view subject;
-    std::filesystem::path path;
-};
-
-[[nodiscard]] std::string_view CompilePhaseName(CompilePhase phase) noexcept;
-
 struct CompileOptions {
     std::filesystem::path manifestPath; // resolved path to Rux.toml
     Manifest manifest;                  // parsed manifest for manifestPath
@@ -116,47 +72,15 @@ struct CompileResult {
 class CompilerDriver {
 public:
     explicit CompilerDriver(CompileOptions options);
+    ~CompilerDriver();
+    CompilerDriver(CompilerDriver &&) noexcept;
+    CompilerDriver &operator=(CompilerDriver &&) noexcept;
+    CompilerDriver(const CompilerDriver &) = delete;
+    CompilerDriver &operator=(const CompilerDriver &) = delete;
     [[nodiscard]] CompileResult Compile();
 
 private:
-    void Emit(const Diagnostic &diag);
-    void BeginPhase(CompilePhase phase, std::string_view subject, const std::filesystem::path &path = {});
-    void EmitProgress(CompilePhase phase, std::string_view subject, const std::filesystem::path &path = {}) const;
-    /// Emit every diagnostic; returns true if any is an error.
-    bool EmitAll(std::span<const Diagnostic> diags);
-    void RememberSources(std::span<const SourceFile> sources);
-    bool WriteInspectionOutput(InspectionKind kind, const std::filesystem::path &path,
-                               const std::function<bool()> &write);
-    [[nodiscard]] std::optional<std::string_view> LookupSourceLine(std::string_view sourceName,
-                                                                   std::size_t lineNumber) const;
-
-    /// The operating system of the build target, named exactly ("FreeBSD", not the "BSD" family). This is what
-    /// `#target.os` reports.
-    [[nodiscard]] std::string TargetSystemName() const;
-    void InitializeCompileTimeContext();
-
-    /// Pipeline phases. Each returns false when the pipeline cannot continue.
-    bool LexAndParseSources();
-    bool LoadDependencies();
-    bool Analyze();
-    bool GenerateArtifact(std::filesystem::path &artifactPath,
-                          std::vector<std::filesystem::path> &secondaryArtifactPaths);
-
-    CompileOptions opts;
-    std::filesystem::path root; // package root (manifest directory)
-    BuildStats stats;
-    bool hadErrors = false; // frontend errors accumulated in checkOnly mode
-    bool invalidSourceDateEpoch = false;
-    std::optional<CompilePhase> currentPhase;
-    std::vector<Diagnostic> diagnostics;
-    std::vector<InspectionOutput> inspectionOutputs;
-    CompileTimeContext compileTimeContext;
-
-    std::vector<ParseResult> parseResults;      // user modules
-    std::vector<ParseResult> depParseResults;   // dependency modules
-    std::vector<std::string> loadedPackages;    // parallel: package name per dep entry
-    std::vector<std::string> loadedModuleNames; // parallel: source name per dep entry
-    std::unordered_map<std::string, std::string> loadedSourceTexts;
-    std::optional<SemanticModel> semanticModel;
+    class Impl;
+    std::unique_ptr<Impl> impl;
 };
 } // namespace Rux::Driver

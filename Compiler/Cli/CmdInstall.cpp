@@ -4,19 +4,18 @@
 // artifacts, then verify and stage every selected package through the same
 // cache installation path.
 
+#include "Cli/BuildReport.h"
 #include "Cli/Cli.h"
 #include "Cli/ManifestInput.h"
 #include "Cli/Reporter.h"
-#include "Driver/BuildReport.h"
 #include "Driver/BuildTarget.h"
-#include "Driver/Credentials.h"
-#include "Driver/PackageResolution.h"
-#include "Driver/Registry.h"
-#include "Package/Artifact.h"
-#include "Package/Checksum.h"
+#include "Package/Cache.h"
+#include "Package/Credentials.h"
+#include "Package/Installation.h"
 #include "Package/Manifest.h"
+#include "Package/PackageResolution.h"
+#include "Package/Registry.h"
 #include "Reporting/Reporting.h"
-#include "System/Process.h"
 
 #include <algorithm>
 #include <chrono>
@@ -30,6 +29,8 @@
 #include <string_view>
 #include <utility>
 #include <vector>
+
+using namespace Rux::Packages;
 
 using namespace Rux;
 using namespace CliSupport;
@@ -257,16 +258,6 @@ std::optional<int> RemoveLegacyCacheEntries(const CliSupport::Reporter &output,
     return removed;
 }
 
-bool CacheEntryMatches(const std::filesystem::path &root, const ResolvedPackage &resolution) {
-    const auto loaded = Manifest::Load(root / "Rux.toml");
-    if (!loaded.Ok() || loaded.manifest->IsWorkspace()) {
-        return false;
-    }
-    const Package &package = loaded.manifest->package;
-    return package.ns && *package.ns == resolution.ns && package.name == resolution.package &&
-           package.version.Text() == resolution.version.Text();
-}
-
 struct InstallTally {
     int installed = 0;
     int upToDate = 0;
@@ -278,122 +269,30 @@ struct InstallTally {
  * The checksum is fetched before the artifact. Nothing reaches its final cache
  * directory until the archive and embedded manifest have both been verified.
  */
+void ReportResolutionFailure(const ResolutionFailure &failure, const CliSupport::Reporter &diagnostics);
+
 bool InstallResolved(const PackageResolver &resolver, const std::vector<ResolvedPackage> &resolved, InstallTally &tally,
                      const CliSupport::Reporter &output, const CliSupport::Reporter &diagnostics) {
     for (const auto &resolution : resolved) {
         const std::string identity = QualifiedIdentity(resolution.ns, resolution.package);
-        const std::filesystem::path packageDir =
-            RegistryPackageDir(resolution.ns, resolution.package, resolution.version);
-
-        if (CacheEntryMatches(packageDir, resolution)) {
+        const auto installed = InstallPackage(resolver.Base(), resolution, [&] {
+            output.Progress("Downloading", std::format("{} {}", identity, resolution.version.Text()));
+            output.Verbose(std::format("checksum metadata from '{}/v1/packages/{}/{}'", resolver.Base(), identity,
+                                       resolution.version.Text()));
+        });
+        if (!installed) {
+            ReportResolutionFailure(installed.error(), diagnostics);
+            return false;
+        }
+        if (installed->alreadyInstalled) {
             output.Success("Up-to-date", std::format("{} {}", identity, resolution.version.Text()));
             ++tally.upToDate;
-            continue;
         }
-
-        output.Progress("Downloading", std::format("{} {}", identity, resolution.version.Text()));
-        output.Verbose(std::format("checksum metadata from '{}/v1/packages/{}/{}'", resolver.Base(), identity,
-                                   resolution.version.Text()));
-        auto digest = FetchArtifactChecksum(resolver.Base(), resolution.ns, resolution.package, resolution.version);
-        if (!digest) {
-            const auto problem = Describe(digest.error(), resolver.Base(), identity);
-            diagnostics.Error(
-                std::format("could not fetch checksum metadata for {} {}", identity, resolution.version.Text()));
-            diagnostics.Note(problem.message);
-            for (const auto &note : problem.notes) {
-                diagnostics.Note(note);
-            }
-            diagnostics.Help(problem.help.value_or("check the registry URL and network, then retry the installation"));
-            return false;
+        else {
+            output.Success("Installed", std::format("{} {} ({})", identity, resolution.version.Text(),
+                                                    Reporting::FormatCount(installed->fileCount, "file")));
+            ++tally.installed;
         }
-        auto archive = DownloadArtifact(resolver.Base(), resolution.ns, resolution.package, resolution.version);
-        if (!archive) {
-            const auto problem = Describe(archive.error(), resolver.Base(), identity);
-            diagnostics.Error(std::format("could not download {} {}", identity, resolution.version.Text()));
-            diagnostics.Note(problem.message);
-            for (const auto &note : problem.notes) {
-                diagnostics.Note(note);
-            }
-            diagnostics.Help(problem.help.value_or("check the registry URL and network, then retry the installation"));
-            return false;
-        }
-        if (const std::string actual = Sha256Hex(*archive); !DigestsEqual(actual, *digest)) {
-            diagnostics.Error(std::format("downloaded archive for {} {} failed checksum verification", identity,
-                                          resolution.version.Text()));
-            diagnostics.Note(std::format("expected sha256: {}", *digest));
-            diagnostics.Note(std::format("downloaded sha256: {}", actual));
-            diagnostics.Help("retry the download; contact the registry operator if the mismatch persists");
-            return false;
-        }
-
-        std::filesystem::path staging = packageDir;
-        staging += ".download";
-        std::error_code ec;
-        std::filesystem::remove_all(staging, ec);
-        std::filesystem::create_directories(packageDir.parent_path(), ec);
-        if (ec) {
-            diagnostics.Error(
-                std::format("could not create package cache directory '{}'", packageDir.parent_path().string()));
-            diagnostics.Note(ec.message());
-            diagnostics.Help("check the cache directory permissions, then retry");
-            return false;
-        }
-
-        auto extracted = ExtractPackageArtifact(*archive, staging);
-        if (!extracted) {
-            std::filesystem::remove_all(staging, ec);
-            diagnostics.Error(
-                std::format("downloaded archive for {} {} was rejected", identity, resolution.version.Text()));
-            diagnostics.Note(extracted.error().message);
-            for (const auto &note : extracted.error().notes) {
-                diagnostics.Note(note);
-            }
-            diagnostics.Help("contact the registry operator; the published archive is unsafe or invalid");
-            return false;
-        }
-
-        const auto staged = Manifest::Load(staging / "Rux.toml");
-        if (!staged.Ok()) {
-            std::filesystem::remove_all(staging, ec);
-            diagnostics.Error(std::format("archive published as {} {} contains an invalid manifest", identity,
-                                          resolution.version.Text()));
-            if (!staged.diagnostics.empty()) {
-                diagnostics.Note(staged.diagnostics.front().Format());
-            }
-            diagnostics.Help("contact the registry operator; the artifact metadata is inconsistent");
-            return false;
-        }
-        if (staged.manifest->IsWorkspace() || !staged.manifest->package.ns ||
-            *staged.manifest->package.ns != resolution.ns || staged.manifest->package.name != resolution.package ||
-            staged.manifest->package.version.Text() != resolution.version.Text()) {
-            std::filesystem::remove_all(staging, ec);
-            diagnostics.Error(std::format("archive published as {} {} contains a different package", identity,
-                                          resolution.version.Text()));
-            if (staged.manifest->IsWorkspace()) {
-                diagnostics.Note("archive manifest declares a workspace instead of a package");
-            }
-            else {
-                const std::string actualIdentity = staged.manifest->package.ns
-                                                     ? std::format("{}/{}", staged.manifest->package.ns->Text(),
-                                                                   staged.manifest->package.name.Text())
-                                                     : staged.manifest->package.name.Text();
-                diagnostics.Note(std::format("archive manifest declares {} {}", actualIdentity,
-                                             staged.manifest->package.version.Text()));
-            }
-            diagnostics.Help("contact the registry operator; the artifact metadata is inconsistent");
-            return false;
-        }
-
-        if (!CommitDownloadedPackage(staging, packageDir)) {
-            std::filesystem::remove_all(staging, ec);
-            diagnostics.Error(std::format("could not install {} {} into '{}'", identity, resolution.version.Text(),
-                                          packageDir.string()));
-            diagnostics.Help("check the cache directory permissions, then retry");
-            return false;
-        }
-        output.Success("Installed", std::format("{} {} ({})", identity, resolution.version.Text(),
-                                                Reporting::FormatCount(extracted->fileCount, "file")));
-        ++tally.installed;
     }
     return true;
 }

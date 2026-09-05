@@ -1,7 +1,7 @@
 #pragma once
 
-#include "Driver/Registry.h"
 #include "Package/Manifest.h"
+#include "Package/Registry.h"
 #include "Target/TargetTriple.h"
 
 #include <expected>
@@ -13,7 +13,7 @@
 #include <string_view>
 #include <vector>
 
-namespace Rux::Driver {
+namespace Rux::Packages {
 /// One package constraint supplied to the resolver.
 struct PackageRequirement {
     IdentitySegment ns;
@@ -59,4 +59,4 @@ private:
     PackageIndexFetcher fetchIndex;
     std::map<std::string, RegistryIndexEntry> entries;
 };
-} // namespace Rux::Driver
+} // namespace Rux::Packages

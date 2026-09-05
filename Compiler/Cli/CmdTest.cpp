@@ -1,5 +1,6 @@
 // `rux test` — build and run every test package under Tests/.
 
+#include "Cli/BuildReport.h"
 #include "Cli/Cli.h"
 #include "Cli/DefineOption.h"
 #include "Cli/ManifestInput.h"

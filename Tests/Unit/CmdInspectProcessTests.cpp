@@ -3,6 +3,7 @@
 // deterministic and never inspect or mutate the developer's real cache.
 
 #include "Driver/BuildTarget.h"
+#include "Package/Cache.h"
 #include "System/Os.h"
 #include "System/Process.h"
 
@@ -14,6 +15,8 @@
 #include <optional>
 #include <string>
 #include <string_view>
+
+using namespace Rux::Packages;
 
 using namespace Rux;
 
@@ -41,7 +44,7 @@ public:
         std::filesystem::create_directories(root, error);
         REQUIRE(!error);
         REQUIRE(System::SetEnvPath(packageCacheHomeVariable, root));
-        REQUIRE(Driver::RegistryPackagesDir().string().starts_with(root.string()));
+        REQUIRE(Packages::RegistryPackagesDir().string().starts_with(root.string()));
     }
 
     ScopedPackageCache(const ScopedPackageCache &) = delete;
@@ -81,7 +84,7 @@ void WriteCachedPackage(const std::string_view packageNamespace, const std::stri
     REQUIRE(ns.has_value());
     REQUIRE(name.has_value());
     REQUIRE(semanticVersion.has_value());
-    WriteTextFile(Driver::RegistryPackageDir(*ns, *name, *semanticVersion) / "Rux.toml",
+    WriteTextFile(Packages::RegistryPackageDir(*ns, *name, *semanticVersion) / "Rux.toml",
                   "[Manifest]\nVersion = 1\n\n[Package]\nNamespace = \"Rux\"\nName = \"Json\"\nVersion = \"1.2.0\"\n"
                   "Type = \"SourceLibrary\"\n");
 }

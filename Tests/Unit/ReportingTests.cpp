@@ -88,20 +88,17 @@ TEST_CASE("reporting sections title a block and style only the title") {
 }
 
 TEST_CASE("reporting remains a narrow dependency in the CMake component graph") {
-    const auto cmakePath = std::filesystem::path(RUX_ROOT_DIR) / "Compiler" / "CMakeLists.txt";
-    std::ifstream input(cmakePath);
-    REQUIRE(input);
-    const std::string cmake{std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
-
-    const auto reporting = cmake.find("rux_add_component(RuxReporting");
-    const auto target = cmake.find("rux_add_component(RuxTarget", reporting);
-    REQUIRE(reporting != std::string::npos);
-    REQUIRE(target != std::string::npos);
-    const auto reportingBlock = cmake.substr(reporting, target - reporting);
-    CHECK_FALSE(reportingBlock.contains("target_link_libraries"));
-
-    CHECK(cmake.contains("PRIVATE RuxReporting"));
-    CHECK(cmake.contains("RuxCliHelp PUBLIC RuxCliContract PRIVATE RuxDiagnostics RuxReporting"));
-    CHECK(cmake.contains("RuxCliContract RuxCliHelp RuxCliReporting RuxReporting"));
-    CHECK(cmake.contains("RuxCliReporting PUBLIC RuxReporting PRIVATE RuxSystem"));
+    const auto component = [](const std::string_view name) {
+        const auto path = std::filesystem::path(RUX_ROOT_DIR) / "Compiler" / name / "CMakeLists.txt";
+        std::ifstream input(path);
+        REQUIRE(input);
+        return std::string{std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
+    };
+    const auto reporting = component("Reporting");
+    CHECK(reporting.contains("rux_add_component(RuxReporting"));
+    CHECK_FALSE(reporting.contains("target_link_libraries"));
+    CHECK(component("Diagnostics").contains("PRIVATE RuxReporting"));
+    const auto cli = component("Cli");
+    CHECK(cli.contains("RuxCliHelp PUBLIC RuxCliContract PRIVATE RuxDiagnostics RuxReporting"));
+    CHECK(cli.contains("RuxCliReporting PUBLIC RuxReporting RuxDriverModel PRIVATE RuxSystem"));
 }

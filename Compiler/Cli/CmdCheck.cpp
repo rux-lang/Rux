@@ -1,5 +1,6 @@
 // `rux check` — frontend-only compile with text or JSON diagnostics.
 
+#include "Cli/BuildReport.h"
 #include "Cli/Cli.h"
 #include "Cli/CompilerProgress.h"
 #include "Cli/DefineOption.h"

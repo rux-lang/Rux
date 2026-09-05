@@ -4,15 +4,15 @@
 // and presentation. Manifest mutation and canonical serialization policy stay
 // in Package/Manifest.
 
+#include "Cli/BuildReport.h"
 #include "Cli/Cli.h"
 #include "Cli/ManifestInput.h"
 #include "Cli/Reporter.h"
 #include "Diagnostics/Diagnostics.h"
-#include "Driver/BuildReport.h"
 #include "Driver/BuildTarget.h"
-#include "Driver/Credentials.h"
-#include "Driver/Registry.h"
+#include "Package/Credentials.h"
 #include "Package/Manifest.h"
+#include "Package/Registry.h"
 #include "Reporting/Reporting.h"
 
 #include <chrono>
@@ -23,6 +23,8 @@
 #include <string>
 #include <string_view>
 #include <utility>
+
+using namespace Rux::Packages;
 
 using namespace Rux;
 using namespace CliSupport;

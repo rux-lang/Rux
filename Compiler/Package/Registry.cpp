@@ -1,7 +1,8 @@
-#include "Driver/Registry.h"
+#include "Package/Registry.h"
 
 #include "BuildInfo/CompilerMetadata.h"
 #include "Package/Manifest.h"
+#include "System/Http.h"
 #include "System/Json.h"
 #include "System/Process.h"
 
@@ -14,7 +15,7 @@
 
 using namespace Rux::System;
 
-namespace Rux::Driver {
+namespace Rux::Packages {
 namespace {
 /// Build one `/v1` URL from already-normalized identity segments.
 std::string RouteUrl(const std::string_view base, const std::string_view suffix) {
@@ -377,4 +378,4 @@ SemanticVersion CompilerVersion() {
     auto parsed = SemanticVersion::Parse(CompilerBuild::compilerVersion);
     return parsed ? std::move(*parsed) : SemanticVersion{};
 }
-} // namespace Rux::Driver
+} // namespace Rux::Packages

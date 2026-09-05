@@ -1,12 +1,12 @@
 // `rux build` and `rux clean`.
 
+#include "Cli/BuildReport.h"
 #include "Cli/Cli.h"
 #include "Cli/CompilerProgress.h"
 #include "Cli/DefineOption.h"
 #include "Cli/ManifestInput.h"
 #include "Cli/Reporter.h"
 #include "Driver/BuildPlan.h"
-#include "Driver/BuildReport.h"
 #include "Driver/BuildTarget.h"
 #include "Driver/CompilerDriver.h"
 
