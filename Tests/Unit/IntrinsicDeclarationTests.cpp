@@ -26,6 +26,11 @@ extend int8 {
     const Hidden: int8 = 3i8;
 }
 )";
+
+const std::string StringDeclaration = R"(
+pub intrinsic struct string8 { pub data: *char8; pub length: uint; }
+pub type string = string8;
+)";
 } // namespace
 
 TEST_CASE("intrinsic declarations preserve types fields and associated constants in the AST") {
@@ -155,4 +160,93 @@ TEST_CASE("intrinsic declarations reject unknown kinds and incompatible fields")
         const auto model = SemanticAnalyzer({&parsed.module}).Analyze();
         CHECK(model.HasErrors());
     }
+}
+
+TEST_CASE("string literals can be inferred without a provider") {
+    auto parsed = ParseIntrinsicSource("func Main() { let text = \"hello\"; let wide = s16\"hello\"; }");
+    const auto model = SemanticAnalyzer({&parsed.module}).Analyze();
+    CHECK_FALSE(model.HasErrors());
+}
+
+TEST_CASE("calling a text API does not require importing its signature types") {
+    auto dependency = ParseIntrinsicSource(
+        StringDeclaration + "pub func Count(text: string) -> uint { return text.length; }", "text.rux");
+    auto parsed = ParseIntrinsicSource("import Text::Count; func Main() -> uint { return Count(\"hello\"); }");
+    const auto model =
+        SemanticAnalyzer({&parsed.module}, {{"Text", {{"text.rux", &dependency.module}}}}, "App").Analyze();
+    REQUIRE_FALSE(model.HasErrors());
+    AstToHirLowering lowering(model);
+    (void)lowering.Generate();
+    CHECK(lowering.Diagnostics().empty());
+}
+
+TEST_CASE("string annotations and fields require visible declarations") {
+    for (const std::string body : {"func Read(text: string) {}", "func Main() { let n = \"hello\".length; }"}) {
+        CAPTURE(body);
+        for (const bool imported : {false, true}) {
+            CAPTURE(imported);
+            auto dependency = ParseIntrinsicSource(StringDeclaration, "text.rux");
+            auto parsed = ParseIntrinsicSource((imported ? "import Text::string;\n" : "") + body);
+            const auto model =
+                SemanticAnalyzer({&parsed.module}, {{"Text", {{"text.rux", &dependency.module}}}}, "App").Analyze();
+            CHECK_EQ(model.HasErrors(), !imported);
+        }
+    }
+}
+
+TEST_CASE("an intrinsic type import in another file does not expose its members") {
+    auto dependency = ParseIntrinsicSource(IntegerDeclaration + StringDeclaration, "provider.rux");
+    auto imported = ParseIntrinsicSource("import Provider::{ int8, string };", "imported.rux");
+    for (const std::string body :
+         {"func Main() -> int8 { return int8::Max; }", "func Main() { let n = \"hello\".length; }"}) {
+        auto isolated = ParseIntrinsicSource(body, "isolated.rux");
+        const auto model = SemanticAnalyzer({&imported.module, &isolated.module},
+                                            {{"Provider", {{"provider.rux", &dependency.module}}}}, "App")
+                               .Analyze();
+        CHECK(model.HasErrors());
+    }
+}
+
+TEST_CASE("intrinsic slices and ordinary same-named structs have different representations") {
+    for (const bool intrinsic : {false, true}) {
+        CAPTURE(intrinsic);
+        auto parsed = ParseIntrinsicSource(std::string(intrinsic ? "intrinsic " : "") + R"(
+struct Slice<T> { pub data: *T; pub length: uint; }
+func Read(values: Slice<int8>) -> int8 { return values[0]; }
+)");
+        const auto model = SemanticAnalyzer({&parsed.module}).Analyze();
+        CHECK_EQ(model.HasErrors(), !intrinsic);
+        if (!model.HasErrors()) {
+            const auto *function = dynamic_cast<const FuncDecl *>(parsed.module.items[1].get());
+            REQUIRE(function);
+            const TypeRef *type = model.TryGetType(*function->params[0].type);
+            REQUIRE(type);
+            CHECK(type->isIntrinsicSlice);
+        }
+    }
+}
+
+TEST_CASE("only an intrinsic range declaration binds range syntax") {
+    for (const bool intrinsic : {false, true}) {
+        CAPTURE(intrinsic);
+        auto parsed = ParseIntrinsicSource(std::string(intrinsic ? "intrinsic " : "") + R"(
+struct Range<T> { pub start: T; pub end: T; }
+func Bounds() -> Range<int> { return 0..2; }
+)");
+        const auto model = SemanticAnalyzer({&parsed.module}).Analyze();
+        CHECK_EQ(model.HasErrors(), !intrinsic);
+    }
+}
+
+TEST_CASE("intrinsic slice identity survives generic lowering") {
+    auto parsed = ParseIntrinsicSource(R"(
+intrinsic struct Slice<T> { pub data: *T; pub length: uint; }
+func First<T>(values: Slice<T>) -> T { return values[0]; }
+func Read(values: Slice<int8>) -> int8 { return First(values); }
+)");
+    const auto model = SemanticAnalyzer({&parsed.module}).Analyze();
+    REQUIRE_FALSE(model.HasErrors());
+    AstToHirLowering lowering(model);
+    (void)lowering.Generate();
+    CHECK(lowering.Diagnostics().empty());
 }

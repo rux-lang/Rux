@@ -207,6 +207,10 @@ Symbol *AnalysisContext::FindUniquePackageType(const std::string &name) const {
 }
 
 TypeRef AnalysisContext::ResolveType(const TypeExpr &expr) {
+    if (const auto accepted = typeNodeTypes.find(&expr);
+        accepted != typeNodeTypes.end() && accepted->second.IsString()) {
+        return accepted->second;
+    }
     TypeRef type = ResolveTypeImpl(expr);
     if (!type.IsUnknown()) {
         typeNodeTypes.insert_or_assign(&expr, type);

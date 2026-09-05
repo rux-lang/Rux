@@ -4,6 +4,38 @@
 #include <array>
 
 namespace Rux {
+std::optional<TypeRef> IntrinsicAggregateType(const std::string_view name, const std::vector<TypeRef> &arguments) {
+    if (arguments.empty() && name == "RangeFull") {
+        return TypeRef::MakeRangeFull();
+    }
+    if (arguments.size() != 1) {
+        return std::nullopt;
+    }
+    const TypeRef &element = arguments[0];
+    if (name == "Slice") {
+        return TypeRef::MakeSlice(element);
+    }
+    if (name == "MutableSlice") {
+        return TypeRef::MakeNamed(TypeRef::InstantiationName("MutableSlice", arguments));
+    }
+    if (name == "Range") {
+        return TypeRef::MakeRange(element);
+    }
+    if (name == "RangeInclusive") {
+        return TypeRef::MakeRange(element, true, true, true);
+    }
+    if (name == "RangeFrom") {
+        return TypeRef::MakeRange(element, true, false);
+    }
+    if (name == "RangeTo") {
+        return TypeRef::MakeRange(element, false, true);
+    }
+    if (name == "RangeToInclusive") {
+        return TypeRef::MakeRange(element, false, true, true);
+    }
+    return std::nullopt;
+}
+
 namespace {
 using K = TypeRef::Kind;
 using C = PrimitiveCategory;

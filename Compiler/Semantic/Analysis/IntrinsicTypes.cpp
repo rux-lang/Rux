@@ -4,9 +4,43 @@
 #include <format>
 
 namespace Rux::SemanticDetail {
+bool AnalysisContext::IsVisibleTypeSymbol(const Symbol &symbol) const {
+    if (!symbol.declaration) {
+        return false;
+    }
+    if (symbol.ownerPackage == currentPackage) {
+        return true;
+    }
+    const auto imported = explicitTypeImports.find(currentFile);
+    return imported != explicitTypeImports.end() && imported->second.contains(symbol.declaration);
+}
+
+const Decl *AnalysisContext::VisibleIntrinsicType(const TypeRef &type, const SourceLocation location) const {
+    const Symbol *selected = nullptr;
+    for (const Scope *scope = currentScope; scope; scope = scope->Parent()) {
+        for (const auto &[name, symbol] : scope->Table()) {
+            (void)name;
+            if (symbol.kind != Symbol::Kind::Type || symbol.type != type || !IsVisibleTypeSymbol(symbol)) {
+                continue;
+            }
+            if (selected && selected->ownerPackage != symbol.ownerPackage) {
+                EmitError(location,
+                          std::format("intrinsic type '{}' has ambiguous visible providers", type.ToString()));
+                return nullptr;
+            }
+            selected = &symbol;
+        }
+    }
+    if (!selected) {
+        EmitError(location, std::format("type '{}' requires a visible intrinsic declaration", type.ToString()), {},
+                  "import the type from a package that declares it, or provide an intrinsic declaration");
+    }
+    return selected ? selected->declaration : nullptr;
+}
+
 const ConstDecl *AnalysisContext::LookupAssociatedConstant(const Symbol &type, const std::string &name) const {
     // A built-in scalar name provides representation, but no package API.
-    if (!type.declaration) {
+    if (!IsVisibleTypeSymbol(type)) {
         return nullptr;
     }
     for (const ImplDecl *implementation : implDecls) {

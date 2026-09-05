@@ -41,7 +41,7 @@ TypeRef AnalysisContext::IdentityParameterType(const Param &parameter,
         type = SubstituteIdentityType(resolved->second, substitutions);
     }
     if (parameter.isVariadic) {
-        type = TypeRef::MakeNamed(SliceTypeName(type));
+        type = TypeRef::MakeSlice(type);
     }
     return type;
 }
@@ -220,7 +220,7 @@ void AnalysisContext::BuildFinalSymbolIdentities() {
         if (function && !function->typeParams.empty()) {
             // A generic function's monomorphized name is its own name plus its type arguments, which two
             // overloads instantiated at the same argument share. Only the first was ever emitted, and every call
-            // bound to it — so a four-argument call reached a three-parameter function and quietly dropped an
+            // bound to it â€” so a four-argument call reached a three-parameter function and quietly dropped an
             // argument. Overloaded methods already carry their parameter types in the name; free functions now
             // do too, built through the same recipe so a later re-instantiation spells it identically.
             // The source declaration and every concrete instantiation must share the same package-qualified base.

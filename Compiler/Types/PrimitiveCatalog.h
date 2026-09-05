@@ -8,6 +8,9 @@
 #include <string_view>
 
 namespace Rux {
+/// Representation selected only after resolving an explicit intrinsic aggregate declaration.
+[[nodiscard]] std::optional<TypeRef> IntrinsicAggregateType(std::string_view name,
+                                                            const std::vector<TypeRef> &arguments);
 /// The family a primitive belongs to. Rules that hold for a whole family -- bool normalization, Unicode validation,
 /// integer promotion, float rounding -- ask this instead of listing every kind in the family.
 enum class PrimitiveCategory : std::uint8_t {

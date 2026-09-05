@@ -467,7 +467,7 @@ LirReg HirToLirContext::EmitStringAddr(std::string value, const TypeRef &elemTyp
 }
 
 bool HirToLirContext::IsSliceType(const TypeRef &type) {
-    return type.kind == TypeRef::Kind::Named && type.name.starts_with("Slice<");
+    return type.isIntrinsicSlice;
 }
 
 /// Whether a value is a 16-byte `{data, length}` view. A string has a slice's representation exactly, reaching its
@@ -761,14 +761,14 @@ LirFunc HirToLirContext::LowerFunc(const HirFunc &hf, const std::string_view nam
         }
         else if (IsInterfaceType(type)) {
             // Interface values are 16-byte fat ptrs; callers pass their
-            // address. pr holds that address directly — no extra
+            // address. pr holds that address directly â€” no extra
             // alloca.
             locals[name] = pr;
             lf.params.push_back({pr, TypeRef::MakePointer(type), name});
         }
         else if (IsViewType(type)) {
             // Slice and string values are 16-byte {data, length} structs;
-            // callers pass a pointer. pr holds that pointer directly — FieldPtr
+            // callers pass a pointer. pr holds that pointer directly â€” FieldPtr
             // handles the indirection. Register with Pointer<type> so
             // ResolveFieldOffset can compute field offsets.
             locals[name] = pr;

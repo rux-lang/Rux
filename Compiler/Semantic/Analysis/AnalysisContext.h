@@ -397,6 +397,9 @@ private:
     [[nodiscard]] const ConstDecl *LookupAssociatedConstant(const Symbol &type, const std::string &name) const;
     [[nodiscard]] TypeRef CheckAssociatedConstant(const ConstDecl &declaration);
     void CheckIntrinsicType(const Decl &declaration);
+    std::unordered_map<std::string, std::unordered_set<const Decl *>> explicitTypeImports;
+    [[nodiscard]] bool IsVisibleTypeSymbol(const Symbol &symbol) const;
+    [[nodiscard]] const Decl *VisibleIntrinsicType(const TypeRef &type, SourceLocation location) const;
     std::unordered_map<const TypeExpr *, TypeRef> &typeNodeTypes;
     std::unordered_map<const Pattern *, TypeRef> &patternTypes;
     std::unordered_map<const EnumPattern *, ResolvedCasePattern> &casePatterns;
