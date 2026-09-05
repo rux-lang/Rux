@@ -37,7 +37,7 @@ usage() {
         '  help      Show this help' \
         '' \
         'Options:' \
-        '  --jobs N                       Test/tidy workers (default: up to four CPUs); explicit value also limits builds' \
+        '  --jobs N                       Test/tidy/format workers (default: every CPU); explicit value also limits builds' \
         '  --configuration Debug|Release  CMake configuration (build, test, unit; default: Release)' \
         '  --build-directory PATH         CMake build directory (build, test, unit, tidy, clean; default: Build)' \
         '  --compiler PATH                Clang C++ compiler (build, test; default: $CXX or detected Clang)' \
@@ -64,7 +64,7 @@ command_options() {
     case $1 in
     build) printf '%s' '--configuration --build-directory --compiler --jobs' ;;
     test) printf '%s' '--configuration --build-directory --compiler --rux-executable --target --fix-formatting --skip-build --clang-tidy --jobs' ;;
-    format) printf '%s' '--rux-executable --check' ;;
+    format) printf '%s' '--rux-executable --check --jobs' ;;
     tidy) printf '%s' '--build-directory --jobs' ;;
     unit) printf '%s' '--configuration --build-directory --jobs' ;;
     clean) printf '%s' '--build-directory' ;;
@@ -175,7 +175,6 @@ done
 worker_count=$jobs
 if [ -z "$worker_count" ]; then
     worker_count=$(getconf _NPROCESSORS_ONLN 2>/dev/null || printf '1')
-    [ "$worker_count" -le 4 ] || worker_count=4
     [ "$worker_count" -ge 1 ] || worker_count=1
 fi
 
@@ -286,6 +285,70 @@ find_manifests() {
     find Packages Tests -type f -name Rux.toml -print
 }
 
+# Print the captured output of runs 1..$2 under $1 in order, then fail with
+# the first non-zero exit status, the way run_checked would for one command.
+flush_concurrent_runs() {
+    concurrent_scratch=$1
+    concurrent_count=$2
+    concurrent_name=$3
+    concurrent_status=0
+    concurrent_flushed=0
+    while [ "$concurrent_flushed" -lt "$concurrent_count" ]; do
+        concurrent_flushed=$((concurrent_flushed + 1))
+        [ -s "$concurrent_scratch/$concurrent_flushed.out" ] && cat "$concurrent_scratch/$concurrent_flushed.out"
+        if [ "$concurrent_status" -eq 0 ] && [ -s "$concurrent_scratch/$concurrent_flushed.failed" ]; then
+            concurrent_status=$(cat "$concurrent_scratch/$concurrent_flushed.failed")
+        fi
+    done
+    rm -rf "$concurrent_scratch"
+    [ "$concurrent_status" -eq 0 ] && return 0
+    printf "error: command '%s' failed with exit code %s\n" "$concurrent_name" "$concurrent_status" >&2
+    exit "$concurrent_status"
+}
+
+# Run clang-format with the given options over every maintained C++ source,
+# in one background batch per worker. Each batch's diagnostics are captured
+# and printed whole once every batch has finished, so they never interleave.
+run_clang_format() {
+    format_scratch=$(mktemp -d "${TMPDIR:-/tmp}/rux-clang-format.XXXXXX")
+    format_index=0
+    find_maintained_cpp -print | while IFS= read -r source; do
+        printf '%s\n' "$source" >>"$format_scratch/list.$((format_index % worker_count + 1))"
+        format_index=$((format_index + 1))
+    done
+    format_batches=0
+    for batch in "$format_scratch"/list.*; do
+        format_batches=$((format_batches + 1))
+        (xargs "$clang_format" "$@" <"$batch" >"$format_scratch/$format_batches.out" 2>&1 ||
+            printf '%s' "$?" >"$format_scratch/$format_batches.failed") &
+    done
+    wait
+    flush_concurrent_runs "$format_scratch" "$format_batches" clang-format
+}
+
+# Run `rux --manifest <manifest> fmt` with the given options for every package
+# and test manifest, worker_count manifests at a time. Each run's report is
+# captured and printed in manifest order once every run has finished.
+run_rux_fmt() {
+    fmt_scratch=$(mktemp -d "${TMPDIR:-/tmp}/rux-fmt.XXXXXX")
+    find_manifests >"$fmt_scratch/manifests"
+    fmt_index=0
+    fmt_running=0
+    # Reading from a file rather than a pipe keeps the counters in this shell.
+    while IFS= read -r manifest; do
+        fmt_index=$((fmt_index + 1))
+        ("$rux_path" --manifest "$manifest" fmt "$@" >"$fmt_scratch/$fmt_index.out" 2>&1 ||
+            printf '%s' "$?" >"$fmt_scratch/$fmt_index.failed") &
+        fmt_running=$((fmt_running + 1))
+        if [ "$fmt_running" -ge "$worker_count" ]; then
+            wait
+            fmt_running=0
+        fi
+    done <"$fmt_scratch/manifests"
+    wait
+    flush_concurrent_runs "$fmt_scratch" "$fmt_index" rux
+}
+
 # Format maintained C++ and Rux sources, or check them when passed true. Golden
 # diagnostic fixtures are intentionally excluded because malformed formatting is
 # part of what they test.
@@ -305,29 +368,21 @@ run_format() {
     format_started_at=$(date +%s)
     if [ "$format_check" = true ]; then
         step "Checking C++ formatting ($cpp_file_count files)"
-        if ! find_maintained_cpp -print0 | xargs -0 "$clang_format" --dry-run -Werror; then
-            die "command 'clang-format' failed"
-        fi
+        run_clang_format --dry-run -Werror
         passed "C++ formatting ($cpp_file_count files)"
 
         step "Checking Rux formatting ($manifest_count packages)"
-        find_manifests | while IFS= read -r manifest; do
-            run_checked rux "$rux_path" --manifest "$manifest" fmt --check
-        done
+        run_rux_fmt --check
         passed "Rux formatting ($manifest_count packages)"
 
         finished "Finished format check in $(format_duration $(($(date +%s) - format_started_at)))"
     else
         step "Formatting C++ sources ($cpp_file_count files)"
-        if ! find_maintained_cpp -print0 | xargs -0 "$clang_format" -i; then
-            die "command 'clang-format' failed"
-        fi
+        run_clang_format -i
         passed "C++ formatting ($cpp_file_count files)"
 
         step "Formatting Rux sources ($manifest_count packages)"
-        find_manifests | while IFS= read -r manifest; do
-            run_checked rux "$rux_path" --manifest "$manifest" fmt
-        done
+        run_rux_fmt
         passed "Rux formatting ($manifest_count packages)"
 
         finished "Finished source formatting in $(format_duration $(($(date +%s) - format_started_at)))"
