@@ -8,6 +8,8 @@ Each release groups its entries under **Added**, **Changed**, **Removed**, and *
 
 ## [Unreleased]
 
+- **Semantic analysis ownership** — a concrete analysis context and grouped result facts replace the private analyzer hierarchy and positional output parameters. Conditional folding, accepted models, and focused checking passes have separate source owners.
+
 - **Compiler model boundaries** — resolved types, tokens, syntax data and semantic results have focused component targets. HIR, LIR, optimization and code generation consume model data independently of the semantic analyzer implementation.
 
 Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler context), native AArch64 host support on every platform, explicit references and ownership transfer, deterministic value lifecycles, an explicit `let`/`var` mutability model, and a consolidated, hermetic test tree.

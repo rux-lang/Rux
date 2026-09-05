@@ -114,6 +114,7 @@ set(RUX_TEST_SOURCES
     SemanticTypeCallDiagnosticsTests.cpp
     SemanticStringTypeTests.cpp
     SemanticTests.cpp
+    SemanticModelTests.cpp
     SemanticVisibilityTests.cpp
     SemanticTypePropertyTests.cpp
     SoftwareFloatTests.cpp

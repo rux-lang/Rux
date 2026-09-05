@@ -19,7 +19,7 @@
 #include "Driver/BuildTarget.h"
 #include "Driver/CompilerDriver.h"
 #include "Lexer/Lexer.h"
-#include "Semantic/ConditionalCompilation.h"
+#include "Semantic/Conditional/ConditionalCompilation.h"
 #include "Semantic/Model/CompileTimeContext.h"
 #include "Syntax/Ast/Ast.h"
 #include "Syntax/Parser/Parser.h"

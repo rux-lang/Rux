@@ -266,6 +266,34 @@ struct ValueCopy {
     SourceLocation location;
 };
 
+/// Accepted node-keyed facts. The analyzer fills one instance and transfers it into the immutable model.
+/// Node addresses continue to refer to the caller-owned AST throughout analysis and lowering.
+struct SemanticFacts {
+    std::unordered_map<const Expr *, TypeRef> expressionTypes;
+    std::unordered_map<const TypeExpr *, TypeRef> typeNodeTypes;
+    std::unordered_map<const Pattern *, TypeRef> patternTypes;
+    std::unordered_map<const EnumPattern *, ResolvedCasePattern> casePatterns;
+    std::unordered_map<const BinaryExpr *, ResolvedVariantEquality> variantEqualities;
+    std::unordered_map<std::string, VariantEqualityPlan> variantEqualityPlans;
+    std::unordered_map<const Expr *, ValueConsumption> valueConsumptions;
+    std::unordered_map<const Expr *, ValueCopy> valueCopies;
+    std::unordered_map<const CallExpr *, ResolvedCallableBinding> callableBindings;
+    std::unordered_map<const LetStmt *, ResolvedDefaultConstructor> defaultConstructors;
+    std::unordered_map<const Decl *, bool> effectiveVisibilities;
+    std::unordered_map<const Decl *, ResolvedSymbolIdentity> symbolIdentities;
+    std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> vtableIdentities;
+    std::unordered_map<std::string, ResolvedConstraintWitness> constraintWitnesses;
+    std::unordered_map<const TryExpr *, ResolvedPropagation> propagations;
+    std::unordered_map<const BinaryExpr *, ResolvedCoalescing> coalescings;
+    std::unordered_map<const IndexExpr *, ResolvedIndexOperator> indexOperators;
+    std::unordered_map<const IndexExpr *, ResolvedIndexAssignment> indexAssignments;
+    std::unordered_map<const ForStmt *, ResolvedIteration> iterations;
+    std::unordered_map<std::string, ResolvedTypeLayout> typeLayouts;
+    std::unordered_map<std::string, TypeProperties> typeProperties;
+    std::unordered_map<std::string, DropGluePlan> dropGluePlans;
+    std::unordered_map<const TypeQueryExpr *, std::uint64_t> typeQueryValues;
+};
+
 /**
  * @brief Persistent output of semantic analysis.
  *
@@ -284,29 +312,7 @@ struct SemanticModel {
 
     SemanticModel(std::vector<SemanticDiagnostic> inputDiagnostics, std::vector<SemanticSymbol> inputSymbols,
                   std::vector<const Module *> inputModules, CompileTimeContext inputCompileTimeContext,
-                  std::unordered_map<const Expr *, TypeRef> inputExpressionTypes,
-                  std::unordered_map<const TypeExpr *, TypeRef> inputTypeNodeTypes,
-                  std::unordered_map<const Pattern *, TypeRef> inputPatternTypes,
-                  std::unordered_map<const EnumPattern *, ResolvedCasePattern> inputCasePatterns,
-                  std::unordered_map<const BinaryExpr *, ResolvedVariantEquality> inputVariantEqualities,
-                  std::unordered_map<std::string, VariantEqualityPlan> inputVariantEqualityPlans,
-                  std::unordered_map<const Expr *, ValueConsumption> inputValueConsumptions,
-                  std::unordered_map<const Expr *, ValueCopy> inputValueCopies,
-                  std::unordered_map<const CallExpr *, ResolvedCallableBinding> inputCallableBindings,
-                  std::unordered_map<const LetStmt *, ResolvedDefaultConstructor> inputDefaultConstructors,
-                  std::unordered_map<const Decl *, bool> inputEffectiveVisibilities,
-                  std::unordered_map<const Decl *, ResolvedSymbolIdentity> inputSymbolIdentities,
-                  std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> inputVtableIdentities,
-                  std::unordered_map<std::string, ResolvedConstraintWitness> inputConstraintWitnesses,
-                  std::unordered_map<const TryExpr *, ResolvedPropagation> inputPropagations,
-                  std::unordered_map<const BinaryExpr *, ResolvedCoalescing> inputCoalescings,
-                  std::unordered_map<const IndexExpr *, ResolvedIndexOperator> inputIndexOperators,
-                  std::unordered_map<const IndexExpr *, ResolvedIndexAssignment> inputIndexAssignments,
-                  std::unordered_map<const ForStmt *, ResolvedIteration> inputIterations,
-                  std::unordered_map<std::string, ResolvedTypeLayout> inputTypeLayouts,
-                  std::unordered_map<std::string, TypeProperties> inputTypeProperties,
-                  std::unordered_map<std::string, DropGluePlan> inputDropGluePlans,
-                  std::unordered_map<const TypeQueryExpr *, std::uint64_t> inputSizeOfValues);
+                  SemanticFacts inputFacts);
 
     [[nodiscard]] bool HasErrors() const noexcept;
 
@@ -387,28 +393,6 @@ struct SemanticModel {
     [[nodiscard]] const std::uint64_t *TryGetTypeQueryValue(const TypeQueryExpr &expression) const noexcept;
 
 private:
-    std::unordered_map<const Expr *, TypeRef> expressionTypes;
-    std::unordered_map<const TypeExpr *, TypeRef> typeNodeTypes;
-    std::unordered_map<const Pattern *, TypeRef> patternTypes;
-    std::unordered_map<const EnumPattern *, ResolvedCasePattern> casePatterns;
-    std::unordered_map<const BinaryExpr *, ResolvedVariantEquality> variantEqualities;
-    std::unordered_map<std::string, VariantEqualityPlan> variantEqualityPlans;
-    std::unordered_map<const Expr *, ValueConsumption> valueConsumptions;
-    std::unordered_map<const Expr *, ValueCopy> valueCopies;
-    std::unordered_map<const CallExpr *, ResolvedCallableBinding> callableBindings;
-    std::unordered_map<const LetStmt *, ResolvedDefaultConstructor> defaultConstructors;
-    std::unordered_map<const Decl *, bool> effectiveVisibilities;
-    std::unordered_map<const Decl *, ResolvedSymbolIdentity> symbolIdentities;
-    std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> vtableIdentities;
-    std::unordered_map<std::string, ResolvedConstraintWitness> constraintWitnesses;
-    std::unordered_map<const TryExpr *, ResolvedPropagation> propagations;
-    std::unordered_map<const BinaryExpr *, ResolvedCoalescing> coalescings;
-    std::unordered_map<const IndexExpr *, ResolvedIndexOperator> indexOperators;
-    std::unordered_map<const IndexExpr *, ResolvedIndexAssignment> indexAssignments;
-    std::unordered_map<const ForStmt *, ResolvedIteration> iterations;
-    std::unordered_map<std::string, ResolvedTypeLayout> typeLayouts;
-    std::unordered_map<std::string, TypeProperties> typeProperties;
-    std::unordered_map<std::string, DropGluePlan> dropGluePlans;
-    std::unordered_map<const TypeQueryExpr *, std::uint64_t> typeQueryValues;
+    SemanticFacts facts;
 };
 } // namespace Rux

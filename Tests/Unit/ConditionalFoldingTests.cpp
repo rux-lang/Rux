@@ -2,7 +2,7 @@
 
 #include "ConditionalCompilationTestSupport.h"
 #include "Lowering/AstToHir/AstToHir.h"
-#include "Semantic/ConditionalCompilation.h"
+#include "Semantic/Conditional/ConditionalCompilation.h"
 #include "Semantic/SemanticAnalyzer.h"
 
 #include <algorithm>

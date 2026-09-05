@@ -126,56 +126,12 @@ ResolvedCallableBinding::Instantiate(const std::unordered_map<std::string, TypeR
 
 SemanticModel::SemanticModel(std::vector<SemanticDiagnostic> inputDiagnostics, std::vector<SemanticSymbol> inputSymbols,
                              std::vector<const Module *> inputModules, CompileTimeContext inputCompileTimeContext,
-                             std::unordered_map<const Expr *, TypeRef> inputExpressionTypes,
-                             std::unordered_map<const TypeExpr *, TypeRef> inputTypeNodeTypes,
-                             std::unordered_map<const Pattern *, TypeRef> inputPatternTypes,
-                             std::unordered_map<const EnumPattern *, ResolvedCasePattern> inputCasePatterns,
-                             std::unordered_map<const BinaryExpr *, ResolvedVariantEquality> inputVariantEqualities,
-                             std::unordered_map<std::string, VariantEqualityPlan> inputVariantEqualityPlans,
-                             std::unordered_map<const Expr *, ValueConsumption> inputValueConsumptions,
-                             std::unordered_map<const Expr *, ValueCopy> inputValueCopies,
-                             std::unordered_map<const CallExpr *, ResolvedCallableBinding> inputCallableBindings,
-                             std::unordered_map<const LetStmt *, ResolvedDefaultConstructor> inputDefaultConstructors,
-                             std::unordered_map<const Decl *, bool> inputEffectiveVisibilities,
-                             std::unordered_map<const Decl *, ResolvedSymbolIdentity> inputSymbolIdentities,
-                             std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> inputVtableIdentities,
-                             std::unordered_map<std::string, ResolvedConstraintWitness> inputConstraintWitnesses,
-                             std::unordered_map<const TryExpr *, ResolvedPropagation> inputPropagations,
-                             std::unordered_map<const BinaryExpr *, ResolvedCoalescing> inputCoalescings,
-                             std::unordered_map<const IndexExpr *, ResolvedIndexOperator> inputIndexOperators,
-                             std::unordered_map<const IndexExpr *, ResolvedIndexAssignment> inputIndexAssignments,
-                             std::unordered_map<const ForStmt *, ResolvedIteration> inputIterations,
-                             std::unordered_map<std::string, ResolvedTypeLayout> inputTypeLayouts,
-                             std::unordered_map<std::string, TypeProperties> inputTypeProperties,
-                             std::unordered_map<std::string, DropGluePlan> inputDropGluePlans,
-                             std::unordered_map<const TypeQueryExpr *, std::uint64_t> inputSizeOfValues)
+                             SemanticFacts inputFacts)
     : diagnostics(std::move(inputDiagnostics))
     , symbols(std::move(inputSymbols))
     , modules(std::move(inputModules))
     , compileTimeContext(std::move(inputCompileTimeContext))
-    , expressionTypes(std::move(inputExpressionTypes))
-    , typeNodeTypes(std::move(inputTypeNodeTypes))
-    , patternTypes(std::move(inputPatternTypes))
-    , casePatterns(std::move(inputCasePatterns))
-    , variantEqualities(std::move(inputVariantEqualities))
-    , variantEqualityPlans(std::move(inputVariantEqualityPlans))
-    , valueConsumptions(std::move(inputValueConsumptions))
-    , valueCopies(std::move(inputValueCopies))
-    , callableBindings(std::move(inputCallableBindings))
-    , defaultConstructors(std::move(inputDefaultConstructors))
-    , effectiveVisibilities(std::move(inputEffectiveVisibilities))
-    , symbolIdentities(std::move(inputSymbolIdentities))
-    , vtableIdentities(std::move(inputVtableIdentities))
-    , constraintWitnesses(std::move(inputConstraintWitnesses))
-    , propagations(std::move(inputPropagations))
-    , coalescings(std::move(inputCoalescings))
-    , indexOperators(std::move(inputIndexOperators))
-    , indexAssignments(std::move(inputIndexAssignments))
-    , iterations(std::move(inputIterations))
-    , typeLayouts(std::move(inputTypeLayouts))
-    , typeProperties(std::move(inputTypeProperties))
-    , dropGluePlans(std::move(inputDropGluePlans))
-    , typeQueryValues(std::move(inputSizeOfValues)) {
+    , facts(std::move(inputFacts)) {
 }
 
 bool SemanticModel::HasErrors() const noexcept {
@@ -184,104 +140,104 @@ bool SemanticModel::HasErrors() const noexcept {
 }
 
 const TypeRef *SemanticModel::TryGetType(const Expr &expression) const noexcept {
-    const auto type = expressionTypes.find(&expression);
-    return type == expressionTypes.end() ? nullptr : &type->second;
+    const auto type = facts.expressionTypes.find(&expression);
+    return type == facts.expressionTypes.end() ? nullptr : &type->second;
 }
 
 const TypeRef *SemanticModel::TryGetType(const TypeExpr &typeNode) const noexcept {
-    const auto type = typeNodeTypes.find(&typeNode);
-    return type == typeNodeTypes.end() ? nullptr : &type->second;
+    const auto type = facts.typeNodeTypes.find(&typeNode);
+    return type == facts.typeNodeTypes.end() ? nullptr : &type->second;
 }
 
 const TypeRef *SemanticModel::TryGetType(const Pattern &pattern) const noexcept {
-    const auto type = patternTypes.find(&pattern);
-    return type == patternTypes.end() ? nullptr : &type->second;
+    const auto type = facts.patternTypes.find(&pattern);
+    return type == facts.patternTypes.end() ? nullptr : &type->second;
 }
 
 const ResolvedCasePattern *SemanticModel::TryGetCasePattern(const EnumPattern &pattern) const noexcept {
-    const auto fact = casePatterns.find(&pattern);
-    return fact == casePatterns.end() ? nullptr : &fact->second;
+    const auto fact = facts.casePatterns.find(&pattern);
+    return fact == facts.casePatterns.end() ? nullptr : &fact->second;
 }
 
 const ResolvedVariantEquality *SemanticModel::TryGetVariantEquality(const BinaryExpr &expression) const noexcept {
-    const auto fact = variantEqualities.find(&expression);
-    return fact == variantEqualities.end() ? nullptr : &fact->second;
+    const auto fact = facts.variantEqualities.find(&expression);
+    return fact == facts.variantEqualities.end() ? nullptr : &fact->second;
 }
 
 const VariantEqualityPlan *SemanticModel::TryGetVariantEqualityPlan(const TypeRef &type) const noexcept {
-    const auto plan = variantEqualityPlans.find(type.ToString());
-    return plan == variantEqualityPlans.end() ? nullptr : &plan->second;
+    const auto plan = facts.variantEqualityPlans.find(type.ToString());
+    return plan == facts.variantEqualityPlans.end() ? nullptr : &plan->second;
 }
 
 const ValueConsumption *SemanticModel::TryGetConsumption(const Expr &expression) const noexcept {
-    const auto consumption = valueConsumptions.find(&expression);
-    return consumption == valueConsumptions.end() ? nullptr : &consumption->second;
+    const auto consumption = facts.valueConsumptions.find(&expression);
+    return consumption == facts.valueConsumptions.end() ? nullptr : &consumption->second;
 }
 
 const ValueCopy *SemanticModel::TryGetCopy(const Expr &expression) const noexcept {
-    const auto copy = valueCopies.find(&expression);
-    return copy == valueCopies.end() ? nullptr : &copy->second;
+    const auto copy = facts.valueCopies.find(&expression);
+    return copy == facts.valueCopies.end() ? nullptr : &copy->second;
 }
 
 const ResolvedCallableBinding *SemanticModel::TryGetCallableBinding(const CallExpr &call) const noexcept {
-    const auto binding = callableBindings.find(&call);
-    return binding == callableBindings.end() ? nullptr : &binding->second;
+    const auto binding = facts.callableBindings.find(&call);
+    return binding == facts.callableBindings.end() ? nullptr : &binding->second;
 }
 
 const ResolvedDefaultConstructor *SemanticModel::TryGetDefaultConstructor(const LetStmt &statement) const noexcept {
-    const auto constructor = defaultConstructors.find(&statement);
-    return constructor == defaultConstructors.end() ? nullptr : &constructor->second;
+    const auto constructor = facts.defaultConstructors.find(&statement);
+    return constructor == facts.defaultConstructors.end() ? nullptr : &constructor->second;
 }
 
 bool SemanticModel::IsEffectivelyPublic(const Decl &declaration) const noexcept {
-    const auto visibility = effectiveVisibilities.find(&declaration);
-    return visibility != effectiveVisibilities.end() && visibility->second;
+    const auto visibility = facts.effectiveVisibilities.find(&declaration);
+    return visibility != facts.effectiveVisibilities.end() && visibility->second;
 }
 
 const ResolvedSymbolIdentity *SemanticModel::TryGetSymbolIdentity(const Decl &declaration) const noexcept {
-    const auto identity = symbolIdentities.find(&declaration);
-    return identity == symbolIdentities.end() ? nullptr : &identity->second;
+    const auto identity = facts.symbolIdentities.find(&declaration);
+    return identity == facts.symbolIdentities.end() ? nullptr : &identity->second;
 }
 
 const ResolvedVtableIdentity *SemanticModel::TryGetVtableIdentity(const ImplDecl &declaration) const noexcept {
-    const auto identity = vtableIdentities.find(&declaration);
-    return identity == vtableIdentities.end() ? nullptr : &identity->second;
+    const auto identity = facts.vtableIdentities.find(&declaration);
+    return identity == facts.vtableIdentities.end() ? nullptr : &identity->second;
 }
 
 const ResolvedConstraintWitness *SemanticModel::TryGetConstraintWitness(const std::string &interfaceName,
                                                                         const TypeRef &type) const noexcept {
-    const auto witness = constraintWitnesses.find(ConstraintWitnessKey(interfaceName, type));
-    return witness == constraintWitnesses.end() ? nullptr : &witness->second;
+    const auto witness = facts.constraintWitnesses.find(ConstraintWitnessKey(interfaceName, type));
+    return witness == facts.constraintWitnesses.end() ? nullptr : &witness->second;
 }
 
 const ResolvedPropagation *SemanticModel::TryGetPropagation(const TryExpr &expression) const noexcept {
-    const auto propagation = propagations.find(&expression);
-    return propagation == propagations.end() ? nullptr : &propagation->second;
+    const auto propagation = facts.propagations.find(&expression);
+    return propagation == facts.propagations.end() ? nullptr : &propagation->second;
 }
 
 const ResolvedCoalescing *SemanticModel::TryGetCoalescing(const BinaryExpr &expression) const noexcept {
-    const auto coalescing = coalescings.find(&expression);
-    return coalescing == coalescings.end() ? nullptr : &coalescing->second;
+    const auto coalescing = facts.coalescings.find(&expression);
+    return coalescing == facts.coalescings.end() ? nullptr : &coalescing->second;
 }
 
 const ResolvedIndexOperator *SemanticModel::TryGetIndexOperator(const IndexExpr &expression) const noexcept {
-    const auto indexOperator = indexOperators.find(&expression);
-    return indexOperator == indexOperators.end() ? nullptr : &indexOperator->second;
+    const auto indexOperator = facts.indexOperators.find(&expression);
+    return indexOperator == facts.indexOperators.end() ? nullptr : &indexOperator->second;
 }
 
 const ResolvedIndexAssignment *SemanticModel::TryGetIndexAssignment(const IndexExpr &expression) const noexcept {
-    const auto assignment = indexAssignments.find(&expression);
-    return assignment == indexAssignments.end() ? nullptr : &assignment->second;
+    const auto assignment = facts.indexAssignments.find(&expression);
+    return assignment == facts.indexAssignments.end() ? nullptr : &assignment->second;
 }
 
 const ResolvedIteration *SemanticModel::TryGetIteration(const ForStmt &statement) const noexcept {
-    const auto iteration = iterations.find(&statement);
-    return iteration == iterations.end() ? nullptr : &iteration->second;
+    const auto iteration = facts.iterations.find(&statement);
+    return iteration == facts.iterations.end() ? nullptr : &iteration->second;
 }
 
 const ResolvedTypeLayout *SemanticModel::TryGetLayout(const TypeRef &type) const noexcept {
-    const auto layout = typeLayouts.find(type.ToString());
-    return layout == typeLayouts.end() ? nullptr : &layout->second;
+    const auto layout = facts.typeLayouts.find(type.ToString());
+    return layout == facts.typeLayouts.end() ? nullptr : &layout->second;
 }
 
 const ResolvedTypeLayout *SemanticModel::TryGetLayout(const TypeExpr &typeNode) const noexcept {
@@ -290,8 +246,8 @@ const ResolvedTypeLayout *SemanticModel::TryGetLayout(const TypeExpr &typeNode) 
 }
 
 const TypeProperties *SemanticModel::TryGetProperties(const TypeRef &type) const noexcept {
-    const auto properties = typeProperties.find(type.ToString());
-    return properties == typeProperties.end() ? nullptr : &properties->second;
+    const auto properties = facts.typeProperties.find(type.ToString());
+    return properties == facts.typeProperties.end() ? nullptr : &properties->second;
 }
 
 const TypeProperties *SemanticModel::TryGetProperties(const Expr &expression) const noexcept {
@@ -310,16 +266,16 @@ const TypeProperties *SemanticModel::TryGetProperties(const Pattern &pattern) co
 }
 
 const DropGluePlan *SemanticModel::TryGetDropGlue(const TypeRef &type) const noexcept {
-    const auto glue = dropGluePlans.find(type.ToString());
-    return glue == dropGluePlans.end() ? nullptr : &glue->second;
+    const auto glue = facts.dropGluePlans.find(type.ToString());
+    return glue == facts.dropGluePlans.end() ? nullptr : &glue->second;
 }
 
 const std::unordered_map<std::string, DropGluePlan> &SemanticModel::DropGluePlans() const noexcept {
-    return dropGluePlans;
+    return facts.dropGluePlans;
 }
 
 const std::uint64_t *SemanticModel::TryGetTypeQueryValue(const TypeQueryExpr &expression) const noexcept {
-    const auto value = typeQueryValues.find(&expression);
-    return value == typeQueryValues.end() ? nullptr : &value->second;
+    const auto value = facts.typeQueryValues.find(&expression);
+    return value == facts.typeQueryValues.end() ? nullptr : &value->second;
 }
 } // namespace Rux

@@ -19,7 +19,7 @@ reset_fixture() {
         "$fixture_root/Compiler/Lowering" "$fixture_root/Packages/Example/Src"
     printf '%s\n' "const char *message = \"requires an explicit '<-' in argument\";" \
         'if (RejectImplicitMove(expression, type, kind, location)) {}' \
-        >"$fixture_root/Compiler/Semantic/SemanticMoveState.cpp"
+        >"$fixture_root/Compiler/Semantic/Analysis/MoveState.cpp"
     printf '%s\n' "const char *message = \"mutable parameter syntax 'var value: T' has been removed\";" \
         >"$fixture_root/Compiler/Syntax/Parser/ParserDeclDispatch.cpp"
     printf '%s\n' \
@@ -71,7 +71,7 @@ expect_failure exact-new-wrapper
 
 reset_fixture
 printf '%s\n' 'void ConsumeNamedValueWithoutCheckingCopyability();' \
-    >"$fixture_root/Compiler/Semantic/SemanticMoveState.cpp"
+    >"$fixture_root/Compiler/Semantic/Analysis/MoveState.cpp"
 expect_failure implicit-named-move
 
 reset_fixture

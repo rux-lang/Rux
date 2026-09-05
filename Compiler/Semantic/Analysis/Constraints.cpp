@@ -1,0 +1,354 @@
+// Generic constraint resolution: what an interface bound written on a type parameter means, and whether the type
+// argument a call or a type reference supplies actually provides the operations that bound promises.
+
+#include "Semantic/Analysis/AnalysisContext.h"
+
+#include <format>
+#include <unordered_set>
+#include <utility>
+
+namespace Rux::SemanticDetail {
+namespace {
+/// The bound as the reader wrote it. A bound is a plain interface name, so anything with a type argument list or a
+/// module path is reported at its own spelling rather than silently reduced to the last segment.
+[[nodiscard]] const NamedTypeExpr *BoundName(const TypeExpr &bound) {
+    return dynamic_cast<const NamedTypeExpr *>(&bound);
+}
+} // namespace
+
+std::vector<AnalysisContext::ResolvedTypeBound>
+AnalysisContext::ResolveTypeParameterBounds(const TypeParameter &parameter, const bool report) {
+    std::vector<ResolvedTypeBound> resolved;
+    std::unordered_set<std::string> seen;
+    for (const TypeExprPtr &bound : parameter.bounds) {
+        const NamedTypeExpr *named = BoundName(*bound);
+        if (!named) {
+            if (report) {
+                EmitError(bound->location,
+                          std::format("bound on type parameter '{}' must name an interface", parameter.name));
+            }
+            continue;
+        }
+        if (!named->typeArgs.empty()) {
+            if (report) {
+                EmitError(named->location, std::format("interface bound '{}' cannot take type arguments", named->name));
+            }
+            resolved.push_back({named->name, nullptr, named->location});
+            continue;
+        }
+
+        if (!seen.insert(named->name).second) {
+            if (report) {
+                EmitError(named->location,
+                          std::format("type parameter '{}' repeats interface bound '{}'", parameter.name, named->name));
+            }
+            continue;
+        }
+
+        // A bound belongs to the declaration that wrote it, not to whoever calls it. Resolving a use site against the
+        // caller's scope would demand that every caller import an interface it never names, and a caller that had not
+        // would resolve the bound to nothing at all -- silently, since a use site does not report -- leaving lowering
+        // with a conformance it was promised and cannot find. So a use site reads the program's interfaces directly,
+        // and only the declaration itself is held to what is in scope where it was written.
+        if (!report) {
+            const auto known = interfaceDecls.find(named->name);
+            resolved.push_back({named->name, known == interfaceDecls.end() ? nullptr : known->second, named->location});
+            continue;
+        }
+
+        const Symbol *symbol = currentScope->Lookup(named->name);
+        if (!symbol) {
+            std::optional<std::string> help;
+            if (const Symbol *suggestion = currentScope->Suggest(named->name)) {
+                help = std::format("did you mean '{}'?", suggestion->name);
+            }
+            EmitError(named->location, std::format("interface '{}' is not defined", named->name), {}, std::move(help));
+            resolved.push_back({named->name, nullptr, named->location});
+            continue;
+        }
+        if (symbol->kind != Symbol::Kind::Interface) {
+            EmitError(named->location,
+                      std::format("name '{}' is a {}, not an interface, and cannot bound type parameter '{}'",
+                                  named->name, SymbolKindName(symbol->kind), parameter.name),
+                      {DeclarationNote(*symbol)});
+            resolved.push_back({named->name, nullptr, named->location});
+            continue;
+        }
+        const auto declaration = interfaceDecls.find(named->name);
+        resolved.push_back(
+            {named->name, declaration == interfaceDecls.end() ? nullptr : declaration->second, named->location});
+    }
+    return resolved;
+}
+
+void AnalysisContext::DeclareTypeParameterBounds(const std::vector<TypeParameter> &parameters) {
+    for (const TypeParameter &parameter : parameters) {
+        std::vector<ResolvedTypeBound> bounds = ResolveTypeParameterBounds(parameter, /*report=*/true);
+        currentTypeParamBounds[parameter.name] = std::move(bounds);
+    }
+}
+
+AnalysisContext::ScopedTypeParameterBounds::ScopedTypeParameterBounds(AnalysisContext &owner,
+                                                                      const std::vector<TypeParameter> *parameters,
+                                                                      const bool replaceEnclosing)
+    : context(owner)
+    , saved(owner.currentTypeParamBounds) {
+    if (replaceEnclosing) {
+        context.currentTypeParamBounds.clear();
+    }
+    if (parameters) {
+        context.DeclareTypeParameterBounds(*parameters);
+    }
+}
+
+AnalysisContext::ScopedTypeParameterBounds::~ScopedTypeParameterBounds() {
+    context.currentTypeParamBounds = std::move(saved);
+}
+
+bool AnalysisContext::TypeSatisfiesBound(const TypeRef &argument, const InterfaceDecl &interface, std::string &reason) {
+    // An interface that requires nothing is satisfied by everything, so a marker bound costs no conformance work.
+    if (interface.methods.empty()) {
+        return true;
+    }
+
+    // A type parameter passed on as a type argument carries only what its own declaration promised. Checking that
+    // promise here rather than at each instantiation is what keeps a generic body checkable on its own: the caller
+    // already had to satisfy the outer bound, so the inner one follows.
+    if (argument.kind == TypeRef::Kind::TypeParam) {
+        const auto bounds = currentTypeParamBounds.find(argument.name);
+        // A parameter with no recorded bounds belongs to a declaration that is not the one being checked -- a signature
+        // is resolved before its body, and a type is read back in contexts that carry names but no constraints. What
+        // that parameter promised is unknown here, so the pass over its own declaration decides instead of this one.
+        if (bounds == currentTypeParamBounds.end()) {
+            return true;
+        }
+        for (const ResolvedTypeBound &bound : bounds->second) {
+            if (bound.interface == &interface) {
+                return true;
+            }
+        }
+        reason = std::format("type parameter '{}' is not constrained by '{}'", argument.name, interface.name);
+        return false;
+    }
+
+    const std::string typeName = NamedBaseTypeName(argument);
+    if (typeName.empty()) {
+        reason = std::format("type '{}' cannot carry the methods interface '{}' requires", argument.ToString(),
+                             interface.name);
+        return false;
+    }
+
+    // The operations themselves decide. `extend T: I` states the conformance outright, but its methods are indexed the
+    // same way a plain extend block's are, so one rule covers both: a type satisfies the bound when every operation the
+    // interface names has exactly one method to call. Naming that method here is also what makes the bound usable --
+    // lowering calls it directly per instantiation, so a conformance with no callable method would satisfy nothing.
+    ResolvedConstraintWitness witness;
+    witness.interfaceName = interface.name;
+    witness.typeName = typeName;
+    for (const auto &required : interface.methods) {
+        const FuncDecl *operation = SelectBoundOperation(typeName, *required);
+        if (!operation) {
+            reason = std::format("interface '{}' requires method '{}', which type '{}' does not implement",
+                                 interface.name, required->name, argument.ToString());
+            return false;
+        }
+        witness.operations.push_back(operation);
+    }
+    constraintWitnesses.insert_or_assign(ConstraintWitnessKey(interface.name, argument), std::move(witness));
+    return true;
+}
+
+const FuncDecl *AnalysisContext::SelectBoundOperation(const std::string &typeName, const FuncDecl &required) const {
+    const auto methods = methodsByType.find(typeName);
+    if (methods == methodsByType.end()) {
+        return nullptr;
+    }
+    const auto named = methods->second.find(required.name);
+    if (named == methods->second.end() || named->second.empty()) {
+        return nullptr;
+    }
+    if (named->second.size() == 1) {
+        return named->second.front();
+    }
+
+    // An overloaded name needs the overload the interface asked for. Written arity is what the interface states, since
+    // its own declaration carries no receiver, and an ambiguous name provides no single operation to call.
+    const auto writtenCount = [](const FuncDecl &function) {
+        std::size_t count = 0;
+        for (const Param &parameter : function.params) {
+            if (!parameter.IsReceiver()) {
+                ++count;
+            }
+        }
+        return count;
+    };
+    const FuncDecl *selected = nullptr;
+    for (const FuncDecl *candidate : named->second) {
+        if (writtenCount(*candidate) != writtenCount(required)) {
+            continue;
+        }
+        if (selected) {
+            return nullptr;
+        }
+        selected = candidate;
+    }
+    return selected;
+}
+
+std::optional<AnalysisContext::ConstrainedOperation>
+AnalysisContext::LookupConstrainedOperation(const TypeRef &receiverType, const std::string &methodName) const {
+    const TypeRef &receiver =
+        (receiverType.kind == TypeRef::Kind::Pointer || receiverType.kind == TypeRef::Kind::Reference) &&
+                !receiverType.inner.empty()
+            ? receiverType.inner.front()
+            : receiverType;
+    if (receiver.kind != TypeRef::Kind::TypeParam) {
+        return std::nullopt;
+    }
+    const auto bounds = currentTypeParamBounds.find(receiver.name);
+    if (bounds == currentTypeParamBounds.end()) {
+        return std::nullopt;
+    }
+    for (const ResolvedTypeBound &bound : bounds->second) {
+        if (!bound.interface) {
+            continue;
+        }
+        for (std::size_t index = 0; index < bound.interface->methods.size(); ++index) {
+            if (bound.interface->methods[index]->name != methodName) {
+                continue;
+            }
+            return ConstrainedOperation{receiver.name, bound.name, bound.interface->methods[index].get(), index};
+        }
+    }
+    return std::nullopt;
+}
+
+void AnalysisContext::RecordConstrainedBinding(const CallExpr &call, const ConstrainedOperation &operation,
+                                               const TypeRef &receiverType) {
+    RecordFunctionBinding(call, *operation.operation, ResolvedCallableBinding::DispatchKind::Constrained, {},
+                          receiverType);
+    ResolvedCallableBinding &binding = callableBindings.at(&call);
+    binding.constraintInterface = operation.interfaceName;
+    binding.constraintOperationIndex = operation.operationIndex;
+}
+
+void AnalysisContext::EmitMissingConstrainedOperation(const SourceLocation location, const TypeRef &receiverType,
+                                                      const std::string &methodName) const {
+    const TypeRef &receiver =
+        (receiverType.kind == TypeRef::Kind::Pointer || receiverType.kind == TypeRef::Kind::Reference) &&
+                !receiverType.inner.empty()
+            ? receiverType.inner.front()
+            : receiverType;
+    std::vector<std::string> notes;
+    std::string names;
+    if (const auto bounds = currentTypeParamBounds.find(receiver.name); bounds != currentTypeParamBounds.end()) {
+        for (const ResolvedTypeBound &bound : bounds->second) {
+            names += names.empty() ? "" : ", ";
+            names += std::format("'{}'", bound.name);
+        }
+    }
+    notes.push_back(names.empty() ? std::format("type parameter '{}' has no interface bounds", receiver.name)
+                                  : std::format("type parameter '{}' is bound by {}", receiver.name, names));
+    EmitError(
+        location,
+        std::format("no interface bound on type parameter '{}' provides method '{}'", receiver.name, methodName),
+        std::move(notes),
+        std::format("add a bound whose interface declares '{}', as in '{}: SomeInterface'", methodName, receiver.name));
+}
+
+void AnalysisContext::CheckTypeArgumentConstraints(const std::vector<TypeParameter> &parameters,
+                                                   const std::unordered_map<std::string, TypeRef> &substitutions,
+                                                   const SourceLocation location, const std::string &subject) {
+    for (const TypeParameter &parameter : parameters) {
+        if (parameter.bounds.empty()) {
+            continue;
+        }
+        const auto argument = substitutions.find(parameter.name);
+        if (argument == substitutions.end() || argument->second.IsUnknown()) {
+            continue;
+        }
+
+        for (const ResolvedTypeBound &bound : ResolveTypeParameterBounds(parameter, /*report=*/false)) {
+            // A bound that named nothing usable was reported where it was written; repeating it at each use would bury
+            // the one diagnostic that can be acted on.
+            if (!bound.interface) {
+                continue;
+            }
+            std::string reason;
+            if (TypeSatisfiesBound(argument->second, *bound.interface, reason)) {
+                continue;
+            }
+            const std::string argumentName = argument->second.ToString();
+            std::vector<std::string> notes{std::move(reason)};
+            notes.push_back(
+                std::format("type parameter '{}' of {} is bound by '{}'", parameter.name, subject, bound.name));
+            std::optional<std::string> help;
+            if (argument->second.kind == TypeRef::Kind::TypeParam) {
+                help =
+                    std::format("add the bound to the enclosing declaration, as in '{}: {}'", argumentName, bound.name);
+            }
+            else {
+                help =
+                    std::format("implement the interface, as in 'extend {}: {} {{ ... }}'", argumentName, bound.name);
+            }
+            EmitError(location,
+                      std::format("type argument '{}' does not satisfy interface bound '{}' on type parameter '{}'",
+                                  argumentName, bound.name, parameter.name),
+                      std::move(notes), std::move(help));
+        }
+    }
+}
+
+void AnalysisContext::CheckTypeReferenceConstraints(const TypeExpr &expression,
+                                                    const std::vector<TypeParameter> &parameters,
+                                                    const std::vector<TypeRef> &typeArguments,
+                                                    const std::string &subject) {
+    if (parameters.size() != typeArguments.size() || reportedTypeArgumentConstraints.contains(&expression)) {
+        return;
+    }
+    std::unordered_map<std::string, TypeRef> substitutions;
+    for (std::size_t index = 0; index < parameters.size(); ++index) {
+        substitutions.emplace(parameters[index].name, typeArguments[index]);
+    }
+    // Only a report consumes the spelling. A pass that reached this type before its enclosing declaration's bounds were
+    // recorded decided nothing, and suppressing the later pass on the strength of it would lose the diagnostic.
+    const std::size_t before = diags.size();
+    CheckTypeArgumentConstraints(parameters, substitutions, expression.location, subject);
+    if (diags.size() != before) {
+        reportedTypeArgumentConstraints.insert(&expression);
+    }
+}
+
+void AnalysisContext::CheckWrittenTypeArgumentConstraints(const std::vector<TypeParameter> &parameters,
+                                                          const std::vector<TypeExprPtr> &typeArguments,
+                                                          const SourceLocation location, const std::string &subject) {
+    if (parameters.size() != typeArguments.size()) {
+        return;
+    }
+    std::unordered_map<std::string, TypeRef> substitutions;
+    for (std::size_t index = 0; index < parameters.size(); ++index) {
+        substitutions.emplace(parameters[index].name, ResolveType(*typeArguments[index]));
+    }
+    CheckTypeArgumentConstraints(parameters, substitutions, location, subject);
+}
+
+bool AnalysisContext::TypeArgumentsSatisfyBounds(const std::vector<TypeParameter> &parameters,
+                                                 const std::unordered_map<std::string, TypeRef> &substitutions) {
+    for (const TypeParameter &parameter : parameters) {
+        if (parameter.bounds.empty()) {
+            continue;
+        }
+        const auto argument = substitutions.find(parameter.name);
+        if (argument == substitutions.end() || argument->second.IsUnknown()) {
+            continue;
+        }
+        for (const ResolvedTypeBound &bound : ResolveTypeParameterBounds(parameter, /*report=*/false)) {
+            std::string reason;
+            if (bound.interface && !TypeSatisfiesBound(argument->second, *bound.interface, reason)) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+} // namespace Rux::SemanticDetail

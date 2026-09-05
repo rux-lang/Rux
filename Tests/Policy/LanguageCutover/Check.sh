@@ -87,14 +87,14 @@ done | LC_ALL=C sort | while IFS=: read -r file line rule; do
     esac
 done
 
-if ! grep -F "requires an explicit '<-' in" Compiler/Semantic/SemanticMoveState.cpp >/dev/null 2>&1; then
-    report Compiler/Semantic/SemanticMoveState.cpp 1 implicit-named-move \
+if ! grep -F "requires an explicit '<-' in" Compiler/Semantic/Analysis/MoveState.cpp >/dev/null 2>&1; then
+    report Compiler/Semantic/Analysis/MoveState.cpp 1 implicit-named-move \
         "keep plain named by-value use as copy and diagnose move-only sources without '<-'"
 fi
 
 if ! grep -F 'if (RejectImplicitMove(expression, type, kind, location))' \
-    Compiler/Semantic/SemanticMoveState.cpp >/dev/null 2>&1; then
-    report Compiler/Semantic/SemanticMoveState.cpp 1 implicit-named-move \
+    Compiler/Semantic/Analysis/MoveState.cpp >/dev/null 2>&1; then
+    report Compiler/Semantic/Analysis/MoveState.cpp 1 implicit-named-move \
         "keep the move-only consumption path connected to the implicit-move rejection"
 fi
 
