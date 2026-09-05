@@ -63,12 +63,17 @@ jobs:
           - arch: x86_64
             label: x86-64
             vm_arch: x86_64
+            host: ubuntu-26.04
             artifact: rux-freebsd-x86_64
           - arch: aarch64
             label: AArch64
             vm_arch: aarch64
+            host: ubuntu-24.04
             artifact: rux-freebsd-aarch64
-    runs-on: ubuntu-26.04
+    # The host image supplies QEMU and the AArch64 guest firmware, and only
+    # ubuntu-24.04 boots the emulated FreeBSD 15.1 AArch64 guest (see
+    # FreeBSD.yml).
+    runs-on: ${{ matrix.host }}
     # The AArch64 VM fully emulates the compiler and complete test build.
     timeout-minutes: 240
     steps:
@@ -151,7 +156,8 @@ jobs:
   freebsd-cross-runtime:
     name: FreeBSD cross runtime (transferred to AArch64)
     needs: freebsd-cross-build
-    runs-on: ubuntu-26.04
+    # Boots an emulated AArch64 guest, so it needs the ubuntu-24.04 host too.
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - name: Checkout verifier
