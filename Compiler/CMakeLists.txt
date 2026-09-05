@@ -139,6 +139,7 @@ rux_add_component(RuxSyntax
     Syntax/Parser/Parser.cpp
     Syntax/Parser/ParserAsm.cpp
     Syntax/Parser/ParserDecl.cpp
+    Syntax/Parser/ParserAttributes.cpp
     Syntax/Parser/ParserDeclDispatch.cpp
     Syntax/Parser/ParserType.cpp
     Syntax/Parser/ParserStmt.cpp
@@ -256,6 +257,9 @@ rux_add_component(RuxCodeGenCommon
 target_link_libraries(RuxCodeGenCommon PUBLIC RuxNumeric RuxLir RuxObjectRcu RuxDiagnostics RuxUnicode)
 
 rux_add_component(RuxCodeGenX86_64
+    CodeGen/X86_64/AssemblerEncoding.cpp
+    CodeGen/X86_64/AssemblerInteger.cpp
+    CodeGen/X86_64/AssemblerFloating.cpp
     CodeGen/X86_64/Assembler.cpp
     CodeGen/X86_64/AssemblerSupport.cpp
     CodeGen/X86_64/AssemblyControlFlowPrinter.cpp
@@ -269,6 +273,9 @@ rux_add_component(RuxCodeGenX86_64
     CodeGen/X86_64/FramePlan.cpp
     CodeGen/X86_64/FunctionEmitter.cpp
     CodeGen/X86_64/WideIntegerEmitter.cpp
+    CodeGen/X86_64/ModuleData.cpp
+    CodeGen/X86_64/ModuleValues.cpp
+    CodeGen/X86_64/ModuleRuntimeFailure.cpp
     CodeGen/X86_64/RcuEmitter.cpp
     CodeGen/X86_64/SoftwareFloatEmitter.cpp)
 target_link_libraries(RuxCodeGenX86_64 PUBLIC RuxBuildInfo RuxCodeGenCommon RuxObjectRcu RuxDiagnostics)
@@ -293,6 +300,9 @@ rux_add_component(RuxCodeGenAArch64
     CodeGen/AArch64/FunctionEmitter.cpp
     CodeGen/AArch64/SoftwareFloatEmitter.cpp
     CodeGen/AArch64/WideIntegerEmitter.cpp
+    CodeGen/AArch64/ModuleData.cpp
+    CodeGen/AArch64/ModuleValues.cpp
+    CodeGen/AArch64/ModuleRuntimeFailure.cpp
     CodeGen/AArch64/RcuEmitter.cpp)
 target_link_libraries(RuxCodeGenAArch64 PUBLIC RuxBuildInfo RuxCodeGenCommon RuxObjectRcu RuxDiagnostics)
 
@@ -343,7 +353,8 @@ add_executable(rux
     Cli/CmdInspect.cpp
     Cli/CmdInstall.cpp
     Cli/CmdLint.cpp
-    Cli/CmdMisc.cpp
+    Cli/CmdFmt.cpp
+    Cli/CmdDoc.cpp
     Cli/CmdNew.cpp
     Cli/CmdPublish.cpp
     Cli/CmdRun.cpp

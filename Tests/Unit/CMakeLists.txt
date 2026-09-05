@@ -37,11 +37,14 @@ set(RUX_TEST_SOURCES
     ChecksumTests.cpp
     CliContractTests.cpp
     CliProcessTests.cpp
+    CliPackageProcessTests.cpp
+    CliBuildProcessTests.cpp
     CliScaffoldProcessTests.cpp
     CommentSystemAcceptanceTests.cpp
     CmdInspectProcessTests.cpp
     CoalescingLoweringTests.cpp
     CompilerDriverTests.cpp
+    CompilerDriverTargetTests.cpp
     CompilerPipelineDiagnosticTests.cpp
     ConstantEvaluatorTests.cpp
     ConditionalCompilationTestSupport.cpp
@@ -79,9 +82,13 @@ set(RUX_TEST_SOURCES
     ManifestTests.cpp
     MoveStateTests.cpp
     MoveConsumptionTests.cpp
+    MoveLifecycleTests.cpp
+    MoveCleanupTests.cpp
     OptimizerRegressionTests.cpp
     OperandWideningLoweringTests.cpp
     OptimizerTests.cpp
+    LirOptimizationTests.cpp
+    LirReachabilityTests.cpp
     OsTests.cpp
     PackageCacheTests.cpp
     PackageIdentityTests.cpp
@@ -113,6 +120,8 @@ set(RUX_TEST_SOURCES
     SemanticOperatorAssignmentDiagnosticsTests.cpp
     SemanticTypeCallDiagnosticsTests.cpp
     SemanticStringTypeTests.cpp
+    SemanticTypeFactsTests.cpp
+    SemanticBindingFactsTests.cpp
     SemanticTests.cpp
     SemanticModelTests.cpp
     SemanticVisibilityTests.cpp

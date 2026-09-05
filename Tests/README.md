@@ -101,3 +101,5 @@ The cross verifier builds a signed executable and dylib twice, compares their by
 - Put repository source-layout invariants in `Policy/<Rule>/`.
 
 The C++ manifest-policy tests in `Unit/ManifestTests.cpp` validate every checked-in `Rux.toml`: the schema header and canonical formatting repository-wide, the `Rux` namespace and registry dependency form of publishable first-party packages, and the package type, namespace-free identity, local dependency paths, source entry point and centralized output path of each test manifest.
+
+Related C++ cases are grouped by responsibility: semantic type and binding facts, ownership consumption/lifecycle/cleanup, LIR optimization/reachability, driver target artifacts, and CLI build/package behavior. Their focused `*TestSupport.h` files share fixtures within each group. Splitting a file does not change the registered cases or their assertions.
