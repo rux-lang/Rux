@@ -1,3 +1,4 @@
+import Core::Slice;
 // Walking a run of contiguous elements, which every container in this package can hand out a view of.
 //
 // The compiler drives a `for` loop by shape: anything with a `Next` returning an `Option` is an iterator, and the

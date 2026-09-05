@@ -1,3 +1,4 @@
+import Core::{ string, string8 };
 // The standard streams under the test runner are redirected, which is itself the point: the redirection path is
 // the one a program in a pipeline lives on, and these writes must land as the raw bytes they are.
 

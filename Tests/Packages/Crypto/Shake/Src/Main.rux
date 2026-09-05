@@ -1,3 +1,4 @@
+import Core::{ string, string8 };
 // The published vectors, and the property that makes an extendable-output function what it is: the stream is
 // continuous, so any sequence of reads totalling the same length gives the same bytes. A version that permuted
 // once per call rather than once per exhausted rate would pass the vectors and fail that.

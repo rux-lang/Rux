@@ -1,3 +1,4 @@
+import Core::uint;
 // The open-addressing kernel `HashMap` and `HashSet` are both built on, so the probe sequence, the displacement rule
 // and the deletion exist once rather than twice.
 //

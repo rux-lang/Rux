@@ -1,3 +1,4 @@
+import Core::{ string, string8 };
 // Two names in a row must differ, the file must actually exist while it is held, and it must be gone once the
 // handle is done with it -- through Close, and through a scope ending without one.
 

@@ -1,3 +1,5 @@
+import Core::float64;
+
 /**
     Computes the cosine of `x`, where `x` is in radians. The error is at most one ulp for every finite argument. Exact
     argument reduction keeps a large angle no less accurate than a small one. Either signed zero returns `1.0`; an

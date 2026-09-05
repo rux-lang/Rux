@@ -1,3 +1,4 @@
+import Core::string;
 // A borrowed run of text that is known to be UTF-8.
 //
 // The point of a separate type is that the check happens once. A `Slice<char8>` may or may not be UTF-8, so every

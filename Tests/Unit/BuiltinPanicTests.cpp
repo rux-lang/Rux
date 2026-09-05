@@ -1,4 +1,5 @@
 #include "CodeGen/X86_64/AssemblyPrinter.h"
+#include "IntrinsicTestDeclarations.h"
 #include "Ir/Lir/Lir.h"
 #include "Lexer/Lexer.h"
 #include "Lowering/AstToHir/AstToHir.h"
@@ -15,14 +16,16 @@ using namespace Rux;
 
 namespace {
 
-constexpr std::string_view SliceDecl = "struct Slice<T> { data: *T; length: uint; }\n";
+constexpr std::string_view SliceDecl = "intrinsic struct Slice<T> { pub data: *T; pub length: uint; }\n";
 
 constexpr std::string_view PanicIntrinsic = R"(
     intrinsic func Panic(message: string);
 )";
 
 LirPackage CompileToLir(const std::string &source) {
-    Lexer lexer(std::string(SliceDecl) + std::string(PanicIntrinsic) + source, "test.rux");
+    Lexer lexer(std::string(SliceDecl) + std::string(PanicIntrinsic) + source +
+                    std::string(Rux::Testing::StringDeclarations),
+                "test.rux");
     auto lexed = lexer.Tokenize();
     REQUIRE_FALSE(lexed.HasErrors());
 
@@ -41,7 +44,7 @@ LirPackage CompileToLir(const std::string &source) {
 }
 
 std::vector<SemanticDiagnostic> Analyze(const std::string &source) {
-    Lexer lexer(std::string(SliceDecl) + source, "test.rux");
+    Lexer lexer(std::string(SliceDecl) + source + std::string(Rux::Testing::StringDeclarations), "test.rux");
     auto lexed = lexer.Tokenize();
     REQUIRE_FALSE(lexed.HasErrors());
 

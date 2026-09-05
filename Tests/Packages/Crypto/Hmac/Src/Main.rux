@@ -1,3 +1,4 @@
+import Core::{ string, string8 };
 // The published HMAC vectors, which are the only way to know the construction is right rather than merely
 // self-consistent -- and the key-longer-than-a-block case, which is where implementations differ from the
 // specification without noticing.

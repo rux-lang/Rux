@@ -1,3 +1,5 @@
+import Core::float64;
+
 // log2 of the argument, as an unevaluated sum hi + lo of two doubles.
 struct Log2Pair {
     hi: float64;

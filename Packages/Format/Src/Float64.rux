@@ -1,3 +1,4 @@
+import Core::{ MutableSlice, string8 };
 import Core::Slice;
 import Text::TextError;
 

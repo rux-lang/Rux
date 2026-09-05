@@ -1,3 +1,4 @@
+import Core::string8;
 // Rendering a wide float the way `float64` renders, at any width.
 //
 // The spelling is the narrow one exactly: `NaN`, `Inf`, a signed zero as `0.0`, fixed notation while the exponent

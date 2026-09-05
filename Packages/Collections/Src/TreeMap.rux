@@ -1,3 +1,4 @@
+import Core::Range;
 // A map that keeps its keys in order.
 //
 // `HashMap` is the one to reach for by default: it answers a lookup in constant expected time and this one takes a

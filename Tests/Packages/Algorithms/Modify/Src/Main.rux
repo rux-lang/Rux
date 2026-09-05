@@ -1,3 +1,4 @@
+import Core::Slice;
 import Algorithms::{ CopyTo, Fill, MoveTo, Partition, PartitionPoint, RemoveValue, RemoveWhere, Reverse, Rotate,
                      SequenceEqual, Swap, Unique };
 import Core::{ Assert, MutableSlice };

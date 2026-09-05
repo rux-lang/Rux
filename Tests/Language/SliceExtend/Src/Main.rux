@@ -1,3 +1,4 @@
+import Core::{ Slice, string8 };
 import Core::Assert;
 
 // Extension methods on a built-in slice type. `self` is the slice value, so it

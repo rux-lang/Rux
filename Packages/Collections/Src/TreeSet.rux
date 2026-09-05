@@ -1,3 +1,4 @@
+import Core::Range;
 // A set that keeps its elements in order.
 //
 // `HashSet` answers membership in constant expected time and is the one to reach for by default. This one costs a

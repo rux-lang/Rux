@@ -1,3 +1,4 @@
+import Core::uint;
 // Alignment, unaligned access, byte swapping, and clearing a secret so that it stays cleared.
 //
 // Three of these exist because a pointer is not always where a type wants it. A value read from a file, a packet or

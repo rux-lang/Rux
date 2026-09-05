@@ -1,3 +1,5 @@
+import Core::float64;
+
 /**
     Computes the base-ten logarithm of `x`. The error is at most one ulp, and an exact power of ten returns its exact
     exponent. Either signed zero returns negative infinity, a negative value returns a NaN, positive infinity returns

@@ -1,3 +1,4 @@
+import Core::Slice;
 // A double-ended queue over a circular buffer.
 //
 // Elements go on and come off at either end in constant time, which is what a vector cannot offer at the front:

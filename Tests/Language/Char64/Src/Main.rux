@@ -1,3 +1,4 @@
+import Core::char64;
 import Core::Assert;
 
 func Main() -> int {

@@ -1,3 +1,4 @@
+import Core::uint;
 // An allocator that hands out storage by advancing a pointer, and takes it all back at once.
 //
 // An arena is the right shape whenever a program builds a lot of small things whose lives all end together: a parse

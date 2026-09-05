@@ -1,3 +1,4 @@
+import Core::string;
 import Allocator::{ Allocator, SystemAllocator };
 import Core::{ Assert, Slice };
 import Text::{ Concat, Repeat, String, StringView, TextError };

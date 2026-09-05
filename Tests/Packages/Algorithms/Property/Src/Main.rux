@@ -1,3 +1,4 @@
+import Core::Slice;
 import Algorithms::{ BinarySearch, IsHeap, IsSorted, LowerBound, MakeHeap, MaxIndex, MinIndex, Partition,
                      RemoveValue, Reverse, Rotate, SequenceEqual, SortHeap, Sort, StableSort, Sum, Unique,
                      UpperBound };

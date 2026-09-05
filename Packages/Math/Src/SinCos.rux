@@ -1,3 +1,5 @@
+import Core::float64;
+
 /*
     Sine and cosine of the same angle, from one reduction. Accuracy: error at most 1 ulp in each, the same as computing
     them separately. The reason to have this is not accuracy but work: the argument reduction is by far the expensive

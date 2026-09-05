@@ -1,3 +1,4 @@
+import Core::Slice;
 import Algorithms::{ Fold, FoldRight, IsHeap, IsHeapBy, IsHeapUntil, IsSorted, MakeHeap, MakeHeapBy, MaxIndex,
                      PopHeap, Product, PushHeap, PushHeapBy, SortHeap, SortHeapBy, Sum, Transform };
 import Core::{ Assert, MutableSlice, Ordering };

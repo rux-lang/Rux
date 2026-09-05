@@ -1,3 +1,4 @@
+import Core::{ string, string8 };
 // Turning JSON text into tokens, under limits a caller sets.
 //
 // The limits are the point of having a separate lexing stage at all. JSON is a recursive format read from

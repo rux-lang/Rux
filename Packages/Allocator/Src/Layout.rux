@@ -1,3 +1,4 @@
+import Core::uint;
 // What an allocation is asked for: a size in bytes and an alignment the address must be a multiple of.
 //
 // A `Layout` exists so that the pair travels together and is checked once. Passing a size and an alignment as two

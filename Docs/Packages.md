@@ -2,6 +2,11 @@
 
 First-party Rux packages live under `Packages/` in the repository root. Return to the [main README](../README.md) for the complete documentation index.
 
+Core is an optional declaration provider. Import primitive APIs explicitly, for example
+`import Core::int8;` before using `int8::Min`. A dependency's imports do not expose
+those APIs to its consumers. Replacement providers can declare the same intrinsic
+types and context values without using Core's package name or registry identity.
+
 ## Package Status
 
 Every package below exposes an API and is exercised by tests under `Tests/Packages/`. None is published yet; see [Publication Readiness](#publication-readiness) for what each is waiting on.

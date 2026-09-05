@@ -1,3 +1,4 @@
+import Core::string;
 // A directory is made, filled, read back name for name -- a non-ASCII name included, held losslessly in the
 // system's own units -- refused deletion while full, and deleted once empty.
 

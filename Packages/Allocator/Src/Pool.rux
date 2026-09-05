@@ -1,3 +1,4 @@
+import Core::uint;
 // An allocator that serves small blocks from free lists, one per size class, and reuses what is given back.
 //
 // The arena is fast because it never reclaims. This is the allocator for the other shape: many small values whose

@@ -1,3 +1,4 @@
+import Core::{ string, string8 };
 import Core::Slice;
 
 // A constant of slice type is addressed rather than inlined, so it must exist

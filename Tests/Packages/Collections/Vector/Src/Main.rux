@@ -1,3 +1,4 @@
+import Core::{ Slice, string8, uint };
 import Allocator::{ Allocator, SystemAllocator };
 import Collections::{ CollectionError, MinimumVectorCapacity, Vector };
 import Core::Assert;

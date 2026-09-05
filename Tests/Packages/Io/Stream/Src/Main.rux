@@ -1,3 +1,4 @@
+import Core::{ string, string8 };
 import Core::{ Assert, MutableSlice, Slice };
 import Io::{ IoError, IoErrorKind, ReadExact, Reader, WriteAll, Writer };
 

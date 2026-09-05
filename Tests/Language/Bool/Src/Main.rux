@@ -1,3 +1,4 @@
+import Core::bool64;
 import Core::Assert;
 
 // Counts the operands that were evaluated at all, which is how the short-circuit

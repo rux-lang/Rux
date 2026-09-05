@@ -1,3 +1,4 @@
+import Core::string;
 // Parsing a document into a value tree.
 //
 // The recursion is bounded by the depth limit rather than by the stack, which is the only way a recursive

@@ -1,3 +1,4 @@
+import Core::Slice;
 // Ready-made hash and equality callbacks for the key types a table is usually keyed on.
 //
 // A table takes its hash as a function rather than through an interface, because Rux has no closures and an

@@ -1,3 +1,5 @@
+import Core::float64;
+
 // x = m * 2^k with m in [sqrt(2)/2, sqrt(2)).
 struct LogReduction {
     k: int64;

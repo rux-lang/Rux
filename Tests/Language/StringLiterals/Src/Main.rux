@@ -1,3 +1,4 @@
+import Core::{ string, string16, string32, string8 };
 import Core::Assert;
 
 // The three encodings a string literal can be written in, and what each one publishes: a pointer to its code units

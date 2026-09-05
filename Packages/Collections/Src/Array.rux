@@ -1,3 +1,4 @@
+import Core::Slice;
 // A run of elements whose length is fixed when it is made and whose storage is on the heap.
 //
 // `Array<T>` is what to reach for when the length is decided at run time and never changes afterwards. It is not

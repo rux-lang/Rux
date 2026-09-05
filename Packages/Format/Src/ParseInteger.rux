@@ -1,3 +1,4 @@
+import Core::string;
 // Parsing an integer of any width, in any of the four bases.
 //
 // One grammar serves every width: an optional sign, an optional base prefix -- `0x`, `0o`, `0b`, exactly the

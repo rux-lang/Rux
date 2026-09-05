@@ -1,3 +1,4 @@
+import Core::Slice;
 // A binary max-heap laid out in the sequence itself, with no node structure and no allocation.
 //
 // The heap property is an arrangement rather than a type: element `i` is at least as large as elements `2i+1` and

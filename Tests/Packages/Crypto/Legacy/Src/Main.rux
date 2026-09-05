@@ -1,3 +1,4 @@
+import Core::{ string, string8 };
 // These exist to read what already exists, so what matters is that they agree with every other implementation
 // of them -- which the published vectors establish. Nothing here endorses using them.
 

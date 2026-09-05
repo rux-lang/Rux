@@ -1,3 +1,4 @@
+import Core::{ string, string8 };
 // Temporary files and directories: unguessable names, and cleanup that is not left to chance.
 //
 // The name comes from the entropy source rather than from a counter or the process id, because a predictable

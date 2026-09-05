@@ -1,3 +1,4 @@
+import Core::string;
 // What a JSON value is, and the one part of it the specification refuses to pin down.
 //
 // RFC 8259 says a number is a sequence of digits with an optional fraction and exponent, and then says

@@ -40,7 +40,11 @@ when #config.Get("allocator") != "system" {
     context.config.emplace("allocator", "arena");
 
     const std::vector<Module *> modules = {&parsed.module};
-    ConditionalEvaluator evaluator(context, modules);
+    ParseResult provider;
+    const DepPackage dependency = ConditionalCoreDependency(provider);
+    ConditionalEvaluator evaluator(context, modules, [&](std::string_view name) {
+        return name == dependency.name ? std::vector<Module *>{&provider.module} : std::vector<Module *>{};
+    });
     evaluator.SetSourceContext(parsed.module.name, "test", "");
     evaluator.SetImports(parsed.module);
 
@@ -86,7 +90,11 @@ when false && #target.HasFeature(.Imaginary) {
     context.config.emplace("sqlite", "enabled");
 
     const std::vector<Module *> modules = {&parsed.module};
-    ConditionalEvaluator evaluator(context, modules);
+    ParseResult provider;
+    const DepPackage dependency = ConditionalCoreDependency(provider);
+    ConditionalEvaluator evaluator(context, modules, [&](std::string_view name) {
+        return name == dependency.name ? std::vector<Module *>{&provider.module} : std::vector<Module *>{};
+    });
     evaluator.SetSourceContext(parsed.module.name, "test", "");
     evaluator.SetImports(parsed.module);
 
@@ -264,7 +272,7 @@ intrinsic #target: Target;
 
 TEST_CASE("ordinary intrinsic expressions lower to context literals") {
     auto parsed = ParseSource(R"(
-struct Slice<T> { data: *T; length: uint; }
+intrinsic struct Slice<T> { pub data: *T; pub length: uint; }
 
 enum TargetFeature { SSE2, SSE3, SSSE3, SSE41, SSE42, AVX, AVX2, AVX512, NEON, SVE, RVV }
 
@@ -306,6 +314,8 @@ struct Source {
     module: string;
 }
 
+intrinsic struct string8 { pub data: *char8; pub length: uint; }
+type string = string8;
 struct Config {}
 extend Config {
     intrinsic func Get(self: &Config, name: string) -> string;

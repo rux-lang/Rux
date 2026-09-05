@@ -1,3 +1,4 @@
+import Core::string;
 // The text form of a moment: RFC 3339, the internet profile of ISO 8601.
 //
 // One shape, `YYYY-MM-DDTHH:MM:SS[.fraction](Z|+HH:MM|-HH:MM)`, chosen because it is the one that machines

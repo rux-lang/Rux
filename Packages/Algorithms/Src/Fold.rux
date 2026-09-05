@@ -1,3 +1,4 @@
+import Core::Slice;
 // Reducing a sequence to one value, and mapping one sequence onto another.
 //
 // A fold is the general form: an accumulator, a starting value, and a function that folds each element into it. The

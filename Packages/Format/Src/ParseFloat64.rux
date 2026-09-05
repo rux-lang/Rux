@@ -1,3 +1,4 @@
+import Core::{ Slice, string };
 import Core::Result;
 import Text::StringView;
 

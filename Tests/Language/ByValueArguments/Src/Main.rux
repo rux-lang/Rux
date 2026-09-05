@@ -1,3 +1,4 @@
+import Core::{ Range, string, string8 };
 // An aggregate argument is placed by its own size, and the calling conventions disagree about where a wide one
 // goes: System V copies it onto the stack, Win64 and AAPCS64 pass the address of a copy. A literal array or tuple
 // used to be handed over as the address of the slot it was built in, which is only what the callee expects on the

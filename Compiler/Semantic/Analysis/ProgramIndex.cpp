@@ -77,7 +77,11 @@ bool Scope::Define(Symbol symbol, std::vector<SemanticDiagnostic> &diagnostics, 
         symbol.sourceName = sourceName;
     }
     if (auto iterator = table.find(symbol.name); iterator != table.end()) {
-        if (iterator->second.ownerPackage == "<builtin>" && symbol.kind == Symbol::Kind::Type && symbol.declaration) {
+        if (iterator->second.ownerPackage == "<builtin>" && symbol.kind == Symbol::Kind::Type && symbol.declaration &&
+            (!symbol.intrinsicName.empty() ||
+             (dynamic_cast<const TypeAliasDecl *>(symbol.declaration) &&
+              std::ranges::any_of(PrimitiveAliases(),
+                                  [&](const PrimitiveAlias &alias) { return alias.name == symbol.name; })))) {
             iterator->second = std::move(symbol);
             return true;
         }
@@ -290,7 +294,10 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
         symbol.modulePath = modulePath;
         symbol.intrinsicName = constant->intrinsicName;
         if (constant->type) {
-            symbol.type = resolveType(**constant->type);
+            const auto *named = dynamic_cast<const NamedTypeExpr *>(constant->type->get());
+            const auto primitive = named ? PrimitiveTypeFromName(named->name) : std::nullopt;
+            // Index representation before imports; CheckConstDecl validates the annotation in its owning file.
+            symbol.type = primitive && named->typeArgs.empty() ? *primitive : resolveType(**constant->type);
         }
         if (scope.Define(symbol, diagnostics, sourceName) && isGlobal) {
             publicSymbols.push_back({SemanticSymbol::Kind::Const, constant->name, sourceName, constant->location,

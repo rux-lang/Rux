@@ -1,3 +1,4 @@
+import Core::{ bool, bool16, bool32, bool8, byte, char, char16, char32, char8, float, float32, float64, int, int16, int32, int64, int8, uint, uint16, uint32, uint64, uint8 };
 import Core::Assert;
 
 when int32::Bits == 32 && int32::Bytes == 4 &&

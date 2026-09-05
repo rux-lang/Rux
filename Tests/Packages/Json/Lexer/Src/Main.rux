@@ -1,3 +1,4 @@
+import Core::string;
 // Most of this is refusals, because JSON's grammar is much narrower than JavaScript's and the difference is
 // exactly where a lenient lexer lets through documents other parsers reject. Every rejected form here is one
 // that a JavaScript engine would accept.

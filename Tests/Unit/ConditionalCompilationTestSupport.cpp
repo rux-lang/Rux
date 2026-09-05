@@ -10,10 +10,11 @@
 namespace Rux::Testing {
 namespace {
 // A stand-in intrinsics package so `import Core::{...}` resolves in these tests. The
-// fold uses its own built-in variant tables, so the enum bodies here only need
-// to exist, not to be complete.
+// fold resolves these declarations and their enum variants just like any other provider.
 constexpr std::string_view kCorePackageSource = R"(
-pub struct Slice<T> { pub data: *T; pub length: uint; }
+pub intrinsic struct Slice<T> { pub data: *T; pub length: uint; }
+pub intrinsic struct string8 { pub data: *char8; pub length: uint; }
+pub type string = string8;
 pub struct Target {}
 pub struct Build {}
 pub struct Compiler {}
@@ -36,15 +37,15 @@ pub intrinsic #source: Source;
 pub intrinsic #config: Config;
 pub intrinsic func #Error(message: Slice<char8>);
 pub intrinsic func #Warn(message: Slice<char8>);
-pub enum OperatingSystem { Windows }
-pub enum Architecture { X86_64 }
-pub enum ApplicationBinaryInterface { WindowsX64 }
-pub enum Endianness { Little }
-pub enum DataModel { LLP64 }
-pub enum ObjectFormat { COFF }
-pub enum BuildMode { Debug }
-pub enum OptimizationMode { Speed }
-pub enum OutputKind { SharedLibrary }
+pub enum OperatingSystem { FreeBSD, Linux, macOS, Windows }
+pub enum Architecture { AArch64, X86_64 }
+pub enum ApplicationBinaryInterface { AAPCS64, SystemV, WindowsX64 }
+pub enum Endianness { Big, Little }
+pub enum DataModel { LLP64, LP64 }
+pub enum ObjectFormat { COFF, ELF, MachO }
+pub enum BuildMode { Debug, Release }
+pub enum OptimizationMode { None, Size, Speed }
+pub enum OutputKind { Executable, SharedLibrary, StaticLibrary, SourceLibrary }
 )";
 
 } // namespace

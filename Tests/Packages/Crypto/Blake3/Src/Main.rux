@@ -1,3 +1,4 @@
+import Core::{ string, string8 };
 // BLAKE3's tree structure is where its bugs live: the chunk boundary at one kibibyte, the trailing-ones
 // arithmetic that decides how many subtrees to merge, and the flags that distinguish a chunk start from a chunk
 // end from a parent from the root. So the test walks lengths across several chunk boundaries and checks the

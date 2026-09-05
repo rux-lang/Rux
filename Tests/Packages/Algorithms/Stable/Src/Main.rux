@@ -1,3 +1,4 @@
+import Core::Slice;
 import Algorithms::{ IsSorted, IsSortedBy, RequiredScratch, StableSort, StableSortBy };
 import Core::{ Assert, MutableSlice, Ordering };
 

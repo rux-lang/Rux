@@ -1,3 +1,4 @@
+import Core::{ string, string8 };
 // TOML has real types, so the interesting question about a value is not what it can be coerced into but what it
 // refuses to be. An integer is not a float here even when the float is whole, and a local date-time has no
 // offset -- inventing one is how a meeting ends up an hour out.

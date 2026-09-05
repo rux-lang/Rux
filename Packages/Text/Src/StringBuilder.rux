@@ -1,3 +1,4 @@
+import Core::string;
 // Where text is assembled.
 //
 // A `String` is immutable, so building one a piece at a time through `String` alone would allocate and copy on every

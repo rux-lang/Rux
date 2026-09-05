@@ -506,7 +506,7 @@ func Do() -> int {
 
 TEST_CASE("a #Warn call leaves no runtime code behind") {
     auto parsed = ParseSource(R"(
-struct Slice<T> { data: *T; length: uint; }
+intrinsic struct Slice<T> { pub data: *T; pub length: uint; }
 intrinsic func #Warn(message: Slice<char8>);
 
 func Do() {

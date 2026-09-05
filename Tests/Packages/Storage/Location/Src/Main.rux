@@ -1,3 +1,4 @@
+import Core::{ string, string8 };
 // Absolute is arithmetic and Canonicalize is a question for the filesystem, and the test insists on the
 // difference: the same relative name resolves under both, but only one of them requires the file to be there.
 

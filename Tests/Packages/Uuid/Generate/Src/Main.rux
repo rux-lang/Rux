@@ -1,3 +1,4 @@
+import Core::string8;
 // Two claims worth testing here: that generated identifiers are well-formed and distinct, and that version 7
 // really does sort by time -- which is the entire reason it exists and would be silently lost by any byte
 // reordering.

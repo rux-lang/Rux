@@ -1,3 +1,4 @@
+import Core::string;
 // Building a document from tokens, and refusing the three different ways of defining a table twice.
 //
 // Most of a TOML parser is bookkeeping about tables. `[a.b]` creates `a` implicitly and `b` deliberately, and

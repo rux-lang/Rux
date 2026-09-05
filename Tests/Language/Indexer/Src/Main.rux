@@ -1,3 +1,4 @@
+import Core::{ Range, Slice, string8 };
 import Core::Assert;
 
 // A type indexes itself by declaring `[]` in an `extend` block, the same way it

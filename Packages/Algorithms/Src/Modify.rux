@@ -1,3 +1,4 @@
+import Core::Slice;
 // Rearranging a sequence in place, and moving elements between sequences.
 //
 // Everything that writes takes a `MutableSlice<T>`; everything that only reads takes a `Slice<T>`. Nothing here

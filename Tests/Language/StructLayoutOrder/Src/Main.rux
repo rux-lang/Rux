@@ -1,3 +1,4 @@
+import Core::string8;
 import Core::{ Assert, Slice };
 
 // A struct whose field types are declared in a later file of the same package is still laid out from its

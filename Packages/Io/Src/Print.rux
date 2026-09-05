@@ -1,3 +1,4 @@
+import Core::{ Slice, string };
 // Printing, with the failure a caller can act on returned rather than swallowed.
 //
 // Every overload returns the `IoError` of the write it made. Most call sites will keep ignoring it, and that is

@@ -1,3 +1,4 @@
+import Core::{ string, string8 };
 import Core::{ Assert, Ordering, Slice };
 import Text::StringView;
 

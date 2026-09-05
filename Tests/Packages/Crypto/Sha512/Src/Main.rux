@@ -1,3 +1,4 @@
+import Core::{ string, string8 };
 // The published vectors for all four variants, and the padding case this family makes harder: its length count
 // is sixteen bytes rather than eight, so a final block needs seventeen free bytes and the boundary sits at a
 // different place than SHA-256's.

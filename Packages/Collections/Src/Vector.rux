@@ -1,3 +1,4 @@
+import Core::Slice;
 // A contiguous run of elements that grows as things are appended to it.
 //
 // `Vector<T>` is the container to reach for by default. It is the stack -- `Push` and `TryPop` work at the end that

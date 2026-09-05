@@ -1,3 +1,4 @@
+import Core::string;
 import Allocator::{ Allocator, SystemAllocator };
 import Core::{ Assert, Option, Slice };
 import Text::{ IsAsciiSpace, StringView, TextError };

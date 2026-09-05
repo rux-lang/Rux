@@ -1,3 +1,4 @@
+import Core::{ Slice, uint };
 import Allocator::{ AllocError, Allocator, IsEmptyBlock, SystemAllocator };
 import Collections::{ AllocateBlock, CollectionError, FromAllocError, ReallocateBlock, ReferenceIterator,
                       ReleaseBlock, ValueIterator };

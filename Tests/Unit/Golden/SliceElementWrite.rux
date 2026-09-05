@@ -1,12 +1,12 @@
 // Declared exactly as Rux/Core declares it, so the fixture stands alone.
-struct Slice<T> {
-    data: *T;
-    length: uint;
+intrinsic struct Slice<T> {
+    pub data: *T;
+    pub length: uint;
 }
 
 struct MutableSlice<T> {
-    data: *var T;
-    length: uint;
+    pub data: *var T;
+    pub length: uint;
 }
 
 func Main() -> int {

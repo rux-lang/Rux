@@ -1,3 +1,4 @@
+import Core::string8;
 import Core::{
     Assert, #target, OperatingSystem, Architecture, Endianness, DataModel,
     ObjectFormat

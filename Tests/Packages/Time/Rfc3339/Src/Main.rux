@@ -1,3 +1,4 @@
+import Core::{ string, string8 };
 import Core::{ Assert, MutableSlice, Slice };
 import Time::{ Date, DateTime, FormatRfc3339, ParseRfc3339, TimeOfDay, UtcOffset };
 

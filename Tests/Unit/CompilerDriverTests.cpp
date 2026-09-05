@@ -315,7 +315,7 @@ TEST_CASE("compiler driver supplies manifest and command-line build context") {
     DependencyFixture fixture;
     fixture.SetManifestDefine("allocator", "system");
     fixture.SetApplicationSource(R"(
-struct Slice<T> { data: *T; length: uint; }
+intrinsic struct Slice<T> { pub data: *T; pub length: uint; }
 
 struct Build {
     timestamp: uint64;

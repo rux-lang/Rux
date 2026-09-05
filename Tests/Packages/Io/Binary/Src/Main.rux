@@ -1,3 +1,4 @@
+import Core::string8;
 // The caller names the format's byte order, and the host's own never enters into it: the same value writes to
 // mirrored bytes under the two orders, and each order reads back exactly what it wrote.
 

@@ -1,3 +1,4 @@
+import Core::{ Slice, string, string8 };
 import Core::Assert;
 import Hash::{ HashBytes, XxBlockSize, XxHash64, XxHash64Of, XxHash64SeededOf };
 

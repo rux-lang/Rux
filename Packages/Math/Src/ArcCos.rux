@@ -1,3 +1,5 @@
+import Core::float64;
+
 /**
     Computes the inverse cosine of `x` in radians. The result lies in `[0, Pi]`: `1.0` maps to zero, either signed zero
     maps to `Pi / 2`, and `-1.0` maps to `Pi`. An input outside `[-1, 1]` returns a NaN, and a NaN remains a NaN.

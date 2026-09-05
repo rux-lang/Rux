@@ -1,3 +1,4 @@
+import Core::{ string, string8 };
 import Allocator::{ Allocator, SystemAllocator };
 import Core::{ Assert, Option, Slice };
 import Path::{ Join, Normalize, OsString, OsStringView, Path, PathBuffer };

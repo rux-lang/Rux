@@ -1,3 +1,4 @@
+import Core::{ string, string8 };
 import Core::{ MutableSlice, Slice };
 import Format::{ ByteCursor, FormatSpec, Display, IsFinite, IsInfinite, IsNan, TextWriter };
 

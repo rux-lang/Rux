@@ -1,3 +1,4 @@
+import Core::string;
 // The phase gate's name question: a filesystem's names are not text the program chose, and everything here has
 // to carry them unchanged. Each name is created, found again by enumeration, reopened by the name enumeration
 // handed back, and deleted -- so a lossy step anywhere in that circle shows up as a name that cannot be found.

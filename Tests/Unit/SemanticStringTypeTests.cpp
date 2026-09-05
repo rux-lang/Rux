@@ -1,3 +1,4 @@
+#include "IntrinsicTestDeclarations.h"
 // Semantic contracts of the built-in string types: what a literal is typed as, what a string exposes, and the uses
 // the language deliberately does not define for a view over validated text.
 
@@ -14,7 +15,7 @@ using namespace Rux;
 
 namespace {
 ParseResult Parse(const std::string &source) {
-    Lexer lexer(source, "strings.rux");
+    Lexer lexer(source + std::string(Rux::Testing::StringDeclarations), "strings.rux");
     auto lexed = lexer.Tokenize();
     REQUIRE_FALSE(lexed.HasErrors());
     Parser parser(std::move(lexed.tokens), "strings.rux");
@@ -37,7 +38,7 @@ std::vector<std::string> LetInitializerTypes(const std::string &body) {
     const SemanticModel model = analyzer.Analyze();
     REQUIRE_FALSE(model.HasErrors());
 
-    REQUIRE_EQ(parsed.module.items.size(), 1);
+    REQUIRE_EQ(parsed.module.items.size(), 5);
     const auto *main = dynamic_cast<const FuncDecl *>(parsed.module.items[0].get());
     REQUIRE(main != nullptr);
     REQUIRE(main->body != nullptr);

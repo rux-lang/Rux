@@ -1,3 +1,4 @@
+import Core::{ string, string8 };
 // The promise is that the target holds the old contents until it holds the new ones, and never anything in
 // between -- so the test reads the target part-way through a replacement and demands the old bytes, then
 // abandons a replacement and demands them still, then commits one and demands the new bytes exactly.

@@ -1,3 +1,4 @@
+import Core::{ string, string8 };
 // Writing a value back out, compactly or for a human.
 //
 // Two things here are not negotiable. Strings are escaped exactly as RFC 8259 requires and no more: the quote,

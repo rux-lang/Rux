@@ -1,3 +1,4 @@
+import Core::string8;
 import Core::Assert;
 import Core::Slice;
 

@@ -1,3 +1,4 @@
+import Core::string;
 // Filling placeholders in a run of text.
 //
 // `{}` takes the next argument, in the order they are written; `{{` and `}}` are how a literal brace is spelled.
