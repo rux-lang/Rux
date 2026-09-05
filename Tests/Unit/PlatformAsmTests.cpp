@@ -269,7 +269,7 @@ TEST_CASE("FreeBSD AArch64 BSD system-call wrappers assemble through x8 and norm
     CheckWrappers(bsd, MovX8FromX0, Svc0, /*carryMeansError=*/true);
 }
 
-TEST_CASE("FreeBSD AArch64 BSD constants match the 14.4 syscall and mmap surface") {
+TEST_CASE("FreeBSD AArch64 BSD constants match the 15.1 syscall and mmap surface") {
     // The constants now live in the module that owns the domain, so each group is read from the file that declares
     // it. That the numbers are unchanged by the split is the whole point of checking them here.
     const std::map<std::string, std::map<std::string, std::string>> expected = {

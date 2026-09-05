@@ -1,6 +1,6 @@
 # Rux on FreeBSD
 
-This guide covers installing and building Rux on x86-64 and AArch64 FreeBSD. Return to the [main README](../../README.md) for language documentation and project information.
+This guide covers installing and building Rux on x86-64 and AArch64 FreeBSD 15.1, the CI and release baseline. Return to the [main README](../../README.md) for language documentation and project information.
 
 ## Installing a Release
 
@@ -8,21 +8,23 @@ Download the `rux-freebsd-x86_64.tar.gz` or `rux-freebsd-aarch64.tar.gz` archive
 
 ## Building from Source
 
-Rux currently requires Clang 22.1 or newer, CMake 3.30 or newer, Ninja 1.11 or newer, and a recent Git installation. FreeBSD 14 packages a compatible CMake 3.31 release:
+Rux currently requires Clang 23.1 or newer, CMake 4.4.3 or newer, Ninja 1.13.2 or newer, and a recent Git installation. Install the compiler, Ninja, and bootstrap CMake through `pkg`:
 
 ```sh
-sudo pkg install -y llvm22 cmake ninja git
+sudo pkg install -y llvm23 cmake ninja git
 ```
 
-Clone and build Rux:
+Clone Rux, build the pinned CMake 4.4.3 in a private directory when the package is older, and build the compiler:
 
 ```sh
 git clone https://github.com/rux-lang/Rux.git
 cd Rux
+sh .github/scripts/Install-CMake-FreeBSD.sh BuildCache/CMake
+export PATH="$PWD/BuildCache/CMake/bin:$PATH"
 sh Run.sh build
 ```
 
-The FreeBSD package names the compiler `clang++22`; `Run.sh build` detects it automatically. The command creates a Release build in `Build/` and writes the compiler to `Bin/rux`.
+The FreeBSD package names the compiler `clang++23`; `Run.sh build` detects it automatically. The command creates a Release build in `Build/` and writes the compiler to `Bin/rux`.
 
 On AArch64, Rux selects the `freebsd-aarch64` target automatically. The same target is available explicitly to `build` and `check` on every supported host; `freebsd-arm64` is accepted as an alias and canonicalized to `freebsd-aarch64` before target conditions, reports, and output paths are selected.
 
@@ -101,10 +103,12 @@ Run the complete repository verification workflow:
 sh Run.sh test
 ```
 
-Static analysis is intentionally opt-in because it is slower and requires `clang-tidy` from the LLVM 22 package:
+Static analysis is intentionally opt-in because it is slower and requires `clang-tidy` from the LLVM 23 package:
 
 ```sh
 sh Run.sh test --clang-tidy
 ```
 
 Use `sh Run.sh format` to format maintained C++ and Rux sources, or `sh Run.sh format --check` to check them without making changes. Individual workflow steps are also available on their own as `sh Run.sh policy`, `sh Run.sh tidy`, and `sh Run.sh unit`.
+
+Use LLVM 23 for formatting and static analysis, with LF line endings on this platform. Repository verification uses up to four available test workers; override with `-Jobs N` in PowerShell or `--jobs N` in POSIX shell. See [Compiler Build Performance](../CompilerPerformance.md) for compilation caching, optional PCH/ThinLTO, stable metadata, and measurement commands.

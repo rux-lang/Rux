@@ -10,10 +10,10 @@ Each supported platform has its own workflow under [`.github/workflows/`](../.gi
 
 | Workflow      | Platform                                                                             | Runner            | Toolchain install             |
 | ------------- | ------------------------------------------------------------------------------------ | ----------------- | ----------------------------- |
-| `FreeBSD.yml` | FreeBSD 14.4 x86-64 and AArch64                                                      | QEMU VM on Ubuntu | `pkg llvm22`                  |
-| `Linux.yml`   | Ubuntu 24.04 x86-64 and AArch64, plus Linux/macOS AArch64 cross builds               | GitHub-hosted     | `apt.llvm.org` → Clang 22     |
-| `macOS.yml`   | macOS 26 Intel and Apple Silicon, plus an x86-64 compiler → AArch64 target cross job | GitHub-hosted     | Homebrew `llvm@22`            |
-| `Windows.yml` | Windows 2025 and Windows 11 ARM, plus Windows/macOS AArch64 cross coverage           | GitHub-hosted     | llvm.org installer → Clang 22 |
+| `FreeBSD.yml` | FreeBSD 15.1 x86-64 and AArch64                                                      | QEMU VM on Ubuntu | `pkg llvm23`                  |
+| `Linux.yml`   | Ubuntu 26.04 x86-64 and AArch64, plus Linux/macOS AArch64 cross builds               | GitHub-hosted     | `apt.llvm.org` → Clang 23     |
+| `macOS.yml`   | macOS 26 Intel and Apple Silicon, plus an x86-64 compiler → AArch64 target cross job | GitHub-hosted     | Homebrew `llvm@23`            |
+| `Windows.yml` | Windows 2025 and Windows 11 ARM, plus Windows/macOS AArch64 cross coverage           | GitHub-hosted     | llvm.org archive → Clang 23 |
 
 Their status is shown by the badges at the top of the [README](../README.md).
 
@@ -26,12 +26,12 @@ Two repository-policy workflows run alongside the per-OS matrix:
 
 `Tests/Policy/NoExternalToolchain/Check.sh` protects the property the whole compiler is built around: Rux encodes its own machine code, writes its own object files, links its own executables, and signs Mach-O images in-process, so no part of it may shell out to a build tool. The check greps `Compiler/` for two things and fails on either —
 
-- a string literal naming an assembler, C compiler, linker, archiver, or signing tool, under any spelling a real one carries: a path (`/usr/bin/clang`), a cross prefix (`aarch64-linux-gnu-gcc`), a version suffix (`clang-22`) or a Windows extension (`link.exe`). Two-letter names like `as`, `cc` and `ld` are assembler mnemonics and register names throughout `CodeGen/`, so they count only when the literal also carries a directory or an extension;
+- a string literal naming an assembler, C compiler, linker, archiver, or signing tool, under any spelling a real one carries: a path (`/usr/bin/clang`), a cross prefix (`aarch64-linux-gnu-gcc`), a version suffix (`clang-23`) or a Windows extension (`link.exe`). Two-letter names like `as`, `cc` and `ld` are assembler mnemonics and register names throughout `CodeGen/`, so they count only when the literal also carries a directory or an extension;
 - a call to `System::RunInherited` or `System::RunCaptured` — the two entry points every process launch goes through — from outside `Compiler/System/`.
 
-No file is allowed to name a toolchain program. The second check has a short allowlist at the top of the script, and a file joins it only with a reason written beside it: running a program is not the same as building one, so `Cli/CmdRun.cpp` and `Cli/CmdTest.cpp` are its two permanent entries, directly executing the host artifact or a directly executable same-OS target test.
+No file is allowed to name a toolchain program. The second check has a short allowlist at the top of the script, and a file joins it only with a reason written beside it: running a program is not the same as building one, so `Cli/CmdRun.cpp` and `Cli/Testing/TestExecution.cpp` are its two permanent entries, directly executing the host artifact or a directly executable same-OS target test.
 
-The guard runs in the shared architectural-boundary job in `CodeQuality.yml` and as the first step of `sh Run.sh test` and `./Run.ps1 test`, beside the platform-isolation check. The FreeBSD build job runs the same complete guard set through `sh Run.sh policy` before configuring, so the one VM that has no dedicated policy job still enforces every source-tree invariant.
+The guard runs in the shared architectural-boundary job in `CodeQuality.yml` and as the first step of `sh Run.sh test` and `./Run.ps1 test`, beside the platform-isolation check. The shared job covers the FreeBSD sources as well; VM builds do not repeat these source scans.
 
 
 ### Minimal Source-Tree Policy
@@ -56,10 +56,10 @@ Each per-OS validation workflow has an x86-64/AArch64 matrix with two stages —
 
 1. **Build job**
    - Check out the repo.
-   - Install Clang 22, plus pinned CMake and Ninja versions.
+   - Install Clang 23, plus pinned CMake and Ninja versions.
    - Configure and build Release (Clang jobs add `-DRUX_WERROR=ON`, so warnings fail the build):
      ```sh
-     cmake -S . -B Build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=clang++-22 -DRUX_WERROR=ON -DRUX_BUILD_TESTS=ON
+     cmake -S . -B Build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=clang++-23 -DRUX_WERROR=ON -DRUX_BUILD_TESTS=ON
      cmake --build Build --config Release --parallel
      ctest --test-dir Build --output-on-failure -C Release
      ```
@@ -72,7 +72,7 @@ Each per-OS validation workflow has an x86-64/AArch64 matrix with two stages —
 The platform workflows also add cross-target coverage to those two native
 stages.
 
-3. **Linux cross job** (`needs: build`, `ubuntu-24.04`)
+3. **Linux cross job** (`needs: build`, `ubuntu-26.04`)
    - Download the x86-64 binary built by the build job.
    - Run `rux check --target linux-aarch64`, build a representative AArch64 executable, and inspect its repository-produced ELF header for `EM_AARCH64`. The x86-64 host never launches the output. `rux lint` takes no target and is not repeated here.
    - Check `macos-aarch64`, build a signed executable and dylib twice, and use the repository's portable verifier to check deterministic bytes, the ARM64 Mach-O headers, load-command ranges, CodeDirectory fields, and every SHA-256 code-slot hash. Linux never launches either Mach-O image.
@@ -100,18 +100,18 @@ No cross job installs a target compiler, assembler, linker, archiver, or signer:
 
 The native-runner workflows differ only in how the compiler is obtained; the emulated ones differ in _where the whole job runs_:
 
-- **Ubuntu** — installs Clang 22 from `apt.llvm.org` and builds with `clang++-22` on `ubuntu-24.04` (x86-64) and `ubuntu-24.04-arm` (AArch64). Clang is the host C++ compiler that builds `rux`, and nothing else: the AArch64 test and cross jobs run the compiler's own back end.
-- **Windows** — neither image clears the Clang 22.1 floor (`windows-2025` preinstalls Clang 20, and `windows-11-arm` only has the Clang 19 bundled with Visual Studio), so the workflow installs the upstream llvm.org release for the host architecture: the `win64` installer on x86-64 and `woa64` on ARM64, both unpacked to `C:\LLVM`. Before native builds, `.github/scripts/Enter-VsDevEnv.ps1` locates Visual Studio with `vswhere` and imports the matching x86-64 or ARM64 toolset for the Windows SDK and CRT; because that also puts the Visual Studio Clang on `PATH`, `CMAKE_CXX_COMPILER` is given the absolute path to the installed one, along with the explicit MSVC target triple. The cross job needs neither setup step: it downloads the already-built x86-64 compiler and relies on Windows-on-ARM only to run that compiler.
-- **macOS** — Apple Clang lags upstream and lacks full C++26 support, so the workflow installs LLVM `llvm@22` from Homebrew and points `CMAKE_CXX_COMPILER` at the Homebrew `clang++`. The `macos-26` Apple Silicon image is the deployment baseline and native acceptance environment; the cross job uses its built-in Rosetta support only to run the x86-64 compiler, never to run the generated ARM64 programs.
-- **FreeBSD** — GitHub has no native FreeBSD runner, so each job boots an x86-64 or AArch64 FreeBSD 14.4 QEMU VM via `vmactions/freebsd-vm` on an Ubuntu host. Because Build and Test are separate jobs, each boots a _fresh_ VM; the Test VM installs the Clang runtime libraries needed by the prebuilt binary. Transferred acceptance uses distinct x86-64 producer and AArch64 consumer VMs, and only the producer installs a compiler runtime. The x86-64 VM is KVM-accelerated, but the AArch64 one is fully emulated and roughly an order of magnitude slower, so every VM is given the host's four cores and the AArch64 job timeouts are sized for emulation rather than native speed.
+- **Ubuntu** — installs Clang 23 from `apt.llvm.org` and builds with `clang++-23` on `ubuntu-26.04` (x86-64) and `ubuntu-26.04-arm` (AArch64). Clang is the host C++ compiler that builds `rux`, and nothing else: the AArch64 test and cross jobs run the compiler's own back end.
+- **Windows** — neither image clears the Clang 23.1 floor (`windows-2025` preinstalls Clang 20, and `windows-11-arm` only has the Clang 19 bundled with Visual Studio), so the workflow installs the upstream llvm.org release for the host architecture: the matching Windows MSVC archive on x86-64 and ARM64, verified against the pinned SHA-256 in `.github/scripts/Install-Llvm.ps1` and unpacked to `C:\LLVM`. Before native builds, `.github/scripts/Enter-VsDevEnv.ps1` locates Visual Studio with `vswhere` and imports the matching x86-64 or ARM64 toolset for the Windows SDK and CRT; because that also puts the Visual Studio Clang on `PATH`, `CMAKE_CXX_COMPILER` is given the absolute path to the installed one, along with the explicit MSVC target triple. The cross job needs neither setup step: it downloads the already-built x86-64 compiler and relies on Windows-on-ARM only to run that compiler.
+- **macOS** — Apple Clang lags upstream and lacks full C++26 support, so the workflow installs LLVM `llvm@23` from Homebrew and points `CMAKE_CXX_COMPILER` at the Homebrew `clang++`. The `macos-26` Apple Silicon image is the deployment baseline and native acceptance environment; the cross job uses its built-in Rosetta support only to run the x86-64 compiler, never to run the generated ARM64 programs.
+- **FreeBSD** — GitHub has no native FreeBSD runner, so each job boots an x86-64 or AArch64 FreeBSD 15.1 QEMU VM via `vmactions/freebsd-vm` on an Ubuntu host. Because Build and Test are separate jobs, each boots a _fresh_ VM; the Test VM installs the Clang runtime libraries needed by the prebuilt binary. Transferred acceptance uses distinct x86-64 producer and AArch64 consumer VMs, and only the producer installs a compiler runtime. The x86-64 VM is KVM-accelerated, but the AArch64 one is fully emulated and roughly an order of magnitude slower, so every VM is given the host's four cores and the AArch64 job timeouts are sized for emulation rather than native speed.
 
 ## Required Checks
 
 The following must pass before a PR can merge (configured in branch protection — see [Branch Architecture](Branches.md)):
 
 - **`CodeQuality.yml`** — one architectural-boundary job runs host API isolation, internal code generation/linking, and CLI process-output ownership checks. Separate jobs check formatting and static analysis. Language behavior and message rendering are tested through the compiler and CLI; file length is reviewed without an automated gate.
-- **`FreeBSD acceptance`** from `FreeBSD.yml` (FreeBSD 14.4 x86-64/AArch64, native AArch64 fixtures, and transferred x86-64-to-AArch64 runtime acceptance)
-- **`Linux.yml`** (Ubuntu 24.04 x86-64 and AArch64, and the AArch64 cross job)
+- **`FreeBSD acceptance`** from `FreeBSD.yml` (FreeBSD 15.1 x86-64/AArch64, native AArch64 fixtures, and transferred x86-64-to-AArch64 runtime acceptance)
+- **`Linux.yml`** (Ubuntu 26.04 x86-64 and AArch64, and the AArch64 cross job)
 - **`macOS.yml`** (macOS 26 Intel and Apple Silicon, full native ARM64 fixtures, and the Rosetta compiler cross job)
 - **`Windows.yml`** (Windows x86-64 and AArch64, and the x86-64 compiler → AArch64 target cross job)
 
@@ -124,7 +124,7 @@ The CI build is the same CMake plus Rux test flow documented in the [Development
 ```sh
 cmake -S . -B Build -G Ninja \
   -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_CXX_COMPILER=clang++-22 \
+  -DCMAKE_CXX_COMPILER=clang++-23 \
   -DRUX_WERROR=ON \
   -DRUX_BUILD_TESTS=ON
 cmake --build Build --config Release --parallel
@@ -191,9 +191,23 @@ The Rosetta script requires a thin x86-64 compiler, but every emitted ARM64 imag
 
 ## Infrastructure Notes
 
-- **Runner images** — Linux uses `ubuntu-24.04` and `ubuntu-24.04-arm`; Windows uses `windows-2025` and `windows-11-arm`; macOS uses `macos-26-intel` and `macos-26`. FreeBSD runs on an `ubuntu-24.04` host and boots x86-64/AArch64 guests in QEMU. GitHub's `windows-11-arm` and `macos-26` runners are the normal AArch64 acceptance environments. Azure Windows 11 ARM64 and EC2 Mac are escalation-only options for interactive crash dumps, prolonged debugging, or demonstrated GitHub-runner instability; neither is an acceptance dependency. There are **no self-hosted runners** in the normal matrix.
+- **Runner images** — Linux uses `ubuntu-26.04` and `ubuntu-26.04-arm`; Windows uses `windows-2025` and `windows-11-arm`; macOS uses `macos-26-intel` and `macos-26`. FreeBSD runs on an `ubuntu-26.04` host and boots x86-64/AArch64 guests in QEMU. GitHub's `windows-11-arm` and `macos-26` runners are the normal AArch64 acceptance environments. Azure Windows 11 ARM64 and EC2 Mac are escalation-only options for interactive crash dumps, prolonged debugging, or demonstrated GitHub-runner instability; neither is an acceptance dependency. There are **no self-hosted runners** in the normal matrix.
 - **Workflow security** — validation jobs have read-only repository permissions and checkouts do not persist credentials. Only the release publishing job receives `contents: write`.
 - **Tool versions** — CMake and Ninja are pinned centrally in each workflow so runner-image changes do not silently change the build toolchain.
 - **Architecture names** — prose and check labels use x86-64/AArch64; matrix values and artifact names use `x86_64`/`aarch64`. Runner, Visual Studio, and VM inputs retain the exact spellings required by those external tools.
 - **Artifacts** — intermediate binaries are architecture-labelled with `x86_64` or `aarch64` and retained for seven days. Release archives include `SHA256SUMS` for integrity verification. The macOS build jobs retry a failed binary upload once after a short pause: hosted macOS runners intermittently fail `CreateArtifact` with transient DNS errors (`ENOTFOUND`), and `actions/upload-artifact` has no built-in retry.
 - **Caching** — none is configured today; each job starts with a fresh package cache and build directory. If build times become a problem, the natural next step is caching compiler downloads, the CMake/Ninja build directory, or the Rux package cache.
+
+## Build Caches and Test Workers
+
+Native validation builds use `CMAKE_CXX_COMPILER_LAUNCHER=ccache`. Cache keys separate host OS (including FreeBSD VM release), architecture, Clang 23, runtime, and Release configuration; compiler-content checks prevent reuse across differing compiler builds. PCH is explicitly disabled in cache jobs and in the clang-tidy compilation database. Windows validation and release builds both use the pinned upstream archive from `Install-Llvm.ps1`; release builds do not rely on the runner's older Clang.
+
+CTest and `rux test --jobs N` use up to four available processors. The POSIX jobs share `Scripts/TestJobs.sh`; PowerShell uses the same bound. Doctest source groups are disjoint and verified, fixture groups are resource-locked, and repository/installer checks run as ordinary CTest tests. Code Quality owns the architectural policy job. See [Compiler Build Performance](CompilerPerformance.md) for local cache, PCH, ThinLTO, and measurement commands.
+
+### Build-tool versions
+
+Native runners install checksum-verified CMake 4.4.3 and Ninja 1.13.2 archives using
+`.github/scripts/Install-BuildTools.ps1`. FreeBSD uses the packaged Ninja (1.13.2+) and builds CMake 4.4.3 from
+checksum-verified upstream sources with `.github/scripts/Install-CMake-FreeBSD.sh`; the private installation is
+cached by FreeBSD release and architecture. Configuration requires CMake 4.4.3+, Ninja 1.13.2+, and upstream Clang
+23.1+. All Ubuntu workflow hosts and native Linux runners use `ubuntu-26.04` or `ubuntu-26.04-arm`.

@@ -15,7 +15,7 @@ concurrency:
 jobs:
   main-branch:
     name: Use dev as PR target
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
       - name: Explain target branch policy

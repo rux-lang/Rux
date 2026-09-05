@@ -20,16 +20,16 @@ Run the installer again to upgrade. The [Linux installer guide](../../Packaging/
 
 ## Building from Source
 
-Rux currently requires Clang 22.1 or newer, CMake 3.30 or newer, Ninja 1.11 or newer, and a recent Git installation.
+Rux currently requires Clang 23.1 or newer, CMake 4.4.3 or newer, Ninja 1.13.2 or newer, and a recent Git installation.
 
-On Ubuntu 26.04, install Clang 22 from the LLVM apt repository, CMake from Snap, and the remaining tools from Ubuntu:
+On Ubuntu 26.04, install Clang 23 from the LLVM apt repository, CMake from Snap, and the remaining tools from Ubuntu:
 
 ```sh
 sudo apt-get update
 sudo apt-get install -y curl git ninja-build
 curl --proto '=https' --tlsv1.2 -fsSLo /tmp/llvm.sh https://apt.llvm.org/llvm.sh
 chmod +x /tmp/llvm.sh
-sudo /tmp/llvm.sh 22
+sudo /tmp/llvm.sh 23
 sudo snap install cmake --classic
 ```
 
@@ -41,7 +41,7 @@ cd Rux
 sh Run.sh build
 ```
 
-The LLVM installer names the compiler `clang++-22`; `Run.sh build` detects it automatically. The command creates a Release build in `Build/` and writes the compiler to `Bin/rux`.
+The LLVM installer names the compiler `clang++-23`; `Run.sh build` detects it automatically. The command creates a Release build in `Build/` and writes the compiler to `Bin/rux`.
 
 On AArch64, Rux selects the `linux-aarch64` target automatically and compiles it the same way it compiles `linux-x86_64`: instructions are encoded in-process, written into an RCU object, and linked by Rux's own ELF writer. No assembler, C compiler, or external linker is involved on either architecture, so nothing beyond the tools listed above needs to be installed to build Rux programs.
 
@@ -108,3 +108,5 @@ sh Run.sh test --clang-tidy
 ```
 
 Use `sh Run.sh format` to format maintained C++ and Rux sources, or `sh Run.sh format --check` to check them without making changes. Individual workflow steps are also available on their own as `sh Run.sh policy`, `sh Run.sh tidy`, and `sh Run.sh unit`.
+
+Use LLVM 23 for formatting and static analysis, with LF line endings on this platform. Repository verification uses up to four available test workers; override with `-Jobs N` in PowerShell or `--jobs N` in POSIX shell. See [Compiler Build Performance](../CompilerPerformance.md) for compilation caching, optional PCH/ThinLTO, stable metadata, and measurement commands.

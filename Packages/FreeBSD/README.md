@@ -58,14 +58,14 @@ Higher-level packages such as [`Rux/Io`](../Io) and [`Rux/Memory`](../Memory) al
 
 ## AArch64 ABI
 
-The AArch64 wrappers follow the FreeBSD 14 syscall convention: the call number
+The AArch64 wrappers follow the FreeBSD syscall convention: the call number
 is placed in `x8`, up to six wrapper arguments are shifted into `x0` through
 `x5`, and `svc #0` enters the kernel. A carry-set return is converted from a
 positive `errno` to the negative result used by the package API.
 
 Descriptor and clock identifiers are sign-extended before entering the generic
 `uint64` syscall interface. `Mmap` likewise preserves a signed descriptor while
-passing the FreeBSD 14 mapping constants and all six arguments directly. The
+passing the FreeBSD 15.1 mapping constants and all six arguments directly. The
 same source keeps a separate set of x86-64 wrappers, which reach the kernel
 through `syscall` and normalize the carry flag the same way.
 
