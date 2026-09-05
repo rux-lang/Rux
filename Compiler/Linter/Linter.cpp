@@ -542,6 +542,9 @@ private:
             }
         }
         else if (const auto *impl = dynamic_cast<const ImplDecl *>(&decl)) {
+            for (const auto &constant : impl->constants) {
+                VisitDecl(*constant, {});
+            }
             std::vector<std::string> methodNames;
             methodNames.reserve(impl->methods.size());
             for (const auto &method : impl->methods) {
@@ -580,7 +583,7 @@ private:
         }
         else if (const auto *alias = dynamic_cast<const TypeAliasDecl *>(&decl)) {
             CheckDocumentation(decl, "type alias", alias->name);
-            if (!Allows(decl, "naming.type") && !IsPascalCase(alias->name)) {
+            if (alias->intrinsicName.empty() && !Allows(decl, "naming.type") && !IsPascalCase(alias->name)) {
                 WarnNaming(alias->location, "type alias name", alias->name, NamingConvention::PascalCase, siblingNames);
             }
         }

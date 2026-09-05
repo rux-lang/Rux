@@ -3,6 +3,8 @@
 
 #include "Semantic/Analysis/ProgramIndex.h"
 
+#include "Types/PrimitiveCatalog.h"
+
 #include <algorithm>
 #include <format>
 #include <limits>
@@ -75,6 +77,10 @@ bool Scope::Define(Symbol symbol, std::vector<SemanticDiagnostic> &diagnostics, 
         symbol.sourceName = sourceName;
     }
     if (auto iterator = table.find(symbol.name); iterator != table.end()) {
+        if (iterator->second.ownerPackage == "<builtin>" && symbol.kind == Symbol::Kind::Type && symbol.declaration) {
+            iterator->second = std::move(symbol);
+            return true;
+        }
         if (iterator->second.kind == Symbol::Kind::Func && symbol.kind == Symbol::Kind::Func) {
             iterator->second.funcOverloads.insert(iterator->second.funcOverloads.end(), symbol.funcOverloads.begin(),
                                                   symbol.funcOverloads.end());
@@ -203,6 +209,11 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
         symbol.isEffectivelyPublic = isEffectivelyPublic;
         symbol.ownerPackage = ownerPackage;
         symbol.modulePath = modulePath;
+        symbol.declaration = &declaration;
+        symbol.intrinsicName = declaration.intrinsicName;
+        if (!declaration.intrinsicName.empty()) {
+            symbol.type = PrimitiveTypeFromName(declaration.intrinsicName).value_or(TypeRef::MakeUnknown());
+        }
         if (scope.Define(symbol, diagnostics, sourceName) && isGlobal) {
             publicSymbols.push_back(
                 {publicKind, name, sourceName, declaration.location, std::move(resolvedType), isMut});
@@ -295,7 +306,11 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
         symbol.isEffectivelyPublic = isEffectivelyPublic;
         symbol.ownerPackage = ownerPackage;
         symbol.modulePath = modulePath;
-        symbol.type = resolveType(*alias->type);
+        symbol.declaration = alias;
+        symbol.intrinsicName = alias->intrinsicName;
+        symbol.type = alias->intrinsicName.empty()
+                        ? resolveType(*alias->type)
+                        : PrimitiveTypeFromName(alias->intrinsicName).value_or(TypeRef::MakeUnknown());
         if (scope.Define(symbol, diagnostics, sourceName) && isGlobal) {
             publicSymbols.push_back({SemanticSymbol::Kind::Type, alias->name, sourceName, alias->location,
                                      symbol.type.IsUnknown() ? "" : symbol.type.ToString(), false});
@@ -360,6 +375,11 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
     }
     else if (const auto *implementation = dynamic_cast<const ImplDecl *>(&declaration)) {
         implementations.push_back(implementation);
+        for (const auto &member : implementation->constants) {
+            declarationInfos.insert_or_assign(
+                member.get(),
+                DeclarationInfo{ownerPackage, modulePath, sourceName, containingModulesPublic && member->isPublic});
+        }
         const std::string typeName = implementation->typeName.starts_with("Slice<")
                                        ? implementation->typeName
                                        : BaseTypeName(implementation->typeName);

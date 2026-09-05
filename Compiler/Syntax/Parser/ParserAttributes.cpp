@@ -390,6 +390,35 @@ DeclPtr Parser::ApplyAttrs(DeclPtr decl, ParsedAttrs &attrs) {
 /// The constant or function after an `intrinsic`. Its name is the intrinsic's: a constant takes its type (`Target`), a
 /// free function its own name (`Assert`). A method is namespaced by the type it extends, and is keyed in ParseImplDecl.
 DeclPtr Parser::ParseIntrinsicDecl(const bool isPublic, ParsedAttrs &attrs, const SourceLocation intrinsicLoc) {
+    if (Match(TokenKind::TypeKeyword)) {
+        auto decl = std::make_unique<TypeAliasDecl>();
+        decl->location = intrinsicLoc;
+        decl->isPublic = isPublic;
+        decl->name = ExpectBefore(TokenKind::Ident, "a type name after 'intrinsic type'").text;
+        decl->intrinsicName = decl->name;
+        auto type = std::make_unique<NamedTypeExpr>();
+        type->location = intrinsicLoc;
+        type->name = decl->name;
+        decl->type = std::move(type);
+        ExpectBefore(TokenKind::Semicolon, "';' after the intrinsic type declaration");
+        return ApplyAttrs(std::move(decl), attrs);
+    }
+    if (Check(TokenKind::StructKeyword)) {
+        auto decl = ParseStructDecl(isPublic);
+        decl->intrinsicName = decl->name;
+        return ApplyAttrs(std::move(decl), attrs);
+    }
+    if (Match(TokenKind::ConstKeyword)) {
+        auto decl = std::make_unique<ConstDecl>();
+        decl->location = intrinsicLoc;
+        decl->isPublic = isPublic;
+        decl->name = ExpectBefore(TokenKind::Ident, "a constant name after 'intrinsic const'").text;
+        decl->intrinsicName = decl->name;
+        ExpectBefore(TokenKind::Colon, "':' after the intrinsic constant name");
+        decl->type = ParseType("add the intrinsic constant type after ':'");
+        ExpectBefore(TokenKind::Semicolon, "';' after the intrinsic constant declaration");
+        return ApplyAttrs(std::move(decl), attrs);
+    }
     // A compiler-injected value: `intrinsic #target: Target;`. The '#' name is
     // how the value is referred to; the type it is declared with names the
     // intrinsic the compiler binds.

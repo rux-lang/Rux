@@ -364,6 +364,24 @@ std::unique_ptr<ImplDecl> Parser::ParseImplDecl() {
         bool pub = Match(TokenKind::PubKeyword);
         const bool isIntrinsic = Match(TokenKind::IntrinsicKeyword);
         const auto intrinsicLoc = Previous().location;
+        if (Check(TokenKind::ConstKeyword)) {
+            std::unique_ptr<ConstDecl> constant;
+            if (isIntrinsic) {
+                DeclPtr parsed = ParseIntrinsicDecl(pub, attrs, intrinsicLoc);
+                constant.reset(static_cast<ConstDecl *>(parsed.release()));
+                if (constant) {
+                    constant->intrinsicName = decl->typeName + "." + constant->name;
+                }
+            }
+            else {
+                constant = ParseConstDecl(pub);
+            }
+            if (constant) {
+                constant->documentation = std::move(documentation);
+                decl->constants.push_back(std::move(constant));
+            }
+            continue;
+        }
         if (!Check(TokenKind::FuncKeyword)) {
             RecordDetachedDocumentation(std::move(documentation), Syntax::DocumentationIssueKind::Detached);
             EmitExpected(CurrentLocation(), isIntrinsic ? "'func' after 'intrinsic' in the extension body"

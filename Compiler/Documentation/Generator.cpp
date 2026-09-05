@@ -487,7 +487,8 @@ std::string DeclSignature(const Decl &decl) {
     if (const auto *function = dynamic_cast<const FuncDecl *>(&decl))
         return FunctionSignature(*function);
     if (const auto *value = dynamic_cast<const StructDecl *>(&decl))
-        return std::string(value->isPublic ? "pub " : "") + "struct " + value->name + TypeParams(value->typeParams);
+        return std::string(value->isPublic ? "pub " : "") + (value->intrinsicName.empty() ? "" : "intrinsic ") +
+               "struct " + value->name + TypeParams(value->typeParams);
     if (const auto *value = dynamic_cast<const EnumDecl *>(&decl))
         return std::string(value->isPublic ? "pub " : "") + (value->IsVariant() ? "variant " : "enum ") + value->name +
                TypeParams(value->typeParams);
@@ -501,7 +502,8 @@ std::string DeclSignature(const Decl &decl) {
         return std::string(value->isPublic ? "pub " : "") + "const " + value->name +
                (value->type ? ": " + TypeText(value->type->get()) : "");
     if (const auto *value = dynamic_cast<const TypeAliasDecl *>(&decl))
-        return std::string(value->isPublic ? "pub " : "") + "type " + value->name + " = " + TypeText(value->type.get());
+        return std::string(value->isPublic ? "pub " : "") + (value->intrinsicName.empty() ? "" : "intrinsic ") +
+               "type " + value->name + (value->intrinsicName.empty() ? " = " + TypeText(value->type.get()) : ";");
     if (const auto *value = dynamic_cast<const ImplDecl *>(&decl))
         return "extend " + value->typeName;
     if (const auto *value = dynamic_cast<const ExternVarDecl *>(&decl))
@@ -561,7 +563,8 @@ bool Visible(const Decl &decl, const bool includePrivate, const bool containingM
     if (const auto *extension = dynamic_cast<const ImplDecl *>(&decl)) {
         const std::string typeName = extension->typeName.substr(0, extension->typeName.find('<'));
         return containingModulesPublic && publicTypes.contains(typeName) &&
-               std::ranges::any_of(extension->methods, [](const auto &method) { return method->isPublic; });
+               (std::ranges::any_of(extension->methods, [](const auto &method) { return method->isPublic; }) ||
+                std::ranges::any_of(extension->constants, [](const auto &constant) { return constant->isPublic; }));
     }
     if (const auto *block = dynamic_cast<const ExternBlockDecl *>(&decl)) {
         return containingModulesPublic &&
@@ -723,6 +726,14 @@ void RenderDecl(std::ostringstream &html, const Decl &decl, const std::string &m
         }
     }
     else if (const auto *extension = dynamic_cast<const ImplDecl *>(&decl)) {
+        for (const auto &constant : extension->constants) {
+            if (!includePrivate && !constant->isPublic) {
+                continue;
+            }
+            html << "<section class=\"member\"><h4>" << EscapeHtml(constant->name) << "</h4><code>"
+                 << EscapeHtml(DeclSignature(*constant)) << "</code>"
+                 << RenderDocumentation(constant->documentation, findings) << "</section>";
+        }
         for (const auto &method : extension->methods) {
             if (!includePrivate && !method->isPublic)
                 continue;

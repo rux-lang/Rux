@@ -2,6 +2,7 @@
 
 rux_add_component(RuxSemantic
     Analysis/Imports.cpp
+    Analysis/IntrinsicTypes.cpp
     Analysis/TypeResolution.cpp
     Analysis/ConstantChecking.cpp
     Analysis/Assignments.cpp

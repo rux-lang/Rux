@@ -764,13 +764,19 @@ HirExprPtr AstToHirContext::LowerAggregateExpr(const Expr &expression) {
         return lowered;
     }
     if (const auto *path = dynamic_cast<const PathExpr *>(&expression)) {
+        if (const ConstDecl *constant = model.TryGetAssociatedConstant(expression)) {
+            if (constant->value) {
+                auto value = LowerExpr(*constant->value);
+                value->type = ResolvedExpressionType(expression);
+                return value;
+            }
+            return CompilerLiteral(path->location, ResolvedExpressionType(expression),
+                                   constant->name == "Infinity" ? "inf" : "nan");
+        }
         if (path->segments.size() == 2) {
             if (HirSymbol *first = currentScope->Lookup(path->segments[0]);
                 first && (first->kind == HirSymbol::Kind::Type || first->kind == HirSymbol::Kind::Interface)) {
                 if (first->kind == HirSymbol::Kind::Type) {
-                    if (const auto constant = LookupPrimitiveConstant(first->type, path->segments[1], context)) {
-                        return CompilerLiteral(path->location, constant->type, constant->value);
-                    }
                     if (const auto discriminant = LookupEnumVariantDiscriminant(path->segments[0], path->segments[1])) {
                         const auto *variant = LookupEnumVariant(path->segments[0], path->segments[1]);
                         if (variant && (!variant->fields.empty() || !variant->namedFields.empty())) {
