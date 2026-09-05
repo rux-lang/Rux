@@ -1,6 +1,7 @@
+import Core::{ bool8, byte, char8, float32, float64, int, int16, int32, int64, int8, uint, uint16, uint32, uint64, uint8 };
 import Core::Assert;
 
-// The compiler supplies Min, Max, Bits and Bytes on every primitive type. These
+// Core declares primitive limits and width metadata in Rux source. These
 // are the invariants that hold on every target the package supports.
 func Main() -> int {
     // Bit and byte widths agree, and the byte count is the bit count over eight.

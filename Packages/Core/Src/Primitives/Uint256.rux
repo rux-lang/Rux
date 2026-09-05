@@ -1,5 +1,13 @@
-// Primitive constants are supplied directly by the compiler
-// uint256::Min
-// uint256::Max
-// uint256::Bits
-// uint256::Bytes
+/// The compiler representation of uint256.
+pub intrinsic type uint256;
+
+extend uint256 {
+    /// The number of bits in the representation.
+    pub const Bits: uint = 256u;
+    /// The number of bytes in the representation.
+    pub const Bytes: uint = 32u;
+    /// The smallest representable value.
+    pub const Min: uint256 = 0u256;
+    /// The largest representable value.
+    pub const Max: uint256 = 115792089237316195423570985008687907853269984665640564039457584007913129639935u256;
+}

@@ -265,6 +265,11 @@ std::optional<TypeRef> AnalysisContext::ResolveStructTypeReference(const TypeExp
     if (declaration == structDecls.end()) {
         return std::nullopt;
     }
+    if (!declaration->second->intrinsicName.empty()) {
+        if (const auto primitive = PrimitiveTypeFromName(declaration->second->intrinsicName)) {
+            return *primitive;
+        }
+    }
     if (typeArguments.size() != declaration->second->typeParams.size()) {
         EmitGenericArityError(expression, std::format("struct type '{}'", name), declaration->second->typeParams.size(),
                               typeArguments.size());

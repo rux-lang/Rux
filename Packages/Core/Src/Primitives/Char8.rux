@@ -1,5 +1,13 @@
-// Primitive constants are supplied directly by the compiler
-// char8::Min
-// char8::Max
-// char8::Bits
-// char8::Bytes
+/// The compiler representation of char8.
+pub intrinsic type char8;
+
+extend char8 {
+    /// The number of bits in the representation.
+    pub const Bits: uint = 8u;
+    /// The number of bytes in the representation.
+    pub const Bytes: uint = 1u;
+    /// The first code unit or Unicode scalar value.
+    pub const Min: char8 = 0u32 as char8;
+    /// The last code unit or Unicode scalar value.
+    pub const Max: char8 = 255u32 as char8;
+}

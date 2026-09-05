@@ -1,9 +1,21 @@
-// Primitive constants are supplied directly by the compiler
-// float64::Lowest
-// float64::Max
-// float64::MinPositive
-// float64::Epsilon
-// float64::Infinity
-// float64::NaN
-// float64::Bits
-// float64::Bytes
+/// The compiler representation of float64.
+pub intrinsic type float64;
+
+extend float64 {
+    /// The number of bits in the representation.
+    pub const Bits: uint = 64u;
+    /// The number of bytes in the representation.
+    pub const Bytes: uint = 8u;
+    /// The lowest finite value.
+    pub const Lowest: float64 = -1.7976931348623157e+308f64;
+    /// The highest finite value.
+    pub const Max: float64 = 1.7976931348623157e+308f64;
+    /// The smallest positive normal value.
+    pub const MinPositive: float64 = 2.2250738585072014e-308f64;
+    /// The difference between one and the next representable value.
+    pub const Epsilon: float64 = 2.2204460492503131e-16f64;
+    /// Positive infinity.
+    pub intrinsic const Infinity: float64;
+    /// A quiet not-a-number value.
+    pub intrinsic const NaN: float64;
+}

@@ -1,5 +1,2 @@
-// Primitive constants are supplied directly by the compiler
-// char::Min
-// char::Max
-// char::Bits
-// char::Bytes
+/// The default alias of char32.
+pub type char = char32;

@@ -1,4 +1,8 @@
-// A string has no primitive constants: it is a view over code units rather than a value with a width, so
-// string32::Bits and string32::Bytes would have to choose between describing the view and describing one code
-// unit, and string32::Min and string32::Max describe neither. Its length is a property of the value, not of
-// the type, and is read from the string itself.
+/// An immutable view over valid UTF-32 text.
+/// Literal lengths count code units rather than characters.
+pub intrinsic struct string32 {
+    /// The read-only address of the encoded code units.
+    pub data: *char32;
+    /// The number of code units in the view.
+    pub length: uint;
+}

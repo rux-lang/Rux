@@ -1,5 +1,13 @@
-// Primitive constants are supplied directly by the compiler
-// int16::Min
-// int16::Max
-// int16::Bits
-// int16::Bytes
+/// The compiler representation of int16.
+pub intrinsic type int16;
+
+extend int16 {
+    /// The number of bits in the representation.
+    pub const Bits: uint = 16u;
+    /// The number of bytes in the representation.
+    pub const Bytes: uint = 2u;
+    /// The smallest representable value.
+    pub const Min: int16 = -32768i16;
+    /// The largest representable value.
+    pub const Max: int16 = 32767i16;
+}

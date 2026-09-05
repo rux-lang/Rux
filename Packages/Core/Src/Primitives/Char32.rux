@@ -1,5 +1,13 @@
-// Primitive constants are supplied directly by the compiler
-// char32::Min
-// char32::Max
-// char32::Bits
-// char32::Bytes
+/// The compiler representation of char32.
+pub intrinsic type char32;
+
+extend char32 {
+    /// The number of bits in the representation.
+    pub const Bits: uint = 32u;
+    /// The number of bytes in the representation.
+    pub const Bytes: uint = 4u;
+    /// The first code unit or Unicode scalar value.
+    pub const Min: char32 = 0u32 as char32;
+    /// The last code unit or Unicode scalar value.
+    pub const Max: char32 = 1114111u32 as char32;
+}
