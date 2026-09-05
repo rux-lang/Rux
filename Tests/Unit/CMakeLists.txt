@@ -3,6 +3,7 @@
 # registers with CTest, so `ctest --test-dir <build>` runs everything.
 
 set(RUX_TEST_SOURCES
+    IntrinsicDeclarationTests.cpp
     Main.cpp
     ProcessProbe.cpp
     ProcessCaptureTests.cpp

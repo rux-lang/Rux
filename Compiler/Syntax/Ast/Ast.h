@@ -681,11 +681,14 @@ struct InterfaceDecl : Decl {
 ///
 /// TypeName may be a compound type such as a slice (int[]); `typeName` holds the canonical string key used for method
 /// lookup, while `extendedType` preserves the full type expression so semantic analysis can recover the receiver type.
+struct ConstDecl;
+
 struct ImplDecl : Decl {
     std::string typeName;
     TypeExprPtr extendedType;
     std::optional<std::string> interfaceName;
     std::vector<std::unique_ptr<FuncDecl>> methods;
+    std::vector<std::unique_ptr<ConstDecl>> constants;
 
     /// `when` chains written between the methods. Conditional compilation folds each one and moves the methods of the
     /// taken branch into `methods`, so by the time anything else looks at an ImplDecl this is empty.

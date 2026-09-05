@@ -269,6 +269,7 @@ struct ValueCopy {
 /// Accepted node-keyed facts. The analyzer fills one instance and transfers it into the immutable model.
 /// Node addresses continue to refer to the caller-owned AST throughout analysis and lowering.
 struct SemanticFacts {
+    std::unordered_map<const Expr *, const ConstDecl *> associatedConstants;
     std::unordered_map<const Expr *, TypeRef> expressionTypes;
     std::unordered_map<const TypeExpr *, TypeRef> typeNodeTypes;
     std::unordered_map<const Pattern *, TypeRef> patternTypes;
@@ -305,6 +306,7 @@ struct SemanticFacts {
  * detaches everything analysis recorded about it.
  */
 struct SemanticModel {
+    [[nodiscard]] const ConstDecl *TryGetAssociatedConstant(const Expr &expression) const noexcept;
     std::vector<SemanticDiagnostic> diagnostics;
     std::vector<SemanticSymbol> symbols;
     std::vector<const Module *> modules;

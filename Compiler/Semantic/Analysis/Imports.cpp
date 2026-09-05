@@ -216,7 +216,8 @@ void AnalysisContext::PromoteFromPackage(const UseDecl &d, const std::string &pk
 void AnalysisContext::DefineImportedSymbol(const Symbol &sym) {
     if (Symbol *existing = currentScope->LookupLocal(sym.name)) {
         if (existing->kind == sym.kind && existing->location.line == sym.location.line &&
-            existing->location.column == sym.location.column) {
+            existing->location.column == sym.location.column && existing->ownerPackage == sym.ownerPackage &&
+            existing->declaration == sym.declaration) {
             *existing = sym;
             return;
         }

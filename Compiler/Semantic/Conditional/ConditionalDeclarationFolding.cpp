@@ -197,9 +197,15 @@ private:
                     if (!item) {
                         continue;
                     }
+                    if (auto *constant = dynamic_cast<ConstDecl *>(item.get())) {
+                        item.release();
+                        impl.constants.emplace_back(constant);
+                        continue;
+                    }
                     auto *method = dynamic_cast<FuncDecl *>(item.get());
                     if (!method) {
-                        EmitError(item->location, "only methods can be declared inside an 'extend' block");
+                        EmitError(item->location,
+                                  "only methods and constants can be declared inside an 'extend' block");
                         continue;
                     }
                     item.release();

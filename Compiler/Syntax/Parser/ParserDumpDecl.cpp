@@ -423,6 +423,9 @@ void DeclarationPrinter::PrintImplDecl(const ImplDecl &decl) {
     }
     out << decl.typeName << '\n';
     ++indent;
+    for (const auto &constant : decl.constants) {
+        PrintConstDecl(*constant);
+    }
     for (const auto &method : decl.methods) {
         if (method) {
             PrintFuncDecl(*method);

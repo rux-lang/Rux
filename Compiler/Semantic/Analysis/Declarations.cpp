@@ -158,6 +158,9 @@ void AnalysisContext::CheckAsmBodyArchitecture(const FuncDecl &d) const {
 }
 
 void AnalysisContext::CheckStructDecl(const StructDecl &d) {
+    if (!d.intrinsicName.empty()) {
+        CheckIntrinsicType(d);
+    }
     auto savedTypeParams = currentTypeParams;
     currentTypeParams = TypeParameterNames(d.typeParams);
     const ScopedTypeParameterBounds boundScope(*this, &d.typeParams);
@@ -270,6 +273,13 @@ void AnalysisContext::CheckInterfaceDecl(const InterfaceDecl &d) {
 }
 
 void AnalysisContext::CheckImplDecl(const ImplDecl &d) {
+    std::unordered_set<std::string> constantNames;
+    for (const auto &constant : d.constants) {
+        if (!constantNames.insert(constant->name).second) {
+            EmitError(constant->location, std::format("associated constant '{}' is already declared", constant->name));
+        }
+        (void)CheckAssociatedConstant(*constant);
+    }
     const auto savedTypeParams = currentTypeParams;
     currentTypeParams = ImplTypeParams(d);
 

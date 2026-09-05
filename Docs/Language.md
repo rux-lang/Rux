@@ -163,6 +163,40 @@ Package READMEs identify these retained boundaries beside the APIs that expose t
 
 ## Strings and Text
 
+### Intrinsic declarations
+
+An intrinsic declaration binds a source API to a compiler representation. It does not load a package or give its
+declaring package special privileges. Core supplies the standard declarations; another package can supply its own.
+
+```rux
+pub intrinsic type int8;
+
+extend int8 {
+    pub const Min: int8 = -128i8;
+    pub const Max: int8 = 127i8;
+}
+
+pub intrinsic struct string8 {
+    pub data: *char8;
+    pub length: uint;
+}
+```
+
+Scalar representation and arithmetic exist independently of these declarations. Associated constants are source
+members: `import Core::int8;` exposes Core's public constants, while merely depending on Core does not. Constants
+retain normal package visibility. Their initializers are checked in the declaring package, not the caller's scope.
+
+`intrinsic type` is reserved for implemented scalar types. `intrinsic struct` describes strings, slices, and ranges.
+The compiler validates the number of type parameters and the exact public representation fields, including their
+order and pointer mutability. A declaration cannot change the representation associated with an intrinsic name.
+
+Extension blocks may contain ordinary typed constants as well as methods. The only compiler-supplied associated
+constant values are `intrinsic const Infinity: float32;` and `intrinsic const NaN: float32;`, and their `float64`
+counterparts, declared inside extensions of the corresponding floating-point type. Other limits and metadata belong
+in ordinary source initializers.
+
+### Literal views
+
 A string literal is text. `"Hello"` has type `string`, and the `s16` and `s32` prefixes spell the same text in the other two encodings:
 
 ```text

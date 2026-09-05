@@ -392,6 +392,11 @@ private:
     std::vector<SemanticDiagnostic> &diags;
     const CompileTimeContext &context;
     std::unordered_map<const Expr *, TypeRef> &expressionTypes;
+    std::unordered_map<const Expr *, const ConstDecl *> &associatedConstants;
+    std::unordered_set<const ConstDecl *> checkingAssociatedConstants;
+    [[nodiscard]] const ConstDecl *LookupAssociatedConstant(const Symbol &type, const std::string &name) const;
+    [[nodiscard]] TypeRef CheckAssociatedConstant(const ConstDecl &declaration);
+    void CheckIntrinsicType(const Decl &declaration);
     std::unordered_map<const TypeExpr *, TypeRef> &typeNodeTypes;
     std::unordered_map<const Pattern *, TypeRef> &patternTypes;
     std::unordered_map<const EnumPattern *, ResolvedCasePattern> &casePatterns;

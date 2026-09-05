@@ -34,6 +34,7 @@ struct Symbol {
     std::string ownerPackage;
     std::string modulePath;
     std::string intrinsicName;
+    const Decl *declaration = nullptr;
     std::vector<const FuncDecl *> funcOverloads;
     const ExternFuncDecl *externDecl = nullptr;
     std::vector<std::string> interfaceMethods;

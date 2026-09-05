@@ -54,8 +54,14 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
         if (e->segments.size() >= 2 && (first->kind == Symbol::Kind::Type || first->kind == Symbol::Kind::Interface)) {
             if (first->kind == Symbol::Kind::Type) {
                 if (e->segments.size() == 2) {
-                    if (const auto constant = LookupPrimitiveConstant(first->type, e->segments[1], context)) {
-                        return constant->type;
+                    if (const auto *constant = LookupAssociatedConstant(*first, e->segments[1])) {
+                        if (!IsAccessible(*constant)) {
+                            EmitPrivacyError(e->location, *constant, "associated constant", constant->name);
+                            return TypeRef::MakeUnknown();
+                        }
+                        const TypeRef type = CheckAssociatedConstant(*constant);
+                        associatedConstants[e] = constant;
+                        return type;
                     }
                 }
                 const std::string &variantName = e->segments[1];
