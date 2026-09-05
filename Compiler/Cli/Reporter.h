@@ -53,6 +53,8 @@ public:
     void Detail(std::string_view text, MessageVisibility visibility = MessageVisibility::Normal) const;
     void Verbose(std::string_view text) const;
     void Write(std::string_view text, MessageVisibility visibility = MessageVisibility::Normal) const;
+    /// Finish a report block before switching to another stream or waiting on a worker.
+    void Flush() const;
     void Table(std::span<const TableRow> rows, MessageVisibility visibility = MessageVisibility::Normal) const;
     void Summary(std::string_view title, std::span<const TableRow> rows) const;
 

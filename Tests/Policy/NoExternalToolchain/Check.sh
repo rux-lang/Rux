@@ -21,9 +21,9 @@ cd "$(dirname "$0")/../../.."
 # as building one: both entries run what the compiler just produced.
 #
 #   Cli/CmdRun.cpp   directly runs the host artifact.
-#   Cli/CmdTest.cpp  directly runs each executable target test artifact.
+#   Cli/Testing/TestExecution.cpp  directly runs each executable target test artifact.
 launch_exceptions='^Compiler/Cli/CmdRun\.cpp:'
-launch_exceptions="$launch_exceptions"'|^Compiler/Cli/CmdTest\.cpp:'
+launch_exceptions="$launch_exceptions"'|^Compiler/Cli/Testing/TestExecution\.cpp:'
 
 # A string literal naming a toolchain program. `prefix` is the target triple a
 # cross tool carries — `aarch64-linux-gnu-gcc` is as much a compiler as `gcc` —

@@ -1,4 +1,5 @@
 # Sources and dependencies owned by Cli.
+add_subdirectory(Testing)
 
 rux_add_component(RuxCliContract
     CliSpec.cpp)
@@ -31,4 +32,3 @@ target_sources(rux PRIVATE
     CmdRun.cpp
     CmdTest.cpp
 )
-

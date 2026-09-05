@@ -1,0 +1,10 @@
+execute_process(COMMAND "${RUX_READOBJ}" --coff-imports "${RUX_EXECUTABLE}"
+    RESULT_VARIABLE status OUTPUT_VARIABLE imports ERROR_VARIABLE errors)
+if (NOT status EQUAL 0)
+    message(FATAL_ERROR "Could not inspect compiler imports: ${errors}")
+endif ()
+string(TOLOWER "${imports}" imports)
+if (imports MATCHES "name: api-ms-win-core-synch-l1-2-0\\.dll")
+    message(FATAL_ERROR "rux imports the address-wait API set; its test workers do not require stop-token machinery")
+endif ()
+message(STATUS "Verified rux does not import api-ms-win-core-synch-l1-2-0.dll")

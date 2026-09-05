@@ -1,6 +1,6 @@
 # Tests
 
-All repository tests live below this directory and fall into five explicit categories:
+All repository tests live below this directory and fall into six explicit categories:
 
 | Path                         | Owner and runner                                                 |
 | ---------------------------- | ---------------------------------------------------------------- |
@@ -8,6 +8,7 @@ All repository tests live below this directory and fall into five explicit categ
 | `Packages/<Package>/<Test>/` | Black-box first-party package behavior; `rux test`               |
 | `Unit/`                      | Compiler internals and `Unit/Golden/` diagnostic fixtures; CTest |
 | `Policy/`                    | Source-tree invariants enforced directly by scripts or CI        |
+| `Scripts/`                   | Repository-command and installer behavior; CTest                 |
 | `Native/`                    | Target-specific runtime acceptance driven by platform scripts    |
 
 ## Rux Test Packages
@@ -103,3 +104,11 @@ The cross verifier builds a signed executable and dylib twice, compares their by
 The C++ manifest-policy tests in `Unit/ManifestTests.cpp` validate every checked-in `Rux.toml`: the schema header and canonical formatting repository-wide, the `Rux` namespace and registry dependency form of publishable first-party packages, and the package type, namespace-free identity, local dependency paths, source entry point and centralized output path of each test manifest.
 
 Related C++ cases are grouped by responsibility: semantic type and binding facts, ownership consumption/lifecycle/cleanup, LIR optimization/reachability, driver target artifacts, and CLI build/package behavior. Their focused `*TestSupport.h` files share fixtures within each group. Splitting a file does not change the registered cases or their assertions.
+
+## Running Concurrently
+
+Use `./Bin/rux test --release --jobs 4` (with `.exe` on Windows), or repository helpers with `-Jobs N` / `--jobs N`. Helpers and CI default to at most four available processors; direct `rux test` defaults to one. Failures do not cancel later packages. Output and diagnostics are collected per package and rendered in discovery order, with artifact collisions serialized.
+
+The existing `rux-tests` executable has disjoint CTest source groups: Numeric, Frontend, Lowering, Backends, Driver, Cli, and Optimization. `Unit.GroupCoverage` enumerates registrations and checks exact coverage, including skipped cases and reference-vector includes. A shared-artifact resource lock protects fixture groups. `ctest --test-dir Build --parallel 4 --output-on-failure -C Release` also runs repository and installer behavior checks exactly once. Direct doctest filters remain available for focused checks.
+
+Regression coverage includes moved semantic-result storage, primitive-kind indexing, source-text lifetime and lazy diagnostic lines, concurrent subprocess streams and Windows handle inheritance, worker bounds, ordered reporting, artifact aliases, continued failures, and serial/parallel package-test equivalence.

@@ -106,6 +106,8 @@ int ReportUsageError(const ColorMode color, const std::string_view command, cons
 
 std::string_view ValueDescription(const OptionSpec &option) {
     const auto preferred = PreferredOptionName(option);
+    if (preferred == "--jobs")
+        return "positive integer";
     if (preferred == "--target")
         return "target triple";
     if (preferred == "--manifest")
@@ -129,6 +131,8 @@ std::string_view ValueDescription(const OptionSpec &option) {
 /// reader still has to fill in.
 std::string_view SampleValue(const std::string_view command, const OptionSpec &option) {
     const auto preferred = PreferredOptionName(option);
+    if (preferred == "--jobs")
+        return "4";
     if (preferred == "--target")
         return "linux-x86_64";
     if (preferred == "--manifest")

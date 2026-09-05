@@ -184,6 +184,7 @@ constexpr std::array run_exs = {""sv, "--release"sv, "-- --port 8080"sv};
 // Test
 constexpr std::array test_usage = {"[options]"sv};
 constexpr std::array test_opts = {
+    OptionDoc{.flags = "--jobs <N>"sv, .desc = "Run up to N test packages concurrently (default: 1)"sv},
     OptionDoc{.flags = "--define <name[=value]>"sv, .desc = "Set or override a config compile-time value"sv},
     OptionDoc{.flags = "--release"sv, .desc = "Build with release profile"sv},
     OptionDoc{.flags = "--target <triple>"sv, .desc = "Build and run the tests for the specified target platform"sv}};

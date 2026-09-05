@@ -5,6 +5,7 @@
 #include "Linker/LinkerInternal.h"
 #include "Linker/RcuObjectLayout.h"
 #include "System/Os.h"
+#include "System/OutputFile.h"
 
 #include <algorithm>
 #include <format>
@@ -937,7 +938,7 @@ bool Linker::LinkPe32Plus(const std::filesystem::path &outputPath) {
 
     // 11. Emit PE32+ file
     std::filesystem::create_directories(outputPath.parent_path());
-    std::ofstream out(outputPath, std::ios::binary | std::ios::trunc);
+    auto out = System::OpenBinaryOutput(outputPath);
     if (!out) {
         Error("cannot open output file: " + outputPath.string());
         return false;

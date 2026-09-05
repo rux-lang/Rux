@@ -196,3 +196,7 @@ Every section is a title at column 0 over indented rows, with the label column s
 - Installing an emulator does not make Rux select or launch it.
 
 See the platform guides for native requirements and runtime verification: [FreeBSD](Platforms/FreeBSD.md), [Linux](Platforms/Linux.md), [macOS](Platforms/macOS.md), and [Windows](Platforms/Windows.md). The [CI/CD guide](CI-CD.md) explains which native, cross-compiler, structural, and transferred-artifact paths protect each target.
+
+## Parallel Test Builds
+
+`rux test --jobs N` compiles and executes up to N discovered executable packages concurrently. The default is one worker. Each worker owns its compiler state, diagnostics, and captured program output. Reports remain in discovery order, and a failing package does not stop later packages. Packages with overlapping executable or intermediate paths are serialized through the complete compile-and-run operation; path aliases are normalized before scheduling. The option does not add persistent Rux build caching or change package output paths, target validation, or registry restrictions.
