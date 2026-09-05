@@ -44,7 +44,10 @@ function Find-Tool {
     )
 
     foreach ($candidate in $Name) {
-        $command = Get-Command $candidate -CommandType Application -ErrorAction SilentlyContinue
+        # PATH may hold several copies (the Visual Studio environment adds its
+        # own CMake); take the first, as the shell would.
+        $command = Get-Command $candidate -CommandType Application -ErrorAction SilentlyContinue |
+            Select-Object -First 1
         if ($command) {
             return $command.Source
         }
