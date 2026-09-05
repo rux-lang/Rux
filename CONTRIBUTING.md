@@ -102,3 +102,5 @@ Have questions before diving in? Join us on [Discord](https://discord.com/invite
 ## License
 
 By contributing you agree that your work will be licensed under the [MIT License](LICENSE.md).
+
+Source-tree policy checks only host API isolation, internal code generation/linking and CLI output ownership. Repository-command and installer behavior checks are ordinary CTest tests. File length is a review guideline: prefer focused files near 800–1,000 lines and review ownership near 1,200 lines; no automated line-count gate runs locally or in CI.

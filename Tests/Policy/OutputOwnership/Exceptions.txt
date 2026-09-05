@@ -1,0 +1,10 @@
+# Path pattern|documented inspection or generated-output contract
+Compiler/Lexer/Lexer.cpp|Token inspection preserves its stable column grammar.
+Compiler/Syntax/Parser/ParserDump*.cpp|AST inspection preserves its deterministic tree grammar.
+Compiler/Semantic/Model/SemanticPrinter.cpp|Semantic inspection preserves its deterministic grammar.
+Compiler/Ir/Hir/HirPrinter.cpp|HIR inspection preserves its deterministic grammar.
+Compiler/Ir/Lir/LirPrinter.cpp|LIR inspection preserves its deterministic grammar.
+Compiler/CodeGen/X86_64/Assembly*Printer.cpp|Assembly inspection writes target syntax to the requested artifact.
+Compiler/CodeGen/RuntimeFailure.cpp|Assertion and panic text belongs to the generated user program.
+Compiler/Object/Rcu/RcuWriter.cpp|RCU binary and textual payloads are versioned artifact formats.
+Compiler/Documentation/Generator.cpp|Generated documentation retains public API text and deterministic layout.

@@ -121,4 +121,4 @@ require_text Run.sh 'if [ "$check" = true ]'
 require_text Run.ps1 'if ($Check)'
 require_text Scripts/RepositoryMessages.sh '[ -t 1 ] && [ -z "${NO_COLOR:-}" ]'
 
-printf 'Repository script message policy tests passed.\n'
+printf 'Repository command behavior tests passed.\n'

@@ -16,6 +16,8 @@ Target branch must be `dev`. Pull requests against `main` are closed automatical
 ## Checklist
 
 - [ ] Branched from `dev` and targeting `dev`
-- [ ] `sh Run.sh test --clang-tidy` / `./Run.ps1 test -ClangTidy` passes locally — policy guards, Release build, formatting, static analysis, C++ unit tests, workspace check and lint, and every Rux test package
+- [ ] `sh Run.sh test --clang-tidy` / `./Run.ps1 test -ClangTidy` passes locally — policy guards, Release build, formatting, static analysis, CTest unit/script tests, workspace check and lint, and every Rux test package
 - [ ] Tests added or updated: integration/golden for user-visible behavior, C++ unit for internals
 - [ ] `CHANGELOG.md` and affected documentation updated
+
+- [ ] Component dependencies and file ownership reviewed; no line-count gate or exception ceiling added

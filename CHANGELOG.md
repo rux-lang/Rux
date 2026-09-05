@@ -8,6 +8,8 @@ Each release groups its entries under **Added**, **Changed**, **Removed**, and *
 
 ## [Unreleased]
 
+- Remove line-count enforcement, language-cutover scanners and message-style scanners. Keep the three architectural boundaries, and register repository-command and installer behavior checks with CTest.
+
 - Give package services, HTTP transport and CLI build reports explicit component ownership; hide driver implementation state and register compiler sources beside their owners.
 
 - Split backend module emission, x86-64 instruction families, parser attributes, and the larger unit-test groups into focused files; give formatting and documentation commands their own owners.

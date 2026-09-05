@@ -20,8 +20,8 @@ env:
   NINJA_VERSION: "1.13.2"
 
 jobs:
-  platform-isolation:
-    name: Platform isolation
+  architecture:
+    name: Architecture boundaries
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -29,59 +29,8 @@ jobs:
         uses: actions/checkout@v6
         with:
           persist-credentials: false
-
-      # Direct OS API usage must stay inside Compiler/System/.
-      - name: Check platform isolation
-        run: sh Tests/Policy/PlatformIsolation/Check.sh
-
-  no-external-toolchain:
-    name: No external toolchain
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-
-      # Rux assembles and links its own artifacts: no assembler, C compiler,
-      # linker or archiver may be invoked from Compiler/.
-      - name: Check for external toolchain use
-        run: sh Tests/Policy/NoExternalToolchain/Check.sh
-
-  language-cutover:
-    name: Language ownership cutover
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-
-      - name: Test language ownership cutover policy
-        run: sh Tests/Policy/LanguageCutover/Test.sh
-
-      - name: Check language ownership cutover
-        run: sh Tests/Policy/LanguageCutover/Check.sh
-
-  oversized-files:
-    name: Oversized files
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-
-      # Keep compiler and unit-test implementation files below the ordinary
-      # architecture limit unless a path and growth ceiling were reviewed.
-      - name: Test oversized-file policy
-        run: sh Tests/Policy/OversizedFiles/Test.sh
-
-      - name: Check oversized files
-        run: sh Tests/Policy/OversizedFiles/Check.sh
+      - name: Check component boundaries
+        run: sh Run.sh policy
 
   format:
     name: clang-format

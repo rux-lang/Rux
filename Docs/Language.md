@@ -350,4 +350,4 @@ The compiler invokes it exactly once for each initialized value that still owns 
 
 ## Final Ownership Boundary
 
-Implicit consumption of named move-only values, mutable-parameter prefixes, exact-type forwarding `New` wrappers, and `Core::Drop` are removed. The repository language-cutover policy guards these boundaries in positive first-party source and pins the compiler paths that reject the removed parameter and move forms. Fallible and descriptive `New*` factories, interface `Self`, and deliberately raw pointer APIs are permanent parts of the language and packages rather than compatibility syntax.
+Implicit consumption of named move-only values, mutable-parameter prefixes, exact-type forwarding `New` wrappers, and `Core::Drop` are removed. Parser, semantic, golden and integration tests preserve rejection of these removed forms; source conventions are documented rather than scanned. Fallible and descriptive `New*` factories, interface `Self`, and deliberately raw pointer APIs are permanent parts of the language and packages rather than compatibility syntax.
