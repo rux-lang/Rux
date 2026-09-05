@@ -14,6 +14,7 @@
 #include "Semantic/Model/CompileTimeContext.h"
 #include "Syntax/Ast/Ast.h"
 
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -22,6 +23,9 @@
 #include <vector>
 
 namespace Rux {
+/// Resolves an imported package to its surviving source declarations. The caller owns these modules throughout folding.
+using ConditionalImportResolver = std::function<std::vector<Module *>(std::string_view)>;
+
 struct CompileTimeEnumValue {
     std::string type;
     std::string variant;
@@ -50,7 +54,8 @@ struct CompileTimeMatchEvaluation {
 /// the AST; the conditional-compilation folder below is the sole owner of branch selection and splicing.
 class ConditionalEvaluator {
 public:
-    ConditionalEvaluator(const CompileTimeContext &context, const std::vector<Module *> &modules);
+    ConditionalEvaluator(const CompileTimeContext &context, const std::vector<Module *> &modules,
+                         ConditionalImportResolver imports = {});
     ~ConditionalEvaluator();
 
     ConditionalEvaluator(const ConditionalEvaluator &) = delete;
@@ -76,7 +81,7 @@ private:
 
 /// Folds every `when` in `modules` in place using the same context later consumed by semantic analysis and lowering.
 void ResolveConditionalCompilation(const std::vector<Module *> &modules, const CompileTimeContext &context,
-                                   std::vector<Diagnostic> &diags);
+                                   std::vector<Diagnostic> &diags, ConditionalImportResolver imports = {});
 
 /// Compatibility overload used by embedders and focused tests which only need to select an OS. Empty means the host.
 void ResolveConditionalCompilation(const std::vector<Module *> &modules, std::string_view targetSystem,

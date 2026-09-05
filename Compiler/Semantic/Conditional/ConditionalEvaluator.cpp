@@ -4,9 +4,9 @@
 #include "Numeric/IntegerLiteral.h"
 #include "Semantic/Conditional/ConditionalCompilation.h"
 #include "Semantic/Conditional/ConditionalEvaluatorInternal.h"
-#include "Semantic/Model/PrimitiveConstants.h"
 #include "Semantic/SemanticVersion.h"
 #include "Target/Target.h"
+#include "Types/PrimitiveCatalog.h"
 
 #include <algorithm>
 #include <array>
@@ -266,45 +266,14 @@ std::optional<double> ParseFloatValue(std::string_view text) {
 }
 
 /// The value of a built-in constant such as a type's limit, so a `#if` can compare against it.
-std::optional<Value> PrimitiveValue(const PrimitiveConstant &constant) {
-    if (constant.type.IsFloat()) {
-        if (const auto value = ParseFloatValue(constant.value)) {
-            return Value{*value};
-        }
-        return std::nullopt;
-    }
-
-    if (!constant.type.IsInteger() && constant.type.kind != TypeRef::Kind::Char8 &&
-        constant.type.kind != TypeRef::Kind::Char16 && constant.type.kind != TypeRef::Kind::Char32) {
-        return std::nullopt;
-    }
-
-    if (constant.value.starts_with('-')) {
-        std::int64_t value = 0;
-        const auto [end, error] =
-            std::from_chars(constant.value.data(), constant.value.data() + constant.value.size(), value);
-        if (error == std::errc{} && end == constant.value.data() + constant.value.size()) {
-            return Value{value};
-        }
-        return std::nullopt;
-    }
-
-    std::uint64_t value = 0;
-    const auto [end, error] =
-        std::from_chars(constant.value.data(), constant.value.data() + constant.value.size(), value);
-    if (error != std::errc{} || end != constant.value.data() + constant.value.size()) {
-        return std::nullopt;
-    }
-    if (value <= static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())) {
-        return Value{static_cast<std::int64_t>(value)};
-    }
-    return Value{value};
-}
 
 } // namespace
 
-ConditionalEvaluator::Impl::Impl(const CompileTimeContext &inputContext, const std::vector<Module *> &modules)
-    : context(inputContext) {
+ConditionalEvaluator::Impl::Impl(const CompileTimeContext &inputContext, const std::vector<Module *> &modules,
+                                 ConditionalImportResolver imports)
+    : context(inputContext)
+    , resolveImports(std::move(imports))
+    , localModules(modules) {
     // `OperatingSystem` is built in; the program's own enums are collected
     // from its declarations, so a `when` can compare against those too.
     auto &operatingSystem = enumVariants["OperatingSystem"];
@@ -346,6 +315,7 @@ void ConditionalEvaluator::Impl::SetImports(const Module &module) {
 }
 
 void ConditionalEvaluator::Impl::RegisterDeclarations(const std::vector<DeclPtr> &decls) {
+    CollectRuxImports(decls);
     CollectCompileTimeDecls(decls);
 }
 
@@ -438,6 +408,7 @@ void ConditionalEvaluator::Impl::CollectCompileTimeDecls(const std::vector<DeclP
             // scope locally, just as importing it from Rux would.
             if (!constDecl->intrinsicName.empty()) {
                 localIntrinsics.insert(constDecl->name);
+                intrinsicBindings[constDecl->name] = constDecl->intrinsicName;
             }
             RegisterConstantImpl(*constDecl);
         }
@@ -467,29 +438,21 @@ void ConditionalEvaluator::Impl::CollectCompileTimeDecls(const std::vector<DeclP
 void ConditionalEvaluator::Impl::SetRuxImportsForModule(const Module &module) {
     ruxImports.clear();
     ruxGlobImport = false;
+    associatedDeclarations.clear();
+    importedConstants.clear();
+    intrinsicBindings.clear();
+    for (const Module *local : localModules) {
+        for (const auto &declaration : local->items) {
+            BindImportedDeclaration(*declaration, localModules, *local, false);
+        }
+    }
     CollectRuxImports(module.items);
 }
 
 void ConditionalEvaluator::Impl::CollectRuxImports(const std::vector<DeclPtr> &decls) {
     for (const auto &decl : decls) {
-        if (!decl) {
-            continue;
-        }
         if (const auto *use = dynamic_cast<const UseDecl *>(decl.get())) {
-            if (use->path.empty() || !context.intrinsicsAliases.contains(use->path.front())) {
-                continue;
-            }
-            if (use->kind == UseDecl::Kind::Glob) {
-                ruxGlobImport = true;
-            }
-            else if (use->kind == UseDecl::Kind::Multi) {
-                for (const auto &name : use->names) {
-                    ruxImports.insert(name);
-                }
-            }
-            else if (use->path.size() >= 2) {
-                ruxImports.insert(use->path.back());
-            }
+            ImportDeclarations(*use);
         }
         else if (const auto *module = dynamic_cast<const ModuleDecl *>(decl.get())) {
             CollectRuxImports(module->items);
@@ -558,22 +521,13 @@ bool ConditionalEvaluator::Impl::TargetHasFeature(const std::string_view name) c
     return false;
 }
 
-std::optional<std::string_view> ConditionalEvaluator::Impl::CompilerParamRoot(const Expr &expr) {
+std::optional<std::string_view> ConditionalEvaluator::Impl::CompilerParamRoot(const Expr &expr) const {
     const auto *ident = dynamic_cast<const IdentExpr *>(&expr);
     if (!ident) {
         return std::nullopt;
     }
-    if (ident->name == "#target")
-        return "Target";
-    if (ident->name == "#build")
-        return "Build";
-    if (ident->name == "#compiler")
-        return "Compiler";
-    if (ident->name == "#source")
-        return "Source";
-    if (ident->name == "#config")
-        return "Config";
-    return std::nullopt;
+    const auto binding = intrinsicBindings.find(ident->name);
+    return binding == intrinsicBindings.end() ? std::nullopt : std::optional<std::string_view>(binding->second);
 }
 
 std::optional<CompileTimeValue> ConditionalEvaluator::Impl::EvalCompilerParamField(const std::string_view root,
@@ -794,6 +748,47 @@ std::optional<CompileTimeValue> ConditionalEvaluator::Impl::EvalCompilerParamCal
 }
 
 std::optional<CompileTimeValue> ConditionalEvaluator::Impl::Eval(const Expr &expr) {
+    if (const auto *query = dynamic_cast<const TypeQueryExpr *>(&expr)) {
+        const auto *named = dynamic_cast<const NamedTypeExpr *>(query->type.get());
+        const auto type = named ? PrimitiveTypeFromName(named->name) : std::nullopt;
+        if (!type) {
+            return std::nullopt;
+        }
+        const auto value = query->query == TypeQueryExpr::Query::Size
+                             ? PrimitiveSize(type->kind, static_cast<std::uint32_t>(context.target.pointer_size))
+                             : PrimitiveAlign(type->kind, static_cast<std::uint32_t>(context.target.pointer_size));
+        return value ? std::optional<Value>{Value{static_cast<std::uint64_t>(*value)}} : std::nullopt;
+    }
+    if (const auto *cast = dynamic_cast<const CastExpr *>(&expr)) {
+        const auto *named = dynamic_cast<const NamedTypeExpr *>(cast->type.get());
+        const auto type = named ? PrimitiveTypeFromName(named->name) : std::nullopt;
+        const auto value = Eval(*cast->operand);
+        if (!type || !value || !(type->IsInteger() || type->IsChar())) {
+            return std::nullopt;
+        }
+        const auto width = PrimitiveBits(type->kind, static_cast<std::uint32_t>(context.target.pointer_size * 8));
+        if (!width || *width > 64) {
+            return std::nullopt;
+        }
+        std::uint64_t bits;
+        if (const auto *signedValue = std::get_if<std::int64_t>(&*value)) {
+            bits = static_cast<std::uint64_t>(*signedValue);
+        }
+        else if (const auto *unsignedValue = std::get_if<std::uint64_t>(&*value)) {
+            bits = *unsignedValue;
+        }
+        else {
+            return std::nullopt;
+        }
+        if (*width < 64) {
+            const std::uint64_t mask = (std::uint64_t{1} << *width) - 1;
+            bits &= mask;
+            if (type->IsSigned() && (bits & (std::uint64_t{1} << (*width - 1)))) {
+                bits |= ~mask;
+            }
+        }
+        return type->IsSigned() ? Value{static_cast<std::int64_t>(bits)} : Value{bits};
+    }
     if (const auto *e = dynamic_cast<const LiteralExpr *>(&expr)) {
         switch (e->token.kind) {
         case TokenKind::BoolLiteral:
@@ -1002,8 +997,14 @@ std::optional<CompileTimeValue> ConditionalEvaluator::Impl::Eval(const Expr &exp
 
     if (const auto *e = dynamic_cast<const PathExpr *>(&expr)) {
         if (e->segments.size() == 2) {
-            if (const auto constant = LookupPrimitiveConstant(e->segments[0], e->segments[1], context)) {
-                return PrimitiveValue(*constant);
+            const auto binding = associatedDeclarations.find(e->segments[0] + "::" + e->segments[1]);
+            if (binding != associatedDeclarations.end()) {
+                return EvalDeclaredConstant(binding->second, e->location);
+            }
+            if (PrimitiveTypeFromName(e->segments[0])) {
+                EmitError(e->location, "primitive associated constant requires an imported or local declaration");
+                reportedError = true;
+                return std::nullopt;
             }
         }
         // The long form of an enum member: OperatingSystem::Windows. A
@@ -1060,7 +1061,9 @@ std::optional<CompileTimeValue> ConditionalEvaluator::Impl::Eval(const Expr &exp
                 return Value{~*i};
             }
             if (const auto *u = std::get_if<std::uint64_t>(&*operand)) {
-                return Value{~*u};
+                const auto width = UnsignedIntegerWidth(*e->operand);
+                const std::uint64_t mask = width && *width < 64 ? (std::uint64_t{1} << *width) - 1 : ~std::uint64_t{0};
+                return Value{~*u & mask};
             }
             EmitError(e->location, "compile-time operator '~' requires an integer operand");
             reportedError = true;
@@ -1140,8 +1143,9 @@ std::string ConditionalEvaluator::Impl::JoinVariants(const std::vector<std::stri
     return joined;
 }
 
-ConditionalEvaluator::ConditionalEvaluator(const CompileTimeContext &context, const std::vector<Module *> &modules)
-    : impl(std::make_unique<Impl>(context, modules)) {
+ConditionalEvaluator::ConditionalEvaluator(const CompileTimeContext &context, const std::vector<Module *> &modules,
+                                           ConditionalImportResolver imports)
+    : impl(std::make_unique<Impl>(context, modules, std::move(imports))) {
 }
 
 ConditionalEvaluator::~ConditionalEvaluator() = default;

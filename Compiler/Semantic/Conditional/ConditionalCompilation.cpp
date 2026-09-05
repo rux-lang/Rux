@@ -73,16 +73,17 @@ std::optional<Target::OS> ParseTargetSystem(const std::string_view name) {
 
 /// Evaluate every `#if` in the given modules and fold each to its taken branch, rewriting the AST in place so later
 /// stages only ever see one version of the program.
-void Resolve(const std::vector<Module *> &modules, const CompileTimeContext &context, std::vector<Diagnostic> &diags) {
-    ConditionalEvaluator evaluator(context, modules);
+void Resolve(const std::vector<Module *> &modules, const CompileTimeContext &context, std::vector<Diagnostic> &diags,
+             ConditionalImportResolver imports = {}) {
+    ConditionalEvaluator evaluator(context, modules, std::move(imports));
     ConditionalFolding::FoldDeclarations(modules, evaluator, diags);
     ConditionalFolding::FoldStatements(modules, evaluator, diags);
 }
 } // namespace
 
 void ResolveConditionalCompilation(const std::vector<Module *> &modules, const CompileTimeContext &context,
-                                   std::vector<Diagnostic> &diags) {
-    Resolve(modules, context, diags);
+                                   std::vector<Diagnostic> &diags, ConditionalImportResolver imports) {
+    Resolve(modules, context, diags, std::move(imports));
 }
 
 void ResolveConditionalCompilation(const std::vector<Module *> &modules, const std::string_view targetSystem,

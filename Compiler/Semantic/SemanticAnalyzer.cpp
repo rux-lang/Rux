@@ -34,15 +34,26 @@ SemanticModel SemanticAnalyzer::Analyze() {
     // Fold `when` first: the branches that were not taken are dropped here, so
     // nothing below ever sees — or type-checks — them. Each package resolves its
     // own conditionals against its own constants.
+    const auto importedModules = [this](const std::string_view name) {
+        std::vector<Module *> result;
+        for (auto &dependency : deps) {
+            if (dependency.name == name) {
+                for (const auto &entry : dependency.modules) {
+                    result.push_back(entry.module);
+                }
+            }
+        }
+        return result;
+    };
     for (auto &dep : deps) {
         std::vector<Module *> depModules;
         depModules.reserve(dep.modules.size());
         for (const auto &entry : dep.modules) {
             depModules.push_back(entry.module);
         }
-        ResolveConditionalCompilation(depModules, compileTimeContext, diags);
+        ResolveConditionalCompilation(depModules, compileTimeContext, diags, importedModules);
     }
-    ResolveConditionalCompilation(modules, compileTimeContext, diags);
+    ResolveConditionalCompilation(modules, compileTimeContext, diags, importedModules);
 
     std::vector<const Module *> constModules(modules.begin(), modules.end());
     SemanticFacts facts;

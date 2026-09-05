@@ -1,6 +1,7 @@
 #include "Formatter/Formatter.h"
 #include "Lexer/Lexer.h"
 #include "Lowering/AstToHir/AstToHir.h"
+#include "Semantic/Conditional/ConditionalCompilation.h"
 #include "Semantic/SemanticAnalyzer.h"
 #include "Syntax/Parser/Parser.h"
 
@@ -249,4 +250,84 @@ func Read(values: Slice<int8>) -> int8 { return First(values); }
     AstToHirLowering lowering(model);
     (void)lowering.Generate();
     CHECK(lowering.Diagnostics().empty());
+}
+
+TEST_CASE("conditional compilation resolves source constants from a replacement package") {
+    auto dependency = ParseIntrinsicSource(IntegerDeclaration, "provider.rux");
+    auto parsed = ParseIntrinsicSource(R"(
+import Replacement::int8;
+when int8::Min == -128i8 {
+    func Main() -> int { return 0; }
+} else {
+    func Main() -> Missing { return 0; }
+}
+)");
+    const auto model =
+        SemanticAnalyzer({&parsed.module}, {{"Replacement", {{"provider.rux", &dependency.module}}}}, "App").Analyze();
+    CHECK_FALSE(model.HasErrors());
+}
+
+TEST_CASE("conditional compilation cannot obtain primitive constants without declarations") {
+    auto parsed = ParseIntrinsicSource("when int8::Min == -128i8 { func Main() {} }");
+    std::vector<Diagnostic> diagnostics;
+    ResolveConditionalCompilation({&parsed.module}, CompileTimeContext{}, diagnostics);
+    CHECK_FALSE(diagnostics.empty());
+}
+
+TEST_CASE("conditional context imports bind declarations without a privileged package identity") {
+    auto dependency = ParseIntrinsicSource(R"(
+pub enum OperatingSystem { FreeBSD, Linux, macOS, Windows }
+pub struct Target { pub os: OperatingSystem; }
+pub intrinsic #target: Target;
+)",
+                                           "platform.rux");
+    auto parsed = ParseIntrinsicSource(R"(
+import Platform::{ #target };
+when #target.os == .Windows { func Main() {} }
+else { func Main() -> Missing {} }
+)");
+    CompileTimeContext context;
+    context.target.os = Target::OS::Windows;
+    const auto model =
+        SemanticAnalyzer({&parsed.module}, {{"Platform", {{"platform.rux", &dependency.module}}}}, "App", context)
+            .Analyze();
+    CHECK_FALSE(model.HasErrors());
+}
+
+TEST_CASE("an import in a discarded conditional branch never loads a provider") {
+    auto parsed = ParseIntrinsicSource("when false { import Missing::int8; } func Main() {} ");
+    bool requested = false;
+    std::vector<Diagnostic> diagnostics;
+    ResolveConditionalCompilation({&parsed.module}, CompileTimeContext{}, diagnostics, [&](std::string_view) {
+        requested = true;
+        return std::vector<Module *>{};
+    });
+    CHECK_FALSE(requested);
+    CHECK(diagnostics.empty());
+}
+
+TEST_CASE("native source constant expressions use the compilation target") {
+    auto dependency = ParseIntrinsicSource(R"(
+pub intrinsic type uint;
+extend uint {
+    pub const Bits: uint = sizeof(uint) * 8u;
+    pub const Max: uint = ~0u;
+}
+)",
+                                           "native.rux");
+    for (const std::uint32_t bytes : {4, 8}) {
+        CAPTURE(bytes);
+        auto parsed = ParseIntrinsicSource("import Native::uint; const Width = uint::Bits; const Maximum = uint::Max;");
+        CompileTimeContext context;
+        context.target.pointer_size = bytes;
+        ConditionalEvaluator evaluator(context, {&parsed.module},
+                                       [&](std::string_view) { return std::vector<Module *>{&dependency.module}; });
+        evaluator.SetImports(parsed.module);
+        const auto width = evaluator.EvaluateConstant("Width");
+        REQUIRE(width.value);
+        CHECK_EQ(std::get<std::uint64_t>(*width.value), bytes * 8);
+        const auto maximum = evaluator.EvaluateConstant("Maximum");
+        REQUIRE(maximum.value);
+        CHECK_EQ(std::get<std::uint64_t>(*maximum.value), bytes == 4 ? 0xffffffffULL : 0xffffffffffffffffULL);
+    }
 }
