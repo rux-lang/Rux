@@ -959,6 +959,7 @@ TEST_CASE("repository Rux tests use canonical local manifests") {
     const auto testsRoot = std::filesystem::weakly_canonical(std::filesystem::path(RUX_TESTS_DIR));
     const auto packagesRoot = std::filesystem::weakly_canonical(std::filesystem::path(RUX_PACKAGES_DIR));
     const auto binariesRoot = std::filesystem::weakly_canonical(std::filesystem::path(RUX_TEST_BIN_DIR));
+    const auto fixturesRoot = testsRoot / "Fixtures";
     std::size_t manifestCount = 0;
 
     for (const auto &entry : std::filesystem::recursive_directory_iterator(testsRoot)) {
@@ -971,6 +972,12 @@ TEST_CASE("repository Rux tests use canonical local manifests") {
                         result.diagnostics.empty() ? entry.path().string() : result.diagnostics.front().Format());
         const Manifest &manifest = *result.manifest;
 
+        if (IsBelow(entry.path(), fixturesRoot)) {
+            CHECK_MESSAGE(manifest.package.type == ManifestPackageType::SourceLibrary,
+                          "declaration providers must be source libraries: ", entry.path().string());
+            CHECK_MESSAGE(!manifest.package.ns.has_value(), "test providers must be local packages");
+            continue;
+        }
         CHECK_MESSAGE(manifest.package.type == ManifestPackageType::Executable,
                       "test package must use Type = \"Executable\": ", entry.path().string());
         // A test package is built in place and never published, so it stays
@@ -991,9 +998,9 @@ TEST_CASE("repository Rux tests use canonical local manifests") {
                             dependency.importName.Text());
             const auto dependencyRoot =
                 std::filesystem::weakly_canonical(entry.path().parent_path() / dependency.Path());
-            CHECK_MESSAGE(IsBelow(dependencyRoot, packagesRoot),
-                          "test dependency must resolve below Packages: ", entry.path().string(), " -> ",
-                          dependency.importName.Text());
+            CHECK_MESSAGE((IsBelow(dependencyRoot, packagesRoot) || IsBelow(dependencyRoot, fixturesRoot)),
+                          "test dependency must resolve below Packages or Tests/Fixtures: ", entry.path().string(),
+                          " -> ", dependency.importName.Text());
             const auto dependencyResult = Manifest::Load(dependencyRoot / "Rux.toml");
             REQUIRE_MESSAGE(dependencyResult.Ok(), "local dependency has no valid manifest: ", dependencyRoot.string());
             CHECK_MESSAGE(dependencyResult.manifest->package.name == dependency.package,

@@ -550,7 +550,8 @@ HirImplBlock AstToHirContext::LowerImpl(const ImplDecl &d) {
     }
 
     HirImplBlock hib;
-    hib.typeName = d.typeName.starts_with("Slice<") ? d.typeName : BaseTypeName(d.typeName);
+    hib.typeName =
+        extendedType.isIntrinsicSlice && ImplTypeParams(d).empty() ? extendedType.name : BaseTypeName(d.typeName);
     hib.interfaceName = d.interfaceName;
     hib.location = d.location;
     for (const auto &m : d.methods) {

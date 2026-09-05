@@ -36,7 +36,13 @@ std::optional<CompileTimeValue> ConditionalEvaluator::Impl::EvalWideBinary(const
     const auto result = [&](WideInteger bits) -> std::optional<Value> {
         return Value{CompileTimeWideInteger{bits, signedResult}};
     };
-    const auto order = lhs->Compare(*rhs, signedResult);
+    const bool leftSigned = leftWide ? leftWide->isSigned : std::holds_alternative<std::int64_t>(left);
+    const bool rightSigned = rightWide ? rightWide->isSigned : std::holds_alternative<std::int64_t>(right);
+    const bool leftNegative = leftSigned && lhs->IsNegative();
+    const bool rightNegative = rightSigned && rhs->IsNegative();
+    const auto order = leftNegative != rightNegative
+                         ? (leftNegative ? std::strong_ordering::less : std::strong_ordering::greater)
+                         : lhs->Compare(*rhs, leftNegative);
     switch (expr.op) {
     case TokenKind::Equal:
         return Value{order == 0};

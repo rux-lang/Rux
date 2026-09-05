@@ -1,3 +1,4 @@
+import Core::Slice;
 import Core::MutableSlice;
 
 struct Pair {

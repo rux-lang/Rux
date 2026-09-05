@@ -272,6 +272,18 @@ void AnalysisContext::CheckInterfaceDecl(const InterfaceDecl &d) {
 
 void AnalysisContext::CheckImplDecl(const ImplDecl &d) {
     std::unordered_set<std::string> constantNames;
+    const auto owner = declarationInfos.find(&d);
+    for (const ImplDecl *previous : implDecls) {
+        if (previous == &d)
+            break;
+        const auto previousOwner = declarationInfos.find(previous);
+        if (previous->typeName == d.typeName && owner != declarationInfos.end() &&
+            previousOwner != declarationInfos.end() &&
+            previousOwner->second.ownerPackage == owner->second.ownerPackage) {
+            for (const auto &constant : previous->constants)
+                constantNames.insert(constant->name);
+        }
+    }
     for (const auto &constant : d.constants) {
         if (!constantNames.insert(constant->name).second) {
             EmitError(constant->location, std::format("associated constant '{}' is already declared", constant->name));
@@ -283,7 +295,7 @@ void AnalysisContext::CheckImplDecl(const ImplDecl &d) {
 
     // A compound receiver (e.g. `int[]`) resolves through the type
     // expression rather than a named symbol.
-    const std::string typeName = d.typeName.starts_with("Slice<") ? d.typeName : BaseTypeName(d.typeName);
+    const std::string typeName = BaseTypeName(d.typeName);
     // An extend block borrows the extended type's parameters, so it borrows their bounds too: a method body passing
     // `T` on to a constrained generic is checked against what the struct declared rather than left unconstrained.
     const ScopedTypeParameterBounds boundScope(*this, AggregateTypeParams(typeName));
@@ -291,7 +303,8 @@ void AnalysisContext::CheckImplDecl(const ImplDecl &d) {
     if (d.extendedType) {
         ValidateArrayType(*d.extendedType);
     }
-    const bool receiverMayResolve = extendedSymbol != nullptr || d.typeName.starts_with("Slice<");
+    const bool receiverMayResolve =
+        extendedSymbol != nullptr || !dynamic_cast<const NamedTypeExpr *>(d.extendedType.get());
     TypeRef extendedType = d.extendedType && receiverMayResolve ? ResolveType(*d.extendedType) : TypeRef::MakeUnknown();
     const bool isSliceReceiver = extendedType.kind == TypeRef::Kind::Array || (extendedType.isIntrinsicSlice);
     if (!isSliceReceiver && !extendedSymbol) {
@@ -359,7 +372,9 @@ void AnalysisContext::CheckImplDecl(const ImplDecl &d) {
         currentSelfType = TypeRef::MakePointer(selfBase);
     }
     for (const auto &m : d.methods) {
-        if (const auto typeIt = methodsByType.find(typeName); typeIt != methodsByType.end()) {
+        if (const auto typeIt = methodsByType.find(
+                extendedType.isIntrinsicSlice && currentTypeParams.empty() ? extendedType.name : typeName);
+            typeIt != methodsByType.end()) {
             if (const auto methodIt = typeIt->second.find(m->name); methodIt != typeIt->second.end()) {
                 ValidateFunctionSignature(*m, methodIt->second, /*isMethod=*/true);
             }

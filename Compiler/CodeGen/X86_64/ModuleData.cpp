@@ -20,7 +20,7 @@ namespace Rux::X86_64Detail {
         return true;
     case TypeRef::Kind::Named: {
         const std::string base = BaseTypeName(t.name);
-        return base == "Slice" || interfaceNames.count(base) > 0 || layouts.contains(base) ||
+        return t.isIntrinsicSlice || interfaceNames.count(base) > 0 || layouts.contains(base) ||
                (!t.inner.empty() && SizeOf(t) > 8);
     }
     default:

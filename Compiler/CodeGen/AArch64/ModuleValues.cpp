@@ -53,7 +53,7 @@ namespace Rux::AArch64Detail {
         return true;
     case TypeRef::Kind::Named: {
         const std::string base = BaseTypeName(t.name);
-        return base == "Slice" || interfaceNames.contains(base) || layouts.contains(base) ||
+        return t.isIntrinsicSlice || interfaceNames.contains(base) || layouts.contains(base) ||
                (!t.inner.empty() && SizeOf(t) > 8);
     }
     default:

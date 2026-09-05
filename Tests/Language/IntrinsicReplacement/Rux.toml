@@ -8,7 +8,7 @@ Type = "Executable"
 Description = "A renamed replacement provider without Core"
 
 [Dependencies]
-Foundation = { Path = "Provider" }
+Foundation = { Package = "Replacement", Path = "../../Fixtures/IntrinsicProvider" }
 
 [Build]
 Output = "../../../Bin/Tests/Language"

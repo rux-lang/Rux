@@ -53,6 +53,13 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
         }
         if (e->segments.size() >= 2 && (first->kind == Symbol::Kind::Type || first->kind == Symbol::Kind::Interface)) {
             if (first->kind == Symbol::Kind::Type) {
+                if (IsUnimplementedPrimitiveType(first->name)) {
+                    EmitError(
+                        e->location,
+                        std::format("primitive type '{}' is reserved but is not implemented in this compiler version",
+                                    first->name));
+                    return TypeRef::MakeUnknown();
+                }
                 if (e->segments.size() == 2) {
                     if (const auto *constant = LookupAssociatedConstant(*first, e->segments[1])) {
                         if (!IsAccessible(*constant)) {

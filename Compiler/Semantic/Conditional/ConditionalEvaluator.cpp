@@ -265,8 +265,6 @@ std::optional<double> ParseFloatValue(std::string_view text) {
     }
 }
 
-/// The value of a built-in constant such as a type's limit, so a `#if` can compare against it.
-
 } // namespace
 
 ConditionalEvaluator::Impl::Impl(const CompileTimeContext &inputContext, const std::vector<Module *> &modules,
@@ -317,6 +315,25 @@ void ConditionalEvaluator::Impl::SetImports(const Module &module) {
 void ConditionalEvaluator::Impl::RegisterDeclarations(const std::vector<DeclPtr> &decls) {
     CollectRuxImports(decls);
     CollectCompileTimeDecls(decls);
+    for (const Module *module : localModules) {
+        if (module->name != currentFile)
+            continue;
+        for (const auto &declaration : decls) {
+            if (declaration && !dynamic_cast<const WhenDecl *>(declaration.get())) {
+                selectedDeclarations.emplace_back(declaration.get(), module);
+            }
+        }
+    }
+    // Existing aliases must see extensions introduced by the selected branch.
+    for (const Module *module : localModules) {
+        for (const auto &declaration : module->items) {
+            if (declaration)
+                BindImportedDeclaration(*declaration, localModules, *module, false);
+        }
+    }
+    for (const auto &[declaration, module] : selectedDeclarations) {
+        BindImportedDeclaration(*declaration, localModules, *module, false);
+    }
 }
 
 CompileTimeEvaluation ConditionalEvaluator::Impl::Evaluate(const Expr &expr) {
@@ -432,15 +449,14 @@ void ConditionalEvaluator::Impl::CollectCompileTimeDecls(const std::vector<DeclP
     }
 }
 
-/// Record which names the current file imports from the intrinsics package, so a `when` condition can require its build
-/// intrinsics and enums to be imported. The import name is whatever the owning manifest bound the package to, so it is
-/// matched against the aliases the driver resolved rather than against a fixed spelling.
+/// Resolve this file's imported declarations before binding local aliases to their underlying providers.
 void ConditionalEvaluator::Impl::SetRuxImportsForModule(const Module &module) {
     ruxImports.clear();
     ruxGlobImport = false;
     associatedDeclarations.clear();
     importedConstants.clear();
     intrinsicBindings.clear();
+    CollectRuxImports(module.items);
     for (const Module *local : localModules) {
         for (const auto &declaration : local->items) {
             if (declaration) {
@@ -448,7 +464,6 @@ void ConditionalEvaluator::Impl::SetRuxImportsForModule(const Module &module) {
             }
         }
     }
-    CollectRuxImports(module.items);
 }
 
 void ConditionalEvaluator::Impl::CollectRuxImports(const std::vector<DeclPtr> &decls) {

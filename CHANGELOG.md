@@ -8,10 +8,6 @@ Each release groups its entries under **Added**, **Changed**, **Removed**, and *
 
 ## [Unreleased]
 
-### Changed
-
-- Primitive associated APIs now come from explicit declarations: import `Core::int8` before using `int8::Min`. Core declares primitive constants, string views, slices, and ranges with `intrinsic` bindings; another package can supply those declarations. Scalar types and inferred literals remain usable without Core. String annotations and declared view fields require a visible declaration. Finite constants are ordinary source expressions; only floating-point Infinity and NaN retain intrinsic values. Conditional compilation resolves actual declarations and imports without privileged package names or manifest identities. This is a source-breaking import migration.
-
 Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler context), native AArch64 host support on every platform, explicit references and ownership transfer, deterministic value lifecycles, an explicit `let`/`var` mutability model, and a consolidated, hermetic test tree.
 
 ### Added
@@ -221,6 +217,8 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 ### Changed
 
 #### Language
+
+- Primitive associated APIs now come from explicit declarations: import `Core::int8` before using `int8::Min`. Core declares primitive constants, string views, slices, and ranges with `intrinsic` bindings; another package can supply those declarations. Scalar types and inferred literals remain usable without Core. String annotations and declared view fields require a visible declaration. Finite constants are ordinary source expressions; only floating-point Infinity and NaN retain intrinsic values. Conditional compilation resolves actual declarations and imports without privileged package names or manifest identities. This is a source-breaking import migration.
 
 - **Text is `string` and bytes are `Slice<char8>`** — every first-party entry point that takes or answers with text now says so: `Assert`, `DebugAssert`, `Panic`, `#Error`, `#Warn`, `#config.Get`, `#target.HasFeature`, the `#source` and `#build` context members, `Print`, `PrintLine`, `Format`, `WriteFormat`, the `Format` parsers, and the text constructors of `Text`, `Json`, `Toml`, `Path`, `Time`, and `Uuid`. Byte-oriented entry points keep their slices deliberately: a crypto digest, a stream read or write, a UTF-8 validator, and the byte ingest of `Text::String` and `Text::StringView` take whatever bytes they were handed. The two types do not convert into each other in either direction. A caller holding text that needs bytes builds the slice at the call — `Slice<char8> { data: text.data, length: text.length }` — and a caller holding bytes that must be text validates them through `Text::StringView::FromBytes`. A document parser keeps both spellings, since a document read from a file arrives as bytes and one written as a literal is already text.
 

@@ -187,6 +187,18 @@ Scope &SemanticProgramIndex::ModuleScopeFor(const std::string &name, Scope &pare
     return parent;
 }
 
+void SemanticProgramIndex::BindImplementationMethods(const ImplDecl &declaration, const std::string &receiverName) {
+    const std::string base = BaseTypeName(declaration.typeName);
+    if (receiverName == base)
+        return;
+    for (const auto &method : declaration.methods) {
+        std::erase(methods[base][method->name], method.get());
+        auto &candidates = methods[receiverName][method->name];
+        if (!std::ranges::contains(candidates, method.get()))
+            candidates.push_back(method.get());
+    }
+}
+
 void SemanticProgramIndex::CollectModule(const Module &module, const std::string *packageName,
                                          const ResolveType &resolveType) {
     for (const auto &declaration : module.items) {
@@ -395,9 +407,7 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
                 member.get(),
                 DeclarationInfo{ownerPackage, modulePath, sourceName, containingModulesPublic && member->isPublic});
         }
-        const std::string typeName = implementation->typeName.starts_with("Slice<")
-                                       ? implementation->typeName
-                                       : BaseTypeName(implementation->typeName);
+        const std::string typeName = BaseTypeName(implementation->typeName);
         const Symbol *extendedSymbol = scope.Lookup(typeName);
         const bool extendedTypePublic = !extendedSymbol || extendedSymbol->isEffectivelyPublic;
         for (const auto &method : implementation->methods) {
@@ -483,9 +493,7 @@ void SemanticProgramIndex::FinalizeVisibility() {
         if (info == declarationInfos.end() || scope == functionScopes.end()) {
             continue;
         }
-        const std::string typeName = implementation->typeName.starts_with("Slice<")
-                                       ? implementation->typeName
-                                       : BaseTypeName(implementation->typeName);
+        const std::string typeName = BaseTypeName(implementation->typeName);
         const Symbol *extendedType = scope->second->Lookup(typeName);
         info->second.isEffectivelyPublic =
             info->second.isEffectivelyPublic && extendedType && extendedType->isEffectivelyPublic;

@@ -386,8 +386,10 @@ void AstToHirContext::CollectDecl(const Decl &decl) {
         }
     }
     else if (const auto *implDecl = dynamic_cast<const ImplDecl *>(&decl)) {
-        const std::string typeName =
-            implDecl->typeName.starts_with("Slice<") ? implDecl->typeName : BaseTypeName(implDecl->typeName);
+        const TypeRef *receiver = implDecl->extendedType ? model.TryGetType(*implDecl->extendedType) : nullptr;
+        const std::string typeName = receiver && receiver->isIntrinsicSlice && ImplTypeParams(*implDecl).empty()
+                                       ? receiver->name
+                                       : BaseTypeName(implDecl->typeName);
         for (const auto &method : implDecl->methods) {
             methodsByType[typeName][method->name].push_back(method.get());
             methodImpl[method.get()] = implDecl;
