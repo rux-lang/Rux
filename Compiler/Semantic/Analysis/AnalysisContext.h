@@ -436,7 +436,7 @@ private:
     std::string currentPackage;
     TypeRef currentReturnType = TypeRef::MakeOpaque();
     bool currentFunctionNoReturn = false;
-    int loopDepth;
+    int loopDepth = 0;
     std::unordered_set<std::string> activeLabels;
     bool inImpl = false;
     TypeRef currentSelfType = TypeRef::MakeUnknown();
