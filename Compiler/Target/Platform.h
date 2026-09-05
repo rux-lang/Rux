@@ -62,13 +62,13 @@
 // ---- C++ compiler -----------------------------------------------------------
 
 #ifndef __clang__
-    #error "Rux requires Clang 22.1 or newer"
+    #error "Rux requires Clang 23.1 or newer"
 #endif
 #ifdef __apple_build_version__
     #error "Rux requires upstream Clang; Apple Clang is unsupported"
 #endif
-#if __clang_major__ < 22 || (__clang_major__ == 22 && __clang_minor__ < 1)
-    #error "Rux requires Clang 22.1 or newer"
+#if __clang_major__ < 23 || (__clang_major__ == 23 && __clang_minor__ < 1)
+    #error "Rux requires Clang 23.1 or newer"
 #endif
 
 // ---- Build mode -------------------------------------------------------------

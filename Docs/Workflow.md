@@ -4,7 +4,17 @@ The day-to-day loop for changing the Rux compiler. For where your branch should 
 
 ## 1. Prerequisites
 
-Install the toolchain (upstream Clang 22.1+ including `clang-format`, CMake 3.30+, Ninja 1.11+, and a recent Git) for your OS — see [Building from Source](../README.md#building-from-source). Rux supports only upstream Clang as its C++ compiler, and configuration rejects any other compiler or older release. Install `clang-tidy` from the same LLVM 22 release when you want to run static analysis locally.
+Install the current stable toolchain for your OS — see [Building from Source](../README.md#building-from-source).
+The versions below were verified on September 5, 2026:
+
+| Tool                                                                             | Current release | Repository requirement                                                 |
+| -------------------------------------------------------------------------------- | --------------- | ---------------------------------------------------------------------- |
+| [LLVM / Clang](https://github.com/llvm/llvm-project/releases/tag/llvmorg-23.1.0) | 23.1.0          | Upstream Clang 23.1+; LLVM 23 `clang-format` and `clang-tidy`          |
+| [CMake](https://cmake.org/download/)                                             | 4.4.3           | 4.4.3+; CI pins 4.4.3                                                  |
+| [Ninja](https://github.com/ninja-build/ninja/releases/tag/v1.13.2)               | 1.13.2          | 1.13.2+; CI pins 1.13.2                                                |
+| [Git](https://git-scm.com/install/)                                              | 2.55.0          | Use the current stable release; platform packaging suffixes may differ |
+
+Configuration rejects unsupported C++ compilers, older Clang/CMake versions, and Ninja versions below 1.13.2. Install `clang-format` and `clang-tidy` from the same LLVM 23 release.
 
 The LLVM tools have distinct roles:
 
@@ -71,34 +81,34 @@ There are **no sanitizer presets** wired into `CMakeLists.txt`. If you want ASan
 
 ## 4. Repository Layout
 
-| Path                    | Purpose                                                                                           |
-| ----------------------- | ------------------------------------------------------------------------------------------------- |
-| `Compiler/Cli/`         | Command-line interface and terminal presentation                                                  |
-| `Compiler/Diagnostics/` | Diagnostic values, severities, and rendering primitives                                           |
-| `Compiler/Driver/`      | Compilation orchestration, targets, and build reports                                             |
-| `Compiler/SourceModel/` | Source locations and loaded-file identity values                                                  |
-| `Compiler/Source/`      | Source discovery and loading                                                                      |
-| `Compiler/Lexer/`       | Tokens and lexical analysis                                                                       |
-| `Compiler/Syntax/`      | AST and parser                                                                                    |
-| `Compiler/Semantic/`    | Types, symbols, analysis, and the persistent semantic model                                       |
-| `Compiler/Ir/`          | HIR/LIR models, printers, and IR-local passes                                                     |
-| `Compiler/Lowering/`    | Explicit AST-to-HIR and HIR-to-LIR transformations                                                |
-| `Compiler/CodeGen/`     | Target-specific code generation                                                                   |
-| `Compiler/Object/`      | Object formats and serialization                                                                  |
-| `Compiler/Linker/`      | PE, ELF, Mach-O, relocatable-object, and archive writers                                          |
-| `Compiler/Target/`      | Compilation target, ABI, data-layout, and architecture model                                      |
-| `Compiler/System/`      | Host OS, hardware, filesystem, and process services                                               |
-| `Compiler/Package/`     | Manifest parsing and package management                                                           |
-| `Compiler/Formatter/`   | Formatting engine used by `rux fmt`                                                               |
-| `Compiler/Linter/`      | Lint engine and rules used by `rux lint`                                                          |
-| `Tests/Language/`       | Executable Rux language and compiler-behavior tests (`rux test`)                                  |
-| `Tests/Packages/`       | Executable first-party package tests grouped as `<Package>/<Test>` (`rux test`)                   |
-| `Tests/Unit/`           | C++ unit tests and their `Golden/` diagnostic fixtures (doctest + CTest)                          |
+| Path                    | Purpose                                                                                |
+| ----------------------- | -------------------------------------------------------------------------------------- |
+| `Compiler/Cli/`         | Command-line interface and terminal presentation                                       |
+| `Compiler/Diagnostics/` | Diagnostic values, severities, and rendering primitives                                |
+| `Compiler/Driver/`      | Compilation orchestration, targets, and build reports                                  |
+| `Compiler/SourceModel/` | Source locations and loaded-file identity values                                       |
+| `Compiler/Source/`      | Source discovery and loading                                                           |
+| `Compiler/Lexer/`       | Tokens and lexical analysis                                                            |
+| `Compiler/Syntax/`      | AST and parser                                                                         |
+| `Compiler/Semantic/`    | Types, symbols, analysis, and the persistent semantic model                            |
+| `Compiler/Ir/`          | HIR/LIR models, printers, and IR-local passes                                          |
+| `Compiler/Lowering/`    | Explicit AST-to-HIR and HIR-to-LIR transformations                                     |
+| `Compiler/CodeGen/`     | Target-specific code generation                                                        |
+| `Compiler/Object/`      | Object formats and serialization                                                       |
+| `Compiler/Linker/`      | PE, ELF, Mach-O, relocatable-object, and archive writers                               |
+| `Compiler/Target/`      | Compilation target, ABI, data-layout, and architecture model                           |
+| `Compiler/System/`      | Host OS, hardware, filesystem, and process services                                    |
+| `Compiler/Package/`     | Manifest parsing and package management                                                |
+| `Compiler/Formatter/`   | Formatting engine used by `rux fmt`                                                    |
+| `Compiler/Linter/`      | Lint engine and rules used by `rux lint`                                               |
+| `Tests/Language/`       | Executable Rux language and compiler-behavior tests (`rux test`)                       |
+| `Tests/Packages/`       | Executable first-party package tests grouped as `<Package>/<Test>` (`rux test`)        |
+| `Tests/Unit/`           | C++ unit tests and their `Golden/` diagnostic fixtures (doctest + CTest)               |
 | `Tests/Policy/`         | Architectural checks: host API isolation, internal toolchain, and CLI output ownership |
-| `Tests/Native/`         | Target-specific end-to-end fixtures driven by platform scripts                                    |
-| `Packaging/`            | Linux and Windows installer scripts plus the Windows MSI project                                  |
-| `Bin/`                  | Compiler and centralized test executables; **git-ignored**                                        |
-| `CMakeLists.txt`        | Top-level build entry: project `VERSION` + `add_subdirectory(Compiler)`                           |
+| `Tests/Native/`         | Target-specific end-to-end fixtures driven by platform scripts                         |
+| `Packaging/`            | Linux and Windows installer scripts plus the Windows MSI project                       |
+| `Bin/`                  | Compiler and centralized test executables; **git-ignored**                             |
+| `CMakeLists.txt`        | Top-level build entry: project `VERSION` + `add_subdirectory(Compiler)`                |
 
 `Bin/` contains every repository executable. The compiler builds directly to `Bin/rux` (`Bin\rux.exe` on Windows), the C++ unit runner to `Bin/Tests/Unit/rux-tests`, language tests to `Bin/Tests/Language/`, and package tests to `Bin/Tests/Packages/<Package>/`. Test executables are written directly to those corresponding directories without `Debug` or `Release` subdirectories. CMake intermediates stay in the build directory passed to `-B`. `Bin/` is listed in `.gitignore`; nothing under it is tracked.
 
@@ -265,3 +275,9 @@ Otherwise, match the surrounding code — consistency beats personal preference.
 - Write messages as short imperative sentences: `Fix parser crash on empty block`, not `Fixed the parser`.
 - Commits are **not squashed** on merge — PRs land on `dev` via a merge commit (see [Pull Request Lifecycle](PullRequest.md)), so the individual commits you push are what end up in history. Keep them atomic and self-contained.
 - Link the issue a change closes with `Fixes #42` in the PR description (or a commit message). No other trailers are required.
+
+## Build and Test Throughput
+
+See [Compiler Build Performance](CompilerPerformance.md) for metadata stability, optional compilation launchers, standard-library PCH, PCH-disabled analysis, ThinLTO, and repeatable measurements. `-Jobs N` / `--jobs N` controls CTest, Rux-test, and tidy workers; defaults use at most four available processors. An explicit value also limits C++ build workers, while ordinary builds retain Ninja's default parallelism. Direct `rux test --jobs N` uses one worker by default.
+
+CTest partitions the existing doctest executable by source owner. `Unit.GroupCoverage` verifies every registered case belongs to exactly one group, including included reference-vector cases. Groups with shared fixtures take a resource lock; pure numeric tests can overlap them. Script and installer checks are ordinary CTest registrations. No line-count, language-cutover, or message-style scanner runs in local verification or CI.

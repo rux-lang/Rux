@@ -8,10 +8,10 @@ Download the `rux-macos-x86_64.tar.gz` or `rux-macos-aarch64.tar.gz` archive mat
 
 ## Building from Source
 
-Rux currently requires Clang 22.1 or newer, CMake 3.30 or newer, Ninja 1.11 or newer, and a recent Git installation. Apple Clang does not yet provide all C++26 features used by Rux, so install upstream LLVM 22 and the build tools with [Homebrew](https://brew.sh/):
+Rux currently requires Clang 23.1 or newer, CMake 4.4.3 or newer, Ninja 1.13.2 or newer, and a recent Git installation. Apple Clang does not yet provide all C++26 features used by Rux, so install upstream LLVM 23 and the build tools with [Homebrew](https://brew.sh/):
 
 ```sh
-brew install llvm@22 cmake ninja git
+brew install llvm@23 cmake ninja git
 ```
 
 Clone and build Rux with Homebrew's Clang:
@@ -19,7 +19,7 @@ Clone and build Rux with Homebrew's Clang:
 ```sh
 git clone https://github.com/rux-lang/Rux.git
 cd Rux
-sh Run.sh build --compiler "$(brew --prefix llvm@22)/bin/clang++"
+sh Run.sh build --compiler "$(brew --prefix llvm@23)/bin/clang++"
 ```
 
 The script creates a Release build in `Build/` and writes the compiler to `Bin/rux`.
@@ -72,13 +72,13 @@ On Apple Silicon, `file` should report a `Mach-O 64-bit executable arm64`. Progr
 Run the complete repository verification workflow with the same Homebrew compiler:
 
 ```sh
-sh Run.sh test --compiler "$(brew --prefix llvm@22)/bin/clang++"
+sh Run.sh test --compiler "$(brew --prefix llvm@23)/bin/clang++"
 ```
 
 Static analysis is intentionally opt-in because it is slower:
 
 ```sh
-sh Run.sh test --compiler "$(brew --prefix llvm@22)/bin/clang++" --clang-tidy
+sh Run.sh test --compiler "$(brew --prefix llvm@23)/bin/clang++" --clang-tidy
 ```
 
 Use `sh Run.sh format` to format maintained C++ and Rux sources, or `sh Run.sh format --check` to check them without making changes. Individual workflow steps are also available on their own as `sh Run.sh policy`, `sh Run.sh tidy`, and `sh Run.sh unit`.
@@ -110,3 +110,5 @@ It builds the signed executable and dylib fixtures twice, checks deterministic b
 `rux run` always builds and launches the compiler process's host triple and has no `--target` option. `rux test --target` requires macOS plus an architecture reported for either the compiler process or the native OS. Consequently, an x86-64 compiler running under Rosetta on Apple Silicon may directly test `macos-aarch64`; a physical Intel Mac may only build/check that target and transfer it to Apple Silicon for testing.
 
 The required `macOS.yml` workflow runs the complete compiler, unit, workspace, and native fixture suites on `macos-26`, then repeats target tests and fixtures with the downloaded x86-64 compiler under Rosetta. The release workflow runs the same native Apple Silicon acceptance before publishing `rux-macos-aarch64.tar.gz`. GitHub's `macos-26` runner is the normal acceptance environment; EC2 Mac is reserved for prolonged debugging, crash capture, or demonstrated GitHub-runner instability and is not required for development, merging, or releases.
+
+Use LLVM 23 for formatting and static analysis, with LF line endings on this platform. Repository verification uses up to four available test workers; override with `-Jobs N` in PowerShell or `--jobs N` in POSIX shell. See [Compiler Build Performance](../CompilerPerformance.md) for compilation caching, optional PCH/ThinLTO, stable metadata, and measurement commands.

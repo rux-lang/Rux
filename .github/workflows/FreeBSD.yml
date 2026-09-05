@@ -34,7 +34,7 @@ jobs:
             label: AArch64
             vm_arch: aarch64
             artifact: rux-freebsd-aarch64
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     # The AArch64 VM is fully emulated, so compiling the compiler and complete
     # unit suite takes more than the default two-and-a-half-hour allowance.
     timeout-minutes: 240
@@ -44,10 +44,19 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Restore C++ compilation cache
+        uses: actions/cache@v6
+        with:
+          path: |
+            BuildCache/ccache
+            BuildCache/CMake
+          key: ccache-FreeBSD15.1-cmake4.4.3-${{ matrix.arch }}-clang23-libcxx-Release-pch-off-${{ github.sha }}
+          restore-keys: ccache-FreeBSD15.1-cmake4.4.3-${{ matrix.arch }}-clang23-libcxx-Release-pch-off-
+
       - name: Build in FreeBSD VM
         uses: vmactions/freebsd-vm@v1
         with:
-          release: "14.4"
+          release: "15.1"
           arch: ${{ matrix.vm_arch }}
           usesh: true
           # Match the Ubuntu host so the emulated build compiles in parallel.
@@ -58,19 +67,23 @@ jobs:
           cache-after-prepare: true
           prepare: |
             set -e
-            pkg install -y llvm22 cmake-core ninja
+            pkg install -y llvm23 cmake-core ninja ccache
           run: |
             set -e
-            sh Run.sh policy
+            sh .github/scripts/Install-CMake-FreeBSD.sh BuildCache/CMake
+            export PATH="$PWD/BuildCache/CMake/bin:$PATH"
+            export CCACHE_DIR="$PWD/BuildCache/ccache" CCACHE_MAXSIZE=768M CCACHE_COMPILERCHECK=content
             cmake --version
             cmake -S . -B Build -G Ninja \
               -DCMAKE_BUILD_TYPE=Release \
-              -DCMAKE_CXX_COMPILER=clang++22 \
+              -DCMAKE_CXX_COMPILER=clang++23 \
+              -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+              -DRUX_USE_PCH=OFF \
               -DRUX_WERROR=ON \
               -DRUX_BUILD_TESTS=ON
             cmake --build Build --config Release --parallel
             sh Run.sh format --check --rux-executable ./Bin/rux
-            ctest --test-dir Build --output-on-failure -C Release
+            ctest --test-dir Build --output-on-failure -C Release --parallel "$(sh Scripts/TestJobs.sh)" --no-tests=error
 
       - name: Upload binary artifact
         uses: actions/upload-artifact@v7
@@ -95,7 +108,7 @@ jobs:
             label: AArch64
             vm_arch: aarch64
             artifact: rux-freebsd-aarch64
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 60
     steps:
       - name: Checkout
@@ -112,7 +125,7 @@ jobs:
       - name: Test in FreeBSD VM
         uses: vmactions/freebsd-vm@v1
         with:
-          release: "14.4"
+          release: "15.1"
           arch: ${{ matrix.vm_arch }}
           usesh: true
           cpu: 4
@@ -121,13 +134,13 @@ jobs:
           # workspace and test manifests resolve first-party packages
           # locally, so no registry or Git client is needed.
           prepare: |
-            pkg install -y llvm22
+            pkg install -y llvm23
           run: |
             set -e
             chmod +x Bin/rux
             ./Bin/rux check
             ./Bin/rux lint
-            ./Bin/rux test --release
+            ./Bin/rux test --release --jobs "$(sh Scripts/TestJobs.sh)"
             if [ "${{ matrix.arch }}" = aarch64 ]; then
               sh Tests/Native/FreeBSDAArch64/Verify.sh ./Bin/rux
             fi
@@ -135,7 +148,7 @@ jobs:
   cross-build:
     name: Cross payload (x86-64 compiler)
     needs: build
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     steps:
       - name: Checkout
@@ -152,11 +165,11 @@ jobs:
       - name: Cross-build payload in FreeBSD x86-64 VM
         uses: vmactions/freebsd-vm@v1
         with:
-          release: "14.4"
+          release: "15.1"
           arch: x86_64
           usesh: true
           prepare: |
-            pkg install -y llvm22
+            pkg install -y llvm23
           run: |
             set -e
             chmod +x Bin/rux
@@ -173,7 +186,7 @@ jobs:
   cross-runtime:
     name: Cross runtime (transferred to AArch64)
     needs: cross-build
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 40
     steps:
       - name: Checkout verifier
@@ -190,7 +203,7 @@ jobs:
       - name: Run transferred bytes in fresh FreeBSD AArch64 VM
         uses: vmactions/freebsd-vm@v1
         with:
-          release: "14.4"
+          release: "15.1"
           arch: aarch64
           usesh: true
           cpu: 4
@@ -203,7 +216,7 @@ jobs:
     name: FreeBSD acceptance
     if: ${{ always() }}
     needs: [ test, cross-runtime ]
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
       - name: Require native and transferred acceptance

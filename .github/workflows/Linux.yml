@@ -16,8 +16,11 @@ permissions:
   contents: read
 
 env:
-  CMAKE_VERSION: "4.3.3"
+  CMAKE_VERSION: "4.4.3"
   NINJA_VERSION: "1.13.2"
+  CCACHE_DIR: ${{ github.workspace }}/BuildCache/ccache
+  CCACHE_MAXSIZE: 768M
+  CCACHE_COMPILERCHECK: content
 
 jobs:
   build:
@@ -28,11 +31,11 @@ jobs:
         include:
           - arch: x86_64
             label: x86-64
-            runner: ubuntu-24.04
+            runner: ubuntu-26.04
             artifact: rux-linux-x86_64
           - arch: aarch64
             label: AArch64
-            runner: ubuntu-24.04-arm
+            runner: ubuntu-26.04-arm
             artifact: rux-linux-aarch64
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
@@ -42,29 +45,37 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install Clang 22
+      - name: Install Clang 23
         run: |
           curl --proto '=https' --tlsv1.2 -fsSLo /tmp/llvm.sh https://apt.llvm.org/llvm.sh
           chmod +x /tmp/llvm.sh
-          sudo /tmp/llvm.sh 22
+          sudo /tmp/llvm.sh 23
+          sudo apt-get install -y ccache
 
       - name: Install CMake and Ninja
-        uses: lukka/get-cmake@v4.3.3
+        shell: pwsh
+        run: ./.github/scripts/Install-BuildTools.ps1 -CMakeVersion '${{ env.CMAKE_VERSION }}' -NinjaVersion '${{ env.NINJA_VERSION }}'
+
+      - name: Restore C++ compilation cache
+        uses: actions/cache@v6
         with:
-          cmakeVersion: ${{ env.CMAKE_VERSION }}
-          ninjaVersion: ${{ env.NINJA_VERSION }}
+          path: BuildCache/ccache
+          key: ccache-Linux26.04-${{ matrix.arch }}-clang23-libstdcxx-Release-pch-off-${{ github.sha }}
+          restore-keys: ccache-Linux26.04-${{ matrix.arch }}-clang23-libstdcxx-Release-pch-off-
 
       - name: Configure and build
         run: |
           cmake -S . -B Build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_CXX_COMPILER=clang++-22 \
+            -DCMAKE_CXX_COMPILER=clang++-23 \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DRUX_USE_PCH=OFF \
             -DRUX_WERROR=ON \
             -DRUX_BUILD_TESTS=ON
           cmake --build Build --config Release --parallel
 
       - name: Unit tests
-        run: ctest --test-dir Build --output-on-failure -C Release
+        run: ctest --test-dir Build --output-on-failure -C Release --parallel "$(sh Scripts/TestJobs.sh)" --no-tests=error
 
       - name: Upload binary artifact
         uses: actions/upload-artifact@v7
@@ -83,11 +94,11 @@ jobs:
         include:
           - arch: x86_64
             label: x86-64
-            runner: ubuntu-24.04
+            runner: ubuntu-26.04
             artifact: rux-linux-x86_64
           - arch: aarch64
             label: AArch64
-            runner: ubuntu-24.04-arm
+            runner: ubuntu-26.04-arm
             artifact: rux-linux-aarch64
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 10
@@ -123,12 +134,12 @@ jobs:
         run: |
           ./Bin/rux check
           ./Bin/rux lint
-          ./Bin/rux test --release
+          ./Bin/rux test --release --jobs "$(sh Scripts/TestJobs.sh)"
 
   cross:
     name: Cross (x86-64 host, AArch64 target)
     needs: build
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     steps:
       - name: Checkout

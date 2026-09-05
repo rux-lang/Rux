@@ -1,7 +1,8 @@
 # Rux C++ style — LLVM base, 4-space indent, 120 columns.
-# Keep this configuration and CI pinned to clang-format 22 for stable output.
+# Keep this configuration and CI pinned to clang-format 23 for stable output.
 Language: Cpp
 BasedOnStyle: LLVM
+LineEnding: LF
 
 AccessModifierOffset: -4
 AlignOperands: AlignAfterOperator
@@ -13,8 +14,6 @@ AllowShortEnumsOnASingleLine: false
 AllowShortFunctionsOnASingleLine: None
 AllowShortIfStatementsOnASingleLine: Never
 AllowShortLambdasOnASingleLine: All
-BinPackArguments: true
-BinPackParameters: BinPack
 BraceWrapping:
   AfterControlStatement: Never
   BeforeCatch: true
@@ -29,7 +28,7 @@ BreakTemplateDeclarations: Yes
 ColumnLimit: 120
 ContinuationIndentWidth: 4
 DerivePointerAlignment: false
-# Emit/normalize closing-namespace comments (} // namespace Rux::Misc).
+# Emit/normalize closing-namespace comments (} // namespace Rux::Types).
 FixNamespaceComments: true
 IncludeBlocks: Regroup
 IncludeCategories:
@@ -49,7 +48,13 @@ KeepEmptyLines:
   AtStartOfFile: false
 MaxEmptyLinesToKeep: 1
 NamespaceIndentation: None
+PackArguments:
+  BinPack: BinPack
+  BreakAfter: 0
 PackConstructorInitializers: Never
+PackParameters:
+  BinPack: BinPack
+  BreakAfter: 0
 PointerAlignment: Right
 PPIndentWidth: 4
 # Moving qualifiers without semantic information can change the meaning of code.

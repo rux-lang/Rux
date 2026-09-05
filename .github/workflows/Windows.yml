@@ -16,11 +16,12 @@ permissions:
   contents: read
 
 env:
-  CMAKE_VERSION: "4.3.3"
+  CMAKE_VERSION: "4.4.3"
   NINJA_VERSION: "1.13.2"
-  LLVM_VERSION: "22.1.8"
-  # The upstream installer is placed outside Program Files so it cannot merge
-  # with the older LLVM the x86-64 image preinstalls.
+  CCACHE_DIR: ${{ github.workspace }}/BuildCache/ccache
+  CCACHE_MAXSIZE: 768M
+  CCACHE_COMPILERCHECK: content
+  # Keep the pinned upstream toolchain separate from the runner toolchain.
   LLVM_ROOT: "C:/LLVM"
 
 jobs:
@@ -35,14 +36,12 @@ jobs:
             runner: windows-2025
             vs_arch: amd64
             compiler_target: x86_64-pc-windows-msvc
-            llvm_installer: win64
             artifact: rux-windows-x86_64
           - arch: aarch64
             label: AArch64
             runner: windows-11-arm
             vs_arch: arm64
             compiler_target: aarch64-pc-windows-msvc
-            llvm_installer: woa64
             artifact: rux-windows-aarch64
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 25
@@ -52,30 +51,31 @@ jobs:
         with:
           persist-credentials: false
 
-      # Neither runner image satisfies the Clang 22.1 floor: windows-2025 ships
+      # Neither runner image satisfies the Clang 23.1 floor: windows-2025 ships
       # Clang 20 and windows-11-arm has only the Clang 19 bundled with Visual
       # Studio, so install the upstream release for the host architecture.
-      - name: Install Clang 22
+      - name: Install Clang 23
         shell: pwsh
         run: |
-          $installer = Join-Path $env:RUNNER_TEMP 'LLVM-setup.exe'
-          $version = "${{ env.LLVM_VERSION }}"
-          $url = "https://github.com/llvm/llvm-project/releases/download/llvmorg-$version/LLVM-$version-${{ matrix.llvm_installer }}.exe"
-          Invoke-WebRequest -Uri $url -OutFile $installer
-          # NSIS: /S is silent, /D is the target directory and must come last,
-          # unquoted, with backslashes and no trailing separator.
-          $root = "${{ env.LLVM_ROOT }}".Replace('/', '\')
-          Start-Process -FilePath $installer -ArgumentList '/S', "/D=$root" -Wait -NoNewWindow
-          & "${{ env.LLVM_ROOT }}/bin/clang++.exe" --version
+          ./.github/scripts/Install-Llvm.ps1 -Arch ${{ matrix.arch }} -Destination "${{ env.LLVM_ROOT }}"
+
+      - name: Install compilation cache
+        shell: pwsh
+        run: choco install ccache --yes --no-progress
 
       - name: Install CMake and Ninja
-        uses: lukka/get-cmake@v4.3.3
-        with:
-          cmakeVersion: ${{ env.CMAKE_VERSION }}
-          ninjaVersion: ${{ env.NINJA_VERSION }}
+        shell: pwsh
+        run: ./.github/scripts/Install-BuildTools.ps1 -CMakeVersion '${{ env.CMAKE_VERSION }}' -NinjaVersion '${{ env.NINJA_VERSION }}'
 
       # Initialize the bundled Visual Studio environment so Clang can find
       # the Windows SDK, CRT headers, and import libraries.
+      - name: Restore C++ compilation cache
+        uses: actions/cache@v6
+        with:
+          path: BuildCache/ccache
+          key: ccache-Windows-${{ matrix.arch }}-clang23-libcmt-Release-pch-off-${{ github.sha }}
+          restore-keys: ccache-Windows-${{ matrix.arch }}-clang23-libcmt-Release-pch-off-
+
       - name: Configure and build
         shell: pwsh
         run: |
@@ -87,15 +87,18 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release `
             -DCMAKE_CXX_COMPILER="${{ env.LLVM_ROOT }}/bin/clang++.exe" `
             -DCMAKE_CXX_COMPILER_TARGET=${{ matrix.compiler_target }} `
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache `
+            -DRUX_USE_PCH=OFF `
             -DRUX_WERROR=ON `
             -DRUX_BUILD_TESTS=ON
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cmake --build Build --config Release --parallel
 
       - name: Unit tests
         shell: pwsh
         run: |
           ./.github/scripts/Enter-VsDevEnv.ps1 -Arch ${{ matrix.vs_arch }}
-          ctest --test-dir Build --output-on-failure -C Release
+          ctest --test-dir Build --output-on-failure -C Release --parallel ([Math]::Max(1, [Math]::Min(4, [Environment]::ProcessorCount))) --no-tests=error
 
       - name: Upload binary artifact
         uses: actions/upload-artifact@v7
@@ -141,13 +144,14 @@ jobs:
         run: |
           ./.github/scripts/Enter-VsDevEnv.ps1 -Arch ${{ matrix.vs_arch }}
           ./Bin/rux.exe check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           ./Bin/rux.exe lint
 
       - name: Run Rux tests
         shell: pwsh
         run: |
           ./.github/scripts/Enter-VsDevEnv.ps1 -Arch ${{ matrix.vs_arch }}
-          ./Bin/rux.exe test --release
+          ./Bin/rux.exe test --release --jobs ([Math]::Max(1, [Math]::Min(4, [Environment]::ProcessorCount)))
 
       - name: Run Windows AArch64 native fixtures
         if: matrix.arch == 'aarch64'
@@ -182,7 +186,7 @@ jobs:
         shell: pwsh
         run: |
           ./Bin/rux.exe check --target windows-aarch64
-          ./Bin/rux.exe test --release --target windows-aarch64
+          ./Bin/rux.exe test --release --jobs ([Math]::Max(1, [Math]::Min(4, [Environment]::ProcessorCount))) --target windows-aarch64
 
       - name: Run Windows AArch64 cross fixtures
         shell: pwsh

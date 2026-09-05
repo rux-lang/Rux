@@ -16,13 +16,13 @@ permissions:
   contents: read
 
 env:
-  CMAKE_VERSION: "4.3.3"
+  CMAKE_VERSION: "4.4.3"
   NINJA_VERSION: "1.13.2"
 
 jobs:
   architecture:
     name: Architecture boundaries
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
       - name: Checkout
@@ -34,7 +34,7 @@ jobs:
 
   format:
     name: clang-format
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     steps:
       - name: Checkout
@@ -43,21 +43,21 @@ jobs:
           persist-credentials: false
 
       # Match the LLVM major used by the build jobs so formatting is stable.
-      - name: Install clang-format 22
+      - name: Install clang-format 23
         run: |
           curl --proto '=https' --tlsv1.2 -fsSLo /tmp/llvm.sh https://apt.llvm.org/llvm.sh
           chmod +x /tmp/llvm.sh
-          sudo /tmp/llvm.sh 22
-          sudo apt-get install -y clang-format-22
+          sudo /tmp/llvm.sh 23
+          sudo apt-get install -y clang-format-23
 
       - name: Check formatting
         run: |
           find Compiler Tests/Unit \( -name '*.cpp' -o -name '*.h' \) -not -path '*ThirdParty*' -print0 \
-            | xargs -0 clang-format-22 --dry-run -Werror
+            | xargs -0 clang-format-23 --dry-run -Werror
 
   clang-tidy:
     name: clang-tidy
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 25
     steps:
       - name: Checkout
@@ -65,27 +65,26 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install Clang 22
+      - name: Install Clang 23
         run: |
           curl --proto '=https' --tlsv1.2 -fsSLo /tmp/llvm.sh https://apt.llvm.org/llvm.sh
           chmod +x /tmp/llvm.sh
-          sudo /tmp/llvm.sh 22
-          sudo apt-get install -y clang-tidy-22
+          sudo /tmp/llvm.sh 23
+          sudo apt-get install -y clang-tidy-23
 
       - name: Install CMake and Ninja
-        uses: lukka/get-cmake@v4.3.3
-        with:
-          cmakeVersion: ${{ env.CMAKE_VERSION }}
-          ninjaVersion: ${{ env.NINJA_VERSION }}
+        shell: pwsh
+        run: ./.github/scripts/Install-BuildTools.ps1 -CMakeVersion '${{ env.CMAKE_VERSION }}' -NinjaVersion '${{ env.NINJA_VERSION }}'
 
       - name: Configure compilation database
         run: |
           cmake -S . -B Build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_CXX_COMPILER=clang++-22 \
+            -DCMAKE_CXX_COMPILER=clang++-23 \
             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
             -DRUX_WERROR=ON \
-            -DRUX_BUILD_TESTS=ON
+            -DRUX_BUILD_TESTS=ON \
+            -DRUX_USE_PCH=OFF
 
       - name: Analyze C++ sources
-        run: run-clang-tidy-22 -quiet -j 4 -clang-tidy-binary clang-tidy-22 -config-file .clang-tidy -p Build
+        run: run-clang-tidy-23 -quiet -j 4 -clang-tidy-binary clang-tidy-23 -config-file .clang-tidy -p Build

@@ -39,6 +39,8 @@ Thanks for your interest in contributing to the Rux programming language! This p
 
 ## Process Documentation
 
+Compiler component ownership is described in [Architecture](Docs/Architecture.md). See [compiler build performance](Docs/CompilerPerformance.md) for stable build metadata, compilation launchers, PCH, ThinLTO, and repeatable measurements. Repository verification uses up to four test workers; `rux test --jobs N` defaults to one worker when invoked directly.
+
 For anything beyond the quick start, see the detailed guides:
 
 | Guide                                             | What it covers                                                  |
@@ -81,7 +83,7 @@ sh Run.sh format --check
 ./Run.ps1 format -Check
 ```
 
-The command covers `Compiler/`, maintained C++ unit-test code, and every Rux package and executable-test source tree. Vendored C++ and intentionally malformed golden diagnostic fixtures are excluded. `sh Run.sh tidy` or `./Run.ps1 tidy` additionally checks every maintained translation unit in the CMake compilation database with Clang 22's `clang-tidy`. Otherwise, match the conventions already in the codebase — consistency matters more than personal preference.
+The command covers `Compiler/`, maintained C++ unit-test code, and every Rux package and executable-test source tree. Vendored C++ and intentionally malformed golden diagnostic fixtures are excluded. `sh Run.sh tidy` or `./Run.ps1 tidy` additionally checks every maintained translation unit in the CMake compilation database with Clang 23's `clang-tidy`. Otherwise, match the conventions already in the codebase — consistency matters more than personal preference.
 
 ## Reporting Bugs
 
@@ -104,3 +106,5 @@ Have questions before diving in? Join us on [Discord](https://discord.com/invite
 By contributing you agree that your work will be licensed under the [MIT License](LICENSE.md).
 
 Source-tree policy checks only host API isolation, internal code generation/linking and CLI output ownership. Repository-command and installer behavior checks are ordinary CTest tests. File length is a review guideline: prefer focused files near 800–1,000 lines and review ownership near 1,200 lines; no automated line-count gate runs locally or in CI.
+
+Repository test and tidy commands default to at most four workers, bounded by available processors. Override with `./Run.ps1 test -Jobs 2` or `sh Run.sh test --jobs 2`. Direct `rux test` remains serial unless passed `--jobs N`. Follow [compiler performance guidance](Docs/CompilerPerformance.md) when changing build settings, header ownership, or compilation hot paths. Use LF for all maintained text files.

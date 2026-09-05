@@ -33,7 +33,7 @@ Use the same installation method again to upgrade. The [Windows installer guide]
 
 ## Building from Source
 
-Rux currently requires Clang 22.1 or newer, CMake 3.30 or newer, Ninja 1.11 or newer, a recent Git installation, and the Windows SDK and C runtime supplied by Visual Studio.
+Rux currently requires Clang 23.1 or newer, CMake 4.4.3 or newer, Ninja 1.13.2 or newer, a recent Git installation, and the Windows SDK and C runtime supplied by Visual Studio.
 
 1. Install Visual Studio or Visual Studio Build Tools with the **Desktop development with C++** workload.
 
@@ -136,3 +136,5 @@ On AArch64 Windows, reproduce the CI cross-target coverage with an x86-64 or nat
 .\Tests\Native\WindowsAArch64Panic\Verify.ps1 -Rux .\Bin\rux.exe
 .\Tests\Native\WindowsAArch64Dll\Verify.ps1 -Rux .\Bin\rux.exe
 ```
+
+Use LLVM 23 for formatting and static analysis, with LF line endings on this platform. Repository verification uses up to four available test workers; override with `-Jobs N` in PowerShell or `--jobs N` in POSIX shell. See [Compiler Build Performance](../CompilerPerformance.md) for compilation caching, optional PCH/ThinLTO, stable metadata, and measurement commands.

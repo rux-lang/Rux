@@ -16,7 +16,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  CMAKE_VERSION: "4.3.3"
+  CMAKE_VERSION: "4.4.3"
   NINJA_VERSION: "1.13.2"
 
 jobs:
@@ -24,7 +24,7 @@ jobs:
   # so a mismatched tag can never produce a release.
   verify-version:
     name: Verify version
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
       - name: Checkout
@@ -68,7 +68,7 @@ jobs:
             label: AArch64
             vm_arch: aarch64
             artifact: rux-freebsd-aarch64
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     # The AArch64 VM fully emulates the compiler and complete test build.
     timeout-minutes: 240
     steps:
@@ -77,19 +77,27 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Restore FreeBSD CMake installation
+        uses: actions/cache@v6
+        with:
+          path: BuildCache/CMake
+          key: cmake-4.4.3-FreeBSD15.1-${{ matrix.arch }}
+
       - name: Build and test in FreeBSD VM
         uses: vmactions/freebsd-vm@v1
         with:
-          release: "14.4"
+          release: "15.1"
           arch: ${{ matrix.vm_arch }}
           usesh: true
           cache-after-prepare: true
           prepare: |
             set -e
-            pkg install -y llvm22 cmake-core ninja
+            pkg install -y llvm23 cmake-core ninja
           run: |
             set -e
-            sh Run.sh test --compiler clang++22
+            sh .github/scripts/Install-CMake-FreeBSD.sh BuildCache/CMake
+            export PATH="$PWD/BuildCache/CMake/bin:$PATH"
+            sh Run.sh test --compiler clang++23
             if [ "${{ matrix.arch }}" = aarch64 ]; then
               sh Tests/Native/FreeBSDAArch64/Verify.sh ./Bin/rux
             fi
@@ -105,7 +113,7 @@ jobs:
   freebsd-cross-build:
     name: FreeBSD cross payload (x86-64 compiler)
     needs: freebsd
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     steps:
       - name: Checkout
@@ -122,11 +130,11 @@ jobs:
       - name: Cross-build payload in FreeBSD x86-64 VM
         uses: vmactions/freebsd-vm@v1
         with:
-          release: "14.4"
+          release: "15.1"
           arch: x86_64
           usesh: true
           prepare: |
-            pkg install -y llvm22
+            pkg install -y llvm23
           run: |
             set -e
             chmod +x Bin/rux
@@ -143,7 +151,7 @@ jobs:
   freebsd-cross-runtime:
     name: FreeBSD cross runtime (transferred to AArch64)
     needs: freebsd-cross-build
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 20
     steps:
       - name: Checkout verifier
@@ -160,7 +168,7 @@ jobs:
       - name: Run transferred bytes in fresh FreeBSD AArch64 VM
         uses: vmactions/freebsd-vm@v1
         with:
-          release: "14.4"
+          release: "15.1"
           arch: aarch64
           usesh: true
           run: |
@@ -171,7 +179,7 @@ jobs:
     name: FreeBSD release acceptance
     if: ${{ always() }}
     needs: [ freebsd, freebsd-cross-runtime ]
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
       - name: Require native and transferred acceptance
@@ -194,11 +202,11 @@ jobs:
         include:
           - arch: x86_64
             label: x86-64
-            runner: ubuntu-24.04
+            runner: ubuntu-26.04
             artifact: rux-linux-x86_64
           - arch: aarch64
             label: AArch64
-            runner: ubuntu-24.04-arm
+            runner: ubuntu-26.04-arm
             artifact: rux-linux-aarch64
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 25
@@ -208,29 +216,27 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install Clang 22
+      - name: Install Clang 23
         run: |
           curl --proto '=https' --tlsv1.2 -fsSLo /tmp/llvm.sh https://apt.llvm.org/llvm.sh
           chmod +x /tmp/llvm.sh
-          sudo /tmp/llvm.sh 22
+          sudo /tmp/llvm.sh 23
 
       - name: Install CMake and Ninja
-        uses: lukka/get-cmake@v4.3.3
-        with:
-          cmakeVersion: ${{ env.CMAKE_VERSION }}
-          ninjaVersion: ${{ env.NINJA_VERSION }}
+        shell: pwsh
+        run: ./.github/scripts/Install-BuildTools.ps1 -CMakeVersion '${{ env.CMAKE_VERSION }}' -NinjaVersion '${{ env.NINJA_VERSION }}'
 
       - name: Configure and build
         run: |
           cmake -S . -B Build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_CXX_COMPILER=clang++-22 \
+            -DCMAKE_CXX_COMPILER=clang++-23 \
             -DRUX_WERROR=ON \
             -DRUX_BUILD_TESTS=ON
           cmake --build Build --config Release --parallel
 
       - name: Unit tests
-        run: ctest --test-dir Build --output-on-failure -C Release
+        run: ctest --test-dir Build --output-on-failure -C Release --parallel "$(sh Scripts/TestJobs.sh)" --no-tests=error
 
       - name: Check Rux formatting
         if: matrix.arch == 'x86_64'
@@ -246,7 +252,7 @@ jobs:
         run: |
           ./Bin/rux check
           ./Bin/rux lint
-          ./Bin/rux test --release
+          ./Bin/rux test --release --jobs "$(sh Scripts/TestJobs.sh)"
 
       - name: Upload binary artifact
         uses: actions/upload-artifact@v7
@@ -286,42 +292,40 @@ jobs:
       # them or silencing the check.
       # The image also ships llvm@20. Unlinking it is not enough: Homebrew
       # refuses to link a versioned formula while another version is
-      # installed at all, so `brew install llvm@22` annotated every run with
+      # installed at all, so `brew install llvm@23` annotated every run with
       # a link warning. Nothing here uses llvm@20 and the runner is
       # discarded after the job, so remove it outright; --ignore-dependencies
       # keeps preinstalled formulae that name it from blocking the removal.
-      - name: Install Clang 22
+      - name: Install Clang 23
         run: |
           brew untap aws/tap || true
           if brew list --versions llvm@20 >/dev/null; then
             brew uninstall --ignore-dependencies llvm@20
           fi
-          brew install llvm@22
-          echo "$(brew --prefix llvm@22)/bin" >> "$GITHUB_PATH"
+          brew install llvm@23
+          echo "$(brew --prefix llvm@23)/bin" >> "$GITHUB_PATH"
 
       - name: Install CMake and Ninja
-        uses: lukka/get-cmake@v4.3.3
-        with:
-          cmakeVersion: ${{ env.CMAKE_VERSION }}
-          ninjaVersion: ${{ env.NINJA_VERSION }}
+        shell: pwsh
+        run: ./.github/scripts/Install-BuildTools.ps1 -CMakeVersion '${{ env.CMAKE_VERSION }}' -NinjaVersion '${{ env.NINJA_VERSION }}'
 
       - name: Configure and build
         run: |
           cmake -S . -B Build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_CXX_COMPILER="$(brew --prefix llvm@22)/bin/clang++" \
+            -DCMAKE_CXX_COMPILER="$(brew --prefix llvm@23)/bin/clang++" \
             -DRUX_WERROR=ON \
             -DRUX_BUILD_TESTS=ON
           cmake --build Build --config Release --parallel
 
       - name: Unit tests
-        run: ctest --test-dir Build --output-on-failure -C Release
+        run: ctest --test-dir Build --output-on-failure -C Release --parallel "$(sh Scripts/TestJobs.sh)" --no-tests=error
 
       - name: Verify Rux workspace
         run: |
           ./Bin/rux check
           ./Bin/rux lint
-          ./Bin/rux test --release
+          ./Bin/rux test --release --jobs "$(sh Scripts/TestJobs.sh)"
 
       - name: Run Apple Silicon native runtime fixtures
         if: matrix.arch == 'aarch64'
@@ -362,11 +366,13 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Install Clang 23
+        shell: pwsh
+        run: ./.github/scripts/Install-Llvm.ps1 -Arch ${{ matrix.arch }}
+
       - name: Install CMake and Ninja
-        uses: lukka/get-cmake@v4.3.3
-        with:
-          cmakeVersion: ${{ env.CMAKE_VERSION }}
-          ninjaVersion: ${{ env.NINJA_VERSION }}
+        shell: pwsh
+        run: ./.github/scripts/Install-BuildTools.ps1 -CMakeVersion '${{ env.CMAKE_VERSION }}' -NinjaVersion '${{ env.NINJA_VERSION }}'
 
       # Initialize the bundled Visual Studio environment so Clang can find
       # the Windows SDK, CRT headers, and import libraries.
@@ -377,12 +383,14 @@ jobs:
 
           cmake -S . -B Build -G Ninja `
             -DCMAKE_BUILD_TYPE=Release `
-            -DCMAKE_CXX_COMPILER=clang++ `
+            -DCMAKE_CXX_COMPILER="C:/LLVM/bin/clang++.exe" `
             -DCMAKE_CXX_COMPILER_TARGET=${{ matrix.compiler_target }} `
             -DRUX_WERROR=ON `
             -DRUX_BUILD_TESTS=ON
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cmake --build Build --config Release --parallel
-          ctest --test-dir Build --output-on-failure -C Release
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ctest --test-dir Build --output-on-failure -C Release --parallel ([Math]::Max(1, [Math]::Min(4, [Environment]::ProcessorCount))) --no-tests=error
 
       - name: Verify Rux workspace
         shell: pwsh
@@ -391,7 +399,7 @@ jobs:
 
           ./Bin/rux.exe check
           ./Bin/rux.exe lint
-          ./Bin/rux.exe test --release
+          ./Bin/rux.exe test --release --jobs ([Math]::Max(1, [Math]::Min(4, [Environment]::ProcessorCount)))
 
       - name: Run Windows AArch64 native fixtures
         if: matrix.arch == 'aarch64'
@@ -426,7 +434,7 @@ jobs:
   release:
     name: Publish release
     needs: [ freebsd-acceptance, linux, macos, windows ]
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     permissions:
       contents: write

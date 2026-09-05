@@ -34,8 +34,8 @@ Each `needs: verify-version`, then builds Release **and runs the test suite** â€
 
 | Job       | Runners                            | Binary artifacts                            |
 | --------- | ---------------------------------- | ------------------------------------------- |
-| `freebsd` | FreeBSD 14.4 x86-64/AArch64 VMs    | `rux-freebsd-x86_64`, `rux-freebsd-aarch64` |
-| `linux`   | Ubuntu 24.04 x86-64/AArch64        | `rux-linux-x86_64`, `rux-linux-aarch64`     |
+| `freebsd` | FreeBSD 15.1 x86-64/AArch64 VMs    | `rux-freebsd-x86_64`, `rux-freebsd-aarch64` |
+| `linux`   | Ubuntu 26.04 x86-64/AArch64        | `rux-linux-x86_64`, `rux-linux-aarch64`     |
 | `macos`   | macOS 26 Intel/Apple Silicon       | `rux-macos-x86_64`, `rux-macos-aarch64`     |
 | `windows` | Windows 2025 x86-64/Windows 11 ARM | `rux-windows-x86_64`, `rux-windows-aarch64` |
 
@@ -45,7 +45,7 @@ Each job runs language tests from the repository root. Test manifests use local 
 
 ### 3. FreeBSD transferred-cross acceptance
 
-After both native FreeBSD matrix entries pass, `freebsd-cross-build` downloads the x86-64 compiler and builds a sealed AArch64 payload in an x86-64 FreeBSD 14.4 VM. `freebsd-cross-runtime` downloads only that payload into a fresh AArch64 FreeBSD VM, verifies its hashes, modes, and ELF identities, and launches the representative executables and shared-library fixture. The consumer VM installs no compiler or target toolchain.
+After both native FreeBSD matrix entries pass, `freebsd-cross-build` downloads the x86-64 compiler and builds a sealed AArch64 payload in an x86-64 FreeBSD 15.1 VM. `freebsd-cross-runtime` downloads only that payload into a fresh AArch64 FreeBSD VM, verifies its hashes, modes, and ELF identities, and launches the representative executables and shared-library fixture. The consumer VM installs no compiler or target toolchain.
 
 `freebsd-acceptance` runs even when an upstream job fails or is skipped and checks both dependency results explicitly. This gives the publish job a single release-blocking FreeBSD gate: the AArch64 archive cannot be packaged merely because one of the two runtime paths did not run.
 

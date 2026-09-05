@@ -1,13 +1,21 @@
-cmake_minimum_required(VERSION 3.30...4.3)
+cmake_minimum_required(VERSION 4.4.3)
 project(Rux VERSION 0.4.0 LANGUAGES CXX)
+
+if (CMAKE_GENERATOR MATCHES "^Ninja")
+    execute_process(COMMAND "${CMAKE_MAKE_PROGRAM}" --version
+        OUTPUT_VARIABLE rux_ninja_version OUTPUT_STRIP_TRAILING_WHITESPACE COMMAND_ERROR_IS_FATAL ANY)
+    if (rux_ninja_version VERSION_LESS 1.13.2)
+        message(FATAL_ERROR "Rux requires Ninja 1.13.2 or newer (found ${rux_ninja_version})")
+    endif ()
+endif ()
 
 include(GNUInstallDirs)
 
 if (NOT CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-    message(FATAL_ERROR "Rux requires upstream Clang 22.1 or newer")
+    message(FATAL_ERROR "Rux requires upstream Clang 23.1 or newer")
 endif ()
-if (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 22.1)
-    message(FATAL_ERROR "Rux requires Clang 22.1 or newer (found ${CMAKE_CXX_COMPILER_VERSION})")
+if (CMAKE_CXX_COMPILER_VERSION VERSION_LESS 23.1)
+    message(FATAL_ERROR "Rux requires Clang 23.1 or newer (found ${CMAKE_CXX_COMPILER_VERSION})")
 endif ()
 
 set(CMAKE_CXX_STANDARD 26)

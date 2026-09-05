@@ -23,7 +23,7 @@ const SysBrk: uint64 = 17;
 /// https://rux-lang.dev/docs/api/freebsd/sys-get-pid
 pub const SysGetPid: uint64 = 20;
 
-// FreeBSD 14.4's native syscall table. AArch64 and x86-64 share these numbers;
+// FreeBSD 15.1's native syscall table. AArch64 and x86-64 share these numbers;
 // only the register/trap sequence below is architecture-owned.
 /// `mmap(2)`'s system-call number.
 ///

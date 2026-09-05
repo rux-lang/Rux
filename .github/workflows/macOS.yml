@@ -16,8 +16,11 @@ permissions:
   contents: read
 
 env:
-  CMAKE_VERSION: "4.3.3"
+  CMAKE_VERSION: "4.4.3"
   NINJA_VERSION: "1.13.2"
+  CCACHE_DIR: ${{ github.workspace }}/BuildCache/ccache
+  CCACHE_MAXSIZE: 768M
+  CCACHE_COMPILERCHECK: content
 
 jobs:
   build:
@@ -43,42 +46,49 @@ jobs:
           persist-credentials: false
 
       # macOS ships Apple Clang, which lags upstream and lacks full C++26
-      # support, so install LLVM Clang 22 from Homebrew to match Linux. The
+      # support, so install LLVM Clang 23 from Homebrew to match Linux. The
       # runner image ships with third-party taps Homebrew no longer trusts by
       # default; nothing here uses them, so drop them rather than trusting
       # them or silencing the check.
       # The image also ships llvm@20. Unlinking it is not enough: Homebrew
       # refuses to link a versioned formula while another version is
-      # installed at all, so `brew install llvm@22` annotated every run with
+      # installed at all, so `brew install llvm@23` annotated every run with
       # a link warning. Nothing here uses llvm@20 and the runner is
       # discarded after the job, so remove it outright; --ignore-dependencies
       # keeps preinstalled formulae that name it from blocking the removal.
-      - name: Install Clang 22
+      - name: Install Clang 23
         run: |
           brew untap aws/tap || true
           if brew list --versions llvm@20 >/dev/null; then
             brew uninstall --ignore-dependencies llvm@20
           fi
-          brew install llvm@22
-          echo "$(brew --prefix llvm@22)/bin" >> "$GITHUB_PATH"
+          brew install llvm@23 ccache
+          echo "$(brew --prefix llvm@23)/bin" >> "$GITHUB_PATH"
 
       - name: Install CMake and Ninja
-        uses: lukka/get-cmake@v4.3.3
+        shell: pwsh
+        run: ./.github/scripts/Install-BuildTools.ps1 -CMakeVersion '${{ env.CMAKE_VERSION }}' -NinjaVersion '${{ env.NINJA_VERSION }}'
+
+      - name: Restore C++ compilation cache
+        uses: actions/cache@v6
         with:
-          cmakeVersion: ${{ env.CMAKE_VERSION }}
-          ninjaVersion: ${{ env.NINJA_VERSION }}
+          path: BuildCache/ccache
+          key: ccache-macOS-${{ matrix.arch }}-clang23-libcxx-Release-pch-off-${{ github.sha }}
+          restore-keys: ccache-macOS-${{ matrix.arch }}-clang23-libcxx-Release-pch-off-
 
       - name: Configure and build
         run: |
           cmake -S . -B Build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_CXX_COMPILER="$(brew --prefix llvm@22)/bin/clang++" \
+            -DCMAKE_CXX_COMPILER="$(brew --prefix llvm@23)/bin/clang++" \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DRUX_USE_PCH=OFF \
             -DRUX_WERROR=ON \
             -DRUX_BUILD_TESTS=ON
           cmake --build Build --config Release --parallel
 
       - name: Unit tests
-        run: ctest --test-dir Build --output-on-failure -C Release
+        run: ctest --test-dir Build --output-on-failure -C Release --parallel "$(sh Scripts/TestJobs.sh)" --no-tests=error
 
       - name: Upload binary artifact
         id: upload
@@ -147,7 +157,7 @@ jobs:
           ./Bin/rux lint
 
       - name: Run Rux tests
-        run: ./Bin/rux test --release
+        run: ./Bin/rux test --release --jobs "$(sh Scripts/TestJobs.sh)"
 
       - name: Run Apple Silicon native runtime fixtures
         if: matrix.arch == 'aarch64'
@@ -174,7 +184,7 @@ jobs:
         run: |
           chmod +x Bin/rux
           /usr/bin/arch -x86_64 ./Bin/rux check --target macos-aarch64
-          /usr/bin/arch -x86_64 ./Bin/rux test --release --target macos-aarch64
+          /usr/bin/arch -x86_64 ./Bin/rux test --release --jobs "$(sh Scripts/TestJobs.sh)" --target macos-aarch64
 
       # Artifacts do not preserve executable permissions. VerifyRosetta also
       # checks that this is a thin x86-64 compiler before launching it through
