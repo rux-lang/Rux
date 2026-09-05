@@ -3,6 +3,7 @@
 #include "Driver/CompilerDriver.h"
 #include "Semantic/Model/SemanticModel.h"
 #include "SourceModel/SourceFile.h"
+#include "SourceModel/SourceText.h"
 
 #include <unordered_map>
 
@@ -19,7 +20,13 @@ private:
     void EmitProgress(CompilePhase phase, std::string_view subject, const std::filesystem::path &path = {}) const;
     /// Emit every diagnostic; returns true if any is an error.
     bool EmitAll(std::span<const Diagnostic> diags);
-    void RememberSources(std::span<const SourceFile> sources);
+
+    struct SourceView {
+        std::filesystem::path path;
+        const SourceText &source;
+    };
+
+    [[nodiscard]] std::vector<SourceView> RememberSources(std::span<SourceFile> sources);
     bool WriteInspectionOutput(InspectionKind kind, const std::filesystem::path &path,
                                const std::function<bool()> &write);
     [[nodiscard]] std::optional<std::string_view> LookupSourceLine(std::string_view sourceName,
@@ -51,7 +58,7 @@ private:
     std::vector<ParseResult> depParseResults;   // dependency modules
     std::vector<std::string> loadedPackages;    // parallel: package name per dep entry
     std::vector<std::string> loadedModuleNames; // parallel: source name per dep entry
-    std::unordered_map<std::string, std::string> loadedSourceTexts;
+    std::unordered_map<std::string, SourceText> loadedSourceTexts;
     std::optional<SemanticModel> semanticModel;
 };
 

@@ -4,6 +4,7 @@
 #include "Lexer/Token.h"
 
 #include <filesystem>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -57,6 +58,9 @@ public:
     /// Construct from in-memory source text. `sourceName` is used only for diagnostic messages (e.g. file path).
     explicit Lexer(std::string inputSource, std::string inputSourceName = "<input>");
 
+    /// Tokenize borrowed text synchronously. Tokens and diagnostics own their strings; no input view escapes.
+    [[nodiscard]] static LexerResult TokenizeSource(std::string_view source, std::string sourceName = "<input>");
+
     /// Convenience: read a file and lex it. Open and read failures are returned as diagnostics; reusable compiler code
     /// never prints them directly.
     [[nodiscard]] static LexerResult FromFile(const std::filesystem::path &path);
@@ -74,7 +78,12 @@ public:
 
 private:
     // Source buffer
-    std::string source;
+    struct BorrowedSource {};
+
+    Lexer(BorrowedSource, std::string_view source, std::string sourceName);
+
+    std::shared_ptr<const std::string> ownedSource;
+    std::string_view source;
     std::string sourceName;
 
     // Cursor state

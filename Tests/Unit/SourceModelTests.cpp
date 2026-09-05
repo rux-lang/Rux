@@ -1,5 +1,7 @@
+#include "Diagnostics/Diagnostics.h"
 #include "SourceModel/SourceFile.h"
 #include "SourceModel/SourceLocation.h"
+#include "SourceModel/SourceText.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -7,8 +9,24 @@
 #include <filesystem>
 #include <string>
 #include <type_traits>
+#include <utility>
 
 using namespace Rux;
+
+TEST_CASE("source text indexes diagnostic lines without changing line boundaries") {
+    for (const std::string contents : {"", "\n", "a\nb", "a\r\n\r\nb\r\n", "a\rb"}) {
+        CAPTURE(contents);
+        SourceText text(contents);
+        CHECK(text.Text() == contents);
+        for (std::size_t line = 0; line != 8; ++line) {
+            CHECK(text.Line(line) == FindSourceLine(contents, line));
+        }
+        SourceText moved(std::move(text));
+        for (std::size_t line = 0; line != 8; ++line) {
+            CHECK(moved.Line(line) == FindSourceLine(contents, line));
+        }
+    }
+}
 
 TEST_CASE("source locations retain their diagnostic representation") {
     static_assert(std::is_aggregate_v<SourceLocation>);

@@ -133,10 +133,19 @@ bool CompilerDriver::Impl::EmitAll(std::span<const Diagnostic> diags) {
     return hasErrors;
 }
 
-void CompilerDriver::Impl::RememberSources(const std::span<const SourceFile> sources) {
-    for (const auto &source : sources) {
-        loadedSourceTexts.insert_or_assign(source.path.string(), source.source);
+std::vector<CompilerDriver::Impl::SourceView>
+CompilerDriver::Impl::RememberSources(const std::span<SourceFile> sources) {
+    std::vector<SourceView> views;
+    views.reserve(sources.size());
+    for (auto &file : sources) {
+        // Dependencies may name an already loaded path. Keep the first immutable copy and its diagnostic index.
+        const auto [stored, inserted] = loadedSourceTexts.try_emplace(file.path.string(), std::move(file.source));
+        if (!inserted) {
+            file.source.clear();
+        }
+        views.push_back({std::move(file.path), stored->second});
     }
+    return views;
 }
 
 bool CompilerDriver::Impl::WriteInspectionOutput(const InspectionKind kind, const std::filesystem::path &path,
@@ -171,7 +180,7 @@ std::optional<std::string_view> CompilerDriver::Impl::LookupSourceLine(const std
     if (found == loadedSourceTexts.end()) {
         return std::nullopt;
     }
-    return FindSourceLine(found->second, lineNumber);
+    return found->second.Line(lineNumber);
 }
 
 std::string CompilerDriver::Impl::TargetSystemName() const {
@@ -260,11 +269,11 @@ CompileResult CompilerDriver::Impl::Compile() {
 bool CompilerDriver::Impl::LexAndParseSources() {
     BeginPhase(CompilePhase::LoadingSources, opts.manifest.package.name.Text(), root / "Src");
     auto loadResult = SourceLoader::Load(root);
-    RememberSources(loadResult.files);
-    stats.localFiles = loadResult.files.size();
-    for (const auto &file : loadResult.files) {
-        stats.localLines += CountLines(file.source);
-        stats.localSourceSize += file.source.size();
+    const auto sourceFiles = RememberSources(loadResult.files);
+    stats.localFiles = sourceFiles.size();
+    for (const auto &file : sourceFiles) {
+        stats.localLines += CountLines(file.source.Text());
+        stats.localSourceSize += file.source.Text().size();
     }
     if (EmitAll(loadResult.diagnostics)) {
         hadErrors = true;
@@ -277,12 +286,11 @@ bool CompilerDriver::Impl::LexAndParseSources() {
     bool lexErrors = false;
     bool inspectionErrors = false;
     std::vector<LexerResult> lexResults;
-    lexResults.reserve(loadResult.files.size());
+    lexResults.reserve(sourceFiles.size());
     const auto lexingStart = std::chrono::steady_clock::now();
-    for (const auto &file : loadResult.files) {
+    for (const auto &file : sourceFiles) {
         BeginPhase(CompilePhase::Lexing, file.path.string(), file.path);
-        Lexer lexer(file.source, file.path.string());
-        auto lexResult = lexer.Tokenize();
+        auto lexResult = Lexer::TokenizeSource(file.source.Text(), file.path.string());
         stats.localTokens += CountTokens(lexResult.tokens);
         if (EmitAll(lexResult.diagnostics)) {
             lexErrors = true;
@@ -306,10 +314,10 @@ bool CompilerDriver::Impl::LexAndParseSources() {
 
     // Parse
     bool parseErrors = false;
-    parseResults.reserve(loadResult.files.size());
+    parseResults.reserve(sourceFiles.size());
     const auto parsingStart = std::chrono::steady_clock::now();
-    for (std::size_t fileIndex = 0; fileIndex < loadResult.files.size(); ++fileIndex) {
-        const auto &file = loadResult.files[fileIndex];
+    for (std::size_t fileIndex = 0; fileIndex < sourceFiles.size(); ++fileIndex) {
+        const auto &file = sourceFiles[fileIndex];
         BeginPhase(CompilePhase::Parsing, file.path.string(), file.path);
         auto &lexResult = lexResults[fileIndex];
         if (lexResult.HasErrors()) {
@@ -493,21 +501,20 @@ bool CompilerDriver::Impl::LoadDependencies() {
         compileTimeContext.intrinsicsAliases = IntrinsicsAliases(pendingManifest, pendingRoot);
         BeginPhase(CompilePhase::LoadingDependency, packageName, pendingRoot);
         auto depLoadResult = SourceLoader::Load(pendingRoot);
-        RememberSources(depLoadResult.files);
-        stats.dependencyFiles += depLoadResult.files.size();
-        for (const auto &depFile : depLoadResult.files) {
-            stats.dependencyLines += CountLines(depFile.source);
-            stats.dependencySourceSize += depFile.source.size();
+        const auto dependencyFiles = RememberSources(depLoadResult.files);
+        stats.dependencyFiles += dependencyFiles.size();
+        for (const auto &depFile : dependencyFiles) {
+            stats.dependencyLines += CountLines(depFile.source.Text());
+            stats.dependencySourceSize += depFile.source.Text().size();
         }
         if (EmitAll(depLoadResult.diagnostics)) {
             return false;
         }
         std::vector<ParseResult> packageParseResults;
-        packageParseResults.reserve(depLoadResult.files.size());
-        for (const auto &depFile : depLoadResult.files) {
+        packageParseResults.reserve(dependencyFiles.size());
+        for (const auto &depFile : dependencyFiles) {
             const auto depLexingStart = std::chrono::steady_clock::now();
-            Lexer depLexer(depFile.source, depFile.path.string());
-            auto depLex = depLexer.Tokenize();
+            auto depLex = Lexer::TokenizeSource(depFile.source.Text(), depFile.path.string());
             stats.lexing += ElapsedMs(depLexingStart);
             stats.dependencyTokens += CountTokens(depLex.tokens);
             EmitAll(depLex.diagnostics);

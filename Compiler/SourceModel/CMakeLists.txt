@@ -1,3 +1,3 @@
 # Sources and dependencies owned by SourceModel.
 
-rux_add_interface_component(RuxSourceModel)
+rux_add_component(RuxSourceModel SourceText.cpp)

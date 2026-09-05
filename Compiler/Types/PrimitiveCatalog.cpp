@@ -71,6 +71,25 @@ constexpr std::array<PrimitiveInfo, 41> Catalog{{
     {K::String32, "string32", C::String, 32, 16, 8, true},
 }};
 
+// Derive the kind index from the catalog so aliases, widths and implementation status still have one owner.
+constexpr auto KindIndex = [] {
+    constexpr auto maximum = std::ranges::max(Catalog, {}, &PrimitiveInfo::kind).kind;
+    std::array<const PrimitiveInfo *, static_cast<std::size_t>(maximum) + 1> index{};
+    for (const auto &primitive : Catalog) {
+        index[static_cast<std::size_t>(primitive.kind)] = &primitive;
+    }
+    return index;
+}();
+
+static_assert([] {
+    for (const auto &primitive : Catalog) {
+        if (KindIndex[static_cast<std::size_t>(primitive.kind)] != &primitive) {
+            return false; // Duplicate kinds would make an earlier catalog entry unreachable.
+        }
+    }
+    return true;
+}());
+
 /// The last code point Unicode defines, and so the ceiling on every scalar-valued character width.
 constexpr std::uint32_t MaxScalarValue = 0x10FFFF;
 
@@ -94,8 +113,8 @@ std::span<const PrimitiveAlias> PrimitiveAliases() noexcept {
 }
 
 const PrimitiveInfo *FindPrimitive(const TypeRef::Kind kind) noexcept {
-    const auto found = std::ranges::find(Catalog, kind, &PrimitiveInfo::kind);
-    return found == Catalog.end() ? nullptr : &*found;
+    const auto index = static_cast<std::size_t>(kind);
+    return index < KindIndex.size() ? KindIndex[index] : nullptr;
 }
 
 const PrimitiveInfo *FindPrimitive(const std::string_view name) noexcept {

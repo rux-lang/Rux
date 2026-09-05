@@ -50,8 +50,18 @@ bool LexerResult::HasErrors() const noexcept {
 }
 
 Lexer::Lexer(std::string inputSource, std::string inputSourceName)
-    : source(std::move(inputSource))
+    : ownedSource(std::make_shared<const std::string>(std::move(inputSource)))
+    , source(*ownedSource)
     , sourceName(std::move(inputSourceName)) {
+}
+
+Lexer::Lexer(BorrowedSource, const std::string_view inputSource, std::string inputSourceName)
+    : source(inputSource)
+    , sourceName(std::move(inputSourceName)) {
+}
+
+LexerResult Lexer::TokenizeSource(const std::string_view inputSource, std::string inputSourceName) {
+    return Lexer(BorrowedSource{}, inputSource, std::move(inputSourceName)).Tokenize();
 }
 
 LexerResult Lexer::FromFile(const std::filesystem::path &path) {
@@ -425,8 +435,8 @@ SourceRange Lexer::ScanLineComment(const CommentKind kind) {
         Advance();
     }
     const SourceRange range{start, CurrentLocation()};
-    comments.push_back(
-        CommentTrivia{kind, source.substr(startOffset, pos - startOffset), range, IsLineLeading(startOffset), true});
+    comments.push_back(CommentTrivia{kind, std::string(source.substr(startOffset, pos - startOffset)), range,
+                                     IsLineLeading(startOffset), true});
     return range;
 }
 
@@ -456,7 +466,7 @@ SourceRange Lexer::ScanBlockComment(const CommentKind kind) {
         EmitError(start, "block comment is not terminated", "close the comment with '*/'");
     }
     const SourceRange range{start, CurrentLocation()};
-    comments.push_back(CommentTrivia{kind, source.substr(startOffset, pos - startOffset), range,
+    comments.push_back(CommentTrivia{kind, std::string(source.substr(startOffset, pos - startOffset)), range,
                                      IsLineLeading(startOffset), depth == 0});
     return range;
 }
@@ -488,7 +498,7 @@ Token Lexer::ScanIdent(SourceLocation start) {
         }
         Advance();
     }
-    std::string text = source.substr(tokenStart, pos - tokenStart);
+    std::string text = std::string(source.substr(tokenStart, pos - tokenStart));
     const TokenKind kind = KeywordKind(text);
     return Token{kind, std::move(text), start, CurrentLocation()};
 }
@@ -698,7 +708,7 @@ Token Lexer::ScanString(SourceLocation start, std::size_t prefixLen) {
         if (Peek() == '\n') {
             EmitError(start, "string literal is not terminated before the end of the line",
                       "add a closing '\"' before the line ends", std::string(LiteralDocumentation));
-            return Token{TokenKind::StringLiteral, source.substr(tokenStart, pos - tokenStart), start,
+            return Token{TokenKind::StringLiteral, std::string(source.substr(tokenStart, pos - tokenStart)), start,
                          CurrentLocation()};
         }
         if (Peek() == '\\') {
@@ -706,7 +716,7 @@ Token Lexer::ScanString(SourceLocation start, std::size_t prefixLen) {
             const std::size_t diagnosticCount = diagnostics.size();
             value += ScanEscapeSequence();
             if (incomplete || (diagnostics.size() != diagnosticCount && (IsAtEnd() || Peek() == '\n'))) {
-                return Token{TokenKind::StringLiteral, source.substr(tokenStart, pos - tokenStart), start,
+                return Token{TokenKind::StringLiteral, std::string(source.substr(tokenStart, pos - tokenStart)), start,
                              CurrentLocation()};
             }
         }
@@ -729,7 +739,8 @@ Token Lexer::ScanString(SourceLocation start, std::size_t prefixLen) {
     }
 
     // token text preserves the original source spelling (including quotes)
-    return Token{TokenKind::StringLiteral, source.substr(tokenStart, pos - tokenStart), start, CurrentLocation()};
+    return Token{TokenKind::StringLiteral, std::string(source.substr(tokenStart, pos - tokenStart)), start,
+                 CurrentLocation()};
 }
 
 // ScanChar
@@ -742,18 +753,21 @@ Token Lexer::ScanChar(SourceLocation start, std::size_t prefixLen) {
     if (IsAtEnd()) {
         EmitError(start, "character literal is not terminated before the end of the file", "add a character and '\''",
                   std::string(LiteralDocumentation));
-        return Token{TokenKind::CharLiteral, source.substr(tokenStart, pos - tokenStart), start, CurrentLocation()};
+        return Token{TokenKind::CharLiteral, std::string(source.substr(tokenStart, pos - tokenStart)), start,
+                     CurrentLocation()};
     }
     if (Peek() == '\'') {
         Advance();
         EmitError(start, "character literal is empty", "put exactly one character between the quotes",
                   std::string(LiteralDocumentation));
-        return Token{TokenKind::CharLiteral, source.substr(tokenStart, pos - tokenStart), start, CurrentLocation()};
+        return Token{TokenKind::CharLiteral, std::string(source.substr(tokenStart, pos - tokenStart)), start,
+                     CurrentLocation()};
     }
     if (Peek() == '\n') {
         EmitError(start, "character literal is not terminated before the end of the line", "add a closing '\''",
                   std::string(LiteralDocumentation));
-        return Token{TokenKind::CharLiteral, source.substr(tokenStart, pos - tokenStart), start, CurrentLocation()};
+        return Token{TokenKind::CharLiteral, std::string(source.substr(tokenStart, pos - tokenStart)), start,
+                     CurrentLocation()};
     }
     if (Peek() == '\\') {
         const std::size_t diagnosticCount = diagnostics.size();
@@ -763,14 +777,16 @@ Token Lexer::ScanChar(SourceLocation start, std::size_t prefixLen) {
                 AdvanceUtf8CodePoint();
             }
             Match('\'');
-            return Token{TokenKind::CharLiteral, source.substr(tokenStart, pos - tokenStart), start, CurrentLocation()};
+            return Token{TokenKind::CharLiteral, std::string(source.substr(tokenStart, pos - tokenStart)), start,
+                         CurrentLocation()};
         }
     }
     else {
         AdvanceUtf8CodePoint();
     }
     if (Match('\'')) {
-        return Token{TokenKind::CharLiteral, source.substr(tokenStart, pos - tokenStart), start, CurrentLocation()};
+        return Token{TokenKind::CharLiteral, std::string(source.substr(tokenStart, pos - tokenStart)), start,
+                     CurrentLocation()};
     }
 
     while (!IsAtEnd() && Peek() != '\n' && Peek() != '\'') {
@@ -787,7 +803,8 @@ Token Lexer::ScanChar(SourceLocation start, std::size_t prefixLen) {
                             : "character literal is not terminated before the end of the line",
                   "add a closing '\''", std::string(LiteralDocumentation));
     }
-    return Token{TokenKind::CharLiteral, source.substr(tokenStart, pos - tokenStart), start, CurrentLocation()};
+    return Token{TokenKind::CharLiteral, std::string(source.substr(tokenStart, pos - tokenStart)), start,
+                 CurrentLocation()};
 }
 
 // ScanEscapeSequence (shared by string and char scanners)
@@ -1091,7 +1108,7 @@ Token Lexer::ScanUnknown(const SourceLocation start) {
             for (std::size_t i = 1; i < decoded->width; ++i) {
                 Advance();
             }
-            const std::string fragment = source.substr(tokenStart, decoded->width);
+            const std::string fragment = std::string(source.substr(tokenStart, decoded->width));
             EmitError(start, std::format("unexpected character '{}' (U+{:04X})", fragment, decoded->codePoint),
                       "remove the character or replace it with a valid Rux token");
         }
@@ -1104,11 +1121,12 @@ Token Lexer::ScanUnknown(const SourceLocation start) {
                       "remove the character or replace it with a valid Rux token");
         }
     }
-    return Token{TokenKind::Unknown, source.substr(tokenStart, pos - tokenStart), start, CurrentLocation()};
+    return Token{TokenKind::Unknown, std::string(source.substr(tokenStart, pos - tokenStart)), start,
+                 CurrentLocation()};
 }
 
 Token Lexer::MakeToken(const TokenKind kind, const SourceLocation start, const std::size_t tokenStart) const {
-    return Token{kind, source.substr(tokenStart, pos - tokenStart), start, CurrentLocation()};
+    return Token{kind, std::string(source.substr(tokenStart, pos - tokenStart)), start, CurrentLocation()};
 }
 
 void Lexer::EmitError(const SourceLocation loc, std::string message, std::optional<std::string> help,

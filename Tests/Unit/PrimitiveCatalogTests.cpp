@@ -3,10 +3,27 @@
 
 #include <algorithm>
 #include <doctest.h>
+#include <limits>
 #include <string>
 #include <unordered_set>
 
 using namespace Rux;
+
+TEST_CASE("primitive kind lookup preserves catalog identity and rejects every nonprimitive kind") {
+    for (int value = 0; value <= static_cast<int>(TypeRef::Kind::Func); ++value) {
+        const auto kind = static_cast<TypeRef::Kind>(value);
+        const PrimitiveInfo *expected = nullptr;
+        for (const auto &primitive : PrimitiveCatalog()) {
+            if (primitive.kind == kind) {
+                expected = &primitive;
+            }
+        }
+        CHECK(FindPrimitive(kind) == expected);
+    }
+    CHECK(FindPrimitive(TypeRef::Kind::Byte) == FindPrimitive(TypeRef::Kind::UInt8));
+    CHECK_FALSE(FindPrimitive(static_cast<TypeRef::Kind>(-1)));
+    CHECK_FALSE(FindPrimitive(static_cast<TypeRef::Kind>(std::numeric_limits<int>::max())));
+}
 
 namespace Rux {
 /// Defined in the parser, which declares it the same way its own callers do rather than through a header.

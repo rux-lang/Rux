@@ -1,0 +1,7 @@
+#include "BuildInfo/CompilerMetadata.h"
+
+namespace Rux::CompilerBuild {
+constinit const std::string_view compilerVersion = "@PROJECT_VERSION@";
+constinit const std::string_view compilerBuildDate = "@RUX_BUILD_DATE@";
+constinit const std::string_view compilerBuildTime = "@RUX_BUILD_TIME@";
+} // namespace Rux::CompilerBuild
