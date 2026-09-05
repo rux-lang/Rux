@@ -1,14 +1,12 @@
 #include "System/Http.h"
 
-#include "System/Os.h"
+#include "System/Process.h"
 #include "System/WinApi.h"
 #include "Target/Platform.h"
 
 #include <algorithm>
 #include <array>
-#include <cerrno>
 #include <cstdint>
-#include <cstdio>
 #include <format>
 #include <fstream>
 #include <system_error>
@@ -20,7 +18,6 @@
     #include <atomic>
     #include <charconv>
     #include <fcntl.h>
-    #include <sys/wait.h>
     #include <unistd.h>
 #endif
 
@@ -242,40 +239,12 @@ std::optional<HttpResponse> HttpSend(const HttpRequest &request, std::string *fa
 #else
 
 namespace {
-/// Wrap a value in single quotes, escaping embedded single quotes, so it can be passed safely as one shell argument.
-std::string ShellQuote(const std::string &value) {
-    std::string quoted;
-    quoted.reserve(value.size() + 2);
-    quoted += '\'';
-    for (const char ch : value) {
-        if (ch == '\'') {
-            quoted += "'\\''";
-        }
-        else {
-            quoted += ch;
-        }
-    }
-    quoted += '\'';
-    return quoted;
-}
-
-std::optional<std::string> RunCommandCapture(const std::string &command) {
-    FILE *pipe = ::popen(command.c_str(), "r");
-    if (!pipe) {
+std::optional<std::string> RunClient(const std::filesystem::path &executable,
+                                     const std::span<const std::string_view> arguments) {
+    auto result = RunCaptured(executable, arguments);
+    if (!result || result->exitCode != 0)
         return std::nullopt;
-    }
-
-    std::string output;
-    std::array<char, 4096> buffer{};
-    while (::fgets(buffer.data(), static_cast<int>(buffer.size()), pipe)) {
-        output.append(buffer.data());
-    }
-
-    const int status = ::pclose(pipe);
-    if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
-        return std::nullopt;
-    }
-    return output;
+    return std::move(result->output);
 }
 
 /// Quote a value for a curl configuration file, where an argument is wrapped in double quotes and backslashes and
@@ -297,7 +266,7 @@ std::string CurlConfigQuote(const std::string &value) {
 /// Write a file only the current user can read. The curl configuration carries the bearer credential, so it must never
 /// be world-readable, and open() with an explicit mode avoids the window a later permissions change would leave.
 bool WritePrivateFile(const std::filesystem::path &path, const std::string_view data) {
-    const int fd = ::open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_EXCL, 0600);
+    const int fd = ::open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_EXCL | O_CLOEXEC, 0600);
     if (fd < 0) {
         return false;
     }
@@ -362,7 +331,7 @@ std::optional<HttpResponse> HttpSend(const HttpRequest &request, std::string *fa
     config += "--silent\n";
     config += "--request " + CurlConfigQuote(request.method) + "\n";
     config += "--url " + CurlConfigQuote(request.url) + "\n";
-    config += "--silent\n--show-error\n--location\n";
+    config += "--location\n";
     config += "--max-time 120\n";
     config += "--output " + CurlConfigQuote(responsePath.string()) + "\n";
     config += "--write-out \"%{http_code}\"\n";
@@ -381,14 +350,15 @@ std::optional<HttpResponse> HttpSend(const HttpRequest &request, std::string *fa
 
     // curl exits 0 for a 4xx or 5xx unless --fail is given. Suppress its
     // unstructured stderr; callers receive the transport detail below.
-    auto status = RunCommandCapture("curl --config " + ShellQuote(configPath.string()) + " 2>/dev/null");
+    const std::string configName = configPath.string();
+    auto status = RunClient("curl", std::array<std::string_view, 2>{"--config", configName});
     if (!status) {
         // A plain read can still succeed through wget where curl is absent.
         // Anything richer than that needs curl.
         if (request.method != "GET" || !request.headers.empty() || !request.body.empty()) {
             return Fail("the HTTP client did not receive a response");
         }
-        auto body = RunCommandCapture("wget -qO- " + ShellQuote(request.url));
+        auto body = RunClient("wget", std::array<std::string_view, 3>{"-qO-", "--", request.url});
         if (!body) {
             return Fail("the HTTP client did not receive a response");
         }

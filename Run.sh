@@ -16,6 +16,7 @@ build_directory=Build
 compiler=${CXX:-}
 rux_executable=
 target=
+jobs=
 check=false
 fix_formatting=false
 skip_build=false
@@ -36,6 +37,7 @@ usage() {
         '  help      Show this help' \
         '' \
         'Options:' \
+        '  --jobs N                       Test/tidy workers (default: up to four CPUs); explicit value also limits builds' \
         '  --configuration Debug|Release  CMake configuration (build, test, unit; default: Release)' \
         '  --build-directory PATH         CMake build directory (build, test, unit, tidy, clean; default: Build)' \
         '  --compiler PATH                Clang C++ compiler (build, test; default: $CXX or detected Clang)' \
@@ -50,7 +52,7 @@ usage() {
         'Examples:' \
         '  sh Run.sh build --configuration Debug' \
         '  sh Run.sh format --check' \
-        '  sh Run.sh test --skip-build --clang-tidy'
+        '  sh Run.sh test --skip-build --clang-tidy --jobs 4'
 }
 
 require_value() {
@@ -60,11 +62,11 @@ require_value() {
 # Options each command accepts, used to reject an option the command ignores.
 command_options() {
     case $1 in
-    build) printf '%s' '--configuration --build-directory --compiler' ;;
-    test) printf '%s' '--configuration --build-directory --compiler --rux-executable --target --fix-formatting --skip-build --clang-tidy' ;;
+    build) printf '%s' '--configuration --build-directory --compiler --jobs' ;;
+    test) printf '%s' '--configuration --build-directory --compiler --rux-executable --target --fix-formatting --skip-build --clang-tidy --jobs' ;;
     format) printf '%s' '--rux-executable --check' ;;
-    tidy) printf '%s' '--build-directory' ;;
-    unit) printf '%s' '--configuration --build-directory' ;;
+    tidy) printf '%s' '--build-directory --jobs' ;;
+    unit) printf '%s' '--configuration --build-directory --jobs' ;;
     clean) printf '%s' '--build-directory' ;;
     *) printf '%s' '' ;;
     esac
@@ -100,6 +102,16 @@ esac
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
+    --jobs)
+        require_option "$1"
+        require_value "$@"
+        jobs=$2
+        case "$jobs" in
+        *[!0-9]*|'') die "option '--jobs' requires a positive integer" ;;
+        esac
+        [ "$jobs" -ge 1 ] 2>/dev/null || die "option '--jobs' requires a positive integer"
+        shift 2
+        ;;
     --configuration)
         require_option "$1"
         require_value "$@"
@@ -159,6 +171,13 @@ while [ "$#" -gt 0 ]; do
         ;;
     esac
 done
+
+worker_count=$jobs
+if [ -z "$worker_count" ]; then
+    worker_count=$(getconf _NPROCESSORS_ONLN 2>/dev/null || printf '1')
+    [ "$worker_count" -le 4 ] || worker_count=4
+    [ "$worker_count" -ge 1 ] || worker_count=1
+fi
 
 case "$configuration" in
 Debug | Release) ;;
@@ -224,10 +243,10 @@ run_build() {
 
     if [ -n "$compiler" ]; then
         compiler_path=$(command -v "$compiler" 2>/dev/null || true)
-        [ -n "$compiler_path" ] || die "C++ compiler '$compiler' was not found; install Clang 22 or pass --compiler PATH"
+        [ -n "$compiler_path" ] || die "C++ compiler '$compiler' was not found; install Clang 23 or pass --compiler PATH"
     else
         compiler_path=$(find_llvm_tool clang++ || true)
-        [ -n "$compiler_path" ] || die "Clang 22 was not found; install it or pass --compiler PATH"
+        [ -n "$compiler_path" ] || die "Clang 23 was not found; install it or pass --compiler PATH"
     fi
 
     build_started_at=$(date +%s)
@@ -244,7 +263,11 @@ run_build() {
         -DRUX_BUILD_TESTS=ON
 
     step "Building compiler and unit tests"
-    run_checked cmake cmake --build "$build_path" --config "$configuration"
+    if [ -n "$jobs" ]; then
+        run_checked cmake cmake --build "$build_path" --config "$configuration" --parallel "$jobs"
+    else
+        run_checked cmake cmake --build "$build_path" --config "$configuration"
+    fi
 
     built_rux=$repository_root/Bin/rux
     [ -f "$built_rux" ] || die "build completed without producing the expected compiler at '$built_rux'"
@@ -270,7 +293,7 @@ run_format() {
     format_check=$1
 
     clang_format=$(find_llvm_tool clang-format || true)
-    [ -n "$clang_format" ] || die "required tool 'clang-format 22' was not found; install it and ensure it is available on PATH"
+    [ -n "$clang_format" ] || die "required tool 'clang-format 23' was not found; install it and ensure it is available on PATH"
     resolve_rux
 
     cpp_file_count=$(find_maintained_cpp -print | wc -l | tr -d '[:space:]')
@@ -339,7 +362,7 @@ flush_tidy_results() {
 
 run_tidy() {
     clang_tidy=$(find_llvm_tool clang-tidy || true)
-    [ -n "$clang_tidy" ] || die "required tool 'clang-tidy 22' was not found; install it and ensure it is available on PATH"
+    [ -n "$clang_tidy" ] || die "required tool 'clang-tidy 23' was not found; install it and ensure it is available on PATH"
 
     analysis_path=$build_path
     if [ -f "$build_path/CMakeCache.txt" ] && grep -q '^RUX_USE_PCH:BOOL=ON$' "$build_path/CMakeCache.txt"; then
@@ -349,8 +372,7 @@ run_tidy() {
     compile_commands=$analysis_path/compile_commands.json
     [ -f "$compile_commands" ] || die "compilation database '$compile_commands' was not found; build the compiler first"
 
-    clang_tidy_jobs=$(getconf _NPROCESSORS_ONLN 2>/dev/null || printf '1')
-    [ "$clang_tidy_jobs" -le 4 ] || clang_tidy_jobs=4
+    clang_tidy_jobs=$worker_count
 
     tidy_scratch=$(mktemp -d "${TMPDIR:-/tmp}/rux-clang-tidy.XXXXXX")
     trap 'rm -rf "$tidy_scratch"' EXIT HUP INT TERM
@@ -392,7 +414,7 @@ run_unit() {
     command -v ctest >/dev/null 2>&1 || die "required tool 'ctest' was not found; install it and ensure it is available on PATH"
 
     step "Running C++ unit tests"
-    run_checked ctest ctest --test-dir "$build_path" --output-on-failure -C "$configuration"
+    run_checked ctest ctest --test-dir "$build_path" --output-on-failure -C "$configuration" --parallel "$worker_count" --no-tests=error
 }
 
 run_rux_suites() {
@@ -408,9 +430,9 @@ run_rux_suites() {
 
     step "Running all Rux test packages"
     if [ "$configuration" = Release ]; then
-        rux_targeted test --release
+        rux_targeted test --release --jobs "$worker_count"
     else
-        rux_targeted test
+        rux_targeted test --jobs "$worker_count"
     fi
 }
 

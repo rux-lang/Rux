@@ -96,6 +96,10 @@ void Reporter::Write(const std::string_view text, const MessageVisibility visibi
     }
 }
 
+void Reporter::Flush() const {
+    std::fflush(output);
+}
+
 void Reporter::Table(const std::span<const TableRow> rows, const MessageVisibility visibility) const {
     if (!Visible(visibility) || rows.empty()) {
         return;

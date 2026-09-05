@@ -4,7 +4,6 @@
 #include "Package/Manifest.h"
 #include "System/Http.h"
 #include "System/Json.h"
-#include "System/Process.h"
 
 #include <algorithm>
 #include <cctype>

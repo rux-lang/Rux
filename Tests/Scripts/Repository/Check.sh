@@ -16,11 +16,11 @@ fail() {
 require_text() {
     file=$1
     expected=$2
-    grep -F "$expected" "$file" >/dev/null || fail "'$file' does not contain required script text: $expected"
+    grep -F -- "$expected" "$file" >/dev/null || fail "'$file' does not contain required script text: $expected"
 }
 require_output() {
     expected=$1
-    if ! grep -F "$expected" "$output" >/dev/null; then
+    if ! grep -F -- "$expected" "$output" >/dev/null; then
         printf 'error: expected script output containing: %s\n' "$expected" >&2
         sed 's/^/  /' "$output" >&2
         exit 1
@@ -33,6 +33,24 @@ write_tool() {
     chmod +x "$fixture_root/bin/$name"
 }
 cd "$repository_root"
+# Worker-count overrides reach CTest, and invalid values fail before launching it.
+printf '#!/bin/sh\nprintf "%%s\\n" "$*"\n' >"$fixture_root/bin/ctest"
+chmod +x "$fixture_root/bin/ctest"
+PATH="$fixture_root/bin:$PATH" sh Run.sh unit --jobs 2 >"$output" 2>&1
+require_output '--parallel 2 --no-tests=error'
+for invalid in 0 -1 nope 999999999999999999999; do
+    if sh Run.sh unit --jobs "$invalid" >"$output" 2>&1; then
+        fail "Run.sh accepted invalid worker count '$invalid'"
+    fi
+    require_output "requires a positive integer"
+done
+for processors in 0 2 64; do
+    printf '#!/bin/sh\nprintf "%s\\n"\n' "$processors" >"$fixture_root/bin/getconf"
+    chmod +x "$fixture_root/bin/getconf"
+    actual=$(PATH="$fixture_root/bin:$PATH" sh Scripts/TestJobs.sh)
+    case "$processors" in 0) expected=1 ;; 2) expected=2 ;; 64) expected=4 ;; esac
+    [ "$actual" = "$expected" ] || fail "default worker count $actual did not match $expected"
+done
 # Help is the no-argument behavior, so the entry point is discoverable on its own.
 for invocation in '' '--help' 'help'; do
     # shellcheck disable=SC2086
@@ -83,7 +101,7 @@ set -e
 [ "$status" -eq 23 ] || fail "Run.sh did not preserve child exit code 23 (received $status)"
 require_output "error: command 'cmake' failed with exit code 23"
 # Check and fix modes use identical counts and outcome vocabulary without touching sources.
-write_tool clang-format-22 0
+write_tool clang-format-23 0
 write_tool rux 0
 NO_COLOR=1 PATH="$fixture_root/bin:$PATH" sh Run.sh format --check \
     --rux-executable "$fixture_root/bin/rux" >"$output" 2>&1

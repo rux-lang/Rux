@@ -24,11 +24,11 @@ find_tool() {
     done
     return 1
 }
-# Locate an LLVM 22 tool, preferring versioned names and Homebrew keg paths.
+# Locate an LLVM 23 tool, preferring versioned names and Homebrew keg paths.
 find_llvm_tool() {
     tool=$1
-    find_tool "$tool-22" "${tool}22" \
-        "/opt/homebrew/opt/llvm@22/bin/$tool" "/usr/local/opt/llvm@22/bin/$tool" \
+    find_tool "$tool-23" "${tool}23" \
+        "/opt/homebrew/opt/llvm@23/bin/$tool" "/usr/local/opt/llvm@23/bin/$tool" \
         "/opt/homebrew/opt/llvm/bin/$tool" "/usr/local/opt/llvm/bin/$tool" \
         "$tool"
 }

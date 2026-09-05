@@ -5,13 +5,15 @@
 #include "Cli/DefineOption.h"
 #include "Cli/ManifestInput.h"
 #include "Cli/Reporter.h"
+#include "Cli/Testing/TestPackages.h"
+#include "Cli/Testing/TestScheduler.h"
 #include "Diagnostics/Diagnostics.h"
 #include "Driver/BuildTarget.h"
 #include "Driver/CompilerDriver.h"
 #include "Package/Manifest.h"
-#include "System/Process.h"
 
 #include <algorithm>
+#include <charconv>
 #include <chrono>
 #include <cstdio>
 #include <filesystem>
@@ -34,10 +36,24 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
     const Reporter output(stdout, reporterOptions);
     const Reporter diagnostics(stderr, reporterOptions);
     bool isRelease = false;
+    std::size_t jobs = 1;
     std::string_view target;
     std::map<std::string, std::string> defines;
     for (std::size_t i = 0; i < args.size(); ++i) {
         const auto arg = args[i];
+        if (arg == "--jobs") {
+            if (i + 1 == args.size()) {
+                diagnostics.Error("option '--jobs' requires a positive integer");
+                return 1;
+            }
+            const auto value = args[++i];
+            const auto parsed = std::from_chars(value.data(), value.data() + value.size(), jobs);
+            if (parsed.ec != std::errc{} || parsed.ptr != value.data() + value.size() || jobs == 0) {
+                diagnostics.Error("option '--jobs' requires a positive integer");
+                return 1;
+            }
+            continue;
+        }
         if (arg == "--release") {
             isRelease = true;
             continue;
@@ -99,10 +115,6 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
     // labeled with. A package has a single root (its own Tests/). A workspace
     // has the root Tests/ *and* each member package's Tests/, so tests may sit
     // either centrally or next to the code they cover.
-    struct TestRoot {
-        std::filesystem::path dir;
-        std::string labelPrefix;
-    };
 
     std::filesystem::path projectRoot;
     std::vector<TestRoot> testRoots;
@@ -189,69 +201,14 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
         output.Progress("Testing", std::format("workspace {}", FormatBuildContext(profile, *targetTriple)));
     }
 
-    // Collect test package directories: any directory under a test root that
-    // contains a Rux.toml with Type = "Executable". A directory without a manifest
-    // is a group (e.g. Tests/Language/) and is searched recursively, a few
-    // levels deep so build-output trees don't get walked.
-    struct TestPackage {
-        std::filesystem::path dir;
-        std::string label;
-    };
-
-    std::vector<TestPackage> testPackages;
-    bool anyRootExists = false;
-    bool invalidTestManifest = false;
-    {
-        std::error_code ec;
-        constexpr int maxGroupDepth = 3;
-        for (const auto &root : testRoots) {
-            if (!std::filesystem::exists(root.dir, ec)) {
-                continue;
-            }
-            anyRootExists = true;
-            std::vector<std::pair<std::filesystem::path, int>> pendingDirs;
-            pendingDirs.emplace_back(root.dir, 0);
-            while (!pendingDirs.empty()) {
-                const auto [dir, depth] = std::move(pendingDirs.back());
-                pendingDirs.pop_back();
-                for (const auto &entry : std::filesystem::directory_iterator(dir, ec)) {
-                    if (!entry.is_directory()) {
-                        continue;
-                    }
-                    const auto toml = entry.path() / "Rux.toml";
-                    if (!std::filesystem::exists(toml)) {
-                        if (depth + 1 < maxGroupDepth) {
-                            pendingDirs.emplace_back(entry.path(), depth + 1);
-                        }
-                        continue;
-                    }
-                    auto pkgManifest = Manifest::Load(toml);
-                    if (!pkgManifest.Ok()) {
-                        for (const auto &diagnostic : pkgManifest.diagnostics) {
-                            diagnostics.Write(diagnostic.Render(), MessageVisibility::Always);
-                        }
-                        invalidTestManifest = true;
-                        continue;
-                    }
-                    // Only an Executable package has an entry point to run.
-                    if (pkgManifest.manifest->package.type != ManifestPackageType::Executable) {
-                        continue;
-                    }
-                    auto label = entry.path().lexically_relative(root.dir).generic_string();
-                    if (!root.labelPrefix.empty()) {
-                        label = root.labelPrefix + "/" + label;
-                    }
-                    testPackages.push_back({entry.path(), std::move(label)});
-                }
-            }
-        }
-        std::sort(testPackages.begin(), testPackages.end(),
-                  [](const TestPackage &a, const TestPackage &b) { return a.label < b.label; });
-    }
-    if (invalidTestManifest) {
+    auto discovered = DiscoverTestPackages(testRoots);
+    for (const auto &diagnostic : discovered.diagnostics)
+        diagnostics.Write(diagnostic.Render(), MessageVisibility::Always);
+    const auto &testPackages = discovered.packages;
+    if (!discovered.diagnostics.empty()) {
         return 1;
     }
-    if (!anyRootExists) {
+    if (!discovered.anyRootExists) {
         output.Success("Passed", std::format("0 tests in {}", Reporting::FormatDuration(ElapsedMs(commandStart))));
         output.Detail("No test directory found at 'Tests/'");
         return 0;
@@ -262,107 +219,6 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
         return 0;
     }
 
-    // Outcome of running a single test package. Compiler diagnostics and the
-    // test program's combined stdout/stderr stay separate so each retains its
-    // established stream when the outcome is rendered.
-    enum class TestStatus {
-        Passed,
-        Failed,
-        BuildError,
-        LaunchError
-    };
-
-    struct TestOutcome {
-        TestStatus status = TestStatus::Passed;
-        int exitCode = 0;
-        std::string output;
-        std::string diagnostics;
-        std::chrono::milliseconds duration{0};
-    };
-
-    // Helper: build a test package quietly, then execute the resulting binary
-    // with its output captured.
-    auto runOne = [&](const std::filesystem::path &pkgDir) -> TestOutcome {
-        TestOutcome outcome;
-        const auto started = std::chrono::steady_clock::now();
-        auto Finish = [&]() {
-            outcome.duration = ElapsedMs(started);
-            return outcome;
-        };
-
-        // Load the package manifest to derive the executable name and output path.
-        auto pkgResult = Manifest::Load(pkgDir / "Rux.toml");
-        if (!pkgResult.Ok()) {
-            for (const auto &diagnostic : pkgResult.diagnostics) {
-                outcome.diagnostics += diagnostic.Render();
-            }
-            outcome.status = TestStatus::BuildError;
-            return Finish();
-        }
-        auto pkgManifest = std::move(pkgResult.manifest);
-        for (const auto &dependency : pkgManifest->dependencies) {
-            if (!dependency.IsPath()) {
-                outcome.status = TestStatus::BuildError;
-                outcome.output = std::format(
-                    "error: test dependency '{}' must use a local Path entry in '{}'; registry dependencies are "
-                    "not allowed\n",
-                    dependency.importName.Text(), (pkgDir / "Rux.toml").string());
-                outcome.diagnostics = std::move(outcome.output);
-                outcome.output.clear();
-                return Finish();
-            }
-        }
-
-        // Build the package quietly (suppress per-file build output for tests).
-        CompileOptions copts;
-        copts.manifestPath = pkgDir / "Rux.toml";
-        copts.manifest = std::move(*pkgManifest);
-        copts.target = *targetTriple;
-        copts.profile = profile;
-        copts.defines = defines;
-        copts.localPackageRoots = localPackageRoots;
-        copts.localDependenciesOnly = true;
-        copts.isTest = true;
-        copts.emitDiagnostic = [&](const Diagnostic &diagnostic, const SourceLineLookup &sourceLineLookup) {
-            outcome.diagnostics += RenderDiagnostic(diagnostic, diagnostics.Style().enabled, sourceLineLookup);
-        };
-        CompilerDriver driver(std::move(copts));
-        const CompileResult result = driver.Compile();
-        if (!result.ok) {
-            outcome.status = TestStatus::BuildError;
-            return Finish();
-        }
-        const auto exePath = result.primaryArtifactPath;
-
-        if (!std::filesystem::exists(exePath)) {
-            outcome.diagnostics = std::format("error: built test executable was not found at '{}'\n", exePath.string());
-            outcome.status = TestStatus::LaunchError;
-            return Finish();
-        }
-
-        output.Verbose(std::format("Running '{}'", exePath.string()));
-
-        // Execute the test binary, capturing its combined stdout/stderr.
-        std::error_code launchError;
-        auto run = RunCaptured(exePath, {}, &launchError);
-        if (!run) {
-            if (launchError) {
-                outcome.diagnostics =
-                    std::format("error: could not launch test executable '{}'\n  note: system error {}: {}\n",
-                                exePath.string(), launchError.value(), launchError.message());
-            }
-            else {
-                outcome.diagnostics = std::format("error: could not launch test executable '{}'\n", exePath.string());
-            }
-            outcome.status = TestStatus::LaunchError;
-            return Finish();
-        }
-        outcome.exitCode = run->exitCode;
-        outcome.output = std::move(run->output);
-
-        outcome.status = outcome.exitCode == 0 ? TestStatus::Passed : TestStatus::Failed;
-        return Finish();
-    };
     output.Progress("Running", Reporting::FormatCount(testPackages.size(), "test"));
 
     auto ReportCapturedOutput = [&](const std::string_view captured) {
@@ -381,34 +237,57 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
     int passed = 0;
     int failed = 0;
     const auto suiteStart = std::chrono::steady_clock::now();
-    for (const auto &pkg : testPackages) {
-        const std::string &label = pkg.label;
-        TestOutcome outcome = runOne(pkg.dir);
-        const auto detail = std::format("{} in {}", label, Reporting::FormatDuration(outcome.duration));
-        if (outcome.status == TestStatus::Passed) {
-            ++passed;
-            output.Success("Passed", detail);
-        }
-        else {
-            ++failed;
-            output.Failure("Failed", detail);
-            switch (outcome.status) {
-            case TestStatus::Failed:
-                diagnostics.Note(std::format("test '{}' exited with code {}", label, outcome.exitCode));
-                break;
-            case TestStatus::BuildError:
-                diagnostics.Note("the test package did not compile");
-                break;
-            case TestStatus::LaunchError:
-                diagnostics.Note("the test executable could not be launched");
-                break;
-            case TestStatus::Passed:
-                break;
-            }
-            diagnostics.Write(outcome.diagnostics, MessageVisibility::Always);
-            ReportCapturedOutput(outcome.output);
-        }
+    std::vector<TestTask> tasks;
+    for (const auto &package : testPackages) {
+        const auto artifact =
+            ResolveTestOutputDir(package.dir, package.manifest, *targetTriple) /
+            OutputFileName(package.manifest.package.name.Text(), ArtifactKind::Executable, targetTriple->Os());
+        tasks.push_back({{artifact, package.dir / "Temp"}});
     }
+    CompileOptions compileOptions;
+    compileOptions.target = *targetTriple;
+    compileOptions.profile = profile;
+    compileOptions.defines = defines;
+    compileOptions.localPackageRoots = localPackageRoots;
+    std::vector<TestOutcome> outcomes(testPackages.size());
+    RunTestTasks(
+        tasks, jobs,
+        [&](const std::size_t index) {
+            outcomes[index] = RunTestPackage(testPackages[index], compileOptions, diagnostics.Style().enabled);
+        },
+        [&](const std::size_t index) {
+            const std::string &label = testPackages[index].label;
+            const TestOutcome &outcome = outcomes[index];
+            if (!outcome.executable.empty())
+                output.Verbose(std::format("Running '{}'", outcome.executable.string()));
+            const auto detail = std::format("{} in {}", label, Reporting::FormatDuration(outcome.duration));
+            if (outcome.status == TestStatus::Passed) {
+                ++passed;
+                output.Success("Passed", detail);
+            }
+            else {
+                ++failed;
+                output.Failure("Failed", detail);
+                output.Flush();
+                switch (outcome.status) {
+                case TestStatus::Failed:
+                    diagnostics.Note(std::format("test '{}' exited with code {}", label, outcome.exitCode));
+                    break;
+                case TestStatus::BuildError:
+                    diagnostics.Note("the test package did not compile");
+                    break;
+                case TestStatus::LaunchError:
+                    diagnostics.Note("the test executable could not be launched");
+                    break;
+                case TestStatus::Passed:
+                    break;
+                }
+                diagnostics.Write(outcome.diagnostics, MessageVisibility::Always);
+                diagnostics.Flush();
+                ReportCapturedOutput(outcome.output);
+            }
+            output.Flush();
+        });
     const auto elapsed = ElapsedMs(suiteStart);
     const int total = passed + failed;
     if (!opts.quiet) {

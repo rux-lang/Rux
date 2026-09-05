@@ -68,7 +68,7 @@ The current architecture is protected by focused unit and regression tests plus 
 - Checked LIR construction and verification stop malformed control flow before code generation. Release optimization uses overflow-safe constants, conservative effect analysis, bounded fixed points, and artifact-aware whole-program reachability; Debug remains transformation-free apart from verification.
 - Both native back ends use the shared RCU module builder. All image writers consume one deterministic link graph and common aligned-section layout before applying PE, ELF, or Mach-O container rules.
 - Parser, semantic, lowering, code-generation, assembler, object-writer, linker, manifest, package-command, and test implementations have named owners and narrow private interfaces. File length is a review guideline, without a line-count gate or exception ceilings.
-- Positive first-party Rux source uses only the final ownership, lifecycle, and case-type contracts. The language-cutover policy rejects mutable parameters, legacy Drop lifecycle forms, and infallible exact-type `New` factories, and pins the compiler enforcement that named move-only values require `<-`. The enum/variant cutover policy independently rejects generic or payload-bearing enums in maintained positive source.
+- Positive first-party Rux source follows the ownership, lifecycle, and case-type contracts. Parser, semantic, golden, and integration tests preserve rejection of obsolete forms; source conventions are documented without language-cutover scanners.
 
 These are maintained contracts, not a one-time migration record. Changes to them belong in this guide and in the tests or policy checks that enforce the affected boundary.
 
@@ -82,32 +82,32 @@ Semantic checking lives in `Semantic/Analysis`, conditional folding in `Semantic
 
 | Component              | Owns                                                                                                      | May depend on                              |
 | ---------------------- | --------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
-| `SourceModel`          | Source locations and loaded-file identity values                                                          | Standard library only                      |
+| `SourceModel` | Source locations, loaded-file identity, immutable source text and lazy line indexes | Standard library only |
 | `BuildInfo`            | Immutable compiler identity, timestamp, typed profile, and output artifact kind                           | Standard library only                      |
 | `CliContract`          | Immutable command, option, argument, example, and conflict data                                           | Standard library only                      |
 | `CliHelp`              | Pure terminal and JSON rendering of the CLI contract                                                      | CliContract and Diagnostics                |
-| `CliReporting`         | Stream-scoped CLI messages, suppression, tables, summaries, and terminal color policy                     | Reporting and System                       |
+| `CliReporting` | CLI messages, build reports, suppression and terminal styling | Reporting, DriverModel, System |
 | `Diagnostics`          | Structured diagnostic values plus canonical human and JSON rendering                                      | SourceModel and Reporting                  |
 | `Source`               | Source discovery and loading                                                                              | SourceModel and Diagnostics                |
-| `System`               | Host OS, process, filesystem, networking, environment, and JSON                                           | Target, standard library, host APIs        |
+| `System` / `Http` | Host process/filesystem/environment services; separate HTTP transport | Target, host APIs; Http uses System |
 | `Target`               | Validated target triples, ABI, layout, and instruction models                                             | SourceModel                                |
 | `Package`              | `Rux.toml`, dependency metadata, and workspace discovery                                                  | Crypto and Target                          |
 | `Numeric`              | Exact wide integers; binary float formats/encodings; numeric-literal suffix, base, and range models       | None                                       |
 | `Unicode`              | UTF-8 decoding and validation; UTF-16/UTF-32 transcoding and code-unit counting                           | None                                       |
-| `Lexer`                | Tokens and lexical analysis                                                                               | SourceModel, Numeric, Unicode, Diagnostics |
-| `Syntax`               | AST, parser, and focused human-readable AST printers                                                      | Lexer, Diagnostics, and Target             |
-| `Semantic`             | Symbols, types, conditional compilation, borrow/value analysis, and validated semantic model              | BuildInfo, Numeric, Syntax, Diagnostics    |
-| `Ir/Hir`               | High-level IR and its transformations                                                                     | Semantic, Lexer, SourceModel, Target       |
-| `Ir/Lir`               | Control-flow-explicit low-level IR                                                                        | Semantic                                   |
+| `Tokens` / `Lexer` | Token data and spellings; lexical processing | SourceModel; Lexer adds Numeric, Unicode, Diagnostics |
+| `Ast` / `Syntax` | AST and parse-result data; parser and AST inspection | Tokens, Target; Syntax adds Lexer and Diagnostics |
+| `Types` / `SemanticModel` / `Semantic` | Resolved data and accepted facts; conditional folding and analysis | Model dependencies stay independent of parser/analyzer implementations |
+| `Ir/Hir` | High-level IR and inspection | Types, Tokens, SourceModel, Target |
+| `Ir/Lir` | Control-flow-explicit low-level IR and inspection | Types, Target |
 | `Optimization`         | Profile-selected HIR/LIR passes, CFG validation, constants, and LIR reachability                          | BuildInfo, Diagnostics, HIR, and LIR       |
-| `Lowering`             | AST/semantic model → ownership-explicit HIR → control-flow-explicit LIR; private lowering contexts        | Frontend and IR components                 |
+| `Lowering` | AST/semantic facts to HIR, then HIR to LIR | Ast, SemanticModel, HIR, LIR, Unicode |
 | `CodeGen`              | Layout rules, literal decoding, register allocation, assembly results, and shared RCU module construction | LIR, Object, and Diagnostics               |
 | `CodeGen/X86_64`       | x86-64 frame planning, instruction encoding, inline assembly, and RCU construction                        | BuildInfo, LIR, Object, Diagnostics        |
 | `CodeGen/AArch64`      | AArch64 instruction encoding, inline assembly, runtime helpers, and RCU construction                      | BuildInfo, LIR, Object, Diagnostics        |
 | `Object/Rcu`           | RCU object representation, relocation kinds, and serialization                                            | BuildInfo and Target                       |
 | `Archive`              | Deterministic native archive containers and symbol indexes                                                | Object                                     |
 | `Linker`               | Format-neutral RCU symbol graph; PE, ELF, Mach-O, relocatable-object, and library output                  | Object, Archive, and System                |
-| `Driver`               | Compilation orchestration, build reports, registry access, and package resolution                         | All compiler stages                        |
+| `Driver` / `DriverModel` | Compilation/build planning; independent statistics and events | Compiler stages and local PackageCache; model has no pipeline dependency |
 | `Formatter` / `Linter` | Source formatting and lint diagnostics                                                                    | Syntax; the linter also uses Semantic      |
 
 `Parser::DumpAst` is the public AST-dump facade. Its implementation shares private stream and indentation state through `ParserDumpDetail::AstDumpWriter`; the declaration printer is the single owner of declaration dispatch and type-expression text, while the statement printer owns blocks, statement dispatch, and pattern formatting. The two focused printers call back into the facade for nested expressions and into each other at declaration/block boundaries, keeping dump text stable while expression printers are split into their own owner incrementally.
@@ -209,9 +209,9 @@ Build and check resolve path dependencies directly and registry dependencies fro
 
 The namespace and name directories carry the spelling the package was published under, and an existing one is found by comparing normalized names. That matters because the two sides disagree by design: an install writes the spelling the registry publishes, while a build looks the package up with the spelling the consuming manifest happens to use.
 
-Selecting among installed versions is a local operation in `Driver/BuildTarget`, so a build never reaches the network; only `install`, `update`, `add`, `info` and the publication commands do.
+Selecting among installed versions is a local operation in `Package/Cache`, so a build never reaches the network; only `install`, `update`, `add`, `info` and the publication commands do.
 
-An explicit `[Workspace]` manifest names its member packages. Workspace checks resolve qualified registry dependencies from matching namespaced members and resolve test-only path dependencies directly. `rux test` discovers `Program` packages below the root `Tests/` tree, requires their direct dependencies to use local path entries, resolves transitive first-party dependencies from workspace members, and disables registry fallback. Publishable package manifests can therefore retain qualified registry dependencies without making repository tests depend on the network or shared package cache.
+An explicit `[Workspace]` manifest names its member packages. Workspace checks resolve qualified registry dependencies from matching namespaced members and resolve test-only path dependencies directly. `rux test` discovers `Executable` packages below the root `Tests/` tree, requires their direct dependencies to use local path entries, resolves transitive first-party dependencies from workspace members, and disables registry fallback. Publishable package manifests can therefore retain qualified registry dependencies without making repository tests depend on the network or shared package cache.
 
 ## Option Coalescing
 
@@ -243,3 +243,17 @@ progress callback, leaving CLI responsible for rendering. HTTP transport is `Rux
 
 Each component registers its own source files and actual dependencies beside its implementation. The compiler root
 CMake file composes those components, shares compiler warnings/runtime settings, and defines the executable.
+
+`Cli/Testing` owns package-test discovery, execution and scheduling through `RuxTestRunner`. `CmdTest` owns presentation.
+Workers receive independent compilation options/results and use System capture. The scheduler reserves normalized
+artifact paths until compile-and-run finishes, while reports are delivered on the caller in discovery order. HTTP
+uses Process for POSIX client execution; Windows launches use explicit inherited-handle lists and POSIX launches use
+close-on-exec pipes with serialized descriptor setup.
+
+Test workers use joined threads without stop-token machinery, so the Windows compiler does not import the
+`api-ms-win-core-synch-l1-2-0.dll` API set. `System::OpenBinaryOutput` handles transient Windows sharing and mapped-file
+failures when replacing a PE artifact, with a five-second retry budget; other output errors retain their diagnostics.
+
+Driver stores source bytes once in `SourceText`; lexing borrows them synchronously and diagnostics index lines lazily.
+Primitive-kind lookup is generated from the primitive catalog into a constant-time index. Compiler metadata has a
+stable public declaration and one generated implementation unit; see [Compiler Build Performance](CompilerPerformance.md).

@@ -31,7 +31,7 @@ build, test, unit, tidy, and clean.
 
 .PARAMETER Compiler
 The Clang C++ compiler to configure with, for build and test. Defaults to $CXX
-or a detected Clang 22.
+or a detected Clang 23.
 
 .PARAMETER RuxExecutable
 An existing rux executable to use, for format and test. Defaults to Bin/rux or
@@ -41,6 +41,10 @@ Bin/rux.exe.
 The target triple to check and run the Rux suites for, for test. Defaults to
 the host. Target tests require the same OS and an architecture executable
 directly by the compiler process or native OS.
+
+.PARAMETER Jobs
+Maximum workers for tests and static analysis (default: up to four CPUs).
+An explicit value also limits C++ build workers.
 
 .PARAMETER Check
 Checks formatting without modifying files, for format.
@@ -89,6 +93,9 @@ param(
 
     [string]$Target,
 
+    [ValidateRange(1, 2147483647)]
+    [int]$Jobs = [Math]::Max(1, [Math]::Min(4, [Environment]::ProcessorCount)),
+
     [switch]$Check,
 
     [switch]$FixFormatting,
@@ -114,13 +121,13 @@ $policyChecks = @(
 
 # Options each command accepts, used to reject an option the command ignores.
 $commandOptions = @{
-    build  = @("Configuration", "BuildDirectory", "Compiler")
+    build  = @("Configuration", "BuildDirectory", "Compiler", "Jobs")
     test   = @("Configuration", "BuildDirectory", "Compiler", "RuxExecutable", "Target",
-        "FixFormatting", "SkipBuild", "ClangTidy")
+        "FixFormatting", "SkipBuild", "ClangTidy", "Jobs")
     format = @("RuxExecutable", "Check")
     policy = @()
-    tidy   = @("BuildDirectory")
-    unit   = @("Configuration", "BuildDirectory")
+    tidy   = @("BuildDirectory", "Jobs")
+    unit   = @("Configuration", "BuildDirectory", "Jobs")
     clean  = @("BuildDirectory")
     help   = @()
 }
@@ -139,6 +146,7 @@ function Show-Usage {
     Write-Host "  help      Show this help"
     Write-Host ""
     Write-Host "Options:"
+    Write-Host "  -Jobs N                        Test/tidy workers (default: up to four CPUs); explicit value also limits builds"
     Write-Host "  -Configuration Debug|Release  CMake configuration (build, test, unit; default: Release)"
     Write-Host "  -BuildDirectory PATH          CMake build directory (build, test, unit, tidy, clean; default: Build)"
     Write-Host "  -Compiler PATH                Clang C++ compiler (build, test; default: `$CXX or detected Clang)"
@@ -225,11 +233,11 @@ function Resolve-Compiler {
     if ($requested) {
         return Find-Tool -Name $requested `
             -FallbackPath @($requested) `
-            -NotFoundMessage "C++ compiler '$requested' was not found; install Clang 22 or pass -Compiler PATH"
+            -NotFoundMessage "C++ compiler '$requested' was not found; install Clang 23 or pass -Compiler PATH"
     }
 
-    return Find-Tool -Name @("clang++-22", "clang++22", "clang++") `
-        -NotFoundMessage "Clang 22 was not found; install it or pass -Compiler PATH"
+    return Find-Tool -Name @("clang++-23", "clang++23", "clang++") `
+        -NotFoundMessage "Clang 23 was not found; install it or pass -Compiler PATH"
 }
 
 function Get-MaintainedCppFile {
@@ -335,7 +343,9 @@ function Invoke-Build {
     Invoke-Checked -FilePath $cmake -ArgumentList $configureArguments
 
     Write-Step "Building compiler and unit tests"
-    Invoke-Checked -FilePath $cmake -ArgumentList @("--build", $buildPath, "--config", $Configuration)
+    $buildArguments = @("--build", $buildPath, "--config", $Configuration)
+    if ($script:PSBoundParameters.ContainsKey("Jobs")) { $buildArguments += @("--parallel", "$Jobs") }
+    Invoke-Checked -FilePath $cmake -ArgumentList $buildArguments
 
     $ruxFileName = if ($runningOnWindows) { "rux.exe" } else { "rux" }
     $rux = Join-Path $repositoryRoot "Bin/$ruxFileName"
@@ -361,7 +371,7 @@ function Invoke-Format {
 
     param([switch]$CheckOnly)
 
-    $clangFormat = Find-Tool -Name @("clang-format-22", "clang-format22", "clang-format")
+    $clangFormat = Find-Tool -Name @("clang-format-23", "clang-format23", "clang-format")
     $rux = Resolve-RuxPath
     $cppFiles = @(Get-MaintainedCppFile | ForEach-Object { $_.FullName })
     $manifests = @(Get-PackageManifest | ForEach-Object { $_.FullName })
@@ -401,7 +411,7 @@ function Invoke-Tidy {
     }
 
     $buildPath = Get-BuildPath
-    $clangTidy = Find-Tool -Name @("clang-tidy-22", "clang-tidy")
+    $clangTidy = Find-Tool -Name @("clang-tidy-23", "clang-tidy")
     $cache = Join-Path $buildPath "CMakeCache.txt"
     if ((Test-Path -LiteralPath $cache) -and (Select-String -LiteralPath $cache -Pattern '^RUX_USE_PCH:BOOL=ON$' -Quiet)) {
         Invoke-Checked -FilePath (Find-Tool -Name "cmake") -ArgumentList @("--build", $buildPath, "--target", "rux-analysis-database")
@@ -432,7 +442,6 @@ function Invoke-Tidy {
 
     Write-Step "Running clang-tidy ($($sources.Count) files)"
     $clangTidyConfig = Join-Path $repositoryRoot ".clang-tidy"
-    $jobs = [Math]::Max(1, [Math]::Min(4, [Environment]::ProcessorCount))
     $startedAt = Get-Date
     $completed = 0
     $failures = [System.Collections.Generic.List[object]]::new()
@@ -485,7 +494,7 @@ function Invoke-Unit {
     Invoke-Checked -FilePath $ctest -ArgumentList @(
         "--test-dir", $buildPath,
         "--output-on-failure",
-        "-C", $Configuration
+        "-C", $Configuration, "--parallel", "$Jobs", "--no-tests=error"
     )
 }
 
@@ -507,7 +516,7 @@ function Invoke-RuxSuite {
     Invoke-Checked -FilePath $rux -ArgumentList @("--manifest", $rootManifest, "lint")
 
     Write-Step "Running all Rux test packages"
-    $testArguments = @("test")
+    $testArguments = @("test", "--jobs", "$Jobs")
     if ($Configuration -eq "Release") {
         $testArguments += "--release"
     }
@@ -562,7 +571,7 @@ if ($Command -eq "help") {
 }
 
 $allOptions = @("Configuration", "BuildDirectory", "Compiler", "RuxExecutable", "Target",
-    "Check", "FixFormatting", "SkipBuild", "ClangTidy")
+    "Check", "FixFormatting", "SkipBuild", "ClangTidy", "Jobs")
 foreach ($name in $PSBoundParameters.Keys) {
     if ($allOptions -notcontains $name) {
         continue

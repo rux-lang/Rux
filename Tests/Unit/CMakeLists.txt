@@ -4,6 +4,11 @@
 
 set(RUX_TEST_SOURCES
     Main.cpp
+    ProcessProbe.cpp
+    ProcessCaptureTests.cpp
+    OutputFileTests.cpp
+    TestSchedulerTests.cpp
+    CliTestSchedulingTests.cpp
     AArch64AssemblerTests.cpp
     AArch64CallLayoutTests.cpp
     AArch64EncoderTests.cpp
@@ -225,4 +230,14 @@ if (WIN32)
         "$<IF:$<CONFIG:Release>,MultiThreaded,MultiThreaded$<$<CONFIG:Debug>:Debug>DLL>")
 endif ()
 
-add_test(NAME UnitTests COMMAND rux-tests)
+include(TestGroups.cmake)
+target_link_libraries(rux-tests PRIVATE RuxTestRunner)
+
+if (WIN32)
+    get_filename_component(rux_llvm_directory "${CMAKE_CXX_COMPILER}" DIRECTORY)
+    find_program(RUX_READOBJ NAMES llvm-readobj HINTS "${rux_llvm_directory}" REQUIRED)
+    add_test(NAME Runtime.WindowsImports COMMAND "${CMAKE_COMMAND}"
+        "-DRUX_EXECUTABLE=$<TARGET_FILE:rux>" "-DRUX_READOBJ=${RUX_READOBJ}"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/VerifyWindowsImports.cmake")
+    set_tests_properties(Runtime.WindowsImports PROPERTIES LABELS Unit)
+endif ()
