@@ -164,6 +164,22 @@ TEST_CASE("Detailed build report titles every section and states each fact once"
     CHECK(squeezed.contains("Declarations pruned: 7\n"));
     CHECK(squeezed.contains("Estimated IR nodes: 42\n"));
     CHECK_FALSE(plain.contains("42 nodes"));
+    CHECK(squeezed.contains("Compile speed: 0 LOC/s\n"));
+    CHECK(squeezed.contains("Token throughput: 0 Tok/s\n"));
+
+    stats.totalSeconds = 1.0;
+    stats.localLines = 97'700;
+    stats.localTokens = 420'900;
+    const auto rates = Squeeze(FormatBuildStats(info, stats, false));
+    CHECK(rates.contains("Compile speed: 97.7 kLOC/s\n"));
+    CHECK(rates.contains("Token throughput: 420.9 kTok/s\n"));
+
+    stats.totalSeconds = 0.1;
+    stats.localLines = 200'000;
+    stats.localTokens = 500'000;
+    const auto millionRates = Squeeze(FormatBuildStats(info, stats, false));
+    CHECK(millionRates.contains("Compile speed: 2 MLOC/s\n"));
+    CHECK(millionRates.contains("Token throughput: 5 MTok/s\n"));
 }
 
 TEST_CASE("Detailed build report accounts for the whole build time") {

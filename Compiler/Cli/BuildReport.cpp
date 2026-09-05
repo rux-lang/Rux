@@ -18,6 +18,16 @@ namespace Rux::CliSupport {
 using namespace Driver;
 
 namespace {
+std::string FormatRate(const double value, const std::string_view unit) {
+    if (value >= 1'000'000.0) {
+        return std::format("{} M{}", FormatDecimal(value / 1'000'000.0, 1), unit);
+    }
+    if (value >= 1'000.0) {
+        return std::format("{} k{}", FormatDecimal(value / 1'000.0, 1), unit);
+    }
+    return std::format("{} {}", FormatNumber(static_cast<std::uintmax_t>(std::llround(value))), unit);
+}
+
 /// The triple a report names. An embedder that leaves it unset built for the host, which is what the report said before
 /// it carried a target at all.
 std::optional<Target::TargetTriple> ReportedTriple(const std::string_view targetTriple) {
@@ -269,11 +279,10 @@ std::string FormatBuildStats(const BuildReportInfo &info, const BuildStats &stat
                                   Reporting::TableRow{"Estimated IR nodes", irNodes}};
     output << Reporting::RenderSection("Optimization", optimization, style, Reporting::ValueAlign::Right) << '\n';
 
-    // Compact counts here match the one-line build summary, which already
-    // reports LOC/s and token totals that way. These four values carry four
-    // different units, so right alignment would square up nothing.
-    const std::string speed = FormatCompactNumber(compileSpeed) + " LOC/s";
-    const std::string tokens = FormatCompactNumber(tokenThroughput) + " tok/s";
+    // Rate prefixes belong to the units, separated from the numbers by a space.
+    // These four values carry different units, so right alignment would square up nothing.
+    const std::string speed = FormatRate(compileSpeed, "LOC/s");
+    const std::string tokens = FormatRate(tokenThroughput, "Tok/s");
     const std::string source = FormatDecimal(throughput, 2) + " MB/s";
     const std::string memory = FormatSize(stats.peakMemoryBytes);
     const std::array performance{
