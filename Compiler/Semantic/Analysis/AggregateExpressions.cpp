@@ -677,7 +677,7 @@ std::optional<TypeRef> AnalysisContext::CheckAggregateExpression(const Expr &exp
             return TypeRef::MakeUInt();
         }
         if (auto elementType = SliceElementType(objectValueType)) {
-            if (!VisibleIntrinsicType(objectValueType, field->location)) {
+            if (!RecordIntrinsicMember(objectValueType, *field)) {
                 return TypeRef::MakeUnknown();
             }
             if (field->field == "data") {
@@ -693,7 +693,7 @@ std::optional<TypeRef> AnalysisContext::CheckAggregateExpression(const Expr &exp
         }
         // A visible declaration grants access to the compiler-owned text representation.
         if (objectValueType.IsString()) {
-            if (!VisibleIntrinsicType(objectValueType, field->location)) {
+            if (!RecordIntrinsicMember(objectValueType, *field)) {
                 return TypeRef::MakeUnknown();
             }
             if (field->field == "data") {
@@ -708,7 +708,7 @@ std::optional<TypeRef> AnalysisContext::CheckAggregateExpression(const Expr &exp
             return TypeRef::MakeUnknown();
         }
         if (objectValueType.IsRange()) {
-            if (!VisibleIntrinsicType(objectValueType, field->location)) {
+            if (!RecordIntrinsicMember(objectValueType, *field)) {
                 return TypeRef::MakeUnknown();
             }
             const TypeRef elementType = objectValueType.inner.empty() ? TypeRef::MakeInt64() : objectValueType.inner[0];

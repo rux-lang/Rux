@@ -3,6 +3,7 @@
 
 #include "Semantic/Analysis/AnalysisContext.h"
 
+#include <algorithm>
 #include <format>
 
 namespace Rux::SemanticDetail {
@@ -73,6 +74,17 @@ void AnalysisContext::ResolveDeclSignature(const Decl &declaration) {
     }
     else if (const auto *extension = dynamic_cast<const ImplDecl *>(&declaration)) {
         const auto receiverParameters = ImplTypeParams(*extension);
+        const auto savedParameters = currentTypeParams;
+        currentTypeParams = receiverParameters;
+        const Symbol *symbol = currentScope->Lookup(BaseTypeName(extension->typeName));
+        const bool canResolve = (symbol && symbol->kind == Symbol::Kind::Type) ||
+                                !dynamic_cast<const NamedTypeExpr *>(extension->extendedType.get());
+        const TypeRef receiver =
+            extension->extendedType && canResolve ? ResolveType(*extension->extendedType) : TypeRef::MakeUnknown();
+        currentTypeParams = savedParameters;
+        if (receiver.isIntrinsicSlice && receiverParameters.empty()) {
+            programIndex.BindImplementationMethods(*extension, receiver.name);
+        }
         for (const auto &method : extension->methods) {
             auto parameters = receiverParameters;
             AppendTypeParameterNames(parameters, method->typeParams);
@@ -122,6 +134,17 @@ void AnalysisContext::ResolveDeclSignatureInScope(const Decl &declaration, Scope
     }
     else if (const auto *extension = dynamic_cast<const ImplDecl *>(&declaration)) {
         const auto receiverParameters = ImplTypeParams(*extension);
+        const auto savedParameters = currentTypeParams;
+        currentTypeParams = receiverParameters;
+        const Symbol *symbol = currentScope->Lookup(BaseTypeName(extension->typeName));
+        const bool canResolve = (symbol && symbol->kind == Symbol::Kind::Type) ||
+                                !dynamic_cast<const NamedTypeExpr *>(extension->extendedType.get());
+        const TypeRef receiver =
+            extension->extendedType && canResolve ? ResolveType(*extension->extendedType) : TypeRef::MakeUnknown();
+        currentTypeParams = savedParameters;
+        if (receiver.isIntrinsicSlice && receiverParameters.empty()) {
+            programIndex.BindImplementationMethods(*extension, receiver.name);
+        }
         for (const auto &method : extension->methods) {
             auto parameters = receiverParameters;
             AppendTypeParameterNames(parameters, method->typeParams);

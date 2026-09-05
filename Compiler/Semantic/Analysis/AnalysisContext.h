@@ -392,6 +392,8 @@ private:
     std::vector<SemanticDiagnostic> &diags;
     const CompileTimeContext &context;
     std::unordered_map<const Expr *, TypeRef> &expressionTypes;
+    std::unordered_map<const TypeExpr *, const Decl *> &intrinsicTypeBindings;
+    std::unordered_map<const FieldExpr *, ResolvedIntrinsicMember> &intrinsicMemberBindings;
     std::unordered_map<const Expr *, const ConstDecl *> &associatedConstants;
     std::unordered_map<const ConstDecl *, EvaluatedAssociatedConstant> &evaluatedAssociatedConstants;
     std::unordered_set<const ConstDecl *> checkingAssociatedConstants;
@@ -400,6 +402,7 @@ private:
     void CheckIntrinsicType(const Decl &declaration);
     std::unordered_map<std::string, std::unordered_set<const Decl *>> explicitTypeImports;
     [[nodiscard]] bool IsVisibleTypeSymbol(const Symbol &symbol) const;
+    [[nodiscard]] bool RecordIntrinsicMember(const TypeRef &type, const FieldExpr &expression) const;
     [[nodiscard]] const Decl *IntrinsicTypeBinding(const Symbol &symbol) const;
     [[nodiscard]] const Decl *VisibleIntrinsicType(const TypeRef &type, SourceLocation location) const;
     std::unordered_map<const TypeExpr *, TypeRef> &typeNodeTypes;

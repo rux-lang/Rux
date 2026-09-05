@@ -141,7 +141,7 @@ bool AArch64FunctionEmitter::IsAggregate(const TypeRef &type) const {
         return true;
     case TypeRef::Kind::Named: {
         const std::string base = BaseTypeName(type.name);
-        return base == "Slice" || interfaceNames.contains(base) || layouts.contains(base) ||
+        return type.isIntrinsicSlice || interfaceNames.contains(base) || layouts.contains(base) ||
                (!type.inner.empty() && SizeOf(type) > 8);
     }
     default:

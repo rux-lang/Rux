@@ -10,6 +10,16 @@
 #include <utility>
 
 namespace Rux {
+const Decl *SemanticModel::TryGetIntrinsicTypeBinding(const TypeExpr &type) const noexcept {
+    const auto found = facts.intrinsicTypeBindings.find(&type);
+    return found == facts.intrinsicTypeBindings.end() ? nullptr : found->second;
+}
+
+const ResolvedIntrinsicMember *SemanticModel::TryGetIntrinsicMember(const FieldExpr &expression) const noexcept {
+    const auto found = facts.intrinsicMemberBindings.find(&expression);
+    return found == facts.intrinsicMemberBindings.end() ? nullptr : &found->second;
+}
+
 const ConstDecl *SemanticModel::TryGetAssociatedConstant(const Expr &expression) const noexcept {
     const auto found = facts.associatedConstants.find(&expression);
     return found == facts.associatedConstants.end() ? nullptr : found->second;
@@ -93,7 +103,7 @@ std::string ConstraintWitnessKey(const std::string &interfaceName, const TypeRef
     std::string name = owner.kind == TypeRef::Kind::Named ? owner.name : owner.ToString();
     // A slice keeps its element in the name, because `extend int[]` and `extend char8[]` are different method sets. Any
     // other generic instantiation shares one, so it reduces to the declaration that owns it.
-    if (const std::size_t arguments = name.find('<'); arguments != std::string::npos && !name.starts_with("Slice<")) {
+    if (const std::size_t arguments = name.find('<'); arguments != std::string::npos && !owner.isIntrinsicSlice) {
         name.resize(arguments);
     }
     return interfaceName + "@" + name;

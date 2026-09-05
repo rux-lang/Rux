@@ -155,7 +155,7 @@ TEST_CASE("x86-64 frame plan reserves a phi temporary as wide as the value it ca
 }
 
 TEST_CASE("x86-64 frame plan records Win64 address homes and hidden return after callee saves") {
-    const TypeRef slice = TypeRef::MakeNamed("Slice<int>");
+    const TypeRef slice = TypeRef::MakeSlice(TypeRef::MakeInt());
     LirFunc function;
     function.name = "Identity";
     function.callConv = CallingConvention::Win64;

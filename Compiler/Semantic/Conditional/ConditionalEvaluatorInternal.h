@@ -44,6 +44,7 @@ private:
     const CompileTimeContext &context;
     ConditionalImportResolver resolveImports;
     std::vector<Module *> localModules;
+    std::vector<std::pair<const Decl *, const Module *>> selectedDeclarations;
 
     struct ConstantBinding {
         const ConstDecl *declaration;
@@ -55,6 +56,7 @@ private:
     std::unordered_map<std::string, ConstantBinding> importedConstants;
     std::unordered_map<std::string, std::string> intrinsicBindings;
     std::unordered_set<const ConstDecl *> activeAssociatedConstants;
+    std::unordered_set<const Decl *> activeTypeAliases;
     void ImportDeclarations(const UseDecl &use);
     void BindImportedDeclaration(const Decl &declaration, const std::vector<Module *> &modules, const Module &source,
                                  bool external = true);

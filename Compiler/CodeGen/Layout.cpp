@@ -323,7 +323,7 @@ int FieldOffsetOf(const TypeRef &pointerType, const std::string_view fieldName, 
     if (interfaceNames.contains(base)) {
         return fieldName == "vtable" ? 8 : 0;
     }
-    if (base == "Slice") {
+    if (pointee.isIntrinsicSlice) {
         return fieldName == "length" ? 8 : 0;
     }
     auto layout = layouts.find(pointee.name);

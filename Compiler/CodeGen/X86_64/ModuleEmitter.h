@@ -159,7 +159,7 @@ private:
             return false;
         }
         const std::string base = BaseTypeName(t.name);
-        return base == "Slice" || interfaceNames.count(base) > 0;
+        return t.isIntrinsicSlice || interfaceNames.count(base) > 0;
     }
 
     [[nodiscard]] bool IsRegPointerTo(const LirReg reg, const TypeRef &pointee) const override {

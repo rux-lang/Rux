@@ -66,8 +66,6 @@ void CompilerDriver::Impl::InitializeCompileTimeContext() {
     compileTimeContext.isTest = opts.isTest;
     compileTimeContext.sourceRoot = root.lexically_normal();
     compileTimeContext.config = opts.manifest.build.ConfigValues();
-    // Which import name means the intrinsics package is the root manifest's
-    // choice; each dependency's own manifest answers it again below.
     for (const auto &[name, value] : opts.defines) {
         compileTimeContext.config[name] = value;
     }

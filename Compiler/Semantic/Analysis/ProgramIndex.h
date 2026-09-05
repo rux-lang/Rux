@@ -82,6 +82,7 @@ public:
     void RegisterPackageRoot(const std::string &packageName, Scope &scope);
     [[nodiscard]] Scope &ModuleScopeFor(const std::string &name, Scope &parent) const;
 
+    void BindImplementationMethods(const ImplDecl &declaration, const std::string &receiverName);
     void CollectModule(const Module &module, const std::string *packageName, const ResolveType &resolveType);
     void CollectDeclaration(const Decl &declaration, Scope &scope, const std::string &sourceName,
                             const ResolveType &resolveType, const std::string *packageName = nullptr,

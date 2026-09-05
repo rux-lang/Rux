@@ -93,7 +93,7 @@ bool AssemblyInstructionPrinter::IsAggregate(const TypeRef &type) const {
         return true;
     case TypeRef::Kind::Named: {
         const std::string base = BaseTypeName(type.name);
-        return base == "Slice" || interfaceNames.contains(base) || layouts.contains(base) ||
+        return type.isIntrinsicSlice || interfaceNames.contains(base) || layouts.contains(base) ||
                (!type.inner.empty() && SizeOf(type) > 8);
     }
     default:
@@ -109,7 +109,7 @@ bool AssemblyInstructionPrinter::IsWin64AddressParameter(const TypeRef &type) co
         return false;
     }
     const std::string base = BaseTypeName(type.name);
-    return base == "Slice" || interfaceNames.contains(base);
+    return type.isIntrinsicSlice || interfaceNames.contains(base);
 }
 
 bool AssemblyInstructionPrinter::IsRegPointerTo(const LirReg reg, const TypeRef &pointee) const {

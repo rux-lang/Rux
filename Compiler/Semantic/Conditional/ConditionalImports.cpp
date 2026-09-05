@@ -44,35 +44,65 @@ void ConditionalEvaluator::Impl::BindImportedDeclaration(const Decl &declaration
     }
     const auto primitive = PrimitiveTypeFromName(target);
     for (const Module *module : modules) {
-        const auto collect = [&](this auto &&self, const std::vector<DeclPtr> &items) -> void {
-            for (const auto &item : items) {
-                if (const auto *extension = dynamic_cast<const ImplDecl *>(item.get())) {
-                    const auto extended = PrimitiveTypeFromName(extension->typeName);
-                    if (extension->typeName != target && (!primitive || !extended || *primitive != *extended)) {
+        const auto collect = [&](this auto &&self, const Decl *item) -> void {
+            if (const auto *extension = dynamic_cast<const ImplDecl *>(item)) {
+                const auto extended = PrimitiveTypeFromName(extension->typeName);
+                if (extension->typeName != target && (!primitive || !extended || *primitive != *extended)) {
+                    return;
+                }
+                for (const auto &member : extension->constants) {
+                    if (external && !member->isPublic) {
                         continue;
                     }
-                    for (const auto &member : extension->constants) {
-                        if (external && !member->isPublic) {
-                            continue;
-                        }
-                        const std::string key = alias->name + "::" + member->name;
-                        const auto previous = associatedDeclarations.find(key);
-                        if (previous != associatedDeclarations.end() && previous->second.declaration != member.get()) {
-                            previous->second.declaration = nullptr;
-                        }
-                        else {
-                            associatedDeclarations.insert_or_assign(key,
-                                                                    ConstantBinding{member.get(), modules, module});
-                        }
+                    const std::string key = alias->name + "::" + member->name;
+                    const auto previous = associatedDeclarations.find(key);
+                    if (previous != associatedDeclarations.end() && previous->second.declaration != member.get()) {
+                        previous->second.declaration = nullptr;
+                    }
+                    else {
+                        associatedDeclarations.insert_or_assign(key, ConstantBinding{member.get(), modules, module});
                     }
                 }
-                else if (const auto *nested = dynamic_cast<const ModuleDecl *>(item.get());
-                         nested && (!external || nested->isPublic)) {
-                    self(nested->items);
-                }
+            }
+            else if (const auto *nested = dynamic_cast<const ModuleDecl *>(item);
+                     nested && (!external || nested->isPublic)) {
+                for (const auto &child : nested->items)
+                    self(child.get());
             }
         };
-        collect(module->items);
+        for (const auto &item : module->items)
+            collect(item.get());
+        for (const auto &[selected, owner] : selectedDeclarations) {
+            if (owner == module)
+                collect(selected);
+        }
+    }
+    if (alias->intrinsicName.empty() && (!primitive || !primitive->IsString()) && !activeTypeAliases.contains(alias)) {
+        const auto inherit = [&](const auto &bindings) {
+            std::vector<std::pair<std::string, ConstantBinding>> inherited;
+            for (const auto &[key, value] : bindings) {
+                if (key.starts_with(target + "::"))
+                    inherited.emplace_back(alias->name + key.substr(target.size()), value);
+            }
+            for (const auto &[key, value] : inherited) {
+                const auto found = associatedDeclarations.find(key);
+                if (found != associatedDeclarations.end() && found->second.declaration != value.declaration) {
+                    found->second.declaration = nullptr;
+                }
+                else
+                    associatedDeclarations.insert_or_assign(key, value);
+            }
+        };
+        if (external) {
+            Impl owner(context, modules, resolveImports);
+            owner.activeTypeAliases = activeTypeAliases;
+            owner.activeTypeAliases.insert(alias);
+            owner.SetSourceContext(source.name, {}, {});
+            owner.SetImports(source);
+            inherit(owner.associatedDeclarations);
+        }
+        else
+            inherit(associatedDeclarations);
     }
 }
 
@@ -149,6 +179,7 @@ std::optional<CompileTimeValue> ConditionalEvaluator::Impl::EvalDeclaredConstant
     owner.activeAssociatedConstants = activeAssociatedConstants;
     owner.activeAssociatedConstants.insert(&constant);
     owner.SetSourceContext(binding.source->name, {}, {});
+    owner.selectedDeclarations = selectedDeclarations;
     owner.SetImports(*binding.source);
     if (binding.source->name == currentFile) {
         // Selected declarations may already have moved out of a conditional branch.

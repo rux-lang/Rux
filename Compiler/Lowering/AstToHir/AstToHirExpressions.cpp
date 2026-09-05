@@ -286,7 +286,8 @@ HirExprPtr AstToHirContext::LowerBasicExpr(const Expr &expression) {
         auto lowered = std::make_unique<HirFieldExpr>();
         lowered->location = field->location;
         lowered->object = LowerExpr(*field->object);
-        lowered->field = field->field;
+        const auto *binding = model.TryGetIntrinsicMember(*field);
+        lowered->field = binding ? binding->declaration->fields[binding->fieldIndex].name : field->field;
         lowered->type = ResolvedExpressionType(*field);
         return lowered;
     }

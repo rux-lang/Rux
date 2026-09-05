@@ -1,3 +1,7 @@
+// The name alone does not bind the compiler's view representation.
+struct Slice<T> { pub length: T; }
+extend Slice<T> { func Value(self: &Slice<T>) -> T { return self.length; } }
+
 func Main() -> int {
     let text = "hello";
     let utf16 = s16"hello";
@@ -7,5 +11,7 @@ func Main() -> int {
     for index in 0..values.length { total += values[index]; }
     let scalar: int8 = 7i8;
     if total != 6 || scalar * 2i8 != 14i8 { return 1; }
+    let ordinary = Slice<uint8> { length: 7u8 };
+    if ordinary.length != 7u8 || ordinary.Value() != 7u8 || sizeof(Slice<uint8>) != 1 { return 2; }
     return 0;
 }

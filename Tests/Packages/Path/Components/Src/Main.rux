@@ -1,3 +1,4 @@
+import Core::Slice;
 import Core::string8;
 import Allocator::{ Allocator, SystemAllocator };
 import Core::{ Assert, Option };

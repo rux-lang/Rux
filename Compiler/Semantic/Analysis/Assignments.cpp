@@ -213,6 +213,13 @@ TypeRef AnalysisContext::ResolveType(const TypeExpr &expr) {
     TypeRef type = ResolveTypeImpl(expr);
     if (!type.IsUnknown()) {
         typeNodeTypes.insert_or_assign(&expr, type);
+        if (const auto *named = dynamic_cast<const NamedTypeExpr *>(&expr)) {
+            if (const Symbol *symbol = currentScope->Lookup(named->name)) {
+                if (const Decl *binding = IntrinsicTypeBinding(*symbol)) {
+                    intrinsicTypeBindings[&expr] = binding;
+                }
+            }
+        }
     }
     return type;
 }

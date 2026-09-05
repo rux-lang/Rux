@@ -16,6 +16,21 @@ bool AnalysisContext::IsVisibleTypeSymbol(const Symbol &symbol) const {
     return imported != explicitTypeImports.end() && imported->second.contains(symbol.declaration);
 }
 
+bool AnalysisContext::RecordIntrinsicMember(const TypeRef &type, const FieldExpr &expression) const {
+    const Decl *binding = VisibleIntrinsicType(type, expression.location);
+    if (!binding)
+        return false;
+    if (const auto *structure = dynamic_cast<const StructDecl *>(binding)) {
+        for (std::size_t index = 0; index < structure->fields.size(); ++index) {
+            if (structure->fields[index].name == expression.field) {
+                intrinsicMemberBindings[&expression] = {structure, index};
+                break;
+            }
+        }
+    }
+    return true;
+}
+
 const Decl *AnalysisContext::IntrinsicTypeBinding(const Symbol &symbol) const {
     std::unordered_set<const Decl *> visited;
     const auto resolve = [&](this auto &&self, const Symbol &candidate) -> const Decl * {

@@ -173,9 +173,7 @@ void AnalysisContext::BuildFinalSymbolIdentities() {
     }
 
     for (const auto *implementation : implDecls) {
-        const std::string typeName = implementation->typeName.starts_with("Slice<")
-                                       ? implementation->typeName
-                                       : BaseTypeName(implementation->typeName);
+        const std::string typeName = BaseTypeName(implementation->typeName);
         if (ImplTypeParams(*implementation).empty()) {
             const auto resolved = typeNodeTypes.find(implementation->extendedType.get());
             const TypeRef receiverType =

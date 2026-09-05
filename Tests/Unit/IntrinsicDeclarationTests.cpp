@@ -401,7 +401,8 @@ TEST_CASE("wide extrema are evaluated from declarations and recorded for lowerin
             "; pub const Max: " + signedName + " = " + maximum + "i" + std::to_string(width) + "; } " + "extend " +
             unsignedName + " { pub const Max: " + unsignedName + " = " + unsignedMaximum + "u" + std::to_string(width) +
             "; } " + "when " + signedName + "::Min < 0 && " + signedName + "::Max > 0 && " + unsignedName + "::Max > " +
-            signedName + "::Max { " + "func Value() -> " + signedName + " { return " + signedName +
+            signedName + "::Max && " + signedName + "::Max < " + unsignedName + "::Max && " + signedName + "::Min < " +
+            unsignedName + "::Max { " + "func Value() -> " + signedName + " { return " + signedName +
             "::Min; } } else { func Bad() { Missing(); } }");
         const auto model = SemanticAnalyzer({&parsed.module}, {}, "App").Analyze();
         REQUIRE_FALSE(model.HasErrors());
@@ -482,5 +483,76 @@ func Main() -> uint { return sizeof(Slice<uint8>) + sizeof(SystemTime) + sizeof(
     const auto *layout = model.TryGetLayout(TypeRef::MakeNamed("Slice<uint8>"));
     REQUIRE(layout);
     CHECK_EQ(layout->size, 1);
+    (void)AstToHirLowering(model).Generate();
+}
+
+TEST_CASE("selected extension constants become visible to later conditions") {
+    auto parsed = ParseIntrinsicSource(R"(
+intrinsic type int8;
+when true { extend int8 { pub const Max: int8 = 127i8; } }
+when false { extend int8 { pub const Max: int8 = 2i8; } }
+when int8::Max == 127i8 { func Main() -> int8 { return int8::Max; } }
+else { func Main() { Missing(); } }
+)");
+    const auto model = SemanticAnalyzer({&parsed.module}, {}, "App").Analyze();
+    REQUIRE_FALSE(model.HasErrors());
+    (void)AstToHirLowering(model).Generate();
+}
+
+TEST_CASE("aliases exported through another provider retain associated declarations") {
+    auto original = ParseIntrinsicSource(IntegerDeclaration, "original.rux");
+    auto aliases = ParseIntrinsicSource("import Original::int8; pub type Tiny = int8;", "aliases.rux");
+    auto parsed = ParseIntrinsicSource(R"(
+import Aliases::Tiny;
+when Tiny::Max == 127i8 { func Main() -> int8 { return Tiny::Min; } }
+else { func Main() { Missing(); } }
+)");
+    const auto model = SemanticAnalyzer({&parsed.module},
+                                        {{"Original", {{"original.rux", &original.module}}},
+                                         {"Aliases", {{"aliases.rux", &aliases.module}}}},
+                                        "App")
+                           .Analyze();
+    REQUIRE_FALSE(model.HasErrors());
+    (void)AstToHirLowering(model).Generate();
+}
+
+TEST_CASE("intrinsic type and field facts retain the owning declaration") {
+    auto parsed = ParseIntrinsicSource(StringDeclaration + R"(
+func Size(text: string) -> uint { return text.length; }
+)");
+    const auto model = SemanticAnalyzer({&parsed.module}, {}, "App").Analyze();
+    REQUIRE_FALSE(model.HasErrors());
+    const auto *function = dynamic_cast<const FuncDecl *>(parsed.module.items.back().get());
+    REQUIRE(function);
+    const Decl *binding = model.TryGetIntrinsicTypeBinding(*function->params[0].type);
+    REQUIRE(binding);
+    CHECK(binding == parsed.module.items[0].get());
+    const auto *statement = dynamic_cast<const ReturnStmt *>(function->body->stmts[0].get());
+    REQUIRE(statement);
+    const auto *field = dynamic_cast<const FieldExpr *>(statement->value->get());
+    REQUIRE(field);
+    const auto *member = model.TryGetIntrinsicMember(*field);
+    REQUIRE(member);
+    CHECK(member->declaration == binding);
+    CHECK_EQ(member->fieldIndex, 1);
+}
+
+TEST_CASE("duplicate extension constants and reserved-width APIs are rejected") {
+    auto duplicate = ParseIntrinsicSource(IntegerDeclaration + "extend int8 { pub const Max: int8 = 2i8; }");
+    CHECK(SemanticAnalyzer({&duplicate.module}, {}, "App").Analyze().HasErrors());
+    auto reserved = ParseIntrinsicSource("func Main() { let value = float128::Max; }");
+    const auto model = SemanticAnalyzer({&reserved.module}, {}, "App").Analyze();
+    REQUIRE(model.HasErrors());
+    CHECK(model.diagnostics[0].message.contains("reserved but is not implemented"));
+}
+
+TEST_CASE("ordinary generic Slice methods retain ordinary receiver identity") {
+    auto parsed = ParseIntrinsicSource(R"(
+struct Slice<T> { pub value: T; }
+extend Slice<T> { pub func Value(self: &Slice<T>) -> T { return self.value; } }
+func Main() -> uint8 { let value = Slice<uint8> { value: 7u8 }; return value.Value(); }
+)");
+    const auto model = SemanticAnalyzer({&parsed.module}, {}, "App").Analyze();
+    REQUIRE_FALSE(model.HasErrors());
     (void)AstToHirLowering(model).Generate();
 }
