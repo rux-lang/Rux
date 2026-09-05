@@ -1,3 +1,2 @@
-// Primitive constants are supplied directly by the compiler
-// bool::Bits
-// bool::Bytes
+/// The default alias of bool8.
+pub type bool = bool8;

@@ -1,5 +1,13 @@
-// Primitive constants are supplied directly by the compiler
-// uint::Min
-// uint::Max
-// uint::Bits
-// uint::Bytes
+/// A target pointer-sized unsigned integer.
+pub intrinsic type uint;
+
+extend uint {
+    /// The target representation width in bits.
+    pub const Bits: uint = sizeof(uint) * 8u;
+    /// The target representation size in bytes.
+    pub const Bytes: uint = sizeof(uint);
+    /// The smallest representable value.
+    pub const Min: uint = 0u;
+    /// The largest representable value.
+    pub const Max: uint = ~0u;
+}

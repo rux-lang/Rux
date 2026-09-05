@@ -1,5 +1,13 @@
-// Primitive constants are supplied directly by the compiler
-// int8::Min
-// int8::Max
-// int8::Bits
-// int8::Bytes
+/// The compiler representation of int8.
+pub intrinsic type int8;
+
+extend int8 {
+    /// The number of bits in the representation.
+    pub const Bits: uint = 8u;
+    /// The number of bytes in the representation.
+    pub const Bytes: uint = 1u;
+    /// The smallest representable value.
+    pub const Min: int8 = -128i8;
+    /// The largest representable value.
+    pub const Max: int8 = 127i8;
+}

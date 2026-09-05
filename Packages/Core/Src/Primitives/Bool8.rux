@@ -1,3 +1,9 @@
-// Primitive constants are supplied directly by the compiler
-// bool8::Bits
-// bool8::Bytes
+/// The compiler representation of bool8.
+pub intrinsic type bool8;
+
+extend bool8 {
+    /// The number of bits in the representation.
+    pub const Bits: uint = 8u;
+    /// The number of bytes in the representation.
+    pub const Bytes: uint = 1u;
+}
