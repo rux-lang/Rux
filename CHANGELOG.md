@@ -8,6 +8,8 @@ Each release groups its entries under **Added**, **Changed**, **Removed**, and *
 
 ## [Unreleased]
 
+- Split backend module emission, x86-64 instruction families, parser attributes, and the larger unit-test groups into focused files; give formatting and documentation commands their own owners.
+
 - **Semantic analysis ownership** — a concrete analysis context and grouped result facts replace the private analyzer hierarchy and positional output parameters. Conditional folding, accepted models, and focused checking passes have separate source owners.
 
 - **Compiler model boundaries** — resolved types, tokens, syntax data and semantic results have focused component targets. HIR, LIR, optimization and code generation consume model data independently of the semantic analyzer implementation.

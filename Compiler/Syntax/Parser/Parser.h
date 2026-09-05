@@ -115,6 +115,7 @@ private:
 
     /// Parses `#Name(...)` attribute calls before a declaration. The former `#{...}` metadata-block form is rejected.
     ParsedAttrs ParseAttrs();
+    static std::string DecodeStringLiteralText(const std::string &text);
     void ParseAttributeCall(ParsedAttrs &attrs);
     DeclPtr ApplyAttrs(DeclPtr decl, ParsedAttrs &attrs);
     DeclPtr ParseExternDecl(bool isPublic, ParsedAttrs &attrs);
