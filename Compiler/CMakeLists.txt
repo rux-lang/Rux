@@ -30,6 +30,10 @@ function(rux_add_interface_component target)
     target_link_libraries(${target} INTERFACE RuxWarnings)
 endfunction()
 
+include(CMake/BuildOptions.cmake)
+include(CMake/Analysis.cmake)
+target_link_libraries(RuxWarnings INTERFACE RuxBuildOptions)
+
 add_executable(rux Main.cpp)
 
 add_subdirectory(SourceModel)
@@ -80,6 +84,8 @@ set_target_properties(rux PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY_RELEASE ${CMAKE_SOURCE_DIR}/Bin
     RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO ${CMAKE_SOURCE_DIR}/Bin
     RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL ${CMAKE_SOURCE_DIR}/Bin)
+
+rux_configure_precompiled_headers()
 
 if (WIN32)
     get_property(rux_components GLOBAL PROPERTY RUX_COMPONENT_TARGETS)

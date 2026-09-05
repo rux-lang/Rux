@@ -315,7 +315,7 @@ run_format() {
 # per-file capture so the parent can label and print them in submission order.
 analyze_tidy_source() {
     if ! "$clang_tidy" --quiet "--config-file=$repository_root/.clang-tidy" \
-        -p "$build_path" "$1" >"$tidy_scratch/$2.out" 2>&1; then
+        -p "$analysis_path" "$1" >"$tidy_scratch/$2.out" 2>&1; then
         : >"$tidy_scratch/$2.failed"
     fi
 }
@@ -341,7 +341,12 @@ run_tidy() {
     clang_tidy=$(find_llvm_tool clang-tidy || true)
     [ -n "$clang_tidy" ] || die "required tool 'clang-tidy 22' was not found; install it and ensure it is available on PATH"
 
-    compile_commands=$build_path/compile_commands.json
+    analysis_path=$build_path
+    if [ -f "$build_path/CMakeCache.txt" ] && grep -q '^RUX_USE_PCH:BOOL=ON$' "$build_path/CMakeCache.txt"; then
+        run_checked cmake cmake --build "$build_path" --target rux-analysis-database
+        analysis_path=$build_path/Analysis
+    fi
+    compile_commands=$analysis_path/compile_commands.json
     [ -f "$compile_commands" ] || die "compilation database '$compile_commands' was not found; build the compiler first"
 
     clang_tidy_jobs=$(getconf _NPROCESSORS_ONLN 2>/dev/null || printf '1')

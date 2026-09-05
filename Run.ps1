@@ -402,6 +402,11 @@ function Invoke-Tidy {
 
     $buildPath = Get-BuildPath
     $clangTidy = Find-Tool -Name @("clang-tidy-22", "clang-tidy")
+    $cache = Join-Path $buildPath "CMakeCache.txt"
+    if ((Test-Path -LiteralPath $cache) -and (Select-String -LiteralPath $cache -Pattern '^RUX_USE_PCH:BOOL=ON$' -Quiet)) {
+        Invoke-Checked -FilePath (Find-Tool -Name "cmake") -ArgumentList @("--build", $buildPath, "--target", "rux-analysis-database")
+        $buildPath = Join-Path $buildPath "Analysis"
+    }
     $compileCommands = Join-Path $buildPath "compile_commands.json"
     if (-not (Test-Path -LiteralPath $compileCommands -PathType Leaf)) {
         Stop-Script "compilation database '$compileCommands' was not found; build the compiler first"

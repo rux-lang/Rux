@@ -129,6 +129,7 @@ set(RUX_TEST_SOURCES
     SoftwareFloatTests.cpp
     SourceLoaderTests.cpp
     SourceModelTests.cpp
+    SourceTextLexerTests.cpp
     StringCodeGenTests.cpp
     StringLoweringTests.cpp
     UserMessageProcessTests.cpp
@@ -186,6 +187,13 @@ target_include_directories(rux-tests SYSTEM PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/
 # to stringify a string_view for fails to compile. Asking doctest for the real
 # <ostream> fixes that everywhere instead of one test file at a time.
 target_compile_definitions(rux-tests PRIVATE DOCTEST_CONFIG_USE_STD_HEADERS)
+
+if (RUX_USE_PCH)
+    get_property(rux_test_pch_headers GLOBAL PROPERTY RUX_STDLIB_PCH_HEADERS)
+    target_precompile_headers(rux-tests PRIVATE ${rux_test_pch_headers} <doctest.h>)
+    set_source_files_properties(Main.cpp PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+    target_compile_options(rux-tests PRIVATE -Wno-c2y-extensions -Wno-\#warnings)
+endif ()
 
 # Two vendored-doctest warnings have to be suppressed on our own translation
 # units. The RuxWarnings interface flags land after target options, so the
