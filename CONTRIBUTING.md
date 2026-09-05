@@ -39,7 +39,7 @@ Thanks for your interest in contributing to the Rux programming language! This p
 
 ## Process Documentation
 
-Compiler component ownership is described in [Architecture](Docs/Architecture.md). See [compiler build performance](Docs/CompilerPerformance.md) for stable build metadata, compilation launchers, PCH, ThinLTO, and repeatable measurements. Repository verification uses up to four test workers; `rux test --jobs N` defaults to one worker when invoked directly.
+Compiler component ownership is described in [Architecture](Docs/Architecture.md). See the workflow guide's [build and test throughput](Docs/Workflow.md#build-and-test-throughput) section for stable build metadata, compilation launchers, PCH, ThinLTO, and repeatable measurements. Repository verification uses up to four test workers; `rux test --jobs N` defaults to one worker when invoked directly.
 
 For anything beyond the quick start, see the detailed guides:
 
@@ -107,4 +107,4 @@ By contributing you agree that your work will be licensed under the [MIT License
 
 Source-tree policy checks only host API isolation, internal code generation/linking and CLI output ownership. Repository-command and installer behavior checks are ordinary CTest tests. File length is a review guideline: prefer focused files near 800–1,000 lines and review ownership near 1,200 lines; no automated line-count gate runs locally or in CI.
 
-Repository test and tidy commands default to at most four workers, bounded by available processors. Override with `./Run.ps1 test -Jobs 2` or `sh Run.sh test --jobs 2`. Direct `rux test` remains serial unless passed `--jobs N`. Follow [compiler performance guidance](Docs/CompilerPerformance.md) when changing build settings, header ownership, or compilation hot paths. Use LF for all maintained text files.
+Repository test, tidy, and format commands default to one worker per available processor. Override with `./Run.ps1 test -Jobs 2` or `sh Run.sh test --jobs 2`. Direct `rux test` remains serial unless passed `--jobs N`. Follow the [build and test throughput](Docs/Workflow.md#build-and-test-throughput) guidance when changing build settings, header ownership, or compilation hot paths. Use LF for all maintained text files.
