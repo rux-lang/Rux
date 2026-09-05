@@ -19,6 +19,9 @@ function Invoke-WebRequest {
 try {
     $payload = Join-Path $fixtureRoot 'payload'
     $installDir = Join-Path $fixtureRoot 'install'
+    # The installer joins the binary path with the host's separator, so build the expected path the same way; a
+    # literal backslash only matches on Windows, and this check also runs under pwsh on Linux and macOS.
+    $installedBinary = Join-Path $installDir 'rux.exe'
     New-Item -ItemType Directory -Path $payload | Out-Null
     $powershellExecutable = if ($IsWindows) { 'pwsh.exe' } else { 'pwsh' }
     Copy-Item -LiteralPath (Join-Path $PSHOME $powershellExecutable) -Destination (Join-Path $payload 'rux.exe')
@@ -32,11 +35,11 @@ try {
     Assert-Contains $output "Installing Rux v1.2.3 (windows-$architecture)"
     Assert-Contains $output "/releases/download/v1.2.3/rux-windows-$architecture.zip'"
     Assert-Contains $output "Verifying 'rux-windows-$architecture.zip'"
-    Assert-Contains $output "Installing to '$installDir\rux.exe'"
+    Assert-Contains $output "Installing to '$installedBinary'"
     Assert-Contains $output "install directory '$installDir' is not on PATH"
     Assert-Contains $output 'Installed Rux in '
-    Assert-Contains $output "  Binary: '$installDir\rux.exe'"
-    if (-not (Test-Path -LiteralPath (Join-Path $installDir 'rux.exe') -PathType Leaf)) {
+    Assert-Contains $output "  Binary: '$installedBinary'"
+    if (-not (Test-Path -LiteralPath $installedBinary -PathType Leaf)) {
         throw 'PowerShell installer did not install rux.exe'
     }
 
