@@ -247,8 +247,7 @@ CMake file composes those components, shares compiler warnings/runtime settings,
 `Cli/Testing` owns package-test discovery, execution and scheduling through `RuxTestRunner`. `CmdTest` owns presentation.
 Workers receive independent compilation options/results and use System capture. The scheduler reserves normalized
 artifact paths until compile-and-run finishes, while reports are delivered on the caller in discovery order. HTTP
-uses Process for POSIX client execution; Windows launches use explicit inherited-handle lists and POSIX launches use
-close-on-exec pipes with serialized descriptor setup.
+uses Process for POSIX client execution; Windows launches use explicit inherited-handle lists, and POSIX launches close every descriptor beyond the selected standard streams (`closefrom`, or `POSIX_SPAWN_CLOEXEC_DEFAULT` on macOS) with serialized descriptor setup, so a child never holds an artifact stream another worker still has open.
 
 Test workers use joined threads without stop-token machinery, so the Windows compiler does not import the
 `api-ms-win-core-synch-l1-2-0.dll` API set. `System::OpenBinaryOutput` handles transient Windows sharing and mapped-file

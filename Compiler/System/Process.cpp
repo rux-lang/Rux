@@ -123,7 +123,7 @@ int Wait(HANDLE process) {
 }
 #else
 // A portable pipe()+fcntl() pair must be atomic with respect to every launch in this component. Child execution and
-// capture run outside the lock. CLOEXEC prevents unrelated pipe ends from surviving any subsequent exec.
+// capture run outside the lock.
 std::mutex launchMutex;
 
 bool Fail(const int error, std::error_code *destination) {
@@ -132,8 +132,84 @@ bool Fail(const int error, std::error_code *destination) {
     return false;
 }
 
+// The descriptors a child receives: the standard streams its launch site selects and nothing else, mirroring the
+// explicit Windows handle list. Artifact streams are not opened close-on-exec, so an inherited descriptor could
+// otherwise keep a freshly linked executable open for writing while another worker launches it (ETXTBSY), or outlive
+// the compiler inside a long-running `rux run` child.
+class ChildDescriptors {
+public:
+    ChildDescriptors() {
+        error = posix_spawn_file_actions_init(&actions);
+        if (error != 0)
+            return;
+        actionsReady = true;
+        error = posix_spawnattr_init(&attributes);
+        attributesReady = error == 0;
+    }
+
+    ~ChildDescriptors() {
+        if (attributesReady)
+            posix_spawnattr_destroy(&attributes);
+        if (actionsReady)
+            posix_spawn_file_actions_destroy(&actions);
+    }
+
+    ChildDescriptors(const ChildDescriptors &) = delete;
+    ChildDescriptors &operator=(const ChildDescriptors &) = delete;
+
+    void Open(const int fd, const char *path, const int flags) {
+        Apply([&] { return posix_spawn_file_actions_addopen(&actions, fd, path, flags, 0); });
+    }
+
+    void Duplicate(const int from, const int to) {
+        Apply([&] { return posix_spawn_file_actions_adddup2(&actions, from, to); });
+    }
+
+    // Keep a standard stream the parent has open; one the parent closed stays closed in the child.
+    void Inherit([[maybe_unused]] const int fd) {
+    #if RUX_OS_MACOS
+        if (fcntl(fd, F_GETFD) >= 0)
+            Apply([&] { return posix_spawn_file_actions_addinherit_np(&actions, fd); });
+    #endif
+    }
+
+    // Close every descriptor the actions above did not select.
+    void CloseOthers() {
+    #if RUX_OS_MACOS
+        // Darwin has no closefrom; this attribute closes whatever the file actions do not describe.
+        Apply([&] { return posix_spawnattr_setflags(&attributes, POSIX_SPAWN_CLOEXEC_DEFAULT); });
+    #else
+        Apply([&] { return posix_spawn_file_actions_addclosefrom_np(&actions, STDERR_FILENO + 1); });
+    #endif
+    }
+
+    int Error() const {
+        return error;
+    }
+
+    const posix_spawn_file_actions_t *Actions() const {
+        return &actions;
+    }
+
+    const posix_spawnattr_t *Attributes() const {
+        return &attributes;
+    }
+
+private:
+    void Apply(const auto &action) {
+        if (error == 0)
+            error = action();
+    }
+
+    posix_spawn_file_actions_t actions{};
+    posix_spawnattr_t attributes{};
+    bool actionsReady = false;
+    bool attributesReady = false;
+    int error = 0;
+};
+
 bool Launch(const std::filesystem::path &exe, const std::span<const std::string_view> args,
-            const posix_spawn_file_actions_t *actions, pid_t &pid, std::error_code *error) {
+            const ChildDescriptors &descriptors, pid_t &pid, std::error_code *error) {
     std::vector<std::string> strings{exe.string()};
     for (const auto argument : args)
         strings.emplace_back(argument);
@@ -142,7 +218,8 @@ bool Launch(const std::filesystem::path &exe, const std::span<const std::string_
         argv.push_back(argument.data());
     argv.push_back(nullptr);
     // spawnp resolves a bare tool name through PATH, without a shell or allocator work in a forked child.
-    const int status = posix_spawnp(&pid, strings.front().c_str(), actions, nullptr, argv.data(), environ);
+    const int status = posix_spawnp(&pid, strings.front().c_str(), descriptors.Actions(), descriptors.Attributes(),
+                                    argv.data(), environ);
     return status == 0 || Fail(status, error);
 }
 
@@ -198,7 +275,16 @@ std::optional<int> RunInherited(const std::filesystem::path &exe, const std::spa
     pid_t pid;
     {
         const std::lock_guard lock(launchMutex);
-        if (!Launch(exe, args, nullptr, pid, launchError))
+        ChildDescriptors descriptors;
+        constexpr std::array<int, 3> standard{STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO};
+        for (const int fd : standard)
+            descriptors.Inherit(fd);
+        descriptors.CloseOthers();
+        if (descriptors.Error() != 0) {
+            Fail(descriptors.Error(), launchError);
+            return std::nullopt;
+        }
+        if (!Launch(exe, args, descriptors, pid, launchError))
             return std::nullopt;
     }
     return Wait(pid);
@@ -264,30 +350,17 @@ std::optional<RunResult> RunCaptured(const std::filesystem::path &exe, const std
             close(fd);
             fd = copy;
         }
-        posix_spawn_file_actions_t actions;
-        int error = posix_spawn_file_actions_init(&actions);
-        if (error == 0) {
-            error = posix_spawn_file_actions_addopen(&actions, STDIN_FILENO, "/dev/null", O_RDONLY, 0);
-            if (error == 0)
-                error = posix_spawn_file_actions_adddup2(&actions, fds[1], STDOUT_FILENO);
-            if (error == 0)
-                error = posix_spawn_file_actions_adddup2(&actions, fds[1], STDERR_FILENO);
-            if (error == 0)
-                error = posix_spawn_file_actions_addclose(&actions, fds[0]);
-            if (error == 0)
-                error = posix_spawn_file_actions_addclose(&actions, fds[1]);
-            const bool launched = error == 0 && Launch(exe, args, &actions, pid, launchError);
-            posix_spawn_file_actions_destroy(&actions);
-            if (!launched && error == 0) {
-                close(fds[0]);
-                close(fds[1]);
-                return std::nullopt;
-            }
-        }
+        ChildDescriptors descriptors;
+        descriptors.Open(STDIN_FILENO, "/dev/null", O_RDONLY);
+        descriptors.Duplicate(fds[1], STDOUT_FILENO);
+        descriptors.Duplicate(fds[1], STDERR_FILENO);
+        descriptors.CloseOthers();
+        const bool launched = descriptors.Error() == 0 && Launch(exe, args, descriptors, pid, launchError);
         close(fds[1]);
-        if (error != 0) {
+        if (!launched) {
             close(fds[0]);
-            Fail(error, launchError);
+            if (descriptors.Error() != 0)
+                Fail(descriptors.Error(), launchError);
             return std::nullopt;
         }
     }
