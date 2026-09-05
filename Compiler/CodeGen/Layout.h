@@ -4,8 +4,8 @@
 // shared by the assembly and RCU-object code generators.
 
 #include "Ir/Lir/Lir.h"
-#include "Semantic/Type.h"
 #include "Target/Layout.h"
+#include "Types/Type.h"
 
 #include <string>
 #include <string_view>

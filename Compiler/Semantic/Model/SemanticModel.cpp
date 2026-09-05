@@ -1,7 +1,7 @@
 // The analyzed model's accessors, and the identity substitution that turns a
 // generic declaration's recorded linker name into one instantiation's.
 
-#include "Semantic/SemanticModel.h"
+#include "Semantic/Model/SemanticModel.h"
 
 #include <algorithm>
 #include <cassert>

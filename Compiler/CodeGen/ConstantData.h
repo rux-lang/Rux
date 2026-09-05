@@ -6,7 +6,7 @@
 #include "CodeGen/FloatLiteral.h"
 #include "CodeGen/IntegerLiteral.h"
 #include "CodeGen/Layout.h"
-#include "Semantic/Type.h"
+#include "Types/Type.h"
 
 #include <bit>
 #include <cstdint>

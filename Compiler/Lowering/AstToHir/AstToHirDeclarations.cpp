@@ -4,7 +4,7 @@
 #include "Ir/Hir/HirInternal.h"
 #include "Lowering/AstToHir/Detail/AstToHirContext.h"
 #include "Numeric/IntegerLiteral.h"
-#include "Semantic/PrimitiveCatalog.h"
+#include "Types/PrimitiveCatalog.h"
 
 #include <algorithm>
 #include <cassert>

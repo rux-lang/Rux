@@ -4,7 +4,7 @@
 
 #include "Lowering/AstToHir/Detail/AstToHirContext.h"
 
-#include "Semantic/PrimitiveCatalog.h"
+#include "Types/PrimitiveCatalog.h"
 
 #include <algorithm>
 #include <cassert>

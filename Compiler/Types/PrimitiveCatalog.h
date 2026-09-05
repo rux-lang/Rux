@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Semantic/Type.h"
+#include "Types/Type.h"
 
 #include <cstdint>
 #include <optional>

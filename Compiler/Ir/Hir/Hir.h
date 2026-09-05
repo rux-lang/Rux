@@ -1,13 +1,13 @@
 #pragma once
 
-#include "Ir/CaseTypeForm.h"
 #include "Lexer/Token.h"
-#include "Semantic/DropGlue.h"
-#include "Semantic/Type.h"
-#include "Semantic/TypeProperties.h"
 #include "SourceModel/SourceLocation.h"
 #include "Target/AsmInstr.h"
 #include "Target/CallingConvention.h"
+#include "Types/CaseTypeForm.h"
+#include "Types/DropGlue.h"
+#include "Types/Type.h"
+#include "Types/TypeProperties.h"
 
 #include <cstdint>
 #include <filesystem>

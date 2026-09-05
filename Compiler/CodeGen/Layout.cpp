@@ -1,6 +1,6 @@
 #include "CodeGen/Layout.h"
 
-#include "Semantic/PrimitiveCatalog.h"
+#include "Types/PrimitiveCatalog.h"
 #include "Unicode/Utf.h"
 
 #include <charconv>

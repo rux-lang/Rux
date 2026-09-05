@@ -2,7 +2,7 @@
 // compile-time `Compiler` values whose fields are resolved rather than read.
 
 #include "Lowering/AstToHir/Detail/AstToHirContext.h"
-#include "Semantic/PrimitiveConstants.h"
+#include "Semantic/Model/PrimitiveConstants.h"
 #include "Semantic/SemanticVersion.h"
 #include "Target/Platform.h"
 

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Ir/Hir/Hir.h"
-#include "Semantic/SemanticModel.h"
+#include "Semantic/Model/SemanticModel.h"
 
 #include <cstddef>
 #include <cstdint>

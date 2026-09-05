@@ -1,7 +1,7 @@
-#include "Semantic/PrimitiveConstants.h"
+#include "Semantic/Model/PrimitiveConstants.h"
 
 #include "Numeric/WideInteger.h"
-#include "Semantic/PrimitiveCatalog.h"
+#include "Types/PrimitiveCatalog.h"
 
 #include <cstdint>
 #include <format>

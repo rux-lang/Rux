@@ -11,7 +11,7 @@
 // may reference symbols that do not exist on the current build.
 
 #include "Diagnostics/Diagnostics.h"
-#include "Semantic/CompileTimeContext.h"
+#include "Semantic/Model/CompileTimeContext.h"
 #include "Syntax/Ast/Ast.h"
 
 #include <memory>

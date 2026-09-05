@@ -1,4 +1,4 @@
-#include "Semantic/PrimitiveConstants.h"
+#include "Semantic/Model/PrimitiveConstants.h"
 
 #include <array>
 #include <doctest.h>

@@ -112,14 +112,30 @@ rux_add_component(RuxPackage
     Package/Version.cpp)
 target_link_libraries(RuxPackage PUBLIC RuxCrypto RuxTarget)
 
+rux_add_component(RuxTypes
+    Types/Type.cpp
+    Types/PrimitiveCatalog.cpp
+    Types/TypeProperties.cpp)
+target_link_libraries(RuxTypes PUBLIC RuxTarget)
+
+rux_add_component(RuxTokens Lexer/Token.cpp)
+target_link_libraries(RuxTokens PUBLIC RuxSourceModel)
+
+rux_add_component(RuxAst
+    Syntax/DocumentationComment.cpp
+    Syntax/DocumentationTags.cpp)
+target_link_libraries(RuxAst PUBLIC RuxTokens RuxTarget)
+
+rux_add_component(RuxSemanticModel
+    Semantic/Model/SemanticModel.cpp
+    Semantic/Model/PrimitiveConstants.cpp)
+target_link_libraries(RuxSemanticModel PUBLIC RuxTypes RuxAst RuxBuildInfo RuxDiagnostics)
+
 rux_add_component(RuxLexer
-    Lexer/Token.cpp
     Lexer/Lexer.cpp)
-target_link_libraries(RuxLexer PUBLIC RuxDiagnostics RuxNumeric RuxSourceModel RuxUnicode)
+target_link_libraries(RuxLexer PUBLIC RuxDiagnostics RuxNumeric RuxTokens RuxSourceModel RuxUnicode)
 
 rux_add_component(RuxSyntax
-    Syntax/DocumentationComment.cpp
-    Syntax/DocumentationTags.cpp
     Syntax/Parser/Parser.cpp
     Syntax/Parser/ParserAsm.cpp
     Syntax/Parser/ParserDecl.cpp
@@ -131,7 +147,7 @@ rux_add_component(RuxSyntax
     Syntax/Parser/ParserDumpDecl.cpp
     Syntax/Parser/ParserDumpExpr.cpp
     Syntax/Parser/ParserDumpStmt.cpp)
-target_link_libraries(RuxSyntax PUBLIC RuxLexer RuxDiagnostics RuxTarget)
+target_link_libraries(RuxSyntax PUBLIC RuxAst RuxLexer RuxDiagnostics RuxTarget)
 
 rux_add_component(RuxSemantic
     Semantic/ConditionalCompilation.cpp
@@ -141,9 +157,6 @@ rux_add_component(RuxSemantic
     Semantic/ConditionalStatementFolding.cpp
     Semantic/MoveStateTracker.cpp
     Semantic/MovePlace.cpp
-    Semantic/PrimitiveCatalog.cpp
-    Semantic/PrimitiveConstants.cpp
-    Semantic/Type.cpp
     Semantic/TypePropertyClassifier.cpp
     Semantic/SemanticAnalyzer.cpp
     Semantic/SemanticAnalyzerContext.cpp
@@ -159,14 +172,13 @@ rux_add_component(RuxSemantic
     Semantic/SemanticFunctionSignatures.cpp
     Semantic/SemanticIteration.cpp
     Semantic/SemanticStatements.cpp
-    Semantic/SemanticModel.cpp
     Semantic/SemanticProgramIndex.cpp
     Semantic/SemanticPropagation.cpp
     Semantic/SemanticPublicApi.cpp
     Semantic/SemanticReceivers.cpp
     Semantic/SemanticTypeProperties.cpp
     Semantic/SemanticPrinter.cpp)
-target_link_libraries(RuxSemantic PUBLIC RuxBuildInfo RuxNumeric RuxSyntax RuxDiagnostics)
+target_link_libraries(RuxSemantic PUBLIC RuxSemanticModel RuxNumeric RuxSyntax RuxDiagnostics)
 
 rux_add_component(RuxFormatter
     Formatter/Formatter.cpp)
@@ -182,11 +194,11 @@ target_link_libraries(RuxLinter PUBLIC RuxSyntax RuxSemantic)
 
 rux_add_component(RuxHir
     Ir/Hir/HirDump.cpp)
-target_link_libraries(RuxHir PUBLIC RuxSemantic RuxLexer RuxSourceModel RuxTarget)
+target_link_libraries(RuxHir PUBLIC RuxTypes RuxTokens RuxSourceModel RuxTarget)
 
 rux_add_component(RuxLir
     Ir/Lir/LirDump.cpp)
-target_link_libraries(RuxLir PUBLIC RuxSemantic)
+target_link_libraries(RuxLir PUBLIC RuxTypes RuxTarget)
 
 rux_add_component(RuxOptimization
     Optimization/ConstantEvaluator.cpp
@@ -220,7 +232,7 @@ rux_add_component(RuxLowering
     Lowering/HirToLir/HirToLirExpressions.cpp
     Lowering/HirToLir/HirToLirStatements.cpp)
 target_link_libraries(RuxLowering PUBLIC
-    RuxSyntax RuxSemantic RuxHir RuxLir RuxUnicode)
+    RuxAst RuxSemanticModel RuxHir RuxLir RuxUnicode)
 
 rux_add_component(RuxObjectRcu
     Object/Rcu/RcuDump.cpp
@@ -345,6 +357,7 @@ if (WIN32)
     set_property(TARGET rux RuxTarget RuxDiagnostics RuxCliContract RuxCliHelp RuxCliReporting RuxReporting RuxSource
         RuxSystem RuxCrypto
         RuxPackage
+        RuxTypes RuxTokens RuxAst RuxSemanticModel
         RuxNumeric RuxUnicode RuxLexer RuxSyntax RuxSemantic RuxFormatter RuxDocumentation RuxLinter RuxHir RuxLir
         RuxOptimization
         RuxLowering RuxObjectRcu RuxCodeGenCommon RuxCodeGenX86_64 RuxCodeGenAArch64 RuxArchive

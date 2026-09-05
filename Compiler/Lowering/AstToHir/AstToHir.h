@@ -2,7 +2,7 @@
 
 #include "Diagnostics/Diagnostics.h"
 #include "Ir/Hir/Hir.h"
-#include "Semantic/SemanticModel.h"
+#include "Semantic/Model/SemanticModel.h"
 
 #include <vector>
 

@@ -1,7 +1,7 @@
 #include "CodeGen/AArch64/FunctionEmitter.h"
 #include "CodeGen/Layout.h"
 #include "Numeric/FloatParsing.h"
-#include "Semantic/PrimitiveCatalog.h"
+#include "Types/PrimitiveCatalog.h"
 
 namespace Rux {
 using namespace Layout;

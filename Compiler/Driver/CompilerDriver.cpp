@@ -22,6 +22,7 @@
 #include "Semantic/SemanticPrinter.h"
 #include "Source/SourceLoader.h"
 #include "Syntax/Ast/Ast.h"
+#include "Syntax/Parser/Parser.h"
 #include "System/Os.h"
 
 #include <cerrno>

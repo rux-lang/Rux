@@ -3,7 +3,7 @@
 
 #include "Numeric/IntegerLiteral.h"
 #include "Semantic/Detail/SemanticAnalyzerContext.h"
-#include "Semantic/PrimitiveCatalog.h"
+#include "Types/PrimitiveCatalog.h"
 
 #include <format>
 

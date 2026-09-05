@@ -1,7 +1,7 @@
-#include "Semantic/Type.h"
+#include "Types/Type.h"
 
-#include "Semantic/PrimitiveCatalog.h"
 #include "Target/Layout.h"
+#include "Types/PrimitiveCatalog.h"
 
 namespace Rux {
 namespace {

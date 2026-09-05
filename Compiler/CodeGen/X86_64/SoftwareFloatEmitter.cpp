@@ -2,7 +2,7 @@
 #include "CodeGen/X86_64/Encoder.h"
 #include "CodeGen/X86_64/FunctionEmitter.h"
 #include "Numeric/FloatParsing.h"
-#include "Semantic/PrimitiveCatalog.h"
+#include "Types/PrimitiveCatalog.h"
 
 namespace Rux {
 using namespace Layout;

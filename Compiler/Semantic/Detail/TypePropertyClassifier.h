@@ -1,7 +1,7 @@
 #pragma once
 
-#include "Semantic/SemanticModel.h"
-#include "Semantic/TypeProperties.h"
+#include "Semantic/Model/SemanticModel.h"
+#include "Types/TypeProperties.h"
 
 #include <functional>
 #include <optional>
