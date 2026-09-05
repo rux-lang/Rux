@@ -38,7 +38,9 @@ void Cli::PrintHelpFor(const std::string_view command, const ColorMode color) {
 }
 
 void Cli::PrintVersion() {
-    std::println("Rux {} ({} {})", CompilerBuild::compilerVersion, CompilerBuild::compilerBuildDate,
+    // The stamp is the compiler build time in UTC, whichever of the configure-time sources supplied it; name the zone
+    // so a reader elsewhere does not take it for a local clock.
+    std::println("Rux {} ({} {} UTC)", CompilerBuild::compilerVersion, CompilerBuild::compilerBuildDate,
                  CompilerBuild::compilerBuildTime);
 }
 
