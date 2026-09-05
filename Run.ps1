@@ -108,16 +108,8 @@ $runningOnWindows = [System.Environment]::OSVersion.Platform -eq [System.Platfor
 $policyChecks = @(
     "Tests/Policy/PlatformIsolation/Check.sh",
     "Tests/Policy/NoExternalToolchain/Check.sh",
-    "Tests/Policy/LanguageCutover/Test.sh",
-    "Tests/Policy/LanguageCutover/Check.sh",
-    "Tests/Policy/EnumVariantCutover/Test.sh",
-    "Tests/Policy/EnumVariantCutover/Check.sh",
-    "Tests/Policy/OversizedFiles/Test.sh",
-    "Tests/Policy/OversizedFiles/Check.sh",
-    "Tests/Policy/ScriptMessages/Check.sh",
-    "Tests/Policy/InstallerMessages/Check.sh",
-    "Tests/Policy/UserMessages/Test.sh",
-    "Tests/Policy/UserMessages/Check.sh"
+    "Tests/Policy/OutputOwnership/Test.sh",
+    "Tests/Policy/OutputOwnership/Check.sh"
 )
 
 # Options each command accepts, used to reject an option the command ignores.

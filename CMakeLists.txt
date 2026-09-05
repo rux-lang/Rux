@@ -30,13 +30,14 @@ add_subdirectory(Compiler)
 
 # Offline tooling: the Unicode table generator, run by hand when the UCD data under Tools/UnicodeGen/Data changes.
 # Its output is committed, so nothing in an ordinary build depends on it.
-add_subdirectory(Tools/UnicodeGen)
+add_subdirectory(Tools/UnicodeGen EXCLUDE_FROM_ALL)
 
 # The math reference generator, run by hand when a boundary vector set needs regenerating.
-add_subdirectory(Tools/MathVectors)
-add_subdirectory(Tools/FloatVectors)
+add_subdirectory(Tools/MathVectors EXCLUDE_FROM_ALL)
+add_subdirectory(Tools/FloatVectors EXCLUDE_FROM_ALL)
 
 if (RUX_BUILD_TESTS)
     enable_testing()
     add_subdirectory(Tests/Unit)
+    add_subdirectory(Tests/Scripts)
 endif ()

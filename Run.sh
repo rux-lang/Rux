@@ -214,16 +214,8 @@ run_policy() {
     step "Checking source-tree policy"
     run_checked PlatformIsolation sh Tests/Policy/PlatformIsolation/Check.sh
     run_checked NoExternalToolchain sh Tests/Policy/NoExternalToolchain/Check.sh
-    run_checked LanguageCutover sh Tests/Policy/LanguageCutover/Test.sh
-    run_checked LanguageCutover sh Tests/Policy/LanguageCutover/Check.sh
-    run_checked EnumVariantCutover sh Tests/Policy/EnumVariantCutover/Test.sh
-    run_checked EnumVariantCutover sh Tests/Policy/EnumVariantCutover/Check.sh
-    run_checked OversizedFiles sh Tests/Policy/OversizedFiles/Test.sh
-    run_checked OversizedFiles sh Tests/Policy/OversizedFiles/Check.sh
-    run_checked ScriptMessages sh Tests/Policy/ScriptMessages/Check.sh
-    run_checked InstallerMessages sh Tests/Policy/InstallerMessages/Check.sh
-    run_checked UserMessages sh Tests/Policy/UserMessages/Test.sh
-    run_checked UserMessages sh Tests/Policy/UserMessages/Check.sh
+    run_checked OutputOwnership sh Tests/Policy/OutputOwnership/Test.sh
+    run_checked OutputOwnership sh Tests/Policy/OutputOwnership/Check.sh
 }
 
 run_build() {

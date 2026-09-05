@@ -4,6 +4,7 @@ set -eu
 
 script_directory=$(CDPATH= cd -P "$(dirname "$0")" && pwd)
 repository_root=$(CDPATH= cd -P "$script_directory/../../.." && pwd)
+cd "$repository_root"
 fixture_root=$(mktemp -d "${TMPDIR:-/tmp}/rux-installer-messages.XXXXXX")
 trap 'rm -rf "$fixture_root"' EXIT HUP INT TERM
 
@@ -129,4 +130,4 @@ if command -v pwsh >/dev/null 2>&1; then
     pwsh -NoProfile -File "$script_directory/Check.ps1"
 fi
 
-printf 'Installer message policy tests passed.\n'
+printf 'Installer behavior tests passed.\n'
