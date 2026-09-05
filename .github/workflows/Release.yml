@@ -296,14 +296,28 @@ jobs:
       # a link warning. Nothing here uses llvm@20 and the runner is
       # discarded after the job, so remove it outright; --ignore-dependencies
       # keeps preinstalled formulae that name it from blocking the removal.
+      # Homebrew publishes the current LLVM release as the unversioned `llvm`
+      # formula; `llvm@23` is only an alias of it until LLVM 24 turns it into
+      # a versioned formula of its own. The runner image's formula snapshot
+      # can predate the 23.1.0 bump, and `brew install` does not refresh it,
+      # so update first; otherwise `llvm@23` is an unknown name. Then check
+      # the Clang that was installed, so a wrong major version fails here
+      # rather than at configuration time.
       - name: Install Clang 23
         run: |
           brew untap aws/tap || true
           if brew list --versions llvm@20 >/dev/null; then
             brew uninstall --ignore-dependencies llvm@20
           fi
+          brew update --quiet
           brew install llvm@23
-          echo "$(brew --prefix llvm@23)/bin" >> "$GITHUB_PATH"
+          llvm_prefix="$(brew --prefix llvm@23)"
+          clang_version="$("$llvm_prefix/bin/clang++" --version | head -n 1)"
+          case "$clang_version" in
+            *'clang version 23.'*) echo "$clang_version" ;;
+            *) echo "::error::expected Homebrew Clang 23, found: $clang_version"; exit 1 ;;
+          esac
+          echo "$llvm_prefix/bin" >> "$GITHUB_PATH"
 
       - name: Install CMake and Ninja
         shell: pwsh

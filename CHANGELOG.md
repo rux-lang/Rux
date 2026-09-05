@@ -372,6 +372,7 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 - **Windows AArch64 image version stamp** — relocatable ARM64 images still died during process initialization with `STATUS_INVALID_IMAGE_FORMAT` (0xC000007B) because the PE writer stamped operating-system and subsystem version 10.0, reasoning that ARM64 arrived with Windows 10. The ARM64 loader accepts exactly the 6.2 baseline the platform linker stamps — byte-patching a failing image's version fields to 6.2 makes it run, and 10.0 is the only field that kills it — so ARM64 images now carry 6.2, while x86-64 keeps its Vista baseline.
 - **Windows MSI license packaging** — the installer now packages the canonical `LICENSE.md` file and displays the same copyright notice as the repository license.
 - **Repository integration consistency** — FreeBSD package metadata now declares its `Rux` dependency, macOS scripts locate Homebrew's versioned LLVM 23 tools, CI enforces Rux formatting, and documentation consistently uses the `Build/` directory and centralized test workflow.
+- **macOS toolchain installation** — the macOS validation and release workflows refresh Homebrew before installing LLVM 23 and verify the Clang they installed, because `llvm@23` is only an alias of the current `llvm` formula until LLVM 24 and a runner image's stale formula snapshot reported no such formula. The macOS build guide documents the same `brew update` step.
 
 ## [0.3.0] - 2026-06-23
 

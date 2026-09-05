@@ -14,6 +14,8 @@ Rux currently requires Clang 23.1 or newer, CMake 4.4.3 or newer, Ninja 1.13.2 o
 brew install llvm@23 cmake ninja git
 ```
 
+`llvm@23` is an alias of Homebrew's current `llvm` formula until LLVM 24 gives it a versioned formula of its own, so if Homebrew reports that no formula named `llvm@23` exists, its formula snapshot predates the LLVM 23 release: run `brew update` and retry.
+
 Clone and build Rux with Homebrew's Clang:
 
 ```sh
