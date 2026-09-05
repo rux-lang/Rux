@@ -324,12 +324,6 @@ std::optional<std::filesystem::path> Manifest::Find(const std::filesystem::path 
     return std::nullopt;
 }
 
-bool IsIntrinsicsPackage(const Manifest &manifest) {
-    return !manifest.IsWorkspace() && manifest.package.ns &&
-           manifest.package.ns->Normalized() == NormalizeIdentity(intrinsicsPackageNamespace) &&
-           manifest.package.name.Normalized() == NormalizeIdentity(intrinsicsPackageName);
-}
-
 std::vector<std::filesystem::path> DiscoverManifestlessWorkspaceManifests(const std::filesystem::path &root) {
     std::vector<std::filesystem::path> manifests;
 

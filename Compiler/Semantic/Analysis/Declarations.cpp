@@ -2,7 +2,6 @@
 #include "Numeric/IntegerLiteral.h"
 #include "Semantic/Analysis/AnalysisContext.h"
 #include "Semantic/Conditional/ConditionalCompilation.h"
-#include "Semantic/Model/PrimitiveConstants.h"
 #include "Target/Layout.h"
 #include "Target/Target.h"
 #include "Types/Type.h"
@@ -106,7 +105,7 @@ void AnalysisContext::CheckFuncDecl(const FuncDecl &d, bool isMethod) {
 
     if (d.isAsm) {
         // An asm function's body is raw machine instructions, not Rux
-        // statements, so it is validated when the assembler encodes it â€”
+        // statements, so it is validated when the assembler encodes it —
         // except for the one thing the assembler for the target cannot
         // say, which is that the body was written for the other one.
         CheckAsmBodyArchitecture(d);

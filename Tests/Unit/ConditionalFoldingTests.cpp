@@ -1097,7 +1097,6 @@ func Which() -> int {
 )");
     CompileTimeContext context;
     context.target.os = Target::OS::Windows;
-    context.intrinsicsAliases = {"Lang"};
 
     ParseResult core;
     std::vector<Module *> modules = {&parsed.module};
@@ -1109,7 +1108,7 @@ func Which() -> int {
     CHECK_FALSE(model.HasErrors());
 }
 
-TEST_CASE("a condition still requires the intrinsic to be imported from that package") {
+TEST_CASE("a condition accepts an intrinsic declaration from any package") {
     auto parsed = ParseSource(R"(
 import Other::{ #target, OperatingSystem };
 
@@ -1120,7 +1119,6 @@ func Which() -> int {
 )");
     CompileTimeContext context;
     context.target.os = Target::OS::Windows;
-    context.intrinsicsAliases = {"Core"};
 
     ParseResult core;
     std::vector<Module *> modules = {&parsed.module};
@@ -1129,5 +1127,5 @@ func Which() -> int {
     dep.modules[0].moduleName = "Other";
     SemanticAnalyzer analyzer(modules, {dep}, "test", std::move(context));
     const auto model = analyzer.Analyze();
-    CHECK(model.HasErrors());
+    CHECK_FALSE(model.HasErrors());
 }

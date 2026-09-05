@@ -3,6 +3,52 @@
 using namespace Rux;
 using namespace Rux::Testing::CompilerDriverTestSupport;
 
+TEST_CASE("compiler driver runs inferred literals and arithmetic without Core") {
+    DependencyFixture fixture;
+    fixture.SetApplicationSource(R"(
+func Main() -> int {
+    let text = "no library required";
+    var total = 0;
+    for value in 0..4 { total += value; }
+    return total - 6;
+}
+)");
+    std::vector<Diagnostic> diagnostics;
+    const auto result = CompilerDriver(fixture.Options(false, diagnostics)).Compile();
+    REQUIRE(result.ok);
+    const auto executed = RunCaptured(result.primaryArtifactPath);
+    REQUIRE(executed);
+    CHECK_EQ(executed->exitCode, 0);
+}
+
+TEST_CASE("compiler driver obtains intrinsic declarations from an ordinary dependency") {
+    DependencyFixture fixture;
+    fixture.SetDependencySource(R"(
+pub intrinsic type int8;
+extend int8 { pub const Min: int8 = -128i8; }
+pub intrinsic struct string8 { pub data: *char8; pub length: uint; }
+pub type string = string8;
+pub enum OperatingSystem { Unknown, FreeBSD, Linux, macOS, Windows }
+pub struct Target { pub os: OperatingSystem; }
+pub intrinsic #target: Target;
+)");
+    fixture.SetApplicationSource(R"(
+import Dependency::{ int8, string, #target };
+when int8::Min == -128i8 {
+    func Main() -> int {
+        let text: string = "hello";
+        return (text.length as int) - 5;
+    }
+} else { import Missing::NotSelected; }
+)");
+    std::vector<Diagnostic> diagnostics;
+    const auto result = CompilerDriver(fixture.Options(false, diagnostics)).Compile();
+    REQUIRE(result.ok);
+    const auto executed = RunCaptured(result.primaryArtifactPath);
+    REQUIRE(executed);
+    CHECK_EQ(executed->exitCode, 0);
+}
+
 TEST_CASE("output layout distinguishes raw, artifact, and test directories") {
     Manifest manifest;
     manifest.build.output = "Artifacts";

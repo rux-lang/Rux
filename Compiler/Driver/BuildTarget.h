@@ -64,12 +64,6 @@ namespace Rux::Driver {
 /// The package name a dependency resolves to, which is its import name unless the entry overrides it with `Package`.
 [[nodiscard]] const std::string &DependencyPackageName(const ManifestDependency &dep);
 
-/// Import names under which `manifest` binds the intrinsics package, so the conditional-compilation pass can tell an
-/// imported build intrinsic from an identically named one out of some other package. A registry entry is matched on the
-/// identity it declares; a path entry is matched by reading the manifest it points at, since the entry itself names no
-/// package. `root` is the directory holding `manifest`.
-[[nodiscard]] std::set<std::string> IntrinsicsAliases(const Manifest &manifest, const std::filesystem::path &root);
-
 // ---- Workspace / registry locations -----------------------------------------
 
 /// Resolve the configured raw output root, defaulting to <package root>/Bin. Target-independent products such as

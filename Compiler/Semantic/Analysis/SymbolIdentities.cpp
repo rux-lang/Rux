@@ -2,7 +2,6 @@
 #include "Numeric/IntegerLiteral.h"
 #include "Semantic/Analysis/AnalysisContext.h"
 #include "Semantic/Conditional/ConditionalCompilation.h"
-#include "Semantic/Model/PrimitiveConstants.h"
 #include "Target/Layout.h"
 #include "Target/Target.h"
 #include "Types/Type.h"
@@ -220,7 +219,7 @@ void AnalysisContext::BuildFinalSymbolIdentities() {
         if (function && !function->typeParams.empty()) {
             // A generic function's monomorphized name is its own name plus its type arguments, which two
             // overloads instantiated at the same argument share. Only the first was ever emitted, and every call
-            // bound to it â€” so a four-argument call reached a three-parameter function and quietly dropped an
+            // bound to it — so a four-argument call reached a three-parameter function and quietly dropped an
             // argument. Overloaded methods already carry their parameter types in the name; free functions now
             // do too, built through the same recipe so a later re-instantiation spells it identically.
             // The source declaration and every concrete instantiation must share the same package-qualified base.

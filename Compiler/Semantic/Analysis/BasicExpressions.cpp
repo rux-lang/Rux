@@ -619,7 +619,7 @@ TypeRef AnalysisContext::CheckBinary(const TokenKind op, const TypeRef &left, co
         }
         if (leftType.IsInteger() && rightType.IsInteger()) {
             // Two integers normally settle on the left operand's type. An unsuffixed literal carries the default
-            // `int`, though, so that rule made `2 * count` an `int` while `count * 2` was a `uint` â€” the same
+            // `int`, though, so that rule made `2 * count` an `int` while `count * 2` was a `uint` — the same
             // expression mirrored, one spelling compiling and the other not. A literal takes the other operand's
             // type whichever side it is written on. The guard is narrow: an `int`-typed expression that is not a
             // literal is not assignable to another width, so only a literal can flip the result.
@@ -766,7 +766,7 @@ TypeRef AnalysisContext::CheckBinary(const TokenKind op, const TypeRef &left, co
         }
 
         // A struct has no ordering of its own. Reaching here means no operator method matched, and comparing the
-        // operands as machine values would compare their raw bytes â€” quietly answering a question the type never
+        // operands as machine values would compare their raw bytes — quietly answering a question the type never
         // defined. Derive what can be derived from the operators the type does declare, and reject the rest.
         // Only when both sides are the same struct. Comparing a struct with something else is a plain type mismatch,
         // and the message below says so more usefully than "not defined" would.

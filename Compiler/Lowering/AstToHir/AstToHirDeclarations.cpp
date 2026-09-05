@@ -130,7 +130,7 @@ std::string AstToHirContext::DecodeCharLiteral(const std::string &text) {
                 cp = '"';
                 break;
             case 'u': {
-                // \u{XXXX} â€” Unicode escape ('u' sits at i + 1)
+                // \u{XXXX} — Unicode escape ('u' sits at i + 1)
                 std::uint32_t u = 0;
                 if (ParseUnicodeEscape(text, i + 1, u) != i + 1) {
                     cp = u;
@@ -150,7 +150,7 @@ std::string AstToHirContext::DecodeCharLiteral(const std::string &text) {
 }
 
 std::string AstToHirContext::DecodeStringLiteral(const std::string &text) {
-    // text is raw source like "hello\n" â€” strip quotes and decode
+    // text is raw source like "hello\n" — strip quotes and decode
     // escapes
     std::string out;
     if (text.size() < 2) {
@@ -203,7 +203,7 @@ std::string AstToHirContext::DecodeStringLiteral(const std::string &text) {
             out += '"';
             break;
         case 'u': {
-            // \u{XXXX} â€” Unicode escape, encoded as UTF-8 ('u' sits at
+            // \u{XXXX} — Unicode escape, encoded as UTF-8 ('u' sits at
             // i)
             std::uint32_t u = 0;
             if (const std::size_t end = ParseUnicodeEscape(text, i, u); end != i) {

@@ -761,14 +761,14 @@ LirFunc HirToLirContext::LowerFunc(const HirFunc &hf, const std::string_view nam
         }
         else if (IsInterfaceType(type)) {
             // Interface values are 16-byte fat ptrs; callers pass their
-            // address. pr holds that address directly â€” no extra
+            // address. pr holds that address directly — no extra
             // alloca.
             locals[name] = pr;
             lf.params.push_back({pr, TypeRef::MakePointer(type), name});
         }
         else if (IsViewType(type)) {
             // Slice and string values are 16-byte {data, length} structs;
-            // callers pass a pointer. pr holds that pointer directly â€” FieldPtr
+            // callers pass a pointer. pr holds that pointer directly — FieldPtr
             // handles the indirection. Register with Pointer<type> so
             // ResolveFieldOffset can compute field offsets.
             locals[name] = pr;

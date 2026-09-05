@@ -2,7 +2,7 @@
 # including skipped cases, so a renamed file or a wildcard overlap cannot silently lose or duplicate coverage.
 set(rux_unit_groups Numeric Frontend Lowering Backends Driver Cli Optimization)
 foreach (source IN LISTS RUX_TEST_SOURCES)
-    if (source MATCHES "^(SoftwareFloat|WideInteger|FloatFormat|AllocationMath|PrimitiveCatalog|PrimitiveConstants|Utf|Checksum|Json|AArch64Encoder)Tests\\.cpp$")
+    if (source MATCHES "^(SoftwareFloat|WideInteger|FloatFormat|AllocationMath|PrimitiveCatalog|Utf|Checksum|Json|AArch64Encoder)Tests\\.cpp$")
         set(group Numeric)
     elseif (source MATCHES "^(Cli|Cmd|UserMessage|InspectionOutput|Reporter|Reporting|BuildReport)")
         set(group Cli)

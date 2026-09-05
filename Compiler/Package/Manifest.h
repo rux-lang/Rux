@@ -313,16 +313,6 @@ struct ManifestResult {
     }
 };
 
-/// Registry identity of the package supplying the language's intrinsics: the
-/// compile-time context, the diagnostic directives, and the built-in enums a
-/// `when` condition may name. Recognized by identity rather than by the name a
-/// dependent binds it to, which `Package` lets a manifest choose freely.
-inline constexpr std::string_view intrinsicsPackageNamespace = "Rux";
-inline constexpr std::string_view intrinsicsPackageName = "Core";
-
-/// Whether `manifest` describes that package.
-[[nodiscard]] bool IsIntrinsicsPackage(const Manifest &manifest);
-
 /**
  * @brief Discover package manifests owned by a workspace without a root manifest.
  *
