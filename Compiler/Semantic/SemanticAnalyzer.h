@@ -26,7 +26,7 @@ struct DepPackage {
  * references within a package work.
  *
  * The modules are taken by non-const pointer because analysis begins by folding their `#if` chains (see
- * Semantic/ConditionalCompilation.h), which rewrites the AST in place.
+ * Semantic/Conditional/ConditionalCompilation.h), which rewrites the AST in place.
  */
 class SemanticAnalyzer {
 public:

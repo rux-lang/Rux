@@ -534,33 +534,13 @@ TEST_CASE("AST-to-HIR consumes required semantic type and sizeof facts") {
     std::unordered_map<std::string, ResolvedTypeLayout> typeLayouts{{"int32", {4, 4}}};
     std::unordered_map<const TypeQueryExpr *, std::uint64_t> typeQueryValues{{sizeOf, 37}};
 
-    SemanticModel model{{},
-                        {},
-                        {&parsed.module},
-                        CompileTimeContext{},
-                        std::move(expressionTypes),
-                        std::move(typeNodeTypes),
-                        {},
-                        {},
-                        {},
-                        {},
-                        {},
-                        {},
-                        {},
-                        {},
-                        {},
-                        std::move(symbolIdentities),
-                        {},
-                        {},
-                        {},
-                        {},
-                        {},
-                        {},
-                        {},
-                        std::move(typeLayouts),
-                        {},
-                        {},
-                        std::move(typeQueryValues)};
+    SemanticFacts facts;
+    facts.expressionTypes = std::move(expressionTypes);
+    facts.typeNodeTypes = std::move(typeNodeTypes);
+    facts.symbolIdentities = std::move(symbolIdentities);
+    facts.typeLayouts = std::move(typeLayouts);
+    facts.typeQueryValues = std::move(typeQueryValues);
+    SemanticModel model{{}, {}, {&parsed.module}, CompileTimeContext{}, std::move(facts)};
     const HirPackage package = AstToHirLowering(model).Generate();
 
     REQUIRE_EQ(package.modules.size(), 1);
@@ -613,33 +593,10 @@ TEST_CASE("AST-to-HIR basic expressions consume semantic type facts") {
         {cast, TypeRef::MakeUInt16()},
     };
     std::unordered_map<const Decl *, ResolvedSymbolIdentity> symbolIdentities{{main, {"Main"}}};
-    SemanticModel model{{},
-                        {},
-                        {&parsed.module},
-                        CompileTimeContext{},
-                        std::move(expressionTypes),
-                        {},
-                        {},
-                        {},
-                        {},
-                        {},
-                        {},
-                        {},
-                        {},
-                        {},
-                        {},
-                        std::move(symbolIdentities),
-                        {},
-                        {},
-                        {},
-                        {},
-                        {},
-                        {},
-                        {},
-                        {},
-                        {},
-                        {},
-                        {}};
+    SemanticFacts facts;
+    facts.expressionTypes = std::move(expressionTypes);
+    facts.symbolIdentities = std::move(symbolIdentities);
+    SemanticModel model{{}, {}, {&parsed.module}, CompileTimeContext{}, std::move(facts)};
 
     const HirPackage package = AstToHirLowering(model).Generate();
 

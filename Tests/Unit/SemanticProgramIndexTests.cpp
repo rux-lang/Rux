@@ -3,8 +3,8 @@
 #include "Lexer/Lexer.h"
 #include "Lowering/AstToHir/AstToHir.h"
 #include "Lowering/HirToLir/HirToLir.h"
+#include "Semantic/Analysis/ProgramIndex.h"
 #include "Semantic/SemanticAnalyzer.h"
-#include "Semantic/SemanticProgramIndex.h"
 #include "Syntax/Parser/Parser.h"
 
 #include <doctest.h>

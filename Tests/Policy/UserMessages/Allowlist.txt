@@ -6,7 +6,7 @@
 # ordinary Reporter/Diagnostic presentation path.
 Compiler/Lexer/Lexer.cpp|inspection|Token dumps have a stable column grammar consumed as inspection output.
 Compiler/Syntax/Parser/ParserDump*.cpp|inspection|AST dumps preserve their deterministic tree grammar for inspection consumers.
-Compiler/Semantic/SemanticPrinter.cpp|inspection|Semantic dumps preserve their deterministic inspection grammar.
+Compiler/Semantic/Model/SemanticPrinter.cpp|inspection|Semantic dumps preserve their deterministic inspection grammar.
 Compiler/Ir/Hir/HirPrinter.cpp|inspection|HIR dumps preserve their deterministic inspection grammar.
 Compiler/Ir/Lir/LirPrinter.cpp|inspection|LIR dumps preserve their deterministic inspection grammar.
 Compiler/CodeGen/X86_64/Assembly*Printer.cpp|inspection|Assembly dumps are target syntax written to a requested artifact.

@@ -150,34 +150,44 @@ rux_add_component(RuxSyntax
 target_link_libraries(RuxSyntax PUBLIC RuxAst RuxLexer RuxDiagnostics RuxTarget)
 
 rux_add_component(RuxSemantic
-    Semantic/ConditionalCompilation.cpp
-    Semantic/ConditionalDeclarationFolding.cpp
-    Semantic/ConditionalEvaluator.cpp
-    Semantic/ConditionalValueEvaluation.cpp
-    Semantic/ConditionalStatementFolding.cpp
-    Semantic/MoveStateTracker.cpp
-    Semantic/MovePlace.cpp
-    Semantic/TypePropertyClassifier.cpp
+    Semantic/Analysis/Imports.cpp
+    Semantic/Analysis/TypeResolution.cpp
+    Semantic/Analysis/ConstantChecking.cpp
+    Semantic/Analysis/Assignments.cpp
+    Semantic/Analysis/CallableResolution.cpp
+    Semantic/Analysis/TypeLayout.cpp
+    Semantic/Analysis/Declarations.cpp
+    Semantic/Analysis/SymbolIdentities.cpp
+    Semantic/Analysis/ExpressionDispatch.cpp
+    Semantic/Analysis/GenericInstantiation.cpp
+    Semantic/Conditional/ConditionalCompilation.cpp
+    Semantic/Conditional/ConditionalDeclarationFolding.cpp
+    Semantic/Conditional/ConditionalEvaluator.cpp
+    Semantic/Conditional/ConditionalValueEvaluation.cpp
+    Semantic/Conditional/ConditionalStatementFolding.cpp
+    Semantic/Analysis/MoveStateTracker.cpp
+    Semantic/Analysis/MovePlace.cpp
+    Semantic/Analysis/TypePropertyClassifier.cpp
     Semantic/SemanticAnalyzer.cpp
-    Semantic/SemanticAnalyzerContext.cpp
-    Semantic/SemanticAggregateExpressions.cpp
-    Semantic/SemanticAllocationMath.cpp
-    Semantic/SemanticZeroization.cpp
-    Semantic/SemanticBasicExpressions.cpp
-    Semantic/SemanticBorrowState.cpp
-    Semantic/SemanticCallExpressions.cpp
-    Semantic/SemanticConstraints.cpp
-    Semantic/SemanticMoveState.cpp
-    Semantic/SemanticDropGlue.cpp
-    Semantic/SemanticFunctionSignatures.cpp
-    Semantic/SemanticIteration.cpp
-    Semantic/SemanticStatements.cpp
-    Semantic/SemanticProgramIndex.cpp
-    Semantic/SemanticPropagation.cpp
-    Semantic/SemanticPublicApi.cpp
-    Semantic/SemanticReceivers.cpp
-    Semantic/SemanticTypeProperties.cpp
-    Semantic/SemanticPrinter.cpp)
+    Semantic/Analysis/AnalysisContext.cpp
+    Semantic/Analysis/AggregateExpressions.cpp
+    Semantic/Analysis/AllocationMath.cpp
+    Semantic/Analysis/Zeroization.cpp
+    Semantic/Analysis/BasicExpressions.cpp
+    Semantic/Analysis/BorrowState.cpp
+    Semantic/Analysis/CallExpressions.cpp
+    Semantic/Analysis/Constraints.cpp
+    Semantic/Analysis/MoveState.cpp
+    Semantic/Analysis/DropGlue.cpp
+    Semantic/Analysis/FunctionSignatures.cpp
+    Semantic/Analysis/Iteration.cpp
+    Semantic/Analysis/Statements.cpp
+    Semantic/Analysis/ProgramIndex.cpp
+    Semantic/Analysis/Propagation.cpp
+    Semantic/Analysis/PublicApi.cpp
+    Semantic/Analysis/Receivers.cpp
+    Semantic/Analysis/TypeProperties.cpp
+    Semantic/Model/SemanticPrinter.cpp)
 target_link_libraries(RuxSemantic PUBLIC RuxSemanticModel RuxNumeric RuxSyntax RuxDiagnostics)
 
 rux_add_component(RuxFormatter

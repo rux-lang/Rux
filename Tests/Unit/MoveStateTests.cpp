@@ -1,5 +1,5 @@
 #include "Lexer/Lexer.h"
-#include "Semantic/Detail/MoveStateTracker.h"
+#include "Semantic/Analysis/MoveStateTracker.h"
 #include "Semantic/SemanticAnalyzer.h"
 #include "Syntax/Parser/Parser.h"
 
