@@ -124,6 +124,7 @@ private:
     void ResolveDecls(std::vector<DeclPtr> &decls) {
         std::vector<DeclPtr> resolved;
         resolved.reserve(decls.size());
+        std::vector<std::pair<std::size_t, DeclPtr *>> retained;
 
         for (auto &decl : decls) {
             if (!decl) {
@@ -163,7 +164,8 @@ private:
                 else if (auto *impl = dynamic_cast<ImplDecl *>(decl.get())) {
                     ResolveImplConditionals(*impl);
                 }
-                resolved.push_back(std::move(decl));
+                retained.emplace_back(resolved.size(), &decl);
+                resolved.push_back(nullptr);
                 continue;
             }
 
@@ -180,6 +182,9 @@ private:
             }
         }
 
+        for (const auto &[index, declaration] : retained) {
+            resolved[index] = std::move(*declaration);
+        }
         decls = std::move(resolved);
     }
 

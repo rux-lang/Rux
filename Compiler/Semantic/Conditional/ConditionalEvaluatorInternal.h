@@ -103,6 +103,7 @@ private:
     [[nodiscard]] std::optional<std::uint32_t> UnsignedIntegerWidth(const Expr &expr) const;
     [[nodiscard]] static std::string JoinVariants(const std::vector<std::string> &variants);
     [[nodiscard]] std::optional<Value> EvalBinary(const BinaryExpr &expr);
+    [[nodiscard]] std::optional<Value> EvalWideBinary(const BinaryExpr &expr, const Value &left, const Value &right);
     [[nodiscard]] bool EvalCondition(const Expr *condition, SourceLocation location);
     [[nodiscard]] static std::string FormatValue(const Value &value);
     [[nodiscard]] std::optional<bool> ArmMatches(const Value &subject, const Expr &pattern, SourceLocation location,

@@ -1,0 +1,8 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Replacement"
+Version = "0.1.0"
+Type = "SourceLibrary"
+Description = "An optional intrinsic declaration provider"

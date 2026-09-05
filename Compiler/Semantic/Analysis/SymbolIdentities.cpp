@@ -177,7 +177,9 @@ void AnalysisContext::BuildFinalSymbolIdentities() {
                                        ? implementation->typeName
                                        : BaseTypeName(implementation->typeName);
         if (ImplTypeParams(*implementation).empty()) {
-            const TypeRef receiverType = TypeRef::MakeNamed(typeName);
+            const auto resolved = typeNodeTypes.find(implementation->extendedType.get());
+            const TypeRef receiverType =
+                resolved == typeNodeTypes.end() ? TypeRef::MakeNamed(typeName) : resolved->second;
             for (const auto &method : implementation->methods) {
                 symbolIdentities.insert_or_assign(method.get(),
                                                   ResolvedSymbolIdentity{MethodLinkerName(*method, receiverType, {})});

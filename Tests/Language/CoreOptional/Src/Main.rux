@@ -1,0 +1,11 @@
+func Main() -> int {
+    let text = "hello";
+    let utf16 = s16"hello";
+    let utf32 = s32"hello";
+    let values = [1, 2, 3];
+    var total: int = 0;
+    for index in 0..values.length { total += values[index]; }
+    let scalar: int8 = 7i8;
+    if total != 6 || scalar * 2i8 != 14i8 { return 1; }
+    return 0;
+}

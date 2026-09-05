@@ -1,0 +1,18 @@
+intrinsic type Mystery;
+intrinsic type float;
+intrinsic struct string8 {
+    length: uint;
+    pub data: *char16;
+}
+intrinsic struct Slice<T, U> { pub data: *T; pub length: uint; }
+intrinsic type float64;
+extend float64 {
+    pub intrinsic const Infinity: int8;
+    pub const Bits: uint = 64u;
+    pub const Bits: uint = 32u;
+}
+func Main() {
+    let missing = int8::Min;
+    let range = 0..2;
+    let start = range.start;
+}

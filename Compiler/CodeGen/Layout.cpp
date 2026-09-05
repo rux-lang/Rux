@@ -90,9 +90,6 @@ int SizeOf(const TypeRef &t) {
         if (t.isIntrinsicSlice) {
             return 16;
         }
-        if (baseName == "StringArray" || baseName == "SystemTime") {
-            return 16;
-        }
     }
         if (!t.inner.empty()) {
             return SizeOf(t.inner[0]);
@@ -186,14 +183,6 @@ StructLayout ComputeStructLayout(const LirStructDecl &s, const LayoutMap &known,
                 sz = 16;
                 al = 8;
             }
-            else if (baseName == "StringArray") {
-                sz = 16;
-                al = 8;
-            }
-            else if (baseName == "SystemTime") {
-                sz = 16;
-                al = 2;
-            }
         }
         if (al > 1) {
             offset = AlignUp(offset, al);
@@ -272,14 +261,12 @@ int RuntimeSizeOf(const TypeRef &t, const LayoutMap &layouts, const std::unorder
     }
     if (!t.IsRange() && t.kind == TypeRef::Kind::Named) {
         const std::string base = BaseTypeName(t.name);
-        // An interface value is a data pointer and a vtable pointer, and the
-        // runtime aggregates below have a shape the declaring module does not
-        // get to change; either answers before a struct layout does, so a user
-        // type sharing one of those names does not quietly resize it.
+        // Interface and intrinsic slice values have fixed two-pointer representations.
+        // Ordinary structs always use the layout of their resolved declarations.
         if (interfaceNames.contains(base)) {
             return 16;
         }
-        if (base == "Slice" || base == "StringArray" || base == "SystemTime") {
+        if (t.isIntrinsicSlice) {
             return 16;
         }
         // An instantiation is sized by its own entry when it has one; the declaration's entry still answers for a plain

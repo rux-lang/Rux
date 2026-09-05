@@ -8,6 +8,10 @@ Each release groups its entries under **Added**, **Changed**, **Removed**, and *
 
 ## [Unreleased]
 
+### Changed
+
+- Primitive associated APIs now come from explicit declarations: import `Core::int8` before using `int8::Min`. Core declares primitive constants, string views, slices, and ranges with `intrinsic` bindings; another package can supply those declarations. Scalar types and inferred literals remain usable without Core. String annotations and declared view fields require a visible declaration. Finite constants are ordinary source expressions; only floating-point Infinity and NaN retain intrinsic values. Conditional compilation resolves actual declarations and imports without privileged package names or manifest identities. This is a source-breaking import migration.
+
 Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler context), native AArch64 host support on every platform, explicit references and ownership transfer, deterministic value lifecycles, an explicit `let`/`var` mutability model, and a consolidated, hermetic test tree.
 
 ### Added

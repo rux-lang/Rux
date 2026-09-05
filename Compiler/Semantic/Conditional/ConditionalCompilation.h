@@ -11,6 +11,7 @@
 // may reference symbols that do not exist on the current build.
 
 #include "Diagnostics/Diagnostics.h"
+#include "Numeric/WideInteger.h"
 #include "Semantic/Model/CompileTimeContext.h"
 #include "Syntax/Ast/Ast.h"
 
@@ -33,7 +34,14 @@ struct CompileTimeEnumValue {
     bool operator==(const CompileTimeEnumValue &) const = default;
 };
 
-using CompileTimeValue = std::variant<bool, std::int64_t, std::uint64_t, double, std::string, CompileTimeEnumValue>;
+struct CompileTimeWideInteger {
+    WideInteger bits;
+    bool isSigned = false;
+    bool operator==(const CompileTimeWideInteger &) const = default;
+};
+
+using CompileTimeValue =
+    std::variant<bool, std::int64_t, std::uint64_t, double, std::string, CompileTimeEnumValue, CompileTimeWideInteger>;
 
 struct CompileTimeEvaluation {
     std::optional<CompileTimeValue> value;

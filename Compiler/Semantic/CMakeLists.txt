@@ -16,6 +16,7 @@ rux_add_component(RuxSemantic
     Conditional/ConditionalDeclarationFolding.cpp
     Conditional/ConditionalEvaluator.cpp
     Conditional/ConditionalImports.cpp
+    Conditional/ConditionalWideIntegers.cpp
     Conditional/ConditionalValueEvaluation.cpp
     Conditional/ConditionalStatementFolding.cpp
     Analysis/MoveStateTracker.cpp

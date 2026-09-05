@@ -89,6 +89,7 @@ AnalysisContext::AnalysisContext(AnalysisInputs inputs, SemanticFacts &output)
     , context(inputs.context)
     , expressionTypes(output.expressionTypes)
     , associatedConstants(output.associatedConstants)
+    , evaluatedAssociatedConstants(output.evaluatedAssociatedConstants)
     , typeNodeTypes(output.typeNodeTypes)
     , patternTypes(output.patternTypes)
     , casePatterns(output.casePatterns)
@@ -262,30 +263,33 @@ void AnalysisContext::EmitGenericArityError(const TypeExpr &expression, std::str
 
 std::optional<TypeRef> AnalysisContext::ResolveStructTypeReference(const TypeExpr &expression, const std::string &name,
                                                                    const std::vector<TypeRef> &typeArguments) {
-    const auto declaration = structDecls.find(name);
-    if (declaration == structDecls.end()) {
-        return std::nullopt;
+    const Symbol *symbol = currentScope ? currentScope->Lookup(name) : nullptr;
+    const auto *declaration = symbol ? dynamic_cast<const StructDecl *>(symbol->declaration) : nullptr;
+    if (!declaration) {
+        const auto indexed = structDecls.find(name);
+        if (indexed == structDecls.end()) {
+            return std::nullopt;
+        }
+        declaration = indexed->second;
     }
-    if (!declaration->second->intrinsicName.empty()) {
-        const Symbol *symbol = currentScope ? currentScope->Lookup(name) : nullptr;
+    if (typeArguments.size() != declaration->typeParams.size()) {
+        EmitGenericArityError(expression, std::format("struct type '{}'", name), declaration->typeParams.size(),
+                              typeArguments.size());
+        return TypeRef::MakeUnknown();
+    }
+    CheckTypeReferenceConstraints(expression, declaration->typeParams, typeArguments, std::format("struct '{}'", name));
+    if (!declaration->intrinsicName.empty()) {
         if (!symbol || !IsVisibleTypeSymbol(*symbol)) {
             EmitError(expression.location, std::format("intrinsic type '{}' is not imported into this scope", name));
             return TypeRef::MakeUnknown();
         }
-        if (const auto primitive = PrimitiveTypeFromName(declaration->second->intrinsicName)) {
+        if (const auto primitive = PrimitiveTypeFromName(declaration->intrinsicName)) {
             return *primitive;
         }
-        if (const auto aggregate = IntrinsicAggregateType(declaration->second->intrinsicName, typeArguments)) {
+        if (const auto aggregate = IntrinsicAggregateType(declaration->intrinsicName, typeArguments)) {
             return *aggregate;
         }
     }
-    if (typeArguments.size() != declaration->second->typeParams.size()) {
-        EmitGenericArityError(expression, std::format("struct type '{}'", name), declaration->second->typeParams.size(),
-                              typeArguments.size());
-        return TypeRef::MakeUnknown();
-    }
-    CheckTypeReferenceConstraints(expression, declaration->second->typeParams, typeArguments,
-                                  std::format("struct '{}'", name));
     std::string instantiatedName = name;
     for (std::size_t index = 0; index < typeArguments.size(); ++index) {
         instantiatedName += index == 0 ? "<" : ", ";

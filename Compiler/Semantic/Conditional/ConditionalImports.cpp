@@ -90,7 +90,7 @@ void ConditionalEvaluator::Impl::ImportDeclarations(const UseDecl &use) {
     for (const Module *module : imported) {
         const auto visit = [&](this auto &&self, const std::vector<DeclPtr> &items, const std::size_t depth) -> void {
             for (const auto &item : items) {
-                if (!item->isPublic) {
+                if (!item || !item->isPublic) {
                     continue;
                 }
                 if (depth < modulePath.size()) {
@@ -150,6 +150,16 @@ std::optional<CompileTimeValue> ConditionalEvaluator::Impl::EvalDeclaredConstant
     owner.activeAssociatedConstants.insert(&constant);
     owner.SetSourceContext(binding.source->name, {}, {});
     owner.SetImports(*binding.source);
+    if (binding.source->name == currentFile) {
+        // Selected declarations may already have moved out of a conditional branch.
+        // Their indexed bindings remain valid until the enclosing fold completes.
+        owner.associatedDeclarations = associatedDeclarations;
+        owner.importedConstants = importedConstants;
+        owner.intrinsicBindings = intrinsicBindings;
+        owner.constExprs = constExprs;
+        owner.constSignedIntegerWidths = constSignedIntegerWidths;
+        owner.constUnsignedIntegerWidths = constUnsignedIntegerWidths;
+    }
     owner.RegisterConstantImpl(constant);
     IdentExpr reference;
     reference.name = constant.name;

@@ -8,9 +8,8 @@
 // ranges meeting at a bound neither skip nor repeat it. The `Inclusive` pair closes the upper end instead, which is
 // what a range reaching a type's maximum needs -- `0..=uint8::Max` is expressible and `0..256u8` is not.
 //
-// The ranges carry no methods. A range type in a type position resolves to the compiler's own built-in form rather
-// than to the declaration below, so an `extend` block on one cannot reach its fields; a caller reads `start` and
-// `end` directly, which is what the compiler's own iteration and indexing do.
+// These declarations bind the range representations produced by syntax. Import the matching declaration to read
+// its public bounds or name the type in an annotation. Iteration and indexing remain compiler operations.
 
 /// A half-open range: every value from `start` up to but not including `end`. Written `start..end`.
 ///

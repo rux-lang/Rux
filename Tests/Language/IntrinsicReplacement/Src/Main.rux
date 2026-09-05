@@ -1,0 +1,27 @@
+import Foundation::{ #target, Tiny, Utf8, Slice, Range, float64, uint, string16, string32 };
+
+when Tiny::Max == 127i8 && Tiny::Bits == 8u && uint::Bits == #target.pointerBits {
+    func Selected() -> int { return 1; }
+} else {
+    func Selected() -> int { return Missing; }
+}
+
+func First<T>(values: Slice<T>) -> T { return values[0]; }
+
+func Main() -> int {
+    let text: Utf8 = "hello";
+    let wide: string16 = s16"hello";
+    let widest: string32 = s32"hello";
+    if text.length != 5 || wide.length != 5 || widest.length != 5 { return 1; }
+    let units = Slice<char8> { data: text.data, length: text.length };
+    if First(units) != c8'h' { return 2; }
+    let bounds = 1..4;
+    if bounds.start != 1 || bounds.end != 4 { return 3; }
+    var sum: int = 0;
+    for value in bounds { sum += value; }
+    if sum != 6 || Selected() != 1 { return 4; }
+    if Tiny::Min != -128i8 || Tiny::Max != 127i8 { return 5; }
+    if !(float64::Infinity > 1.0) { return 6; }
+    if float64::NaN == float64::NaN { return 7; }
+    return 0;
+}
