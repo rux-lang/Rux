@@ -495,14 +495,17 @@ function count(n) { return n " " (n == 1 ? "test" : "tests") }
 # Run a command with its combined output reshaped by an awk report program.
 # The command's exit status rides a trailing marker line, which the program
 # turns into its own exit status, since POSIX sh has no pipefail; a failure
-# is then reported the way run_checked reports one.
+# is then reported the way run_checked reports one. The status is captured
+# through an AND-OR list rather than read back from `$?`: FreeBSD sh applies
+# errexit inside a pipeline element even when the pipeline is an if condition,
+# and would end the group before the marker is written, leaving awk to exit 0.
 run_filtered() {
     filtered_name=$1
     filtered_program=$2
     shift 2
     if {
-        "$@" 2>&1
-        printf '__rux_status__=%s\n' "$?"
+        "$@" 2>&1 && filtered_child_status=0 || filtered_child_status=$?
+        printf '__rux_status__=%s\n' "$filtered_child_status"
     } | awk -v running_verb="$(status_verb Running 36)" -v passed_verb="$(status_verb Passed 32)" \
         -v failed_verb="$(status_verb Failed 31)" "$report_prelude$filtered_program"; then
         return 0
