@@ -232,6 +232,7 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 
 #### CLI / Package Manager
 
+- **Build statistics rate units** — `rux build --stats` prints rates as `97.7 kLOC/s` and `420.9 kTok/s`, with a space before the prefixed unit and lowercase `k` for thousands.
 - **`rux version` names its zone** — the build stamp prints as `2026-09-05 17:46:39 UTC` instead of `2026-09-05 17:46:39`. The stamp has always been UTC, taken from `RUX_BUILD_TIMESTAMP`, `SOURCE_DATE_EPOCH`, or the build tree's first configure, so a reader in another zone no longer takes it for a local clock.
 - **0.4 CLI migration** — this is a pre-release contract break with no deprecated aliases:
 

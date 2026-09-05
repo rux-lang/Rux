@@ -171,8 +171,8 @@ Optimization:
   Estimated IR nodes:   0
 
 Performance:
-  Compile speed:     77K LOC/s
-  Token throughput:  289.9K tok/s
+  Compile speed:     77 kLOC/s
+  Token throughput:  289.9 kTok/s
   Source throughput: 2.41 MB/s
   Peak memory:       11.66 MB
 ```
