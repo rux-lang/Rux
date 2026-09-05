@@ -137,4 +137,4 @@ On AArch64 Windows, reproduce the CI cross-target coverage with an x86-64 or nat
 .\Tests\Native\WindowsAArch64Dll\Verify.ps1 -Rux .\Bin\rux.exe
 ```
 
-Use LLVM 23 for formatting and static analysis, with LF line endings on this platform. Repository verification uses up to four available test workers; override with `-Jobs N` in PowerShell or `--jobs N` in POSIX shell. See [Compiler Build Performance](../CompilerPerformance.md) for compilation caching, optional PCH/ThinLTO, stable metadata, and measurement commands.
+Use LLVM 23 for formatting and static analysis, with LF line endings on this platform. Repository verification uses one test worker per available processor; override with `-Jobs N` in PowerShell or `--jobs N` in POSIX shell. See the workflow guide's [build and test throughput](../Workflow.md#build-and-test-throughput) section for compilation caching, optional PCH/ThinLTO, stable metadata, and how to measure a change.

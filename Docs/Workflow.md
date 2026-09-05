@@ -278,6 +278,38 @@ Otherwise, match the surrounding code — consistency beats personal preference.
 
 ## Build and Test Throughput
 
-See [Compiler Build Performance](CompilerPerformance.md) for metadata stability, optional compilation launchers, standard-library PCH, PCH-disabled analysis, ThinLTO, and repeatable measurements. `-Jobs N` / `--jobs N` controls CTest, Rux-test, tidy, and formatting workers; the default is one worker per available logical processor. An explicit value also limits C++ build workers, while ordinary builds retain Ninja's default parallelism. Direct `rux test --jobs N` uses one worker by default.
+Configure once with `./Run.ps1 build` or `sh Run.sh build`, then use `cmake --build Build --config Release`. Component source lists live beside their implementations, and shared types, tokens, AST data, semantic results, and driver events have focused targets, so backend and presentation code do not acquire parser or analyzer implementation dependencies. Offline Unicode and numeric-vector generators are excluded from ordinary builds; their explicit targets remain available.
+
+Compiler version and timestamp values are defined in one generated implementation unit. Reconfiguring an unchanged tree does not rewrite a public header or rebuild its consumers. A build tree retains its initial UTC timestamp in `RUX_INITIAL_BUILD_TIMESTAMP`; `SOURCE_DATE_EPOCH` takes precedence when present, and an explicit `-DRUX_BUILD_TIMESTAMP=2026-09-05T00:00:00Z` takes precedence over both. A metadata change rebuilds the implementation unit and relinks its consumers. Rux programs have no persistent incremental cache.
+
+### Optional Build Settings
+
+| CMake setting                 | Behavior                                                                                                                  |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `CMAKE_CXX_COMPILER_LAUNCHER` | Standard CMake launcher support, for example `ccache` or `sccache`; unset by default                                      |
+| `RUX_USE_PCH`                 | Precompile standard-library headers for compiler components and a separate standard-library/doctest header for unit tests |
+| `RUX_DEAD_STRIP`              | Put optimized functions/data in discardable sections and request the platform's unused-section elimination                |
+| `RUX_THIN_LTO`                | Optional ThinLTO for optimized builds, with a linker cache under the selected build tree's `ThinLTO/`                     |
+
+The PCH contains no project headers or generated metadata. The doctest implementation translation unit does not use the unit PCH. `Run.ps1 tidy` and `Run.sh tidy` automatically configure a PCH-disabled database under `Build/Analysis` when the development build uses PCH; `cmake --build Build --target rux-analysis-database` prepares it explicitly. PCH defaults on for native Windows x86-64 builds using the GNU Clang frontend; other hosts and frontends default off. Unused-section elimination and ThinLTO remain opt-in for ordinary development. RTTI, exceptions, supported features, and the existing Windows runtime selection remain enabled/unchanged.
+
+For example, opt into PCH in an existing build:
+
+```sh
+cmake -S . -B Build -DRUX_USE_PCH=ON
+cmake --build Build --config Release
+```
+
+Use a separate tree for experimenting with ThinLTO or size options. Build trees in the same checkout share `Bin/`, so do not build them concurrently. The last successful link supplies the executable used by repository commands.
+
+CI uses compilation caches separated by operating system, target architecture, Clang major, runtime, and Release configuration. Compiler contents are checked by the cache itself. CI cache builds explicitly disable PCH, avoiding relaxed cache correctness settings for precompiled headers. A launcher only caches C++ compilation; it does not cache Rux package builds or test results.
+
+### Measuring a Change
+
+Time the repository commands directly, inside the same toolchain environment used to configure the selected build: `Measure-Command { ./Run.ps1 build }` in PowerShell or `time sh Run.sh build` in a POSIX shell, and likewise `rux test --release --jobs N` at a fixed worker count. Measure what the change is meant to affect: a clean build, an unchanged build, reconfiguration, a rebuild after touching one implementation file and after touching a shared type header, a representative `rux build`, the C++ and Rux suites, and the executable's size and section sizes (`llvm-size Bin/rux`). Compare at least three repetitions under matching toolchain, runtime, configuration, worker count, and host load; keep cold and warm compilation caches distinct; set `SOURCE_DATE_EPOCH` to a fixed value for byte-identical rebuilds; and record every sample. Enable an optional setting by default only when its intended metric improves at least 5% and no other measured metric shows a repeatable regression over 3%. Measured times are reported with the change rather than kept in the documentation, where they go stale with every commit.
+
+### Workers and Test Groups
+
+`-Jobs N` / `--jobs N` controls CTest, Rux-test, tidy, and formatting workers; the default is one worker per available logical processor. An explicit value also limits C++ build workers, while ordinary builds retain Ninja's default parallelism. Direct `rux test --jobs N` uses one worker by default.
 
 CTest partitions the existing doctest executable by source owner. `Unit.GroupCoverage` verifies every registered case belongs to exactly one group, including included reference-vector cases. Groups with shared fixtures take a resource lock; pure numeric tests can overlap them. Script and installer checks are ordinary CTest registrations; each section of the repository check is its own `Scripts.Repository.<Section>` test with a private fixture directory, so the sections run concurrently on POSIX hosts. On Windows the shell tests hold one CTest resource lock and run one at a time, because the Git for Windows fork emulation hangs under concurrent process creation; they still overlap the C++ groups. No line-count, language-cutover, or message-style scanner runs in local verification or CI.

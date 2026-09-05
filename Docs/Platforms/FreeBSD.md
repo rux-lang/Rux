@@ -111,4 +111,4 @@ sh Run.sh test --clang-tidy
 
 Use `sh Run.sh format` to format maintained C++ and Rux sources, or `sh Run.sh format --check` to check them without making changes. Individual workflow steps are also available on their own as `sh Run.sh policy`, `sh Run.sh tidy`, and `sh Run.sh unit`.
 
-Use LLVM 23 for formatting and static analysis, with LF line endings on this platform. Repository verification uses up to four available test workers; override with `-Jobs N` in PowerShell or `--jobs N` in POSIX shell. See [Compiler Build Performance](../CompilerPerformance.md) for compilation caching, optional PCH/ThinLTO, stable metadata, and measurement commands.
+Use LLVM 23 for formatting and static analysis, with LF line endings on this platform. Repository verification uses one test worker per available processor; override with `-Jobs N` in PowerShell or `--jobs N` in POSIX shell. See the workflow guide's [build and test throughput](../Workflow.md#build-and-test-throughput) section for compilation caching, optional PCH/ThinLTO, stable metadata, and how to measure a change.
