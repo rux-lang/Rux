@@ -43,7 +43,7 @@ the host. Target tests require the same OS and an architecture executable
 directly by the compiler process or native OS.
 
 .PARAMETER Jobs
-Maximum workers for tests and static analysis (default: up to four CPUs).
+Maximum workers for tests, static analysis, and formatting (default: every CPU).
 An explicit value also limits C++ build workers.
 
 .PARAMETER Check
@@ -94,7 +94,7 @@ param(
     [string]$Target,
 
     [ValidateRange(1, 2147483647)]
-    [int]$Jobs = [Math]::Max(1, [Math]::Min(4, [Environment]::ProcessorCount)),
+    [int]$Jobs = [Math]::Max(1, [Environment]::ProcessorCount),
 
     [switch]$Check,
 
@@ -124,7 +124,7 @@ $commandOptions = @{
     build  = @("Configuration", "BuildDirectory", "Compiler", "Jobs")
     test   = @("Configuration", "BuildDirectory", "Compiler", "RuxExecutable", "Target",
         "FixFormatting", "SkipBuild", "ClangTidy", "Jobs")
-    format = @("RuxExecutable", "Check")
+    format = @("RuxExecutable", "Check", "Jobs")
     policy = @()
     tidy   = @("BuildDirectory", "Jobs")
     unit   = @("Configuration", "BuildDirectory", "Jobs")
@@ -146,7 +146,7 @@ function Show-Usage {
     Write-Host "  help      Show this help"
     Write-Host ""
     Write-Host "Options:"
-    Write-Host "  -Jobs N                        Test/tidy workers (default: up to four CPUs); explicit value also limits builds"
+    Write-Host "  -Jobs N                        Test/tidy/format workers (default: every CPU); explicit value also limits builds"
     Write-Host "  -Configuration Debug|Release  CMake configuration (build, test, unit; default: Release)"
     Write-Host "  -BuildDirectory PATH          CMake build directory (build, test, unit, tidy, clean; default: Build)"
     Write-Host "  -Compiler PATH                Clang C++ compiler (build, test; default: `$CXX or detected Clang)"
@@ -270,6 +270,52 @@ function Get-PackageManifest {
     return $manifests
 }
 
+function Invoke-Concurrent {
+    <#
+    .SYNOPSIS
+    Runs one command per work item on up to Jobs runspaces.
+
+    .DESCRIPTION
+    Each item supplies the complete argument list for one run of FilePath. The
+    runs' output is printed whole, in item order, once every run has finished,
+    so lines never interleave, and the first failing exit code stops the script
+    the way Invoke-Checked would. Windows PowerShell has no parallel
+    ForEach-Object, so it runs the items in turn.
+    #>
+
+    param(
+        [Parameter(Mandatory)][string]$FilePath,
+        [Parameter(Mandatory)][string]$Name,
+        [Parameter(Mandatory)][object[]]$Item
+    )
+
+    # Redirected stderr lines are part of a run's report, not terminating errors (Windows PowerShell under Stop).
+    $ErrorActionPreference = "Continue"
+    if ($PSVersionTable.PSVersion.Major -ge 7) {
+        $results = @($Item | ForEach-Object -Parallel {
+            $arguments = $_.Arguments
+            $output = @(& $using:FilePath @arguments 2>&1)
+            [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = $output }
+        } -ThrottleLimit $Jobs)
+    }
+    else {
+        $results = @($Item | ForEach-Object {
+            $arguments = $_.Arguments
+            $output = @(& $FilePath @arguments 2>&1)
+            [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = $output }
+        })
+    }
+    foreach ($result in $results) {
+        foreach ($line in $result.Output) {
+            Write-Host $line
+        }
+    }
+    $failed = @($results | Where-Object { $_.ExitCode -ne 0 })
+    if ($failed.Count -ne 0) {
+        Stop-Script -Message "command '$Name' failed with exit code $($failed[0].ExitCode)" -ExitCode $failed[0].ExitCode
+    }
+}
+
 function Invoke-Filtered {
     <#
     .SYNOPSIS
@@ -304,11 +350,12 @@ function Invoke-Filtered {
 function Invoke-ClangFormat {
     <#
     .SYNOPSIS
-    Runs clang-format over the given files in batches.
+    Runs clang-format over the given files in one concurrent batch per worker.
 
     .DESCRIPTION
-    Batching keeps the process count low without approaching the command-line
-    length limit, which one invocation for the whole tree would exceed.
+    Batching keeps each command line well under the length limit, which one
+    invocation for the whole tree would exceed; no batch holds more than 64
+    files.
     #>
 
     param(
@@ -317,11 +364,29 @@ function Invoke-ClangFormat {
         [Parameter(Mandatory)][string[]]$Path
     )
 
-    $batchSize = 64
+    $batchSize = [Math]::Max(1, [Math]::Min(64, [Math]::Ceiling($Path.Count / $Jobs)))
+    $batches = [System.Collections.Generic.List[object]]::new()
     for ($index = 0; $index -lt $Path.Count; $index += $batchSize) {
         $last = [Math]::Min($index + $batchSize, $Path.Count) - 1
-        Invoke-Checked -FilePath $ClangFormat -ArgumentList ($ArgumentList + @($Path[$index..$last]))
+        $batches.Add([pscustomobject]@{ Arguments = $ArgumentList + @($Path[$index..$last]) })
     }
+    Invoke-Concurrent -FilePath $ClangFormat -Name "clang-format" -Item $batches.ToArray()
+}
+
+function Invoke-RuxFormat {
+    <#
+    .SYNOPSIS
+    Runs rux fmt with the given arguments for every manifest, Jobs at a time.
+    #>
+
+    param(
+        [Parameter(Mandatory)][string]$Rux,
+        [Parameter(Mandatory)][string[]]$ArgumentList,
+        [Parameter(Mandatory)][string[]]$Manifest
+    )
+
+    $items = @($Manifest | ForEach-Object { [pscustomobject]@{ Arguments = @("--manifest", $_) + $ArgumentList } })
+    Invoke-Concurrent -FilePath $Rux -Name "rux" -Item $items
 }
 
 function Invoke-Policy {
@@ -454,9 +519,7 @@ function Invoke-Format {
         Write-Passed "C++ formatting ($($cppFiles.Count) files)"
 
         Write-Step "Checking Rux formatting ($($manifests.Count) packages)"
-        foreach ($manifest in $manifests) {
-            Invoke-Checked -FilePath $rux -ArgumentList @("--manifest", $manifest, "fmt", "--check")
-        }
+        Invoke-RuxFormat -Rux $rux -ArgumentList @("fmt", "--check") -Manifest $manifests
         Write-Passed "Rux formatting ($($manifests.Count) packages)"
 
         Write-Finished "Finished format check in $(Format-Duration -Duration ((Get-Date) - $startedAt))"
@@ -467,9 +530,7 @@ function Invoke-Format {
         Write-Passed "C++ formatting ($($cppFiles.Count) files)"
 
         Write-Step "Formatting Rux sources ($($manifests.Count) packages)"
-        foreach ($manifest in $manifests) {
-            Invoke-Checked -FilePath $rux -ArgumentList @("--manifest", $manifest, "fmt")
-        }
+        Invoke-RuxFormat -Rux $rux -ArgumentList @("fmt") -Manifest $manifests
         Write-Passed "Rux formatting ($($manifests.Count) packages)"
 
         Write-Finished "Finished source formatting in $(Format-Duration -Duration ((Get-Date) - $startedAt))"
