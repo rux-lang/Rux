@@ -45,9 +45,9 @@ def main():
     results = {
         "source": str(source), "build": str(build), "configuration": args.configuration,
         "host": platform.platform(), "architecture": platform.machine(), "processors": os.cpu_count(),
-        "jobs": args.jobs, "source_date_epoch": environment["SOURCE_DATE_EPOCH"], "measurements": {},
+        "jobs": args.jobs, "rux_jobs": args.rux_jobs, "source_date_epoch": environment["SOURCE_DATE_EPOCH"], "measurements": {},
         "runtime_only": args.runtime_only, "executable": str(executable),
-        "cache": (build / "CMakeCache.txt").read_text(encoding="utf-8") if (build / "CMakeCache.txt").exists() else None,
+        "cache": (build / "CMakeCache.txt").read_text(encoding="utf-8") if not args.runtime_only and (build / "CMakeCache.txt").exists() else None,
     }
 
     tool_versions = {}
