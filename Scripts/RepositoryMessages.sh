@@ -45,6 +45,16 @@ format_duration() {
 supports_color() {
     [ -t 1 ] && [ -z "${NO_COLOR:-}" ]
 }
+# Decided once at load: a helper evaluated inside a command substitution would see a pipe on its standard output.
+if supports_color; then style_enabled=true; else style_enabled=false; fi
+# A status verb rendered the way the compiler does: bold in the given ANSI color when styling is enabled.
+status_verb() {
+    if [ "$style_enabled" = true ]; then
+        printf '\033[1;%sm%s\033[0m' "$2" "$1"
+    else
+        printf '%s' "$1"
+    fi
+}
 step() {
     if supports_color; then
         printf '\n\033[36m==> %s\033[0m\n' "$1"
@@ -53,18 +63,10 @@ step() {
     fi
 }
 passed() {
-    if supports_color; then
-        printf '\033[32m[PASSED]\033[0m %s\n' "$1"
-    else
-        printf '[PASSED] %s\n' "$1"
-    fi
+    printf '%s %s\n' "$(status_verb Passed 32)" "$1"
 }
 failed() {
-    if supports_color; then
-        printf '\033[31m[FAILED]\033[0m %s\n' "$1"
-    else
-        printf '[FAILED] %s\n' "$1"
-    fi
+    printf '%s %s\n' "$(status_verb Failed 31)" "$1"
 }
 finished() {
     if supports_color; then

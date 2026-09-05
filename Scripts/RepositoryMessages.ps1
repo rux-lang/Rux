@@ -113,14 +113,32 @@ function Write-Step {
     Write-Colored -Text "==> $Message" -Color Cyan
 }
 
+function Write-Status {
+    <#
+    .SYNOPSIS
+    Prints a status line the way the compiler does: a colored verb, then the detail.
+
+    .DESCRIPTION
+    The verb takes the console color rather than an escape sequence: a console
+    that has not enabled virtual-terminal processing shows raw sequences, while
+    the console color renders everywhere the script runs.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$Verb,
+        [Parameter(Mandatory)][string]$Color,
+        [string]$Detail = ""
+    )
+    Write-Colored -Text $Verb -Color $Color -Suffix $(if ($Detail) { " $Detail" } else { "" })
+}
+
 function Write-Passed {
     param([Parameter(Mandatory)][string]$Message)
-    Write-Colored -Text "[PASSED]" -Color Green -Suffix " $Message"
+    Write-Status -Verb "Passed" -Color Green -Detail $Message
 }
 
 function Write-Failed {
     param([Parameter(Mandatory)][string]$Message)
-    Write-Colored -Text "[FAILED]" -Color Red -Suffix " $Message"
+    Write-Status -Verb "Failed" -Color Red -Detail $Message
 }
 
 function Write-Finished {

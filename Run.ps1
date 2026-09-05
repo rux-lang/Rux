@@ -270,6 +270,37 @@ function Get-PackageManifest {
     return $manifests
 }
 
+function Invoke-Filtered {
+    <#
+    .SYNOPSIS
+    Runs a command with each output line reshaped by a filter.
+
+    .DESCRIPTION
+    The filter receives one line and returns the line to print, or nothing to
+    drop it; output streams as the command produces it. A failure is reported
+    the way Invoke-Checked reports one.
+    #>
+
+    param(
+        [Parameter(Mandatory)][string]$FilePath,
+        [Parameter(Mandatory)][string]$Name,
+        [Parameter(Mandatory)][scriptblock]$Filter,
+        [string[]]$ArgumentList = @()
+    )
+
+    # Redirected stderr lines are part of the report, not terminating errors (Windows PowerShell under Stop).
+    $ErrorActionPreference = "Continue"
+    & $FilePath @ArgumentList 2>&1 | ForEach-Object {
+        $rendered = & $Filter "$_"
+        if ($null -ne $rendered) {
+            Write-Host $rendered
+        }
+    }
+    if ($LASTEXITCODE -ne 0) {
+        Stop-Script -Message "command '$Name' failed with exit code $LASTEXITCODE" -ExitCode $LASTEXITCODE
+    }
+}
+
 function Invoke-ClangFormat {
     <#
     .SYNOPSIS
@@ -338,14 +369,54 @@ function Invoke-Build {
             "-DRUX_BUILD_TESTS=ON"
         ))
 
+    # CMake's configure report: `-- Configuring done (0.1s)` becomes `Configuring done in 100 ms`, the
+    # build-files line becomes a detail, and other status lines lose their `-- ` prefix. Anything else
+    # passes through.
+    $configureFilter = {
+        param([string]$Line)
+        if ($Line -match '^-- (Configuring|Generating) done \(([0-9.]+)s\)$') {
+            $elapsed = Format-Duration -Duration ([TimeSpan]::FromSeconds([double]$Matches[2]))
+            return "$($Matches[1]) done in $elapsed"
+        }
+        if ($Line -match '^-- Build files have been written to: (.+)$') {
+            return "  Build files: '$($Matches[1])'"
+        }
+        if ($Line -match '^-- (.*)$') {
+            return $Matches[1]
+        }
+        return $Line
+    }
+    # Ninja progress: `[3/414] Building CXX object .../CMakeFiles/RuxSystem.dir/Process.cpp.obj` becomes
+    # `Compiling Compiler/System/Process.cpp (3/414)`, a link names its output, and an up-to-date tree
+    # says so. Diagnostics pass through unchanged.
+    $buildFilter = {
+        param([string]$Line)
+        if ($Line -match '^\[([0-9]+/[0-9]+)\] (.*)$') {
+            $progress = "($($Matches[1]))"
+            $action = $Matches[2]
+            if ($action -match '^Building CXX object (.*)$') {
+                $source = $Matches[1] -replace 'CMakeFiles/[^/]+\.dir/', '' -replace '\.(obj|o)$', '' -replace '__/', '../'
+                return "Compiling $source $progress"
+            }
+            if ($action -match '^Linking CXX (?:executable|static library|shared library) (.*)$') {
+                return "Linking '$($Matches[1])' $progress"
+            }
+            return "$action $progress"
+        }
+        if ($Line -eq "ninja: no work to do.") {
+            return "Up to date"
+        }
+        return $Line
+    }
+
     $startedAt = Get-Date
     Write-Step "Configuring $Configuration build"
-    Invoke-Checked -FilePath $cmake -ArgumentList $configureArguments
+    Invoke-Filtered -FilePath $cmake -Name "cmake" -Filter $configureFilter -ArgumentList $configureArguments
 
     Write-Step "Building compiler and unit tests"
     $buildArguments = @("--build", $buildPath, "--config", $Configuration)
     if ($script:PSBoundParameters.ContainsKey("Jobs")) { $buildArguments += @("--parallel", "$Jobs") }
-    Invoke-Checked -FilePath $cmake -ArgumentList $buildArguments
+    Invoke-Filtered -FilePath $cmake -Name "cmake" -Filter $buildFilter -ArgumentList $buildArguments
 
     $ruxFileName = if ($runningOnWindows) { "rux.exe" } else { "rux" }
     $rux = Join-Path $repositoryRoot "Bin/$ruxFileName"
@@ -486,16 +557,72 @@ function Invoke-Tidy {
     Write-Passed ("clang-tidy ({0} files) in {1}" -f $sources.Count, $elapsed)
 }
 
+function Format-TestCount {
+    param([Parameter(Mandatory)][int]$Count)
+    if ($Count -eq 1) { return "1 test" }
+    return "$Count tests"
+}
+
 function Invoke-Unit {
     $buildPath = Get-BuildPath
     $ctest = Find-Tool -Name "ctest"
 
     Write-Step "Running C++ unit tests"
-    Invoke-Checked -FilePath $ctest -ArgumentList @(
-        "--test-dir", $buildPath,
-        "--output-on-failure",
-        "-C", $Configuration, "--parallel", "$Jobs", "--no-tests=error"
-    )
+    # Reshapes CTest's report into the `rux test` vocabulary: one line per group
+    # as it completes, then a total. A failing group's output
+    # (--output-on-failure) and anything unrecognized pass through unchanged.
+    $startedAt = Get-Date
+    $passed = 0
+    $failed = 0
+    $announced = $false
+    $summarizing = $false
+    # Windows PowerShell turns redirected stderr lines into terminating errors under Stop; they are ordinary
+    # lines of the report here. The preference is local to this function.
+    $ErrorActionPreference = "Continue"
+    & $ctest --test-dir $buildPath --output-on-failure -C $Configuration --parallel "$Jobs" --no-tests=error 2>&1 |
+        ForEach-Object {
+            $line = "$_"
+            if ($line -match '^ *[0-9]+/([0-9]+) Test +#[0-9]+: ([^ ]+) +[.]* *(.*?) +([0-9]+[.][0-9]+) sec *$') {
+                if (-not $announced) {
+                    $announced = $true
+                    Write-Status -Verb "Running" -Color Cyan -Detail (Format-TestCount ([int]$Matches[1]))
+                }
+                $state = ($Matches[3].TrimStart('*') -replace '  +', ' ').Trim()
+                $duration = Format-Duration -Duration ([TimeSpan]::FromSeconds([double]$Matches[4]))
+                $detail = "$($Matches[2]) in $duration"
+                if ($state -eq "Passed") {
+                    ++$passed
+                    Write-Passed $detail
+                }
+                else {
+                    ++$failed
+                    if ($state -ne "Failed") {
+                        $detail += " ($state)"
+                    }
+                    Write-Failed $detail
+                }
+            }
+            elseif ($line -match '^[0-9]+% tests passed') {
+                $summarizing = $true
+            }
+            elseif (-not $summarizing -and $line -notmatch '^(Test project | *Start +[0-9]+: | *$)') {
+                Write-Host $line
+            }
+        }
+    $exitCode = $LASTEXITCODE
+    if ($passed + $failed -gt 0) {
+        $elapsed = Format-Duration -Duration ((Get-Date) - $startedAt)
+        $totals = "{0} in {1} ({2} passed, {3} failed)" -f (Format-TestCount ($passed + $failed)), $elapsed, $passed, $failed
+        if ($exitCode -eq 0) {
+            Write-Passed $totals
+        }
+        else {
+            Write-Failed $totals
+        }
+    }
+    if ($exitCode -ne 0) {
+        Stop-Script -Message "command 'ctest' failed with exit code $exitCode" -ExitCode $exitCode
+    }
 }
 
 function Invoke-RuxSuite {

@@ -128,7 +128,7 @@ jobs:
           find Packages Tests -type f -name Rux.toml -print | while IFS= read -r manifest; do
             ./Bin/rux --manifest "$manifest" fmt --check
           done
-          printf '[PASSED] Rux formatting (%s packages)\n' "$manifest_count"
+          printf 'Passed Rux formatting (%s packages)\n' "$manifest_count"
 
       - name: Verify Rux workspace
         run: |
