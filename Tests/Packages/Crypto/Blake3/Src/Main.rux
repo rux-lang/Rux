@@ -4,7 +4,7 @@
 // end from a parent from the root. So the test walks lengths across several chunk boundaries and checks the
 // incremental contract at each, which exercises every one of those.
 
-import Core::{ Assert, MutableSlice };
+import Core::{ Assert };
 import Crypto::{ Blake3, Blake3Of, Digest, Equal };
 
 // The bytes a string spans, which is how a text overload reaches the slice one.
@@ -12,7 +12,7 @@ func TextBytes(text: char8[..]) -> char8[..] {
     return (text.data)[..text.length];
 }
 
-func FromHex(text: char8[..], into: MutableSlice<char8>) {
+func FromHex(text: char8[..], into: var char8[..]) {
     var index: uint = 0;
     while index < into.length {
         var value = 0u8;
@@ -37,10 +37,10 @@ func FromHex(text: char8[..], into: MutableSlice<char8>) {
 func Main() -> int {
     // The published hash of the empty message.
     var digest: char8[64];
-    Blake3Of(TextBytes(""), MutableSlice::From<char8>(@digest[0], 32));
+    Blake3Of(TextBytes(""), (@digest[0])[..32]);
     var expected: char8[32];
     FromHex("af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262",
-            MutableSlice::From<char8>(@expected[0], 32));
+            (@expected[0])[..32]);
     Assert(Equal((@digest[0])[..32],
                  (@expected[0])[..32]),
            "BLAKE3 of the empty message");
@@ -65,7 +65,7 @@ func Main() -> int {
                 let length = base + offset - 2u;
                 var oneShot: char8[32];
                 let whole = (@message[0])[..length];
-                Blake3Of(whole, MutableSlice::From<char8>(@oneShot[0], 32));
+                Blake3Of(whole, (@oneShot[0])[..32]);
                 let oneShotBytes = (@oneShot[0])[..32];
 
                 // A handful of splits rather than all of them, since the lengths here are large.
@@ -79,7 +79,7 @@ func Main() -> int {
                     let second = (@message[split])[..length - split];
                     incremental.Update(second);
                     var got: char8[32];
-                    incremental.Finish(MutableSlice::From<char8>(@got[0], 32));
+                    incremental.Finish((@got[0])[..32]);
                     let gotBytes = (@got[0])[..32];
                     Assert(Equal(gotBytes, oneShotBytes),
                            "every split of a multi-chunk message gives the same hash");
@@ -100,10 +100,10 @@ func Main() -> int {
         index = index + 1;
     }
     var incrementalOut: char8[32];
-    byteAtATime.Finish(MutableSlice::From<char8>(@incrementalOut[0], 32));
+    byteAtATime.Finish((@incrementalOut[0])[..32]);
     var reference: char8[32];
     let whole2500 = (@message[0])[..2500];
-    Blake3Of(whole2500, MutableSlice::From<char8>(@reference[0], 32));
+    Blake3Of(whole2500, (@reference[0])[..32]);
     Assert(Equal((@incrementalOut[0])[..32],
                  (@reference[0])[..32]),
            "a byte-at-a-time hash matches the one-shot hash across chunk boundaries");
@@ -119,10 +119,10 @@ func Main() -> int {
     altered[1023] = (altered[1023] as uint8 ^ 1u8) as char8;
     var alteredHash: char8[32];
     let alteredWhole = (@altered[0])[..2048];
-    Blake3Of(alteredWhole, MutableSlice::From<char8>(@alteredHash[0], 32));
+    Blake3Of(alteredWhole, (@alteredHash[0])[..32]);
     var originalHash: char8[32];
     let originalWhole = (@message[0])[..2048];
-    Blake3Of(originalWhole, MutableSlice::From<char8>(@originalHash[0], 32));
+    Blake3Of(originalWhole, (@originalHash[0])[..32]);
     Assert(!Equal((@alteredHash[0])[..32],
                   (@originalHash[0])[..32]),
            "a single flipped bit at a chunk boundary changes the hash");
@@ -130,9 +130,9 @@ func Main() -> int {
     // The output extends like SHAKE's: a longer read starts with a shorter one.
     var longOut: char8[128];
     let abc = (@message[0])[..3];
-    Blake3Of(abc, MutableSlice::From<char8>(@longOut[0], 128));
+    Blake3Of(abc, (@longOut[0])[..128]);
     var shortOut: char8[32];
-    Blake3Of(abc, MutableSlice::From<char8>(@shortOut[0], 32));
+    Blake3Of(abc, (@shortOut[0])[..32]);
     Assert(Equal((@shortOut[0])[..32],
                  (@longOut[0])[..32]),
            "a short output is the start of a long one");

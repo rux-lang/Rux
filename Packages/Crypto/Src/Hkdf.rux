@@ -13,7 +13,7 @@
 // The length limit is real and not a formality: expand produces at most 255 blocks, because the counter it feeds
 // into each round is a single byte. Asking for more has no answer, so this refuses rather than repeating.
 
-import Core::{ MutableSlice };
+
 
 /// The most blocks `Expand` can produce, since its counter is one byte.
 ///
@@ -26,7 +26,7 @@ pub const HkdfMaximumBlocks: uint = 255;
 /// which is what the specification says -- so an absent salt is not the same as no salt at all.
 ///
 /// https://rux-lang.dev/docs/api/crypto/hkdf-extract
-pub func HkdfExtract<D: Digest>(prototype: D, salt: char8[..], material: char8[..], into: MutableSlice<char8>) {
+pub func HkdfExtract<D: Digest>(prototype: D, salt: char8[..], material: char8[..], into: var char8[..]) {
     var probe = prototype;
     let digestLength = probe.DigestLength();
     if salt.length > 0u {
@@ -52,7 +52,7 @@ pub func HkdfExtract<D: Digest>(prototype: D, salt: char8[..], material: char8[.
 ///
 /// https://rux-lang.dev/docs/api/crypto/hkdf-expand
 pub func HkdfExpand<D: Digest>(prototype: D, key: char8[..], info: char8[..],
-                           into: MutableSlice<char8>) -> bool {
+                           into: var char8[..]) -> bool {
     var probe = prototype;
     let digestLength = probe.DigestLength();
     if into.length > HkdfMaximumBlocks * digestLength { return false; }
@@ -70,12 +70,12 @@ pub func HkdfExpand<D: Digest>(prototype: D, key: char8[..], info: char8[..],
         var counterByte: char8[1];
         counterByte[0] = counter as char8;
         round.Update((@counterByte[0])[..1]);
-        round.Finish(MutableSlice::From<char8>(@previous[0], digestLength));
+        round.Finish((@previous[0])[..digestLength]);
         previousLength = digestLength;
 
         var index: uint = 0;
         while index < digestLength && written < into.length {
-            into.data[written] = previous[index];
+            into[written] = previous[index];
             written = written + 1u;
             index = index + 1;
         }
@@ -90,11 +90,11 @@ pub func HkdfExpand<D: Digest>(prototype: D, key: char8[..], info: char8[..],
 ///
 /// https://rux-lang.dev/docs/api/crypto/hkdf
 pub func Hkdf<D: Digest>(prototype: D, salt: char8[..], material: char8[..], info: char8[..],
-                     into: MutableSlice<char8>) -> bool {
+                     into: var char8[..]) -> bool {
     var probe = prototype;
     let digestLength = probe.DigestLength();
     var key: char8[64];
-    HkdfExtract<D>(prototype, salt, material, MutableSlice::From<char8>(@key[0], digestLength));
+    HkdfExtract<D>(prototype, salt, material, (@key[0])[..digestLength]);
     let keyBytes = (@key[0])[..digestLength];
     return HkdfExpand<D>(prototype, keyBytes, info, into);
 }

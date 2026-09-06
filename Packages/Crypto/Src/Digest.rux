@@ -19,7 +19,7 @@
 // Clearing a secret with an ordinary loop is dead code to a compiler, since nothing reads the buffer afterwards,
 // and it is entitled to remove it.
 
-import Core::{ #target, #Error, MutableSlice };
+import Core::{ #target, #Error };
 
 /// An incremental digest.
 ///
@@ -43,7 +43,7 @@ pub interface Digest {
     /// and an implementation is free to consume its state producing one.
     ///
     /// https://rux-lang.dev/docs/api/crypto/digest/finish
-    func Finish(self: &var Digest, into: MutableSlice<char8>);
+    func Finish(self: &var Digest, into: var char8[..]);
 
     /// How many bytes `Finish` writes.
     ///
@@ -76,7 +76,7 @@ pub func Equal(left: char8[..], right: char8[..]) -> bool {
     var index: uint = 0;
     while index < left.length {
         // Or-ing the differences means every byte contributes and none of them can end the loop early.
-        difference = difference | ((left.data[index] as uint8) ^ (right.data[index] as uint8));
+        difference = difference | ((left[index] as uint8) ^ (right[index] as uint8));
         index = index + 1;
     }
     return difference == 0u8;
@@ -107,13 +107,13 @@ when #target.arch {
 /// have happened before it runs and the call cannot be dropped.
 ///
 /// https://rux-lang.dev/docs/api/crypto/wipe
-pub func Wipe(bytes: MutableSlice<char8>) {
+pub func Wipe(bytes: var char8[..]) {
     var index: uint = 0;
     while index < bytes.length {
-        bytes.data[index] = 0u8 as char8;
+        bytes[index] = 0u8 as char8;
         index = index + 1;
     }
     if bytes.length > 0u {
-        Retain(@bytes.data[0] as *var opaque);
+        Retain(@bytes[0] as *var opaque);
     }
 }

@@ -1,4 +1,4 @@
-import Core::{ string, string8 };
+
 // The checks that are the same for every algorithm, applied to every algorithm.
 //
 // Each algorithm's own test carries its known-answer vectors, because those are specific to it. What this adds
@@ -11,17 +11,16 @@ import Core::{ string, string8 };
 // deterministic output of the right length that passes every structural test -- and shows up here immediately,
 // because a weak diffusion changes far fewer than half the bits.
 
-import Core::{ Assert, MutableSlice, Slice };
-import Crypto::{ Blake3, Blake3Of, Digest, Equal, LegacyMd5Of, LegacySha1Of, Sha256, Sha256Of, Sha3, Sha3Of256,
-                 Sha3Of512, Sha512, Sha512Of, Shake, Shake128Of, Sha224Of, Sha384Of };
+import Core::{ Assert };
+import Crypto::{ Blake3, Blake3Of, Digest, Equal, LegacyMd5Of, LegacySha1Of, Sha256, Sha256Of, Sha3, Sha3Of256, Sha3Of512, Sha512, Sha512Of, Shake, Shake128Of, Sha224Of, Sha384Of };
 
 // The bytes a string spans, which is how a text overload reaches the slice one.
-func TextBytes(text: string) -> Slice<char8> {
-    return Slice<char8> { data: text.data, length: text.length };
+func TextBytes(text: char8[..]) -> char8[..] {
+    return (text.data)[..text.length];
 }
 
 // How many bits differ between two byte sequences.
-func BitsDiffering(left: Slice<char8>, right: Slice<char8>) -> uint {
+func BitsDiffering(left: char8[..], right: char8[..]) -> uint {
     var count: uint = 0;
     var index: uint = 0;
     while index < left.length && index < right.length {
@@ -37,7 +36,7 @@ func BitsDiffering(left: Slice<char8>, right: Slice<char8>) -> uint {
 
 // Runs the avalanche check on one algorithm: every single-bit flip in a message must change roughly half the
 // output bits. A hash whose diffusion is incomplete fails this while passing everything structural.
-func CheckAvalanche(digestLength: uint, which: uint, what: string) {
+func CheckAvalanche(digestLength: uint, which: uint, what: char8[..]) {
     var message: char8[64];
     var index: uint = 0;
     while index < 64u {
@@ -45,9 +44,9 @@ func CheckAvalanche(digestLength: uint, which: uint, what: string) {
         index = index + 1;
     }
     var baseline: char8[64];
-    let whole = Slice<char8> { data: @message[0], length: 64 };
-    HashWith(which, whole, MutableSlice::From<char8>(@baseline[0], digestLength));
-    let baselineBytes = Slice<char8> { data: @baseline[0], length: digestLength };
+    let whole = (@message[0])[..64];
+    HashWith(which, whole, (@baseline[0])[..digestLength]);
+    let baselineBytes = (@baseline[0])[..digestLength];
 
     let totalBits = digestLength * 8u;
     var worstLow = totalBits;
@@ -58,10 +57,10 @@ func CheckAvalanche(digestLength: uint, which: uint, what: string) {
         let bit = (1u8 << ((position % 8u) as uint8));
         message[bytePosition] = ((message[bytePosition] as uint8) ^ bit) as char8;
         var flipped: char8[64];
-        HashWith(which, whole, MutableSlice::From<char8>(@flipped[0], digestLength));
+        HashWith(which, whole, (@flipped[0])[..digestLength]);
         message[bytePosition] = ((message[bytePosition] as uint8) ^ bit) as char8;
 
-        let differing = BitsDiffering(baselineBytes, Slice<char8> { data: @flipped[0], length: digestLength });
+        let differing = BitsDiffering(baselineBytes, (@flipped[0])[..digestLength]);
         if differing < worstLow {
             worstLow = differing;
         }
@@ -78,7 +77,7 @@ func CheckAvalanche(digestLength: uint, which: uint, what: string) {
 }
 
 // Dispatches to one of the algorithms by index, since they do not share an interface uniformly.
-func HashWith(which: uint, message: Slice<char8>, into: MutableSlice<char8>) {
+func HashWith(which: uint, message: char8[..], into: var char8[..]) {
     if which == 0u {
         Sha256Of(message, into);
     }
@@ -140,20 +139,20 @@ func Main() -> int {
         var lengthIndex: uint = 0;
         while lengthIndex < 14u {
             let length = boundaries[lengthIndex];
-            let whole = Slice<char8> { data: @message[0], length: length };
+            let whole = (@message[0])[..length];
             var oneShot: char8[64];
-            HashWith(which, whole, MutableSlice::From<char8>(@oneShot[0], 32));
+            HashWith(which, whole, (@oneShot[0])[..32]);
             // Hashing the same bytes twice must agree, and hashing one byte fewer must not.
             var again: char8[64];
-            HashWith(which, whole, MutableSlice::From<char8>(@again[0], 32));
-            Assert(Equal(Slice<char8> { data: @oneShot[0], length: 32 },
-                         Slice<char8> { data: @again[0], length: 32 }),
+            HashWith(which, whole, (@again[0])[..32]);
+            Assert(Equal((@oneShot[0])[..32],
+                         (@again[0])[..32]),
                    "a boundary length hashes deterministically");
-            let shorter = Slice<char8> { data: @message[0], length: length - 1u };
+            let shorter = (@message[0])[..length - 1u];
             var shorterHash: char8[64];
-            HashWith(which, shorter, MutableSlice::From<char8>(@shorterHash[0], 32));
-            Assert(!Equal(Slice<char8> { data: @oneShot[0], length: 32 },
-                          Slice<char8> { data: @shorterHash[0], length: 32 }),
+            HashWith(which, shorter, (@shorterHash[0])[..32]);
+            Assert(!Equal((@oneShot[0])[..32],
+                          (@shorterHash[0])[..32]),
                    "and differs from the message one byte shorter, so the length reaches the padding");
             lengthIndex = lengthIndex + 1;
         }
@@ -165,9 +164,9 @@ func Main() -> int {
     var chunkIndex: uint = 0;
     while chunkIndex < 6u {
         let length = chunkLengths[chunkIndex];
-        let whole = Slice<char8> { data: @message[0], length: length };
+        let whole = (@message[0])[..length];
         var direct: char8[32];
-        Blake3Of(whole, MutableSlice::From<char8>(@direct[0], 32));
+        Blake3Of(whole, (@direct[0])[..32]);
         var pieced = Blake3();
         var offset: uint = 0;
         while offset < length {
@@ -175,19 +174,19 @@ func Main() -> int {
             if offset + step > length {
                 step = length - offset;
             }
-            pieced.Update(Slice<char8> { data: @message[offset], length: step });
+            pieced.Update((@message[offset])[..step]);
             offset = offset + step;
         }
         var piecedOut: char8[32];
-        pieced.Finish(MutableSlice::From<char8>(@piecedOut[0], 32));
-        Assert(Equal(Slice<char8> { data: @direct[0], length: 32 },
-                     Slice<char8> { data: @piecedOut[0], length: 32 }),
+        pieced.Finish((@piecedOut[0])[..32]);
+        Assert(Equal((@direct[0])[..32],
+                     (@piecedOut[0])[..32]),
                "BLAKE3 agrees across its chunk boundary whatever the feed size");
-        let shorter = Slice<char8> { data: @message[0], length: length - 1u };
+        let shorter = (@message[0])[..length - 1u];
         var shorterHash: char8[32];
-        Blake3Of(shorter, MutableSlice::From<char8>(@shorterHash[0], 32));
-        Assert(!Equal(Slice<char8> { data: @direct[0], length: 32 },
-                      Slice<char8> { data: @shorterHash[0], length: 32 }),
+        Blake3Of(shorter, (@shorterHash[0])[..32]);
+        Assert(!Equal((@direct[0])[..32],
+                      (@shorterHash[0])[..32]),
                "and a message one byte shorter hashes differently at a chunk boundary");
         chunkIndex = chunkIndex + 1;
     }
@@ -197,15 +196,15 @@ func Main() -> int {
     var digests: char8[320];
     which = 0;
     while which < 10u {
-        HashWith(which, "the same message", MutableSlice::From<char8>(@digests[which * 32u], 16));
+        HashWith(which, "the same message", (@digests[which * 32u])[..16]);
         which = which + 1;
     }
     var first: uint = 0;
     while first < 10u {
         var second = first + 1u;
         while second < 10u {
-            Assert(!Equal(Slice<char8> { data: @digests[first * 32u], length: 16 },
-                          Slice<char8> { data: @digests[second * 32u], length: 16 }),
+            Assert(!Equal((@digests[first * 32u])[..16],
+                          (@digests[second * 32u])[..16]),
                    "no two algorithms produce the same digest for one message");
             second = second + 1;
         }

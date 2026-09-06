@@ -11,6 +11,11 @@ Cryptographic hashes, message authentication codes and key derivation.
 
 ## Installation
 
+Input buffers use `char8[..]`; output buffers use `var char8[..]`. String literals can be passed directly as inputs.
+Use `storage[..]` for an array-backed writable output and `pointer[..length]` for raw storage. The caller retains
+ownership of every buffer, and each operation's documented output length still applies. Slice lengths count code
+units, which are bytes for `char8`.
+
 ```sh
 rux add Rux/Crypto
 ```

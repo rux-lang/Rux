@@ -12,7 +12,7 @@
 // Not needed for BLAKE3 or SHA-3, which resist length extension and can be keyed directly -- but supported for
 // them anyway, since a protocol that specifies HMAC specifies HMAC.
 
-import Core::{ MutableSlice };
+
 
 // The byte repeated to make the inner key.
 const HmacInnerPad: uint8 = 0x36;
@@ -63,7 +63,7 @@ extend Hmac<D> {
         if keyLength > blockLength {
             var hasher = prototype;
             hasher.Update(key);
-            hasher.Finish(MutableSlice::From<char8>(@shortened[0], digestLength));
+            hasher.Finish((@shortened[0])[..digestLength]);
             keyLength = digestLength;
         }
         else {
@@ -109,9 +109,9 @@ extend Hmac<D> {
     /// Writes the authentication tag into `into`.
     ///
     /// https://rux-lang.dev/docs/api/crypto/hmac/finish
-    pub func Finish<D: Digest>(self: &var Hmac<D>, into: MutableSlice<char8>) {
+    pub func Finish<D: Digest>(self: &var Hmac<D>, into: var char8[..]) {
         var innerDigest: char8[64];
-        self.inner.Finish(MutableSlice::From<char8>(@innerDigest[0], self.digestLength));
+        self.inner.Finish((@innerDigest[0])[..self.digestLength]);
         self.outer.Update((@innerDigest[0])[..self.digestLength]);
         self.outer.Finish(into);
     }
@@ -127,7 +127,7 @@ extend Hmac<D> {
 /// The HMAC of `message` under `key`, in one call.
 ///
 /// https://rux-lang.dev/docs/api/crypto/hmac-of
-pub func HmacOf<D: Digest>(prototype: D, key: char8[..], message: char8[..], into: MutableSlice<char8>) {
+pub func HmacOf<D: Digest>(prototype: D, key: char8[..], message: char8[..], into: var char8[..]) {
     var state = Hmac<D>(prototype, key);
     state.Update(message);
     state.Finish(into);

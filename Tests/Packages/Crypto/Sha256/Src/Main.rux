@@ -3,7 +3,7 @@
 // wrong about buffering, and a hash that passes short messages can still be wrong about the padding block --
 // so every message length from zero to two hundred is fed in every possible split against the one-shot answer.
 
-import Core::{ Assert, MutableSlice };
+import Core::{ Assert };
 import Crypto::{ Digest, Equal, Sha224Of, Sha256, Sha256Of };
 
 // The bytes a string spans, which is how a text overload reaches the slice one.
@@ -12,7 +12,7 @@ func TextBytes(text: char8[..]) -> char8[..] {
 }
 
 // Parses a hex string into bytes, so the vectors below read as they are published.
-func FromHex(text: char8[..], into: MutableSlice<char8>) {
+func FromHex(text: char8[..], into: var char8[..]) {
     var index: uint = 0;
     while index * 2u + 1u < text.length + 1u && index < into.length {
         var value = 0u8;
@@ -36,10 +36,10 @@ func FromHex(text: char8[..], into: MutableSlice<char8>) {
 
 func CheckDigest(message: char8[..], expectedHex: char8[..], wide: bool, what: char8[..]) {
     var expected: char8[32];
-    let expectedRoom = MutableSlice::From<char8>(@expected[0], wide ? 32u : 28u);
+    let expectedRoom = (@expected[0])[..wide ? 32u : 28u];
     FromHex(expectedHex, expectedRoom);
     var got: char8[32];
-    let gotRoom = MutableSlice::From<char8>(@got[0], wide ? 32u : 28u);
+    let gotRoom = (@got[0])[..wide ? 32u : 28u];
     if wide {
         Sha256Of(message, gotRoom);
     }
@@ -71,8 +71,8 @@ func Main() -> int {
     // The two functions are unrelated: SHA-224 is not SHA-256 cut short, because the initial states differ.
     var wideDigest: char8[32];
     var narrowDigest: char8[32];
-    let wideRoom = MutableSlice::From<char8>(@wideDigest[0], 32);
-    let narrowRoom = MutableSlice::From<char8>(@narrowDigest[0], 28);
+    let wideRoom = (@wideDigest[0])[..32];
+    let narrowRoom = (@narrowDigest[0])[..28];
     Sha256Of(TextBytes("abc"), wideRoom);
     Sha224Of(TextBytes("abc"), narrowRoom);
     let widePrefix = (@wideDigest[0])[..28];
@@ -90,7 +90,7 @@ func Main() -> int {
     while length <= 200u {
         let whole = (@message[0])[..length];
         var oneShot: char8[32];
-        let oneShotRoom = MutableSlice::From<char8>(@oneShot[0], 32);
+        let oneShotRoom = (@oneShot[0])[..32];
         Sha256Of(whole, oneShotRoom);
         let oneShotBytes = (@oneShot[0])[..32];
 
@@ -102,7 +102,7 @@ func Main() -> int {
             let second = (@message[split])[..length - split];
             digest.Update(second);
             var got: char8[32];
-            let gotRoom = MutableSlice::From<char8>(@got[0], 32);
+            let gotRoom = (@got[0])[..32];
             digest.Finish(gotRoom);
             let gotBytes = (@got[0])[..32];
             Assert(Equal(gotBytes, oneShotBytes), "every split of a message gives the same digest");
@@ -120,10 +120,10 @@ func Main() -> int {
         index = index + 1;
     }
     var incremental: char8[32];
-    let incrementalRoom = MutableSlice::From<char8>(@incremental[0], 32);
+    let incrementalRoom = (@incremental[0])[..32];
     byteAtATime.Finish(incrementalRoom);
     var reference: char8[32];
-    let referenceRoom = MutableSlice::From<char8>(@reference[0], 32);
+    let referenceRoom = (@reference[0])[..32];
     Sha256Of((@message[0])[..200], referenceRoom);
     Assert(Equal((@incremental[0])[..32],
                  (@reference[0])[..32]),
@@ -135,10 +135,10 @@ func Main() -> int {
     withEmpties.Update(TextBytes("abc"));
     withEmpties.Update(TextBytes(""));
     var emptied: char8[32];
-    let emptiedRoom = MutableSlice::From<char8>(@emptied[0], 32);
+    let emptiedRoom = (@emptied[0])[..32];
     withEmpties.Finish(emptiedRoom);
     var plain: char8[32];
-    let plainRoom = MutableSlice::From<char8>(@plain[0], 32);
+    let plainRoom = (@plain[0])[..32];
     Sha256Of(TextBytes("abc"), plainRoom);
     Assert(Equal((@emptied[0])[..32], (@plain[0])[..32]),
            "empty updates change nothing");
@@ -152,12 +152,12 @@ func Main() -> int {
     abd.Update(TextBytes("d"));
     var abcDigest: char8[32];
     var abdDigest: char8[32];
-    abc.Finish(MutableSlice::From<char8>(@abcDigest[0], 32));
-    abd.Finish(MutableSlice::From<char8>(@abdDigest[0], 32));
+    abc.Finish((@abcDigest[0])[..32]);
+    abd.Finish((@abdDigest[0])[..32]);
     var abcExpected: char8[32];
     var abdExpected: char8[32];
-    Sha256Of(TextBytes("abc"), MutableSlice::From<char8>(@abcExpected[0], 32));
-    Sha256Of(TextBytes("abd"), MutableSlice::From<char8>(@abdExpected[0], 32));
+    Sha256Of(TextBytes("abc"), (@abcExpected[0])[..32]);
+    Sha256Of(TextBytes("abd"), (@abdExpected[0])[..32]);
     Assert(Equal((@abcDigest[0])[..32],
                  (@abcExpected[0])[..32]),
            "a digest copy continues independently from its prefix");

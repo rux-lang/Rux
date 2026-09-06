@@ -10,7 +10,7 @@
 // whose final block leaves fewer than nine bytes free, which needs a whole extra block; the test covers exactly
 // those lengths.
 
-import Core::{ MutableSlice };
+
 
 // The round constants: the first thirty-two bits of the fractional parts of the cube roots of the first
 // sixty-four primes.
@@ -157,7 +157,7 @@ extend Sha256 : Digest {
         // Finish whatever partial block is already held before taking whole blocks directly.
         if self.buffered > 0u {
             while index < bytes.length && self.buffered < 64u {
-                self.buffer[self.buffered] = bytes.data[index];
+                self.buffer[self.buffered] = bytes[index];
                 self.buffered = self.buffered + 1u;
                 index = index + 1;
             }
@@ -167,11 +167,11 @@ extend Sha256 : Digest {
             }
         }
         while index + 64u <= bytes.length {
-            self.Compress(@bytes.data[index]);
+            self.Compress(@bytes[index]);
             index = index + 64u;
         }
         while index < bytes.length {
-            self.buffer[self.buffered] = bytes.data[index];
+            self.buffer[self.buffered] = bytes[index];
             self.buffered = self.buffered + 1u;
             index = index + 1;
         }
@@ -185,7 +185,7 @@ extend Sha256 : Digest {
     /// implementation from one that passes the short vectors.
     ///
     /// https://rux-lang.dev/docs/api/crypto/sha256/finish
-    pub func Finish(self: &var Sha256, into: MutableSlice<char8>) {
+    pub func Finish(self: &var Sha256, into: var char8[..]) {
         let bitLength = self.length * 8u64;
         self.buffer[self.buffered] = 0x80u8 as char8;
         self.buffered = self.buffered + 1u;
@@ -213,7 +213,7 @@ extend Sha256 : Digest {
             let word = self.state[index / 4u];
             let byteShift = (3u - (index % 4u)) * 8u;
             if index < into.length {
-                into.data[index] = ((word >> (byteShift as uint32)) & 0xFFu32) as uint8 as char8;
+                into[index] = ((word >> (byteShift as uint32)) & 0xFFu32) as uint8 as char8;
             }
             index = index + 1;
         }
@@ -238,7 +238,7 @@ extend Sha256 : Digest {
 /// The SHA-256 digest of `bytes`, in one call.
 ///
 /// https://rux-lang.dev/docs/api/crypto/sha256-of
-pub func Sha256Of(bytes: char8[..], into: MutableSlice<char8>) {
+pub func Sha256Of(bytes: char8[..], into: var char8[..]) {
     var digest = Sha256();
     digest.Update(bytes);
     digest.Finish(into);
@@ -247,7 +247,7 @@ pub func Sha256Of(bytes: char8[..], into: MutableSlice<char8>) {
 /// The SHA-224 digest of `bytes`, in one call.
 ///
 /// https://rux-lang.dev/docs/api/crypto/sha224-of
-pub func Sha224Of(bytes: char8[..], into: MutableSlice<char8>) {
+pub func Sha224Of(bytes: char8[..], into: var char8[..]) {
     var digest = Sha256::New224();
     digest.Update(bytes);
     digest.Finish(into);

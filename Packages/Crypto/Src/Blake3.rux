@@ -14,7 +14,7 @@
 // means nothing without knowing whether it came from the start of a chunk, the end of one, a parent node, or the
 // root -- and mixing that into the compression is what stops one part of the tree being substituted for another.
 
-import Core::{ MutableSlice };
+
 
 // Bytes per chunk: the unit each leaf of the tree covers.
 const Blake3ChunkLength: uint = 1024;
@@ -212,7 +212,7 @@ extend Blake3Chunk {
                 self.blocksCompressed = self.blocksCompressed + 1u;
                 self.blockLength = 0;
             }
-            self.block[self.blockLength] = bytes.data[index];
+            self.block[self.blockLength] = bytes[index];
             self.blockLength = self.blockLength + 1u;
             index = index + 1;
         }
@@ -345,7 +345,7 @@ extend Blake3 : Digest {
                 self.PushChunk(@chaining[0], finished);
                 self.chunk = Blake3Chunk(self.key, finished + 1u64, self.flags);
             }
-            let rest = (@bytes.data[offset])[..bytes.length - offset];
+            let rest = (@bytes[offset])[..bytes.length - offset];
             offset = offset + self.chunk.Update(rest);
         }
     }
@@ -356,7 +356,7 @@ extend Blake3 : Digest {
     /// produce as many bytes as asked. Thirty-two is the usual choice and is what `DigestLength` reports.
     ///
     /// https://rux-lang.dev/docs/api/crypto/blake3/finish
-    pub func Finish(self: &var Blake3, into: MutableSlice<char8>) {
+    pub func Finish(self: &var Blake3, into: var char8[..]) {
         var rootChaining: uint32[8];
         var rootMessage: uint32[16];
         var rootCounter = 0u64;
@@ -426,7 +426,7 @@ extend Blake3 : Digest {
             while index < 16u && written < into.length {
                 var part: uint = 0;
                 while part < 4u && written < into.length {
-                    into.data[written] =
+                    into[written] =
                         ((rootWords[index] >> ((part * 8u) as uint32)) & 0xFFu32) as uint8 as char8;
                     written = written + 1u;
                     part = part + 1;
@@ -455,7 +455,7 @@ extend Blake3 : Digest {
 /// The BLAKE3 hash of `bytes`, at whatever length `into` asks for.
 ///
 /// https://rux-lang.dev/docs/api/crypto/blake3-of
-pub func Blake3Of(bytes: char8[..], into: MutableSlice<char8>) {
+pub func Blake3Of(bytes: char8[..], into: var char8[..]) {
     var hasher = Blake3();
     hasher.Update(bytes);
     hasher.Finish(into);

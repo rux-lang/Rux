@@ -13,7 +13,7 @@
 // different stream depending on that one byte, which is what stops a SHAKE output from ever colliding with a
 // SHA-3 digest by construction.
 
-import Core::{ MutableSlice };
+
 
 /// An extendable-output function: absorb a message, then read as many bytes as wanted.
 ///
@@ -73,7 +73,7 @@ extend Shake {
         while index < bytes.length {
             let lane = self.position / 8u;
             let shift = ((self.position % 8u) * 8u) as uint64;
-            self.lanes[lane] = self.lanes[lane] ^ ((bytes.data[index] as uint8 as uint64) << shift);
+            self.lanes[lane] = self.lanes[lane] ^ ((bytes[index] as uint8 as uint64) << shift);
             self.position = self.position + 1u;
             if self.position == self.rate {
                 KeccakPermute(@self.lanes[0]);
@@ -104,7 +104,7 @@ extend Shake {
     /// The first read applies the padding, after which `Update` does nothing.
     ///
     /// https://rux-lang.dev/docs/api/crypto/shake/read
-    pub func Read(self: &var Shake, into: MutableSlice<char8>) {
+    pub func Read(self: &var Shake, into: var char8[..]) {
         if !self.reading {
             self.BeginReading();
         }
@@ -117,7 +117,7 @@ extend Shake {
             }
             let lane = self.lanes[self.position / 8u];
             let shift = ((self.position % 8u) * 8u) as uint64;
-            into.data[index] = ((lane >> shift) & 0xFFu64) as uint8 as char8;
+            into[index] = ((lane >> shift) & 0xFFu64) as uint8 as char8;
             self.position = self.position + 1u;
             index = index + 1;
         }
@@ -134,7 +134,7 @@ extend Shake {
 /// `into.length` bytes of SHAKE128 over `bytes`, in one call.
 ///
 /// https://rux-lang.dev/docs/api/crypto/shake128-of
-pub func Shake128Of(bytes: char8[..], into: MutableSlice<char8>) {
+pub func Shake128Of(bytes: char8[..], into: var char8[..]) {
     var state = Shake::New128();
     state.Update(bytes);
     state.Read(into);
@@ -143,7 +143,7 @@ pub func Shake128Of(bytes: char8[..], into: MutableSlice<char8>) {
 /// `into.length` bytes of SHAKE256 over `bytes`, in one call.
 ///
 /// https://rux-lang.dev/docs/api/crypto/shake256-of
-pub func Shake256Of(bytes: char8[..], into: MutableSlice<char8>) {
+pub func Shake256Of(bytes: char8[..], into: var char8[..]) {
     var state = Shake::New256();
     state.Update(bytes);
     state.Read(into);

@@ -2,7 +2,7 @@
 // tests. The digest contract itself has nothing to check until an algorithm implements it -- the first is SHA-256
 // in the next task, and its test is where the incremental promise gets exercised against real vectors.
 
-import Core::{ Assert, MutableSlice };
+import Core::{ Assert };
 import Crypto::{ Equal, Wipe };
 
 func Main() -> int {
@@ -54,7 +54,7 @@ func Main() -> int {
         secret[index] = 0xABu8 as char8;
         index = index + 1;
     }
-    let middle = MutableSlice::From<char8>(@secret[4], 8);
+    let middle = (@secret[4])[..8];
     Wipe(middle);
     index = 0;
     while index < 4u {
@@ -71,7 +71,7 @@ func Main() -> int {
     }
 
     // Wiping nothing is legal and does nothing.
-    let none = MutableSlice::From<char8>(@secret[0], 0);
+    let none = (@secret[0])[..0];
     Wipe(none);
     Assert(secret[0] == (0xABu8 as char8), "wiping an empty slice changes nothing");
 
@@ -82,7 +82,7 @@ func Main() -> int {
         doomed[index] = 0x5Au8 as char8;
         index = index + 1;
     }
-    let whole = MutableSlice::From<char8>(@doomed[0], 32);
+    let whole = (@doomed[0])[..32];
     Wipe(whole);
     index = 0;
     while index < 32u {
