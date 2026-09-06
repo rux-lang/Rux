@@ -12,9 +12,14 @@ if [ -x "$destination/bin/cmake" ] && "$destination/bin/cmake" --version | grep 
 fi
 
 archive="$destination/cmake-$version.tar.gz"
-fetch -o "$archive" "https://github.com/Kitware/CMake/releases/download/v$version/cmake-$version.tar.gz"
+if [ ! -f "$archive" ]; then
+    fetch -o "$archive.partial" "https://github.com/Kitware/CMake/releases/download/v$version/cmake-$version.tar.gz"
+    mv "$archive.partial" "$archive"
+fi
 [ "$(sha256 -q "$archive")" = "$checksum" ] || { echo 'error: CMake archive checksum mismatch' >&2; exit 1; }
-tar -xf "$archive" -C "$destination"
+if [ ! -d "$destination/cmake-$version" ]; then
+    tar -xf "$archive" -C "$destination"
+fi
 cmake -S "$destination/cmake-$version" -B "$destination/build" -G Ninja \
     -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$destination" \
     -DBUILD_TESTING=OFF -DCMAKE_USE_OPENSSL=OFF

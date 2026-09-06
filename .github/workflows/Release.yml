@@ -18,6 +18,9 @@ concurrency:
 env:
   CMAKE_VERSION: "4.4.3"
   NINJA_VERSION: "1.13.2"
+  CCACHE_DIR: ${{ github.workspace }}/BuildCache/ccache
+  CCACHE_MAXSIZE: 768M
+  CCACHE_COMPILERCHECK: content
 
 jobs:
   # Fail fast if the pushed tag doesn't match the version in CMakeLists.txt,
@@ -82,30 +85,37 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Restore FreeBSD CMake installation
-        uses: actions/cache@v6
+      - name: Restore FreeBSD compilation cache
+        id: compilation-cache
+        uses: actions/cache/restore@v6
         with:
-          path: BuildCache/CMake
-          key: cmake-4.4.3-FreeBSD15.1-${{ matrix.arch }}
+          path: BuildCache/ccache
+          key: ccache-release-FreeBSD15.1-${{ matrix.arch }}-clang23-libcxx-Release-pch-off-${{ hashFiles('.github/CI/Environments.lock.json') }}-${{ github.sha }}
+          restore-keys: ccache-release-FreeBSD15.1-${{ matrix.arch }}-clang23-libcxx-Release-pch-off-${{ hashFiles('.github/CI/Environments.lock.json') }}-
 
       - name: Build and test in FreeBSD VM
-        uses: vmactions/freebsd-vm@v1
+        uses: ./.github/Actions/FreeBSD
         with:
-          release: "15.1"
           arch: ${{ matrix.vm_arch }}
-          usesh: true
-          cache-after-prepare: true
-          prepare: |
-            set -e
-            pkg install -y llvm23 cmake-core ninja
+          role: build
           run: |
             set -e
-            sh .github/scripts/Install-CMake-FreeBSD.sh BuildCache/CMake
-            export PATH="$PWD/BuildCache/CMake/bin:$PATH"
+            cmake_bin=$(sh .github/Scripts/Verify.sh freebsd-cmake)
+            export PATH="$cmake_bin:$PATH"
+            export CCACHE_DIR="$PWD/BuildCache/ccache" CCACHE_MAXSIZE=768M CCACHE_COMPILERCHECK=content
+            cmake -S . -B Build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=clang++23 \
+              -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DRUX_USE_PCH=OFF -DRUX_BUILD_TESTS=ON -DRUX_WERROR=ON
             sh Run.sh test --compiler clang++23
             if [ "${{ matrix.arch }}" = aarch64 ]; then
               sh Tests/Native/FreeBSDAArch64/Verify.sh ./Bin/rux
             fi
+
+      - name: Save FreeBSD compilation cache
+        if: ${{ always() && !cancelled() && steps.compilation-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v6
+        with:
+          path: BuildCache/ccache
+          key: ${{ steps.compilation-cache.outputs.cache-primary-key }}
 
       - name: Upload binary artifact
         uses: actions/upload-artifact@v7
@@ -133,13 +143,10 @@ jobs:
           path: Bin
 
       - name: Cross-build payload in FreeBSD x86-64 VM
-        uses: vmactions/freebsd-vm@v1
+        uses: ./.github/Actions/FreeBSD
         with:
-          release: "15.1"
           arch: x86_64
-          usesh: true
-          prepare: |
-            pkg install -y llvm23
+          role: runtime
           run: |
             set -e
             chmod +x Bin/rux
@@ -172,11 +179,10 @@ jobs:
           path: FreeBSDAArch64Payload
 
       - name: Run transferred bytes in fresh FreeBSD AArch64 VM
-        uses: vmactions/freebsd-vm@v1
+        uses: ./.github/Actions/FreeBSD
         with:
-          release: "15.1"
           arch: aarch64
-          usesh: true
+          role: minimal
           run: |
             set -e
             sh Tests/Native/FreeBSDAArch64/VerifyTransfer.sh FreeBSDAArch64Payload
@@ -222,24 +228,42 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install Clang 23
-        run: |
-          curl --proto '=https' --tlsv1.2 -fsSLo /tmp/llvm.sh https://apt.llvm.org/llvm.sh
-          chmod +x /tmp/llvm.sh
-          sudo /tmp/llvm.sh 23
+      - name: Restore Linux LLVM
+        uses: ./.github/Actions/LinuxLLVM
 
-      - name: Install CMake and Ninja
+      - name: Restore CMake, Ninja, and ccache
+        uses: ./.github/Actions/BuildTools
+
+      - name: Identify release compiler and SDK
+        id: environment
         shell: pwsh
-        run: ./.github/scripts/Install-BuildTools.ps1 -CMakeVersion '${{ env.CMAKE_VERSION }}' -NinjaVersion '${{ env.NINJA_VERSION }}'
+        run: ./.github/Scripts/Verify.ps1 -Check Environment -Compiler "clang++-23"
+
+      - name: Restore release compilation cache
+        id: compilation-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: BuildCache/ccache
+          key: release-ccache-linux-${{ matrix.arch }}-${{ steps.environment.outputs.identity }}-${{ github.sha }}
+          restore-keys: release-ccache-linux-${{ matrix.arch }}-${{ steps.environment.outputs.identity }}-
 
       - name: Configure and build
         run: |
           cmake -S . -B Build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_CXX_COMPILER=clang++-23 \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DRUX_USE_PCH=OFF \
             -DRUX_WERROR=ON \
             -DRUX_BUILD_TESTS=ON
           cmake --build Build --config Release --parallel
+
+      - name: Save release compilation cache
+        if: steps.compilation-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: BuildCache/ccache
+          key: ${{ steps.compilation-cache.outputs.cache-primary-key }}
 
       - name: Unit tests
         run: ctest --test-dir Build --output-on-failure -C Release --parallel "$(sh Scripts/TestJobs.sh)" --no-tests=error
@@ -291,52 +315,43 @@ jobs:
         with:
           persist-credentials: false
 
-      # Apple Clang lacks the C++26 support Rux needs, so use the same
-      # upstream LLVM release as the Linux and FreeBSD builds. The runner
-      # image ships with third-party taps Homebrew no longer trusts by
-      # default; nothing here uses them, so drop them rather than trusting
-      # them or silencing the check.
-      # The image also ships llvm@20. Unlinking it is not enough: Homebrew
-      # refuses to link a versioned formula while another version is
-      # installed at all, so `brew install llvm@23` annotated every run with
-      # a link warning. Nothing here uses llvm@20 and the runner is
-      # discarded after the job, so remove it outright; --ignore-dependencies
-      # keeps preinstalled formulae that name it from blocking the removal.
-      # Homebrew publishes the current LLVM release as the unversioned `llvm`
-      # formula; `llvm@23` is only an alias of it until LLVM 24 turns it into
-      # a versioned formula of its own. The runner image's formula snapshot
-      # can predate the 23.1.0 bump, and `brew install` does not refresh it,
-      # so update first; otherwise `llvm@23` is an unknown name. Then check
-      # the Clang that was installed, so a wrong major version fails here
-      # rather than at configuration time.
-      - name: Install Clang 23
-        run: |
-          brew untap aws/tap || true
-          if brew list --versions llvm@20 >/dev/null; then
-            brew uninstall --ignore-dependencies llvm@20
-          fi
-          brew update --quiet
-          brew install llvm@23
-          llvm_prefix="$(brew --prefix llvm@23)"
-          clang_version="$("$llvm_prefix/bin/clang++" --version | head -n 1)"
-          case "$clang_version" in
-            *'clang version 23.'*) echo "$clang_version" ;;
-            *) echo "::error::expected Homebrew Clang 23, found: $clang_version"; exit 1 ;;
-          esac
-          echo "$llvm_prefix/bin" >> "$GITHUB_PATH"
+      - name: Restore macOS LLVM
+        id: llvm
+        uses: ./.github/Actions/MacOSLLVM
 
-      - name: Install CMake and Ninja
+      - name: Restore CMake, Ninja, and ccache
+        uses: ./.github/Actions/BuildTools
+
+      - name: Identify release compiler and SDK
+        id: environment
         shell: pwsh
-        run: ./.github/scripts/Install-BuildTools.ps1 -CMakeVersion '${{ env.CMAKE_VERSION }}' -NinjaVersion '${{ env.NINJA_VERSION }}'
+        run: ./.github/Scripts/Verify.ps1 -Check Environment -Compiler "${{ steps.llvm.outputs.compiler }}"
+
+      - name: Restore release compilation cache
+        id: compilation-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: BuildCache/ccache
+          key: release-ccache-macos-${{ matrix.arch }}-${{ steps.environment.outputs.identity }}-${{ github.sha }}
+          restore-keys: release-ccache-macos-${{ matrix.arch }}-${{ steps.environment.outputs.identity }}-
 
       - name: Configure and build
         run: |
           cmake -S . -B Build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_CXX_COMPILER="$(brew --prefix llvm@23)/bin/clang++" \
+            -DCMAKE_CXX_COMPILER="${{ steps.llvm.outputs.compiler }}" \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DRUX_USE_PCH=OFF \
             -DRUX_WERROR=ON \
             -DRUX_BUILD_TESTS=ON
           cmake --build Build --config Release --parallel
+
+      - name: Save release compilation cache
+        if: steps.compilation-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: BuildCache/ccache
+          key: ${{ steps.compilation-cache.outputs.cache-primary-key }}
 
       - name: Unit tests
         run: ctest --test-dir Build --output-on-failure -C Release --parallel "$(sh Scripts/TestJobs.sh)" --no-tests=error
@@ -386,25 +401,40 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install Clang 23
-        shell: pwsh
-        run: ./.github/scripts/Install-Llvm.ps1 -Arch ${{ matrix.arch }}
+      - name: Restore Windows LLVM
+        uses: ./.github/Actions/WindowsLLVM
+        with:
+          arch: ${{ matrix.arch }}
 
-      - name: Install CMake and Ninja
-        shell: pwsh
-        run: ./.github/scripts/Install-BuildTools.ps1 -CMakeVersion '${{ env.CMAKE_VERSION }}' -NinjaVersion '${{ env.NINJA_VERSION }}'
+      - name: Restore CMake, Ninja, and ccache
+        uses: ./.github/Actions/BuildTools
 
       # Initialize the bundled Visual Studio environment so Clang can find
       # the Windows SDK, CRT headers, and import libraries.
+      - name: Identify release compiler and SDK
+        id: environment
+        shell: pwsh
+        run: ./.github/Scripts/Verify.ps1 -Check Environment -Compiler "C:/LLVM/bin/clang++.exe" -VsArch ${{ matrix.vs_arch }}
+
+      - name: Restore release compilation cache
+        id: compilation-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: BuildCache/ccache
+          key: release-ccache-windows-${{ matrix.arch }}-${{ steps.environment.outputs.identity }}-${{ github.sha }}
+          restore-keys: release-ccache-windows-${{ matrix.arch }}-${{ steps.environment.outputs.identity }}-
+
       - name: Configure, build, and run unit tests
         shell: pwsh
         run: |
-          ./.github/scripts/Enter-VsDevEnv.ps1 -Arch ${{ matrix.vs_arch }}
+          ./.github/Scripts/Install.ps1 -Tool VsEnvironment -Arch ${{ matrix.vs_arch }}
 
           cmake -S . -B Build -G Ninja `
             -DCMAKE_BUILD_TYPE=Release `
             -DCMAKE_CXX_COMPILER="C:/LLVM/bin/clang++.exe" `
             -DCMAKE_CXX_COMPILER_TARGET=${{ matrix.compiler_target }} `
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache `
+            -DRUX_USE_PCH=OFF `
             -DRUX_WERROR=ON `
             -DRUX_BUILD_TESTS=ON
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -412,10 +442,17 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           ctest --test-dir Build --output-on-failure -C Release --parallel ([Math]::Max(1, [Math]::Min(4, [Environment]::ProcessorCount))) --no-tests=error
 
+      - name: Save release compilation cache
+        if: steps.compilation-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: BuildCache/ccache
+          key: ${{ steps.compilation-cache.outputs.cache-primary-key }}
+
       - name: Verify Rux workspace
         shell: pwsh
         run: |
-          ./.github/scripts/Enter-VsDevEnv.ps1 -Arch ${{ matrix.vs_arch }}
+          ./.github/Scripts/Install.ps1 -Tool VsEnvironment -Arch ${{ matrix.vs_arch }}
 
           ./Bin/rux.exe check
           ./Bin/rux.exe lint

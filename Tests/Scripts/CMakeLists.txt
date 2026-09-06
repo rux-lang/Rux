@@ -2,6 +2,14 @@ find_program(RUX_TEST_SHELL NAMES sh bash HINTS "C:/Program Files/Git/bin" "C:/P
 if (NOT RUX_TEST_SHELL)
     message(FATAL_ERROR "Repository and installer tests require a POSIX shell (Git for Windows supplies one)")
 endif ()
+
+# Python is needed by the hosted CI environment tooling, not by Rux itself.
+# Exercise these helpers locally when an appropriate interpreter is available.
+find_package(Python3 3.11 QUIET COMPONENTS Interpreter)
+if (Python3_Interpreter_FOUND)
+    add_test(NAME Scripts.CI COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/CI/Check.py")
+    set_tests_properties(Scripts.CI PROPERTIES LABELS Scripts)
+endif ()
 if (WIN32)
     set(rux_test_shell_flags --login)
 endif ()

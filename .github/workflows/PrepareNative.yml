@@ -1,0 +1,125 @@
+name: Prepare Native Toolchains
+on:
+  workflow_dispatch:
+    inputs:
+      revision:
+        description: New ci-tools-native-* prerelease revision
+        required: true
+        type: string
+permissions:
+  contents: write
+concurrency:
+  group: prepare-native-${{ inputs.revision }}
+  cancel-in-progress: false
+jobs:
+  initialize:
+    if: github.repository == 'rux-lang/Rux' && github.ref == 'refs/heads/dev'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    steps:
+      - name: Create draft environment release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REVISION: ${{ inputs.revision }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          [[ "$REVISION" =~ ^ci-tools-native-[A-Za-z0-9._-]+$ ]] || exit 1
+          gh release create "$REVISION" --repo "$REPOSITORY" --target "$GITHUB_SHA" --draft --prerelease --latest=false --title "$REVISION" --notes 'Prepared CI toolchains; not a Rux product release.'
+  prepare:
+    needs: initialize
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-26.04
+            os: Linux
+            arch: x86_64
+          - runner: ubuntu-26.04-arm
+            os: Linux
+            arch: aarch64
+          - runner: macos-26-intel
+            os: macOS
+            arch: x86_64
+          - runner: macos-26
+            os: macOS
+            arch: aarch64
+          - runner: windows-2025
+            os: Windows
+            arch: x86_64
+          - runner: windows-11-arm
+            os: Windows
+            arch: aarch64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Prepare toolchain once
+        shell: pwsh
+        env:
+          TOOL_ARCH: ${{ matrix.arch }}
+        run: |
+          ./.github/Scripts/Install.ps1 -Tool BuildTools
+          if ($IsWindows) {
+            ./.github/Scripts/Install.ps1 -Tool WindowsLLVM -Arch $env:TOOL_ARCH
+            ./.github/Scripts/Install.ps1 -Tool Ccache
+          } elseif ($IsMacOS) {
+            ./.github/Scripts/Install.ps1 -Tool MacOSLLVM
+          } else {
+            ./.github/Scripts/Install.ps1 -Tool LinuxLLVM
+          }
+      - name: Package and upload draft bundle
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REVISION: ${{ inputs.revision }}
+        run: |
+          ./.github/Scripts/Run.ps1 -Task NativeEnvironment package --revision $env:REVISION
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $assets = @(Get-ChildItem BuildCache/environment-output -File | ForEach-Object FullName)
+          gh release upload $env:REVISION --repo $env:GITHUB_REPOSITORY @assets
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+  validate:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-26.04, ubuntu-26.04-arm, macos-26-intel, macos-26, windows-2025, windows-11-arm]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Restore on a clean runner and verify
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REVISION: ${{ inputs.revision }}
+        run: ./.github/Scripts/Run.ps1 -Task ValidateNative --revision $env:REVISION
+  publish:
+    needs: validate
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    steps:
+      - name: Publish the validated toolchain set
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REVISION: ${{ inputs.revision }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          gh release download "$REVISION" --repo "$REPOSITORY" --pattern '*-build-*.json' --dir manifests
+          python3 - <<'PYTHON'
+          import json
+          from pathlib import Path
+          environments = {}
+          for path in Path('manifests').glob('*.json'):
+              candidate = json.loads(path.read_text())
+              assert candidate['validated'] is True
+              environments.update(candidate['environments'])
+          assert len(environments) == 6
+          Path('candidate.json').write_text(json.dumps({'validated': True, 'environments': environments}, indent=2) + '\n')
+          PYTHON
+          gh release upload "$REVISION" candidate.json --repo "$REPOSITORY"
+          gh release edit "$REVISION" --repo "$REPOSITORY" --draft=false --prerelease --latest=false

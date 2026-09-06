@@ -217,6 +217,8 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 
 ### Changed
 
+- **CI/CD**: Restore cached native toolchains and prepare validated FreeBSD images outside push/PR jobs; ordinary FreeBSD CI no longer builds CMake from source. Split architecture dependencies and clang-tidy analysis to reduce waiting, preserve compiler caches before tests, and consolidate CI script entry points. Prepared images require initial publication and manifest promotion.
+
 #### Language
 
 - Primitive associated APIs now come from explicit declarations: import `Core::int8` before using `int8::Min`. Core declares primitive constants with `intrinsic` bindings; another package can supply those declarations. Scalar types, native slices and ranges, and inferred literals remain usable without Core. Finite constants are ordinary source expressions; only floating-point Infinity and NaN retain intrinsic values. Conditional compilation resolves actual declarations and imports without privileged package names or manifest identities. This is a source-breaking import migration.

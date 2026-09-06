@@ -1,13 +1,16 @@
 # Build output
 Bin/
-Build*/
-!Compiler/BuildInfo/
+/Build*/
 Temp/
 cmake-build-*/
 
 # CMake
 CMakeUserPresets.json
 compile_commands.json
+
+# Python
+__pycache__/
+*.pyc
 
 # IDE / editor
 .idea/

@@ -87,7 +87,7 @@ The command covers `Compiler/`, maintained C++ unit-test code, and every Rux pac
 
 ## Reporting Bugs
 
-Open a [bug report](https://github.com/rux-lang/Rux/issues/new?template=bug_report.yml) and fill in the form, which asks for:
+Open a [bug report](https://github.com/rux-lang/Rux/issues/new?template=BugReport.yml) and fill in the form, which asks for:
 
 - Rux version / commit hash (`rux version`)
 - A minimal reproducer (source file or snippet)

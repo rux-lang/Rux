@@ -1,0 +1,44 @@
+name: FreeBSD image phase
+on:
+  workflow_call:
+    inputs:
+      arch:
+        required: true
+        type: string
+      revision:
+        required: true
+        type: string
+      phase:
+        required: true
+        type: string
+permissions:
+  contents: write
+jobs:
+  phase:
+    if: github.repository == 'rux-lang/Rux' && github.ref == 'refs/heads/dev'
+    runs-on: ${{ inputs.arch == 'aarch64' && 'ubuntu-24.04' || 'ubuntu-26.04' }}
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Install host virtualization tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends qemu-system-x86 qemu-system-arm qemu-efi-aarch64 zstd rsync
+          sudo chmod a+rw /dev/kvm 2>/dev/null || true
+      - name: Prepare or resume the image
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IMAGE_ARCH: ${{ inputs.arch }}
+          IMAGE_REVISION: ${{ inputs.revision }}
+          IMAGE_PHASE: ${{ inputs.phase }}
+        run: sh .github/Scripts/Run.sh prepare-freebsd --arch "$IMAGE_ARCH" --revision "$IMAGE_REVISION" --phase "$IMAGE_PHASE"
+      - name: Preserve failure logs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: image-logs-${{ inputs.arch }}-${{ inputs.phase }}-${{ github.job }}
+          path: ${{ runner.temp }}/image-factory/**/*.log
+          retention-days: 1
+          if-no-files-found: ignore

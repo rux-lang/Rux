@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "llvm": "23.1.0",
+  "cmake": "4.4.3",
+  "ninja": "1.13.2",
+  "freebsd": "15.1",
+  "linux": "26.04",
+  "macos": "26",
+  "ccache_maxsize": "768M",
+  "test_jobs_max": 4,
+  "freebsd_builder": "2.2.6"
+}

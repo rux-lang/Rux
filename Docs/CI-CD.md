@@ -92,7 +92,7 @@ stages.
    - Both architecture build jobs run the source-tree policies, C++ and Rux format checks, and C++ unit tests. Both test jobs run workspace check, lint, and the complete `rux test --release` suite.
    - The AArch64 test job additionally runs the freestanding, libc fixed/variadic, assertion/panic, BSD syscall, and shared-library fixtures directly.
    - A separate x86-64 VM downloads the x86-64 compiler and creates a target-only `freebsd-aarch64` payload. A fresh AArch64 VM installs no compiler, verifies the payload manifest, hashes, modes, and ELF identity, then launches it directly.
-   - The final `FreeBSD acceptance` job uses `if: always()` and checks both dependency results explicitly. A failed or skipped native matrix or transferred runtime therefore produces one stable failing check for branch protection.
+   - The final `FreeBSD acceptance` job uses `if: always()` and checks both native architectures and the transferred-runtime dependency explicitly. A failed or skipped native matrix or transferred runtime therefore produces one stable failing check for branch protection.
 
 No cross job installs a target compiler, assembler, linker, archiver, or signer: Rux encodes, links, archives, and signs the target formats itself. Linux and Windows treat Mach-O as build-only foreign output. The Apple Silicon macOS job can execute `macos-aarch64` output directly, including when the compiler process runs under Rosetta. Native Windows, macOS, and FreeBSD AArch64 jobs run their complete language/package suites and platform fixtures. FreeBSD additionally requires transferred x86-64-compiler acceptance. The release workflow repeats these native acceptance sets and makes FreeBSD transferred acceptance a direct dependency of publication.
 
@@ -100,10 +100,10 @@ No cross job installs a target compiler, assembler, linker, archiver, or signer:
 
 The native-runner workflows differ only in how the compiler is obtained; the emulated ones differ in _where the whole job runs_:
 
-- **Ubuntu** — installs Clang 23 from `apt.llvm.org` and builds with `clang++-23` on `ubuntu-26.04` (x86-64) and `ubuntu-26.04-arm` (AArch64). Clang is the host C++ compiler that builds `rux`, and nothing else: the AArch64 test and cross jobs run the compiler's own back end.
-- **Windows** — neither image clears the Clang 23.1 floor (`windows-2025` preinstalls Clang 20, and `windows-11-arm` only has the Clang 19 bundled with Visual Studio), so the workflow installs the upstream llvm.org release for the host architecture: the matching Windows MSVC archive on x86-64 and ARM64, verified against the pinned SHA-256 in `.github/scripts/Install-Llvm.ps1` and unpacked to `C:\LLVM`. Before native builds, `.github/scripts/Enter-VsDevEnv.ps1` locates Visual Studio with `vswhere` and imports the matching x86-64 or ARM64 toolset for the Windows SDK and CRT; because that also puts the Visual Studio Clang on `PATH`, `CMAKE_CXX_COMPILER` is given the absolute path to the installed one, along with the explicit MSVC target triple. The cross job needs neither setup step: it downloads the already-built x86-64 compiler and relies on Windows-on-ARM only to run that compiler.
-- **macOS** — Apple Clang lags upstream and lacks full C++26 support, so the workflow installs LLVM `llvm@23` from Homebrew and points `CMAKE_CXX_COMPILER` at the Homebrew `clang++`. `llvm@23` is only an alias of the current `llvm` formula until LLVM 24 gives it a versioned formula of its own, and a runner image's formula snapshot can predate the LLVM 23 bump, so the install step runs `brew update` first and then verifies that the installed `clang++` reports major version 23. The `macos-26` Apple Silicon image is the deployment baseline and native acceptance environment; the cross job uses its built-in Rosetta support only to run the x86-64 compiler, never to run the generated ARM64 programs.
-- **FreeBSD** — GitHub has no native FreeBSD runner, so each job boots an x86-64 or AArch64 FreeBSD 15.1 QEMU VM via `vmactions/freebsd-vm` on an Ubuntu host. Because Build and Test are separate jobs, each boots a _fresh_ VM; the Test VM installs the Clang runtime libraries needed by the prebuilt binary. Transferred acceptance uses distinct x86-64 producer and AArch64 consumer VMs, and only the producer installs a compiler runtime. The x86-64 VM is KVM-accelerated, but the AArch64 one is fully emulated and roughly an order of magnitude slower, so every VM is given the host's four cores and the AArch64 job timeouts are sized for emulation rather than native speed. The host image also supplies QEMU and the AArch64 guest firmware, and the action's own release matrix boots the emulated FreeBSD 15.1 AArch64 guest only on `ubuntu-24.04`: on `ubuntu-26.04` (QEMU 10.2, EDK2 2025.11) the guest never brings up networking and the action gives up after two ten-minute boot attempts. The AArch64 build, test, and transferred-runtime jobs therefore run on `ubuntu-24.04`, while the KVM-accelerated x86-64 guests stay on `ubuntu-26.04`.
+- **Ubuntu** — restores cached or prepared Clang 23, bootstrapping from `apt.llvm.org` only on a cache miss and builds with `clang++-23` on `ubuntu-26.04` (x86-64) and `ubuntu-26.04-arm` (AArch64). Clang is the host C++ compiler that builds `rux`, and nothing else: the AArch64 test and cross jobs run the compiler's own back end.
+- **Windows** — neither image clears the Clang 23.1 floor (`windows-2025` preinstalls Clang 20, and `windows-11-arm` only has the Clang 19 bundled with Visual Studio), so the workflow restores the upstream llvm.org release for the host architecture: the matching Windows MSVC archive on x86-64 and ARM64, verified against the pinned SHA-256 in `.github/CI/Install/WindowsLLVM.ps1` and unpacked to `C:\LLVM`. Before native builds, `.github/Scripts/Install.ps1 -Tool VsEnvironment` locates Visual Studio with `vswhere` and imports the matching x86-64 or ARM64 toolset for the Windows SDK and CRT; because that also puts the Visual Studio Clang on `PATH`, `CMAKE_CXX_COMPILER` is given the absolute path to the installed one, along with the explicit MSVC target triple. The cross job needs neither setup step: it downloads the already-built x86-64 compiler and relies on Windows-on-ARM only to run that compiler.
+- **macOS** — Apple Clang lags upstream and lacks full C++26 support, so the workflow restores LLVM `llvm@23` prepared with Homebrew and points `CMAKE_CXX_COMPILER` at the Homebrew `clang++`. `llvm@23` is only an alias of the current `llvm` formula until LLVM 24 gives it a versioned formula of its own, and a runner image's formula snapshot can predate the LLVM 23 bump, so the bootstrap step runs `brew update` first and then verifies that the installed `clang++` reports major version 23. The `macos-26` Apple Silicon image is the deployment baseline and native acceptance environment; the cross job uses its built-in Rosetta support only to run the x86-64 compiler, never to run the generated ARM64 programs.
+- **FreeBSD** uses separate prepared FreeBSD 15.1 QEMU images for build, runtime, and transferred-artifact acceptance. GitHub has no native FreeBSD runner. The x86-64 guest requires KVM on Ubuntu 26.04; AArch64 remains emulated on Ubuntu 24.04 for compatible firmware. The prepared runtime image supplies Rux library dependencies, and the minimal transferred-artifact image contains no added compiler tools.
 
 ## Required Checks
 
@@ -150,7 +150,7 @@ On native FreeBSD AArch64, reproduce the ordinary and focused runtime paths with
 The Windows required check is the same flow, prefixed by the developer-environment step CI uses. From PowerShell at the repository root:
 
 ```powershell
-./.github/scripts/Enter-VsDevEnv.ps1 -Arch amd64   # arm64 on an AArch64 host
+./.github/Scripts/Install.ps1 -Tool VsEnvironment -Arch amd64   # arm64 on an AArch64 host
 
 cmake -S . -B Build -G Ninja `
   -DCMAKE_BUILD_TYPE=Release `
@@ -192,7 +192,7 @@ The Rosetta script requires a thin x86-64 compiler, but every emitted ARM64 imag
 ## Infrastructure Notes
 
 - **Runner images** — Linux uses `ubuntu-26.04` and `ubuntu-26.04-arm`; Windows uses `windows-2025` and `windows-11-arm`; macOS uses `macos-26-intel` and `macos-26`. FreeBSD boots its x86-64 guests in QEMU on an `ubuntu-26.04` host and its emulated AArch64 guests on `ubuntu-24.04`, the only host image the VM action validates for them. GitHub's `windows-11-arm` and `macos-26` runners are the normal AArch64 acceptance environments. Azure Windows 11 ARM64 and EC2 Mac are escalation-only options for interactive crash dumps, prolonged debugging, or demonstrated GitHub-runner instability; neither is an acceptance dependency. There are **no self-hosted runners** in the normal matrix.
-- **Workflow security** — validation jobs have read-only repository permissions and checkouts do not persist credentials. Only the release publishing job receives `contents: write`.
+- **Workflow security** — validation jobs have read-only repository permissions and checkouts do not persist credentials. Product release publishing and manually dispatched environment preparation receive `contents: write`; ordinary validation remains read-only.
 - **Tool versions** — CMake and Ninja are pinned centrally in each workflow so runner-image changes do not silently change the build toolchain.
 - **Architecture names** — prose and check labels use x86-64/AArch64; matrix values and artifact names use `x86_64`/`aarch64`. Runner, Visual Studio, and VM inputs retain the exact spellings required by those external tools.
 - **Artifacts** — intermediate binaries are architecture-labelled with `x86_64` or `aarch64` and retained for seven days. Release archives include `SHA256SUMS` for integrity verification. The macOS build jobs retry a failed binary upload once after a short pause: hosted macOS runners intermittently fail `CreateArtifact` with transient DNS errors (`ENOTFOUND`), and `actions/upload-artifact` has no built-in retry.
@@ -200,14 +200,78 @@ The Rosetta script requires a thin x86-64 compiler, but every emitted ARM64 imag
 
 ## Build Caches and Test Workers
 
-Native validation builds use `CMAKE_CXX_COMPILER_LAUNCHER=ccache`. Cache keys separate host OS (including FreeBSD VM release), architecture, Clang 23, runtime, and Release configuration; compiler-content checks prevent reuse across differing compiler builds. PCH is explicitly disabled in cache jobs and in the clang-tidy compilation database. Windows validation and release builds both use the pinned upstream archive from `Install-Llvm.ps1`; release builds do not rely on the runner's older Clang.
+Native validation builds use `CMAKE_CXX_COMPILER_LAUNCHER=ccache`. Cache keys separate host OS (including FreeBSD VM release), architecture, Clang 23, runtime, and Release configuration; compiler-content checks prevent reuse across differing compiler builds. PCH is explicitly disabled in cache jobs and in the clang-tidy compilation database. Windows validation and release builds both use the pinned upstream archive from `WindowsLLVM.ps1`; release builds do not rely on the runner's older Clang.
 
-In CI, CTest and `rux test --jobs N` use up to four available processors, which is every core of a hosted runner and of the FreeBSD VMs: the POSIX jobs share `Scripts/TestJobs.sh` and the PowerShell jobs use the same bound. The local entry points default to one worker per logical processor instead. Doctest source groups are disjoint and verified, fixture groups are resource-locked, and repository/installer checks run as ordinary CTest tests. Code Quality owns the architectural policy job. See the workflow guide's [build and test throughput](Workflow.md#build-and-test-throughput) section for local caches, PCH, ThinLTO, and how to measure a change.
+In CI, CTest and `rux test --jobs N` use up to four available processors, bounded by the CPU count reported by the runner or FreeBSD VM: the POSIX jobs share `Scripts/TestJobs.sh` and the PowerShell jobs use the same bound. The local entry points default to one worker per logical processor instead. Doctest source groups are disjoint and verified, fixture groups are resource-locked, and repository/installer checks run as ordinary CTest tests. Code Quality owns the architectural policy job. See the workflow guide's [build and test throughput](Workflow.md#build-and-test-throughput) section for local caches, PCH, ThinLTO, and how to measure a change.
 
 ### Build-tool versions
 
-Native runners install checksum-verified CMake 4.4.3 and Ninja 1.13.2 archives using
-`.github/scripts/Install-BuildTools.ps1`. FreeBSD uses the packaged Ninja (1.13.2+) and builds CMake 4.4.3 from
-checksum-verified upstream sources with `.github/scripts/Install-CMake-FreeBSD.sh`; the private installation is
-cached by FreeBSD release and architecture. Configuration requires CMake 4.4.3+, Ninja 1.13.2+, and upstream Clang
-23.1+. All Ubuntu workflow hosts and native Linux runners use `ubuntu-26.04` or `ubuntu-26.04-arm`.
+Native runners restore CMake 4.4.3 and Ninja 1.13.2 through `.github/Scripts/Install.ps1 -Tool BuildTools`.
+On a cache miss, the installer uses checksum-verified upstream binary archives. LLVM installations are restored
+from a tool cache or published native bundle; only bootstrap cache misses use apt/Homebrew or the Windows archive.
+Git comes from the hosted runner. FreeBSD consumer jobs require a published image containing the pinned tools;
+they never compile CMake or install guest packages. Before image promotion they fail with a preparation instruction.
+The source CMake installer is restricted to explicit environment preparation and local developer bootstrap.
+
+### Prepared environments and activation
+
+Keep preparation in this repository: tool recipes, validation, and consumers must evolve together. A CMake fork
+is unnecessary. `PrepareFreeBSD.yml` builds five FreeBSD 15.1 images: build and runtime images for x86-64/AArch64,
+and a minimal AArch64 image for transferred-artifact acceptance. Runtime images contain the actual shared-library
+closure of Rux. The minimal image does not install LLVM, CMake, Ninja, or Git. Every role is tested on a fresh boot.
+The upstream base image and its public bootstrap SSH key are checksum-pinned. SSH is bound to host loopback;
+these disposable CI images are not general-purpose server images.
+
+`PrepareNative.yml` builds six tool bundles for the standard Linux, Windows, and macOS runners on both architectures.
+A separate clean job restores each bundle and builds/tests Rux before publication. Full custom hosted Windows/macOS
+images are not necessary: bundles preserve the required tools while retaining GitHub's standard SDK/runtime images.
+Linux also uses a bundle; container/image changes should only replace it after matched measurements show a benefit.
+Host QEMU support may still require installation on Linux; prepared FreeBSD guests need no package setup.
+
+Preparation is manual on trusted `dev`, with `ci-tools-native-*` or `ci-tools-freebsd-*` revisions. It writes a draft
+prerelease, then publishes only after all validation succeeds. These tags do not trigger the `v*` product release
+workflow, and environment releases never become the latest product release. Nothing is published by a push or PR.
+FreeBSD CMake work is checkpointed across four two-hour build phases, so emulated AArch64 compilation can resume
+without losing completed objects. A failed preparation can resume its draft checkpoint using the same recipe;
+use a new revision when changing the recipe. The first preparation is intentionally expensive, once per tool update.
+
+The checked-in `.github/CI/Environments.lock.json` starts empty: no untested image is silently selected.
+Activation requires the following steps after the workflows are available on GitHub:
+
+1. Dispatch **Prepare FreeBSD Images** on `dev` with a new `ci-tools-freebsd-*` revision.
+2. Dispatch **Prepare Native Toolchains** on `dev` with a new `ci-tools-native-*` revision.
+3. Review the clean validation jobs, download each published `candidate.json` into a different directory under
+   `BuildCache/`, and promote each with `sh .github/Scripts/Run.sh environment promote --candidate PATH` or
+   `./.github/Scripts/Run.ps1 -Task Environment promote --candidate PATH`. Promotion verifies every asset checksum
+   before editing the lock; allow disk space for these downloads. Review the resulting lock diff.
+4. Include the promoted lock in the repository change and run all ordinary platform and release checks. Keep the
+   preceding environment release for rollback; reverting its lock entries selects the previous tools immediately.
+
+Standard hosted public-repository runners are used throughout, with no larger runners, paid image service, or
+self-hosted infrastructure. Keep the account's paid cache spending disabled and retain the default cache quota:
+eviction falls back to published tool assets. Compiler cache entries are bounded to 768 MiB per architecture;
+tool caches share the repository quota and may be evicted. Do not assume all caches stay warm.
+
+### Timing and worker selection
+
+The supplied baseline at commit `666152d` is Linux 8m43s, Windows 15m55s, macOS 23m08s, Code Quality 13m06s,
+and FreeBSD 4h00m14s (timeout). The failed FreeBSD AArch64 job never reached the Rux build: most time was spent
+configuring and compiling CMake. Prepared images remove that work from ordinary CI. Native compiler caches are
+saved before later test steps, and each architecture's test jobs depend only on its own build. Clang-tidy is split
+into three disjoint shards with an aggregate required check; source coverage is unchanged.
+
+`./.github/Scripts/Run.ps1 -Task Benchmark` or `sh .github/Scripts/Run.sh benchmark` is an optional developer
+measurement command against an existing build. It compares one, two, and four workers (bounded by CPU count),
+alternates sample order, and retains individual CTest and Rux timings under `BuildCache/worker-benchmark.json`.
+It is never run by push/PR jobs and does not select an optimum automatically. Keep up to four workers until
+repeated measurements on the actual CI hosts justify a different value; free runners do not imply serial is faster.
+Record cold and warm workflow durations separately after activation. No new elapsed-time claim is established by
+local syntax checks or by the preparation design alone.
+
+### Script layout
+
+Repository-owned directories and helper files under `.github` use PascalCase: `Actions/BuildTools`, `CI/Install`,
+`Scripts/Install.ps1`, `Verify.ps1`, and `Run.ps1`, with POSIX counterparts. Public scripts dispatch by purpose;
+private installers and image management live under `CI`. Preserve GitHub's special names (`workflows`, `action.yml`,
+`ISSUE_TEMPLATE`, `config.yml`, and community metadata). `macOS.yml` retains the platform spelling and its existing
+workflow URL. Command arguments and workflow job identifiers retain their established spelling.

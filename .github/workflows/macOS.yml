@@ -23,21 +23,9 @@ env:
   CCACHE_COMPILERCHECK: content
 
 jobs:
-  build:
-    name: Build (${{ matrix.label }})
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - arch: x86_64
-            label: x86-64
-            runner: macos-26-intel
-            artifact: rux-macos-x86_64
-          - arch: aarch64
-            label: AArch64
-            runner: macos-26
-            artifact: rux-macos-aarch64
-    runs-on: ${{ matrix.runner }}
+  build-x86_64:
+    name: Build (x86-64)
+    runs-on: macos-26-intel
     timeout-minutes: 30
     steps:
       - name: Checkout
@@ -45,61 +33,43 @@ jobs:
         with:
           persist-credentials: false
 
-      # macOS ships Apple Clang, which lags upstream and lacks full C++26
-      # support, so install LLVM Clang 23 from Homebrew to match Linux. The
-      # runner image ships with third-party taps Homebrew no longer trusts by
-      # default; nothing here uses them, so drop them rather than trusting
-      # them or silencing the check.
-      # The image also ships llvm@20. Unlinking it is not enough: Homebrew
-      # refuses to link a versioned formula while another version is
-      # installed at all, so `brew install llvm@23` annotated every run with
-      # a link warning. Nothing here uses llvm@20 and the runner is
-      # discarded after the job, so remove it outright; --ignore-dependencies
-      # keeps preinstalled formulae that name it from blocking the removal.
-      # Homebrew publishes the current LLVM release as the unversioned `llvm`
-      # formula; `llvm@23` is only an alias of it until LLVM 24 turns it into
-      # a versioned formula of its own. The runner image's formula snapshot
-      # can predate the 23.1.0 bump, and `brew install` does not refresh it,
-      # so update first; otherwise `llvm@23` is an unknown name. Then check
-      # the Clang that was installed, so a wrong major version fails here
-      # rather than at configuration time.
-      - name: Install Clang 23
-        run: |
-          brew untap aws/tap || true
-          if brew list --versions llvm@20 >/dev/null; then
-            brew uninstall --ignore-dependencies llvm@20
-          fi
-          brew update --quiet
-          brew install llvm@23 ccache
-          llvm_prefix="$(brew --prefix llvm@23)"
-          clang_version="$("$llvm_prefix/bin/clang++" --version | head -n 1)"
-          case "$clang_version" in
-            *'clang version 23.'*) echo "$clang_version" ;;
-            *) echo "::error::expected Homebrew Clang 23, found: $clang_version"; exit 1 ;;
-          esac
-          echo "$llvm_prefix/bin" >> "$GITHUB_PATH"
+      - name: Restore macOS LLVM
+        id: llvm
+        uses: ./.github/Actions/MacOSLLVM
 
-      - name: Install CMake and Ninja
+      - name: Restore CMake, Ninja, and ccache
+        uses: ./.github/Actions/BuildTools
+
+      - name: Identify compiler and SDK
+        id: environment
         shell: pwsh
-        run: ./.github/scripts/Install-BuildTools.ps1 -CMakeVersion '${{ env.CMAKE_VERSION }}' -NinjaVersion '${{ env.NINJA_VERSION }}'
+        run: ./.github/Scripts/Verify.ps1 -Check Environment -Compiler "${{ steps.llvm.outputs.compiler }}"
 
       - name: Restore C++ compilation cache
-        uses: actions/cache@v6
+        id: compilation-cache
+        uses: actions/cache/restore@v6
         with:
           path: BuildCache/ccache
-          key: ccache-macOS-${{ matrix.arch }}-clang23-libcxx-Release-pch-off-${{ github.sha }}
-          restore-keys: ccache-macOS-${{ matrix.arch }}-clang23-libcxx-Release-pch-off-
+          key: ccache-macOS-x86_64-clang23-libcxx-Release-pch-off-${{ steps.environment.outputs.identity }}-${{ github.sha }}
+          restore-keys: ccache-macOS-x86_64-clang23-libcxx-Release-pch-off-${{ steps.environment.outputs.identity }}-
 
       - name: Configure and build
         run: |
           cmake -S . -B Build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_CXX_COMPILER="$(brew --prefix llvm@23)/bin/clang++" \
+            -DCMAKE_CXX_COMPILER="${{ steps.llvm.outputs.compiler }}" \
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DRUX_USE_PCH=OFF \
             -DRUX_WERROR=ON \
             -DRUX_BUILD_TESTS=ON
           cmake --build Build --config Release --parallel
+
+      - name: Save compilation cache before tests
+        if: steps.compilation-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: BuildCache/ccache
+          key: ${{ steps.compilation-cache.outputs.cache-primary-key }}
 
       - name: Unit tests
         run: ctest --test-dir Build --output-on-failure -C Release --parallel "$(sh Scripts/TestJobs.sh)" --no-tests=error
@@ -109,7 +79,7 @@ jobs:
         continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ matrix.artifact }}
+          name: rux-macos-x86_64
           path: Bin/rux
           if-no-files-found: error
           retention-days: 7
@@ -126,28 +96,95 @@ jobs:
         if: steps.upload.outcome == 'failure'
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ matrix.artifact }}
+          name: rux-macos-x86_64
           path: Bin/rux
           if-no-files-found: error
           retention-days: 7
           overwrite: true
 
-  test:
-    name: Test (${{ matrix.label }})
-    needs: build
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - arch: x86_64
-            label: x86-64
-            runner: macos-26-intel
-            artifact: rux-macos-x86_64
-          - arch: aarch64
-            label: AArch64
-            runner: macos-26
-            artifact: rux-macos-aarch64
-    runs-on: ${{ matrix.runner }}
+  build-aarch64:
+    name: Build (AArch64)
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Restore macOS LLVM
+        id: llvm
+        uses: ./.github/Actions/MacOSLLVM
+
+      - name: Restore CMake, Ninja, and ccache
+        uses: ./.github/Actions/BuildTools
+
+      - name: Identify compiler and SDK
+        id: environment
+        shell: pwsh
+        run: ./.github/Scripts/Verify.ps1 -Check Environment -Compiler "${{ steps.llvm.outputs.compiler }}"
+
+      - name: Restore C++ compilation cache
+        id: compilation-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: BuildCache/ccache
+          key: ccache-macOS-aarch64-clang23-libcxx-Release-pch-off-${{ steps.environment.outputs.identity }}-${{ github.sha }}
+          restore-keys: ccache-macOS-aarch64-clang23-libcxx-Release-pch-off-${{ steps.environment.outputs.identity }}-
+
+      - name: Configure and build
+        run: |
+          cmake -S . -B Build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_COMPILER="${{ steps.llvm.outputs.compiler }}" \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DRUX_USE_PCH=OFF \
+            -DRUX_WERROR=ON \
+            -DRUX_BUILD_TESTS=ON
+          cmake --build Build --config Release --parallel
+
+      - name: Save compilation cache before tests
+        if: steps.compilation-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: BuildCache/ccache
+          key: ${{ steps.compilation-cache.outputs.cache-primary-key }}
+
+      - name: Unit tests
+        run: ctest --test-dir Build --output-on-failure -C Release --parallel "$(sh Scripts/TestJobs.sh)" --no-tests=error
+
+      - name: Upload binary artifact
+        id: upload
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: rux-macos-aarch64
+          path: Bin/rux
+          if-no-files-found: error
+          retention-days: 7
+
+      # Hosted macOS runners intermittently fail CreateArtifact with DNS
+      # errors (ENOTFOUND) and the action has no built-in retry, so pause
+      # for the blip to clear and try once more. Overwrite in case the
+      # first attempt created the artifact before failing.
+      - name: Wait before upload retry
+        if: steps.upload.outcome == 'failure'
+        run: sleep 15
+
+      - name: Upload binary artifact (retry)
+        if: steps.upload.outcome == 'failure'
+        uses: actions/upload-artifact@v7
+        with:
+          name: rux-macos-aarch64
+          path: Bin/rux
+          if-no-files-found: error
+          retention-days: 7
+          overwrite: true
+
+  test-x86_64:
+    name: Test (x86-64)
+    needs: build-x86_64
+    runs-on: macos-26-intel
     timeout-minutes: 10
     steps:
       - name: Checkout
@@ -158,7 +195,36 @@ jobs:
       - name: Download binary artifact
         uses: actions/download-artifact@v8
         with:
-          name: ${{ matrix.artifact }}
+          name: rux-macos-x86_64
+          path: Bin
+
+      # Restore the executable bit (artifacts don't preserve permissions).
+      - name: Make binary executable
+        run: chmod +x Bin/rux
+
+      - name: Verify Rux workspace
+        run: |
+          ./Bin/rux check
+          ./Bin/rux lint
+
+      - name: Run Rux tests
+        run: ./Bin/rux test --release --jobs "$(sh Scripts/TestJobs.sh)"
+
+  test-aarch64:
+    name: Test (AArch64)
+    needs: build-aarch64
+    runs-on: macos-26
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Download binary artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: rux-macos-aarch64
           path: Bin
 
       # Restore the executable bit (artifacts don't preserve permissions).
@@ -174,12 +240,11 @@ jobs:
         run: ./Bin/rux test --release --jobs "$(sh Scripts/TestJobs.sh)"
 
       - name: Run Apple Silicon native runtime fixtures
-        if: matrix.arch == 'aarch64'
         run: sh Tests/Native/MacOSAArch64/Verify.sh ./Bin/rux
 
   cross:
     name: Cross (x86-64 compiler, AArch64 target)
-    needs: build
+    needs: build-x86_64
     runs-on: macos-26
     timeout-minutes: 10
     steps:

@@ -1,0 +1,24 @@
+name: Cached macOS LLVM
+description: Restore the exact Homebrew dependency closure without updating Homebrew on cache hits.
+outputs:
+  compiler:
+    description: Absolute LLVM compiler path
+    value: ${{ steps.install.outputs.compiler }}
+runs:
+  using: composite
+  steps:
+    - uses: actions/cache/restore@v6
+      id: cache
+      with:
+        path: ${{ runner.temp }}/rux-macos-tools
+        key: llvm-v1-macOS26-${{ runner.arch }}-${{ hashFiles('.github/CI/Environments.lock.json', '.github/CI/Install/MacOS.sh') }}
+    - if: steps.cache.outputs.cache-hit != 'true'
+      uses: ./.github/Actions/NativeEnvironment
+    - shell: bash
+      id: install
+      run: sh .github/Scripts/Install.sh macos-llvm "$RUNNER_TEMP/rux-macos-tools"
+    - uses: actions/cache/save@v6
+      if: steps.cache.outputs.cache-hit != 'true'
+      with:
+        path: ${{ runner.temp }}/rux-macos-tools
+        key: ${{ steps.cache.outputs.cache-primary-key }}

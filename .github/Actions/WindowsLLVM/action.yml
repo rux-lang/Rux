@@ -1,0 +1,25 @@
+name: Cached Windows LLVM
+description: Install the pinned upstream LLVM only on a toolchain cache miss.
+inputs:
+  arch:
+    description: Host architecture
+    required: true
+runs:
+  using: composite
+  steps:
+    - uses: actions/cache/restore@v6
+      id: cache
+      with:
+        path: C:/LLVM
+        key: llvm-v1-Windows-${{ inputs.arch }}-${{ hashFiles('.github/CI/Environments.lock.json', '.github/CI/Install/WindowsLLVM.ps1', '.github/CI/Install/VerifiedDownload.ps1') }}
+    - if: steps.cache.outputs.cache-hit != 'true'
+      uses: ./.github/Actions/NativeEnvironment
+    - shell: pwsh
+      env:
+        TOOL_ARCH: ${{ inputs.arch }}
+      run: ./.github/Scripts/Install.ps1 -Tool WindowsLLVM -Arch $env:TOOL_ARCH
+    - uses: actions/cache/save@v6
+      if: steps.cache.outputs.cache-hit != 'true'
+      with:
+        path: C:/LLVM
+        key: ${{ steps.cache.outputs.cache-primary-key }}

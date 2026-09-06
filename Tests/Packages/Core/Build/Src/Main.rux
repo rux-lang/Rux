@@ -1,0 +1,36 @@
+import Core::{ Assert, #build, BuildMode, OptimizationMode, OutputKind };
+
+func Main() -> int {
+    // This code runs as a test build, so the flag the compiler sets for one is
+    // on. It is the single property of the build whose value is fixed no matter
+    // the target or the profile.
+    Assert(#build.isTest, "isTest");
+
+    // A test package is a binary, so it builds to an executable -- the exit code
+    // is the whole result.
+    Assert(#build.outputKind == OutputKind::Executable, "outputKind");
+
+    // Mode is one of exactly two values, and optimization one of exactly three.
+    Assert(#build.mode == BuildMode::Debug || #build.mode == BuildMode::Release, "mode");
+    Assert(#build.optimization == OptimizationMode::None
+        || #build.optimization == OptimizationMode::Size
+        || #build.optimization == OptimizationMode::Speed, "optimization");
+
+    // The timestamp is a real point in time, and the human-readable strings
+    // beside it are populated.
+    Assert(#build.timestamp > 0, "timestamp");
+    Assert(#build.profile.length > 0, "profile");
+    Assert(#build.date.length > 0, "date");
+    Assert(#build.time.length > 0, "time");
+
+    // The enum members carry the discriminants their definitions assign.
+    Assert(BuildMode::Debug as uint8 == 0, "BuildMode::Debug");
+    Assert(BuildMode::Release as uint8 == 1, "BuildMode::Release");
+    Assert(OptimizationMode::None as uint8 == 0, "OptimizationMode::None");
+    Assert(OptimizationMode::Size as uint8 == 1, "OptimizationMode::Size");
+    Assert(OptimizationMode::Speed as uint8 == 2, "OptimizationMode::Speed");
+    Assert(OutputKind::Executable as uint8 == 0, "OutputKind::Executable");
+    Assert(OutputKind::SharedLibrary as uint8 == 1, "OutputKind::SharedLibrary");
+    Assert(OutputKind::StaticLibrary as uint8 == 2, "OutputKind::StaticLibrary");
+    return 0;
+}

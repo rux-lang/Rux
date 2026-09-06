@@ -25,25 +25,9 @@ env:
   LLVM_ROOT: "C:/LLVM"
 
 jobs:
-  build:
-    name: Build (${{ matrix.label }})
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - arch: x86_64
-            label: x86-64
-            runner: windows-2025
-            vs_arch: amd64
-            compiler_target: x86_64-pc-windows-msvc
-            artifact: rux-windows-x86_64
-          - arch: aarch64
-            label: AArch64
-            runner: windows-11-arm
-            vs_arch: arm64
-            compiler_target: aarch64-pc-windows-msvc
-            artifact: rux-windows-aarch64
-    runs-on: ${{ matrix.runner }}
+  build-x86_64:
+    name: Build (x86-64)
+    runs-on: windows-2025
     timeout-minutes: 25
     steps:
       - name: Checkout
@@ -54,39 +38,41 @@ jobs:
       # Neither runner image satisfies the Clang 23.1 floor: windows-2025 ships
       # Clang 20 and windows-11-arm has only the Clang 19 bundled with Visual
       # Studio, so install the upstream release for the host architecture.
-      - name: Install Clang 23
-        shell: pwsh
-        run: |
-          ./.github/scripts/Install-Llvm.ps1 -Arch ${{ matrix.arch }} -Destination "${{ env.LLVM_ROOT }}"
+      - name: Restore Windows LLVM
+        uses: ./.github/Actions/WindowsLLVM
+        with:
+          arch: x86_64
 
-      - name: Install compilation cache
-        shell: pwsh
-        run: choco install ccache --yes --no-progress
 
-      - name: Install CMake and Ninja
-        shell: pwsh
-        run: ./.github/scripts/Install-BuildTools.ps1 -CMakeVersion '${{ env.CMAKE_VERSION }}' -NinjaVersion '${{ env.NINJA_VERSION }}'
+      - name: Restore CMake, Ninja, and ccache
+        uses: ./.github/Actions/BuildTools
 
       # Initialize the bundled Visual Studio environment so Clang can find
       # the Windows SDK, CRT headers, and import libraries.
+      - name: Identify compiler and SDK
+        id: environment
+        shell: pwsh
+        run: ./.github/Scripts/Verify.ps1 -Check Environment -Compiler "C:/LLVM/bin/clang++.exe" -VsArch amd64
+
       - name: Restore C++ compilation cache
-        uses: actions/cache@v6
+        id: compilation-cache
+        uses: actions/cache/restore@v6
         with:
           path: BuildCache/ccache
-          key: ccache-Windows-${{ matrix.arch }}-clang23-libcmt-Release-pch-off-${{ github.sha }}
-          restore-keys: ccache-Windows-${{ matrix.arch }}-clang23-libcmt-Release-pch-off-
+          key: ccache-Windows-x86_64-clang23-libcmt-Release-pch-off-${{ steps.environment.outputs.identity }}-${{ github.sha }}
+          restore-keys: ccache-Windows-x86_64-clang23-libcmt-Release-pch-off-${{ steps.environment.outputs.identity }}-
 
       - name: Configure and build
         shell: pwsh
         run: |
-          ./.github/scripts/Enter-VsDevEnv.ps1 -Arch ${{ matrix.vs_arch }}
+          ./.github/Scripts/Install.ps1 -Tool VsEnvironment -Arch amd64
 
           # An absolute path, because the developer environment above puts the
           # Visual Studio Clang on PATH ahead of the one installed here.
           cmake -S . -B Build -G Ninja `
             -DCMAKE_BUILD_TYPE=Release `
             -DCMAKE_CXX_COMPILER="${{ env.LLVM_ROOT }}/bin/clang++.exe" `
-            -DCMAKE_CXX_COMPILER_TARGET=${{ matrix.compiler_target }} `
+            -DCMAKE_CXX_COMPILER_TARGET=x86_64-pc-windows-msvc `
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache `
             -DRUX_USE_PCH=OFF `
             -DRUX_WERROR=ON `
@@ -94,38 +80,107 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cmake --build Build --config Release --parallel
 
+      - name: Save compilation cache before tests
+        if: steps.compilation-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: BuildCache/ccache
+          key: ${{ steps.compilation-cache.outputs.cache-primary-key }}
+
       - name: Unit tests
         shell: pwsh
         run: |
-          ./.github/scripts/Enter-VsDevEnv.ps1 -Arch ${{ matrix.vs_arch }}
+          ./.github/Scripts/Install.ps1 -Tool VsEnvironment -Arch amd64
           ctest --test-dir Build --output-on-failure -C Release --parallel ([Math]::Max(1, [Math]::Min(4, [Environment]::ProcessorCount))) --no-tests=error
 
       - name: Upload binary artifact
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ matrix.artifact }}
+          name: rux-windows-x86_64
           path: Bin/rux.exe
           if-no-files-found: error
           retention-days: 7
 
-  test:
-    name: Test (${{ matrix.label }})
-    needs: build
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - arch: x86_64
-            label: x86-64
-            runner: windows-2025
-            vs_arch: amd64
-            artifact: rux-windows-x86_64
-          - arch: aarch64
-            label: AArch64
-            runner: windows-11-arm
-            vs_arch: arm64
-            artifact: rux-windows-aarch64
-    runs-on: ${{ matrix.runner }}
+  build-aarch64:
+    name: Build (AArch64)
+    runs-on: windows-11-arm
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      # Neither runner image satisfies the Clang 23.1 floor: windows-2025 ships
+      # Clang 20 and windows-11-arm has only the Clang 19 bundled with Visual
+      # Studio, so install the upstream release for the host architecture.
+      - name: Restore Windows LLVM
+        uses: ./.github/Actions/WindowsLLVM
+        with:
+          arch: aarch64
+
+
+      - name: Restore CMake, Ninja, and ccache
+        uses: ./.github/Actions/BuildTools
+
+      # Initialize the bundled Visual Studio environment so Clang can find
+      # the Windows SDK, CRT headers, and import libraries.
+      - name: Identify compiler and SDK
+        id: environment
+        shell: pwsh
+        run: ./.github/Scripts/Verify.ps1 -Check Environment -Compiler "C:/LLVM/bin/clang++.exe" -VsArch arm64
+
+      - name: Restore C++ compilation cache
+        id: compilation-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: BuildCache/ccache
+          key: ccache-Windows-aarch64-clang23-libcmt-Release-pch-off-${{ steps.environment.outputs.identity }}-${{ github.sha }}
+          restore-keys: ccache-Windows-aarch64-clang23-libcmt-Release-pch-off-${{ steps.environment.outputs.identity }}-
+
+      - name: Configure and build
+        shell: pwsh
+        run: |
+          ./.github/Scripts/Install.ps1 -Tool VsEnvironment -Arch arm64
+
+          # An absolute path, because the developer environment above puts the
+          # Visual Studio Clang on PATH ahead of the one installed here.
+          cmake -S . -B Build -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_CXX_COMPILER="${{ env.LLVM_ROOT }}/bin/clang++.exe" `
+            -DCMAKE_CXX_COMPILER_TARGET=aarch64-pc-windows-msvc `
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache `
+            -DRUX_USE_PCH=OFF `
+            -DRUX_WERROR=ON `
+            -DRUX_BUILD_TESTS=ON
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cmake --build Build --config Release --parallel
+
+      - name: Save compilation cache before tests
+        if: steps.compilation-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: BuildCache/ccache
+          key: ${{ steps.compilation-cache.outputs.cache-primary-key }}
+
+      - name: Unit tests
+        shell: pwsh
+        run: |
+          ./.github/Scripts/Install.ps1 -Tool VsEnvironment -Arch arm64
+          ctest --test-dir Build --output-on-failure -C Release --parallel ([Math]::Max(1, [Math]::Min(4, [Environment]::ProcessorCount))) --no-tests=error
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: rux-windows-aarch64
+          path: Bin/rux.exe
+          if-no-files-found: error
+          retention-days: 7
+
+  test-x86_64:
+    name: Test (x86-64)
+    needs: build-x86_64
+    runs-on: windows-2025
     timeout-minutes: 10
     steps:
       - name: Checkout
@@ -136,13 +191,13 @@ jobs:
       - name: Download binary artifact
         uses: actions/download-artifact@v8
         with:
-          name: ${{ matrix.artifact }}
+          name: rux-windows-x86_64
           path: Bin
 
       - name: Verify Rux workspace
         shell: pwsh
         run: |
-          ./.github/scripts/Enter-VsDevEnv.ps1 -Arch ${{ matrix.vs_arch }}
+          ./.github/Scripts/Install.ps1 -Tool VsEnvironment -Arch amd64
           ./Bin/rux.exe check
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           ./Bin/rux.exe lint
@@ -150,11 +205,41 @@ jobs:
       - name: Run Rux tests
         shell: pwsh
         run: |
-          ./.github/scripts/Enter-VsDevEnv.ps1 -Arch ${{ matrix.vs_arch }}
+          ./.github/Scripts/Install.ps1 -Tool VsEnvironment -Arch amd64
+          ./Bin/rux.exe test --release --jobs ([Math]::Max(1, [Math]::Min(4, [Environment]::ProcessorCount)))
+
+  test-aarch64:
+    name: Test (AArch64)
+    needs: build-aarch64
+    runs-on: windows-11-arm
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Download binary artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: rux-windows-aarch64
+          path: Bin
+
+      - name: Verify Rux workspace
+        shell: pwsh
+        run: |
+          ./.github/Scripts/Install.ps1 -Tool VsEnvironment -Arch arm64
+          ./Bin/rux.exe check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./Bin/rux.exe lint
+
+      - name: Run Rux tests
+        shell: pwsh
+        run: |
+          ./.github/Scripts/Install.ps1 -Tool VsEnvironment -Arch arm64
           ./Bin/rux.exe test --release --jobs ([Math]::Max(1, [Math]::Min(4, [Environment]::ProcessorCount)))
 
       - name: Run Windows AArch64 native fixtures
-        if: matrix.arch == 'aarch64'
         shell: pwsh
         run: |
           ./Tests/Native/WindowsAArch64ExitCode/Verify.ps1 -Rux ./Bin/rux.exe
@@ -164,7 +249,7 @@ jobs:
 
   cross:
     name: Cross (x86-64 compiler, AArch64 target)
-    needs: build
+    needs: build-x86_64
     runs-on: windows-11-arm
     timeout-minutes: 15
     steps:

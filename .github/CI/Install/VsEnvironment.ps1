@@ -17,7 +17,7 @@
     (host and target ARM64).
 
 .EXAMPLE
-    ./.github/scripts/Enter-VsDevEnv.ps1 -Arch arm64
+    ./.github/CI/Install/VsEnvironment.ps1 -Arch arm64
 #>
 [CmdletBinding()]
 param(

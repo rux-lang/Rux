@@ -1,0 +1,25 @@
+{
+  "schema": 1,
+  "architectures": {
+    "x86_64": {
+      "image": {
+        "url": "https://github.com/anyvm-org/freebsd-builder/releases/download/v2.2.6/freebsd-15.1.qcow2.zst",
+        "sha256": "d3672e559df26cfae9fc3f0c10a3da7e9faa72193bd9d57b1dc4d750c38873d4"
+      },
+      "key": {
+        "url": "https://github.com/anyvm-org/freebsd-builder/releases/download/v2.2.6/freebsd-15.1-host.id_rsa",
+        "sha256": "d9a0c47702d9dd970fe50d2d199d6a5f315a3901f039a0bc9f075a9b90c97e86"
+      }
+    },
+    "aarch64": {
+      "image": {
+        "url": "https://github.com/anyvm-org/freebsd-builder/releases/download/v2.2.6/freebsd-15.1-aarch64.qcow2.zst",
+        "sha256": "5176591f37c247abd20e71097468751e7fc28333fc9b83658dcd7ce8406a16d7"
+      },
+      "key": {
+        "url": "https://github.com/anyvm-org/freebsd-builder/releases/download/v2.2.6/freebsd-15.1-aarch64-host.id_rsa",
+        "sha256": "51d6a4e1e8f7bfcd35a0137a726bf4b5f70e82c2940d4747f2215f0d30996ba5"
+      }
+    }
+  }
+}

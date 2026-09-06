@@ -18,7 +18,7 @@ Rux is a fast, compiled, strongly typed, multi-paradigm programming language. Th
 
 Debug builds preserve the unoptimized program structure, while Release builds use explicit, bounded HIR and LIR passes and remove unreachable private declarations before either native back end runs. Shared RCU module construction and a format-neutral link graph keep object and image behavior consistent across all eight targets.
 
-The platform badges cover native x86-64 and AArch64 builds and tests. The [CI/CD guide](Docs/CI-CD.md) documents the native, cross-compiler, transferred-artifact, and runtime acceptance paths in detail.
+The workflow badges show the default branch status. The platform badges cover native x86-64 and AArch64 builds and tests. The [CI/CD guide](Docs/CI-CD.md) documents the native, cross-compiler, transferred-artifact, and runtime acceptance paths in detail.
 
 > [!IMPORTANT]
 > Rux is under active, pre-1.0 development. Language features, compiler behavior, and package formats may change between minor releases. Check the [changelog](CHANGELOG.md) when upgrading.

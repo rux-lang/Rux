@@ -14,12 +14,12 @@ Rux currently requires Clang 23.1 or newer, CMake 4.4.3 or newer, Ninja 1.13.2 o
 sudo pkg install -y llvm23 cmake ninja git
 ```
 
-Clone Rux, build the pinned CMake 4.4.3 in a private directory when the package is older, and build the compiler:
+CI uses prepared images and never runs the source bootstrap below. Its preparation workflow also publishes a standalone CMake archive for each architecture; see [environment activation](../CI-CD.md#prepared-environments-and-activation). For a local machine without a suitable binary, clone Rux and explicitly bootstrap the pinned CMake in a private directory:
 
 ```sh
 git clone https://github.com/rux-lang/Rux.git
 cd Rux
-sh .github/scripts/Install-CMake-FreeBSD.sh BuildCache/CMake
+sh .github/Scripts/Install.sh freebsd-cmake-source BuildCache/CMake
 export PATH="$PWD/BuildCache/CMake/bin:$PATH"
 sh Run.sh build
 ```

@@ -8,6 +8,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+. "$PSScriptRoot/VerifiedDownload.ps1"
 
 $platform = if ($IsWindows) { 'Windows' } elseif ($IsLinux) { 'Linux' } elseif ($IsMacOS) { 'macOS' } else { throw 'Unsupported runner OS' }
 $architecture = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()
@@ -26,30 +27,35 @@ New-Item -ItemType Directory -Force -Path $Destination | Out-Null
 
 function Get-VerifiedArchive([string]$Url, [string]$Name, [string]$Checksum) {
     $path = Join-Path $Destination $Name
-    Invoke-WebRequest -Uri $Url -OutFile $path
-    if ((Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -ne $Checksum) {
-        throw "Checksum mismatch for $Name"
-    }
+    Get-VerifiedDownload -Url $Url -Path $path -Sha256 $Checksum
     return $path
 }
-$cmakeArchive = Get-VerifiedArchive "https://github.com/Kitware/CMake/releases/download/v$CMakeVersion/$($selection[0])" $selection[0] $selection[1]
-$ninjaArchive = Get-VerifiedArchive "https://github.com/ninja-build/ninja/releases/download/v$NinjaVersion/$($selection[2])" $selection[2] $selection[3]
 $cmakeRoot = Join-Path $Destination 'cmake'
 $ninjaBin = Join-Path $Destination 'ninja'
-New-Item -ItemType Directory -Force -Path $cmakeRoot, $ninjaBin | Out-Null
-if ($IsWindows) {
-    Expand-Archive -LiteralPath $cmakeArchive -DestinationPath $cmakeRoot -Force
-} else {
-    tar -xf $cmakeArchive -C $cmakeRoot
-    if ($LASTEXITCODE -ne 0) { throw 'CMake archive extraction failed' }
-}
-Expand-Archive -LiteralPath $ninjaArchive -DestinationPath $ninjaBin -Force
 $cmakeDirectory = $selection[0] -replace '\.(zip|tar\.gz)$', ''
 $cmakeBin = Join-Path $cmakeRoot "$cmakeDirectory/bin"
 if ($IsMacOS) { $cmakeBin = Join-Path $cmakeRoot "$cmakeDirectory/CMake.app/Contents/bin" }
-if (-not $IsWindows) {
-    chmod +x "$ninjaBin/ninja"
-    if ($LASTEXITCODE -ne 0) { throw 'Could not make Ninja executable' }
+$marker = Join-Path $Destination '.rux-build-tools-identity'
+$identity = "$platform-$architecture-$($selection -join '-')"
+$extension = if ($IsWindows) { '.exe' } else { '' }
+$ready = (Test-Path -LiteralPath $marker) -and (Get-Content -LiteralPath $marker -Raw).Trim() -eq $identity -and
+    (Test-Path -LiteralPath "$cmakeBin/cmake$extension") -and (Test-Path -LiteralPath "$ninjaBin/ninja$extension")
+if (-not $ready) {
+    $cmakeArchive = Get-VerifiedArchive "https://github.com/Kitware/CMake/releases/download/v$CMakeVersion/$($selection[0])" $selection[0] $selection[1]
+    $ninjaArchive = Get-VerifiedArchive "https://github.com/ninja-build/ninja/releases/download/v$NinjaVersion/$($selection[2])" $selection[2] $selection[3]
+    New-Item -ItemType Directory -Force -Path $cmakeRoot, $ninjaBin | Out-Null
+    if ($IsWindows) {
+        Expand-Archive -LiteralPath $cmakeArchive -DestinationPath $cmakeRoot -Force
+    } else {
+        tar -xf $cmakeArchive -C $cmakeRoot
+        if ($LASTEXITCODE -ne 0) { throw 'CMake archive extraction failed' }
+    }
+    Expand-Archive -LiteralPath $ninjaArchive -DestinationPath $ninjaBin -Force
+    if (-not $IsWindows) {
+        chmod +x "$ninjaBin/ninja"
+        if ($LASTEXITCODE -ne 0) { throw 'Could not make Ninja executable' }
+    }
+    Remove-Item -LiteralPath $cmakeArchive, $ninjaArchive -Force
 }
 $env:PATH = "$cmakeBin$([System.IO.Path]::PathSeparator)$ninjaBin$([System.IO.Path]::PathSeparator)$env:PATH"
 cmake --version
@@ -59,3 +65,5 @@ if ($LASTEXITCODE -ne 0) { throw 'Ninja installation failed' }
 if ($env:GITHUB_PATH) {
     [System.IO.File]::AppendAllText($env:GITHUB_PATH, "$cmakeBin`n$ninjaBin`n", [System.Text.UTF8Encoding]::new($false))
 }
+
+Set-Content -LiteralPath $marker -Value $identity -Encoding utf8NoBOM

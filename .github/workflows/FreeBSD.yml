@@ -20,27 +20,13 @@ permissions:
 # acceptance adds a third boundary: an x86-64 VM produces a target-only payload
 # which a fresh AArch64 VM validates and launches without installing a compiler.
 jobs:
-  build:
-    name: Build (${{ matrix.label }})
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - arch: x86_64
-            label: x86-64
-            vm_arch: x86_64
-            host: ubuntu-26.04
-            artifact: rux-freebsd-x86_64
-          - arch: aarch64
-            label: AArch64
-            vm_arch: aarch64
-            host: ubuntu-24.04
-            artifact: rux-freebsd-aarch64
+  build-x86_64:
+    name: Build (x86-64)
     # The host image supplies QEMU and the AArch64 guest firmware. The action's
     # own release matrix boots the emulated FreeBSD 15.1 AArch64 guest only on
     # ubuntu-24.04; on ubuntu-26.04 (QEMU 10.2, EDK2 2025.11) the guest never
     # brings up networking and the action gives up after two boot attempts.
-    runs-on: ${{ matrix.host }}
+    runs-on: ubuntu-26.04
     # The AArch64 VM is fully emulated, so compiling the compiler and complete
     # unit suite takes more than the default two-and-a-half-hour allowance.
     timeout-minutes: 240
@@ -51,33 +37,22 @@ jobs:
           persist-credentials: false
 
       - name: Restore C++ compilation cache
-        uses: actions/cache@v6
+        id: compilation-cache
+        uses: actions/cache/restore@v6
         with:
-          path: |
-            BuildCache/ccache
-            BuildCache/CMake
-          key: ccache-FreeBSD15.1-cmake4.4.3-${{ matrix.arch }}-clang23-libcxx-Release-pch-off-${{ github.sha }}
-          restore-keys: ccache-FreeBSD15.1-cmake4.4.3-${{ matrix.arch }}-clang23-libcxx-Release-pch-off-
+          path: BuildCache/ccache
+          key: ccache-FreeBSD15.1-cmake4.4.3-x86_64-clang23-libcxx-Release-pch-off-${{ hashFiles('.github/CI/Environments.lock.json') }}-${{ github.sha }}
+          restore-keys: ccache-FreeBSD15.1-cmake4.4.3-x86_64-clang23-libcxx-Release-pch-off-${{ hashFiles('.github/CI/Environments.lock.json') }}-
 
       - name: Build in FreeBSD VM
-        uses: vmactions/freebsd-vm@v1
+        uses: ./.github/Actions/FreeBSD
         with:
-          release: "15.1"
-          arch: ${{ matrix.vm_arch }}
-          usesh: true
-          # Match the Ubuntu host so the emulated build compiles in parallel.
-          cpu: 4
-          mem: 8192
-          # Cache the prepared VM image so the LLVM and build-tool packages do
-          # not need to be downloaded on every workflow run.
-          cache-after-prepare: true
-          prepare: |
-            set -e
-            pkg install -y llvm23 cmake-core ninja ccache
+          arch: x86_64
+          role: build
           run: |
             set -e
-            sh .github/scripts/Install-CMake-FreeBSD.sh BuildCache/CMake
-            export PATH="$PWD/BuildCache/CMake/bin:$PATH"
+            cmake_bin=$(sh .github/Scripts/Verify.sh freebsd-cmake)
+            export PATH="$cmake_bin:$PATH"
             export CCACHE_DIR="$PWD/BuildCache/ccache" CCACHE_MAXSIZE=768M CCACHE_COMPILERCHECK=content
             cmake --version
             cmake -S . -B Build -G Ninja \
@@ -91,34 +66,88 @@ jobs:
             sh Run.sh format --check --rux-executable ./Bin/rux
             ctest --test-dir Build --output-on-failure -C Release --parallel "$(sh Scripts/TestJobs.sh)" --no-tests=error
 
+      - name: Save C++ compilation cache
+        if: ${{ always() && !cancelled() && steps.compilation-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v6
+        with:
+          path: BuildCache/ccache
+          key: ${{ steps.compilation-cache.outputs.cache-primary-key }}
+
       - name: Upload binary artifact
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ matrix.artifact }}
+          name: rux-freebsd-x86_64
           path: Bin/rux
           if-no-files-found: error
           retention-days: 7
 
-  test:
-    name: Test (${{ matrix.label }})
-    needs: build
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - arch: x86_64
-            label: x86-64
-            vm_arch: x86_64
-            host: ubuntu-26.04
-            artifact: rux-freebsd-x86_64
-          - arch: aarch64
-            label: AArch64
-            vm_arch: aarch64
-            host: ubuntu-24.04
-            artifact: rux-freebsd-aarch64
+  build-aarch64:
+    name: Build (AArch64)
+    # The host image supplies QEMU and the AArch64 guest firmware. The action's
+    # own release matrix boots the emulated FreeBSD 15.1 AArch64 guest only on
+    # ubuntu-24.04; on ubuntu-26.04 (QEMU 10.2, EDK2 2025.11) the guest never
+    # brings up networking and the action gives up after two boot attempts.
+    runs-on: ubuntu-24.04
+    # The AArch64 VM is fully emulated, so compiling the compiler and complete
+    # unit suite takes more than the default two-and-a-half-hour allowance.
+    timeout-minutes: 240
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Restore C++ compilation cache
+        id: compilation-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: BuildCache/ccache
+          key: ccache-FreeBSD15.1-cmake4.4.3-aarch64-clang23-libcxx-Release-pch-off-${{ hashFiles('.github/CI/Environments.lock.json') }}-${{ github.sha }}
+          restore-keys: ccache-FreeBSD15.1-cmake4.4.3-aarch64-clang23-libcxx-Release-pch-off-${{ hashFiles('.github/CI/Environments.lock.json') }}-
+
+      - name: Build in FreeBSD VM
+        uses: ./.github/Actions/FreeBSD
+        with:
+          arch: aarch64
+          role: build
+          run: |
+            set -e
+            cmake_bin=$(sh .github/Scripts/Verify.sh freebsd-cmake)
+            export PATH="$cmake_bin:$PATH"
+            export CCACHE_DIR="$PWD/BuildCache/ccache" CCACHE_MAXSIZE=768M CCACHE_COMPILERCHECK=content
+            cmake --version
+            cmake -S . -B Build -G Ninja \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_CXX_COMPILER=clang++23 \
+              -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+              -DRUX_USE_PCH=OFF \
+              -DRUX_WERROR=ON \
+              -DRUX_BUILD_TESTS=ON
+            cmake --build Build --config Release --parallel
+            sh Run.sh format --check --rux-executable ./Bin/rux
+            ctest --test-dir Build --output-on-failure -C Release --parallel "$(sh Scripts/TestJobs.sh)" --no-tests=error
+
+      - name: Save C++ compilation cache
+        if: ${{ always() && !cancelled() && steps.compilation-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v6
+        with:
+          path: BuildCache/ccache
+          key: ${{ steps.compilation-cache.outputs.cache-primary-key }}
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: rux-freebsd-aarch64
+          path: Bin/rux
+          if-no-files-found: error
+          retention-days: 7
+
+  test-x86_64:
+    name: Test (x86-64)
+    needs: build-x86_64
     # Same host rule as the build matrix: only ubuntu-24.04 boots the emulated
     # AArch64 guest.
-    runs-on: ${{ matrix.host }}
+    runs-on: ubuntu-26.04
     timeout-minutes: 60
     steps:
       - name: Checkout
@@ -129,35 +158,61 @@ jobs:
       - name: Download binary artifact
         uses: actions/download-artifact@v8
         with:
-          name: ${{ matrix.artifact }}
+          name: rux-freebsd-x86_64
           path: Bin
 
       - name: Test in FreeBSD VM
-        uses: vmactions/freebsd-vm@v1
+        uses: ./.github/Actions/FreeBSD
         with:
-          release: "15.1"
-          arch: ${{ matrix.vm_arch }}
-          usesh: true
-          cpu: 4
-          mem: 8192
-          # The prebuilt binary needs the Clang runtime libraries. The
-          # workspace and test manifests resolve first-party packages
-          # locally, so no registry or Git client is needed.
-          prepare: |
-            pkg install -y llvm23
+          arch: x86_64
+          role: runtime
           run: |
             set -e
             chmod +x Bin/rux
             ./Bin/rux check
             ./Bin/rux lint
             ./Bin/rux test --release --jobs "$(sh Scripts/TestJobs.sh)"
-            if [ "${{ matrix.arch }}" = aarch64 ]; then
+            if [ "x86_64" = aarch64 ]; then
+              sh Tests/Native/FreeBSDAArch64/Verify.sh ./Bin/rux
+            fi
+
+  test-aarch64:
+    name: Test (AArch64)
+    needs: build-aarch64
+    # Same host rule as the build matrix: only ubuntu-24.04 boots the emulated
+    # AArch64 guest.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Download binary artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: rux-freebsd-aarch64
+          path: Bin
+
+      - name: Test in FreeBSD VM
+        uses: ./.github/Actions/FreeBSD
+        with:
+          arch: aarch64
+          role: runtime
+          run: |
+            set -e
+            chmod +x Bin/rux
+            ./Bin/rux check
+            ./Bin/rux lint
+            ./Bin/rux test --release --jobs "$(sh Scripts/TestJobs.sh)"
+            if [ "aarch64" = aarch64 ]; then
               sh Tests/Native/FreeBSDAArch64/Verify.sh ./Bin/rux
             fi
 
   cross-build:
     name: Cross payload (x86-64 compiler)
-    needs: build
+    needs: build-x86_64
     runs-on: ubuntu-26.04
     timeout-minutes: 30
     steps:
@@ -173,13 +228,10 @@ jobs:
           path: Bin
 
       - name: Cross-build payload in FreeBSD x86-64 VM
-        uses: vmactions/freebsd-vm@v1
+        uses: ./.github/Actions/FreeBSD
         with:
-          release: "15.1"
           arch: x86_64
-          usesh: true
-          prepare: |
-            pkg install -y llvm23
+          role: runtime
           run: |
             set -e
             chmod +x Bin/rux
@@ -212,13 +264,10 @@ jobs:
           path: FreeBSDAArch64Payload
 
       - name: Run transferred bytes in fresh FreeBSD AArch64 VM
-        uses: vmactions/freebsd-vm@v1
+        uses: ./.github/Actions/FreeBSD
         with:
-          release: "15.1"
           arch: aarch64
-          usesh: true
-          cpu: 4
-          mem: 8192
+          role: minimal
           run: |
             set -e
             sh Tests/Native/FreeBSDAArch64/VerifyTransfer.sh FreeBSDAArch64Payload
@@ -226,17 +275,18 @@ jobs:
   acceptance:
     name: FreeBSD acceptance
     if: ${{ always() }}
-    needs: [ test, cross-runtime ]
+    needs: [ test-x86_64, test-aarch64, cross-runtime ]
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
       - name: Require native and transferred acceptance
         env:
-          NATIVE_RESULT: ${{ needs.test.result }}
+          NATIVE_X64: ${{ needs.test-x86_64.result }}
+          NATIVE_ARM64: ${{ needs.test-aarch64.result }}
           CROSS_RESULT: ${{ needs.cross-runtime.result }}
         run: |
-          if [ "$NATIVE_RESULT" != success ] || [ "$CROSS_RESULT" != success ]; then
-            echo "::error::FreeBSD acceptance failed: native=$NATIVE_RESULT transferred=$CROSS_RESULT"
+          if [ "$NATIVE_X64" != success ] || [ "$NATIVE_ARM64" != success ] || [ "$CROSS_RESULT" != success ]; then
+            echo "::error::FreeBSD acceptance failed: x86_64=$NATIVE_X64 aarch64=$NATIVE_ARM64 transferred=$CROSS_RESULT"
             exit 1
           fi
           echo "FreeBSD native and transferred acceptance passed."

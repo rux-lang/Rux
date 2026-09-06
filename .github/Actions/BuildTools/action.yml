@@ -1,0 +1,19 @@
+name: Cached build tools
+description: Restore verified CMake and Ninja installations, saving before compilation starts.
+runs:
+  using: composite
+  steps:
+    - uses: actions/cache/restore@v6
+      id: cache
+      with:
+        path: ${{ runner.temp }}/rux-build-tools
+        key: tools-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/CI/Environments.lock.json', '.github/CI/Install/BuildTools.ps1', '.github/CI/Install/Ccache.ps1', '.github/CI/Install/VerifiedDownload.ps1') }}
+    - shell: pwsh
+      run: |
+        ./.github/Scripts/Install.ps1 -Tool BuildTools
+        if ($IsWindows) { ./.github/Scripts/Install.ps1 -Tool Ccache }
+    - uses: actions/cache/save@v6
+      if: steps.cache.outputs.cache-hit != 'true'
+      with:
+        path: ${{ runner.temp }}/rux-build-tools
+        key: ${{ steps.cache.outputs.cache-primary-key }}

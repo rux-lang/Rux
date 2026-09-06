@@ -31,6 +31,8 @@ jobs:
           persist-credentials: false
       - name: Check component boundaries
         run: sh Run.sh policy
+      - name: Check CI environment helpers
+        run: sh .github/Scripts/Verify.sh infrastructure
 
   format:
     name: clang-format
@@ -43,20 +45,20 @@ jobs:
           persist-credentials: false
 
       # Match the LLVM major used by the build jobs so formatting is stable.
-      - name: Install clang-format 23
-        run: |
-          curl --proto '=https' --tlsv1.2 -fsSLo /tmp/llvm.sh https://apt.llvm.org/llvm.sh
-          chmod +x /tmp/llvm.sh
-          sudo /tmp/llvm.sh 23
-          sudo apt-get install -y clang-format-23
+      - name: Restore Linux LLVM
+        uses: ./.github/Actions/LinuxLLVM
 
       - name: Check formatting
         run: |
           find Compiler Tests/Unit \( -name '*.cpp' -o -name '*.h' \) -not -path '*ThirdParty*' -print0 \
             | xargs -0 clang-format-23 --dry-run -Werror
 
-  clang-tidy:
-    name: clang-tidy
+  tidy-shards:
+    name: clang-tidy shard (${{ matrix.shard }})
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2]
     runs-on: ubuntu-26.04
     timeout-minutes: 25
     steps:
@@ -65,16 +67,11 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install Clang 23
-        run: |
-          curl --proto '=https' --tlsv1.2 -fsSLo /tmp/llvm.sh https://apt.llvm.org/llvm.sh
-          chmod +x /tmp/llvm.sh
-          sudo /tmp/llvm.sh 23
-          sudo apt-get install -y clang-tidy-23
+      - name: Restore Linux LLVM
+        uses: ./.github/Actions/LinuxLLVM
 
-      - name: Install CMake and Ninja
-        shell: pwsh
-        run: ./.github/scripts/Install-BuildTools.ps1 -CMakeVersion '${{ env.CMAKE_VERSION }}' -NinjaVersion '${{ env.NINJA_VERSION }}'
+      - name: Restore CMake, Ninja, and ccache
+        uses: ./.github/Actions/BuildTools
 
       - name: Configure compilation database
         run: |
@@ -87,4 +84,16 @@ jobs:
             -DRUX_USE_PCH=OFF
 
       - name: Analyze C++ sources
-        run: run-clang-tidy-23 -quiet -j 4 -clang-tidy-binary clang-tidy-23 -config-file .clang-tidy -p Build
+        run: sh .github/Scripts/Run.sh tidy --index ${{ matrix.shard }}
+
+  clang-tidy:
+    name: clang-tidy
+    if: ${{ always() }}
+    needs: tidy-shards
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    steps:
+      - name: Require every analysis shard
+        env:
+          RESULT: ${{ needs.tidy-shards.result }}
+        run: test "$RESULT" = success
