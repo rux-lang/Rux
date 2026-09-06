@@ -12,9 +12,6 @@ namespace {
 // A stand-in intrinsics package so `import Core::{...}` resolves in these tests. The
 // fold resolves these declarations and their enum variants just like any other provider.
 constexpr std::string_view kCorePackageSource = R"(
-pub intrinsic struct Slice<T> { pub data: *T; pub length: uint; }
-pub intrinsic struct string8 { pub data: *char8; pub length: uint; }
-pub type string = string8;
 pub struct Target {}
 pub struct Build {}
 pub struct Compiler {}
@@ -35,8 +32,8 @@ pub intrinsic #build: Build;
 pub intrinsic #compiler: Compiler;
 pub intrinsic #source: Source;
 pub intrinsic #config: Config;
-pub intrinsic func #Error(message: Slice<char8>);
-pub intrinsic func #Warn(message: Slice<char8>);
+pub intrinsic func #Error(message: char8[..]);
+pub intrinsic func #Warn(message: char8[..]);
 pub enum OperatingSystem { FreeBSD, Linux, macOS, Windows }
 pub enum Architecture { AArch64, X86_64 }
 pub enum ApplicationBinaryInterface { AAPCS64, SystemV, WindowsX64 }

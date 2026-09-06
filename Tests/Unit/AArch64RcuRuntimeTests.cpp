@@ -22,13 +22,13 @@ namespace {
 // compiled as a package of one module with no dependencies, and `Core` is where
 // all three usually live.
 constexpr std::string_view kAssertIntrinsics = R"(
-        struct Slice<T> {
+        struct UserView<T> {
             data: *T;
             length: uint;
         }
 
-        intrinsic func Assert(condition: bool, message: string);
-        intrinsic func Panic(message: string);
+        intrinsic func Assert(condition: bool, message: char8[..]);
+        intrinsic func Panic(message: char8[..]);
 )";
 
 // The words a write to standard error takes once its buffer and length are in

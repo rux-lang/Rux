@@ -1,14 +1,4 @@
-// Declared exactly as Rux/Core declares it, so the fixture stands alone.
-intrinsic struct Slice<T> {
-    pub data: *T;
-    pub length: uint;
-}
-
-struct MutableSlice<T> {
-    pub data: *var T;
-    pub length: uint;
-}
-
+// View writability is independent of descriptor binding mutability.
 func Main() -> int {
     var values: int32[3] = [1, 2, 3];
 
@@ -20,16 +10,16 @@ func Main() -> int {
     writable[1] = 20;
 
     // And so is a slice that borrows them through a '*var T'.
-    var mutable = MutableSlice<int32> { data: @values[0], length: 3 };
-    mutable.data[2] = 30;
+    let mutable = values[..];
+    mutable[2] = 30;
 
     // A plain slice borrows them through a read-only '*T'. Declaring the slice
     // itself 'var' lets it be re-pointed, never rewritten, so this is rejected
     // however the binding was declared.
-    var borrowed = Slice<int32> { data: @values[0], length: 3 };
+    var borrowed: int32[..] = values[..];
     borrowed[0] = 40;
 
-    let fixed = Slice<int32> { data: @values[0], length: 3 };
+    let fixed: int32[..] = values[..];
     fixed[0] = 50;
 
     // Reading through either slice stays legal.

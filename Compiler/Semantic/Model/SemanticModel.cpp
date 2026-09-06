@@ -15,11 +15,6 @@ const Decl *SemanticModel::TryGetIntrinsicTypeBinding(const TypeExpr &type) cons
     return found == facts.intrinsicTypeBindings.end() ? nullptr : found->second;
 }
 
-const ResolvedIntrinsicMember *SemanticModel::TryGetIntrinsicMember(const FieldExpr &expression) const noexcept {
-    const auto found = facts.intrinsicMemberBindings.find(&expression);
-    return found == facts.intrinsicMemberBindings.end() ? nullptr : &found->second;
-}
-
 const ConstDecl *SemanticModel::TryGetAssociatedConstant(const Expr &expression) const noexcept {
     const auto found = facts.associatedConstants.find(&expression);
     return found == facts.associatedConstants.end() ? nullptr : found->second;

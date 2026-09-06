@@ -1,13 +1,12 @@
-// A string is a view over text that has already been validated, so the uses that could invalidate it, and the ones
-// the language has not defined yet, are all reported rather than silently allowed.
+// Literal code units remain read-only, and different encodings do not convert implicitly.
 func Main() {
     var text = c8"text";
     var wide = c16"text";
 
-    // A range could split one character's code units in half.
+    // Slicing code units is valid, even when a range could split an encoded scalar.
     let part = text[0..2];
 
-    // The view is read-only, through its members and through its code units alike.
+    // The descriptor can change; the literal code units remain read-only.
     text.length = 0;
     text[0] = c8'x';
 
@@ -18,10 +17,5 @@ func Main() {
     let same = text == c8"other";
 
     // The encodings are separate types, in either direction.
-    let narrowed: string8 = wide;
+    let narrowed: char8[..] = wide;
 }
-
-intrinsic struct string8 { pub data: *char8; pub length: uint; }
-intrinsic struct string16 { pub data: *char16; pub length: uint; }
-intrinsic struct string32 { pub data: *char32; pub length: uint; }
-type string = string8;

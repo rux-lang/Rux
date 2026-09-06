@@ -201,7 +201,7 @@ TEST_CASE("AST dumps name the indexing operators by the punctuation they are dec
 struct Vect { data: int[4]; }
 extend Vect {
     func [](self: &Vect, index: uint) -> int { return self.data[index]; }
-    func [](self: &Vect, span: Range<int>) -> Slice<int> { return self.data[span]; }
+    func [](self: &Vect, span: int..int) -> int[..] { return self.data[span]; }
     func []=(self: &var Vect, index: uint, value: int) { self.data[index] = value; }
 }
 )";
@@ -221,7 +221,7 @@ extend Vect {
     std::filesystem::remove(path);
 
     CHECK(output.contains("FuncDecl '[]' (self: &Vect, index: uint)"));
-    CHECK(output.contains("FuncDecl '[]' (self: &Vect, span: Range<int>)"));
+    CHECK(output.contains("FuncDecl '[]' (self: &Vect, span: int..int)"));
     CHECK(output.contains("FuncDecl '[]=' (self: &var Vect, index: uint, value: int)"));
 }
 

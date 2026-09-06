@@ -321,7 +321,7 @@ struct HirCoerceToInterfaceExpr : HirExpr {
     bool borrowed = false;
 };
 
-/// A fixed inline array viewed as a non-owning Slice<T>.
+/// A fixed inline array viewed as a non-owning T[..].
 struct HirArrayToSliceExpr : HirExpr {
     HirExprPtr value;
     TypeRef elementType;

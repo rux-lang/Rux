@@ -1,2 +1,2 @@
-30:13: error: cannot modify elements through read-only slice 'int32[..]'
-33:10: error: cannot modify elements through read-only slice 'int32[..]'
+20:13: error: cannot modify elements through read-only slice 'int32[..]'
+23:10: error: cannot modify elements through read-only slice 'int32[..]'

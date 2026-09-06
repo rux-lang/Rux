@@ -2,7 +2,6 @@
 #include "CodeGen/RuntimeFailure.h"
 #include "CodeGen/X86_64/RcuEmitter.h"
 #include "Driver/BuildTarget.h"
-#include "IntrinsicTestDeclarations.h"
 #include "Ir/Lir/Lir.h"
 #include "Lexer/Lexer.h"
 #include "Linker/Linker.h"
@@ -26,9 +25,9 @@
 using namespace Rux;
 
 namespace {
-constexpr std::string_view kRuntimePrelude = "intrinsic struct Slice<T> { pub data: *T; pub length: uint; }\n"
-                                             "intrinsic func Assert(condition: bool, message: string);\n"
-                                             "intrinsic func Panic(message: string);\n";
+constexpr std::string_view kRuntimePrelude = ""
+                                             "intrinsic func Assert(condition: bool, message: char8[..]);\n"
+                                             "intrinsic func Panic(message: char8[..]);\n";
 
 LirPackage CompileRuntimeFailures(const Target::OS os, const Target::Arch arch) {
     const auto triple = Target::TargetTriple::From(os, arch);
@@ -56,7 +55,7 @@ func Main() -> int {
     Assert(false, "");
     Panic("Помилка 🚨");
 }
-)" + std::string(Rux::Testing::StringDeclarations),
+)",
                 "Project/Src/Runtime.rux");
     auto lexed = lexer.Tokenize();
     CAPTURE(lexed.diagnostics.empty() ? std::string{} : lexed.diagnostics.front().message);
@@ -155,9 +154,9 @@ TEST_CASE("runtime failure lowering preserves qualified function, logical path, 
     CHECK_EQ(panic->sourceFunction, "Reporter::PanicNow");
     CHECK_EQ(assertion->sourceFile, "Src/Runtime.rux");
     CHECK_EQ(panic->sourceFile, "Src/Runtime.rux");
-    CHECK_EQ(assertion->sourceLine, 9);
+    CHECK_EQ(assertion->sourceLine, 8);
     CHECK_EQ(assertion->sourceColumn, 15);
-    CHECK_EQ(panic->sourceLine, 13);
+    CHECK_EQ(panic->sourceLine, 12);
     CHECK_EQ(panic->sourceColumn, 14);
 }
 
@@ -170,8 +169,8 @@ TEST_CASE("ELF, PE, and Mach-O images preserve runtime failure text on both back
             CHECK(ContainsText(bytes, "Assertion failed: "));
             CHECK(ContainsText(bytes, "Panic: "));
             CHECK(ContainsText(bytes, "Помилка 🚨"));
-            CHECK(ContainsText(bytes, "\n  at Main (Src/Runtime.rux:18:11)\n"));
-            CHECK(ContainsText(bytes, "\n  at Main (Src/Runtime.rux:19:10)\n"));
+            CHECK(ContainsText(bytes, "\n  at Main (Src/Runtime.rux:17:11)\n"));
+            CHECK(ContainsText(bytes, "\n  at Main (Src/Runtime.rux:18:10)\n"));
         }
     }
 }

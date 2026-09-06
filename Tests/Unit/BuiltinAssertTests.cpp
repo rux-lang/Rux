@@ -1,6 +1,5 @@
 #include "CodeGen/X86_64/AssemblyPrinter.h"
 #include "CodeGen/X86_64/RcuEmitter.h"
-#include "IntrinsicTestDeclarations.h"
 #include "Lexer/Lexer.h"
 #include "Lowering/AstToHir/AstToHir.h"
 #include "Lowering/HirToLir/HirToLir.h"
@@ -18,18 +17,14 @@ using namespace Rux;
 
 namespace {
 
-constexpr std::string_view SliceDecl = "intrinsic struct Slice<T> { pub data: *T; pub length: uint; }\n";
-
 constexpr std::string_view AssertIntrinsics = R"(
-    intrinsic func Assert(condition: bool, message: string);
+    intrinsic func Assert(condition: bool, message: char8[..]);
 
-    intrinsic func DebugAssert(condition: bool, message: string);
+    intrinsic func DebugAssert(condition: bool, message: char8[..]);
 )";
 
 LirPackage CompileToLir(const std::string &source, const bool debugAssertions) {
-    Lexer lexer(std::string(SliceDecl) + std::string(AssertIntrinsics) + source +
-                    std::string(Rux::Testing::StringDeclarations),
-                "test.rux");
+    Lexer lexer(std::string(AssertIntrinsics) + source, "test.rux");
     auto lexed = lexer.Tokenize();
     REQUIRE_FALSE(lexed.HasErrors());
 
@@ -52,7 +47,7 @@ LirPackage CompileToLir(const std::string &source, const bool debugAssertions) {
 }
 
 std::vector<SemanticDiagnostic> Analyze(const std::string &source) {
-    Lexer lexer(std::string(SliceDecl) + source + std::string(Rux::Testing::StringDeclarations), "test.rux");
+    Lexer lexer(source, "test.rux");
     auto lexed = lexer.Tokenize();
     REQUIRE_FALSE(lexed.HasErrors());
 
@@ -164,8 +159,8 @@ TEST_CASE("assertion intrinsics require declarations and enforce their signature
     }));
 
     const auto signatureDiagnostics = Analyze(R"(
-        intrinsic func Assert(condition: bool, message: string);
-        intrinsic func DebugAssert(condition: bool, message: string);
+        intrinsic func Assert(condition: bool, message: char8[..]);
+        intrinsic func DebugAssert(condition: bool, message: char8[..]);
 
         func Main() -> int {
             Assert("not bool", "condition");

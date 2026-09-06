@@ -506,8 +506,7 @@ func Do() -> int {
 
 TEST_CASE("a #Warn call leaves no runtime code behind") {
     auto parsed = ParseSource(R"(
-intrinsic struct Slice<T> { pub data: *T; pub length: uint; }
-intrinsic func #Warn(message: Slice<char8>);
+intrinsic func #Warn(message: char8[..]);
 
 func Do() {
     #Warn("compile-time only");
@@ -915,8 +914,7 @@ TEST_CASE("compile-time warning and error directives preserve the authored messa
 
 TEST_CASE("target and build intrinsics expose the full compile-time context") {
     auto parsed = ParseSource(R"(
-import Core::{ #target, #build, #compiler, OperatingSystem, Architecture, ApplicationBinaryInterface, Endianness,
-             DataModel, ObjectFormat, BuildMode, OptimizationMode, OutputKind };
+import Core::{ #target, #build, #compiler, OperatingSystem, Architecture, ApplicationBinaryInterface, Endianness, DataModel, ObjectFormat, BuildMode, OptimizationMode, OutputKind };
 
 func Selected() -> int {
     when #target.os == OperatingSystem::Windows &&

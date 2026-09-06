@@ -538,8 +538,8 @@ std::string AstToHirContext::NamedBaseTypeName(const TypeRef &type) {
     if ((type.kind == TypeRef::Kind::Pointer || type.kind == TypeRef::Kind::Reference) && !type.inner.empty()) {
         named = &type.inner[0];
     }
-    // A slice's method set is keyed on its full element-specific spelling, so `extend Slice<int>` stays distinct
-    // from `extend Slice<char8>` (see NamedBaseTypeName in the analyzer).
+    // A slice's method set is keyed on its full element-specific spelling, so `extend int[..]` stays distinct
+    // from `extend char8[..]` (see NamedBaseTypeName in the analyzer).
     if (named->IsSlice()) {
         return named->ToString();
     }

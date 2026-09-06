@@ -16,21 +16,6 @@ bool AnalysisContext::IsVisibleTypeSymbol(const Symbol &symbol) const {
     return imported != explicitTypeImports.end() && imported->second.contains(symbol.declaration);
 }
 
-bool AnalysisContext::RecordIntrinsicMember(const TypeRef &type, const FieldExpr &expression) const {
-    const Decl *binding = VisibleIntrinsicType(type, expression.location);
-    if (!binding)
-        return false;
-    if (const auto *structure = dynamic_cast<const StructDecl *>(binding)) {
-        for (std::size_t index = 0; index < structure->fields.size(); ++index) {
-            if (structure->fields[index].name == expression.field) {
-                intrinsicMemberBindings[&expression] = {structure, index};
-                break;
-            }
-        }
-    }
-    return true;
-}
-
 const Decl *AnalysisContext::IntrinsicTypeBinding(const Symbol &symbol) const {
     std::unordered_set<const Decl *> visited;
     const auto resolve = [&](this auto &&self, const Symbol &candidate) -> const Decl * {
@@ -59,43 +44,6 @@ const Decl *AnalysisContext::IntrinsicTypeBinding(const Symbol &symbol) const {
         return nullptr;
     };
     return resolve(symbol);
-}
-
-const Decl *AnalysisContext::VisibleIntrinsicType(const TypeRef &type, const SourceLocation location) const {
-    const Decl *selected = nullptr;
-    for (const Scope *scope = currentScope; scope; scope = scope->Parent()) {
-        for (const auto &[name, symbol] : scope->Table()) {
-            (void)name;
-            bool matches = symbol.type == type;
-            if (const auto *structure = dynamic_cast<const StructDecl *>(symbol.declaration);
-                structure && !structure->intrinsicName.empty()) {
-                std::vector<TypeRef> arguments = type.inner;
-                if (const auto element = SliceElementType(type)) {
-                    arguments = {*element};
-                }
-                if (const auto representation = IntrinsicAggregateType(structure->intrinsicName, arguments)) {
-                    matches = *representation == type;
-                }
-            }
-            if (symbol.kind != Symbol::Kind::Type || !matches || !IsVisibleTypeSymbol(symbol)) {
-                continue;
-            }
-            const Decl *binding = IntrinsicTypeBinding(symbol);
-            if (!binding)
-                continue;
-            if (selected && selected != binding) {
-                EmitError(location,
-                          std::format("intrinsic type '{}' has ambiguous visible providers", type.ToString()));
-                return nullptr;
-            }
-            selected = binding;
-        }
-    }
-    if (!selected) {
-        EmitError(location, std::format("type '{}' requires a visible intrinsic declaration", type.ToString()), {},
-                  "import the type from a package that declares it, or provide an intrinsic declaration");
-    }
-    return selected;
 }
 
 const ConstDecl *AnalysisContext::LookupAssociatedConstant(const Symbol &type, const std::string &name) const {

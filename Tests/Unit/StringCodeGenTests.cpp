@@ -1,4 +1,3 @@
-#include "IntrinsicTestDeclarations.h"
 // What a string literal becomes in an object file: read-only data holding the text in the encoding the literal names,
 // and a view whose length counts that encoding's code units. Both backends answer the same, since the shape is a
 // property of the LIR type rather than of the machine.
@@ -26,7 +25,7 @@ using namespace Rux::Testing;
 namespace {
 LirPackage CompileToLir(const std::string &source, const std::string_view triple) {
     CAPTURE(triple);
-    Lexer lexer(source + std::string(Rux::Testing::StringDeclarations), "strings.rux");
+    Lexer lexer(source, "strings.rux");
     auto lexed = lexer.Tokenize();
     REQUIRE_FALSE(lexed.HasErrors());
 
@@ -120,7 +119,7 @@ TEST_CASE("the same text in two encodings is two distinct interned literals") {
 
 TEST_CASE("a string constant publishes a transcoded body and a length in code units") {
     const std::string source = std::format(R"(
-        const TEXT: string16 = c16"{0}";
+        const TEXT: char16[..] = c16"{0}";
 
         func Main() -> int {{
             return TEXT.length as int;

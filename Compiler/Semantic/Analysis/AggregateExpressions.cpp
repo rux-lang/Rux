@@ -168,8 +168,8 @@ std::string AnalysisContext::NamedBaseTypeName(const TypeRef &type) const {
     if ((type.kind == TypeRef::Kind::Pointer || type.kind == TypeRef::Kind::Reference) && !type.inner.empty()) {
         named = &type.inner[0];
     }
-    // Slice extension methods are keyed on the full element-specific spelling (e.g. `Slice<int>`) so `extend
-    // Slice<int>` stays distinct from `extend Slice<char8>`; named types collapse to their base name so generic
+    // Slice extension methods are keyed on the full element-specific spelling (e.g. `int[..]`) so `extend
+    // int[..]` stays distinct from `extend char8[..]`; named types collapse to their base name so generic
     // instantiations share one method set.
     if (named->IsSlice()) {
         return named->ToString();

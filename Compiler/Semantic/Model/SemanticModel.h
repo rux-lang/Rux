@@ -268,11 +268,6 @@ struct ValueCopy {
 
 /// Accepted node-keyed facts. The analyzer fills one instance and transfers it into the immutable model.
 /// Node addresses continue to refer to the caller-owned AST throughout analysis and lowering.
-struct ResolvedIntrinsicMember {
-    const StructDecl *declaration = nullptr;
-    std::size_t fieldIndex = 0;
-};
-
 struct EvaluatedAssociatedConstant {
     TypeRef type;
     std::string literal;
@@ -280,7 +275,6 @@ struct EvaluatedAssociatedConstant {
 
 struct SemanticFacts {
     std::unordered_map<const TypeExpr *, const Decl *> intrinsicTypeBindings;
-    std::unordered_map<const FieldExpr *, ResolvedIntrinsicMember> intrinsicMemberBindings;
     std::unordered_map<const Expr *, const ConstDecl *> associatedConstants;
     std::unordered_map<const ConstDecl *, EvaluatedAssociatedConstant> evaluatedAssociatedConstants;
     std::unordered_map<const Expr *, TypeRef> expressionTypes;
@@ -320,7 +314,6 @@ struct SemanticFacts {
  */
 struct SemanticModel {
     [[nodiscard]] const Decl *TryGetIntrinsicTypeBinding(const TypeExpr &type) const noexcept;
-    [[nodiscard]] const ResolvedIntrinsicMember *TryGetIntrinsicMember(const FieldExpr &expression) const noexcept;
     [[nodiscard]] const ConstDecl *TryGetAssociatedConstant(const Expr &expression) const noexcept;
     [[nodiscard]] const EvaluatedAssociatedConstant *TryGetConstantValue(const ConstDecl &declaration) const noexcept;
     std::vector<SemanticDiagnostic> diagnostics;

@@ -5,7 +5,6 @@
 #include "CodeGen/X86_64/FramePlan.h"
 #include "CodeGen/X86_64/RcuEmitter.h"
 #include "Driver/BuildTarget.h"
-#include "IntrinsicTestDeclarations.h"
 #include "Ir/Hir/Hir.h"
 #include "Ir/Lir/LirPrinter.h"
 #include "Lexer/Lexer.h"
@@ -29,10 +28,8 @@
 
 using namespace Rux;
 
-static constexpr std::string_view SliceDecl = "intrinsic struct Slice<T> { pub data: *T; pub length: uint; }\n";
-
 static LirPackage CompileToLirFor(const std::string &source, const std::string &platform, const TargetContext &target) {
-    Lexer lexer(std::string(SliceDecl) + source + std::string(Rux::Testing::StringDeclarations), "test.rux");
+    Lexer lexer(source, "test.rux");
     auto lexed = lexer.Tokenize();
     REQUIRE_FALSE(lexed.HasErrors());
 
@@ -59,7 +56,7 @@ static LirPackage CompileToLir(const std::string &source) {
 }
 
 static HirPackage CompileToHir(const std::string &source) {
-    Lexer lexer(std::string(SliceDecl) + source + std::string(Rux::Testing::StringDeclarations), "test.rux");
+    Lexer lexer(source, "test.rux");
     auto lexed = lexer.Tokenize();
     REQUIRE_FALSE(lexed.HasErrors());
 
@@ -112,7 +109,7 @@ TEST_CASE("RCU backends preserve injected build metadata") {
 
 TEST_CASE("x86-64 RCU module emission preserves shared builder invariants") {
     const auto package = CompileToLir(R"(
-        func Sink(text: string, value: float32) {}
+        func Sink(text: char8[..], value: float32) {}
 
         func Product(left: int, right: int) -> int {
             Sink("shared", 1.25f32);
@@ -152,7 +149,7 @@ TEST_CASE("x86-64 RCU module emission preserves shared builder invariants") {
 
 TEST_CASE("AArch64 RCU module emission matches shared x86-64 data invariants") {
     const auto package = CompileToLir(R"(
-        func Sink(text: string, value: float32) {}
+        func Sink(text: char8[..], value: float32) {}
 
         func Product(left: int, right: int) -> int {
             Sink("shared", 1.3f32);
@@ -472,7 +469,7 @@ TEST_CASE("assembly printer uses shared x86-64 frame slots and register homes") 
 
 TEST_CASE("string literal slices reference static storage") {
     const std::string output = CompileToAsm(R"(
-        func Name() -> string {
+        func Name() -> char8[..] {
             return "Windows";
         }
     )");
@@ -484,7 +481,7 @@ TEST_CASE("string literal slices reference static storage") {
 
 TEST_CASE("array literals infer fixed inline arrays and coerce to Slice views") {
     const LirPackage package = CompileToLir(R"(
-        func Sum(values: Slice<int>) -> int {
+        func Sum(values: int[..]) -> int {
             return values[0] + values[3];
         }
 

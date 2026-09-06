@@ -26,17 +26,15 @@ TEST_CASE("compiler driver obtains intrinsic declarations from an ordinary depen
     fixture.SetDependencySource(R"(
 pub intrinsic type int8;
 extend int8 { pub const Min: int8 = -128i8; }
-pub intrinsic struct string8 { pub data: *char8; pub length: uint; }
-pub type string = string8;
 pub enum OperatingSystem { Unknown, FreeBSD, Linux, macOS, Windows }
 pub struct Target { pub os: OperatingSystem; }
 pub intrinsic #target: Target;
 )");
     fixture.SetApplicationSource(R"(
-import Dependency::{ int8, string, #target };
+import Dependency::{ int8, #target };
 when int8::Min == -128i8 {
     func Main() -> int {
-        let text: string = "hello";
+        let text: char8[..] = "hello";
         return (text.length as int) - 5;
     }
 } else { import Missing::NotSelected; }
@@ -315,12 +313,10 @@ TEST_CASE("compiler driver supplies manifest and command-line build context") {
     DependencyFixture fixture;
     fixture.SetManifestDefine("allocator", "system");
     fixture.SetApplicationSource(R"(
-intrinsic struct Slice<T> { pub data: *T; pub length: uint; }
-
 struct Build {
     timestamp: uint64;
-    date: Slice<char8>;
-    time: Slice<char8>;
+    date: char8[..];
+    time: char8[..];
 }
 
 intrinsic #build: Build;

@@ -1,7 +1,6 @@
 #include "AArch64RcuEmitterTestSupport.h"
 
 #include "Driver/BuildTarget.h"
-#include "IntrinsicTestDeclarations.h"
 #include "Lexer/Lexer.h"
 #include "Lowering/AstToHir/AstToHir.h"
 #include "Lowering/HirToLir/HirToLir.h"
@@ -18,7 +17,7 @@ namespace Rux::Testing {
 LirPackage CompileToAArch64Lir(const std::string &source, const std::string_view targetTriple) {
     CAPTURE(targetTriple);
 
-    Lexer lexer(source + std::string(Rux::Testing::StringDeclarations), "test.rux");
+    Lexer lexer(source, "test.rux");
     auto lexed = lexer.Tokenize();
     REQUIRE_FALSE(lexed.HasErrors());
 

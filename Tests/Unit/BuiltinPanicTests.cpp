@@ -1,5 +1,4 @@
 #include "CodeGen/X86_64/AssemblyPrinter.h"
-#include "IntrinsicTestDeclarations.h"
 #include "Ir/Lir/Lir.h"
 #include "Lexer/Lexer.h"
 #include "Lowering/AstToHir/AstToHir.h"
@@ -16,16 +15,12 @@ using namespace Rux;
 
 namespace {
 
-constexpr std::string_view SliceDecl = "intrinsic struct Slice<T> { pub data: *T; pub length: uint; }\n";
-
 constexpr std::string_view PanicIntrinsic = R"(
-    intrinsic func Panic(message: string);
+    intrinsic func Panic(message: char8[..]);
 )";
 
 LirPackage CompileToLir(const std::string &source) {
-    Lexer lexer(std::string(SliceDecl) + std::string(PanicIntrinsic) + source +
-                    std::string(Rux::Testing::StringDeclarations),
-                "test.rux");
+    Lexer lexer(std::string(PanicIntrinsic) + source, "test.rux");
     auto lexed = lexer.Tokenize();
     REQUIRE_FALSE(lexed.HasErrors());
 
@@ -44,7 +39,7 @@ LirPackage CompileToLir(const std::string &source) {
 }
 
 std::vector<SemanticDiagnostic> Analyze(const std::string &source) {
-    Lexer lexer(std::string(SliceDecl) + source + std::string(Rux::Testing::StringDeclarations), "test.rux");
+    Lexer lexer(source, "test.rux");
     auto lexed = lexer.Tokenize();
     REQUIRE_FALSE(lexed.HasErrors());
 
@@ -94,7 +89,7 @@ bool HasConstant(const LirFunc &function, const std::string_view value) {
 TEST_CASE("the imported Panic intrinsic lowers with source context") {
     const auto package = CompileToLir(R"(
         func Main() {
-            let message: string = "unrecoverable state";
+            let message: char8[..] = "unrecoverable state";
             Panic(message);
         }
     )");
@@ -118,7 +113,7 @@ TEST_CASE("the imported Panic intrinsic lowers with source context") {
 TEST_CASE("#NoReturn marks functions and terminates caller control flow") {
     const auto package = CompileToLir(R"(
         #NoReturn()
-        func Stop(message: string) {
+        func Stop(message: char8[..]) {
             Panic(message);
         }
 
@@ -150,7 +145,7 @@ TEST_CASE("Panic requires an intrinsic declaration and enforces its signature") 
     }));
 
     const auto signatureDiagnostics = Analyze(R"(
-        intrinsic func Panic(message: string);
+        intrinsic func Panic(message: char8[..]);
 
         func Main() {
             Panic(42);

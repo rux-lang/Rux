@@ -272,13 +272,11 @@ intrinsic #target: Target;
 
 TEST_CASE("ordinary intrinsic expressions lower to context literals") {
     auto parsed = ParseSource(R"(
-intrinsic struct Slice<T> { pub data: *T; pub length: uint; }
-
 enum TargetFeature { SSE2, SSE3, SSSE3, SSE41, SSE42, AVX, AVX2, AVX512, NEON, SVE, RVV }
 
 struct Target {
     pointerBits: uint;
-    triple: string;
+    triple: char8[..];
 }
 
 extend Target {
@@ -286,13 +284,13 @@ extend Target {
 }
 
 struct Build {
-    profile: string;
+    profile: char8[..];
     debugAssertions: bool;
     debugInfo: bool;
     isTest: bool;
     timestamp: uint64;
-    date: string;
-    time: string;
+    date: char8[..];
+    time: char8[..];
 }
 
 struct SemanticVersion {
@@ -302,24 +300,22 @@ struct SemanticVersion {
 }
 struct Compiler { version: SemanticVersion; }
 extend Compiler {
-    intrinsic func HasFeature(self: &Compiler, feature: string) -> bool;
+    intrinsic func HasFeature(self: &Compiler, feature: char8[..]) -> bool;
 }
 
 struct Source {
     line: uint;
     column: uint;
-    fileName: string;
-    filePath: string;
-    function: string;
-    module: string;
+    fileName: char8[..];
+    filePath: char8[..];
+    function: char8[..];
+    module: char8[..];
 }
 
-intrinsic struct string8 { pub data: *char8; pub length: uint; }
-type string = string8;
 struct Config {}
 extend Config {
-    intrinsic func Get(self: &Config, name: string) -> string;
-    intrinsic func Has(self: &Config, name: string) -> bool;
+    intrinsic func Get(self: &Config, name: char8[..]) -> char8[..];
+    intrinsic func Has(self: &Config, name: char8[..]) -> bool;
 }
 
 intrinsic #target: Target;

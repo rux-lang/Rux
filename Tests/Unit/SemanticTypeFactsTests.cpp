@@ -378,8 +378,7 @@ TEST_CASE("semantic model retains declared self parameter type facts") {
 
 TEST_CASE("semantic model retains validated compile-time layouts and folded sizeof values") {
     Lexer lexer(R"(
-        intrinsic struct Slice<T> { pub data: *T; pub length: uint; }
-        struct Box<T> { value: T; }
+struct Box<T> { value: T; }
         variant Choice<T> {
             None,
             Some(T),
@@ -398,7 +397,7 @@ TEST_CASE("semantic model retains validated compile-time layouts and folded size
             let unionValue = sizeof(Storage);
             let tuple = sizeof((uint8, uint64));
             let array = sizeof(uint16[3]);
-            let slice = sizeof(Slice<uint8>);
+            let slice = sizeof(uint8[..]);
         }
     )",
                 "layouts.rux");
@@ -417,7 +416,7 @@ TEST_CASE("semantic model retains validated compile-time layouts and folded size
     }
     REQUIRE_FALSE(model.HasErrors());
 
-    const auto *main = dynamic_cast<const FuncDecl *>(parsed.module.items[4].get());
+    const auto *main = dynamic_cast<const FuncDecl *>(parsed.module.items.back().get());
     REQUIRE(main != nullptr);
     REQUIRE(main->body != nullptr);
     REQUIRE_EQ(main->body->stmts.size(), 8);

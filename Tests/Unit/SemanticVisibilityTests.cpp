@@ -97,8 +97,7 @@ TEST_CASE("private declarations and members are shared by every file in their pa
 
 TEST_CASE("explicit imports diagnose every private declaration kind with its source and remediation") {
     const auto diagnostics = AnalyzePackages({{"main.rux", R"(
-            import Library::{ HiddenAlias, HiddenConst, HiddenEnum, HiddenExtern, HiddenFunc, HiddenInterface,
-                              HiddenStruct, HiddenUnion, HiddenVariable };
+            import Library::{ HiddenAlias, HiddenConst, HiddenEnum, HiddenExtern, HiddenFunc, HiddenInterface, HiddenStruct, HiddenUnion, HiddenVariable };
             func Main() {}
         )"}},
                                              {{"api.rux", R"(

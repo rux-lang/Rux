@@ -285,7 +285,7 @@ struct LirConstDecl {
     TypeRef type;
     std::string value; // printed literal of the constant expression
 
-    /// Constant sequence contents. Slice<T> publishes a {data, length} header; T[N] publishes the inline elements
+    /// Constant sequence contents. T[..] publishes a {data, length} header; T[N] publishes the inline elements
     /// directly under `name`.
     TypeRef elementType;
     std::vector<std::string> elements;

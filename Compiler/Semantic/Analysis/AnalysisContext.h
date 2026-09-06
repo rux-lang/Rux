@@ -393,7 +393,6 @@ private:
     const CompileTimeContext &context;
     std::unordered_map<const Expr *, TypeRef> &expressionTypes;
     std::unordered_map<const TypeExpr *, const Decl *> &intrinsicTypeBindings;
-    std::unordered_map<const FieldExpr *, ResolvedIntrinsicMember> &intrinsicMemberBindings;
     std::unordered_map<const Expr *, const ConstDecl *> &associatedConstants;
     std::unordered_map<const ConstDecl *, EvaluatedAssociatedConstant> &evaluatedAssociatedConstants;
     std::unordered_set<const ConstDecl *> checkingAssociatedConstants;
@@ -402,9 +401,7 @@ private:
     void CheckIntrinsicType(const Decl &declaration);
     std::unordered_map<std::string, std::unordered_set<const Decl *>> explicitTypeImports;
     [[nodiscard]] bool IsVisibleTypeSymbol(const Symbol &symbol) const;
-    [[nodiscard]] bool RecordIntrinsicMember(const TypeRef &type, const FieldExpr &expression) const;
     [[nodiscard]] const Decl *IntrinsicTypeBinding(const Symbol &symbol) const;
-    [[nodiscard]] const Decl *VisibleIntrinsicType(const TypeRef &type, SourceLocation location) const;
     std::unordered_map<const TypeExpr *, TypeRef> &typeNodeTypes;
     std::unordered_map<const Pattern *, TypeRef> &patternTypes;
     std::unordered_map<const EnumPattern *, ResolvedCasePattern> &casePatterns;
@@ -762,7 +759,7 @@ private:
     ///
     /// Bounding the type argument's size catches it: any infinite set of instantiations must produce ever-larger type
     /// arguments, since there are only finitely many small types. Size rather than nesting depth, so a set that grows
-    /// in breadth is caught too. The limit is far above anything written by hand -- `Slice<char8>` is two nodes.
+    /// in breadth is caught too. The limit is far above anything written by hand -- `char8[..]` is two nodes.
     static constexpr std::size_t kMaxInstantiationTypeNodes = 128;
 
     void ApplyDeclImports(const Decl &decl);

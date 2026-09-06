@@ -1,4 +1,3 @@
-#include "IntrinsicTestDeclarations.h"
 // Semantic contracts of text: what a literal is typed as, what a text slice exposes, and the uses the language
 // deliberately does not define for a view over characters.
 
@@ -15,7 +14,7 @@ using namespace Rux;
 
 namespace {
 ParseResult Parse(const std::string &source) {
-    Lexer lexer(source + std::string(Rux::Testing::StringDeclarations), "strings.rux");
+    Lexer lexer(source, "strings.rux");
     auto lexed = lexer.Tokenize();
     REQUIRE_FALSE(lexed.HasErrors());
     Parser parser(std::move(lexed.tokens), "strings.rux");
@@ -38,7 +37,7 @@ std::vector<std::string> LetInitializerTypes(const std::string &body) {
     const SemanticModel model = analyzer.Analyze();
     REQUIRE_FALSE(model.HasErrors());
 
-    REQUIRE_EQ(parsed.module.items.size(), 5);
+    REQUIRE_EQ(parsed.module.items.size(), 1);
     const auto *main = dynamic_cast<const FuncDecl *>(parsed.module.items[0].get());
     REQUIRE(main != nullptr);
     REQUIRE(main->body != nullptr);
@@ -91,9 +90,9 @@ TEST_CASE("an unprefixed literal is UTF-8 text") {
 
 TEST_CASE("the text names are spellings of the character slices") {
     const auto types = LetInitializerTypes(R"(
-        let text: string = c8"text";
-        let eight: string8 = c8"text";
-        let wide: string16 = c16"text";
+        let text: char8[..] = c8"text";
+        let eight: char8[..] = c8"text";
+        let wide: char16[..] = c16"text";
     )");
     REQUIRE_EQ(types.size(), 3);
     CHECK_EQ(types[0], "char8[..]");
@@ -169,10 +168,10 @@ TEST_CASE("a literal's code units cannot be written through the view") {
 
 TEST_CASE("the encodings are separate types with no conversion between them") {
     const auto messages = Messages(AnalyzeSource(R"(
-        func Eight(text: string8) {}
+        func Eight(text: char8[..]) {}
 
         func Main() {
-            let wide: string16 = c8"text";
+            let wide: char16[..] = c8"text";
             Eight(c16"text");
         }
     )"));
@@ -200,7 +199,7 @@ TEST_CASE("text is not a value any cast converts") {
         func Main() {
             let text = c8"text";
             let number = text as uint64;
-            let wider = text as string16;
+            let wider = text as char16[..];
         }
     )"));
     REQUIRE_GE(messages.size(), 2);
@@ -211,14 +210,14 @@ TEST_CASE("text is not a value any cast converts") {
 TEST_CASE("an ordinary struct named Slice is built from a literal's own members") {
     // A user's `Slice` is a name like any other, and text still reaches it through the two members every view has.
     const auto messages = Messages(AnalyzeSource(R"(
-        struct Slice<T> {
+        struct UserView<T> {
             data: *T;
             length: uint;
         }
 
         func Main() {
             let text = c8"text";
-            let units = Slice<char8> { data: text.data, length: text.length };
+            let units = UserView<char8> { data: text.data, length: text.length };
         }
     )"));
     CHECK(messages.empty());
