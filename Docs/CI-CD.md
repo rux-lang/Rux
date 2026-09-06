@@ -6,7 +6,7 @@ Continuous integration builds and verifies Rux on all eight supported targets us
 
 Ten workflows, plus the community metadata GitHub owns.
 
-- **`Ci.yml`** — the host-independent checks and the required gate: policy guards, formatting, clang-tidy, and the branch policy that rejects pull requests targeting `main`. It builds nothing.
+- **`CodeQuality.yml`** — the host-independent checks and the required gate: policy guards, formatting, clang-tidy, and the branch policy that rejects pull requests targeting `main`. It builds nothing. The gate job keeps the name `CI` because branch protection requires a check by that name.
 - **One workflow per target** — `Linux-x86_64.yml`, `Linux-AArch64.yml`, `macOS-x86_64.yml`, `macOS-AArch64.yml`, `Windows-x86_64.yml`, `Windows-AArch64.yml`, `FreeBSD-x86_64.yml`, `FreeBSD-AArch64.yml`. Each triggers on push and pull request and lists, in order, exactly the steps its target runs: load the manifest, restore and install the toolchain, restore the compilation cache, build, save the cache, test, check the runtime closure, run the target's fixtures, upload the compiler. Nothing in a target workflow is conditioned on a platform, so a job page shows no skipped steps; the only conditional step is the cache save, which runs on pushes. They exist per target because a GitHub badge reports a workflow, not a job, and because the two architectures of a platform fail differently: macOS x86-64 is cross-built and run under Rosetta while AArch64 is native, Windows AArch64 is a different runner, and the FreeBSD guests differ in whether they are accelerated.
 - **`Release.yml`** — manual only (`workflow_dispatch`, with a version input and a dry-run switch). Pushing a tag never starts a release by itself.
 
@@ -35,7 +35,7 @@ Every job carries an explicit timeout. Nothing can run for hours.
 
 | Job                            | Runner                          | Timeout |
 | ------------------------------ | ------------------------------- | ------- |
-| `Quality` — policy and format  | ubuntu-26.04                    | 10      |
+| Policy and formatting          | ubuntu-26.04                    | 10      |
 | `clang-tidy` × 3 shards        | ubuntu-26.04                    | 25      |
 | Linux x86-64 / AArch64         | ubuntu-26.04 / ubuntu-26.04-arm | 20      |
 | macOS AArch64 / x86-64         | macos-26 (both)                 | 25 / 30 |

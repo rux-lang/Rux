@@ -1,4 +1,4 @@
-name: CI
+name: Code Quality
 
 # The host-independent checks and the required gate. Building is owned by the
 # per-target workflows, each of which carries its own steps and gives its target
@@ -27,7 +27,7 @@ permissions:
 
 jobs:
   quality:
-    name: Quality
+    name: Policy and formatting
     runs-on: ubuntu-26.04
     timeout-minutes: 10
     steps:

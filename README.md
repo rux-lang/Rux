@@ -14,7 +14,7 @@
 [![macOS AArch64](https://github.com/rux-lang/Rux/actions/workflows/macOS-AArch64.yml/badge.svg?branch=dev)](https://github.com/rux-lang/Rux/actions/workflows/macOS-AArch64.yml)
 [![Windows x86-64](https://github.com/rux-lang/Rux/actions/workflows/Windows-x86_64.yml/badge.svg?branch=dev)](https://github.com/rux-lang/Rux/actions/workflows/Windows-x86_64.yml)
 [![Windows AArch64](https://github.com/rux-lang/Rux/actions/workflows/Windows-AArch64.yml/badge.svg?branch=dev)](https://github.com/rux-lang/Rux/actions/workflows/Windows-AArch64.yml)
-[![CI](https://github.com/rux-lang/Rux/actions/workflows/Ci.yml/badge.svg?branch=dev)](https://github.com/rux-lang/Rux/actions/workflows/Ci.yml)
+[![Code Quality](https://github.com/rux-lang/Rux/actions/workflows/CodeQuality.yml/badge.svg?branch=dev)](https://github.com/rux-lang/Rux/actions/workflows/CodeQuality.yml)
 [![Release](https://img.shields.io/github/v/release/rux-lang/Rux?style=flat&logo=github&label=Release&color=green)](https://github.com/rux-lang/Rux/releases)
 [![License](https://img.shields.io/github/license/rux-lang/Rux?style=flat)](LICENSE.md)
 
