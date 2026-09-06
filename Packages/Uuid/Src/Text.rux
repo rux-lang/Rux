@@ -1,4 +1,4 @@
-import Core::{ string, string8 };
+
 // The text form, parsed strictly and written canonically.
 //
 // RFC 9562 defines exactly one textual representation: thirty-two hexadecimal digits in five hyphen-separated
@@ -16,7 +16,7 @@ import Core::{ string, string8 };
 // *written*, because RFC 9562 says output should be lower case and a canonical form that varies is not
 // canonical.
 
-import Core::{ MutableSlice, Slice };
+
 
 /// How long the canonical text form is: thirty-two digits and four hyphens.
 ///
@@ -63,7 +63,7 @@ func IsHyphenPosition(index: uint) -> bool {
 /// nil in that case rather than partially filled -- a half-parsed identifier is worse than none.
 ///
 /// https://rux-lang.dev/docs/api/uuid/parse
-pub func Parse(text: Slice<char8>, error: *var UuidParseError) -> Uuid {
+pub func Parse(text: char8[..], error: *var UuidParseError) -> Uuid {
     *error = UuidParseError::None;
     var start: uint = 0;
     if text.length == UuidUrnLength {
@@ -131,7 +131,7 @@ pub func Parse(text: Slice<char8>, error: *var UuidParseError) -> Uuid {
 /// that varies by case is not canonical -- two systems comparing text would disagree about equal UUIDs.
 ///
 /// https://rux-lang.dev/docs/api/uuid/format
-pub func Format(value: &Uuid, into: MutableSlice<char8>) {
+pub func Format(value: &Uuid, into: var char8[..]) {
     let digits = "0123456789abcdef";
     var position: uint = 0;
     var byteIndex: uint = 0;
@@ -154,7 +154,7 @@ pub func Format(value: &Uuid, into: MutableSlice<char8>) {
 /// Offered because some formats demand it; `Format` is what a program should write when it has the choice.
 ///
 /// https://rux-lang.dev/docs/api/uuid/format-upper
-pub func FormatUpper(value: &Uuid, into: MutableSlice<char8>) {
+pub func FormatUpper(value: &Uuid, into: var char8[..]) {
     Format(value, into);
     var index: uint = 0;
     while index < UuidTextLength && index < into.length {
@@ -169,7 +169,7 @@ pub func FormatUpper(value: &Uuid, into: MutableSlice<char8>) {
 /// Writes the URN form into `into`, which must be at least forty-five bytes.
 ///
 /// https://rux-lang.dev/docs/api/uuid/format-urn
-pub func FormatUrn(value: &Uuid, into: MutableSlice<char8>) {
+pub func FormatUrn(value: &Uuid, into: var char8[..]) {
     let prefix = "urn:uuid:";
     var index: uint = 0;
     while index < 9u && index < into.length {
@@ -177,7 +177,7 @@ pub func FormatUrn(value: &Uuid, into: MutableSlice<char8>) {
         index = index + 1;
     }
     if into.length > 9u {
-        let rest = MutableSlice<char8> { data: @into.data[9], length: into.length - 9u };
+        let rest = (@into.data[9])[..into.length - 9u];
         Format(value, rest);
     }
 }

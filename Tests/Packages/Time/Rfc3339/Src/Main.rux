@@ -1,20 +1,20 @@
-import Core::{ string, string8 };
-import Core::{ Assert, MutableSlice, Slice };
+
+import Core::{ Assert };
 import Time::{ Date, DateTime, FormatRfc3339, ParseRfc3339, TimeOfDay, UtcOffset };
 
 // The text boundary of time, both directions: the strict shape parses, every near-miss of it is refused, the
 // formatter never writes what the parser would not read, and the leap second folds exactly as the module says --
 // accepted going in, never produced coming out.
 
-func Parses(text: string) -> bool {
+func Parses(text: char8[..]) -> bool {
     var dateTime = DateTime { date: Date::FromEpochDays(0i64), time: TimeOfDay::Midnight() };
     var offset = UtcOffset::Utc();
     return ParseRfc3339(text, @dateTime, @offset);
 }
 
-func Renders(dateTime: DateTime, offset: UtcOffset, expected: string) -> bool {
+func Renders(dateTime: DateTime, offset: UtcOffset, expected: char8[..]) -> bool {
     var storage: char8[40];
-    let room = MutableSlice::From<char8>(@storage[0], 40);
+    let room = (@storage[0])[..40];
     var written: uint = 0;
     if !FormatRfc3339(dateTime, offset, room, @written) {
         return false;
@@ -94,10 +94,10 @@ func Main() -> int {
     var reparsed = DateTime { date: Date::FromEpochDays(0i64), time: TimeOfDay::Midnight() };
     var reparsedOffset = UtcOffset::Utc();
     var storage: char8[40];
-    let room = MutableSlice::From<char8>(@storage[0], 40);
+    let room = (@storage[0])[..40];
     var written: uint = 0;
     Assert(FormatRfc3339(precise, shifted, room, @written), "the round trip renders");
-    Assert(ParseRfc3339(Slice<char8> { data: @storage[0], length: written }, @reparsed, @reparsedOffset),
+    Assert(ParseRfc3339((@storage[0])[..written], @reparsed, @reparsedOffset),
            "and parses back");
     Assert(reparsed.Equals(precise), "to the same fields");
     Assert(reparsedOffset.TotalSeconds() == shifted.TotalSeconds(), "and the same offset");

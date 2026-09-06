@@ -1,12 +1,12 @@
-import Core::{ string, string8 };
+
 // A strict parser is only worth having if it actually refuses things, so most of this test is refusals -- the
 // forms that circulate widely and are not the standard's, each rejected with the reason that names what is
 // wrong rather than a single catch-all.
 
-import Core::{ Assert, MutableSlice, Slice };
+import Core::{ Assert };
 import Uuid::{ Format, FormatUpper, FormatUrn, Parse, Uuid, UuidParseError };
 
-func Refuses(text: string, expected: UuidParseError, what: string) {
+func Refuses(text: char8[..], expected: UuidParseError, what: char8[..]) {
     var error = UuidParseError::None;
     var value = Parse(text, @error);
     Assert(error == expected, what);
@@ -22,7 +22,7 @@ func Main() -> int {
     Assert(error == UuidParseError::None, "the canonical form parses");
     Assert(value.Version() == 1u8, "and its version is read from the right nibble");
     var text: char8[64];
-    Format(value, MutableSlice::From<char8>(@text[0], 36));
+    Format(value, (@text[0])[..36]);
     var index: uint = 0;
     while index < 36u {
         Assert(text[index] == canonical.data[index], "and it formats back to exactly what was parsed");
@@ -37,10 +37,10 @@ func Main() -> int {
     Assert(error == UuidParseError::None && mixed.Equals(value), "as does mixed case");
 
     var upperText: char8[64];
-    FormatUpper(value, MutableSlice::From<char8>(@upperText[0], 36));
+    FormatUpper(value, (@upperText[0])[..36]);
     Assert((upperText[0] as uint8) == 0x46u8, "the upper-case form writes upper-case digits");
     Assert((upperText[8] as uint8) == 0x2Du8, "and keeps the hyphens");
-    var reparsed = Parse(Slice<char8> { data: @upperText[0], length: 36 }, @error);
+    var reparsed = Parse((@upperText[0])[..36], @error);
     Assert(error == UuidParseError::None && reparsed.Equals(value), "and parses back to the same value");
 
     // The URN form, in both cases of its prefix.
@@ -51,8 +51,8 @@ func Main() -> int {
            "and its prefix is case-insensitive, which is a different rule from the digits and also the standard's");
 
     var urnText: char8[64];
-    FormatUrn(value, MutableSlice::From<char8>(@urnText[0], 45));
-    var urnRoundTrip = Parse(Slice<char8> { data: @urnText[0], length: 45 }, @error);
+    FormatUrn(value, (@urnText[0])[..45]);
+    var urnRoundTrip = Parse((@urnText[0])[..45], @error);
     Assert(error == UuidParseError::None && urnRoundTrip.Equals(value), "and the written URN form parses back");
 
     // The refusals: every widely-circulated non-standard form.
@@ -86,12 +86,12 @@ func Main() -> int {
 
     // The sentinels have text forms too.
     var nil = Uuid::Nil();
-    Format(nil, MutableSlice::From<char8>(@text[0], 36));
-    var nilParsed = Parse(Slice<char8> { data: @text[0], length: 36 }, @error);
+    Format(nil, (@text[0])[..36]);
+    var nilParsed = Parse((@text[0])[..36], @error);
     Assert(error == UuidParseError::None && nilParsed.IsNil(), "the nil UUID round-trips through text");
     var max = Uuid::Max();
-    Format(max, MutableSlice::From<char8>(@text[0], 36));
-    var maxParsed = Parse(Slice<char8> { data: @text[0], length: 36 }, @error);
+    Format(max, (@text[0])[..36]);
+    var maxParsed = Parse((@text[0])[..36], @error);
     Assert(error == UuidParseError::None && maxParsed.IsMax(), "and so does the max UUID");
 
     // Every byte survives the round trip, at every position -- which a formatter that swapped a nibble would
@@ -101,8 +101,8 @@ func Main() -> int {
     while index < 16u {
         probe = Uuid::Nil();
         probe.bytes[index] = 0x9Cu8 as char8;
-        Format(probe, MutableSlice::From<char8>(@text[0], 36));
-        var back = Parse(Slice<char8> { data: @text[0], length: 36 }, @error);
+        Format(probe, (@text[0])[..36]);
+        var back = Parse((@text[0])[..36], @error);
         Assert(error == UuidParseError::None && back.Equals(probe),
                "every byte position survives the text round trip");
         index = index + 1;

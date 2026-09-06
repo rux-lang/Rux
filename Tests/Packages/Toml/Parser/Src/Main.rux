@@ -1,26 +1,25 @@
-import Core::string;
 // A TOML parser is mostly bookkeeping about tables, so most of this is about the ways a document may not define
 // one twice. The three rules have three reasons -- a header redefines, an inline table is closed by its brace, a
 // dotted key is closed by its line -- and a parser that reported them all as "duplicate key" would leave the
 // writer to work out which of the three they had broken.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, Slice };
+import Core::{ Assert };
 import Text::{ String, StringView, TextError };
 import Toml::{ TomlKind, TomlParse, TomlParseError, TomlParseOutcome, TomlValue };
 
-func View(bytes: string) -> StringView {
+func View(bytes: char8[..]) -> StringView {
     return StringView::FromBytes(bytes).ValueOr(StringView());
 }
 
-func Accepts(allocator: Allocator, text: string, note: string) -> TomlValue {
+func Accepts(allocator: Allocator, text: char8[..], note: char8[..]) -> TomlValue {
     var outcome = TomlParseOutcome();
     var value = TomlParse(allocator, text, @outcome);
     Assert(outcome.error == TomlParseError::None, note);
     return <-value;
 }
 
-func Refuses(allocator: Allocator, text: string) -> TomlParseError {
+func Refuses(allocator: Allocator, text: char8[..]) -> TomlParseError {
     var outcome = TomlParseOutcome();
     var value = TomlParse(allocator, text, @outcome);
     return outcome.error;

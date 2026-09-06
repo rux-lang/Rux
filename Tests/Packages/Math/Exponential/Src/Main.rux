@@ -3,8 +3,7 @@
 // exp minus one throws away. Each gets its own section.
 
 import Core::Assert;
-import Math::{ Abs, E, Exp, Exp2, Expm1, IsNan, Log, PositiveInfinity64, QuietNan64, ScaleByPowerOfTwo,
-               SignBit, UlpDistance };
+import Math::{ Abs, E, Exp, Exp2, Expm1, IsNan, Log, PositiveInfinity64, QuietNan64, ScaleByPowerOfTwo, SignBit, UlpDistance };
 
 func Main() -> int {
     let infinity = PositiveInfinity64();

@@ -4,8 +4,7 @@
 // side of the negative axis a point is on.
 
 import Core::Assert;
-import Math::{ Abs, ArcCos, ArcCot, ArcSin, ArcTan, ArcTan2, Cos, IsNan, Pi, PositiveInfinity64, QuietNan64,
-               SignBit, Sin, Tan, UlpDistance };
+import Math::{ Abs, ArcCos, ArcCot, ArcSin, ArcTan, ArcTan2, Cos, IsNan, Pi, PositiveInfinity64, QuietNan64, SignBit, Sin, Tan, UlpDistance };
 
 func Main() -> int {
     let infinity = PositiveInfinity64();

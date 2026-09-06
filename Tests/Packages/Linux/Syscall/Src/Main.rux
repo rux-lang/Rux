@@ -1,24 +1,5 @@
 import Core::{ OperatingSystem, #target };
-import Linux::{
-    ClockGetTime,
-    ClockMonotonic,
-    Errno,
-    GetPid,
-    IsError,
-    MapAnonymous,
-    MapPrivate,
-    Mmap,
-    Munmap,
-    ProtectionRead,
-    ProtectionWrite,
-    Read,
-    Syscall0,
-    Syscall6,
-    SysGetPid,
-    SysMmap,
-    Timespec,
-    Write
-};
+import Linux::{ ClockGetTime, ClockMonotonic, Errno, GetPid, IsError, MapAnonymous, MapPrivate, Mmap, Munmap, ProtectionRead, ProtectionWrite, Read, Syscall0, Syscall6, SysGetPid, SysMmap, Timespec, Write };
 
 when #target.os == OperatingSystem::Linux {
 func Main() -> int {

@@ -1,11 +1,4 @@
-import Sync::{
-    AtomicBool,
-    AtomicUint32,
-    AtomicUint64,
-    MemoryOrder,
-    Fence,
-    SpinLoopHint
-};
+import Sync::{ AtomicBool, AtomicUint32, AtomicUint64, MemoryOrder, Fence, SpinLoopHint };
 
 func TestAtomicUint64() -> int {
     var a = AtomicUint64(42u64);

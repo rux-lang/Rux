@@ -9,8 +9,7 @@
 // them.
 
 import Core::Assert;
-import Math::{ Abs, Cbrt, Hypot, IsInfinite, IsNan, NextDown, NextUp, PositiveInfinity64, QuietNan64,
-               ScaleByPowerOfTwo, SignBit, Sqrt, UlpDistance };
+import Math::{ Abs, Cbrt, Hypot, IsInfinite, IsNan, NextDown, NextUp, PositiveInfinity64, QuietNan64, ScaleByPowerOfTwo, SignBit, Sqrt, UlpDistance };
 
 // Splits a double into two halves whose product with anything is exact. The constant is 2^27 + 1.
 func SplitHigh(value: float64) -> float64 {

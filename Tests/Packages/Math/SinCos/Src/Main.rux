@@ -3,8 +3,7 @@
 // three functions are defined by.
 
 import Core::Assert;
-import Math::{ Abs, Cos, IsNan, Pi, PositiveInfinity64, QuietNan64, ScaleByPowerOfTwo, Sin, SinCos, SignBit, Tan,
-               UlpDistance };
+import Math::{ Abs, Cos, IsNan, Pi, PositiveInfinity64, QuietNan64, ScaleByPowerOfTwo, Sin, SinCos, SignBit, Tan, UlpDistance };
 
 func Main() -> int {
     let infinity = PositiveInfinity64();

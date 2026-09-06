@@ -1,4 +1,3 @@
-import Core::string;
 // Building a document from tokens, and refusing the three different ways of defining a table twice.
 //
 // Most of a TOML parser is bookkeeping about tables. `[a.b]` creates `a` implicitly and `b` deliberately, and
@@ -19,7 +18,6 @@ import Core::string;
 
 import Allocator::Allocator;
 import Collections::{ CollectionError, Vector };
-import Core::Slice;
 import Text::{ String, StringView, TextError };
 import Time::{ Date, TimeOfDay, UtcOffset };
 
@@ -125,7 +123,7 @@ pub struct TomlParser {
     /// What to accept.
     limits: TomlLimits;
     /// The whole document, which token spans point into.
-    input: Slice<char8>;
+    input: char8[..];
     /// The token about to be read.
     ahead: TomlToken;
     /// How deep the current value is nested.
@@ -138,7 +136,7 @@ extend TomlParser {
     /// A parser over `input` under `limits`.
     ///
     /// https://rux-lang.dev/docs/api/toml/parser/new
-    pub func TomlParser(allocator: Allocator, input: Slice<char8>, limits: TomlLimits) -> TomlParser {
+    pub func TomlParser(allocator: Allocator, input: char8[..], limits: TomlLimits) -> TomlParser {
         var lexer = TomlLexer(input);
         let first = lexer.Next();
         return TomlParser {
@@ -692,7 +690,7 @@ extend TomlParser {
 /// Reads `input` into a table, reporting through `outcome` why it stopped if it did.
 ///
 /// https://rux-lang.dev/docs/api/toml/parse
-pub func TomlParse(allocator: Allocator, input: Slice<char8>, outcome: *var TomlParseOutcome) -> TomlValue {
+pub func TomlParse(allocator: Allocator, input: char8[..], outcome: *var TomlParseOutcome) -> TomlValue {
     var parser = TomlParser(allocator, input, TomlLimits::Default());
     var root = parser.Parse();
     *outcome = parser.Outcome();

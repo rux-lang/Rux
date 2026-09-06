@@ -1,5 +1,4 @@
-import Core::{ Assert, ConvertChecked, ConvertSaturating, ConvertWrapping, IsFinite, IsInfinite, IsNaN, IsSignNegative,
-               IsNegativeZero, IsSignPositive, IsSignedType, IsZero, SignOf };
+import Core::{ Assert, ConvertChecked, ConvertSaturating, ConvertWrapping, IsFinite, IsInfinite, IsNaN, IsSignNegative, IsNegativeZero, IsSignPositive, IsSignedType, IsZero, SignOf };
 
 // The conversions are checked in both directions across every boundary that can lose a value: narrower, wider, and
 // same-width-different-signedness, which is the pair a round trip alone cannot see. The classification predicates are

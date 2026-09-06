@@ -1,35 +1,35 @@
-import Core::{ string, string8 };
+
 // Most of this is refusals, because the numbers TOML declines to accept are exactly the ones two readers would
 // disagree about. `010` is eight in one language and ten in another, so TOML says it is neither -- and a port
 // number that means two things is a bug waiting for a deployment.
 
-import Core::{ Assert, Slice };
+import Core::{ Assert };
 import Time::{ Date, TimeOfDay, UtcOffset };
 import Toml::{ TomlDateTimeShape, TomlParseDateTime, TomlParseFloat, TomlParseInteger, TomlScalarError };
 
 // The bytes a string spans, which is how a text overload reaches the slice one.
-func TextBytes(text: string) -> Slice<char8> {
-    return Slice<char8> { data: text.data, length: text.length };
+func TextBytes(text: char8[..]) -> char8[..] {
+    return (text.data)[..text.length];
 }
 
-func Integer(text: Slice<char8>) -> int64 {
+func Integer(text: char8[..]) -> int64 {
     var value = 0i64;
     Assert(TomlParseInteger(text, @value) == TomlScalarError::None, "a number that should parse");
     return value;
 }
 
-func IntegerFails(text: Slice<char8>) -> bool {
+func IntegerFails(text: char8[..]) -> bool {
     var value = 0i64;
     return TomlParseInteger(text, @value) != TomlScalarError::None;
 }
 
-func Float(text: Slice<char8>) -> float64 {
+func Float(text: char8[..]) -> float64 {
     var value = 0.0;
     Assert(TomlParseFloat(text, @value) == TomlScalarError::None, "a float that should parse");
     return value;
 }
 
-func FloatFails(text: Slice<char8>) -> bool {
+func FloatFails(text: char8[..]) -> bool {
     var value = 0.0;
     return TomlParseFloat(text, @value) != TomlScalarError::None;
 }

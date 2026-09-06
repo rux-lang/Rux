@@ -1,8 +1,7 @@
-import Core::string8;
 // The value type's job is to be sixteen bytes that never get reordered, so the ordering test is the important
 // one: it must follow the bytes exactly, since that is what makes a version 7 UUID sort chronologically.
 
-import Core::{ Assert, Ordering, Slice };
+import Core::{ Assert, Ordering };
 import Uuid::{ Uuid, UuidVariant };
 
 func Main() -> int {
@@ -21,7 +20,7 @@ func Main() -> int {
         raw[index] = ((index * 17u) as uint8) as char8;
         index = index + 1;
     }
-    let rawBytes = Slice<char8> { data: @raw[0], length: 16 };
+    let rawBytes = (@raw[0])[..16];
     var value = Uuid::FromBytes(rawBytes);
     let readBack = value.Bytes();
     index = 0;
@@ -37,7 +36,7 @@ func Main() -> int {
            "copying a UUID produces an independent value");
 
     // A short slice leaves the rest zero rather than reading past it.
-    let shortBytes = Slice<char8> { data: @raw[0], length: 4 };
+    let shortBytes = (@raw[0])[..4];
     var partial = Uuid::FromBytes(shortBytes);
     let partialBytes = partial.Bytes();
     Assert(partialBytes.data[3] == raw[3], "the bytes given are kept");

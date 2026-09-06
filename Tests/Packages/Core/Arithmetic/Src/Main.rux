@@ -1,6 +1,5 @@
 import Core::{ int, int128, int16, int256, int32, int512, int64, int8, uint, uint128, uint16, uint256, uint32, uint512, uint64, uint8 };
-import Core::{ AddChecked, AddSaturating, AddWrapping, Assert, MaximumOf, MinimumOf, MulChecked, MulSaturating,
-               MulWrapping, SubChecked, SubSaturating, SubWrapping };
+import Core::{ AddChecked, AddSaturating, AddWrapping, Assert, MaximumOf, MinimumOf, MulChecked, MulSaturating, MulWrapping, SubChecked, SubSaturating, SubWrapping };
 
 // Every check below runs at one width and is called once per width, so a helper
 // that is right for `int8` and wrong for `int512` is caught rather than averaged

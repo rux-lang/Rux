@@ -1,9 +1,9 @@
-import Core::{ string, string8 };
+
 import Core::{ Assert, #source };
 
 // A dependency-free slice comparison, so the test can check the exact strings
 // the compiler fills in without pulling in Text for its String type.
-func SliceEquals(a: string, b: string) -> bool {
+func SliceEquals(a: char8[..], b: char8[..]) -> bool {
     if a.length != b.length {
         return false;
     }

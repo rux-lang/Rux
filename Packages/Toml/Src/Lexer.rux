@@ -1,4 +1,4 @@
-import Core::{ string, string8 };
+
 // Turning TOML text into tokens, with the position of each one.
 //
 // TOML has more lexical surface than JSON and almost all of it is string and number forms. There are four ways
@@ -11,7 +11,6 @@ import Core::{ string, string8 };
 // line and column because the token knew.
 
 import Allocator::Allocator;
-import Core::Slice;
 import Text::{ String, StringBuilder, TextError };
 
 /// What kind of token this is.
@@ -120,7 +119,7 @@ pub struct TomlToken {
 /// https://rux-lang.dev/docs/api/toml/lexer
 pub struct TomlLexer {
     /// The document.
-    input: Slice<char8>;
+    input: char8[..];
     /// How far reading has reached.
     position: uint;
     /// Which line that is on.
@@ -133,7 +132,7 @@ extend TomlLexer {
     /// A lexer over `input`.
     ///
     /// https://rux-lang.dev/docs/api/toml/lexer/new
-    pub func TomlLexer(input: Slice<char8>) -> TomlLexer {
+    pub func TomlLexer(input: char8[..]) -> TomlLexer {
         return TomlLexer { input: input, position: 0, line: 1, lineStart: 0 };
     }
 
@@ -418,7 +417,7 @@ extend TomlLexer {
         return false;
     }
 
-    func Matches(self: &TomlLexer, start: uint, end: uint, word: Slice<char8>) -> bool {
+    func Matches(self: &TomlLexer, start: uint, end: uint, word: char8[..]) -> bool {
         if end - start != word.length { return false; }
         var index: uint = 0;
         while index < word.length {
@@ -504,8 +503,8 @@ extend TomlLexer {
     /// The bytes a token spans, which for a text token excludes the quotes and is still escaped.
     ///
     /// https://rux-lang.dev/docs/api/toml/lexer/text-of
-    pub func TextOf(self: &TomlLexer, token: &TomlToken) -> Slice<char8> {
-        return Slice<char8> { data: self.input.data + token.start, length: token.end - token.start };
+    pub func TextOf(self: &TomlLexer, token: &TomlToken) -> char8[..] {
+        return (self.input.data + token.start)[..token.end - token.start];
     }
 }
 
@@ -516,7 +515,7 @@ extend TomlLexer {
 /// wrapped in the source without the wrapping appearing in the value.
 ///
 /// https://rux-lang.dev/docs/api/toml/decode-text
-pub func TomlDecodeText(allocator: Allocator, span: Slice<char8>, form: TomlTextForm, error: *var TextError,
+pub func TomlDecodeText(allocator: Allocator, span: char8[..], form: TomlTextForm, error: *var TextError,
                     bad: *var bool) -> String {
     *bad = false;
     if form == TomlTextForm::Literal || form == TomlTextForm::MultiLineLiteral || form == TomlTextForm::Bare {
@@ -535,7 +534,7 @@ pub func TomlDecodeText(allocator: Allocator, span: Slice<char8>, form: TomlText
             while run < span.length && (span.data[run] as uint8) != 0x5Cu8 {
                 run = run + 1u;
             }
-            let piece = Slice<char8> { data: @span.data[index], length: run - index };
+            let piece = (@span.data[index])[..run - index];
             *error = builder.AppendBytes(piece);
             index = run;
             continue;
@@ -607,7 +606,7 @@ pub func TomlDecodeText(allocator: Allocator, span: Slice<char8>, form: TomlText
 }
 
 // A run of hexadecimal digits at `at`, as a value. The lexer has already established they are digits.
-func TomlHexRun(span: Slice<char8>, at: uint, count: uint) -> uint32 {
+func TomlHexRun(span: char8[..], at: uint, count: uint) -> uint32 {
     var value = 0u32;
     var index: uint = 0;
     while index < count {

@@ -1,28 +1,7 @@
-import Core::string8;
 import Core::{ OperatingSystem, #target };
 
 when #target.os == OperatingSystem::macOS {
-    import macOS::{
-        Close,
-        Errno,
-        GetPid,
-        GetRandom,
-        GetTimeOfDay,
-        IsError,
-        MapAnonymous,
-        MapPrivate,
-        Mmap,
-        Munmap,
-        Normalize,
-        OpenAt,
-        AtFdCwd,
-        OpenReadOnly,
-        ProtectionRead,
-        ProtectionWrite,
-        Read,
-        Timeval,
-        Write
-    };
+    import macOS::{ Close, Errno, GetPid, GetRandom, GetTimeOfDay, IsError, MapAnonymous, MapPrivate, Mmap, Munmap, Normalize, OpenAt, AtFdCwd, OpenReadOnly, ProtectionRead, ProtectionWrite, Read, Timeval, Write };
 
     // Every call here goes through libSystem, which is the only interface Apple supports. The previous version of
     // this test drove the trap instruction directly with a call number, which is exactly what a Darwin binary must

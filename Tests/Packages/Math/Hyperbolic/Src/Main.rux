@@ -2,8 +2,7 @@
 // has: a seam that is merely continuous rather than accurate shows up as a round trip that stops closing.
 
 import Core::Assert;
-import Math::{ Abs, ArcCosh, ArcSinh, ArcTanh, Cosh, Cotanh, IsNan, PositiveInfinity64, QuietNan64,
-               ScaleByPowerOfTwo, SignBit, Sinh, Tanh, UlpDistance };
+import Math::{ Abs, ArcCosh, ArcSinh, ArcTanh, Cosh, Cotanh, IsNan, PositiveInfinity64, QuietNan64, ScaleByPowerOfTwo, SignBit, Sinh, Tanh, UlpDistance };
 
 func Main() -> int {
     let infinity = PositiveInfinity64();

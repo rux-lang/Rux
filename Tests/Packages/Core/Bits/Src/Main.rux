@@ -1,7 +1,4 @@
-import Core::{ Assert, BitAt, BitWidthOf, CountOnes, CountZeros, FromBigEndian, FromLittleEndian, IsPowerOfTwo,
-               LeadingOnes, LeadingZeros, LoadBigEndian, LoadLittleEndian, ReverseBits, ReverseBytes, RotateLeft,
-               RotateRight, ShiftRightLogical, StoreBigEndian, StoreLittleEndian, ToBigEndian, ToLittleEndian,
-               TrailingOnes, TrailingZeros };
+import Core::{ Assert, BitAt, BitWidthOf, CountOnes, CountZeros, FromBigEndian, FromLittleEndian, IsPowerOfTwo, LeadingOnes, LeadingZeros, LoadBigEndian, LoadLittleEndian, ReverseBits, ReverseBytes, RotateLeft, RotateRight, ShiftRightLogical, StoreBigEndian, StoreLittleEndian, ToBigEndian, ToLittleEndian, TrailingOnes, TrailingZeros };
 
 // Every check runs at one width and is called once per width, so an operation that is right for `uint8` and wrong for
 // `int512` is caught rather than averaged away. The signed checks matter most: `>>` is arithmetic on a signed type,

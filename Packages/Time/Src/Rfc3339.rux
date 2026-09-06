@@ -1,4 +1,3 @@
-import Core::string;
 // The text form of a moment: RFC 3339, the internet profile of ISO 8601.
 //
 // One shape, `YYYY-MM-DDTHH:MM:SS[.fraction](Z|+HH:MM|-HH:MM)`, chosen because it is the one that machines
@@ -12,10 +11,10 @@ import Core::string;
 // Formatting never produces second 60, so the fold is one-way and the round trip is clean for every ordinary
 // moment.
 
-import Core::{ MutableSlice, Option, Slice };
+import Core::{ Option };
 
 // Two ASCII digits at `at`, or a refusal.
-func TwoDigits(text: Slice<char8>, at: uint, value: *var uint32) -> bool {
+func TwoDigits(text: char8[..], at: uint, value: *var uint32) -> bool {
     if at + 2 > text.length { return false; }
     let high = text.data[at] as uint32;
     let low = text.data[at + 1] as uint32;
@@ -32,7 +31,7 @@ func TwoDigits(text: Slice<char8>, at: uint, value: *var uint32) -> bool {
 /// header states.
 ///
 /// https://rux-lang.dev/docs/api/time/parse-rfc3339
-pub func ParseRfc3339(text: Slice<char8>, dateTime: *var DateTime, offset: *var UtcOffset) -> bool {
+pub func ParseRfc3339(text: char8[..], dateTime: *var DateTime, offset: *var UtcOffset) -> bool {
     if text.length < 20 { return false; }
     var yearHigh: uint32 = 0;
     var yearLow: uint32 = 0;
@@ -114,7 +113,7 @@ pub func ParseRfc3339(text: Slice<char8>, dateTime: *var DateTime, offset: *var 
 }
 
 // Writes `value` as `width` ASCII digits, zero-padded, into the cursor position.
-func PushPadded(into: MutableSlice<char8>, at: *var uint, value: uint32, width: uint) -> bool {
+func PushPadded(into: var char8[..], at: *var uint, value: uint32, width: uint) -> bool {
     if *at + width > into.length { return false; }
     var divisor: uint32 = 1;
     var counted: uint = 1;
@@ -132,7 +131,7 @@ func PushPadded(into: MutableSlice<char8>, at: *var uint, value: uint32, width: 
     return true;
 }
 
-func PushByte(into: MutableSlice<char8>, at: *var uint, byte: char8) -> bool {
+func PushByte(into: var char8[..], at: *var uint, byte: char8) -> bool {
     if *at >= into.length { return false; }
     into.data[*at] = byte;
     *at = *at + 1;
@@ -149,7 +148,7 @@ func PushByte(into: MutableSlice<char8>, at: *var uint, byte: char8) -> bool {
 /// this module deliberately does not speak.
 ///
 /// https://rux-lang.dev/docs/api/time/format-rfc3339
-pub func FormatRfc3339(dateTime: DateTime, offset: UtcOffset, into: MutableSlice<char8>,
+pub func FormatRfc3339(dateTime: DateTime, offset: UtcOffset, into: var char8[..],
                    written: *var uint) -> bool {
     *written = 0;
     if dateTime.date.year < 0i32 || dateTime.date.year > 9999i32 { return false; }

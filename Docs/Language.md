@@ -315,7 +315,7 @@ extend String {
         return String { data: null, length: 0 };
     }
 
-    func String(value: Slice<char8>) -> String {
+    func String(value: char8[..]) -> String {
         // allocate and copy
     }
 }
@@ -334,7 +334,7 @@ let inferred = [0u8; 16];
 let contextual: uint8[16] = [0; 16];
 ```
 
-The element type must be copyable. Construct move-only elements explicitly or initialize mutable array storage in a loop instead. A zero count still evaluates the value once and destroys the temporary when its type requires cleanup. Repeated arrays use the same fixed-array-to-`Slice<T>` coercion as ordinary array literals.
+The element type must be copyable. Construct move-only elements explicitly or initialize mutable array storage in a loop instead. A zero count still evaluates the value once and destroys the temporary when its type requires cleanup. Repeated arrays use the same fixed-array-to-`T[..]` coercion as ordinary array literals.
 
 ## Option Coalescing
 
@@ -382,7 +382,7 @@ Nothing fixes the index type. Overloads of either operator are separated by it, 
 
 ```rux
 extend Vect {
-    func [](self: &Vect, span: Range<int>) -> Slice<int> {
+    func [](self: &Vect, span: int..int) -> int[..] {
         return self.data[span];
     }
 }

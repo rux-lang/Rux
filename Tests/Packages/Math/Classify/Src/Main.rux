@@ -4,9 +4,7 @@
 // float32 answer computed by widening is right for most of these and wrong for stepping.
 
 import Core::Assert;
-import Math::{ Classify, CopySign, Decompose, ExponentOf, FloatClass, IndeterminateExponent, IsFinite, IsInfinite,
-               IsNan, IsNormal, IsSubnormal, IsZero, NextAfter, NextDown, NextUp, NoExponent, PositiveInfinity32,
-               PositiveInfinity64, QuietNan32, QuietNan64, ScaleByPowerOfTwo, SignBit, SplitIntegral };
+import Math::{ Classify, CopySign, Decompose, ExponentOf, FloatClass, IndeterminateExponent, IsFinite, IsInfinite, IsNan, IsNormal, IsSubnormal, IsZero, NextAfter, NextDown, NextUp, NoExponent, PositiveInfinity32, PositiveInfinity64, QuietNan32, QuietNan64, ScaleByPowerOfTwo, SignBit, SplitIntegral };
 
 func Main() -> int {
     let infinity = PositiveInfinity64();

@@ -1,12 +1,10 @@
-import Core::string8;
 // Two claims worth testing here: that generated identifiers are well-formed and distinct, and that version 7
 // really does sort by time -- which is the entire reason it exists and would be silently lost by any byte
 // reordering.
 
-import Core::{ Assert, Ordering, Slice };
+import Core::{ Assert, Ordering };
 import Entropy::EntropyError;
-import Uuid::{ MillisecondOf, MonotonicUuid, Random, RandomFromBytes, SwapGuidOrder, TimeOrdered,
-               TimeOrderedAt, Uuid, UuidVariant };
+import Uuid::{ MillisecondOf, MonotonicUuid, Random, RandomFromBytes, SwapGuidOrder, TimeOrdered, TimeOrderedAt, Uuid, UuidVariant };
 
 func Main() -> int {
     var error = EntropyError::None;
@@ -33,7 +31,7 @@ func Main() -> int {
         raw[index] = 0xFFu8 as char8;
         index = index + 1;
     }
-    var forced = RandomFromBytes(Slice<char8> { data: @raw[0], length: 16 });
+    var forced = RandomFromBytes((@raw[0])[..16]);
     Assert(forced.Version() == 4u8 && forced.Variant() == UuidVariant::Standard,
            "the version and variant are set whatever the supplied bytes said");
     index = 0;
@@ -41,7 +39,7 @@ func Main() -> int {
         raw[index] = 0u8 as char8;
         index = index + 1;
     }
-    var forcedZero = RandomFromBytes(Slice<char8> { data: @raw[0], length: 16 });
+    var forcedZero = RandomFromBytes((@raw[0])[..16]);
     Assert(forcedZero.Version() == 4u8 && forcedZero.Variant() == UuidVariant::Standard, "from either extreme");
 
     // Version 7: well-formed, carrying the millisecond it was given.

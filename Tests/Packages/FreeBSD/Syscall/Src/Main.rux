@@ -1,26 +1,7 @@
 import Core::{ OperatingSystem, #target };
 
 when #target.os == OperatingSystem::FreeBSD {
-    import FreeBSD::{
-        ClockGetTime,
-        ClockMonotonic,
-        Errno,
-        GetPid,
-        IsError,
-        MapAnonymous,
-        MapPrivate,
-        Mmap,
-        Munmap,
-        ProtectionRead,
-        ProtectionWrite,
-        Read,
-        Syscall0,
-        Syscall6,
-        SysGetPid,
-        SysMmap,
-        Timespec,
-        Write
-    };
+    import FreeBSD::{ ClockGetTime, ClockMonotonic, Errno, GetPid, IsError, MapAnonymous, MapPrivate, Mmap, Munmap, ProtectionRead, ProtectionWrite, Read, Syscall0, Syscall6, SysGetPid, SysMmap, Timespec, Write };
 
     func Main() -> int {
         if GetPid() <= 0 {

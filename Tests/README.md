@@ -36,7 +36,7 @@ Test manifests are intentionally uniform:
 
 During workspace tests, transitive dependencies in publishable first-party package manifests are resolved from matching local workspace members. Registry fallback is disabled, so the suite does not require `rux install`, a populated package cache, or network access.
 
-`Language/CoreOptional` exercises inference, arrays, range syntax, and scalar arithmetic without dependencies. `Language/IntrinsicReplacement` imports `Fixtures/IntrinsicProvider` as `Foundation`, including aliases, constants, text views, generic slices, ranges, and compiler context. Fixture providers are local-only `SourceLibrary` packages; they are not executable tests or workspace library APIs.
+`Language/CoreOptional` exercises inference, arrays, range syntax, and scalar arithmetic without dependencies. `Language/IntrinsicReplacement` imports `Fixtures/IntrinsicProvider` as `Foundation`, including scalar aliases, constants, a character-slice alias, and compiler context. Slice and range operations need no provider. Fixture providers are local-only `SourceLibrary` packages; they are not executable tests or workspace library APIs.
 
 ## Native Runtime Fixtures
 

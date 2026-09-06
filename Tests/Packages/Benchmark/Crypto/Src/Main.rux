@@ -1,5 +1,5 @@
 import Benchmark::{ BenchRunner, BlackBox };
-import Core::{ MutableSlice, Slice };
+
 import Crypto::Sha256Of;
 import Time::Instant;
 
@@ -13,13 +13,13 @@ func Main() -> int {
         i = i + 1;
     }
 
-    let message = Slice<char8> { data: @buffer[0], length: 64 };
+    let message = (@buffer[0])[..64];
 
     // Warm-up SHA-256
     var w: uint64 = 0;
     while w < runner.warmupIters {
         var digest: char8[32];
-        let outSlice = MutableSlice::From<char8>(@digest[0], 32);
+        let outSlice = (@digest[0])[..32];
         Sha256Of(message, outSlice);
         let b = BlackBox(digest[0]);
         w = w + 1u64;
@@ -30,7 +30,7 @@ func Main() -> int {
     var it: uint64 = 0;
     while it < runner.measuredIters {
         var digest: char8[32];
-        let outSlice = MutableSlice::From<char8>(@digest[0], 32);
+        let outSlice = (@digest[0])[..32];
         Sha256Of(message, outSlice);
         let b = BlackBox(digest[0]);
         it = it + 1u64;

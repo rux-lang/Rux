@@ -1,29 +1,29 @@
-import Core::{ string, string8 };
+
 // TOML's lexical surface is mostly strings and numbers, and that is where implementations disagree. The four
 // string forms differ in whether escapes are honoured and whether a newline may appear raw; a lexer that treats
 // them alike turns a Windows path into a string with a tab in it. Numbers and date-times share a prefix, so
 // the classification of `1979` against `1979-05-27` is checked here rather than assumed.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, Slice };
+import Core::{ Assert };
 import Text::{ String, TextError };
 import Toml::{ TomlDecodeText, TomlLexError, TomlLexer, TomlTextForm, TomlToken, TomlTokenKind };
 
-func FirstToken(text: string) -> TomlToken {
+func FirstToken(text: char8[..]) -> TomlToken {
     var lexer = TomlLexer(text);
     return lexer.Next();
 }
 
-func FirstKind(text: string) -> TomlTokenKind {
+func FirstKind(text: char8[..]) -> TomlTokenKind {
     return FirstToken(text).kind;
 }
 
-func FirstError(text: string) -> TomlLexError {
+func FirstError(text: char8[..]) -> TomlLexError {
     return FirstToken(text).error;
 }
 
 // The decoded content of the first token, which must be a text token.
-func FirstText(text: string) -> String {
+func FirstText(text: char8[..]) -> String {
     var system = SystemAllocator();
     let allocator: Allocator = system;
     var lexer = TomlLexer(text);
@@ -34,7 +34,7 @@ func FirstText(text: string) -> String {
     return TomlDecodeText(allocator, span, token.form, @error, @bad);
 }
 
-func Same(value: &String, expected: string) -> bool {
+func Same(value: &String, expected: char8[..]) -> bool {
     let bytes = value.Bytes();
     if bytes.length != expected.length {
         return false;

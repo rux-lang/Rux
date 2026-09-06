@@ -24,7 +24,7 @@ The non-generic form works since `19beafa`, which fixed the two layers above thi
 
 ### A struct literal cannot appear anywhere inside an `if` condition
 
-*Loud.* Its opening brace is taken as the start of the body, even when the literal is nested inside a call: `if !AllOf<int32>(Slice<int32> { ... }, IsEven) { ... }` is a parse error. Name the value in a `let` first.
+*Loud.* Its opening brace is taken as the start of the body, even when the literal is nested inside a call: `if !AllOf<int32>(Record { ... }, IsEven) { ... }` is a parse error. Name the value in a `let` first.
 
 ### A generic argument is never inferred
 

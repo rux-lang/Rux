@@ -11,7 +11,7 @@
 // is a value the caller owns rather than a global, for the reason the random package gives at length: shared
 // mutable state makes results depend on who else is running.
 
-import Core::{ MutableSlice, Ordering, Slice };
+import Core::{ Ordering };
 import Entropy::{ EntropyError, Fill };
 import Time::Timestamp;
 
@@ -36,7 +36,7 @@ pub func TimeOrderedAt(milliseconds: uint64, error: *var EntropyError) -> Uuid {
     var bytes: char8[16];
     *error = Fill(@bytes[0] as *var opaque, 16u);
     if *error != EntropyError::None { return Uuid::Nil(); }
-    var value = Uuid::FromBytes(Slice<char8> { data: @bytes[0], length: 16 });
+    var value = Uuid::FromBytes((@bytes[0])[..16]);
     // Six bytes of milliseconds, most significant first -- which is what makes byte order equal time order.
     var index: uint = 0;
     while index < 6u {

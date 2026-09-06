@@ -2,8 +2,7 @@
 // time on -- at both signs, since three of the five are not symmetric about zero.
 
 import Core::Assert;
-import Math::{ Ceil, Floor, IsNan, PositiveInfinity64, QuietNan64, Round, RoundingMode, RoundTiesToEven, RoundTo,
-               SignBit, ToIntegerChecked, Trunc };
+import Math::{ Ceil, Floor, IsNan, PositiveInfinity64, QuietNan64, Round, RoundingMode, RoundTiesToEven, RoundTo, SignBit, ToIntegerChecked, Trunc };
 
 func Main() -> int {
     let infinity = PositiveInfinity64();
