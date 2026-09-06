@@ -8,5 +8,5 @@ for candidate in /opt/rux-tools/cmake/bin/cmake "$PWD/BuildCache/CMake/bin/cmake
         exit 0
     fi
 done
-echo 'error: CMake 4.4.3 binary is unavailable. Run Prepare FreeBSD Images and promote the validated environment lock; CI will not compile CMake.' >&2
+echo 'error: CMake 4.4.3 binary is unavailable. Run Prepare Tools with FreeBSD selected and promote the validated environment lock; CI will not compile CMake.' >&2
 exit 1

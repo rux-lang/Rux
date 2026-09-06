@@ -213,6 +213,9 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 
 ### Changed
 
+- **CI/CD**: Consolidate manual tool preparation into `PrepareTools.yml` with All, FreeBSD, and Native selections, automatic release prefixes, and FreeBSD checkpoint resume. Reuse the internal `Actions/PrepareFreeBSD` composite action and report an explicit error when the wrong branch is selected.
+
+
 - **CI/CD**: Restore cached native toolchains and prepare validated FreeBSD images outside push/PR jobs; ordinary FreeBSD CI no longer builds CMake from source. Split architecture dependencies and clang-tidy analysis to reduce waiting, preserve compiler caches before tests, and consolidate CI script entry points. Prepared images require initial publication and manifest promotion.
 
 #### Language

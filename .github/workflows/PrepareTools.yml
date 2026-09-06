@@ -1,0 +1,331 @@
+name: Prepare Tools
+on:
+  workflow_dispatch:
+    inputs:
+      tools:
+        description: Tool environments to prepare
+        required: true
+        type: choice
+        options: [All, FreeBSD, Native]
+        default: All
+      revision:
+        description: Shared revision suffix, e.g. 2026-09-06-v2 (prefixes are added automatically)
+        required: true
+        type: string
+      resume:
+        description: Resume FreeBSD draft checkpoints (select FreeBSD and the original revision suffix)
+        type: boolean
+        default: false
+permissions:
+  contents: write
+concurrency:
+  group: prepare-tools-${{ inputs.revision }}
+  cancel-in-progress: false
+jobs:
+  check-inputs:
+    name: Check preparation inputs
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    steps:
+      - name: Validate branch, selection, and revision
+        env:
+          REPOSITORY: ${{ github.repository }}
+          REF: ${{ github.ref }}
+          TOOLS: ${{ inputs.tools }}
+          REVISION: ${{ inputs.revision }}
+          RESUME: ${{ inputs.resume }}
+        run: |
+          if [ "$REPOSITORY" != rux-lang/Rux ] || [ "$REF" != refs/heads/dev ]; then
+            echo '::error::Run Prepare Tools in rux-lang/Rux with the dev branch selected.'
+            exit 1
+          fi
+          case "$TOOLS" in All|FreeBSD|Native) ;; *) echo '::error::Invalid tools selection'; exit 1 ;; esac
+          if [[ ! "$REVISION" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || [[ "$REVISION" == ci-tools-* ]]; then
+            echo '::error::Enter a revision suffix such as 2026-09-06-v2, without the ci-tools prefix.'
+            exit 1
+          fi
+          if [ "$RESUME" = true ] && [ "$TOOLS" != FreeBSD ]; then
+            echo '::error::Resume supports FreeBSD checkpoints only. Select FreeBSD.'
+            exit 1
+          fi
+  freebsd-initialize:
+    needs: check-inputs
+    if: inputs.tools == 'All' || inputs.tools == 'FreeBSD'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    steps:
+      - name: Create or check the draft revision
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REVISION: ${{ format('ci-tools-freebsd-{0}', inputs.revision) }}
+          RESUME: ${{ inputs.resume }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          [[ "$REVISION" =~ ^ci-tools-freebsd-[A-Za-z0-9._-]+$ ]] || exit 1
+          if [ "$RESUME" = true ]; then
+            test "$(gh release view "$REVISION" --repo "$REPOSITORY" --json isDraft --jq .isDraft)" = true
+          else
+            gh release create "$REVISION" --repo "$REPOSITORY" --target "$GITHUB_SHA" --draft --prerelease --latest=false --title "$REVISION" --notes 'Prepared CI environments; not a Rux product release.'
+          fi
+  freebsd-base:
+    needs: freebsd-initialize
+    if: ${{ !inputs.resume }}
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x86_64, aarch64]
+    runs-on: ${{ matrix.arch == 'aarch64' && 'ubuntu-24.04' || 'ubuntu-26.04' }}
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/Actions/PrepareFreeBSD
+        with:
+          arch: ${{ matrix.arch }}
+          revision: ${{ format('ci-tools-freebsd-{0}', inputs.revision) }}
+          phase: base
+  freebsd-cmake-1:
+    needs: [freebsd-initialize, freebsd-base]
+    if: ${{ !cancelled() && needs.freebsd-initialize.result == 'success' && (needs.freebsd-base.result == 'success' || needs.freebsd-base.result == 'skipped') }}
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x86_64, aarch64]
+    runs-on: ${{ matrix.arch == 'aarch64' && 'ubuntu-24.04' || 'ubuntu-26.04' }}
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/Actions/PrepareFreeBSD
+        with:
+          arch: ${{ matrix.arch }}
+          revision: ${{ format('ci-tools-freebsd-{0}', inputs.revision) }}
+          phase: cmake
+  freebsd-cmake-2:
+    needs: freebsd-cmake-1
+    if: ${{ !cancelled() && needs.freebsd-cmake-1.result == 'success' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x86_64, aarch64]
+    runs-on: ${{ matrix.arch == 'aarch64' && 'ubuntu-24.04' || 'ubuntu-26.04' }}
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/Actions/PrepareFreeBSD
+        with:
+          arch: ${{ matrix.arch }}
+          revision: ${{ format('ci-tools-freebsd-{0}', inputs.revision) }}
+          phase: cmake
+  freebsd-cmake-3:
+    needs: freebsd-cmake-2
+    if: ${{ !cancelled() && needs.freebsd-cmake-2.result == 'success' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x86_64, aarch64]
+    runs-on: ${{ matrix.arch == 'aarch64' && 'ubuntu-24.04' || 'ubuntu-26.04' }}
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/Actions/PrepareFreeBSD
+        with:
+          arch: ${{ matrix.arch }}
+          revision: ${{ format('ci-tools-freebsd-{0}', inputs.revision) }}
+          phase: cmake
+  freebsd-cmake-4:
+    needs: freebsd-cmake-3
+    if: ${{ !cancelled() && needs.freebsd-cmake-3.result == 'success' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x86_64, aarch64]
+    runs-on: ${{ matrix.arch == 'aarch64' && 'ubuntu-24.04' || 'ubuntu-26.04' }}
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/Actions/PrepareFreeBSD
+        with:
+          arch: ${{ matrix.arch }}
+          revision: ${{ format('ci-tools-freebsd-{0}', inputs.revision) }}
+          phase: cmake
+  freebsd-finalize-x86_64:
+    needs: freebsd-cmake-4
+    if: ${{ !cancelled() && needs.freebsd-cmake-4.result == 'success' }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/Actions/PrepareFreeBSD
+        with:
+          arch: x86_64
+          revision: ${{ format('ci-tools-freebsd-{0}', inputs.revision) }}
+          phase: finalize
+  freebsd-finalize-aarch64:
+    needs: freebsd-finalize-x86_64
+    if: ${{ !cancelled() && needs.freebsd-finalize-x86_64.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: ./.github/Actions/PrepareFreeBSD
+        with:
+          arch: aarch64
+          revision: ${{ format('ci-tools-freebsd-{0}', inputs.revision) }}
+          phase: finalize
+  freebsd-publish:
+    needs: freebsd-finalize-aarch64
+    if: ${{ !cancelled() && needs.freebsd-finalize-aarch64.result == 'success' }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    steps:
+      - name: Publish only the validated complete image set
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REVISION: ${{ format('ci-tools-freebsd-{0}', inputs.revision) }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          gh release download "$REVISION" --repo "$REPOSITORY" --pattern 'freebsd-*.json' --dir manifests
+          python3 - <<'PYTHON'
+          import json
+          from pathlib import Path
+          environments = {}
+          for path in Path('manifests').glob('*.json'):
+              candidate = json.loads(path.read_text())
+              assert candidate['validated'] is True
+              environments.update(candidate['environments'])
+          assert set(environments) == {'freebsd-build-x86_64', 'freebsd-build-aarch64', 'freebsd-runtime-x86_64', 'freebsd-runtime-aarch64', 'freebsd-minimal-aarch64'}
+          Path('candidate.json').write_text(json.dumps({'validated': True, 'environments': environments}, indent=2) + '\n')
+          PYTHON
+          gh release upload "$REVISION" candidate.json --repo "$REPOSITORY"
+          # Checkpoints are disposable and must not become long-lived public assets.
+          gh release view "$REVISION" --repo "$REPOSITORY" --json assets --jq '.assets[].name' |
+            while IFS= read -r asset; do
+              case "$asset" in checkpoint-*|transfer.tar.gz) gh release delete-asset "$REVISION" "$asset" --repo "$REPOSITORY" --yes ;; esac
+            done
+          gh release edit "$REVISION" --repo "$REPOSITORY" --draft=false --prerelease --latest=false
+          echo 'Download candidate.json and promote it with .github/CI/Environment.py after reviewing the validation logs.' >> "$GITHUB_STEP_SUMMARY"
+  native-initialize:
+    needs: check-inputs
+    if: inputs.tools == 'All' || inputs.tools == 'Native'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    steps:
+      - name: Create draft environment release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REVISION: ${{ format('ci-tools-native-{0}', inputs.revision) }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          [[ "$REVISION" =~ ^ci-tools-native-[A-Za-z0-9._-]+$ ]] || exit 1
+          gh release create "$REVISION" --repo "$REPOSITORY" --target "$GITHUB_SHA" --draft --prerelease --latest=false --title "$REVISION" --notes 'Prepared CI toolchains; not a Rux product release.'
+  native-prepare:
+    needs: native-initialize
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-26.04
+            os: Linux
+            arch: x86_64
+          - runner: ubuntu-26.04-arm
+            os: Linux
+            arch: aarch64
+          - runner: macos-26-intel
+            os: macOS
+            arch: x86_64
+          - runner: macos-26
+            os: macOS
+            arch: aarch64
+          - runner: windows-2025
+            os: Windows
+            arch: x86_64
+          - runner: windows-11-arm
+            os: Windows
+            arch: aarch64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Prepare toolchain once
+        shell: pwsh
+        env:
+          TOOL_ARCH: ${{ matrix.arch }}
+        run: |
+          ./.github/Scripts/Install.ps1 -Tool BuildTools
+          if ($IsWindows) {
+            ./.github/Scripts/Install.ps1 -Tool WindowsLLVM -Arch $env:TOOL_ARCH
+            ./.github/Scripts/Install.ps1 -Tool Ccache
+          } elseif ($IsMacOS) {
+            ./.github/Scripts/Install.ps1 -Tool MacOSLLVM
+          } else {
+            ./.github/Scripts/Install.ps1 -Tool LinuxLLVM
+          }
+      - name: Package and upload draft bundle
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REVISION: ${{ format('ci-tools-native-{0}', inputs.revision) }}
+        run: |
+          ./.github/Scripts/Run.ps1 -Task NativeEnvironment package --revision $env:REVISION
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $assets = @(Get-ChildItem BuildCache/environment-output -File | ForEach-Object FullName)
+          gh release upload $env:REVISION --repo $env:GITHUB_REPOSITORY @assets
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+  native-validate:
+    needs: native-prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-26.04, ubuntu-26.04-arm, macos-26-intel, macos-26, windows-2025, windows-11-arm]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Restore on a clean runner and verify
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REVISION: ${{ format('ci-tools-native-{0}', inputs.revision) }}
+        run: ./.github/Scripts/Run.ps1 -Task ValidateNative --revision $env:REVISION
+  native-publish:
+    needs: native-validate
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    steps:
+      - name: Publish the validated toolchain set
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REVISION: ${{ format('ci-tools-native-{0}', inputs.revision) }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          gh release download "$REVISION" --repo "$REPOSITORY" --pattern '*-build-*.json' --dir manifests
+          python3 - <<'PYTHON'
+          import json
+          from pathlib import Path
+          environments = {}
+          for path in Path('manifests').glob('*.json'):
+              candidate = json.loads(path.read_text())
+              assert candidate['validated'] is True
+              environments.update(candidate['environments'])
+          assert len(environments) == 6
+          Path('candidate.json').write_text(json.dumps({'validated': True, 'environments': environments}, indent=2) + '\n')
+          PYTHON
+          gh release upload "$REVISION" candidate.json --repo "$REPOSITORY"
+          gh release edit "$REVISION" --repo "$REPOSITORY" --draft=false --prerelease --latest=false

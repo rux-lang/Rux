@@ -1,0 +1,37 @@
+name: Prepare FreeBSD
+description: Prepare or resume one FreeBSD image phase inside a dedicated hosted job.
+inputs:
+  arch:
+    description: FreeBSD guest architecture (x86_64 or aarch64)
+    required: true
+  revision:
+    description: Draft ci-tools-freebsd-* release tag
+    required: true
+  phase:
+    description: Image preparation phase (base, cmake, or finalize)
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Install host virtualization tools
+      shell: bash
+      run: |
+        sudo apt-get update -qq
+        sudo apt-get install -y --no-install-recommends qemu-system-x86 qemu-system-arm qemu-efi-aarch64 zstd rsync
+        sudo chmod a+rw /dev/kvm 2>/dev/null || true
+    - name: Prepare or resume the image
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        IMAGE_ARCH: ${{ inputs.arch }}
+        IMAGE_REVISION: ${{ inputs.revision }}
+        IMAGE_PHASE: ${{ inputs.phase }}
+      run: sh .github/Scripts/Run.sh prepare-freebsd --arch "$IMAGE_ARCH" --revision "$IMAGE_REVISION" --phase "$IMAGE_PHASE"
+    - name: Preserve failure logs
+      if: failure()
+      uses: actions/upload-artifact@v7
+      with:
+        name: image-logs-${{ inputs.arch }}-${{ inputs.phase }}-${{ github.job }}
+        path: ${{ runner.temp }}/image-factory/**/*.log
+        retention-days: 1
+        if-no-files-found: ignore

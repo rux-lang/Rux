@@ -21,7 +21,7 @@ runs:
     - if: steps.environment.outputs.kind != 'qcow2'
       shell: bash
       run: |
-        echo '::error::Publish Prepare FreeBSD Images and promote its candidate manifest before running FreeBSD CI.'
+        echo '::error::Publish Prepare Tools with FreeBSD selected and promote its candidate manifest before running FreeBSD CI.'
         exit 1
     - if: steps.environment.outputs.kind == 'qcow2'
       shell: bash
