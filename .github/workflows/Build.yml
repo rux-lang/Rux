@@ -206,7 +206,7 @@ jobs:
       - name: Verify the macOS AArch64 image without launching it
         if: matrix.target == 'linux-x86_64'
         shell: pwsh
-        run: ./Tests/Native/MacOSAArch64/VerifyCross.ps1
+        run: ./Tests/Native/MacOSAArch64/VerifyCross.ps1 -Rux ./Bin/rux
 
       - name: Upload the compiler
         if: inputs.upload-artifact

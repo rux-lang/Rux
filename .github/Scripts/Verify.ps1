@@ -54,12 +54,20 @@ switch ($Stage) {
         )
         if ($dependencies.Count -eq 0) { throw "could not read the imports of '$rux'" }
 
+        # Ask Windows what it ships rather than keeping a list of names: a DLL
+        # is the platform's if it sits in System32, or if it is an API set,
+        # which the loader resolves without a file of its own. A hand-written
+        # allowlist fails the build every time the compiler reaches a new system
+        # library, which is how WINHTTP.dll — used by the registry client — was
+        # reported as non-system.
+        $system32 = Join-Path $env:SystemRoot 'System32'
         $unexpected = @($dependencies | Where-Object {
-                $_ -notmatch '^(?i)(KERNEL32|ADVAPI32|USER32|SHELL32|ole32|OLEAUT32|bcrypt|ntdll|VCRUNTIME\d*|api-ms-win-|ucrtbase|MSVCP\d*)'
+                $_ -notmatch '^(?i)(api-ms-win-|ext-ms-win-)' -and
+                -not (Test-Path -LiteralPath (Join-Path $system32 $_))
             })
         if ($unexpected.Count -ne 0) {
-            throw "'$rux' imports non-system DLLs: $($unexpected -join ', ')"
+            throw "'$rux' imports DLLs Windows does not ship: $($unexpected -join ', ')"
         }
-        Write-Host "$rux depends only on system DLLs"
+        Write-Host "$rux depends only on DLLs Windows ships"
     }
 }
