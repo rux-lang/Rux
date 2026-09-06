@@ -1,0 +1,86 @@
+import Core::Assert;
+
+// A writable view, `var T[..]`, is the slice whose elements may be written through it. It is built from a writable
+// place -- a `var` array, or a pointer to writable storage with a length -- and it weakens to a read-only view of the
+// same storage wherever one is taken.
+
+struct Pair {
+    first: int32;
+    second: int32;
+}
+
+func Total(values: int32[..]) -> int32 {
+    var total: int32 = 0;
+    for value in values {
+        total += value;
+    }
+    return total;
+}
+
+func Main() -> int {
+    // An empty view borrows nothing and addresses nothing.
+    let empty: var int32[..] = [];
+    Assert(empty.length == 0, "an empty view has no elements");
+    Assert(empty.data == null, "an empty view addresses nothing");
+
+    // A range of a writable array place borrows the array's storage without copying it.
+    var storage: int32[6] = [10, 20, 30, 40, 50, 60];
+    let view = storage[..];
+    Assert(view.length == 6, "the whole array is viewed");
+    Assert(view.data == @storage[0], "the view borrows the array's storage");
+    Assert(view[0] == 10 && view[5] == 60, "the elements are read through the view");
+    let copied = view;
+    Assert(copied.data == view.data && copied.length == view.length, "copying a view copies its two words");
+
+    // Writing through the view writes the borrowed storage.
+    view[0] = 11;
+    Assert(view[0] == 11 && storage[0] == 11, "a write through the view reaches the array");
+
+    // Elements are exchanged through the same view.
+    let first = view[0];
+    view[0] = view[5];
+    view[5] = first;
+    Assert(view[0] == 60 && view[5] == 11, "two elements are exchanged");
+    view[0] = 11;
+    view[5] = 60;
+
+    // A sub-range of a writable view is a writable view of the same storage.
+    let middle = view[2..4];
+    Assert(middle.length == 2 && middle[0] == 30 && middle[1] == 40, "the sub-range covers two elements");
+    middle[0] = 33;
+    Assert(view[2] == 33 && storage[2] == 33, "a write through the sub-range reaches the array");
+
+    // A sub-range of a sub-range stays inside the original storage.
+    let nested = view[1..5][1..3];
+    Assert(nested.length == 2 && nested[0] == 33, "the nested sub-range starts where its parent's second element is");
+
+    // A writable view weakens to a read-only one that aliases the same storage and tracks later writes.
+    let borrowed: int32[..] = view;
+    Assert(borrowed.length == 6 && borrowed.data == view.data, "the read-only view aliases the storage");
+    Assert(borrowed[0] == 11, "the read-only view reads the same elements");
+    view[0] = 99;
+    Assert(borrowed[0] == 99, "a later write is visible through the read-only view");
+    Assert(Total(view) == 99 + 20 + 33 + 40 + 50 + 60, "a writable view is passed where a read-only one is taken");
+
+    // A pointer to writable storage, given a length, is a writable view as well.
+    let fromPointer = (@storage[1])[..2];
+    Assert(fromPointer.length == 2 && fromPointer[0] == 20, "the pointer view starts at the pointer");
+    fromPointer[0] = 21;
+    Assert(storage[1] == 21, "a write through the pointer view reaches the array");
+
+    // Element size participates in indexing and sub-ranging.
+    var pairs: Pair[3] = [Pair { first: 1, second: 2 }, Pair { first: 3, second: 4 }, Pair { first: 5, second: 6 }];
+    let pairView = pairs[..];
+    Assert(pairView[1].second == 4, "a struct element is read whole");
+    let pairTail = pairView[1..3];
+    Assert(pairTail.length == 2 && pairTail[0].first == 3, "the tail starts at the second pair");
+    pairTail[0] = Pair { first: 7, second: 8 };
+    Assert(pairs[1].first == 7 && pairs[1].second == 8, "a struct element is written whole");
+
+    // A read-only array place gives a read-only view.
+    let fixed: int32[2] = [1, 2];
+    let frozen = fixed[..];
+    Assert(frozen.length == 2 && frozen[1] == 2, "a read-only array is viewed read-only");
+
+    return 0;
+}

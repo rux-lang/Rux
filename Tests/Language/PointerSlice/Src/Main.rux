@@ -1,0 +1,68 @@
+import Core::Assert;
+
+// A pointer indexed by a range with an end bound is a slice of the elements it addresses: `p[..n]` views `n` elements
+// from `p`, `p[a..b]` the elements from `a` up to `b`, and `p[..=n]` one more than `n`. The view is writable exactly
+// when the pointer is.
+
+func Sum(values: int[..]) -> int {
+    var total = 0;
+    for value in values {
+        total += value;
+    }
+    return total;
+}
+
+struct Counter { value: int; }
+
+func NextPointer(calls: &var Counter, pointer: *var int) -> *var int {
+    calls.value += 1;
+    return pointer;
+}
+
+func NextBound(calls: &var Counter, bound: uint) -> uint {
+    calls.value += 1;
+    return bound;
+}
+
+func Main() -> int {
+    let values: int[8] = [1, 2, 3, 4, 5, 6, 7, 8];
+    let all = (@values[0])[..8];
+    Assert(all.length == 8 && all[0] == 1 && all[7] == 8, "the pointer view covers the length it was given");
+
+    let window = (@values[2])[..3];
+    Assert(window.length == 3 && window[0] == 3 && window[2] == 5, "a view starts at the pointer it was built from");
+    Assert(Sum(window) == 12, "a pointer view is passed where a slice is taken");
+
+    let bounded = (@values[0])[2..5];
+    Assert(bounded.length == 3 && bounded[0] == 3 && bounded[2] == 5, "a two-sided range skips the start");
+
+    let inclusive = (@values[0])[..=3];
+    Assert(inclusive.length == 4 && inclusive[3] == 4, "an inclusive range covers its end");
+
+    var buffer: uint8[4] = [1u8, 2u8, 3u8, 4u8];
+    let writable = (@buffer[0])[..4];
+    writable[0] = 9u8;
+    Assert(buffer[0] == 9u8, "a view of a writable pointer writes the storage it addresses");
+
+    let text = "abc";
+    let units = text.data[..2];
+    Assert(units.length == 2 && units[1] == c8'b', "a literal's data pointer is sliced like any other");
+
+    var calls = Counter { value: 0 };
+    var numbers: int[4] = [10, 20, 30, 40];
+    let evaluated = NextPointer(calls, @numbers[0])[NextBound(calls, 1)..NextBound(calls, 3)];
+    Assert(calls.value == 3, "the pointer and both bounds are evaluated once");
+    Assert(evaluated.length == 2 && evaluated[0] == 20, "evaluated bounds retain their values");
+    evaluated[1] = 99;
+    Assert(numbers[2] == 99, "a returned writable pointer keeps its writability");
+
+    let closed = (@numbers[0])[1..=2];
+    Assert(closed.length == 2 && closed[1] == 99, "a closed two-sided pointer range includes the end");
+    let empty = (@numbers[0])[2..2];
+    Assert(empty.length == 0, "equal pointer bounds yield an empty view");
+    let absent: *int = null;
+    let noStorage = absent[..0];
+    Assert(noStorage.length == 0 && noStorage.data == null, "a null pointer with zero length is empty");
+
+    return 0;
+}

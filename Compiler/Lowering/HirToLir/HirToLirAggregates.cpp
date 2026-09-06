@@ -788,8 +788,10 @@ LirReg HirToLirContext::LowerCoerceToInterface(const HirCoerceToInterfaceExpr &e
 }
 
 void HirToLirContext::StoreArrayToSlice(const HirArrayToSliceExpr &e, LirReg slot) {
-    const LirReg data = LowerLValue(*e.value);
     const TypeRef dataType = TypeRef::MakePointer(e.elementType);
+    // An empty view is the same value however it was built: it addresses nothing, rather than the zero-sized array
+    // it was written as, so a reader that tests the pointer sees no storage to read.
+    const LirReg data = e.length == 0 ? EmitConst("0", dataType) : LowerLValue(*e.value);
     const LirReg dataField = EmitFieldPtr(slot, "data", dataType);
     EmitStore(data, dataField, dataType);
     const LirReg length = EmitConst(std::to_string(e.length), TypeRef::MakeUInt64());

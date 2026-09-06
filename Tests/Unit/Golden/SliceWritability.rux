@@ -1,0 +1,16 @@
+// A view is as writable as what it was built from: a read-only array, a literal and a read-only view give read-only
+// views, and a pointer has no length to view without an end bound.
+func Main() {
+    let fixed: int[3] = [1, 2, 3];
+    var open: int[3] = [4, 5, 6];
+    let frozen: var int[..] = fixed[..];
+    let text: var char8[..] = "abc";
+    let readOnly: int[..] = open[..];
+    readOnly[0] = 1;
+    let pointer: *int = @fixed[0];
+    let unbounded = pointer[..];
+    let tail = pointer[1..];
+    let strengthened: var int[..] = fixed;
+    let writable: var int[..] = open;
+    writable[0] = 7;
+}

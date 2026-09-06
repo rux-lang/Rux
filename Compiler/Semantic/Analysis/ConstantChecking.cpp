@@ -383,6 +383,13 @@ std::string AnalysisContext::AssignmentErrorMessage(const Expr &expr, const Type
     if (IsIntegerLiteralOutOfRangeFor(expr, targetType)) {
         return std::format("integer literal is out of range for type '{}'", targetType.ToString());
     }
+    // A literal's code units live in the read-only section the linker places them in, so the one view that can name
+    // them is a read-only one; the refusal says why rather than reporting a mismatch of writability.
+    if (const auto *literal = dynamic_cast<const LiteralExpr *>(&expr);
+        literal && literal->token.kind == TokenKind::StringLiteral && targetType.IsWritableSlice()) {
+        return std::format("cannot assign string literal to '{}' because literal text is stored in a read-only section",
+                           targetType.ToString());
+    }
     if (const std::string hint = ImmutableAddressOfHint(expr, targetType); !hint.empty()) {
         return fallback + hint;
     }

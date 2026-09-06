@@ -705,6 +705,12 @@ LirReg HirToLirContext::LowerRangeIndex(const HirIndexExpr &e) {
         data = e.object->type.kind == TypeRef::Kind::Reference ? LowerExpr(*e.object) : LowerLValue(*e.object);
         collectionLength = EmitConst(std::to_string(collectionType.arrayLength.value_or(0)), indexType);
     }
+    else if (collectionType.kind == TypeRef::Kind::Pointer) {
+        // A pointer is the data itself and has no length of its own. Semantic analysis accepts a range of a pointer
+        // only with an end bound, so the length here is never what the slice runs to.
+        data = LowerExpr(*e.object);
+        collectionLength = EmitConst("0", indexType);
+    }
     else {
         const LirReg objectSlot =
             e.object->type.kind == TypeRef::Kind::Reference ? LowerExpr(*e.object) : LowerLValue(*e.object);

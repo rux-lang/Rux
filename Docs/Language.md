@@ -197,6 +197,29 @@ in ordinary source initializers.
 
 ### Literal views
 
+### Writable sequence views
+
+`T[..]` is a read-only slice and `var T[..]` is a writable slice. Both contain a data pointer and an element count.
+The storage must outlive the view. Copying a view copies its descriptor, not its elements.
+
+```rux
+var values: int[3] = [1, 2, 3];
+let writable = values[..];
+writable[1] = 4;
+let shared: int[..] = writable;
+let empty: var int[..] = [];
+```
+
+Writability belongs to the view: a `let` binding can write through a writable view, while a `var` binding of a
+read-only view cannot write its elements. Writable slices implicitly weaken to read-only slices; the reverse is
+rejected. Array views inherit the writability of the array place, and sub-slices preserve their parent's writability.
+
+A pointer can form a slice with `p[..n]`, `p[a..b]`, or an inclusive end such as `p[..=n]`. Pointer views inherit
+pointee writability. A pointer has no stored length, so `p[..]` and `p[a..]` are rejected. Slice indexing and iteration
+use element counts, including when elements occupy more than one byte. Empty slice literals have null data.
+
+### Literal encodings
+
 The names `string`, `string8`, `string16`, and `string32` require local declarations or explicit imports. A literal
 still has an inferred compiler representation without any package dependency. Reading `.data` or `.length` requires
 a visible declaration for that encoding; `import Core::string;` provides the UTF-8 declaration through its alias.

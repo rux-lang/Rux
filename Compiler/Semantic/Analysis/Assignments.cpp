@@ -47,7 +47,11 @@ bool AnalysisContext::CanAssignExprTo(const Expr &expr, const TypeRef &exprType,
         return targetType.inner.empty() || !targetType.inner.front().isMut || !PlaceIsImmutable(expr);
     }
     if (exprType.kind == TypeRef::Kind::Array && exprType.arrayLength && !exprType.inner.empty()) {
-        if (const auto sliceElement = SliceElementType(targetType)) {
+        if (auto sliceElement = SliceElementType(targetType)) {
+            // The view's writability travels on the element; what is checked here is the element's own type.
+            sliceElement->isMut = false;
+            // An array literal is fresh storage, so it may be viewed either way; a named array may be viewed
+            // writably only from a place that can be written.
             if (const auto *array = dynamic_cast<const ArrayExpr *>(&expr)) {
                 for (const auto &element : array->elements) {
                     const TypeRef elementType = CheckExpr(*element);
@@ -60,6 +64,9 @@ bool AnalysisContext::CanAssignExprTo(const Expr &expr, const TypeRef &exprType,
             if (const auto *repeat = dynamic_cast<const ArrayRepeatExpr *>(&expr)) {
                 const TypeRef elementType = CheckExpr(*repeat->value);
                 return CanAssignExprTo(*repeat->value, elementType, *sliceElement);
+            }
+            if (targetType.IsWritableSlice() && !PlaceIsWritable(expr, exprType)) {
+                return false;
             }
             return exprType.inner[0].IsAssignableTo(*sliceElement);
         }

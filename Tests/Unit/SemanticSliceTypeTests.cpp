@@ -109,6 +109,102 @@ TEST_CASE("every spelling reads back from an instantiation name unchanged") {
                                              "..=uint", "..", "int[..]..int[..]", "(int,)", "(int, uint8[..])"});
 }
 
+TEST_CASE("a view is as writable as the place or pointer it was built from") {
+    ParseResult parsed = Parse(R"(
+        func Main(read: *int, write: *var int, shared: &int[4], exclusive: &var int[4], fixed: int[4]) {
+            var open: int[4] = [1, 2, 3, 4];
+            let a = read[..2];
+            let b = write[..2];
+            let c = shared[..];
+            let d = exclusive[..];
+            let e = fixed[..];
+            let f = open[1..];
+            let g = b[1..];
+            let h = b.data;
+            let i = b[0];
+            let j = f.data;
+        }
+    )");
+    SemanticAnalyzer analyzer({&parsed.module}, {}, "test", "Windows");
+    const SemanticModel model = analyzer.Analyze();
+    REQUIRE_FALSE(model.HasErrors());
+    const auto *main = dynamic_cast<const FuncDecl *>(parsed.module.items[0].get());
+    REQUIRE(main != nullptr);
+    std::vector<std::string> types;
+    for (const auto &statement : main->body->stmts) {
+        const auto *binding = dynamic_cast<const LetStmt *>(statement.get());
+        if (binding && binding->init && binding->name != "open") {
+            const TypeRef *type = model.TryGetType(*binding->init);
+            REQUIRE(type != nullptr);
+            types.push_back(type->ToString());
+        }
+    }
+    CHECK_EQ(types, std::vector<std::string>{"int[..]", "var int[..]", "int[..]", "var int[..]", "int[..]",
+                                             "var int[..]", "var int[..]", "*var int", "int", "*var int"});
+}
+
+TEST_CASE("a pointer is sliced only with an end bound") {
+    const auto messages = Messages(R"(
+        func Main(pointer: *int) {
+            let whole = pointer[..];
+            let tail = pointer[1..];
+            let bounded = pointer[1..3];
+        }
+    )");
+    REQUIRE_EQ(messages.size(), 4);
+    CHECK_EQ(messages[0], "cannot slice pointer '*int' without an end bound");
+    CHECK_EQ(messages[2], "cannot slice pointer '*int' without an end bound");
+}
+
+TEST_CASE("a literal is never a writable view") {
+    const auto messages = Messages(R"(
+        func Main() {
+            let text: var char8[..] = "abc";
+        }
+    )");
+    REQUIRE_EQ(messages.size(), 1);
+    CHECK_EQ(messages[0],
+             "cannot assign string literal to 'var char8[..]' because literal text is stored in a read-only section");
+}
+
+TEST_CASE("an empty literal is a view of either flavor") {
+    const auto messages = Messages(R"(
+        func Main() {
+            let none: int[..] = [];
+            let writable: var int[..] = [];
+        }
+    )");
+    CHECK(messages.empty());
+}
+
+TEST_CASE("slice element access is independent of descriptor binding mutability") {
+    const auto messages = Messages(R"(
+        func Write(values: var int[..]) {
+            let view = values;
+            view[0] = 1;
+            view[1..2][0] = 2;
+            var frozen: int[..] = values;
+            frozen[0] = 3;
+        }
+    )");
+    REQUIRE_EQ(messages.size(), 1);
+    CHECK_EQ(messages[0], "cannot modify elements through read-only slice 'int[..]'");
+}
+
+TEST_CASE("all literal encodings reject writable destinations") {
+    const auto messages = Messages(R"(
+        func Literals() {
+            let bytes: var char8[..] = c8"a";
+            let words: var char16[..] = c16"a";
+            let scalars: var char32[..] = c32"a";
+        }
+    )");
+    REQUIRE_EQ(messages.size(), 3);
+    for (const std::string &message : messages) {
+        CHECK(message.contains("literal text is stored in a read-only section"));
+    }
+}
+
 TEST_CASE("a writable slice weakens to a read-only one but not the reverse") {
     const auto messages = Messages(R"(
         func Weaken(view: var uint8[..]) -> uint8[..] { return view; }

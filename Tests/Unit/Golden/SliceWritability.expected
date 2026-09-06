@@ -1,0 +1,8 @@
+6:5: error: cannot assign 'int[..]' to 'var int[..]'
+7:5: error: cannot assign string literal to 'var char8[..]' because literal text is stored in a read-only section
+9:13: error: cannot modify elements through read-only slice 'int[..]'
+11:28: error: cannot slice pointer '*int' without an end bound
+11:5: warning: cannot infer type of 'unbounded'
+12:23: error: cannot slice pointer '*int' without an end bound
+12:5: warning: cannot infer type of 'tail'
+13:5: error: cannot assign 'int[3]' to 'var int[..]'

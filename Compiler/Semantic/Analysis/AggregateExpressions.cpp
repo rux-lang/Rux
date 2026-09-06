@@ -197,6 +197,8 @@ std::optional<TypeRef> AnalysisContext::IndexElementType(const TypeRef &type) {
         return value.inner[0];
     }
     if (auto elementType = SliceElementType(value)) {
+        // An element read out of a view is a value; the writability the element carries describes the view.
+        elementType->isMut = false;
         return elementType;
     }
     if (value.kind == TypeRef::Kind::Pointer && !value.inner.empty()) {
@@ -603,15 +605,26 @@ std::optional<TypeRef> AnalysisContext::CheckAggregateExpression(const Expr &exp
         // route instead of only listing the forms the language indexes on its own.
         const bool isNamedType = !builtinElementType && !NamedBaseTypeName(objectType).empty();
         if (indexType.IsRange()) {
-            std::optional<TypeRef> elementType;
+            // A range of an array views its elements, writably when the array is a writable place; a range of a
+            // slice keeps the slice's writability; and a range of a pointer views the elements it addresses, writably
+            // when the pointee is, but only with an end bound, since the pointer alone has no length to run to.
             if (objectValueType.kind == TypeRef::Kind::Array && !objectValueType.inner.empty()) {
-                elementType = objectValueType.inner[0];
+                const bool writable = objectType.kind == TypeRef::Kind::Reference
+                                        ? objectType.inner.front().isMut
+                                        : PlaceIsWritable(*index->object, objectType);
+                return TypeRef::MakeSlice(objectValueType.inner[0], writable);
             }
-            else {
-                elementType = SliceElementType(objectValueType);
+            if (const auto elementType = SliceElementType(objectValueType)) {
+                return TypeRef::MakeSlice(*elementType, elementType->isMut);
             }
-            if (elementType) {
-                return TypeRef::MakeSlice(*elementType);
+            if (objectValueType.kind == TypeRef::Kind::Pointer && !objectValueType.inner.empty()) {
+                if (!indexType.RangeHasEnd()) {
+                    EmitError(index->location,
+                              std::format("cannot slice pointer '{}' without an end bound", objectType.ToString()), {},
+                              "write 'p[..n]' or 'p[a..b]' to give the slice a length");
+                    return TypeRef::MakeUnknown();
+                }
+                return TypeRef::MakeSlice(objectValueType.inner[0], objectValueType.inner[0].isMut);
             }
             std::optional<std::string> sliceHelp;
             if (isNamedType) {

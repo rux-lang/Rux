@@ -1055,10 +1055,13 @@ void AnalysisContext::CheckMutability(const Expr &target) {
         }
         else if (objectType.IsSlice()) {
             // Checking the binding's own mutability would be the wrong question here: a slice reaches its elements
-            // through a read-only pointer, so declaring the slice `var` lets it be re-pointed, never rewritten.
-            EmitError(target.location,
-                      std::format("cannot modify elements through read-only slice '{}'", objectType.ToString()), {},
-                      "use a writable view to write through the sequence");
+            // through its own pointer, so whether they can be written is the view's writability, not the binding's.
+            // Declaring a read-only slice `var` lets it be re-pointed, never rewritten.
+            if (!objectType.IsWritableSlice()) {
+                EmitError(target.location,
+                          std::format("cannot modify elements through read-only slice '{}'", objectType.ToString()), {},
+                          "use a 'var T[..]' view to write through the sequence");
+            }
         }
         else {
             CheckMutability(*index->object);

@@ -139,3 +139,26 @@ TEST_CASE("a text field is laid out like any other slice field") {
     CHECK_EQ(layout.alignment, 8);
     CHECK_EQ(layout.totalSize, 32);
 }
+
+TEST_CASE("slice writability does not change layout or enclosing field offsets") {
+    for (const bool writable : {false, true}) {
+        for (const TypeRef &element :
+             {TypeRef::MakeInt32(), TypeRef::MakeInt64(), TypeRef::MakeText(TypeRef::Kind::Char16)}) {
+            const TypeRef slice = TypeRef::MakeSlice(element, writable);
+            CAPTURE(slice.ToString());
+            CHECK_EQ(SizeOf(slice), 16);
+            CHECK_EQ(AlignOf(slice), 8);
+            CHECK_EQ(RuntimeSizeOf(slice, {}, interfaceNames), 16);
+            CHECK_EQ(FieldOffsetOf(TypeRef::MakePointer(slice), "data", {}, interfaceNames), 0);
+            CHECK_EQ(FieldOffsetOf(TypeRef::MakePointer(slice), "length", {}, interfaceNames), 8);
+            LirStructDecl holder;
+            holder.name = "Views";
+            holder.fields = {{"first", slice}, {"second", slice}, {"count", TypeRef::MakeInt32()}};
+            const StructLayout layout = ComputeStructLayout(holder, {}, interfaceNames);
+            REQUIRE_EQ(layout.fields.size(), 3);
+            CHECK_EQ(layout.fields[1].offset, 16);
+            CHECK_EQ(layout.fields[2].offset, 32);
+            CHECK_EQ(layout.totalSize, 40);
+        }
+    }
+}
