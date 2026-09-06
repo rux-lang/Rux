@@ -1,7 +1,7 @@
-name: Windows
+name: Linux x86-64
 
-# A thin caller so this platform has a status badge of its own. The build itself
-# is described once, in Build.yml, and the tiering rules once, in Plan.yml.
+# Everything this target needs is here: its matrix entry and when it runs. The
+# build itself is described once, in Build.yml.
 
 on:
   push:
@@ -17,22 +17,16 @@ on:
 # built twice. Runs on dev are left alone because they warm the caches every
 # other branch restores.
 concurrency:
-  group: windows-${{ github.head_ref || github.ref_name }}
+  group: linux-x86_64-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: ${{ github.ref_name != 'dev' && github.ref_name != 'main' }}
 
 permissions:
   contents: read
 
 jobs:
-  plan:
-    uses: ./.github/workflows/Plan.yml
-    with:
-      platform: windows
-
   build:
-    needs: plan
     uses: ./.github/workflows/Build.yml
     with:
-      targets: ${{ needs.plan.outputs.targets }}
-      cross: ${{ needs.plan.outputs.scope == 'full' }}
-      save-cache: ${{ needs.plan.outputs.save-cache == 'true' }}
+      targets: >-
+        [{"target":"linux-x86_64","label":"Linux x86-64","family":"posix","runner":"ubuntu-26.04","timeout":20}]
+      save-cache: ${{ github.event_name == 'push' }}

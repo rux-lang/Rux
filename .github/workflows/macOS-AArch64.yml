@@ -1,0 +1,35 @@
+name: macOS AArch64
+
+# Everything this target needs is here: its matrix entry and when it runs. The
+# build itself is described once, in Build.yml.
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: [main, dev]
+    types: [opened, reopened, synchronize, ready_for_review, labeled, unlabeled]
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+# A branch push and its pull request share one group so the same commit is never
+# built twice. Runs on dev are left alone because they warm the caches every
+# other branch restores.
+concurrency:
+  group: macos-aarch64-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: ${{ github.ref_name != 'dev' && github.ref_name != 'main' }}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    # Linux x86-64 is the fast lane and runs on every push; every other target
+    # waits for something that can reach dev.
+    if: ${{ github.event_name != 'push' || github.ref_name == 'dev' || github.ref_name == 'main' }}
+    uses: ./.github/workflows/Build.yml
+    with:
+      targets: >-
+        [{"target":"macos-aarch64","label":"macOS AArch64","family":"posix","runner":"macos-26","timeout":25}]
+      save-cache: ${{ github.event_name == 'push' }}

@@ -4,17 +4,16 @@ Continuous integration builds and verifies Rux on all eight supported targets us
 
 ## Workflows
 
-Seven workflows, plus the community metadata GitHub owns. Only two of them describe any work; the rest are thin callers that exist so each platform has a status badge of its own.
+Ten workflows, plus the community metadata GitHub owns. Only two of them describe any work; the other eight are thin callers that exist so each target has a status badge of its own.
 
 - **`Ci.yml`** — the host-independent checks and the required gate: policy guards, formatting, clang-tidy, and the branch policy that rejects pull requests targeting `main`. It builds nothing.
-- **`Linux.yml`, `macOS.yml`, `Windows.yml`, `FreeBSD.yml`** — one per platform, about 25 lines each. Each triggers on push and pull request, asks `Plan.yml` what to run, and calls `Build.yml` with its own targets. They exist because a GitHub badge reports a workflow, not a job, and a workflow called through `workflow_call` produces no run of its own to report.
-- **`Plan.yml`** — a reusable workflow deciding scope, target list and cache policy, so the tiering rules are written once rather than in each platform workflow.
-- **`Build.yml`** — a reusable workflow (`workflow_call`) describing how one target is built and verified. It is the single description of that work; every platform workflow and `Release.yml` call it, so a platform change is made once.
+- **One workflow per target** — `Linux-x86_64.yml`, `Linux-AArch64.yml`, `macOS-x86_64.yml`, `macOS-AArch64.yml`, `Windows-x86_64.yml`, `Windows-AArch64.yml`, `FreeBSD-x86_64.yml`, `FreeBSD-AArch64.yml`, about 35 lines each. Each triggers on push and pull request, carries its own matrix entry, and calls `Build.yml` with it. They exist because a GitHub badge reports a workflow, not a job, and a workflow called through `workflow_call` produces no run of its own to report. Per target rather than per platform because the two architectures of a platform fail differently: macOS x86-64 is cross-built and run under Rosetta while AArch64 is native, Windows AArch64 is a different runner, and the FreeBSD guests differ in whether they are accelerated.
+- **`Build.yml`** — a reusable workflow (`workflow_call`) describing how one target is built and verified. It is the single description of that work; every target workflow and `Release.yml` call it, so a platform change is made once.
 - **`Release.yml`** — manual only (`workflow_dispatch`, with a version input and a dry-run switch). Pushing a tag never starts a release by itself.
 
-`Build.yml` takes its matrix from the caller: a JSON array of objects, one per target, naming the runner, family and timeout. `.github/Targets.json` holds that table, and `Plan.yml` filters it by platform and scope.
+`Build.yml` takes its matrix from the caller: a JSON array of objects naming the runner, family and timeout. Each target workflow passes its own single entry, so a target is described in exactly one place and nothing has to look it up.
 
-It deliberately does not take a list of target ids and expand them against an `include` table of its own. GitHub adds an `include` entry matching no existing combination as a *new* combination, so such a table builds every target it lists whatever the caller selected — which is what happened before this was found, with each platform workflow running all eight targets.
+It deliberately does not take a list of target ids and expand them against an `include` table of its own. GitHub adds an `include` entry matching no existing combination as a *new* combination, so such a table builds every target it lists whatever the caller selected — which is what happened before this was found, with every caller running all eight targets.
 
 ## Scope
 
@@ -29,7 +28,7 @@ Verification is tiered, so an ordinary push gets an answer quickly and anything 
 | Nightly (03:00 UTC)             | all eight                                                            |
 | `workflow_dispatch`             | whichever scope you choose                                           |
 
-The `plan` job decides this. Scope selection deliberately lives in a job rather than in a trigger-level `paths-ignore` or GitHub's native `[skip ci]` handling: a workflow that never starts never reports its required check, which would leave a pull request blocked forever. For the same reason `[skip ci]` in a commit subject is honoured only on a topic-branch push; on a pull request it is reported as a warning and ignored. A change that touches only prose selects an empty target list, so every build job is skipped while the gate still reports.
+Each target workflow decides for itself, with one condition on its build job. A skipped job still reports its workflow as successful, so a required check is never left pending — which is why the condition sits on the job rather than on the trigger: with `paths-ignore` the workflow would never start, and a required check that never reports blocks a pull request forever.
 
 ## Jobs and timeouts
 
@@ -53,9 +52,9 @@ Build and test share one job per target. Splitting them cost an artifact round-t
 
 ## Required checks
 
-Branch protection requires five checks: **`CI`**, **`Linux`**, **`macOS`**, **`Windows`** and **`FreeBSD`**. `CI` is an aggregate over the host-independent jobs, accepting `success` and `skipped`; each platform workflow reports its own result, which is also what its badge shows.
+Branch protection requires nine checks: **`CI`** and one per target. `CI` is an aggregate over the host-independent jobs, accepting `success` and `skipped`; each target workflow reports its own result, which is also what its badge shows.
 
-A platform that the current scope does not select builds nothing and reports success, so the fast lane and a docs-only change both satisfy every required check without running the matrix.
+A target the current scope does not select builds nothing and reports success, so the fast lane and a docs-only change both satisfy every required check without running the matrix.
 
 It is guarded by `if: ${{ !cancelled() }}`, not `if: always()`. Cancelling a run therefore ends it immediately instead of leaving the gate to outlive it.
 
@@ -70,7 +69,7 @@ It is guarded by `if: ${{ !cancelled() }}`, not `if: always()`. Cancelling a run
 
 `.github/Toolchains.env` is the single source of truth for every pinned version and every asset checksum. Workflows load it with one `grep` into `GITHUB_ENV`, both setup scripts parse it, and every cache key hashes it, so bumping `TOOLCHAIN_REVISION` invalidates exactly the caches that must change.
 
-The format is flat `KEY=VALUE`. POSIX `sh` dot-sources it directly and PowerShell parses it with one regex, so no JSON parser and no `jq` is needed on any runner — including the FreeBSD guest. Because it is sourced, both setup scripts reject a manifest containing anything but comments and plain assignments before reading it.
+The format is flat `KEY=VALUE`. POSIX `sh` dot-sources it directly and PowerShell parses it with one regex, so no JSON parser and no `jq` is needed on any build runner — including the FreeBSD guest. Because it is sourced, both setup scripts reject a manifest containing anything but comments and plain assignments before reading it.
 
 Assets are published by **`rux-lang/Toolchain`** under the tag `toolchain-<revision>`:
 

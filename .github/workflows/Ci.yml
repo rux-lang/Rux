@@ -26,13 +26,8 @@ permissions:
   contents: read
 
 jobs:
-  plan:
-    uses: ./.github/workflows/Plan.yml
-
   quality:
     name: Quality
-    needs: plan
-    if: ${{ needs.plan.outputs.docs-only != 'true' }}
     runs-on: ubuntu-26.04
     timeout-minutes: 10
     steps:
@@ -58,8 +53,8 @@ jobs:
 
   tidy:
     name: clang-tidy (shard ${{ matrix.shard }})
-    needs: plan
-    if: ${{ needs.plan.outputs.scope == 'full' && needs.plan.outputs.docs-only != 'true' }}
+    # clang-tidy is slow, so it waits for something that can reach dev.
+    if: ${{ github.event_name != 'push' || github.ref_name == 'dev' || github.ref_name == 'main' }}
     strategy:
       fail-fast: false
       matrix:
@@ -108,7 +103,7 @@ jobs:
   ci:
     name: CI
     if: ${{ !cancelled() }}
-    needs: [plan, quality, tidy, branch-policy]
+    needs: [quality, tidy, branch-policy]
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:

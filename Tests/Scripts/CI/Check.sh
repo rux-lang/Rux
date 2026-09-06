@@ -185,25 +185,23 @@ check_setup_exports_the_toolchain() {
         fail 'SetupToolchain.sh did not put the bundle on PATH'
 }
 
-# The target table is the matrix the platform workflows hand to Build.yml, so
-# every supported target must appear in it exactly once with the fields the
-# build reads.
-check_target_table() {
-    table=$repository_root/.github/Targets.json
-    [ -f "$table" ] || fail "'$table' was not found"
-
+# Each target has a workflow of its own so it has a status badge, and that
+# workflow carries its own matrix entry. Every supported target must have one,
+# and no workflow may claim more than its own.
+check_target_workflows() {
+    workflows=$repository_root/.github/workflows
     for target in linux-x86_64 linux-aarch64 macos-aarch64 macos-x86_64 \
         windows-x86_64 windows-aarch64 freebsd-x86_64 freebsd-aarch64; do
-        count=$(grep -c "\"target\": \"$target\"" "$table" || true)
-        [ "$count" -eq 1 ] || fail "$table lists '$target' $count times, not once"
+        matches=$(grep -rlF "\"target\":\"$target\"" "$workflows" | grep -v Release.yml | wc -l)
+        [ "$matches" -eq 1 ] ||
+            fail "$matches target workflows declare '$target', not one"
     done
 
-    entries=$(grep -c '"target":' "$table" || true)
-    [ "$entries" -eq 8 ] || fail "$table lists $entries targets, not eight"
-
-    for field in label platform family runner timeout; do
-        count=$(grep -c "\"$field\":" "$table" || true)
-        [ "$count" -eq 8 ] || fail "$table declares '$field' on $count entries, not eight"
+    for file in "$workflows"/*-x86_64.yml "$workflows"/*-AArch64.yml; do
+        [ -f "$file" ] || continue
+        declared=$(grep -oF '"target":' "$file" | wc -l)
+        [ "$declared" -eq 1 ] ||
+            fail "$(basename "$file") declares $declared targets, not one"
     done
 }
 
@@ -304,7 +302,7 @@ check_manifest_shape
 check_versions_agree
 check_setup_rejects_unpublished
 check_manifest_is_consistent
-check_target_table
+check_target_workflows
 check_build_matrix_comes_from_the_caller
 check_workflow_paths_match_case
 check_setup_exports_the_toolchain

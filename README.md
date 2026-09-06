@@ -6,10 +6,13 @@
 
 # Rux Programming Language
 
-[![FreeBSD](https://github.com/rux-lang/Rux/actions/workflows/FreeBSD.yml/badge.svg?branch=dev)](https://github.com/rux-lang/Rux/actions/workflows/FreeBSD.yml)
-[![Linux](https://github.com/rux-lang/Rux/actions/workflows/Linux.yml/badge.svg?branch=dev)](https://github.com/rux-lang/Rux/actions/workflows/Linux.yml)
-[![macOS](https://github.com/rux-lang/Rux/actions/workflows/macOS.yml/badge.svg?branch=dev)](https://github.com/rux-lang/Rux/actions/workflows/macOS.yml)
-[![Windows](https://github.com/rux-lang/Rux/actions/workflows/Windows.yml/badge.svg?branch=dev)](https://github.com/rux-lang/Rux/actions/workflows/Windows.yml)
+| Platform | x86-64                                                                                                                                                                               | AArch64                                                                                                                                                                                 |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| FreeBSD  | [![FreeBSD x86-64](https://github.com/rux-lang/Rux/actions/workflows/FreeBSD-x86_64.yml/badge.svg?branch=dev)](https://github.com/rux-lang/Rux/actions/workflows/FreeBSD-x86_64.yml) | [![FreeBSD AArch64](https://github.com/rux-lang/Rux/actions/workflows/FreeBSD-AArch64.yml/badge.svg?branch=dev)](https://github.com/rux-lang/Rux/actions/workflows/FreeBSD-AArch64.yml) |
+| Linux    | [![Linux x86-64](https://github.com/rux-lang/Rux/actions/workflows/Linux-x86_64.yml/badge.svg?branch=dev)](https://github.com/rux-lang/Rux/actions/workflows/Linux-x86_64.yml)       | [![Linux AArch64](https://github.com/rux-lang/Rux/actions/workflows/Linux-AArch64.yml/badge.svg?branch=dev)](https://github.com/rux-lang/Rux/actions/workflows/Linux-AArch64.yml)       |
+| macOS    | [![macOS x86-64](https://github.com/rux-lang/Rux/actions/workflows/macOS-x86_64.yml/badge.svg?branch=dev)](https://github.com/rux-lang/Rux/actions/workflows/macOS-x86_64.yml)       | [![macOS AArch64](https://github.com/rux-lang/Rux/actions/workflows/macOS-AArch64.yml/badge.svg?branch=dev)](https://github.com/rux-lang/Rux/actions/workflows/macOS-AArch64.yml)       |
+| Windows  | [![Windows x86-64](https://github.com/rux-lang/Rux/actions/workflows/Windows-x86_64.yml/badge.svg?branch=dev)](https://github.com/rux-lang/Rux/actions/workflows/Windows-x86_64.yml) | [![Windows AArch64](https://github.com/rux-lang/Rux/actions/workflows/Windows-AArch64.yml/badge.svg?branch=dev)](https://github.com/rux-lang/Rux/actions/workflows/Windows-AArch64.yml) |
+
 [![CI](https://github.com/rux-lang/Rux/actions/workflows/Ci.yml/badge.svg?branch=dev)](https://github.com/rux-lang/Rux/actions/workflows/Ci.yml)
 [![Release](https://img.shields.io/github/v/release/rux-lang/Rux?style=flat&logo=github&label=Release&color=green)](https://github.com/rux-lang/Rux/releases)
 [![License](https://img.shields.io/github/license/rux-lang/Rux?style=flat)](LICENSE.md)
