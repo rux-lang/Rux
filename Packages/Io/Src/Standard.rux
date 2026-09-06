@@ -7,7 +7,7 @@
 // redirected stream wants the raw UTF-8 bytes on disk exactly as written -- and deciding it per operation would
 // put a system call in front of every one. Elsewhere the bytes are the bytes, console or not.
 
-import Core::{ #target, MutableSlice };
+import Core::{ #target };
 import Text::IsBoundary;
 
 when #target.os {
@@ -170,12 +170,12 @@ extend StandardIn : Reader {
     /// Fills what it can of `into` from standard input.
     ///
     /// https://rux-lang.dev/docs/api/io/standard-in/read
-    pub func Read(self: &var StandardIn, into: MutableSlice<char8>, filled: *var uint) -> IoError {
+    pub func Read(self: &var StandardIn, into: var char8[..], filled: *var uint) -> IoError {
         *filled = 0;
         if into.length == 0 { return IoError::Ok(); }
         var served: uint = 0;
         while self.pendingCount > 0 && served < into.length {
-            into.data[served] = (self.pending & 0xFFu64) as uint8 as char8;
+            into[served] = (self.pending & 0xFFu64) as uint8 as char8;
             self.pending = self.pending >> 8u64;
             self.pendingCount = self.pendingCount - 1;
             served = served + 1;
@@ -189,7 +189,7 @@ extend StandardIn : Reader {
             var read: uint32 = 0;
             let room = into.length - served;
             let count = room > 0x100000u ? 0x100000u32 : room as uint32;
-            if !ReadFile(self.handle, @into.data[served] as *var opaque, count, @read, null) {
+            if !ReadFile(self.handle, @into[served] as *var opaque, count, @read, null) {
                 let raw = GetLastError() as int32;
                 if served > 0 {
                     *filled = served;
@@ -204,7 +204,7 @@ extend StandardIn : Reader {
             return IoError::Ok();
         }
         else {
-            let result = Read(self.handle, @into.data[served] as *var opaque, into.length - served);
+            let result = Read(self.handle, @into[served] as *var opaque, into.length - served);
             if result < 0 {
                 if served > 0 {
                     *filled = served;
@@ -224,7 +224,7 @@ when #target.os == .Windows {
         // The console path: characters arrive as UTF-16 and leave as UTF-8. A high surrogate at the end of a
         // read waits for its partner, converted bytes past the caller's room wait in `pending`, and a
         // substitute character first in a read is the console's end-of-input.
-        func ReadConsole(self: &var StandardIn, into: MutableSlice<char8>, served: uint, filled: *var uint)
+        func ReadConsole(self: &var StandardIn, into: var char8[..], served: uint, filled: *var uint)
             -> IoError {
             var wide: char16[257];
             var base: uint = 0;
@@ -282,7 +282,7 @@ when #target.os == .Windows {
             var index: uint = 0;
             var at = served;
             while index < converted as uint && at < into.length {
-                into.data[at] = text[index];
+                into[at] = text[index];
                 index = index + 1;
                 at = at + 1;
             }

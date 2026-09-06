@@ -13,7 +13,7 @@
 // not the contract.
 
 import Allocator::{ AllocError, Allocator, Layout };
-import Core::{ MutableSlice };
+
 import Memory::Copy;
 
 /// The room a buffered stream takes when the caller expresses no preference.
@@ -111,9 +111,9 @@ extend BufferedReader {
         self.start = 0;
         self.end = 0;
         var filled: uint = 0;
-        var outcome = self.source.Read(MutableSlice<char8> { data: self.data, length: self.capacity }, @filled);
+        var outcome = self.source.Read((self.data)[..self.capacity], @filled);
         while outcome.IsTransient() {
-            outcome = self.source.Read(MutableSlice<char8> { data: self.data, length: self.capacity }, @filled);
+            outcome = self.source.Read((self.data)[..self.capacity], @filled);
         }
         if outcome.IsError() { return outcome; }
         if filled == 0 { return IoError::Of(IoErrorKind::EndOfStream); }
@@ -125,7 +125,7 @@ extend BufferedReader {
     /// already larger than the whole buffer.
     ///
     /// https://rux-lang.dev/docs/api/io/buffered-reader/read
-    pub func Read(self: &var BufferedReader, into: MutableSlice<char8>, filled: *var uint) -> IoError {
+    pub func Read(self: &var BufferedReader, into: var char8[..], filled: *var uint) -> IoError {
         *filled = 0;
         if into.length == 0 { return IoError::Ok(); }
         if self.Available() == 0 && into.length >= self.capacity {

@@ -1,4 +1,4 @@
-import Core::{ Assert, MutableSlice };
+import Core::{ Assert };
 import Text::{ CountScalars, DecodeAt, Encode, EncodedLength, IsScalarValue, Utf8Error, Validate };
 
 // UTF-8 is easy to decode wrongly in three specific ways, and every one of them has been a hole in something real:
@@ -37,7 +37,7 @@ func Main() -> int {
     while index < 9 {
         let value = samples[index];
         var written: uint = 0;
-        let room = MutableSlice::From<char8>(@storage[0], 8);
+        let room = (@storage[0])[..8];
         Assert(Encode(value as char32, room, @written) == Utf8Error::None, "every scalar value encodes");
         Assert(written == EncodedLength(value as char32), "in the width the table says");
 

@@ -1,5 +1,5 @@
 
-import Core::{ Assert, MutableSlice };
+import Core::{ Assert };
 import Io::{ IoError, IoErrorKind, ReadExact, Reader, WriteAll, Writer };
 
 // The bytes a string spans, which is how a caller holding text reaches an entry point that takes bytes.
@@ -23,7 +23,7 @@ struct ScriptedReader {
 }
 
 extend ScriptedReader : Reader {
-    func Read(self: &var ScriptedReader, into: MutableSlice<char8>, filled: *var uint) -> IoError {
+    func Read(self: &var ScriptedReader, into: var char8[..], filled: *var uint) -> IoError {
         *filled = 0;
         if self.pendingInterruption && self.interruptions > 0 {
             self.interruptions = self.interruptions - 1;
@@ -54,7 +54,7 @@ extend ScriptedReader : Reader {
 // A writer into a fixed buffer that takes at most `chunk` per call, and can be told to stall: report success and
 // take nothing.
 struct ScriptedWriter {
-    room: MutableSlice<char8>;
+    room: var char8[..];
     written: uint;
     chunk: uint;
     stalling: bool;
@@ -98,7 +98,7 @@ func Main() -> int {
         pendingInterruption: false
     };
     var storage: char8[8];
-    let into = MutableSlice::From<char8>(@storage[0], 8);
+    let into = (@storage[0])[..8];
     let outcome = ReadExact(source, into);
     Assert(outcome.IsOk(), "the exact read assembles from partial, interrupted reads");
     Assert(storage[0] == c8'a' && storage[7] == c8'h', "every byte in its place");
@@ -112,14 +112,14 @@ func Main() -> int {
         pendingInterruption: false
     };
     var bigStorage: char8[8];
-    let big = MutableSlice::From<char8>(@bigStorage[0], 8);
+    let big = (@bigStorage[0])[..8];
     let ended = ReadExact(short, big);
     Assert(ended.IsEnd(), "a stream that ends mid-buffer reports the end");
 
     // WriteAll pushes everything through three-byte writes.
     var sinkStorage: char8[16];
     var sink = ScriptedWriter {
-        room: MutableSlice::From<char8>(@sinkStorage[0], 16),
+        room: (@sinkStorage[0])[..16],
         written: 0,
         chunk: 3,
         stalling: false
@@ -130,7 +130,7 @@ func Main() -> int {
     // A writer that takes nothing while claiming success is refused rather than spun on.
     var stallStorage: char8[4];
     var stalled = ScriptedWriter {
-        room: MutableSlice::From<char8>(@stallStorage[0], 4),
+        room: (@stallStorage[0])[..4],
         written: 0,
         chunk: 4,
         stalling: true

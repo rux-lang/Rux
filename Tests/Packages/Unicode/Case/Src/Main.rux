@@ -1,4 +1,4 @@
-import Core::{ Assert, MutableSlice };
+import Core::{ Assert };
 import Unicode::{ Fold, ToLowerFull, ToLowerSimple, ToTitleSimple, ToUpperFull, ToUpperSimple };
 
 // The cases that separate the three kinds of mapping from each other: the sharp s, whose uppercase is two letters
@@ -29,7 +29,7 @@ func Main() -> int {
 
     // Full: the mappings that change length, which the simple ones cannot say.
     var storage: char32[4];
-    let room = MutableSlice::From<char32>(@storage[0], 4);
+    let room = (@storage[0])[..4];
     var written: uint = 0;
 
     Assert(ToUpperFull(Scalar(0xDF), room, @written), "the sharp s has a full uppercase");

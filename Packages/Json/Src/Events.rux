@@ -1,4 +1,4 @@
-import Core::{ string, string8 };
+
 // Reading a document as a stream of events, without building a tree.
 //
 // The tree is convenient and it is also the thing that makes a large document expensive: a gigabyte of JSON
@@ -15,7 +15,7 @@ import Core::{ string, string8 };
 // structure would push the problem onto every caller.
 
 import Allocator::{ AllocError, Allocator, Layout };
-import Core::{ MutableSlice, Slice };
+
 import Io::{ IoError, IoErrorKind, Reader };
 
 /// What just happened in the document.
@@ -137,8 +137,8 @@ extend JsonEventReader {
     /// and a caller skipping past a field should not pay for its contents.
     ///
     /// https://rux-lang.dev/docs/api/json/json-event-reader/text
-    pub func Text(self: &JsonEventReader) -> Slice<char8> {
-        return Slice<char8> { data: @self.data[self.tokenStart], length: self.tokenEnd - self.tokenStart };
+    pub func Text(self: &JsonEventReader) -> char8[..] {
+        return (@self.data[self.tokenStart])[..self.tokenEnd - self.tokenStart];
     }
 
     /// Whether that text holds escapes a caller must resolve.
@@ -193,7 +193,7 @@ extend JsonEventReader {
         }
         if self.exhausted { return false; }
         var read: uint = 0;
-        let room = MutableSlice<char8> { data: @self.data[self.filled], length: self.capacity - self.filled };
+        let room = (@self.data[self.filled])[..self.capacity - self.filled];
         let outcome = self.source.Read(room, @read);
         if outcome.IsError() {
             self.exhausted = true;
@@ -335,7 +335,7 @@ extend JsonEventReader {
         return (self.stack[index / 64u] & (1u64 << ((index % 64u) as uint64))) != 0u64;
     }
 
-    func Matches(self: &var JsonEventReader, word: Slice<char8>) -> bool {
+    func Matches(self: &var JsonEventReader, word: char8[..]) -> bool {
         var index: uint = 0;
         while index < word.length {
             while self.position + index >= self.filled {

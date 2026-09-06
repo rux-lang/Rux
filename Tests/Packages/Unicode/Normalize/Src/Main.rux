@@ -1,4 +1,4 @@
-import Core::{ Assert, MutableSlice };
+import Core::{ Assert };
 import Io::{ Print, PrintLine };
 import Unicode::{ DecomposeCanonical, DecomposeCompatibility, NormalizationVectorElements, NormalizationVectorIndex, NormalizeCanonical, NormalizeCompatibility };
 
@@ -18,7 +18,7 @@ func Column(row: uint, column: uint) -> uint32[..] {
 }
 
 // Whether `actual` of length `actualLength` spells exactly `expected`.
-func Matches(actual: MutableSlice<char32>, actualLength: uint, expected: uint32[..]) -> bool {
+func Matches(actual: var char32[..], actualLength: uint, expected: uint32[..]) -> bool {
     if actualLength != expected.length {
         return false;
     }
@@ -33,7 +33,7 @@ func Matches(actual: MutableSlice<char32>, actualLength: uint, expected: uint32[
 }
 
 // Copies a pool column into scalar values, which is what the normalizers take.
-func Load(column: uint32[..], into: MutableSlice<char32>) -> char32[..] {
+func Load(column: uint32[..], into: var char32[..]) -> char32[..] {
     var index: uint = 0;
     while index < column.length {
         into.data[index] = column.data[index] as char32;
@@ -48,8 +48,8 @@ func Main() -> int {
 
     var source: char32[64];
     var result: char32[256];
-    let sourceRoom = MutableSlice::From<char32>(@source[0], 64);
-    let room = MutableSlice::From<char32>(@result[0], 256);
+    let sourceRoom = (@source[0])[..64];
+    let room = (@result[0])[..256];
 
     var row: uint = 0;
     while row < rows {

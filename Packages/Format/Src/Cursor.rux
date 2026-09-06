@@ -9,14 +9,14 @@
 // buffer from the same bound the formatter is written against, so running out means the bound is wrong; refusing
 // silently would turn that into a truncated number, which is worse than an obvious one.
 
-import Core::{ MutableSlice };
+
 
 /// A fixed buffer being filled from the front.
 ///
 /// https://rux-lang.dev/docs/api/format/byte-cursor
 pub struct ByteCursor {
     /// The room available.
-    room: MutableSlice<char8>;
+    room: var char8[..];
     /// How much of it is used.
     length: uint;
     /// Whether a write was refused for want of room.
@@ -27,7 +27,7 @@ extend ByteCursor {
     /// A cursor over `room`, filling from its start.
     ///
     /// https://rux-lang.dev/docs/api/format/byte-cursor/new
-    pub func ByteCursor(room: MutableSlice<char8>) -> ByteCursor {
+    pub func ByteCursor(room: var char8[..]) -> ByteCursor {
         return ByteCursor { room: room, length: 0, overran: false };
     }
 
@@ -39,7 +39,7 @@ extend ByteCursor {
             self.overran = true;
             return;
         }
-        self.room.data[self.length] = byte;
+        self.room[self.length] = byte;
         self.length = self.length + 1;
     }
 

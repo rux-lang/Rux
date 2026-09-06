@@ -10,7 +10,7 @@
 // Floats travel as the IEEE 754 bit patterns of their width, moved between integer and float representation
 // without conversion.
 
-import Core::{ MutableSlice };
+
 import Memory::Copy;
 
 /// A byte order: which end of a multi-byte value comes first.
@@ -31,7 +31,7 @@ pub enum Endian: int32 {
 /// https://rux-lang.dev/docs/api/io/read-word
 pub func ReadWord(reader: &var Reader, endian: Endian, width: uint, value: *var uint512) -> IoError {
     var bytes: char8[64];
-    let outcome = ReadExact(reader, MutableSlice::From<char8>(@bytes[0], width));
+    let outcome = ReadExact(reader, (@bytes[0])[..width]);
     if outcome.IsError() { return outcome; }
     var word = 0u512;
     var index: uint = 0;

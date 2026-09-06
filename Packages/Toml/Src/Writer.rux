@@ -1,4 +1,4 @@
-import Core::{ string, string8 };
+
 // Writing a document back out, deterministically.
 //
 // The same tree always produces the same bytes. That is not an aesthetic preference: configuration files live in
@@ -19,7 +19,7 @@ import Core::{ string, string8 };
 // and for writing back a file this program owns; running it over a file someone else wrote and hand-formatted
 // will produce a diff of the whole file.
 
-import Core::{ MutableSlice, Slice };
+
 import Format::{ ByteCursor, ParseFloat64, TextWriter, WriteDecimal };
 import Text::TextError;
 
@@ -39,12 +39,12 @@ pub enum TomlWriteError: int32 {
 // as a list of names because that is what the header needs, and building it once per table beats building it
 // once per line.
 struct TomlPath {
-    room: MutableSlice<char8>;
+    room: var char8[..];
     length: uint;
 }
 
 extend TomlPath {
-    func Append(self: &var TomlPath, bytes: Slice<char8>) -> bool {
+    func Append(self: &var TomlPath, bytes: char8[..]) -> bool {
         if self.length + bytes.length > self.room.length { return false; }
         var index: uint = 0;
         while index < bytes.length {
@@ -55,13 +55,13 @@ extend TomlPath {
         return true;
     }
 
-    func Bytes(self: &TomlPath) -> Slice<char8> {
-        return Slice<char8> { data: self.room.data, length: self.length };
+    func Bytes(self: &TomlPath) -> char8[..] {
+        return (self.room.data)[..self.length];
     }
 }
 
 // Whether `name` may be written without quotes: letters, digits, underscores and hyphens, and not empty.
-func IsBareKey(name: Slice<char8>) -> bool {
+func IsBareKey(name: char8[..]) -> bool {
     if name.length == 0u { return false; }
     var index: uint = 0;
     while index < name.length {
@@ -74,7 +74,7 @@ func IsBareKey(name: Slice<char8>) -> bool {
     return true;
 }
 
-func Emit(writer: &var TextWriter, bytes: Slice<char8>) -> TomlWriteError {
+func Emit(writer: &var TextWriter, bytes: char8[..]) -> TomlWriteError {
     var sink = writer;
     return sink.Write(bytes) == TextError::None ? TomlWriteError::None : TomlWriteError::Failed;
 }
@@ -87,7 +87,7 @@ func EmitByte(writer: &var TextWriter, byte: uint8) -> TomlWriteError {
 
 // A basic string: the quote, the backslash and every control character escaped, and nothing else. The short
 // escapes are used where TOML defines them, and a four-digit form otherwise.
-func EmitBasicString(writer: &var TextWriter, text: Slice<char8>) -> TomlWriteError {
+func EmitBasicString(writer: &var TextWriter, text: char8[..]) -> TomlWriteError {
     var failure = EmitByte(writer, 0x22u8);
     if failure != TomlWriteError::None { return failure; }
     var index: uint = 0;
@@ -136,7 +136,7 @@ func HexDigit(value: uint8) -> uint8 {
 }
 
 // A key, bare where TOML allows it and quoted where it does not.
-func EmitKey(writer: &var TextWriter, name: Slice<char8>) -> TomlWriteError {
+func EmitKey(writer: &var TextWriter, name: char8[..]) -> TomlWriteError {
     if IsBareKey(name) { return Emit(writer, name); }
     return EmitBasicString(writer, name);
 }
@@ -152,7 +152,7 @@ func EmitFloat(writer: &var TextWriter, value: float64) -> TomlWriteError {
     var length: uint = 0;
     var significant = 15u;
     while significant <= 17u {
-        var cursor = ByteCursor(MutableSlice::From<char8>(@storage[0], 64));
+        var cursor = ByteCursor((@storage[0])[..64]);
         WriteDecimal(cursor, value, significant);
         let rendered = cursor.Written();
         length = rendered.length;
@@ -164,7 +164,7 @@ func EmitFloat(writer: &var TextWriter, value: float64) -> TomlWriteError {
             significant = significant + 1u;
         }
     }
-    let text = Slice<char8> { data: @storage[0], length: length };
+    let text = (@storage[0])[..length];
     let failure = Emit(writer, text);
     if failure != TomlWriteError::None { return failure; }
     // TOML tells a float from an integer by its point or its exponent, so a whole value needs one written out or
@@ -414,10 +414,10 @@ func EmitSections(writer: &var TextWriter, table: &TomlValue, path: &var TomlPat
 }
 
 // A key appended to the header path, in the form a header would spell it.
-func KeyIntoPath(path: &var TomlPath, name: Slice<char8>) -> TomlWriteError {
+func KeyIntoPath(path: &var TomlPath, name: char8[..]) -> TomlWriteError {
     if IsBareKey(name) { return path.Append(name) ? TomlWriteError::None : TomlWriteError::PathTooLong; }
     var storage: char8[512];
-    var cursor = ByteCursor(MutableSlice::From<char8>(@storage[0], 512));
+    var cursor = ByteCursor((@storage[0])[..512]);
     let quoted: &var TextWriter = cursor;
     let failure = EmitBasicString(quoted, name);
     if failure != TomlWriteError::None { return failure; }
@@ -437,7 +437,7 @@ func KeyIntoPath(path: &var TomlPath, name: Slice<char8>) -> TomlWriteError {
 pub func TomlWriteDocument(writer: &var TextWriter, table: &TomlValue) -> TomlWriteError {
     if table.Kind() != TomlKind::Table { return EmitValue(writer, table); }
     var storage: char8[1024];
-    var path = TomlPath { room: MutableSlice::From<char8>(@storage[0], 1024), length: 0 };
+    var path = TomlPath { room: (@storage[0])[..1024], length: 0 };
     let failure = EmitBody(writer, table);
     if failure != TomlWriteError::None { return failure; }
     // The root's own lines come first, so a header needs a blank line before it unless nothing has been

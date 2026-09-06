@@ -10,7 +10,7 @@
 // without copying their state or manufacturing an adapter. An interface value is still useful when a stream must
 // be stored, because references deliberately cannot escape into fields.
 
-import Core::{ MutableSlice };
+
 
 /// Somewhere bytes come from.
 ///
@@ -20,7 +20,7 @@ pub interface Reader {
     ///
     /// Zero with `Ok` does not happen: the end of the stream is `EndOfStream`, so a caller never mistakes silence
     /// for data.
-    func Read(into: MutableSlice<char8>, filled: *var uint) -> IoError;
+    func Read(into: var char8[..], filled: *var uint) -> IoError;
 }
 
 /// Somewhere bytes go.
@@ -68,10 +68,10 @@ pub const ZeroProgressLimit: uint = 3;
 /// partly written -- how much is not reported, because a caller who needs the count reads incrementally.
 ///
 /// https://rux-lang.dev/docs/api/io/read-exact
-pub func ReadExact(reader: &var Reader, into: MutableSlice<char8>) -> IoError {
+pub func ReadExact(reader: &var Reader, into: var char8[..]) -> IoError {
     var at: uint = 0;
     while at < into.length {
-        let rest = MutableSlice<char8> { data: @into.data[at], length: into.length - at };
+        let rest = (@into.data[at])[..into.length - at];
         var filled: uint = 0;
         let outcome = reader.Read(rest, @filled);
         if outcome.IsError() {

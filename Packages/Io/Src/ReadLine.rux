@@ -5,7 +5,7 @@
 // byte from standard input, so nothing past the line is taken from a stream that may be shared. The bytes come
 // through `StandardIn`, so typed input on a Windows console arrives as correct UTF-8 rather than code-page text.
 
-import Core::{ MutableSlice };
+
 import Text::StringBuilder;
 
 /// Appends the next line of standard input to `builder`, without its ending.
@@ -18,7 +18,7 @@ import Text::StringBuilder;
 pub func ReadLine(builder: &var StringBuilder) -> IoError {
     var input = StandardIn::Acquire();
     var byte: char8[1];
-    let room = MutableSlice::From<char8>(@byte[0], 1);
+    let room = (@byte[0])[..1];
     var sawAnything = false;
     var pendingCarriageReturn = false;
     while true {

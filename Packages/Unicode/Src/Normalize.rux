@@ -13,7 +13,7 @@
 // Hangul is arithmetic throughout: a syllable decomposes into its jamo and recomposes from them by formula, which
 // is why none of it is in the tables.
 
-import Core::{ MutableSlice };
+
 
 /// The first Hangul syllable, LV and LVT composition's base.
 ///
@@ -29,23 +29,23 @@ const HangulTrailCount: uint32 = 28;
 const HangulSyllableCount: uint32 = 11172;
 
 // Writes the canonical decomposition of one Hangul syllable, two or three jamo.
-func DecomposeHangul(offset: uint32, into: MutableSlice<char32>, at: uint, written: *var uint) -> bool {
+func DecomposeHangul(offset: uint32, into: var char32[..], at: uint, written: *var uint) -> bool {
     let lead = HangulLeadBase + offset / (HangulVowelCount * HangulTrailCount);
     let vowel = HangulVowelBase + (offset % (HangulVowelCount * HangulTrailCount)) / HangulTrailCount;
     let trail = offset % HangulTrailCount;
     let needed: uint = trail == 0u32 ? 2u : 3u;
     if at + needed > into.length { return false; }
-    into.data[at] = lead as char32;
-    into.data[at + 1] = vowel as char32;
+    into[at] = lead as char32;
+    into[at + 1] = vowel as char32;
     if trail != 0 {
-        into.data[at + 2] = (HangulTrailBase + trail) as char32;
+        into[at + 2] = (HangulTrailBase + trail) as char32;
     }
     *written = needed;
     return true;
 }
 
 // Writes one scalar's full decomposition -- canonical or compatibility -- into `into` at `at`.
-func DecomposeOne(scalar: char32, compatibility: bool, into: MutableSlice<char32>, at: uint,
+func DecomposeOne(scalar: char32, compatibility: bool, into: var char32[..], at: uint,
                   written: *var uint) -> bool {
     let value = scalar as uint32;
     if value >= HangulBase && value < HangulBase + HangulSyllableCount {
@@ -63,7 +63,7 @@ func DecomposeOne(scalar: char32, compatibility: bool, into: MutableSlice<char32
     }
     if !found {
         if at + 1 > into.length { return false; }
-        into.data[at] = scalar;
+        into[at] = scalar;
         *written = 1;
         return true;
     }
@@ -71,10 +71,10 @@ func DecomposeOne(scalar: char32, compatibility: bool, into: MutableSlice<char32
     var each: uint = 0;
     while each < length {
         if compatibility {
-            into.data[at + each] = CompatibilityDecompositionElements[offset + each] as char32;
+            into[at + each] = CompatibilityDecompositionElements[offset + each] as char32;
         }
         else {
-            into.data[at + each] = CanonicalDecompositionElements[offset + each] as char32;
+            into[at + each] = CanonicalDecompositionElements[offset + each] as char32;
         }
         each = each + 1;
     }
@@ -85,7 +85,7 @@ func DecomposeOne(scalar: char32, compatibility: bool, into: MutableSlice<char32
 // Sorts the combining marks into canonical order: a stable exchange of adjacent pairs where the left class is
 // higher and the right is not a starter. The runs between starters are short -- a handful of marks -- which is why
 // the quadratic sort is the right one: it is stable, in place, and never slower than the runs are long.
-func CanonicalOrder(items: MutableSlice<char32>, length: uint) {
+func CanonicalOrder(items: var char32[..], length: uint) {
     var sorted = false;
     while !sorted {
         sorted = true;
@@ -114,7 +114,7 @@ func CanonicalOrder(items: MutableSlice<char32>, length: uint) {
 /// `written` must be non-null and writable.
 ///
 /// https://rux-lang.dev/docs/api/unicode/decompose-canonical
-pub func DecomposeCanonical(text: char32[..], into: MutableSlice<char32>, written: *var uint) -> bool {
+pub func DecomposeCanonical(text: char32[..], into: var char32[..], written: *var uint) -> bool {
     return Decompose(text, false, into, written);
 }
 
@@ -125,11 +125,11 @@ pub func DecomposeCanonical(text: char32[..], into: MutableSlice<char32>, writte
 /// `written` must be non-null and writable.
 ///
 /// https://rux-lang.dev/docs/api/unicode/decompose-compatibility
-pub func DecomposeCompatibility(text: char32[..], into: MutableSlice<char32>, written: *var uint) -> bool {
+pub func DecomposeCompatibility(text: char32[..], into: var char32[..], written: *var uint) -> bool {
     return Decompose(text, true, into, written);
 }
 
-func Decompose(text: char32[..], compatibility: bool, into: MutableSlice<char32>, written: *var uint) -> bool {
+func Decompose(text: char32[..], compatibility: bool, into: var char32[..], written: *var uint) -> bool {
     var length: uint = 0;
     var index: uint = 0;
     while index < text.length {
@@ -192,7 +192,7 @@ func ComposePair(starter: char32, following: char32, composed: *var char32) -> b
 // mark of the same or higher class. Two adjacent starters compose where a form exists, which is where Hangul LV
 // and LVT come from. This is the UAX #15 algorithm; the blocking rule is the whole of its subtlety, and the
 // conformance vectors are what hold it to the standard.
-func Compose(items: MutableSlice<char32>, length: uint) -> uint {
+func Compose(items: var char32[..], length: uint) -> uint {
     if length == 0 { return 0; }
     var result: uint = 1;
     var starterAt: uint = 0;
@@ -241,7 +241,7 @@ func Compose(items: MutableSlice<char32>, length: uint) -> uint {
 /// `written` must be non-null and writable.
 ///
 /// https://rux-lang.dev/docs/api/unicode/normalize-canonical
-pub func NormalizeCanonical(text: char32[..], into: MutableSlice<char32>, written: *var uint) -> bool {
+pub func NormalizeCanonical(text: char32[..], into: var char32[..], written: *var uint) -> bool {
     var length: uint = 0;
     if !DecomposeCanonical(text, into, @length) { return false; }
     *written = Compose(into, length);
@@ -255,7 +255,7 @@ pub func NormalizeCanonical(text: char32[..], into: MutableSlice<char32>, writte
 /// `written` must be non-null and writable.
 ///
 /// https://rux-lang.dev/docs/api/unicode/normalize-compatibility
-pub func NormalizeCompatibility(text: char32[..], into: MutableSlice<char32>, written: *var uint) -> bool {
+pub func NormalizeCompatibility(text: char32[..], into: var char32[..], written: *var uint) -> bool {
     var length: uint = 0;
     if !DecomposeCompatibility(text, into, @length) { return false; }
     *written = Compose(into, length);

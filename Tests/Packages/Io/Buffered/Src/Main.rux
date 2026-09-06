@@ -1,6 +1,6 @@
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, MutableSlice };
+import Core::{ Assert };
 import Io::{ BufferedReader, BufferedWriter, IoError, IoErrorKind, Reader, Writer };
 
 // The bytes a string spans, which is how a caller holding text reaches an entry point that takes bytes.
@@ -24,7 +24,7 @@ struct SourceHandle {
 }
 
 extend SourceHandle : Reader {
-    func Read(self: &var SourceHandle, into: MutableSlice<char8>, filled: *var uint) -> IoError {
+    func Read(self: &var SourceHandle, into: var char8[..], filled: *var uint) -> IoError {
         *filled = 0;
         let state = self.state;
         state.calls = state.calls + 1;
@@ -48,7 +48,7 @@ extend SourceHandle : Reader {
 
 // A sink that records everything and counts its calls.
 struct CountingSink {
-    room: MutableSlice<char8>;
+    room: var char8[..];
     written: uint;
     calls: uint;
     flushes: uint;
@@ -94,7 +94,7 @@ func Main() -> int {
     var reader <- createdReader;
     Assert(error.IsOk(), "the reader takes its buffer");
     var one: char8[1];
-    let oneRoom = MutableSlice::From<char8>(@one[0], 1);
+    let oneRoom = (@one[0])[..1];
     var count: uint = 0;
     var lastByte = 0u8 as char8;
     var reading = true;
@@ -119,7 +119,7 @@ func Main() -> int {
     let bigHandle: Reader = SourceHandle { state: @bigSource };
     var bypassReader = BufferedReader::New(allocator, bigHandle, 8, @error);
     var bigStorage: char8[32];
-    let bigRoom = MutableSlice::From<char8>(@bigStorage[0], 32);
+    let bigRoom = (@bigStorage[0])[..32];
     var filled: uint = 0;
     Assert(bypassReader.Read(bigRoom, @filled).IsOk(), "the large read succeeds");
     Assert(filled == 32, "whole");
@@ -139,7 +139,7 @@ func Main() -> int {
     // The writer: many small writes, one conversation.
     var sinkStorage: char8[64];
     var sink = CountingSink {
-        room: MutableSlice::From<char8>(@sinkStorage[0], 64),
+        room: (@sinkStorage[0])[..64],
         written: 0,
         calls: 0,
         flushes: 0

@@ -1,20 +1,20 @@
 // The caller names the format's byte order, and the host's own never enters into it: the same value writes to
 // mirrored bytes under the two orders, and each order reads back exactly what it wrote.
 
-import Core::{ Assert, MutableSlice };
+import Core::{ Assert };
 import Io::{ Endian, IoError, IoErrorKind, Reader, Writer };
 import Io::{ ReadFloat32, ReadFloat64, ReadInt16, ReadInt64, ReadInt8, ReadUint128, ReadUint16, ReadUint256, ReadUint32, ReadUint512, ReadUint64, ReadUint8 };
 import Io::{ WriteFloat32, WriteFloat64, WriteInt16, WriteInt64, WriteInt8, WriteUint128, WriteUint16, WriteUint256, WriteUint32, WriteUint512, WriteUint64, WriteUint8 };
 
 // A little memory stream: writes append, reads serve from the front.
 struct MemoryState {
-    room: MutableSlice<char8>;
+    room: var char8[..];
     length: uint;
     offset: uint;
 }
 
 extend MemoryState : Reader {
-    func Read(self: &var MemoryState, into: MutableSlice<char8>, filled: *var uint) -> IoError {
+    func Read(self: &var MemoryState, into: var char8[..], filled: *var uint) -> IoError {
         *filled = 0;
         var give = self.length - self.offset;
         if give == 0 {
@@ -58,7 +58,7 @@ func ByteAt(state: &MemoryState, index: uint) -> uint8 {
 func Main() -> int {
     // The two orders write mirrored bytes: the value is the same, only which end comes first differs.
     var goldenStorage: char8[256];
-    var golden = MemoryState { room: MutableSlice::From<char8>(@goldenStorage[0], 256), length: 0, offset: 0 };
+    var golden = MemoryState { room: (@goldenStorage[0])[..256], length: 0, offset: 0 };
     Assert(WriteUint32(golden, Endian::Big, 0x12345678u32).IsOk(), "big writes");
     Assert(WriteUint32(golden, Endian::Little, 0x12345678u32).IsOk(), "and little writes");
     Assert(ByteAt(golden, 0) == 0x12u8 && ByteAt(golden, 1) == 0x34u8 &&
@@ -70,14 +70,14 @@ func Main() -> int {
 
     // The IEEE 754 pattern of 1.0, byte for byte, in network order.
     var floatsStorage: char8[256];
-    var floats = MemoryState { room: MutableSlice::From<char8>(@floatsStorage[0], 256), length: 0, offset: 0 };
+    var floats = MemoryState { room: (@floatsStorage[0])[..256], length: 0, offset: 0 };
     Assert(WriteFloat64(floats, Endian::Big, 1.0).IsOk(), "the float writes");
     Assert(ByteAt(floats, 0) == 0x3Fu8 && ByteAt(floats, 1) == 0xF0u8 && ByteAt(floats, 2) == 0u8 &&
            ByteAt(floats, 7) == 0u8, "as the bit pattern its specification names");
 
     // A mixed record round-trips through both orders, each value read back where it was written.
     var recordStorage: char8[256];
-    var record = MemoryState { room: MutableSlice::From<char8>(@recordStorage[0], 256), length: 0, offset: 0 };
+    var record = MemoryState { room: (@recordStorage[0])[..256], length: 0, offset: 0 };
     let wideValue = (0x0123456789ABCDEFu512 << 64u512) | 0xFEDCBA9876543210u512;
     let hugeValue = (wideValue << 256u512) | (wideValue << 128u512) | wideValue;
     var order = Endian::Big;
@@ -130,7 +130,7 @@ func Main() -> int {
 
     // A stream two bytes long cannot yield a four-byte value, and says so rather than inventing the rest.
     var shortStorage: char8[256];
-    var short = MemoryState { room: MutableSlice::From<char8>(@shortStorage[0], 256), length: 2, offset: 0 };
+    var short = MemoryState { room: (@shortStorage[0])[..256], length: 2, offset: 0 };
     var lost = 0u32;
     Assert(ReadUint32(short, Endian::Big, @lost).IsEnd(), "a short stream is the end, not a value");
 

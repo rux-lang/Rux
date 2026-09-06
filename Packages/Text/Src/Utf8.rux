@@ -18,7 +18,7 @@
 //
 // Every function here works on borrowed bytes and allocates nothing.
 
-import Core::{ MutableSlice, Option };
+import Core::{ Option };
 
 /// The largest Unicode scalar value.
 ///
@@ -114,7 +114,7 @@ pub func IsContinuation(byte: char8) -> bool {
 /// Cannot allocate. Runs in constant time.
 ///
 /// https://rux-lang.dev/docs/api/text/encode
-pub func Encode(scalar: char32, into: MutableSlice<char8>, written: *var uint) -> Utf8Error {
+pub func Encode(scalar: char32, into: var char8[..], written: *var uint) -> Utf8Error {
     *written = 0;
     let value = scalar as uint32;
     let width = EncodedLength(scalar);
@@ -122,22 +122,22 @@ pub func Encode(scalar: char32, into: MutableSlice<char8>, written: *var uint) -
     if width > into.length { return Utf8Error::Truncated; }
 
     if width == 1 {
-        into.data[0] = value as char8;
+        into[0] = value as char8;
     }
     else if width == 2 {
-        into.data[0] = (0xC0 | (value >> 6)) as char8;
-        into.data[1] = (0x80 | (value & 0x3F)) as char8;
+        into[0] = (0xC0 | (value >> 6)) as char8;
+        into[1] = (0x80 | (value & 0x3F)) as char8;
     }
     else if width == 3 {
-        into.data[0] = (0xE0 | (value >> 12)) as char8;
-        into.data[1] = (0x80 | ((value >> 6) & 0x3F)) as char8;
-        into.data[2] = (0x80 | (value & 0x3F)) as char8;
+        into[0] = (0xE0 | (value >> 12)) as char8;
+        into[1] = (0x80 | ((value >> 6) & 0x3F)) as char8;
+        into[2] = (0x80 | (value & 0x3F)) as char8;
     }
     else {
-        into.data[0] = (0xF0 | (value >> 18)) as char8;
-        into.data[1] = (0x80 | ((value >> 12) & 0x3F)) as char8;
-        into.data[2] = (0x80 | ((value >> 6) & 0x3F)) as char8;
-        into.data[3] = (0x80 | (value & 0x3F)) as char8;
+        into[0] = (0xF0 | (value >> 18)) as char8;
+        into[1] = (0x80 | ((value >> 12) & 0x3F)) as char8;
+        into[2] = (0x80 | ((value >> 6) & 0x3F)) as char8;
+        into[3] = (0x80 | (value & 0x3F)) as char8;
     }
     *written = width;
     return Utf8Error::None;

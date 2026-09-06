@@ -2,7 +2,7 @@
 // A line ends at a line feed, a CR before it belongs to the ending, and the bound is not advice.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, MutableSlice };
+import Core::{ Assert };
 import Io::{ BufferedReader, IoError, IoErrorKind, Reader, ReadTextLine };
 import Text::{ String, StringBuilder, StringView };
 
@@ -27,7 +27,7 @@ struct ScriptHandle {
 }
 
 extend ScriptHandle : Reader {
-    func Read(self: &var ScriptHandle, into: MutableSlice<char8>, filled: *var uint) -> IoError {
+    func Read(self: &var ScriptHandle, into: var char8[..], filled: *var uint) -> IoError {
         *filled = 0;
         let state = self.state;
         let remaining = state.bytes.length - state.offset;

@@ -10,7 +10,7 @@
 // because the numbers it works on are as large as the exponent makes them.
 
 import Allocator::{ AllocError, Allocator, Layout };
-import Core::{ MutableSlice };
+
 import Text::TextError;
 
 /// Writes `bits`, read under `layout`, as text under `spec`.
@@ -24,7 +24,7 @@ pub func WriteWideFloat(allocator: Allocator, writer: &var TextWriter, spec: For
     if spec.hasPrecision { return WriteWidePrecision(allocator, writer, spec, value, layout); }
     var storage: char8[256];
     var digits: char8[160];
-    var cursor = ByteCursor(MutableSlice::From<char8>(@storage[2], 254));
+    var cursor = ByteCursor((@storage[2])[..254]);
     if value.class == WideClass::Zero {
         if value.negative {
             cursor.Push(c8'-');
@@ -34,7 +34,7 @@ pub func WriteWideFloat(allocator: Allocator, writer: &var TextWriter, spec: For
     else {
         var count: uint = 0;
         var exponent10: int = 0;
-        let room = MutableSlice::From<char8>(@digits[0], 160);
+        let room = (@digits[0])[..160];
         if !ShortestWideDigits(allocator, value, layout, room, @count, @exponent10) { return TextError::OutOfMemory; }
         if value.negative {
             cursor.Push(c8'-');
@@ -74,13 +74,13 @@ func WriteWidePrecision(allocator: Allocator, writer: &var TextWriter, spec: For
     var exponent10: int = 0;
     var failure = TextError::None;
     if value.class != WideClass::Zero {
-        let room = MutableSlice<char8> { data: digits, length: digitRoom };
+        let room = (digits)[..digitRoom];
         if !FixedWideDigits(allocator, value, layout, fraction, room, @count, @exponent10) {
             failure = TextError::OutOfMemory;
         }
     }
     if failure == TextError::None {
-        var cursor = ByteCursor(MutableSlice<char8> { data: text + 1u, length: textRoom - 1u });
+        var cursor = ByteCursor((text + 1u)[..textRoom - 1u]);
         if value.negative && value.class != WideClass::Zero {
             cursor.Push(c8'-');
         }

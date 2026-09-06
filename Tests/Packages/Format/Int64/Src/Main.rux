@@ -2,13 +2,13 @@ import Core::{ int64 };
 import Text::StringView;
 import Format::{ ByteCursor, FormatSpec, Display, TextWriter, ParseError, ParseInt64, TryParseInt64 };
 import Core::Result;
-import Core::{ MutableSlice };
+
 
 // Std stays out of the dependencies, and a failed check reports itself through
 // the exit code. See the Int8 test for why.
 func Check(value: int64, expected: char8[..], code: int) -> int {
     var storage: char8[64];
-    var cursor = ByteCursor(MutableSlice::From<char8>(@storage[0], 64));
+    var cursor = ByteCursor((@storage[0])[..64]);
     let sink: &var TextWriter = cursor;
     let writer: &var TextWriter = sink;
     let shown: Display = value;

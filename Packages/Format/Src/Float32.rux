@@ -1,4 +1,4 @@
-import Core::{ MutableSlice };
+
 import Text::TextError;
 
 // The largest finite float32, held here as the float64 it widens to exactly.
@@ -45,7 +45,7 @@ extend float32 : Display {
     /// https://rux-lang.dev/docs/api/format/float32/format
     pub func Format(self: *float32, writer: &var TextWriter, spec: FormatSpec) -> TextError {
         var storage: char8[52];
-        var cursor = ByteCursor(MutableSlice::From<char8>(@storage[2], 50));
+        var cursor = ByteCursor((@storage[2])[..50]);
         // Precision means digits after the point, honoured where the arithmetic can honour it: a value too large
         // to scale into a word renders shortest instead of pretending.
         if spec.hasPrecision && FitsPrecision(*self as float64, spec.precision) {

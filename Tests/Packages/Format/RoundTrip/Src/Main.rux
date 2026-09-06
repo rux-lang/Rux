@@ -1,5 +1,4 @@
 import Allocator::{ Allocator, SystemAllocator };
-import Core::Slice;
 import Format::{ Format, IsNan, ParseFloat64, ParseInt64, ParseInt128, ParseUint64, ParseUint512 };
 import Text::TextError;
 

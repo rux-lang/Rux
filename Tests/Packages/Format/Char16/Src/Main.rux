@@ -1,4 +1,4 @@
-import Core::{ MutableSlice };
+
 import Format::{ ByteCursor, FormatSpec, Display, TextWriter };
 
 // Std stays out of the dependencies, and a failed check reports itself through the exit code. See the Int8 test for
@@ -11,7 +11,7 @@ import Format::{ ByteCursor, FormatSpec, Display, TextWriter };
 // a uint64 holds any of them, and the length is checked alongside because 0x41 and 0x0041 pack the same.
 func Check(value: char16, length: uint, bytes: uint64, code: int) -> int {
     var storage: char8[8];
-    var cursor = ByteCursor(MutableSlice::From<char8>(@storage[0], 8));
+    var cursor = ByteCursor((@storage[0])[..8]);
     let sink: &var TextWriter = cursor;
     let writer: &var TextWriter = sink;
     let shown: Display = value;

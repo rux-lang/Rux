@@ -1,4 +1,4 @@
-import Core::{ string, string8 };
+
 // The coverage that is about the package as a whole rather than about one part of it.
 //
 // Two checks here are worth more than the rest. Every accepted document is written back out, read again and
@@ -8,19 +8,18 @@ import Core::{ string, string8 };
 // same way, to survive that.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, MutableSlice, Slice };
+import Core::{ Assert };
 import Format::{ ByteCursor, TextWriter };
-import Toml::{ TomlEvent, TomlEventReader, TomlKind, TomlParse, TomlParseError, TomlParseOutcome, TomlValue,
-               TomlWriteDocument, TomlWriteError };
+import Toml::{ TomlEvent, TomlEventReader, TomlKind, TomlParse, TomlParseError, TomlParseOutcome, TomlValue, TomlWriteDocument, TomlWriteError };
 
 // The bytes a string spans, which is how a text overload reaches the slice one.
-func TextBytes(text: string) -> Slice<char8> {
-    return Slice<char8> { data: text.data, length: text.length };
+func TextBytes(text: char8[..]) -> char8[..] {
+    return (text.data)[..text.length];
 }
 
 // Documents TOML 1.1 accepts. Each is one feature of the grammar, and a reader that refuses any of them is
 // refusing a document someone is entitled to write.
-func Valid(index: uint) -> string {
+func Valid(index: uint) -> char8[..] {
     if index == 0u {
         return "key = \"value\"";
     }
@@ -160,7 +159,7 @@ const ValidCount: uint = 44;
 
 // Documents TOML refuses. Each is a form some reader accepts and some does not, which is exactly the set that
 // makes one document mean two things.
-func Invalid(index: uint) -> string {
+func Invalid(index: uint) -> char8[..] {
     if index == 0u {
         return "key = # no value";
     }
@@ -293,7 +292,7 @@ func Invalid(index: uint) -> string {
 const InvalidCount: uint = 42;
 
 // The index a failing vector sits at, so a refusal names the document rather than the loop.
-func Label(index: uint) -> string {
+func Label(index: uint) -> char8[..] {
     if index == 0u {
         return "vector 0";
     }
@@ -429,7 +428,7 @@ func Label(index: uint) -> string {
     return "vector past the end";
 }
 
-func Reparsed(index: uint) -> string {
+func Reparsed(index: uint) -> char8[..] {
     if index == 0u {
         return "rewritten vector 0";
     }
@@ -564,7 +563,7 @@ func Reparsed(index: uint) -> string {
     }
     return "rewritten vector past the end";
 }
-func Fixed(index: uint) -> string {
+func Fixed(index: uint) -> char8[..] {
     if index == 0u {
         return "fixed point of vector 0";
     }
@@ -699,7 +698,7 @@ func Fixed(index: uint) -> string {
     }
     return "fixed point of vector past the end";
 }
-func Refusal(index: uint) -> string {
+func Refusal(index: uint) -> char8[..] {
     if index == 0u {
         return "invalid vector 0";
     }
@@ -828,7 +827,7 @@ func Refusal(index: uint) -> string {
     }
     return "invalid vector past the end";
 }
-func Differential(index: uint) -> string {
+func Differential(index: uint) -> char8[..] {
     if index == 0u {
         return "differential vector 0";
     }
@@ -963,7 +962,7 @@ func Differential(index: uint) -> string {
     }
     return "differential vector past the end";
 }
-func Render(value: &TomlValue, storage: MutableSlice<char8>) -> Slice<char8> {
+func Render(value: &TomlValue, storage: var char8[..]) -> char8[..] {
     var cursor = ByteCursor(storage);
     let writer: &var TextWriter = cursor;
     let failure = TomlWriteDocument(writer, value);
@@ -971,7 +970,7 @@ func Render(value: &TomlValue, storage: MutableSlice<char8>) -> Slice<char8> {
     return cursor.Written();
 }
 
-func Same(left: Slice<char8>, right: Slice<char8>) -> bool {
+func Same(left: char8[..], right: char8[..]) -> bool {
     if left.length != right.length {
         return false;
     }
@@ -986,7 +985,7 @@ func Same(left: Slice<char8>, right: Slice<char8>) -> bool {
 }
 
 // How many scalar values the streaming reader finds, and whether it finished cleanly.
-func StreamedScalars(text: string, clean: *var bool) -> uint {
+func StreamedScalars(text: char8[..], clean: *var bool) -> uint {
     var reader = TomlEventReader(text);
     var count: uint = 0;
     while true {
@@ -1045,10 +1044,10 @@ func Main() -> int {
         let text = Valid(index);
         var parsed = TomlParse(allocator, text, @outcome);
         Assert(outcome.error == TomlParseError::None, Label(index));
-        let once = Render(parsed, MutableSlice::From<char8>(@storage[0], 8192));
+        let once = Render(parsed, (@storage[0])[..8192]);
         var again = TomlParse(allocator, once, @outcome);
         Assert(outcome.error == TomlParseError::None, Reparsed(index));
-        let twice = Render(again, MutableSlice::From<char8>(@second[0], 8192));
+        let twice = Render(again, (@second[0])[..8192]);
         Assert(Same(once, twice), Fixed(index));
         index = index + 1u;
     }

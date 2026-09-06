@@ -1,22 +1,20 @@
-import Core::{ string, string8 };
+
 // The wide widths have no arithmetic yet, so what can be tested is what the package promises: that the text of a
 // bit pattern is the shortest that reads back as the same bits, that a decimal reads to the nearest value with ties
 // to even, and that both agree with the reference the compiler computed independently. The vectors in Vectors.rux
 // carry that reference; the cases here are the ones a reader can check by eye.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, MutableSlice, Result, Slice };
-import Format::{ ByteCursor, Display, Float128, Float256, Float512, Float80, FloatLayout,
-                 FormatSpec, ParseError, ParseFloat128, ParseFloat256, ParseFloat512, ParseFloat80,
-                 ParseWideFloat, TextWriter, UnpackWide, WideClass, WriteWideFloat };
+import Core::{ Assert, Result };
+import Format::{ ByteCursor, Display, Float128, Float256, Float512, Float80, FloatLayout, FormatSpec, ParseError, ParseFloat128, ParseFloat256, ParseFloat512, ParseFloat80, ParseWideFloat, TextWriter, UnpackWide, WideClass, WriteWideFloat };
 import Text::TextError;
 
 // The bytes a string spans, which is how a text overload reaches the slice one.
-func TextBytes(text: string) -> Slice<char8> {
-    return Slice<char8> { data: text.data, length: text.length };
+func TextBytes(text: char8[..]) -> char8[..] {
+    return (text.data)[..text.length];
 }
 
-func Same(left: Slice<char8>, right: Slice<char8>) -> bool {
+func Same(left: char8[..], right: char8[..]) -> bool {
     if left.length != right.length {
         return false;
     }
@@ -30,15 +28,15 @@ func Same(left: Slice<char8>, right: Slice<char8>) -> bool {
     return true;
 }
 
-func StartsWith(text: Slice<char8>, prefix: Slice<char8>) -> bool {
+func StartsWith(text: char8[..], prefix: char8[..]) -> bool {
     if text.length < prefix.length {
         return false;
     }
-    return Same(Slice<char8> { data: text.data, length: prefix.length }, prefix);
+    return Same((text.data)[..prefix.length], prefix);
 }
 
 // Renders `bits` under `layout` into `storage` and hands back what was written.
-func Render(bits: uint512, layout: &FloatLayout, spec: FormatSpec, storage: MutableSlice<char8>) -> Slice<char8> {
+func Render(bits: uint512, layout: &FloatLayout, spec: FormatSpec, storage: var char8[..]) -> char8[..] {
     var system = SystemAllocator();
     let allocator: Allocator = system;
     var cursor = ByteCursor(storage);
@@ -56,7 +54,7 @@ func Precision(places: uint) -> FormatSpec {
 }
 
 // The bits `text` reads to under `layout`, which must read.
-func Bits(text: Slice<char8>, layout: &FloatLayout) -> uint512 {
+func Bits(text: char8[..], layout: &FloatLayout) -> uint512 {
     var system = SystemAllocator();
     let allocator: Allocator = system;
     let parsed = ParseWideFloat(allocator, text, layout);
@@ -65,7 +63,7 @@ func Bits(text: Slice<char8>, layout: &FloatLayout) -> uint512 {
     return parsed.ValueOr(0u512);
 }
 
-func Refused(text: Slice<char8>, layout: &FloatLayout) -> bool {
+func Refused(text: char8[..], layout: &FloatLayout) -> bool {
     var system = SystemAllocator();
     let allocator: Allocator = system;
     let parsed = ParseWideFloat(allocator, text, layout);
@@ -75,7 +73,7 @@ func Refused(text: Slice<char8>, layout: &FloatLayout) -> bool {
 
 func Main() -> int {
     var storage: char8[8192];
-    let room = MutableSlice::From<char8>(@storage[0], 8192);
+    let room = (@storage[0])[..8192];
     let plain = FormatSpec::Plain();
     let b128 = FloatLayout::Binary128();
     let b80 = FloatLayout::Extended80();

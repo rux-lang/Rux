@@ -10,12 +10,12 @@
 // to the even digit.
 
 import Allocator::Allocator;
-import Core::{ MutableSlice };
+
 
 // The digits of `value`, as few as read back to the same bits, written into `digits`. `exponent10` receives the
 // power of ten of the first digit, so the value is d.ddd times ten to it. Reports `false` when the allocator refuses
 // or the digits do not fit, and never partially writes either way.
-func ShortestWideDigits(allocator: Allocator, value: &UnpackedWide, layout: &FloatLayout, digits: MutableSlice<char8>,
+func ShortestWideDigits(allocator: Allocator, value: &UnpackedWide, layout: &FloatLayout, digits: var char8[..],
                         count: *var uint, exponent10: *var int) -> bool {
     let f = value.significand;
     let e = value.exponent;
@@ -128,7 +128,7 @@ func BitLengthOf(value: uint512) -> uint {
 // the power of ten of the first digit as for the shortest form; a value that rounds all the way to zero reports
 // no digits at all. Reports `false` when the allocator refuses or the digits do not fit.
 func FixedWideDigits(allocator: Allocator, value: &UnpackedWide, layout: &FloatLayout, fraction: uint,
-                     digits: MutableSlice<char8>, count: *var uint, exponent10: *var int) -> bool {
+                     digits: var char8[..], count: *var uint, exponent10: *var int) -> bool {
     var r = BigNat(allocator);
     var s = BigNat(allocator);
     var tmp = BigNat(allocator);
