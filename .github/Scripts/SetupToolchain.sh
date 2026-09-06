@@ -137,6 +137,15 @@ export_variable() {
 
 export_variable RUX_TOOLCHAIN "$prefix"
 export_variable CXX "$prefix/bin/clang++-23"
+
+# The macOS bundle is repacked from Homebrew, whose clang carries no built-in
+# SDK path and expects either a Command Line Tools install at a fixed location
+# or a configuration file naming the SDK. Neither is guaranteed on a runner, so
+# name it the way the Darwin driver expects; without this every standard header
+# that forwards to a C one fails to resolve.
+if [ "$(uname -s)" = Darwin ]; then
+    export_variable SDKROOT "$(xcrun --show-sdk-path)"
+fi
 export_variable CMAKE_CXX_COMPILER_LAUNCHER ccache
 export_variable CCACHE_DIR "${GITHUB_WORKSPACE:-$repository_root}/BuildCache/ccache"
 export_variable CCACHE_MAXSIZE "$CCACHE_MAXSIZE"
