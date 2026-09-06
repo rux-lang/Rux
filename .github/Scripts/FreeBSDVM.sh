@@ -3,7 +3,7 @@
 # Run a command inside a prepared FreeBSD guest.
 #
 # Replaces the Python QEMU driver. The guest images are built and published by
-# rux-lang/rux-toolchains; nothing is ever installed or compiled inside the guest
+# rux-lang/Toolchain; nothing is ever installed or compiled inside the guest
 # here, so a consumer job only boots, syncs, runs, and syncs back.
 #
 # The VM is killed on INT, TERM, and exit, so cancelling a workflow run stops the
@@ -94,7 +94,7 @@ checksum_variable="SHA256_IMAGE_$(printf '%s_%s' "$role" "$arch" | tr 'a-z' 'A-Z
 eval "checksum=\${$checksum_variable:-}"
 [ -n "$checksum" ] || die "'$manifest' declares no $checksum_variable"
 [ "$checksum" != TBD ] ||
-    die "$checksum_variable is still TBD; publish a rux-toolchains release and record its checksum"
+    die "$checksum_variable is still TBD; publish a Toolchain release and record its checksum"
 
 work_root=${RUNNER_TEMP:-${TMPDIR:-/tmp}}/rux-freebsd-$role-$arch
 image_root=${RUX_IMAGE_CACHE:-$work_root/image}

@@ -3,7 +3,7 @@
 # Restore the pinned prebuilt toolchain for one target.
 #
 # CI never installs or compiles a toolchain: it downloads exactly one verified
-# bundle from rux-lang/rux-toolchains and puts it on PATH. The POSIX peer of
+# bundle from rux-lang/Toolchain and puts it on PATH. The POSIX peer of
 # .github/Scripts/SetupToolchain.ps1.
 #
 # Usage: sh .github/Scripts/SetupToolchain.sh --target linux-x86_64 [--prefix DIR]
@@ -58,7 +58,7 @@ checksum_variable="SHA256_TOOLCHAIN_$(printf '%s' "$target" | tr 'a-z-' 'A-Z_')"
 eval "checksum=\${$checksum_variable:-}"
 [ -n "$checksum" ] || die "'$manifest' declares no $checksum_variable"
 [ "$checksum" != TBD ] ||
-    die "$checksum_variable is still TBD; publish a rux-toolchains release and record its checksum"
+    die "$checksum_variable is still TBD; publish a Toolchain release and record its checksum"
 [ "$TOOLCHAIN_REVISION" != TBD ] || die "TOOLCHAIN_REVISION is still TBD"
 
 archive_name=rux-toolchain-$target-$TOOLCHAIN_REVISION.tar.zst

@@ -4,7 +4,7 @@
 
 .DESCRIPTION
     CI never installs or compiles a toolchain: it downloads exactly one verified
-    bundle from rux-lang/rux-toolchains and puts it on PATH. This is the Windows
+    bundle from rux-lang/Toolchain and puts it on PATH. This is the Windows
     peer of .github/Scripts/SetupToolchain.sh.
 
     It also imports the Visual Studio developer environment once and writes it to
@@ -113,7 +113,7 @@ if (-not $manifest.ContainsKey($checksumName)) {
 }
 $checksum = $manifest[$checksumName]
 if ($checksum -eq 'TBD') {
-    throw "$checksumName is still TBD; publish a rux-toolchains release and record its checksum"
+    throw "$checksumName is still TBD; publish a Toolchain release and record its checksum"
 }
 
 if (-not $Prefix) {

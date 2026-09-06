@@ -66,7 +66,7 @@ It is guarded by `if: ${{ !cancelled() }}`, not `if: always()`. Cancelling a run
 
 The format is flat `KEY=VALUE`. POSIX `sh` dot-sources it directly and PowerShell parses it with one regex, so no JSON parser and no `jq` is needed on any runner — including the FreeBSD guest. Because it is sourced, both setup scripts reject a manifest containing anything but comments and plain assignments before reading it.
 
-Assets are published by **`rux-lang/rux-toolchains`** under the tag `toolchain-<revision>`:
+Assets are published by **`rux-lang/Toolchain`** under the tag `toolchain-<revision>`:
 
 - Six host bundles, `rux-toolchain-<target>-<revision>.tar.zst` (`.zip` on Windows), each containing Clang 23 (`clang++-23`, `clang-format-23`, `clang-tidy-23`), CMake, Ninja, and ccache. They are repacked from upstream prebuilt distributions; LLVM is never compiled.
 - Five prepared FreeBSD 15.1 guest images, zstd-compressed and split into release-asset-sized parts: `build` and `runtime` for each architecture, plus a minimal AArch64 image that deliberately contains no LLVM, CMake, Ninja, or Git. That emptiness is what makes the transferred-artifact acceptance mean something.

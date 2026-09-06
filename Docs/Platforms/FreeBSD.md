@@ -14,13 +14,13 @@ Rux currently requires Clang 23.1 or newer, CMake 4.4.3 or newer, Ninja 1.13.2 o
 sudo pkg install -y llvm23 cmake ninja git
 ```
 
-CMake 4.4.3 is not packaged for FreeBSD 15.1 on either architecture. CI never builds it: `rux-lang/rux-toolchains` builds it once per toolchain revision and bakes it into the prepared guest images, and also publishes it as a standalone archive. For a local machine, download that archive for your architecture and put it on `PATH` ahead of the packaged CMake:
+CMake 4.4.3 is not packaged for FreeBSD 15.1 on either architecture. CI never builds it: `rux-lang/Toolchain` builds it once per toolchain revision and bakes it into the prepared guest images, and also publishes it as a standalone archive. For a local machine, download that archive for your architecture and put it on `PATH` ahead of the packaged CMake:
 
 ```sh
 git clone https://github.com/rux-lang/Rux.git
 cd Rux
 fetch -o BuildCache/cmake.tar.zst \
-  "https://github.com/rux-lang/rux-toolchains/releases/download/toolchain-<revision>/cmake-4.4.3-freebsd-$(uname -m).tar.zst"
+  "https://github.com/rux-lang/Toolchain/releases/download/toolchain-<revision>/cmake-4.4.3-freebsd-$(uname -m).tar.zst"
 mkdir -p BuildCache/CMake && tar --zstd -xf BuildCache/cmake.tar.zst -C BuildCache/CMake --strip-components=1
 export PATH="$PWD/BuildCache/CMake/bin:$PATH"
 sh Run.sh build
