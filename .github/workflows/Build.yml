@@ -49,10 +49,16 @@ jobs:
             family: posix
             runner: ubuntu-26.04-arm
             timeout: 20
+          # LLVM publishes no macOS 23.1.0 archive and Homebrew has no Intel
+          # bottle for macOS 26, so there is no prebuilt Clang 23 for an Intel
+          # runner. The macOS SDK is universal, so this builds x86-64 with the
+          # AArch64 toolchain and Rosetta runs the result on the same machine.
           - target: macos-x86_64
             label: macOS x86-64
             family: posix
-            runner: macos-26-intel
+            runner: macos-26
+            bundle: macos-aarch64
+            osx-architecture: x86_64
             timeout: 30
           - target: macos-aarch64
             label: macOS AArch64
@@ -102,11 +108,11 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: ${{ runner.temp }}/rux-toolchain
-          key: toolchain-${{ env.TOOLCHAIN_REVISION }}-${{ matrix.target }}
+          key: toolchain-${{ env.TOOLCHAIN_REVISION }}-${{ matrix.bundle || matrix.target }}
 
       - name: Install the toolchain
         if: matrix.family == 'posix'
-        run: sh .github/Scripts/SetupToolchain.sh --target ${{ matrix.target }}
+        run: sh .github/Scripts/SetupToolchain.sh --target ${{ matrix.bundle || matrix.target }}
 
       # The same step imports the Visual Studio environment once and exports it,
       # so no later step has to re-run vcvarsall.
@@ -148,6 +154,8 @@ jobs:
 
       - name: Build
         if: matrix.family == 'posix'
+        env:
+          RUX_OSX_ARCHITECTURE: ${{ matrix.osx-architecture }}
         run: sh .github/Scripts/Verify.sh --stage build
 
       - name: Build
@@ -211,6 +219,13 @@ jobs:
       - name: macOS AArch64 fixtures
         if: matrix.target == 'macos-aarch64'
         run: sh Tests/Native/MacOSAArch64/Verify.sh
+
+      # The compiler built here is x86-64 and runs under Rosetta on this AArch64
+      # host, which is exactly the translated-compiler boundary these fixtures
+      # exist to check.
+      - name: macOS x86-64 fixtures under Rosetta
+        if: matrix.target == 'macos-x86_64'
+        run: sh Tests/Native/MacOSAArch64/VerifyRosetta.sh
 
       - name: Windows AArch64 fixtures
         if: matrix.target == 'windows-aarch64'
@@ -299,7 +314,8 @@ jobs:
             --script BuildCache/consume.sh
 
   # The x86-64 compiler running under the ARM64 host's emulation layer, proving
-  # a translated compiler still produces working native output.
+  # a translated compiler still produces working native output. macOS covers this
+  # inside its own build job, because macos-x86_64 is already cross-built there.
   cross-emulated:
     name: ${{ matrix.label }}
     if: ${{ inputs.cross }}
@@ -307,9 +323,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - label: macOS x86-64 under Rosetta
-            runner: macos-26
-            source: macos-x86_64
           - label: Windows x86-64 under emulation
             runner: windows-11-arm
             source: windows-x86_64
@@ -325,12 +338,6 @@ jobs:
           name: rux-${{ matrix.source }}
           path: Bin
       - name: Run the translated compiler
-        if: matrix.source == 'macos-x86_64'
-        run: |
-          chmod +x Bin/rux
-          sh Tests/Native/MacOSAArch64/VerifyRosetta.sh
-      - name: Run the translated compiler
-        if: matrix.source == 'windows-x86_64'
         shell: pwsh
         run: |
           foreach ($fixture in 'ExitCode', 'Assert', 'Panic', 'StackProbe', 'Dll') {

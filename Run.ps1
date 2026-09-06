@@ -64,6 +64,10 @@ PowerShell 7 because it analyzes files in parallel.
 Configures without precompiled headers, for build and test. CI uses this because
 a compilation cache and precompiled headers defeat each other.
 
+.PARAMETER OsxArchitecture
+Builds for this macOS architecture, for build and test. The macOS SDK is
+universal, so one host builds either architecture.
+
 .PARAMETER ShardCount
 Splits the analysis into this many disjoint shards, for tidy. Running every
 shard index covers each translation unit exactly once.
@@ -117,6 +121,8 @@ param(
 
     [switch]$NoPch,
 
+    [string]$OsxArchitecture,
+
     [ValidateRange(0, 2147483646)]
     [int]$ShardIndex = 0,
 
@@ -140,9 +146,9 @@ $policyChecks = @(
 
 # Options each command accepts, used to reject an option the command ignores.
 $commandOptions = @{
-    build  = @("Configuration", "BuildDirectory", "Compiler", "Jobs", "NoPch")
+    build  = @("Configuration", "BuildDirectory", "Compiler", "Jobs", "NoPch", "OsxArchitecture")
     test   = @("Configuration", "BuildDirectory", "Compiler", "RuxExecutable", "Target",
-        "FixFormatting", "SkipBuild", "ClangTidy", "Jobs", "NoPch")
+        "FixFormatting", "SkipBuild", "ClangTidy", "Jobs", "NoPch", "OsxArchitecture")
     format = @("RuxExecutable", "Check", "Jobs")
     policy = @()
     tidy   = @("BuildDirectory", "Jobs", "ShardIndex", "ShardCount")
@@ -176,6 +182,7 @@ function Show-Usage {
     Write-Host "  -SkipBuild                    Reuse the existing build and executables (test)"
     Write-Host "  -ClangTidy                    Add the clang-tidy pass (test)"
     Write-Host "  -NoPch                        Configure without precompiled headers (build, test)"
+    Write-Host "  -OsxArchitecture ARCH         Build for this macOS architecture (build, test; default: the host)"
     Write-Host "  -ShardCount N                 Split the analysis into N disjoint shards (tidy; default: 1)"
     Write-Host "  -ShardIndex N                 Analyze shard N of -ShardCount, counting from zero (tidy)"
     Write-Host ""
@@ -461,6 +468,9 @@ function Invoke-Build {
     # each other.
     if ($NoPch) {
         $configureArguments.Add("-DRUX_USE_PCH=OFF")
+    }
+    if ($OsxArchitecture) {
+        $configureArguments.Add("-DCMAKE_OSX_ARCHITECTURES=$OsxArchitecture")
     }
 
     # CMake's configure report: `-- Configuring done (0.1s)` becomes `Configuring done in 100 ms`, the
@@ -799,7 +809,8 @@ if ($Command -eq "help") {
 }
 
 $allOptions = @("Configuration", "BuildDirectory", "Compiler", "RuxExecutable", "Target",
-    "Check", "FixFormatting", "SkipBuild", "ClangTidy", "Jobs", "NoPch", "ShardIndex", "ShardCount")
+    "Check", "FixFormatting", "SkipBuild", "ClangTidy", "Jobs", "NoPch", "OsxArchitecture",
+    "ShardIndex", "ShardCount")
 foreach ($name in $PSBoundParameters.Keys) {
     if ($allOptions -notcontains $name) {
         continue

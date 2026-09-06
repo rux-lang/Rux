@@ -37,12 +37,12 @@ Every job carries an explicit timeout. Nothing can run for hours.
 | `Quality` — policy guards and C++ formatting | ubuntu-26.04                    | 10      |
 | `clang-tidy` × 3 shards                      | ubuntu-26.04                    | 25      |
 | Linux x86-64 / AArch64                       | ubuntu-26.04 / ubuntu-26.04-arm | 20      |
-| macOS AArch64 / x86-64                       | macos-26 / macos-26-intel       | 25 / 30 |
+| macOS AArch64 / x86-64                       | macos-26 (both)                 | 25 / 30 |
 | Windows x86-64 / AArch64                     | windows-2025 / windows-11-arm   | 30      |
 | FreeBSD x86-64                               | ubuntu-26.04 (KVM guest)        | 35      |
 | FreeBSD AArch64                              | ubuntu-26.04-arm                | 60      |
 | FreeBSD transferred artifact                 | ubuntu-26.04                    | 40      |
-| Cross execution under emulation              | macos-26, windows-11-arm        | 20      |
+| Cross execution under emulation              | windows-11-arm                  | 20      |
 | `CI` — the aggregate gate                    | ubuntu-26.04                    | 5       |
 
 Build and test share one job per target. Splitting them cost an artifact round-trip and a second runner acquisition on every target without proving anything the closure check below does not prove more directly.
@@ -68,7 +68,7 @@ The format is flat `KEY=VALUE`. POSIX `sh` dot-sources it directly and PowerShel
 
 Assets are published by **`rux-lang/Toolchain`** under the tag `toolchain-<revision>`:
 
-- Six host bundles, `rux-toolchain-<target>-<revision>.tar.zst` (`.zip` on Windows), each containing Clang 23 (`clang++-23`, `clang-format-23`, `clang-tidy-23`), CMake, Ninja, and ccache. They are repacked from upstream prebuilt distributions; LLVM is never compiled.
+- Five host bundles, `rux-toolchain-<target>-<revision>.tar.zst` (`.zip` on Windows), each containing Clang 23 (`clang++-23`, `clang-format-23`, `clang-tidy-23`), CMake, Ninja, and ccache. They are repacked from upstream prebuilt distributions; LLVM is never compiled. There is no macOS x86-64 bundle: LLVM publishes no macOS archive for 23.1.0 and Homebrew has no Intel bottle for macOS 26, so that target is cross-built on the AArch64 runner with the AArch64 bundle and its tests run under Rosetta on the same machine. The macOS SDK is universal, so this needs no Intel toolchain and no Intel runner.
 - Five prepared FreeBSD 15.1 guest images, zstd-compressed and split into release-asset-sized parts: `build` and `runtime` for each architecture, plus a minimal AArch64 image that deliberately contains no LLVM, CMake, Ninja, or Git. That emptiness is what makes the transferred-artifact acceptance mean something.
 
 CMake 4.4.3 is not packaged for FreeBSD 15.1 on either architecture, so the toolchains repository builds it once per revision and bakes it into the images. Rux CI never builds it.
@@ -81,7 +81,7 @@ Every download is staged into a `.partial` file and renamed only after its SHA-2
 
 | Cache             | Key                                                    | Approximate size |
 | ----------------- | ------------------------------------------------------ | ---------------- |
-| Toolchain bundle  | `toolchain-<revision>-<target>`                        | 120 MB × 6       |
+| Toolchain bundle  | `toolchain-<revision>-<target>`                        | 120 MB × 5       |
 | Compilation cache | `ccache-<target>-<revision>-<sha>`, restored by prefix | 400 MB × 8       |
 
 The `<sha>` suffix makes the primary key always miss, so every run writes back a cache warmer than the one it restored. Caches are saved on pushes only; a pull request rebuilds the commit its branch push already cached, so letting it save as well would only churn the quota. The compilation cache is saved **before** the tests run, so a slow or failing suite does not cost the next run its warm cache — except on FreeBSD, where build and test share one guest boot.

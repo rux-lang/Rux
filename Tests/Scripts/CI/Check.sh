@@ -44,8 +44,7 @@ check_manifest_shape() {
         grep -q "^$key=" "$manifest" || fail "$manifest declares no $key"
     done
 
-    for target in LINUX_X86_64 LINUX_AARCH64 MACOS_X86_64 MACOS_AARCH64 \
-        WINDOWS_X86_64 WINDOWS_AARCH64; do
+    for target in LINUX_X86_64 LINUX_AARCH64 MACOS_AARCH64 WINDOWS_X86_64 WINDOWS_AARCH64; do
         grep -q "^SHA256_TOOLCHAIN_$target=" "$manifest" ||
             fail "$manifest declares no SHA256_TOOLCHAIN_$target"
     done

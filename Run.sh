@@ -24,6 +24,7 @@ clang_tidy_enabled=false
 shard_index=0
 shard_count=1
 no_pch=false
+osx_architecture=
 
 usage() {
     printf '%s\n' \
@@ -50,7 +51,7 @@ usage() {
         '  --fix-formatting               Format sources instead of checking them (test)' \
         '  --skip-build                   Reuse the existing build and executables (test)' \
         '  --clang-tidy                   Add the clang-tidy pass (test)' \
-        '  --no-pch                       Configure without precompiled headers (build, test)' \
+        '  --no-pch                       Configure without precompiled headers (build, test)' \n        '  --osx-architecture ARCH        Build for this macOS architecture (build, test; default: the host)' \
         '  --shard-count N                Split the analysis into N disjoint shards (tidy; default: 1)' \
         '  --shard-index N                Analyze shard N of --shard-count, counting from zero (tidy)' \
         '  -h, --help                     Show this help' \
@@ -69,8 +70,8 @@ require_value() {
 # Options each command accepts, used to reject an option the command ignores.
 command_options() {
     case $1 in
-    build) printf '%s' '--configuration --build-directory --compiler --jobs --no-pch' ;;
-    test) printf '%s' '--configuration --build-directory --compiler --rux-executable --target --fix-formatting --skip-build --clang-tidy --jobs --no-pch' ;;
+    build) printf '%s' '--configuration --build-directory --compiler --jobs --no-pch --osx-architecture' ;;
+    test) printf '%s' '--configuration --build-directory --compiler --rux-executable --target --fix-formatting --skip-build --clang-tidy --jobs --no-pch --osx-architecture' ;;
     format) printf '%s' '--rux-executable --check --jobs' ;;
     tidy) printf '%s' '--build-directory --jobs --shard-index --shard-count' ;;
     unit) printf '%s' '--configuration --build-directory --jobs' ;;
@@ -173,6 +174,12 @@ while [ "$#" -gt 0 ]; do
         require_option "$1"
         no_pch=true
         shift
+        ;;
+    --osx-architecture)
+        require_option "$1"
+        require_value "$@"
+        osx_architecture=$2
+        shift 2
         ;;
     --shard-index)
         require_option "$1"
@@ -298,6 +305,10 @@ run_build() {
         -DRUX_WERROR=ON \
         -DRUX_BUILD_TESTS=ON
     [ "$no_pch" != true ] || set -- "$@" -DRUX_USE_PCH=OFF
+    # The macOS SDK is universal, so one host builds either architecture; CI uses
+    # this to build the x86-64 compiler on an AArch64 runner and test it under
+    # Rosetta rather than keeping an Intel runner alive for it.
+    [ -z "$osx_architecture" ] || set -- "$@" -DCMAKE_OSX_ARCHITECTURES="$osx_architecture"
 
     step "Configuring $configuration build"
     run_filtered cmake "$configure_report_program" cmake "$@"
