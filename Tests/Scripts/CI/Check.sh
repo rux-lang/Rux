@@ -185,6 +185,41 @@ check_setup_exports_the_toolchain() {
         fail 'SetupToolchain.sh did not put the bundle on PATH'
 }
 
+# The target table is the matrix the platform workflows hand to Build.yml, so
+# every supported target must appear in it exactly once with the fields the
+# build reads.
+check_target_table() {
+    table=$repository_root/.github/Targets.json
+    [ -f "$table" ] || fail "'$table' was not found"
+
+    for target in linux-x86_64 linux-aarch64 macos-aarch64 macos-x86_64 \
+        windows-x86_64 windows-aarch64 freebsd-x86_64 freebsd-aarch64; do
+        count=$(grep -c "\"target\": \"$target\"" "$table" || true)
+        [ "$count" -eq 1 ] || fail "$table lists '$target' $count times, not once"
+    done
+
+    entries=$(grep -c '"target":' "$table" || true)
+    [ "$entries" -eq 8 ] || fail "$table lists $entries targets, not eight"
+
+    for field in label platform family runner timeout; do
+        count=$(grep -c "\"$field\":" "$table" || true)
+        [ "$count" -eq 8 ] || fail "$table declares '$field' on $count entries, not eight"
+    done
+}
+
+# Build.yml must take its matrix from the caller. Expanding a list of target ids
+# against an `include` table there silently builds every target the table lists,
+# because GitHub adds an include entry matching no combination as a new one:
+# each platform workflow ran all eight targets before this was found.
+check_build_matrix_comes_from_the_caller() {
+    build=$repository_root/.github/workflows/Build.yml
+    grep -q 'include: ${{ fromJSON(inputs.targets) }}' "$build" ||
+        fail "$build does not take its matrix from the caller"
+    if grep -qE '^ +target: \$\{\{ fromJSON\(inputs\.targets\) \}\}' "$build"; then
+        fail "$build expands target ids against an include table, which builds every listed target"
+    fi
+}
+
 # Workflows run on a case-sensitive filesystem while this repository is often
 # edited on one that is not, so a reference whose case does not match the file
 # resolves locally and fails only once GitHub parses it. Compare against the
@@ -269,6 +304,8 @@ check_manifest_shape
 check_versions_agree
 check_setup_rejects_unpublished
 check_manifest_is_consistent
+check_target_table
+check_build_matrix_comes_from_the_caller
 check_workflow_paths_match_case
 check_setup_exports_the_toolchain
 check_setup_rejects_injection

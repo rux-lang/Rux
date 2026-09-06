@@ -58,12 +58,19 @@ jobs:
             exit 1
           fi
 
-  build:
+  # Plan supplies the matrix so the target table lives in one file. A manual
+  # dispatch always resolves to the full scope, and "all" selects every target.
+  plan:
     needs: verify
+    uses: ./.github/workflows/Plan.yml
+    with:
+      platform: all
+
+  build:
+    needs: plan
     uses: ./.github/workflows/Build.yml
     with:
-      targets: >-
-        ["freebsd-aarch64","freebsd-x86_64","linux-aarch64","linux-x86_64","macos-aarch64","macos-x86_64","windows-aarch64","windows-x86_64"]
+      targets: ${{ needs.plan.outputs.targets }}
       cross: true
       package: true
       save-cache: false

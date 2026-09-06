@@ -12,7 +12,9 @@ Seven workflows, plus the community metadata GitHub owns. Only two of them descr
 - **`Build.yml`** — a reusable workflow (`workflow_call`) describing how one target is built and verified. It is the single description of that work; every platform workflow and `Release.yml` call it, so a platform change is made once.
 - **`Release.yml`** — manual only (`workflow_dispatch`, with a version input and a dry-run switch). Pushing a tag never starts a release by itself.
 
-`Build.yml` takes a JSON array of target ids. Rows in its matrix `include` whose target is not in that array are not expanded into jobs, so passing `'["linux-x86_64"]'` produces exactly one job on exactly the right runner.
+`Build.yml` takes its matrix from the caller: a JSON array of objects, one per target, naming the runner, family and timeout. `.github/Targets.json` holds that table, and `Plan.yml` filters it by platform and scope.
+
+It deliberately does not take a list of target ids and expand them against an `include` table of its own. GitHub adds an `include` entry matching no existing combination as a *new* combination, so such a table builds every target it lists whatever the caller selected — which is what happened before this was found, with each platform workflow running all eight targets.
 
 ## Scope
 

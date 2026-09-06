@@ -102,17 +102,22 @@ jobs:
             ;;
           esac
 
-          # Linux x86-64 is the fast lane: it runs on every push, so an ordinary
-          # commit gets an answer without waiting for eight targets.
+          # The matrix is emitted whole rather than as a list of ids, because a
+          # GitHub `include` entry that matches no existing combination is added
+          # as a new one: using it as a lookup table builds every target it
+          # lists, whatever the selection said. jq is used only here, on a runner
+          # that always has it; the scripts a build actually runs stay free of it.
+          #
+          # Linux x86-64 is the fast lane, so an ordinary push gets an answer
+          # without waiting for eight targets.
           targets='[]'
-          if [ "$docs_only" != true ]; then
+          if [ "$docs_only" != true ] && [ -n "$PLATFORM" ]; then
             case "$PLATFORM:$scope" in
-            linux:fast) targets='["linux-x86_64"]' ;;
-            linux:full) targets='["linux-aarch64","linux-x86_64"]' ;;
-            macos:full) targets='["macos-aarch64","macos-x86_64"]' ;;
-            windows:full) targets='["windows-aarch64","windows-x86_64"]' ;;
-            freebsd:full) targets='["freebsd-aarch64","freebsd-x86_64"]' ;;
+            all:*) filter='.' ;;
+            *:fast) filter='[.[] | select(.platform == $platform and .target == "linux-x86_64")]' ;;
+            *) filter='[.[] | select(.platform == $platform)]' ;;
             esac
+            targets=$(jq -c --arg platform "$PLATFORM" "$filter" .github/Targets.json)
           fi
 
           # Pushes write the cache; pull requests only read it. A pull request
