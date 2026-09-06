@@ -73,7 +73,7 @@ The command creates a Release build in `Build\` and writes the compiler to `Bin\
 Once the repository is cloned, later sessions can replace the snippet in step 4 with the script CI uses, which performs the same initialization for the requested toolset:
 
 ```powershell
-./.github/Scripts/Install.ps1 -Tool VsEnvironment -Arch amd64   # arm64 on an AArch64 host
+./.github/Scripts/VsDevEnv.ps1 -Arch amd64   # arm64 on an AArch64 host
 ```
 
 `Run.ps1 build` selects `windows-x86_64` or `windows-aarch64` from the native host architecture. Both compilers can emit Windows x86-64 and Classic Windows AArch64 programs. The AArch64 backend and PE/COFF writer produce executables, DLLs with import libraries, and static libraries in-process; no external assembler, compiler, linker, or archiver is invoked.

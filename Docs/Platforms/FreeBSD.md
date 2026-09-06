@@ -14,15 +14,19 @@ Rux currently requires Clang 23.1 or newer, CMake 4.4.3 or newer, Ninja 1.13.2 o
 sudo pkg install -y llvm23 cmake ninja git
 ```
 
-CI uses prepared images and never runs the source bootstrap below. Its preparation workflow also publishes a standalone CMake archive for each architecture; see [environment activation](../CI-CD.md#prepared-environments-and-activation). For a local machine without a suitable binary, clone Rux and explicitly bootstrap the pinned CMake in a private directory:
+CMake 4.4.3 is not packaged for FreeBSD 15.1 on either architecture. CI never builds it: `rux-lang/rux-toolchains` builds it once per toolchain revision and bakes it into the prepared guest images, and also publishes it as a standalone archive. For a local machine, download that archive for your architecture and put it on `PATH` ahead of the packaged CMake:
 
 ```sh
 git clone https://github.com/rux-lang/Rux.git
 cd Rux
-sh .github/Scripts/Install.sh freebsd-cmake-source BuildCache/CMake
+fetch -o BuildCache/cmake.tar.zst \
+  "https://github.com/rux-lang/rux-toolchains/releases/download/toolchain-<revision>/cmake-4.4.3-freebsd-$(uname -m).tar.zst"
+mkdir -p BuildCache/CMake && tar --zstd -xf BuildCache/cmake.tar.zst -C BuildCache/CMake --strip-components=1
 export PATH="$PWD/BuildCache/CMake/bin:$PATH"
 sh Run.sh build
 ```
+
+`<revision>` is the `TOOLCHAIN_REVISION` recorded in `.github/Toolchains.env`. Building CMake from source also works and is what the toolchains repository does; it is simply not something this repository asks you to do.
 
 The FreeBSD package names the compiler `clang++23`; `Run.sh build` detects it automatically. The command creates a Release build in `Build/` and writes the compiler to `Bin/rux`.
 
@@ -77,7 +81,7 @@ sh Tests/Native/FreeBSDAArch64/VerifyTransfer.sh /tmp/FreeBSDAArch64Payload
 
 The verifier restores the declared executable modes, checks SHA-256 hashes and FreeBSD AArch64 ELF identity, then covers freestanding exit, fixed and variadic libc calls, assertion diagnostics, raw BSD syscalls, and shared-library load/call/unload. It does not invoke a compiler, ELF tool, or emulator.
 
-CI applies both acceptance boundaries before publishing `rux-freebsd-aarch64`: a native AArch64 compiler runs the complete ordinary Rux suite and focused fixtures, and an x86-64 compiler builds a target-only payload that a fresh AArch64 VM verifies and executes. Skipping either path blocks the aggregate FreeBSD acceptance check, which is a direct dependency of the release publish job.
+CI applies both acceptance boundaries before publishing `rux-freebsd-aarch64`: a native AArch64 compiler runs the complete ordinary Rux suite and focused fixtures, and an x86-64 compiler builds a target-only payload that a fresh AArch64 guest with no toolchain installed verifies and executes. Both run on every full matrix and on the release path, and either one failing fails the `CI` gate.
 
 For a Debug build, run `sh Run.sh build --configuration Debug`. Run `sh Run.sh` to see every command and option.
 
