@@ -13,6 +13,8 @@ Ten workflows, plus the community metadata GitHub owns. Only two of them describ
 
 `Build.yml` takes its matrix from the caller: a JSON array of objects naming the runner, family and timeout. Each target workflow passes its own single entry, so a target is described in exactly one place and nothing has to look it up.
 
+It also defines exactly one job. A caller inherits every job a reusable workflow declares, so a job only some callers need appears, skipped, in the others: the macOS run advertised a FreeBSD job it would never run. Work belonging to a single target lives in that target's own workflow instead, which is why FreeBSD x86-64 carries the transferred-artifact acceptance and Windows x86-64 carries the emulated cross run.
+
 It deliberately does not take a list of target ids and expand them against an `include` table of its own. GitHub adds an `include` entry matching no existing combination as a *new* combination, so such a table builds every target it lists whatever the caller selected — which is what happened before this was found, with every caller running all eight targets.
 
 ## Scope

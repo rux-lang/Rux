@@ -71,8 +71,7 @@ jobs:
          {"target":"windows-aarch64","label":"Windows AArch64","family":"windows","runner":"windows-11-arm","timeout":30},
          {"target":"freebsd-x86_64","label":"FreeBSD x86-64","family":"freebsd","runner":"ubuntu-26.04","arch":"x86_64","timeout":35},
          {"target":"freebsd-aarch64","label":"FreeBSD AArch64","family":"freebsd","runner":"ubuntu-26.04-arm","arch":"aarch64","timeout":60}]
-      cross: true
-      package: true
+      upload-artifact: true
       save-cache: false
 
   publish:

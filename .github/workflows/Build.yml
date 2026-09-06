@@ -1,7 +1,12 @@
 name: Build
 
-# One description of how Rux is built and verified on one target. ci.yml and
-# release.yml both call this, so a platform change is made exactly once.
+# One description of how Rux is built and verified on one target. Every target
+# workflow and Release.yml call this, so a platform change is made exactly once.
+#
+# It defines exactly one job. A caller inherits every job a reusable workflow
+# declares, so a job that only some callers need would appear, skipped, in the
+# others' graphs: the macOS run advertised a FreeBSD job it would never run.
+# Work belonging to a single target lives in that target's workflow instead.
 #
 # `targets` is a JSON array of target ids. Rows in `include` whose target is not
 # in that array are not expanded into jobs, so passing '["linux-x86_64"]' yields
@@ -14,12 +19,8 @@ on:
         description: JSON array of target ids to build
         type: string
         required: true
-      cross:
-        description: Also run the emulated cross-execution jobs
-        type: boolean
-        default: false
-      package:
-        description: Upload the built compiler as an artifact
+      upload-artifact:
+        description: Upload the built compiler, for a release or a follow-on job
         type: boolean
         default: false
       save-cache:
@@ -208,7 +209,7 @@ jobs:
         run: ./Tests/Native/MacOSAArch64/VerifyCross.ps1
 
       - name: Upload the compiler
-        if: inputs.package || inputs.cross
+        if: inputs.upload-artifact
         uses: actions/upload-artifact@v7
         with:
           name: rux-${{ matrix.target }}
@@ -226,78 +227,3 @@ jobs:
           path: ${{ runner.temp }}/rux-freebsd-*/vm/*.log
           if-no-files-found: ignore
           retention-days: 3
-
-  # A fresh AArch64 guest with no toolchain installed consumes a payload built
-  # on another machine. The emptiness of the minimal image is the point.
-  freebsd-transfer:
-    name: FreeBSD transferred artifact
-    if: ${{ inputs.cross && contains(inputs.targets, 'freebsd-x86_64') }}
-    runs-on: ubuntu-26.04
-    timeout-minutes: 40
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-      - name: Load the toolchain manifest
-        shell: bash
-        run: grep -E '^[A-Z0-9_]+=' .github/Toolchains.env >> "$GITHUB_ENV"
-      - name: Install QEMU
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends \
-            qemu-system-x86 qemu-system-arm qemu-efi-aarch64 zstd rsync
-          sudo chmod a+rw /dev/kvm 2>/dev/null || true
-      - name: Restore the compilation cache
-        uses: actions/cache/restore@v6
-        with:
-          path: BuildCache/ccache
-          key: ccache-freebsd-x86_64-${{ env.TOOLCHAIN_REVISION }}-${{ github.sha }}
-          restore-keys: ccache-freebsd-x86_64-${{ env.TOOLCHAIN_REVISION }}-
-      - name: Produce the payload on FreeBSD x86-64
-        run: |
-          mkdir -p BuildCache
-          {
-            echo 'sh .github/Scripts/Verify.sh --stage build'
-            echo 'sh Tests/Native/FreeBSDAArch64/BuildTransfer.sh'
-          } > BuildCache/produce.sh
-          sh .github/Scripts/FreeBSDVM.sh --arch x86_64 --role build \
-            --script BuildCache/produce.sh --pull Bin/Tests/Native
-      - name: Consume it in a guest with no toolchain
-        run: |
-          echo 'sh Tests/Native/FreeBSDAArch64/VerifyTransfer.sh' > BuildCache/consume.sh
-          sh .github/Scripts/FreeBSDVM.sh --arch aarch64 --role minimal \
-            --script BuildCache/consume.sh
-
-  # The x86-64 compiler running under the ARM64 host's emulation layer, proving
-  # a translated compiler still produces working native output. macOS covers this
-  # inside its own build job, because macos-x86_64 is already cross-built there.
-  cross-emulated:
-    name: ${{ matrix.label }}
-    # Gated on the target as well as the flag, so the FreeBSD workflow does not
-    # pull a Windows job in behind it.
-    if: ${{ inputs.cross && contains(inputs.targets, 'windows-x86_64') }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - label: Windows x86-64 under emulation
-            runner: windows-11-arm
-            source: windows-x86_64
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 20
-    needs: build
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-      - uses: actions/download-artifact@v7
-        with:
-          name: rux-${{ matrix.source }}
-          path: Bin
-      - name: Run the translated compiler
-        shell: pwsh
-        run: |
-          foreach ($fixture in 'ExitCode', 'Assert', 'Panic', 'StackProbe', 'Dll') {
-            & "./Tests/Native/WindowsAArch64$fixture/Verify.ps1"
-            if ($LASTEXITCODE -ne 0) { throw "WindowsAArch64$fixture failed" }
-          }

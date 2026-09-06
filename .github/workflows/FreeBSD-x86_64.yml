@@ -32,5 +32,45 @@ jobs:
     with:
       targets: >-
         [{"target":"freebsd-x86_64","label":"FreeBSD x86-64","family":"freebsd","runner":"ubuntu-26.04","arch":"x86_64","timeout":35}]
-      cross: true
       save-cache: ${{ github.event_name == 'push' }}
+
+  # A fresh AArch64 guest with no toolchain installed consumes a payload built
+  # on another machine. The emptiness of the minimal image is the point.
+  freebsd-transfer:
+    name: FreeBSD transferred artifact
+    needs: build
+    runs-on: ubuntu-26.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Load the toolchain manifest
+        shell: bash
+        run: grep -E '^[A-Z0-9_]+=' .github/Toolchains.env >> "$GITHUB_ENV"
+      - name: Install QEMU
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            qemu-system-x86 qemu-system-arm qemu-efi-aarch64 zstd rsync
+          sudo chmod a+rw /dev/kvm 2>/dev/null || true
+      - name: Restore the compilation cache
+        uses: actions/cache/restore@v6
+        with:
+          path: BuildCache/ccache
+          key: ccache-freebsd-x86_64-${{ env.TOOLCHAIN_REVISION }}-${{ github.sha }}
+          restore-keys: ccache-freebsd-x86_64-${{ env.TOOLCHAIN_REVISION }}-
+      - name: Produce the payload on FreeBSD x86-64
+        run: |
+          mkdir -p BuildCache
+          {
+            echo 'sh .github/Scripts/Verify.sh --stage build'
+            echo 'sh Tests/Native/FreeBSDAArch64/BuildTransfer.sh'
+          } > BuildCache/produce.sh
+          sh .github/Scripts/FreeBSDVM.sh --arch x86_64 --role build \
+            --script BuildCache/produce.sh --pull Bin/Tests/Native
+      - name: Consume it in a guest with no toolchain
+        run: |
+          echo 'sh Tests/Native/FreeBSDAArch64/VerifyTransfer.sh' > BuildCache/consume.sh
+          sh .github/Scripts/FreeBSDVM.sh --arch aarch64 --role minimal \
+            --script BuildCache/consume.sh

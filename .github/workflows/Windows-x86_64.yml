@@ -32,5 +32,29 @@ jobs:
     with:
       targets: >-
         [{"target":"windows-x86_64","label":"Windows x86-64","family":"windows","runner":"windows-2025","timeout":30}]
-      cross: true
+      upload-artifact: true
       save-cache: ${{ github.event_name == 'push' }}
+
+  # The x86-64 compiler running under the ARM64 host's emulation layer, proving
+  # a translated compiler still produces working native output. macOS covers this
+  # inside its own build job, because macos-x86_64 is already cross-built there.
+  cross-emulated:
+    name: Windows x86-64 under emulation
+    needs: build
+    runs-on: windows-11-arm
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v7
+        with:
+          name: rux-windows-x86_64
+          path: Bin
+      - name: Run the translated compiler
+        shell: pwsh
+        run: |
+          foreach ($fixture in 'ExitCode', 'Assert', 'Panic', 'StackProbe', 'Dll') {
+            & "./Tests/Native/WindowsAArch64$fixture/Verify.ps1"
+            if ($LASTEXITCODE -ne 0) { throw "WindowsAArch64$fixture failed" }
+          }
