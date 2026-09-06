@@ -15,7 +15,8 @@ if [ ! -f "$archive" ] || [ ! -f "$destination/compiler" ]; then
     # Resolve the directory, preserving clang++: resolving the executable's
     # symlink to clang-23 selects the C driver and drops C++ runtime linkage.
     compiler="$(CDPATH= cd -- "$(dirname -- "$compiler")" && pwd -P)/clang++"
-    brew deps --installed --formula llvm@23 ccache > "$destination/formulae"
+    # Multiple formulae default to their intersection, omitting LLVM-only Z3.
+    brew deps --union --installed --formula llvm@23 ccache > "$destination/formulae"
     printf '%s\n' llvm@23 ccache >> "$destination/formulae"
     : > "$destination/paths"
     while IFS= read -r formula; do

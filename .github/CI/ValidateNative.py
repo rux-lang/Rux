@@ -50,9 +50,10 @@ def main():
         # Shell installer writes paths for following workflow steps; apply them in this process too.
         if tool == 'MacOSLLVM':
             compiler = (Path(os.environ['RUNNER_TEMP']) / 'rux-macos-tools/compiler').read_text().strip()
-            setup += f"$env:PATH = '{Path(compiler).parent}:' + $env:PATH; ./Run.ps1 test -Compiler '{compiler}' -Jobs 4"
+            setup += f"$env:PATH = '{Path(compiler).parent}:' + $env:PATH; & sh ./Run.sh test --compiler '{compiler}' --jobs 4"
         else:
-            setup += './Run.ps1 test -Compiler clang++-23 -Jobs 4'
+            setup += '& sh ./Run.sh test --compiler clang++-23 --jobs 4'
+        setup += '; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }'
     subprocess.run(['pwsh', '-NoProfile', '-Command', "$ErrorActionPreference='Stop'; " + setup], check=True)
     candidate['validated'] = True
     candidate_path.write_text(json.dumps(candidate, indent=2) + '\n')

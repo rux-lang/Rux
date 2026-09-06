@@ -17,6 +17,7 @@ sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / '.github/CI'))
 import Environment
+import ValidateNative
 
 spec = importlib.util.spec_from_file_location('TidyShard', ROOT / '.github/CI/Verify/TidyShard.py')
 TidyShard = importlib.util.module_from_spec(spec)
@@ -118,6 +119,51 @@ class LLVMTests(unittest.TestCase):
 
 
 class MacOSTests(unittest.TestCase):
+    def test_bootstrap_includes_dependencies_unique_to_each_tool(self):
+        shell = 'C:/Program Files/Git/bin/bash.exe' if os.name == 'nt' else shutil.which('sh')
+        if not shell or not Path(shell).is_file():
+            self.skipTest('A POSIX shell is unavailable')
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'cache').mkdir()
+            python_arguments = '"$@"' if os.name != 'nt' else '"$1" "$(cygpath -m "$2")" "$(cygpath -m "$3")"'
+            scripts = {
+                'bin/brew': '''case "$1" in
+update|install) exit 0 ;;
+--prefix)
+  case "${2:-}" in
+    '') printf '%s\\n' "$TEST_BREW_PREFIX" ;;
+    *) printf '%s/Cellar/%s/1\\n' "$TEST_BREW_PREFIX" "$2" ;;
+  esac ;;
+deps)
+  case " $* " in *' --union '*) printf '%s\\n' z3 fmt ;; esac ;;
+esac''',
+                'bin/tar': 'if [ "$1" = -czf ]; then : > "$2"; fi',
+                'bin/python3': 'exec "' + Path(sys.executable).as_posix() + '" ' + python_arguments,
+                'homebrew/Cellar/llvm@23/1/bin/clang++': 'echo "clang version 23.1.1"',
+                'homebrew/Cellar/z3/1/lib/libz3.dylib': '',
+                'homebrew/Cellar/fmt/1/lib/libfmt.dylib': '',
+                'homebrew/Cellar/ccache/1/bin/ccache': 'echo ccache',
+                'homebrew/opt/ccache/bin/ccache': 'echo ccache',
+            }
+            for name, body in scripts.items():
+                path = root / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text('#!/bin/sh\n' + body + '\n', newline='\n')
+                path.chmod(0o755)
+            command = '''root=$(cd -- "$1" && pwd)
+export PATH="$root/bin:/usr/bin:/bin:$PATH" TEST_BREW_PREFIX="$TEST_NATIVE_PREFIX"
+sh "$2" "$root/cache"'''
+            result = subprocess.run([shell, '-c', command, 'brew-test', root.as_posix(),
+                                     (ROOT / '.github/CI/Install/MacOS.sh').as_posix()],
+                                    env=dict(os.environ, TEST_NATIVE_PREFIX=(root / 'homebrew').as_posix(),
+                                             GITHUB_OUTPUT='', GITHUB_PATH=''),
+                                    capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            paths = [Path(line).as_posix() for line in (root / 'cache/paths').read_text().splitlines()]
+            self.assertIn('Cellar/z3/1', paths)
+            self.assertIn('Cellar/fmt/1', paths)
+
     def test_cached_c_driver_metadata_is_repaired(self):
         shell = 'C:/Program Files/Git/bin/bash.exe' if os.name == 'nt' else shutil.which('sh')
         if not shell or not Path(shell).is_file():
@@ -153,6 +199,42 @@ sh "$2" "$root/cache"
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             self.assertTrue((root / 'cache/compiler').read_text().strip().endswith('/bin/clang++'))
             self.assertTrue((root / 'output').read_text().strip().endswith('/bin/clang++'))
+
+
+class NativeValidationTests(unittest.TestCase):
+    def test_linux_uses_shell_entrypoint_and_does_not_publish_after_failure(self):
+        if not shutil.which('pwsh'):
+            self.skipTest('PowerShell is unavailable')
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            candidate = root / 'candidate-validation/linux-build-x86_64.json'
+            candidate.parent.mkdir()
+            candidate.write_text(json.dumps({'validated': False, 'environments': {
+                'linux-build-x86_64': {'revision': 'ci-tools-native-test', 'files': []}}}))
+            installer = root / '.github/Scripts/Install.ps1'
+            installer.parent.mkdir(parents=True)
+            installer.write_text('param([string]$Tool)\n', newline='\n')
+            (root / 'Run.ps1').write_text("throw 'Wrong platform entry point'\n", newline='\n')
+            (root / 'Run.sh').write_text('printf "%s\\n" "$@" > arguments\nexit 23\n', newline='\n')
+            real_run = subprocess.run
+            def execute(command, **kwargs):
+                if command[0] == 'pwsh':
+                    return real_run(command, cwd=root, capture_output=True, text=True, **kwargs)
+                return subprocess.CompletedProcess(command, 0)
+            env = dict(RUNNER_TEMP=str(root), GITHUB_REPOSITORY='example/repo')
+            if os.name == 'nt':
+                env['PATH'] = 'C:/Program Files/Git/bin;' + os.environ['PATH']
+            with patch.dict(os.environ, env), patch.object(sys, 'argv', ['ValidateNative', '--revision', 'ci-tools-native-test']), \
+                 patch('ValidateNative.host_key', return_value='linux-build-x86_64'), \
+                 patch('ValidateNative.platform.system', return_value='Linux'), \
+                 patch('ValidateNative.subprocess.run', side_effect=execute) as calls:
+                with self.assertRaises(subprocess.CalledProcessError) as failure:
+                    ValidateNative.main()
+            self.assertEqual(failure.exception.returncode, 23, failure.exception.stderr)
+            self.assertEqual((root / 'arguments').read_text().splitlines(),
+                             ['test', '--compiler', 'clang++-23', '--jobs', '4'])
+            self.assertFalse(json.loads(candidate.read_text())['validated'])
+            self.assertFalse(any(call.args[0][:3] == ['gh', 'release', 'upload'] for call in calls.call_args_list))
 
 
 if __name__ == '__main__':

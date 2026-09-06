@@ -320,6 +320,9 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 
 ### Fixed
 
+- **Native CI preparation**: Validate Linux and macOS bundles through the POSIX repository entry point and include the union of LLVM and ccache Homebrew dependencies, including Z3, in macOS archives.
+
+
 - **macOS CI**: Preserve the `clang++` driver name when resolving Homebrew toolchain paths so C++ executables link their standard library and exception runtime. Repair previously cached compiler-path metadata.
 - **CI/CD**: Accept LLVM 23 package patch updates during Linux, macOS, and FreeBSD environment preparation instead of rejecting every version other than 23.1.0. Report the detected compiler and reject unsupported majors explicitly.
 - **Wide variant equality** — equality and inequality branch on the active case and compare only that case's payloads. A wide value such as `ParseError::InvalidCharacter(3)` no longer compares equal to the same case carrying `4`, and unit cases never read inactive storage or padding.
