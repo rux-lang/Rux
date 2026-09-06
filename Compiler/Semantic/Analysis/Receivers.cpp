@@ -11,12 +11,6 @@
 #include <utility>
 
 namespace Rux::SemanticDetail {
-namespace {
-/// A slice is a fat pointer whose ABI passes it by address, so it reaches a method the way a pointer receiver does.
-bool IsSliceReceiver(const TypeRef &type) {
-    return type.isIntrinsicSlice;
-}
-} // namespace
 
 /// Brings `self` into scope for a declaration and checks the receiver it was written with. What `self` means in a body
 /// is what the receiver declares: `self: Vector` is a copy the method owns, `self: &Vector` borrows it for reading,
@@ -62,7 +56,8 @@ void AnalysisContext::CheckReceiverType(const FuncDecl &declaration, const Param
     }
     const bool isIndirect = (declared.kind == TypeRef::Kind::Pointer || declared.kind == TypeRef::Kind::Reference) &&
                             !declared.inner.empty();
-    const bool isReference = isIndirect || IsSliceReceiver(declared);
+    // A slice is a fat pointer whose ABI passes it by address, so it reaches a method the way a pointer receiver does.
+    const bool isReference = isIndirect || declared.IsSlice();
     if (const TypeRef &base = isIndirect ? declared.inner.front() : declared;
         !base.IsUnknown() && base != currentExtendedType) {
         EmitError(receiver.location,
@@ -143,7 +138,7 @@ bool AnalysisContext::CheckReceiverMutability(const CallExpr &call, const Expr &
         return false;
     }
     if (receiverType.kind == TypeRef::Kind::Reference && declared->kind != TypeRef::Kind::Reference &&
-        declared->kind != TypeRef::Kind::Pointer && !IsSliceReceiver(*declared)) {
+        declared->kind != TypeRef::Kind::Pointer && !declared->IsSlice()) {
         EmitError(call.location,
                   std::format("cannot pass value behind reference '{}' to by-value receiver of '{}'",
                               receiverType.ToString(), method.name),

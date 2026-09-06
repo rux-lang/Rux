@@ -173,7 +173,7 @@ std::string AnalysisContext::NamedBaseTypeName(const TypeRef &type) const {
         // (e.g. `Slice<int>`) so `extend int[]` stays distinct from `extend
         // str[]`; other named types collapse to their base name so generic
         // instantiations share one method set.
-        if (named->isIntrinsicSlice) {
+        if (named->IsSlice()) {
             return named->name;
         }
         return BaseTypeName(named->name);
@@ -186,7 +186,7 @@ std::string AnalysisContext::NamedBaseTypeName(const TypeRef &type) const {
 }
 
 std::optional<TypeRef> AnalysisContext::SliceElementType(const TypeRef &type) const {
-    if (!type.isIntrinsicSlice) {
+    if (!type.IsSlice()) {
         return std::nullopt;
     }
     constexpr std::string_view prefix = "Slice<";
@@ -819,7 +819,7 @@ std::optional<TypeRef> AnalysisContext::CheckAggregateExpression(const Expr &exp
         }
         const std::string typeName = GenericStructInitName(*initializer);
         TypeRef type = ParseTypeRefFromString(typeName);
-        return type.IsRange() || type.isIntrinsicSlice ? type : TypeRef::MakeNamed(typeName);
+        return type.IsRange() || type.IsSlice() ? type : TypeRef::MakeNamed(typeName);
     }
 
     if (const auto *array = dynamic_cast<const ArrayExpr *>(&expression)) {

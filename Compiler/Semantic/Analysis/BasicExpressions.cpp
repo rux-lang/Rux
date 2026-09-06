@@ -9,12 +9,6 @@
 
 namespace Rux::SemanticDetail {
 namespace {
-/// A slice borrows its elements through the read-only `*T` in its `data` field, so writing one writes through that
-/// pointer whatever the binding itself is declared as. `MutableSlice` is the writable counterpart.
-bool IsSliceType(const TypeRef &type) {
-    return type.isIntrinsicSlice;
-}
-
 std::string_view OperatorName(const TokenKind op) noexcept {
     using TK = TokenKind;
     switch (op) {
@@ -1079,7 +1073,7 @@ void AnalysisContext::CheckMutability(const Expr &target) {
                       {"a string is a read-only view over text that has already been validated"},
                       "copy the code units into a mutable sequence to change them");
         }
-        else if (IsSliceType(objectType)) {
+        else if (objectType.IsSlice()) {
             // Checking the binding's own mutability would be the wrong question here: a slice reaches its elements
             // through a read-only pointer, so declaring the slice `var` lets it be re-pointed, never rewritten.
             EmitError(target.location,

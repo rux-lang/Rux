@@ -87,7 +87,7 @@ int SizeOf(const TypeRef &t) {
         return 0;
     case TypeRef::Kind::Named: {
         const auto baseName = BaseTypeName(t.name);
-        if (t.isIntrinsicSlice) {
+        if (t.IsSlice()) {
             return 16;
         }
     }
@@ -179,7 +179,7 @@ StructLayout ComputeStructLayout(const LirStructDecl &s, const LayoutMap &known,
                 sz = it->second.totalSize;
                 al = it->second.alignment;
             }
-            else if (f.type.isIntrinsicSlice) {
+            else if (f.type.IsSlice()) {
                 sz = 16;
                 al = 8;
             }
@@ -266,7 +266,7 @@ int RuntimeSizeOf(const TypeRef &t, const LayoutMap &layouts, const std::unorder
         if (interfaceNames.contains(base)) {
             return 16;
         }
-        if (t.isIntrinsicSlice) {
+        if (t.IsSlice()) {
             return 16;
         }
         // An instantiation is sized by its own entry when it has one; the declaration's entry still answers for a plain
@@ -309,8 +309,9 @@ int FieldOffsetOf(const TypeRef &pointerType, const std::string_view fieldName, 
         return TupleElementOffset(pointee, index);
     }
 
-    // A string is the same {data, length} pair a slice is, under a primitive kind rather than a declared name.
-    if (pointee.IsString()) {
+    // A slice and a string are the same {data, length} pair, a pointer and a word beside it, in a shape the runtime
+    // and the calling conventions fix rather than a declaration.
+    if (pointee.IsView()) {
         return fieldName == "length" ? 8 : 0;
     }
 
@@ -318,13 +319,9 @@ int FieldOffsetOf(const TypeRef &pointerType, const std::string_view fieldName, 
         return 0;
     }
     const std::string base = BaseTypeName(pointee.name);
-    // An interface value and a slice are both a pointer and a word beside it,
-    // under names the runtime fixes rather than a declaration.
+    // An interface value is the same pointer-and-word shape, under a name that is a declaration rather than a type.
     if (interfaceNames.contains(base)) {
         return fieldName == "vtable" ? 8 : 0;
-    }
-    if (pointee.isIntrinsicSlice) {
-        return fieldName == "length" ? 8 : 0;
     }
     auto layout = layouts.find(pointee.name);
     if (layout == layouts.end()) {

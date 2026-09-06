@@ -306,7 +306,7 @@ void AnalysisContext::CheckImplDecl(const ImplDecl &d) {
     const bool receiverMayResolve =
         extendedSymbol != nullptr || !dynamic_cast<const NamedTypeExpr *>(d.extendedType.get());
     TypeRef extendedType = d.extendedType && receiverMayResolve ? ResolveType(*d.extendedType) : TypeRef::MakeUnknown();
-    const bool isSliceReceiver = extendedType.kind == TypeRef::Kind::Array || (extendedType.isIntrinsicSlice);
+    const bool isSliceReceiver = extendedType.kind == TypeRef::Kind::Array || extendedType.IsSlice();
     if (!isSliceReceiver && !extendedSymbol) {
         std::optional<std::string> help;
         if (const Symbol *suggestion = currentScope->Suggest(typeName)) {
@@ -372,8 +372,8 @@ void AnalysisContext::CheckImplDecl(const ImplDecl &d) {
         currentSelfType = TypeRef::MakePointer(selfBase);
     }
     for (const auto &m : d.methods) {
-        if (const auto typeIt = methodsByType.find(
-                extendedType.isIntrinsicSlice && currentTypeParams.empty() ? extendedType.name : typeName);
+        if (const auto typeIt =
+                methodsByType.find(extendedType.IsSlice() && currentTypeParams.empty() ? extendedType.name : typeName);
             typeIt != methodsByType.end()) {
             if (const auto methodIt = typeIt->second.find(m->name); methodIt != typeIt->second.end()) {
                 ValidateFunctionSignature(*m, methodIt->second, /*isMethod=*/true);
@@ -400,10 +400,6 @@ void AnalysisContext::CheckModuleDecl(const ModuleDecl &d) {
         CheckDecl(*item);
     }
     currentScope = savedScope;
-}
-
-bool AnalysisContext::IsSliceTypeRef(const TypeRef &type) {
-    return type.isIntrinsicSlice;
 }
 
 // An element of a constant array must reduce to a literal, since the array
@@ -452,7 +448,7 @@ void AnalysisContext::CheckConstDecl(const ConstDecl &d) {
                                                             std::format("cannot assign '{}' to constant of type '{}'",
                                                                         valueType.ToString(), constType.ToString())));
     }
-    if (IsSliceTypeRef(constType) || constType.kind == TypeRef::Kind::Array) {
+    if (constType.IsSlice() || constType.kind == TypeRef::Kind::Array) {
         const auto *array = dynamic_cast<const ArrayExpr *>(d.value.get());
         const auto *repeat = dynamic_cast<const ArrayRepeatExpr *>(d.value.get());
         const bool isText = dynamic_cast<const LiteralExpr *>(d.value.get()) != nullptr;

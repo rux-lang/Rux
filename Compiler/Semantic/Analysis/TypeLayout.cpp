@@ -65,7 +65,7 @@ AnalysisContext::LayoutOfTypeRef(const TypeRef &inputType,
     };
 
     if (inputType.kind == TypeRef::Kind::Named) {
-        if (inputType.isIntrinsicSlice) {
+        if (inputType.IsSlice()) {
             return finish(ResolvedTypeLayout{16, 8});
         }
 

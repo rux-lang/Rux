@@ -66,9 +66,8 @@ private:
         if (type.IsRange()) {
             return true;
         }
-        // A string is a 16-byte {data, length} view, exactly the shape a slice has, so it is
-        // classified and placed the way a slice is.
-        if (type.IsString()) {
+        // A slice and a string are the same 16-byte {data, length} view, so both are classified and placed alike.
+        if (type.IsView()) {
             return true;
         }
         switch (type.kind) {
@@ -77,8 +76,7 @@ private:
             return true;
         case TypeRef::Kind::Named: {
             const std::string base = BaseTypeName(type.name);
-            return type.isIntrinsicSlice || interfaceNames.contains(base) || layouts.contains(base) ||
-                   (!type.inner.empty() && SizeOf(type) > 8);
+            return interfaceNames.contains(base) || layouts.contains(base) || (!type.inner.empty() && SizeOf(type) > 8);
         }
         default:
             return false;
@@ -98,14 +96,14 @@ private:
     }
 
     [[nodiscard]] bool IsWin64AddressParameter(const TypeRef &type) const {
-        if (type.IsString()) {
+        if (type.IsView()) {
             return true;
         }
         if (type.kind != TypeRef::Kind::Named) {
             return false;
         }
         const std::string base = BaseTypeName(type.name);
-        return type.isIntrinsicSlice || interfaceNames.contains(base);
+        return interfaceNames.contains(base);
     }
 
     [[nodiscard]] TypeRef ParameterRegisterType(const TypeRef &type) const {

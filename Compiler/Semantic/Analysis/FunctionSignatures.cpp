@@ -82,7 +82,7 @@ void AnalysisContext::ResolveDeclSignature(const Decl &declaration) {
         const TypeRef receiver =
             extension->extendedType && canResolve ? ResolveType(*extension->extendedType) : TypeRef::MakeUnknown();
         currentTypeParams = savedParameters;
-        if (receiver.isIntrinsicSlice && receiverParameters.empty()) {
+        if (receiver.IsSlice() && receiverParameters.empty()) {
             programIndex.BindImplementationMethods(*extension, receiver.name);
         }
         for (const auto &method : extension->methods) {
@@ -142,7 +142,7 @@ void AnalysisContext::ResolveDeclSignatureInScope(const Decl &declaration, Scope
         const TypeRef receiver =
             extension->extendedType && canResolve ? ResolveType(*extension->extendedType) : TypeRef::MakeUnknown();
         currentTypeParams = savedParameters;
-        if (receiver.isIntrinsicSlice && receiverParameters.empty()) {
+        if (receiver.IsSlice() && receiverParameters.empty()) {
             programIndex.BindImplementationMethods(*extension, receiver.name);
         }
         for (const auto &method : extension->methods) {

@@ -653,7 +653,7 @@ void AnalysisContext::ConsumeMethodReceiver(const CallExpr &call, const Expr &re
         BeginReceiverReferenceBorrow(call, receiver, *declared);
         return;
     }
-    if (!declared || declared->kind == TypeRef::Kind::Pointer || (declared->isIntrinsicSlice)) {
+    if (!declared || declared->kind == TypeRef::Kind::Pointer || declared->IsSlice()) {
         return;
     }
     ConsumeValue(receiver, receiverType, ValueConsumptionKind::Receiver, call.location);

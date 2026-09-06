@@ -152,14 +152,14 @@ private:
     }
 
     [[nodiscard]] bool IsWin64AddressParam(const TypeRef &t) const {
-        if (t.IsString()) {
+        if (t.IsView()) {
             return true;
         }
         if (t.kind != TypeRef::Kind::Named) {
             return false;
         }
         const std::string base = BaseTypeName(t.name);
-        return t.isIntrinsicSlice || interfaceNames.count(base) > 0;
+        return interfaceNames.count(base) > 0;
     }
 
     [[nodiscard]] bool IsRegPointerTo(const LirReg reg, const TypeRef &pointee) const override {

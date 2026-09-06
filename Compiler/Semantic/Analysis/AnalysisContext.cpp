@@ -177,7 +177,7 @@ TypeRef AnalysisContext::SubstituteTypeParameters(TypeRef type,
         if (changed) {
             TypeRef rebuilt = TypeRef::MakeNamed(TypeRef::InstantiationName(BaseTypeName(type.name), arguments));
             rebuilt.isMut = type.isMut;
-            rebuilt.isIntrinsicSlice = type.isIntrinsicSlice;
+            rebuilt.isIntrinsicSlice = type.IsSlice();
             return rebuilt;
         }
         return type;
@@ -511,7 +511,7 @@ bool AnalysisContext::DeduceTypeArgument(const TypeRef &paramType, const TypeRef
         const std::string paramBase = BaseTypeName(paramType.name);
         if (argType.kind == TypeRef::Kind::Named) {
             const std::string argBase = BaseTypeName(argType.name);
-            if (paramBase == argBase && paramType.isIntrinsicSlice == argType.isIntrinsicSlice) {
+            if (paramBase == argBase && paramType.IsSlice() == argType.IsSlice()) {
                 const auto paramArgs = ParseTypeArgsFromTypeName(paramType.name);
                 const auto argArgs = ParseTypeArgsFromTypeName(argType.name);
                 if (paramArgs.size() == argArgs.size() && !paramArgs.empty()) {
@@ -524,7 +524,7 @@ bool AnalysisContext::DeduceTypeArgument(const TypeRef &paramType, const TypeRef
                 }
             }
         }
-        if (paramType.isIntrinsicSlice && argType.kind == TypeRef::Kind::Array && !argType.inner.empty()) {
+        if (paramType.IsSlice() && argType.kind == TypeRef::Kind::Array && !argType.inner.empty()) {
             const auto paramArgs = ParseTypeArgsFromTypeName(paramType.name);
             if (paramArgs.size() == 1) {
                 return DeduceTypeArgument(paramArgs[0], argType.inner[0], typeParamNames, substitutions);

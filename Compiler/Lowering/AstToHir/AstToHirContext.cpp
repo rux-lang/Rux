@@ -387,7 +387,7 @@ void AstToHirContext::CollectDecl(const Decl &decl) {
     }
     else if (const auto *implDecl = dynamic_cast<const ImplDecl *>(&decl)) {
         const TypeRef *receiver = implDecl->extendedType ? model.TryGetType(*implDecl->extendedType) : nullptr;
-        const std::string typeName = receiver && receiver->isIntrinsicSlice && ImplTypeParams(*implDecl).empty()
+        const std::string typeName = receiver && receiver->IsSlice() && ImplTypeParams(*implDecl).empty()
                                        ? receiver->name
                                        : BaseTypeName(implDecl->typeName);
         for (const auto &method : implDecl->methods) {

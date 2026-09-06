@@ -373,8 +373,7 @@ TypeRef AnalysisContext::ResolveTypeImpl(const TypeExpr &expr) {
 TypeRef AnalysisContext::ResolveTypeWithSubstitution(const TypeExpr &expr,
                                                      const std::unordered_map<std::string, TypeRef> &substitutions) {
     if (const auto accepted = typeNodeTypes.find(&expr);
-        accepted != typeNodeTypes.end() &&
-        (accepted->second.IsString() || accepted->second.isIntrinsicSlice || accepted->second.IsRange())) {
+        accepted != typeNodeTypes.end() && (accepted->second.IsView() || accepted->second.IsRange())) {
         return SubstituteTypeParameters(accepted->second, substitutions);
     }
     if (auto *t = dynamic_cast<const NamedTypeExpr *>(&expr)) {

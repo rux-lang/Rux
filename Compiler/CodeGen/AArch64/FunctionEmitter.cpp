@@ -130,9 +130,8 @@ bool AArch64FunctionEmitter::IsAggregate(const TypeRef &type) const {
     if (type.IsRange()) {
         return true;
     }
-    // A string is a 16-byte {data, length} view, exactly the shape a slice has, so it is
-    // classified and placed the way a slice is.
-    if (type.IsString()) {
+    // A slice and a string are the same 16-byte {data, length} view, so both are classified and placed alike.
+    if (type.IsView()) {
         return true;
     }
     switch (type.kind) {
@@ -141,8 +140,7 @@ bool AArch64FunctionEmitter::IsAggregate(const TypeRef &type) const {
         return true;
     case TypeRef::Kind::Named: {
         const std::string base = BaseTypeName(type.name);
-        return type.isIntrinsicSlice || interfaceNames.contains(base) || layouts.contains(base) ||
-               (!type.inner.empty() && SizeOf(type) > 8);
+        return interfaceNames.contains(base) || layouts.contains(base) || (!type.inner.empty() && SizeOf(type) > 8);
     }
     default:
         return false;

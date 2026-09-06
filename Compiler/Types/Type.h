@@ -388,6 +388,18 @@ struct TypeRef {
         return kind == Kind::RangeInclusive || kind == Kind::RangeToInclusive;
     }
 
+    /// Whether this is a slice: a borrowed `{data, length}` view over contiguous elements.
+    [[nodiscard]] bool IsSlice() const noexcept {
+        return isIntrinsicSlice;
+    }
+
+    /// Whether this is a 16-byte `{data, length}` view. A string has a slice's representation exactly, reaching its
+    /// code units through the same two fields, so every rule about how such a value is laid out, copied, and passed
+    /// holds for both; what differs between them was settled by semantic analysis before any of those rules apply.
+    [[nodiscard]] bool IsView() const noexcept {
+        return IsSlice() || IsString();
+    }
+
     [[nodiscard]] bool IsFloat() const noexcept;
     [[nodiscard]] bool IsSigned() const noexcept;
 

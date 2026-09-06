@@ -103,7 +103,7 @@ std::string ConstraintWitnessKey(const std::string &interfaceName, const TypeRef
     std::string name = owner.kind == TypeRef::Kind::Named ? owner.name : owner.ToString();
     // A slice keeps its element in the name, because `extend int[]` and `extend char8[]` are different method sets. Any
     // other generic instantiation shares one, so it reduces to the declaration that owns it.
-    if (const std::size_t arguments = name.find('<'); arguments != std::string::npos && !owner.isIntrinsicSlice) {
+    if (const std::size_t arguments = name.find('<'); arguments != std::string::npos && !owner.IsSlice()) {
         name.resize(arguments);
     }
     return interfaceName + "@" + name;

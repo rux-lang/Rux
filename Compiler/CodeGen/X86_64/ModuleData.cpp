@@ -9,9 +9,8 @@ namespace Rux::X86_64Detail {
     if (t.IsRange()) {
         return true;
     }
-    // A string is a 16-byte {data, length} view, exactly the shape a slice has, so it is
-    // classified and placed the way a slice is.
-    if (t.IsString()) {
+    // A slice and a string are the same 16-byte {data, length} view, so both are classified and placed alike.
+    if (t.IsView()) {
         return true;
     }
     switch (t.kind) {
@@ -20,8 +19,7 @@ namespace Rux::X86_64Detail {
         return true;
     case TypeRef::Kind::Named: {
         const std::string base = BaseTypeName(t.name);
-        return t.isIntrinsicSlice || interfaceNames.count(base) > 0 || layouts.contains(base) ||
-               (!t.inner.empty() && SizeOf(t) > 8);
+        return interfaceNames.count(base) > 0 || layouts.contains(base) || (!t.inner.empty() && SizeOf(t) > 8);
     }
     default:
         return false;

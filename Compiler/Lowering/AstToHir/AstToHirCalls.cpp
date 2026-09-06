@@ -68,8 +68,7 @@ bool AstToHirContext::ReceiverIsByValue(const FuncDecl &method) const {
         return false;
     }
     const TypeRef &declared = ResolvedType(*receiver->type);
-    return declared.kind != TypeRef::Kind::Pointer && declared.kind != TypeRef::Kind::Reference &&
-           !(declared.isIntrinsicSlice);
+    return declared.kind != TypeRef::Kind::Pointer && declared.kind != TypeRef::Kind::Reference && !declared.IsSlice();
 }
 
 /// The receiver as the callee actually takes it. Every call site has a value or a pointer in hand and the signature

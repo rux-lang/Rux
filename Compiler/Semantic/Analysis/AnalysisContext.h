@@ -900,8 +900,6 @@ private:
 
     void CheckModuleDecl(const ModuleDecl &d);
 
-    static bool IsSliceTypeRef(const TypeRef &type);
-
     // An element of a constant array must reduce to a literal, since the array
     // is laid out in read-only data rather than evaluated at each use.
     bool IsConstArrayElement(const Expr &e) const;

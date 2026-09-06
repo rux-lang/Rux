@@ -222,7 +222,7 @@ func Read(values: Slice<int8>) -> int8 { return values[0]; }
             REQUIRE(function);
             const TypeRef *type = model.TryGetType(*function->params[0].type);
             REQUIRE(type);
-            CHECK(type->isIntrinsicSlice);
+            CHECK(type->IsSlice());
         }
     }
 }

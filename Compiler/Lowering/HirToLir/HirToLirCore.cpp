@@ -467,15 +467,13 @@ LirReg HirToLirContext::EmitStringAddr(std::string value, const TypeRef &elemTyp
 }
 
 bool HirToLirContext::IsSliceType(const TypeRef &type) {
-    return type.isIntrinsicSlice;
+    return type.IsSlice();
 }
 
-/// Whether a value is a 16-byte `{data, length}` view. A string has a slice's representation exactly, reaching its
-/// code units through the same two fields, so every rule about how such a value is stored, copied, and passed holds
-/// for both. What differs between them -- writability, iteration, sub-ranging -- semantic analysis has already
-/// settled before anything reaches here.
+/// Whether a value is a 16-byte `{data, length}` view: a slice or a string. What differs between them -- writability,
+/// iteration, sub-ranging -- semantic analysis has already settled before anything reaches here.
 bool HirToLirContext::IsViewType(const TypeRef &type) {
-    return IsSliceType(type) || type.IsString();
+    return type.IsView();
 }
 
 bool HirToLirContext::IsArrayType(const TypeRef &type) {

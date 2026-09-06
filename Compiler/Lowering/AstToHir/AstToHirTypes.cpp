@@ -510,7 +510,7 @@ std::string AstToHirContext::NamedBaseTypeName(const TypeRef &type) {
     if (named->kind == TypeRef::Kind::Named) {
         // Keep the full element-specific name for slices so `extend int[]`
         // methods are found on `int[]` receivers (see SemanticAnalyzer).
-        if (named->isIntrinsicSlice) {
+        if (named->IsSlice()) {
             return named->name;
         }
         return BaseTypeNameImpl(named->name);
@@ -562,7 +562,7 @@ std::optional<TypeRef> AstToHirContext::BuiltinTypeFromName(const std::string &n
 }
 
 std::optional<TypeRef> AstToHirContext::SliceElementType(const TypeRef &type) const {
-    if (!type.isIntrinsicSlice) {
+    if (!type.IsSlice()) {
         return std::nullopt;
     }
     constexpr std::string_view prefix = "Slice<";
@@ -614,7 +614,7 @@ TypeRef AstToHirContext::ResolveTypeWithSubstitution(const TypeExpr &expr,
         }
 
         if (const TypeRef *accepted = model.TryGetType(expr); accepted && resolvedArgs.size() == 1) {
-            if (accepted->isIntrinsicSlice) {
+            if (accepted->IsSlice()) {
                 return TypeRef::MakeSlice(resolvedArgs[0]);
             }
             if (accepted->IsRange()) {

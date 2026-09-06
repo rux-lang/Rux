@@ -65,7 +65,7 @@ TypeProperties TypePropertyClassifier::ClassifyNamed(const TypeRef &type) {
     const std::string baseName = BaseTypeName(type.name);
     // Interface objects and slices are borrowed, pointer-shaped views. Their pointee may be move-only without making
     // the view itself move-only.
-    if (interfaces.contains(baseName) || type.isIntrinsicSlice) {
+    if (interfaces.contains(baseName) || type.IsSlice()) {
         const TypeProperties result = TypeProperties::Copy();
         cache.emplace(key, result);
         return result;

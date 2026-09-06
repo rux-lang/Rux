@@ -423,7 +423,7 @@ void AstToHirContext::NoteStructInstantiation(const TypeRef &type) const {
     }
     const std::string base = BaseTypeNameImpl(type.name);
     // Intrinsic slices already carry the fixed view representation.
-    if (type.isIntrinsicSlice) {
+    if (type.IsSlice()) {
         return;
     }
     const auto declaration = structDecls.find(base);
@@ -538,7 +538,7 @@ HirImplBlock AstToHirContext::LowerImpl(const ImplDecl &d) {
     TypeRef savedSelfType = currentSelfType;
     inImpl = true;
     TypeRef extendedType = d.extendedType ? ResolveType(*d.extendedType) : TypeRef::MakeUnknown();
-    const bool isSliceReceiver = extendedType.kind == TypeRef::Kind::Array || (extendedType.isIntrinsicSlice);
+    const bool isSliceReceiver = extendedType.kind == TypeRef::Kind::Array || extendedType.IsSlice();
     if (isSliceReceiver) {
         // `self` is the slice value; the slice ABI passes its address, so
         // slice indexing and iteration inside the method work as usual.
@@ -550,8 +550,7 @@ HirImplBlock AstToHirContext::LowerImpl(const ImplDecl &d) {
     }
 
     HirImplBlock hib;
-    hib.typeName =
-        extendedType.isIntrinsicSlice && ImplTypeParams(d).empty() ? extendedType.name : BaseTypeName(d.typeName);
+    hib.typeName = extendedType.IsSlice() && ImplTypeParams(d).empty() ? extendedType.name : BaseTypeName(d.typeName);
     hib.interfaceName = d.interfaceName;
     hib.location = d.location;
     for (const auto &m : d.methods) {
