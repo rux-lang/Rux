@@ -55,11 +55,6 @@ extend TomlPath {
         return true;
     }
 
-    // The same append for text.
-    func Append(self: &var TomlPath, text: string) -> bool {
-        return self.Append(Slice<char8> { data: text.data, length: text.length });
-    }
-
     func Bytes(self: &TomlPath) -> Slice<char8> {
         return Slice<char8> { data: self.room.data, length: self.length };
     }
@@ -82,11 +77,6 @@ func IsBareKey(name: Slice<char8>) -> bool {
 func Emit(writer: &var TextWriter, bytes: Slice<char8>) -> TomlWriteError {
     var sink = writer;
     return sink.Write(bytes) == TextError::None ? TomlWriteError::None : TomlWriteError::Failed;
-}
-
-// The same write for text.
-func Emit(writer: &var TextWriter, text: string) -> TomlWriteError {
-    return Emit(writer, Slice<char8> { data: text.data, length: text.length });
 }
 
 func EmitByte(writer: &var TextWriter, byte: uint8) -> TomlWriteError {

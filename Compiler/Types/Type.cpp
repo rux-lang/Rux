@@ -29,10 +29,6 @@ bool TypeRef::IsChar() const noexcept {
     return IsCategory(kind, PrimitiveCategory::Char);
 }
 
-bool TypeRef::IsString() const noexcept {
-    return IsCategory(kind, PrimitiveCategory::String);
-}
-
 bool TypeRef::IsNumeric() const noexcept {
     return IsInteger() || IsFloat();
 }

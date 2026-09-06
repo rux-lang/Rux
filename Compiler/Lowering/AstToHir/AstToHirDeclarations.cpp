@@ -245,12 +245,12 @@ TypeRef AstToHirContext::SuffixedLiteralType(const Token &tok) {
 // places the way every other literal type already is.
 TypeRef AstToHirContext::StringLiteralType(const Token &tok) {
     if (tok.text.starts_with("s16\"")) {
-        return TypeRef::MakeString16();
+        return TypeRef::MakeText(TypeRef::Kind::Char16);
     }
     if (tok.text.starts_with("s32\"")) {
-        return TypeRef::MakeString32();
+        return TypeRef::MakeText(TypeRef::Kind::Char32);
     }
-    return TypeRef::MakeString8();
+    return TypeRef::MakeText(TypeRef::Kind::Char8);
 }
 
 TypeRef AstToHirContext::CharLiteralType(const Token &tok) {

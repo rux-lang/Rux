@@ -235,8 +235,7 @@ void AnalysisContext::CheckIntrinsicType(const Decl &declaration) {
     const std::string &name = declaration.intrinsicName;
     const auto primitive = PrimitiveTypeFromName(name);
     if (const auto *alias = dynamic_cast<const TypeAliasDecl *>(&declaration)) {
-        if (!primitive || CanonicalPrimitiveName(name) != name || primitive->IsString() ||
-            IsUnimplementedPrimitiveType(name)) {
+        if (!primitive || CanonicalPrimitiveName(name) != name || IsUnimplementedPrimitiveType(name)) {
             EmitError(declaration.location, std::format("'{}' is not a supported intrinsic scalar type", name));
         }
         else {
@@ -248,7 +247,7 @@ void AnalysisContext::CheckIntrinsicType(const Decl &declaration) {
     if (!structure) {
         return;
     }
-    const bool string = primitive && primitive->IsString() && CanonicalPrimitiveName(name) == name;
+    const bool string = name == "string8" || name == "string16" || name == "string32";
     const bool slice = name == "Slice" || name == "MutableSlice";
     const bool start = name == "Range" || name == "RangeInclusive" || name == "RangeFrom";
     const bool end = name == "Range" || name == "RangeInclusive" || name == "RangeTo" || name == "RangeToInclusive";

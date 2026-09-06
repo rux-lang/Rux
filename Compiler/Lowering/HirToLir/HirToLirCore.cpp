@@ -473,7 +473,7 @@ bool HirToLirContext::IsSliceType(const TypeRef &type) {
 /// Whether a value is a 16-byte `{data, length}` view: a slice or a string. What differs between them -- writability,
 /// iteration, sub-ranging -- semantic analysis has already settled before anything reaches here.
 bool HirToLirContext::IsViewType(const TypeRef &type) {
-    return type.IsView();
+    return type.IsSlice();
 }
 
 bool HirToLirContext::IsArrayType(const TypeRef &type) {
@@ -537,16 +537,10 @@ TypeRef HirToLirContext::EnumTagType(const TypeRef &enumType) const {
 }
 
 bool HirToLirContext::IsStringSliceLiteral(const HirLiteralExpr &e) {
-    if (e.type.IsString()) {
-        return true;
-    }
     return e.type.IsSlice() && !e.type.inner.empty() && e.type.inner[0].IsChar();
 }
 
 TypeRef HirToLirContext::StringSliceElementType(const HirLiteralExpr &e) {
-    if (e.type.IsString()) {
-        return TypeRef::MakePrimitive(StringCodeUnitKind(e.type.kind));
-    }
     if (e.type.IsSlice() && !e.type.inner.empty()) {
         TypeRef element = e.type.inner[0];
         element.isMut = false;

@@ -181,31 +181,33 @@ TEST_CASE("calling a text API does not require importing its signature types") {
     CHECK(lowering.Diagnostics().empty());
 }
 
-TEST_CASE("string annotations and fields require visible declarations") {
-    for (const std::string body : {"func Read(text: string) {}", "func Main() { let n = \"hello\".length; }"}) {
-        CAPTURE(body);
-        for (const bool imported : {false, true}) {
-            CAPTURE(imported);
-            auto dependency = ParseIntrinsicSource(StringDeclaration, "text.rux");
-            auto parsed = ParseIntrinsicSource((imported ? "import Text::string;\n" : "") + body);
-            const auto model =
-                SemanticAnalyzer({&parsed.module}, {{"Text", {{"text.rux", &dependency.module}}}}, "App").Analyze();
-            CHECK_EQ(model.HasErrors(), !imported);
-        }
+TEST_CASE("string annotations require visible declarations but a literal's members do not") {
+    // The name `string` is a declaration, so writing it needs that declaration in scope. What a literal is -- a
+    // slice of its code units -- is fixed by the compiler, so its members are reachable with nothing imported.
+    for (const bool imported : {false, true}) {
+        CAPTURE(imported);
+        auto dependency = ParseIntrinsicSource(StringDeclaration, "text.rux");
+        const std::string prefix = imported ? "import Text::string8;\n" : "";
+        auto annotated = ParseIntrinsicSource(prefix + "func Read(text: string8) {}");
+        CHECK_EQ(SemanticAnalyzer({&annotated.module}, {{"Text", {{"text.rux", &dependency.module}}}}, "App")
+                     .Analyze()
+                     .HasErrors(),
+                 !imported);
+        auto members = ParseIntrinsicSource(prefix + "func Main() { let n = \"hello\".length; }");
+        CHECK_FALSE(SemanticAnalyzer({&members.module}, {{"Text", {{"text.rux", &dependency.module}}}}, "App")
+                        .Analyze()
+                        .HasErrors());
     }
 }
 
 TEST_CASE("an intrinsic type import in another file does not expose its members") {
     auto dependency = ParseIntrinsicSource(IntegerDeclaration + StringDeclaration, "provider.rux");
     auto imported = ParseIntrinsicSource("import Provider::{ int8, string };", "imported.rux");
-    for (const std::string body :
-         {"func Main() -> int8 { return int8::Max; }", "func Main() { let n = \"hello\".length; }"}) {
-        auto isolated = ParseIntrinsicSource(body, "isolated.rux");
-        const auto model = SemanticAnalyzer({&imported.module, &isolated.module},
-                                            {{"Provider", {{"provider.rux", &dependency.module}}}}, "App")
-                               .Analyze();
-        CHECK(model.HasErrors());
-    }
+    auto isolated = ParseIntrinsicSource("func Main() -> int8 { return int8::Max; }", "isolated.rux");
+    const auto model = SemanticAnalyzer({&imported.module, &isolated.module},
+                                        {{"Provider", {{"provider.rux", &dependency.module}}}}, "App")
+                           .Analyze();
+    CHECK(model.HasErrors());
 }
 
 TEST_CASE("intrinsic slices and ordinary same-named structs have different representations") {
@@ -354,7 +356,7 @@ func Main() {}
     REQUIRE(model.HasErrors());
     bool missing = false;
     for (const auto &diagnostic : model.diagnostics) {
-        missing |= diagnostic.message.contains("requires an imported or local intrinsic declaration");
+        missing |= diagnostic.message.contains("'string'");
     }
     CHECK(missing);
 }
@@ -415,17 +417,16 @@ TEST_CASE("wide extrema are evaluated from declarations and recorded for lowerin
     }
 }
 
-TEST_CASE("inferred range and slice fields require their declarations") {
-    for (const std::string source :
-         {"func Main() { let range = 1..3; let start = range.start; }",
-          "func Main() { let array = [1, 2]; let slice = array[0..1]; let length = slice.length; }"}) {
-        auto parsed = ParseIntrinsicSource(source);
-        const auto model = SemanticAnalyzer({&parsed.module}, {}, "App").Analyze();
-        CHECK(model.HasErrors());
-    }
+TEST_CASE("inferred range fields require their declarations but slice members do not") {
+    // A slice's shape is fixed by the compiler, so its members need no declaration; a range's are still bound
+    // through the declaration that names them.
+    auto missing = ParseIntrinsicSource("func Main() { let range = 1..3; let start = range.start; }");
+    CHECK(SemanticAnalyzer({&missing.module}, {}, "App").Analyze().HasErrors());
+    auto slice =
+        ParseIntrinsicSource("func Main() { let array = [1, 2]; let slice = array[0..1]; let length = slice.length; }");
+    CHECK_FALSE(SemanticAnalyzer({&slice.module}, {}, "App").Analyze().HasErrors());
     auto parsed = ParseIntrinsicSource(R"(
 intrinsic struct Range<T> { pub start: T; pub end: T; }
-intrinsic struct Slice<T> { pub data: *T; pub length: uint; }
 func Main() { let range = 1..3; let start = range.start;
     let array = [1, 2]; let slice = array[0..1]; let length = slice.length; }
 )");
@@ -517,8 +518,9 @@ else { func Main() { Missing(); } }
 }
 
 TEST_CASE("intrinsic type and field facts retain the owning declaration") {
-    auto parsed = ParseIntrinsicSource(StringDeclaration + R"(
-func Size(text: string) -> uint { return text.length; }
+    auto parsed = ParseIntrinsicSource(R"(
+pub intrinsic struct Range<T> { pub start: T; pub end: T; }
+func End(span: Range<int>) -> int { return span.end; }
 )");
     const auto model = SemanticAnalyzer({&parsed.module}, {}, "App").Analyze();
     REQUIRE_FALSE(model.HasErrors());

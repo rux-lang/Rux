@@ -531,9 +531,6 @@ std::string AstToHirContext::NamedBaseTypeName(const TypeRef &type) {
     case TypeRef::Kind::UInt:
     case TypeRef::Kind::Float32:
     case TypeRef::Kind::Float64:
-    case TypeRef::Kind::String8:
-    case TypeRef::Kind::String16:
-    case TypeRef::Kind::String32:
         return named->ToString();
     default:
         return {};

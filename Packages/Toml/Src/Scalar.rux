@@ -174,11 +174,6 @@ func MatchesWord(digits: Slice<char8>, start: uint, word: Slice<char8>) -> bool 
     return true;
 }
 
-// The same comparison for text.
-func MatchesWord(digits: Slice<char8>, start: uint, word: string) -> bool {
-    return MatchesWord(digits, start, Slice<char8> { data: word.data, length: word.length });
-}
-
 // TOML's float shape: digits, optionally a point with digits after it, optionally an exponent with digits after
 // its own optional sign. A leading zero is allowed only as the whole integer part, exactly as for an integer.
 func CheckFloatShape(digits: Slice<char8>, start: uint) -> bool {
@@ -270,16 +265,6 @@ pub func TomlParseDateTime(text: Slice<char8>, date: *var Date, time: *var TimeO
     if consumed == text.length { return TomlDateTimeShape::Local; }
     if !ReadOffset(text, consumed, offset) { return TomlDateTimeShape::NotDateTime; }
     return TomlDateTimeShape::Offset;
-}
-
-/// Provides the public `TomlParseDateTime` operation for text.
-///
-/// https://rux-lang.dev/docs/api/toml/parse-date-time
-pub func TomlParseDateTime(text: string,
-                           date: *var Date,
-                           time: *var TimeOfDay,
-                           offset: *var UtcOffset) -> TomlDateTimeShape {
-    return TomlParseDateTime(Slice<char8> { data: text.data, length: text.length }, date, time, offset);
 }
 
 // `YYYY-MM-DD` at `at`, validated by the calendar rather than by digit ranges: the thirty-first of February is

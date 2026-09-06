@@ -18,19 +18,9 @@ func Integer(text: Slice<char8>) -> int64 {
     return value;
 }
 
-// The same helper for text.
-func Integer(text: string) -> int64 {
-    return Integer(TextBytes(text));
-}
-
 func IntegerFails(text: Slice<char8>) -> bool {
     var value = 0i64;
     return TomlParseInteger(text, @value) != TomlScalarError::None;
-}
-
-// The same helper for text.
-func IntegerFails(text: string) -> bool {
-    return IntegerFails(TextBytes(text));
 }
 
 func Float(text: Slice<char8>) -> float64 {
@@ -39,19 +29,9 @@ func Float(text: Slice<char8>) -> float64 {
     return value;
 }
 
-// The same helper for text.
-func Float(text: string) -> float64 {
-    return Float(TextBytes(text));
-}
-
 func FloatFails(text: Slice<char8>) -> bool {
     var value = 0.0;
     return TomlParseFloat(text, @value) != TomlScalarError::None;
-}
-
-// The same helper for text.
-func FloatFails(text: string) -> bool {
-    return FloatFails(TextBytes(text));
 }
 
 func Main() -> int {

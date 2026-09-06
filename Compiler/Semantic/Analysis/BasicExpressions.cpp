@@ -138,14 +138,6 @@ bool IsAddressValue(const TypeRef &type) noexcept {
     return type.kind == TypeRef::Kind::Pointer || type.kind == TypeRef::Kind::Func;
 }
 
-/// The string a value or a reference to one names, so a rule about strings holds whether the operand was borrowed.
-///
-/// @return nullopt when the type is not a string
-std::optional<TypeRef> StringValueType(const TypeRef &type) {
-    const TypeRef &value = type.kind == TypeRef::Kind::Reference && !type.inner.empty() ? type.inner.front() : type;
-    return value.IsString() ? std::optional{value} : std::nullopt;
-}
-
 bool IsCastValue(const TypeRef &type) noexcept {
     return type.IsNumeric() || type.IsBool() || type.IsChar() || type.kind == TypeRef::Kind::Pointer;
 }
@@ -795,14 +787,15 @@ TypeRef AnalysisContext::CheckBinary(const TokenKind op, const TypeRef &left, co
             return TypeRef::MakeBool();
         }
 
-        // Comparing two views would compare the addresses they hold rather than the text they name, and comparing
-        // the text is a decision the language has not made yet. Neither is done silently. A string against
-        // something else is an ordinary mismatch, and the message below names both operands more usefully.
-        if (left.IsString() && right.IsString()) {
+        // A slice is a view. Comparing two views would compare the addresses they hold rather than the elements they
+        // name, and comparing the elements is a decision the language has not made yet. Neither is done silently. A
+        // slice against something else is an ordinary mismatch, and the message below names both operands.
+        if (left.IsSlice() && right.IsSlice()) {
             EmitError(location,
-                      std::format("operator '{}' is not defined for string type '{}'", operatorName, left.ToString()),
-                      {"a string is a view, so comparing the views would compare addresses rather than text"},
-                      "compare the code units through 'Rux/Text' instead");
+                      std::format("operator '{}' is not defined for slice type '{}'", operatorName, left.ToString()),
+                      {"a slice is a view, so comparing the views would compare addresses rather than elements"},
+                      std::format("declare '{}' on '{}', or compare the elements one at a time", operatorName,
+                                  left.ToString()));
             return TypeRef::MakeBool();
         }
 
@@ -1034,15 +1027,8 @@ void AnalysisContext::CheckMutability(const Expr &target) {
     }
     else if (const auto *field = dynamic_cast<const FieldExpr *>(&target)) {
         const TypeRef objectType = CheckExpr(*field->object);
-        if (StringValueType(objectType)) {
-            EmitError(
-                target.location,
-                std::format("cannot modify member '{}' of immutable string '{}'", field->field, objectType.ToString()),
-                {"a string is a read-only view over text that has already been validated"},
-                "copy the code units into a mutable sequence to change them");
-        }
-        else if ((objectType.kind == TypeRef::Kind::Pointer || objectType.kind == TypeRef::Kind::Reference) &&
-                 !objectType.inner.empty()) {
+        if ((objectType.kind == TypeRef::Kind::Pointer || objectType.kind == TypeRef::Kind::Reference) &&
+            !objectType.inner.empty()) {
             if (!objectType.inner[0].isMut) {
                 EmitError(
                     target.location,
@@ -1066,12 +1052,6 @@ void AnalysisContext::CheckMutability(const Expr &target) {
                         ? std::format("cannot modify data through immutable reference '{}'", objectType.ToString())
                         : std::format("cannot modify data through read-only pointer '{}'", objectType.ToString()));
             }
-        }
-        else if (StringValueType(objectType)) {
-            EmitError(target.location,
-                      std::format("cannot modify code units of immutable string '{}'", objectType.ToString()),
-                      {"a string is a read-only view over text that has already been validated"},
-                      "copy the code units into a mutable sequence to change them");
         }
         else if (objectType.IsSlice()) {
             // Checking the binding's own mutability would be the wrong question here: a slice reaches its elements

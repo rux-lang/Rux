@@ -23,6 +23,26 @@ std::string BaseTypeName(const std::string &name) {
     return position == std::string::npos ? name : name.substr(0, position);
 }
 
+/// The representation a bare primitive or text name has before any declaration is indexed. A constant or alias
+/// annotated with one takes it provisionally rather than resolving the name in whatever order the files were read;
+/// checking the declaration still resolves and validates the annotation in its owning file.
+///
+/// @return nullopt when `type` is not such a name
+std::optional<TypeRef> ProvisionalRepresentation(const TypeExpr &type) {
+    const auto *named = dynamic_cast<const NamedTypeExpr *>(&type);
+    if (!named || !named->typeArgs.empty()) {
+        return std::nullopt;
+    }
+    if (const auto primitive = PrimitiveTypeFromName(named->name)) {
+        return primitive;
+    }
+    // `string` is the UTF-8 spelling wherever it is declared, so it stands for UTF-8 text until its alias is indexed.
+    if (named->name == "string") {
+        return TypeRef::MakeText(TypeRef::Kind::Char8);
+    }
+    return IntrinsicAggregateType(named->name, {});
+}
+
 /// Levenshtein distance, used to suggest the name an unresolved identifier probably meant.
 std::size_t EditDistance(const std::string_view left, const std::string_view right) {
     std::vector<std::size_t> previous(right.size() + 1);
@@ -306,10 +326,9 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
         symbol.modulePath = modulePath;
         symbol.intrinsicName = constant->intrinsicName;
         if (constant->type) {
-            const auto *named = dynamic_cast<const NamedTypeExpr *>(constant->type->get());
-            const auto primitive = named ? PrimitiveTypeFromName(named->name) : std::nullopt;
             // Index representation before imports; CheckConstDecl validates the annotation in its owning file.
-            symbol.type = primitive && named->typeArgs.empty() ? *primitive : resolveType(**constant->type);
+            const auto provisional = ProvisionalRepresentation(**constant->type);
+            symbol.type = provisional ? *provisional : resolveType(**constant->type);
         }
         if (scope.Define(symbol, diagnostics, sourceName) && isGlobal) {
             publicSymbols.push_back({SemanticSymbol::Kind::Const, constant->name, sourceName, constant->location,
@@ -330,13 +349,10 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
         if (!alias->intrinsicName.empty()) {
             symbol.type = PrimitiveTypeFromName(alias->intrinsicName).value_or(TypeRef::MakeUnknown());
         }
-        else if (const auto *named = dynamic_cast<const NamedTypeExpr *>(alias->type.get());
-                 named && named->typeArgs.empty() && PrimitiveTypeFromName(named->name)) {
-            // Provisional representation only. Checking the alias still resolves and validates its source type.
-            symbol.type = *PrimitiveTypeFromName(named->name);
-        }
         else {
-            symbol.type = resolveType(*alias->type);
+            // Provisional representation only. Checking the alias still resolves and validates its source type.
+            const auto provisional = ProvisionalRepresentation(*alias->type);
+            symbol.type = provisional ? *provisional : resolveType(*alias->type);
         }
         if (scope.Define(symbol, diagnostics, sourceName) && isGlobal) {
             publicSymbols.push_back({SemanticSymbol::Kind::Type, alias->name, sourceName, alias->location,
@@ -422,7 +438,10 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
                                               containingModulesPublic && extendedTypePublic && method->isPublic});
         }
         if (implementation->interfaceName) {
-            implementedInterfaces[typeName].insert(*implementation->interfaceName);
+            // A conformance is looked up by the receiver type's own spelling. A text name is a spelling of a character
+            // slice, so an extension written on it conforms the slice, not a type of that name.
+            const auto text = IntrinsicAggregateType(typeName, {});
+            implementedInterfaces[text ? text->ToString() : typeName].insert(*implementation->interfaceName);
         }
     }
 }

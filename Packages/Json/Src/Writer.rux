@@ -150,11 +150,6 @@ func WriteBytes(writer: &var TextWriter, bytes: Slice<char8>) -> JsonWriteError 
     return sink.Write(bytes) == TextError::None ? JsonWriteError::None : JsonWriteError::Failed;
 }
 
-// The same write for text.
-func WriteBytes(writer: &var TextWriter, text: string) -> JsonWriteError {
-    return WriteBytes(writer, Slice<char8> { data: text.data, length: text.length });
-}
-
 func WriteNewlineAndIndent(writer: &var TextWriter, style: JsonStyle, level: uint) -> JsonWriteError {
     if style.indent == 0u { return JsonWriteError::None; }
     var newline: char8[1];

@@ -27,12 +27,12 @@ using Layout::AlignUp;
 /// code units. The bare form is UTF-8, which is what an unprefixed literal in a UTF-8 source file already is.
 TypeRef AnalysisContext::StringLiteralType(const Token &tok) {
     if (tok.text.starts_with("s16\"")) {
-        return TypeRef::MakeString16();
+        return TypeRef::MakeText(TypeRef::Kind::Char16);
     }
     if (tok.text.starts_with("s32\"")) {
-        return TypeRef::MakeString32();
+        return TypeRef::MakeText(TypeRef::Kind::Char32);
     }
-    return TypeRef::MakeString8();
+    return TypeRef::MakeText(TypeRef::Kind::Char8);
 }
 
 // The text of a string-literal token, with the surrounding quotes AnalysisContext::and any

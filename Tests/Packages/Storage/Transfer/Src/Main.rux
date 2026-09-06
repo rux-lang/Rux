@@ -22,11 +22,6 @@ func PathOf(allocator: Allocator, text: Slice<char8>, holder: *var OsString) -> 
     return Path::FromView((*holder).View());
 }
 
-// The same helper for text.
-func PathOf(allocator: Allocator, text: string, holder: *var OsString) -> Path {
-    return PathOf(allocator, TextBytes(text), holder);
-}
-
 func WriteWhole(allocator: Allocator, path: Path, content: Slice<char8>) {
     var error = IoError::Ok();
     var file = File::Open(allocator, path, OpenOptions::Writing(), @error);
@@ -34,11 +29,6 @@ func WriteWhole(allocator: Allocator, path: Path, content: Slice<char8>) {
     var sink: Writer = file.Stream();
     Assert(WriteAll(sink, content).IsOk(), "and takes its content");
     Assert(file.Close().IsOk(), "and closes");
-}
-
-// The same helper for text.
-func WriteWhole(allocator: Allocator, path: Path, content: string) {
-    WriteWhole(allocator, path, TextBytes(content));
 }
 
 // Reads the whole file and checks it equals `expected`, byte for byte, length included.
@@ -58,11 +48,6 @@ func CheckWhole(allocator: Allocator, path: Path, expected: Slice<char8>) {
         index = index + 1;
     }
     Assert(file.Close().IsOk(), "and closes");
-}
-
-// The same helper for text.
-func CheckWhole(allocator: Allocator, path: Path, expected: string) {
-    CheckWhole(allocator, path, TextBytes(expected));
 }
 
 func Main() -> int {

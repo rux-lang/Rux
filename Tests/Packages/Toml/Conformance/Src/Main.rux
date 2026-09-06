@@ -985,11 +985,6 @@ func Same(left: Slice<char8>, right: Slice<char8>) -> bool {
     return true;
 }
 
-// The rendered side is bytes and the expected side is text, which is the comparison every vector makes.
-func Same(left: Slice<char8>, right: string) -> bool {
-    return Same(left, TextBytes(right));
-}
-
 // How many scalar values the streaming reader finds, and whether it finished cleanly.
 func StreamedScalars(text: string, clean: *var bool) -> uint {
     var reader = TomlEventReader(text);

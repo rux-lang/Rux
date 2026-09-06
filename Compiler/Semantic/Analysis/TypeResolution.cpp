@@ -193,19 +193,6 @@ std::vector<TypeRef> AnalysisContext::ParseTypeArgsFromTypeName(const std::strin
 
 TypeRef AnalysisContext::ResolveTypeImpl(const TypeExpr &expr) {
     if (const auto *t = dynamic_cast<const NamedTypeExpr *>(&expr)) {
-        if (const auto primitive = PrimitiveTypeFromName(t->name); primitive && primitive->IsString()) {
-            const Symbol *symbol = currentScope ? currentScope->Lookup(t->name) : nullptr;
-            if (!symbol || !IsVisibleTypeSymbol(*symbol) || symbol->type != *primitive) {
-                EmitError(expr.location,
-                          std::format("type '{}' requires an imported or local intrinsic declaration", t->name));
-                return TypeRef::MakeUnknown();
-            }
-            if (!t->typeArgs.empty()) {
-                EmitGenericArityError(expr, std::format("string type '{}'", t->name), 0, t->typeArgs.size());
-                return TypeRef::MakeUnknown();
-            }
-            return *primitive;
-        }
         if (IsUnimplementedPrimitiveType(t->name)) {
             EmitError(expr.location, std::format("primitive type '{}' is reserved but is not implemented in this "
                                                  "compiler version",
@@ -373,7 +360,7 @@ TypeRef AnalysisContext::ResolveTypeImpl(const TypeExpr &expr) {
 TypeRef AnalysisContext::ResolveTypeWithSubstitution(const TypeExpr &expr,
                                                      const std::unordered_map<std::string, TypeRef> &substitutions) {
     if (const auto accepted = typeNodeTypes.find(&expr);
-        accepted != typeNodeTypes.end() && (accepted->second.IsView() || accepted->second.IsRange())) {
+        accepted != typeNodeTypes.end() && (accepted->second.IsSlice() || accepted->second.IsRange())) {
         return SubstituteTypeParameters(accepted->second, substitutions);
     }
     if (auto *t = dynamic_cast<const NamedTypeExpr *>(&expr)) {

@@ -174,11 +174,11 @@ TEST_CASE("assertion intrinsics require declarations and enforce their signature
         }
     )");
     CHECK(std::ranges::any_of(signatureDiagnostics, [](const SemanticDiagnostic &diagnostic) {
-        return diagnostic.message == "argument 1 to 'Assert' has type 'string8', but parameter 'condition' "
+        return diagnostic.message == "argument 1 to 'Assert' has type 'Slice<char8>', but parameter 'condition' "
                                      "requires 'bool8'";
     }));
     CHECK(std::ranges::any_of(signatureDiagnostics, [](const SemanticDiagnostic &diagnostic) {
         return diagnostic.message ==
-               "argument 2 to 'DebugAssert' has type 'int', but parameter 'message' requires 'string8'";
+               "argument 2 to 'DebugAssert' has type 'int', but parameter 'message' requires 'Slice<char8>'";
     }));
 }

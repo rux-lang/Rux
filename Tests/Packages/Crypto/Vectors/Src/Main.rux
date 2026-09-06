@@ -111,11 +111,6 @@ func HashWith(which: uint, message: Slice<char8>, into: MutableSlice<char8>) {
     }
 }
 
-// The same helper for text.
-func HashWith(which: uint, message: string, into: MutableSlice<char8>) {
-    HashWith(which, TextBytes(message), into);
-}
-
 func Main() -> int {
     // Avalanche, on every algorithm the package offers -- including the legacy pair, which are broken for
     // collisions and still diffuse properly, since that is not what broke them.

@@ -9,8 +9,8 @@ namespace Rux::X86_64Detail {
     if (t.IsRange()) {
         return true;
     }
-    // A slice and a string are the same 16-byte {data, length} view, so both are classified and placed alike.
-    if (t.IsView()) {
+    // A slice, text included, is a 16-byte {data, length} view whose shape the runtime fixes rather than a declaration.
+    if (t.IsSlice()) {
         return true;
     }
     switch (t.kind) {

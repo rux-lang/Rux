@@ -1,6 +1,6 @@
 #include "IntrinsicTestDeclarations.h"
-// Semantic contracts of the built-in string types: what a literal is typed as, what a string exposes, and the uses
-// the language deliberately does not define for a view over validated text.
+// Semantic contracts of text: what a literal is typed as, what a text slice exposes, and the uses the language
+// deliberately does not define for a view over characters.
 
 #include "Lexer/Lexer.h"
 #include "Semantic/SemanticAnalyzer.h"
@@ -66,41 +66,42 @@ std::vector<std::string> Messages(const std::vector<SemanticDiagnostic> &diagnos
 }
 } // namespace
 
-TEST_CASE("a string prefix names the encoding the literal is text in") {
+TEST_CASE("a string prefix names the encoding the literal is a slice of") {
     const auto types = LetInitializerTypes(R"(
         let eight = s8"text";
         let sixteen = s16"text";
         let thirtyTwo = s32"text";
     )");
     REQUIRE_EQ(types.size(), 3);
-    CHECK_EQ(types[0], "string8");
-    CHECK_EQ(types[1], "string16");
-    CHECK_EQ(types[2], "string32");
+    CHECK_EQ(types[0], "Slice<char8>");
+    CHECK_EQ(types[1], "Slice<char16>");
+    CHECK_EQ(types[2], "Slice<char32>");
 }
 
 TEST_CASE("an unprefixed literal is UTF-8 text") {
-    // The bare form is UTF-8, which is what an unprefixed literal in a UTF-8 source file already is. The character
-    // prefixes it replaced no longer spell a string at all.
+    // The bare form is UTF-8, which is what an unprefixed literal in a UTF-8 source file already is.
     const auto types = LetInitializerTypes(R"(
         let bare = "text";
         let eight = s8"text";
     )");
     REQUIRE_EQ(types.size(), 2);
-    CHECK_EQ(types[0], "string8");
-    CHECK_EQ(types[1], "string8");
+    CHECK_EQ(types[0], "Slice<char8>");
+    CHECK_EQ(types[1], "Slice<char8>");
 }
 
-TEST_CASE("string is a spelling of string8") {
+TEST_CASE("the text names are spellings of the character slices") {
     const auto types = LetInitializerTypes(R"(
         let text: string = s8"text";
         let eight: string8 = s8"text";
+        let wide: string16 = s16"text";
     )");
-    REQUIRE_EQ(types.size(), 2);
-    CHECK_EQ(types[0], "string8");
-    CHECK_EQ(types[1], "string8");
+    REQUIRE_EQ(types.size(), 3);
+    CHECK_EQ(types[0], "Slice<char8>");
+    CHECK_EQ(types[1], "Slice<char8>");
+    CHECK_EQ(types[2], "Slice<char16>");
 }
 
-TEST_CASE("a string exposes its code units through data and its length in them") {
+TEST_CASE("text exposes its code units through data and its length in them") {
     const auto types = LetInitializerTypes(R"(
         let eight = s8"text";
         let sixteen = s16"text";
@@ -114,10 +115,10 @@ TEST_CASE("a string exposes its code units through data and its length in them")
     CHECK_EQ(types[3], "*char8");
     CHECK_EQ(types[4], "*char16");
     CHECK_EQ(types[5], "*char32");
-    CHECK_EQ(types[6], "uint");
+    CHECK_EQ(types[6], "uint64");
 }
 
-TEST_CASE("indexing a string yields one code unit of its own encoding") {
+TEST_CASE("indexing text yields one code unit of its own encoding") {
     const auto types = LetInitializerTypes(R"(
         let eight = s8"text";
         let sixteen = s16"text";
@@ -132,7 +133,18 @@ TEST_CASE("indexing a string yields one code unit of its own encoding") {
     CHECK_EQ(types[5], "char32");
 }
 
-TEST_CASE("a string has no member other than data and length") {
+TEST_CASE("a range of text is a slice of the same code units") {
+    const auto types = LetInitializerTypes(R"(
+        let text = s8"text";
+        let part = text[0..2];
+        let tail = text[2..];
+    )");
+    REQUIRE_EQ(types.size(), 3);
+    CHECK_EQ(types[1], "Slice<char8>");
+    CHECK_EQ(types[2], "Slice<char8>");
+}
+
+TEST_CASE("text has no member other than data and length") {
     const auto messages = Messages(AnalyzeSource(R"(
         func Main() {
             let text = s8"text";
@@ -140,36 +152,22 @@ TEST_CASE("a string has no member other than data and length") {
         }
     )"));
     REQUIRE_EQ(messages.size(), 2);
-    CHECK_EQ(messages[0], "string type 'string8' has no member 'size'");
+    CHECK_EQ(messages[0], "slice type 'Slice<char8>' has no member 'size'");
     CHECK_EQ(messages[1], "cannot infer type of 'size'");
 }
 
-TEST_CASE("a string is immutable through every place it can be written") {
+TEST_CASE("a literal's code units cannot be written through the view") {
     const auto messages = Messages(AnalyzeSource(R"(
         func Main() {
             var text = s8"text";
-            text.length = 0;
             text[0] = c8'x';
         }
     )"));
-    REQUIRE_EQ(messages.size(), 2);
-    CHECK_EQ(messages[0], "cannot modify member 'length' of immutable string 'string8'");
-    CHECK_EQ(messages[1], "cannot modify code units of immutable string 'string8'");
+    REQUIRE_EQ(messages.size(), 1);
+    CHECK_EQ(messages[0], "cannot modify elements through read-only slice 'Slice<char8>'");
 }
 
-TEST_CASE("a range of a string is rejected rather than splitting a character") {
-    const auto messages = Messages(AnalyzeSource(R"(
-        func Main() {
-            let text = s8"text";
-            let part = text[0..2];
-        }
-    )"));
-    REQUIRE_EQ(messages.size(), 2);
-    CHECK_EQ(messages[0], "cannot take a range of string type 'string8'");
-    CHECK_EQ(messages[1], "cannot infer type of 'part'");
-}
-
-TEST_CASE("the string encodings are separate types with no conversion between them") {
+TEST_CASE("the encodings are separate types with no conversion between them") {
     const auto messages = Messages(AnalyzeSource(R"(
         func Eight(text: string8) {}
 
@@ -179,11 +177,12 @@ TEST_CASE("the string encodings are separate types with no conversion between th
         }
     )"));
     REQUIRE_EQ(messages.size(), 2);
-    CHECK_EQ(messages[0], "cannot assign 'string8' to 'string16'");
-    CHECK_EQ(messages[1], "argument 1 to 'Eight' has type 'string16', but parameter 'text' requires 'string8'");
+    CHECK_EQ(messages[0], "cannot assign 'Slice<char8>' to 'Slice<char16>'");
+    CHECK_EQ(messages[1],
+             "argument 1 to 'Eight' has type 'Slice<char16>', but parameter 'text' requires 'Slice<char8>'");
 }
 
-TEST_CASE("a string is neither compared nor ordered in this version") {
+TEST_CASE("text is neither compared nor ordered in this version") {
     const auto messages = Messages(AnalyzeSource(R"(
         func Main() {
             let left = s8"one";
@@ -193,11 +192,11 @@ TEST_CASE("a string is neither compared nor ordered in this version") {
         }
     )"));
     REQUIRE_EQ(messages.size(), 2);
-    CHECK_EQ(messages[0], "operator '==' is not defined for string type 'string8'");
-    CHECK_EQ(messages[1], "operator '<' is not defined for string type 'string8'");
+    CHECK_EQ(messages[0], "operator '==' is not defined for slice type 'Slice<char8>'");
+    CHECK_EQ(messages[1], "operator '<' is not defined for slice type 'Slice<char8>'");
 }
 
-TEST_CASE("a string is not a value any cast converts") {
+TEST_CASE("text is not a value any cast converts") {
     const auto messages = Messages(AnalyzeSource(R"(
         func Main() {
             let text = s8"text";
@@ -206,12 +205,12 @@ TEST_CASE("a string is not a value any cast converts") {
         }
     )"));
     REQUIRE_GE(messages.size(), 2);
-    CHECK_EQ(messages[0], "cannot cast value of type 'string8' to 'uint64'");
-    CHECK_EQ(messages[1], "cannot cast value of type 'string8' to 'string16'");
+    CHECK_EQ(messages[0], "cannot cast value of type 'Slice<char8>' to 'uint64'");
+    CHECK_EQ(messages[1], "cannot cast value of type 'Slice<char8>' to 'Slice<char16>'");
 }
 
-TEST_CASE("a slice is built from a string's own members") {
-    // The escape hatch: raw code units are still reachable, just never implicitly.
+TEST_CASE("an ordinary struct named Slice is built from a literal's own members") {
+    // A user's `Slice` is a name like any other, and text still reaches it through the two members every view has.
     const auto messages = Messages(AnalyzeSource(R"(
         struct Slice<T> {
             data: *T;

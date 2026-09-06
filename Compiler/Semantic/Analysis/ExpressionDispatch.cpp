@@ -154,7 +154,7 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
             }
             else {
                 const TypeRef argType = CheckExpr(*e->args[0]);
-                if (!argType.IsUnknown() && !argType.IsString()) {
+                if (!argType.IsUnknown() && argType != TypeRef::MakeText(TypeRef::Kind::Char8)) {
                     EmitError(e->args[0]->location, "compile-time intrinsic argument must be a string");
                 }
             }
@@ -185,7 +185,7 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
             EmitError(e->location, std::string("'") + name + "' can only be used in a 'when' condition");
             return TypeRef::MakeUnknown();
         }
-        return TypeRef::MakeString8();
+        return TypeRef::MakeText(TypeRef::Kind::Char8);
     }
 
     if (const auto *e = dynamic_cast<const EnumShorthandExpr *>(&expr)) {

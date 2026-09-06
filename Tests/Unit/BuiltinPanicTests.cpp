@@ -157,7 +157,8 @@ TEST_CASE("Panic requires an intrinsic declaration and enforces its signature") 
         }
     )");
     CHECK(std::ranges::any_of(signatureDiagnostics, [](const SemanticDiagnostic &diagnostic) {
-        return diagnostic.message == "argument 1 to 'Panic' has type 'int', but parameter 'message' requires 'string8'";
+        return diagnostic.message ==
+               "argument 1 to 'Panic' has type 'int', but parameter 'message' requires 'Slice<char8>'";
     }));
 }
 

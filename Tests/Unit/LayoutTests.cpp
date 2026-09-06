@@ -109,9 +109,9 @@ TEST_CASE("a wider string encoding is transcoded rather than widened byte by byt
     CHECK_EQ(EncodeStringLiteral(mixed, 3), std::string(mixed));
 }
 
-TEST_CASE("a string is the same sixteen-byte view a slice is") {
-    for (const TypeRef::Kind kind : {TypeRef::Kind::String8, TypeRef::Kind::String16, TypeRef::Kind::String32}) {
-        const TypeRef text = TypeRef::MakePrimitive(kind);
+TEST_CASE("text in every encoding is the sixteen-byte view a slice is") {
+    for (const TypeRef::Kind unit : {TypeRef::Kind::Char8, TypeRef::Kind::Char16, TypeRef::Kind::Char32}) {
+        const TypeRef text = TypeRef::MakeText(unit);
         CAPTURE(text.ToString());
         CHECK_EQ(SizeOf(text), 16);
         CHECK_EQ(AlignOf(text), 8);
@@ -123,11 +123,11 @@ TEST_CASE("a string is the same sixteen-byte view a slice is") {
     }
 }
 
-TEST_CASE("a string field is laid out like the slice it shares a shape with") {
+TEST_CASE("a text field is laid out like any other slice field") {
     LirStructDecl header;
     header.name = "Header";
     header.fields.push_back({"tag", TypeRef::MakeInt32()});
-    header.fields.push_back({"text", TypeRef::MakeString8()});
+    header.fields.push_back({"text", TypeRef::MakeText(TypeRef::Kind::Char8)});
     header.fields.push_back({"trailing", TypeRef::MakeInt32()});
 
     const StructLayout layout = ComputeStructLayout(header, {}, interfaceNames);

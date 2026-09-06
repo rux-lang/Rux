@@ -313,15 +313,9 @@ void AnalysisContext::RegisterBuiltins() {
     // A reserved primitive is still a declared name, so a use of it is diagnosed as unimplemented rather than as an
     // unknown type; it binds to Unknown because it has no representation to bind to yet.
     for (const PrimitiveInfo &primitive : PrimitiveCatalog()) {
-        if (primitive.category == PrimitiveCategory::String) {
-            continue;
-        }
         add(primitive.name, primitive.implemented ? TypeRef::MakePrimitive(primitive.kind) : TypeRef::MakeUnknown());
     }
     for (const PrimitiveAlias &alias : PrimitiveAliases()) {
-        if (TypeRef::MakePrimitive(alias.kind).IsString()) {
-            continue;
-        }
         add(alias.name, TypeRef::MakePrimitive(alias.kind));
     }
 }

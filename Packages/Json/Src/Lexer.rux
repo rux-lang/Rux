@@ -160,13 +160,6 @@ extend JsonLexer {
         return JsonLexer { input: input, position: 0, limits: limits };
     }
 
-    /// Provides the public `JsonLexer` operation for text.
-    ///
-    /// https://rux-lang.dev/docs/api/json/json-lexer/new
-    pub func JsonLexer(input: string, limits: JsonLimits) -> JsonLexer {
-        return JsonLexer(Slice<char8> { data: input.data, length: input.length }, limits);
-    }
-
     /// Where reading has reached, as a byte offset.
     ///
     /// https://rux-lang.dev/docs/api/json/json-lexer/position
@@ -205,11 +198,6 @@ extend JsonLexer {
             index = index + 1;
         }
         return true;
-    }
-
-    // The same comparison for text.
-    func MatchesWord(self: &JsonLexer, word: string) -> bool {
-        return self.MatchesWord(Slice<char8> { data: word.data, length: word.length });
     }
 }
 

@@ -173,27 +173,31 @@ void AnalysisContext::BuildFinalSymbolIdentities() {
     }
 
     for (const auto *implementation : implDecls) {
-        const std::string typeName = BaseTypeName(implementation->typeName);
-        if (ImplTypeParams(*implementation).empty()) {
-            const auto resolved = typeNodeTypes.find(implementation->extendedType.get());
-            const TypeRef receiverType =
-                resolved == typeNodeTypes.end() ? TypeRef::MakeNamed(typeName) : resolved->second;
-            for (const auto &method : implementation->methods) {
-                symbolIdentities.insert_or_assign(method.get(),
-                                                  ResolvedSymbolIdentity{MethodLinkerName(*method, receiverType, {})});
-            }
+        if (!ImplTypeParams(*implementation).empty()) {
+            continue;
         }
-        if (!implementation->interfaceName || !ImplTypeParams(*implementation).empty()) {
+        const std::string typeName = BaseTypeName(implementation->typeName);
+        const auto resolved = typeNodeTypes.find(implementation->extendedType.get());
+        const TypeRef receiverType = resolved == typeNodeTypes.end() ? TypeRef::MakeNamed(typeName) : resolved->second;
+        for (const auto &method : implementation->methods) {
+            symbolIdentities.insert_or_assign(method.get(),
+                                              ResolvedSymbolIdentity{MethodLinkerName(*method, receiverType, {})});
+        }
+        if (!implementation->interfaceName) {
             continue;
         }
         const auto interface = interfaceDecls.find(*implementation->interfaceName);
         if (interface == interfaceDecls.end() || interface->second->methods.empty()) {
             continue;
         }
+        // The vtable and its entries name the receiver the way its methods do, so an extension written on a spelling
+        // of a slice conforms the slice rather than a type of that spelling, and every entry names a method that
+        // exists.
+        const std::string receiverName = NamedBaseTypeName(receiverType);
         ResolvedVtableIdentity identity;
-        identity.linkerName = "__vtable__" + typeName + "__" + *implementation->interfaceName;
+        identity.linkerName = "__vtable__" + receiverName + "__" + *implementation->interfaceName;
         for (const auto &method : interface->second->methods) {
-            identity.entries.push_back(typeName + "::" + method->name);
+            identity.entries.push_back(receiverName + "::" + method->name);
         }
         vtableIdentities.insert_or_assign(implementation, std::move(identity));
     }

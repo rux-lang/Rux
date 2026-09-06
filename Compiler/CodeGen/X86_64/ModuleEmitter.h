@@ -152,7 +152,7 @@ private:
     }
 
     [[nodiscard]] bool IsWin64AddressParam(const TypeRef &t) const {
-        if (t.IsView()) {
+        if (t.IsSlice()) {
             return true;
         }
         if (t.kind != TypeRef::Kind::Named) {

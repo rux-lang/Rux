@@ -199,10 +199,6 @@ std::optional<TypeRef> AnalysisContext::IndexElementType(const TypeRef &type) {
     if (auto elementType = SliceElementType(value)) {
         return elementType;
     }
-    // A string is indexed in the code units of its own encoding, which is what its length counts.
-    if (value.IsString()) {
-        return TypeRef::MakePrimitive(StringCodeUnitKind(value.kind));
-    }
     if (value.kind == TypeRef::Kind::Pointer && !value.inner.empty()) {
         return value.inner[0];
     }
@@ -300,11 +296,6 @@ TypeRef AnalysisContext::StructFieldType(const TypeRef &objectType, const std::s
 }
 
 void AnalysisContext::CheckStructInitExpression(const StructInitExpr &expression) {
-    if (const auto type = PrimitiveTypeFromName(expression.typeName); type && type->IsString()) {
-        EmitError(expression.location, "a string view cannot be constructed from raw fields",
-                  {"string literals provide validated text; raw code units belong in a slice"});
-        return;
-    }
     const auto structure = structDecls.find(expression.typeName);
     if (structure == structDecls.end()) {
         if (const auto unionType = unionDecls.find(expression.typeName); unionType != unionDecls.end()) {
@@ -622,13 +613,6 @@ std::optional<TypeRef> AnalysisContext::CheckAggregateExpression(const Expr &exp
             if (elementType) {
                 return TypeRef::MakeSlice(*elementType);
             }
-            if (objectValueType.IsString()) {
-                EmitError(index->location,
-                          std::format("cannot take a range of string type '{}'", objectType.ToString()),
-                          {"a sub-range could split one character's code units and leave text that is not valid"},
-                          "index a single code unit with '[i]', or build a slice from '.data' and '.length'");
-                return TypeRef::MakeUnknown();
-            }
             std::optional<std::string> sliceHelp;
             if (isNamedType) {
                 sliceHelp = std::format("declare 'func []' taking a range on '{}'", objectType.ToString());
@@ -668,10 +652,9 @@ std::optional<TypeRef> AnalysisContext::CheckAggregateExpression(const Expr &exp
         if (objectValueType.kind == TypeRef::Kind::Array && objectValueType.arrayLength && field->field == "length") {
             return TypeRef::MakeUInt();
         }
+        // A slice's two members are compiler-owned, like an array's length: its shape is fixed by the runtime rather
+        // than by any declaration, so nothing has to be imported to reach them.
         if (auto elementType = SliceElementType(objectValueType)) {
-            if (!RecordIntrinsicMember(objectValueType, *field)) {
-                return TypeRef::MakeUnknown();
-            }
             if (field->field == "data") {
                 return TypeRef::MakePointer(*elementType);
             }
@@ -681,22 +664,6 @@ std::optional<TypeRef> AnalysisContext::CheckAggregateExpression(const Expr &exp
             EmitError(field->location,
                       std::format("slice type '{}' has no member '{}'", objectType.ToString(), field->field),
                       {"available slice members are 'data' and 'length'"});
-            return TypeRef::MakeUnknown();
-        }
-        // A visible declaration grants access to the compiler-owned text representation.
-        if (objectValueType.IsString()) {
-            if (!RecordIntrinsicMember(objectValueType, *field)) {
-                return TypeRef::MakeUnknown();
-            }
-            if (field->field == "data") {
-                return TypeRef::MakePointer(TypeRef::MakePrimitive(StringCodeUnitKind(objectValueType.kind)));
-            }
-            if (field->field == "length") {
-                return TypeRef::MakeUInt();
-            }
-            EmitError(field->location,
-                      std::format("string type '{}' has no member '{}'", objectType.ToString(), field->field),
-                      {"available string members are 'data' and 'length'"});
             return TypeRef::MakeUnknown();
         }
         if (objectValueType.IsRange()) {

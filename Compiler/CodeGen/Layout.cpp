@@ -300,9 +300,9 @@ int FieldOffsetOf(const TypeRef &pointerType, const std::string_view fieldName, 
         return TupleElementOffset(pointee, index);
     }
 
-    // A slice and a string are the same {data, length} pair, a pointer and a word beside it, in a shape the runtime
-    // and the calling conventions fix rather than a declaration.
-    if (pointee.IsView()) {
+    // A slice is a {data, length} pair, a pointer and a word beside it, in a shape the runtime and the calling
+    // conventions fix rather than a declaration.
+    if (pointee.IsSlice()) {
         return fieldName == "length" ? 8 : 0;
     }
 

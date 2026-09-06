@@ -41,11 +41,6 @@ func Check(got: Slice<char8>, expectedHex: Slice<char8>, what: string) {
     Assert(Equal(got, expectedBytes), what);
 }
 
-// The same helper for text.
-func Check(got: Slice<char8>, expectedHex: string, what: string) {
-    Check(got, TextBytes(expectedHex), what);
-}
-
 func Main() -> int {
     var tag: char8[64];
 

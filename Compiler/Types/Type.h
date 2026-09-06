@@ -50,9 +50,6 @@ struct TypeRef {
         Float128,
         Float256,
         Float512,
-        String8,
-        String16,
-        String32,
         Pointer,          // *T  — inner[0] = pointee
         Reference,        // &T  — inner[0] = referent
         Array,            // T[] / T[N] — inner[0] = element; arrayLength is absent for a flexible tail
@@ -78,9 +75,6 @@ struct TypeRef {
         Byte = UInt8,    // byte is an alias for uint8
         Char = Char32,   // char is an alias for char32
         Float = Float64, // float is an alias for float64
-        // `string` is UTF-8 rather than the widest encoding, because a bare literal is UTF-8. This is the deliberate
-        // asymmetry with `char`, which aliases the widest character so it holds a whole scalar value.
-        String = String8,
     };
 
     Kind kind = Kind::Unknown;
@@ -252,28 +246,10 @@ struct TypeRef {
         return t;
     }
 
-    static TypeRef MakeString8() {
-        TypeRef t;
-        t.kind = Kind::String8;
-        return t;
-    }
-
-    static TypeRef MakeString16() {
-        TypeRef t;
-        t.kind = Kind::String16;
-        return t;
-    }
-
-    static TypeRef MakeString32() {
-        TypeRef t;
-        t.kind = Kind::String32;
-        return t;
-    }
-
-    static TypeRef MakeString() {
-        TypeRef t;
-        t.kind = Kind::String8;
-        return t;
+    /// The type of text in one encoding: a read-only slice of that encoding's code units, which is what a string
+    /// literal is.
+    static TypeRef MakeText(const Kind codeUnit) {
+        return MakeSlice(MakePrimitive(codeUnit));
     }
 
     static TypeRef MakeNamed(std::string n) {
@@ -364,7 +340,6 @@ struct TypeRef {
 
     [[nodiscard]] bool IsBool() const noexcept;
     [[nodiscard]] bool IsChar() const noexcept;
-    [[nodiscard]] bool IsString() const noexcept;
     [[nodiscard]] bool IsNumeric() const noexcept;
     [[nodiscard]] bool IsInteger() const noexcept;
 
@@ -398,13 +373,6 @@ struct TypeRef {
     /// Whether this is a slice whose elements may be written through it.
     [[nodiscard]] bool IsWritableSlice() const noexcept {
         return kind == Kind::Slice && !inner.empty() && inner[0].isMut;
-    }
-
-    /// Whether this is a 16-byte `{data, length}` view. A string has a slice's representation exactly, reaching its
-    /// code units through the same two fields, so every rule about how such a value is laid out, copied, and passed
-    /// holds for both; what differs between them was settled by semantic analysis before any of those rules apply.
-    [[nodiscard]] bool IsView() const noexcept {
-        return IsSlice() || IsString();
     }
 
     [[nodiscard]] bool IsFloat() const noexcept;

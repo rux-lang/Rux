@@ -348,11 +348,6 @@ extend JsonEventReader {
         return true;
     }
 
-    // The same comparison for text.
-    func Matches(self: &var JsonEventReader, word: string) -> bool {
-        return self.Matches(Slice<char8> { data: word.data, length: word.length });
-    }
-
     /// The next event.
     ///
     /// Separators are consumed silently: a caller sees values and structure, not commas and colons, which is

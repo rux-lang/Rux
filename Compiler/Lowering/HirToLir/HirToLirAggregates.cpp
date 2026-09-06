@@ -335,9 +335,6 @@ LirReg HirToLirContext::LowerPattern(const HirPattern &pat, LirReg subjectVal, c
 // For void expressions the return value is LirNoReg.
 
 TypeRef HirToLirContext::SliceElementTypeFromType(const TypeRef &type) {
-    if (type.IsString()) {
-        return TypeRef::MakePrimitive(StringCodeUnitKind(type.kind));
-    }
     if (type.IsSlice() && !type.inner.empty()) {
         // The element type names storage here, never a place, so its writability is not part of the answer.
         TypeRef element = type.inner[0];

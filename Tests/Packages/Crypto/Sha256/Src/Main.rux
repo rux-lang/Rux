@@ -51,11 +51,6 @@ func CheckDigest(message: Slice<char8>, expectedHex: Slice<char8>, wide: bool, w
     Assert(Equal(gotBytes, expectedBytes), what);
 }
 
-// The same helper for text.
-func CheckDigest(message: string, expectedHex: string, wide: bool, what: string) {
-    CheckDigest(TextBytes(message), TextBytes(expectedHex), wide, what);
-}
-
 func Main() -> int {
     // The FIPS 180-4 examples.
     CheckDigest("", "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", true,

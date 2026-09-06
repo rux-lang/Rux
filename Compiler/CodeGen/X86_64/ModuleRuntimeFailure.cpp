@@ -65,7 +65,7 @@ void X86_64ModuleEmitter::GenInstr(X86_64FunctionEmitter &functionEmitter, X86_6
             writeStatic(layout.prefix);
 
             prepareWrite();
-            LoadA(messageReg, TypeRef::MakePointer(TypeRef::MakeString8()));
+            LoadA(messageReg, TypeRef::MakePointer(TypeRef::MakeText(TypeRef::Kind::Char8)));
             enc.MovR10Rax();
             enc.MovRdxR10Load();
             enc.MovR8R10Load(8);
@@ -92,7 +92,7 @@ void X86_64ModuleEmitter::GenInstr(X86_64FunctionEmitter &functionEmitter, X86_6
             };
 
             writeStatic(layout.prefix);
-            LoadA(messageReg, TypeRef::MakePointer(TypeRef::MakeString8()));
+            LoadA(messageReg, TypeRef::MakePointer(TypeRef::MakeText(TypeRef::Kind::Char8)));
             enc.MovR10Rax();
             enc.MovRsiR10Load();
             enc.MovRdxR10Load(8);

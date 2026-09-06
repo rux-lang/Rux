@@ -77,7 +77,7 @@ void ConditionalEvaluator::Impl::BindImportedDeclaration(const Decl &declaration
                 collect(selected);
         }
     }
-    if (alias->intrinsicName.empty() && (!primitive || !primitive->IsString()) && !activeTypeAliases.contains(alias)) {
+    if (alias->intrinsicName.empty() && !activeTypeAliases.contains(alias)) {
         const auto inherit = [&](const auto &bindings) {
             std::vector<std::pair<std::string, ConstantBinding>> inherited;
             for (const auto &[key, value] : bindings) {

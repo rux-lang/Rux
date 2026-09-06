@@ -66,8 +66,9 @@ private:
         if (type.IsRange()) {
             return true;
         }
-        // A slice and a string are the same 16-byte {data, length} view, so both are classified and placed alike.
-        if (type.IsView()) {
+        // A slice, text included, is a 16-byte {data, length} view whose shape the runtime fixes rather than a
+        // declaration.
+        if (type.IsSlice()) {
             return true;
         }
         switch (type.kind) {
@@ -96,7 +97,7 @@ private:
     }
 
     [[nodiscard]] bool IsWin64AddressParameter(const TypeRef &type) const {
-        if (type.IsView()) {
+        if (type.IsSlice()) {
             return true;
         }
         if (type.kind != TypeRef::Kind::Named) {
