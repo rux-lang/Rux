@@ -356,7 +356,6 @@ private:
 
     [[nodiscard]] std::optional<ResolvedCase> LookupCase(const std::string &typeName,
                                                          const std::string &caseName) const;
-    [[nodiscard]] static std::string SliceTypeName(const TypeRef &elementType);
     /// Whether this expression is an index that resolved to a declared `[]` or `[]=`. Such an expression is a call, so
     /// it is neither an assignable place nor a projection any borrow or move can reach through, and every place walk
     /// stops at it.

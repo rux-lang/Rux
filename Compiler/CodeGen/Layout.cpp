@@ -85,12 +85,10 @@ int SizeOf(const TypeRef &t) {
         return t.inner.empty() ? 0 : SizeOf(t.inner[0]);
     case TypeRef::Kind::RangeFull:
         return 0;
-    case TypeRef::Kind::Named: {
-        const auto baseName = BaseTypeName(t.name);
-        if (t.IsSlice()) {
-            return 16;
-        }
-    }
+    case TypeRef::Kind::Slice:
+        return 16;
+    case TypeRef::Kind::Named:
+        // A named type's `inner` is its layout marker when it has one: an enum records its storage there.
         if (!t.inner.empty()) {
             return SizeOf(t.inner[0]);
         }
@@ -179,10 +177,6 @@ StructLayout ComputeStructLayout(const LirStructDecl &s, const LayoutMap &known,
                 sz = it->second.totalSize;
                 al = it->second.alignment;
             }
-            else if (f.type.IsSlice()) {
-                sz = 16;
-                al = 8;
-            }
         }
         if (al > 1) {
             offset = AlignUp(offset, al);
@@ -259,14 +253,11 @@ int RuntimeSizeOf(const TypeRef &t, const LayoutMap &layouts, const std::unorder
         interfaceNames.contains(BaseTypeName(t.inner.front().name))) {
         return 16;
     }
-    if (!t.IsRange() && t.kind == TypeRef::Kind::Named) {
+    if (t.kind == TypeRef::Kind::Named) {
         const std::string base = BaseTypeName(t.name);
-        // Interface and intrinsic slice values have fixed two-pointer representations.
-        // Ordinary structs always use the layout of their resolved declarations.
+        // An interface value has a fixed two-pointer representation; an ordinary struct always uses the layout of its
+        // resolved declaration.
         if (interfaceNames.contains(base)) {
-            return 16;
-        }
-        if (t.IsSlice()) {
             return 16;
         }
         // An instantiation is sized by its own entry when it has one; the declaration's entry still answers for a plain

@@ -44,10 +44,6 @@ void AnalysisContext::ReportUntypedExpression(const Expr &expression) const {
     }
 }
 
-std::string AnalysisContext::SliceTypeName(const TypeRef &elementType) {
-    return "Slice<" + elementType.ToString() + ">";
-}
-
 bool AnalysisContext::TypeImplementsInterface(const TypeRef &expressionType, const TypeRef &targetType) const {
     if (targetType.kind != TypeRef::Kind::Named) {
         return false;
@@ -177,7 +173,6 @@ TypeRef AnalysisContext::SubstituteTypeParameters(TypeRef type,
         if (changed) {
             TypeRef rebuilt = TypeRef::MakeNamed(TypeRef::InstantiationName(BaseTypeName(type.name), arguments));
             rebuilt.isMut = type.isMut;
-            rebuilt.isIntrinsicSlice = type.IsSlice();
             return rebuilt;
         }
         return type;
@@ -507,11 +502,22 @@ bool AnalysisContext::DeduceTypeArgument(const TypeRef &paramType, const TypeRef
         return true;
     }
 
+    // A slice parameter deduces its element from a slice argument, or from the fixed array that coerces to one.
+    if (paramType.kind == TypeRef::Kind::Slice) {
+        if (paramType.inner.empty()) {
+            return false;
+        }
+        if ((argType.kind == TypeRef::Kind::Slice || argType.kind == TypeRef::Kind::Array) && !argType.inner.empty()) {
+            return DeduceTypeArgument(paramType.inner[0], argType.inner[0], typeParamNames, substitutions);
+        }
+        return false;
+    }
+
     if (paramType.kind == TypeRef::Kind::Named) {
         const std::string paramBase = BaseTypeName(paramType.name);
         if (argType.kind == TypeRef::Kind::Named) {
             const std::string argBase = BaseTypeName(argType.name);
-            if (paramBase == argBase && paramType.IsSlice() == argType.IsSlice()) {
+            if (paramBase == argBase) {
                 const auto paramArgs = ParseTypeArgsFromTypeName(paramType.name);
                 const auto argArgs = ParseTypeArgsFromTypeName(argType.name);
                 if (paramArgs.size() == argArgs.size() && !paramArgs.empty()) {
@@ -522,12 +528,6 @@ bool AnalysisContext::DeduceTypeArgument(const TypeRef &paramType, const TypeRef
                     }
                     return true;
                 }
-            }
-        }
-        if (paramType.IsSlice() && argType.kind == TypeRef::Kind::Array && !argType.inner.empty()) {
-            const auto paramArgs = ParseTypeArgsFromTypeName(paramType.name);
-            if (paramArgs.size() == 1) {
-                return DeduceTypeArgument(paramArgs[0], argType.inner[0], typeParamNames, substitutions);
             }
         }
     }

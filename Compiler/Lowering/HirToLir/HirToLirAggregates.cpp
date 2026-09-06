@@ -338,21 +338,11 @@ TypeRef HirToLirContext::SliceElementTypeFromType(const TypeRef &type) {
     if (type.IsString()) {
         return TypeRef::MakePrimitive(StringCodeUnitKind(type.kind));
     }
-    if (type.kind == TypeRef::Kind::Named) {
-        if (type.name == "Slice<char16>") {
-            return TypeRef::MakeChar16();
-        }
-        if (type.name == "Slice<char32>") {
-            return TypeRef::MakeChar32();
-        }
-        constexpr std::string_view prefix = "Slice<";
-        if (type.name.starts_with(prefix) && type.name.ends_with(">")) {
-            const std::string elemName = type.name.substr(prefix.size(), type.name.size() - prefix.size() - 1);
-            if (const auto primitive = PrimitiveTypeFromName(elemName)) {
-                return *primitive;
-            }
-            return TypeRef::MakeNamed(elemName);
-        }
+    if (type.IsSlice() && !type.inner.empty()) {
+        // The element type names storage here, never a place, so its writability is not part of the answer.
+        TypeRef element = type.inner[0];
+        element.isMut = false;
+        return element;
     }
     return TypeRef::MakeChar8();
 }

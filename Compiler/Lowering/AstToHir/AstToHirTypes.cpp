@@ -75,10 +75,6 @@ std::string AstToHirContext::GenericTypeName(const NamedTypeExpr &type) {
     return TypeRef::InstantiationName(type.name, typeArgs);
 }
 
-std::string AstToHirContext::SliceTypeName(const TypeRef &elemType) {
-    return "Slice<" + elemType.ToString() + ">";
-}
-
 std::string AstToHirContext::BaseTypeNameImpl(const std::string &name) {
     const std::size_t pos = name.find('<');
     return pos == std::string::npos ? name : name.substr(0, pos);
@@ -507,12 +503,12 @@ std::string AstToHirContext::NamedBaseTypeName(const TypeRef &type) {
     if ((type.kind == TypeRef::Kind::Pointer || type.kind == TypeRef::Kind::Reference) && !type.inner.empty()) {
         named = &type.inner[0];
     }
+    // A slice's method set is keyed on its full element-specific spelling, so `extend Slice<int>` stays distinct
+    // from `extend Slice<char8>` (see NamedBaseTypeName in the analyzer).
+    if (named->IsSlice()) {
+        return named->ToString();
+    }
     if (named->kind == TypeRef::Kind::Named) {
-        // Keep the full element-specific name for slices so `extend int[]`
-        // methods are found on `int[]` receivers (see SemanticAnalyzer).
-        if (named->IsSlice()) {
-            return named->name;
-        }
         return BaseTypeNameImpl(named->name);
     }
     switch (named->kind) {
@@ -562,18 +558,10 @@ std::optional<TypeRef> AstToHirContext::BuiltinTypeFromName(const std::string &n
 }
 
 std::optional<TypeRef> AstToHirContext::SliceElementType(const TypeRef &type) const {
-    if (!type.IsSlice()) {
+    if (!type.IsSlice() || type.inner.empty()) {
         return std::nullopt;
     }
-    constexpr std::string_view prefix = "Slice<";
-    if (!type.name.starts_with(prefix) || type.name.back() != '>') {
-        return std::nullopt;
-    }
-    std::string elemName = type.name.substr(prefix.size(), type.name.size() - prefix.size() - 1);
-    if (auto builtin = BuiltinTypeFromName(elemName)) {
-        return *builtin;
-    }
-    return TypeRef::MakeNamed(elemName);
+    return type.inner[0];
 }
 
 std::optional<TypeRef> AstToHirContext::IndexElementType(const TypeRef &type) const {

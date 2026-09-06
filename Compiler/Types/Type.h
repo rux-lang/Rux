@@ -67,6 +67,10 @@ struct TypeRef {
         TypeParam,        // generic parameter T — name = param name
         Func,             // func(...) -> T — inner[0..n-2] = params, inner[n-1] =
         // return
+        // A slice: inner[0] = element, and inner[0].isMut marks a writable view the way `*var T` marks a writable
+        // pointee. Its 16-byte {data, length} shape and by-address passing are fixed by the runtime and the calling
+        // conventions rather than by any declaration, which is why no declaration can provide or change it.
+        Slice,
 
         // Aliases — must come after all concrete values so they don't shift
         // the counter
@@ -81,8 +85,6 @@ struct TypeRef {
 
     Kind kind = Kind::Unknown;
     std::string name;
-    /// True only for the intrinsic slice representation, never inferred from a source type's spelling.
-    bool isIntrinsicSlice = false;
     std::vector<TypeRef> inner; // C++17: vector<incomplete T> is valid
     std::optional<std::uint64_t> arrayLength;
     bool isVariadic = false; // Func kind: trailing C-style ... (extern) or
@@ -94,11 +96,11 @@ struct TypeRef {
                         // identity handles it at the enclosing type.
 
     // Factories
-    static TypeRef MakeSlice(const TypeRef &element) {
+    static TypeRef MakeSlice(TypeRef element, const bool writable = false) {
         TypeRef type;
-        type.kind = Kind::Named;
-        type.name = "Slice<" + element.ToString() + ">";
-        type.isIntrinsicSlice = true;
+        type.kind = Kind::Slice;
+        element.isMut = writable;
+        type.inner.push_back(std::move(element));
         return type;
     }
 
@@ -390,7 +392,12 @@ struct TypeRef {
 
     /// Whether this is a slice: a borrowed `{data, length}` view over contiguous elements.
     [[nodiscard]] bool IsSlice() const noexcept {
-        return isIntrinsicSlice;
+        return kind == Kind::Slice;
+    }
+
+    /// Whether this is a slice whose elements may be written through it.
+    [[nodiscard]] bool IsWritableSlice() const noexcept {
+        return kind == Kind::Slice && !inner.empty() && inner[0].isMut;
     }
 
     /// Whether this is a 16-byte `{data, length}` view. A string has a slice's representation exactly, reaching its

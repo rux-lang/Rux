@@ -168,14 +168,13 @@ std::string AnalysisContext::NamedBaseTypeName(const TypeRef &type) const {
     if ((type.kind == TypeRef::Kind::Pointer || type.kind == TypeRef::Kind::Reference) && !type.inner.empty()) {
         named = &type.inner[0];
     }
+    // Slice extension methods are keyed on the full element-specific spelling (e.g. `Slice<int>`) so `extend
+    // Slice<int>` stays distinct from `extend Slice<char8>`; named types collapse to their base name so generic
+    // instantiations share one method set.
+    if (named->IsSlice()) {
+        return named->ToString();
+    }
     if (named->kind == TypeRef::Kind::Named) {
-        // Slice extension methods are keyed on the full element-specific name
-        // (e.g. `Slice<int>`) so `extend int[]` stays distinct from `extend
-        // str[]`; other named types collapse to their base name so generic
-        // instantiations share one method set.
-        if (named->IsSlice()) {
-            return named->name;
-        }
         return BaseTypeName(named->name);
     }
     // Every primitive names its own method set, so a width added to the catalog joins without a case here.
@@ -186,17 +185,10 @@ std::string AnalysisContext::NamedBaseTypeName(const TypeRef &type) const {
 }
 
 std::optional<TypeRef> AnalysisContext::SliceElementType(const TypeRef &type) const {
-    if (!type.IsSlice()) {
+    if (!type.IsSlice() || type.inner.empty()) {
         return std::nullopt;
     }
-    constexpr std::string_view prefix = "Slice<";
-    if (!type.name.starts_with(prefix) || type.name.back() != '>') {
-        return std::nullopt;
-    }
-    // One reader for a type written inside a name, so an element is the same type here as anywhere else it is read
-    // back: a type parameter in scope stays a parameter, and a pointer or tuple element is not flattened to a name
-    // that merely looks like one.
-    return ParseTypeRefFromString(type.name.substr(prefix.size(), type.name.size() - prefix.size() - 1));
+    return type.inner[0];
 }
 
 std::optional<TypeRef> AnalysisContext::IndexElementType(const TypeRef &type) {

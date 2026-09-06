@@ -540,21 +540,17 @@ bool HirToLirContext::IsStringSliceLiteral(const HirLiteralExpr &e) {
     if (e.type.IsString()) {
         return true;
     }
-    return e.type.kind == TypeRef::Kind::Named &&
-           (e.type.name == "Slice<char8>" || e.type.name == "Slice<char16>" || e.type.name == "Slice<char32>");
+    return e.type.IsSlice() && !e.type.inner.empty() && e.type.inner[0].IsChar();
 }
 
 TypeRef HirToLirContext::StringSliceElementType(const HirLiteralExpr &e) {
     if (e.type.IsString()) {
         return TypeRef::MakePrimitive(StringCodeUnitKind(e.type.kind));
     }
-    if (e.type.kind == TypeRef::Kind::Named) {
-        if (e.type.name == "Slice<char16>") {
-            return TypeRef::MakeChar16();
-        }
-        if (e.type.name == "Slice<char32>") {
-            return TypeRef::MakeChar32();
-        }
+    if (e.type.IsSlice() && !e.type.inner.empty()) {
+        TypeRef element = e.type.inner[0];
+        element.isMut = false;
+        return element;
     }
     return TypeRef::MakeChar8();
 }

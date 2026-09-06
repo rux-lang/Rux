@@ -422,10 +422,6 @@ void AstToHirContext::NoteStructInstantiation(const TypeRef &type) const {
         return;
     }
     const std::string base = BaseTypeNameImpl(type.name);
-    // Intrinsic slices already carry the fixed view representation.
-    if (type.IsSlice()) {
-        return;
-    }
     const auto declaration = structDecls.find(base);
     if (declaration == structDecls.end() || declaration->second->typeParams.empty()) {
         return;
@@ -550,7 +546,8 @@ HirImplBlock AstToHirContext::LowerImpl(const ImplDecl &d) {
     }
 
     HirImplBlock hib;
-    hib.typeName = extendedType.IsSlice() && ImplTypeParams(d).empty() ? extendedType.name : BaseTypeName(d.typeName);
+    hib.typeName =
+        extendedType.IsSlice() && ImplTypeParams(d).empty() ? extendedType.ToString() : BaseTypeName(d.typeName);
     hib.interfaceName = d.interfaceName;
     hib.location = d.location;
     for (const auto &m : d.methods) {

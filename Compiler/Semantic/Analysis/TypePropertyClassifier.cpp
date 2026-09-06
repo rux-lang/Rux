@@ -33,6 +33,8 @@ TypeProperties TypePropertyClassifier::Classify(const TypeRef &type) {
     case TypeRef::Kind::Reference:
     case TypeRef::Kind::RangeFull:
     case TypeRef::Kind::Func:
+    // A slice is a borrowed, pointer-shaped view. Its element may be move-only without making the view move-only.
+    case TypeRef::Kind::Slice:
         return TypeProperties::Copy();
     case TypeRef::Kind::Array:
     case TypeRef::Kind::Range:
@@ -63,9 +65,9 @@ TypeProperties TypePropertyClassifier::ClassifyNamed(const TypeRef &type) {
     }
 
     const std::string baseName = BaseTypeName(type.name);
-    // Interface objects and slices are borrowed, pointer-shaped views. Their pointee may be move-only without making
-    // the view itself move-only.
-    if (interfaces.contains(baseName) || type.IsSlice()) {
+    // An interface object is a borrowed, pointer-shaped view. Its pointee may be move-only without making the view
+    // itself move-only.
+    if (interfaces.contains(baseName)) {
         const TypeProperties result = TypeProperties::Copy();
         cache.emplace(key, result);
         return result;

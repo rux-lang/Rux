@@ -279,7 +279,6 @@ private:
     [[nodiscard]] const TypeRef &ResolvedType(const TypeExpr &type) const;
     [[nodiscard]] const ResolvedTypeLayout &ResolvedLayout(const TypeRef &type) const;
     [[nodiscard]] std::string GenericTypeName(const NamedTypeExpr &type);
-    [[nodiscard]] static std::string SliceTypeName(const TypeRef &elementType);
     [[nodiscard]] static std::string BaseTypeNameImpl(const std::string &name);
     [[nodiscard]] TypeRef ParseTypeRefFromString(std::string text) const;
     [[nodiscard]] static TypeRef StringLiteralType(const Token &token);

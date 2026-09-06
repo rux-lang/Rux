@@ -114,7 +114,7 @@ TEST_CASE("x86-64 assembly control-flow printing owns runtime failure paths") {
     function.name = "Failures";
     function.callConv = CallingConvention::SysV;
     function.params = {{0, TypeRef::MakeBool(), "condition"},
-                       {1, TypeRef::MakePointer(TypeRef::MakeNamed("Slice<char8>")), "message"}};
+                       {1, TypeRef::MakePointer(TypeRef::MakeSlice(TypeRef::MakeChar8())), "message"}};
 
     LirInstr assertion = Instruction(LirOpcode::Assert, LirNoReg, TypeRef::MakeOpaque(), {0, 1});
     assertion.sourceFunction = "Failures";

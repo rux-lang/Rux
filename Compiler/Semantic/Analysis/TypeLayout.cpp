@@ -64,11 +64,11 @@ AnalysisContext::LayoutOfTypeRef(const TypeRef &inputType,
         return left * right;
     };
 
-    if (inputType.kind == TypeRef::Kind::Named) {
-        if (inputType.IsSlice()) {
-            return finish(ResolvedTypeLayout{16, 8});
-        }
+    if (inputType.IsSlice()) {
+        return finish(ResolvedTypeLayout{16, 8});
+    }
 
+    if (inputType.kind == TypeRef::Kind::Named) {
         const std::string baseName = BaseTypeName(inputType.name);
         std::unordered_map<std::string, TypeRef> localSubs = substitutions;
         const std::vector<TypeRef> typeArgs = ParseTypeArgsFromTypeName(inputType.name);

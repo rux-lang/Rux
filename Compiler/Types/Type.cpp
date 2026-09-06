@@ -77,12 +77,28 @@ bool TypeRef::IsAssignableTo(const TypeRef &other) const noexcept {
         target.isMut = false;
         return source == target;
     }
+    // A slice carries its writability on its element the way a pointer does. A writable view may be weakened to a
+    // read-only view of the same elements, but the reverse would grant write access through a read-only view.
+    if (kind == Kind::Slice && other.kind == Kind::Slice && !inner.empty() && !other.inner.empty()) {
+        if (!inner[0].isMut && other.inner[0].isMut) {
+            return false;
+        }
+        TypeRef source = inner[0];
+        TypeRef target = other.inner[0];
+        source.isMut = false;
+        target.isMut = false;
+        return source == target;
+    }
     if (*this == other) {
         return true;
     }
-    if (kind == Kind::Array && arrayLength && !inner.empty() && other.isIntrinsicSlice &&
-        other.name == "Slice<" + inner[0].ToString() + ">") {
-        return true;
+    // A fixed array value coerces to a read-only view of its elements. A writable view needs a writable place, which
+    // is a question about the expression rather than its type, so it is answered where the expression is checked.
+    if (kind == Kind::Array && arrayLength && !inner.empty() && other.kind == Kind::Slice && !other.inner.empty() &&
+        !other.inner[0].isMut) {
+        TypeRef element = inner[0];
+        element.isMut = false;
+        return element == other.inner[0];
     }
     // float32 widens implicitly to float64 / float (safe, no precision loss
     // in range)
@@ -223,10 +239,9 @@ std::optional<std::uint64_t> TypeRef::SizeInBytes() const noexcept {
         }
         return layout->first;
     }
+    case Kind::Slice:
+        return 16;
     case Kind::Named:
-        if (isIntrinsicSlice) {
-            return 16;
-        }
         if (!inner.empty()) {
             return inner[0].SizeInBytes();
         }
@@ -293,6 +308,10 @@ std::string TypeRef::ToString() const {
         }
         return element + (arrayLength ? "[" + std::to_string(*arrayLength) + "]" : "[]");
     }
+    case Kind::Slice: {
+        const std::string element = inner.empty() ? "?" : inner[0].ToString();
+        return (IsWritableSlice() ? "MutableSlice<" : "Slice<") + element + ">";
+    }
     case Kind::Range:
         return "Range<" + (inner.empty() ? "?" : inner[0].ToString()) + ">";
     case Kind::RangeInclusive:
@@ -337,7 +356,7 @@ std::string TypeRef::ToString() const {
 }
 
 bool TypeRef::operator==(const TypeRef &o) const noexcept {
-    if (kind != o.kind || name != o.name || isIntrinsicSlice != o.isIntrinsicSlice) {
+    if (kind != o.kind || name != o.name) {
         return false;
     }
     // Named types are identified by their concrete name. Their `inner` value
@@ -349,7 +368,9 @@ bool TypeRef::operator==(const TypeRef &o) const noexcept {
     if (arrayLength != o.arrayLength || inner.size() != o.inner.size()) {
         return false;
     }
-    if (kind == Kind::Reference && !inner.empty() && inner[0].isMut != o.inner[0].isMut) {
+    // A reference and a slice carry writability in their identity: `&var T` is not `&T`, and a writable view is not a
+    // read-only one. Writability through a pointer stays out of identity, as the field comment explains.
+    if ((kind == Kind::Reference || kind == Kind::Slice) && !inner.empty() && inner[0].isMut != o.inner[0].isMut) {
         return false;
     }
     for (std::size_t i = 0; i < inner.size(); ++i) {
