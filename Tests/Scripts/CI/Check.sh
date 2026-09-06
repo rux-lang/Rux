@@ -91,22 +91,58 @@ check_versions_agree() {
     esac
 }
 
-# A bundle whose bytes do not match the manifest must never be installed, and a
-# revision that has not been published yet must fail loudly rather than fetch.
+# A checksum still recorded as TBD names a revision that was never published, so
+# it must fail loudly rather than fetch. The manifest under test is synthetic:
+# asserting against the real one would only hold until the first publish, and a
+# test that reaches the network is not a unit test.
 check_setup_rejects_unpublished() {
-    if sh "$repository_root/.github/Scripts/SetupToolchain.sh" \
+    unpublished=$fixture_root/unpublished/.github
+    mkdir -p "$unpublished/Scripts"
+    cp "$repository_root/.github/Scripts/SetupToolchain.sh" "$unpublished/Scripts/"
+    {
+        printf 'TOOLCHAIN_REVISION=2026-01-01\n'
+        printf 'TOOLCHAIN_BASE_URL=https://example.invalid/download\n'
+        printf 'CCACHE_MAXSIZE=400M\n'
+        printf 'SHA256_TOOLCHAIN_LINUX_X86_64=TBD\n'
+    } >"$unpublished/Toolchains.env"
+
+    if sh "$unpublished/Scripts/SetupToolchain.sh" \
         --target linux-x86_64 --prefix "$fixture_root/prefix" >"$output" 2>&1; then
-        fail 'SetupToolchain.sh installed a toolchain from an unpublished manifest'
+        fail 'SetupToolchain.sh installed a toolchain whose checksum is still TBD'
     fi
     require_output TBD
     [ ! -d "$fixture_root/prefix" ] ||
-        fail 'SetupToolchain.sh created a prefix for an unpublished manifest'
+        fail 'SetupToolchain.sh created a prefix for an unpublished revision'
 
     if sh "$repository_root/.github/Scripts/SetupToolchain.sh" \
         --target freebsd-x86_64 >"$output" 2>&1; then
         fail 'SetupToolchain.sh accepted a target that has no host bundle'
     fi
     require_output "unsupported target 'freebsd-x86_64'"
+}
+
+# The recorded revision and checksums must stay consistent: every bundle is
+# published together, so a half-filled manifest means an interrupted update.
+check_manifest_is_consistent() {
+    . "$manifest"
+
+    recorded=0
+    pending=0
+    for target in LINUX_X86_64 LINUX_AARCH64 MACOS_AARCH64 WINDOWS_X86_64 WINDOWS_AARCH64; do
+        eval "value=\$SHA256_TOOLCHAIN_$target"
+        if [ "$value" = TBD ]; then
+            pending=$((pending + 1))
+        else
+            recorded=$((recorded + 1))
+        fi
+    done
+
+    if [ "$recorded" -ne 0 ] && [ "$pending" -ne 0 ]; then
+        fail "$manifest records $recorded bundle checksums and leaves $pending as TBD"
+    fi
+    if [ "$recorded" -ne 0 ] && [ "$TOOLCHAIN_REVISION" = TBD ]; then
+        fail "$manifest records bundle checksums but no revision"
+    fi
 }
 
 # A manifest carrying anything but assignments must be refused before it is
@@ -170,6 +206,7 @@ check_tidy_shards_are_disjoint() {
 check_manifest_shape
 check_versions_agree
 check_setup_rejects_unpublished
+check_manifest_is_consistent
 check_setup_rejects_injection
 check_tidy_shards_are_disjoint
 
