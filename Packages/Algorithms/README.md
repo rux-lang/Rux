@@ -12,18 +12,18 @@ rux add Rux/Algorithms
 
 ## Status
 
-| Module   | Takes             | Requires on `T` | Provides                                                 |
-| -------- | ----------------- | --------------- | -------------------------------------------------------- |
-| `Find`   | `Slice<T>`        | — or `==`       | Linear queries, sequence comparison, by value or predicate |
-| `MinMax` | `Slice<T>`        | — or `<`        | Sequence extremes and clamping                           |
-| `Search` | `Slice<T>`        | `<`             | Sortedness checks, bounds and binary search              |
-| `Modify` | `MutableSlice<T>` | — or `==`       | Reordering, bulk movement, removal and partitioning      |
-| `Sort`   | `MutableSlice<T>` | `<`             | Introsort, selection, and partial sorting                |
-| `Stable` | `MutableSlice<T>` | `<`             | Merge sort, with scratch the caller supplies             |
-| `Heap`   | `MutableSlice<T>` | `<`             | Max-heap arrangement, push, pop and heapsort             |
-| `Fold`   | `Slice<T>`        | — or `+`/`*`    | Folds in both directions, sum, product and transform     |
+| Module   | Takes       | Requires on `T` | Provides                                                   |
+| -------- | ----------- | --------------- | ---------------------------------------------------------- |
+| `Find`   | `T[..]`     | — or `==`       | Linear queries, sequence comparison, by value or predicate |
+| `MinMax` | `T[..]`     | — or `<`        | Sequence extremes and clamping                             |
+| `Search` | `T[..]`     | `<`             | Sortedness checks, bounds and binary search                |
+| `Modify` | `var T[..]` | — or `==`       | Reordering, bulk movement, removal and partitioning        |
+| `Sort`   | `var T[..]` | `<`             | Introsort, selection, and partial sorting                  |
+| `Stable` | `var T[..]` | `<`             | Merge sort, with scratch the caller supplies               |
+| `Heap`   | `var T[..]` | `<`             | Max-heap arrangement, push, pop and heapsort               |
+| `Fold`   | `T[..]`     | — or `+`/`*`    | Folds in both directions, sum, product and transform       |
 
-Everything takes a view: a `Slice<T>` where it only reads, and a `MutableSlice<T>` where it writes.
+Everything takes a view: a `T[..]` where it only reads, and a `var T[..]` where it writes.
 
 Modules are split by what they ask of the element type, so a type that defines only one of the two comparison operators can still use the modules that need it, and a missing operator is reported against one module rather than the whole package.
 
@@ -34,46 +34,29 @@ A **predicate-taking** function asks nothing of `T` at all — the caller's func
 A search that found something answers with the index it found, wrapped in an `Option`:
 
 ```rux
-func IndexOf<T>(items: Slice<T>, value: T) -> Option<uint>
+func IndexOf<T>(items: T[..], value: T) -> Option<uint>
 ```
 
-Not found is an ordinary outcome, not a failure, and a sentinel index is a bug waiting for the one sequence long
-enough to reach it. An empty slice is not a special case anywhere: it contains nothing, matches no search, satisfies
-every universal claim and no existential one.
+Not found is an ordinary outcome, not a failure, and a sentinel index is a bug waiting for the one sequence long enough to reach it. An empty slice is not a special case anywhere: it contains nothing, matches no search, satisfies every universal claim and no existential one.
 
-A comparison answers with an `Ordering` rather than a `bool`, and takes one where it needs the caller to decide.
-`Compare` is lexicographic — the first differing element decides, and the shorter of two otherwise-equal sequences is
-the smaller — and `CompareBy` is the same for a type with no ordering of its own.
+A comparison answers with an `Ordering` rather than a `bool`, and takes one where it needs the caller to decide. `Compare` is lexicographic — the first differing element decides, and the shorter of two otherwise-equal sequences is the smaller — and `CompareBy` is the same for a type with no ordering of its own.
 
 ## What the ordered searches assume
 
-Every search in `Search` assumes the slice is already sorted by the same order the search uses. That is the caller's
-promise, and nothing checks it on the way in — checking would cost the linear scan a binary search exists to avoid.
-A search over an unsorted slice does not fail; it answers, and the answer is meaningless. `IsSorted` is there for a
-caller who wants to check once, where checking is worth it.
+Every search in `Search` assumes the slice is already sorted by the same order the search uses. That is the caller's promise, and nothing checks it on the way in — checking would cost the linear scan a binary search exists to avoid. A search over an unsorted slice does not fail; it answers, and the answer is meaningless. `IsSorted` is there for a caller who wants to check once, where checking is worth it.
 
 A bound is a position rather than an element. `LowerBound` is the first position the value could be inserted at
-without breaking the order and `UpperBound` is the last, so between them lie exactly the equal elements — which is
-what `EqualRange` returns in one pass. All three answer for a value that is not there at all: the range is empty, and
-its start is where the value would go.
+without breaking the order and `UpperBound` is the last, so between them lie exactly the equal elements — which is what `EqualRange` returns in one pass. All three answer for a value that is not there at all: the range is empty, and its start is where the value would go.
 
-Equality in these searches is the ordering's, not the type's. Two elements neither of which is less than the other
-are equal here, whatever `==` would say. When several compare equal, `BinarySearch` reports the first, so the answer
-depends on the sequence rather than on how the search happened to divide it.
+Equality in these searches is the ordering's, not the type's. Two elements neither of which is less than the other are equal here, whatever `==` would say. When several compare equal, `BinarySearch` reports the first, so the answer depends on the sequence rather than on how the search happened to divide it.
 
 ## Nothing here resizes anything
 
-None of these own the storage they work on, so a removal cannot shorten it. `Unique`, `RemoveValue` and
-`RemoveWhere` compact the survivors toward the front and report how many are left; the caller, who does own the
-storage, is what truncates it.
+None of these own the storage they work on, so a removal cannot shorten it. `Unique`, `RemoveValue` and `RemoveWhere` compact the survivors toward the front and report how many are left; the caller, who does own the storage, is what truncates it.
 
-What lies past that count is unspecified. It is neither cleared nor preserved — the elements there were moved from,
-and reading them back gives whatever the compaction happened to leave. For a `Copy` element that is a stale
-duplicate; for anything else it is a value with no owner.
+What lies past that count is unspecified. It is neither cleared nor preserved — the elements there were moved from, and reading them back gives whatever the compaction happened to leave. For a `Copy` element that is a stale duplicate; for anything else it is a value with no owner.
 
-`Partition` is unstable: it exchanges elements from both ends inward, which is what keeps it to one pass and no
-scratch storage, and means the order within each group is not the order it started in. A caller that needs the
-original order needs a stable partition, which needs somewhere to put things.
+`Partition` is unstable: it exchanges elements from both ends inward, which is what keeps it to one pass and no scratch storage, and means the order within each group is not the order it started in. A caller that needs the original order needs a stable partition, which needs somewhere to put things.
 
 ## Heaps
 
@@ -132,10 +115,9 @@ Type arguments are always explicit — Rux does not infer them for free function
 
 ```rux
 import Algorithms::{ Reverse, Unique };
-import Core::MutableSlice;
 
 var numbers: int32[3] = [3, 1, 1];
-let view = MutableSlice::From<int32>(@numbers[0], 3);
+let view = (@numbers[0])[..3];
 Reverse<int32>(view);
 
 // Unique compacts the survivors toward the front and returns how many are
@@ -143,14 +125,13 @@ Reverse<int32>(view);
 let kept = Unique<int32>(view);
 ```
 
-A [`Rux/Core`](../Core) `MutableSlice` works the same way, and a plain fixed array needs no view at all:
+A fixed array supplies a writable view directly through range indexing:
 
 ```rux
 import Algorithms::Rotate;
-import Core::MutableSlice;
 
 var values: int32[5] = [1, 2, 3, 4, 5];
-let view = MutableSlice::From<int32>(@values[0], 5);
+let view = (@values[0])[..5];
 Rotate<int32>(view, 2);
 ```
 
@@ -255,7 +236,7 @@ They are separate names rather than overloads of the operator forms. Rux resolve
 | `LowerBound`      | the first index not less than the value         | O(log n)   |
 | `UpperBound`      | the first index greater than the value          | O(log n)   |
 | `TryBinarySearch` | `true` + the lowest equivalent index            | O(log n)   |
-| `EqualRange`      | the `Range<uint>` of equivalent elements        | O(log n)   |
+| `EqualRange`      | the `uint..uint` of equivalent elements         | O(log n)   |
 
 The four bounded searches require the sequence to be sorted by the same `<`; `IsSorted` checks exactly that precondition. An unsorted sequence yields an unspecified index but never an access outside it.
 
@@ -327,11 +308,11 @@ algorithm is instantiated, not where it is declared.
 - **Unchecked indexing**, matching `Slice` and the `At`/`Set` pair on every [`Rux/Collections`](../Collections) container: a length larger than the storage is undefined behavior, not a reported error. Those containers also offer `TryGet`/`TrySet`, which check; nothing here does.
 - **Borrowing, not owning.** A view must not outlive the storage it borrows, and a `Vector` view is invalidated by any growth.
 - **No closures.** A predicate or comparator is a plain function value carrying no captured state; anything it needs beyond the elements must be reachable from the function itself.
-- **Caller-provided stability.** `StableSort` requires a scratch `MutableSlice<T>` as long as the input, preserving
+- **Caller-provided stability.** `StableSort` requires a scratch `var T[..]` as long as the input, preserving
   the package's zero-allocation property.
 - `Algorithms::CopyTo` copies typed elements, while [`Memory::Copy`](../Memory) copies raw bytes.
 
-`Slice<T>` and `MutableSlice<T>` are borrowed views and copy only their pointer and length, never their elements.
+`T[..]` and `var T[..]` are borrowed views and copy only their pointer and length, never their elements.
 Internal pointers used for indexing and pointer arithmetic remain raw. The few scalar output parameters also remain
 raw pointers; pass writable addresses such as `@smallest` and never pass null unless the function documents it.
 

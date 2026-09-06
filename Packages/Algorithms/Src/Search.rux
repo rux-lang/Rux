@@ -1,4 +1,3 @@
-import Core::Slice;
 // Searching a sequence that is already in order, and asking whether it is.
 //
 // Everything here assumes the slice is sorted by the same order the search uses. That is the caller's promise, and
@@ -17,7 +16,7 @@ import Core::Slice;
 //
 // Nothing here allocates or writes.
 
-import Core::{ Option, Ordering, Range };
+import Core::{ Option, Ordering };
 
 /// Whether `items` is in non-decreasing order.
 ///
@@ -30,7 +29,7 @@ import Core::{ Option, Ordering, Range };
 /// nothing.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/is-sorted
-pub func IsSorted<T>(items: Slice<T>) -> bool {
+pub func IsSorted<T>(items: T[..]) -> bool {
     return IsSortedUntil<T>(items) == items.length;
 }
 
@@ -45,7 +44,7 @@ pub func IsSorted<T>(items: Slice<T>) -> bool {
 /// Cannot fail. Runs in time proportional to the answer and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/is-sorted-until
-pub func IsSortedUntil<T>(items: Slice<T>) -> uint {
+pub func IsSortedUntil<T>(items: T[..]) -> uint {
     if items.length == 0 { return 0; }
     var index: uint = 1;
     while index < items.length {
@@ -66,7 +65,7 @@ pub func IsSortedUntil<T>(items: Slice<T>) -> uint {
 /// Cannot fail. Runs in time proportional to the logarithm of the length and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/lower-bound
-pub func LowerBound<T>(items: Slice<T>, value: T) -> uint {
+pub func LowerBound<T>(items: T[..], value: T) -> uint {
     var low: uint = 0;
     var high = items.length;
     while low < high {
@@ -91,7 +90,7 @@ pub func LowerBound<T>(items: Slice<T>, value: T) -> uint {
 /// Cannot fail. Runs in time proportional to the logarithm of the length and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/upper-bound
-pub func UpperBound<T>(items: Slice<T>, value: T) -> uint {
+pub func UpperBound<T>(items: T[..], value: T) -> uint {
     var low: uint = 0;
     var high = items.length;
     while low < high {
@@ -119,7 +118,7 @@ pub func UpperBound<T>(items: Slice<T>, value: T) -> uint {
 /// Cannot fail. Runs in time proportional to the logarithm of the length and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/binary-search
-pub func BinarySearch<T>(items: Slice<T>, value: T) -> Option<uint> {
+pub func BinarySearch<T>(items: T[..], value: T) -> Option<uint> {
     let at = LowerBound<T>(items, value);
     if at < items.length && !(value < items.data[at]) { return Option::Some<uint>(at); }
     return Option::None<uint>();
@@ -136,8 +135,8 @@ pub func BinarySearch<T>(items: Slice<T>, value: T) -> Option<uint> {
 /// Cannot fail. Runs in time proportional to the logarithm of the length and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/equal-range
-pub func EqualRange<T>(items: Slice<T>, value: T) -> Range<uint> {
-    return Range<uint> { start: LowerBound<T>(items, value), end: UpperBound<T>(items, value) };
+pub func EqualRange<T>(items: T[..], value: T) -> uint..uint {
+    return LowerBound<T>(items, value)..UpperBound<T>(items, value);
 }
 
 /// Whether `items` is in non-decreasing order under `compare`.
@@ -148,7 +147,7 @@ pub func EqualRange<T>(items: Slice<T>, value: T) -> Range<uint> {
 /// Cannot fail. Runs in time proportional to the length and allocates nothing beyond whatever `compare` does.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/is-sorted-by
-pub func IsSortedBy<T>(items: Slice<T>, compare: func(T, T) -> Ordering) -> bool {
+pub func IsSortedBy<T>(items: T[..], compare: func(T, T) -> Ordering) -> bool {
     return IsSortedUntilBy<T>(items, compare) == items.length;
 }
 
@@ -160,7 +159,7 @@ pub func IsSortedBy<T>(items: Slice<T>, compare: func(T, T) -> Ordering) -> bool
 /// Cannot fail. Runs in time proportional to the answer and allocates nothing beyond whatever `compare` does.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/is-sorted-until-by
-pub func IsSortedUntilBy<T>(items: Slice<T>, compare: func(T, T) -> Ordering) -> uint {
+pub func IsSortedUntilBy<T>(items: T[..], compare: func(T, T) -> Ordering) -> uint {
     if items.length == 0 { return 0; }
     var index: uint = 1;
     while index < items.length {
@@ -178,7 +177,7 @@ pub func IsSortedUntilBy<T>(items: Slice<T>, compare: func(T, T) -> Ordering) ->
 /// `compare` does.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/lower-bound-by
-pub func LowerBoundBy<T>(items: Slice<T>, value: T, compare: func(T, T) -> Ordering) -> uint {
+pub func LowerBoundBy<T>(items: T[..], value: T, compare: func(T, T) -> Ordering) -> uint {
     var low: uint = 0;
     var high = items.length;
     while low < high {
@@ -201,7 +200,7 @@ pub func LowerBoundBy<T>(items: Slice<T>, value: T, compare: func(T, T) -> Order
 /// `compare` does.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/upper-bound-by
-pub func UpperBoundBy<T>(items: Slice<T>, value: T, compare: func(T, T) -> Ordering) -> uint {
+pub func UpperBoundBy<T>(items: T[..], value: T, compare: func(T, T) -> Ordering) -> uint {
     var low: uint = 0;
     var high = items.length;
     while low < high {
@@ -225,7 +224,7 @@ pub func UpperBoundBy<T>(items: Slice<T>, value: T, compare: func(T, T) -> Order
 /// `compare` does.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/binary-search-by
-pub func BinarySearchBy<T>(items: Slice<T>, value: T, compare: func(T, T) -> Ordering) -> Option<uint> {
+pub func BinarySearchBy<T>(items: T[..], value: T, compare: func(T, T) -> Ordering) -> Option<uint> {
     let at = LowerBoundBy<T>(items, value, compare);
     if at < items.length && !compare(value, items.data[at]).IsLess() { return Option::Some<uint>(at); }
     return Option::None<uint>();
@@ -240,9 +239,6 @@ pub func BinarySearchBy<T>(items: Slice<T>, value: T, compare: func(T, T) -> Ord
 /// `compare` does.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/equal-range-by
-pub func EqualRangeBy<T>(items: Slice<T>, value: T, compare: func(T, T) -> Ordering) -> Range<uint> {
-    return Range<uint> {
-        start: LowerBoundBy<T>(items, value, compare),
-        end: UpperBoundBy<T>(items, value, compare)
-    };
+pub func EqualRangeBy<T>(items: T[..], value: T, compare: func(T, T) -> Ordering) -> uint..uint {
+    return LowerBoundBy<T>(items, value, compare)..UpperBoundBy<T>(items, value, compare);
 }

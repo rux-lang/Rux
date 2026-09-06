@@ -1,6 +1,5 @@
-import Core::Slice;
 import Algorithms::{ IsSorted, IsSortedBy, RequiredScratch, StableSort, StableSortBy };
-import Core::{ Assert, MutableSlice, Ordering };
+import Core::{ Assert, Ordering };
 
 // Stability is the whole reason this exists, and it is invisible unless equal elements carry something the ordering
 // ignores. So every element here has an origin the comparison never reads, and the checks are that equal elements
@@ -28,12 +27,12 @@ func ByKey(left: Ranked, right: Ranked) -> Ordering {
     return Ordering::Equal;
 }
 
-func Ranks(data: *var Ranked, length: uint) -> MutableSlice<Ranked> {
-    return MutableSlice<Ranked> { data: data, length: length };
+func Ranks(data: *var Ranked, length: uint) -> var Ranked[..] {
+    return (data)[..length];
 }
 
-func Ints(data: *var int32, length: uint) -> MutableSlice<int32> {
-    return MutableSlice<int32> { data: data, length: length };
+func Ints(data: *var int32, length: uint) -> var int32[..] {
+    return (data)[..length];
 }
 
 // Every equal run must be in ascending origin order, which is the order they were built in.
@@ -63,7 +62,7 @@ func Main() -> int {
     var scratch: Ranked[64];
     Assert(RequiredScratch(64) == 64, "the scratch a stable sort wants is as long as the sequence");
     Assert(StableSort<Ranked>(Ranks(@records[0], 64), Ranks(@scratch[0], 64)), "a stable sort with room succeeds");
-    Assert(IsSorted<Ranked>(Slice<Ranked> { data: @records[0], length: 64 }), "and leaves the sequence sorted");
+    Assert(IsSorted<Ranked>((@records[0])[..64]), "and leaves the sequence sorted");
     Assert(StableWithin(@records[0] as *Ranked, 64), "with every equal run in the order it arrived");
 
     // Every key really is present eight times, so the run check above had something to check.
@@ -114,7 +113,7 @@ func Main() -> int {
     }
     Assert(StableSortBy<Ranked>(Ranks(@records[0], 64), Ranks(@scratch[0], 64), ByKey),
            "a stable sort under a comparator succeeds");
-    Assert(IsSortedBy<Ranked>(Slice<Ranked> { data: @records[0], length: 64 }, ByKey), "and leaves it sorted");
+    Assert(IsSortedBy<Ranked>((@records[0])[..64], ByKey), "and leaves it sorted");
     Assert(StableWithin(@records[0] as *Ranked, 64), "with every equivalent run in the order it arrived");
     Assert(!StableSortBy<Ranked>(Ranks(@records[0], 64), Ranks(@scratch[0], 63), ByKey),
            "and one element short of enough scratch is still refused");
@@ -139,7 +138,7 @@ func Main() -> int {
         }
         Assert(StableSort<int32>(Ints(@values[0], length), Ints(@mirror[0], length)),
                "a reversed sequence of any length sorts");
-        Assert(IsSorted<int32>(Slice<int32> { data: @values[0], length: length }), "and comes out in order");
+        Assert(IsSorted<int32>((@values[0])[..length]), "and comes out in order");
         Assert(values[0] == 1, "smallest first");
         which++;
     }

@@ -1,4 +1,3 @@
-import Core::Slice;
 // Reducing a sequence to one value, and mapping one sequence onto another.
 //
 // A fold is the general form: an accumulator, a starting value, and a function that folds each element into it. The
@@ -16,7 +15,6 @@ import Core::Slice;
 //
 // Nothing here allocates.
 
-import Core::MutableSlice;
 
 /// Folds every element of `items` into an accumulator, left to right.
 ///
@@ -30,7 +28,7 @@ import Core::MutableSlice;
 /// Cannot fail. Runs in time proportional to the length and allocates nothing beyond whatever `combine` does.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/fold
-pub func Fold<T, A>(items: Slice<T>, initial: A, combine: func(A, T) -> A) -> A {
+pub func Fold<T, A>(items: T[..], initial: A, combine: func(A, T) -> A) -> A {
     var total = initial;
     var index: uint = 0;
     while index < items.length {
@@ -50,7 +48,7 @@ pub func Fold<T, A>(items: Slice<T>, initial: A, combine: func(A, T) -> A) -> A 
 /// Cannot fail. Runs in time proportional to the length and allocates nothing beyond whatever `combine` does.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/fold-right
-pub func FoldRight<T, A>(items: Slice<T>, initial: A, combine: func(A, T) -> A) -> A {
+pub func FoldRight<T, A>(items: T[..], initial: A, combine: func(A, T) -> A) -> A {
     var total = initial;
     var remaining = items.length;
     while remaining > 0 {
@@ -71,7 +69,7 @@ pub func FoldRight<T, A>(items: Slice<T>, initial: A, combine: func(A, T) -> A) 
 /// Cannot fail. Runs in time proportional to the length and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/sum
-pub func Sum<T>(items: Slice<T>, initial: T) -> T {
+pub func Sum<T>(items: T[..], initial: T) -> T {
     var total = initial;
     var index: uint = 0;
     while index < items.length {
@@ -91,7 +89,7 @@ pub func Sum<T>(items: Slice<T>, initial: T) -> T {
 /// Cannot fail. Runs in time proportional to the length and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/product
-pub func Product<T>(items: Slice<T>, initial: T) -> T {
+pub func Product<T>(items: T[..], initial: T) -> T {
     var total = initial;
     var index: uint = 0;
     while index < items.length {
@@ -112,7 +110,7 @@ pub func Product<T>(items: Slice<T>, initial: T) -> T {
 /// Runs in time proportional to the length and allocates nothing beyond whatever `transform` does.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/transform
-pub func Transform<T, U>(destination: MutableSlice<U>, source: Slice<T>, transform: func(T) -> U) -> bool {
+pub func Transform<T, U>(destination: var U[..], source: T[..], transform: func(T) -> U) -> bool {
     if destination.length != source.length { return false; }
     var index: uint = 0;
     while index < source.length {

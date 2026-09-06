@@ -1,6 +1,4 @@
-import Core::Slice;
 import Algorithms::{ Fold, Partition, PartitionPoint, RemoveWhere, Transform };
-import Core::MutableSlice;
 import Algorithms::{ AllOf, IsSorted, NoneOf, SequenceEqual };
 
 pub struct Record {
@@ -23,29 +21,29 @@ extend Record {
 
 // The mutations take views since they moved to slices. A struct literal cannot appear inside an `if` condition --
 // its brace opens the body -- so the views are built here.
-func Ints(data: *var int32, length: uint) -> MutableSlice<int32> {
-    return MutableSlice<int32> { data: data, length: length };
+func Ints(data: *var int32, length: uint) -> var int32[..] {
+    return (data)[..length];
 }
 
-func ReadInts(data: *int32, length: uint) -> Slice<int32> {
-    return Slice<int32> { data: data, length: length };
+func ReadInts(data: *int32, length: uint) -> int32[..] {
+    return (data)[..length];
 }
 
-func Records(data: *var Record, length: uint) -> MutableSlice<Record> {
-    return MutableSlice<Record> { data: data, length: length };
+func Records(data: *var Record, length: uint) -> var Record[..] {
+    return (data)[..length];
 }
 
-func ReadRecords(data: *Record, length: uint) -> Slice<Record> {
-    return Slice<Record> { data: data, length: length };
+func ReadRecords(data: *Record, length: uint) -> Record[..] {
+    return (data)[..length];
 }
 
 func Sorted<T>(data: *T, length: uint) -> bool {
-    return IsSorted<T>(Slice<T> { data: data, length: length });
+    return IsSorted<T>((data)[..length]);
 }
 
 func SameInts(left: *int32, right: *int32, length: uint) -> bool {
-    return SequenceEqual<int32>(Slice<int32> { data: left, length: length },
-                                Slice<int32> { data: right, length: length });
+    return SequenceEqual<int32>((left)[..length],
+                                (right)[..length]);
 }
 
 func IsEven(value: int32) -> bool {
@@ -125,8 +123,8 @@ func Main() -> int {
     if boundary != 4 { return 60; }
     // A slice literal cannot appear anywhere inside an `if` condition -- its brace is taken as the body -- so both
     // halves are named first.
-    let accepted = Slice<int32> { data: @split[0], length: boundary };
-    let rejected = Slice<int32> { data: @split[4], length: total - boundary };
+    let accepted = (@split[0])[..boundary];
+    let rejected = (@split[4])[..total - boundary];
     if !AllOf<int32>(accepted, IsEven) { return 61; }
     if !NoneOf<int32>(rejected, IsEven) { return 62; }
 

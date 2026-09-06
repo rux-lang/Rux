@@ -495,7 +495,7 @@ extend Deque<T> {
     /// https://rux-lang.dev/docs/api/collections/deque/make-contiguous
     pub func MakeContiguous(self: &var Deque<T>) {
         if self.capacity == 0 || self.head == 0 { return; }
-        Rotate<T>(MutableSlice<T> { data: self.data, length: self.capacity }, self.head);
+        Rotate<T>(self.data[..self.capacity], self.head);
         self.head = 0;
     }
 

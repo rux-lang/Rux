@@ -205,6 +205,25 @@ TEST_CASE("all literal encodings reject writable destinations") {
     }
 }
 
+TEST_CASE("element addresses preserve slice writability through immutable descriptor bindings") {
+    CHECK(Messages(R"(
+        func Address(view: var int[..], borrowed: &(var int[..])) {
+            let first: *var int = @view[0];
+            let second: *var int = @borrowed[0];
+            let nested: var int[..] = (@view[1])[..2];
+        }
+    )")
+              .empty());
+    const auto messages = Messages(R"(
+        func Frozen(view: int[..]) {
+            var descriptor = view;
+            let pointer: *var int = @descriptor[0];
+        }
+    )");
+    REQUIRE_EQ(messages.size(), 1);
+    CHECK(messages[0].contains("cannot assign '*int' to '*var int'"));
+}
+
 TEST_CASE("a writable slice weakens to a read-only one but not the reverse") {
     const auto messages = Messages(R"(
         func Weaken(view: var uint8[..]) -> uint8[..] { return view; }

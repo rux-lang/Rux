@@ -1,18 +1,16 @@
-import Core::Slice;
-import Algorithms::{ Fold, FoldRight, IsHeap, IsHeapBy, IsHeapUntil, IsSorted, MakeHeap, MakeHeapBy, MaxIndex,
-                     PopHeap, Product, PushHeap, PushHeapBy, SortHeap, SortHeapBy, Sum, Transform };
-import Core::{ Assert, MutableSlice, Ordering };
+import Algorithms::{ Fold, FoldRight, IsHeap, IsHeapBy, IsHeapUntil, IsSorted, MakeHeap, MakeHeapBy, MaxIndex, PopHeap, Product, PushHeap, PushHeapBy, SortHeap, SortHeapBy, Sum, Transform };
+import Core::{ Assert, Ordering };
 
 // A heap is an arrangement rather than an order, so what is checked is the arrangement itself -- every element at
 // least as large as its children -- rather than any particular layout. That way the test does not depend on which of
 // several valid heaps an implementation happens to build.
 
-func Ints(data: *var int32, length: uint) -> MutableSlice<int32> {
-    return MutableSlice<int32> { data: data, length: length };
+func Ints(data: *var int32, length: uint) -> var int32[..] {
+    return (data)[..length];
 }
 
-func ReadInts(data: *int32, length: uint) -> Slice<int32> {
-    return Slice<int32> { data: data, length: length };
+func ReadInts(data: *int32, length: uint) -> int32[..] {
+    return (data)[..length];
 }
 
 func Descending(left: int32, right: int32) -> Ordering {

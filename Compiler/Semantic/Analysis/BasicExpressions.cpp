@@ -977,6 +977,11 @@ bool AnalysisContext::PlaceIsImmutable(const Expr &place) {
         checkingBorrowProjectionRoot = true;
         const TypeRef objectType = CheckExpr(*index->object);
         checkingBorrowProjectionRoot = savedProjectionRoot;
+        const TypeRef &valueType =
+            objectType.kind == TypeRef::Kind::Reference && !objectType.inner.empty() ? objectType.inner[0] : objectType;
+        if (valueType.IsSlice()) {
+            return !valueType.IsWritableSlice();
+        }
         if ((objectType.kind == TypeRef::Kind::Pointer || objectType.kind == TypeRef::Kind::Reference) &&
             !objectType.inner.empty()) {
             return !objectType.inner[0].isMut;

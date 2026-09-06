@@ -1,6 +1,4 @@
-import Core::Slice;
-import Algorithms::{ AllOf, AnyOf, Compare, CompareBy, Contains, Count, CountWhere, IndexOf, IndexWhere,
-                     LastIndexOf, LastIndexWhere, Mismatch, NoneOf, SequenceEqual };
+import Algorithms::{ AllOf, AnyOf, Compare, CompareBy, Contains, Count, CountWhere, IndexOf, IndexWhere, LastIndexOf, LastIndexWhere, Mismatch, NoneOf, SequenceEqual };
 import Core::{ Assert, Ordering };
 
 // The linear queries. What is worth checking is not that a search finds a match -- it is the boundaries: an empty
@@ -41,8 +39,8 @@ func IsNegative(value: int32) -> bool {
     return value < 0;
 }
 
-func Ints(data: *int32, length: uint) -> Slice<int32> {
-    return Slice<int32> { data: data, length: length };
+func Ints(data: *int32, length: uint) -> int32[..] {
+    return (data)[..length];
 }
 
 func Main() -> int {
@@ -136,16 +134,16 @@ func Main() -> int {
     left[1] = Record { key: 5, origin: 0 };
     right[0] = Record { key: 1, origin: 9 };
     right[1] = Record { key: 7, origin: 9 };
-    let leftSlice = Slice<Record> { data: @left[0], length: 2 };
-    let rightSlice = Slice<Record> { data: @right[0], length: 2 };
+    let leftSlice = (@left[0])[..2];
+    let rightSlice = (@right[0])[..2];
     Assert(CompareBy<Record>(leftSlice, rightSlice, ByKey).IsLess(), "a comparator decides the order");
     Assert(CompareBy<Record>(rightSlice, leftSlice, ByKey).IsGreater(), "in both directions");
     Assert(CompareBy<Record>(leftSlice, leftSlice, ByKey).IsEqual(), "and a slice equals itself");
 
     // Equality covers every field, so records equal on one field alone are not equal.
     Assert(!SequenceEqual<Record>(leftSlice, rightSlice), "records equal on one field are not equal records");
-    Assert(CompareBy<Record>(Slice<Record> { data: @left[0], length: 1 },
-                             Slice<Record> { data: @right[0], length: 1 }, ByKey).IsEqual(),
+    Assert(CompareBy<Record>((@left[0])[..1],
+                             (@right[0])[..1], ByKey).IsEqual(),
            "though a comparator that reads one field says they are equivalent");
 
     return 0;

@@ -1,8 +1,5 @@
-import Core::Slice;
-import Algorithms::{ BinarySearch, IsHeap, IsSorted, LowerBound, MakeHeap, MaxIndex, MinIndex, Partition,
-                     RemoveValue, Reverse, Rotate, SequenceEqual, SortHeap, Sort, StableSort, Sum, Unique,
-                     UpperBound };
-import Core::{ Assert, MutableSlice };
+import Algorithms::{ BinarySearch, IsHeap, IsSorted, LowerBound, MakeHeap, MaxIndex, MinIndex, Partition, RemoveValue, Reverse, Rotate, SequenceEqual, SortHeap, Sort, StableSort, Sum, Unique, UpperBound };
+import Core::{ Assert };
 
 // The phase gate for algorithms: every operation checked against a naive implementation of the same thing, over
 // pseudorandom sequences, at many lengths. A hand-written case checks what its author thought of; this checks what
@@ -24,12 +21,12 @@ func NextRandom(state: *var uint64) -> uint64 {
     return value;
 }
 
-func Ints(data: *var int32, length: uint) -> MutableSlice<int32> {
-    return MutableSlice<int32> { data: data, length: length };
+func Ints(data: *var int32, length: uint) -> var int32[..] {
+    return (data)[..length];
 }
 
-func ReadInts(data: *int32, length: uint) -> Slice<int32> {
-    return Slice<int32> { data: data, length: length };
+func ReadInts(data: *int32, length: uint) -> int32[..] {
+    return (data)[..length];
 }
 
 func Same(left: *int32, right: *int32, length: uint) -> bool {

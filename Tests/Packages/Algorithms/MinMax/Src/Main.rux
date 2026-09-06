@@ -1,6 +1,4 @@
-import Core::Slice;
-import Algorithms::{ Clamp, ClampBy, Max, MaxIndex, MaxIndexBy, Min, MinIndex, MinIndexBy, MinMaxIndex,
-                     MinMaxIndexBy };
+import Algorithms::{ Clamp, ClampBy, Max, MaxIndex, MaxIndexBy, Min, MinIndex, MinIndexBy, MinMaxIndex, MinMaxIndexBy };
 import Core::{ Assert, Ordering };
 
 // The smallest and largest of a sequence. Two things are worth pinning down beyond the obvious: an empty slice has
@@ -37,9 +35,9 @@ func Main() -> int {
     storage[3] = 2;
     storage[4] = 9;
     storage[5] = 4;
-    let items = Slice<int32> { data: @storage[0], length: 6 };
-    let empty = Slice<int32> { data: null, length: 0 };
-    let single = Slice<int32> { data: @storage[0], length: 1 };
+    let items = (@storage[0])[..6];
+    let empty: int32[..] = [];
+    let single = (@storage[0])[..1];
 
     var at: uint = 0;
     Assert(MinIndex<int32>(items).TryIntoValue(@at) && at == 1, "the smallest element is found");
@@ -71,7 +69,7 @@ func Main() -> int {
     ranked[2] = Ranked { key: 8, origin: 102 };
     ranked[3] = Ranked { key: 1, origin: 103 };
     ranked[4] = Ranked { key: 8, origin: 104 };
-    let records = Slice<Ranked> { data: @ranked[0], length: 5 };
+    let records = (@ranked[0])[..5];
 
     Assert(MinIndex<Ranked>(records).TryIntoValue(@at) && at == 1, "the type's own ordering finds the smallest");
     Assert(ranked[at].origin == 101, "and takes the earliest of the tie");
@@ -83,7 +81,8 @@ func Main() -> int {
     Assert(ranked[at].origin == 102, "still taking the earliest of the tie");
     Assert(MaxIndexBy<Ranked>(records, ByKeyDescending).TryIntoValue(@at) && at == 1,
            "and the smallest key the largest element");
-    Assert(MinIndexBy<Ranked>(Slice<Ranked> { data: null, length: 0 }, ByKeyDescending).IsNone(),
+    let noRanks: Ranked[..] = [];
+    Assert(MinIndexBy<Ranked>(noRanks, ByKeyDescending).IsNone(),
            "an empty slice has no answer under any comparator");
 
     Assert(MinMaxIndexBy<Ranked>(records, ByKeyDescending, @low, @high), "one pass under a comparator reports both");

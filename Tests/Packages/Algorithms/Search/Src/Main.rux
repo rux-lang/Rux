@@ -1,7 +1,5 @@
-import Core::Range;
-import Core::{ Slice, string8 };
-import Algorithms::{ BinarySearch, BinarySearchBy, EqualRange, EqualRangeBy, IsSorted, IsSortedBy, IsSortedUntil,
-                     IsSortedUntilBy, LowerBound, LowerBoundBy, UpperBound, UpperBoundBy };
+
+import Algorithms::{ BinarySearch, BinarySearchBy, EqualRange, EqualRangeBy, IsSorted, IsSortedBy, IsSortedUntil, IsSortedUntilBy, LowerBound, LowerBoundBy, UpperBound, UpperBoundBy };
 import Core::{ Assert, Ordering };
 
 // The ordered searches. A binary search is easy to write in a way that works on the cases anyone thinks to try and
@@ -44,12 +42,12 @@ func LessInt32(left: int32, right: int32) -> Ordering {
     return Ordering::Equal;
 }
 
-func Ints(data: *int32, length: uint) -> Slice<int32> {
-    return Slice<int32> { data: data, length: length };
+func Ints(data: *int32, length: uint) -> int32[..] {
+    return (data)[..length];
 }
 
 // A linear count, so the bounds have something independent to agree with.
-func CountEqual(items: Slice<int32>, value: int32) -> uint {
+func CountEqual(items: int32[..], value: int32) -> uint {
     var found: uint = 0;
     var index: uint = 0;
     while index < items.length {
@@ -62,7 +60,7 @@ func CountEqual(items: Slice<int32>, value: int32) -> uint {
 }
 
 // Every claim the bounds make about one value, checked together and against the linear count.
-func CheckBounds(items: Slice<int32>, value: int32, wantLower: uint, wantUpper: uint) {
+func CheckBounds(items: int32[..], value: int32, wantLower: uint, wantUpper: uint) {
     Assert(LowerBound<int32>(items, value) == wantLower, "the lower bound is where the value starts");
     Assert(UpperBound<int32>(items, value) == wantUpper, "the upper bound is where it ends");
     let span = EqualRange<int32>(items, value);
@@ -149,7 +147,7 @@ func Main() -> int {
     ranked[2] = Ranked { key: 2, origin: 102 };
     ranked[3] = Ranked { key: 4, origin: 103 };
     ranked[4] = Ranked { key: 5, origin: 104 };
-    let records = Slice<Ranked> { data: @ranked[0], length: 5 };
+    let records = (@ranked[0])[..5];
     let probe = Ranked { key: 2, origin: 999 };
 
     Assert(IsSortedBy<Ranked>(records, ByKey), "the record slice is sorted by the comparator");

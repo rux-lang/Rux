@@ -1,7 +1,6 @@
-import Core::Slice;
 // Linear queries over a sequence that is in no particular order.
 //
-// Everything here reads a `Slice<T>` and returns an answer about it. A search that found something answers with the
+// Everything here reads a `T[..]` and returns an answer about it. A search that found something answers with the
 // index it found, wrapped in an `Option`, because "not found" is an ordinary outcome and a sentinel index is a bug
 // waiting for the one sequence long enough to reach it. An empty slice is not a special case anywhere: it contains
 // nothing, satisfies every universal claim, and matches no search.
@@ -24,7 +23,7 @@ import Core::{ Option, Ordering };
 /// Cannot fail. Runs in time proportional to the length, stopping at the first match, and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/contains
-pub func Contains<T>(items: Slice<T>, value: T) -> bool {
+pub func Contains<T>(items: T[..], value: T) -> bool {
     return IndexOf<T>(items, value).IsSome();
 }
 
@@ -35,7 +34,7 @@ pub func Contains<T>(items: Slice<T>, value: T) -> bool {
 /// Cannot fail. Runs in time proportional to the length and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/count
-pub func Count<T>(items: Slice<T>, value: T) -> uint {
+pub func Count<T>(items: T[..], value: T) -> uint {
     var found: uint = 0;
     var index: uint = 0;
     while index < items.length {
@@ -55,7 +54,7 @@ pub func Count<T>(items: Slice<T>, value: T) -> uint {
 /// Cannot fail. Runs in time proportional to the length, stopping at the first match, and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/index-of
-pub func IndexOf<T>(items: Slice<T>, value: T) -> Option<uint> {
+pub func IndexOf<T>(items: T[..], value: T) -> Option<uint> {
     var index: uint = 0;
     while index < items.length {
         if items.data[index] == value { return Option::Some<uint>(index); }
@@ -72,7 +71,7 @@ pub func IndexOf<T>(items: Slice<T>, value: T) -> Option<uint> {
 /// nothing.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/last-index-of
-pub func LastIndexOf<T>(items: Slice<T>, value: T) -> Option<uint> {
+pub func LastIndexOf<T>(items: T[..], value: T) -> Option<uint> {
     var remaining = items.length;
     while remaining > 0 {
         remaining = remaining - 1;
@@ -89,7 +88,7 @@ pub func LastIndexOf<T>(items: Slice<T>, value: T) -> Option<uint> {
 /// Cannot fail. Runs in time proportional to the length and allocates nothing beyond whatever `predicate` does.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/index-where
-pub func IndexWhere<T>(items: Slice<T>, predicate: func(T) -> bool) -> Option<uint> {
+pub func IndexWhere<T>(items: T[..], predicate: func(T) -> bool) -> Option<uint> {
     var index: uint = 0;
     while index < items.length {
         if predicate(items.data[index]) { return Option::Some<uint>(index); }
@@ -106,7 +105,7 @@ pub func IndexWhere<T>(items: Slice<T>, predicate: func(T) -> bool) -> Option<ui
 /// Cannot fail. Runs in time proportional to the length and allocates nothing beyond whatever `predicate` does.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/last-index-where
-pub func LastIndexWhere<T>(items: Slice<T>, predicate: func(T) -> bool) -> Option<uint> {
+pub func LastIndexWhere<T>(items: T[..], predicate: func(T) -> bool) -> Option<uint> {
     var remaining = items.length;
     while remaining > 0 {
         remaining = remaining - 1;
@@ -122,7 +121,7 @@ pub func LastIndexWhere<T>(items: Slice<T>, predicate: func(T) -> bool) -> Optio
 /// Cannot fail. Runs in time proportional to the length and allocates nothing beyond whatever `predicate` does.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/count-where
-pub func CountWhere<T>(items: Slice<T>, predicate: func(T) -> bool) -> uint {
+pub func CountWhere<T>(items: T[..], predicate: func(T) -> bool) -> uint {
     var found: uint = 0;
     var index: uint = 0;
     while index < items.length {
@@ -143,7 +142,7 @@ pub func CountWhere<T>(items: Slice<T>, predicate: func(T) -> bool) -> uint {
 /// beyond whatever `predicate` does.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/all-of
-pub func AllOf<T>(items: Slice<T>, predicate: func(T) -> bool) -> bool {
+pub func AllOf<T>(items: T[..], predicate: func(T) -> bool) -> bool {
     var index: uint = 0;
     while index < items.length {
         if !predicate(items.data[index]) { return false; }
@@ -160,7 +159,7 @@ pub func AllOf<T>(items: Slice<T>, predicate: func(T) -> bool) -> bool {
 /// beyond whatever `predicate` does.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/any-of
-pub func AnyOf<T>(items: Slice<T>, predicate: func(T) -> bool) -> bool {
+pub func AnyOf<T>(items: T[..], predicate: func(T) -> bool) -> bool {
     return IndexWhere<T>(items, predicate).IsSome();
 }
 
@@ -172,7 +171,7 @@ pub func AnyOf<T>(items: Slice<T>, predicate: func(T) -> bool) -> bool {
 /// beyond whatever `predicate` does.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/none-of
-pub func NoneOf<T>(items: Slice<T>, predicate: func(T) -> bool) -> bool {
+pub func NoneOf<T>(items: T[..], predicate: func(T) -> bool) -> bool {
     return !AnyOf<T>(items, predicate);
 }
 
@@ -185,7 +184,7 @@ pub func NoneOf<T>(items: Slice<T>, predicate: func(T) -> bool) -> bool {
 /// Cannot fail. Runs in time proportional to the shorter length and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/mismatch
-pub func Mismatch<T>(left: Slice<T>, right: Slice<T>) -> Option<uint> {
+pub func Mismatch<T>(left: T[..], right: T[..]) -> Option<uint> {
     let shorter = left.length < right.length ? left.length : right.length;
     var index: uint = 0;
     while index < shorter {
@@ -204,7 +203,7 @@ pub func Mismatch<T>(left: Slice<T>, right: Slice<T>) -> Option<uint> {
 /// Cannot fail. Runs in time proportional to the shorter length and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/sequence-equal
-pub func SequenceEqual<T>(left: Slice<T>, right: Slice<T>) -> bool {
+pub func SequenceEqual<T>(left: T[..], right: T[..]) -> bool {
     if left.length != right.length { return false; }
     return Mismatch<T>(left, right).IsNone();
 }
@@ -221,7 +220,7 @@ pub func SequenceEqual<T>(left: Slice<T>, right: Slice<T>) -> bool {
 /// Cannot fail. Runs in time proportional to the shorter length and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/compare
-pub func Compare<T>(left: Slice<T>, right: Slice<T>) -> Ordering {
+pub func Compare<T>(left: T[..], right: T[..]) -> Ordering {
     let shorter = left.length < right.length ? left.length : right.length;
     var index: uint = 0;
     while index < shorter {
@@ -243,7 +242,7 @@ pub func Compare<T>(left: Slice<T>, right: Slice<T>) -> Ordering {
 /// Cannot fail. Runs in time proportional to the shorter length and allocates nothing beyond whatever `compare` does.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/compare-by
-pub func CompareBy<T>(left: Slice<T>, right: Slice<T>, compare: func(T, T) -> Ordering) -> Ordering {
+pub func CompareBy<T>(left: T[..], right: T[..], compare: func(T, T) -> Ordering) -> Ordering {
     let shorter = left.length < right.length ? left.length : right.length;
     var index: uint = 0;
     while index < shorter {

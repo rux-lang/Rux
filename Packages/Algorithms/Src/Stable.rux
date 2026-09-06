@@ -18,7 +18,7 @@
 // Comparisons are O(n log n) for every input -- there is no bad case here at all, unlike a quicksort -- and the
 // movement is the same. What it costs over `Sort` is the storage and about a constant factor.
 
-import Core::{ MutableSlice, Ordering };
+import Core::{ Ordering };
 
 /// How much scratch storage a stable sort of `length` elements needs.
 ///
@@ -48,7 +48,7 @@ pub func RequiredScratch(length: uint) -> uint {
 /// Makes O(n log n) comparisons and moves for every input -- there is no bad case -- and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/stable-sort
-pub func StableSort<T>(items: MutableSlice<T>, scratch: MutableSlice<T>) -> bool {
+pub func StableSort<T>(items: var T[..], scratch: var T[..]) -> bool {
     if items.length < 2 { return true; }
     if scratch.length < RequiredScratch(items.length) { return false; }
 
@@ -107,7 +107,7 @@ pub func StableSort<T>(items: MutableSlice<T>, scratch: MutableSlice<T>) -> bool
 /// Makes O(n log n) comparisons and moves for every input, and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/stable-sort-by
-pub func StableSortBy<T>(items: MutableSlice<T>, scratch: MutableSlice<T>, compare: func(T, T) -> Ordering) -> bool {
+pub func StableSortBy<T>(items: var T[..], scratch: var T[..], compare: func(T, T) -> Ordering) -> bool {
     if items.length < 2 { return true; }
     if scratch.length < RequiredScratch(items.length) { return false; }
 
