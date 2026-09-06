@@ -6,18 +6,19 @@
 
 # Rux Programming Language
 
-| Platform | x86-64                                                                                                                                                                               | AArch64                                                                                                                                                                                 |
-| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| FreeBSD  | [![FreeBSD x86-64](https://github.com/rux-lang/Rux/actions/workflows/FreeBSD-x86_64.yml/badge.svg?branch=dev)](https://github.com/rux-lang/Rux/actions/workflows/FreeBSD-x86_64.yml) | [![FreeBSD AArch64](https://github.com/rux-lang/Rux/actions/workflows/FreeBSD-AArch64.yml/badge.svg?branch=dev)](https://github.com/rux-lang/Rux/actions/workflows/FreeBSD-AArch64.yml) |
-| Linux    | [![Linux x86-64](https://github.com/rux-lang/Rux/actions/workflows/Linux-x86_64.yml/badge.svg?branch=dev)](https://github.com/rux-lang/Rux/actions/workflows/Linux-x86_64.yml)       | [![Linux AArch64](https://github.com/rux-lang/Rux/actions/workflows/Linux-AArch64.yml/badge.svg?branch=dev)](https://github.com/rux-lang/Rux/actions/workflows/Linux-AArch64.yml)       |
-| macOS    | [![macOS x86-64](https://github.com/rux-lang/Rux/actions/workflows/macOS-x86_64.yml/badge.svg?branch=dev)](https://github.com/rux-lang/Rux/actions/workflows/macOS-x86_64.yml)       | [![macOS AArch64](https://github.com/rux-lang/Rux/actions/workflows/macOS-AArch64.yml/badge.svg?branch=dev)](https://github.com/rux-lang/Rux/actions/workflows/macOS-AArch64.yml)       |
-| Windows  | [![Windows x86-64](https://github.com/rux-lang/Rux/actions/workflows/Windows-x86_64.yml/badge.svg?branch=dev)](https://github.com/rux-lang/Rux/actions/workflows/Windows-x86_64.yml) | [![Windows AArch64](https://github.com/rux-lang/Rux/actions/workflows/Windows-AArch64.yml/badge.svg?branch=dev)](https://github.com/rux-lang/Rux/actions/workflows/Windows-AArch64.yml) |
-
+[![FreeBSD x86-64](https://github.com/rux-lang/Rux/actions/workflows/FreeBSD-x86_64.yml/badge.svg?branch=dev)](https://github.com/rux-lang/Rux/actions/workflows/FreeBSD-x86_64.yml)
+[![FreeBSD AArch64](https://github.com/rux-lang/Rux/actions/workflows/FreeBSD-AArch64.yml/badge.svg?branch=dev)](https://github.com/rux-lang/Rux/actions/workflows/FreeBSD-AArch64.yml)
+[![Linux x86-64](https://github.com/rux-lang/Rux/actions/workflows/Linux-x86_64.yml/badge.svg?branch=dev)](https://github.com/rux-lang/Rux/actions/workflows/Linux-x86_64.yml)
+[![Linux AArch64](https://github.com/rux-lang/Rux/actions/workflows/Linux-AArch64.yml/badge.svg?branch=dev)](https://github.com/rux-lang/Rux/actions/workflows/Linux-AArch64.yml)
+[![macOS x86-64](https://github.com/rux-lang/Rux/actions/workflows/macOS-x86_64.yml/badge.svg?branch=dev)](https://github.com/rux-lang/Rux/actions/workflows/macOS-x86_64.yml)
+[![macOS AArch64](https://github.com/rux-lang/Rux/actions/workflows/macOS-AArch64.yml/badge.svg?branch=dev)](https://github.com/rux-lang/Rux/actions/workflows/macOS-AArch64.yml)
+[![Windows x86-64](https://github.com/rux-lang/Rux/actions/workflows/Windows-x86_64.yml/badge.svg?branch=dev)](https://github.com/rux-lang/Rux/actions/workflows/Windows-x86_64.yml)
+[![Windows AArch64](https://github.com/rux-lang/Rux/actions/workflows/Windows-AArch64.yml/badge.svg?branch=dev)](https://github.com/rux-lang/Rux/actions/workflows/Windows-AArch64.yml)
 [![CI](https://github.com/rux-lang/Rux/actions/workflows/Ci.yml/badge.svg?branch=dev)](https://github.com/rux-lang/Rux/actions/workflows/Ci.yml)
 [![Release](https://img.shields.io/github/v/release/rux-lang/Rux?style=flat&logo=github&label=Release&color=green)](https://github.com/rux-lang/Rux/releases)
 [![License](https://img.shields.io/github/license/rux-lang/Rux?style=flat)](LICENSE.md)
 
-Rux is a fast, compiled, strongly typed, multi-paradigm programming language. The compiler is self-contained: its own x86-64 and AArch64 code generators, its own object format, and its own PE/ELF/Mach-O linkers produce a native executable with no assembler, no C compiler, and no external linker anywhere in the pipeline. Rux supports four operating systems — FreeBSD, Linux, macOS and Windows — on x86-64 and AArch64.
+Rux is a fast, compiled, strongly typed, multi-paradigm programming language. The compiler is self-contained: its own x86-64 and AArch64 code generators, its own object format, and its own PE/ELF/Mach-O linkers produce a native executable with no assembler, no C compiler, and no external linker anywhere in the pipeline. Rux supports four operating systems: FreeBSD, Linux, macOS and Windows (on x86-64 and AArch64).
 
 Debug builds preserve the unoptimized program structure, while Release builds use explicit, bounded HIR and LIR passes and remove unreachable private declarations before either native back end runs. Shared RCU module construction and a format-neutral link graph keep object and image behavior consistent across all eight targets.
 
