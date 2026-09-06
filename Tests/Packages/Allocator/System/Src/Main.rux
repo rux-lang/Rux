@@ -1,6 +1,5 @@
 import Core::uint;
-import Allocator::{ AllocError, Allocator, EmptyBlockAddress, IsEmptyBlock, Layout, LayoutOf, LayoutOfArray,
-                    NaturalAlignment, SystemAllocator };
+import Allocator::{ AllocError, Allocator, EmptyBlockAddress, IsEmptyBlock, Layout, LayoutOf, LayoutOfArray, NaturalAlignment, SystemAllocator };
 import Core::Assert;
 import Memory::{ IsPointerAligned, Set };
 

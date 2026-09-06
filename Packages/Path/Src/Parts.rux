@@ -6,7 +6,7 @@
 // points elsewhere. The lie is documented, deliberate, and cheap; the truth costs a filesystem and arrives with
 // canonicalization in the S tasks.
 
-import Core::{ Option, Slice };
+import Core::{ Option };
 
 extend Path {
     /// This path without its last component, or `None` where nothing is left to remove.
@@ -31,7 +31,7 @@ extend Path {
         while end > 1 && IsSeparator(units.data[end - 1]) {
             end = end - 1;
         }
-        let kept = Slice<OsUnit> { data: units.data, length: end };
+        let kept = (units.data)[..end];
         return Option::Some<Path>(Path::FromView(OsStringView::FromUnits(kept)));
     }
 
@@ -52,7 +52,7 @@ extend Path {
         while start > 0 && !IsSeparator(units.data[start - 1]) {
             start = start - 1;
         }
-        let name = Slice<OsUnit> { data: @units.data[start], length: end - start };
+        let name = (@units.data[start])[..end - start];
         return Option::Some<OsStringView>(OsStringView::FromUnits(name));
     }
 
@@ -69,7 +69,7 @@ extend Path {
         let units = whole.Units();
         let cut = LastDot(units);
         if cut == 0 || cut >= units.length { return Option::Some<OsStringView>(whole); }
-        let kept = Slice<OsUnit> { data: units.data, length: cut };
+        let kept = (units.data)[..cut];
         return Option::Some<OsStringView>(OsStringView::FromUnits(kept));
     }
 
@@ -85,14 +85,14 @@ extend Path {
         let units = whole.Units();
         let cut = LastDot(units);
         if cut == 0 || cut >= units.length { return Option::None<OsStringView>(); }
-        let kept = Slice<OsUnit> { data: @units.data[cut + 1], length: units.length - cut - 1 };
+        let kept = (@units.data[cut + 1])[..units.length - cut - 1];
         return Option::Some<OsStringView>(OsStringView::FromUnits(kept));
     }
 }
 
 // The index of the last dot that marks an extension: past position zero, so a leading dot is a name. The length
 // stands for "no dot".
-func LastDot(units: Slice<OsUnit>) -> uint {
+func LastDot(units: OsUnit[..]) -> uint {
     var index = units.length;
     while index > 1 {
         index = index - 1;

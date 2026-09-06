@@ -18,7 +18,6 @@
 // supported system gives, and says so.
 
 import Allocator::Allocator;
-import Core::Slice;
 import Io::{ IoError, IoErrorKind, WriteAll, Writer };
 import Path::{ OsStringView, OsUnit, Path, PathBuffer };
 import Text::TextError;
@@ -183,7 +182,7 @@ extend AtomicWrite {
 /// The one-shot form of the type above, for the common case where the whole file is already in hand.
 ///
 /// https://rux-lang.dev/docs/api/storage/write-atomically
-pub func WriteAtomically(allocator: Allocator, target: Path, contents: Slice<char8>) -> IoError {
+pub func WriteAtomically(allocator: Allocator, target: Path, contents: char8[..]) -> IoError {
     var error = IoError::Ok();
     var replacement = AtomicWrite::Begin(allocator, target, @error);
     if error.IsError() { return error; }

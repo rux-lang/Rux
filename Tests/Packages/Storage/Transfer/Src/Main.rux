@@ -1,28 +1,27 @@
-import Core::{ string, string8 };
+
 // A copy is the bytes and not an alias, a rename is the same name moved, a hard link is a second equal name,
 // and a symbolic link is a stored pointer -- each proven by mutating one side and watching the other.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, MutableSlice, Slice };
+import Core::{ Assert };
 import Io::{ IoError, IoErrorKind, Reader, ReadExact, WriteAll, Writer };
 import Path::{ OsString, Path };
-import Storage::{ CopyFile, CreateHardLink, CreateSymbolicLink, DeleteDirectory, DeleteFile, File, MakeDirectory,
-                  OpenOptions, Rename };
+import Storage::{ CopyFile, CreateHardLink, CreateSymbolicLink, DeleteDirectory, DeleteFile, File, MakeDirectory, OpenOptions, Rename };
 import Text::TextError;
 
 // The bytes a string spans, which is how a text overload reaches the slice one.
-func TextBytes(text: string) -> Slice<char8> {
-    return Slice<char8> { data: text.data, length: text.length };
+func TextBytes(text: char8[..]) -> char8[..] {
+    return (text.data)[..text.length];
 }
 
-func PathOf(allocator: Allocator, text: Slice<char8>, holder: *var OsString) -> Path {
+func PathOf(allocator: Allocator, text: char8[..], holder: *var OsString) -> Path {
     var textError = TextError::None;
     *holder = OsString::FromText(allocator, text, @textError);
     Assert(textError == TextError::None, "the name converts");
     return Path::FromView((*holder).View());
 }
 
-func WriteWhole(allocator: Allocator, path: Path, content: Slice<char8>) {
+func WriteWhole(allocator: Allocator, path: Path, content: char8[..]) {
     var error = IoError::Ok();
     var file = File::Open(allocator, path, OpenOptions::Writing(), @error);
     Assert(file.IsOpen() && error.IsOk(), "the file opens for writing");
@@ -32,14 +31,14 @@ func WriteWhole(allocator: Allocator, path: Path, content: Slice<char8>) {
 }
 
 // Reads the whole file and checks it equals `expected`, byte for byte, length included.
-func CheckWhole(allocator: Allocator, path: Path, expected: Slice<char8>) {
+func CheckWhole(allocator: Allocator, path: Path, expected: char8[..]) {
     var error = IoError::Ok();
     var file = File::Open(allocator, path, OpenOptions::Reading(), @error);
     Assert(file.IsOpen() && error.IsOk(), "the file opens for reading");
     var storage: char8[64];
     var size: uint64 = 0;
     Assert(file.Size(@size).IsOk() && size == expected.length as uint64, "it is exactly as long as expected");
-    let room = MutableSlice::From<char8>(@storage[0], expected.length);
+    let room = (@storage[0])[..expected.length];
     var source: Reader = file.Stream();
     Assert(ReadExact(source, room).IsOk(), "and reads whole");
     var index: uint = 0;

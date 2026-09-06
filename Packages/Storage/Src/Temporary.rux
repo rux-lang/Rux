@@ -1,4 +1,4 @@
-import Core::{ string, string8 };
+
 // Temporary files and directories: unguessable names, and cleanup that is not left to chance.
 //
 // The name comes from the entropy source rather than from a counter or the process id, because a predictable
@@ -13,7 +13,7 @@ import Core::{ string, string8 };
 // and the Unix trick of unlinking immediately leaves nothing a caller could pass to another process by name.
 
 import Allocator::Allocator;
-import Core::{ #target, Slice };
+import Core::{ #target };
 import Entropy::{ EntropyError, NextUint64 };
 import Io::{ IoError, IoErrorKind };
 import Path::{ OsString, OsStringView, OsUnit, Path, PathBuffer };
@@ -57,7 +57,7 @@ pub func TemporaryDirectory(allocator: Allocator, error: *var IoError) -> PathBu
         while length > 1u && IsSeparator(units[length - 1]) {
             length = length - 1;
         }
-        let view = OsStringView::FromUnits(Slice<OsUnit> { data: @units[0], length: length });
+        let view = OsStringView::FromUnits((@units[0])[..length]);
         var held = PathBuffer::FromPath(allocator, Path::FromView(view), @textError);
         if textError != TextError::None {
             *error = IoError::Of(IoErrorKind::Other);
@@ -79,7 +79,7 @@ pub func TemporaryDirectory(allocator: Allocator, error: *var IoError) -> PathBu
 }
 
 // Sixteen hex digits of entropy, appended to `prefix`, as one path segment.
-func RandomName(allocator: Allocator, prefix: Slice<char8>, error: *var IoError) -> OsString {
+func RandomName(allocator: Allocator, prefix: char8[..], error: *var IoError) -> OsString {
     *error = IoError::Ok();
     var entropyError = EntropyError::None;
     let bits = NextUint64(@entropyError);
@@ -135,7 +135,7 @@ extend TemporaryFile {
     /// collision, and the next name is tried.
     ///
     /// https://rux-lang.dev/docs/api/storage/temporary-file/create
-    pub func Create(allocator: Allocator, directory: Path, prefix: Slice<char8>,
+    pub func Create(allocator: Allocator, directory: Path, prefix: char8[..],
                 error: *var IoError) -> TemporaryFile {
         *error = IoError::Ok();
         var result = TemporaryFile {
@@ -241,7 +241,7 @@ extend TemporaryDirectoryHandle {
     /// Creates a new temporary directory in `directory`, named from `prefix` and sixteen hex digits of entropy.
     ///
     /// https://rux-lang.dev/docs/api/storage/temporary-directory-handle/create
-    pub func Create(allocator: Allocator, directory: Path, prefix: Slice<char8>,
+    pub func Create(allocator: Allocator, directory: Path, prefix: char8[..],
                 error: *var IoError) -> TemporaryDirectoryHandle {
         *error = IoError::Ok();
         var result = TemporaryDirectoryHandle { path: PathBuffer(allocator), owned: false };

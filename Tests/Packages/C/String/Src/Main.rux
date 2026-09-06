@@ -1,7 +1,5 @@
-import Core::string8;
 import Core::Assert;
-import C::{ free, malloc, memchr, memcmp, memcpy, memmove, memset, strcat, strchr, strcmp, strcpy, strcspn, strlen,
-            strncat, strncmp, strncpy, strpbrk, strrchr, strspn, strstr, strtok };
+import C::{ free, malloc, memchr, memcmp, memcpy, memmove, memset, strcat, strchr, strcmp, strcpy, strcspn, strlen, strncat, strncmp, strncpy, strpbrk, strrchr, strspn, strstr, strtok };
 
 // Each declaration is exercised through the runtime it binds, so a wrong argument order, a wrong width, or a symbol
 // that does not exist is caught here rather than at some caller's expense. The counted and the terminated families

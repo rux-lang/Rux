@@ -1,4 +1,3 @@
-import Core::string;
 // The phase gate's name question: a filesystem's names are not text the program chose, and everything here has
 // to carry them unchanged. Each name is created, found again by enumeration, reopened by the name enumeration
 // handed back, and deleted -- so a lossy step anywhere in that circle shows up as a name that cannot be found.
@@ -9,14 +8,14 @@ import Core::string;
 // UTF-8 and required to round-trip anyway.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, Slice };
+import Core::{ Assert };
 import Io::{ IoError, IoErrorKind };
 import Core::{ #target };
 import Path::{ OsString, OsStringView, OsUnit, Path, PathBuffer };
 import Storage::{ DeleteDirectory, DeleteFile, File, MakeDirectory, MetadataOf, OpenOptions, ReadDirectory };
 import Text::TextError;
 
-func PathOf(allocator: Allocator, text: string, holder: *var OsString) -> Path {
+func PathOf(allocator: Allocator, text: char8[..], holder: *var OsString) -> Path {
     var textError = TextError::None;
     *holder = OsString::FromText(allocator, text, @textError);
     Assert(textError == TextError::None, "the name converts");
@@ -25,7 +24,7 @@ func PathOf(allocator: Allocator, text: string, holder: *var OsString) -> Path {
 
 // Creates `name` inside `directory`, finds it by enumeration, reopens it under the name enumeration reported,
 // and deletes it. Anything lossy in that circle breaks one of the steps.
-func RoundTrip(allocator: Allocator, directory: Path, name: OsStringView, what: string) {
+func RoundTrip(allocator: Allocator, directory: Path, name: OsStringView, what: char8[..]) {
     var error = IoError::Ok();
     var textError = TextError::None;
     var full = PathBuffer::FromPath(allocator, directory, @textError);

@@ -1,6 +1,5 @@
 import Core::Assert;
-import Memory::{ PageAlign, PageAllocate, PageError, PageExecute, PageNone, PageProtect, PageRead, PageRelease,
-                 PageSize, PageWrite, Set };
+import Memory::{ PageAlign, PageAllocate, PageError, PageExecute, PageNone, PageProtect, PageRead, PageRelease, PageSize, PageWrite, Set };
 
 // The page layer is where four systems that agree on nothing are made to look the same, so what is checked here is
 // the shape of the agreement: that a length is rounded up rather than refused, that an empty request is reported

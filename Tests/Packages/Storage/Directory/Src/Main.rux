@@ -1,15 +1,14 @@
-import Core::string;
 // A directory is made, filled, read back name for name -- a non-ASCII name included, held losslessly in the
 // system's own units -- refused deletion while full, and deleted once empty.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, Slice };
+import Core::{ Assert };
 import Io::{ IoError, IoErrorKind };
 import Path::{ OsString, OsStringView, Path };
 import Storage::{ DeleteDirectory, DeleteFile, DirectoryIterator, File, MakeDirectory, OpenOptions, ReadDirectory };
 import Text::TextError;
 
-func PathOf(allocator: Allocator, text: string, holder: *var OsString) -> Path {
+func PathOf(allocator: Allocator, text: char8[..], holder: *var OsString) -> Path {
     var textError = TextError::None;
     *holder = OsString::FromText(allocator, text, @textError);
     Assert(textError == TextError::None, "the name converts");
@@ -23,7 +22,7 @@ func Touch(allocator: Allocator, path: Path) {
     Assert(made.Close().IsOk(), "and closed");
 }
 
-func NameOf(allocator: Allocator, text: string, holder: *var OsString) -> OsStringView {
+func NameOf(allocator: Allocator, text: char8[..], holder: *var OsString) -> OsStringView {
     var textError = TextError::None;
     *holder = OsString::FromText(allocator, text, @textError);
     Assert(textError == TextError::None, "the expected name converts");

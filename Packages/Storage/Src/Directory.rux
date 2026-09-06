@@ -6,7 +6,7 @@
 // chooses; nothing here sorts, because a sorted walk is a policy and this is a primitive.
 
 import Allocator::Allocator;
-import Core::{ #target, Slice };
+import Core::{ #target };
 import Io::{ IoError, IoErrorKind };
 import Path::{ OsString, OsStringView, OsUnit, Path };
 import Text::TextError;
@@ -261,7 +261,7 @@ extend DirectoryIterator {
                     length = length + 1;
                 }
                 if !IsDotEntry16(start, length) {
-                    let view = OsStringView::FromUnits(Slice<OsUnit> { data: start, length: length });
+                    let view = OsStringView::FromUnits((start)[..length]);
                     var textError = TextError::None;
                     *name = OsString::FromView(self.allocator, view, @textError);
                     if textError != TextError::None {
@@ -327,7 +327,7 @@ extend DirectoryIterator {
                 }
                 let start = (record as uint + nameStart) as *var char8;
                 if !IsDotEntry8(start, nameLength) {
-                    let view = OsStringView::FromUnits(Slice<OsUnit> { data: start, length: nameLength });
+                    let view = OsStringView::FromUnits((start)[..nameLength]);
                     var textError = TextError::None;
                     *name = OsString::FromView(self.allocator, view, @textError);
                     if textError != TextError::None {

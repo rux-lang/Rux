@@ -1,6 +1,5 @@
-import Core::string8;
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ #target, Assert, Slice };
+import Core::{ #target, Assert };
 import Path::{ OsString, OsStringView, OsUnit };
 import Text::TextError;
 

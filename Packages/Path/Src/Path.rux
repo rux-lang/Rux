@@ -9,7 +9,7 @@
 // facts is the whole platform difference at this layer, and it is confined to two functions.
 
 import Allocator::Allocator;
-import Core::{ #target, Option, Slice };
+import Core::{ #target, Option };
 import Text::TextError;
 
 /// Whether `unit` separates path segments on this system.
@@ -112,7 +112,7 @@ extend Path {
 /// https://rux-lang.dev/docs/api/path/component-iterator
 pub struct ComponentIterator {
     /// The units being walked.
-    units: Slice<OsUnit>;
+    units: OsUnit[..];
     /// Where the next component starts being looked for.
     cursor: uint;
 }
@@ -136,7 +136,7 @@ extend ComponentIterator {
         while self.cursor < self.units.length && !IsSeparator(self.units.data[self.cursor]) {
             self.cursor = self.cursor + 1;
         }
-        let segment = Slice<OsUnit> { data: @self.units.data[start], length: self.cursor - start };
+        let segment = (@self.units.data[start])[..self.cursor - start];
         return Option::Some<OsStringView>(OsStringView::FromUnits(segment));
     }
 }

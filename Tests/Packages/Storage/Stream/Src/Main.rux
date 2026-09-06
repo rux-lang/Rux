@@ -1,20 +1,20 @@
-import Core::{ string, string8 };
+
 // A file is a stream with a position: written through the Writer everything already speaks, read back through
 // the Reader, measured, cut, and stacked under the buffered machinery that has no idea it left memory.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, MutableSlice, Slice };
+import Core::{ Assert };
 import Io::{ BufferedReader, IoError, IoErrorKind, ReadExact, Reader, ReadTextLine, SeekFrom, Writer, WriteAll };
 import Path::{ OsString, Path };
 import Storage::{ File, OpenOptions };
 import Text::{ String, StringBuilder, StringView, TextError };
 
 // The bytes a string spans, which is how a text overload reaches the slice one.
-func TextBytes(text: string) -> Slice<char8> {
-    return Slice<char8> { data: text.data, length: text.length };
+func TextBytes(text: char8[..]) -> char8[..] {
+    return (text.data)[..text.length];
 }
 
-func View(bytes: string) -> StringView {
+func View(bytes: char8[..]) -> StringView {
     return StringView::FromBytes(bytes).ValueOr(StringView());
 }
 
@@ -40,7 +40,7 @@ func Main() -> int {
     var reading = File::Open(allocator, scratch, OpenOptions::Reading(), @error);
     Assert(reading.IsOpen() && error.IsOk(), "it reopens for reading");
     var storage: char8[16];
-    let head = MutableSlice::From<char8>(@storage[0], 4);
+    let head = (@storage[0])[..4];
     var source: Reader = reading.Stream();
     Assert(ReadExact(source, head).IsOk(), "the first four bytes read");
     Assert(storage[0] == c8'0' && storage[3] == c8'3', "and are the first four");
@@ -51,7 +51,7 @@ func Main() -> int {
     Assert(ReadExact(source, head).IsOk(), "the last four bytes read");
     Assert(storage[0] == c8'6' && storage[3] == c8'9', "and are the last four");
     var lone: uint = 0;
-    let room = MutableSlice::From<char8>(@storage[0], 4);
+    let room = (@storage[0])[..4];
     Assert(reading.Read(room, @lone).IsEnd(), "past them is the end");
     Assert(reading.Seek(SeekFrom::Current, 0, @position).IsOk() && position == 10u64,
            "and the position says so");

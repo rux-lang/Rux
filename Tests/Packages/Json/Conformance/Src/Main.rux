@@ -1,4 +1,4 @@
-import Core::{ string, string8 };
+
 // The coverage that is about the package as a whole rather than about one part of it.
 //
 // The differential check is the valuable one. The tree parser and the streaming reader are two independent
@@ -7,20 +7,19 @@ import Core::{ string, string8 };
 // same way, to survive it.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, MutableSlice, Slice };
+import Core::{ Assert };
 import Format::{ TextWriter };
 import Io::{ IoError, IoErrorKind, Reader };
-import Json::{ JsonEvent, JsonEventReader, JsonKind, JsonLexError, JsonLimits, JsonParseError, JsonParseOutcome,
-               JsonStyle, JsonValue, JsonWriteError, DuplicateKeyPolicy, Parse, ParseWith, WriteValue };
+import Json::{ JsonEvent, JsonEventReader, JsonKind, JsonLexError, JsonLimits, JsonParseError, JsonParseOutcome, JsonStyle, JsonValue, JsonWriteError, DuplicateKeyPolicy, Parse, ParseWith, WriteValue };
 import Text::{ String, StringBuilder, StringView, TextError };
 
 // The bytes a string spans, which is how a text overload reaches the slice one.
-func TextBytes(text: string) -> Slice<char8> {
-    return Slice<char8> { data: text.data, length: text.length };
+func TextBytes(text: char8[..]) -> char8[..] {
+    return (text.data)[..text.length];
 }
 
 struct SliceState {
-    bytes: Slice<char8>;
+    bytes: char8[..];
     offset: uint;
 }
 
@@ -29,7 +28,7 @@ struct SliceHandle {
 }
 
 extend SliceHandle : Reader {
-    func Read(self: &var SliceHandle, into: MutableSlice<char8>, filled: *var uint) -> IoError {
+    func Read(self: &var SliceHandle, into: var char8[..], filled: *var uint) -> IoError {
         *filled = 0;
         let state = self.state;
         let remaining = state.bytes.length - state.offset;
@@ -52,7 +51,7 @@ extend SliceHandle : Reader {
 }
 
 // Counts the values a streaming read reports, which is a shape the tree can also be asked for.
-func StreamCounts(allocator: Allocator, text: Slice<char8>, scalars: *var uint, opens: *var uint,
+func StreamCounts(allocator: Allocator, text: char8[..], scalars: *var uint, opens: *var uint,
                   names: *var uint) -> bool {
     var error = IoError::Ok();
     var state = SliceState { bytes: text, offset: 0 };
@@ -205,7 +204,7 @@ func Main() -> int {
         index = index + 1;
     }
     var nestOutcome = JsonParseOutcome { error: JsonParseError::None, lexical: JsonLexError::None, position: 0 };
-    var nested = Parse(allocator, Slice<char8> { data: @nest[0], length: 600 }, @nestOutcome);
+    var nested = Parse(allocator, (@nest[0])[..600], @nestOutcome);
     Assert(nestOutcome.error == JsonParseError::TooDeep,
            "three hundred levels exceeds the default depth and is refused rather than descended into");
 
@@ -214,7 +213,7 @@ func Main() -> int {
 
 // Parses, writes, parses again, and requires the two writings to agree -- then requires the streaming reader to
 // see the same shape as the tree.
-func CheckRoundTrip(allocator: Allocator, text: Slice<char8>, parsed: *var JsonParseOutcome,
+func CheckRoundTrip(allocator: Allocator, text: char8[..], parsed: *var JsonParseOutcome,
                     wrote: *var JsonWriteError) {
     var value = Parse(allocator, text, parsed);
     Assert(parsed.error == JsonParseError::None, "a well-formed document parses");
@@ -250,7 +249,7 @@ func CheckRoundTrip(allocator: Allocator, text: Slice<char8>, parsed: *var JsonP
 }
 
 // Requires a document to be refused, and the value handed back to be the empty one rather than a partial tree.
-func CheckRefused(allocator: Allocator, text: Slice<char8>, parsed: *var JsonParseOutcome) {
+func CheckRefused(allocator: Allocator, text: char8[..], parsed: *var JsonParseOutcome) {
     var value = Parse(allocator, text, parsed);
     Assert(parsed.error != JsonParseError::None, "a malformed document is refused");
 }

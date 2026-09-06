@@ -1,6 +1,5 @@
 import Core::{ #target, #Error };
-import C::{ c_double, c_float, c_int, c_long, c_longlong, c_uint,
-            c_ulong, c_ulonglong, size_t };
+import C::{ c_double, c_float, c_int, c_long, c_longlong, c_uint, c_ulong, c_ulonglong, size_t };
 
 // C's `<stdlib.h>`: allocation, numeric conversion, sorting and searching, and process control.
 //

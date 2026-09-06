@@ -12,7 +12,7 @@
 // destructor has nowhere to report failure.
 
 import Allocator::{ AllocError, Allocator, Layout };
-import Core::{ #target, Slice };
+import Core::{ #target };
 import Io::{ IoError, IoErrorKind };
 import Path::Path;
 

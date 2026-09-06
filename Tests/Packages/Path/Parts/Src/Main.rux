@@ -1,6 +1,6 @@
-import Core::{ string, string8 };
+
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, Option, Slice };
+import Core::{ Assert, Option };
 import Path::{ Join, Normalize, OsString, OsStringView, Path, PathBuffer };
 import Text::TextError;
 
@@ -10,7 +10,7 @@ import Text::TextError;
 
 // Whether `path`'s units spell `expected` with the platform's separators. The expectations are written with the
 // forward slash and compared unit-wise with either slash accepted, so one test serves both platforms.
-func Spells(path: Path, expected: string) -> bool {
+func Spells(path: Path, expected: char8[..]) -> bool {
     let units = path.AsView().Units();
     if units.length != expected.length {
         return false;

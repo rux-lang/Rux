@@ -1,22 +1,21 @@
-import Core::{ string, string8 };
+
 // The promise is that the target holds the old contents until it holds the new ones, and never anything in
 // between -- so the test reads the target part-way through a replacement and demands the old bytes, then
 // abandons a replacement and demands them still, then commits one and demands the new bytes exactly.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, MutableSlice, Slice };
+import Core::{ Assert };
 import Io::{ IoError, IoErrorKind, ReadExact, Reader, WriteAll, Writer };
 import Path::{ OsString, Path, PathBuffer };
-import Storage::{ AtomicWrite, DeleteDirectory, DeleteFile, DirectoryIterator, File, MakeDirectory, MetadataOf,
-                  OpenOptions, ReadDirectory, WriteAtomically };
+import Storage::{ AtomicWrite, DeleteDirectory, DeleteFile, DirectoryIterator, File, MakeDirectory, MetadataOf, OpenOptions, ReadDirectory, WriteAtomically };
 import Text::TextError;
 
 // The bytes a string spans, which is how a text overload reaches the slice one.
-func TextBytes(text: string) -> Slice<char8> {
-    return Slice<char8> { data: text.data, length: text.length };
+func TextBytes(text: char8[..]) -> char8[..] {
+    return (text.data)[..text.length];
 }
 
-func PathOf(allocator: Allocator, text: string, holder: *var OsString) -> Path {
+func PathOf(allocator: Allocator, text: char8[..], holder: *var OsString) -> Path {
     var textError = TextError::None;
     *holder = OsString::FromText(allocator, text, @textError);
     Assert(textError == TextError::None, "the name converts");
@@ -24,14 +23,14 @@ func PathOf(allocator: Allocator, text: string, holder: *var OsString) -> Path {
 }
 
 // Reads the whole file and checks it against `expected`, length included.
-func CheckWhole(allocator: Allocator, path: Path, expected: string) {
+func CheckWhole(allocator: Allocator, path: Path, expected: char8[..]) {
     var error = IoError::Ok();
     var file = File::Open(allocator, path, OpenOptions::Reading(), @error);
     Assert(file.IsOpen() && error.IsOk(), "the target opens for reading");
     var size: uint64 = 0;
     Assert(file.Size(@size).IsOk() && size == expected.length as uint64, "and is exactly as long as expected");
     var storage: char8[64];
-    let room = MutableSlice::From<char8>(@storage[0], expected.length);
+    let room = (@storage[0])[..expected.length];
     var source: Reader = file.Stream();
     Assert(ReadExact(source, room).IsOk(), "and reads whole");
     var index: uint = 0;

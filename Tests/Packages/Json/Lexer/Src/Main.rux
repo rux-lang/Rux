@@ -1,17 +1,16 @@
-import Core::string;
 // Most of this is refusals, because JSON's grammar is much narrower than JavaScript's and the difference is
 // exactly where a lenient lexer lets through documents other parsers reject. Every rejected form here is one
 // that a JavaScript engine would accept.
 
-import Core::{ Assert, Slice };
+import Core::{ Assert };
 import Json::{ JsonLexError, JsonLexer, JsonLimits, JsonTokenKind };
 
-func FirstToken(text: string) -> JsonTokenKind {
+func FirstToken(text: char8[..]) -> JsonTokenKind {
     var lexer = JsonLexer(text, JsonLimits::Default());
     return lexer.Next().kind;
 }
 
-func FirstError(text: string) -> JsonLexError {
+func FirstError(text: char8[..]) -> JsonLexError {
     var lexer = JsonLexer(text, JsonLimits::Default());
     return lexer.Next().error;
 }

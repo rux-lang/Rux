@@ -12,7 +12,7 @@
 // programs that genuinely need it and nothing in this package calls it.
 
 import Allocator::Allocator;
-import Core::{ #target, Slice };
+import Core::{ #target };
 import Io::{ IoError, IoErrorKind };
 import Path::{ IsSeparator, OsString, OsStringView, OsUnit, Path, PathBuffer, PreferredSeparator };
 import Path::{ IsAbsolute, Normalize };
@@ -58,7 +58,7 @@ pub func CurrentDirectory(allocator: Allocator, error: *var IoError) -> OsString
             *error = IoError::Of(IoErrorKind::LimitExceeded);
             return OsString(allocator);
         }
-        let view = OsStringView::FromUnits(Slice<OsUnit> { data: @units[0], length: written as uint });
+        let view = OsStringView::FromUnits((@units[0])[..written as uint]);
         var textError = TextError::None;
         let held = OsString::FromView(allocator, view, @textError);
         if textError != TextError::None {
@@ -76,7 +76,7 @@ pub func CurrentDirectory(allocator: Allocator, error: *var IoError) -> OsString
         while length < 4096u && units[length] != (0u8 as char8) {
             length = length + 1;
         }
-        let view = OsStringView::FromUnits(Slice<OsUnit> { data: @units[0], length: length });
+        let view = OsStringView::FromUnits((@units[0])[..length]);
         var textError = TextError::None;
         let held = OsString::FromView(allocator, view, @textError);
         if textError != TextError::None {
@@ -172,7 +172,7 @@ when #target.os != .Windows {
             // readlink truncates silently, so a full buffer cannot be told from a perfect fit.
             return IoError::Of(IoErrorKind::LimitExceeded);
         }
-        let view = OsStringView::FromUnits(Slice<OsUnit> { data: @units[0], length: written as uint });
+        let view = OsStringView::FromUnits((@units[0])[..written as uint]);
         var textError = TextError::None;
         *target = OsString::FromView(allocator, view, @textError);
         if textError != TextError::None { return IoError::Of(IoErrorKind::Other); }
@@ -301,7 +301,7 @@ pub func Canonicalize(allocator: Allocator, path: Path, error: *var IoError) -> 
             *error = IoError::Of(IoErrorKind::LimitExceeded);
             return PathBuffer(allocator);
         }
-        let view = OsStringView::FromUnits(Slice<OsUnit> { data: @units[0], length: written as uint });
+        let view = OsStringView::FromUnits((@units[0])[..written as uint]);
         var textError = TextError::None;
         var resolved = PathBuffer::FromPath(allocator, Path::FromView(view), @textError);
         if textError != TextError::None {

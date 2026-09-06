@@ -1,5 +1,4 @@
 // This native ABI fixture provides its own literal view declaration.
-intrinsic struct string8 { pub data: *char8; pub length: uint; }
 
 import Windows::{ FreeLibrary, GetProcAddress, LoadLibraryA };
 

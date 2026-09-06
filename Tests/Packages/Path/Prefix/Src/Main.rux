@@ -1,6 +1,5 @@
-import Core::string;
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ #target, Assert, Slice };
+import Core::{ #target, Assert };
 import Path::{ HasRoot, IsAbsolute, OsString, OsStringView, OsUnit, Path, PrefixKind, PrefixLength };
 import Text::{ String, StringView, TextError };
 
@@ -8,7 +7,7 @@ import Text::{ String, StringView, TextError };
 // actually has them: none on the Unix systems, where a name is rooted or it is not, and the Windows family with
 // its case left unfolded -- C: and c: are the same drive to the system and different units here, on purpose.
 
-func PathText(allocator: Allocator, text: string, error: *var TextError) -> OsString {
+func PathText(allocator: Allocator, text: char8[..], error: *var TextError) -> OsString {
     return OsString::FromText(allocator, text, error);
 }
 

@@ -1,10 +1,5 @@
-import Core::string8;
 import Core::Assert;
-import C::{
-    malloc, free, calloc, realloc,
-    abs, labs, llabs, atoi, atol, atoll, atof,
-    rand, srand
-};
+import C::{ malloc, free, calloc, realloc, abs, labs, llabs, atoi, atol, atoll, atof, rand, srand };
 
 func Main() -> int {
     // malloc hands back a writable block; every byte reads back what was written.

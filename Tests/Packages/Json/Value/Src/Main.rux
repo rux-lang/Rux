@@ -1,14 +1,13 @@
-import Core::string;
 // The number type is the interesting part: JSON declines to say what precision a number has, so the failure to
 // test for is one that an implementation converting everything to a double would pass -- an identifier past two
 // to the fifty-third coming back as a different identifier.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, Slice };
+import Core::{ Assert };
 import Json::{ JsonKind, JsonValue };
 import Text::{ String, StringView, TextError };
 
-func View(bytes: string) -> StringView {
+func View(bytes: char8[..]) -> StringView {
     return StringView::FromBytes(bytes).ValueOr(StringView());
 }
 

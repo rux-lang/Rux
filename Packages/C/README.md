@@ -15,7 +15,7 @@ rux add Rux/C
 | Module   | Covers                                                                     |
 | -------- | -------------------------------------------------------------------------- |
 | `Types`  | the C ABI's own types, `errno` access, and the opaque handles              |
-| `String` | `<string.h>` — counted memory operations and terminated byte strings       |
+| `String` | `<char8[..].h>` — counted memory operations and terminated byte strings       |
 | `StdIo`  | `<stdio.h>` — streams, `printf` family, `fopen`/`fclose`, positioning       |
 | `StdLib` | `<stdlib.h>` — allocation, conversion, process control, sorting, searching |
 | `Math`   | `<math.h>` — the elementary functions in both `double` and `float` forms   |

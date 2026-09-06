@@ -1,6 +1,5 @@
 import Core::{ Assert, IsInfinite, IsNaN, #target };
-import C::{ CLOCKS_PER_SEC, HUGE_VAL, HUGE_VALF, INFINITY, NAN, TIME_UTC, TimespecGet, clock, clock_t, difftime,
-            gmtime, mktime, scalbln, scalblnf, time, time_t, timespec, tm };
+import C::{ CLOCKS_PER_SEC, HUGE_VAL, HUGE_VALF, INFINITY, NAN, TIME_UTC, TimespecGet, clock, clock_t, difftime, gmtime, mktime, scalbln, scalblnf, time, time_t, timespec, tm };
 
 // The layouts are what a binding gets wrong silently. Each type is checked against the width its target's own header
 // gives it, and the two the runtime fills are checked by having the runtime fill them: a field declared wider than it

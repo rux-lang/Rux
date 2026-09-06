@@ -1,4 +1,4 @@
-// C's `<string.h>`: raw memory operations, and the byte-string operations that read until a terminator.
+// C's `<char8[..].h>`: raw memory operations, and the byte-string operations that read until a terminator.
 //
 // Two families live in one header for historical reasons, and they are not alike. The `mem*` calls take a length and
 // touch exactly that many bytes. The `str*` calls take no length and stop at the first zero byte, which means the

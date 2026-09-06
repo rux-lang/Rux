@@ -9,7 +9,7 @@
 // exactly as two names differing in case are: which spellings the system treats as one is the system's opinion,
 // and a path library that imitates it bakes today's opinion into tomorrow's comparison.
 
-import Core::{ #target, Slice };
+import Core::{ #target };
 
 /// The kind of prefix a path opens with.
 ///
@@ -86,7 +86,7 @@ when #target.os == .Windows {
     }
 
     // The end of `server\share` starting at `from`: past the server, its separator, and the share name.
-    func ShareEnd(units: Slice<uint16>, from: uint) -> uint {
+    func ShareEnd(units: uint16[..], from: uint) -> uint {
         var at = from;
         while at < units.length && !IsSeparator(units.data[at]) {
             at = at + 1;

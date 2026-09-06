@@ -1,4 +1,3 @@
-import Core::string;
 // What a JSON value is, and the one part of it the specification refuses to pin down.
 //
 // RFC 8259 says a number is a sequence of digits with an optional fraction and exponent, and then says
@@ -14,7 +13,7 @@ import Core::string;
 
 import Allocator::Allocator;
 import Collections::{ CollectionError, Vector };
-import Core::{ Ordering, Slice };
+import Core::{ Ordering };
 import Format::{ ParseFloat64, ParseInt64, ParseUint64 };
 import Text::{ String, StringView, TextError };
 
@@ -52,7 +51,7 @@ extend JsonNumber {
     /// A number from its text, which is copied.
     ///
     /// https://rux-lang.dev/docs/api/json/json-number/new
-    pub func New(allocator: Allocator, text: Slice<char8>, error: *var TextError) -> JsonNumber {
+    pub func New(allocator: Allocator, text: char8[..], error: *var TextError) -> JsonNumber {
         // The bytes of a number are always ASCII, so the validated constructor is sound here and cheaper than
         // re-checking them.
         var held = String::FromBytes(allocator, text, error);
@@ -194,7 +193,7 @@ extend JsonValue {
     /// A number, from the text it was written with.
     ///
     /// https://rux-lang.dev/docs/api/json/json-value/number
-    pub func Number(allocator: Allocator, text: Slice<char8>, error: *var TextError) -> JsonValue {
+    pub func Number(allocator: Allocator, text: char8[..], error: *var TextError) -> JsonValue {
         var held = JsonValue::Null(allocator);
         held.kind = JsonKind::Number;
         held.number = JsonNumber::New(allocator, text, error);
@@ -204,7 +203,7 @@ extend JsonValue {
     /// A string value.
     ///
     /// https://rux-lang.dev/docs/api/json/json-value/text
-    pub func Text(allocator: Allocator, value: Slice<char8>, error: *var TextError) -> JsonValue {
+    pub func Text(allocator: Allocator, value: char8[..], error: *var TextError) -> JsonValue {
         var held = JsonValue::Null(allocator);
         held.kind = JsonKind::Text;
         held.text = String::FromBytes(allocator, value, error);

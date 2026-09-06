@@ -1,4 +1,4 @@
-import Core::{ string, string8 };
+
 // Text as the operating system stores it, kept lossless.
 //
 // A filename is not text. On the Unix systems it is bytes with two exclusions -- no slash, no NUL -- and nothing
@@ -11,7 +11,7 @@ import Core::{ string, string8 };
 // representation; UTF-8 out is fallible, since the system's names are under no obligation to be text at all.
 
 import Allocator::{ AllocError, Allocator, Layout };
-import Core::{ #target, Option, Panic, Slice };
+import Core::{ #target, Option, Panic };
 import Memory::Copy;
 import Text::{ DecodeAt, FromAllocError, String, StringBuilder, TextError };
 
@@ -35,7 +35,7 @@ else {
 /// https://rux-lang.dev/docs/api/path/os-string-view
 pub struct OsStringView {
     /// The units, exactly as the system holds them.
-    pub units: Slice<OsUnit>;
+    pub units: OsUnit[..];
 }
 
 extend OsStringView {
@@ -43,13 +43,13 @@ extend OsStringView {
     ///
     /// https://rux-lang.dev/docs/api/path/os-string-view/new
     pub func OsStringView() -> OsStringView {
-        return OsStringView { units: Slice<OsUnit> { data: null, length: 0 } };
+        return OsStringView { units: [] };
     }
 
     /// A view over `units` as they stand: no validation, because there is nothing to validate against.
     ///
     /// https://rux-lang.dev/docs/api/path/os-string-view/from-units
-    pub func FromUnits(units: Slice<OsUnit>) -> OsStringView {
+    pub func FromUnits(units: OsUnit[..]) -> OsStringView {
         return OsStringView { units: units };
     }
 
@@ -70,7 +70,7 @@ extend OsStringView {
     /// The units themselves.
     ///
     /// https://rux-lang.dev/docs/api/path/os-string-view/units
-    pub func Units(self: &OsStringView) -> Slice<OsUnit> {
+    pub func Units(self: &OsStringView) -> OsUnit[..] {
         return self.units;
     }
 
@@ -177,7 +177,7 @@ extend OsString {
     ///
     /// https://rux-lang.dev/docs/api/path/os-string/view
     pub func View(self: &OsString) -> OsStringView {
-        return OsStringView { units: Slice<OsUnit> { data: self.data, length: self.length } };
+        return OsStringView { units: (self.data)[..self.length] };
     }
 
     /// Gives the block back and leaves text of no length.
@@ -215,7 +215,7 @@ extend OsString {
     /// The bytes must be well-formed UTF-8, which everything in `Rux/Text` produces and vouches for.
     ///
     /// https://rux-lang.dev/docs/api/path/os-string/from-text
-    pub func FromText(allocator: Allocator, text: Slice<char8>, error: *var TextError) -> OsString {
+    pub func FromText(allocator: Allocator, text: char8[..], error: *var TextError) -> OsString {
         when #target.os == .Windows {
             // Two passes: count the units, then fill them. A scalar below U+10000 is one unit and anything above
             // is a surrogate pair, which is the whole of UTF-16.
@@ -335,7 +335,7 @@ extend OsStringView {
 when #target.os == .Windows {
     // One scalar out of the UTF-16 units at `index`: a lone unit below the surrogates, or a high-low pair.
     // Anything else -- a low half first, a high half with no partner -- is not text.
-    func DecodeUnit(units: Slice<uint16>, index: uint, scalar: *var uint32, width: *var uint) -> bool {
+    func DecodeUnit(units: uint16[..], index: uint, scalar: *var uint32, width: *var uint) -> bool {
         let unit = units.data[index] as uint32;
         if unit < 0xD800 || unit > 0xDFFF {
             *scalar = unit;

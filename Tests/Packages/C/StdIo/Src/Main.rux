@@ -1,4 +1,3 @@
-import Core::string8;
 import Core::Assert;
 import C::{ sprintf, sscanf, malloc, free, puts, putchar };
 

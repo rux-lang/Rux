@@ -1,16 +1,15 @@
-import Core::{ string, string8 };
+
 // Absolute is arithmetic and Canonicalize is a question for the filesystem, and the test insists on the
 // difference: the same relative name resolves under both, but only one of them requires the file to be there.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, Slice };
+import Core::{ Assert };
 import Io::{ IoError, IoErrorKind };
 import Path::{ IsAbsolute, OsString, Path, PathBuffer };
-import Storage::{ Absolute, Canonicalize, CurrentDirectory, DeleteDirectory, DeleteFile, File, MakeDirectory,
-                  OpenOptions };
+import Storage::{ Absolute, Canonicalize, CurrentDirectory, DeleteDirectory, DeleteFile, File, MakeDirectory, OpenOptions };
 import Text::TextError;
 
-func PathOf(allocator: Allocator, text: string, holder: *var OsString) -> Path {
+func PathOf(allocator: Allocator, text: char8[..], holder: *var OsString) -> Path {
     var textError = TextError::None;
     *holder = OsString::FromText(allocator, text, @textError);
     Assert(textError == TextError::None, "the name converts");
@@ -25,7 +24,7 @@ func Touch(allocator: Allocator, path: Path) {
 }
 
 // Whether `buffer` ends with `tail`, which is how a path whose front is the machine's own is checked.
-func EndsWith(buffer: *PathBuffer, tail: string) -> bool {
+func EndsWith(buffer: *PathBuffer, tail: char8[..]) -> bool {
     let units = (*buffer).AsPath().name.Units();
     if units.length < tail.length {
         return false;

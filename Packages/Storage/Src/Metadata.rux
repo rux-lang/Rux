@@ -11,7 +11,7 @@
 // value rather than as a zero that pretends to be a date.
 
 import Allocator::Allocator;
-import Core::{ #target, Slice };
+import Core::{ #target };
 import Io::{ IoError, IoErrorKind };
 import Path::{ OsUnit, Path };
 import Time::Timestamp;

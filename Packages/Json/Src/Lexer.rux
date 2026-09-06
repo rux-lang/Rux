@@ -1,4 +1,4 @@
-import Core::{ string, string8 };
+
 // Turning JSON text into tokens, under limits a caller sets.
 //
 // The limits are the point of having a separate lexing stage at all. JSON is a recursive format read from
@@ -12,7 +12,7 @@ import Core::{ string, string8 };
 // The lexer never allocates. A string token points into the input and reports whether it needs unescaping, so a
 // document whose strings hold no escapes -- which is most of them -- is parsed without copying any of them.
 
-import Core::{ Slice };
+
 
 /// What kind of token this is.
 ///
@@ -145,7 +145,7 @@ pub struct JsonToken {
 /// https://rux-lang.dev/docs/api/json/json-lexer
 pub struct JsonLexer {
     /// The document.
-    input: Slice<char8>;
+    input: char8[..];
     /// How far reading has reached.
     pub position: uint;
     /// What the caller will accept.
@@ -156,7 +156,7 @@ extend JsonLexer {
     /// A lexer over `input` under `limits`.
     ///
     /// https://rux-lang.dev/docs/api/json/json-lexer/new
-    pub func JsonLexer(input: Slice<char8>, limits: JsonLimits) -> JsonLexer {
+    pub func JsonLexer(input: char8[..], limits: JsonLimits) -> JsonLexer {
         return JsonLexer { input: input, position: 0, limits: limits };
     }
 
@@ -190,7 +190,7 @@ extend JsonLexer {
         }
     }
 
-    func MatchesWord(self: &JsonLexer, word: Slice<char8>) -> bool {
+    func MatchesWord(self: &JsonLexer, word: char8[..]) -> bool {
         if self.position + word.length > self.input.length { return false; }
         var index: uint = 0;
         while index < word.length {

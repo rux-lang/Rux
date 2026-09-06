@@ -1,15 +1,13 @@
-import Core::string;
 // Writing is checked by round-tripping and by the exact text of the escapes, since an escape that is merely
 // legal rather than conventional makes output differ from every other writer for no benefit.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, Slice };
+import Core::{ Assert };
 import Format::{ TextWriter };
-import Json::{ JsonKind, JsonLexError, JsonParseError, JsonParseOutcome, JsonStyle, JsonValue, JsonWriteError,
-               Parse, WriteValue };
+import Json::{ JsonKind, JsonLexError, JsonParseError, JsonParseOutcome, JsonStyle, JsonValue, JsonWriteError, Parse, WriteValue };
 import Text::{ String, StringBuilder, StringView, TextError };
 
-func View(bytes: string) -> StringView {
+func View(bytes: char8[..]) -> StringView {
     return StringView::FromBytes(bytes).ValueOr(StringView());
 }
 

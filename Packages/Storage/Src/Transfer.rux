@@ -7,7 +7,7 @@
 // names, atomically within a volume, which is what makes it the publishing step of atomic replacement.
 
 import Allocator::{ AllocError, Allocator, Layout };
-import Core::{ #target, MutableSlice, Slice };
+import Core::{ #target };
 import Io::{ IoError, IoErrorKind, WriteAll, Writer };
 import Path::{ OsUnit, Path };
 
@@ -171,7 +171,7 @@ pub func CopyFile(allocator: Allocator, from: Path, to: Path) -> IoError {
             destination.Close();
             return IoError::Of(IoErrorKind::Other);
         }
-        let buffer = MutableSlice<char8> { data: block as *var char8, length: 65536 };
+        let buffer = (block as *var char8)[..65536];
 
         var outcome = IoError::Ok();
         var copying = true;
@@ -188,7 +188,7 @@ pub func CopyFile(allocator: Allocator, from: Path, to: Path) -> IoError {
                 }
             }
             else {
-                let piece = Slice<char8> { data: block as *char8, length: filled };
+                let piece = (block as *char8)[..filled];
                 var sink: Writer = destination.Stream();
                 let wrote = WriteAll(sink, piece);
                 if wrote.IsError() {

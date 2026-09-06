@@ -9,7 +9,7 @@
 // caller usually wants after writing is `Sync`, which is a different promise -- not "handed to the kernel" but
 // "acknowledged by the device", the one that holds through a power failure.
 
-import Core::{ #target, MutableSlice, Slice };
+import Core::{ #target };
 import Io::{ IoError, IoErrorKind, Reader, SeekFrom, Seeker, Writer };
 
 when #target.os {
@@ -36,7 +36,7 @@ extend File : Reader {
     /// Reads what one attempt yields into `into`; a short count is not an error and the end is `EndOfStream`.
     ///
     /// https://rux-lang.dev/docs/api/storage/file/read
-    pub func Read(self: &var File, into: MutableSlice<char8>, filled: *var uint) -> IoError {
+    pub func Read(self: &var File, into: var char8[..], filled: *var uint) -> IoError {
         *filled = 0;
         if !self.open { return ClosedFile(); }
         if into.length == 0 { return IoError::Ok(); }
@@ -67,7 +67,7 @@ extend File : Writer {
     /// Writes what one attempt takes of `bytes`; a short count means call again, which `WriteAll` does.
     ///
     /// https://rux-lang.dev/docs/api/storage/file/write
-    pub func Write(self: &var File, bytes: Slice<char8>, taken: *var uint) -> IoError {
+    pub func Write(self: &var File, bytes: char8[..], taken: *var uint) -> IoError {
         *taken = 0;
         if !self.open { return ClosedFile(); }
         if bytes.length == 0 { return IoError::Ok(); }
@@ -237,7 +237,7 @@ extend FileStream : Reader {
     /// Reads through the borrowed file.
     ///
     /// https://rux-lang.dev/docs/api/storage/file-stream/read
-    pub func Read(self: &var FileStream, into: MutableSlice<char8>, filled: *var uint) -> IoError {
+    pub func Read(self: &var FileStream, into: var char8[..], filled: *var uint) -> IoError {
         return (*self.file).Read(into, filled);
     }
 }
@@ -246,7 +246,7 @@ extend FileStream : Writer {
     /// Writes through the borrowed file.
     ///
     /// https://rux-lang.dev/docs/api/storage/file-stream/write
-    pub func Write(self: &var FileStream, bytes: Slice<char8>, taken: *var uint) -> IoError {
+    pub func Write(self: &var FileStream, bytes: char8[..], taken: *var uint) -> IoError {
         return (*self.file).Write(bytes, taken);
     }
 

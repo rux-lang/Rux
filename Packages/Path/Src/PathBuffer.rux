@@ -5,7 +5,7 @@
 // it; the buffer is where segments accumulate on the way to a system call.
 
 import Allocator::{ AllocError, Allocator, Layout };
-import Core::{ Option, Slice };
+import Core::{ Option };
 import Memory::Copy;
 import Text::{ FromAllocError, TextError };
 
@@ -65,7 +65,7 @@ extend PathBuffer {
     ///
     /// https://rux-lang.dev/docs/api/path/path-buffer/as-path
     pub func AsPath(self: &PathBuffer) -> Path {
-        return Path::FromView(OsStringView::FromUnits(Slice<OsUnit> { data: self.data, length: self.length }));
+        return Path::FromView(OsStringView::FromUnits((self.data)[..self.length]));
     }
 
     // Room for `additional` more units, by doubling.
@@ -98,7 +98,7 @@ extend PathBuffer {
     }
 
     // Appends raw units, structure unexamined.
-    func AppendUnits(self: &var PathBuffer, units: Slice<OsUnit>) -> TextError {
+    func AppendUnits(self: &var PathBuffer, units: OsUnit[..]) -> TextError {
         if units.length == 0 { return TextError::None; }
         let room = self.Reserve(units.length);
         if room.IsError() { return room; }

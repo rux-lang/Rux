@@ -1,4 +1,3 @@
-import Core::string;
 // Parsing a document into a value tree.
 //
 // The recursion is bounded by the depth limit rather than by the stack, which is the only way a recursive
@@ -13,7 +12,7 @@ import Core::string;
 
 import Allocator::Allocator;
 import Collections::CollectionError;
-import Core::{ MutableSlice, Slice };
+
 import Text::{ String, StringBuilder, StringView, TextError };
 
 /// What to do about an object containing the same name twice.
@@ -81,7 +80,7 @@ pub struct JsonParser {
     /// What to do about duplicate names.
     duplicates: DuplicateKeyPolicy;
     /// The whole document, which string spans point into.
-    input: Slice<char8>;
+    input: char8[..];
     /// How deep the current value is nested.
     depth: uint;
     /// Why parsing stopped.
@@ -92,7 +91,7 @@ extend JsonParser {
     /// A parser over `input` under `limits`, rejecting duplicate names.
     ///
     /// https://rux-lang.dev/docs/api/json/json-parser/new
-    pub func JsonParser(allocator: Allocator, input: Slice<char8>, limits: JsonLimits) -> JsonParser {
+    pub func JsonParser(allocator: Allocator, input: char8[..], limits: JsonLimits) -> JsonParser {
         return JsonParser {
             lexer: JsonLexer(input, limits),
             allocator: allocator,
@@ -130,7 +129,7 @@ extend JsonParser {
 
     // Resolves a string token's span into an owned string, unescaping only when the token said it was needed.
     func TakeText(self: &var JsonParser, token: JsonToken, error: *var TextError) -> String {
-        let span = Slice<char8> { data: @self.input.data[token.start], length: token.end - token.start };
+        let span = (@self.input.data[token.start])[..token.end - token.start];
         if !token.escaped { return String::FromBytes(self.allocator, span, error); }
         var builder = StringBuilder(self.allocator);
         var index: uint = 0;
@@ -144,7 +143,7 @@ extend JsonParser {
                 while run < span.length && (span.data[run] as uint8) != 0x5Cu8 {
                     run = run + 1;
                 }
-                *error = builder.AppendBytes(Slice<char8> { data: @span.data[index], length: run - index });
+                *error = builder.AppendBytes((@span.data[index])[..run - index]);
                 index = run;
                 continue;
             }
@@ -197,7 +196,7 @@ extend JsonParser {
 }
 
 // Four hexadecimal digits at `at`, as a value. The lexer has already established they are digits.
-func HexQuad(span: Slice<char8>, at: uint) -> uint32 {
+func HexQuad(span: char8[..], at: uint) -> uint32 {
     var value = 0u32;
     var index: uint = 0;
     while index < 4u {
@@ -233,7 +232,7 @@ extend JsonParser {
         if token.kind == JsonTokenKind::False { return JsonValue::Boolean(self.allocator, false); }
         if token.kind == JsonTokenKind::Number {
             var textError = TextError::None;
-            let span = Slice<char8> { data: @self.input.data[token.start], length: token.end - token.start };
+            let span = (@self.input.data[token.start])[..token.end - token.start];
             var value = JsonValue::Number(self.allocator, span, @textError);
             if textError != TextError::None { return self.Stop(JsonParseError::OutOfMemory); }
             return <-value;
@@ -399,7 +398,7 @@ extend JsonParser {
 /// Parses `input` into a value, rejecting duplicate names.
 ///
 /// https://rux-lang.dev/docs/api/json/parse
-pub func Parse(allocator: Allocator, input: Slice<char8>, outcome: *var JsonParseOutcome) -> JsonValue {
+pub func Parse(allocator: Allocator, input: char8[..], outcome: *var JsonParseOutcome) -> JsonValue {
     var parser = JsonParser(allocator, input, JsonLimits::Default());
     var value = parser.Parse();
     *outcome = parser.Outcome();
@@ -413,7 +412,7 @@ pub func Parse(allocator: Allocator, input: Slice<char8>, outcome: *var JsonPars
 /// in the same program cannot influence one another.
 ///
 /// https://rux-lang.dev/docs/api/json/parse-with
-pub func ParseWith(allocator: Allocator, input: Slice<char8>, limits: JsonLimits, duplicates: DuplicateKeyPolicy,
+pub func ParseWith(allocator: Allocator, input: char8[..], limits: JsonLimits, duplicates: DuplicateKeyPolicy,
                outcome: *var JsonParseOutcome) -> JsonValue {
     var parser = JsonParser(allocator, input, limits);
     parser.SetDuplicatePolicy(duplicates);

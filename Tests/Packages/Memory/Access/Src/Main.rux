@@ -1,8 +1,6 @@
 import Core::uint;
 import Core::Assert;
-import Memory::{ AlignDown, AlignUp, AlignUpChecked, Alloc, Free, IsAligned, IsPointerAligned, LoadBigEndian,
-                 LoadLittleEndian, LoadUnaligned, ReverseBlock, Set, StoreBigEndian, StoreLittleEndian,
-                 StoreUnaligned, ZeroizeBlock };
+import Memory::{ AlignDown, AlignUp, AlignUpChecked, Alloc, Free, IsAligned, IsPointerAligned, LoadBigEndian, LoadLittleEndian, LoadUnaligned, ReverseBlock, Set, StoreBigEndian, StoreLittleEndian, StoreUnaligned, ZeroizeBlock };
 
 // The two things these get wrong quietly: rounding up past the end of the range, and reading a value at an address
 // the type is not aligned for. Both are checked here, the second by deliberately working one byte off alignment.

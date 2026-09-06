@@ -1,4 +1,3 @@
-import Core::string;
 // Opening asks two questions -- what may happen, and what to do about existence -- and every answer is checked
 // where it can be checked deterministically: against a name that cannot exist, a file this test just made, and
 // requests that contradict themselves. The scratch file lives under Bin/, which is ignored and rewritten.
@@ -10,7 +9,7 @@ import Path::{ OsString, Path };
 import Storage::{ File, NativeKind, OpenOptions, TranslateNative };
 import Text::TextError;
 
-func PathOf(allocator: Allocator, text: string, holder: *var OsString) -> Path {
+func PathOf(allocator: Allocator, text: char8[..], holder: *var OsString) -> Path {
     var textError = TextError::None;
     *holder = OsString::FromText(allocator, text, @textError);
     Assert(textError == TextError::None, "the name converts");

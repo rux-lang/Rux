@@ -1,6 +1,5 @@
 import Core::{ Assert, OperatingSystem, #target };
-import C::{ CLOCKS_PER_SEC, TIME_UTC, TimespecGet, clock, difftime, free, gmtime, localtime, malloc, mktime,
-            time, timespec };
+import C::{ CLOCKS_PER_SEC, TIME_UTC, TimespecGet, clock, difftime, free, gmtime, localtime, malloc, mktime, time, timespec };
 
 func Main() -> int {
     // difftime is the plain numeric difference of two calendar times.

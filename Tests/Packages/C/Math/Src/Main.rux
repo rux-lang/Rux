@@ -1,9 +1,5 @@
 import Core::Assert;
-import C::{
-    sqrt, sqrtf, cbrt, fabs, floor, ceil, trunc, round,
-    pow, fmax, fmin, fmod, copysign, fdim, hypot,
-    exp, log, log2, sin, cos, tan, ldexp
-};
+import C::{ sqrt, sqrtf, cbrt, fabs, floor, ceil, trunc, round, pow, fmax, fmin, fmod, copysign, fdim, hypot, exp, log, log2, sin, cos, tan, ldexp };
 
 // A tolerance check for the results that are not exact in binary floating point.
 func Close(actual: float64, expected: float64) -> bool {

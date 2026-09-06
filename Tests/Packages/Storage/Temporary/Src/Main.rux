@@ -1,18 +1,17 @@
-import Core::{ string, string8 };
+
 // Two names in a row must differ, the file must actually exist while it is held, and it must be gone once the
 // handle is done with it -- through Close, and through a scope ending without one.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, MutableSlice, Slice };
+import Core::{ Assert };
 import Io::{ IoError, IoErrorKind, ReadExact, Reader, SeekFrom, WriteAll, Writer };
 import Path::{ OsString, Path, PathBuffer };
-import Storage::{ DeleteFile, File, MetadataOf, OpenOptions, TemporaryDirectory, TemporaryDirectoryHandle,
-                  TemporaryFile };
+import Storage::{ DeleteFile, File, MetadataOf, OpenOptions, TemporaryDirectory, TemporaryDirectoryHandle, TemporaryFile };
 import Text::TextError;
 
 // The bytes a string spans, which is how a caller holding text reaches an entry point that takes bytes.
-func TextBytes(text: string) -> Slice<char8> {
-    return Slice<char8> { data: text.data, length: text.length };
+func TextBytes(text: char8[..]) -> char8[..] {
+    return (text.data)[..text.length];
 }
 
 // Whether two paths hold the same units.
@@ -79,7 +78,7 @@ func Main() -> int {
     var position: uint64 = 0;
     Assert(first.file.Seek(SeekFrom::Start, 0, @position).IsOk(), "and rewinds");
     var storage: char8[16];
-    let room = MutableSlice::From<char8>(@storage[0], 12);
+    let room = (@storage[0])[..12];
     var source: Reader = first.file.Stream();
     Assert(ReadExact(source, room).IsOk(), "and reads back what was written");
     Assert(storage[0] == c8'h' && storage[11] == c8'y', "byte for byte");

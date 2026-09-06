@@ -1,4 +1,4 @@
-import Core::{ string, string8 };
+
 // Writing a value back out, compactly or for a human.
 //
 // Two things here are not negotiable. Strings are escaped exactly as RFC 8259 requires and no more: the quote,
@@ -11,7 +11,7 @@ import Core::{ string, string8 };
 // problem into an interoperation problem somewhere far away. Refusing is the only honest answer; a caller who
 // has a non-finite value has to decide what it means, and only the caller can.
 
-import Core::{ MutableSlice, Slice };
+
 import Format::TextWriter;
 import Text::TextError;
 
@@ -56,7 +56,7 @@ extend JsonStyle {
 }
 
 // The sixteen hex digits, lower case, which is what the escape form uses.
-const JsonHexDigits: string = "0123456789abcdef";
+const JsonHexDigits: char8[..] = "0123456789abcdef";
 
 /// Writes the escaped form of `text`, including its surrounding quotes.
 ///
@@ -65,7 +65,7 @@ const JsonHexDigits: string = "0123456789abcdef";
 /// into escapes -- which is legal but makes output several times larger for no gain.
 ///
 /// https://rux-lang.dev/docs/api/json/write-escaped
-pub func WriteEscaped(writer: &var TextWriter, text: Slice<char8>) -> JsonWriteError {
+pub func WriteEscaped(writer: &var TextWriter, text: char8[..]) -> JsonWriteError {
     var sink = writer;
     var quote: char8[1];
     quote[0] = 0x22u8 as char8;
@@ -114,7 +114,7 @@ pub func WriteEscaped(writer: &var TextWriter, text: Slice<char8>) -> JsonWriteE
         }
         if escapeLength > 0u {
             if index > runStart {
-                let run = Slice<char8> { data: @text.data[runStart], length: index - runStart };
+                let run = (@text.data[runStart])[..index - runStart];
                 if sink.Write(run) != TextError::None { return JsonWriteError::Failed; }
             }
             if sink.Write(escape[0..escapeLength]) != TextError::None { return JsonWriteError::Failed; }
@@ -123,7 +123,7 @@ pub func WriteEscaped(writer: &var TextWriter, text: Slice<char8>) -> JsonWriteE
         index = index + 1u;
     }
     if index > runStart {
-        let run = Slice<char8> { data: @text.data[runStart], length: index - runStart };
+        let run = (@text.data[runStart])[..index - runStart];
         if sink.Write(run) != TextError::None { return JsonWriteError::Failed; }
     }
     if sink.Write(quote[0..1]) != TextError::None { return JsonWriteError::Failed; }
@@ -132,7 +132,7 @@ pub func WriteEscaped(writer: &var TextWriter, text: Slice<char8>) -> JsonWriteE
 
 // Whether a number's text is something JSON can carry. The tree holds numbers as text, so the only way a
 // non-finite value gets in is a caller writing one there deliberately -- and this is where it is caught.
-func IsFiniteNumberText(text: Slice<char8>) -> bool {
+func IsFiniteNumberText(text: char8[..]) -> bool {
     if text.length == 0u { return false; }
     var index: uint = 0;
     while index < text.length {
@@ -145,7 +145,7 @@ func IsFiniteNumberText(text: Slice<char8>) -> bool {
     return true;
 }
 
-func WriteBytes(writer: &var TextWriter, bytes: Slice<char8>) -> JsonWriteError {
+func WriteBytes(writer: &var TextWriter, bytes: char8[..]) -> JsonWriteError {
     var sink = writer;
     return sink.Write(bytes) == TextError::None ? JsonWriteError::None : JsonWriteError::Failed;
 }
