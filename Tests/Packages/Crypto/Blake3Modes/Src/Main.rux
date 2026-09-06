@@ -1,14 +1,14 @@
-import Core::{ string, string8 };
+
 // The property that matters for modes is separation: the same bytes under different modes, keys or contexts must
 // give unrelated output, and a mode that quietly ignored its flag would produce identical results here. So most
 // of this test is inequalities, which is unusual and is exactly right for what is being checked.
 
-import Core::{ Assert, MutableSlice, Slice };
+import Core::{ Assert, MutableSlice };
 import Crypto::{ Blake3, Blake3DeriveKey, Blake3KeyedOf, Blake3Of, Digest, Equal };
 
 // The bytes a string spans, which is how a caller holding text reaches an entry point that takes bytes.
-func TextBytes(text: string) -> Slice<char8> {
-    return Slice<char8> { data: text.data, length: text.length };
+func TextBytes(text: char8[..]) -> char8[..] {
+    return (text.data)[..text.length];
 }
 
 func Main() -> int {
@@ -21,8 +21,8 @@ func Main() -> int {
         index = index + 1;
     }
     otherKey[31] = (otherKey[31] as uint8 ^ 1u8) as char8;
-    let keyBytes = Slice<char8> { data: @key[0], length: 32 };
-    let otherKeyBytes = Slice<char8> { data: @otherKey[0], length: 32 };
+    let keyBytes = (@key[0])[..32];
+    let otherKeyBytes = (@otherKey[0])[..32];
 
     var unkeyed: char8[32];
     var keyed: char8[32];
@@ -31,22 +31,22 @@ func Main() -> int {
     Blake3KeyedOf(keyBytes, TextBytes("message"), MutableSlice::From<char8>(@keyed[0], 32));
     Blake3KeyedOf(otherKeyBytes, TextBytes("message"), MutableSlice::From<char8>(@otherKeyed[0], 32));
 
-    let unkeyedBytes = Slice<char8> { data: @unkeyed[0], length: 32 };
-    let keyedBytes = Slice<char8> { data: @keyed[0], length: 32 };
-    let otherKeyedBytes = Slice<char8> { data: @otherKeyed[0], length: 32 };
+    let unkeyedBytes = (@unkeyed[0])[..32];
+    let keyedBytes = (@keyed[0])[..32];
+    let otherKeyedBytes = (@otherKeyed[0])[..32];
     Assert(!Equal(unkeyedBytes, keyedBytes), "a keyed hash differs from the unkeyed hash of the same message");
     Assert(!Equal(keyedBytes, otherKeyedBytes), "and two keys one bit apart give unrelated results");
 
     // A keyed hash is deterministic and incremental like any other.
     var replay: char8[32];
     Blake3KeyedOf(keyBytes, TextBytes("message"), MutableSlice::From<char8>(@replay[0], 32));
-    Assert(Equal(keyedBytes, Slice<char8> { data: @replay[0], length: 32 }), "a keyed hash repeats exactly");
+    Assert(Equal(keyedBytes, (@replay[0])[..32]), "a keyed hash repeats exactly");
     var incremental = Blake3::NewKeyed(keyBytes);
     incremental.Update(TextBytes("mes"));
     incremental.Update(TextBytes("sage"));
     var incrementalOut: char8[32];
     incremental.Finish(MutableSlice::From<char8>(@incrementalOut[0], 32));
-    Assert(Equal(keyedBytes, Slice<char8> { data: @incrementalOut[0], length: 32 }),
+    Assert(Equal(keyedBytes, (@incrementalOut[0])[..32]),
            "and splits the same way an unkeyed one does");
 
     // Keyed hashing across a chunk boundary, so the key reaches the tree rather than only the first block.
@@ -56,25 +56,25 @@ func Main() -> int {
         long[index] = ((index % 251u) as uint8) as char8;
         index = index + 1;
     }
-    let longBytes = Slice<char8> { data: @long[0], length: 3000 };
+    let longBytes = (@long[0])[..3000];
     var longKeyed: char8[32];
     Blake3KeyedOf(keyBytes, longBytes, MutableSlice::From<char8>(@longKeyed[0], 32));
     var longUnkeyed: char8[32];
     Blake3Of(longBytes, MutableSlice::From<char8>(@longUnkeyed[0], 32));
-    Assert(!Equal(Slice<char8> { data: @longKeyed[0], length: 32 },
-                  Slice<char8> { data: @longUnkeyed[0], length: 32 }),
+    Assert(!Equal((@longKeyed[0])[..32],
+                  (@longUnkeyed[0])[..32]),
            "the key still separates a multi-chunk message");
     var longIncremental = Blake3::NewKeyed(keyBytes);
     index = 0;
     while index < 3000u {
-        let single = Slice<char8> { data: @long[index], length: 1 };
+        let single = (@long[index])[..1];
         longIncremental.Update(single);
         index = index + 1;
     }
     var longIncrementalOut: char8[32];
     longIncremental.Finish(MutableSlice::From<char8>(@longIncrementalOut[0], 32));
-    Assert(Equal(Slice<char8> { data: @longKeyed[0], length: 32 },
-                 Slice<char8> { data: @longIncrementalOut[0], length: 32 }),
+    Assert(Equal((@longKeyed[0])[..32],
+                 (@longIncrementalOut[0])[..32]),
            "and a keyed byte-at-a-time hash agrees across chunk boundaries");
 
     // Key derivation: the context separates, the material separates, and neither resembles the other modes.
@@ -87,16 +87,16 @@ func Main() -> int {
                     MutableSlice::From<char8>(@derivedTwo[0], 32));
     Blake3DeriveKey(TextBytes("example.com 2026-08-22 encryption key"), TextBytes("material"),
                     MutableSlice::From<char8>(@derivedOther[0], 32));
-    let oneBytes = Slice<char8> { data: @derivedOne[0], length: 32 };
-    let twoBytes = Slice<char8> { data: @derivedTwo[0], length: 32 };
-    let otherBytes = Slice<char8> { data: @derivedOther[0], length: 32 };
+    let oneBytes = (@derivedOne[0])[..32];
+    let twoBytes = (@derivedTwo[0])[..32];
+    let otherBytes = (@derivedOther[0])[..32];
     Assert(Equal(oneBytes, twoBytes), "the same context and material derive the same key");
     Assert(!Equal(oneBytes, otherBytes), "a different context derives an unrelated key from the same material");
 
     var differentMaterial: char8[32];
     Blake3DeriveKey(TextBytes("example.com 2026-08-22 signing key"), TextBytes("other material"),
                     MutableSlice::From<char8>(@differentMaterial[0], 32));
-    Assert(!Equal(oneBytes, Slice<char8> { data: @differentMaterial[0], length: 32 }),
+    Assert(!Equal(oneBytes, (@differentMaterial[0])[..32]),
            "and different material derives an unrelated key under the same context");
 
     // All three modes on the same bytes are mutually unrelated, which is the whole point of the flags.
@@ -104,8 +104,8 @@ func Main() -> int {
     Blake3KeyedOf(keyBytes, TextBytes("material"), MutableSlice::From<char8>(@asKeyed[0], 32));
     var asPlain: char8[32];
     Blake3Of(TextBytes("material"), MutableSlice::From<char8>(@asPlain[0], 32));
-    let keyedOfMaterial = Slice<char8> { data: @asKeyed[0], length: 32 };
-    let plainOfMaterial = Slice<char8> { data: @asPlain[0], length: 32 };
+    let keyedOfMaterial = (@asKeyed[0])[..32];
+    let plainOfMaterial = (@asPlain[0])[..32];
     Assert(!Equal(oneBytes, keyedOfMaterial), "a derived key is not the keyed hash of the same material");
     Assert(!Equal(oneBytes, plainOfMaterial), "nor its plain hash");
     Assert(!Equal(keyedOfMaterial, plainOfMaterial), "and those two differ from each other");
@@ -114,7 +114,7 @@ func Main() -> int {
     var longDerived: char8[128];
     Blake3DeriveKey(TextBytes("example.com 2026-08-22 signing key"), TextBytes("material"),
                     MutableSlice::From<char8>(@longDerived[0], 128));
-    Assert(Equal(oneBytes, Slice<char8> { data: @longDerived[0], length: 32 }),
+    Assert(Equal(oneBytes, (@longDerived[0])[..32]),
            "a longer derived key starts with the shorter one");
 
     return 0;

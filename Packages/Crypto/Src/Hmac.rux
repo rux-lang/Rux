@@ -12,7 +12,7 @@
 // Not needed for BLAKE3 or SHA-3, which resist length extension and can be keyed directly -- but supported for
 // them anyway, since a protocol that specifies HMAC specifies HMAC.
 
-import Core::{ MutableSlice, Slice };
+import Core::{ MutableSlice };
 
 // The byte repeated to make the inner key.
 const HmacInnerPad: uint8 = 0x36;
@@ -53,7 +53,7 @@ extend Hmac<D> {
     /// they are the same key after this step. A shorter key is padded with zeros.
     ///
     /// https://rux-lang.dev/docs/api/crypto/hmac/new
-    pub func Hmac(prototype: D, key: Slice<char8>) -> Hmac<D> {
+    pub func Hmac(prototype: D, key: char8[..]) -> Hmac<D> {
         var probe = prototype;
         let blockLength = probe.BlockLength();
         let digestLength = probe.DigestLength();
@@ -88,21 +88,21 @@ extend Hmac<D> {
             padded[index] = ((shortened[index] as uint8) ^ HmacInnerPad) as char8;
             index = index + 1;
         }
-        state.inner.Update(Slice<char8> { data: @padded[0], length: blockLength });
+        state.inner.Update((@padded[0])[..blockLength]);
 
         index = 0;
         while index < blockLength {
             padded[index] = ((shortened[index] as uint8) ^ HmacOuterPad) as char8;
             index = index + 1;
         }
-        state.outer.Update(Slice<char8> { data: @padded[0], length: blockLength });
+        state.outer.Update((@padded[0])[..blockLength]);
         return state;
     }
 
     /// Adds `bytes` to the message being authenticated.
     ///
     /// https://rux-lang.dev/docs/api/crypto/hmac/update
-    pub func Update<D: Digest>(self: &var Hmac<D>, bytes: Slice<char8>) {
+    pub func Update<D: Digest>(self: &var Hmac<D>, bytes: char8[..]) {
         self.inner.Update(bytes);
     }
 
@@ -112,7 +112,7 @@ extend Hmac<D> {
     pub func Finish<D: Digest>(self: &var Hmac<D>, into: MutableSlice<char8>) {
         var innerDigest: char8[64];
         self.inner.Finish(MutableSlice::From<char8>(@innerDigest[0], self.digestLength));
-        self.outer.Update(Slice<char8> { data: @innerDigest[0], length: self.digestLength });
+        self.outer.Update((@innerDigest[0])[..self.digestLength]);
         self.outer.Finish(into);
     }
 
@@ -127,7 +127,7 @@ extend Hmac<D> {
 /// The HMAC of `message` under `key`, in one call.
 ///
 /// https://rux-lang.dev/docs/api/crypto/hmac-of
-pub func HmacOf<D: Digest>(prototype: D, key: Slice<char8>, message: Slice<char8>, into: MutableSlice<char8>) {
+pub func HmacOf<D: Digest>(prototype: D, key: char8[..], message: char8[..], into: MutableSlice<char8>) {
     var state = Hmac<D>(prototype, key);
     state.Update(message);
     state.Finish(into);

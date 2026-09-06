@@ -1,4 +1,3 @@
-import Core::string8;
 // What a digest is, and the two operations every user of one gets wrong.
 //
 // **This package has not been independently reviewed.** Every algorithm matches its published vectors, and that
@@ -20,7 +19,7 @@ import Core::string8;
 // Clearing a secret with an ordinary loop is dead code to a compiler, since nothing reads the buffer afterwards,
 // and it is entitled to remove it.
 
-import Core::{ #target, #Error, MutableSlice, Slice };
+import Core::{ #target, #Error, MutableSlice };
 
 /// An incremental digest.
 ///
@@ -35,7 +34,7 @@ pub interface Digest {
     /// legal and changes nothing.
     ///
     /// https://rux-lang.dev/docs/api/crypto/digest/update
-    func Update(self: &var Digest, bytes: Slice<char8>);
+    func Update(self: &var Digest, bytes: char8[..]);
 
     /// Writes the digest into `into` and leaves the state unusable for further updates.
     ///
@@ -71,7 +70,7 @@ pub interface Digest {
 /// pretending otherwise would mean reading past one of them.
 ///
 /// https://rux-lang.dev/docs/api/crypto/equal
-pub func Equal(left: Slice<char8>, right: Slice<char8>) -> bool {
+pub func Equal(left: char8[..], right: char8[..]) -> bool {
     if left.length != right.length { return false; }
     var difference = 0u8;
     var index: uint = 0;

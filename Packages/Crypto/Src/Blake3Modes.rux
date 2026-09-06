@@ -9,7 +9,7 @@
 // Keyed hashing is a MAC, and a proper one: BLAKE3 is not vulnerable to length extension, so unlike SHA-2 it can
 // be keyed by simply starting from the key rather than needing HMAC's nested construction.
 
-import Core::{ MutableSlice, Slice };
+import Core::{ MutableSlice };
 
 // This hash is keyed.
 const Blake3KeyedHash: uint32 = 16;
@@ -19,7 +19,7 @@ const Blake3DeriveKeyContext: uint32 = 32;
 const Blake3DeriveKeyMaterial: uint32 = 64;
 
 // The thirty-two byte key, read as eight little-endian words.
-func Blake3KeyWords(key: Slice<char8>, words: *var uint32) {
+func Blake3KeyWords(key: char8[..], words: *var uint32) {
     var index: uint = 0;
     while index < 8u {
         var word = 0u32;
@@ -46,7 +46,7 @@ extend Blake3 {
     /// from the key is a sound MAC on its own.
     ///
     /// https://rux-lang.dev/docs/api/crypto/blake3/new-keyed
-    pub func NewKeyed(key: Slice<char8>) -> Blake3 {
+    pub func NewKeyed(key: char8[..]) -> Blake3 {
         var words: uint32[8];
         Blake3KeyWords(key, @words[0]);
         return Blake3::Start(words, Blake3KeyedHash);
@@ -60,14 +60,14 @@ extend Blake3 {
     /// must not be a variable, since two callers who accidentally share one lose the separation entirely.
     ///
     /// https://rux-lang.dev/docs/api/crypto/blake3/new-derive-key
-    pub func NewDeriveKey(context: Slice<char8>) -> Blake3 {
+    pub func NewDeriveKey(context: char8[..]) -> Blake3 {
         // The first stage hashes the context under the unkeyed initial value, producing the key for the second.
         var contextHasher = Blake3::Start(Blake3InitialValue, Blake3DeriveKeyContext);
         contextHasher.Update(context);
         var contextKey: char8[32];
         contextHasher.Finish(MutableSlice::From<char8>(@contextKey[0], 32));
         var words: uint32[8];
-        Blake3KeyWords(Slice<char8> { data: @contextKey[0], length: 32 }, @words[0]);
+        Blake3KeyWords((@contextKey[0])[..32], @words[0]);
         return Blake3::Start(words, Blake3DeriveKeyMaterial);
     }
 }
@@ -75,7 +75,7 @@ extend Blake3 {
 /// The keyed BLAKE3 hash of `bytes` under `key`, in one call.
 ///
 /// https://rux-lang.dev/docs/api/crypto/blake3-keyed-of
-pub func Blake3KeyedOf(key: Slice<char8>, bytes: Slice<char8>, into: MutableSlice<char8>) {
+pub func Blake3KeyedOf(key: char8[..], bytes: char8[..], into: MutableSlice<char8>) {
     var hasher = Blake3::NewKeyed(key);
     hasher.Update(bytes);
     hasher.Finish(into);
@@ -84,7 +84,7 @@ pub func Blake3KeyedOf(key: Slice<char8>, bytes: Slice<char8>, into: MutableSlic
 /// A key derived from `material` under `context`, at whatever length `into` asks for.
 ///
 /// https://rux-lang.dev/docs/api/crypto/blake3-derive-key
-pub func Blake3DeriveKey(context: Slice<char8>, material: Slice<char8>, into: MutableSlice<char8>) {
+pub func Blake3DeriveKey(context: char8[..], material: char8[..], into: MutableSlice<char8>) {
     var hasher = Blake3::NewDeriveKey(context);
     hasher.Update(material);
     hasher.Finish(into);

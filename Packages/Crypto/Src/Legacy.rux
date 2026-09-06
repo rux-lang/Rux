@@ -13,7 +13,7 @@
 // Neither is a `Digest` implementation, deliberately. A generic function taking any digest should not silently
 // accept these, and code that wants one must name it.
 
-import Core::{ MutableSlice, Slice };
+import Core::{ MutableSlice };
 
 // MD5's round constants: the integer parts of the absolute sines of one through sixty-four, scaled.
 const Md5Constants: uint32[64] = [
@@ -143,7 +143,7 @@ extend LegacyMd5 {
     /// Adds `bytes` to the message.
     ///
     /// https://rux-lang.dev/docs/api/crypto/legacy-md5/update
-    pub func Update(self: &var LegacyMd5, bytes: Slice<char8>) {
+    pub func Update(self: &var LegacyMd5, bytes: char8[..]) {
         self.length = self.length + (bytes.length as uint64);
         var index: uint = 0;
         while index < bytes.length {
@@ -198,7 +198,7 @@ extend LegacyMd5 {
 /// The MD5 digest of `bytes`. **Broken; see the note at the top of this file.**
 ///
 /// https://rux-lang.dev/docs/api/crypto/legacy-md5-of
-pub func LegacyMd5Of(bytes: Slice<char8>, into: MutableSlice<char8>) {
+pub func LegacyMd5Of(bytes: char8[..], into: MutableSlice<char8>) {
     var digest = LegacyMd5();
     digest.Update(bytes);
     digest.Finish(into);
@@ -301,7 +301,7 @@ extend LegacySha1 {
     /// Adds `bytes` to the message.
     ///
     /// https://rux-lang.dev/docs/api/crypto/legacy-sha1/update
-    pub func Update(self: &var LegacySha1, bytes: Slice<char8>) {
+    pub func Update(self: &var LegacySha1, bytes: char8[..]) {
         self.length = self.length + (bytes.length as uint64);
         var index: uint = 0;
         while index < bytes.length {
@@ -355,7 +355,7 @@ extend LegacySha1 {
 /// The SHA-1 digest of `bytes`. **Broken for collision resistance; see the note at the top of this file.**
 ///
 /// https://rux-lang.dev/docs/api/crypto/legacy-sha1-of
-pub func LegacySha1Of(bytes: Slice<char8>, into: MutableSlice<char8>) {
+pub func LegacySha1Of(bytes: char8[..], into: MutableSlice<char8>) {
     var digest = LegacySha1();
     digest.Update(bytes);
     digest.Finish(into);

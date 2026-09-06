@@ -14,7 +14,7 @@
 // means nothing without knowing whether it came from the start of a chunk, the end of one, a parent node, or the
 // root -- and mixing that into the compression is what stops one part of the tree being substituted for another.
 
-import Core::{ MutableSlice, Slice };
+import Core::{ MutableSlice };
 
 // Bytes per chunk: the unit each leaf of the tree covers.
 const Blake3ChunkLength: uint = 1024;
@@ -195,7 +195,7 @@ extend Blake3Chunk {
     /// growing. Compressing eagerly is the classic way to get the flags wrong.
     ///
     /// https://rux-lang.dev/docs/api/crypto/blake3-chunk/update
-    pub func Update(self: &var Blake3Chunk, bytes: Slice<char8>) -> uint {
+    pub func Update(self: &var Blake3Chunk, bytes: char8[..]) -> uint {
         var index: uint = 0;
         while index < bytes.length && self.Length() < Blake3ChunkLength {
             if self.blockLength == Blake3BlockLength {
@@ -334,7 +334,7 @@ extend Blake3 : Digest {
     /// Adds `bytes` to the message.
     ///
     /// https://rux-lang.dev/docs/api/crypto/blake3/update
-    pub func Update(self: &var Blake3, bytes: Slice<char8>) {
+    pub func Update(self: &var Blake3, bytes: char8[..]) {
         var offset: uint = 0;
         while offset < bytes.length {
             if self.chunk.Length() == Blake3ChunkLength {
@@ -345,7 +345,7 @@ extend Blake3 : Digest {
                 self.PushChunk(@chaining[0], finished);
                 self.chunk = Blake3Chunk(self.key, finished + 1u64, self.flags);
             }
-            let rest = Slice<char8> { data: @bytes.data[offset], length: bytes.length - offset };
+            let rest = (@bytes.data[offset])[..bytes.length - offset];
             offset = offset + self.chunk.Update(rest);
         }
     }
@@ -455,7 +455,7 @@ extend Blake3 : Digest {
 /// The BLAKE3 hash of `bytes`, at whatever length `into` asks for.
 ///
 /// https://rux-lang.dev/docs/api/crypto/blake3-of
-pub func Blake3Of(bytes: Slice<char8>, into: MutableSlice<char8>) {
+pub func Blake3Of(bytes: char8[..], into: MutableSlice<char8>) {
     var hasher = Blake3();
     hasher.Update(bytes);
     hasher.Finish(into);

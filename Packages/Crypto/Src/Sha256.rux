@@ -10,7 +10,7 @@
 // whose final block leaves fewer than nine bytes free, which needs a whole extra block; the test covers exactly
 // those lengths.
 
-import Core::{ MutableSlice, Slice };
+import Core::{ MutableSlice };
 
 // The round constants: the first thirty-two bits of the fractional parts of the cube roots of the first
 // sixty-four primes.
@@ -151,7 +151,7 @@ extend Sha256 : Digest {
     /// the buffer is only compressed once it is full.
     ///
     /// https://rux-lang.dev/docs/api/crypto/sha256/update
-    pub func Update(self: &var Sha256, bytes: Slice<char8>) {
+    pub func Update(self: &var Sha256, bytes: char8[..]) {
         self.length = self.length + (bytes.length as uint64);
         var index: uint = 0;
         // Finish whatever partial block is already held before taking whole blocks directly.
@@ -238,7 +238,7 @@ extend Sha256 : Digest {
 /// The SHA-256 digest of `bytes`, in one call.
 ///
 /// https://rux-lang.dev/docs/api/crypto/sha256-of
-pub func Sha256Of(bytes: Slice<char8>, into: MutableSlice<char8>) {
+pub func Sha256Of(bytes: char8[..], into: MutableSlice<char8>) {
     var digest = Sha256();
     digest.Update(bytes);
     digest.Finish(into);
@@ -247,7 +247,7 @@ pub func Sha256Of(bytes: Slice<char8>, into: MutableSlice<char8>) {
 /// The SHA-224 digest of `bytes`, in one call.
 ///
 /// https://rux-lang.dev/docs/api/crypto/sha224-of
-pub func Sha224Of(bytes: Slice<char8>, into: MutableSlice<char8>) {
+pub func Sha224Of(bytes: char8[..], into: MutableSlice<char8>) {
     var digest = Sha256::New224();
     digest.Update(bytes);
     digest.Finish(into);

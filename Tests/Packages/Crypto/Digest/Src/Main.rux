@@ -2,7 +2,7 @@
 // tests. The digest contract itself has nothing to check until an algorithm implements it -- the first is SHA-256
 // in the next task, and its test is where the incremental promise gets exercised against real vectors.
 
-import Core::{ Assert, MutableSlice, Slice };
+import Core::{ Assert, MutableSlice };
 import Crypto::{ Equal, Wipe };
 
 func Main() -> int {
@@ -14,8 +14,8 @@ func Main() -> int {
         right[index] = (index as uint8) as char8;
         index = index + 1;
     }
-    let leftBytes = Slice<char8> { data: @left[0], length: 8 };
-    let rightBytes = Slice<char8> { data: @right[0], length: 8 };
+    let leftBytes = (@left[0])[..8];
+    let rightBytes = (@right[0])[..8];
 
     Assert(Equal(leftBytes, rightBytes), "identical sequences compare equal");
 
@@ -40,10 +40,10 @@ func Main() -> int {
     right[3] = 3u8 as char8;
 
     // Lengths.
-    let shortLeft = Slice<char8> { data: @left[0], length: 4 };
+    let shortLeft = (@left[0])[..4];
     Assert(!Equal(shortLeft, rightBytes), "sequences of different lengths are unequal");
-    let emptyLeft = Slice<char8> { data: @left[0], length: 0 };
-    let emptyRight = Slice<char8> { data: @right[0], length: 0 };
+    let emptyLeft = (@left[0])[..0];
+    let emptyRight = (@right[0])[..0];
     Assert(Equal(emptyLeft, emptyRight), "two empty sequences are equal");
     Assert(!Equal(emptyLeft, rightBytes), "and an empty one differs from a non-empty one");
 

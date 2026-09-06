@@ -1,16 +1,16 @@
-import Core::{ string, string8 };
+
 // These exist to read what already exists, so what matters is that they agree with every other implementation
 // of them -- which the published vectors establish. Nothing here endorses using them.
 
-import Core::{ Assert, MutableSlice, Slice };
+import Core::{ Assert, MutableSlice };
 import Crypto::{ Equal, LegacyMd5, LegacyMd5Of, LegacySha1, LegacySha1Of };
 
 // The bytes a string spans, which is how a text overload reaches the slice one.
-func TextBytes(text: string) -> Slice<char8> {
-    return Slice<char8> { data: text.data, length: text.length };
+func TextBytes(text: char8[..]) -> char8[..] {
+    return (text.data)[..text.length];
 }
 
-func FromHex(text: Slice<char8>, into: MutableSlice<char8>) {
+func FromHex(text: char8[..], into: MutableSlice<char8>) {
     var index: uint = 0;
     while index < into.length {
         var value = 0u8;
@@ -32,11 +32,11 @@ func FromHex(text: Slice<char8>, into: MutableSlice<char8>) {
     }
 }
 
-func Check(got: Slice<char8>, expectedHex: Slice<char8>, what: string) {
+func Check(got: char8[..], expectedHex: char8[..], what: char8[..]) {
     var expected: char8[32];
     let room = MutableSlice::From<char8>(@expected[0], got.length);
     FromHex(expectedHex, room);
-    let expectedBytes = Slice<char8> { data: @expected[0], length: got.length };
+    let expectedBytes = (@expected[0])[..got.length];
     Assert(Equal(got, expectedBytes), what);
 }
 
@@ -45,33 +45,33 @@ func Main() -> int {
 
     // The MD5 vectors from RFC 1321.
     LegacyMd5Of(TextBytes(""), MutableSlice::From<char8>(@digest[0], 16));
-    Check(Slice<char8> { data: @digest[0], length: 16 }, "d41d8cd98f00b204e9800998ecf8427e",
+    Check((@digest[0])[..16], "d41d8cd98f00b204e9800998ecf8427e",
           "MD5 of the empty message");
     LegacyMd5Of(TextBytes("a"), MutableSlice::From<char8>(@digest[0], 16));
-    Check(Slice<char8> { data: @digest[0], length: 16 }, "0cc175b9c0f1b6a831c399e269772661", "MD5 of a");
+    Check((@digest[0])[..16], "0cc175b9c0f1b6a831c399e269772661", "MD5 of a");
     LegacyMd5Of(TextBytes("abc"), MutableSlice::From<char8>(@digest[0], 16));
-    Check(Slice<char8> { data: @digest[0], length: 16 }, "900150983cd24fb0d6963f7d28e17f72", "MD5 of abc");
+    Check((@digest[0])[..16], "900150983cd24fb0d6963f7d28e17f72", "MD5 of abc");
     LegacyMd5Of(TextBytes("message digest"), MutableSlice::From<char8>(@digest[0], 16));
-    Check(Slice<char8> { data: @digest[0], length: 16 }, "f96b697d7cb7938d525a2f31aaf161d0",
+    Check((@digest[0])[..16], "f96b697d7cb7938d525a2f31aaf161d0",
           "MD5 of message digest");
     LegacyMd5Of(TextBytes("abcdefghijklmnopqrstuvwxyz"), MutableSlice::From<char8>(@digest[0], 16));
-    Check(Slice<char8> { data: @digest[0], length: 16 }, "c3fcd3d76192e4007dfb496cca67e13b",
+    Check((@digest[0])[..16], "c3fcd3d76192e4007dfb496cca67e13b",
           "MD5 of the lowercase alphabet");
     LegacyMd5Of(TextBytes("12345678901234567890123456789012345678901234567890123456789012345678901234567890"),
                 MutableSlice::From<char8>(@digest[0], 16));
-    Check(Slice<char8> { data: @digest[0], length: 16 }, "57edf4a22be3c955ac49da2e2107b67a",
+    Check((@digest[0])[..16], "57edf4a22be3c955ac49da2e2107b67a",
           "MD5 of the eighty-digit message, which spans two blocks");
 
     // The SHA-1 vectors from FIPS 180-1.
     LegacySha1Of(TextBytes(""), MutableSlice::From<char8>(@digest[0], 20));
-    Check(Slice<char8> { data: @digest[0], length: 20 }, "da39a3ee5e6b4b0d3255bfef95601890afd80709",
+    Check((@digest[0])[..20], "da39a3ee5e6b4b0d3255bfef95601890afd80709",
           "SHA-1 of the empty message");
     LegacySha1Of(TextBytes("abc"), MutableSlice::From<char8>(@digest[0], 20));
-    Check(Slice<char8> { data: @digest[0], length: 20 }, "a9993e364706816aba3e25717850c26c9cd0d89d",
+    Check((@digest[0])[..20], "a9993e364706816aba3e25717850c26c9cd0d89d",
           "SHA-1 of abc");
     LegacySha1Of(TextBytes("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq"),
                  MutableSlice::From<char8>(@digest[0], 20));
-    Check(Slice<char8> { data: @digest[0], length: 20 }, "84983e441c3bd26ebaae4aa1f95129e5e54670f1",
+    Check((@digest[0])[..20], "84983e441c3bd26ebaae4aa1f95129e5e54670f1",
           "SHA-1 of the two-block example");
 
     // Both are incremental, and both agree with their one-shot forms at every split.
@@ -83,7 +83,7 @@ func Main() -> int {
     }
     var length: uint = 0;
     while length <= 200u {
-        let whole = Slice<char8> { data: @message[0], length: length };
+        let whole = (@message[0])[..length];
         var md5OneShot: char8[16];
         LegacyMd5Of(whole, MutableSlice::From<char8>(@md5OneShot[0], 16));
         var sha1OneShot: char8[20];
@@ -92,21 +92,21 @@ func Main() -> int {
         var split: uint = 0;
         while split <= length {
             var md5 = LegacyMd5();
-            md5.Update(Slice<char8> { data: @message[0], length: split });
-            md5.Update(Slice<char8> { data: @message[split], length: length - split });
+            md5.Update((@message[0])[..split]);
+            md5.Update((@message[split])[..length - split]);
             var md5Got: char8[16];
             md5.Finish(MutableSlice::From<char8>(@md5Got[0], 16));
-            Assert(Equal(Slice<char8> { data: @md5Got[0], length: 16 },
-                         Slice<char8> { data: @md5OneShot[0], length: 16 }),
+            Assert(Equal((@md5Got[0])[..16],
+                         (@md5OneShot[0])[..16]),
                    "every split gives the same MD5");
 
             var sha1 = LegacySha1();
-            sha1.Update(Slice<char8> { data: @message[0], length: split });
-            sha1.Update(Slice<char8> { data: @message[split], length: length - split });
+            sha1.Update((@message[0])[..split]);
+            sha1.Update((@message[split])[..length - split]);
             var sha1Got: char8[20];
             sha1.Finish(MutableSlice::From<char8>(@sha1Got[0], 20));
-            Assert(Equal(Slice<char8> { data: @sha1Got[0], length: 20 },
-                         Slice<char8> { data: @sha1OneShot[0], length: 20 }),
+            Assert(Equal((@sha1Got[0])[..20],
+                         (@sha1OneShot[0])[..20]),
                    "and every split the same SHA-1");
             split = split + 17u;
         }

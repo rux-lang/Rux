@@ -1,18 +1,18 @@
-import Core::{ string, string8 };
+
 // The published vectors, and the incremental promise. A hash that passes only the one-shot vectors can still be
 // wrong about buffering, and a hash that passes short messages can still be wrong about the padding block --
 // so every message length from zero to two hundred is fed in every possible split against the one-shot answer.
 
-import Core::{ Assert, MutableSlice, Slice };
+import Core::{ Assert, MutableSlice };
 import Crypto::{ Digest, Equal, Sha224Of, Sha256, Sha256Of };
 
 // The bytes a string spans, which is how a text overload reaches the slice one.
-func TextBytes(text: string) -> Slice<char8> {
-    return Slice<char8> { data: text.data, length: text.length };
+func TextBytes(text: char8[..]) -> char8[..] {
+    return (text.data)[..text.length];
 }
 
 // Parses a hex string into bytes, so the vectors below read as they are published.
-func FromHex(text: Slice<char8>, into: MutableSlice<char8>) {
+func FromHex(text: char8[..], into: MutableSlice<char8>) {
     var index: uint = 0;
     while index * 2u + 1u < text.length + 1u && index < into.length {
         var value = 0u8;
@@ -34,7 +34,7 @@ func FromHex(text: Slice<char8>, into: MutableSlice<char8>) {
     }
 }
 
-func CheckDigest(message: Slice<char8>, expectedHex: Slice<char8>, wide: bool, what: string) {
+func CheckDigest(message: char8[..], expectedHex: char8[..], wide: bool, what: char8[..]) {
     var expected: char8[32];
     let expectedRoom = MutableSlice::From<char8>(@expected[0], wide ? 32u : 28u);
     FromHex(expectedHex, expectedRoom);
@@ -46,8 +46,8 @@ func CheckDigest(message: Slice<char8>, expectedHex: Slice<char8>, wide: bool, w
     else {
         Sha224Of(message, gotRoom);
     }
-    let gotBytes = Slice<char8> { data: @got[0], length: wide ? 32u : 28u };
-    let expectedBytes = Slice<char8> { data: @expected[0], length: wide ? 32u : 28u };
+    let gotBytes = (@got[0])[..wide ? 32u : 28u];
+    let expectedBytes = (@expected[0])[..wide ? 32u : 28u];
     Assert(Equal(gotBytes, expectedBytes), what);
 }
 
@@ -75,8 +75,8 @@ func Main() -> int {
     let narrowRoom = MutableSlice::From<char8>(@narrowDigest[0], 28);
     Sha256Of(TextBytes("abc"), wideRoom);
     Sha224Of(TextBytes("abc"), narrowRoom);
-    let widePrefix = Slice<char8> { data: @wideDigest[0], length: 28 };
-    let narrowBytes = Slice<char8> { data: @narrowDigest[0], length: 28 };
+    let widePrefix = (@wideDigest[0])[..28];
+    let narrowBytes = (@narrowDigest[0])[..28];
     Assert(!Equal(widePrefix, narrowBytes), "SHA-224 is not the first bytes of SHA-256");
 
     // The incremental promise: every split of every length up to two hundred agrees with the one-shot answer.
@@ -88,23 +88,23 @@ func Main() -> int {
     }
     var length: uint = 0;
     while length <= 200u {
-        let whole = Slice<char8> { data: @message[0], length: length };
+        let whole = (@message[0])[..length];
         var oneShot: char8[32];
         let oneShotRoom = MutableSlice::From<char8>(@oneShot[0], 32);
         Sha256Of(whole, oneShotRoom);
-        let oneShotBytes = Slice<char8> { data: @oneShot[0], length: 32 };
+        let oneShotBytes = (@oneShot[0])[..32];
 
         var split: uint = 0;
         while split <= length {
             var digest = Sha256();
-            let first = Slice<char8> { data: @message[0], length: split };
+            let first = (@message[0])[..split];
             digest.Update(first);
-            let second = Slice<char8> { data: @message[split], length: length - split };
+            let second = (@message[split])[..length - split];
             digest.Update(second);
             var got: char8[32];
             let gotRoom = MutableSlice::From<char8>(@got[0], 32);
             digest.Finish(gotRoom);
-            let gotBytes = Slice<char8> { data: @got[0], length: 32 };
+            let gotBytes = (@got[0])[..32];
             Assert(Equal(gotBytes, oneShotBytes), "every split of a message gives the same digest");
             split = split + 1;
         }
@@ -115,7 +115,7 @@ func Main() -> int {
     var byteAtATime = Sha256();
     index = 0;
     while index < 200u {
-        let single = Slice<char8> { data: @message[index], length: 1 };
+        let single = (@message[index])[..1];
         byteAtATime.Update(single);
         index = index + 1;
     }
@@ -124,9 +124,9 @@ func Main() -> int {
     byteAtATime.Finish(incrementalRoom);
     var reference: char8[32];
     let referenceRoom = MutableSlice::From<char8>(@reference[0], 32);
-    Sha256Of(Slice<char8> { data: @message[0], length: 200 }, referenceRoom);
-    Assert(Equal(Slice<char8> { data: @incremental[0], length: 32 },
-                 Slice<char8> { data: @reference[0], length: 32 }),
+    Sha256Of((@message[0])[..200], referenceRoom);
+    Assert(Equal((@incremental[0])[..32],
+                 (@reference[0])[..32]),
            "a byte-at-a-time digest matches the one-shot digest");
 
     // An empty update changes nothing.
@@ -140,7 +140,7 @@ func Main() -> int {
     var plain: char8[32];
     let plainRoom = MutableSlice::From<char8>(@plain[0], 32);
     Sha256Of(TextBytes("abc"), plainRoom);
-    Assert(Equal(Slice<char8> { data: @emptied[0], length: 32 }, Slice<char8> { data: @plain[0], length: 32 }),
+    Assert(Equal((@emptied[0])[..32], (@plain[0])[..32]),
            "empty updates change nothing");
 
     // Digest states are structural Copy values. Copies branch from one prefix without sharing later mutations.
@@ -158,11 +158,11 @@ func Main() -> int {
     var abdExpected: char8[32];
     Sha256Of(TextBytes("abc"), MutableSlice::From<char8>(@abcExpected[0], 32));
     Sha256Of(TextBytes("abd"), MutableSlice::From<char8>(@abdExpected[0], 32));
-    Assert(Equal(Slice<char8> { data: @abcDigest[0], length: 32 },
-                 Slice<char8> { data: @abcExpected[0], length: 32 }),
+    Assert(Equal((@abcDigest[0])[..32],
+                 (@abcExpected[0])[..32]),
            "a digest copy continues independently from its prefix");
-    Assert(Equal(Slice<char8> { data: @abdDigest[0], length: 32 },
-                 Slice<char8> { data: @abdExpected[0], length: 32 }),
+    Assert(Equal((@abdDigest[0])[..32],
+                 (@abdExpected[0])[..32]),
            "and a second copy keeps its own later writes");
 
     // The reported lengths.

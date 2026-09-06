@@ -1,17 +1,17 @@
-import Core::{ string, string8 };
+
 // The published vectors, and the property that makes an extendable-output function what it is: the stream is
 // continuous, so any sequence of reads totalling the same length gives the same bytes. A version that permuted
 // once per call rather than once per exhausted rate would pass the vectors and fail that.
 
-import Core::{ Assert, MutableSlice, Slice };
+import Core::{ Assert, MutableSlice };
 import Crypto::{ Equal, Shake, Shake128Of, Shake256Of, Sha3Of256 };
 
 // The bytes a string spans, which is how a text overload reaches the slice one.
-func TextBytes(text: string) -> Slice<char8> {
-    return Slice<char8> { data: text.data, length: text.length };
+func TextBytes(text: char8[..]) -> char8[..] {
+    return (text.data)[..text.length];
 }
 
-func FromHex(text: Slice<char8>, into: MutableSlice<char8>) {
+func FromHex(text: char8[..], into: MutableSlice<char8>) {
     var index: uint = 0;
     while index < into.length {
         var value = 0u8;
@@ -33,11 +33,11 @@ func FromHex(text: Slice<char8>, into: MutableSlice<char8>) {
     }
 }
 
-func Check(got: Slice<char8>, expectedHex: Slice<char8>, what: string) {
+func Check(got: char8[..], expectedHex: char8[..], what: char8[..]) {
     var expected: char8[64];
     let room = MutableSlice::From<char8>(@expected[0], got.length);
     FromHex(expectedHex, room);
-    let expectedBytes = Slice<char8> { data: @expected[0], length: got.length };
+    let expectedBytes = (@expected[0])[..got.length];
     Assert(Equal(got, expectedBytes), what);
 }
 
@@ -46,11 +46,11 @@ func Main() -> int {
 
     // The published first thirty-two bytes for the empty message.
     Shake128Of(TextBytes(""), MutableSlice::From<char8>(@output[0], 32));
-    Check(Slice<char8> { data: @output[0], length: 32 },
+    Check((@output[0])[..32],
           "7f9c2ba4e88f827d616045507605853ed73b8093f6efbc88eb1a6eacfa66ef26",
           "SHAKE128 of the empty message");
     Shake256Of(TextBytes(""), MutableSlice::From<char8>(@output[0], 32));
-    Check(Slice<char8> { data: @output[0], length: 32 },
+    Check((@output[0])[..32],
           "46b9dd2b0ba88d13233b3feb743eeb243fcd52ea62b81b82b50c27646ed5762f",
           "SHAKE256 of the empty message");
 
@@ -75,8 +75,8 @@ func Main() -> int {
             piecedState.Read(MutableSlice::From<char8>(@pieced[taken], step));
             taken = taken + step;
         }
-        let wholeBytes = Slice<char8> { data: @whole[0], length: 512 };
-        let piecedBytes = Slice<char8> { data: @pieced[0], length: 512 };
+        let wholeBytes = (@whole[0])[..512];
+        let piecedBytes = (@pieced[0])[..512];
         Assert(Equal(wholeBytes, piecedBytes), "reading the stream in pieces gives the same bytes as one read");
         chunkSize = chunkSize + 1;
     }
@@ -90,8 +90,8 @@ func Main() -> int {
     var longState = Shake::New256();
     longState.Update(TextBytes("prefix"));
     longState.Read(MutableSlice::From<char8>(@longRead[0], 64));
-    let shortBytes = Slice<char8> { data: @shortRead[0], length: 16 };
-    let longPrefix = Slice<char8> { data: @longRead[0], length: 16 };
+    let shortBytes = (@shortRead[0])[..16];
+    let longPrefix = (@longRead[0])[..16];
     Assert(Equal(shortBytes, longPrefix), "a short read is the start of a long one");
 
     // The message is absorbed in pieces exactly as a hash absorbs it.
@@ -102,8 +102,8 @@ func Main() -> int {
     split.Update(TextBytes("brown fox"));
     var splitOut: char8[64];
     split.Read(MutableSlice::From<char8>(@splitOut[0], 64));
-    Assert(Equal(Slice<char8> { data: @oneShot[0], length: 64 },
-                 Slice<char8> { data: @splitOut[0], length: 64 }),
+    Assert(Equal((@oneShot[0])[..64],
+                 (@splitOut[0])[..64]),
            "absorbing in pieces gives the same stream");
 
     // Absorbing after reading has begun is ignored rather than silently changing a stream already handed out.
@@ -118,8 +118,8 @@ func Main() -> int {
     reference.Update(TextBytes("start"));
     var referenceOut: char8[64];
     reference.Read(MutableSlice::From<char8>(@referenceOut[0], 64));
-    Assert(Equal(Slice<char8> { data: @second[0], length: 32 },
-                 Slice<char8> { data: @referenceOut[32], length: 32 }),
+    Assert(Equal((@second[0])[..32],
+                 (@referenceOut[32])[..32]),
            "a late absorb does not disturb the stream");
 
     // The domain byte keeps SHAKE and SHA-3 apart: the same message and the same rate would otherwise collide.
@@ -127,8 +127,8 @@ func Main() -> int {
     Shake256Of(TextBytes("abc"), MutableSlice::From<char8>(@shakeOut[0], 32));
     var sha3Out: char8[32];
     Sha3Of256(TextBytes("abc"), MutableSlice::From<char8>(@sha3Out[0], 32));
-    Assert(!Equal(Slice<char8> { data: @shakeOut[0], length: 32 },
-                  Slice<char8> { data: @sha3Out[0], length: 32 }),
+    Assert(!Equal((@shakeOut[0])[..32],
+                  (@sha3Out[0])[..32]),
            "SHAKE256 and SHA3-256 of the same message differ");
 
     // The rates, which are what the security level buys.
