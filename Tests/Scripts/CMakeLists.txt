@@ -3,16 +3,13 @@ if (NOT RUX_TEST_SHELL)
     message(FATAL_ERROR "Repository and installer tests require a POSIX shell (Git for Windows supplies one)")
 endif ()
 
-# Python is needed by the hosted CI environment tooling, not by Rux itself.
-# Exercise these helpers locally when an appropriate interpreter is available.
-find_package(Python3 3.11 QUIET COMPONENTS Interpreter)
-if (Python3_Interpreter_FOUND)
-    add_test(NAME Scripts.CI COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/CI/Check.py")
-    set_tests_properties(Scripts.CI PROPERTIES LABELS Scripts)
-endif ()
 if (WIN32)
     set(rux_test_shell_flags --login)
 endif ()
+# The CI helpers are shell and PowerShell only, so this check needs no optional
+# interpreter and runs on every host.
+add_test(NAME Scripts.CI COMMAND "${RUX_TEST_SHELL}" ${rux_test_shell_flags} "${CMAKE_CURRENT_SOURCE_DIR}/CI/Check.sh")
+set_tests_properties(Scripts.CI PROPERTIES LABELS Scripts)
 # Every section of the repository check is its own test, so CTest runs them
 # concurrently; the script defines the section names and each run owns a
 # private fixture directory.
