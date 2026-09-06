@@ -1,7 +1,9 @@
 name: Linux x86-64
 
-# Everything this target needs is here: its matrix entry and when it runs. The
-# build itself is described once, in Build.yml.
+# Everything Linux x86-64 does, in the order it runs. This is the fast lane: it
+# runs on every push, and it is also the host that checks every cross target,
+# because rux emits and links every target format in-process. Release.yml calls
+# this workflow too, so a release is built by exactly the steps CI verified.
 
 on:
   push:
@@ -12,21 +14,96 @@ on:
   schedule:
     - cron: '0 3 * * *'
   workflow_dispatch:
+  workflow_call:
 
 # A branch push and its pull request share one group so the same commit is never
 # built twice. Runs on dev are left alone because they warm the caches every
-# other branch restores.
+# other branch restores, and a dispatched run is never cancelled because a
+# release is one.
 concurrency:
-  group: linux-x86_64-${{ github.head_ref || github.ref_name }}
-  cancel-in-progress: ${{ github.ref_name != 'dev' && github.ref_name != 'main' }}
+  group: linux-x86_64-${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' && github.ref_name != 'dev' && github.ref_name != 'main' }}
 
 permissions:
   contents: read
 
 jobs:
   build:
-    uses: ./.github/workflows/Build.yml
-    with:
-      targets: >-
-        [{"target":"linux-x86_64","label":"Linux x86-64","family":"posix","runner":"ubuntu-26.04","timeout":20}]
-      save-cache: ${{ github.event_name == 'push' }}
+    name: Linux x86-64
+    runs-on: ubuntu-26.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      # Every pinned version and checksum reaches later steps and cache keys
+      # from one file, so there is nothing to keep in sync.
+      - name: Load the toolchain manifest
+        run: grep -E '^[A-Z0-9_]+=' .github/Toolchains.env >> "$GITHUB_ENV"
+
+      # Restored here and saved by the post step on a miss.
+      - name: Restore the toolchain
+        uses: actions/cache@v6
+        with:
+          path: ${{ runner.temp }}/rux-toolchain
+          key: toolchain-${{ env.TOOLCHAIN_REVISION }}-linux-x86_64
+
+      - name: Install the toolchain
+        run: sh .github/Scripts/SetupToolchain.sh --target linux-x86_64
+
+      # The sha suffix makes the primary key always miss, so every run writes
+      # back a cache warmer than the one it restored.
+      - name: Restore the compilation cache
+        id: ccache
+        uses: actions/cache/restore@v6
+        with:
+          path: BuildCache/ccache
+          key: ccache-linux-x86_64-${{ env.TOOLCHAIN_REVISION }}-${{ github.sha }}
+          restore-keys: ccache-linux-x86_64-${{ env.TOOLCHAIN_REVISION }}-
+
+      - name: Build
+        run: sh .github/Scripts/Verify.sh --stage build
+
+      # Saved before the tests so a slow or failing suite does not cost the next
+      # run its warm cache, and on pushes only: a pull request rebuilds the
+      # commit its branch push already cached.
+      - name: Save the compilation cache
+        if: github.event_name == 'push'
+        uses: actions/cache/save@v6
+        with:
+          path: BuildCache/ccache
+          key: ${{ steps.ccache.outputs.cache-primary-key }}
+
+      - name: Test
+        run: sh .github/Scripts/Verify.sh --stage test
+
+      - name: Check the runtime closure
+        run: sh .github/Scripts/Verify.sh --stage closure
+
+      # Rux formatting needs a built compiler, so it runs here rather than in
+      # the quality job.
+      - name: Check Rux formatting
+        run: sh .github/Scripts/Verify.sh --stage format
+
+      - name: Check every cross target
+        run: |
+          for target in freebsd-aarch64 freebsd-x86_64 linux-aarch64 macos-aarch64 \
+                        macos-x86_64 windows-aarch64 windows-x86_64; do
+            ./Bin/rux check --target "$target"
+          done
+
+      # A Linux host builds a macOS executable and a dylib, then inspects the
+      # Mach-O headers, the embedded code signature, and a deterministic rebuild.
+      # It is the one place that proves a non-Mac host can target macOS.
+      - name: Cross-build macOS AArch64 images and inspect them
+        shell: pwsh
+        run: ./Tests/Native/MacOSAArch64/VerifyCross.ps1 -Rux ./Bin/rux
+
+      - name: Upload the compiler
+        uses: actions/upload-artifact@v7
+        with:
+          name: rux-linux-x86_64
+          path: Bin/rux
+          if-no-files-found: error
+          retention-days: 7

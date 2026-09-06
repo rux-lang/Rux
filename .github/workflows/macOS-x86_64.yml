@@ -1,7 +1,11 @@
 name: macOS x86-64
 
-# Everything this target needs is here: its matrix entry and when it runs. The
-# build itself is described once, in Build.yml.
+# Everything macOS x86-64 does, in the order it runs. There is no x86-64
+# toolchain bundle: LLVM publishes no macOS 23.1.0 archive and Homebrew has no
+# Intel bottle for macOS 26. The macOS SDK is universal, so the AArch64 bundle
+# on the AArch64 runner cross-builds the x86-64 compiler, and Rosetta runs it and
+# its tests on the same machine. Release.yml calls this workflow too, so a
+# release is built by exactly the steps CI verified.
 
 on:
   push:
@@ -12,24 +16,88 @@ on:
   schedule:
     - cron: '0 3 * * *'
   workflow_dispatch:
+  workflow_call:
 
 # A branch push and its pull request share one group so the same commit is never
 # built twice. Runs on dev are left alone because they warm the caches every
-# other branch restores.
+# other branch restores, and a dispatched run is never cancelled because a
+# release is one.
 concurrency:
-  group: macos-x86_64-${{ github.head_ref || github.ref_name }}
-  cancel-in-progress: ${{ github.ref_name != 'dev' && github.ref_name != 'main' }}
+  group: macos-x86_64-${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' && github.ref_name != 'dev' && github.ref_name != 'main' }}
 
 permissions:
   contents: read
 
 jobs:
   build:
+    name: macOS x86-64
     # Linux x86-64 is the fast lane and runs on every push; every other target
     # waits for something that can reach dev.
     if: ${{ github.event_name != 'push' || github.ref_name == 'dev' || github.ref_name == 'main' }}
-    uses: ./.github/workflows/Build.yml
-    with:
-      targets: >-
-        [{"target":"macos-x86_64","label":"macOS x86-64","family":"posix","runner":"macos-26","bundle":"macos-aarch64","osx-architecture":"x86_64","timeout":30}]
-      save-cache: ${{ github.event_name == 'push' }}
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      # Every pinned version and checksum reaches later steps and cache keys
+      # from one file, so there is nothing to keep in sync.
+      - name: Load the toolchain manifest
+        run: grep -E '^[A-Z0-9_]+=' .github/Toolchains.env >> "$GITHUB_ENV"
+
+      # The AArch64 bundle, restored here and saved by the post step on a miss.
+      - name: Restore the toolchain
+        uses: actions/cache@v6
+        with:
+          path: ${{ runner.temp }}/rux-toolchain
+          key: toolchain-${{ env.TOOLCHAIN_REVISION }}-macos-aarch64
+
+      - name: Install the toolchain
+        run: sh .github/Scripts/SetupToolchain.sh --target macos-aarch64
+
+      # The sha suffix makes the primary key always miss, so every run writes
+      # back a cache warmer than the one it restored.
+      - name: Restore the compilation cache
+        id: ccache
+        uses: actions/cache/restore@v6
+        with:
+          path: BuildCache/ccache
+          key: ccache-macos-x86_64-${{ env.TOOLCHAIN_REVISION }}-${{ github.sha }}
+          restore-keys: ccache-macos-x86_64-${{ env.TOOLCHAIN_REVISION }}-
+
+      - name: Build for x86-64
+        env:
+          RUX_OSX_ARCHITECTURE: x86_64
+        run: sh .github/Scripts/Verify.sh --stage build
+
+      # Saved before the tests so a slow or failing suite does not cost the next
+      # run its warm cache, and on pushes only: a pull request rebuilds the
+      # commit its branch push already cached.
+      - name: Save the compilation cache
+        if: github.event_name == 'push'
+        uses: actions/cache/save@v6
+        with:
+          path: BuildCache/ccache
+          key: ${{ steps.ccache.outputs.cache-primary-key }}
+
+      - name: Test under Rosetta
+        run: sh .github/Scripts/Verify.sh --stage test
+
+      - name: Check the runtime closure
+        run: sh .github/Scripts/Verify.sh --stage closure
+
+      # The compiler built here is x86-64 and runs under Rosetta on this AArch64
+      # host, which is exactly the translated-compiler boundary these fixtures
+      # exist to check.
+      - name: Run the fixtures under Rosetta
+        run: sh Tests/Native/MacOSAArch64/VerifyRosetta.sh
+
+      - name: Upload the compiler
+        uses: actions/upload-artifact@v7
+        with:
+          name: rux-macos-x86_64
+          path: Bin/rux
+          if-no-files-found: error
+          retention-days: 7

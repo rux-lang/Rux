@@ -1,7 +1,12 @@
 name: FreeBSD AArch64
 
-# Everything this target needs is here: its matrix entry and when it runs. The
-# build itself is described once, in Build.yml.
+# Everything FreeBSD AArch64 does, in the order it runs. There is no hosted
+# FreeBSD runner, so the build and tests run inside a QEMU guest booted from a
+# prepared image; its toolchain lives in that image, not on the host. The guest
+# is KVM-accelerated when the ARM runner exposes /dev/kvm and falls back to TCG
+# emulation otherwise, which is why this job has the longest timeout.
+# Release.yml calls this workflow too, so a release is built by exactly the
+# steps CI verified.
 
 on:
   push:
@@ -12,24 +17,84 @@ on:
   schedule:
     - cron: '0 3 * * *'
   workflow_dispatch:
+  workflow_call:
 
 # A branch push and its pull request share one group so the same commit is never
 # built twice. Runs on dev are left alone because they warm the caches every
-# other branch restores.
+# other branch restores, and a dispatched run is never cancelled because a
+# release is one.
 concurrency:
-  group: freebsd-aarch64-${{ github.head_ref || github.ref_name }}
-  cancel-in-progress: ${{ github.ref_name != 'dev' && github.ref_name != 'main' }}
+  group: freebsd-aarch64-${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' && github.ref_name != 'dev' && github.ref_name != 'main' }}
 
 permissions:
   contents: read
 
 jobs:
   build:
+    name: FreeBSD AArch64
     # Linux x86-64 is the fast lane and runs on every push; every other target
     # waits for something that can reach dev.
     if: ${{ github.event_name != 'push' || github.ref_name == 'dev' || github.ref_name == 'main' }}
-    uses: ./.github/workflows/Build.yml
-    with:
-      targets: >-
-        [{"target":"freebsd-aarch64","label":"FreeBSD AArch64","family":"freebsd","runner":"ubuntu-26.04-arm","arch":"aarch64","timeout":60}]
-      save-cache: ${{ github.event_name == 'push' }}
+    runs-on: ubuntu-26.04-arm
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      # Every pinned version and checksum reaches later steps and cache keys
+      # from one file, so there is nothing to keep in sync.
+      - name: Load the toolchain manifest
+        run: grep -E '^[A-Z0-9_]+=' .github/Toolchains.env >> "$GITHUB_ENV"
+
+      - name: Install QEMU
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            qemu-system-x86 qemu-system-arm qemu-efi-aarch64 zstd rsync
+          sudo chmod a+rw /dev/kvm 2>/dev/null || true
+
+      # The sha suffix makes the primary key always miss, so every run writes
+      # back a cache warmer than the one it restored.
+      - name: Restore the compilation cache
+        id: ccache
+        uses: actions/cache/restore@v6
+        with:
+          path: BuildCache/ccache
+          key: ccache-freebsd-aarch64-${{ env.TOOLCHAIN_REVISION }}-${{ github.sha }}
+          restore-keys: ccache-freebsd-aarch64-${{ env.TOOLCHAIN_REVISION }}-
+
+      # One boot builds, tests, and runs the native fixtures, because the
+      # guest's Build/ tree is not carried back out and a second boot would have
+      # to compile again. The driver pulls Bin/ and the compilation cache back
+      # out even when the command failed.
+      - name: Build and test in the FreeBSD guest
+        run: |
+          mkdir -p BuildCache
+          {
+            echo 'sh .github/Scripts/Verify.sh --stage build'
+            echo 'sh .github/Scripts/Verify.sh --stage test'
+            echo 'sh .github/Scripts/Verify.sh --stage closure'
+            echo 'sh Tests/Native/FreeBSDAArch64/Verify.sh'
+          } > BuildCache/guest.sh
+          sh .github/Scripts/FreeBSDVM.sh \
+            --arch aarch64 --role build --script BuildCache/guest.sh
+
+      # Saved after the guest because its build and test share one boot, and on
+      # pushes only: a pull request rebuilds the commit its branch push already
+      # cached.
+      - name: Save the compilation cache
+        if: ${{ !cancelled() && github.event_name == 'push' }}
+        uses: actions/cache/save@v6
+        with:
+          path: BuildCache/ccache
+          key: ${{ steps.ccache.outputs.cache-primary-key }}
+
+      - name: Upload the compiler
+        uses: actions/upload-artifact@v7
+        with:
+          name: rux-freebsd-aarch64
+          path: Bin/rux
+          if-no-files-found: error
+          retention-days: 7

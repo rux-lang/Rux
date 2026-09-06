@@ -266,11 +266,11 @@ guest_ssh() {
 boot_deadline=$(($(date +%s) + 900))
 until guest_ssh true 2>/dev/null; do
     if ! kill -0 "$qemu_pid" 2>/dev/null; then
-        tail -40 "$serial_log" >&2 || true
+        tail -200 "$serial_log" >&2 || true
         die "the FreeBSD guest exited before SSH became available"
     fi
     if [ "$(date +%s)" -ge "$boot_deadline" ]; then
-        tail -40 "$serial_log" >&2 || true
+        tail -200 "$serial_log" >&2 || true
         die "the FreeBSD guest did not become reachable within 15 minutes"
     fi
     sleep 5

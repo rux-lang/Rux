@@ -186,36 +186,44 @@ check_setup_exports_the_toolchain() {
 }
 
 # Each target has a workflow of its own so it has a status badge, and that
-# workflow carries its own matrix entry. Every supported target must have one,
-# and no workflow may claim more than its own.
+# workflow carries every step the target runs. Every supported target must have
+# one, it must be callable so Release.yml builds the release from the very same
+# steps, it must upload the compiler under the name Release.yml downloads, and
+# Release.yml must call all eight.
 check_target_workflows() {
     workflows=$repository_root/.github/workflows
-    for target in linux-x86_64 linux-aarch64 macos-aarch64 macos-x86_64 \
-        windows-x86_64 windows-aarch64 freebsd-x86_64 freebsd-aarch64; do
-        matches=$(grep -rlF "\"target\":\"$target\"" "$workflows" | grep -v Release.yml | wc -l)
-        [ "$matches" -eq 1 ] ||
-            fail "$matches target workflows declare '$target', not one"
-    done
-
-    for file in "$workflows"/*-x86_64.yml "$workflows"/*-AArch64.yml; do
-        [ -f "$file" ] || continue
-        declared=$(grep -oF '"target":' "$file" | wc -l)
-        [ "$declared" -eq 1 ] ||
-            fail "$(basename "$file") declares $declared targets, not one"
+    release=$workflows/Release.yml
+    for pair in linux-x86_64:Linux-x86_64 linux-aarch64:Linux-AArch64 \
+        macos-aarch64:macOS-AArch64 macos-x86_64:macOS-x86_64 \
+        windows-x86_64:Windows-x86_64 windows-aarch64:Windows-AArch64 \
+        freebsd-x86_64:FreeBSD-x86_64 freebsd-aarch64:FreeBSD-AArch64; do
+        target=${pair%%:*}
+        file=$workflows/${pair#*:}.yml
+        [ -f "$file" ] || fail "target '$target' has no workflow at $file"
+        grep -q '^  workflow_call:' "$file" ||
+            fail "$(basename "$file") cannot be called by Release.yml"
+        grep -q "name: rux-$target\$" "$file" ||
+            fail "$(basename "$file") does not upload the compiler as rux-$target"
+        grep -q "uses: ./.github/workflows/$(basename "$file")\$" "$release" ||
+            fail "Release.yml does not call $(basename "$file")"
     done
 }
 
-# Build.yml must take its matrix from the caller. Expanding a list of target ids
-# against an `include` table there silently builds every target the table lists,
-# because GitHub adds an include entry matching no combination as a new one:
-# each platform workflow ran all eight targets before this was found.
-check_build_matrix_comes_from_the_caller() {
-    build=$repository_root/.github/workflows/Build.yml
-    grep -q 'include: ${{ fromJSON(inputs.targets) }}' "$build" ||
-        fail "$build does not take its matrix from the caller"
-    if grep -qE '^ +target: \$\{\{ fromJSON\(inputs\.targets\) \}\}' "$build"; then
-        fail "$build expands target ids against an include table, which builds every listed target"
-    fi
+# A step guarded by a family or target condition shows up, skipped, in every
+# job that is not its own, which is how the shared build workflow came to list
+# sixteen crossed-out steps in a four-step job. Each target workflow describes
+# only what it runs, so it needs no matrix and no shared workflow to condition
+# on.
+check_target_workflows_run_every_step() {
+    workflows=$repository_root/.github/workflows
+    [ ! -e "$workflows/Build.yml" ] ||
+        fail 'Build.yml is back; a target workflow carries its own steps instead'
+    for file in "$workflows"/*-x86_64.yml "$workflows"/*-AArch64.yml; do
+        [ -f "$file" ] || continue
+        if grep -qE 'matrix\.|inputs\.targets' "$file"; then
+            fail "$(basename "$file") conditions its steps on a matrix"
+        fi
+    done
 }
 
 # Workflows run on a case-sensitive filesystem while this repository is often
@@ -303,7 +311,7 @@ check_versions_agree
 check_setup_rejects_unpublished
 check_manifest_is_consistent
 check_target_workflows
-check_build_matrix_comes_from_the_caller
+check_target_workflows_run_every_step
 check_workflow_paths_match_case
 check_setup_exports_the_toolchain
 check_setup_rejects_injection

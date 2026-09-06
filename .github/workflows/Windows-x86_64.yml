@@ -1,7 +1,9 @@
 name: Windows x86-64
 
-# Everything this target needs is here: its matrix entry and when it runs. The
-# build itself is described once, in Build.yml.
+# Everything Windows x86-64 does, in the order it runs: the native build and
+# tests, then the same compiler running under the ARM64 host's emulation layer.
+# Release.yml calls this workflow too, so a release is built by exactly the
+# steps CI verified.
 
 on:
   push:
@@ -12,33 +14,98 @@ on:
   schedule:
     - cron: '0 3 * * *'
   workflow_dispatch:
+  workflow_call:
 
 # A branch push and its pull request share one group so the same commit is never
 # built twice. Runs on dev are left alone because they warm the caches every
-# other branch restores.
+# other branch restores, and a dispatched run is never cancelled because a
+# release is one.
 concurrency:
-  group: windows-x86_64-${{ github.head_ref || github.ref_name }}
-  cancel-in-progress: ${{ github.ref_name != 'dev' && github.ref_name != 'main' }}
+  group: windows-x86_64-${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' && github.ref_name != 'dev' && github.ref_name != 'main' }}
 
 permissions:
   contents: read
 
 jobs:
   build:
+    name: Windows x86-64
     # Linux x86-64 is the fast lane and runs on every push; every other target
     # waits for something that can reach dev.
     if: ${{ github.event_name != 'push' || github.ref_name == 'dev' || github.ref_name == 'main' }}
-    uses: ./.github/workflows/Build.yml
-    with:
-      targets: >-
-        [{"target":"windows-x86_64","label":"Windows x86-64","family":"windows","runner":"windows-2025","timeout":30}]
-      upload-artifact: true
-      save-cache: ${{ github.event_name == 'push' }}
+    runs-on: windows-2025
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
-  # The x86-64 compiler running under the ARM64 host's emulation layer, proving
-  # a translated compiler still produces working native output. macOS covers this
-  # inside its own build job, because macos-x86_64 is already cross-built there.
-  cross-emulated:
+      # Every pinned version and checksum reaches later steps and cache keys
+      # from one file, so there is nothing to keep in sync.
+      - name: Load the toolchain manifest
+        shell: bash
+        run: grep -E '^[A-Z0-9_]+=' .github/Toolchains.env >> "$GITHUB_ENV"
+
+      # Restored here and saved by the post step on a miss.
+      - name: Restore the toolchain
+        uses: actions/cache@v6
+        with:
+          path: ${{ runner.temp }}/rux-toolchain
+          key: toolchain-${{ env.TOOLCHAIN_REVISION }}-windows-x86_64
+
+      # The same step imports the Visual Studio environment once and exports it,
+      # so no later step has to re-run vcvarsall.
+      - name: Install the toolchain and Visual Studio environment
+        shell: pwsh
+        run: ./.github/Scripts/SetupToolchain.ps1 -Target windows-x86_64
+
+      # The sha suffix makes the primary key always miss, so every run writes
+      # back a cache warmer than the one it restored.
+      - name: Restore the compilation cache
+        id: ccache
+        uses: actions/cache/restore@v6
+        with:
+          path: BuildCache/ccache
+          key: ccache-windows-x86_64-${{ env.TOOLCHAIN_REVISION }}-${{ github.sha }}
+          restore-keys: ccache-windows-x86_64-${{ env.TOOLCHAIN_REVISION }}-
+
+      - name: Build
+        shell: pwsh
+        run: ./.github/Scripts/Verify.ps1 -Stage build
+
+      # Saved before the tests so a slow or failing suite does not cost the next
+      # run its warm cache, and on pushes only: a pull request rebuilds the
+      # commit its branch push already cached.
+      - name: Save the compilation cache
+        if: github.event_name == 'push'
+        uses: actions/cache/save@v6
+        with:
+          path: BuildCache/ccache
+          key: ${{ steps.ccache.outputs.cache-primary-key }}
+
+      - name: Test
+        shell: pwsh
+        run: ./.github/Scripts/Verify.ps1 -Stage test
+
+      - name: Check the runtime closure
+        shell: pwsh
+        run: ./.github/Scripts/Verify.ps1 -Stage closure
+
+      - name: Upload the compiler
+        uses: actions/upload-artifact@v7
+        with:
+          name: rux-windows-x86_64
+          path: Bin/rux.exe
+          if-no-files-found: error
+          retention-days: 7
+
+  # The x86-64 compiler just built, running under the ARM64 host's emulation
+  # layer. Nothing is compiled here: the compiler needs no toolchain, so the job
+  # downloads it and drives it. It proves a translated compiler still produces
+  # working output for its own architecture and for the host's. macOS covers
+  # the same boundary inside its own build job, because macos-x86_64 is already
+  # cross-built and run under Rosetta there.
+  emulated:
     name: Windows x86-64 under emulation
     needs: build
     runs-on: windows-11-arm
@@ -47,14 +114,39 @@ jobs:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
-      - uses: actions/download-artifact@v7
+
+      - name: Download the compiler
+        uses: actions/download-artifact@v7
         with:
           name: rux-windows-x86_64
           path: Bin
-      - name: Run the translated compiler
+
+      - name: Test the translated compiler
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          ./Bin/rux.exe check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./Bin/rux.exe lint
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./Bin/rux.exe test --release --jobs 4
+
+      # The translated compiler detects the native OS architecture and launches
+      # its AArch64 output directly.
+      - name: Test the AArch64 target
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          ./Bin/rux.exe check --target windows-aarch64
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ./Bin/rux.exe test --release --target windows-aarch64 --jobs 4
+
+      # Each verifier throws on failure, which ends the step. $LASTEXITCODE is
+      # not a verdict: the exit-code fixture deliberately leaves it at 73.
+      - name: Run the AArch64 fixtures
         shell: pwsh
         run: |
           foreach ($fixture in 'ExitCode', 'Assert', 'Panic', 'StackProbe', 'Dll') {
             & "./Tests/Native/WindowsAArch64$fixture/Verify.ps1"
-            if ($LASTEXITCODE -ne 0) { throw "WindowsAArch64$fixture failed" }
           }
+          exit 0

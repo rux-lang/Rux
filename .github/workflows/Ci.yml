@@ -1,9 +1,9 @@
 name: CI
 
 # The host-independent checks and the required gate. Building is owned by the
-# per-platform workflows, which call the same Build.yml and give each platform a
-# status badge of its own; running the matrix here as well would build every
-# target twice.
+# per-target workflows, each of which carries its own steps and gives its target
+# a status badge of its own; building here as well would build every target
+# twice.
 
 on:
   push:

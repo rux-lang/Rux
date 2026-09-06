@@ -4,18 +4,15 @@ Continuous integration builds and verifies Rux on all eight supported targets us
 
 ## Workflows
 
-Ten workflows, plus the community metadata GitHub owns. Only two of them describe any work; the other eight are thin callers that exist so each target has a status badge of its own.
+Ten workflows, plus the community metadata GitHub owns.
 
 - **`Ci.yml`** — the host-independent checks and the required gate: policy guards, formatting, clang-tidy, and the branch policy that rejects pull requests targeting `main`. It builds nothing.
-- **One workflow per target** — `Linux-x86_64.yml`, `Linux-AArch64.yml`, `macOS-x86_64.yml`, `macOS-AArch64.yml`, `Windows-x86_64.yml`, `Windows-AArch64.yml`, `FreeBSD-x86_64.yml`, `FreeBSD-AArch64.yml`, about 35 lines each. Each triggers on push and pull request, carries its own matrix entry, and calls `Build.yml` with it. They exist because a GitHub badge reports a workflow, not a job, and a workflow called through `workflow_call` produces no run of its own to report. Per target rather than per platform because the two architectures of a platform fail differently: macOS x86-64 is cross-built and run under Rosetta while AArch64 is native, Windows AArch64 is a different runner, and the FreeBSD guests differ in whether they are accelerated.
-- **`Build.yml`** — a reusable workflow (`workflow_call`) describing how one target is built and verified. It is the single description of that work; every target workflow and `Release.yml` call it, so a platform change is made once.
+- **One workflow per target** — `Linux-x86_64.yml`, `Linux-AArch64.yml`, `macOS-x86_64.yml`, `macOS-AArch64.yml`, `Windows-x86_64.yml`, `Windows-AArch64.yml`, `FreeBSD-x86_64.yml`, `FreeBSD-AArch64.yml`. Each triggers on push and pull request and lists, in order, exactly the steps its target runs: load the manifest, restore and install the toolchain, restore the compilation cache, build, save the cache, test, check the runtime closure, run the target's fixtures, upload the compiler. Nothing in a target workflow is conditioned on a platform, so a job page shows no skipped steps; the only conditional step is the cache save, which runs on pushes. They exist per target because a GitHub badge reports a workflow, not a job, and because the two architectures of a platform fail differently: macOS x86-64 is cross-built and run under Rosetta while AArch64 is native, Windows AArch64 is a different runner, and the FreeBSD guests differ in whether they are accelerated.
 - **`Release.yml`** — manual only (`workflow_dispatch`, with a version input and a dry-run switch). Pushing a tag never starts a release by itself.
 
-`Build.yml` takes its matrix from the caller: a JSON array of objects naming the runner, family and timeout. Each target workflow passes its own single entry, so a target is described in exactly one place and nothing has to look it up.
+Every target workflow also declares `workflow_call`, and `Release.yml` calls all eight, so a release is built by the very steps CI verified and there is no second description of how a target is built. The price is that a change common to several targets is made in each of their files; the check `Tests/Scripts/CI/Check.sh` keeps the eight from drifting apart on the points `Release.yml` depends on.
 
-It also defines exactly one job. A caller inherits every job a reusable workflow declares, so a job only some callers need appears, skipped, in the others: the macOS run advertised a FreeBSD job it would never run. Work belonging to a single target lives in that target's own workflow instead, which is why FreeBSD x86-64 carries the transferred-artifact acceptance and Windows x86-64 carries the emulated cross run.
-
-It deliberately does not take a list of target ids and expand them against an `include` table of its own. GitHub adds an `include` entry matching no existing combination as a *new* combination, so such a table builds every target it lists whatever the caller selected — which is what happened before this was found, with every caller running all eight targets.
+Work belonging to a single target lives in that target's workflow as a further job: FreeBSD x86-64 carries the transferred-artifact acceptance and Windows x86-64 carries the run under emulation. Cross-target checks ride on Linux x86-64, the host that already built a compiler, because `rux` emits and links every target format in-process: it checks every cross target and cross-builds macOS AArch64 images and inspects them without a Mac.
 
 ## Scope
 
@@ -36,19 +33,18 @@ Each target workflow decides for itself, with one condition on its build job. A 
 
 Every job carries an explicit timeout. Nothing can run for hours.
 
-| Job                                          | Runner                          | Timeout |
-| -------------------------------------------- | ------------------------------- | ------- |
-| `Plan`                                       | ubuntu-26.04                    | 5       |
-| `Quality` — policy guards and C++ formatting | ubuntu-26.04                    | 10      |
-| `clang-tidy` × 3 shards                      | ubuntu-26.04                    | 25      |
-| Linux x86-64 / AArch64                       | ubuntu-26.04 / ubuntu-26.04-arm | 20      |
-| macOS AArch64 / x86-64                       | macos-26 (both)                 | 25 / 30 |
-| Windows x86-64 / AArch64                     | windows-2025 / windows-11-arm   | 30      |
-| FreeBSD x86-64                               | ubuntu-26.04 (KVM guest)        | 35      |
-| FreeBSD AArch64                              | ubuntu-26.04-arm                | 60      |
-| FreeBSD transferred artifact                 | ubuntu-26.04                    | 40      |
-| Cross execution under emulation              | windows-11-arm                  | 20      |
-| `CI` — the aggregate gate                    | ubuntu-26.04                    | 5       |
+| Job                            | Runner                          | Timeout |
+| ------------------------------ | ------------------------------- | ------- |
+| `Quality` — policy and format  | ubuntu-26.04                    | 10      |
+| `clang-tidy` × 3 shards        | ubuntu-26.04                    | 25      |
+| Linux x86-64 / AArch64         | ubuntu-26.04 / ubuntu-26.04-arm | 20      |
+| macOS AArch64 / x86-64         | macos-26 (both)                 | 25 / 30 |
+| Windows x86-64 / AArch64       | windows-2025 / windows-11-arm   | 30      |
+| FreeBSD x86-64                 | ubuntu-26.04 (KVM guest)        | 35      |
+| FreeBSD AArch64                | ubuntu-26.04-arm                | 60      |
+| FreeBSD transferred artifact   | ubuntu-26.04                    | 40      |
+| Windows x86-64 under emulation | windows-11-arm                  | 20      |
+| `CI` — the aggregate gate      | ubuntu-26.04                    | 5       |
 
 Build and test share one job per target. Splitting them cost an artifact round-trip and a second runner acquisition on every target without proving anything the closure check below does not prove more directly.
 
@@ -62,8 +58,8 @@ It is guarded by `if: ${{ !cancelled() }}`, not `if: always()`. Cancelling a run
 
 ## Cancelling a run
 
-- `Ci.yml` sets `cancel-in-progress`, so a new push supersedes the previous run. A branch push and its pull request share one concurrency group, so the same commit is never built twice. Runs on `dev` are exempt, because they are what warms the caches.
-- Jobs called through `workflow_call` run inside the caller's run, so one Cancel stops every target.
+- Every workflow sets `cancel-in-progress`, so a new push supersedes the previous run. A branch push and its pull request share one concurrency group, so the same commit is never built twice. Runs on `dev` and dispatched runs are exempt: the former warm the caches, and a release is the latter.
+- The target workflows `Release.yml` calls run inside its run, so one Cancel stops every target.
 - `.github/Scripts/FreeBSDVM.sh` traps `INT`, `TERM`, and `EXIT` and kills the guest, so a cancelled FreeBSD job stops in seconds rather than waiting out its timeout. The trap only kills; result collection happens on the normal path, so a cancellation cannot hang in `rsync`.
 - `Release.yml` never cancels itself. A half-published release is worse than a wasted runner.
 
@@ -91,7 +87,7 @@ Every download is staged into a `.partial` file and renamed only after its SHA-2
 | Toolchain bundle  | `toolchain-<revision>-<target>`                        | ~200 MB × 5      |
 | Compilation cache | `ccache-<target>-<revision>-<sha>`, restored by prefix | 400 MB × 8       |
 
-The `<sha>` suffix makes the primary key always miss, so every run writes back a cache warmer than the one it restored. Caches are saved on pushes only; a pull request rebuilds the commit its branch push already cached, so letting it save as well would only churn the quota. The compilation cache is saved **before** the tests run, so a slow or failing suite does not cost the next run its warm cache — except on FreeBSD, where build and test share one guest boot.
+The toolchain bundle is restored and saved by one `actions/cache` step: the save happens in its post step on a miss, and only when the job succeeded, which costs a failed job's successor one bundle download. The compilation cache uses the separate restore and save actions instead. The `<sha>` suffix makes its primary key always miss, so every run writes back a cache warmer than the one it restored. It is saved on pushes only; a pull request rebuilds the commit its branch push already cached, so letting it save as well would only churn the quota. And it is saved **before** the tests run, so a slow or failing suite does not cost the next run its warm cache — except on FreeBSD, where build and test share one guest boot.
 
 `CCACHE_NOHASHDIR=1` is set because the FreeBSD guest builds under `/root/rux` while a host builds under the workspace path; without it the two would never share entries. `RUX_USE_PCH` is off in CI, because a compilation cache and precompiled headers defeat each other.
 
@@ -101,7 +97,7 @@ FreeBSD guest images are deliberately **not** cached. Downloading them from the 
 
 ## FreeBSD
 
-There is no hosted FreeBSD runner, so both FreeBSD targets run inside QEMU guests booted from the prepared images by `.github/Scripts/FreeBSDVM.sh`. The driver resolves and verifies the image, boots it, waits for SSH, asserts the guest's recorded revision, syncs the tree in, runs the command, and syncs artifacts back — including when the command failed, so a failing job still yields its logs and a warmed cache.
+There is no hosted FreeBSD runner, so both FreeBSD targets run inside QEMU guests booted from the prepared images by `.github/Scripts/FreeBSDVM.sh`. The driver resolves and verifies the image, boots it, waits for SSH, asserts the guest's recorded revision, syncs the tree in, runs the command, and syncs artifacts back — including when the command failed, so a failing job still yields a warmed cache. The guest's output streams into the job log over SSH, and a guest that never becomes reachable has the tail of its serial console printed there.
 
 The x86-64 guest is KVM-accelerated on an x86-64 host and refuses to run without it. The AArch64 guest runs on `ubuntu-26.04-arm` so that it is accelerated if that runner exposes `/dev/kvm`, and falls back to TCG emulation otherwise, which is no slower there than anywhere else.
 
@@ -113,7 +109,7 @@ Every target asserts that the built compiler links only against system libraries
 
 ## Release
 
-`Release.yml` is dispatched manually with the version to release. It verifies that the version matches `CMakeLists.txt`, that `CHANGELOG.md` has a matching section, and that the tag does not already exist; builds all eight targets through the same `Build.yml` that CI uses; packages each one; builds the Windows
+`Release.yml` is dispatched manually with the version to release. It verifies that the version matches `CMakeLists.txt`, that `CHANGELOG.md` has a matching section, and that the tag does not already exist; builds all eight targets by calling the same target workflows CI runs; packages each one; builds the Windows
 MSI; writes `SHA256SUMS`; and creates the tag and a **draft** release. `contents: write` is granted only to the publishing job.
 
 `dry-run: true` performs everything except the tag and the draft, so a release can be rehearsed in full.
