@@ -1,0 +1,246 @@
+name: CI
+
+# The only workflow that runs on a push or a pull request. It decides how much
+# to run, runs the host-independent checks once, and calls build.yml for the
+# targets it selected.
+#
+# Scope is deliberately tiered: a topic-branch push gets Linux x86-64 and the
+# quality checks in a few minutes, while anything that can reach `dev` gets all
+# eight targets.
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: [main, dev]
+    types: [opened, reopened, synchronize, ready_for_review, labeled, unlabeled]
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+    inputs:
+      scope:
+        description: How much to run
+        type: choice
+        options: [fast, full]
+        default: full
+
+# Pushing again cancels the previous run, and a branch push and its pull request
+# share one group so the same commit is never built twice. Runs on `dev` are left
+# alone because they are what warms the caches every other branch restores.
+concurrency:
+  group: ci-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: ${{ github.ref_name != 'dev' && github.ref_name != 'main' }}
+
+permissions:
+  contents: read
+
+env:
+  FAST_TARGETS: '["linux-x86_64"]'
+  FULL_TARGETS: >-
+    ["freebsd-aarch64","freebsd-x86_64","linux-aarch64","linux-x86_64",
+     "macos-aarch64","macos-x86_64","windows-aarch64","windows-x86_64"]
+
+jobs:
+  # Scope selection lives in a job rather than in `paths-ignore` or a `[skip ci]`
+  # commit trailer, because a workflow that never starts never reports its
+  # required check and would block the pull request forever.
+  plan:
+    name: Plan
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    outputs:
+      targets: ${{ steps.select.outputs.targets }}
+      cross: ${{ steps.select.outputs.cross }}
+      scope: ${{ steps.select.outputs.scope }}
+      save-cache: ${{ steps.select.outputs.save-cache }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Select the target list
+        id: select
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BEFORE: ${{ github.event.before }}
+          LABELS: ${{ join(github.event.pull_request.labels.*.name, ' ') }}
+          DISPATCH_SCOPE: ${{ inputs.scope }}
+          FAST_TARGETS: ${{ env.FAST_TARGETS }}
+          FULL_TARGETS: ${{ env.FULL_TARGETS }}
+        run: |
+          set -eu
+          scope=fast
+          case "$EVENT" in
+          pull_request | schedule) scope=full ;;
+          workflow_dispatch) scope=$DISPATCH_SCOPE ;;
+          push)
+            case "$GITHUB_REF" in
+            refs/heads/dev | refs/heads/main) scope=full ;;
+            esac
+            ;;
+          esac
+          case " $LABELS " in
+          *' ci:full '*) scope=full ;;
+          esac
+
+          # A change that touches only prose cannot break a build, but the
+          # workflow still runs so the gate still reports.
+          base=
+          if [ -n "$BASE_SHA" ]; then
+            base=$BASE_SHA
+          elif [ -n "$BEFORE" ] && [ "$BEFORE" != 0000000000000000000000000000000000000000 ]; then
+            base=$BEFORE
+          fi
+          docs_only=false
+          if [ -n "$base" ] && git cat-file -e "$base^{commit}" 2>/dev/null; then
+            if ! git diff --name-only "$base" "$GITHUB_SHA" |
+                grep -qvE '^(Docs/|\.github/ISSUE_TEMPLATE/|.*\.md$|LICENSE$)'; then
+              docs_only=true
+            fi
+          fi
+
+          # `[skip ci]` is honoured only on a topic branch. On a pull request it
+          # would strand the required check.
+          subject=$(git log -1 --pretty=%s "$GITHUB_SHA")
+          case "$subject" in
+          *'[skip ci]'* | *'[ci skip]'*)
+            if [ "$EVENT" = pull_request ]; then
+              echo "::warning::[skip ci] is ignored on a pull request"
+            else
+              docs_only=true
+            fi
+            ;;
+          esac
+
+          if [ "$docs_only" = true ]; then
+            targets='[]'
+            scope=fast
+          elif [ "$scope" = full ]; then
+            targets=$(printf '%s' "$FULL_TARGETS" | tr -d ' \n')
+          else
+            targets=$FAST_TARGETS
+          fi
+
+          # Pushes write the cache; pull requests only read it. A pull request
+          # rebuilds the same commit its branch push already cached, so letting
+          # it save as well would just churn the quota.
+          save_cache=false
+          [ "$EVENT" != push ] || save_cache=true
+
+          {
+            echo "scope=$scope"
+            echo "targets=$targets"
+            echo "cross=$([ "$scope" = full ] && [ "$targets" != '[]' ] && echo true || echo false)"
+            echo "save-cache=$save_cache"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "scope=$scope targets=$targets docs-only=$docs_only" >> "$GITHUB_STEP_SUMMARY"
+
+  quality:
+    name: Quality
+    needs: plan
+    if: ${{ needs.plan.outputs.targets != '[]' }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Load the toolchain manifest
+        run: grep -E '^[A-Z0-9_]+=' .github/Toolchains.env >> "$GITHUB_ENV"
+      - name: Restore the toolchain
+        id: toolchain
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ runner.temp }}/rux-toolchain
+          key: toolchain-${{ env.TOOLCHAIN_REVISION }}-linux-x86_64
+      - name: Install the toolchain
+        run: sh .github/Scripts/SetupToolchain.sh --target linux-x86_64
+      - name: Check component boundaries
+        run: sh Run.sh policy
+      - name: Check C++ formatting
+        run: |
+          find Compiler Tests/Unit \( -name '*.cpp' -o -name '*.h' \) -not -path '*ThirdParty*' -print0 |
+            xargs -0 clang-format-23 --dry-run -Werror
+
+  tidy:
+    name: clang-tidy (shard ${{ matrix.shard }})
+    needs: plan
+    if: ${{ needs.plan.outputs.scope == 'full' && needs.plan.outputs.targets != '[]' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2]
+    runs-on: ubuntu-26.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Load the toolchain manifest
+        run: grep -E '^[A-Z0-9_]+=' .github/Toolchains.env >> "$GITHUB_ENV"
+      - name: Restore the toolchain
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ runner.temp }}/rux-toolchain
+          key: toolchain-${{ env.TOOLCHAIN_REVISION }}-linux-x86_64
+      - name: Install the toolchain
+        run: sh .github/Scripts/SetupToolchain.sh --target linux-x86_64
+      - name: Configure the compilation database
+        run: |
+          cmake -S . -B Build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_CXX_COMPILER="$CXX" \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            -DRUX_WERROR=ON -DRUX_BUILD_TESTS=ON -DRUX_USE_PCH=OFF
+      - name: Analyze
+        run: sh Run.sh tidy --shard-index ${{ matrix.shard }} --shard-count 3
+
+  build:
+    needs: plan
+    uses: ./.github/workflows/build.yml
+    with:
+      targets: ${{ needs.plan.outputs.targets }}
+      cross: ${{ needs.plan.outputs.cross == 'true' }}
+      save-cache: ${{ needs.plan.outputs.save-cache == 'true' }}
+
+  branch-policy:
+    name: Use dev as the pull request target
+    if: ${{ github.event_name == 'pull_request' && github.base_ref == 'main' }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 2
+    steps:
+      - name: Reject the target branch
+        run: |
+          echo '`main` is the release-promotion branch. Retarget this pull request at `dev`.' \
+            >> "$GITHUB_STEP_SUMMARY"
+          exit 1
+
+  # The single required check. `!cancelled()` rather than `always()` means
+  # pressing Cancel ends the run immediately instead of leaving this job to
+  # outlive it, and accepting `skipped` is what lets the fast lane and a
+  # docs-only change pass without every target having run.
+  ci:
+    name: CI
+    if: ${{ !cancelled() }}
+    needs: [plan, quality, tidy, build, branch-policy]
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    steps:
+      - name: Require every selected job
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          status=0
+          for result in $RESULTS; do
+            case "$result" in
+            success | skipped) ;;
+            *)
+              echo "::error::a required job reported $result"
+              status=1
+              ;;
+            esac
+          done
+          exit "$status"

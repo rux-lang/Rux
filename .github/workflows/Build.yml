@@ -1,0 +1,339 @@
+name: Build
+
+# One description of how Rux is built and verified on one target. ci.yml and
+# release.yml both call this, so a platform change is made exactly once.
+#
+# `targets` is a JSON array of target ids. Rows in `include` whose target is not
+# in that array are not expanded into jobs, so passing '["linux-x86_64"]' yields
+# exactly one job on exactly the right runner.
+
+on:
+  workflow_call:
+    inputs:
+      targets:
+        description: JSON array of target ids to build
+        type: string
+        required: true
+      cross:
+        description: Also run the emulated cross-execution jobs
+        type: boolean
+        default: false
+      package:
+        description: Upload the built compiler as an artifact
+        type: boolean
+        default: false
+      save-cache:
+        description: Write the compilation cache back
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.label }}
+    if: ${{ inputs.targets != '[]' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJSON(inputs.targets) }}
+        include:
+          - target: linux-x86_64
+            label: Linux x86-64
+            family: posix
+            runner: ubuntu-26.04
+            timeout: 20
+          - target: linux-aarch64
+            label: Linux AArch64
+            family: posix
+            runner: ubuntu-26.04-arm
+            timeout: 20
+          - target: macos-x86_64
+            label: macOS x86-64
+            family: posix
+            runner: macos-26-intel
+            timeout: 30
+          - target: macos-aarch64
+            label: macOS AArch64
+            family: posix
+            runner: macos-26
+            timeout: 25
+          - target: windows-x86_64
+            label: Windows x86-64
+            family: windows
+            runner: windows-2025
+            timeout: 30
+          - target: windows-aarch64
+            label: Windows AArch64
+            family: windows
+            runner: windows-11-arm
+            timeout: 30
+          - target: freebsd-x86_64
+            label: FreeBSD x86-64
+            family: freebsd
+            runner: ubuntu-26.04
+            arch: x86_64
+            timeout: 35
+          - target: freebsd-aarch64
+            label: FreeBSD AArch64
+            family: freebsd
+            runner: ubuntu-26.04-arm
+            arch: aarch64
+            timeout: 60
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: ${{ matrix.timeout }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      # Every pinned version and checksum reaches later steps and cache keys
+      # from one file, so there is nothing to keep in sync.
+      - name: Load the toolchain manifest
+        shell: bash
+        run: grep -E '^[A-Z0-9_]+=' .github/Toolchains.env >> "$GITHUB_ENV"
+
+      # --- Host toolchain (native targets) ---------------------------------
+
+      - name: Restore the toolchain
+        if: matrix.family != 'freebsd'
+        id: toolchain
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ runner.temp }}/rux-toolchain
+          key: toolchain-${{ env.TOOLCHAIN_REVISION }}-${{ matrix.target }}
+
+      - name: Install the toolchain
+        if: matrix.family == 'posix'
+        run: sh .github/Scripts/SetupToolchain.sh --target ${{ matrix.target }}
+
+      # The same step imports the Visual Studio environment once and exports it,
+      # so no later step has to re-run vcvarsall.
+      - name: Install the toolchain and Visual Studio environment
+        if: matrix.family == 'windows'
+        shell: pwsh
+        run: ./.github/Scripts/SetupToolchain.ps1 -Target ${{ matrix.target }}
+
+      - name: Save the toolchain
+        if: matrix.family != 'freebsd' && steps.toolchain.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ runner.temp }}/rux-toolchain
+          key: ${{ steps.toolchain.outputs.cache-primary-key }}
+
+      # --- QEMU (FreeBSD targets) ------------------------------------------
+
+      - name: Install QEMU
+        if: matrix.family == 'freebsd'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            qemu-system-x86 qemu-system-arm qemu-efi-aarch64 zstd rsync
+          sudo chmod a+rw /dev/kvm 2>/dev/null || true
+
+      # --- Compilation cache ------------------------------------------------
+
+      # The sha suffix makes the primary key always miss, so every run writes
+      # back a cache warmer than the one it restored.
+      - name: Restore the compilation cache
+        id: ccache
+        uses: actions/cache/restore@v6
+        with:
+          path: BuildCache/ccache
+          key: ccache-${{ matrix.target }}-${{ env.TOOLCHAIN_REVISION }}-${{ github.sha }}
+          restore-keys: ccache-${{ matrix.target }}-${{ env.TOOLCHAIN_REVISION }}-
+
+      # --- Build and test ---------------------------------------------------
+
+      - name: Build
+        if: matrix.family == 'posix'
+        run: sh .github/Scripts/Verify.sh --stage build
+
+      - name: Build
+        if: matrix.family == 'windows'
+        shell: pwsh
+        run: ./.github/Scripts/Verify.ps1 -Stage build
+
+      # Saving before the tests keeps a slow or failing suite from costing the
+      # next run its warm cache. The FreeBSD guest saves afterwards instead,
+      # because its build and test share one boot.
+      - name: Save the compilation cache before tests
+        if: ${{ !cancelled() && inputs.save-cache && matrix.family != 'freebsd' && steps.ccache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v6
+        with:
+          path: BuildCache/ccache
+          key: ${{ steps.ccache.outputs.cache-primary-key }}
+
+      - name: Test
+        if: matrix.family == 'posix'
+        run: |
+          sh .github/Scripts/Verify.sh --stage test
+          sh .github/Scripts/Verify.sh --stage closure
+
+      - name: Check Rux formatting
+        if: matrix.target == 'linux-x86_64'
+        run: sh .github/Scripts/Verify.sh --stage format
+
+      - name: Test
+        if: matrix.family == 'windows'
+        shell: pwsh
+        run: |
+          ./.github/Scripts/Verify.ps1 -Stage test
+          ./.github/Scripts/Verify.ps1 -Stage closure
+
+      # One boot builds and tests, because the guest's Build/ tree is not
+      # carried back out and a second boot would have to compile again.
+      - name: Build and test in the FreeBSD guest
+        if: matrix.family == 'freebsd'
+        run: |
+          mkdir -p BuildCache
+          {
+            echo 'sh .github/Scripts/Verify.sh --stage build'
+            echo 'sh .github/Scripts/Verify.sh --stage test'
+            echo 'sh .github/Scripts/Verify.sh --stage closure'
+            if [ '${{ matrix.arch }}' = aarch64 ]; then
+              echo 'sh Tests/Native/FreeBSDAArch64/Verify.sh'
+            fi
+          } > BuildCache/guest.sh
+          sh .github/Scripts/FreeBSDVM.sh \
+            --arch ${{ matrix.arch }} --role build --script BuildCache/guest.sh
+
+      - name: Save the compilation cache
+        if: ${{ !cancelled() && inputs.save-cache && matrix.family == 'freebsd' && steps.ccache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v6
+        with:
+          path: BuildCache/ccache
+          key: ${{ steps.ccache.outputs.cache-primary-key }}
+
+      # --- Platform fixtures and cross checks -------------------------------
+
+      - name: macOS AArch64 fixtures
+        if: matrix.target == 'macos-aarch64'
+        run: sh Tests/Native/MacOSAArch64/Verify.sh
+
+      - name: Windows AArch64 fixtures
+        if: matrix.target == 'windows-aarch64'
+        shell: pwsh
+        run: |
+          foreach ($fixture in 'ExitCode', 'Assert', 'Panic', 'StackProbe', 'Dll') {
+            & "./Tests/Native/WindowsAArch64$fixture/Verify.ps1"
+            if ($LASTEXITCODE -ne 0) { throw "WindowsAArch64$fixture failed" }
+          }
+
+      # Cross-target checks ride along on the host that already built the
+      # compiler rather than taking a job of their own. No target toolchain is
+      # installed: rux emits and links every target format in-process.
+      - name: Check every cross target
+        if: matrix.target == 'linux-x86_64'
+        run: |
+          for target in freebsd-aarch64 freebsd-x86_64 linux-aarch64 macos-aarch64 \
+                        macos-x86_64 windows-aarch64 windows-x86_64; do
+            ./Bin/rux check --target "$target"
+          done
+
+      - name: Verify the macOS AArch64 image without launching it
+        if: matrix.target == 'linux-x86_64'
+        shell: pwsh
+        run: ./Tests/Native/MacOSAArch64/VerifyCross.ps1
+
+      - name: Upload the compiler
+        if: inputs.package || inputs.cross
+        uses: actions/upload-artifact@v7
+        with:
+          name: rux-${{ matrix.target }}
+          path: |
+            Bin/rux
+            Bin/rux.exe
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload guest logs
+        if: failure() && matrix.family == 'freebsd'
+        uses: actions/upload-artifact@v7
+        with:
+          name: freebsd-logs-${{ matrix.target }}
+          path: ${{ runner.temp }}/rux-freebsd-*/vm/*.log
+          if-no-files-found: ignore
+          retention-days: 3
+
+  # A fresh AArch64 guest with no toolchain installed consumes a payload built
+  # on another machine. The emptiness of the minimal image is the point.
+  freebsd-transfer:
+    name: FreeBSD transferred artifact
+    if: ${{ inputs.cross && contains(fromJSON(inputs.targets), 'freebsd-x86_64') }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Load the toolchain manifest
+        shell: bash
+        run: grep -E '^[A-Z0-9_]+=' .github/Toolchains.env >> "$GITHUB_ENV"
+      - name: Install QEMU
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            qemu-system-x86 qemu-system-arm qemu-efi-aarch64 zstd rsync
+          sudo chmod a+rw /dev/kvm 2>/dev/null || true
+      - name: Restore the compilation cache
+        uses: actions/cache/restore@v6
+        with:
+          path: BuildCache/ccache
+          key: ccache-freebsd-x86_64-${{ env.TOOLCHAIN_REVISION }}-${{ github.sha }}
+          restore-keys: ccache-freebsd-x86_64-${{ env.TOOLCHAIN_REVISION }}-
+      - name: Produce the payload on FreeBSD x86-64
+        run: |
+          mkdir -p BuildCache
+          {
+            echo 'sh .github/Scripts/Verify.sh --stage build'
+            echo 'sh Tests/Native/FreeBSDAArch64/BuildTransfer.sh'
+          } > BuildCache/produce.sh
+          sh .github/Scripts/FreeBSDVM.sh --arch x86_64 --role build \
+            --script BuildCache/produce.sh --pull Bin/Tests/Native
+      - name: Consume it in a guest with no toolchain
+        run: |
+          echo 'sh Tests/Native/FreeBSDAArch64/VerifyTransfer.sh' > BuildCache/consume.sh
+          sh .github/Scripts/FreeBSDVM.sh --arch aarch64 --role minimal \
+            --script BuildCache/consume.sh
+
+  # The x86-64 compiler running under the ARM64 host's emulation layer, proving
+  # a translated compiler still produces working native output.
+  cross-emulated:
+    name: ${{ matrix.label }}
+    if: ${{ inputs.cross }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: macOS x86-64 under Rosetta
+            runner: macos-26
+            source: macos-x86_64
+          - label: Windows x86-64 under emulation
+            runner: windows-11-arm
+            source: windows-x86_64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    needs: build
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v7
+        with:
+          name: rux-${{ matrix.source }}
+          path: Bin
+      - name: Run the translated compiler
+        if: matrix.source == 'macos-x86_64'
+        run: |
+          chmod +x Bin/rux
+          sh Tests/Native/MacOSAArch64/VerifyRosetta.sh
+      - name: Run the translated compiler
+        if: matrix.source == 'windows-x86_64'
+        shell: pwsh
+        run: |
+          foreach ($fixture in 'ExitCode', 'Assert', 'Panic', 'StackProbe', 'Dll') {
+            & "./Tests/Native/WindowsAArch64$fixture/Verify.ps1"
+            if ($LASTEXITCODE -ne 0) { throw "WindowsAArch64$fixture failed" }
+          }

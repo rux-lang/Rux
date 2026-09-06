@@ -1,556 +1,185 @@
 name: Release
 
-# Cut a release by pushing a version tag, e.g.:
-#   git tag v0.3.0 && git push origin v0.3.0
-on:
-  push:
-    tags: [ 'v*' ]
+# Manual only. Pushing a tag never starts a release by itself, so there is
+# nothing to race and nothing to cancel by accident. Every target is built by
+# the same build.yml that CI uses, so a release cannot diverge from what was
+# already verified.
 
-# Build jobs only need to read the repository. The publish job elevates this
-# permission narrowly when it creates the draft GitHub Release.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to release, without the leading v (for example 0.4.0)
+        type: string
+        required: true
+      dry-run:
+        description: Build and package, but create no tag and no draft release
+        type: boolean
+        default: false
+
+concurrency:
+  group: release-${{ inputs.version }}
+  cancel-in-progress: false
+
 permissions:
   contents: read
 
-concurrency:
-  group: release-${{ github.ref }}
-  cancel-in-progress: false
-
-env:
-  CMAKE_VERSION: "4.4.3"
-  NINJA_VERSION: "1.13.2"
-  CCACHE_DIR: ${{ github.workspace }}/BuildCache/ccache
-  CCACHE_MAXSIZE: 768M
-  CCACHE_COMPILERCHECK: content
-
 jobs:
-  # Fail fast if the pushed tag doesn't match the version in CMakeLists.txt,
-  # so a mismatched tag can never produce a release.
-  verify-version:
-    name: Verify version
+  verify:
+    name: Verify the version
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v6
         with:
           persist-credentials: false
-
-      - name: Check tag matches project version
+          fetch-depth: 0
+      - name: Check the version against the tree
+        env:
+          VERSION: ${{ inputs.version }}
         run: |
-          tag="${GITHUB_REF_NAME#v}"
-          project="$(sed -n 's/.*project([^)]*VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)"
-          echo "Tag version:     $tag"
-          echo "Project version: $project"
-          if [ -z "$project" ]; then
-            echo "::error::Could not parse VERSION from CMakeLists.txt"
+          set -eu
+          case "$VERSION" in
+          [0-9]*.[0-9]*.[0-9]*) ;;
+          *) echo "::error::'$VERSION' is not a three-part version"; exit 1 ;;
+          esac
+
+          declared=$(sed -n 's/^project(Rux VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
+          if [ "$declared" != "$VERSION" ]; then
+            echo "::error::CMakeLists.txt declares $declared, not $VERSION"
             exit 1
           fi
-          if [ "$tag" != "$project" ]; then
-            echo "::error::Tag v$tag does not match CMakeLists.txt version $project"
+          if ! grep -q "^## \[$VERSION\]" CHANGELOG.md; then
+            echo "::error::CHANGELOG.md has no section for $VERSION"
+            exit 1
+          fi
+          if git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null; then
+            echo "::error::tag v$VERSION already exists"
             exit 1
           fi
 
-  # Build, test, and upload one binary per supported OS/architecture pair.
-  # Tests run here too, so a broken build or failing suite blocks the release.
-  # Each job uploads its binary under the basename the packaging step expects
-  # (rux / rux.exe).
-  # GitHub has no native FreeBSD runner, so build and test inside a FreeBSD
-  # VM and sync the resulting binary back to the Ubuntu host for upload.
-  freebsd:
-    name: FreeBSD (${{ matrix.label }})
-    needs: verify-version
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - arch: x86_64
-            label: x86-64
-            vm_arch: x86_64
-            host: ubuntu-26.04
-            artifact: rux-freebsd-x86_64
-          - arch: aarch64
-            label: AArch64
-            vm_arch: aarch64
-            host: ubuntu-24.04
-            artifact: rux-freebsd-aarch64
-    # The host image supplies QEMU and the AArch64 guest firmware, and only
-    # ubuntu-24.04 boots the emulated FreeBSD 15.1 AArch64 guest (see
-    # FreeBSD.yml).
-    runs-on: ${{ matrix.host }}
-    # The AArch64 VM fully emulates the compiler and complete test build.
-    timeout-minutes: 240
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          persist-credentials: false
+  build:
+    needs: verify
+    uses: ./.github/workflows/build.yml
+    with:
+      targets: >-
+        ["freebsd-aarch64","freebsd-x86_64","linux-aarch64","linux-x86_64","macos-aarch64","macos-x86_64","windows-aarch64","windows-x86_64"]
+      cross: true
+      package: true
+      save-cache: false
 
-      - name: Restore FreeBSD compilation cache
-        id: compilation-cache
-        uses: actions/cache/restore@v6
-        with:
-          path: BuildCache/ccache
-          key: ccache-release-FreeBSD15.1-${{ matrix.arch }}-clang23-libcxx-Release-pch-off-${{ hashFiles('.github/CI/Environments.lock.json') }}-${{ github.sha }}
-          restore-keys: ccache-release-FreeBSD15.1-${{ matrix.arch }}-clang23-libcxx-Release-pch-off-${{ hashFiles('.github/CI/Environments.lock.json') }}-
-
-      - name: Build and test in FreeBSD VM
-        uses: ./.github/Actions/FreeBSD
-        with:
-          arch: ${{ matrix.vm_arch }}
-          role: build
-          run: |
-            set -e
-            cmake_bin=$(sh .github/Scripts/Verify.sh freebsd-cmake)
-            export PATH="$cmake_bin:$PATH"
-            export CCACHE_DIR="$PWD/BuildCache/ccache" CCACHE_MAXSIZE=768M CCACHE_COMPILERCHECK=content
-            cmake -S . -B Build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=clang++23 \
-              -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DRUX_USE_PCH=OFF -DRUX_BUILD_TESTS=ON -DRUX_WERROR=ON
-            sh Run.sh test --compiler clang++23
-            if [ "${{ matrix.arch }}" = aarch64 ]; then
-              sh Tests/Native/FreeBSDAArch64/Verify.sh ./Bin/rux
-            fi
-
-      - name: Save FreeBSD compilation cache
-        if: ${{ always() && !cancelled() && steps.compilation-cache.outputs.cache-hit != 'true' }}
-        uses: actions/cache/save@v6
-        with:
-          path: BuildCache/ccache
-          key: ${{ steps.compilation-cache.outputs.cache-primary-key }}
-
-      - name: Upload binary artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: ${{ matrix.artifact }}
-          path: Bin/rux
-          if-no-files-found: error
-          retention-days: 7
-
-  freebsd-cross-build:
-    name: FreeBSD cross payload (x86-64 compiler)
-    needs: freebsd
+  publish:
+    name: Publish
+    needs: build
     runs-on: ubuntu-26.04
-    timeout-minutes: 30
+    timeout-minutes: 20
+    permissions:
+      contents: write
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v7
         with:
-          persist-credentials: false
+          path: Artifacts
+          pattern: rux-*
 
-      - name: Download x86-64 FreeBSD compiler
-        uses: actions/download-artifact@v8
-        with:
-          name: rux-freebsd-x86_64
-          path: Bin
+      - name: Package every target
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -eu
+          mkdir -p Release
+          for directory in Artifacts/rux-*; do
+            target=${directory#Artifacts/rux-}
+            os=${target%-*}
+            arch=${target##*-}
+            case "$os" in
+            windows)
+              chmod +x "$directory/rux.exe"
+              (cd "$directory" && zip -q "../../Release/rux-$os-$arch.zip" rux.exe)
+              ;;
+            *)
+              chmod +x "$directory/rux"
+              tar -czf "Release/rux-$os-$arch.tar.gz" -C "$directory" rux
+              ;;
+            esac
+          done
 
-      - name: Cross-build payload in FreeBSD x86-64 VM
-        uses: ./.github/Actions/FreeBSD
-        with:
-          arch: x86_64
-          role: runtime
-          run: |
-            set -e
-            chmod +x Bin/rux
-            sh Tests/Native/FreeBSDAArch64/BuildTransfer.sh ./Bin/rux FreeBSDAArch64Payload
+          # The end-user installers resolve these names; keep them working.
+          cp Release/rux-linux-x86_64.tar.gz Release/rux-linux.tar.gz
+          cp Release/rux-macos-aarch64.tar.gz Release/rux-macos.tar.gz
+          cp Release/rux-freebsd-x86_64.tar.gz Release/rux-freebsd.tar.gz
+          cp Release/rux-windows-x86_64.zip Release/rux-windows.zip
 
-      - name: Upload target-only payload
+      - name: Upload the release payload
         uses: actions/upload-artifact@v7
         with:
-          name: release-freebsd-x86_64-to-aarch64-runtime
-          path: FreeBSDAArch64Payload
+          name: release-payload
+          path: Release
           if-no-files-found: error
           retention-days: 7
 
-  freebsd-cross-runtime:
-    name: FreeBSD cross runtime (transferred to AArch64)
-    needs: freebsd-cross-build
-    # Boots an emulated AArch64 guest, so it needs the ubuntu-24.04 host too.
-    runs-on: ubuntu-24.04
+  installer:
+    name: Windows installer
+    needs: build
+    runs-on: windows-2025
     timeout-minutes: 20
     steps:
-      - name: Checkout verifier
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v6
         with:
           persist-credentials: false
-
-      - name: Download target-only payload
-        uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@v7
         with:
-          name: release-freebsd-x86_64-to-aarch64-runtime
-          path: FreeBSDAArch64Payload
-
-      - name: Run transferred bytes in fresh FreeBSD AArch64 VM
-        uses: ./.github/Actions/FreeBSD
-        with:
-          arch: aarch64
-          role: minimal
-          run: |
-            set -e
-            sh Tests/Native/FreeBSDAArch64/VerifyTransfer.sh FreeBSDAArch64Payload
-
-  freebsd-acceptance:
-    name: FreeBSD release acceptance
-    if: ${{ always() }}
-    needs: [ freebsd, freebsd-cross-runtime ]
-    runs-on: ubuntu-26.04
-    timeout-minutes: 5
-    steps:
-      - name: Require native and transferred acceptance
-        env:
-          NATIVE_RESULT: ${{ needs.freebsd.result }}
-          CROSS_RESULT: ${{ needs.freebsd-cross-runtime.result }}
-        run: |
-          if [ "$NATIVE_RESULT" != success ] || [ "$CROSS_RESULT" != success ]; then
-            echo "::error::FreeBSD release acceptance failed: native=$NATIVE_RESULT transferred=$CROSS_RESULT"
-            exit 1
-          fi
-          echo "FreeBSD native and transferred release acceptance passed."
-
-  linux:
-    name: Linux (${{ matrix.label }})
-    needs: verify-version
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - arch: x86_64
-            label: x86-64
-            runner: ubuntu-26.04
-            artifact: rux-linux-x86_64
-          - arch: aarch64
-            label: AArch64
-            runner: ubuntu-26.04-arm
-            artifact: rux-linux-aarch64
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 25
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-
-      - name: Restore Linux LLVM
-        uses: ./.github/Actions/LinuxLLVM
-
-      - name: Restore CMake, Ninja, and ccache
-        uses: ./.github/Actions/BuildTools
-
-      - name: Identify release compiler and SDK
-        id: environment
+          name: rux-windows-x86_64
+          path: Bin
+      - name: Build the MSI
         shell: pwsh
-        run: ./.github/Scripts/Verify.ps1 -Check Environment -Compiler "clang++-23"
-
-      - name: Restore release compilation cache
-        id: compilation-cache
-        uses: actions/cache/restore@v6
+        run: ./Packaging/Windows/Msi/Build.ps1
+      - uses: actions/upload-artifact@v7
         with:
-          path: BuildCache/ccache
-          key: release-ccache-linux-${{ matrix.arch }}-${{ steps.environment.outputs.identity }}-${{ github.sha }}
-          restore-keys: release-ccache-linux-${{ matrix.arch }}-${{ steps.environment.outputs.identity }}-
-
-      - name: Configure and build
-        run: |
-          cmake -S . -B Build -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_CXX_COMPILER=clang++-23 \
-            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-            -DRUX_USE_PCH=OFF \
-            -DRUX_WERROR=ON \
-            -DRUX_BUILD_TESTS=ON
-          cmake --build Build --config Release --parallel
-
-      - name: Save release compilation cache
-        if: steps.compilation-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v6
-        with:
-          path: BuildCache/ccache
-          key: ${{ steps.compilation-cache.outputs.cache-primary-key }}
-
-      - name: Unit tests
-        run: ctest --test-dir Build --output-on-failure -C Release --parallel "$(sh Scripts/TestJobs.sh)" --no-tests=error
-
-      - name: Check Rux formatting
-        if: matrix.arch == 'x86_64'
-        run: |
-          set -e
-          manifest_count=$(find Packages Tests -type f -name Rux.toml -print | wc -l | tr -d '[:space:]')
-          find Packages Tests -type f -name Rux.toml -print | while IFS= read -r manifest; do
-            ./Bin/rux --manifest "$manifest" fmt --check
-          done
-          printf 'Passed Rux formatting (%s packages)\n' "$manifest_count"
-
-      - name: Verify Rux workspace
-        run: |
-          ./Bin/rux check
-          ./Bin/rux lint
-          ./Bin/rux test --release --jobs "$(sh Scripts/TestJobs.sh)"
-
-      - name: Upload binary artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: ${{ matrix.artifact }}
-          path: Bin/rux
-          if-no-files-found: error
-          retention-days: 7
-
-  macos:
-    name: macOS (${{ matrix.label }})
-    needs: verify-version
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - arch: x86_64
-            label: x86-64
-            runner: macos-26-intel
-            artifact: rux-macos-x86_64
-          - arch: aarch64
-            label: AArch64
-            runner: macos-26
-            artifact: rux-macos-aarch64
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 30
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-
-      - name: Restore macOS LLVM
-        id: llvm
-        uses: ./.github/Actions/MacOSLLVM
-
-      - name: Restore CMake, Ninja, and ccache
-        uses: ./.github/Actions/BuildTools
-
-      - name: Identify release compiler and SDK
-        id: environment
-        shell: pwsh
-        run: ./.github/Scripts/Verify.ps1 -Check Environment -Compiler "${{ steps.llvm.outputs.compiler }}"
-
-      - name: Restore release compilation cache
-        id: compilation-cache
-        uses: actions/cache/restore@v6
-        with:
-          path: BuildCache/ccache
-          key: release-ccache-macos-${{ matrix.arch }}-${{ steps.environment.outputs.identity }}-${{ github.sha }}
-          restore-keys: release-ccache-macos-${{ matrix.arch }}-${{ steps.environment.outputs.identity }}-
-
-      - name: Configure and build
-        run: |
-          cmake -S . -B Build -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_CXX_COMPILER="${{ steps.llvm.outputs.compiler }}" \
-            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-            -DRUX_USE_PCH=OFF \
-            -DRUX_WERROR=ON \
-            -DRUX_BUILD_TESTS=ON
-          cmake --build Build --config Release --parallel
-
-      - name: Save release compilation cache
-        if: steps.compilation-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v6
-        with:
-          path: BuildCache/ccache
-          key: ${{ steps.compilation-cache.outputs.cache-primary-key }}
-
-      - name: Unit tests
-        run: ctest --test-dir Build --output-on-failure -C Release --parallel "$(sh Scripts/TestJobs.sh)" --no-tests=error
-
-      - name: Verify Rux workspace
-        run: |
-          ./Bin/rux check
-          ./Bin/rux lint
-          ./Bin/rux test --release --jobs "$(sh Scripts/TestJobs.sh)"
-
-      - name: Run Apple Silicon native runtime fixtures
-        if: matrix.arch == 'aarch64'
-        run: sh Tests/Native/MacOSAArch64/Verify.sh ./Bin/rux
-
-      - name: Upload binary artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: ${{ matrix.artifact }}
-          path: Bin/rux
-          if-no-files-found: error
-          retention-days: 7
-
-  windows:
-    name: Windows (${{ matrix.label }})
-    needs: verify-version
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - arch: x86_64
-            label: x86-64
-            runner: windows-2025
-            vs_arch: amd64
-            compiler_target: x86_64-pc-windows-msvc
-            artifact: rux-windows-x86_64
-          - arch: aarch64
-            label: AArch64
-            runner: windows-11-arm
-            vs_arch: arm64
-            compiler_target: aarch64-pc-windows-msvc
-            artifact: rux-windows-aarch64
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 30
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-
-      - name: Restore Windows LLVM
-        uses: ./.github/Actions/WindowsLLVM
-        with:
-          arch: ${{ matrix.arch }}
-
-      - name: Restore CMake, Ninja, and ccache
-        uses: ./.github/Actions/BuildTools
-
-      # Initialize the bundled Visual Studio environment so Clang can find
-      # the Windows SDK, CRT headers, and import libraries.
-      - name: Identify release compiler and SDK
-        id: environment
-        shell: pwsh
-        run: ./.github/Scripts/Verify.ps1 -Check Environment -Compiler "C:/LLVM/bin/clang++.exe" -VsArch ${{ matrix.vs_arch }}
-
-      - name: Restore release compilation cache
-        id: compilation-cache
-        uses: actions/cache/restore@v6
-        with:
-          path: BuildCache/ccache
-          key: release-ccache-windows-${{ matrix.arch }}-${{ steps.environment.outputs.identity }}-${{ github.sha }}
-          restore-keys: release-ccache-windows-${{ matrix.arch }}-${{ steps.environment.outputs.identity }}-
-
-      - name: Configure, build, and run unit tests
-        shell: pwsh
-        run: |
-          ./.github/Scripts/Install.ps1 -Tool VsEnvironment -Arch ${{ matrix.vs_arch }}
-
-          cmake -S . -B Build -G Ninja `
-            -DCMAKE_BUILD_TYPE=Release `
-            -DCMAKE_CXX_COMPILER="C:/LLVM/bin/clang++.exe" `
-            -DCMAKE_CXX_COMPILER_TARGET=${{ matrix.compiler_target }} `
-            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache `
-            -DRUX_USE_PCH=OFF `
-            -DRUX_WERROR=ON `
-            -DRUX_BUILD_TESTS=ON
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          cmake --build Build --config Release --parallel
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          ctest --test-dir Build --output-on-failure -C Release --parallel ([Math]::Max(1, [Math]::Min(4, [Environment]::ProcessorCount))) --no-tests=error
-
-      - name: Save release compilation cache
-        if: steps.compilation-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v6
-        with:
-          path: BuildCache/ccache
-          key: ${{ steps.compilation-cache.outputs.cache-primary-key }}
-
-      - name: Verify Rux workspace
-        shell: pwsh
-        run: |
-          ./.github/Scripts/Install.ps1 -Tool VsEnvironment -Arch ${{ matrix.vs_arch }}
-
-          ./Bin/rux.exe check
-          ./Bin/rux.exe lint
-          ./Bin/rux.exe test --release --jobs ([Math]::Max(1, [Math]::Min(4, [Environment]::ProcessorCount)))
-
-      - name: Run Windows AArch64 native fixtures
-        if: matrix.arch == 'aarch64'
-        shell: pwsh
-        run: |
-          ./Tests/Native/WindowsAArch64ExitCode/Verify.ps1 -Rux ./Bin/rux.exe
-          ./Tests/Native/WindowsAArch64Dll/Verify.ps1 -Rux ./Bin/rux.exe
-
-      - name: Upload binary artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: ${{ matrix.artifact }}
-          path: Bin/rux.exe
-          if-no-files-found: error
-          retention-days: 7
-
-      # Package the freshly built binary into a per-user MSI installer.
-      - name: Build MSI installer
-        if: matrix.arch == 'x86_64'
-        shell: pwsh
-        run: ./Packaging/Windows/Msi/Build.ps1 -RuxExe Bin/rux.exe
-
-      - name: Upload MSI artifact
-        if: matrix.arch == 'x86_64'
-        uses: actions/upload-artifact@v7
-        with:
-          name: rux-windows-x86_64-msi
+          name: release-msi
           path: Packaging/Windows/Msi/out/rux-windows.msi
           if-no-files-found: error
           retention-days: 7
 
-  release:
-    name: Publish release
-    needs: [ freebsd-acceptance, linux, macos, windows ]
+  draft:
+    name: Draft the release
+    needs: [publish, installer]
     runs-on: ubuntu-26.04
     timeout-minutes: 10
     permissions:
       contents: write
     steps:
-      # Keep each artifact in its own directory because binaries from the
-      # same operating system have identical basenames.
-      - name: Download x86-64 binary artifacts
-        uses: actions/download-artifact@v8
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v7
         with:
-          pattern: rux-*-x86_64
-          path: dist
+          path: Release
+          pattern: release-*
+          merge-multiple: true
 
-      - name: Download AArch64 binary artifacts
-        uses: actions/download-artifact@v8
-        with:
-          pattern: rux-*-aarch64
-          path: dist
-
-      - name: Download Windows MSI artifact
-        uses: actions/download-artifact@v8
-        with:
-          name: rux-windows-x86_64-msi
-          path: dist/rux-windows-x86_64-msi
-
-      # Unix archives preserve executable permissions; zip is conventional
-      # for standalone Windows binaries. Keep the old unqualified x86-64
-      # filenames as compatibility aliases.
-      - name: Package assets
+      # Checksums cover the MSI too, so they are written after both halves of
+      # the payload have arrived. A dry run stops here, having produced and
+      # checked exactly what a real release would publish.
+      - name: Write the checksums
         run: |
-          set -e
-          mkdir -p out
-          for platform in linux macos freebsd; do
-            for arch in x86_64 aarch64; do
-              source="dist/rux-${platform}-${arch}/rux"
-              chmod +x "$source"
-              tar -czf "out/rux-${platform}-${arch}.tar.gz" \
-                -C "dist/rux-${platform}-${arch}" rux
-            done
-          done
-          for arch in x86_64 aarch64; do
-            zip -j "out/rux-windows-${arch}.zip" \
-              "dist/rux-windows-${arch}/rux.exe"
-          done
-          cp dist/rux-windows-x86_64-msi/rux-windows.msi \
-            out/rux-windows-x86_64.msi
+          cd Release
+          sha256sum ./* > SHA256SUMS
+          cat SHA256SUMS
 
-          # Compatibility aliases; the current installers consume a subset.
-          cp out/rux-freebsd-x86_64.tar.gz out/rux-freebsd.tar.gz
-          cp out/rux-linux-x86_64.tar.gz out/rux-linux.tar.gz
-          cp out/rux-macos-x86_64.tar.gz out/rux-macos.tar.gz
-          cp out/rux-windows-x86_64.zip out/rux-windows.zip
-          cp out/rux-windows-x86_64.msi out/rux-windows.msi
-
-          (cd out && sha256sum rux-* > SHA256SUMS)
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v3
+      - uses: actions/upload-artifact@v7
         with:
-          files: out/*
-          fail_on_unmatched_files: true
-          generate_release_notes: true
-          draft: true
+          name: release-${{ inputs.version }}
+          path: Release
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Tag and draft
+        if: ${{ !inputs.dry-run }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -eu
+          git tag "v$VERSION"
+          git push origin "v$VERSION"
+          gh release create "v$VERSION" Release/* \
+            --draft --title "Rux $VERSION" --notes-file /dev/null

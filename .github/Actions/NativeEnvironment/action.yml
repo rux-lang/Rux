@@ -1,7 +1,0 @@
-name: Native environment
-description: Restore a published environment before considering bootstrap installers.
-runs:
-  using: composite
-  steps:
-    - shell: pwsh
-      run: ./.github/Scripts/Run.ps1 -Task NativeEnvironment restore
