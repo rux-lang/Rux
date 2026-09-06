@@ -1,4 +1,4 @@
-import Core::{ Slice, string };
+
 // Printing, with the failure a caller can act on returned rather than swallowed.
 //
 // Every overload returns the `IoError` of the write it made. Most call sites will keep ignoring it, and that is
@@ -10,7 +10,7 @@ import Format::{ Display, FormatSpec, TextWriter, WriteFormat };
 import Text::{ String, StringView, TextError };
 
 // The one write under everything here.
-func PrintBytes(bytes: Slice<char8>) -> IoError {
+func PrintBytes(bytes: char8[..]) -> IoError {
     var out = StandardOut::Acquire();
     return WriteAll(out, bytes);
 }
@@ -42,7 +42,7 @@ extend ConsoleWriter : TextWriter {
     /// Writes `bytes` to standard output, unless a failure has already been recorded.
     ///
     /// https://rux-lang.dev/docs/api/io/console-writer/write
-    pub func Write(self: &var ConsoleWriter, bytes: Slice<char8>) -> TextError {
+    pub func Write(self: &var ConsoleWriter, bytes: char8[..]) -> TextError {
         if (*self.failure).IsError() { return TextError::None; }
         let outcome = PrintBytes(bytes);
         if outcome.IsError() {
@@ -87,7 +87,7 @@ pub func PrintValueLine(value: Display) -> IoError {
 ///
 /// https://rux-lang.dev/docs/api/io/print
 pub func Print(value: String) -> IoError {
-    return PrintBytes(Slice<char8> { data: value.data, length: value.length });
+    return PrintBytes((value.data)[..value.length]);
 }
 
 /// Provides the public `Print` operation.
@@ -100,7 +100,7 @@ pub func Print(value: StringView) -> IoError {
 /// Writes text to standard output.
 ///
 /// https://rux-lang.dev/docs/api/io/print
-pub func Print(value: string) -> IoError {
+pub func Print(value: char8[..]) -> IoError {
     return PrintBytes(value);
 }
 
@@ -110,7 +110,7 @@ pub func Print(value: string) -> IoError {
 /// `PrintValue`'s do.
 ///
 /// https://rux-lang.dev/docs/api/io/print-format
-pub func Print(format: string, args: Display...) -> IoError {
+pub func Print(format: char8[..], args: Display...) -> IoError {
     var failure = IoError::Ok();
     var sink = ConsoleWriter(@failure);
     let writer: &var TextWriter = sink;

@@ -13,7 +13,7 @@
 // not the contract.
 
 import Allocator::{ AllocError, Allocator, Layout };
-import Core::{ MutableSlice, Slice };
+import Core::{ MutableSlice };
 import Memory::Copy;
 
 /// The room a buffered stream takes when the caller expresses no preference.
@@ -88,8 +88,8 @@ extend BufferedReader {
     /// What line reading is built from: look, decide, then `Consume` what was used.
     ///
     /// https://rux-lang.dev/docs/api/io/buffered-reader/buffered
-    pub func Buffered(self: &BufferedReader) -> Slice<char8> {
-        return Slice<char8> { data: @self.data[self.start], length: self.end - self.start };
+    pub func Buffered(self: &BufferedReader) -> char8[..] {
+        return (@self.data[self.start])[..self.end - self.start];
     }
 
     /// Marks `count` buffered bytes as read.
@@ -233,7 +233,7 @@ extend BufferedWriter {
     /// https://rux-lang.dev/docs/api/io/buffered-writer/flush
     pub func Flush(self: &var BufferedWriter) -> IoError {
         if self.length > 0 {
-            let held = Slice<char8> { data: self.data, length: self.length };
+            let held = (self.data)[..self.length];
             let sent = WriteAll(self.sink, held);
             if sent.IsError() { return sent; }
             self.length = 0;
@@ -244,13 +244,13 @@ extend BufferedWriter {
     /// Takes `bytes`: into the buffer while they fit, around it in one piece when they never would.
     ///
     /// https://rux-lang.dev/docs/api/io/buffered-writer/write
-    pub func Write(self: &var BufferedWriter, bytes: Slice<char8>, taken: *var uint) -> IoError {
+    pub func Write(self: &var BufferedWriter, bytes: char8[..], taken: *var uint) -> IoError {
         *taken = 0;
         if bytes.length == 0 { return IoError::Ok(); }
         if self.data == null || bytes.length >= self.capacity {
             // The bypass, after clearing what order requires: bytes gathered earlier go first.
             if self.length > 0 {
-                let held = Slice<char8> { data: self.data, length: self.length };
+                let held = (self.data)[..self.length];
                 let sent = WriteAll(self.sink, held);
                 if sent.IsError() { return sent; }
                 self.length = 0;
@@ -261,7 +261,7 @@ extend BufferedWriter {
             return IoError::Ok();
         }
         if self.length + bytes.length > self.capacity {
-            let held = Slice<char8> { data: self.data, length: self.length };
+            let held = (self.data)[..self.length];
             let sent = WriteAll(self.sink, held);
             if sent.IsError() { return sent; }
             self.length = 0;

@@ -1,11 +1,9 @@
-import Core::string;
 // Applying a spec's width, fill and alignment to text that is already rendered.
 //
 // Padding is the one part of a spec every type applies the same way, so it is written once: measure the rendering,
 // and if the width asks for more columns, write fill where the alignment says. Zero-padding is deliberately not
 // here -- its zeros go inside the number, between sign and digits, so the numeric writer owns them.
 
-import Core::Slice;
 import Core::MutableSlice;
 import Text::{ CountScalars, Encode, TextError };
 
@@ -16,7 +14,7 @@ import Text::{ CountScalars, Encode, TextError };
 /// characters rather than bytes, so a name with an accent pads the same as one without.
 ///
 /// https://rux-lang.dev/docs/api/format/write-aligned
-pub func WriteAligned(writer: &var TextWriter, spec: FormatSpec, rendered: Slice<char8>, numeric: bool) -> TextError {
+pub func WriteAligned(writer: &var TextWriter, spec: FormatSpec, rendered: char8[..], numeric: bool) -> TextError {
     let occupied = CountScalars(rendered);
     if spec.width <= occupied { return WriteBytes(writer, rendered); }
     let missing = spec.width - occupied;
@@ -91,7 +89,7 @@ pub func WriteFill(writer: &var TextWriter, spec: FormatSpec, count: uint) -> Te
 /// piece goes to the writer as it is reached, so the widest integer costs no more room than its own digit buffer.
 ///
 /// https://rux-lang.dev/docs/api/format/write-integer-digits
-pub func WriteIntegerDigits(writer: &var TextWriter, spec: FormatSpec, digits: Slice<char8>, count: uint,
+pub func WriteIntegerDigits(writer: &var TextWriter, spec: FormatSpec, digits: char8[..], count: uint,
                         negative: bool) -> TextError {
     var lead: uint = 0;
     if negative || spec.showSign {
@@ -171,7 +169,7 @@ pub func WriteIntegerSpec(writer: &var TextWriter, spec: FormatSpec, magnitude: 
         count = count + 1;
         rest = rest / radix;
     }
-    return WriteIntegerDigits(writer, spec, Slice<char8> { data: @digits[0], length: count }, count, negative);
+    return WriteIntegerDigits(writer, spec, (@digits[0])[..count], count, negative);
 }
 
 /// Writes one character under `spec`'s width, fill and alignment.
@@ -182,5 +180,5 @@ pub func FormatScalar(writer: &var TextWriter, spec: FormatSpec, scalar: char32)
     var written: uint = 0;
     let sink = MutableSlice::From<char8>(@encoded[0], 4);
     if Encode(scalar, sink, @written).IsError() { return TextError::InvalidUtf8; }
-    return WriteAligned(writer, spec, Slice<char8> { data: @encoded[0], length: written }, false);
+    return WriteAligned(writer, spec, (@encoded[0])[..written], false);
 }

@@ -1,4 +1,3 @@
-import Core::string;
 // Reading decimal text into a wide float, exactly.
 //
 // The grammar is the one `ParseFloat64` accepts, so what one width reads the others read. The conversion is not
@@ -8,7 +7,7 @@ import Core::string;
 // at any width, for any length of input.
 
 import Allocator::Allocator;
-import Core::{ Result, Slice };
+import Core::{ Result };
 
 /// Reads `str` as a value under `layout`, rounding to nearest with ties to even, and reports the bits.
 ///
@@ -16,7 +15,7 @@ import Core::{ Result, Slice };
 /// format becomes the signed zero. `NaN`, `Inf` and `-Inf` are read exactly as formatting writes them.
 ///
 /// https://rux-lang.dev/docs/api/format/parse-wide-float
-pub func ParseWideFloat(allocator: Allocator, str: Slice<char8>, layout: &FloatLayout) -> Result<uint512, ParseError> {
+pub func ParseWideFloat(allocator: Allocator, str: char8[..], layout: &FloatLayout) -> Result<uint512, ParseError> {
     if str.length == 0u { return Result::Error<uint512, ParseError>(ParseError::Empty); }
     var index: uint = 0;
     var negative = false;
@@ -204,7 +203,7 @@ func RoundRatio(allocator: Allocator, digits: &var BigNat, decimalExponent: int,
 /// Reads `str` as an x87 extended value.
 ///
 /// https://rux-lang.dev/docs/api/format/parse-float80
-pub func ParseFloat80(allocator: Allocator, str: Slice<char8>) -> Result<Float80, ParseError> {
+pub func ParseFloat80(allocator: Allocator, str: char8[..]) -> Result<Float80, ParseError> {
     let layout = FloatLayout::Extended80();
     let parsed = ParseWideFloat(allocator, str, layout);
     var failure = ParseError::Empty;
@@ -215,7 +214,7 @@ pub func ParseFloat80(allocator: Allocator, str: Slice<char8>) -> Result<Float80
 /// Reads `str` as a binary128 value.
 ///
 /// https://rux-lang.dev/docs/api/format/parse-float128
-pub func ParseFloat128(allocator: Allocator, str: Slice<char8>) -> Result<Float128, ParseError> {
+pub func ParseFloat128(allocator: Allocator, str: char8[..]) -> Result<Float128, ParseError> {
     let layout = FloatLayout::Binary128();
     let parsed = ParseWideFloat(allocator, str, layout);
     var failure = ParseError::Empty;
@@ -226,7 +225,7 @@ pub func ParseFloat128(allocator: Allocator, str: Slice<char8>) -> Result<Float1
 /// Reads `str` as a binary256 value.
 ///
 /// https://rux-lang.dev/docs/api/format/parse-float256
-pub func ParseFloat256(allocator: Allocator, str: Slice<char8>) -> Result<Float256, ParseError> {
+pub func ParseFloat256(allocator: Allocator, str: char8[..]) -> Result<Float256, ParseError> {
     let layout = FloatLayout::Binary256();
     let parsed = ParseWideFloat(allocator, str, layout);
     var failure = ParseError::Empty;
@@ -237,7 +236,7 @@ pub func ParseFloat256(allocator: Allocator, str: Slice<char8>) -> Result<Float2
 /// Reads `str` as a binary512 value.
 ///
 /// https://rux-lang.dev/docs/api/format/parse-float512
-pub func ParseFloat512(allocator: Allocator, str: Slice<char8>) -> Result<Float512, ParseError> {
+pub func ParseFloat512(allocator: Allocator, str: char8[..]) -> Result<Float512, ParseError> {
     let layout = FloatLayout::Binary512();
     let parsed = ParseWideFloat(allocator, str, layout);
     var failure = ParseError::Empty;

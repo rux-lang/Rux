@@ -1,23 +1,23 @@
-import Core::{ string, string8 };
+
 // A line ends at a line feed, a CR before it belongs to the ending, and the bound is not advice.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, MutableSlice, Slice };
+import Core::{ Assert, MutableSlice };
 import Io::{ BufferedReader, IoError, IoErrorKind, Reader, ReadTextLine };
 import Text::{ String, StringBuilder, StringView };
 
 // The bytes a string spans, which is how a text overload reaches the slice one.
-func TextBytes(text: string) -> Slice<char8> {
-    return Slice<char8> { data: text.data, length: text.length };
+func TextBytes(text: char8[..]) -> char8[..] {
+    return (text.data)[..text.length];
 }
 
-func View(bytes: string) -> StringView {
+func View(bytes: char8[..]) -> StringView {
     return StringView::FromBytes(bytes).ValueOr(StringView());
 }
 
 // A source that serves a fixed byte string in pieces of at most `step` bytes, to force refills mid-line.
 struct ScriptState {
-    bytes: Slice<char8>;
+    bytes: char8[..];
     offset: uint;
     step: uint;
 }
@@ -50,8 +50,8 @@ extend ScriptHandle : Reader {
 }
 
 // Reads one line from `bytes`, served `step` bytes at a time into a 16-byte buffer, and checks the outcome.
-func CheckBytes(allocator: Allocator, bytes: Slice<char8>, step: uint, limit: uint,
-                expectedKind: IoErrorKind, expected: string) {
+func CheckBytes(allocator: Allocator, bytes: char8[..], step: uint, limit: uint,
+                expectedKind: IoErrorKind, expected: char8[..]) {
     var state = ScriptState { bytes: bytes, offset: 0, step: step };
     let source: Reader = ScriptHandle { state: @state };
     var error = IoError::Ok();

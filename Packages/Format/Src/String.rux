@@ -7,7 +7,6 @@
 // `Debug` is where the two part company. A string shown to a reader is its characters; a string shown to somebody
 // looking at a program is quoted, so that where it starts and stops is visible and an empty one is not invisible.
 
-import Core::Slice;
 import Text::{ DecodeAt, String, StringView, TextError };
 
 extend String : Display {
@@ -58,7 +57,7 @@ extend StringView : Debug {
 
 // The front of `view` holding at most the spec's precision in characters, or all of it. A cut lands on a character
 // boundary by construction: it walks whole characters and stops.
-func Truncated(view: &StringView, spec: FormatSpec) -> Slice<char8> {
+func Truncated(view: &StringView, spec: FormatSpec) -> char8[..] {
     let bytes = view.Bytes();
     if !spec.hasPrecision { return bytes; }
     var kept: uint = 0;
@@ -67,10 +66,10 @@ func Truncated(view: &StringView, spec: FormatSpec) -> Slice<char8> {
         var scalar = 0u32 as char32;
         var width: uint = 0;
         if DecodeAt(bytes, index, @scalar, @width).IsError() {
-            return Slice<char8> { data: bytes.data, length: index };
+            return (bytes.data)[..index];
         }
         index = index + width;
         kept = kept + 1;
     }
-    return Slice<char8> { data: bytes.data, length: index };
+    return (bytes.data)[..index];
 }

@@ -1,10 +1,10 @@
-import Core::{ string, string8 };
-import Core::{ Assert, MutableSlice, Slice };
+
+import Core::{ Assert, MutableSlice };
 import Io::{ IoError, IoErrorKind, ReadExact, Reader, WriteAll, Writer };
 
 // The bytes a string spans, which is how a caller holding text reaches an entry point that takes bytes.
-func TextBytes(text: string) -> Slice<char8> {
-    return Slice<char8> { data: text.data, length: text.length };
+func TextBytes(text: char8[..]) -> char8[..] {
+    return (text.data)[..text.length];
 }
 
 // The helpers' whole job is looping over honesty: a reader that hands over two bytes at a time, a writer that
@@ -15,7 +15,7 @@ func TextBytes(text: string) -> Slice<char8> {
 // A reader over a fixed run of bytes that hands over at most `chunk` per call, and reports one interruption
 // before each real read when asked to.
 struct ScriptedReader {
-    bytes: Slice<char8>;
+    bytes: char8[..];
     cursor: uint;
     chunk: uint;
     interruptions: uint;
@@ -61,7 +61,7 @@ struct ScriptedWriter {
 }
 
 extend ScriptedWriter : Writer {
-    func Write(self: &var ScriptedWriter, bytes: Slice<char8>, taken: *var uint) -> IoError {
+    func Write(self: &var ScriptedWriter, bytes: char8[..], taken: *var uint) -> IoError {
         *taken = 0;
         if self.stalling {
             return IoError::Ok();

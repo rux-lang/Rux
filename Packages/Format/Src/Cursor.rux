@@ -1,4 +1,3 @@
-import Core::string;
 // A fixed run of bytes being filled from the front.
 //
 // Every primitive has a longest possible rendering that is known in advance -- twenty digits for a `uint64`, a
@@ -10,7 +9,7 @@ import Core::string;
 // buffer from the same bound the formatter is written against, so running out means the bound is wrong; refusing
 // silently would turn that into a truncated number, which is worse than an obvious one.
 
-import Core::{ MutableSlice, Slice };
+import Core::{ MutableSlice };
 
 /// A fixed buffer being filled from the front.
 ///
@@ -47,7 +46,7 @@ extend ByteCursor {
     /// Appends every byte of `bytes`, or records an overrun when they do not all fit.
     ///
     /// https://rux-lang.dev/docs/api/format/byte-cursor/push-bytes
-    pub func PushBytes(self: &var ByteCursor, bytes: Slice<char8>) {
+    pub func PushBytes(self: &var ByteCursor, bytes: char8[..]) {
         var index: uint = 0;
         while index < bytes.length {
             self.Push(bytes.data[index]);
@@ -58,8 +57,8 @@ extend ByteCursor {
     /// What has been written.
     ///
     /// https://rux-lang.dev/docs/api/format/byte-cursor/written
-    pub func Written(self: &ByteCursor) -> Slice<char8> {
-        return Slice<char8> { data: self.room.data, length: self.length };
+    pub func Written(self: &ByteCursor) -> char8[..] {
+        return (self.room.data)[..self.length];
     }
 
     /// Whether a write was refused for want of room.

@@ -1,4 +1,3 @@
-import Core::string;
 // A `string` is text, so rendering it is writing it.
 //
 // The bytes go straight through with no conversion and nothing copied: a string is UTF-8 by construction, which is
@@ -11,26 +10,25 @@ import Core::string;
 // Only `string` renders. `string16` and `string32` would each need a transcoding printer, and nothing yet asks for
 // one.
 
-import Core::Slice;
 import Text::TextError;
 
-extend string : Display {
+extend char8[..] : Display {
     /// Writes this text.
     ///
     /// https://rux-lang.dev/docs/api/format/string8/format
-    pub func Format(self: &string, writer: &var TextWriter, spec: FormatSpec) -> TextError {
-        return WriteAligned(writer, spec, Slice<char8> { data: self.data, length: self.length }, false);
+    pub func Format(self: &char8[..], writer: &var TextWriter, spec: FormatSpec) -> TextError {
+        return WriteAligned(writer, spec, (self.data)[..self.length], false);
     }
 }
 
-extend string : Debug {
+extend char8[..] : Debug {
     /// Writes this text, quoted.
     ///
     /// The quotes are all that is added. Escaping the characters between them is a question about which of them
     /// need it, which is a Unicode question and belongs where the Unicode tables are.
     ///
     /// https://rux-lang.dev/docs/api/format/string8/format-debug
-    pub func FormatDebug(self: &string, writer: &var TextWriter, spec: FormatSpec) -> TextError {
+    pub func FormatDebug(self: &char8[..], writer: &var TextWriter, spec: FormatSpec) -> TextError {
         let opening = WriteAscii(writer, c8'"');
         if opening.IsError() { return opening; }
         let body = self.Format(writer, spec);

@@ -1,6 +1,4 @@
-import Core::string;
 import Allocator::{ Allocator, SystemAllocator };
-import Core::Slice;
 import Format::Format;
 import Text::{ StringView, TextError };
 
@@ -11,7 +9,7 @@ import Text::{ StringView, TextError };
 // The expected digit strings are facts about powers of two, not about this implementation, so a reader can check
 // them against any source.
 
-func Matches(allocator: Allocator, rendered: Slice<char8>, expected: string) -> bool {
+func Matches(allocator: Allocator, rendered: char8[..], expected: char8[..]) -> bool {
     let got = StringView::FromValidated(rendered);
     let wanted = StringView::FromValidated(expected);
     return got.Equals(wanted);

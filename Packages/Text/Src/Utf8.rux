@@ -18,7 +18,7 @@
 //
 // Every function here works on borrowed bytes and allocates nothing.
 
-import Core::{ MutableSlice, Option, Slice };
+import Core::{ MutableSlice, Option };
 
 /// The largest Unicode scalar value.
 ///
@@ -199,7 +199,7 @@ func SecondByteRange(leading: uint32, low: *var uint32, high: *var uint32) -> ui
 /// Cannot allocate. Runs in constant time.
 ///
 /// https://rux-lang.dev/docs/api/text/decode-at
-pub func DecodeAt(bytes: Slice<char8>, index: uint, scalar: *var char32, width: *var uint) -> Utf8Error {
+pub func DecodeAt(bytes: char8[..], index: uint, scalar: *var char32, width: *var uint) -> Utf8Error {
     *scalar = 0u32 as char32;
     *width = 0;
     if index >= bytes.length { return Utf8Error::Truncated; }
@@ -244,7 +244,7 @@ pub func DecodeAt(bytes: Slice<char8>, index: uint, scalar: *var char32, width: 
 /// Cannot allocate. Runs in time proportional to the length.
 ///
 /// https://rux-lang.dev/docs/api/text/validate
-pub func Validate(bytes: Slice<char8>, failureIndex: *var uint) -> Utf8Error {
+pub func Validate(bytes: char8[..], failureIndex: *var uint) -> Utf8Error {
     var index: uint = 0;
     while index < bytes.length {
         var scalar = 0u32 as char32;
@@ -267,7 +267,7 @@ pub func Validate(bytes: Slice<char8>, failureIndex: *var uint) -> Utf8Error {
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/text/is-boundary
-pub func IsBoundary(bytes: Slice<char8>, index: uint) -> bool {
+pub func IsBoundary(bytes: char8[..], index: uint) -> bool {
     if index > bytes.length { return false; }
     if index == bytes.length { return true; }
     return !IsContinuation(bytes.data[index]);
@@ -281,7 +281,7 @@ pub func IsBoundary(bytes: Slice<char8>, index: uint) -> bool {
 /// Cannot fail. Runs in time proportional to the length and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/text/count-scalars
-pub func CountScalars(bytes: Slice<char8>) -> uint {
+pub func CountScalars(bytes: char8[..]) -> uint {
     var counted: uint = 0;
     var index: uint = 0;
     while index < bytes.length {
@@ -299,7 +299,7 @@ pub func CountScalars(bytes: Slice<char8>) -> uint {
 /// arbitrary byte offset needs. An index at or past the length gives the length.
 ///
 /// https://rux-lang.dev/docs/api/text/boundary-at-or-below
-pub func BoundaryAtOrBelow(bytes: Slice<char8>, index: uint) -> uint {
+pub func BoundaryAtOrBelow(bytes: char8[..], index: uint) -> uint {
     if index >= bytes.length { return bytes.length; }
     var walk = index;
     // At most three steps: no scalar value takes more than four bytes, so no byte is more than three past a start.

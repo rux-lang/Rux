@@ -10,7 +10,7 @@
 // to the even digit.
 
 import Allocator::Allocator;
-import Core::{ MutableSlice, Slice };
+import Core::{ MutableSlice };
 
 // The digits of `value`, as few as read back to the same bits, written into `digits`. `exponent10` receives the
 // power of ten of the first digit, so the value is d.ddd times ten to it. Reports `false` when the allocator refuses

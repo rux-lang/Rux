@@ -4,7 +4,6 @@
 // table costs more memory than its ranges. The category ordinals mirror `GeneralCategory` exactly; the table
 // stores numbers, and this enum is what the numbers mean.
 
-import Core::Slice;
 
 /// The Unicode general category, one per scalar value. `Copy`.
 ///

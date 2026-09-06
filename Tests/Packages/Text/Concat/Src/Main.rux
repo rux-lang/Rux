@@ -1,13 +1,12 @@
-import Core::string;
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, Slice };
+import Core::{ Assert };
 import Text::{ Concat, Repeat, String, StringView, TextError };
 
 // Joining and repeating are the operations that make new text, so what is worth checking is what they allocate and
 // what they leave behind: the inputs are borrowed views and stay whole, the result is an owning string with a block
 // of its own, and the empty cases cost nothing.
 
-func View(bytes: string) -> StringView {
+func View(bytes: char8[..]) -> StringView {
     return StringView::FromBytes(bytes).ValueOr(StringView());
 }
 

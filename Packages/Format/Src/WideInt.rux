@@ -9,7 +9,6 @@
 // the most negative value of any signed width has no positive counterpart to negate into, and two's complement in
 // the unsigned type is right for it and for every other value.
 
-import Core::Slice;
 import Text::TextError;
 
 // The digits of a `uint128`, least significant first, in the spec's base.
@@ -38,7 +37,7 @@ func WriteDigits128(writer: &var TextWriter, spec: FormatSpec, magnitude: uint12
         count = count + 1;
         rest = rest / radix;
     }
-    return WriteIntegerDigits(writer, spec, Slice<char8> { data: @digits[0], length: count }, count, negative);
+    return WriteIntegerDigits(writer, spec, (@digits[0])[..count], count, negative);
 }
 
 extend uint128 : Display {
@@ -108,7 +107,7 @@ func WriteDigits256(writer: &var TextWriter, spec: FormatSpec, magnitude: uint25
         count = count + 1;
         rest = rest / radix;
     }
-    return WriteIntegerDigits(writer, spec, Slice<char8> { data: @digits[0], length: count }, count, negative);
+    return WriteIntegerDigits(writer, spec, (@digits[0])[..count], count, negative);
 }
 
 extend uint256 : Display {
@@ -178,7 +177,7 @@ func WriteDigits512(writer: &var TextWriter, spec: FormatSpec, magnitude: uint51
         count = count + 1;
         rest = rest / radix;
     }
-    return WriteIntegerDigits(writer, spec, Slice<char8> { data: @digits[0], length: count }, count, negative);
+    return WriteIntegerDigits(writer, spec, (@digits[0])[..count], count, negative);
 }
 
 extend uint512 : Display {

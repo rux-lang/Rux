@@ -1,5 +1,4 @@
-import Core::string;
-import Core::{ Result, Slice };
+import Core::{ Result };
 import Text::StringView;
 
 // Parses into value and reports only whether conversion succeeded. On failure,
@@ -7,7 +6,7 @@ import Text::StringView;
 /// Provides the public `TryParseInt64` operation.
 ///
 /// https://rux-lang.dev/docs/api/format/try-parse-int64
-pub func TryParseInt64(str: Slice<char8>, value: *var int64) -> bool {
+pub func TryParseInt64(str: char8[..], value: *var int64) -> bool {
     if value == null { return false; }
 
     match ParseInt64(str) {

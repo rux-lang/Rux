@@ -1,4 +1,3 @@
-import Core::string;
 // Crossing the boundary to C, where a string is a pointer and a promise.
 //
 // A C string carries no length: it ends at the first zero byte, and the byte itself is not part of the text. That
@@ -16,7 +15,7 @@ import Core::string;
 // appends is never visible through anything else, and a `String` never holds one.
 
 import Allocator::{ AllocError, Allocator, Layout };
-import Core::{ Option, Slice };
+import Core::{ Option };
 import Memory::Copy;
 
 /// Text carrying the terminator C expects, in storage of its own.
@@ -45,7 +44,7 @@ extend CString {
     /// how a checked name and a used name part company.
     ///
     /// https://rux-lang.dev/docs/api/text/c-string/from-text
-    pub func FromText(allocator: Allocator, text: string, error: *var TextError) -> Option<CString> {
+    pub func FromText(allocator: Allocator, text: char8[..], error: *var TextError) -> Option<CString> {
         return CString::FromView(allocator, StringView::FromValidated(text), error);
     }
 
@@ -129,7 +128,7 @@ extend CString {
         while (raw[length] as uint32) != 0 {
             length = length + 1;
         }
-        let bytes = Slice<char8> { data: raw, length: length };
+        let bytes = (raw)[..length];
         var failureIndex: uint = 0;
         if Validate(bytes, @failureIndex).IsError() {
             *error = TextError::InvalidUtf8;
@@ -162,7 +161,7 @@ extend CString {
     ///
     /// https://rux-lang.dev/docs/api/text/c-string/view
     pub func View(self: &CString) -> StringView {
-        return StringView::FromValidated(Slice<char8> { data: self.data, length: self.length });
+        return StringView::FromValidated((self.data)[..self.length]);
     }
 
     /// Gives the block back and leaves a `CString` that owns nothing.

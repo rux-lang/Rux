@@ -5,10 +5,9 @@
 // where a code point maps to a sequence. Three searches serve all of them, and everything else in the package is
 // written against these rather than against the arrays' shapes.
 
-import Core::Slice;
 
 // Whether `cp` falls in any (first, last) pair of `table`.
-func InRangePairs(table: Slice<uint32>, cp: uint32) -> bool {
+func InRangePairs(table: uint32[..], cp: uint32) -> bool {
     var low: uint = 0;
     var high = table.length / 2;
     while low < high {
@@ -27,7 +26,7 @@ func InRangePairs(table: Slice<uint32>, cp: uint32) -> bool {
 }
 
 // The value of the (first, last, value) triple holding `cp`, or `fallback`.
-func RangeValue(table: Slice<uint32>, cp: uint32, fallback: uint32) -> uint32 {
+func RangeValue(table: uint32[..], cp: uint32, fallback: uint32) -> uint32 {
     var low: uint = 0;
     var high = table.length / 3;
     while low < high {
@@ -47,7 +46,7 @@ func RangeValue(table: Slice<uint32>, cp: uint32, fallback: uint32) -> uint32 {
 
 // Finds `key` in a (key, offset, length) index and reports its pool window, or reports `false` and leaves the
 // window untouched.
-func IndexWindow(table: Slice<uint32>, key: uint32, offset: *var uint, length: *var uint) -> bool {
+func IndexWindow(table: uint32[..], key: uint32, offset: *var uint, length: *var uint) -> bool {
     var low: uint = 0;
     var high = table.length / 3;
     while low < high {
@@ -69,7 +68,7 @@ func IndexWindow(table: Slice<uint32>, key: uint32, offset: *var uint, length: *
 
 // The mapped value of `key` in a (key, value) pair table, or `key` itself: a case table's absence means the point
 // maps to itself.
-func PairValue(table: Slice<uint32>, key: uint32) -> uint32 {
+func PairValue(table: uint32[..], key: uint32) -> uint32 {
     var low: uint = 0;
     var high = table.length / 2;
     while low < high {

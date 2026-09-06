@@ -1,4 +1,4 @@
-import Core::{ MutableSlice, Slice };
+import Core::{ MutableSlice };
 import Format::{ ByteCursor, FormatSpec, Display, TextWriter };
 
 // Std stays out of the dependencies, and a failed check reports itself through the exit code. See the Int8 test for

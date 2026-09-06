@@ -1,11 +1,11 @@
-import Core::{ string, string8 };
+
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, MutableSlice, Slice };
+import Core::{ Assert, MutableSlice };
 import Io::{ BufferedReader, BufferedWriter, IoError, IoErrorKind, Reader, Writer };
 
 // The bytes a string spans, which is how a caller holding text reaches an entry point that takes bytes.
-func TextBytes(text: string) -> Slice<char8> {
-    return Slice<char8> { data: text.data, length: text.length };
+func TextBytes(text: char8[..]) -> char8[..] {
+    return (text.data)[..text.length];
 }
 
 // What buffering promises is fewer conversations, and the way to test a count of conversations is to count them:
@@ -59,7 +59,7 @@ struct SinkHandle {
 }
 
 extend SinkHandle : Writer {
-    func Write(self: &var SinkHandle, bytes: Slice<char8>, taken: *var uint) -> IoError {
+    func Write(self: &var SinkHandle, bytes: char8[..], taken: *var uint) -> IoError {
         let state = self.state;
         state.calls = state.calls + 1;
         var take = bytes.length;

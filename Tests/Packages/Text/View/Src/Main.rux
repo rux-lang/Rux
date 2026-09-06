@@ -1,10 +1,10 @@
-import Core::{ string, string8 };
-import Core::{ Assert, Ordering, Slice };
+
+import Core::{ Assert, Ordering };
 import Text::StringView;
 
 // The bytes a string spans, which is how a caller holding text reaches an entry point that takes bytes.
-func TextBytes(text: string) -> Slice<char8> {
-    return Slice<char8> { data: text.data, length: text.length };
+func TextBytes(text: char8[..]) -> char8[..] {
+    return (text.data)[..text.length];
 }
 
 // A view is bytes plus a promise that they are UTF-8, and the promise is what everything downstream is allowed to

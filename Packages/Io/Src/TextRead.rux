@@ -9,7 +9,6 @@
 // and a longer one is `LimitExceeded` rather than a slow exhaustion of memory: unbounded line reading from a
 // socket is how a peer that never sends a newline takes the process down.
 
-import Core::Slice;
 import Text::{ DecodeAt, StringBuilder, Utf8Error, Validate };
 
 /// Appends the next line of `reader` to `builder`, without its ending.
@@ -153,7 +152,7 @@ pub func ReadTextLine(reader: &var BufferedReader, builder: &var StringBuilder, 
             }
 
             if failure == IoErrorKind::None {
-                let piece = Slice<char8> { data: held.data, length: content };
+                let piece = (held.data)[..content];
                 var probe: uint = 0;
                 let verdict = Validate(piece, @probe);
                 var settled = content;
@@ -173,7 +172,7 @@ pub func ReadTextLine(reader: &var BufferedReader, builder: &var StringBuilder, 
                 }
 
                 if failure == IoErrorKind::None {
-                    let settledPiece = Slice<char8> { data: held.data, length: settled };
+                    let settledPiece = (held.data)[..settled];
                     if appended + settled > limit {
                         failure = IoErrorKind::LimitExceeded;
                     }

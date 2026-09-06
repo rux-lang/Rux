@@ -1,6 +1,5 @@
-import Core::string;
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, Option, Slice };
+import Core::{ Assert, Option };
 import Text::{ IsAsciiSpace, StringView, TextError };
 
 // Searching is over bytes, and works out to searching over characters for free: UTF-8 is self-synchronising, so no
@@ -10,7 +9,7 @@ import Text::{ IsAsciiSpace, StringView, TextError };
 //
 // Nothing here allocates: every answer is a position, a boolean, or a borrow of bytes that were already there.
 
-func View(bytes: string) -> StringView {
+func View(bytes: char8[..]) -> StringView {
     return StringView::FromBytes(bytes).ValueOr(StringView());
 }
 

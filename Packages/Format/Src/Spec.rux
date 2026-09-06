@@ -9,7 +9,6 @@
 // An unrecognized spec fails to parse, and the placeholder that carried it is copied through as literal text: the
 // mistake shows where it was written, exactly as a starved placeholder does.
 
-import Core::Slice;
 
 /// Where the padding goes when the rendering is narrower than the width.
 ///
@@ -113,7 +112,7 @@ func AlignOf(byte: char8, align: *var FormatAlign) -> bool {
 /// Cannot allocate. Runs in time proportional to the spec, which is a handful of bytes.
 ///
 /// https://rux-lang.dev/docs/api/format/parse-format-spec
-pub func ParseFormatSpec(text: Slice<char8>, spec: *var FormatSpec) -> bool {
+pub func ParseFormatSpec(text: char8[..], spec: *var FormatSpec) -> bool {
     *spec = FormatSpec::Plain();
     var index: uint = 0;
 

@@ -1,4 +1,4 @@
-import Core::{ string, string8 };
+
 // Text that owns the bytes it holds.
 //
 // A `String` owns one block, knows the allocator to give it back to, and never writes to it again. Every operation
@@ -17,7 +17,7 @@ import Core::{ string, string8 };
 // downstream may rely on that, which is what makes cutting and indexing cheap.
 
 import Allocator::{ AllocError, Allocator, Layout };
-import Core::{ Option, Ordering, Panic, Slice };
+import Core::{ Option, Ordering, Panic };
 import Memory::Copy;
 
 /// Text that owns its bytes.
@@ -84,7 +84,7 @@ extend String {
     /// answers rather than errors.
     ///
     /// https://rux-lang.dev/docs/api/text/string/from-validated
-    pub func FromValidated(allocator: Allocator, bytes: Slice<char8>, error: *var TextError) -> String {
+    pub func FromValidated(allocator: Allocator, bytes: char8[..], error: *var TextError) -> String {
         *error = TextError::None;
         if bytes.length == 0 { return String(allocator); }
 
@@ -119,7 +119,7 @@ extend String {
     /// Runs in time proportional to the length -- one pass to check, one to copy -- and allocates once.
     ///
     /// https://rux-lang.dev/docs/api/text/string/from-bytes
-    pub func FromBytes(allocator: Allocator, bytes: Slice<char8>, error: *var TextError) -> String {
+    pub func FromBytes(allocator: Allocator, bytes: char8[..], error: *var TextError) -> String {
         var failureIndex: uint = 0;
         if Validate(bytes, @failureIndex).IsError() {
             *error = TextError::InvalidUtf8;
@@ -158,8 +158,8 @@ extend String {
     /// The bytes themselves, borrowed.
     ///
     /// https://rux-lang.dev/docs/api/text/string/bytes
-    pub func Bytes(self: &String) -> Slice<char8> {
-        return Slice<char8> { data: self.data, length: self.length };
+    pub func Bytes(self: &String) -> char8[..] {
+        return (self.data)[..self.length];
     }
 
     /// A view over this string, which is what to pass to anything that only reads.

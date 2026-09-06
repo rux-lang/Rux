@@ -1,4 +1,3 @@
-import Core::string;
 // Filling placeholders in a run of text.
 //
 // `{}` takes the next argument, in the order they are written; `{{` and `}}` are how a literal brace is spelled.
@@ -10,7 +9,6 @@ import Core::string;
 // copied out of each of them, and now it allocates only what the result itself needs.
 
 import Allocator::Allocator;
-import Core::Slice;
 import Text::{ String, StringBuilder, TextError };
 
 /// Writes `format` into `writer`, with each `{}` replaced by the next argument.
@@ -23,7 +21,7 @@ import Text::{ String, StringBuilder, TextError };
 /// Reports whatever the writer reported, having written what it managed to first.
 ///
 /// https://rux-lang.dev/docs/api/format/write-format
-pub func WriteFormat(writer: &var TextWriter, format: string, args: Display...) -> TextError {
+pub func WriteFormat(writer: &var TextWriter, format: char8[..], args: Display...) -> TextError {
     // The argument the next placeholder takes. Placeholders are filled in the order they are written, so this only
     // ever moves forward.
     var next: uint = 0;
@@ -55,7 +53,7 @@ pub func WriteFormat(writer: &var TextWriter, format: string, args: Display...) 
             var placeholder = close < format.length;
             if placeholder && close > index + 1 {
                 if format[index + 1] == c8':' {
-                    let body = Slice<char8> { data: @format.data[index + 2], length: close - index - 2 };
+                    let body = (@format.data[index + 2])[..close - index - 2];
                     placeholder = ParseFormatSpec(body, @spec);
                 }
                 else {
@@ -85,7 +83,7 @@ pub func WriteFormat(writer: &var TextWriter, format: string, args: Display...) 
 /// wrong, and the string comes back holding whatever was written before that.
 ///
 /// https://rux-lang.dev/docs/api/format/format
-pub func Format(allocator: Allocator, format: string, error: *var TextError, args: Display...) -> String {
+pub func Format(allocator: Allocator, format: char8[..], error: *var TextError, args: Display...) -> String {
     var builder = StringBuilder(allocator);
     // The literal text, plus a little for each argument. Too small a guess costs a reallocation, which is what the
     // builder is there to absorb; the short calls that most of them are fill in without one.

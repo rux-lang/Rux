@@ -1,4 +1,4 @@
-import Core::{ Assert, Slice };
+import Core::{ Assert };
 import Unicode::{ GraphemeVectorBreaks, GraphemeVectorIndex, GraphemeVectorPoints, IsGraphemeBoundary };
 
 // Every row of the official GraphemeBreakTest, boundary by boundary. Each row is a run of code points and a mask
@@ -7,9 +7,9 @@ import Unicode::{ GraphemeVectorBreaks, GraphemeVectorIndex, GraphemeVectorPoint
 // the Indic conjuncts are all in here.
 
 func Main() -> int {
-    let table: Slice<uint32> = GraphemeVectorIndex[..];
-    let points: Slice<uint32> = GraphemeVectorPoints[..];
-    let masks: Slice<uint32> = GraphemeVectorBreaks[..];
+    let table: uint32[..] = GraphemeVectorIndex[..];
+    let points: uint32[..] = GraphemeVectorPoints[..];
+    let masks: uint32[..] = GraphemeVectorBreaks[..];
     let rows = table.length / 2;
 
     var storage: char32[40];
@@ -22,7 +22,7 @@ func Main() -> int {
             storage[index] = points.data[offset + index] as char32;
             index = index + 1;
         }
-        let text = Slice<char32> { data: @storage[0], length: length };
+        let text = (@storage[0])[..length];
         let mask = masks.data[row];
 
         var position: uint = 0;

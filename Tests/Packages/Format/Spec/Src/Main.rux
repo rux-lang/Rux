@@ -1,12 +1,11 @@
-import Core::{ string, string8 };
+
 import Allocator::{ Allocator, SystemAllocator };
-import Core::Slice;
 import Format::Format;
 import Text::{ StringView, TextError };
 
 // The bytes a string spans, which is how a text overload reaches the slice one.
-func TextBytes(text: string) -> Slice<char8> {
-    return Slice<char8> { data: text.data, length: text.length };
+func TextBytes(text: char8[..]) -> char8[..] {
+    return (text.data)[..text.length];
 }
 
 // The spec grammar, exercised through whole format calls so what is checked is what a caller sees. Each family gets
@@ -14,7 +13,7 @@ func TextBytes(text: string) -> Slice<char8> {
 // prefix, precision on text at a multi-byte boundary, and the ill-formed specs that must come through as literal
 // text rather than half-applied.
 
-func Matches(allocator: Allocator, format: string, expected: string) -> bool {
+func Matches(allocator: Allocator, format: char8[..], expected: char8[..]) -> bool {
     var error = TextError::None;
     let rendered = Format(allocator, format, @error, 0);
     if error != TextError::None {

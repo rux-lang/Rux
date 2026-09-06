@@ -7,7 +7,7 @@
 // redirected stream wants the raw UTF-8 bytes on disk exactly as written -- and deciding it per operation would
 // put a system call in front of every one. Elsewhere the bytes are the bytes, console or not.
 
-import Core::{ #target, MutableSlice, Slice };
+import Core::{ #target, MutableSlice };
 import Text::IsBoundary;
 
 when #target.os {
@@ -65,7 +65,7 @@ func PlatformFailure(raw: int32) -> IoError {
 }
 
 // One write attempt against a platform stream: the shared machinery under both outgoing standard streams.
-func WriteRaw(handle: RawStream, console: bool, bytes: Slice<char8>, taken: *var uint) -> IoError {
+func WriteRaw(handle: RawStream, console: bool, bytes: char8[..], taken: *var uint) -> IoError {
     *taken = 0;
     if bytes.length == 0 { return IoError::Ok(); }
     when #target.os == .Windows {
@@ -331,7 +331,7 @@ extend StandardOut : Writer {
     /// Writes what it can of `bytes` to standard output.
     ///
     /// https://rux-lang.dev/docs/api/io/standard-out/write
-    pub func Write(self: &var StandardOut, bytes: Slice<char8>, taken: *var uint) -> IoError {
+    pub func Write(self: &var StandardOut, bytes: char8[..], taken: *var uint) -> IoError {
         return WriteRaw(self.handle, self.console, bytes, taken);
     }
 
@@ -374,7 +374,7 @@ extend StandardError : Writer {
     /// Writes what it can of `bytes` to standard error.
     ///
     /// https://rux-lang.dev/docs/api/io/standard-error/write
-    pub func Write(self: &var StandardError, bytes: Slice<char8>, taken: *var uint) -> IoError {
+    pub func Write(self: &var StandardError, bytes: char8[..], taken: *var uint) -> IoError {
         return WriteRaw(self.handle, self.console, bytes, taken);
     }
 

@@ -10,7 +10,7 @@
 // without copying their state or manufacturing an adapter. An interface value is still useful when a stream must
 // be stored, because references deliberately cannot escape into fields.
 
-import Core::{ MutableSlice, Slice };
+import Core::{ MutableSlice };
 
 /// Somewhere bytes come from.
 ///
@@ -28,7 +28,7 @@ pub interface Reader {
 /// https://rux-lang.dev/docs/api/io/writer
 pub interface Writer {
     /// Takes what it can of `bytes` and reports how much through `taken`.
-    func Write(bytes: Slice<char8>, taken: *var uint) -> IoError;
+    func Write(bytes: char8[..], taken: *var uint) -> IoError;
 
     /// Pushes whatever is held toward the destination.
     func Flush() -> IoError;
@@ -93,11 +93,11 @@ pub func ReadExact(reader: &var Reader, into: MutableSlice<char8>) -> IoError {
 /// that spins on it would hang the caller on a stream that will never take the rest.
 ///
 /// https://rux-lang.dev/docs/api/io/write-all
-pub func WriteAll(writer: &var Writer, bytes: Slice<char8>) -> IoError {
+pub func WriteAll(writer: &var Writer, bytes: char8[..]) -> IoError {
     var at: uint = 0;
     var stalled: uint = 0;
     while at < bytes.length {
-        let rest = Slice<char8> { data: @bytes.data[at], length: bytes.length - at };
+        let rest = (@bytes.data[at])[..bytes.length - at];
         var taken: uint = 0;
         let outcome = writer.Write(rest, @taken);
         if outcome.IsError() {

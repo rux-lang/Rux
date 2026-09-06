@@ -11,7 +11,7 @@
 // here, because applying them silently is how text changes meaning by passing through a machine set to the wrong
 // language. A caller with a locale applies its rules knowingly, on top.
 
-import Core::{ MutableSlice, Slice };
+import Core::{ MutableSlice };
 
 /// The simple uppercase of `scalar`: one value to one, itself when it has no mapping.
 ///
@@ -38,7 +38,7 @@ pub func ToTitleSimple(scalar: char32) -> char32 {
 
 // Writes a mapping's expansion into `into`, falling back to `fallback` for a point with no entry. The longest full
 // mapping is three values, so a buffer of three always suffices.
-func WriteMapping(index: Slice<uint32>, elements: Slice<uint32>, scalar: char32, fallback: char32,
+func WriteMapping(index: uint32[..], elements: uint32[..], scalar: char32, fallback: char32,
                   into: MutableSlice<char32>, written: *var uint) -> bool {
     var offset: uint = 0;
     var length: uint = 0;

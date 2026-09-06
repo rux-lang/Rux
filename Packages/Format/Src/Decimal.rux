@@ -1,4 +1,3 @@
-import Core::Slice;
 // The float conversions all funnel through here. What separates a float32
 // from a float64 is only how many digits it can carry before the noise of
 // the binary representation shows through, so that count is a parameter and
@@ -92,7 +91,7 @@ pub func WriteDecimal(cursor: &var ByteCursor, value: float64, significant: uint
 // exponent marker: 1.25, 0.001, 12000.0. A fractional part is always
 // written, so the text still reads as a float when the value has no fraction
 // of its own to show.
-func WriteFixed(cursor: &var ByteCursor, digits: Slice<char8>, count: uint, exp10: int) {
+func WriteFixed(cursor: &var ByteCursor, digits: char8[..], count: uint, exp10: int) {
     if exp10 < 0 {
         // Below one, so the text opens with a zero and the point, then as
         // many more zeros as the exponent calls for: -1 puts the first digit
@@ -140,7 +139,7 @@ func WriteFixed(cursor: &var ByteCursor, digits: Slice<char8>, count: uint, exp1
 // One digit, the point, the rest, and the exponent: 1.5e+20, 2.5e-07. The
 // exponent carries a sign and at least two digits, so the tail keeps a
 // steady width across the range.
-func WriteScientific(cursor: &var ByteCursor, digits: Slice<char8>, count: uint, exp10: int) {
+func WriteScientific(cursor: &var ByteCursor, digits: char8[..], count: uint, exp10: int) {
     cursor.Push(digits[0]);
     cursor.Push(c8'.');
     if count == 1 {

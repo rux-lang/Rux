@@ -1,4 +1,3 @@
-import Core::string;
 // Where text is assembled.
 //
 // A `String` is immutable, so building one a piece at a time through `String` alone would allocate and copy on every
@@ -13,7 +12,7 @@ import Core::string;
 // after it the builder owns nothing and is ready to be used again.
 
 import Allocator::{ AllocError, Allocator, Layout };
-import Core::{ MulChecked, MutableSlice, Option, Slice };
+import Core::{ MulChecked, MutableSlice, Option };
 import Memory::Copy;
 
 /// The room a builder takes when it first needs any.
@@ -90,8 +89,8 @@ extend StringBuilder {
     /// The bytes in use, borrowed.
     ///
     /// https://rux-lang.dev/docs/api/text/string-builder/bytes
-    pub func Bytes(self: &StringBuilder) -> Slice<char8> {
-        return Slice<char8> { data: self.data, length: self.length };
+    pub func Bytes(self: &StringBuilder) -> char8[..] {
+        return (self.data)[..self.length];
     }
 
     /// A view over what has been appended so far.
@@ -164,7 +163,7 @@ extend StringBuilder {
     /// that it holds text at every moment rests on this, and everything reading from it relies on that promise.
     ///
     /// https://rux-lang.dev/docs/api/text/string-builder/append-validated
-    pub func AppendValidated(self: &var StringBuilder, bytes: Slice<char8>) -> TextError {
+    pub func AppendValidated(self: &var StringBuilder, bytes: char8[..]) -> TextError {
         return AppendBuilderStorage(@self.data, @self.length, @self.capacity, self.allocator, bytes);
     }
 
@@ -182,8 +181,8 @@ extend StringBuilder {
     /// Text was checked before it existed, so nothing is checked again and nothing can fail but the storage.
     ///
     /// https://rux-lang.dev/docs/api/text/string-builder/append
-    pub func Append(self: &var StringBuilder, text: string) -> TextError {
-        return self.AppendValidated(Slice<char8> { data: text.data, length: text.length });
+    pub func Append(self: &var StringBuilder, text: char8[..]) -> TextError {
+        return self.AppendValidated((text.data)[..text.length]);
     }
 
     /// Appends `bytes` when they are UTF-8, and reports `InvalidUtf8` when they are not.
@@ -191,7 +190,7 @@ extend StringBuilder {
     /// Costs a pass over the bytes. `Append` of a view costs none, which is the reason views exist.
     ///
     /// https://rux-lang.dev/docs/api/text/string-builder/append-bytes
-    pub func AppendBytes(self: &var StringBuilder, bytes: Slice<char8>) -> TextError {
+    pub func AppendBytes(self: &var StringBuilder, bytes: char8[..]) -> TextError {
         var failureIndex: uint = 0;
         if Validate(bytes, @failureIndex).IsError() { return TextError::InvalidUtf8; }
         return self.AppendValidated(bytes);
@@ -208,7 +207,7 @@ extend StringBuilder {
         var written: uint = 0;
         let sink = MutableSlice::From<char8>(@encoded[0], 4);
         if Encode(scalar, sink, @written).IsError() { return TextError::InvalidUtf8; }
-        return self.AppendValidated(Slice<char8> { data: @encoded[0], length: written });
+        return self.AppendValidated((@encoded[0])[..written]);
     }
 
     /// Appends one ASCII byte.
@@ -221,7 +220,7 @@ extend StringBuilder {
         if (byte as uint32) > 0x7F { return TextError::InvalidUtf8; }
         var one: char8[1];
         one[0] = byte;
-        return self.AppendValidated(Slice<char8> { data: @one[0], length: 1 });
+        return self.AppendValidated((@one[0])[..1]);
     }
 
     /// Forgets everything appended, keeping the room.
@@ -282,7 +281,7 @@ extend StringBuilder {
 }
 
 func AppendBuilderStorage(data: *var *var char8, length: *var uint, capacity: *var uint, allocator: Allocator,
-                          bytes: Slice<char8>) -> TextError {
+                          bytes: char8[..]) -> TextError {
     if bytes.length == 0 { return TextError::None; }
     let room = ReserveBuilderStorage(data, *length, capacity, allocator, bytes.length);
     if room.IsError() { return room; }

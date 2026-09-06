@@ -1,6 +1,5 @@
-import Core::string8;
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, Slice };
+import Core::{ Assert };
 import Text::{ String, StringBuilder, StringView, TextError };
 
 // A builder exists so that assembling text is linear rather than quadratic, and so that the block it fills can be

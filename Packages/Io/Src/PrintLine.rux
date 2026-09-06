@@ -1,4 +1,3 @@
-import Core::string;
 // The line-ending variants: the value, then a newline, with the first failure returned.
 
 import Format::Display;
@@ -23,7 +22,7 @@ pub func PrintLine(value: String) -> IoError {
 /// Provides the public `PrintLine` operation.
 ///
 /// https://rux-lang.dev/docs/api/io/print-line
-pub func PrintLine(value: string) -> IoError {
+pub func PrintLine(value: char8[..]) -> IoError {
     let first = Print(value);
     let second = PrintLine();
     return first.IsError() ? first : second;
@@ -41,7 +40,7 @@ pub func PrintLine(value: StringView) -> IoError {
 /// Provides the public `PrintLine` operation.
 ///
 /// https://rux-lang.dev/docs/api/io/print-line
-pub func PrintLine(format: string, args: Display...) -> IoError {
+pub func PrintLine(format: char8[..], args: Display...) -> IoError {
     let first = Print(format, args...);
     let second = PrintLine();
     return first.IsError() ? first : second;

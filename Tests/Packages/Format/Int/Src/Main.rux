@@ -1,5 +1,5 @@
-import Core::{ string, string8 };
-import Core::{ MutableSlice, Slice };
+
+import Core::{ MutableSlice };
 import Format::{ ByteCursor, FormatSpec, Display, TextWriter };
 
 // Std is deliberately absent from the dependencies: it exports conversions of the same name, and the compiler pools
@@ -9,7 +9,7 @@ import Format::{ ByteCursor, FormatSpec, Display, TextWriter };
 //
 // Rendering goes into a buffer on the stack rather than into a string, which is what the writer-based contract
 // buys: this test needs no allocator at all.
-func Check(value: int, expected: string, code: int) -> int {
+func Check(value: int, expected: char8[..], code: int) -> int {
     var storage: char8[64];
     var cursor = ByteCursor(MutableSlice::From<char8>(@storage[0], 64));
     let sink: &var TextWriter = cursor;

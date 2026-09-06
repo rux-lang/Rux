@@ -6,7 +6,6 @@
 // Writing the byte on its own would produce something that is not UTF-8, and the promise that it is holds every
 // reader of the result together.
 
-import Core::Slice;
 import Text::TextError;
 
 /// The character written in place of anything that is not one.
@@ -22,7 +21,7 @@ extend char8 : Display {
         if (*self as uint32) > 0x7F { return FormatScalar(writer, spec, ReplacementCharacter); }
         var one: char8[1];
         one[0] = *self;
-        return WriteAligned(writer, spec, Slice<char8> { data: @one[0], length: 1 }, false);
+        return WriteAligned(writer, spec, (@one[0])[..1], false);
     }
 }
 

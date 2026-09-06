@@ -1,14 +1,14 @@
-import Core::{ string, string8 };
+
 // The standard streams under the test runner are redirected, which is itself the point: the redirection path is
 // the one a program in a pipeline lives on, and these writes must land as the raw bytes they are.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, Slice };
+import Core::{ Assert };
 import Io::{ BufferedWriter, IoError, StandardError, StandardIn, StandardOut, WriteAll, Writer };
 
 // The bytes a string spans, which is how a caller holding text reaches an entry point that takes bytes.
-func TextBytes(text: string) -> Slice<char8> {
-    return Slice<char8> { data: text.data, length: text.length };
+func TextBytes(text: char8[..]) -> char8[..] {
+    return (text.data)[..text.length];
 }
 
 func Main() -> int {

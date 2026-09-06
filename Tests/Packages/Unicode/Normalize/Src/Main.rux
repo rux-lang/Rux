@@ -1,8 +1,6 @@
-import Core::string8;
-import Core::{ Assert, MutableSlice, Slice };
+import Core::{ Assert, MutableSlice };
 import Io::{ Print, PrintLine };
-import Unicode::{ DecomposeCanonical, DecomposeCompatibility, NormalizationVectorElements,
-                  NormalizationVectorIndex, NormalizeCanonical, NormalizeCompatibility };
+import Unicode::{ DecomposeCanonical, DecomposeCompatibility, NormalizationVectorElements, NormalizationVectorIndex, NormalizeCanonical, NormalizeCompatibility };
 
 // The committed rows of the official NormalizationTest, each carrying five columns c1..c5 and the invariants the
 // standard states: c2 is the NFC of the first three columns, c3 their NFD, c4 the NFKC of all five and c5 their
@@ -10,17 +8,17 @@ import Unicode::{ DecomposeCanonical, DecomposeCompatibility, NormalizationVecto
 // fails dozens of rows, and which rows fail says where to look.
 
 // The column at `column` of row `row`, as a slice into the element pool.
-func Column(row: uint, column: uint) -> Slice<uint32> {
-    let table: Slice<uint32> = NormalizationVectorIndex[..];
-    let elements: Slice<uint32> = NormalizationVectorElements[..];
+func Column(row: uint, column: uint) -> uint32[..] {
+    let table: uint32[..] = NormalizationVectorIndex[..];
+    let elements: uint32[..] = NormalizationVectorElements[..];
     let at = (row * 5 + column) * 2;
     let offset = table.data[at] as uint;
     let length = table.data[at + 1] as uint;
-    return Slice<uint32> { data: @elements.data[offset], length: length };
+    return (@elements.data[offset])[..length];
 }
 
 // Whether `actual` of length `actualLength` spells exactly `expected`.
-func Matches(actual: MutableSlice<char32>, actualLength: uint, expected: Slice<uint32>) -> bool {
+func Matches(actual: MutableSlice<char32>, actualLength: uint, expected: uint32[..]) -> bool {
     if actualLength != expected.length {
         return false;
     }
@@ -35,17 +33,17 @@ func Matches(actual: MutableSlice<char32>, actualLength: uint, expected: Slice<u
 }
 
 // Copies a pool column into scalar values, which is what the normalizers take.
-func Load(column: Slice<uint32>, into: MutableSlice<char32>) -> Slice<char32> {
+func Load(column: uint32[..], into: MutableSlice<char32>) -> char32[..] {
     var index: uint = 0;
     while index < column.length {
         into.data[index] = column.data[index] as char32;
         index = index + 1;
     }
-    return Slice<char32> { data: into.data as *char32, length: column.length };
+    return (into.data as *char32)[..column.length];
 }
 
 func Main() -> int {
-    let table: Slice<uint32> = NormalizationVectorIndex[..];
+    let table: uint32[..] = NormalizationVectorIndex[..];
     let rows = table.length / 10;
 
     var source: char32[64];

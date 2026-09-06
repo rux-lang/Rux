@@ -1,4 +1,4 @@
-import Core::{ Assert, MutableSlice, Slice };
+import Core::{ Assert, MutableSlice };
 import Text::{ CountScalars, DecodeAt, Encode, EncodedLength, IsScalarValue, Utf8Error, Validate };
 
 // UTF-8 is easy to decode wrongly in three specific ways, and every one of them has been a hole in something real:
@@ -9,7 +9,7 @@ import Text::{ CountScalars, DecodeAt, Encode, EncodedLength, IsScalarValue, Utf
 // off-by-one in the width table shows nowhere else.
 
 // Whether a run of bytes is refused, and refused for the stated reason.
-func Refuses(bytes: Slice<char8>, expected: Utf8Error) -> bool {
+func Refuses(bytes: char8[..], expected: Utf8Error) -> bool {
     var failureIndex: uint = 0;
     return Validate(bytes, @failureIndex) == expected;
 }

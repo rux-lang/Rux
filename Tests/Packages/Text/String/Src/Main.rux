@@ -1,6 +1,5 @@
-import Core::string8;
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, Slice };
+import Core::{ Assert };
 import Text::{ String, StringView, TextError };
 
 // A string owns its bytes and gives them back when it dies, which is the whole of what changed: it used to hold a

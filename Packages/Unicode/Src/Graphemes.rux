@@ -9,7 +9,6 @@
 // walking them -- is a loop over that question, and the committed break vectors hold every rule to the standard's
 // own test file.
 
-import Core::Slice;
 
 /// The grapheme break class of a scalar value. `Copy`.
 ///
@@ -83,7 +82,7 @@ func IsConjunctExtend(scalar: char32) -> bool {
 /// Runs in time proportional to the lookback, which is the run of marks behind the position; allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/unicode/is-grapheme-boundary
-pub func IsGraphemeBoundary(text: Slice<char32>, index: uint) -> bool {
+pub func IsGraphemeBoundary(text: char32[..], index: uint) -> bool {
     if index == 0 || index >= text.length { return true; }
     let before = GraphemeBreakOf(text.data[index - 1]);
     let after = GraphemeBreakOf(text.data[index]);
@@ -169,7 +168,7 @@ pub func IsGraphemeBoundary(text: Slice<char32>, index: uint) -> bool {
 /// How many grapheme clusters `text` holds.
 ///
 /// https://rux-lang.dev/docs/api/unicode/count-graphemes
-pub func CountGraphemes(text: Slice<char32>) -> uint {
+pub func CountGraphemes(text: char32[..]) -> uint {
     var counted: uint = 0;
     var index: uint = 0;
     while index < text.length {

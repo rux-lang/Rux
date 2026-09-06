@@ -10,7 +10,7 @@
 // Floats travel as the IEEE 754 bit patterns of their width, moved between integer and float representation
 // without conversion.
 
-import Core::{ MutableSlice, Slice };
+import Core::{ MutableSlice };
 import Memory::Copy;
 
 /// A byte order: which end of a multi-byte value comes first.

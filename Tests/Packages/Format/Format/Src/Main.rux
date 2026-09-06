@@ -1,6 +1,4 @@
-import Core::string;
 import Allocator::{ Allocator, SystemAllocator };
-import Core::Slice;
 import Format::{ Display, Format, FormatSpec, WriteAscii, WriteBytes, TextWriter };
 import Text::{ StringView, TextError };
 
@@ -48,7 +46,7 @@ extend Filler : Display {
     }
 }
 
-func Matches(actual: StringView, expected: string) -> bool {
+func Matches(actual: StringView, expected: char8[..]) -> bool {
     let wanted = StringView::FromValidated(expected);
     return actual.Equals(wanted);
 }
