@@ -1,0 +1,37 @@
+name: Linux
+
+# A thin caller so this platform has a status badge of its own. The build itself
+# is described once, in Build.yml, and the tiering rules once, in Plan.yml.
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: [main, dev]
+    types: [opened, reopened, synchronize, ready_for_review, labeled, unlabeled]
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+# A branch push and its pull request share one group so the same commit is never
+# built twice. Runs on dev are left alone because they warm the caches every
+# other branch restores.
+concurrency:
+  group: linux-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: ${{ github.ref_name != 'dev' && github.ref_name != 'main' }}
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    uses: ./.github/workflows/Plan.yml
+    with:
+      platform: linux
+
+  build:
+    needs: plan
+    uses: ./.github/workflows/Build.yml
+    with:
+      targets: ${{ needs.plan.outputs.targets }}
+      save-cache: ${{ needs.plan.outputs.save-cache == 'true' }}

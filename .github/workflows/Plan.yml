@@ -1,0 +1,132 @@
+name: Plan
+
+# Decides how much a run should do. Every platform workflow calls this, so the
+# tiering rules live in one place rather than being repeated four times.
+#
+# Scope selection deliberately lives in a job rather than in a trigger-level
+# `paths-ignore` or GitHub's native `[skip ci]` handling: a workflow that never
+# starts never reports its required check, which would leave a pull request
+# blocked forever. A run that has nothing to do returns an empty target list and
+# reports success instead.
+
+on:
+  workflow_call:
+    inputs:
+      platform:
+        description: linux, macos, windows, freebsd, or empty for none
+        type: string
+        default: ''
+    outputs:
+      scope:
+        description: fast or full
+        value: ${{ jobs.select.outputs.scope }}
+      targets:
+        description: JSON array of target ids for this platform
+        value: ${{ jobs.select.outputs.targets }}
+      save-cache:
+        description: whether this run should write the compilation cache back
+        value: ${{ jobs.select.outputs.save-cache }}
+      docs-only:
+        description: whether this change touches only prose
+        value: ${{ jobs.select.outputs.docs-only }}
+
+permissions:
+  contents: read
+
+jobs:
+  select:
+    name: Plan
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    outputs:
+      scope: ${{ steps.select.outputs.scope }}
+      targets: ${{ steps.select.outputs.targets }}
+      save-cache: ${{ steps.select.outputs.save-cache }}
+      docs-only: ${{ steps.select.outputs.docs-only }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Select the scope and targets
+        id: select
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BEFORE: ${{ github.event.before }}
+          LABELS: ${{ join(github.event.pull_request.labels.*.name, ' ') }}
+          PLATFORM: ${{ inputs.platform }}
+        run: |
+          set -eu
+
+          scope=fast
+          case "$EVENT" in
+          pull_request | schedule | workflow_dispatch) scope=full ;;
+          push)
+            case "$GITHUB_REF_NAME" in
+            dev | main) scope=full ;;
+            esac
+            ;;
+          esac
+          case " $LABELS " in
+          *' ci:full '*) scope=full ;;
+          esac
+
+          # A change that touches only prose cannot break a build, but the
+          # workflow still runs so its check still reports.
+          base=
+          if [ -n "$BASE_SHA" ]; then
+            base=$BASE_SHA
+          elif [ -n "$BEFORE" ] && [ "$BEFORE" != 0000000000000000000000000000000000000000 ]; then
+            base=$BEFORE
+          fi
+          docs_only=false
+          if [ -n "$base" ] && git cat-file -e "$base^{commit}" 2>/dev/null; then
+            if ! git diff --name-only "$base" "$GITHUB_SHA" |
+                grep -qvE '^(Docs/|\.github/ISSUE_TEMPLATE/|.*\.md$|LICENSE$)'; then
+              docs_only=true
+            fi
+          fi
+
+          # `[skip ci]` is honoured only on a topic-branch push. On a pull
+          # request it would strand the required check.
+          subject=$(git log -1 --pretty=%s "$GITHUB_SHA")
+          case "$subject" in
+          *'[skip ci]'* | *'[ci skip]'*)
+            if [ "$EVENT" = pull_request ]; then
+              echo "::warning::[skip ci] is ignored on a pull request"
+            else
+              docs_only=true
+            fi
+            ;;
+          esac
+
+          # Linux x86-64 is the fast lane: it runs on every push, so an ordinary
+          # commit gets an answer without waiting for eight targets.
+          targets='[]'
+          if [ "$docs_only" != true ]; then
+            case "$PLATFORM:$scope" in
+            linux:fast) targets='["linux-x86_64"]' ;;
+            linux:full) targets='["linux-aarch64","linux-x86_64"]' ;;
+            macos:full) targets='["macos-aarch64","macos-x86_64"]' ;;
+            windows:full) targets='["windows-aarch64","windows-x86_64"]' ;;
+            freebsd:full) targets='["freebsd-aarch64","freebsd-x86_64"]' ;;
+            esac
+          fi
+
+          # Pushes write the cache; pull requests only read it. A pull request
+          # rebuilds the commit its branch push already cached, so letting it
+          # save as well would just churn the quota.
+          save_cache=false
+          [ "$EVENT" != push ] || save_cache=true
+
+          {
+            echo "scope=$scope"
+            echo "targets=$targets"
+            echo "save-cache=$save_cache"
+            echo "docs-only=$docs_only"
+          } >>"$GITHUB_OUTPUT"
+
+          printf '%s: scope=%s targets=%s docs-only=%s\n' \
+            "${PLATFORM:-none}" "$scope" "$targets" "$docs_only" >>"$GITHUB_STEP_SUMMARY"

@@ -318,7 +318,9 @@ jobs:
   # inside its own build job, because macos-x86_64 is already cross-built there.
   cross-emulated:
     name: ${{ matrix.label }}
-    if: ${{ inputs.cross }}
+    # Gated on the target as well as the flag, so the FreeBSD workflow does not
+    # pull a Windows job in behind it.
+    if: ${{ inputs.cross && contains(fromJSON(inputs.targets), 'windows-x86_64') }}
     strategy:
       fail-fast: false
       matrix:

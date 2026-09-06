@@ -4,10 +4,12 @@ Continuous integration builds and verifies Rux on all eight supported targets us
 
 ## Workflows
 
-Three workflows, plus the community metadata GitHub owns.
+Seven workflows, plus the community metadata GitHub owns. Only two of them describe any work; the rest are thin callers that exist so each platform has a status badge of its own.
 
-- **`Ci.yml`** — the only workflow that runs on a push or a pull request. It plans the scope, runs the host-independent checks once, and calls `Build.yml` for the targets it selected. It also carries the branch policy that rejects pull requests targeting `main`.
-- **`Build.yml`** — a reusable workflow (`workflow_call`) describing how one target is built and verified. It is the single description of that work; `Ci.yml` and `Release.yml` both call it, so a platform change is made once.
+- **`Ci.yml`** — the host-independent checks and the required gate: policy guards, formatting, clang-tidy, and the branch policy that rejects pull requests targeting `main`. It builds nothing.
+- **`Linux.yml`, `macOS.yml`, `Windows.yml`, `FreeBSD.yml`** — one per platform, about 25 lines each. Each triggers on push and pull request, asks `Plan.yml` what to run, and calls `Build.yml` with its own targets. They exist because a GitHub badge reports a workflow, not a job, and a workflow called through `workflow_call` produces no run of its own to report.
+- **`Plan.yml`** — a reusable workflow deciding scope, target list and cache policy, so the tiering rules are written once rather than in each platform workflow.
+- **`Build.yml`** — a reusable workflow (`workflow_call`) describing how one target is built and verified. It is the single description of that work; every platform workflow and `Release.yml` call it, so a platform change is made once.
 - **`Release.yml`** — manual only (`workflow_dispatch`, with a version input and a dry-run switch). Pushing a tag never starts a release by itself.
 
 `Build.yml` takes a JSON array of target ids. Rows in its matrix `include` whose target is not in that array are not expanded into jobs, so passing `'["linux-x86_64"]'` produces exactly one job on exactly the right runner.
@@ -49,7 +51,9 @@ Build and test share one job per target. Splitting them cost an artifact round-t
 
 ## Required checks
 
-Branch protection requires exactly one check: **`CI`**. It is an aggregate that accepts `success` and `skipped` from every other job, which is what lets the fast lane pass with seven targets skipped and a docs-only change pass with all of them skipped.
+Branch protection requires five checks: **`CI`**, **`Linux`**, **`macOS`**, **`Windows`** and **`FreeBSD`**. `CI` is an aggregate over the host-independent jobs, accepting `success` and `skipped`; each platform workflow reports its own result, which is also what its badge shows.
+
+A platform that the current scope does not select builds nothing and reports success, so the fast lane and a docs-only change both satisfy every required check without running the matrix.
 
 It is guarded by `if: ${{ !cancelled() }}`, not `if: always()`. Cancelling a run therefore ends it immediately instead of leaving the gate to outlive it.
 
