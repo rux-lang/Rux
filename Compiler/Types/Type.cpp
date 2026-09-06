@@ -264,6 +264,27 @@ std::string TypeRef::InstantiationName(const std::string_view base, const std::v
     return name;
 }
 
+std::optional<TypeRef::RangeSpelling> TypeRef::SplitRangeSpelling(const std::string_view text) {
+    int depth = 0;
+    for (std::size_t index = 0; index + 1 < text.size(); ++index) {
+        const char character = text[index];
+        if (character == '<' || character == '(' || character == '[') {
+            ++depth;
+        }
+        else if (character == '>' || character == ')' || character == ']') {
+            --depth;
+        }
+        else if (depth == 0 && character == '.' && text[index + 1] == '.') {
+            RangeSpelling spelling;
+            spelling.inclusive = index + 2 < text.size() && text[index + 2] == '=';
+            spelling.start = std::string(text.substr(0, index));
+            spelling.end = std::string(text.substr(index + (spelling.inclusive ? 3 : 2)));
+            return spelling;
+        }
+    }
+    return std::nullopt;
+}
+
 std::string TypeRef::ToString() const {
     if (const PrimitiveInfo *primitive = FindPrimitive(kind)) {
         return std::string(primitive->name);
@@ -282,7 +303,7 @@ std::string TypeRef::ToString() const {
             return "*?";
         }
         std::string pointee = inner[0].ToString();
-        if (inner[0].kind == Kind::Array) {
+        if (inner[0].kind == Kind::Array || inner[0].kind == Kind::Slice) {
             pointee = "(" + pointee + ")";
         }
         return (inner[0].isMut ? "*var " : "*") + pointee;
@@ -292,7 +313,7 @@ std::string TypeRef::ToString() const {
             return "&?";
         }
         std::string referent = inner[0].ToString();
-        if (inner[0].kind == Kind::Array) {
+        if (inner[0].kind == Kind::Array || inner[0].kind == Kind::Slice) {
             referent = "(" + referent + ")";
         }
         return (inner[0].isMut ? "&var " : "&") + referent;
@@ -305,21 +326,30 @@ std::string TypeRef::ToString() const {
         return element + (arrayLength ? "[" + std::to_string(*arrayLength) + "]" : "[]");
     }
     case Kind::Slice: {
-        const std::string element = inner.empty() ? "?" : inner[0].ToString();
-        return (IsWritableSlice() ? "MutableSlice<" : "Slice<") + element + ">";
+        // The bracket binds tighter than a pointer, reference or range operator, so an element of one of those
+        // shapes is parenthesized to keep the bracket on the outside when the spelling is read back.
+        std::string element = inner.empty() ? "?" : inner[0].ToString();
+        if (!inner.empty() &&
+            (inner[0].kind == Kind::Pointer || inner[0].kind == Kind::Reference || inner[0].IsRange())) {
+            element = "(" + element + ")";
+        }
+        return (IsWritableSlice() ? "var " : "") + element + "[..]";
     }
     case Kind::Range:
-        return "Range<" + (inner.empty() ? "?" : inner[0].ToString()) + ">";
     case Kind::RangeInclusive:
-        return "RangeInclusive<" + (inner.empty() ? "?" : inner[0].ToString()) + ">";
     case Kind::RangeFrom:
-        return "RangeFrom<" + (inner.empty() ? "?" : inner[0].ToString()) + ">";
     case Kind::RangeTo:
-        return "RangeTo<" + (inner.empty() ? "?" : inner[0].ToString()) + ">";
     case Kind::RangeToInclusive:
-        return "RangeToInclusive<" + (inner.empty() ? "?" : inner[0].ToString()) + ">";
-    case Kind::RangeFull:
-        return "RangeFull";
+    case Kind::RangeFull: {
+        // A bound spells the element; a pointer, function or range element takes parentheses because the range
+        // operator would otherwise be read as part of it.
+        std::string element = inner.empty() ? "?" : inner[0].ToString();
+        if (!inner.empty() && (inner[0].kind == Kind::Pointer || inner[0].kind == Kind::Reference ||
+                               inner[0].kind == Kind::Func || inner[0].IsRange())) {
+            element = "(" + element + ")";
+        }
+        return (RangeHasStart() ? element : "") + (IsInclusiveRange() ? "..=" : "..") + (RangeHasEnd() ? element : "");
+    }
     case Kind::Tuple: {
         std::string s = "(";
         for (std::size_t i = 0; i < inner.size(); ++i) {

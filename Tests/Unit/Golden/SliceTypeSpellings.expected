@@ -1,4 +1,4 @@
-9:5: error: 'return' value must have type 'MutableSlice<uint8>', but found 'Slice<uint8>'
+9:5: error: 'return' value must have type 'var uint8[..]', but found 'uint8[..]'
 13:15: error: range type bounds must name one element type, but has 'int' and 'uint'
 16:24: error: array length must be a non-negative compile-time integer
 18:1: error: cannot extend slice type 'T[..]' because element type 'T' is not defined

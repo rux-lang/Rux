@@ -394,6 +394,21 @@ struct TypeRef {
     /// types as far as every table keyed by it is concerned.
     [[nodiscard]] static std::string InstantiationName(std::string_view base, const std::vector<TypeRef> &typeArgs);
 
+    /// The two sides of a range spelling: the text before and after the one range operator written outside every
+    /// bracket, and whether that operator was `..=`. An empty side is an absent bound.
+    struct RangeSpelling {
+        std::string start;
+        std::string end;
+        bool inclusive = false;
+    };
+
+    /// Split a spelling at its range operator, the inverse of the spelling `ToString` gives a range; the two are kept
+    /// beside each other so they cannot drift apart. A `..` inside `<>`, `()` or `[]` belongs to an inner type, so
+    /// `int[..]` is not a range and `int[..]..int[..]` is a range of slices.
+    ///
+    /// @return nullopt when `text` has no range operator outside its brackets
+    [[nodiscard]] static std::optional<RangeSpelling> SplitRangeSpelling(std::string_view text);
+
     bool operator==(const TypeRef &other) const noexcept;
 
     bool operator!=(const TypeRef &other) const noexcept {

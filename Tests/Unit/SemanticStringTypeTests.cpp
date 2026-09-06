@@ -73,9 +73,9 @@ TEST_CASE("a string prefix names the encoding the literal is a slice of") {
         let thirtyTwo = c32"text";
     )");
     REQUIRE_EQ(types.size(), 3);
-    CHECK_EQ(types[0], "Slice<char8>");
-    CHECK_EQ(types[1], "Slice<char16>");
-    CHECK_EQ(types[2], "Slice<char32>");
+    CHECK_EQ(types[0], "char8[..]");
+    CHECK_EQ(types[1], "char16[..]");
+    CHECK_EQ(types[2], "char32[..]");
 }
 
 TEST_CASE("an unprefixed literal is UTF-8 text") {
@@ -85,8 +85,8 @@ TEST_CASE("an unprefixed literal is UTF-8 text") {
         let eight = c8"text";
     )");
     REQUIRE_EQ(types.size(), 2);
-    CHECK_EQ(types[0], "Slice<char8>");
-    CHECK_EQ(types[1], "Slice<char8>");
+    CHECK_EQ(types[0], "char8[..]");
+    CHECK_EQ(types[1], "char8[..]");
 }
 
 TEST_CASE("the text names are spellings of the character slices") {
@@ -96,9 +96,9 @@ TEST_CASE("the text names are spellings of the character slices") {
         let wide: string16 = c16"text";
     )");
     REQUIRE_EQ(types.size(), 3);
-    CHECK_EQ(types[0], "Slice<char8>");
-    CHECK_EQ(types[1], "Slice<char8>");
-    CHECK_EQ(types[2], "Slice<char16>");
+    CHECK_EQ(types[0], "char8[..]");
+    CHECK_EQ(types[1], "char8[..]");
+    CHECK_EQ(types[2], "char16[..]");
 }
 
 TEST_CASE("text exposes its code units through data and its length in them") {
@@ -140,8 +140,8 @@ TEST_CASE("a range of text is a slice of the same code units") {
         let tail = text[2..];
     )");
     REQUIRE_EQ(types.size(), 3);
-    CHECK_EQ(types[1], "Slice<char8>");
-    CHECK_EQ(types[2], "Slice<char8>");
+    CHECK_EQ(types[1], "char8[..]");
+    CHECK_EQ(types[2], "char8[..]");
 }
 
 TEST_CASE("text has no member other than data and length") {
@@ -152,7 +152,7 @@ TEST_CASE("text has no member other than data and length") {
         }
     )"));
     REQUIRE_EQ(messages.size(), 2);
-    CHECK_EQ(messages[0], "slice type 'Slice<char8>' has no member 'size'");
+    CHECK_EQ(messages[0], "slice type 'char8[..]' has no member 'size'");
     CHECK_EQ(messages[1], "cannot infer type of 'size'");
 }
 
@@ -164,7 +164,7 @@ TEST_CASE("a literal's code units cannot be written through the view") {
         }
     )"));
     REQUIRE_EQ(messages.size(), 1);
-    CHECK_EQ(messages[0], "cannot modify elements through read-only slice 'Slice<char8>'");
+    CHECK_EQ(messages[0], "cannot modify elements through read-only slice 'char8[..]'");
 }
 
 TEST_CASE("the encodings are separate types with no conversion between them") {
@@ -177,9 +177,8 @@ TEST_CASE("the encodings are separate types with no conversion between them") {
         }
     )"));
     REQUIRE_EQ(messages.size(), 2);
-    CHECK_EQ(messages[0], "cannot assign 'Slice<char8>' to 'Slice<char16>'");
-    CHECK_EQ(messages[1],
-             "argument 1 to 'Eight' has type 'Slice<char16>', but parameter 'text' requires 'Slice<char8>'");
+    CHECK_EQ(messages[0], "cannot assign 'char8[..]' to 'char16[..]'");
+    CHECK_EQ(messages[1], "argument 1 to 'Eight' has type 'char16[..]', but parameter 'text' requires 'char8[..]'");
 }
 
 TEST_CASE("text is neither compared nor ordered in this version") {
@@ -192,8 +191,8 @@ TEST_CASE("text is neither compared nor ordered in this version") {
         }
     )"));
     REQUIRE_EQ(messages.size(), 2);
-    CHECK_EQ(messages[0], "operator '==' is not defined for slice type 'Slice<char8>'");
-    CHECK_EQ(messages[1], "operator '<' is not defined for slice type 'Slice<char8>'");
+    CHECK_EQ(messages[0], "operator '==' is not defined for slice type 'char8[..]'");
+    CHECK_EQ(messages[1], "operator '<' is not defined for slice type 'char8[..]'");
 }
 
 TEST_CASE("text is not a value any cast converts") {
@@ -205,8 +204,8 @@ TEST_CASE("text is not a value any cast converts") {
         }
     )"));
     REQUIRE_GE(messages.size(), 2);
-    CHECK_EQ(messages[0], "cannot cast value of type 'Slice<char8>' to 'uint64'");
-    CHECK_EQ(messages[1], "cannot cast value of type 'Slice<char8>' to 'Slice<char16>'");
+    CHECK_EQ(messages[0], "cannot cast value of type 'char8[..]' to 'uint64'");
+    CHECK_EQ(messages[1], "cannot cast value of type 'char8[..]' to 'char16[..]'");
 }
 
 TEST_CASE("an ordinary struct named Slice is built from a literal's own members") {

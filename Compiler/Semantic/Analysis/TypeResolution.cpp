@@ -96,6 +96,22 @@ TypeRef AnalysisContext::ParseTypeRefFromString(std::string str) const {
         return *primitive;
     }
 
+    // A range operator outside every bracket splits the spelling into its bounds. It is looked for first because it
+    // binds loosest: `int[..]..int[..]` is a range of slices, and the `..` inside a bracket is not an operator.
+    if (const auto range = TypeRef::SplitRangeSpelling(str)) {
+        std::optional<TypeRef> element;
+        if (!range->start.empty()) {
+            element = ParseTypeRefFromString(range->start);
+        }
+        else if (!range->end.empty()) {
+            element = ParseTypeRefFromString(range->end);
+        }
+        if (!element) {
+            return TypeRef::MakeRangeFull();
+        }
+        return TypeRef::MakeRange(std::move(*element), !range->start.empty(), !range->end.empty(), range->inclusive);
+    }
+
     if (str[0] == '*' || str[0] == '&') {
         // Pointer and reference names render writability as `var` in front of the inner type, so reading a name
         // back has to take the qualifier off and restore it on that inner type.
@@ -112,6 +128,18 @@ TypeRef AnalysisContext::ParseTypeRefFromString(std::string str) const {
         return isReference ? TypeRef::MakeReference(std::move(inner)) : TypeRef::MakePointer(std::move(inner));
     }
 
+    // A slice renders its writability as `var` in front of the element, the way a pointer does.
+    if (str.starts_with("var ")) {
+        TypeRef slice = ParseTypeRefFromString(str.substr(4));
+        if (slice.IsSlice()) {
+            slice.inner[0].isMut = true;
+        }
+        return slice;
+    }
+    if (str.ends_with("[..]")) {
+        return TypeRef::MakeSlice(ParseTypeRefFromString(str.substr(0, str.size() - 4)));
+    }
+
     if (str.size() >= 2 && str.compare(str.size() - 2, 2, "[]") == 0) {
         return TypeRef::MakeArray(ParseTypeRefFromString(str.substr(0, str.size() - 2)));
     }
@@ -121,17 +149,24 @@ TypeRef AnalysisContext::ParseTypeRefFromString(std::string str) const {
         std::string content = str.substr(1, str.size() - 2);
         std::size_t start = 0;
         int depth = 0;
+        bool grouped = true;
         for (std::size_t i = 0; i < content.size(); ++i) {
-            if (content[i] == '<' || content[i] == '(') {
+            if (content[i] == '<' || content[i] == '(' || content[i] == '[') {
                 depth++;
             }
-            else if (content[i] == '>' || content[i] == ')') {
+            else if (content[i] == '>' || content[i] == ')' || content[i] == ']') {
                 depth--;
             }
             else if (content[i] == ',' && depth == 0) {
                 elems.push_back(ParseTypeRefFromString(content.substr(start, i - start)));
                 start = i + 1;
+                grouped = false;
             }
+        }
+        // Parentheses with no comma inside them group a spelling, as in `(*int)[..]`; a one-element tuple keeps its
+        // trailing comma so the two stay apart.
+        if (grouped) {
+            return ParseTypeRefFromString(content);
         }
         if (start < content.size()) {
             elems.push_back(ParseTypeRefFromString(content.substr(start)));

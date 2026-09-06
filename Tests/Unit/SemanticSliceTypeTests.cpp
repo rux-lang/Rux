@@ -57,16 +57,56 @@ TEST_CASE("slice and range spellings resolve to the slice and range kinds") {
                        to: ..int, upTo: ..=int, whole: .., nested: int[..][..], boxed: *(var int[..])) {}
     )");
     REQUIRE_EQ(types.size(), 10);
-    CHECK_EQ(types[0], "Slice<uint8>");
-    CHECK_EQ(types[1], "MutableSlice<char8>");
-    CHECK_EQ(types[2], "Range<int>");
-    CHECK_EQ(types[3], "RangeInclusive<int>");
-    CHECK_EQ(types[4], "RangeFrom<int>");
-    CHECK_EQ(types[5], "RangeTo<int>");
-    CHECK_EQ(types[6], "RangeToInclusive<int>");
-    CHECK_EQ(types[7], "RangeFull");
-    CHECK_EQ(types[8], "Slice<Slice<int>>");
-    CHECK_EQ(types[9], "*MutableSlice<int>");
+    CHECK_EQ(types[0], "uint8[..]");
+    CHECK_EQ(types[1], "var char8[..]");
+    CHECK_EQ(types[2], "int..int");
+    CHECK_EQ(types[3], "int..=int");
+    CHECK_EQ(types[4], "int..");
+    CHECK_EQ(types[5], "..int");
+    CHECK_EQ(types[6], "..=int");
+    CHECK_EQ(types[7], "..");
+    CHECK_EQ(types[8], "int[..][..]");
+    CHECK_EQ(types[9], "*(var int[..])");
+}
+
+TEST_CASE("every spelling reads back from an instantiation name unchanged") {
+    // A generic instantiation is identified by its printed name and its fields are typed by reading the arguments
+    // back out of that name, so a spelling that did not round-trip would give a field a different type from the one
+    // the argument was written with.
+    ParseResult parsed = Parse(R"(
+        struct Box<T> { value: T; }
+        func Main(bytes: Box<uint8[..]>, writable: Box<var uint8[..]>, pointers: Box<(*int)[..]>,
+                  boxed: Box<*(var int[..])>, span: Box<int..int>, upTo: Box<..=uint>, whole: Box<..>,
+                  spans: Box<int[..]..int[..]>, single: Box<(int,)>, pair: Box<(int, uint8[..])>) {
+            let a = bytes.value;
+            let b = writable.value;
+            let c = pointers.value;
+            let d = boxed.value;
+            let e = span.value;
+            let f = upTo.value;
+            let g = whole.value;
+            let h = spans.value;
+            let i = single.value;
+            let j = pair.value;
+        }
+    )");
+    SemanticAnalyzer analyzer({&parsed.module}, {}, "test", "Windows");
+    const SemanticModel model = analyzer.Analyze();
+    REQUIRE_FALSE(model.HasErrors());
+    const auto *main = dynamic_cast<const FuncDecl *>(parsed.module.items[1].get());
+    REQUIRE(main != nullptr);
+    std::vector<std::string> types;
+    for (const auto &statement : main->body->stmts) {
+        const auto *binding = dynamic_cast<const LetStmt *>(statement.get());
+        if (!binding || !binding->init) {
+            continue;
+        }
+        const TypeRef *type = model.TryGetType(*binding->init);
+        REQUIRE(type != nullptr);
+        types.push_back(type->ToString());
+    }
+    CHECK_EQ(types, std::vector<std::string>{"uint8[..]", "var uint8[..]", "(*int)[..]", "*(var int[..])", "int..int",
+                                             "..=uint", "..", "int[..]..int[..]", "(int,)", "(int, uint8[..])"});
 }
 
 TEST_CASE("a writable slice weakens to a read-only one but not the reverse") {
@@ -75,8 +115,8 @@ TEST_CASE("a writable slice weakens to a read-only one but not the reverse") {
         func Strengthen(view: uint8[..]) -> var uint8[..] { return view; }
     )");
     REQUIRE_EQ(messages.size(), 1);
-    CHECK(messages[0].contains("'Slice<uint8>'"));
-    CHECK(messages[0].contains("'MutableSlice<uint8>'"));
+    CHECK(messages[0].contains("'uint8[..]'"));
+    CHECK(messages[0].contains("'var uint8[..]'"));
 }
 
 TEST_CASE("a two-sided range type spells its element once on each side") {
