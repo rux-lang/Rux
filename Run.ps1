@@ -60,6 +60,17 @@ Adds the clang-tidy pass to the workflow, for test. Clang-tidy is optional
 because a full static-analysis pass is comparatively slow, and it requires
 PowerShell 7 because it analyzes files in parallel.
 
+.PARAMETER NoPch
+Configures without precompiled headers, for build and test. CI uses this because
+a compilation cache and precompiled headers defeat each other.
+
+.PARAMETER ShardCount
+Splits the analysis into this many disjoint shards, for tidy. Running every
+shard index covers each translation unit exactly once.
+
+.PARAMETER ShardIndex
+Selects which shard to analyze, counting from zero, for tidy.
+
 .EXAMPLE
 ./Run.ps1 build
 
@@ -102,7 +113,15 @@ param(
 
     [switch]$SkipBuild,
 
-    [switch]$ClangTidy
+    [switch]$ClangTidy,
+
+    [switch]$NoPch,
+
+    [ValidateRange(0, 2147483646)]
+    [int]$ShardIndex = 0,
+
+    [ValidateRange(1, 2147483647)]
+    [int]$ShardCount = 1
 )
 
 Set-StrictMode -Version Latest
@@ -121,12 +140,12 @@ $policyChecks = @(
 
 # Options each command accepts, used to reject an option the command ignores.
 $commandOptions = @{
-    build  = @("Configuration", "BuildDirectory", "Compiler", "Jobs")
+    build  = @("Configuration", "BuildDirectory", "Compiler", "Jobs", "NoPch")
     test   = @("Configuration", "BuildDirectory", "Compiler", "RuxExecutable", "Target",
-        "FixFormatting", "SkipBuild", "ClangTidy", "Jobs")
+        "FixFormatting", "SkipBuild", "ClangTidy", "Jobs", "NoPch")
     format = @("RuxExecutable", "Check", "Jobs")
     policy = @()
-    tidy   = @("BuildDirectory", "Jobs")
+    tidy   = @("BuildDirectory", "Jobs", "ShardIndex", "ShardCount")
     unit   = @("Configuration", "BuildDirectory", "Jobs")
     clean  = @("BuildDirectory")
     help   = @()
@@ -156,11 +175,15 @@ function Show-Usage {
     Write-Host "  -FixFormatting                Format sources instead of checking them (test)"
     Write-Host "  -SkipBuild                    Reuse the existing build and executables (test)"
     Write-Host "  -ClangTidy                    Add the clang-tidy pass (test)"
+    Write-Host "  -NoPch                        Configure without precompiled headers (build, test)"
+    Write-Host "  -ShardCount N                 Split the analysis into N disjoint shards (tidy; default: 1)"
+    Write-Host "  -ShardIndex N                 Analyze shard N of -ShardCount, counting from zero (tidy)"
     Write-Host ""
     Write-Host "Examples:"
     Write-Host "  ./Run.ps1 build -Configuration Debug"
     Write-Host "  ./Run.ps1 format -Check"
     Write-Host "  ./Run.ps1 test -SkipBuild -ClangTidy"
+    Write-Host "  ./Run.ps1 tidy -ShardCount 3 -ShardIndex 0"
 }
 
 function Get-PosixShell {
@@ -433,6 +456,12 @@ function Invoke-Build {
             "-DRUX_WERROR=ON",
             "-DRUX_BUILD_TESTS=ON"
         ))
+    # Leaving RUX_USE_PCH unset keeps the platform default; -NoPch is how CI
+    # turns it off, because a compilation cache and precompiled headers defeat
+    # each other.
+    if ($NoPch) {
+        $configureArguments.Add("-DRUX_USE_PCH=OFF")
+    }
 
     # CMake's configure report: `-- Configuring done (0.1s)` becomes `Configuring done in 100 ms`, the
     # build-files line becomes a detail, and other status lines lose their `-- ` prefix. Anything else
@@ -572,7 +601,18 @@ function Invoke-Tidy {
         Stop-Script "no maintained C++ translation units were found in '$compileCommands'"
     }
 
-    Write-Step "Running clang-tidy ($($sources.Count) files)"
+    if ($ShardCount -gt 1) {
+        # Round-robin over the sorted list, so running every index covers each
+        # translation unit exactly once and no two shards overlap.
+        $sources = @(for ($i = $ShardIndex; $i -lt $sources.Count; $i += $ShardCount) { $sources[$i] })
+        if ($sources.Count -eq 0) {
+            Stop-Script "shard $ShardIndex of $ShardCount selected no translation units; use fewer shards"
+        }
+        Write-Step "Running clang-tidy ($($sources.Count) files, shard $ShardIndex of $ShardCount)"
+    }
+    else {
+        Write-Step "Running clang-tidy ($($sources.Count) files)"
+    }
     $clangTidyConfig = Join-Path $repositoryRoot ".clang-tidy"
     $startedAt = Get-Date
     $completed = 0
@@ -759,7 +799,7 @@ if ($Command -eq "help") {
 }
 
 $allOptions = @("Configuration", "BuildDirectory", "Compiler", "RuxExecutable", "Target",
-    "Check", "FixFormatting", "SkipBuild", "ClangTidy", "Jobs")
+    "Check", "FixFormatting", "SkipBuild", "ClangTidy", "Jobs", "NoPch", "ShardIndex", "ShardCount")
 foreach ($name in $PSBoundParameters.Keys) {
     if ($allOptions -notcontains $name) {
         continue
@@ -767,6 +807,10 @@ foreach ($name in $PSBoundParameters.Keys) {
     if ($commandOptions[$Command] -notcontains $name) {
         Stop-Script "option '-$name' is not valid for command '$Command'"
     }
+}
+
+if ($ShardIndex -ge $ShardCount) {
+    Stop-Script "option '-ShardIndex' must be less than -ShardCount ($ShardCount)"
 }
 
 $startedAt = Get-Date

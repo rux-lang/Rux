@@ -21,6 +21,9 @@ check=false
 fix_formatting=false
 skip_build=false
 clang_tidy_enabled=false
+shard_index=0
+shard_count=1
+no_pch=false
 
 usage() {
     printf '%s\n' \
@@ -47,12 +50,16 @@ usage() {
         '  --fix-formatting               Format sources instead of checking them (test)' \
         '  --skip-build                   Reuse the existing build and executables (test)' \
         '  --clang-tidy                   Add the clang-tidy pass (test)' \
+        '  --no-pch                       Configure without precompiled headers (build, test)' \
+        '  --shard-count N                Split the analysis into N disjoint shards (tidy; default: 1)' \
+        '  --shard-index N                Analyze shard N of --shard-count, counting from zero (tidy)' \
         '  -h, --help                     Show this help' \
         '' \
         'Examples:' \
         '  sh Run.sh build --configuration Debug' \
         '  sh Run.sh format --check' \
-        '  sh Run.sh test --skip-build --clang-tidy --jobs 4'
+        '  sh Run.sh test --skip-build --clang-tidy --jobs 4' \
+        '  sh Run.sh tidy --shard-count 3 --shard-index 0'
 }
 
 require_value() {
@@ -62,10 +69,10 @@ require_value() {
 # Options each command accepts, used to reject an option the command ignores.
 command_options() {
     case $1 in
-    build) printf '%s' '--configuration --build-directory --compiler --jobs' ;;
-    test) printf '%s' '--configuration --build-directory --compiler --rux-executable --target --fix-formatting --skip-build --clang-tidy --jobs' ;;
+    build) printf '%s' '--configuration --build-directory --compiler --jobs --no-pch' ;;
+    test) printf '%s' '--configuration --build-directory --compiler --rux-executable --target --fix-formatting --skip-build --clang-tidy --jobs --no-pch' ;;
     format) printf '%s' '--rux-executable --check --jobs' ;;
-    tidy) printf '%s' '--build-directory --jobs' ;;
+    tidy) printf '%s' '--build-directory --jobs --shard-index --shard-count' ;;
     unit) printf '%s' '--configuration --build-directory --jobs' ;;
     clean) printf '%s' '--build-directory' ;;
     *) printf '%s' '' ;;
@@ -162,6 +169,30 @@ while [ "$#" -gt 0 ]; do
         clang_tidy_enabled=true
         shift
         ;;
+    --no-pch)
+        require_option "$1"
+        no_pch=true
+        shift
+        ;;
+    --shard-index)
+        require_option "$1"
+        require_value "$@"
+        shard_index=$2
+        case "$shard_index" in
+        *[!0-9]* | '') die "option '--shard-index' requires a non-negative integer" ;;
+        esac
+        shift 2
+        ;;
+    --shard-count)
+        require_option "$1"
+        require_value "$@"
+        shard_count=$2
+        case "$shard_count" in
+        *[!0-9]* | '') die "option '--shard-count' requires a positive integer" ;;
+        esac
+        [ "$shard_count" -ge 1 ] 2>/dev/null || die "option '--shard-count' requires a positive integer"
+        shift 2
+        ;;
     -h | --help)
         usage
         exit 0
@@ -171,6 +202,9 @@ while [ "$#" -gt 0 ]; do
         ;;
     esac
 done
+
+[ "$shard_index" -lt "$shard_count" ] ||
+    die "option '--shard-index' must be less than --shard-count ($shard_count)"
 
 worker_count=$jobs
 if [ -z "$worker_count" ]; then
@@ -250,8 +284,11 @@ run_build() {
 
     build_started_at=$(date +%s)
 
-    step "Configuring $configuration build"
-    run_filtered cmake "$configure_report_program" cmake \
+    # Leaving RUX_USE_PCH unset keeps the platform default; --no-pch is how CI
+    # turns it off, because a compilation cache and precompiled headers defeat
+    # each other. Positional parameters carry the list so paths with spaces
+    # survive and the option list is written once.
+    set -- \
         -S "$repository_root" \
         -B "$build_path" \
         -G Ninja \
@@ -260,6 +297,10 @@ run_build() {
         -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
         -DRUX_WERROR=ON \
         -DRUX_BUILD_TESTS=ON
+    [ "$no_pch" != true ] || set -- "$@" -DRUX_USE_PCH=OFF
+
+    step "Configuring $configuration build"
+    run_filtered cmake "$configure_report_program" cmake "$@"
 
     step "Building compiler and unit tests"
     if [ -n "$jobs" ]; then
@@ -431,11 +472,22 @@ run_tidy() {
 
     tidy_scratch=$(mktemp -d "${TMPDIR:-/tmp}/rux-clang-tidy.XXXXXX")
     trap 'rm -rf "$tidy_scratch"' EXIT HUP INT TERM
-    list_tidy_sources "$compile_commands" >"$tidy_scratch/sources"
-    tidy_total=$(wc -l <"$tidy_scratch/sources" | tr -d '[:space:]')
-    [ "$tidy_total" -gt 0 ] || die "no maintained C++ translation units were found in '$compile_commands'"
+    list_tidy_sources "$compile_commands" >"$tidy_scratch/all-sources"
+    [ -s "$tidy_scratch/all-sources" ] || die "no maintained C++ translation units were found in '$compile_commands'"
 
-    step "Running clang-tidy ($tidy_total files)"
+    # Round-robin over the sorted list, so running every index covers each
+    # translation unit exactly once and no two shards overlap.
+    awk -v index_="$shard_index" -v count="$shard_count" \
+        '(NR - 1) % count == index_' "$tidy_scratch/all-sources" >"$tidy_scratch/sources"
+    tidy_total=$(wc -l <"$tidy_scratch/sources" | tr -d '[:space:]')
+    [ "$tidy_total" -gt 0 ] ||
+        die "shard $shard_index of $shard_count selected no translation units; use fewer shards"
+
+    if [ "$shard_count" -gt 1 ]; then
+        step "Running clang-tidy ($tidy_total files, shard $shard_index of $shard_count)"
+    else
+        step "Running clang-tidy ($tidy_total files)"
+    fi
     clang_tidy_started_at=$(date +%s)
     tidy_index=0
     tidy_flushed=0
