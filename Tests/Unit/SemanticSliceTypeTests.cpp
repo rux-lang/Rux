@@ -1,0 +1,131 @@
+// The punctuation spellings of slices and ranges in type position: what each resolves to, how writability travels on
+// the element, and the mistakes the spellings leave room for.
+
+#include "Lexer/Lexer.h"
+#include "Semantic/SemanticAnalyzer.h"
+#include "Syntax/Parser/Parser.h"
+
+#include <doctest.h>
+#include <string>
+#include <utility>
+#include <vector>
+
+using namespace Rux;
+
+namespace {
+ParseResult Parse(const std::string &source) {
+    Lexer lexer(source, "slices.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+    Parser parser(std::move(lexed.tokens), "slices.rux");
+    auto parsed = parser.Parse();
+    REQUIRE_FALSE(parsed.HasErrors());
+    return parsed;
+}
+
+std::vector<std::string> Messages(const std::string &source) {
+    ParseResult parsed = Parse(source);
+    SemanticAnalyzer analyzer({&parsed.module}, {}, "test", "Windows");
+    std::vector<std::string> messages;
+    for (const SemanticDiagnostic &diagnostic : analyzer.Analyze().diagnostics) {
+        messages.push_back(diagnostic.message);
+    }
+    return messages;
+}
+
+/// The resolved types of the parameters of the first function in `source`, spelled the way diagnostics spell them.
+std::vector<std::string> ParameterTypes(const std::string &source) {
+    ParseResult parsed = Parse(source);
+    SemanticAnalyzer analyzer({&parsed.module}, {}, "test", "Windows");
+    const SemanticModel model = analyzer.Analyze();
+    REQUIRE_FALSE(model.HasErrors());
+    const auto *function = dynamic_cast<const FuncDecl *>(parsed.module.items[0].get());
+    REQUIRE(function != nullptr);
+    std::vector<std::string> types;
+    for (const Param &parameter : function->params) {
+        const TypeRef *type = model.TryGetType(*parameter.type);
+        REQUIRE(type != nullptr);
+        types.push_back(type->ToString());
+    }
+    return types;
+}
+} // namespace
+
+TEST_CASE("slice and range spellings resolve to the slice and range kinds") {
+    const auto types = ParameterTypes(R"(
+        func Spellings(bytes: uint8[..], text: var char8[..], span: int..int, closed: int..=int, from: int..,
+                       to: ..int, upTo: ..=int, whole: .., nested: int[..][..], boxed: *(var int[..])) {}
+    )");
+    REQUIRE_EQ(types.size(), 10);
+    CHECK_EQ(types[0], "Slice<uint8>");
+    CHECK_EQ(types[1], "MutableSlice<char8>");
+    CHECK_EQ(types[2], "Range<int>");
+    CHECK_EQ(types[3], "RangeInclusive<int>");
+    CHECK_EQ(types[4], "RangeFrom<int>");
+    CHECK_EQ(types[5], "RangeTo<int>");
+    CHECK_EQ(types[6], "RangeToInclusive<int>");
+    CHECK_EQ(types[7], "RangeFull");
+    CHECK_EQ(types[8], "Slice<Slice<int>>");
+    CHECK_EQ(types[9], "*MutableSlice<int>");
+}
+
+TEST_CASE("a writable slice weakens to a read-only one but not the reverse") {
+    const auto messages = Messages(R"(
+        func Weaken(view: var uint8[..]) -> uint8[..] { return view; }
+        func Strengthen(view: uint8[..]) -> var uint8[..] { return view; }
+    )");
+    REQUIRE_EQ(messages.size(), 1);
+    CHECK(messages[0].contains("'Slice<uint8>'"));
+    CHECK(messages[0].contains("'MutableSlice<uint8>'"));
+}
+
+TEST_CASE("a two-sided range type spells its element once on each side") {
+    const auto messages = Messages(R"(
+        func Mismatch() {
+            var span: int..uint;
+        }
+    )");
+    REQUIRE_EQ(messages.size(), 1);
+    CHECK_EQ(messages[0], "range type bounds must name one element type, but has 'int' and 'uint'");
+}
+
+TEST_CASE("a generic slice extension is rejected once and by what it is") {
+    const auto messages = Messages(R"(
+        extend T[..] {
+            func Count(self: T[..]) -> uint64 { return self.length; }
+        }
+    )");
+    REQUIRE_EQ(messages.size(), 1);
+    CHECK_EQ(messages[0], "cannot extend slice type 'T[..]' because element type 'T' is not defined");
+}
+
+TEST_CASE("a concrete slice extension keys its methods on the element") {
+    const auto messages = Messages(R"(
+        extend int[..] {
+            func Sum(self: int[..]) -> int {
+                var total = 0;
+                for value in self { total += value; }
+                return total;
+            }
+        }
+
+        extend char8[..] {
+            func Count(self: char8[..]) -> uint64 { return self.length; }
+        }
+
+        func Main() -> int {
+            let values: int[..] = [1, 2, 3];
+            let count = "abc".Count();
+            return values.Sum();
+        }
+    )");
+    CHECK(messages.empty());
+}
+
+TEST_CASE("a range where an array length belongs is answered as the slice spelling") {
+    const auto messages = Messages(R"(
+        func Sized(values: int[..3]) {}
+    )");
+    REQUIRE_EQ(messages.size(), 1);
+    CHECK_EQ(messages[0], "array length must be a non-negative compile-time integer");
+}

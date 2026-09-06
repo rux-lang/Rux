@@ -191,6 +191,37 @@ std::vector<TypeRef> AnalysisContext::ParseTypeArgsFromTypeName(const std::strin
     return args;
 }
 
+/// The range a written range type names. Each bound that is present spells the element type, so a two-sided range has
+/// to spell it the same way twice; the kind comes from which bounds are present and whether the end is included.
+TypeRef AnalysisContext::ResolveRangeType(const RangeTypeExpr &range,
+                                          const std::function<TypeRef(const TypeExpr &)> &resolveBound) {
+    std::optional<TypeRef> start;
+    std::optional<TypeRef> end;
+    if (range.start) {
+        start = resolveBound(*range.start);
+        if (start->IsUnknown()) {
+            return TypeRef::MakeUnknown();
+        }
+    }
+    if (range.end) {
+        end = resolveBound(*range.end);
+        if (end->IsUnknown()) {
+            return TypeRef::MakeUnknown();
+        }
+    }
+    if (start && end && *start != *end) {
+        EmitError(range.location,
+                  std::format("range type bounds must name one element type, but has '{}' and '{}'", start->ToString(),
+                              end->ToString()),
+                  {}, std::format("write '{}..{}'", start->ToString(), start->ToString()));
+        return TypeRef::MakeUnknown();
+    }
+    if (!start && !end) {
+        return TypeRef::MakeRangeFull();
+    }
+    return TypeRef::MakeRange(start ? *start : *end, start.has_value(), end.has_value(), range.inclusive);
+}
+
 TypeRef AnalysisContext::ResolveTypeImpl(const TypeExpr &expr) {
     if (const auto *t = dynamic_cast<const NamedTypeExpr *>(&expr)) {
         if (IsUnimplementedPrimitiveType(t->name)) {
@@ -316,6 +347,18 @@ TypeRef AnalysisContext::ResolveTypeImpl(const TypeExpr &expr) {
         return TypeRef::MakeArray(std::move(elemType), t->size ? EvalArrayLength(*t->size) : std::nullopt);
     }
 
+    if (const auto *t = dynamic_cast<const SliceTypeExpr *>(&expr)) {
+        TypeRef elemType = ResolveType(*t->element);
+        if (elemType.IsUnknown()) {
+            return TypeRef::MakeUnknown();
+        }
+        return TypeRef::MakeSlice(std::move(elemType), t->elementMut);
+    }
+
+    if (const auto *t = dynamic_cast<const RangeTypeExpr *>(&expr)) {
+        return ResolveRangeType(*t, [this](const TypeExpr &bound) { return ResolveType(bound); });
+    }
+
     if (const auto *t = dynamic_cast<const TupleTypeExpr *>(&expr)) {
         std::vector<TypeRef> elems;
         elems.reserve(t->elements.size());
@@ -401,6 +444,13 @@ TypeRef AnalysisContext::ResolveTypeWithSubstitution(const TypeExpr &expr,
     if (auto *t = dynamic_cast<const ArrayTypeExpr *>(&expr)) {
         return TypeRef::MakeArray(ResolveTypeWithSubstitution(*t->element, substitutions),
                                   t->size ? EvalArrayLength(*t->size) : std::nullopt);
+    }
+    if (auto *t = dynamic_cast<const SliceTypeExpr *>(&expr)) {
+        return TypeRef::MakeSlice(ResolveTypeWithSubstitution(*t->element, substitutions), t->elementMut);
+    }
+    if (auto *t = dynamic_cast<const RangeTypeExpr *>(&expr)) {
+        return ResolveRangeType(
+            *t, [&](const TypeExpr &bound) { return ResolveTypeWithSubstitution(bound, substitutions); });
     }
     if (auto *t = dynamic_cast<const TupleTypeExpr *>(&expr)) {
         std::vector<TypeRef> elems;

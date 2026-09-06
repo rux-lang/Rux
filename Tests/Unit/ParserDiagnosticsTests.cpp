@@ -146,6 +146,11 @@ TEST_CASE("declaration delimiters and list separators identify their grammar rol
         {"type Pair = Pair<int bool>;", "expected ',' between type arguments before 'bool'"},
         {"type Callback = func(int bool);", "expected ',' between function type parameters before 'bool'"},
         {"type Buffer = int[4;", "expected ']' to close the array type before ';'"},
+        {"type Bad = var int;", "'var' in a type qualifies only a slice's elements"},
+        {"type Bad = var *int;", "'var' in a type qualifies only a slice's elements"},
+        {"type Bad = ..=;", "expected a type after '..=' before ';'"},
+        {"type Bad = int..=;", "expected a type after '..=' before ';'"},
+        {"type Bad = int..int..int;", "expected ';' after the type alias declaration before '..'"},
         {"extern func F(value: int) -> ;", "expected a type before ';'"},
         {"extern { value int; }", "expected ':' after the external variable name before 'int'"},
     };

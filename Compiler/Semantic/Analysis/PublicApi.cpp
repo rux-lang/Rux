@@ -33,6 +33,17 @@ void AnalysisContext::ValidatePublicType(const TypeExpr &type, const std::string
     else if (const auto *array = dynamic_cast<const ArrayTypeExpr *>(&type)) {
         ValidatePublicType(*array->element, subject, typeParameters);
     }
+    else if (const auto *slice = dynamic_cast<const SliceTypeExpr *>(&type)) {
+        ValidatePublicType(*slice->element, subject, typeParameters);
+    }
+    else if (const auto *range = dynamic_cast<const RangeTypeExpr *>(&type)) {
+        if (range->start) {
+            ValidatePublicType(*range->start, subject, typeParameters);
+        }
+        if (range->end) {
+            ValidatePublicType(*range->end, subject, typeParameters);
+        }
+    }
     else if (const auto *tuple = dynamic_cast<const TupleTypeExpr *>(&type)) {
         for (const auto &element : tuple->elements) {
             ValidatePublicType(*element, subject, typeParameters);

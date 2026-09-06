@@ -7,6 +7,7 @@
 
 #include <array>
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <span>
 #include <string_view>
@@ -614,6 +615,7 @@ private:
     [[nodiscard]] std::optional<ResolvedTypeLayout> LayoutOfTypeExpression(const TypeExpr &expression);
     TypeRef ResolveTypeWithSubstitution(const TypeExpr &expression,
                                         const std::unordered_map<std::string, TypeRef> &substitutions);
+    TypeRef ResolveRangeType(const RangeTypeExpr &range, const std::function<TypeRef(const TypeExpr &)> &resolveBound);
     TypeRef CheckExpr(const Expr &expression);
     void EmitDiagnosticIntrinsic(const std::string &intrinsicName, const CallExpr &call);
     [[nodiscard]] const FuncDecl *LookupFunctionOverload(const Symbol &symbol,
@@ -896,6 +898,7 @@ private:
     void CheckInterfaceDecl(const InterfaceDecl &d);
 
     void CheckImplDecl(const ImplDecl &d);
+    [[nodiscard]] std::string UndefinedSliceElement(const ImplDecl &d) const;
 
     void CheckModuleDecl(const ModuleDecl &d);
 

@@ -207,16 +207,16 @@ The Core `Slice`, `MutableSlice`, and range declarations explicitly use `intrins
 one of those names receives no compiler operations from its spelling. Range syntax and array operations themselves
 remain available without Core.
 
-A string literal is text. `"Hello"` has type `string`, and the `s16` and `s32` prefixes spell the same text in the other two encodings:
+A string literal is text. `"Hello"` has type `string`, and the `c16` and `c32` prefixes spell the same text in the other two encodings:
 
 ```text
 "Hello"       string    (an alias for string8)  UTF-8
-s8"Hello"     string8                           UTF-8
-s16"Hello"    string16                          UTF-16
-s32"Hello"    string32                          UTF-32
+c8"Hello"     string8                           UTF-8
+c16"Hello"    string16                          UTF-16
+c32"Hello"    string32                          UTF-32
 ```
 
-A string is an immutable, validity-guaranteed view: a pointer to its code units and a length counted in them, sixteen bytes, aligned to eight. It copies like a slice, because it is a borrow rather than an owner. The literal data is transcoded into the encoding the prefix names, so `s16"€"` holds one UTF-16 code unit and not the three bytes the same character takes in UTF-8, and a character outside the basic multilingual plane is one UTF-32 unit, two UTF-16 units, and four UTF-8 ones. That count is what `.length` answers.
+A string is an immutable, validity-guaranteed view: a pointer to its code units and a length counted in them, sixteen bytes, aligned to eight. It copies like a slice, because it is a borrow rather than an owner. The literal data is transcoded into the encoding the prefix names, so `c16"€"` holds one UTF-16 code unit and not the three bytes the same character takes in UTF-8, and a character outside the basic multilingual plane is one UTF-32 unit, two UTF-16 units, and four UTF-8 ones. That count is what `.length` answers.
 
 `string` aliases `string8` rather than the widest encoding, which is the deliberate asymmetry with `char`: a bare literal in a UTF-8 source file is already UTF-8, while a bare character is a whole scalar value and so aliases `char32`. There are no `string64` and wider rows to match `char64`, because no encoding has code units that wide.
 

@@ -148,9 +148,28 @@ void AnalysisContext::ValidateArrayType(const TypeExpr &type, bool allowFlexible
             }
         }
         else if (!EvalArrayLength(*array->size)) {
-            EmitError(array->size->location, "array length must be a non-negative compile-time integer");
+            // A range where the length goes is the nearest miss to the slice spelling, so it is answered as one.
+            std::optional<std::string> help;
+            if (dynamic_cast<const RangeExpr *>(array->size.get())) {
+                help = "write 'T[..]' for a slice";
+            }
+            EmitError(array->size->location, "array length must be a non-negative compile-time integer", {},
+                      std::move(help));
         }
         ValidateArrayType(*array->element);
+        return;
+    }
+    if (const auto *slice = dynamic_cast<const SliceTypeExpr *>(&type)) {
+        ValidateArrayType(*slice->element);
+        return;
+    }
+    if (const auto *range = dynamic_cast<const RangeTypeExpr *>(&type)) {
+        if (range->start) {
+            ValidateArrayType(*range->start);
+        }
+        if (range->end) {
+            ValidateArrayType(*range->end);
+        }
         return;
     }
     if (const auto *pointer = dynamic_cast<const PointerTypeExpr *>(&type)) {

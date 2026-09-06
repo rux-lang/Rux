@@ -83,9 +83,9 @@ const std::vector<std::uint8_t> Utf32Bytes = {0x41, 0x00, 0x00, 0x00, 0xA2, 0x00
 TEST_CASE("a string literal's read-only data is transcoded into its own encoding") {
     const std::string source = std::format(R"(
         func Main() -> int {{
-            let eight = s8"{0}";
-            let sixteen = s16"{0}";
-            let thirtyTwo = s32"{0}";
+            let eight = c8"{0}";
+            let sixteen = c16"{0}";
+            let thirtyTwo = c32"{0}";
             return (eight.length + sixteen.length + thirtyTwo.length) as int;
         }}
     )",
@@ -102,9 +102,9 @@ TEST_CASE("a string literal's read-only data is transcoded into its own encoding
 TEST_CASE("the same text in two encodings is two distinct interned literals") {
     const std::string source = R"(
         func Main() -> int {
-            let eight = s8"hi";
-            let repeated = s8"hi";
-            let sixteen = s16"hi";
+            let eight = c8"hi";
+            let repeated = c8"hi";
+            let sixteen = c16"hi";
             return (eight.length + repeated.length + sixteen.length) as int;
         }
     )";
@@ -120,7 +120,7 @@ TEST_CASE("the same text in two encodings is two distinct interned literals") {
 
 TEST_CASE("a string constant publishes a transcoded body and a length in code units") {
     const std::string source = std::format(R"(
-        const TEXT: string16 = s16"{0}";
+        const TEXT: string16 = c16"{0}";
 
         func Main() -> int {{
             return TEXT.length as int;

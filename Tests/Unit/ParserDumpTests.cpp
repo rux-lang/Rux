@@ -169,6 +169,33 @@ func Transfer(source: Cell) -> Cell {
     CHECK_NE(output.find("MoveExpr <-", firstMove + 1), std::string::npos);
 }
 
+TEST_CASE("AST dumps spell slices and ranges with the punctuation they are written in") {
+    constexpr std::string_view source = R"(
+func Spellings(bytes: uint8[..], text: var char8[..], pointers: (*int)[..], rows: int[3][..],
+               nested: int[..][..], span: int..int, closed: int..=int, from: int.., to: ..int,
+               upTo: ..=int, whole: .., boxed: Option<var uint8[..]>, viewed: *int[..], writable: *(var int[..])) {}
+)";
+
+    Lexer lexer(std::string(source), "slice-dump.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+    Parser parser(std::move(lexed.tokens), "slice-dump.rux");
+    auto parsed = parser.Parse();
+    REQUIRE_FALSE(parsed.HasErrors());
+
+    const auto path = std::filesystem::temp_directory_path() / "rux-parser-slice-dump.ast";
+    REQUIRE(Parser::DumpAst(parsed, path));
+    std::ifstream input(path);
+    const std::string output{std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
+    input.close();
+    std::filesystem::remove(path);
+
+    CHECK(output.contains("FuncDecl 'Spellings' (bytes: uint8[..], text: var char8[..], pointers: (*int)[..], "
+                          "rows: int[N][..], nested: int[..][..], span: int..int, closed: int..=int, from: int.., "
+                          "to: ..int, upTo: ..=int, whole: .., boxed: Option<var uint8[..]>, viewed: *(int[..]), "
+                          "writable: *(var int[..]))"));
+}
+
 TEST_CASE("AST dumps name the indexing operators by the punctuation they are declared with") {
     constexpr std::string_view source = R"(
 struct Vect { data: int[4]; }

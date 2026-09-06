@@ -73,6 +73,10 @@ void AnalysisContext::ResolveDeclSignature(const Decl &declaration) {
         }
     }
     else if (const auto *extension = dynamic_cast<const ImplDecl *>(&declaration)) {
+        // CheckImplDecl reports the block; resolving its signatures would only repeat that its element is undefined.
+        if (!UndefinedSliceElement(*extension).empty()) {
+            return;
+        }
         const auto receiverParameters = ImplTypeParams(*extension);
         const auto savedParameters = currentTypeParams;
         currentTypeParams = receiverParameters;
@@ -133,6 +137,10 @@ void AnalysisContext::ResolveDeclSignatureInScope(const Decl &declaration, Scope
         }
     }
     else if (const auto *extension = dynamic_cast<const ImplDecl *>(&declaration)) {
+        // CheckImplDecl reports the block; resolving its signatures would only repeat that its element is undefined.
+        if (!UndefinedSliceElement(*extension).empty()) {
+            return;
+        }
         const auto receiverParameters = ImplTypeParams(*extension);
         const auto savedParameters = currentTypeParams;
         currentTypeParams = receiverParameters;

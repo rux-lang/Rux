@@ -157,9 +157,11 @@ private:
     std::vector<TypeExprPtr> ParseTypeArgs();     ///< <int32, T[], ...>
 
     // Type expressions
-    TypeExprPtr ParseType(std::optional<std::string> help = {});
-    TypeExprPtr ParseBaseType(std::optional<std::string> help = {}); ///< named, path, pointer, tuple, self
-    TypeExprPtr ParseFunctionType();                                 ///< func(params) -> T
+    TypeExprPtr ParseType(std::optional<std::string> help = {});        ///< any type, including var T[..] and T..T
+    TypeExprPtr ParsePostfixType(std::optional<std::string> help = {}); ///< a type without a range operator after it
+    TypeExprPtr ParseBaseType(std::optional<std::string> help = {});    ///< named, path, pointer, tuple, self
+    TypeExprPtr ParseFunctionType();                                    ///< func(params) -> T
+    [[nodiscard]] bool CanStartType() const noexcept;                   ///< whether the next token begins a type
 
     // Blocks and statements
     std::unique_ptr<Block> ParseBlock(std::string_view role = "the block");

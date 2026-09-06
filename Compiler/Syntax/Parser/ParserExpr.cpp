@@ -352,7 +352,8 @@ ExprPtr Parser::ParseCast() {
     while (CheckAny({TokenKind::AsKeyword, TokenKind::IsKeyword})) {
         const auto loc = CurrentLocation();
         if (Match(TokenKind::AsKeyword)) {
-            auto type = ParseType();
+            // A cast target ends before a range operator, so `value as int..limit` is still a range of casts.
+            auto type = ParsePostfixType();
             auto e = std::make_unique<CastExpr>();
             e->location = loc;
             e->operand = std::move(left);
@@ -361,7 +362,7 @@ ExprPtr Parser::ParseCast() {
         }
         else {
             Match(TokenKind::IsKeyword);
-            auto type = ParseType();
+            auto type = ParsePostfixType();
             auto e = std::make_unique<IsExpr>();
             e->location = loc;
             e->operand = std::move(left);

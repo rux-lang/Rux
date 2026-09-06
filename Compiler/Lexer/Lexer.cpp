@@ -257,28 +257,22 @@ Token Lexer::NextToken() {
     if (IsDocumentationBlockStart()) {
         return ScanDocumentationBlock(start);
     }
-    // Prefixed string literals. Only the exact spellings below are prefixes: `s8` with anything but a quote after
-    // it, and `s16 "x"` with a space between, are an identifier and go on to be scanned as one.
-    if (c == 's') {
-        if (Peek(1) == '8' && Peek(2) == '"') {
-            return ScanString(start, 2);
-        }
-        if (Peek(1) == '1' && Peek(2) == '6' && Peek(3) == '"') {
-            return ScanString(start, 3);
-        }
-        if (Peek(1) == '3' && Peek(2) == '2' && Peek(3) == '"') {
-            return ScanString(start, 3);
-        }
-    }
+    // Prefixed character and string literals. The prefix names the code unit, so `c8'x'` is one char8 and `c8"x"` is
+    // a slice of char8. Only the exact spellings are prefixes: `c8` with anything but a quote after it, and `c16 "x"`
+    // with a space between, are an identifier and go on to be scanned as one.
     if (c == 'c') {
-        if (Peek(1) == '8' && Peek(2) == '\'') {
-            return ScanChar(start, 2);
+        std::size_t width = 0;
+        if (Peek(1) == '8') {
+            width = 2;
         }
-        if (Peek(1) == '1' && Peek(2) == '6' && Peek(3) == '\'') {
-            return ScanChar(start, 3);
+        else if ((Peek(1) == '1' && Peek(2) == '6') || (Peek(1) == '3' && Peek(2) == '2')) {
+            width = 3;
         }
-        if (Peek(1) == '3' && Peek(2) == '2' && Peek(3) == '\'') {
-            return ScanChar(start, 3);
+        if (width != 0 && Peek(width) == '"') {
+            return ScanString(start, width);
+        }
+        if (width != 0 && Peek(width) == '\'') {
+            return ScanChar(start, width);
         }
     }
     // Identifiers / keywords

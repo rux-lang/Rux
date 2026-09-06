@@ -68,9 +68,9 @@ std::vector<std::string> Messages(const std::vector<SemanticDiagnostic> &diagnos
 
 TEST_CASE("a string prefix names the encoding the literal is a slice of") {
     const auto types = LetInitializerTypes(R"(
-        let eight = s8"text";
-        let sixteen = s16"text";
-        let thirtyTwo = s32"text";
+        let eight = c8"text";
+        let sixteen = c16"text";
+        let thirtyTwo = c32"text";
     )");
     REQUIRE_EQ(types.size(), 3);
     CHECK_EQ(types[0], "Slice<char8>");
@@ -82,7 +82,7 @@ TEST_CASE("an unprefixed literal is UTF-8 text") {
     // The bare form is UTF-8, which is what an unprefixed literal in a UTF-8 source file already is.
     const auto types = LetInitializerTypes(R"(
         let bare = "text";
-        let eight = s8"text";
+        let eight = c8"text";
     )");
     REQUIRE_EQ(types.size(), 2);
     CHECK_EQ(types[0], "Slice<char8>");
@@ -91,9 +91,9 @@ TEST_CASE("an unprefixed literal is UTF-8 text") {
 
 TEST_CASE("the text names are spellings of the character slices") {
     const auto types = LetInitializerTypes(R"(
-        let text: string = s8"text";
-        let eight: string8 = s8"text";
-        let wide: string16 = s16"text";
+        let text: string = c8"text";
+        let eight: string8 = c8"text";
+        let wide: string16 = c16"text";
     )");
     REQUIRE_EQ(types.size(), 3);
     CHECK_EQ(types[0], "Slice<char8>");
@@ -103,9 +103,9 @@ TEST_CASE("the text names are spellings of the character slices") {
 
 TEST_CASE("text exposes its code units through data and its length in them") {
     const auto types = LetInitializerTypes(R"(
-        let eight = s8"text";
-        let sixteen = s16"text";
-        let thirtyTwo = s32"text";
+        let eight = c8"text";
+        let sixteen = c16"text";
+        let thirtyTwo = c32"text";
         let eightData = eight.data;
         let sixteenData = sixteen.data;
         let thirtyTwoData = thirtyTwo.data;
@@ -120,9 +120,9 @@ TEST_CASE("text exposes its code units through data and its length in them") {
 
 TEST_CASE("indexing text yields one code unit of its own encoding") {
     const auto types = LetInitializerTypes(R"(
-        let eight = s8"text";
-        let sixteen = s16"text";
-        let thirtyTwo = s32"text";
+        let eight = c8"text";
+        let sixteen = c16"text";
+        let thirtyTwo = c32"text";
         let first = eight[0];
         let second = sixteen[0];
         let third = thirtyTwo[0];
@@ -135,7 +135,7 @@ TEST_CASE("indexing text yields one code unit of its own encoding") {
 
 TEST_CASE("a range of text is a slice of the same code units") {
     const auto types = LetInitializerTypes(R"(
-        let text = s8"text";
+        let text = c8"text";
         let part = text[0..2];
         let tail = text[2..];
     )");
@@ -147,7 +147,7 @@ TEST_CASE("a range of text is a slice of the same code units") {
 TEST_CASE("text has no member other than data and length") {
     const auto messages = Messages(AnalyzeSource(R"(
         func Main() {
-            let text = s8"text";
+            let text = c8"text";
             let size = text.size;
         }
     )"));
@@ -159,7 +159,7 @@ TEST_CASE("text has no member other than data and length") {
 TEST_CASE("a literal's code units cannot be written through the view") {
     const auto messages = Messages(AnalyzeSource(R"(
         func Main() {
-            var text = s8"text";
+            var text = c8"text";
             text[0] = c8'x';
         }
     )"));
@@ -172,8 +172,8 @@ TEST_CASE("the encodings are separate types with no conversion between them") {
         func Eight(text: string8) {}
 
         func Main() {
-            let wide: string16 = s8"text";
-            Eight(s16"text");
+            let wide: string16 = c8"text";
+            Eight(c16"text");
         }
     )"));
     REQUIRE_EQ(messages.size(), 2);
@@ -185,8 +185,8 @@ TEST_CASE("the encodings are separate types with no conversion between them") {
 TEST_CASE("text is neither compared nor ordered in this version") {
     const auto messages = Messages(AnalyzeSource(R"(
         func Main() {
-            let left = s8"one";
-            let right = s8"two";
+            let left = c8"one";
+            let right = c8"two";
             let same = left == right;
             let ordered = left < right;
         }
@@ -199,7 +199,7 @@ TEST_CASE("text is neither compared nor ordered in this version") {
 TEST_CASE("text is not a value any cast converts") {
     const auto messages = Messages(AnalyzeSource(R"(
         func Main() {
-            let text = s8"text";
+            let text = c8"text";
             let number = text as uint64;
             let wider = text as string16;
         }
@@ -218,7 +218,7 @@ TEST_CASE("an ordinary struct named Slice is built from a literal's own members"
         }
 
         func Main() {
-            let text = s8"text";
+            let text = c8"text";
             let units = Slice<char8> { data: text.data, length: text.length };
         }
     )"));

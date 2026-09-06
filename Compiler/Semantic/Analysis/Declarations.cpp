@@ -4,6 +4,7 @@
 #include "Semantic/Conditional/ConditionalCompilation.h"
 #include "Target/Layout.h"
 #include "Target/Target.h"
+#include "Types/PrimitiveCatalog.h"
 #include "Types/Type.h"
 
 #include <algorithm>
@@ -303,6 +304,14 @@ void AnalysisContext::CheckImplDecl(const ImplDecl &d) {
     if (d.extendedType) {
         ValidateArrayType(*d.extendedType);
     }
+    if (const std::string element = UndefinedSliceElement(d); !element.empty()) {
+        EmitError(
+            d.location,
+            std::format("cannot extend slice type '{}' because element type '{}' is not defined", d.typeName, element),
+            {}, "extend a slice of one concrete element type, for example 'extend int[..]'");
+        currentTypeParams = savedTypeParams;
+        return;
+    }
     const bool receiverMayResolve =
         extendedSymbol != nullptr || !dynamic_cast<const NamedTypeExpr *>(d.extendedType.get());
     TypeRef extendedType = d.extendedType && receiverMayResolve ? ResolveType(*d.extendedType) : TypeRef::MakeUnknown();
@@ -391,6 +400,19 @@ void AnalysisContext::CheckImplDecl(const ImplDecl &d) {
     currentImpl = savedImpl;
     inImpl = savedInImpl;
     currentTypeParams = savedTypeParams;
+}
+
+/// The element name of a slice receiver that names nothing in scope, or empty. A slice receiver extends one concrete
+/// element type: an element that names nothing would have to be a type parameter, and a slice declares none to
+/// borrow, so such a block is reported as what it is rather than as a typo, and only once.
+std::string AnalysisContext::UndefinedSliceElement(const ImplDecl &d) const {
+    const auto *slice = dynamic_cast<const SliceTypeExpr *>(d.extendedType.get());
+    const auto *element = slice ? dynamic_cast<const NamedTypeExpr *>(slice->element.get()) : nullptr;
+    if (!element || !element->typeArgs.empty() || currentScope->Lookup(element->name) ||
+        PrimitiveTypeFromName(element->name)) {
+        return {};
+    }
+    return element->name;
 }
 
 void AnalysisContext::CheckModuleDecl(const ModuleDecl &d) {

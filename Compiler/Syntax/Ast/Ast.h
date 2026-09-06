@@ -51,6 +51,21 @@ struct ArrayTypeExpr : TypeExpr {
     ExprPtr size; // null for a flexible tail (T[]), non-null for T[N]
 };
 
+/// A slice: `T[..]` reads its elements and `var T[..]` may also write them. The qualifier sits on the element the way
+/// it sits on a pointee in `*var T`, which is what the `var` keyword before the element spells.
+struct SliceTypeExpr : TypeExpr {
+    TypeExprPtr element;
+    bool elementMut = false;
+};
+
+/// A range in type position: `T..T`, `T..=T`, `T..`, `..T`, `..=T` and `..`. A bound that is present holds the element
+/// type, so a two-sided range spells it twice and the two spellings have to agree.
+struct RangeTypeExpr : TypeExpr {
+    TypeExprPtr start; // null when the range has no lower bound
+    TypeExprPtr end;   // null when the range has no upper bound
+    bool inclusive = false;
+};
+
 // *uint8  or  *var uint8
 struct PointerTypeExpr : TypeExpr {
     TypeExprPtr pointee;

@@ -27,8 +27,8 @@ func Widest(text: string32) -> string32 {
 func Main() -> int {
     // A bare literal is UTF-8; a prefix names one of the two wider encodings.
     let eight: string8 = "Hello";
-    let sixteen: string16 = s16"Hello";
-    let thirtyTwo: string32 = s32"Hello";
+    let sixteen: string16 = c16"Hello";
+    let thirtyTwo: string32 = c32"Hello";
 
     // 'string' is a spelling of 'string8'.
     let text: string = "Hello";
@@ -42,15 +42,15 @@ func Main() -> int {
     // Above the ASCII range the counts diverge: one code point above the basic multilingual plane is four UTF-8
     // bytes, the two units of a UTF-16 surrogate pair, and one UTF-32 unit.
     let rocket8: string8 = "\u{1F680}";
-    let rocket16: string16 = s16"\u{1F680}";
-    let rocket32: string32 = s32"\u{1F680}";
+    let rocket16: string16 = c16"\u{1F680}";
+    let rocket32: string32 = c32"\u{1F680}";
     Assert(rocket8.length == 4u, "a supplementary code point is four UTF-8 code units");
     Assert(rocket16.length == 2u, "a supplementary code point is a UTF-16 surrogate pair");
     Assert(rocket32.length == 1u, "a supplementary code point is one UTF-32 code unit");
 
     // The euro sign sits inside the basic multilingual plane, so UTF-16 holds it whole.
     let euro8: string8 = "\u{20AC}";
-    let euro16: string16 = s16"\u{20AC}";
+    let euro16: string16 = c16"\u{20AC}";
     Assert(euro8.length == 3u, "the euro sign is three UTF-8 code units");
     Assert(euro16.length == 1u, "the euro sign is one UTF-16 code unit");
 

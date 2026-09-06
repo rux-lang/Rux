@@ -343,6 +343,13 @@ std::string TypeText(const TypeExpr *type) {
     if (const auto *array = dynamic_cast<const ArrayTypeExpr *>(type)) {
         return TypeText(array->element.get()) + (array->size ? "[N]" : "[]");
     }
+    if (const auto *slice = dynamic_cast<const SliceTypeExpr *>(type)) {
+        return std::string(slice->elementMut ? "var " : "") + TypeText(slice->element.get()) + "[..]";
+    }
+    if (const auto *range = dynamic_cast<const RangeTypeExpr *>(type)) {
+        return (range->start ? TypeText(range->start.get()) : std::string()) + (range->inclusive ? "..=" : "..") +
+               (range->end ? TypeText(range->end.get()) : std::string());
+    }
     if (const auto *pointer = dynamic_cast<const PointerTypeExpr *>(type)) {
         return std::string("*") + (pointer->pointeeMut ? "var " : "") + TypeText(pointer->pointee.get());
     }

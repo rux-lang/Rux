@@ -1,0 +1,22 @@
+// The punctuation spellings of slices and ranges in type position, and the mistakes they leave room for: a
+// read-only view cannot become a writable one, a two-sided range spells one element type twice, a range is not an
+// array length, and a slice extension names one concrete element type.
+func Weaken(view: var uint8[..]) -> uint8[..] {
+    return view;
+}
+
+func Strengthen(view: uint8[..]) -> var uint8[..] {
+    return view;
+}
+
+func Mismatch() {
+    var span: int..uint;
+}
+
+func Sized(values: int[..3]) {}
+
+extend T[..] {
+    func Count(self: T[..]) -> uint64 {
+        return self.length;
+    }
+}

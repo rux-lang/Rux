@@ -78,9 +78,9 @@ TEST_CASE("a string literal publishes its length in its own code units") {
     // Four code points spelled in ten UTF-8 bytes: 'A', U+00A2, U+20AC, and U+1F680, the last of which needs a
     // surrogate pair in UTF-16. So the same text is 10, 5, and 4 units wide in the three encodings.
     const LirPackage package = CompileToLir(R"(
-        func Eight() { let text = s8"A\u{A2}\u{20AC}\u{1F680}"; }
-        func Sixteen() { let text = s16"A\u{A2}\u{20AC}\u{1F680}"; }
-        func ThirtyTwo() { let text = s32"A\u{A2}\u{20AC}\u{1F680}"; }
+        func Eight() { let text = c8"A\u{A2}\u{20AC}\u{1F680}"; }
+        func Sixteen() { let text = c16"A\u{A2}\u{20AC}\u{1F680}"; }
+        func ThirtyTwo() { let text = c32"A\u{A2}\u{20AC}\u{1F680}"; }
     )");
 
     CHECK_EQ(Constants(RequireFunction(package, "Eight")), std::vector<std::string>{"10"});
@@ -90,9 +90,9 @@ TEST_CASE("a string literal publishes its length in its own code units") {
 
 TEST_CASE("a string literal's data is requested at the encoding's own character") {
     const LirPackage package = CompileToLir(R"(
-        func Eight() { let text = s8"text"; }
-        func Sixteen() { let text = s16"text"; }
-        func ThirtyTwo() { let text = s32"text"; }
+        func Eight() { let text = c8"text"; }
+        func Sixteen() { let text = c16"text"; }
+        func ThirtyTwo() { let text = c32"text"; }
     )");
 
     const auto eight = StringAddresses(RequireFunction(package, "Eight"));
@@ -113,7 +113,7 @@ TEST_CASE("a string literal's data is requested at the encoding's own character"
 TEST_CASE("a string's members read the same two fields a slice's do") {
     const LirPackage package = CompileToLir(R"(
         func Main() {
-            let text = s8"text";
+            let text = c8"text";
             let data = text.data;
             let length = text.length;
             let first = text[0];

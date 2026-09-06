@@ -164,7 +164,7 @@ TEST_CASE("intrinsic declarations reject unknown kinds and incompatible fields")
 }
 
 TEST_CASE("string literals can be inferred without a provider") {
-    auto parsed = ParseIntrinsicSource("func Main() { let text = \"hello\"; let wide = s16\"hello\"; }");
+    auto parsed = ParseIntrinsicSource("func Main() { let text = \"hello\"; let wide = c16\"hello\"; }");
     const auto model = SemanticAnalyzer({&parsed.module}).Analyze();
     CHECK_FALSE(model.HasErrors());
 }

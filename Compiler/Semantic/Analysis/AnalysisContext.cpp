@@ -227,6 +227,12 @@ namespace {
     if (const auto *array = dynamic_cast<const ArrayTypeExpr *>(&expression)) {
         return MentionsSelf(*array->element);
     }
+    if (const auto *slice = dynamic_cast<const SliceTypeExpr *>(&expression)) {
+        return MentionsSelf(*slice->element);
+    }
+    if (const auto *range = dynamic_cast<const RangeTypeExpr *>(&expression)) {
+        return (range->start && MentionsSelf(*range->start)) || (range->end && MentionsSelf(*range->end));
+    }
     if (const auto *tuple = dynamic_cast<const TupleTypeExpr *>(&expression)) {
         return std::ranges::any_of(tuple->elements, [](const TypeExprPtr &element) { return MentionsSelf(*element); });
     }

@@ -1,8 +1,8 @@
 // A string is a view over text that has already been validated, so the uses that could invalidate it, and the ones
 // the language has not defined yet, are all reported rather than silently allowed.
 func Main() {
-    var text = s8"text";
-    var wide = s16"text";
+    var text = c8"text";
+    var wide = c16"text";
 
     // A range could split one character's code units in half.
     let part = text[0..2];
@@ -15,7 +15,7 @@ func Main() {
     let size = text.size;
 
     // Comparing two views would compare the addresses they hold, not the text they name.
-    let same = text == s8"other";
+    let same = text == c8"other";
 
     // The encodings are separate types, in either direction.
     let narrowed: string8 = wide;

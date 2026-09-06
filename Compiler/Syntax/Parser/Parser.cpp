@@ -379,6 +379,9 @@ bool Parser::IsTypeArgListAhead() const noexcept {
         case TokenKind::ColonColon:
         case TokenKind::SelfKeyword:
         case TokenKind::VarKeyword:
+        // A slice or range argument: `Option<int[..]>`, `Box<int..int>`.
+        case TokenKind::DotDot:
+        case TokenKind::DotDotEqual:
             continue;
         default:
             return false;

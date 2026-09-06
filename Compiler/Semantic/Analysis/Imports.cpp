@@ -288,8 +288,19 @@ void AnalysisContext::ImportSignatureDependencies(const Symbol &sym,
         else if (const auto *reference = dynamic_cast<const ReferenceTypeExpr *>(&type)) {
             self(*reference->pointee);
         }
-        else if (const auto *slice = dynamic_cast<const ArrayTypeExpr *>(&type)) {
+        else if (const auto *array = dynamic_cast<const ArrayTypeExpr *>(&type)) {
+            self(*array->element);
+        }
+        else if (const auto *slice = dynamic_cast<const SliceTypeExpr *>(&type)) {
             self(*slice->element);
+        }
+        else if (const auto *range = dynamic_cast<const RangeTypeExpr *>(&type)) {
+            if (range->start) {
+                self(*range->start);
+            }
+            if (range->end) {
+                self(*range->end);
+            }
         }
         else if (const auto *tuple = dynamic_cast<const TupleTypeExpr *>(&type)) {
             for (const auto &elem : tuple->elements) {

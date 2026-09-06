@@ -8,7 +8,63 @@
 
 namespace Rux {
 // Type expressions
+
+bool Parser::CanStartType() const noexcept {
+    return CheckAny({TokenKind::Ident, TokenKind::Star, TokenKind::Amp, TokenKind::LeftParen, TokenKind::FuncKeyword,
+                     TokenKind::SelfKeyword, TokenKind::VarKeyword});
+}
+
+/// A type, with the two spellings that reach past a postfix type: `var T[..]`, which qualifies a slice's elements, and
+/// the range spellings `T..T`, `T..=T`, `T..`, `..T`, `..=T` and `..`, whose bounds hold the element type. A range
+/// does not chain, so `int..int..int` is reported at the second operator, and a range whose element is itself a range
+/// is written in parentheses.
 TypeExprPtr Parser::ParseType(std::optional<std::string> help) {
+    const auto loc = CurrentLocation();
+
+    // A range with no lower bound: `..T`, `..=T` and the full range `..`.
+    if (Check(TokenKind::DotDot) || Check(TokenKind::DotDotEqual)) {
+        auto range = std::make_unique<RangeTypeExpr>();
+        range->location = loc;
+        range->inclusive = Advance().kind == TokenKind::DotDotEqual;
+        if (CanStartType()) {
+            range->end = ParsePostfixType("add the end bound's type after the range operator");
+        }
+        else if (range->inclusive) {
+            EmitExpected(CurrentLocation(), "a type after '..='", "an inclusive range type names its end bound");
+        }
+        return range;
+    }
+
+    if (Match(TokenKind::VarKeyword)) {
+        auto element = ParsePostfixType("add the slice type after 'var'");
+        if (auto *slice = dynamic_cast<SliceTypeExpr *>(element.get())) {
+            slice->elementMut = true;
+        }
+        else if (element) {
+            EmitError(loc, "'var' in a type qualifies only a slice's elements",
+                      "write 'var T[..]' for a writable slice, or '*var T' for a writable pointee");
+        }
+        return element;
+    }
+
+    TypeExprPtr start = ParsePostfixType(std::move(help));
+    if (!start || !(Check(TokenKind::DotDot) || Check(TokenKind::DotDotEqual))) {
+        return start;
+    }
+    auto range = std::make_unique<RangeTypeExpr>();
+    range->location = loc;
+    range->inclusive = Advance().kind == TokenKind::DotDotEqual;
+    range->start = std::move(start);
+    if (CanStartType()) {
+        range->end = ParsePostfixType("add the end bound's type after the range operator");
+    }
+    else if (range->inclusive) {
+        EmitExpected(CurrentLocation(), "a type after '..='", "an inclusive range type names its end bound");
+    }
+    return range;
+}
+
+TypeExprPtr Parser::ParsePostfixType(std::optional<std::string> help) {
     const auto loc = CurrentLocation();
     TypeExprPtr base;
 
@@ -69,9 +125,19 @@ TypeExprPtr Parser::ParseType(std::optional<std::string> help) {
         return nullptr;
     }
 
-    // Postfix inline-array suffix: T[] (flexible tail) or T[N] (fixed)
+    // Postfix bracket suffix: T[] (flexible tail), T[N] (fixed array) or T[..] (slice). A size is a full expression,
+    // and `..` is one too, so the slice spelling is settled by the one token after '[' before any expression is read.
     while (Check(TokenKind::LeftBracket)) {
         Advance();
+        if (Check(TokenKind::DotDot) && Peek(1).kind == TokenKind::RightBracket) {
+            Advance();
+            Advance();
+            auto slice = std::make_unique<SliceTypeExpr>();
+            slice->location = loc;
+            slice->element = std::move(base);
+            base = std::move(slice);
+            continue;
+        }
         auto a = std::make_unique<ArrayTypeExpr>();
         a->location = loc;
         a->element = std::move(base);
@@ -354,6 +420,13 @@ std::string ImplTypeName(const TypeExpr &type) {
     }
     if (const auto *array = dynamic_cast<const ArrayTypeExpr *>(&type)) {
         return ImplTypeName(*array->element) + (array->size ? "[N]" : "[]");
+    }
+    if (const auto *slice = dynamic_cast<const SliceTypeExpr *>(&type)) {
+        return (slice->elementMut ? "var " : "") + ImplTypeName(*slice->element) + "[..]";
+    }
+    if (const auto *range = dynamic_cast<const RangeTypeExpr *>(&type)) {
+        return (range->start ? ImplTypeName(*range->start) : "") + (range->inclusive ? "..=" : "..") +
+               (range->end ? ImplTypeName(*range->end) : "");
     }
     if (const auto *pointer = dynamic_cast<const PointerTypeExpr *>(&type)) {
         return (pointer->pointeeMut ? "*var " : "*") + ImplTypeName(*pointer->pointee);

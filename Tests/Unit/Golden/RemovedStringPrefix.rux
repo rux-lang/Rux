@@ -1,8 +1,9 @@
-// The character prefixes spell a character, never a string: `c8'x'` is one code unit and `c8"x"` is nothing. What
-// used to be the second is now the identifier `c8` followed by a literal, which is what the parser reports.
+// The character prefixes spell strings as well as characters: `c8"x"` is a slice of one code unit and `c8'x'` is that
+// code unit. The `s8`, `s16` and `s32` spellings are gone, so what used to be a prefix is now the identifier `s8`
+// followed by a literal, which is what the parser reports.
 func Main() {
     let one = c8'x';
-    let eight = c8"text";
-    let sixteen = c16"text";
-    let thirtyTwo = c32"text";
+    let eight = s8"text";
+    let sixteen = s16"text";
+    let thirtyTwo = s32"text";
 }

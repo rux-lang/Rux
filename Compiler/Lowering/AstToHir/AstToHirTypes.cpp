@@ -635,6 +635,17 @@ TypeRef AstToHirContext::ResolveTypeWithSubstitution(const TypeExpr &expr,
         return TypeRef::MakeArray(ResolveTypeWithSubstitution(*t->element, substitutions),
                                   ResolvedType(expr).arrayLength);
     }
+    if (auto *t = dynamic_cast<const SliceTypeExpr *>(&expr)) {
+        return TypeRef::MakeSlice(ResolveTypeWithSubstitution(*t->element, substitutions), t->elementMut);
+    }
+    if (auto *t = dynamic_cast<const RangeTypeExpr *>(&expr)) {
+        // Semantic analysis has already accepted the two bounds as one element type, so either spells it.
+        if (!t->start && !t->end) {
+            return TypeRef::MakeRangeFull();
+        }
+        TypeRef element = ResolveTypeWithSubstitution(t->start ? *t->start : *t->end, substitutions);
+        return TypeRef::MakeRange(std::move(element), t->start != nullptr, t->end != nullptr, t->inclusive);
+    }
     if (auto *t = dynamic_cast<const TupleTypeExpr *>(&expr)) {
         std::vector<TypeRef> elems;
         for (auto &elem : t->elements) {

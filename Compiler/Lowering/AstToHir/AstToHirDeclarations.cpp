@@ -244,10 +244,10 @@ TypeRef AstToHirContext::SuffixedLiteralType(const Token &tok) {
 // The type a string literal has. Deliberately the same rule the semantic analyzer applies, spelled out in both
 // places the way every other literal type already is.
 TypeRef AstToHirContext::StringLiteralType(const Token &tok) {
-    if (tok.text.starts_with("s16\"")) {
+    if (tok.text.starts_with("c16\"")) {
         return TypeRef::MakeText(TypeRef::Kind::Char16);
     }
-    if (tok.text.starts_with("s32\"")) {
+    if (tok.text.starts_with("c32\"")) {
         return TypeRef::MakeText(TypeRef::Kind::Char32);
     }
     return TypeRef::MakeText(TypeRef::Kind::Char8);

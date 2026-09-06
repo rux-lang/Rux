@@ -74,28 +74,41 @@ std::string DeclarationPrinter::TypeString(const TypeExpr *type) {
         }
         return result;
     }
-    if (const auto *array = dynamic_cast<const ArrayTypeExpr *>(type)) {
-        std::string element = TypeString(array->element.get());
-        if (dynamic_cast<const PointerTypeExpr *>(array->element.get()) ||
-            dynamic_cast<const ReferenceTypeExpr *>(array->element.get())) {
-            element = "(" + element + ")";
+    // An element that is itself a pointer, reference or range is parenthesized so the bracket reads as the outer type.
+    const auto bracketElement = [&](const TypeExpr *element) {
+        std::string text = TypeString(element);
+        if (dynamic_cast<const PointerTypeExpr *>(element) || dynamic_cast<const ReferenceTypeExpr *>(element) ||
+            dynamic_cast<const RangeTypeExpr *>(element)) {
+            text = "(" + text + ")";
         }
-        std::string result = element + "[";
+        return text;
+    };
+    if (const auto *array = dynamic_cast<const ArrayTypeExpr *>(type)) {
+        std::string result = bracketElement(array->element.get()) + "[";
         if (array->size) {
             result += "N"; // size is an Expr, not easily stringified
         }
         return result + "]";
     }
+    if (const auto *slice = dynamic_cast<const SliceTypeExpr *>(type)) {
+        return (slice->elementMut ? "var " : "") + bracketElement(slice->element.get()) + "[..]";
+    }
+    if (const auto *range = dynamic_cast<const RangeTypeExpr *>(type)) {
+        return (range->start ? TypeString(range->start.get()) : "") + (range->inclusive ? "..=" : "..") +
+               (range->end ? TypeString(range->end.get()) : "");
+    }
     if (const auto *pointer = dynamic_cast<const PointerTypeExpr *>(type)) {
         std::string pointee = TypeString(pointer->pointee.get());
-        if (dynamic_cast<const ArrayTypeExpr *>(pointer->pointee.get())) {
+        if (dynamic_cast<const ArrayTypeExpr *>(pointer->pointee.get()) ||
+            dynamic_cast<const SliceTypeExpr *>(pointer->pointee.get())) {
             pointee = "(" + pointee + ")";
         }
         return (pointer->pointeeMut ? "*var " : "*") + pointee;
     }
     if (const auto *reference = dynamic_cast<const ReferenceTypeExpr *>(type)) {
         std::string pointee = TypeString(reference->pointee.get());
-        if (dynamic_cast<const ArrayTypeExpr *>(reference->pointee.get())) {
+        if (dynamic_cast<const ArrayTypeExpr *>(reference->pointee.get()) ||
+            dynamic_cast<const SliceTypeExpr *>(reference->pointee.get())) {
             pointee = "(" + pointee + ")";
         }
         return (reference->pointeeMut ? "&var " : "&") + pointee;
