@@ -145,6 +145,46 @@ check_manifest_is_consistent() {
     fi
 }
 
+# Every other check here drives the script into a failure, so the code that runs
+# on success went untested and shipped a guard that rejected every value. A
+# prefix whose recorded revision already matches makes the script skip the
+# download, which reaches the export path with no network and no archive tools.
+check_setup_exports_the_toolchain() {
+    installed=$fixture_root/installed/.github
+    mkdir -p "$installed/Scripts"
+    cp "$repository_root/.github/Scripts/SetupToolchain.sh" "$installed/Scripts/"
+    {
+        printf 'TOOLCHAIN_REVISION=2026-01-01\n'
+        printf 'TOOLCHAIN_BASE_URL=https://example.invalid/download\n'
+        printf 'CCACHE_MAXSIZE=400M\n'
+        printf 'SHA256_TOOLCHAIN_LINUX_X86_64=%s\n' \
+            0000000000000000000000000000000000000000000000000000000000000000
+    } >"$installed/Toolchains.env"
+
+    prefix=$fixture_root/prefix-installed
+    mkdir -p "$prefix/bin"
+    for tool in clang++-23 cmake ninja; do
+        printf '#!/bin/sh\nprintf "stub %s\\n"\n' "$tool" >"$prefix/bin/$tool"
+        chmod +x "$prefix/bin/$tool"
+    done
+    printf 'linux-x86_64-2026-01-01' >"$prefix/.rux-toolchain-revision"
+
+    environment=$fixture_root/github-env
+    : >"$environment"
+    GITHUB_ENV=$environment GITHUB_PATH=$fixture_root/github-path \
+        sh "$installed/Scripts/SetupToolchain.sh" \
+        --target linux-x86_64 --prefix "$prefix" >"$output" 2>&1 ||
+        fail 'SetupToolchain.sh failed against an already-installed prefix'
+
+    for key in RUX_TOOLCHAIN CXX CMAKE_CXX_COMPILER_LAUNCHER CCACHE_DIR \
+        CCACHE_MAXSIZE CCACHE_COMPILERCHECK CCACHE_NOHASHDIR; do
+        grep -q "^$key=" "$environment" ||
+            fail "SetupToolchain.sh did not export $key"
+    done
+    grep -qxF "$prefix/bin" "$fixture_root/github-path" ||
+        fail 'SetupToolchain.sh did not put the bundle on PATH'
+}
+
 # Workflows run on a case-sensitive filesystem while this repository is often
 # edited on one that is not, so a reference whose case does not match the file
 # resolves locally and fails only once GitHub parses it. Compare against the
@@ -230,6 +270,7 @@ check_versions_agree
 check_setup_rejects_unpublished
 check_manifest_is_consistent
 check_workflow_paths_match_case
+check_setup_exports_the_toolchain
 check_setup_rejects_injection
 check_tidy_shards_are_disjoint
 

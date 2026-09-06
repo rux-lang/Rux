@@ -125,9 +125,16 @@ fi
 
 # GITHUB_ENV entries must be single-line; a newline would let a value inject a
 # second assignment.
+#
+# The pattern holds a literal newline because command substitution strips
+# trailing newlines: $(printf '\n') is the empty string, and matching against
+# that rejects every value rather than only the dangerous ones.
+newline='
+'
+
 export_variable() {
     case "$2" in
-    *"$(printf '\n')"*) die "refusing to export '$1' because its value spans lines" ;;
+    *"$newline"*) die "refusing to export '$1' because its value spans lines" ;;
     esac
     if [ -n "${GITHUB_ENV:-}" ]; then
         printf '%s=%s\n' "$1" "$2" >>"$GITHUB_ENV"
