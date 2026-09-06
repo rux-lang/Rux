@@ -145,6 +145,28 @@ check_manifest_is_consistent() {
     fi
 }
 
+# Workflows run on a case-sensitive filesystem while this repository is often
+# edited on one that is not, so a reference whose case does not match the file
+# resolves locally and fails only once GitHub parses it. Compare against the
+# names git recorded rather than asking the filesystem, which would answer with
+# its own case rules.
+check_workflow_paths_match_case() {
+    tracked=$fixture_root/tracked.txt
+    (cd "$repository_root" && git ls-files) >"$tracked" 2>/dev/null ||
+        fail 'could not list tracked files'
+
+    referenced=$fixture_root/referenced.txt
+    grep -rhoE '(\./)?\.github/(workflows|Scripts)/[A-Za-z0-9._-]+' \
+        "$repository_root/.github/workflows" | sed 's|^\./||' | sort -u >"$referenced"
+
+    [ -s "$referenced" ] || fail 'no .github paths were found in the workflows'
+
+    while IFS= read -r path; do
+        grep -qxF "$path" "$tracked" ||
+            fail "the workflows reference '$path', which no tracked file matches exactly"
+    done <"$referenced"
+}
+
 # A manifest carrying anything but assignments must be refused before it is
 # sourced, not after.
 check_setup_rejects_injection() {
@@ -207,6 +229,7 @@ check_manifest_shape
 check_versions_agree
 check_setup_rejects_unpublished
 check_manifest_is_consistent
+check_workflow_paths_match_case
 check_setup_rejects_injection
 check_tidy_shards_are_disjoint
 
