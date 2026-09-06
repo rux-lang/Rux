@@ -122,11 +122,23 @@ fetch_image() {
     while :; do
         part_name=$(printf '%s.tar.zst.part%02d' "$asset_stem" "$part")
         part_url=$asset_base/$part_name
-        if ! curl --fail --silent --show-error --location --retry 3 \
-            --output "$work_root/$part_name" "$part_url"; then
-            [ "$part" -gt 0 ] || die "could not download '$part_url'"
-            break
+
+        status=0
+        curl --fail --silent --show-error --location --retry 3 \
+            --output "$work_root/$part_name" "$part_url" || status=$?
+
+        if [ "$status" -ne 0 ]; then
+            # curl reports 22 for an HTTP error under --fail, which is how the
+            # end of the part list announces itself. Anything else is a real
+            # failure and must not be mistaken for the last part: truncating the
+            # image here would surface later as an unexplained checksum
+            # mismatch.
+            if [ "$status" -eq 22 ] && [ "$part" -gt 0 ]; then
+                break
+            fi
+            die "could not download '$part_url' (curl exit $status)"
         fi
+
         cat "$work_root/$part_name" >>"$archive"
         rm -f "$work_root/$part_name"
         part=$((part + 1))
