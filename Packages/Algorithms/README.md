@@ -305,7 +305,7 @@ algorithm is instantiated, not where it is declared.
 ## Guarantees and limitations
 
 - **No allocation.** Every function is O(1) auxiliary space and the package depends only on `Rux/Core`.
-- **Unchecked indexing**, matching `Slice` and the `At`/`Set` pair on every [`Rux/Collections`](../Collections) container: a length larger than the storage is undefined behavior, not a reported error. Those containers also offer `TryGet`/`TrySet`, which check; nothing here does.
+- **Unchecked indexing**, matching native slices and the `At`/`Set` pair on every [`Rux/Collections`](../Collections) container: a length larger than the storage is undefined behavior, not a reported error. Those containers also offer `TryGet`/`TrySet`, which check; nothing here does.
 - **Borrowing, not owning.** A view must not outlive the storage it borrows, and a `Vector` view is invalidated by any growth.
 - **No closures.** A predicate or comparator is a plain function value carrying no captured state; anything it needs beyond the elements must be reachable from the function itself.
 - **Caller-provided stability.** `StableSort` requires a scratch `var T[..]` as long as the input, preserving

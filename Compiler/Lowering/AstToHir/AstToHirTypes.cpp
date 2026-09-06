@@ -226,19 +226,6 @@ TypeRef AstToHirContext::ParseTypeRefFromString(std::string str) const {
         return TypeRef::MakeTuple(elems);
     }
 
-    const std::string aggregateName = str.substr(0, str.find('<'));
-    if (const auto declaration = structDecls.find(aggregateName);
-        declaration != structDecls.end() && !declaration->second->intrinsicName.empty()) {
-        std::vector<TypeRef> arguments;
-        const auto begin = str.find('<');
-        if (begin != std::string::npos && str.back() == '>') {
-            arguments.push_back(ParseTypeRefFromString(str.substr(begin + 1, str.size() - begin - 2)));
-        }
-        if (const auto aggregate = IntrinsicAggregateType(declaration->second->intrinsicName, arguments)) {
-            return *aggregate;
-        }
-    }
-
     return TypeRef::MakeNamed(str);
 }
 
@@ -631,17 +618,6 @@ TypeRef AstToHirContext::ResolveTypeWithSubstitution(const TypeExpr &expr,
         resolvedArgs.reserve(t->typeArgs.size());
         for (const auto &typeArg : t->typeArgs) {
             resolvedArgs.push_back(ResolveTypeWithSubstitution(*typeArg, substitutions));
-        }
-
-        if (const TypeRef *accepted = model.TryGetType(expr); accepted && resolvedArgs.size() == 1) {
-            if (accepted->IsSlice()) {
-                return TypeRef::MakeSlice(resolvedArgs[0]);
-            }
-            if (accepted->IsRange()) {
-                TypeRef instantiated = *accepted;
-                instantiated.inner = resolvedArgs;
-                return instantiated;
-            }
         }
 
         // An enum instantiation is composed in exactly one place, so that a type reached through a substitution

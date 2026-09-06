@@ -175,20 +175,14 @@ extend int8 {
     pub const Min: int8 = -128i8;
     pub const Max: int8 = 127i8;
 }
-
-pub intrinsic struct string8 {
-    pub data: *char8;
-    pub length: uint;
-}
 ```
 
 Scalar representation and arithmetic exist independently of these declarations. Associated constants are source
 members: `import Core::int8;` exposes Core's public constants, while merely depending on Core does not. Constants
 retain normal package visibility. Their initializers are checked in the declaring package, not the caller's scope.
 
-`intrinsic type` is reserved for implemented scalar types. `intrinsic struct` describes strings, slices, and ranges.
-The compiler validates the number of type parameters and the exact public representation fields, including their
-order and pointer mutability. A declaration cannot change the representation associated with an intrinsic name.
+`intrinsic type` is reserved for implemented scalar types. Slices and ranges are native types, with no source
+declaration controlling their representation. An ordinary struct never acquires compiler-owned behavior from its name.
 
 Extension blocks may contain ordinary typed constants as well as methods. The only compiler-supplied associated
 constant values are `intrinsic const Infinity: float32;` and `intrinsic const NaN: float32;`, and their `float64`

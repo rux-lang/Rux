@@ -77,7 +77,8 @@ TEST_CASE("every spelling reads back from an instantiation name unchanged") {
         struct Box<T> { value: T; }
         func Main(bytes: Box<uint8[..]>, writable: Box<var uint8[..]>, pointers: Box<(*int)[..]>,
                   boxed: Box<*(var int[..])>, span: Box<int..int>, upTo: Box<..=uint>, whole: Box<..>,
-                  spans: Box<int[..]..int[..]>, single: Box<(int,)>, pair: Box<(int, uint8[..])>) {
+                  spans: Box<int[..]..int[..]>, single: Box<(int,)>, pair: Box<(int, uint8[..])>,
+                  closed: Box<int..=int>, from: Box<int..>, to: Box<..int>) {
             let a = bytes.value;
             let b = writable.value;
             let c = pointers.value;
@@ -88,6 +89,9 @@ TEST_CASE("every spelling reads back from an instantiation name unchanged") {
             let h = spans.value;
             let i = single.value;
             let j = pair.value;
+            let k = closed.value;
+            let l = from.value;
+            let m = to.value;
         }
     )");
     SemanticAnalyzer analyzer({&parsed.module}, {}, "test", "Windows");
@@ -106,7 +110,8 @@ TEST_CASE("every spelling reads back from an instantiation name unchanged") {
         types.push_back(type->ToString());
     }
     CHECK_EQ(types, std::vector<std::string>{"uint8[..]", "var uint8[..]", "(*int)[..]", "*(var int[..])", "int..int",
-                                             "..=uint", "..", "int[..]..int[..]", "(int,)", "(int, uint8[..])"});
+                                             "..=uint", "..", "int[..]..int[..]", "(int,)", "(int, uint8[..])",
+                                             "int..=int", "int..", "..int"});
 }
 
 TEST_CASE("a view is as writable as the place or pointer it was built from") {

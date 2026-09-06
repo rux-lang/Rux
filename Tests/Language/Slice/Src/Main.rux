@@ -35,9 +35,21 @@ func IsFull(value: ..) -> bool {
     return true;
 }
 
+// Reading a generic field reconstructs the argument from its rendered instantiation name.
+struct Box<T> { value: T; }
+func RoundTrip<T>(value: T) -> T {
+    let boxed = Box<T> { value: value };
+    return boxed.value;
+}
+
 func Main() -> int {
+    var writable: int[1] = [0];
+    let view = RoundTrip<var int[..]>(writable[..]);
+    view[0] = 7;
+    Assert(writable[0] == 7, "generic writable views preserve element access");
     let greeting = "Hello, world!";
     var str: char8[..] = (greeting.data)[..greeting.length];
+    str = RoundTrip<char8[..]>(str);
     Assert(str[0] == 'H', "Expected first character to be 'H'");
     Assert(str[7] == 'w', "Expected eighth character to be 'w'");
     Assert(str.data != null, "Expected non-null data pointer");
@@ -48,7 +60,7 @@ func Main() -> int {
 
     let bounded: int..int = 2..4;
     Assert(bounded.start == 2 && bounded.end == 4, "Range fields should be start/end");
-    Assert(RangeStart(bounded) == 2, "Range should be accepted by typed APIs");
+    Assert(RangeStart(RoundTrip<int..int>(bounded)) == 2, "Bounded ranges should be accepted by typed APIs");
     let initialized: int..int = 1..3;
     Assert(initialized.start == 1 && initialized.end == 3, "range expressions initialize typed bounds");
     let boundedValues: int[..] = values[bounded];
@@ -56,31 +68,31 @@ func Main() -> int {
            "exclusive bounded slice should contain [30, 40]");
 
     let inclusive: int..=int = 2..=4;
-    Assert(InclusiveEnd(inclusive) == 4, "RangeInclusive should be accepted by typed APIs");
+    Assert(InclusiveEnd(RoundTrip<int..=int>(inclusive)) == 4, "Inclusive ranges should be accepted by typed APIs");
     let inclusiveValues: int[..] = values[inclusive];
     Assert(inclusiveValues.length == 3 && inclusiveValues[0] == 30 && inclusiveValues[2] == 50,
            "inclusive bounded slice should contain [30, 40, 50]");
 
     let from: int.. = 2..;
-    Assert(FromStart(from) == 2, "RangeFrom should be accepted by typed APIs");
+    Assert(FromStart(RoundTrip<int..>(from)) == 2, "Ranges with a start should be accepted by typed APIs");
     let fromValues: int[..] = values[from];
     Assert(fromValues.length == 4 && fromValues[0] == 30 && fromValues[3] == 60,
            "open-ended slice should contain [30, 40, 50, 60]");
 
     let to: ..int = ..3;
-    Assert(ToEnd(to) == 3, "RangeTo should be accepted by typed APIs");
+    Assert(ToEnd(RoundTrip<..int>(to)) == 3, "Ranges with an end should be accepted by typed APIs");
     let toValues: int[..] = values[to];
     Assert(toValues.length == 3 && toValues[0] == 10 && toValues[2] == 30,
            "startless slice should contain [10, 20, 30]");
 
     let toInclusive: ..=int = ..=3;
-    Assert(ToInclusiveEnd(toInclusive) == 3, "RangeToInclusive should be accepted by typed APIs");
+    Assert(ToInclusiveEnd(RoundTrip<..=int>(toInclusive)) == 3, "Inclusive ranges with an end should be accepted by typed APIs");
     let toInclusiveValues: int[..] = values[toInclusive];
     Assert(toInclusiveValues.length == 4 && toInclusiveValues[0] == 10 && toInclusiveValues[3] == 40,
            "inclusive startless slice should contain [10, 20, 30, 40]");
 
     let full: .. = ..;
-    Assert(IsFull(full), "RangeFull should be accepted by typed APIs");
+    Assert(IsFull(RoundTrip<..>(full)), "Full ranges should be accepted by typed APIs");
     let allValues: int[..] = values[full];
     Assert(allValues.length == values.length && allValues[0] == 10 && allValues[5] == 60,
            "full slice should cover the entire collection");

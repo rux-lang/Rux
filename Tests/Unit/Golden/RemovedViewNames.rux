@@ -1,0 +1,5 @@
+// The former library spellings no longer name built-in representations.
+func OldSlices(read: Slice<int>, write: MutableSlice<int>) {}
+func OldText(a: string, b: string8, c: string16, d: string32, e: str) {}
+func OldRanges(a: Range<int>, b: RangeInclusive<int>, c: RangeFrom<int>,
+               d: RangeTo<int>, e: RangeToInclusive<int>, f: RangeFull) {}

@@ -47,8 +47,7 @@ func Main() -> int {
     if shownDebug.FormatDebug(emptyDebugWriter, FormatSpec::Plain()) != TextError::None { return 22; }
     if !Matches(builder.View(), "\"\"") { return 23; }
 
-    // A `string` renders itself the same way, and is quoted the same way. It needs no safety caveat, because it
-    // was text before it existed.
+    // A character slice containing a text literal renders and quotes the same way.
     builder.Clear();
     let shownText: Display = "Hello World!";
     let textWriter: &var TextWriter = builder;

@@ -1,0 +1,3 @@
+intrinsic struct string8 { pub data: *char8; pub length: uint; }
+intrinsic struct Slice<T> { pub data: *T; pub length: uint; }
+pub intrinsic struct Range<T> { pub start: T; pub end: T; }

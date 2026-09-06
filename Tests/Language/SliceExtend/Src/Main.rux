@@ -25,7 +25,7 @@ extend int[..] {
 }
 
 // A second slice extension with a different element type must stay distinct
-// from Slice<int>: method lookup is element-specific.
+// from int[..]: method lookup is element-specific.
 extend char8[..] {
     func Count(self: char8[..]) -> int {
         var n = 0;

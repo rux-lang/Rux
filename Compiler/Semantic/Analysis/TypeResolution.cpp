@@ -174,19 +174,6 @@ TypeRef AnalysisContext::ParseTypeRefFromString(std::string str) const {
         return TypeRef::MakeTuple(elems);
     }
 
-    const std::string aggregateName = str.substr(0, str.find('<'));
-    if (const auto declaration = structDecls.find(aggregateName);
-        declaration != structDecls.end() && !declaration->second->intrinsicName.empty()) {
-        std::vector<TypeRef> arguments;
-        const auto begin = str.find('<');
-        if (begin != std::string::npos && str.back() == '>') {
-            arguments.push_back(ParseTypeRefFromString(str.substr(begin + 1, str.size() - begin - 2)));
-        }
-        if (const auto aggregate = IntrinsicAggregateType(declaration->second->intrinsicName, arguments)) {
-            return *aggregate;
-        }
-    }
-
     // A type parameter in scope is that parameter, not a type that happens to share its name. This path reads a
     // type back out of a printed name, where `T` and a struct called `T` look alike, so the parameter list is the
     // only thing that tells them apart -- and ResolveType answers the same way for the same spelling written out.
@@ -453,12 +440,6 @@ TypeRef AnalysisContext::ResolveTypeWithSubstitution(const TypeExpr &expr,
         resolvedArgs.reserve(t->typeArgs.size());
         for (const auto &typeArg : t->typeArgs) {
             resolvedArgs.push_back(ResolveTypeWithSubstitution(*typeArg, substitutions));
-        }
-        if (const Symbol *symbol = currentScope->Lookup(t->name);
-            symbol && symbol->declaration && !symbol->intrinsicName.empty() && IsVisibleTypeSymbol(*symbol)) {
-            if (const auto aggregate = IntrinsicAggregateType(symbol->intrinsicName, resolvedArgs)) {
-                return *aggregate;
-            }
         }
         // An enum instantiation is composed in one place, so that a type reached through a substitution -- a
         // return type resolved while a signature is built -- carries the layout marker one resolved directly has.

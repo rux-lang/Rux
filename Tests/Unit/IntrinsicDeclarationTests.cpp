@@ -156,9 +156,15 @@ TEST_CASE("intrinsic declarations reject unknown kinds and incompatible fields")
              "intrinsic type int8; extend int8 { const X = 1; const X = 2; }",
          }) {
         CAPTURE(source);
-        auto parsed = ParseIntrinsicSource(source);
-        const auto model = SemanticAnalyzer({&parsed.module}).Analyze();
-        CHECK(model.HasErrors());
+        auto tokens = Lexer(source, "removed.rux").Tokenize();
+        auto parsed = Parser(std::move(tokens.tokens), "removed.rux").Parse();
+        if (source.contains("intrinsic struct")) {
+            CHECK(parsed.HasErrors());
+        }
+        else {
+            REQUIRE_FALSE(parsed.HasErrors());
+            CHECK(SemanticAnalyzer({&parsed.module}).Analyze().HasErrors());
+        }
     }
 }
 
@@ -436,8 +442,9 @@ TEST_CASE("intrinsic bindings reject alias spellings and mismatched special floa
     for (const std::string source :
          {"intrinsic type float;", "intrinsic struct string { pub data: *char8; pub length: uint; }",
           "intrinsic type int8; extend int8 { pub intrinsic const Infinity: float64; }"}) {
-        auto parsed = ParseIntrinsicSource(source);
-        CHECK(SemanticAnalyzer({&parsed.module}, {}, "App").Analyze().HasErrors());
+        auto tokens = Lexer(source, "removed.rux").Tokenize();
+        auto parsed = Parser(std::move(tokens.tokens), "removed.rux").Parse();
+        CHECK((parsed.HasErrors() || SemanticAnalyzer({&parsed.module}, {}, "App").Analyze().HasErrors()));
     }
 }
 

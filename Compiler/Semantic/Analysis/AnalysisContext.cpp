@@ -280,18 +280,6 @@ std::optional<TypeRef> AnalysisContext::ResolveStructTypeReference(const TypeExp
         return TypeRef::MakeUnknown();
     }
     CheckTypeReferenceConstraints(expression, declaration->typeParams, typeArguments, std::format("struct '{}'", name));
-    if (!declaration->intrinsicName.empty()) {
-        if (!symbol || !IsVisibleTypeSymbol(*symbol)) {
-            EmitError(expression.location, std::format("intrinsic type '{}' is not imported into this scope", name));
-            return TypeRef::MakeUnknown();
-        }
-        if (const auto primitive = PrimitiveTypeFromName(declaration->intrinsicName)) {
-            return *primitive;
-        }
-        if (const auto aggregate = IntrinsicAggregateType(declaration->intrinsicName, typeArguments)) {
-            return *aggregate;
-        }
-    }
     std::string instantiatedName = name;
     for (std::size_t index = 0; index < typeArguments.size(); ++index) {
         instantiatedName += index == 0 ? "<" : ", ";

@@ -23,7 +23,7 @@ std::string BaseTypeName(const std::string &name) {
     return position == std::string::npos ? name : name.substr(0, position);
 }
 
-/// The representation a bare primitive or text name has before any declaration is indexed. A constant or alias
+/// The representation a bare primitive name has before any declaration is indexed. A constant or alias
 /// annotated with one takes it provisionally rather than resolving the name in whatever order the files were read;
 /// checking the declaration still resolves and validates the annotation in its owning file.
 ///
@@ -36,11 +36,7 @@ std::optional<TypeRef> ProvisionalRepresentation(const TypeExpr &type) {
     if (const auto primitive = PrimitiveTypeFromName(named->name)) {
         return primitive;
     }
-    // `string` is the UTF-8 spelling wherever it is declared, so it stands for UTF-8 text until its alias is indexed.
-    if (named->name == "string") {
-        return TypeRef::MakeText(TypeRef::Kind::Char8);
-    }
-    return IntrinsicAggregateType(named->name, {});
+    return std::nullopt;
 }
 
 /// Levenshtein distance, used to suggest the name an unresolved identifier probably meant.
@@ -438,10 +434,7 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
                                               containingModulesPublic && extendedTypePublic && method->isPublic});
         }
         if (implementation->interfaceName) {
-            // A conformance is looked up by the receiver type's own spelling. A text name is a spelling of a character
-            // slice, so an extension written on it conforms the slice, not a type of that name.
-            const auto text = IntrinsicAggregateType(typeName, {});
-            implementedInterfaces[text ? text->ToString() : typeName].insert(*implementation->interfaceName);
+            implementedInterfaces[typeName].insert(*implementation->interfaceName);
         }
     }
 }

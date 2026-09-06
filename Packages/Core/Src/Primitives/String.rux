@@ -1,2 +1,0 @@
-/// The default UTF-8 literal view.
-pub type string = string8;

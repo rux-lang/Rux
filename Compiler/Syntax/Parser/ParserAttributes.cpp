@@ -404,9 +404,8 @@ DeclPtr Parser::ParseIntrinsicDecl(const bool isPublic, ParsedAttrs &attrs, cons
         return ApplyAttrs(std::move(decl), attrs);
     }
     if (Check(TokenKind::StructKeyword)) {
-        auto decl = ParseStructDecl(isPublic);
-        decl->intrinsicName = decl->name;
-        return ApplyAttrs(std::move(decl), attrs);
+        EmitError(intrinsicLoc, "intrinsic aggregate declarations have been removed; use native slice or range types");
+        return ApplyAttrs(ParseStructDecl(isPublic), attrs);
     }
     if (Match(TokenKind::ConstKeyword)) {
         auto decl = std::make_unique<ConstDecl>();

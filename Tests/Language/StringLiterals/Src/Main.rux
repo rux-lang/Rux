@@ -30,9 +30,9 @@ func Main() -> int {
     let sixteen: char16[..] = c16"Hello";
     let thirtyTwo: char32[..] = c32"Hello";
 
-    // 'string' is a spelling of 'string8'.
+    // An unprefixed literal is a UTF-8 character slice.
     let text: char8[..] = "Hello";
-    Assert(text.length == 5u, "a string spells string8");
+    Assert(text.length == 5u, "an unprefixed literal uses UTF-8 code units");
 
     // A length is in the code units of the encoding, so plain ASCII agrees across all three.
     Assert(eight.length == 5u, "ASCII is five UTF-8 code units");

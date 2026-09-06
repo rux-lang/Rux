@@ -320,7 +320,7 @@ void HirToLirContext::LowerFor(const HirForStmt &s) {
                               hiCondVal, TypeRef::MakeBool());
         }
         else {
-            // RangeFrom<T> is unbounded; the loop exits only through
+            // T.. is unbounded; the loop exits only through
             // break/return or another terminating statement in its body.
             cond = EmitConst("true", TypeRef::MakeBool());
         }

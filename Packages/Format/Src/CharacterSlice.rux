@@ -1,21 +1,18 @@
-// A `char8[..]` is text, so rendering it is writing it.
-//
-// The bytes go straight through with no conversion and nothing copied: a string is UTF-8 by construction, which is
-// exactly what a writer takes. That construction is also why there is no safety caveat here and one on
-// `char8[..]`: a slice is whatever bytes it was built over, while a string was checked before it existed.
+// Character slices render their bytes directly, without conversion or copying. The caller supplies valid UTF-8
+// when the result is intended as text; an arbitrary character slice carries no validity guarantee.
 //
 // `Debug` is where the two partings show. Text shown to a reader is its characters; text shown to somebody looking
 // at a program is quoted, so that where it starts and stops is visible and an empty string is not invisible.
 //
-// Only `char8[..]` renders. `char16[..]` and `char32[..]` would each need a transcoding printer, and nothing yet asks for
-// one.
+// Only `char8[..]` renders. `char16[..]` and `char32[..]` would each need a transcoding printer,
+// and nothing yet asks for one.
 
 import Text::TextError;
 
 extend char8[..] : Display {
     /// Writes this text.
     ///
-    /// https://rux-lang.dev/docs/api/format/string8/format
+    /// https://rux-lang.dev/docs/api/format/character-slice/format
     pub func Format(self: &char8[..], writer: &var TextWriter, spec: FormatSpec) -> TextError {
         return WriteAligned(writer, spec, (self.data)[..self.length], false);
     }
@@ -27,7 +24,7 @@ extend char8[..] : Debug {
     /// The quotes are all that is added. Escaping the characters between them is a question about which of them
     /// need it, which is a Unicode question and belongs where the Unicode tables are.
     ///
-    /// https://rux-lang.dev/docs/api/format/string8/format-debug
+    /// https://rux-lang.dev/docs/api/format/character-slice/format-debug
     pub func FormatDebug(self: &char8[..], writer: &var TextWriter, spec: FormatSpec) -> TextError {
         let opening = WriteAscii(writer, c8'"');
         if opening.IsError() { return opening; }

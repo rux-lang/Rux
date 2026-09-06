@@ -17,11 +17,7 @@ struct Task {
 // `IsSorted` and `IsSortedBy` take a slice since the ordered searches moved to slices, and `IsSortedBy` takes a
 // three-way comparison. Sorting still takes a less-than, so both spellings of the same order live here.
 
-// `Copy` became `CopyTo` over slices, and `Reverse` takes a `MutableSlice`. These keep the calls below reading as
-// they did while the rest of the module is still pointer-and-length.
-
-// The sorts take a view since they moved to slices; a struct literal cannot appear inside an `if`
-// condition, so the views are built here.
+// Build writable views over the caller-provided buffer for the sorting checks.
 func Viewed<T>(data: *var T, length: uint) -> var T[..] {
     return (data)[..length];
 }

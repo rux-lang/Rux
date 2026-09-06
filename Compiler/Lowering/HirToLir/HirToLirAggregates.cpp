@@ -815,7 +815,7 @@ LirReg HirToLirContext::LowerEnumConstruct(const HirEnumConstructExpr &e) {
 void HirToLirContext::StoreRangeInit(const HirRangeExpr &e, LirReg slot) {
     const TypeRef elemType = e.type.inner.empty() ? TypeRef::MakeInt64() : e.type.inner[0];
     // Endpoints may be narrower than the range element type (e.g. a uint32
-    // bound in a Range<int>). Widen them to the element type so the store
+    // bound in a int..int). Widen them to the element type so the store
     // writes the full field; otherwise the unwritten high bits are garbage.
     if (e.lo) {
         const LirReg loVal = EmitCastIfNeeded(LowerExpr(*e.lo), e.lo->type, elemType);

@@ -163,7 +163,7 @@ bool Parser::CheckAny(const std::initializer_list<TokenKind> kinds) const noexce
 }
 
 namespace {
-/// How many generic argument lists a token could close. `Slice<Slice<int32>>` ends two at once and the lexer hands
+/// How many generic argument lists a token could close. `Box<Box<int32>>` ends two at once and the lexer hands
 /// that over as a single `>>`, so a lookahead that counts only a bare `>` never sees the list close.
 int CloseAngleCount(const TokenKind kind) noexcept {
     switch (kind) {
@@ -184,7 +184,7 @@ bool Parser::CheckCloseAngle() const noexcept {
 }
 
 void Parser::ConsumeCloseAngle() noexcept {
-    // `Slice<Slice<int32>>` ends two argument lists with one token. The lexer cannot tell that from a shift, so the
+    // `Box<Box<int32>>` ends two argument lists with one token. The lexer cannot tell that from a shift, so the
     // run is narrowed here instead: take the first `>` by shortening the token in place and leave the remainder for
     // the enclosing list. The location moves with it, so a diagnostic still points at the `>` it means.
     Token &token = tokens[pos];

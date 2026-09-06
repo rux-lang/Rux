@@ -130,7 +130,7 @@ TEST_CASE("AArch64 RCU emitter writes a failed assertion's three parts and traps
     CHECK_MESSAGE(MoveWideImm(words[location + 2], 2).has_value(), HexWord(words[location + 2]));
 
     // The message is neither: what the operand holds is the address of a
-    // `Slice<char8>`, and one LDP takes both of its fields into the two
+    // `char8[..]`, and one LDP takes both of its fields into the two
     // registers the call reads them from.
     CHECK_EQ(ArgumentFilled(words[message]), std::optional<unsigned>(10)); // the address, into X10
     CHECK_EQ(HexWord(words[message + 1]), HexWord(kLdpX1X2));

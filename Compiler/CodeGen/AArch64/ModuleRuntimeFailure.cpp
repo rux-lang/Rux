@@ -76,7 +76,7 @@ void AArch64ModuleEmitter::GenAssert(AArch64TerminatorEmitter &terminatorEmitter
     else {
         EmitWriteStatic(*syscall, layout.prefix);
 
-        // The message is a `string` the caller built, so what the
+        // The message is a character slice the caller built, so what the
         // operand holds is its address and the two doublewords behind it
         // are what the system call takes.
         const LirReg messageReg = instr.srcs[isAssertion ? 1 : 0];

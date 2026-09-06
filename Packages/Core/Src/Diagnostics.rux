@@ -8,7 +8,7 @@
 // `#Error` and `#Warn` produce no runtime code at all. They are evaluated where they are written, so a configuration
 // the package does not support is rejected while compiling rather than discovered by whoever runs the result.
 //
-// All four take their message as a `string`, which a string literal is.
+// All four take their message as a `char8[..]`, the type of an unprefixed string literal.
 
 /// Terminates the program unless `condition` holds.
 ///

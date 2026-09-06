@@ -4,7 +4,6 @@
 // compiler's exact parser when it was written; every halfway text is exactly between two neighbouring
 // values and must round to the even one.
 
-
 func FormatCount80() -> uint {
     return 60;
 }

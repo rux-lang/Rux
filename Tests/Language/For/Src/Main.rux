@@ -12,7 +12,7 @@ func Main() -> int {
 
     // Regression test for https://github.com/rux-lang/Rux/issues/161:
     // a range bound whose type is narrower than the range element type
-    // (here a uint32 const in a Range<int>) must be widened when stored
+    // (here a uint32 const in a int..int) must be widened when stored
     // into the range. Otherwise the bound's high bits are left
     // uninitialized and the loop runs zero times or never terminates.
     var exclusive: int = 0;
@@ -69,7 +69,7 @@ func Main() -> int {
     Assert(sum == 60, "slice loop should sum all elements");
     Assert(elem == 30, "reused slice loop variable should retain its final value");
 
-    // A RangeFrom has an initial value and is independently iterable. It is
+    // An open-ended range has an initial value and is independently iterable. It is
     // unbounded, so this loop terminates explicitly.
     let from: int.. = 5..;
     var fromSum: int = 0;
@@ -79,7 +79,7 @@ func Main() -> int {
             break;
         }
     }
-    Assert(fromSum == 18, "RangeFrom should iterate upward from its start");
+    Assert(fromSum == 18, "An open-ended range should iterate upward from its start");
 
     return 0;
 }

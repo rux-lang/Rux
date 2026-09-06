@@ -191,62 +191,6 @@ void AnalysisContext::CheckIntrinsicType(const Decl &declaration) {
         }
         return;
     }
-    const auto *structure = dynamic_cast<const StructDecl *>(&declaration);
-    if (!structure) {
-        return;
-    }
-    const bool string = name == "string8" || name == "string16" || name == "string32";
-    const bool slice = name == "Slice" || name == "MutableSlice";
-    const bool start = name == "Range" || name == "RangeInclusive" || name == "RangeFrom";
-    const bool end = name == "Range" || name == "RangeInclusive" || name == "RangeTo" || name == "RangeToInclusive";
-    if (!string && !slice && !start && !end && name != "RangeFull") {
-        EmitError(declaration.location, std::format("'{}' is not a supported intrinsic struct", name));
-        return;
-    }
-    const std::size_t arity = string || name == "RangeFull" ? 0 : 1;
-    if (structure->typeParams.size() != arity) {
-        EmitError(declaration.location, std::format("intrinsic struct '{}' requires {} type parameters", name, arity));
-        return;
-    }
-    const std::string element = string     ? (name == "string16"   ? "char16"
-                                              : name == "string32" ? "char32"
-                                                                   : "char8")
-                              : arity == 1 ? structure->typeParams[0].name
-                                           : "";
-    std::vector<std::pair<std::string, std::string>> fields;
-    if (string || slice) {
-        fields = {{"data", (name == "MutableSlice" ? "*var " : "*") + element}, {"length", "uint"}};
-    }
-    else {
-        if (start) {
-            fields.emplace_back("start", element);
-        }
-        if (end) {
-            fields.emplace_back("end", element);
-        }
-    }
-    if (structure->fields.size() != fields.size()) {
-        EmitError(declaration.location, std::format("intrinsic struct '{}' requires {} fields", name, fields.size()));
-        return;
-    }
-    const auto typeName = [](const TypeExpr &type) -> std::string {
-        if (const auto *named = dynamic_cast<const NamedTypeExpr *>(&type); named && named->typeArgs.empty()) {
-            return named->name;
-        }
-        if (const auto *pointer = dynamic_cast<const PointerTypeExpr *>(&type)) {
-            if (const auto *named = dynamic_cast<const NamedTypeExpr *>(pointer->pointee.get());
-                named && named->typeArgs.empty()) {
-                return (pointer->pointeeMut ? "*var " : "*") + named->name;
-            }
-        }
-        return {};
-    };
-    for (std::size_t index = 0; index < fields.size(); ++index) {
-        const auto &field = structure->fields[index];
-        if (!field.isPublic || field.name != fields[index].first || typeName(*field.type) != fields[index].second) {
-            EmitError(field.location, std::format("intrinsic struct '{}' requires field {} to be 'pub {}: {};'", name,
-                                                  index + 1, fields[index].first, fields[index].second));
-        }
-    }
 }
+
 } // namespace Rux::SemanticDetail

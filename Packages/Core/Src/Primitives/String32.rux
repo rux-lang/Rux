@@ -1,8 +1,0 @@
-/// An immutable view over valid UTF-32 text.
-/// Literal lengths count code units rather than characters.
-pub intrinsic struct string32 {
-    /// The read-only address of the encoded code units.
-    pub data: *char32;
-    /// The number of code units in the view.
-    pub length: uint;
-}
