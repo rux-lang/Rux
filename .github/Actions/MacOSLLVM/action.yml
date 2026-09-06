@@ -11,7 +11,7 @@ runs:
       id: cache
       with:
         path: ${{ runner.temp }}/rux-macos-tools
-        key: llvm-v1-macOS26-${{ runner.arch }}-${{ hashFiles('.github/CI/Environments.lock.json', '.github/CI/Install/MacOS.sh') }}
+        key: llvm-v1-macOS26-${{ runner.arch }}-${{ hashFiles('.github/CI/Environments.lock.json', '.github/CI/Install/MacOS.sh', '.github/CI/Verify/LLVM.sh') }}
     - if: steps.cache.outputs.cache-hit != 'true'
       uses: ./.github/Actions/NativeEnvironment
     - shell: bash

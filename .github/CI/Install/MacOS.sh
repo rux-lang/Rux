@@ -1,6 +1,7 @@
 #!/bin/sh
 # Cache only the LLVM dependency closure, never the runner's entire Homebrew prefix.
 set -eu
+installer=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 destination=${1:?toolchain archive directory required}
 mkdir -p "$destination"
 archive="$destination/homebrew-tools.tar.gz"
@@ -10,13 +11,10 @@ if [ ! -f "$archive" ] || [ ! -f "$destination/compiler" ]; then
     brew update --quiet
     brew install llvm@23 ccache
     compiler="$(brew --prefix llvm@23)/bin/clang++"
-    case "$("$compiler" --version | head -n 1)" in
-        *'clang version 23.1.0'*) ;;
-        *) echo 'error: expected LLVM 23.1.0; refresh the environment recipe' >&2; exit 1 ;;
-    esac
-    # Resolve the opt symlink to the exact Cellar version. The consumer does not
-    # need Homebrew formula metadata or brew link to locate its compiler.
-    compiler=$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$compiler")
+    sh "$installer/../Verify/LLVM.sh" "$compiler"
+    # Resolve the directory, preserving clang++: resolving the executable's
+    # symlink to clang-23 selects the C driver and drops C++ runtime linkage.
+    compiler="$(CDPATH= cd -- "$(dirname -- "$compiler")" && pwd -P)/clang++"
     brew deps --installed --formula llvm@23 ccache > "$destination/formulae"
     printf '%s\n' llvm@23 ccache >> "$destination/formulae"
     : > "$destination/paths"
@@ -46,7 +44,10 @@ fi
 [ "$(cat "$destination/prefix")" = "$prefix" ] || { echo 'error: Homebrew prefix mismatch' >&2; exit 1; }
 tar -xzf "$archive" -C "$prefix"
 compiler=$(cat "$destination/compiler")
-"$compiler" --version
+# Repair metadata from older bundles that recorded the C-driver symlink target.
+compiler="$(CDPATH= cd -- "$(dirname -- "$compiler")" && pwd -P)/clang++"
+printf '%s\n' "$compiler" > "$destination/compiler"
+sh "$installer/../Verify/LLVM.sh" "$compiler"
 "$prefix/opt/ccache/bin/ccache" --version
 if [ -n "${GITHUB_PATH:-}" ]; then
     printf '%s\n' "$(dirname "$compiler")" "$prefix/opt/ccache/bin" >> "$GITHUB_PATH"

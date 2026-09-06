@@ -83,7 +83,8 @@ def main():
     key = download(base['key'], work / 'downloads')
     identity = hashlib.sha256(b''.join((ROOT / file).read_bytes() for file in (
         '.github/CI/FreeBSDBases.json', '.github/CI/Toolchains.json', '.github/CI/PrepareFreeBSD.py',
-        '.github/CI/FreeBSDVM.py', '.github/CI/Install/FreeBSDCMake.sh'))).hexdigest()
+        '.github/CI/FreeBSDVM.py', '.github/CI/Install/FreeBSDCMake.sh',
+        '.github/CI/Verify/LLVM.sh'))).hexdigest()
     checkpoint_name = f'checkpoint-{args.arch}'
     if args.phase == 'base':
         source = download(base['image'], work / 'downloads')
@@ -106,8 +107,9 @@ def main():
     with FreeBSDVM(image, key, args.arch, work / 'vm', writable=True) as vm:
         if args.phase == 'base':
             vm.run('pkg install -y llvm23 cmake-core ninja ccache git rsync ca_root_nss')
-            vm.run("set -e; clang++23 --version | grep 'clang version 23.1.0'; ninja --version | grep '^1.13.2$'")
         vm.push(ROOT, '/work/Rux')
+        if args.phase == 'base':
+            vm.run("cd /work/Rux && sh .github/CI/Verify/LLVM.sh clang++23 && ninja --version | grep '^1.13.2$'")
         if args.phase == 'cmake':
             result = vm.run('cd /work/Rux && timeout -s INT -k 60 7200 sh '
                             '.github/CI/Install/FreeBSDCMake.sh /opt/rux-tools/cmake', check=False)

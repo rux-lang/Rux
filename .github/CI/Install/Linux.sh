@@ -1,6 +1,7 @@
 #!/bin/sh
 # Bootstrap once; warm consumers restore files without apt update/install.
 set -eu
+installer=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 destination=${1:?archive directory required}
 mkdir -p "$destination"
 archive="$destination/llvm.tar.gz"
@@ -11,7 +12,7 @@ if [ ! -f "$archive" ]; then
     printf '%s  %s\n' 03878e08f47b66cc95bc4b544b0db3c6d9ce8d60e6cf2492ae357984330a9eae "$destination/llvm.sh" | sha256sum -c -
     sudo bash "$destination/llvm.sh" 23
     sudo apt-get install -y clang-format-23 clang-tidy-23 clang-tools-23 ccache
-    clang++-23 --version | grep 'clang version 23.1.0'
+    sh "$installer/../Verify/LLVM.sh" clang++-23
     # Preserve tool packages and newly introduced dependencies. Never overwrite
     # the runner's libc, loader, or other existing base-runtime packages.
     dpkg-query -W -f='${binary:Package} ${db:Status-Status}\n' > "$destination/packages"
@@ -45,7 +46,7 @@ PY
 fi
 sudo tar -xzf "$archive" -C /
 sudo ldconfig
-clang++-23 --version | grep 'clang version 23.1.0'
+sh "$installer/../Verify/LLVM.sh" clang++-23
 clang-format-23 --version
 clang-tidy-23 --version
 ccache --version
