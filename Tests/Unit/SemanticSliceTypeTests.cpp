@@ -225,6 +225,35 @@ TEST_CASE("a two-sided range type spells its element once on each side") {
     CHECK_EQ(messages[0], "range type bounds must name one element type, but has 'int' and 'uint'");
 }
 
+TEST_CASE("range bounds are compiler-owned without any visible provider") {
+    CHECK(Messages(R"(
+        func Bounds(pair: int..int, closed: int..=int, from: int.., to: ..int, upto: ..=int) -> int {
+            return pair.start + pair.end + closed.start + closed.end + from.start + to.end + upto.end;
+        }
+    )")
+              .empty());
+}
+
+TEST_CASE("only bounds present in a range are available as members") {
+    const auto messages = Messages(R"(
+        func Missing(from: int.., to: ..int, full: ..) {
+            let first = from.end;
+            let second = to.start;
+            let third = full.start;
+        }
+    )");
+    std::vector<std::string> errors;
+    for (const std::string &message : messages) {
+        if (message.starts_with("range type")) {
+            errors.push_back(message);
+        }
+    }
+    REQUIRE_EQ(errors.size(), 3);
+    CHECK_EQ(errors[0], "range type 'int..' has no member 'end'");
+    CHECK_EQ(errors[1], "range type '..int' has no member 'start'");
+    CHECK_EQ(errors[2], "range type '..' has no member 'start'");
+}
+
 TEST_CASE("a generic slice extension is rejected once and by what it is") {
     const auto messages = Messages(R"(
         extend T[..] {

@@ -1,4 +1,4 @@
-import Core::{ Range, string, string8 };
+
 // An aggregate argument is placed by its own size, and the calling conventions disagree about where a wide one
 // goes: System V copies it onto the stack, Win64 and AAPCS64 pass the address of a copy. A literal array or tuple
 // used to be handed over as the address of the slot it was built in, which is only what the callee expects on the
@@ -14,11 +14,11 @@ import Core::{ Range, string, string8 };
 // the 16-byte value instead, so the method read `data` as the address of the pair. The sink at the end checks a
 // slice arrives intact through the vtable.
 
-import Core::{ Assert, Slice };
+import Core::{ Assert };
 
 // The bytes a string spans, which is how a caller holding text reaches an entry point that takes bytes.
-func TextBytes(text: string) -> Slice<char8> {
-    return Slice<char8> { data: text.data, length: text.length };
+func TextBytes(text: char8[..]) -> char8[..] {
+    return (text.data)[..text.length];
 }
 
 const Seeds: uint64[4] = [11, 22, 33, 44];
@@ -39,12 +39,12 @@ func SumBytes(values: uint8[3], tail: uint64) -> uint64 {
     return (values[0] as uint64) + (values[1] as uint64) + (values[2] as uint64) + tail;
 }
 
-func SpanWidth(span: Range<int>, tail: int) -> int {
+func SpanWidth(span: int..int, tail: int) -> int {
     return span.end - span.start + tail;
 }
 
 interface Sink {
-    func Put(bytes: Slice<char8>) -> uint;
+    func Put(bytes: char8[..]) -> uint;
 }
 
 struct Counter {
@@ -54,7 +54,7 @@ struct Counter {
 extend Counter : Sink {
     // Folds the length and the first byte together, so a slice whose `data` or `length` arrived as something else
     // cannot produce the number the caller checks for.
-    func Put(self: &var Counter, bytes: Slice<char8>) -> uint {
+    func Put(self: &var Counter, bytes: char8[..]) -> uint {
         self.total = self.total + bytes.length;
         return bytes.length * 256u + (bytes.data[0] as uint8 as uint);
     }

@@ -1,4 +1,4 @@
-import Core::{ Range, Slice, string8 };
+
 import Core::Assert;
 
 // A type indexes itself by declaring `[]` in an `extend` block, the same way it
@@ -24,7 +24,7 @@ extend Vect {
     // A second overload of each, separated only by its index type. Overload
     // resolution on the index is what lets one type answer both `v[i]` and
     // `v[a..b]`, and read and write on the same index shape.
-    func [](self: &Vect, span: Range<int>) -> Slice<int> {
+    func [](self: &Vect, span: int..int) -> int[..] {
         return self.data[span];
     }
 

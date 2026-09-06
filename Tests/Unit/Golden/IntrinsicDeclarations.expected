@@ -8,5 +8,3 @@
 12:9: error: associated constant 'Bits' is already declared
 15:23: error: 'Min' not found in extend for type 'int8'
 15:5: warning: cannot infer type of 'missing'
-17:22: error: type 'int..int' requires a visible intrinsic declaration
-17:5: warning: cannot infer type of 'start'

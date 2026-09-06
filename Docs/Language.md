@@ -195,8 +195,6 @@ constant values are `intrinsic const Infinity: float32;` and `intrinsic const Na
 counterparts, declared inside extensions of the corresponding floating-point type. Other limits and metadata belong
 in ordinary source initializers.
 
-### Literal views
-
 ### Writable sequence views
 
 `T[..]` is a read-only slice and `var T[..]` is a writable slice. Both contain a data pointer and an element count.
@@ -220,58 +218,53 @@ use element counts, including when elements occupy more than one byte. Empty sli
 
 ### Literal encodings
 
-The names `string`, `string8`, `string16`, and `string32` require local declarations or explicit imports. A literal
-still has an inferred compiler representation without any package dependency. Reading `.data` or `.length` requires
-a visible declaration for that encoding; `import Core::string;` provides the UTF-8 declaration through its alias.
-An import in another source file does not expose those members. Calling an imported function that accepts text does
-not require separately importing its signature types.
-
-The Core `Slice`, `MutableSlice`, and range declarations explicitly use `intrinsic struct`. An ordinary struct with
-one of those names receives no compiler operations from its spelling. Range syntax and array operations themselves
-remain available without Core.
-
-A string literal is text. `"Hello"` has type `string`, and the `c16` and `c32` prefixes spell the same text in the other two encodings:
+Literals are read-only character slices. They need no package import, and `.data` and `.length` are compiler-owned.
 
 ```text
-"Hello"       string    (an alias for string8)  UTF-8
-c8"Hello"     string8                           UTF-8
-c16"Hello"    string16                          UTF-16
-c32"Hello"    string32                          UTF-32
+"Hello"       char8[..]    UTF-8
+c8"Hello"     char8[..]    UTF-8
+c16"Hello"    char16[..]   UTF-16
+c32"Hello"    char32[..]   UTF-32
 ```
 
-A string is an immutable, validity-guaranteed view: a pointer to its code units and a length counted in them, sixteen bytes, aligned to eight. It copies like a slice, because it is a borrow rather than an owner. The literal data is transcoded into the encoding the prefix names, so `c16"€"` holds one UTF-16 code unit and not the three bytes the same character takes in UTF-8, and a character outside the basic multilingual plane is one UTF-32 unit, two UTF-16 units, and four UTF-8 ones. That count is what `.length` answers.
+Each descriptor occupies sixteen bytes, aligned to eight, with `data` at offset zero and `length` at offset eight.
+Slices are passed by address on every supported ABI. Literal storage includes a trailing NUL code unit; its length
+excludes that terminator. External callees taking a raw pointer receive `"literal".data` explicitly.
 
-`string` aliases `string8` rather than the widest encoding, which is the deliberate asymmetry with `char`: a bare literal in a UTF-8 source file is already UTF-8, while a bare character is a whole scalar value and so aliases `char32`. There are no `string64` and wider rows to match `char64`, because no encoding has code units that wide.
-
-A string exposes exactly two members and one operation:
+Lengths and indexing count code units. A supplementary Unicode scalar occupies four UTF-8 units, two UTF-16 units,
+or one UTF-32 unit. Slicing and iteration operate on those units, so a sub-slice can split an encoded scalar.
+Use the Text and Unicode packages when an operation requires validated text, scalar iteration, or grapheme boundaries.
+An arbitrary character slice does not promise valid Unicode. Literal bytes are read-only and cannot become a
+writable character slice.
 
 ```rux
-import Core::string;
+func First(text: char8[..]) -> char8 {
+    return text[0];
+}
 
-func Main() {
-    let text = "Hello";
-    let first = text[0];       // char8, read-only and bounds-checked
-    let count = text.length;   // uint, in code units of the encoding
-    let units = text.data;     // *char8, read-only
+func Prefix(text: char8[..], count: uint) -> char8[..] {
+    return text[..count];
 }
 ```
 
-`.data` and `.length` are the escape hatch to the raw code units, which is how a caller reaches an entry point that takes bytes rather than text:
+### Range types
 
-```rux
-Sha256Of(Slice<char8> { data: text.data, length: text.length }, into);
-```
+Range expressions and annotations use the same punctuation family. Bounds in a two-sided range have one type.
 
-There is no conversion in the other direction. `Slice<char8>` is arbitrary code units with no validity guarantee and `string` is text that was checked before it existed, so the two are distinct types and neither converts implicitly into the other. Byte-oriented APIs — a crypto digest, a stream read or write, a UTF-8 validator, the byte ingest of `Text::String` and `Text::StringView` — keep their slices, and text-oriented ones take a string.
+| Expression | Type | Members |
+| --- | --- | --- |
+| `1..4` | `int..int` | `.start`, `.end` |
+| `1..=4` | `int..=int` | `.start`, `.end` |
+| `1..` | `int..` | `.start` |
+| `..4` | `..int` | `.end` |
+| `..=4` | `..=int` | `.end` |
+| `..` | `..` | none |
 
-This version deliberately leaves four things undefined, each with a diagnostic where one can be written:
+Range members are compiler-owned and need no import. Inclusive ranges include their final bound; ordinary
+two-sided ranges exclude it. The full range selects an entire array or slice. A pointer requires an explicit end.
 
-- **A range of a string.** `text[0..2]` is rejected, because a sub-range could split one character's code units and leave something that is not text. Index a single code unit, or build a slice from `.data` and `.length`.
-- **Comparison and ordering.** `==` and `<` on two strings are rejected: comparing the views would compare the addresses they hold rather than the text they name. In a `when` condition the compiler holds both sides and answers from their contents, so conditional compilation on a configuration value works as it reads.
-- **Iteration.** `for` over a string is not defined, because what it should yield — code units, scalar values, or graphemes — is a decision the language has not made.
-- **Casts.** A string converts to nothing and nothing converts to a string.
-
-Writing through a string is rejected too, through its members and through its code units alike: the guarantee that it holds valid text is what every reader of it rests on.
+Concrete extensions such as `extend int[..]` and `extend char8[..]` have separate method sets. Generic slice
+extensions such as `extend T[..]` are rejected; generic reusable algorithms remain ordinary functions.
 
 ## Copy and Move
 

@@ -1,5 +1,4 @@
 import Core::Assert;
-import Core::Slice;
 
 // A generic struct is declared once but laid out once per instantiation. Sizing
 // every instantiation from the unsubstituted declaration charged a pointer's
@@ -48,7 +47,7 @@ func Main() -> int {
 
     // A slice argument, which is two words rather than one.
     var values: int32[4] = [10, 20, 30, 40];
-    let boxed = Box<Slice<int32>> { value: values[..] };
+    let boxed = Box<int32[..]> { value: values[..] };
     Assert(boxed.value[3] == 40, "a slice argument keeps both of its words");
 
     // Two parameters of mixed width, in both orders, so a wide field is checked

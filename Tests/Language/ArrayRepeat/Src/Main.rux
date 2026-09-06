@@ -1,4 +1,4 @@
-import Core::{ Slice, string8 };
+
 import Core::Assert;
 
 const Zeros: int[4] = [0; 4];
@@ -32,7 +32,7 @@ func Next(counter: *var int) -> int {
     return *counter;
 }
 
-func Sum(values: Slice<int>) -> int {
+func Sum(values: int[..]) -> int {
     var total = 0;
     for value in values {
         total = total + value;

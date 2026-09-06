@@ -1,4 +1,4 @@
-import Core::{ RangeFrom, Slice, string8 };
+
 import Core::Assert;
 
 const HI: uint32 = 5;
@@ -60,7 +60,7 @@ func Main() -> int {
 
     // Same reuse semantics for slice iteration: the loop drives the existing
     // `elem`, which retains the last element after the loop.
-    var nums: Slice<int> = [10, 20, 30];
+    var nums: int[..] = [10, 20, 30];
     var elem: int = 99;
     var sum: int = 0;
     for elem in nums {
@@ -71,7 +71,7 @@ func Main() -> int {
 
     // A RangeFrom has an initial value and is independently iterable. It is
     // unbounded, so this loop terminates explicitly.
-    let from: RangeFrom<int> = 5..;
+    let from: int.. = 5..;
     var fromSum: int = 0;
     for i in from {
         fromSum += i;

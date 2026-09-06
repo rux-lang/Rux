@@ -20,19 +20,7 @@ extend float64 {
     pub intrinsic const NaN: float64;
 }
 
-pub intrinsic struct string8 { pub data: *char8; pub length: uint; }
-pub intrinsic struct string16 { pub data: *char16; pub length: uint; }
-pub intrinsic struct string32 { pub data: *char32; pub length: uint; }
-pub type Utf8 = string8;
-pub type string = string8;
-pub intrinsic struct Slice<T> { pub data: *T; pub length: uint; }
-pub intrinsic struct MutableSlice<T> { pub data: *var T; pub length: uint; }
-pub intrinsic struct Range<T> { pub start: T; pub end: T; }
-pub intrinsic struct RangeFrom<T> { pub start: T; }
-pub intrinsic struct RangeTo<T> { pub end: T; }
-pub intrinsic struct RangeInclusive<T> { pub start: T; pub end: T; }
-pub intrinsic struct RangeToInclusive<T> { pub end: T; }
-pub intrinsic struct RangeFull {}
+pub type Utf8 = char8[..];
 
 pub struct Target { pub pointerBits: uint; }
 pub intrinsic #target: Target;

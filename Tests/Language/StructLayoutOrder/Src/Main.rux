@@ -1,5 +1,4 @@
-import Core::string8;
-import Core::{ Assert, Slice };
+import Core::{ Assert };
 
 // A struct whose field types are declared in a later file of the same package is still laid out from its
 // declarations, not from a one-word guess per unknown field.

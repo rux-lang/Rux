@@ -680,9 +680,6 @@ std::optional<TypeRef> AnalysisContext::CheckAggregateExpression(const Expr &exp
             return TypeRef::MakeUnknown();
         }
         if (objectValueType.IsRange()) {
-            if (!RecordIntrinsicMember(objectValueType, *field)) {
-                return TypeRef::MakeUnknown();
-            }
             const TypeRef elementType = objectValueType.inner.empty() ? TypeRef::MakeInt64() : objectValueType.inner[0];
             if (field->field == "start" && objectValueType.RangeHasStart()) {
                 return elementType;

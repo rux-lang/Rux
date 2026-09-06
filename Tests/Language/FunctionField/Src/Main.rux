@@ -1,4 +1,3 @@
-import Core::string8;
 import Core::Assert;
 
 // A function value has only ever appeared as a parameter or a local in this

@@ -1,5 +1,4 @@
-import Core::{ string, string8 };
-import Core::Slice;
+
 
 // A constant of slice type is addressed rather than inlined, so it must exist
 // in read-only data with a {data, length} header. Reading one used to follow a
@@ -13,9 +12,9 @@ const SIGNED: int64[3] = [-1i64, 0i64, 9223372036854775807i64];
 const REALS: float64[3] = [1.5, -2.5, 1e300];
 const SMALL: uint8[3] = [1u8, 2u8, 255u8];
 const NAMED: uint32[2] = [SCALAR, 7u32];
-const TEXT: string = "abc";
+const TEXT: char8[..] = "abc";
 
-func Sum(values: Slice<uint32>) -> uint32 {
+func Sum(values: uint32[..]) -> uint32 {
     var total: uint32 = 0;
     for value in values {
         total += value;

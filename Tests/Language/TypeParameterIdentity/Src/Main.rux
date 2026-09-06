@@ -1,6 +1,4 @@
-import Core::string8;
 import Core::Assert;
-import Core::Slice;
 
 // Reaching a generic struct's field recovers the struct's type arguments by
 // reading them back out of the receiver's printed name, where `T` the parameter
@@ -25,7 +23,7 @@ struct View<T> {
 }
 
 struct Holder<T> {
-    items: Slice<T>;
+    items: T[..];
 }
 
 // A type genuinely called `T`. Outside a generic it is that type; inside one it

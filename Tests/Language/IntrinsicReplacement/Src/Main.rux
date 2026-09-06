@@ -1,4 +1,4 @@
-import Foundation::{ #target, Tiny, Utf8, Slice, Range, float64, uint, string16, string32 };
+import Foundation::{ #target, Tiny, Utf8, float64, uint };
 
 when Tiny::Max == 127i8 && Tiny::Bits == 8u && uint::Bits == #target.pointerBits {
     func Selected() -> int { return 1; }
@@ -6,14 +6,14 @@ when Tiny::Max == 127i8 && Tiny::Bits == 8u && uint::Bits == #target.pointerBits
     func Selected() -> int { return Missing; }
 }
 
-func First<T>(values: Slice<T>) -> T { return values[0]; }
+func First<T>(values: T[..]) -> T { return values[0]; }
 
 func Main() -> int {
     let text: Utf8 = "hello";
-    let wide: string16 = c16"hello";
-    let widest: string32 = c32"hello";
+    let wide: char16[..] = c16"hello";
+    let widest: char32[..] = c32"hello";
     if text.length != 5 || wide.length != 5 || widest.length != 5 { return 1; }
-    let units = Slice<char8> { data: text.data, length: text.length };
+    let units = (text.data)[..text.length];
     if First(units) != c8'h' { return 2; }
     let bounds = 1..4;
     if bounds.start != 1 || bounds.end != 4 { return 3; }
