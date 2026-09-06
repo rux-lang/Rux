@@ -1,4 +1,3 @@
-import Core::Slice;
 // Walking a run of contiguous elements, which every container in this package can hand out a view of.
 //
 // The compiler drives a `for` loop by shape: anything with a `Next` returning an `Option` is an iterator, and the
@@ -14,7 +13,7 @@ import Core::Slice;
 // iterator whose `Next` reports `Option<*var T>` does not survive lowering: the instantiation is named one way where
 // its layout is recorded and another where it is looked up, and the two disagree over whether the pointee's `var`
 // is part of the name. Until that is fixed, changing elements while walking is done by asking the container for a
-// `MutableSlice<T>` and indexing it, which is what `Rux/Algorithms` does throughout. See Docs/CompilerDefects.md.
+// `var T[..]` and indexing it, which is what `Rux/Algorithms` does throughout. See Docs/CompilerDefects.md.
 //
 // Both borrow. Neither owns the storage it walks, and neither may outlive the container it came from or survive that
 // container growing, rehashing or being freed -- which is the one thing about iteration in this package worth
@@ -52,7 +51,7 @@ extend ValueIterator<T> {
     /// The storage must not be grown, freed or otherwise moved while this is alive.
     ///
     /// https://rux-lang.dev/docs/api/collections/value-iterator/new
-    pub func ValueIterator(items: Slice<T>) -> ValueIterator<T> {
+    pub func ValueIterator(items: T[..]) -> ValueIterator<T> {
         return ValueIterator<T> { data: items.data, length: items.length, position: 0 };
     }
 
@@ -101,7 +100,7 @@ extend ReferenceIterator<T> {
     /// this or any pointer it yielded is still in use.
     ///
     /// https://rux-lang.dev/docs/api/collections/reference-iterator/new
-    pub func ReferenceIterator(items: Slice<T>) -> ReferenceIterator<T> {
+    pub func ReferenceIterator(items: T[..]) -> ReferenceIterator<T> {
         return ReferenceIterator<T> { data: items.data, length: items.length, position: 0 };
     }
 

@@ -4,7 +4,6 @@
 // instead. This keeps only the sample, so a stream of any length -- a file being read, a query being scanned --
 // costs the memory of the answer rather than the memory of the input.
 
-import Core::MutableSlice;
 
 /// A reservoir sample being built.
 ///
@@ -15,7 +14,7 @@ import Core::MutableSlice;
 /// https://rux-lang.dev/docs/api/random/reservoir
 pub struct Reservoir<T> {
     /// Where the sample is kept; its length is the sample size.
-    room: MutableSlice<T>;
+    room: var T[..];
     /// How many items have been offered so far.
     seen: uint;
 }
@@ -24,7 +23,7 @@ extend Reservoir<T> {
     /// A reservoir that will fill `room`.
     ///
     /// https://rux-lang.dev/docs/api/random/reservoir/new
-    pub func Reservoir(room: MutableSlice<T>) -> Reservoir<T> {
+    pub func Reservoir(room: var T[..]) -> Reservoir<T> {
         return Reservoir<T> { room: room, seen: 0 };
     }
 
@@ -58,13 +57,13 @@ pub func Offer<G: RandomGenerator, T>(generator: &var G, reservoir: &var Reservo
         return;
     }
     if reservoir.seen < reservoir.room.length {
-        reservoir.room.data[reservoir.seen] = item;
+        reservoir.room[reservoir.seen] = item;
         reservoir.seen = reservoir.seen + 1u;
         return;
     }
     reservoir.seen = reservoir.seen + 1u;
     let position = UniformBelow<G>(generator, reservoir.seen as uint64) as uint;
     if position < reservoir.room.length {
-        reservoir.room.data[position] = item;
+        reservoir.room[position] = item;
     }
 }

@@ -2,7 +2,7 @@
 // the shuffle is measured by counting where each element lands over many runs -- which is what catches the
 // famously biased variant, since that one still produces every permutation, just not equally often.
 
-import Core::{ Assert, MutableSlice, Slice };
+import Core::{ Assert };
 import Math::Abs;
 import Random::{ ChooseIndex, Offer, RandomGenerator, Reservoir, Shuffle, WeightedIndex, Xoshiro256 };
 
@@ -16,7 +16,7 @@ func Main() -> int {
         items[index] = index as uint64;
         index = index + 1;
     }
-    let room = MutableSlice::From<uint64>(@items[0], 16);
+    let room = (@items[0])[..16];
     var run: uint = 0;
     while run < 200u {
         Shuffle<Xoshiro256, uint64>(generator, room);
@@ -47,7 +47,7 @@ func Main() -> int {
         index = index + 1;
     }
     var small: uint64[8];
-    let smallRoom = MutableSlice::From<uint64>(@small[0], 8);
+    let smallRoom = (@small[0])[..8];
     run = 0;
     while run < 40000u {
         index = 0;
@@ -73,9 +73,9 @@ func Main() -> int {
     }
 
     // The degenerate lengths.
-    let emptyRoom = MutableSlice::From<uint64>(@items[0], 0);
+    let emptyRoom = (@items[0])[..0];
     Shuffle<Xoshiro256, uint64>(generator, emptyRoom);
-    let singleRoom = MutableSlice::From<uint64>(@items[0], 1);
+    let singleRoom = (@items[0])[..1];
     let held = items[0];
     Shuffle<Xoshiro256, uint64>(generator, singleRoom);
     Assert(items[0] == held, "shuffling one element changes nothing");
@@ -108,7 +108,7 @@ func Main() -> int {
     weights[1] = 0.0;
     weights[2] = 3.0;
     weights[3] = -2.0;
-    let weightSlice = Slice<float64> { data: @weights[0], length: 4 };
+    let weightSlice = (@weights[0])[..4];
     var picks: uint[4];
     index = 0;
     while index < 4u {
@@ -132,10 +132,10 @@ func Main() -> int {
     zeros[0] = 0.0;
     zeros[1] = 0.0;
     zeros[2] = 0.0;
-    let zeroSlice = Slice<float64> { data: @zeros[0], length: 3 };
+    let zeroSlice = (@zeros[0])[..3];
     Assert(WeightedIndex<Xoshiro256>(generator, zeroSlice) == 3u,
            "weights that are all zero leave nothing to choose");
-    let emptySlice = Slice<float64> { data: @zeros[0], length: 0 };
+    let emptySlice = (@zeros[0])[..0];
     Assert(WeightedIndex<Xoshiro256>(generator, emptySlice) == 0u, "and neither does an empty slice");
 
     // Reservoir sampling: the sample is drawn from the stream, distinct, and uniform over it.
@@ -148,7 +148,7 @@ func Main() -> int {
     run = 0;
     while run < 20000u {
         var sample: uint64[4];
-        let sampleRoom = MutableSlice::From<uint64>(@sample[0], 4);
+        let sampleRoom = (@sample[0])[..4];
         var reservoir = Reservoir<uint64>(sampleRoom);
         index = 0;
         while index < 20u {
@@ -181,7 +181,7 @@ func Main() -> int {
 
     // A stream shorter than the reservoir is kept whole.
     var shortSample: uint64[6];
-    let shortRoom = MutableSlice::From<uint64>(@shortSample[0], 6);
+    let shortRoom = (@shortSample[0])[..6];
     var shortReservoir = Reservoir<uint64>(shortRoom);
     index = 0;
     while index < 3u {
@@ -193,7 +193,7 @@ func Main() -> int {
            "and is kept in the order it arrived, since nothing had to be displaced");
 
     // A reservoir with no room accepts the stream and keeps nothing.
-    let noRoom = MutableSlice::From<uint64>(@shortSample[0], 0);
+    let noRoom = (@shortSample[0])[..0];
     var emptyReservoir = Reservoir<uint64>(noRoom);
     Offer<Xoshiro256, uint64>(generator, emptyReservoir, 7u64);
     Assert(emptyReservoir.Length() == 0u && emptyReservoir.Seen() == 1u,

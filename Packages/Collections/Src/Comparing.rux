@@ -11,7 +11,7 @@
 // consistent, must be the same every call, and must agree with equality -- two keys that compare `Equal` are one key
 // as far as a tree is concerned, and the second one to arrive replaces the first.
 
-import Core::{ Ordering, Slice };
+import Core::{ Ordering };
 
 /// The ordering of two `uint` values.
 ///
@@ -82,7 +82,7 @@ pub func CompareChar8(left: char8, right: char8) -> Ordering {
 /// Cannot fail. Runs in time proportional to the shorter length and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/collections/compare-slice
-pub func CompareSlice(left: Slice<char8>, right: Slice<char8>) -> Ordering {
+pub func CompareSlice(left: char8[..], right: char8[..]) -> Ordering {
     let shared = left.length < right.length ? left.length : right.length;
     var index: uint = 0;
     while index < shared {

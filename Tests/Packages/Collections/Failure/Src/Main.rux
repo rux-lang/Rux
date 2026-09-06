@@ -1,4 +1,4 @@
-import Core::{ Slice, uint };
+import Core::{ uint };
 import Allocator::{ Allocator, SystemAllocator };
 import Collections::CollectionError;
 import Collections::Deque;
@@ -83,7 +83,7 @@ func Main() -> int {
     // A bulk append is checked the same way, and a rejected one appends
     // nothing rather than part of its input.
     let borrowed = populated.AsSlice();
-    let hostile = Slice<int64> { data: borrowed.data, length: uint::Max };
+    let hostile = (borrowed.data)[..uint::Max];
     if !(populated.PushSlice(hostile) == CollectionError::CapacityOverflow) { return 40; }
     if populated.AsSlice().data != block || populated.Length() != length { return 41; }
     if populated.Capacity() != capacity { return 42; }

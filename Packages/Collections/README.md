@@ -10,15 +10,15 @@ rux add Rux/Collections
 
 ## What it provides
 
-| Type            | Role                                              | Also known as |
-| --------------- | ------------------------------------------------- | ------------- |
-| `Array<T>`      | Fixed-length owned heap storage                   |               |
-| `Vector<T>`     | Growable contiguous sequence                      | the stack     |
-| `Deque<T>`      | Double-ended queue over a circular buffer         | the queue     |
-| `HashMap<K, V>` | Open-addressed associative table                  |               |
-| `HashSet<T>`    | Open-addressed set of distinct values             |               |
-| `TreeMap<K, V>` | Ordered red-black-tree map                        |               |
-| `TreeSet<T>`    | Ordered red-black-tree set                        |               |
+| Type            | Role                                      | Also known as |
+| --------------- | ----------------------------------------- | ------------- |
+| `Array<T>`      | Fixed-length owned heap storage           |               |
+| `Vector<T>`     | Growable contiguous sequence              | the stack     |
+| `Deque<T>`      | Double-ended queue over a circular buffer | the queue     |
+| `HashMap<K, V>` | Open-addressed associative table          |               |
+| `HashSet<T>`    | Open-addressed set of distinct values     |               |
+| `TreeMap<K, V>` | Ordered red-black-tree map                |               |
+| `TreeSet<T>`    | Ordered red-black-tree set                |               |
 
 There is no `Stack` or `Queue` type. `Vector` already is the stack — `Push` and `TryPop` work at the end that costs nothing to reach — and `Deque` already is the queue, with `PushBack` and `TryPopFront`. Wrapper types would duplicate them to add no safety Rux can enforce. There is no `Dictionary` either: `HashMap` is the one associative name.
 
@@ -28,18 +28,17 @@ There are no linked lists. They cost a pointer chase per element and an allocati
 
 `Array` is the one that owns heap storage whose length is decided at run time. The others are not interchangeable with it:
 
-| Spelling          | Storage        | Length              | Owns it |
-| ----------------- | -------------- | ------------------- | ------- |
-| `T[N]`            | inline         | fixed at compile time | —     |
-| `Slice<T>`        | borrowed       | run time            | no      |
-| `MutableSlice<T>` | borrowed       | run time            | no      |
-| `Array<T>`        | heap           | run time, then fixed | yes    |
-| `Vector<T>`       | heap           | run time, growable  | yes     |
+| Spelling    | Storage  | Length                | Owns it |
+| ----------- | -------- | --------------------- | ------- |
+| `T[N]`      | inline   | fixed at compile time | —       |
+| `T[..]`     | borrowed | run time              | no      |
+| `var T[..]` | borrowed | run time              | no      |
+| `Array<T>`  | heap     | run time, then fixed  | yes     |
+| `Vector<T>` | heap     | run time, growable    | yes     |
 
 `AsSlice` and `AsMutableSlice` hand out a borrowed view of a container's elements without copying them, which is how a container reaches [`Rux/Algorithms`](../Algorithms). A `Vector` view covers its initialized elements only, never its spare capacity.
 
-Only `Slice` supports `values[i]` and `values[1..3]` directly. Containers use bounds-checked `Get`, `Set`, and
-`Reference` methods and provide iterator values for `for` loops.
+Both read-only and writable slices support `values[i]` and `values[1..3]` directly. Containers use bounds-checked `Get`, `Set`, and `Reference` methods and provide iterator values for `for` loops.
 
 ## Failure model
 
@@ -57,10 +56,7 @@ enum CollectionError: uint8 {
 }
 ```
 
-The five are not interchangeable. `OutOfMemory` is the only one worth retrying — `IsTransient` says so — because the
-allocator having nothing to give is a state that changes. A capacity that cannot be represented will not start being
-representable, an index the collection does not have will not appear, and a layout the allocator refuses will be
-refused the same way next time. `FromAllocError` is what maps an allocator's own answer onto these.
+The five are not interchangeable. `OutOfMemory` is the only one worth retrying — `IsTransient` says so — because the allocator having nothing to give is a state that changes. A capacity that cannot be represented will not start being representable, an index the collection does not have will not appear, and a layout the allocator refuses will be refused the same way next time. `FromAllocError` is what maps an allocator's own answer onto these.
 
 An operation that **cannot** allocate reports an ordinary miss with a `bool`, through the `Try*` prefix and an out-parameter. So an exhausted allocator is never confused with an empty container, a missing key, or a rejected index — the distinction is in the type, not in the documentation.
 
@@ -92,87 +88,53 @@ reads of the source. Canonical destructors destroy initialized elements before r
 capability is derived through generic fields, so a map or consuming iterator containing an owning kernel is also
 move-only.
 
-Canonical empty construction is `Vector<T>(allocator)`, `Deque<T>(allocator)`, `HashMap<K, V>(...)`,
-`HashSet<T>(...)`, `TreeMap<K, V>(...)`, and `TreeSet<T>(...)`. Descriptive or fallible factories such as
-`FromSlice`, `WithCapacity`, and `Filled` retain their names.
+Canonical empty construction is `Vector<T>(allocator)`, `Deque<T>(allocator)`, `HashMap<K, V>(...)`, `HashSet<T>(...)`, `TreeMap<K, V>(...)`, and `TreeSet<T>(...)`. Descriptive or fallible factories such as `FromSlice`, `WithCapacity`, and `Filled` retain their names.
 
-The allocator is injected at construction and kept, so an array built from an arena disappears with the arena and one
-built from a pool comes back to the pool.
+The allocator is injected at construction and kept, so an array built from an arena disappears with the arena and one built from a pool comes back to the pool.
 
-Every constructor *copies* its elements into the storage, which means an array of a move-only element type cannot be
-built this way: copying such an element would give two owners to a value that promises one. `Vector<T>` and its
-`Push` is the shape that works, since each element is moved in exactly once.
+Every constructor _copies_ its elements into the storage, which means an array of a move-only element type cannot be built this way: copying such an element would give two owners to a value that promises one. `Vector<T>` and its `Push` is the shape that works, since each element is moved in exactly once.
 
-A container destroys an element it does not know is droppable by relocating it from raw backing storage into a local
-and letting the local's life end. This raw-storage boundary is deliberate: safe references cannot transfer ownership
-through borrowed storage. It costs nothing for an element type that owns nothing and is what `~Array` does.
+A container destroys an element it does not know is droppable by relocating it from raw backing storage into a local and letting the local's life end. This raw-storage boundary is deliberate: safe references cannot transfer ownership through borrowed storage. It costs nothing for an element type that owns nothing and is what `~Array` does.
 
 ## Elements that own something
 
-`Vector::Push`, deque pushes, and map/set insertion move their arguments into raw backing storage. Pass a named
-move-only element explicitly, for example `values.Push(<-value)`. Each element is destroyed exactly once, when it is
-removed without being returned or when its container dies. `TryPop`, removals, and consuming iterators move elements
-back out.
+`Vector::Push`, deque pushes, and map/set insertion move their arguments into raw backing storage. Pass a named move-only element explicitly, for example `values.Push(<-value)`. Each element is destroyed exactly once, when it is removed without being returned or when its container dies. `TryPop`, removals, and consuming iterators move elements back out.
 
 `Array`'s constructors copy, so an array of owning elements has to be built through a vector first.
 
-Whether handing a value to a generic container consumes it depends on what its element type turns out to be, which
-the container's own body cannot know — the answer is settled at each instantiation. The tests count destructions
-rather than assuming them: pushing seven elements destroys none, destroying the vector destroys exactly those seven,
-and truncating destroys exactly the ones it drops.
+Whether handing a value to a generic container consumes it depends on what its element type turns out to be, which the container's own body cannot know — the answer is settled at each instantiation. The tests count destructions rather than assuming them: pushing seven elements destroys none, destroying the vector destroys exactly those seven, and truncating destroys exactly the ones it drops.
 
 ## Iterating
 
-`ValueIterator` yields elements by copy and `ReferenceIterator` yields a pointer to each, and both are driven by the
-compiler's `for` loop, which matches an iterator by shape rather than through an interface. Copy is what reading a
-sequence of numbers wants; a pointer is how an element that owns something is read without being moved, since copying
-one would give two owners to a value that promises one.
+`ValueIterator` yields elements by copy and `ReferenceIterator` yields a pointer to each, and both are driven by the compiler's `for` loop, which matches an iterator by shape rather than through an interface. Copy is what reading a sequence of numbers wants; a pointer is how an element that owns something is read without being moved, since copying one would give two owners to a value that promises one.
 
-Both borrow. Neither owns what it walks, and neither may outlive the container it came from or survive that container
-growing, rehashing or being freed.
+Both borrow. Neither owns what it walks, and neither may outlive the container it came from or survive that container growing, rehashing or being freed.
 
-`IntoIterator` is the owning alternative for vectors, maps, and sets. Invoke it on a named owner as
-`(<-values).IntoIterator()`; whatever is not yielded is destroyed with the consuming iterator. Borrowed iterators
-retain raw storage addresses because references cannot be stored in fields or returned.
+`IntoIterator` is the owning alternative for vectors, maps, and sets. Invoke it on a named owner as `(<-values).IntoIterator()`; whatever is not yielded is destroyed with the consuming iterator. Borrowed iterators retain raw storage addresses because references cannot be stored in fields or returned.
 
-A `for` loop over an iterator *value* walks a copy of it, so the iterator the caller holds is left where it was. A
-loop is not a way to advance an iterator someone else is also reading.
+A `for` loop over an iterator _value_ walks a copy of it, so the iterator the caller holds is left where it was. A loop is not a way to advance an iterator someone else is also reading.
 
-There is no iterator yielding a writable pointer yet, though the shape is obvious and the use is real: a generic
-iterator reporting `Option<*var T>` does not survive lowering today. Until it does, changing elements while walking
-means asking the container for a `MutableSlice<T>` and indexing it, which is what `Rux/Algorithms` does throughout.
+There is no iterator yielding a writable pointer yet, though the shape is obvious and the use is real: a generic iterator reporting `Option<*var T>` does not survive lowering today. Until it does, changing elements while walking means asking the container for a `var T[..]` and indexing it, which is what `Rux/Algorithms` does throughout.
 
 ## Hashing
 
-`HashMap` and `HashSet` are one kernel — Robin Hood open addressing over a power-of-two table — with the set storing
-nothing alongside its keys. A fix to the probing or the deletion is a fix to both.
+`HashMap` and `HashSet` are one kernel — Robin Hood open addressing over a power-of-two table — with the set storing nothing alongside its keys. A fix to the probing or the deletion is a fix to both.
 
-Every entry records how far it sits from the slot its hash names. An insertion that meets an entry closer to home
-than itself takes the slot and carries that entry onward, so the distances along a chain never decrease and the worst
-one stays near the average. That also makes a miss cheap: a search reaching a slot whose occupant is closer to home
-than the search has travelled can stop, because the key would have taken that slot on the way past.
+Every entry records how far it sits from the slot its hash names. An insertion that meets an entry closer to home than itself takes the slot and carries that entry onward, so the distances along a chain never decrease and the worst one stays near the average. That also makes a miss cheap: a search reaching a slot whose occupant is closer to home than the search has travelled can stop, because the key would have taken that slot on the way past.
 
-Removal shifts the following entries back one slot each, stopping at an empty slot or one already at home. That
-leaves the table exactly as if the removed entry had never been inserted — **there are no tombstones**, so a table
-that is churned rather than grown does not slowly fill with them and rehash for no reason. The tests churn five
-hundred insert-remove pairs at a steady size and assert the capacity never moves.
+Removal shifts the following entries back one slot each, stopping at an empty slot or one already at home. That leaves the table exactly as if the removed entry had never been inserted — **there are no tombstones**, so a table that is churned rather than grown does not slowly fill with them and rehash for no reason. The tests churn five hundred insert-remove pairs at a steady size and assert the capacity never moves.
 
 ### The hash is seeded, and the seed is a secret
 
-Without one, an adversary who chooses keys can compute a few thousand that collide and turn every lookup into a
-linear scan — a denial of service against anything keyed on input it did not write. The seed comes from
-`Rux/Entropy`, and the ready-made hashers use `SipHash`, which is what makes guessing the seed the only way in.
+Without one, an adversary who chooses keys can compute a few thousand that collide and turn every lookup into a linear scan — a denial of service against anything keyed on input it did not write. The seed comes from `Rux/Entropy`, and the ready-made hashers use `SipHash`, which is what makes guessing the seed the only way in.
 
-`TableSeed::Random` draws one; each draw is a system call, so a program making many tables should draw once and pass
-it to `WithSeed`. `TableSeed::Of` takes the words directly, for a test that needs the same table twice.
+`TableSeed::Random` draws one; each draw is a system call, so a program making many tables should draw once and pass it to `WithSeed`. `TableSeed::Of` takes the words directly, for a test that needs the same table twice.
 
-A table's iteration order is its seed's, so it differs between two tables in one program and between two runs of it.
-Nothing may rely on that order.
+A table's iteration order is its seed's, so it differs between two tables in one program and between two runs of it. Nothing may rely on that order.
 
 ### Reading and writing in one operation
 
-There is no `Entry` type. An entry API is closure-shaped, and Rux has no closures — so the operation it exists for is
-offered directly instead:
+There is no `Entry` type. An entry API is closure-shaped, and Rux has no closures — so the operation it exists for is offered directly instead:
 
 ```rux
 var count: *var int32 = null;
@@ -181,84 +143,55 @@ counts.GetOrInsert(word, 0, @count, @inserted);
 *count = *count + 1;
 ```
 
-One probe when the key is present, and the key named once. `Replace` is the other half: it stores a value and hands
-back the one that was there, where `Insert` throws it away.
+One probe when the key is present, and the key named once. `Replace` is the other half: it stores a value and hands back the one that was there, where `Insert` throws it away.
 
-`RemoveEntry` hands back both halves, so a key that owns something leaves intact too — and it hands back the *stored*
-key rather than the one looked up. The two compare equal, but a key type carrying anything the equality ignores makes
-them different values, and the map's is the one it kept.
+`RemoveEntry` hands back both halves, so a key that owns something leaves intact too — and it hands back the _stored_ key rather than the one looked up. The two compare equal, but a key type carrying anything the equality ignores makes them different values, and the map's is the one it kept.
 
 ### Supplying the pair
 
-The hash and equality are supplied as functions rather than taken from the key type, because Rux has no closures and
-an interface value would be stored and dispatched through on every lookup. `Hashing` has ready-made pairs for the
-usual key types. A caller keying on its own type writes them, and the one rule is that keys comparing equal must hash
-the same.
+The hash and equality are supplied as functions rather than taken from the key type, because Rux has no closures and an interface value would be stored and dispatched through on every lookup. `Hashing` has ready-made pairs for the usual key types. A caller keying on its own type writes them, and the one rule is that keys comparing equal must hash the same.
 
 ## Ordered maps
 
-`HashMap` is the one to reach for by default: constant expected time against a pointer chase per level. `TreeMap`
-earns its keep when order is part of the question. It walks smallest key first, answers `Floor` and `Ceiling` — the
-nearest key at or below, at or above — and hands back everything between two bounds through `Range`, none of which a
-hash table can do at all, since a hash scatters keys deliberately and moves them between slots as it grows.
+`HashMap` is the one to reach for by default: constant expected time against a pointer chase per level. `TreeMap` earns its keep when order is part of the question. It walks smallest key first, answers `Floor` and `Ceiling` — the nearest key at or below, at or above — and hands back everything between two bounds through `Range`, none of which a hash table can do at all, since a hash scatters keys deliberately and moves them between slots as it grows.
 
-The ordering is the caller's, given once as a function. `Comparing` has ready-made ones for the key types
-`Hashing` covers. The rules are the ordinary ones: consistent, the same every call, and agreeing with equality —
-two keys that compare `Equal` are one key, and the second to arrive replaces the first's value.
+The ordering is the caller's, given once as a function. `Comparing` has ready-made ones for the key types `Hashing` covers. The rules are the ordinary ones: consistent, the same every call, and agreeing with equality — two keys that compare `Equal` are one key, and the second to arrive replaces the first's value.
 
-`Range(start, end)` is half-open, so `Range(a, b)` and `Range(b, c)` together give exactly `Range(a, c)` with nothing
-repeated and nothing missed. Starting a range costs a descent rather than a walk from the smallest key.
+`Range(start, end)` is half-open, so `Range(a, b)` and `Range(b, c)` together give exactly `Range(a, c)` with nothing repeated and nothing missed. Starting a range costs a descent rather than a walk from the smallest key.
 
-A borrow from a `TreeMap` outlives more than a `HashMap`'s: each entry is its own allocation and removal relinks the
-successor rather than copying into the removed node, so a pointer to an entry stays good across insertions and
-removals of every other key.
+A borrow from a `TreeMap` outlives more than a `HashMap`'s: each entry is its own allocation and removal relinks the successor rather than copying into the removed node, so a pointer to an entry stays good across insertions and removals of every other key.
 
 ## Ordered sets
 
-`TreeSet` is to `HashSet` what `TreeMap` is to `HashMap`: order, at the price of a pointer chase per level. It walks
-smallest first, answers `Floor` and `Ceiling`, and hands back what lies between two bounds through `Range`.
+`TreeSet` is to `HashSet` what `TreeMap` is to `HashMap`: order, at the price of a pointer chase per level. It walks smallest first, answers `Floor` and `Ceiling`, and hands back what lies between two bounds through `Range`.
 
-Its elements are the keys of a tree whose values are `Unit`, which occupies no bytes — a set is a map with the
-values compiled away rather than a second copy of the same balancing.
+Its elements are the keys of a tree whose values are `Unit`, which occupies no bytes — a set is a map with the values compiled away rather than a second copy of the same balancing.
 
-An element must be copyable, exactly as a `HashSet`'s must: the comparison takes its two elements by value and every
-descent compares against elements the set holds, so an element that owned something would be destroyed by the first
-comparison it took part in. Owning values belong in a `TreeMap` under copyable keys.
+An element must be copyable, exactly as a `HashSet`'s must: the comparison takes its two elements by value and every descent compares against elements the set holds, so an element that owned something would be destroyed by the first comparison it took part in. Owning values belong in a `TreeMap` under copyable keys.
 
 `IntersectWith` and `Subtract` allocate nothing, and ask for the next element by key rather than by following a
-pointer: removal relinks the nodes around what was removed, including the very node a pointer walk would visit next.
-`UnionWith` and `SymmetricDifferenceWith` can grow and report a `CollectionError`; unlike the hash set's, they are
-not all-or-nothing, because a tree has no capacity to reserve in advance — a partial union is still a set with every
-invariant intact, and running the call again finishes it.
+pointer: removal relinks the nodes around what was removed, including the very node a pointer walk would visit next. `UnionWith` and `SymmetricDifferenceWith` can grow and report a `CollectionError`; unlike the hash set's, they are not all-or-nothing, because a tree has no capacity to reserve in advance — a partial union is still a set with every invariant intact, and running the call again finishes it.
 
 ## Set algebra
 
-The predicates — `IsSubsetOf`, `IsSupersetOf`, `IsDisjointFrom`, `Equals` — allocate nothing and cannot fail. So do
-`IntersectWith` and `Subtract`, which only ever make a set smaller.
+The predicates — `IsSubsetOf`, `IsSupersetOf`, `IsDisjointFrom`, `Equals` — allocate nothing and cannot fail. So do `IntersectWith` and `Subtract`, which only ever make a set smaller.
 
-`UnionWith` and `SymmetricDifferenceWith` can grow, so they report a `CollectionError`. Both take room for the worst
-case first, which makes them all-or-nothing: a failure part-way would leave a set that is neither what it was nor the
-answer, and there is nothing useful a caller could do with that. Reserving more than needed is the price, and
-`ShrinkToFit` gives it back.
+`UnionWith` and `SymmetricDifferenceWith` can grow, so they report a `CollectionError`. Both take room for the worst case first, which makes them all-or-nothing: a failure part-way would leave a set that is neither what it was nor the answer, and there is nothing useful a caller could do with that. Reserving more than needed is the price, and `ShrinkToFit` gives it back.
 
-`IntersectWith` and `Subtract` sweep the slots until a whole sweep removes nothing. Removing shifts the entries that
-follow a slot back into it, and a chain running past the end of the table shifts them past the end too, so no single
-sweep in either direction can be sure it looked at everything — and which entries move at all depends on where the
-table's random seed happened to put them, which is what makes getting this wrong show up in one run out of several
-rather than every time. That is the one place the absence of tombstones costs something.
+`IntersectWith` and `Subtract` sweep the slots until a whole sweep removes nothing. Removing shifts the entries that follow a slot back into it, and a chain running past the end of the table shifts them past the end too, so no single sweep in either direction can be sure it looked at everything — and which entries move at all depends on where the table's random seed happened to put them, which is what makes getting this wrong show up in one run out of several rather than every time. That is the one place the absence of tombstones costs something.
 
 ## Complexity
 
-| Operation                                                  | Time                            |
-| ---------------------------------------------------------- | ------------------------------- |
-| `Array` construction, `Clone`, `FromSlice`                 | O(n)                            |
-| `Array` / `Vector` `At`, `Set`, `TryGet`, `TrySet`         | O(1)                            |
-| `Vector::Push`, `TryPop`, `SwapRemoveAt`, `Truncate`       | O(1) amortized                  |
-| `Vector::Insert`, `RemoveAt`                               | O(n)                            |
-| `Deque` push, pop, peek, `At` at either end                | O(1) amortized                  |
-| `Deque::MakeContiguous`, `AsSlice`                         | O(capacity)                     |
-| `HashMap` / `HashSet` lookup, insert, remove               | O(1) expected, O(capacity) worst |
-| `Reserve`, `ShrinkToFit`, `Clone`, one full traversal      | O(capacity)                     |
+| Operation                                             | Time                             |
+| ----------------------------------------------------- | -------------------------------- |
+| `Array` construction, `Clone`, `FromSlice`            | O(n)                             |
+| `Array` / `Vector` `At`, `Set`, `TryGet`, `TrySet`    | O(1)                             |
+| `Vector::Push`, `TryPop`, `SwapRemoveAt`, `Truncate`  | O(1) amortized                   |
+| `Vector::Insert`, `RemoveAt`                          | O(n)                             |
+| `Deque` push, pop, peek, `At` at either end           | O(1) amortized                   |
+| `Deque::MakeContiguous`, `AsSlice`                    | O(capacity)                      |
+| `HashMap` / `HashSet` lookup, insert, remove          | O(1) expected, O(capacity) worst |
+| `Reserve`, `ShrinkToFit`, `Clone`, one full traversal | O(capacity)                      |
 
 Growth doubles from a floor of four slots, so a run of additions costs an amortized constant. `Deque` and both tables round to powers of two, which is what lets a wrap be a mask rather than a division.
 
@@ -276,19 +209,11 @@ numbers.Truncate(kept);
 
 ## Guarantees and limitations
 
-- **Owners are move-only.** Their copy operation is prohibited and their canonical destructor releases elements and
-  storage. `Clone` is explicit and copies elements, so it is available only when the instantiated element operations
-  permit it.
-- **Raw storage remains deliberate.** Allocator blocks, tree links, stored iterator addresses, pointer-returning
-  element borrows, and scalar output slots cannot be references. They never transfer ownership merely by being passed.
-- **Views borrow, never own.** Growth, rehashing, destruction, and `Deque::MakeContiguous` invalidate relevant views
-  and raw element pointers. The compiler tracks reference loans, but deliberately raw addresses remain the caller's
-  responsibility.
-- **Relocation uses the raw-storage compatibility boundary.** Explicit moves are used for named owners and elements;
-  internal relocation through allocator memory remains an intentional raw operation until ownership-aware raw places
-  are expressible.
-- **Indexing is checked.** `Get`, `Set`, and `Reference` report a miss or `IndexOutOfRange` rather than indexing past
-  the allocation.
+- **Owners are move-only.** Their copy operation is prohibited and their canonical destructor releases elements and storage. `Clone` is explicit and copies elements, so it is available only when the instantiated element operations permit it.
+- **Raw storage remains deliberate.** Allocator blocks, tree links, stored iterator addresses, pointer-returning element borrows, and scalar output slots cannot be references. They never transfer ownership merely by being passed.
+- **Views borrow, never own.** Growth, rehashing, destruction, and `Deque::MakeContiguous` invalidate relevant views and raw element pointers. The compiler tracks reference loans, but deliberately raw addresses remain the caller's responsibility.
+- **Relocation uses the raw-storage compatibility boundary.** Explicit moves are used for named owners and elements; internal relocation through allocator memory remains an intentional raw operation until ownership-aware raw places are expressible.
+- **Indexing is checked.** `Get`, `Set`, and `Reference` report a miss or `IndexOutOfRange` rather than indexing past the allocation.
 
 ## Documentation
 

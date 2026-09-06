@@ -1,4 +1,3 @@
-import Core::Slice;
 // Ready-made hash and equality callbacks for the key types a table is usually keyed on.
 //
 // A table takes its hash as a function rather than through an interface, because Rux has no closures and an
@@ -84,7 +83,7 @@ pub func HashChar8(value: char8, low: uint64, high: uint64) -> uint64 {
 /// Runs in time proportional to the length and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/collections/hash-slice
-pub func HashSlice(text: Slice<char8>, low: uint64, high: uint64) -> uint64 {
+pub func HashSlice(text: char8[..], low: uint64, high: uint64) -> uint64 {
     return SipHash24Of(text.data as *byte, text.length, low, high);
 }
 
@@ -136,7 +135,7 @@ pub func EqualsChar8(left: char8, right: char8) -> bool {
 /// pointers hold.
 ///
 /// https://rux-lang.dev/docs/api/collections/equals-slice
-pub func EqualsSlice(left: Slice<char8>, right: Slice<char8>) -> bool {
+pub func EqualsSlice(left: char8[..], right: char8[..]) -> bool {
     if left.length != right.length { return false; }
     var index: uint = 0;
     while index < left.length {

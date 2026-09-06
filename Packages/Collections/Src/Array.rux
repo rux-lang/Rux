@@ -1,9 +1,8 @@
-import Core::Slice;
 // A run of elements whose length is fixed when it is made and whose storage is on the heap.
 //
 // `Array<T>` is what to reach for when the length is decided at run time and never changes afterwards. It is not
 // `T[N]`, whose length is part of its type and whose storage is wherever the value containing it lives; it is not
-// `Slice<T>`, which borrows storage someone else owns; and it is not `Vector<T>`, which can grow. Owning storage of
+// `T[..]`, which borrows storage someone else owns; and it is not `Vector<T>`, which can grow. Owning storage of
 // a length chosen at run time is the one thing none of the others does.
 //
 // An array owns its storage and its elements, so copying is prohibited and it is move-only. Handing one to a function
@@ -19,7 +18,7 @@ import Core::Slice;
 // moved in exactly once.
 
 import Allocator::Allocator;
-import Core::{ MutableSlice, Option };
+import Core::{ Option };
 
 /// A fixed-length run of elements on storage this array owns.
 ///
@@ -81,7 +80,7 @@ extend Array<T> {
     /// Runs in time proportional to the slice's length.
     ///
     /// https://rux-lang.dev/docs/api/collections/array/from-slice
-    pub func FromSlice(allocator: Allocator, items: Slice<T>, error: *var CollectionError) -> Array<T> {
+    pub func FromSlice(allocator: Allocator, items: T[..], error: *var CollectionError) -> Array<T> {
         var data: *var T = null;
         let failure = AllocateBlock<T>(allocator, items.length, @data);
         if failure.IsError() {
@@ -184,8 +183,8 @@ extend Array<T> {
     /// The view is valid until the array is destroyed or moved.
     ///
     /// https://rux-lang.dev/docs/api/collections/array/as-slice
-    pub func AsSlice(self: &Array<T>) -> Slice<T> {
-        return Slice<T> { data: self.data, length: self.length };
+    pub func AsSlice(self: &Array<T>) -> T[..] {
+        return (self.data)[..self.length];
     }
 
     /// The whole array as a borrowed writable view.
@@ -198,8 +197,8 @@ extend Array<T> {
     /// The view is valid until the array is destroyed or moved.
     ///
     /// https://rux-lang.dev/docs/api/collections/array/as-mutable-slice
-    pub func AsMutableSlice(self: &var Array<T>) -> MutableSlice<T> {
-        return MutableSlice<T> { data: self.data, length: self.length };
+    pub func AsMutableSlice(self: &var Array<T>) -> var T[..] {
+        return (self.data)[..self.length];
     }
 
     /// An iterator over the elements, by copy.

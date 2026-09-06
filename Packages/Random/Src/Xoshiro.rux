@@ -8,7 +8,6 @@
 // Suitable for simulation, shuffling and sampling. **Not suitable for anything that must resist an adversary:**
 // its output reveals its state, and a few consecutive words are enough to predict every word after them.
 
-import Core::MutableSlice;
 
 /// A Xoshiro256** generator.
 ///

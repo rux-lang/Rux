@@ -5,8 +5,7 @@
 
 import Core::Assert;
 import Math::{ Abs, PositiveInfinity64 };
-import Random::{ NextFloat64, RandomGenerator, UniformBelow, UniformFloatInRange, UniformInRange,
-                 UniformInSignedRange, Xoshiro256 };
+import Random::{ NextFloat64, RandomGenerator, UniformBelow, UniformFloatInRange, UniformInRange, UniformInSignedRange, Xoshiro256 };
 
 func Main() -> int {
     // Every value below the bound appears, and none at or above it.

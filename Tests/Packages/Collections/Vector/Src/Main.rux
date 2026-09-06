@@ -1,4 +1,4 @@
-import Core::{ Slice, string8, uint };
+import Core::{ uint };
 import Allocator::{ Allocator, SystemAllocator };
 import Collections::{ CollectionError, MinimumVectorCapacity, Vector };
 import Core::Assert;
@@ -183,7 +183,7 @@ func Main() -> int {
         index++;
     }
     var error = CollectionError::None;
-    let view = Slice<int32> { data: @source[0], length: 4 };
+    let view = (@source[0])[..4];
     var copied = Vector::FromSlice<int32>(allocator, view, @error);
     Assert(error == CollectionError::None, "a vector is made from a slice");
     Assert(copied.Length() == 4, "holding every element");

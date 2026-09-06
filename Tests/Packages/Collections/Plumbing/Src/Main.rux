@@ -1,7 +1,6 @@
-import Core::{ Slice, uint };
+import Core::{ uint };
 import Allocator::{ AllocError, Allocator, IsEmptyBlock, SystemAllocator };
-import Collections::{ AllocateBlock, CollectionError, FromAllocError, ReallocateBlock, ReferenceIterator,
-                      ReleaseBlock, ValueIterator };
+import Collections::{ AllocateBlock, CollectionError, FromAllocError, ReallocateBlock, ReferenceIterator, ReleaseBlock, ValueIterator };
 import Core::Assert;
 
 // The plumbing every container shares: what an error means, what the allocator helpers do with a count of elements,
@@ -89,7 +88,7 @@ func Main() -> int {
         values[index] = (index * 10) as int32;
         index++;
     }
-    let items = Slice<int32> { data: @values[0], length: 5 };
+    let items = (@values[0])[..5];
 
     var byValue = ValueIterator<int32>(items);
     var seen: uint = 0;
@@ -120,7 +119,7 @@ func Main() -> int {
     Assert(untouched.Next().IsSome(), "a loop over an iterator leaves the caller's own where it was");
 
     // Nothing to walk yields nothing, rather than one of something.
-    var nothing = ValueIterator<int32>(Slice<int32> { data: null, length: 0 });
+    var nothing = ValueIterator<int32>([]);
     Assert(nothing.Next().IsNone(), "an empty run yields nothing at once");
 
     // The reference iterator borrows each element where it sits.

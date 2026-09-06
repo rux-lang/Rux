@@ -675,6 +675,12 @@ HirExprPtr AstToHirContext::LowerExprAs(const Expr &expression, const TypeRef &t
         coercion->value = std::move(lowered);
         return coercion;
     }
+    // Semantic analysis has accepted this view conversion. Writability changes only the static element access
+    // permission, not the descriptor; preserve its aggregate representation instead of emitting a scalar cast
+    // when a writable view is returned through a read-only signature.
+    if (lowered->type.IsSlice() && targetType.IsSlice()) {
+        lowered->type = targetType;
+    }
     return lowered;
 }
 

@@ -1,4 +1,3 @@
-import Core::Slice;
 // A contiguous run of elements that grows as things are appended to it.
 //
 // `Vector<T>` is the container to reach for by default. It is the stack -- `Push` and `TryPop` work at the end that
@@ -23,7 +22,7 @@ import Core::Slice;
 // vector is exactly as it was.
 
 import Allocator::Allocator;
-import Core::{ Iterator, MutableSlice, Option };
+import Core::{ Iterator, Option };
 
 /// The capacity a vector takes when it first has to allocate.
 ///
@@ -88,7 +87,7 @@ extend Vector<T> {
     /// vector could not be made. Copies its elements, so a move-only element type is built with `Push` instead.
     ///
     /// https://rux-lang.dev/docs/api/collections/vector/from-slice
-    pub func FromSlice(allocator: Allocator, items: Slice<T>, error: *var CollectionError) -> Vector<T> {
+    pub func FromSlice(allocator: Allocator, items: T[..], error: *var CollectionError) -> Vector<T> {
         var vector = Vector<T>(allocator);
         if items.length == 0 {
             *error = CollectionError::None;
@@ -297,7 +296,7 @@ extend Vector<T> {
     /// appends every element or none of them.
     ///
     /// https://rux-lang.dev/docs/api/collections/vector/push-slice
-    pub func PushSlice(self: &var Vector<T>, items: Slice<T>) -> CollectionError {
+    pub func PushSlice(self: &var Vector<T>, items: T[..]) -> CollectionError {
         if items.length == 0 { return CollectionError::None; }
         let room = self.Reserve(items.length);
         if room.IsError() { return room; }
@@ -374,8 +373,8 @@ extend Vector<T> {
     /// The view is valid until the vector grows, shrinks, or is destroyed.
     ///
     /// https://rux-lang.dev/docs/api/collections/vector/as-slice
-    pub func AsSlice(self: &Vector<T>) -> Slice<T> {
-        return Slice<T> { data: self.data, length: self.length };
+    pub func AsSlice(self: &Vector<T>) -> T[..] {
+        return (self.data)[..self.length];
     }
 
     /// The initialized elements as a borrowed writable view.
@@ -387,8 +386,8 @@ extend Vector<T> {
     /// The view is valid until the vector grows, shrinks, or is destroyed.
     ///
     /// https://rux-lang.dev/docs/api/collections/vector/as-mutable-slice
-    pub func AsMutableSlice(self: &var Vector<T>) -> MutableSlice<T> {
-        return MutableSlice<T> { data: self.data, length: self.length };
+    pub func AsMutableSlice(self: &var Vector<T>) -> var T[..] {
+        return (self.data)[..self.length];
     }
 
     /// An iterator over the elements, by copy.
@@ -512,14 +511,14 @@ extend Vector<T> {
     /// The view is valid until the vector grows, shrinks, or is destroyed.
     ///
     /// https://rux-lang.dev/docs/api/collections/vector/slice
-    pub func Slice(self: &Vector<T>, start: uint, count: uint) -> Slice<T> {
-        if start >= self.length || count == 0 { return Slice<T> { data: null, length: 0 }; }
+    pub func Slice(self: &Vector<T>, start: uint, count: uint) -> T[..] {
+        if start >= self.length || count == 0 { return []; }
         var taken = count;
         let available = self.length - start;
         if taken > available {
             taken = available;
         }
-        return Slice<T> { data: @self.data[start], length: taken };
+        return (@self.data[start])[..taken];
     }
 
     /// A borrowed writable view of `count` elements starting at `start`.
@@ -531,14 +530,14 @@ extend Vector<T> {
     /// The view is valid until the vector grows, shrinks, or is destroyed.
     ///
     /// https://rux-lang.dev/docs/api/collections/vector/mutable-slice
-    pub func MutableSliceOf(self: &var Vector<T>, start: uint, count: uint) -> MutableSlice<T> {
-        if start >= self.length || count == 0 { return MutableSlice<T> { data: null, length: 0 }; }
+    pub func MutableSliceOf(self: &var Vector<T>, start: uint, count: uint) -> var T[..] {
+        if start >= self.length || count == 0 { return []; }
         var taken = count;
         let available = self.length - start;
         if taken > available {
             taken = available;
         }
-        return MutableSlice<T> { data: @self.data[start], length: taken };
+        return (@self.data[start])[..taken];
     }
 }
 

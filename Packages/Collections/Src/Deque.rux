@@ -1,4 +1,3 @@
-import Core::Slice;
 // A double-ended queue over a circular buffer.
 //
 // Elements go on and come off at either end in constant time, which is what a vector cannot offer at the front:
@@ -19,7 +18,7 @@ import Core::Slice;
 
 import Algorithms::Rotate;
 import Allocator::Allocator;
-import Core::{ MutableSlice, Option };
+import Core::{ Option };
 import Memory::Copy;
 
 /// The capacity a deque takes when it first has to allocate.
@@ -84,7 +83,7 @@ extend Deque<T> {
     /// deque could not be made. Copies its elements, so a move-only element type is built with `PushBack` instead.
     ///
     /// https://rux-lang.dev/docs/api/collections/deque/from-slice
-    pub func FromSlice(allocator: Allocator, items: Slice<T>, error: *var CollectionError) -> Deque<T> {
+    pub func FromSlice(allocator: Allocator, items: T[..], error: *var CollectionError) -> Deque<T> {
         var deque = Deque<T>(allocator);
         if items.length == 0 {
             *error = CollectionError::None;
@@ -453,13 +452,13 @@ extend Deque<T> {
     /// Both views are valid until the deque grows, shrinks, or is made contiguous.
     ///
     /// https://rux-lang.dev/docs/api/collections/deque/as-slices
-    pub func AsSlices(self: &Deque<T>, front: *var Slice<T>, back: *var Slice<T>) {
+    pub func AsSlices(self: &Deque<T>, front: *var T[..], back: *var T[..]) {
         if self.length == 0 {
             if front != null {
-                *front = Slice<T> { data: null, length: 0 };
+                *front = [];
             }
             if back != null {
-                *back = Slice<T> { data: null, length: 0 };
+                *back = [];
             }
             return;
         }
@@ -470,14 +469,14 @@ extend Deque<T> {
         }
 
         if front != null {
-            *front = Slice<T> { data: @self.data[self.head], length: frontLength };
+            *front = (@self.data[self.head])[..frontLength];
         }
         if back != null {
             if frontLength < self.length {
-                *back = Slice<T> { data: self.data, length: self.length - frontLength };
+                *back = (self.data)[..self.length - frontLength];
             }
             else {
-                *back = Slice<T> { data: null, length: 0 };
+                *back = [];
             }
         }
     }
@@ -509,9 +508,9 @@ extend Deque<T> {
     /// The view is valid until the deque grows, shrinks, or is made contiguous again.
     ///
     /// https://rux-lang.dev/docs/api/collections/deque/as-slice
-    pub func AsSlice(self: &var Deque<T>) -> Slice<T> {
+    pub func AsSlice(self: &var Deque<T>) -> T[..] {
         self.MakeContiguous();
-        return Slice<T> { data: self.data, length: self.length };
+        return (self.data)[..self.length];
     }
 
     /// Every element as one borrowed writable view, moving them together first.
@@ -523,9 +522,9 @@ extend Deque<T> {
     /// The view is valid until the deque grows, shrinks, or is made contiguous again.
     ///
     /// https://rux-lang.dev/docs/api/collections/deque/as-mutable-slice
-    pub func AsMutableSlice(self: &var Deque<T>) -> MutableSlice<T> {
+    pub func AsMutableSlice(self: &var Deque<T>) -> var T[..] {
         self.MakeContiguous();
-        return MutableSlice<T> { data: self.data, length: self.length };
+        return (self.data)[..self.length];
     }
 
     /// An iterator over the elements, front to back, by copy.

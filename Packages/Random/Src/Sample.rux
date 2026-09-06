@@ -6,7 +6,7 @@
 // running totals is correct but reads the weights twice and drifts when they are large. Reservoir sampling done
 // by collecting everything first is not reservoir sampling at all, and defeats the only reason to use it.
 
-import Core::{ MutableSlice, Slice };
+
 
 /// Shuffles `items` into a uniformly random order.
 ///
@@ -17,16 +17,16 @@ import Core::{ MutableSlice, Slice };
 /// Runs in time proportional to the length and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/random/shuffle
-pub func Shuffle<G: RandomGenerator, T>(generator: &var G, items: MutableSlice<T>) {
+pub func Shuffle<G: RandomGenerator, T>(generator: &var G, items: var T[..]) {
     if items.length < 2u { return; }
     var index = items.length - 1u;
     while index > 0u {
         // At or below the current position, never above it.
         let target = UniformBelow<G>(generator, (index + 1u) as uint64) as uint;
         if target != index {
-            let held = items.data[index];
-            items.data[index] = items.data[target];
-            items.data[target] = held;
+            let held = items[index];
+            items[index] = items[target];
+            items[target] = held;
         }
         index = index - 1u;
     }
@@ -53,12 +53,12 @@ pub func ChooseIndex<G: RandomGenerator>(generator: &var G, count: uint) -> uint
 /// Runs in time proportional to the length, reading the weights twice: once to total them and once to select.
 ///
 /// https://rux-lang.dev/docs/api/random/weighted-index
-pub func WeightedIndex<G: RandomGenerator>(generator: &var G, weights: Slice<float64>) -> uint {
+pub func WeightedIndex<G: RandomGenerator>(generator: &var G, weights: float64[..]) -> uint {
     var total = 0.0;
     var index: uint = 0;
     while index < weights.length {
-        if weights.data[index] > 0.0 {
-            total = total + weights.data[index];
+        if weights[index] > 0.0 {
+            total = total + weights[index];
         }
         index = index + 1;
     }
@@ -66,7 +66,7 @@ pub func WeightedIndex<G: RandomGenerator>(generator: &var G, weights: Slice<flo
     var target = NextFloat64<G>(generator) * total;
     index = 0;
     while index < weights.length {
-        let weight = weights.data[index] > 0.0 ? weights.data[index] : 0.0;
+        let weight = weights[index] > 0.0 ? weights[index] : 0.0;
         if target < weight { return index; }
         target = target - weight;
         index = index + 1;
@@ -76,7 +76,7 @@ pub func WeightedIndex<G: RandomGenerator>(generator: &var G, weights: Slice<flo
     index = weights.length;
     while index > 0u {
         index = index - 1u;
-        if weights.data[index] > 0.0 { return index; }
+        if weights[index] > 0.0 { return index; }
     }
     return weights.length;
 }

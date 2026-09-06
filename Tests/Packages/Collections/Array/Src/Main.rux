@@ -1,4 +1,4 @@
-import Core::{ Slice, string8, uint };
+import Core::{ uint };
 import Allocator::{ Allocator, SystemAllocator };
 import Collections::{ Array, CollectionError };
 import Core::Assert;
@@ -45,7 +45,7 @@ func SumOf(allocator: Allocator) -> int32 {
     values[2] = 3;
     values[3] = 4;
     var error = CollectionError::None;
-    var array = Array::FromSlice<int32>(allocator, Slice<int32> { data: @values[0], length: 4 }, @error);
+    var array = Array::FromSlice<int32>(allocator, (@values[0])[..4], @error);
     Assert(error == CollectionError::None, "an array of numbers is made");
 
     var total: int32 = 0;

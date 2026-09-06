@@ -5,8 +5,7 @@
 
 import Core::Assert;
 import Math::{ Abs, IsFinite, IsNan, Sqrt };
-import Random::{ Bernoulli, Exponential, ExponentialWithRate, Normal, NormalPair, NormalWith, RandomGenerator,
-                 Xoshiro256 };
+import Random::{ Bernoulli, Exponential, ExponentialWithRate, Normal, NormalPair, NormalWith, RandomGenerator, Xoshiro256 };
 
 func Main() -> int {
     var generator = Xoshiro256(20240822u64);

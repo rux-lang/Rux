@@ -132,3 +132,21 @@ TEST_CASE("a string's members read the same two fields a slice's do") {
     // The literal's own two stores, then the reads of each member, then the data pointer the index goes through.
     CHECK_EQ(fields, std::vector<std::string>{"data", "length", "data", "length", "data"});
 }
+
+TEST_CASE("weakening a returned view preserves its aggregate representation") {
+    const LirPackage package = CompileToLir(R"(
+        func Weaken(data: *var int, count: uint) -> int[..] {
+            return data[..count];
+        }
+        func Forward(view: var int[..]) -> int[..] { return view; }
+    )");
+    for (const std::string name : {"Weaken", "Forward"}) {
+        const LirFunc &function = RequireFunction(package, name);
+        CHECK(function.returnType.IsSlice());
+        for (const LirBlock &block : function.blocks) {
+            for (const LirInstr &instruction : block.instrs) {
+                CHECK_FALSE((instruction.op == LirOpcode::Cast && instruction.type.IsSlice()));
+            }
+        }
+    }
+}

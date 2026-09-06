@@ -1,4 +1,4 @@
-import Core::{ Slice, string8, uint };
+import Core::{ uint };
 import Allocator::{ Allocator, SystemAllocator };
 import Collections::{ CollectionError, Deque, MinimumDequeCapacity };
 import Core::Assert;
@@ -103,8 +103,8 @@ func Main() -> int {
     Assert(queue.PushFront(5) == CollectionError::None, "one of them at the front, which wraps the head");
     Assert(!queue.IsContiguous(), "so the elements are in two runs");
 
-    var front = Slice<int32> { data: null, length: 0 };
-    var back = Slice<int32> { data: null, length: 0 };
+    var front: int32[..] = [];
+    var back: int32[..] = [];
     queue.AsSlices(@front, @back);
     Assert(front.length + back.length == queue.Length(), "the two runs together are every element");
     Assert(front.length > 0, "with the front run non-empty");
@@ -154,7 +154,7 @@ func Main() -> int {
     source[1] = 2;
     source[2] = 3;
     var error = CollectionError::None;
-    let items = Slice<int32> { data: @source[0], length: 3 };
+    let items = (@source[0])[..3];
     var built = Deque::FromSlice<int32>(allocator, items, @error);
     Assert(error == CollectionError::None, "a deque is made from a slice");
     Assert(built.Length() == 3, "holding every element");

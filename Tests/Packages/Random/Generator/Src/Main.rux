@@ -3,9 +3,8 @@
 // The rest checks the properties the derived shapes promise -- that a byte fill consumes words predictably,
 // that a narrow draw costs a whole word, and that the floats stay inside their half-open interval.
 
-import Core::{ Assert, MutableSlice };
-import Random::{ FillBytes, NextFloat32, NextFloat64, NextUint128, NextUint16, NextUint32, NextUint8,
-                 RandomGenerator, SplitMix64 };
+import Core::{ Assert };
+import Random::{ FillBytes, NextFloat32, NextFloat64, NextUint128, NextUint16, NextUint32, NextUint8, RandomGenerator, SplitMix64 };
 
 func Main() -> int {
     // The published SplitMix64 sequence from a zero seed. These are the values the reference implementation
@@ -75,7 +74,7 @@ func Main() -> int {
     var filler = SplitMix64(2024u64);
     var reference = SplitMix64(2024u64);
     var storage: char8[24];
-    let room = MutableSlice::From<char8>(@storage[0], 20);
+    let room = (@storage[0])[..20];
     FillBytes<SplitMix64>(filler, room);
     var word = reference.NextUint64();
     Assert(storage[0] == (word & 0xFFu64) as uint8 as char8, "the first byte is the first word's lowest");
@@ -90,7 +89,7 @@ func Main() -> int {
     // Filling nothing consumes nothing.
     var untouched = SplitMix64(5u64);
     var alsoUntouched = SplitMix64(5u64);
-    let empty = MutableSlice::From<char8>(@storage[0], 0);
+    let empty = (@storage[0])[..0];
     FillBytes<SplitMix64>(untouched, empty);
     Assert(untouched.NextUint64() == alsoUntouched.NextUint64(), "an empty fill draws no words");
 
