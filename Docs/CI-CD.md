@@ -81,7 +81,7 @@ Every download is staged into a `.partial` file and renamed only after its SHA-2
 
 | Cache             | Key                                                    | Approximate size |
 | ----------------- | ------------------------------------------------------ | ---------------- |
-| Toolchain bundle  | `toolchain-<revision>-<target>`                        | 120 MB × 5       |
+| Toolchain bundle  | `toolchain-<revision>-<target>`                        | ~200 MB × 5      |
 | Compilation cache | `ccache-<target>-<revision>-<sha>`, restored by prefix | 400 MB × 8       |
 
 The `<sha>` suffix makes the primary key always miss, so every run writes back a cache warmer than the one it restored. Caches are saved on pushes only; a pull request rebuilds the commit its branch push already cached, so letting it save as well would only churn the quota. The compilation cache is saved **before** the tests run, so a slow or failing suite does not cost the next run its warm cache — except on FreeBSD, where build and test share one guest boot.
