@@ -69,7 +69,10 @@ closure)
         pattern='^(/usr/lib/|/System/Library/|@rpath/$)'
         ;;
     *)
-        dependencies=$(ldd "$rux" | awk '{ print $1 }' | grep -v '^linux-vdso' || true)
+        # FreeBSD's ldd starts with a header naming the file and lists the
+        # vDSO as [vdso]; Linux lists it as linux-vdso. Neither is a library.
+        dependencies=$(ldd "$rux" | awk '$1 !~ /:$/ { print $1 }' |
+            grep -vE '^(linux-vdso|\[vdso\])' || true)
         pattern='^(/lib|/usr/lib|lib[a-z0-9_+.-]*\.so)'
         ;;
     esac
