@@ -128,7 +128,8 @@ check_versions_agree() {
     *) fail "FREEBSD_BASE_URL does not point at the $FREEBSD_VERSION-RELEASE distribution" ;;
     esac
 
-    for document in README.md Docs/Workflow.md AGENTS.md; do
+    # AGENTS.md is local contributor configuration, absent from a clean checkout.
+    for document in README.md Docs/Workflow.md; do
         grep -qF 'CMake 3.31' "$repository_root/$document" ||
             fail "$document does not state the CMake 3.31 requirement"
     done
@@ -270,6 +271,46 @@ check_packer_refuses_tbd() {
     rm -f "$fixture_root/bin/curl"
 }
 
+# Exercise the packer's actual selection and extraction with a tiny archive
+# containing directory entries and their children, as the LLVM releases do.
+check_linux_archive_extraction() {
+    archive_fixture=$fixture_root/archive
+    mkdir -p "$archive_fixture/source/LLVM/bin" "$archive_fixture/source/LLVM/lib/clang/23/include/nested" \
+        "$archive_fixture/source/LLVM/lib/clang/23/lib/target" "$archive_fixture/llvm"
+    for tool in clang clang-format clang-tidy llvm-size clang-scan-deps; do
+        printf '%s\n' "$tool" >"$archive_fixture/source/LLVM/bin/$tool"
+    done
+    ln -s clang "$archive_fixture/source/LLVM/bin/clang++"
+    printf 'header\n' >"$archive_fixture/source/LLVM/lib/clang/23/include/nested/header.h"
+    printf 'builtins\n' >"$archive_fixture/source/LLVM/lib/clang/23/lib/target/libclang_rt.builtins.a"
+    tar -cf "$archive_fixture/llvm.tar" -C "$archive_fixture/source" LLVM
+    # Compression is irrelevant to member matching; feed the plain fixture tar.
+    printf '#!/bin/sh\ncat\n' >"$fixture_root/bin/unzstd"
+    chmod +x "$fixture_root/bin/unzstd"
+    sed -n '/^tar --use-compress-program=unzstd -tf /,/^rm -f "\$llvm_archive"/p' \
+        "$scripts/Toolchain/PackLinux.sh" >"$archive_fixture/extract.sh"
+    [ -s "$archive_fixture/extract.sh" ] || fail 'no Linux extraction commands found'
+    (
+        set -eu
+        work=$archive_fixture
+        llvm_archive=$archive_fixture/llvm.tar
+        llvm_asset=fixture.tar
+        llvm_major=23
+        PATH="$fixture_root/bin:$PATH"
+        export PATH work llvm_archive llvm_asset llvm_major
+        # A separate shell preserves errexit even though this subshell is
+        # checked with ||; otherwise a later rm could hide tar's failure.
+        sh -eu "$archive_fixture/extract.sh"
+    ) >"$output" 2>&1 || { cat "$output" >&2; fail 'Linux archive extraction failed'; }
+    for member in bin/clang bin/clang++ bin/clang-format bin/clang-tidy bin/llvm-size \
+        lib/clang/23/include/nested/header.h lib/clang/23/lib/target/libclang_rt.builtins.a; do
+        cmp "$archive_fixture/source/LLVM/$member" "$archive_fixture/llvm/$member" ||
+            fail "Linux extraction lost $member"
+    done
+    [ ! -e "$archive_fixture/llvm/bin/clang-scan-deps" ] || fail 'Linux extraction selected unrelated tools'
+    rm -f "$fixture_root/bin/unzstd"
+}
+
 # The docs-only classifier decides whether a run builds anything, so the
 # boundary is pinned down here: documentation and community metadata are
 # docs, everything else — including Markdown a test might read — is code, and
@@ -394,6 +435,19 @@ check_freebsd_prepare_scripts_match() {
     [ -s "$fixture_root/prepare-aarch64" ] || fail 'FreeBSD-AArch64.yml has no prepare script'
     cmp -s "$fixture_root/prepare-x86_64" "$fixture_root/prepare-aarch64" ||
         fail 'the FreeBSD prepare scripts differ, so the guests cannot share one cached disk'
+
+    # Run the actual checksum guard with matching and mismatching digests.
+    # sh -n alone cannot catch a missing closing bracket in a test command.
+    sed -n '/^[[:space:]]*\[ "$(sha256 /p' "$fixture_root/prepare-x86_64" |
+        sed 's/${{ env.SHA256_FREEBSD_BASE_AARCH64 }}/expected/' >"$fixture_root/checksum.sh"
+    [ -s "$fixture_root/checksum.sh" ] || fail 'the FreeBSD prepare script has no checksum guard'
+    stub_tool sha256 expected
+    PATH="$fixture_root/bin:$PATH" sh "$fixture_root/checksum.sh" || fail 'FreeBSD rejected a matching checksum'
+    stub_tool sha256 wrong
+    if PATH="$fixture_root/bin:$PATH" sh "$fixture_root/checksum.sh"; then
+        fail 'FreeBSD accepted a mismatching checksum'
+    fi
+    rm -f "$fixture_root/bin/sha256"
 }
 
 # A third-party action is pinned to a commit, not a tag that can move, and a
@@ -493,6 +547,7 @@ check_versions_agree
 check_readers_reject_injection
 check_setup_packs_on_miss
 check_packer_refuses_tbd
+check_linux_archive_extraction
 check_scope_classifier
 check_target_workflows
 check_retired_paths
@@ -500,5 +555,9 @@ check_freebsd_prepare_scripts_match
 check_actions_are_pinned
 check_workflow_paths_match_case
 check_tidy_shards_are_disjoint
+
+case "$(uname -s)" in
+MINGW* | MSYS*) pwsh -NoProfile -File "$script_directory/CheckWindows.ps1" ;;
+esac
 
 printf 'CI helper checks passed\n'

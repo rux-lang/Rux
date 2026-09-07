@@ -126,6 +126,9 @@ $compiler = Join-Path $Prefix 'bin/clang++-23.exe'
 # image changes rather than leaving it to the configure step.
 $cmakeVersion = Get-ToolVersion -Name cmake -Minimum '3.31'
 $ninjaVersion = Get-ToolVersion -Name ninja -Minimum '1.13.2'
+$buildToolPaths = @('cmake', 'ninja' | ForEach-Object {
+        Split-Path (Get-Command $_ -CommandType Application | Select-Object -First 1).Source
+    } | Select-Object -Unique)
 
 # The Visual Studio environment is imported once, here, and exported through
 # GITHUB_ENV so no later step has to re-run vcvarsall.
@@ -133,11 +136,17 @@ $architecture = if ($Target -eq 'windows-aarch64') { 'arm64' } else { 'amd64' }
 & (Join-Path $PSScriptRoot 'VsDevEnv.ps1') -Arch $architecture
 
 # The prefix must win over the Clang vcvarsall and the runner image put on
-# PATH. GITHUB_PATH prepends each write, so this one lands ahead of the entries
-# VsDevEnv.ps1 just added; CXX names the compiler by absolute path regardless.
+# PATH. Preserve the checked CMake and Ninja ahead of Visual Studio's bundled
+# versions too: vcvarsall can otherwise shadow Ninja with an older release.
+# GITHUB_PATH prepends entries in reverse order; CXX uses an absolute path.
 $toolchainBin = Join-Path $Prefix 'bin'
-if ($env:GITHUB_PATH) { Add-Content -LiteralPath $env:GITHUB_PATH -Value $toolchainBin }
-$env:PATH = "$toolchainBin;$env:PATH"
+$preferredPaths = @($toolchainBin) + $buildToolPaths
+if ($env:GITHUB_PATH) {
+    for ($index = $preferredPaths.Count - 1; $index -ge 0; $index--) {
+        Add-Content -LiteralPath $env:GITHUB_PATH -Value $preferredPaths[$index]
+    }
+}
+$env:PATH = ($preferredPaths -join ';') + ';' + $env:PATH
 
 Add-GitHubEnv -Name 'RUX_TOOLCHAIN' -Value $Prefix
 Add-GitHubEnv -Name 'CXX' -Value $compiler

@@ -320,6 +320,7 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 
 ### Fixed
 
+- **CI setup** — extract Linux LLVM archive members without recursive duplicate matching, retain the validated CMake and Ninja ahead of Visual Studio's bundled tools, repair the FreeBSD sysroot checksum guard, and check version documentation without requiring a local `AGENTS.md` file.
 - **Native CI preparation**: Validate Linux and macOS bundles through the POSIX repository entry point and include the union of LLVM and ccache Homebrew dependencies, including Z3, in macOS archives.
 - **macOS CI**: Preserve the `clang++` driver name when resolving Homebrew toolchain paths so C++ executables link their standard library and exception runtime. Repair previously cached compiler-path metadata.
 - **CI/CD**: Accept LLVM 23 package patch updates during Linux, macOS, and FreeBSD environment preparation instead of rejecting every version other than 23.1.0. Report the detected compiler and reject unsupported majors explicitly.

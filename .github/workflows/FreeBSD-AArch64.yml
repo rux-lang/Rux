@@ -78,7 +78,7 @@ jobs:
             pkg update -f
             pkg install -y ${{ env.FREEBSD_PKG_LLVM }} cmake-core ninja ccache4 git-lite
             fetch -q -o /tmp/base.txz "${{ env.FREEBSD_BASE_URL }}/${{ env.FREEBSD_BASE_ASSET }}"
-            [ "$(sha256 -q /tmp/base.txz)" = "${{ env.SHA256_FREEBSD_BASE_AARCH64 }}"
+            [ "$(sha256 -q /tmp/base.txz)" = "${{ env.SHA256_FREEBSD_BASE_AARCH64 }}" ]
             mkdir -p /opt/sysroot/freebsd-aarch64
             tar -xf /tmp/base.txz -C /opt/sysroot/freebsd-aarch64 ./lib ./usr/lib ./usr/include ./usr/libdata
             rm -f /tmp/base.txz
