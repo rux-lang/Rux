@@ -154,7 +154,10 @@ jobs:
     name: Transfer
     needs: build
     if: inputs.scope == 'extended'
-    runs-on: ubuntu-26.04
+    # The runner image vmactions exercises its emulated guests on; the newer
+    # image ships a QEMU and firmware under which the AArch64 guest never
+    # brings its network up.
+    runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v6

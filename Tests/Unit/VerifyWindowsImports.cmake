@@ -1,3 +1,5 @@
+cmake_minimum_required(VERSION 3.31...4.4)
+
 execute_process(COMMAND "${RUX_READOBJ}" --coff-imports "${RUX_EXECUTABLE}"
     RESULT_VARIABLE status OUTPUT_VARIABLE imports ERROR_VARIABLE errors)
 if (NOT status EQUAL 0)

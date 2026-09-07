@@ -1,3 +1,5 @@
+cmake_minimum_required(VERSION 3.31...4.4)
+
 set(group_filters "@RUX_UNIT_FILTERS@")
 
 function(inventory output)

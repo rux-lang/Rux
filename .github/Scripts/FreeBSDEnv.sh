@@ -14,6 +14,13 @@ if grep -qvE '^[[:space:]]*(#.*)?$|^[A-Z0-9_]+=[A-Za-z0-9._:/+-]*$' "$rux_manife
 fi
 . "$rux_manifest"
 
+# The workspace arrives by rsync with the host runner's ownership preserved,
+# while the guest builds as root; without this git refuses the checkout as
+# dubiously owned, and the CI helper checks that list tracked files fail.
+export GIT_CONFIG_COUNT=1
+export GIT_CONFIG_KEY_0=safe.directory
+export GIT_CONFIG_VALUE_0='*'
+
 # The llvm23 package names the compiler clang++23. Run.sh probes that name,
 # but CXX makes the choice explicit where several Clangs are installed.
 export CXX=clang++23

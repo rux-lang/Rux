@@ -285,7 +285,11 @@ check_linux_archive_extraction() {
     printf 'builtins\n' >"$archive_fixture/source/LLVM/lib/clang/23/lib/target/libclang_rt.builtins.a"
     tar -cf "$archive_fixture/llvm.tar" -C "$archive_fixture/source" LLVM
     # Compression is irrelevant to member matching; feed the plain fixture tar.
-    printf '#!/bin/sh\ncat\n' >"$fixture_root/bin/unzstd"
+    # tar stops reading at the end-of-archive marker and may close the pipe
+    # before the stub has written the record padding behind it; a real
+    # decompressor is drained by the record-sized reads a real archive fills,
+    # but the stub must shrug off the resulting SIGPIPE or tar reports it.
+    printf '#!/bin/sh\ntrap "" PIPE\ncat 2>/dev/null\nexit 0\n' >"$fixture_root/bin/unzstd"
     chmod +x "$fixture_root/bin/unzstd"
     sed -n '/^tar --use-compress-program=unzstd -tf /,/^rm -f "\$llvm_archive"/p' \
         "$scripts/Toolchain/PackLinux.sh" >"$archive_fixture/extract.sh"
@@ -483,8 +487,8 @@ check_actions_are_pinned() {
 # action or the packers' folder.
 check_workflow_paths_match_case() {
     tracked=$fixture_root/tracked.txt
-    (cd "$repository_root" && git ls-files) >"$tracked" 2>/dev/null ||
-        fail 'could not list tracked files'
+    (cd "$repository_root" && git ls-files) >"$tracked" 2>"$fixture_root/git-error" ||
+        fail "could not list tracked files: $(cat "$fixture_root/git-error")"
 
     referenced=$fixture_root/referenced.txt
     grep -rhoE '(\./)?(\.github/(workflows|Scripts|actions)/[A-Za-z0-9._/-]+|Compiler/CMake/Toolchains/[A-Za-z0-9._-]+)' \

@@ -46,9 +46,9 @@ Every job carries an explicit timeout. Nothing can run for hours except the emul
 | Windows x86-64 / Under emulation   | windows-11-arm                  | extended   | 30       |
 | Windows AArch64 / Build            | windows-11-arm                  | full       | 30       |
 | FreeBSD x86-64 / Build             | ubuntu-26.04, KVM guest         | full       | 45       |
-| FreeBSD x86-64 / Transfer          | ubuntu-26.04, emulated guest    | extended   | 90       |
+| FreeBSD x86-64 / Transfer          | ubuntu-24.04, emulated guest    | extended   | 90       |
 | FreeBSD AArch64 / Build            | ubuntu-26.04, KVM guest         | full       | 45       |
-| FreeBSD AArch64 / Test             | ubuntu-26.04, emulated guest    | full       | 60 / 180 |
+| FreeBSD AArch64 / Test             | ubuntu-24.04, emulated guest    | full       | 60 / 180 |
 | `CI` — the gate                    | ubuntu-26.04                    | every      | 5        |
 
 Build and test share one job per target. Splitting them would cost an artifact round-trip and a second runner acquisition on every target without proving anything the closure check below does not prove more directly.

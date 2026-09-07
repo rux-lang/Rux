@@ -136,7 +136,10 @@ jobs:
   test:
     name: Test
     needs: build
-    runs-on: ubuntu-26.04
+    # The runner image vmactions exercises its emulated guests on; the newer
+    # image ships a QEMU and firmware under which the AArch64 guest never
+    # brings its network up.
+    runs-on: ubuntu-24.04
     timeout-minutes: ${{ inputs.scope == 'extended' && 180 || 60 }}
     steps:
       - uses: actions/checkout@v6
