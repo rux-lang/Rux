@@ -40,16 +40,16 @@ Keep unrelated work on separate branches. If `dev` advances while you are workin
 ## How Changes Flow
 
 ```
-topic branch ──PR──► dev ──(merge to main)──► main ──tag vX.Y.Z──► Release Pipeline
+topic branch ──PR──► dev ──(merge to main)──► main ──dispatch Release──► tag vX.Y.Z + draft
 ```
 
 1. Work happens on topic branches and merges into `dev`.
 2. When `dev` is ready to ship, it is promoted to `main` (see below).
-3. A version tag on `main` triggers the [Release Pipeline](Release.md).
+3. The [Release Pipeline](Release.md) is dispatched by hand on `main`; it creates the version tag.
 
 ### Promoting `dev` to `main`
 
-At release time, `dev` is merged into `main` with a **merge commit** (not a fast-forward), so each release sits on a clear merge boundary in `main`'s history. Only the **repository owner** promotes `dev` to `main` and pushes the version tag that cuts the release. See the [Release Pipeline](Release.md) for the full release checklist.
+At release time, `dev` is merged into `main` with a **merge commit** (not a fast-forward), so each release sits on a clear merge boundary in `main`'s history. Only the **repository owner** promotes `dev` to `main` and dispatches the release that cuts the version tag. See the [Release Pipeline](Release.md) for the full release checklist.
 
 After promotion, new development continues from `dev`; do not base ordinary feature work on `main`.
 
@@ -57,11 +57,11 @@ After promotion, new development continues from `dev`; do not base ordinary feat
 
 Both `main` and `dev` are protected. Merging into either requires:
 
-- **Passing CI status checks** — the Linux and Windows build/test jobs must be green before a PR can merge (see [CI/CD Flow](CI-CD.md)).
+- **The `CI` status check** — the single check that aggregates every job of the run, so every selected target must be green before a PR can merge (see [CI/CD Flow](CI-CD.md)).
 - **At least one approving review** before merge.
 
 `main` additionally only receives changes through the owner-driven promotion described above — ordinary contributions never target it directly.
 
 ## Tags
 
-Releases are cut by pushing a `v*` tag whose version **must** match the `VERSION` in `CMakeLists.txt` — CI rejects a mismatch. See the [Release Pipeline](Release.md). Published tags are immutable; corrections ship as a new patch version rather than by moving an existing tag.
+Tags are created by the [Release Pipeline](Release.md), never by hand: it is dispatched with a version that **must** match the one in `CMakeLists.txt` and have a changelog section, and it rejects a mismatch or an existing tag. Published tags are immutable; corrections ship as a new patch version rather than by moving an existing tag.

@@ -10,8 +10,8 @@ The versions below were verified on September 5, 2026:
 | Tool                                                                             | Current release | Repository requirement                                                 |
 | -------------------------------------------------------------------------------- | --------------- | ---------------------------------------------------------------------- |
 | [LLVM / Clang](https://github.com/llvm/llvm-project/releases/tag/llvmorg-23.1.0) | 23.1.0          | Upstream Clang 23.1+; LLVM 23 `clang-format` and `clang-tidy`          |
-| [CMake](https://cmake.org/download/)                                             | 4.4.3           | 4.4.3+; CI pins 4.4.3                                                  |
-| [Ninja](https://github.com/ninja-build/ninja/releases/tag/v1.13.2)               | 1.13.2          | 1.13.2+; CI pins 1.13.2                                                |
+| [CMake](https://cmake.org/download/)                                             | 4.4.3           | CMake 3.31+ with policies through 4.4; CI uses the runner image's CMake |
+| [Ninja](https://github.com/ninja-build/ninja/releases/tag/v1.13.2)               | 1.13.2          | 1.13.2+; CI uses the runner image's Ninja                              |
 | [Git](https://git-scm.com/install/)                                              | 2.55.0          | Use the current stable release; platform packaging suffixes may differ |
 
 Configuration rejects unsupported C++ compilers, older Clang/CMake versions, and Ninja versions below 1.13.2. Install `clang-format` and `clang-tidy` from the same LLVM 23 release.
@@ -302,7 +302,7 @@ cmake --build Build --config Release
 
 Use a separate tree for experimenting with ThinLTO or size options. Build trees in the same checkout share `Bin/`, so do not build them concurrently. The last successful link supplies the executable used by repository commands.
 
-CI uses one compilation cache per target, keyed on the pinned toolchain revision recorded in `.github/Toolchains.env`. Compiler contents are checked by the cache itself. CI cache builds explicitly disable PCH with `--no-pch`, avoiding relaxed cache correctness settings for precompiled headers, and set `CCACHE_NOHASHDIR` so a host and the FreeBSD guest share entries despite building at different paths. A launcher only caches C++ compilation; it does not cache Rux package builds or test results.
+CI uses one compilation cache per target, keyed on the toolchain manifest `.github/Toolchains.env`. Compiler contents are checked by the cache itself. CI cache builds explicitly disable PCH with `--no-pch`, avoiding relaxed cache correctness settings for precompiled headers, and set `CCACHE_NOHASHDIR` so a host and the FreeBSD guest share entries despite building at different paths. A launcher only caches C++ compilation; it does not cache Rux package builds or test results.
 
 ### Measuring a Change
 

@@ -8,7 +8,7 @@ Download the `rux-macos-x86_64.tar.gz` or `rux-macos-aarch64.tar.gz` archive mat
 
 ## Building from Source
 
-Rux currently requires Clang 23.1 or newer, CMake 4.4.3 or newer, Ninja 1.13.2 or newer, and a recent Git installation. Apple Clang does not yet provide all C++26 features used by Rux, so install upstream LLVM 23 and the build tools with [Homebrew](https://brew.sh/):
+Rux currently requires Clang 23.1 or newer, CMake 3.31 or newer, Ninja 1.13.2 or newer, and a recent Git installation. Apple Clang does not yet provide all C++26 features used by Rux, so install upstream LLVM 23 and the build tools with [Homebrew](https://brew.sh/):
 
 ```sh
 brew install llvm@23 cmake ninja git
@@ -111,6 +111,6 @@ It builds the signed executable and dylib fixtures twice, checks deterministic b
 
 `rux run` always builds and launches the compiler process's host triple and has no `--target` option. `rux test --target` requires macOS plus an architecture reported for either the compiler process or the native OS. Consequently, an x86-64 compiler running under Rosetta on Apple Silicon may directly test `macos-aarch64`; a physical Intel Mac may only build/check that target and transfer it to Apple Silicon for testing.
 
-The required `macOS.yml` workflow runs the complete compiler, unit, workspace, and native fixture suites on `macos-26`, then repeats target tests and fixtures with the downloaded x86-64 compiler under Rosetta. The release workflow runs the same native Apple Silicon acceptance before publishing `rux-macos-aarch64.tar.gz`. GitHub's `macos-26` runner is the normal acceptance environment; EC2 Mac is reserved for prolonged debugging, crash capture, or demonstrated GitHub-runner instability and is not required for development, merging, or releases.
+The `macOS AArch64` workflow `CI.yml` calls runs the complete compiler, unit, workspace, and native fixture suites on `macos-26`, and the `macOS x86-64` workflow cross-builds the x86-64 compiler on the same runner and repeats the suites and fixtures with it under Rosetta. The release workflow runs the same native Apple Silicon acceptance before publishing `rux-macos-aarch64.tar.gz`. GitHub's `macos-26` runner is the normal acceptance environment; EC2 Mac is reserved for prolonged debugging, crash capture, or demonstrated GitHub-runner instability and is not required for development, merging, or releases.
 
 Use LLVM 23 for formatting and static analysis, with LF line endings on this platform. Repository verification uses one test worker per available processor; override with `-Jobs N` in PowerShell or `--jobs N` in POSIX shell. See the workflow guide's [build and test throughput](../Workflow.md#build-and-test-throughput) section for compilation caching, optional PCH/ThinLTO, stable metadata, and how to measure a change.

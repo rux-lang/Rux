@@ -1,92 +1,133 @@
 name: FreeBSD x86-64
 
 # Everything FreeBSD x86-64 does, in the order it runs. There is no hosted
-# FreeBSD runner, so the build and tests run inside a KVM-accelerated QEMU guest
-# booted from a prepared image; its toolchain lives in that image, not on the
-# host. Release.yml calls this workflow too, so a release is built by exactly
-# the steps CI verified.
+# FreeBSD runner, so the build and tests run inside a KVM-accelerated guest on
+# an x86-64 Linux host. The guest installs its toolchain from pkg's latest
+# branch once; the prepared disk is cached, keyed on the prepare script, and
+# every later run boots straight into it. FreeBSD-AArch64.yml uses the very
+# same prepare script so both share one cached disk; Tests/Scripts/CI/Check.sh
+# keeps the two identical. CI.yml calls this workflow with the scope of the
+# run, and Release.yml calls it with `extended`, so a release is built by
+# exactly the steps CI verified.
 
 on:
-  push:
-    branches: ['**']
-  pull_request:
-    branches: [main, dev]
-    types: [opened, reopened, synchronize, ready_for_review, labeled, unlabeled]
-  schedule:
-    - cron: '0 3 * * *'
-  workflow_dispatch:
   workflow_call:
-
-# A branch push and its pull request share one group so the same commit is never
-# built twice. Runs on dev are left alone because they warm the caches every
-# other branch restores, and a dispatched run is never cancelled because a
-# release is one.
-concurrency:
-  group: freebsd-x86_64-${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
-  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' && github.ref_name != 'dev' && github.ref_name != 'main' }}
+    inputs:
+      scope:
+        description: fast, full, or extended
+        type: string
+        required: true
 
 permissions:
   contents: read
 
 jobs:
   build:
-    name: FreeBSD x86-64
-    # Linux x86-64 is the fast lane and runs on every push; every other target
-    # waits for something that can reach dev.
-    if: ${{ github.event_name != 'push' || github.ref_name == 'dev' || github.ref_name == 'main' }}
+    name: Build
     runs-on: ubuntu-26.04
-    timeout-minutes: 35
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
 
-      # Every pinned version and checksum reaches later steps and cache keys
-      # from one file, so there is nothing to keep in sync.
+      # Every pinned version reaches the guest and the cache keys from one
+      # file, so there is nothing to keep in sync.
       - name: Load the toolchain manifest
         run: grep -E '^[A-Z0-9_]+=' .github/Toolchains.env >> "$GITHUB_ENV"
 
-      - name: Install QEMU
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends \
-            qemu-system-x86 qemu-system-arm qemu-efi-aarch64 zstd rsync
-          sudo chmod a+rw /dev/kvm 2>/dev/null || true
-
-      # The sha suffix makes the primary key always miss, so every run writes
-      # back a cache warmer than the one it restored.
+      # The sha suffix makes the primary key always miss, so every saving run
+      # writes back a cache warmer than the one it restored. The cache rides
+      # into the guest with the workspace and comes back out with it.
       - name: Restore the compilation cache
         id: ccache
         uses: actions/cache/restore@v6
         with:
           path: BuildCache/ccache
-          key: ccache-freebsd-x86_64-${{ env.TOOLCHAIN_REVISION }}-${{ github.sha }}
-          restore-keys: ccache-freebsd-x86_64-${{ env.TOOLCHAIN_REVISION }}-
+          key: ccache-freebsd-x86_64-${{ hashFiles('.github/Toolchains.env') }}-${{ github.sha }}
+          restore-keys: ccache-freebsd-x86_64-${{ hashFiles('.github/Toolchains.env') }}-
 
-      # One boot builds and tests, because the guest's Build/ tree is not
-      # carried back out and a second boot would have to compile again. The
-      # driver pulls Bin/ and the compilation cache back out even when the
-      # command failed.
-      - name: Build and test in the FreeBSD guest
+      # Boots the guest, prepares it once, mirrors the workspace at the same
+      # path inside it, and registers the `freebsd` shell the steps below use;
+      # each of those steps is synced in before it runs and back out after.
+      # The prepare script also unpacks the AArch64 base system that the
+      # FreeBSD AArch64 workflow cross-compiles against, so the two workflows
+      # share one cached disk.
+      - name: Boot the FreeBSD guest
+        uses: vmactions/freebsd-vm@f0552d3b69211736abd97f02ff3d4674c56b73b1 # v1.5.5
+        with:
+          release: ${{ env.FREEBSD_VERSION }}
+          arch: x86_64
+          mem: 8192
+          sync: rsync
+          copyback: true
+          custom-shell-name: freebsd
+          cache-after-prepare: 'true'
+          prepare: |
+            set -eu
+            export ASSUME_ALWAYS_YES=yes IGNORE_OSVERSION=yes
+            mkdir -p /usr/local/etc/pkg/repos
+            cat >/usr/local/etc/pkg/repos/FreeBSD.conf <<'REPO'
+            FreeBSD-ports: {
+              url: "pkg+https://pkg.FreeBSD.org/${ABI}/latest",
+              mirror_type: "srv",
+              signature_type: "fingerprints",
+              fingerprints: "/usr/share/keys/pkg",
+              enabled: yes
+            }
+            REPO
+            pkg update -f
+            pkg install -y ${{ env.FREEBSD_PKG_LLVM }} cmake-core ninja ccache4 git-lite
+            fetch -q -o /tmp/base.txz "${{ env.FREEBSD_BASE_URL }}/${{ env.FREEBSD_BASE_ASSET }}"
+            [ "$(sha256 -q /tmp/base.txz)" = "${{ env.SHA256_FREEBSD_BASE_AARCH64 }}"
+            mkdir -p /opt/sysroot/freebsd-aarch64
+            tar -xf /tmp/base.txz -C /opt/sysroot/freebsd-aarch64 ./lib ./usr/lib ./usr/include ./usr/libdata
+            rm -f /tmp/base.txz
+          run: |
+            freebsd-version
+            clang++23 --version | head -1
+            cmake --version | head -1
+            ninja --version
+            ccache --version | head -1
+
+      - name: Build
+        shell: freebsd {0}
         run: |
-          mkdir -p BuildCache
-          {
-            echo 'sh .github/Scripts/Verify.sh --stage build'
-            echo 'sh .github/Scripts/Verify.sh --stage test'
-            echo 'sh .github/Scripts/Verify.sh --stage closure'
-          } > BuildCache/guest.sh
-          sh .github/Scripts/FreeBSDVM.sh \
-            --arch x86_64 --role build --script BuildCache/guest.sh
+          set -eu
+          . .github/Scripts/FreeBSDEnv.sh
+          sh .github/Scripts/Verify.sh --stage build
 
-      # Saved after the guest because its build and test share one boot, and on
-      # pushes only: a pull request rebuilds the commit its branch push already
-      # cached.
+      # Saved before the tests so a slow or failing suite does not cost the next
+      # run its warm cache, and on pushes only: a pull request rebuilds the
+      # commit its branch push already cached.
       - name: Save the compilation cache
-        if: ${{ !cancelled() && github.event_name == 'push' }}
+        if: github.event_name == 'push'
         uses: actions/cache/save@v6
         with:
           path: BuildCache/ccache
           key: ${{ steps.ccache.outputs.cache-primary-key }}
+
+      - name: Test
+        shell: freebsd {0}
+        run: |
+          set -eu
+          . .github/Scripts/FreeBSDEnv.sh
+          sh .github/Scripts/Verify.sh --stage test
+
+      - name: Check the runtime closure
+        shell: freebsd {0}
+        run: |
+          set -eu
+          sh .github/Scripts/Verify.sh --stage closure
+
+      # The transfer payload is a sealed set of AArch64 binaries this x86-64
+      # compiler cross-built, for a guest that has no compiler at all.
+      - name: Produce the AArch64 transfer payload
+        if: inputs.scope == 'extended'
+        shell: freebsd {0}
+        run: |
+          set -eu
+          sh Tests/Native/FreeBSDAArch64/BuildTransfer.sh ./Bin/rux FreeBSDAArch64Payload
 
       - name: Upload the compiler
         uses: actions/upload-artifact@v7
@@ -96,13 +137,25 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  # A fresh AArch64 guest with no toolchain installed consumes a payload built
-  # on another machine. The emptiness of the minimal image is the point.
+      - name: Upload the transfer payload
+        if: inputs.scope == 'extended'
+        uses: actions/upload-artifact@v7
+        with:
+          name: freebsd-aarch64-payload
+          path: FreeBSDAArch64Payload
+          if-no-files-found: error
+          retention-days: 1
+
+  # A fresh AArch64 guest with no toolchain installed consumes the payload:
+  # its emptiness is the point. No hosted runner accelerates an AArch64 guest,
+  # so it runs under emulation on the x86-64 host, which is why it is extended
+  # scope only and has a long timeout.
   transfer:
-    name: FreeBSD transferred artifact
+    name: Transfer
     needs: build
+    if: inputs.scope == 'extended'
     runs-on: ubuntu-26.04
-    timeout-minutes: 40
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v6
         with:
@@ -111,32 +164,20 @@ jobs:
       - name: Load the toolchain manifest
         run: grep -E '^[A-Z0-9_]+=' .github/Toolchains.env >> "$GITHUB_ENV"
 
-      - name: Install QEMU
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends \
-            qemu-system-x86 qemu-system-arm qemu-efi-aarch64 zstd rsync
-          sudo chmod a+rw /dev/kvm 2>/dev/null || true
-
-      - name: Restore the compilation cache
-        uses: actions/cache/restore@v6
+      - name: Download the transfer payload
+        uses: actions/download-artifact@v7
         with:
-          path: BuildCache/ccache
-          key: ccache-freebsd-x86_64-${{ env.TOOLCHAIN_REVISION }}-${{ github.sha }}
-          restore-keys: ccache-freebsd-x86_64-${{ env.TOOLCHAIN_REVISION }}-
-
-      - name: Produce the payload on FreeBSD x86-64
-        run: |
-          mkdir -p BuildCache
-          {
-            echo 'sh .github/Scripts/Verify.sh --stage build'
-            echo 'sh Tests/Native/FreeBSDAArch64/BuildTransfer.sh'
-          } > BuildCache/produce.sh
-          sh .github/Scripts/FreeBSDVM.sh --arch x86_64 --role build \
-            --script BuildCache/produce.sh --pull Bin/Tests/Native
+          name: freebsd-aarch64-payload
+          path: FreeBSDAArch64Payload
 
       - name: Consume it in a guest with no toolchain
-        run: |
-          echo 'sh Tests/Native/FreeBSDAArch64/VerifyTransfer.sh' > BuildCache/consume.sh
-          sh .github/Scripts/FreeBSDVM.sh --arch aarch64 --role minimal \
-            --script BuildCache/consume.sh
+        uses: vmactions/freebsd-vm@f0552d3b69211736abd97f02ff3d4674c56b73b1 # v1.5.5
+        with:
+          release: ${{ env.FREEBSD_VERSION }}
+          arch: aarch64
+          mem: 4096
+          sync: rsync
+          copyback: false
+          run: |
+            set -eu
+            sh Tests/Native/FreeBSDAArch64/VerifyTransfer.sh FreeBSDAArch64Payload

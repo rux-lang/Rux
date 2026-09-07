@@ -6,15 +6,15 @@
 
 # Rux Programming Language
 
-[![FreeBSD x86-64](https://github.com/rux-lang/Rux/actions/workflows/FreeBSD-x86_64.yml/badge.svg?branch=dev)](https://github.com/rux-lang/Rux/actions/workflows/FreeBSD-x86_64.yml)
-[![FreeBSD AArch64](https://github.com/rux-lang/Rux/actions/workflows/FreeBSD-AArch64.yml/badge.svg?branch=dev)](https://github.com/rux-lang/Rux/actions/workflows/FreeBSD-AArch64.yml)
-[![Linux x86-64](https://github.com/rux-lang/Rux/actions/workflows/Linux-x86_64.yml/badge.svg?branch=dev)](https://github.com/rux-lang/Rux/actions/workflows/Linux-x86_64.yml)
-[![Linux AArch64](https://github.com/rux-lang/Rux/actions/workflows/Linux-AArch64.yml/badge.svg?branch=dev)](https://github.com/rux-lang/Rux/actions/workflows/Linux-AArch64.yml)
-[![macOS x86-64](https://github.com/rux-lang/Rux/actions/workflows/macOS-x86_64.yml/badge.svg?branch=dev)](https://github.com/rux-lang/Rux/actions/workflows/macOS-x86_64.yml)
-[![macOS AArch64](https://github.com/rux-lang/Rux/actions/workflows/macOS-AArch64.yml/badge.svg?branch=dev)](https://github.com/rux-lang/Rux/actions/workflows/macOS-AArch64.yml)
-[![Windows x86-64](https://github.com/rux-lang/Rux/actions/workflows/Windows-x86_64.yml/badge.svg?branch=dev)](https://github.com/rux-lang/Rux/actions/workflows/Windows-x86_64.yml)
-[![Windows AArch64](https://github.com/rux-lang/Rux/actions/workflows/Windows-AArch64.yml/badge.svg?branch=dev)](https://github.com/rux-lang/Rux/actions/workflows/Windows-AArch64.yml)
-[![Code Quality](https://github.com/rux-lang/Rux/actions/workflows/CodeQuality.yml/badge.svg?branch=dev)](https://github.com/rux-lang/Rux/actions/workflows/CodeQuality.yml)
+[![CI](https://github.com/rux-lang/Rux/actions/workflows/CI.yml/badge.svg?branch=dev)](https://github.com/rux-lang/Rux/actions/workflows/CI.yml)
+[![FreeBSD x86-64](https://img.shields.io/github/check-runs/rux-lang/Rux/dev?nameFilter=FreeBSD%20x86-64%20%2F%20Build&label=FreeBSD%20x86-64)](https://github.com/rux-lang/Rux/actions/workflows/CI.yml?query=branch%3Adev)
+[![FreeBSD AArch64](https://img.shields.io/github/check-runs/rux-lang/Rux/dev?nameFilter=FreeBSD%20AArch64%20%2F%20Build&label=FreeBSD%20AArch64)](https://github.com/rux-lang/Rux/actions/workflows/CI.yml?query=branch%3Adev)
+[![Linux x86-64](https://img.shields.io/github/check-runs/rux-lang/Rux/dev?nameFilter=Linux%20x86-64%20%2F%20Build&label=Linux%20x86-64)](https://github.com/rux-lang/Rux/actions/workflows/CI.yml?query=branch%3Adev)
+[![Linux AArch64](https://img.shields.io/github/check-runs/rux-lang/Rux/dev?nameFilter=Linux%20AArch64%20%2F%20Build&label=Linux%20AArch64)](https://github.com/rux-lang/Rux/actions/workflows/CI.yml?query=branch%3Adev)
+[![macOS x86-64](https://img.shields.io/github/check-runs/rux-lang/Rux/dev?nameFilter=macOS%20x86-64%20%2F%20Build&label=macOS%20x86-64)](https://github.com/rux-lang/Rux/actions/workflows/CI.yml?query=branch%3Adev)
+[![macOS AArch64](https://img.shields.io/github/check-runs/rux-lang/Rux/dev?nameFilter=macOS%20AArch64%20%2F%20Build&label=macOS%20AArch64)](https://github.com/rux-lang/Rux/actions/workflows/CI.yml?query=branch%3Adev)
+[![Windows x86-64](https://img.shields.io/github/check-runs/rux-lang/Rux/dev?nameFilter=Windows%20x86-64%20%2F%20Build&label=Windows%20x86-64)](https://github.com/rux-lang/Rux/actions/workflows/CI.yml?query=branch%3Adev)
+[![Windows AArch64](https://img.shields.io/github/check-runs/rux-lang/Rux/dev?nameFilter=Windows%20AArch64%20%2F%20Build&label=Windows%20AArch64)](https://github.com/rux-lang/Rux/actions/workflows/CI.yml?query=branch%3Adev)
 [![Release](https://img.shields.io/github/v/release/rux-lang/Rux?style=flat&logo=github&label=Release&color=green)](https://github.com/rux-lang/Rux/releases)
 [![License](https://img.shields.io/github/license/rux-lang/Rux?style=flat)](LICENSE.md)
 
@@ -22,7 +22,7 @@ Rux is a fast, compiled, strongly typed, multi-paradigm programming language. Th
 
 Debug builds preserve the unoptimized program structure, while Release builds use explicit, bounded HIR and LIR passes and remove unreachable private declarations before either native back end runs. Shared RCU module construction and a format-neutral link graph keep object and image behavior consistent across all eight targets.
 
-The workflow badges show the default branch status. The platform badges cover native x86-64 and AArch64 builds and tests. The [CI/CD guide](Docs/CI-CD.md) documents the native, cross-compiler, transferred-artifact, and runtime acceptance paths in detail.
+The CI badge shows the status of the `dev` branch; the platform badges show each target's build-and-test job on it. The [CI/CD guide](Docs/CI-CD.md) documents the native, cross-compiler, transferred-artifact, and runtime acceptance paths in detail.
 
 > [!IMPORTANT]
 > Rux is under active, pre-1.0 development. Language features, compiler behavior, and package formats may change between minor releases. Check the [changelog](CHANGELOG.md) when upgrading.
@@ -55,7 +55,7 @@ Prebuilt x86-64 and AArch64 releases are published for every supported operating
 
 ## Building from Source
 
-Use upstream Clang 23.1+, CMake 4.4.3+, Ninja 1.13.2+, and current stable Git. See the [verified tool versions](Docs/Workflow.md#1-prerequisites).
+Use upstream Clang 23.1+, CMake 3.31+, Ninja 1.13.2+, and current stable Git. See the [verified tool versions](Docs/Workflow.md#1-prerequisites).
 
 Rux is written in C++26 and builds exclusively with upstream Clang 23.1 or newer. Formatting and static analysis use LLVM 23. Choose your operating system for prerequisites, build commands, and verification steps:
 

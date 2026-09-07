@@ -21,15 +21,9 @@ Opening a PR prefills [`.github/PULL_REQUEST_TEMPLATE.md`](../.github/PULL_REQUE
 
 ## 2. Automated Checks
 
-Opening or updating a PR triggers the full per-OS CI matrix — every supported platform builds and runs the test suite. See [CI/CD Flow](CI-CD.md) for the exact workflows and platforms.
+Opening or updating a PR runs the full scope of `CI.yml` — every supported target builds and runs its test suite, clang-tidy analyzes every translation unit, and FreeBSD AArch64 gets its emulated smoke. A pull request that changes only documentation builds nothing. See [CI/CD Flow](CI-CD.md) for the exact scopes and jobs.
 
-Not every workflow blocks merging. The **required** checks are:
-
-- **Linux** (`Linux.yml`)
-- **macOS** (`macOS.yml`)
-- **Windows** (`Windows.yml`)
-
-The FreeBSD workflow runs too and is worth watching, but it is **informational** — it won't block the merge button. All three required platform checks must be green before a PR is eligible to merge.
+One check blocks merging: **`CI`**, the gate job that aggregates every job of the run. The per-target check runs (`Linux x86-64 / Build`, `FreeBSD AArch64 / Test`, and so on) are where to look when it fails; none of them is informational, since any failure fails the gate.
 
 ## 3. Review
 

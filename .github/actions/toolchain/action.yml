@@ -1,0 +1,62 @@
+name: Rux toolchain
+description: >-
+  Restore the pinned Clang 23 and ccache prefix for one host from the Actions
+  cache, or pack it from the pinned upstream assets and cache it at once.
+
+# Every host job starts with this action. The prefix is keyed on the manifest
+# and the packers, so bumping a pin, the epoch, or a packing rule is exactly
+# what repacks it; the compilation cache keys hash the manifest too. The save
+# happens right here rather than in a post step, so a build that fails later
+# in the job does not cost the next run a repack.
+
+inputs:
+  target:
+    description: linux-x86_64, linux-aarch64, macos-aarch64, windows-x86_64 or windows-aarch64
+    required: true
+
+outputs:
+  cache-hit:
+    description: Whether the prefix came from the cache
+    value: ${{ steps.restore.outputs.cache-hit }}
+
+runs:
+  using: composite
+  steps:
+    # Every pinned version reaches the rest of the calling job and its cache
+    # keys from one file, so there is nothing to keep in sync.
+    - name: Load the toolchain manifest
+      shell: bash
+      run: grep -E '^[A-Z0-9_]+=' .github/Toolchains.env >> "$GITHUB_ENV"
+
+    - name: Restore the toolchain
+      id: restore
+      uses: actions/cache/restore@v6
+      with:
+        path: ${{ runner.temp }}/rux-toolchain
+        key: toolchain-${{ inputs.target }}-${{ hashFiles('.github/Toolchains.env', '.github/Scripts/Toolchain/**') }}
+
+    # Packs on a miss, verifies the host's CMake and Ninja, and exports the
+    # compiler and ccache settings through GITHUB_ENV and GITHUB_PATH, which
+    # reach every later step of the calling job.
+    - name: Install the toolchain
+      if: runner.os != 'Windows'
+      shell: sh
+      env:
+        RUX_TARGET: ${{ inputs.target }}
+      run: sh .github/Scripts/SetupToolchain.sh --target "$RUX_TARGET"
+
+    # The same step imports the Visual Studio environment once, so no later
+    # step has to re-run vcvarsall.
+    - name: Install the toolchain and Visual Studio environment
+      if: runner.os == 'Windows'
+      shell: pwsh
+      env:
+        RUX_TARGET: ${{ inputs.target }}
+      run: ./.github/Scripts/SetupToolchain.ps1 -Target $env:RUX_TARGET
+
+    - name: Save the toolchain
+      if: steps.restore.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v6
+      with:
+        path: ${{ runner.temp }}/rux-toolchain
+        key: ${{ steps.restore.outputs.cache-primary-key }}

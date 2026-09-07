@@ -57,7 +57,7 @@ For anything beyond the quick start, see the detailed guides:
 | [Branch Architecture](Docs/Branches.md)           | What `main` and `dev` are for, naming, protection rules         |
 | [Pull Request Lifecycle](Docs/PullRequest.md)     | From opening a PR to merge: review, CI gates, etiquette         |
 | [CI/CD Flow](Docs/CI-CD.md)                       | The per-OS build/test workflows that run on every push and PR   |
-| [Release Pipeline](Docs/Release.md)               | How a tag becomes a published, multi-platform release           |
+| [Release Pipeline](Docs/Release.md)               | How a dispatched run becomes a multi-platform release           |
 
 ## Code Style
 

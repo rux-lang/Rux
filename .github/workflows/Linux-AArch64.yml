@@ -1,67 +1,47 @@
 name: Linux AArch64
 
-# Everything Linux AArch64 does, in the order it runs. Release.yml calls this
-# workflow too, so a release is built by exactly the steps CI verified.
+# Everything Linux AArch64 does, in the order it runs. CI.yml calls this
+# workflow with the scope of the run, and Release.yml calls it with
+# `extended`, so a release is built by exactly the steps CI verified.
 
 on:
-  push:
-    branches: ['**']
-  pull_request:
-    branches: [main, dev]
-    types: [opened, reopened, synchronize, ready_for_review, labeled, unlabeled]
-  schedule:
-    - cron: '0 3 * * *'
-  workflow_dispatch:
   workflow_call:
-
-# A branch push and its pull request share one group so the same commit is never
-# built twice. Runs on dev are left alone because they warm the caches every
-# other branch restores, and a dispatched run is never cancelled because a
-# release is one.
-concurrency:
-  group: linux-aarch64-${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
-  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' && github.ref_name != 'dev' && github.ref_name != 'main' }}
+    inputs:
+      scope:
+        description: fast, full, or extended
+        type: string
+        required: true
 
 permissions:
   contents: read
 
 jobs:
   build:
-    name: Linux AArch64
-    # Linux x86-64 is the fast lane and runs on every push; every other target
-    # waits for something that can reach dev.
-    if: ${{ github.event_name != 'push' || github.ref_name == 'dev' || github.ref_name == 'main' }}
+    name: Build
     runs-on: ubuntu-26.04-arm
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
 
-      # Every pinned version and checksum reaches later steps and cache keys
-      # from one file, so there is nothing to keep in sync.
-      - name: Load the toolchain manifest
-        run: grep -E '^[A-Z0-9_]+=' .github/Toolchains.env >> "$GITHUB_ENV"
-
-      # Restored here and saved by the post step on a miss.
-      - name: Restore the toolchain
-        uses: actions/cache@v6
-        with:
-          path: ${{ runner.temp }}/rux-toolchain
-          key: toolchain-${{ env.TOOLCHAIN_REVISION }}-linux-aarch64
-
+      # Restores the pinned Clang and ccache prefix from the cache, or packs it
+      # from the pinned upstream assets and caches it, then exports the
+      # compiler and ccache settings every later step uses.
       - name: Install the toolchain
-        run: sh .github/Scripts/SetupToolchain.sh --target linux-aarch64
+        uses: ./.github/actions/toolchain
+        with:
+          target: linux-aarch64
 
-      # The sha suffix makes the primary key always miss, so every run writes
-      # back a cache warmer than the one it restored.
+      # The sha suffix makes the primary key always miss, so every saving run
+      # writes back a cache warmer than the one it restored.
       - name: Restore the compilation cache
         id: ccache
         uses: actions/cache/restore@v6
         with:
           path: BuildCache/ccache
-          key: ccache-linux-aarch64-${{ env.TOOLCHAIN_REVISION }}-${{ github.sha }}
-          restore-keys: ccache-linux-aarch64-${{ env.TOOLCHAIN_REVISION }}-
+          key: ccache-linux-aarch64-${{ hashFiles('.github/Toolchains.env') }}-${{ github.sha }}
+          restore-keys: ccache-linux-aarch64-${{ hashFiles('.github/Toolchains.env') }}-
 
       - name: Build
         run: sh .github/Scripts/Verify.sh --stage build

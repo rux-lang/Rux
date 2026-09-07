@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 4.4.3)
+cmake_minimum_required(VERSION 3.31...4.4)
 project(Rux VERSION 0.4.0 LANGUAGES CXX)
 
 if (CMAKE_GENERATOR MATCHES "^Ninja")

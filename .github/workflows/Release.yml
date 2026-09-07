@@ -2,8 +2,9 @@ name: Release
 
 # Manual only. Pushing a tag never starts a release by itself, so there is
 # nothing to race and nothing to cancel by accident. Every target is built by
-# calling the same workflow CI runs for it, so a release cannot diverge from
-# what was already verified.
+# calling the same workflow CI runs for it, in the extended scope, so a release
+# cannot diverge from what was already verified and nothing that runs under
+# emulation is skipped.
 
 on:
   workflow_dispatch:
@@ -64,27 +65,43 @@ jobs:
   linux-x86_64:
     needs: verify
     uses: ./.github/workflows/Linux-x86_64.yml
+    with:
+      scope: extended
   linux-aarch64:
     needs: verify
     uses: ./.github/workflows/Linux-AArch64.yml
+    with:
+      scope: extended
   macos-aarch64:
     needs: verify
     uses: ./.github/workflows/macOS-AArch64.yml
+    with:
+      scope: extended
   macos-x86_64:
     needs: verify
     uses: ./.github/workflows/macOS-x86_64.yml
+    with:
+      scope: extended
   windows-x86_64:
     needs: verify
     uses: ./.github/workflows/Windows-x86_64.yml
+    with:
+      scope: extended
   windows-aarch64:
     needs: verify
     uses: ./.github/workflows/Windows-AArch64.yml
+    with:
+      scope: extended
   freebsd-x86_64:
     needs: verify
     uses: ./.github/workflows/FreeBSD-x86_64.yml
+    with:
+      scope: extended
   freebsd-aarch64:
     needs: verify
     uses: ./.github/workflows/FreeBSD-AArch64.yml
+    with:
+      scope: extended
 
   publish:
     name: Publish
@@ -99,10 +116,10 @@ jobs:
       - freebsd-aarch64
     runs-on: ubuntu-26.04
     timeout-minutes: 20
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
       - uses: actions/download-artifact@v7
         with:
           path: Artifacts
@@ -167,6 +184,8 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  # The only job that writes: it pushes the tag and creates the draft, so it
+  # is the only checkout that keeps its credentials.
   draft:
     name: Draft the release
     needs: [publish, installer]

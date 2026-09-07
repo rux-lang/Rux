@@ -1,10 +1,13 @@
 #!/bin/sh
 
-# Restore the pinned prebuilt toolchain for one target.
+# Prepare the pinned toolchain prefix for one POSIX host and export it.
 #
-# CI never installs or compiles a toolchain: it downloads exactly one verified
-# bundle from rux-lang/Toolchain and puts it on PATH. The POSIX peer of
-# .github/Scripts/SetupToolchain.ps1.
+# CI installs no toolchain. The composite action restores the prefix from the
+# Actions cache; this script packs it from the pinned upstream assets only when
+# the cache held nothing for the current manifest, checks the CMake and Ninja
+# the runner image ships, and exports the compiler and ccache settings every
+# later step uses. The Windows peer is SetupToolchain.ps1. FreeBSD guests
+# install packages instead and export their environment through FreeBSDEnv.sh.
 #
 # Usage: sh .github/Scripts/SetupToolchain.sh --target linux-x86_64 [--prefix DIR]
 
@@ -38,10 +41,11 @@ while [ "$#" -gt 0 ]; do
 done
 
 [ -n "$target" ] || die "option '--target' is required"
-# FreeBSD has no hosted runner: its toolchain lives inside the prepared guest
-# image, so freebsd-* is handled by freebsd-vm.sh rather than here.
+# macOS x86-64 is cross-built from the AArch64 prefix, and FreeBSD has no
+# hosted runner: its guests install packages.
 case "$target" in
-linux-x86_64 | linux-aarch64 | macos-x86_64 | macos-aarch64) ;;
+linux-x86_64 | linux-aarch64) packer=PackLinux.sh ;;
+macos-aarch64) packer=PackMacOS.sh ;;
 *) die "unsupported target '$target'" ;;
 esac
 
@@ -53,75 +57,69 @@ if grep -qvE '^[[:space:]]*(#.*)?$|^[A-Z0-9_]+=[A-Za-z0-9._:/+-]*$' "$manifest";
     die "'$manifest' contains a line that is not a comment or KEY=VALUE"
 fi
 . "$manifest"
+[ -n "${CCACHE_MAXSIZE:-}" ] || die "'$manifest' declares no CCACHE_MAXSIZE"
 
-checksum_variable="SHA256_TOOLCHAIN_$(printf '%s' "$target" | tr 'a-z-' 'A-Z_')"
-eval "checksum=\${$checksum_variable:-}"
-[ -n "$checksum" ] || die "'$manifest' declares no $checksum_variable"
-[ "$checksum" != TBD ] ||
-    die "$checksum_variable is still TBD; publish a Toolchain release and record its checksum"
-[ "$TOOLCHAIN_REVISION" != TBD ] || die "TOOLCHAIN_REVISION is still TBD"
-
-archive_name=rux-toolchain-$target-$TOOLCHAIN_REVISION.tar.zst
-archive_url=$TOOLCHAIN_BASE_URL/toolchain-$TOOLCHAIN_REVISION/$archive_name
+packer_path=$script_directory/Toolchain/$packer
+[ -f "$packer_path" ] || die "'$packer_path' was not found"
 
 if [ -z "$prefix" ]; then
     prefix=${RUNNER_TEMP:-${TMPDIR:-/tmp}}/rux-toolchain
 fi
 
-# Stage into .partial and rename only after the checksum matches, so an
-# interrupted download can never be mistaken for a verified one.
-download() {
-    url=$1
-    destination=$2
-    attempt=1
-    while [ "$attempt" -le 3 ]; do
-        rm -f "$destination.partial"
-        if curl --fail --silent --show-error --location --retry 2 \
-            --output "$destination.partial" "$url"; then
-            mv "$destination.partial" "$destination"
-            return 0
-        fi
-        printf 'warning: download attempt %s of 3 failed for %s\n' "$attempt" "$url" >&2
-        sleep $((attempt * 5))
-        attempt=$((attempt + 1))
-    done
-    die "could not download '$url'"
-}
-
-verify() {
-    file=$1
-    expected=$2
+sha256_of_stdin() {
     if command -v sha256sum >/dev/null 2>&1; then
-        actual=$(sha256sum "$file" | cut -d' ' -f1)
+        sha256sum | cut -d' ' -f1
     elif command -v shasum >/dev/null 2>&1; then
-        actual=$(shasum -a 256 "$file" | cut -d' ' -f1)
+        shasum -a 256 | cut -d' ' -f1
     else
-        actual=$(sha256 -q "$file")
+        sha256 -q
     fi
-    [ "$actual" = "$expected" ] ||
-        die "checksum mismatch for '$file': expected $expected, got $actual"
 }
 
-# The marker records which revision the prefix already holds, so a warm runner
-# cache skips download and extraction entirely.
+# The marker records which manifest and packer produced the prefix, so a
+# restored cache is used only when both still match; the cache key hashes the
+# same files, so a mismatch here means a stale prefix, not a stale key.
+revision=$target-$(cat "$manifest" "$packer_path" | sha256_of_stdin)
 marker=$prefix/.rux-toolchain-revision
-if [ -f "$marker" ] && [ "$(cat "$marker")" = "$target-$TOOLCHAIN_REVISION" ]; then
-    printf 'Toolchain %s %s is already present in %s\n' "$target" "$TOOLCHAIN_REVISION" "$prefix"
+if [ -f "$marker" ] && [ "$(cat "$marker")" = "$revision" ]; then
+    printf 'Toolchain %s is already present in %s\n' "$target" "$prefix"
 else
-    staging=${RUNNER_TEMP:-${TMPDIR:-/tmp}}/rux-toolchain-download
-    mkdir -p "$staging"
-    printf 'Downloading %s\n' "$archive_url"
-    download "$archive_url" "$staging/$archive_name"
-    verify "$staging/$archive_name" "$checksum"
-
+    printf 'Packing the %s toolchain into %s\n' "$target" "$prefix"
     rm -rf "$prefix"
-    mkdir -p "$prefix"
-    tar --use-compress-program=unzstd -xf "$staging/$archive_name" -C "$prefix" --strip-components=1
-    rm -f "$staging/$archive_name"
-    printf '%s' "$target-$TOOLCHAIN_REVISION" >"$marker"
+    sh "$packer_path" --target "$target" --prefix "$prefix"
+    printf '%s' "$revision" >"$marker"
 fi
 
-[ -x "$prefix/bin/clang++-23" ] || die "'$prefix/bin/clang++-23' is missing from the bundle"
+for tool in clang++-23 clang-format-23 clang-tidy-23 ccache; do
+    [ -x "$prefix/bin/$tool" ] || die "'$prefix/bin/$tool' is missing from the toolchain prefix"
+done
+
+# CMake and Ninja come from the runner image, which ships versions inside the
+# range CMakeLists.txt accepts; checking here names the real cause when an
+# image changes rather than leaving it to the configure step.
+version_at_least() {
+    printf '%s\n%s\n' "$1" "$2" | awk -F. '
+        NR == 1 { for (i = 1; i <= NF; i++) have[i] = $i + 0; n = NF }
+        NR == 2 { for (i = 1; i <= NF; i++) want[i] = $i + 0; if (NF > n) n = NF }
+        END {
+            for (i = 1; i <= n; i++) {
+                if (have[i] + 0 > want[i] + 0) exit 0
+                if (have[i] + 0 < want[i] + 0) exit 1
+            }
+            exit 0
+        }'
+}
+
+command -v cmake >/dev/null 2>&1 ||
+    die 'cmake was not found on PATH; the runner image is expected to ship CMake 3.31 or newer'
+cmake_version=$(cmake --version | head -1 | sed 's/^[^0-9]*//; s/[^0-9.].*$//')
+version_at_least "$cmake_version" 3.31 ||
+    die "the runner image ships CMake $cmake_version but Rux requires 3.31 or newer"
+command -v ninja >/dev/null 2>&1 ||
+    die 'ninja was not found on PATH; the runner image is expected to ship Ninja 1.13.2 or newer'
+ninja_version=$(ninja --version | head -1 | sed 's/[^0-9.].*$//')
+version_at_least "$ninja_version" 1.13.2 ||
+    die "the runner image ships Ninja $ninja_version but Rux requires 1.13.2 or newer"
 
 # GITHUB_ENV entries must be single-line; a newline would let a value inject a
 # second assignment.
@@ -145,7 +143,7 @@ export_variable() {
 export_variable RUX_TOOLCHAIN "$prefix"
 export_variable CXX "$prefix/bin/clang++-23"
 
-# The macOS bundle is repacked from Homebrew, whose clang carries no built-in
+# The macOS prefix is repacked from Homebrew, whose clang carries no built-in
 # SDK path and expects either a Command Line Tools install at a fixed location
 # or a configuration file naming the SDK. Neither is guaranteed on a runner, so
 # name it the way the Darwin driver expects; without this every standard header
@@ -157,8 +155,8 @@ export_variable CMAKE_CXX_COMPILER_LAUNCHER ccache
 export_variable CCACHE_DIR "${GITHUB_WORKSPACE:-$repository_root}/BuildCache/ccache"
 export_variable CCACHE_MAXSIZE "$CCACHE_MAXSIZE"
 export_variable CCACHE_COMPILERCHECK content
-# The FreeBSD guest builds under /root/rux while the host builds under the
-# workspace path; without this they would never share cache entries.
+# Other runs build the same tree at another path; without this they would
+# never share cache entries.
 export_variable CCACHE_NOHASHDIR 1
 
 if [ -n "${GITHUB_PATH:-}" ]; then
@@ -166,5 +164,6 @@ if [ -n "${GITHUB_PATH:-}" ]; then
 fi
 
 "$prefix/bin/clang++-23" --version | head -1
-"$prefix/bin/cmake" --version | head -1
-"$prefix/bin/ninja" --version
+"$prefix/bin/ccache" --version | head -1
+cmake --version | head -1
+ninja --version
