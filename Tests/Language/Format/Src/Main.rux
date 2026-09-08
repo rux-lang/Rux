@@ -6,6 +6,9 @@ import Text::{ FormatError, String, StringView };
 
 // A format call reached the way a program reaches one: literal text, two placeholders, two values of different
 // types, and the result checked as text rather than byte by byte.
+//
+// The float is written to every digit it needs to read back as itself, which for pi is sixteen. It used to stop at
+// fifteen, which was one short of a round trip.
 
 func Main() -> int {
     var system = SystemAllocator();
@@ -13,7 +16,7 @@ func Main() -> int {
 
     let rendered = Rendered(allocator, Render(allocator, "Integer: {}, Float: {}", 255, 3.141592653589793));
 
-    let expected = StringView::FromValidated("Integer: 255, Float: 3.14159265358979");
+    let expected = StringView::FromValidated("Integer: 255, Float: 3.141592653589793");
     let renderedView = rendered.View();
     Assert(renderedView.Equals(expected), "and fills both placeholders in order");
 

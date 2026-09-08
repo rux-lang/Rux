@@ -1,0 +1,156 @@
+// Taking a narrow float apart, and putting its shortest digits back together as text.
+//
+// The bits are read through a pointer rather than through a conversion, because there is no conversion that
+// preserves them: casting a `float64` to a `uint64` asks for the value's integer part, and what is wanted is its
+// representation. That is a documented unsafe boundary and the only one in this package.
+//
+// What comes out is the significand and the power of two it is scaled by, in the form the exact digit generator
+// takes. A subnormal has a zero exponent field and no implicit leading bit; a normal has the bit and an exponent
+// biased by the format. The third thing the generator needs is whether the value sits at the bottom of its
+// binade — where its lower neighbour is half as far away as its upper one, because the exponent steps down
+// underneath it. That is the stored mantissa being zero, with the exception of the smallest normal, whose lower
+// neighbour is the largest subnormal and is a full gap away like any other.
+
+import Core::{ Result, Unit };
+
+/// A finite float taken apart: the value is `significand * 2^exponent`.
+///
+/// Copy, carrying no reference to the value it came from.
+///
+/// @see https://rux-lang.dev/docs/api/format/float-parts
+pub struct FloatParts {
+    /// The integer significand, including the implicit bit for a normal value. Zero only for a zero.
+    pub significand: uint64;
+    /// The power of two the significand is scaled by.
+    pub exponent: int;
+    /// Whether the lower neighbour is half as far away as the upper one.
+    pub atBinadeBottom: bool;
+    /// Whether the value is negative, including the negative zero.
+    pub negative: bool;
+}
+
+/// The bits of `value`, as they are stored.
+///
+/// # Safety
+///
+/// Reads the value's storage as an integer of the same width through a raw pointer. This is the representation
+/// rather than the value: there is no conversion that preserves the bits, since a cast asks for the number.
+///
+/// @param value the float to read
+/// @returns its sixty-four bits
+/// @see https://rux-lang.dev/docs/api/format/bits-of-float64
+pub func BitsOfFloat64(value: float64) -> uint64 {
+    let address = (@value) as *uint64;
+    return *address;
+}
+
+/// The bits of `value`, as they are stored.
+///
+/// # Safety
+///
+/// As `BitsOfFloat64`, at the narrower width.
+///
+/// @param value the float to read
+/// @returns its thirty-two bits
+/// @see https://rux-lang.dev/docs/api/format/bits-of-float32
+pub func BitsOfFloat32(value: float32) -> uint32 {
+    let address = (@value) as *uint32;
+    return *address;
+}
+
+/// Takes a `float64` apart into the significand and exponent its digits are generated from.
+///
+/// A NaN or an infinity has no decimal and is not this function's business; a caller establishes the value is
+/// finite first. A zero comes back with a zero significand, which the caller writes as `0` without generating
+/// anything.
+///
+/// Cannot fail; runs in constant time and allocates nothing.
+///
+/// @param value the finite float to take apart
+/// @returns its significand, exponent, binade position and sign
+/// @see https://rux-lang.dev/docs/api/format/decompose-float64
+pub func DecomposeFloat64(value: float64) -> FloatParts {
+    let bits = BitsOfFloat64(value);
+    let mantissa = bits & 0xFFFFFFFFFFFFFu64;
+    let biased = ((bits >> 52u64) & 0x7FFu64) as int;
+    let negative = (bits >> 63u64) != 0u64;
+    if biased == 0 {
+        // Subnormal: no implicit bit, and the exponent is the smallest the format has. The lower gap is never
+        // halved here, because there is no binade below to step into.
+        return FloatParts { significand: mantissa, exponent: -1074, atBinadeBottom: false, negative: negative };
+    }
+    return FloatParts {
+        significand: mantissa | 0x10000000000000u64,
+        exponent: biased - 1075,
+        // The smallest normal is at the bottom of its binade by the mantissa test, but its lower neighbour is the
+        // largest subnormal, a full gap away — the exponent does not step down below it.
+        atBinadeBottom: mantissa == 0u64 && biased > 1,
+        negative: negative
+    };
+}
+
+/// Takes a `float32` apart into the significand and exponent its digits are generated from.
+///
+/// The same decomposition at the narrower width, so both widths reach one generator. Cannot fail; runs in constant
+/// time and allocates nothing.
+///
+/// @param value the finite float to take apart
+/// @returns its significand, exponent, binade position and sign
+/// @see https://rux-lang.dev/docs/api/format/decompose-float32
+pub func DecomposeFloat32(value: float32) -> FloatParts {
+    let bits = BitsOfFloat32(value);
+    let mantissa = (bits & 0x7FFFFFu32) as uint64;
+    let biased = ((bits >> 23u32) & 0xFFu32) as int;
+    let negative = (bits >> 31u32) != 0u32;
+    if biased == 0 {
+        return FloatParts { significand: mantissa, exponent: -149, atBinadeBottom: false, negative: negative };
+    }
+    return FloatParts {
+        significand: mantissa | 0x800000u64,
+        exponent: biased - 150,
+        atBinadeBottom: mantissa == 0u64 && biased > 1,
+        negative: negative
+    };
+}
+
+/// Writes the shortest decimal text of a finite, non-zero float taken apart by `DecomposeFloat64` or its narrow
+/// counterpart, choosing fixed or scientific notation the way the rest of this package does.
+///
+/// The sign is written from `parts`, so a negative zero keeps its sign even though its digits are a bare zero.
+///
+/// # Failures
+/// Answers false when the exact arithmetic could not run in the fixed workspace, which Docs/NarrowFloat.md proves
+/// the narrow widths do not reach. A caller that sees it has a defect in the bound rather than a value to handle.
+///
+/// @param cursor the destination
+/// @param parts the value taken apart
+/// @param scientificFrom the decimal exponent at or above which scientific notation is used
+/// @returns true when the whole rendering was written
+/// @see https://rux-lang.dev/docs/api/format/write-shortest-float
+pub func WriteShortestFloat(cursor: &var ByteCursor, parts: FloatParts, scientificFrom: int) -> bool {
+    if parts.negative { cursor.Push(c8'-'); }
+    if parts.significand == 0u64 {
+        // Both zeros render as one digit and a fraction, which is what makes the text read as a float.
+        cursor.Push(c8'0');
+        cursor.Push(c8'.');
+        cursor.Push(c8'0');
+        return true;
+    }
+    var digits: char8[24];
+    var count: uint = 0;
+    var exponent10: int = 0;
+    if !ShortestDigits(parts.significand, parts.exponent, parts.atBinadeBottom, (@digits[0])[..24], @count,
+                       @exponent10) {
+        return false;
+    }
+    // Fixed notation while it stays readable, which is the rule the printf %g family follows: an exponent below
+    // -4 would spend more width on leading zeros than on digits, and one past the digits would spend it on
+    // trailing ones.
+    if exponent10 < -4 || exponent10 >= scientificFrom {
+        WriteScientific(cursor, (@digits[0])[..count], count, exponent10);
+    }
+    else {
+        WriteFixed(cursor, (@digits[0])[..count], count, exponent10);
+    }
+    return true;
+}

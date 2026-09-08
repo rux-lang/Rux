@@ -11,12 +11,10 @@ import Text::{ Debug, Display, FormatError, FormatSpec, RejectStyle, TextWriter 
 // The largest finite float32, held here as the float64 it widens to exactly.
 const MaxFinite32 = 3.4028234663852886e38;
 
-// How many significant digits a float32 is printed to. A float32 widens to a
-// float64 exactly, but what it widens to is the full binary value — 0.1f is
-// 0.100000001490116119384765625 — so printing it to the fifteen digits a
-// float64 earns would print noise the float32 never carried. Seven is what
-// it does carry, and it renders 0.1f as 0.1.
-const Digits32 = 7u;
+// The decimal exponent at or above which a float32 renders in scientific notation. Nine is the digit count at
+// which every float32 is distinguishable from every other, so a value needing that many places in fixed
+// notation is one whose fixed form is all trailing zeros.
+const ScientificFrom32 = 9;
 
 // Whether the value is a NaN, on the same terms as the float64 overload: a
 // NaN is the only value not equal to itself.
@@ -109,12 +107,10 @@ func WriteFloat(cursor: &var ByteCursor, value: float32) {
         }
         return;
     }
-    if value == 0.0 {
-        if 1.0 / (value as float64) < 0.0 {
-            cursor.Push(c8'-');
-        }
-        cursor.PushBytes("0.0");
-        return;
+    // The exact shortest form, at this width's own neighbours: converting to float64 first and rendering that
+    // would give the shortest decimal for the wider value, which is a different and longer number.
+    let parts = DecomposeFloat32(value);
+    if !WriteShortestFloat(cursor, parts, ScientificFrom32) {
+        WriteDecimal(cursor, value as float64, 9u);
     }
-    WriteDecimal(cursor, value as float64, Digits32);
 }

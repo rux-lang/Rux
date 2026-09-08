@@ -139,7 +139,7 @@ func Main() -> int {
     if code != 0 { return code; }
     code = Check(3.14159265358979, "3.14159265358979", 33);
     if code != 0 { return code; }
-    code = Check(1.0 / 3.0, "0.333333333333333", 34);
+    code = Check(1.0 / 3.0, "0.3333333333333333", 34);
     if code != 0 { return code; }
 
     // Fixed notation holds down to an exponent of -4.
@@ -154,7 +154,7 @@ func Main() -> int {
     if code != 0 { return code; }
     code = Check(2.5e-7, "2.5e-07", 51);
     if code != 0 { return code; }
-    code = Check(1.0e15, "1.0e+15", 52);
+    code = Check(1.0e15, "1000000000000000.0", 52);
     if code != 0 { return code; }
     code = Check(-1.5e20, "-1.5e+20", 53);
     if code != 0 { return code; }
@@ -163,9 +163,9 @@ func Main() -> int {
 
     // The ends of the range: the largest finite value, and the smallest
     // subnormal, which a single 10^exp scaling would have flushed to zero.
-    code = Check(1.7976931348623157e308, "1.79769313486232e+308", 60);
+    code = Check(1.7976931348623157e308, "1.7976931348623157e+308", 60);
     if code != 0 { return code; }
-    code = Check(5.0e-324, "4.94065645841247e-324", 61);
+    code = Check(5.0e-324, "5.0e-324", 61);
     if code != 0 { return code; }
 
     // Values that are not numbers at all.

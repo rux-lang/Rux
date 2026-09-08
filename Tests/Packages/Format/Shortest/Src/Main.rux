@@ -1,0 +1,233 @@
+import Allocator::{ Allocator, SystemAllocator };
+import Core::{ Assert, Result };
+import Format::{ BitsOfFloat32, BitsOfFloat64, ParseFloat32, ParseFloat64, Render };
+import Text::{ FormatError, String, StringView };
+
+// The claim this file exists to check is one sentence: what is written reads back as the same bits, and nothing
+// shorter would.
+//
+// The first half is closure, and it is the only check that catches a renderer and a parser wrong in the same
+// direction — an exact expectation written by hand cannot, because the hand writes what it believes. Every value
+// below is rendered, read back, and compared as bits rather than as numbers, so a NaN or a signed zero is held to
+// the same standard as an ordinary value.
+//
+// The second half is the exact expectations, which come from somewhere other than this code: the structural values
+// whose decimal expansion is a matter of arithmetic rather than of trusting a tool, and the two that are famous
+// for showing whether a renderer is exact at all. `0.1` is not a tenth and never was, and a renderer that prints
+// its true expansion is right and useless; one that prints `0.1` has found the shortest decimal no other float is
+// closer to. `1/3` is the case where fifteen digits and sixteen differ, which is where the old fixed-digit engine
+// stopped being a round trip.
+//
+// The adjacent values are the hard ones. Two floats one bit apart must not render alike, or reading either back
+// gives the same value and one of them is lost. They are built by walking the bits rather than by arithmetic,
+// which is the only way to be sure they really are adjacent. That property is entirely the renderer's, which is
+// why the sweep across the exponent range is built on it rather than on closure.
+//
+// Closure is checked where it can be. `ParseFloat64` is still the approximate reader that task 25 replaces, and it
+// is wrong for a good part of the exponent range — it reads back 1e300 as a different value than it was given.
+// So the closure cases below are the ordinary-range ones the current parser gets right, and the section that names
+// the extremes asserts their exact rendering without claiming the pair closes yet. Nothing here is weakened to
+// make it pass: the renderings the extremes are held to are the exact shortest forms, and the closure those
+// renderings will complete arrives with task 25.
+
+func Same(outcome: Result<String, FormatError>, expected: char8[..]) -> bool {
+    let wanted = StringView::FromValidated(expected);
+    return match <-outcome {
+        .Success(text) => text.View().Equals(wanted),
+        .Error(_) => false
+    };
+}
+
+// The rendering of `value`, read back, compared as bits. Bits rather than `==` because the two zeros compare equal
+// and a NaN compares equal to nothing, and both have to survive this.
+func RoundTrips64(allocator: Allocator, value: float64) -> bool {
+    var ok = false;
+    match <-Render(allocator, "{}", value) {
+        .Success(text) => {
+            match ParseFloat64(text.View().Bytes()) {
+                .Success(read) => { ok = BitsOfFloat64(read) == BitsOfFloat64(value); },
+                .Error(_) => { ok = false; }
+            }
+        },
+        .Error(_) => {
+            ok = false;
+        }
+    }
+    return ok;
+}
+
+func RoundTrips32(allocator: Allocator, value: float32) -> bool {
+    var ok = false;
+    match <-Render(allocator, "{}", value) {
+        .Success(text) => {
+            match ParseFloat32(text.View().Bytes()) {
+                .Success(read) => { ok = BitsOfFloat32(read) == BitsOfFloat32(value); },
+                .Error(_) => { ok = false; }
+            }
+        },
+        .Error(_) => {
+            ok = false;
+        }
+    }
+    return ok;
+}
+
+// Whether two values render differently, which two values one bit apart must.
+func RenderDiffers64(allocator: Allocator, left: float64, right: float64) -> bool {
+    var same = true;
+    match <-Render(allocator, "{}", left) {
+        .Success(first) => {
+            match <-Render(allocator, "{}", right) {
+                .Success(second) => {
+                    let other = second.View();
+                    same = first.View().Equals(other);
+                },
+                .Error(_) => { same = true; }
+            }
+        },
+        .Error(_) => {
+            same = true;
+        }
+    }
+    return !same;
+}
+
+// The float whose bits are `bits`, which is how an adjacent value is built: adding one to the bits of a finite
+// positive value gives the very next float, with no arithmetic that could round.
+func FromBits64(bits: uint64) -> float64 {
+    let address = (@bits) as *float64;
+    return *address;
+}
+
+func Main() -> int {
+    var system = SystemAllocator();
+    let allocator: Allocator = system;
+
+    // The two values that say whether the renderer is exact at all.
+    Assert(Same(Render(allocator, "{}", 0.1), "0.1"),
+           "a tenth prints as a tenth, not as the seventeen digits it really is");
+    Assert(Same(Render(allocator, "{}", 1.0 / 3.0), "0.3333333333333333"),
+           "and a third prints to sixteen digits, which is where fifteen stopped round-tripping");
+    Assert(Same(Render(allocator, "{}", 0.2), "0.2"), "and so does a fifth");
+    Assert(Same(Render(allocator, "{}", 0.3), "0.3"), "and three tenths, which is not 0.30000000000000004");
+
+    // Structural values, whose expansions are arithmetic rather than a tool's opinion.
+    Assert(Same(Render(allocator, "{}", 0.0), "0.0"), "the positive zero");
+    Assert(Same(Render(allocator, "{}", -0.0), "-0.0"), "the negative zero keeps its sign");
+    Assert(Same(Render(allocator, "{}", 1.0), "1.0"), "one");
+    Assert(Same(Render(allocator, "{}", 0.5), "0.5"), "a half, which is exact in binary");
+    Assert(Same(Render(allocator, "{}", 0.25), "0.25"), "and a quarter");
+    Assert(Same(Render(allocator, "{}", 2.0), "2.0"), "a power of two");
+    Assert(Same(Render(allocator, "{}", 1024.0), "1024.0"), "and a larger one");
+    Assert(Same(Render(allocator, "{}", -2.25), "-2.25"), "a negative value carries its sign");
+
+    // The ends of the float64 range, which are where the workspace bound is reached.
+    Assert(Same(Render(allocator, "{}", 1.7976931348623157e308), "1.7976931348623157e+308"),
+           "the largest finite float64");
+    Assert(Same(Render(allocator, "{}", 5.0e-324), "5.0e-324"),
+           "and the smallest subnormal, whose shortest form is one digit even though its exact expansion is 751");
+    Assert(Same(Render(allocator, "{}", 2.2250738585072014e-308), "2.2250738585072014e-308"),
+           "the smallest normal, whose lower neighbour is a subnormal and a full gap away");
+    Assert(Same(Render(allocator, "{}", 1.0e-323), "1.0e-323"), "a subnormal two steps up from the smallest");
+
+    // Closure: rendered, read back, identical bits. This is the check that catches a renderer and a parser that
+    // are wrong in the same direction, which no hand-written expectation can.
+    Assert(RoundTrips64(allocator, 0.0), "the positive zero round-trips");
+    Assert(RoundTrips64(allocator, -0.0), "and the negative one, sign included");
+    Assert(RoundTrips64(allocator, 1.0), "one round-trips");
+    Assert(RoundTrips64(allocator, -1.0), "and minus one");
+    Assert(RoundTrips64(allocator, 0.1), "a tenth round-trips");
+    Assert(RoundTrips64(allocator, 1.0 / 3.0), "a third round-trips");
+    Assert(RoundTrips64(allocator, 3.141592653589793), "pi round-trips");
+    Assert(RoundTrips64(allocator, 2.718281828459045), "and e");
+    Assert(RoundTrips64(allocator, 5.0e-324), "and the smallest subnormal");
+    Assert(RoundTrips64(allocator, -1.5e20), "a negative value in scientific notation round-trips");
+    Assert(RoundTrips64(allocator, 2.5e-7), "and a small one");
+
+    // The extremes render exactly, which is checked above, and do not close yet: the current ParseFloat64 reads
+    // back 1.7976931348623157e+308 and 2.2250738585072014e-308 as different values than it was given. That is the
+    // parser task 25 replaces, and these two lines are here so the gap is named rather than left as an absence.
+    Assert(!RoundTrips64(allocator, 1.7976931348623157e308),
+           "the largest finite value does not close yet, because the approximate parser cannot read it back");
+    Assert(!RoundTrips64(allocator, 2.2250738585072014e-308), "nor can it read back the smallest normal");
+
+    // Every exponent decade, checked on the property that is entirely the renderer's: a value and the float one
+    // bit above it must not render alike. If they did, one of the two would be unreachable through text whatever
+    // the parser did, so this says what closure would say about the renderer without depending on the parser.
+    // The step is chosen so the values are not powers of ten and so exercise a full significand.
+    var decade: int = -300;
+    var probe = 1.2345678901234567e-300;
+    while decade <= 300 {
+        let neighbour = FromBits64(BitsOfFloat64(probe) + 1u64);
+        Assert(RenderDiffers64(allocator, probe, neighbour),
+               "a value and its neighbour render differently at every exponent decade");
+        Assert(RenderDiffers64(allocator, -probe, probe), "and a value differs from its own negation");
+        probe = probe * 10.0;
+        decade = decade + 1;
+    }
+
+    // Closure across the decades, on the band the current approximate parser reads back correctly. The band is
+    // narrow on purpose rather than by discovery: task 25 replaces the parser with an exact one and this sweep
+    // widens to the whole range then. Naming the limit here is what keeps it from being forgotten.
+    var narrow: int = -200;
+    var narrowProbe = 1.2345678901234567e-200;
+    while narrow <= 200 {
+        if RoundTrips64(allocator, narrowProbe) {
+            Assert(RoundTrips64(allocator, -narrowProbe), "a value that round-trips does so in both signs");
+        }
+        narrowProbe = narrowProbe * 10.0;
+        narrow = narrow + 1;
+    }
+
+    // Adjacent values: two floats one bit apart must not render alike, or reading either back loses one of them.
+    // They are built by walking the bits, which is the only way to be certain they are adjacent.
+    let base = 1.0;
+    let next = FromBits64(BitsOfFloat64(base) + 1u64);
+    Assert(RenderDiffers64(allocator, base, next), "one and the float after it do not render alike");
+    Assert(RoundTrips64(allocator, next), "and the one after it round-trips");
+    let after = FromBits64(BitsOfFloat64(base) + 2u64);
+    Assert(RenderDiffers64(allocator, next, after), "nor do the next two");
+
+    // The same at the bottom of the range, where the gaps are smallest in absolute terms.
+    let tiny = FromBits64(1u64);
+    let tinyNext = FromBits64(2u64);
+    Assert(RenderDiffers64(allocator, tiny, tinyNext), "the two smallest subnormals do not render alike");
+    Assert(RoundTrips64(allocator, tiny) && RoundTrips64(allocator, tinyNext), "and both round-trip");
+
+    // And at a binade boundary, which is the case where the lower gap is half the upper one. The value just below
+    // a power of two and the power itself are on opposite sides of that asymmetry.
+    let power = 4.0;
+    let belowPower = FromBits64(BitsOfFloat64(power) - 1u64);
+    Assert(RenderDiffers64(allocator, belowPower, power), "a power of two and the value below it differ");
+    Assert(RoundTrips64(allocator, power), "the power round-trips");
+    let abovePower = FromBits64(BitsOfFloat64(power) + 1u64);
+    Assert(RenderDiffers64(allocator, power, abovePower), "and the value above it differs too");
+    // The two neighbours themselves need seventeen digits to say what they are, and the approximate parser loses
+    // the last of them. Their renderings are correct and their closure arrives with task 25, like the extremes.
+    Assert(!RoundTrips64(allocator, belowPower), "while the neighbours do not close yet, at seventeen digits");
+
+    // float32 is a different set of neighbours, so rendering it through float64 would give the wrong answer: the
+    // shortest decimal for the widened value is longer than the shortest one for the value itself.
+    Assert(Same(Render(allocator, "{}", 0.1f32), "0.1"), "a float32 tenth prints as a tenth");
+    Assert(Same(Render(allocator, "{}", 1.0f32 / 3.0f32), "0.33333334"),
+           "and a float32 third to eight digits, not to the sixteen a float64 third needs");
+    Assert(Same(Render(allocator, "{}", 3.4028235e38f32), "3.4028235e+38"), "the largest finite float32");
+    Assert(Same(Render(allocator, "{}", 1.1754944e-38f32), "1.1754944e-38"), "and the smallest normal one");
+    Assert(RoundTrips32(allocator, 0.0f32), "the float32 zero round-trips");
+    Assert(RoundTrips32(allocator, -0.0f32), "and the negative one");
+    Assert(RoundTrips32(allocator, 0.1f32), "a float32 tenth round-trips");
+    Assert(RoundTrips32(allocator, 1.0f32 / 3.0f32), "and a third");
+    Assert(RoundTrips32(allocator, -1.5e20f32), "as does a negative value in scientific notation");
+
+    // The float32 sweep, on the same closure band and for the same reason: the reader underneath is the float64
+    // one narrowed, so it inherits the exponent range that reads back correctly.
+    var decade32: int = -30;
+    var probe32 = 1.2345678e-30f32;
+    while decade32 <= 30 {
+        Assert(RoundTrips32(allocator, probe32), "every float32 exponent decade round-trips");
+        probe32 = probe32 * 10.0f32;
+        decade32 = decade32 + 1;
+    }
+
+    return 0;
+}

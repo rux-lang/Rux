@@ -1,0 +1,217 @@
+// The shortest decimal that reads back as the same bits, found exactly.
+//
+// This is the Steele and White method as Burger and Dybvig refined it, running on the fixed workspace next door.
+// Docs/NarrowFloat.md records why it and not one of the faster table-driven algorithms: those carry pre-computed
+// powers as data, and one of them carries a fallback path, and this package's rendering may neither allocate nor
+// have a path that behaves differently for inputs nobody tested.
+//
+// The idea is one sentence. A binary float is not a decimal, so what a reader wants is not the value's exact
+// decimal expansion — 0.1 is really 0.1000000000000000055511151231257827, and printing that is true and useless —
+// but the shortest decimal that no other float is closer to. The value and the two gaps to its neighbours are held
+// as exact integer ratios, digits are generated one at a time, and generation stops the moment what has been
+// emitted is nearer to this value than to either neighbour. Nothing is approximated, so nothing has to be checked
+// afterwards.
+//
+// The two asymmetries are where an implementation goes wrong, and both have cases in the test. A value at the
+// bottom of its binade is twice as far from its lower neighbour as from its upper one, because the exponent
+// changes underneath it, so the lower gap is half the width of the upper. And whether a decimal exactly on a gap
+// boundary is acceptable depends on whether the significand is even, because that is what round-to-nearest-even
+// would do with it when read back.
+
+import Core::{ Result, Unit };
+
+/// The most digits a shortest rendering can need.
+///
+/// Seventeen for a `float64` and nine for a `float32`: those are the counts at which every value of the width is
+/// distinguishable from every other, which is the theoretical bound on how long a shortest form can be. The buffer
+/// a caller supplies is checked against this rather than against a guess.
+///
+/// @see https://rux-lang.dev/docs/api/format/maximum-shortest-digits
+pub const MaximumShortestDigits: uint = 17;
+
+// The four exact integers the method runs on: the value as `numerator / denominator`, and half the distance to
+// each neighbour in the same units.
+struct Ratio {
+    numerator: FixedNat;
+    denominator: FixedNat;
+    upperGap: FixedNat;
+    lowerGap: FixedNat;
+}
+
+// Whether `left + right` is larger than `limit`, or equal to it, without disturbing any of the three.
+//
+// The comparison appears twice per digit and is the only place the method needs a sum it does not keep, so it is
+// written once with its own scratch rather than left to each caller.
+func SumExceeds(left: &FixedNat, right: &FixedNat, limit: &FixedNat, orEqual: bool) -> bool {
+    var total = FixedNat();
+    total.Assign(left);
+    if !total.Add(right) {
+        // Past the workspace, which Docs/NarrowFloat.md proves the narrow widths do not reach. Answering true
+        // stops digit generation rather than looping, and the caller's own capacity check reports the defect.
+        return true;
+    }
+    let order = total.Compare(limit);
+    return orEqual ? order >= 0i32 : order > 0i32;
+}
+
+// Sets up the ratio for `significand * 2^exponent`, with the gaps its neighbours are at.
+//
+// A value at the bottom of its binade has a lower neighbour half as far away as its upper one, because the
+// exponent steps down underneath it; `atBinadeBottom` says so and the setup doubles everything else to keep the
+// two gaps in the same units. Answers false only if the workspace could not hold the setup.
+func Prepare(state: &var Ratio, significand: uint64, exponent: int, atBinadeBottom: bool) -> bool {
+    state.numerator = FixedNat::FromUint64(significand);
+    state.denominator = FixedNat();
+    state.upperGap = FixedNat();
+    state.lowerGap = FixedNat();
+
+    // Everything is scaled by two so that the gaps, which are halves, stay integers. The binade-bottom case scales
+    // by two again so that the halved lower gap does as well.
+    let scale = atBinadeBottom ? 2u : 1u;
+    if exponent >= 0 {
+        let shift = exponent as uint;
+        if !state.numerator.ShiftLeft(shift + scale) { return false; }
+        if !state.denominator.SetPowerOfTwo(scale) { return false; }
+        if !state.upperGap.SetPowerOfTwo(shift + scale - 1u) { return false; }
+        if !state.lowerGap.SetPowerOfTwo(shift) { return false; }
+        if !atBinadeBottom { state.lowerGap.Assign(state.upperGap); }
+        return true;
+    }
+    let shift = (0 - exponent) as uint;
+    if !state.numerator.ShiftLeft(scale) { return false; }
+    if !state.denominator.SetPowerOfTwo(shift + scale) { return false; }
+    if !state.upperGap.SetPowerOfTwo(scale - 1u) { return false; }
+    if !state.lowerGap.SetPowerOfTwo(0u) { return false; }
+    if !atBinadeBottom { state.lowerGap.Assign(state.upperGap); }
+    return true;
+}
+
+// Scales the ratio so that the first digit generated is the first significant one, and reports the decimal
+// exponent that scaling implies.
+//
+// The loops are the estimate-free form: rather than guessing the exponent from a logarithm and correcting, the
+// ratio is multiplied or divided by ten until the value sits in [0.1, 1), which is where digit generation starts.
+// A guess would be faster and would need a proof that the correction is enough; this needs neither.
+func Scale(state: &var Ratio, inclusive: bool, exponent10: *var int) -> bool {
+    var power: int = 0;
+    // Too large: the value reaches the first digit position, so the denominator climbs until it does not.
+    while SumExceeds(state.numerator, state.upperGap, state.denominator, inclusive) {
+        if !state.denominator.MultiplySmall(10u64) { return false; }
+        power = power + 1;
+    }
+    // Too small: ten times the value still would not reach the first digit position, so everything but the
+    // denominator climbs. The test is the same one, inclusive the same way, which is what keeps the scaling and
+    // the generation below agreeing about where a boundary value belongs.
+    var reach = FixedNat();
+    reach.Assign(state.numerator);
+    if !reach.Add(state.upperGap) { return false; }
+    if !reach.MultiplySmall(10u64) { return false; }
+    var short = inclusive ? reach.Compare(state.denominator) < 0i32 : reach.Compare(state.denominator) <= 0i32;
+    while short {
+        if !state.numerator.MultiplySmall(10u64) { return false; }
+        if !state.upperGap.MultiplySmall(10u64) { return false; }
+        if !state.lowerGap.MultiplySmall(10u64) { return false; }
+        power = power - 1;
+        reach.Assign(state.numerator);
+        if !reach.Add(state.upperGap) { return false; }
+        if !reach.MultiplySmall(10u64) { return false; }
+        short = inclusive ? reach.Compare(state.denominator) < 0i32 : reach.Compare(state.denominator) <= 0i32;
+    }
+    *exponent10 = power;
+    return true;
+}
+
+// One digit: the quotient of the numerator by the denominator, which the scaling guarantees is under ten, taken by
+// subtraction rather than by division because nine subtractions is the whole of it.
+func NextDigit(state: &var Ratio) -> uint64 {
+    var digit = 0u64;
+    while state.numerator.Compare(state.denominator) >= 0i32 {
+        state.numerator.Subtract(state.denominator);
+        digit = digit + 1u64;
+    }
+    return digit;
+}
+
+/// Writes the shortest decimal digits of `significand * 2^exponent` that read back to exactly that value.
+///
+/// The digits are the significant ones with no point and no sign: `into` receives them most significant first,
+/// `count` how many there are, and `exponent10` the power of ten the first of them stands for, so the value is
+/// `0.d1d2...dn * 10^(exponent10 + 1)` and the caller places the point.
+///
+/// `atBinadeBottom` says the value is the smallest significand of its exponent, whose lower neighbour is half as
+/// far away as its upper one. A caller reading a `float64` passes true when the stored mantissa is zero and the
+/// biased exponent is above one.
+///
+/// # Failures
+/// Answers false when `into` is shorter than `MaximumShortestDigits`, or when the workspace could not hold the
+/// arithmetic — which Docs/NarrowFloat.md proves the narrow widths do not reach, so a false from that cause is a
+/// defect in the bound rather than an input to handle. Nothing partial is reported: `count` is zero on failure.
+///
+/// @param significand the integer significand, which must not be zero
+/// @param exponent the power of two it is scaled by
+/// @param atBinadeBottom whether the lower gap is half the upper one
+/// @param into where the digits go, at least `MaximumShortestDigits` long
+/// @param count receives how many digits were written
+/// @param exponent10 receives the power of ten the first digit stands for
+/// @returns true when the digits were produced
+/// @see https://rux-lang.dev/docs/api/format/shortest-digits
+pub func ShortestDigits(significand: uint64, exponent: int, atBinadeBottom: bool, into: var char8[..],
+                        count: *var uint, exponent10: *var int) -> bool {
+    *count = 0;
+    *exponent10 = 0;
+    if into.length < MaximumShortestDigits || significand == 0u64 { return false; }
+
+    var state = Ratio {
+        numerator: FixedNat(),
+        denominator: FixedNat(),
+        upperGap: FixedNat(),
+        lowerGap: FixedNat()
+    };
+    if !Prepare(state, significand, exponent, atBinadeBottom) { return false; }
+
+    // A decimal exactly on a gap boundary is acceptable when reading it back would round to this value, which for
+    // an even significand it would: round-to-nearest-even lands on the even one. So every boundary test here is
+    // inclusive for an even significand and strict for an odd one, in the scaling as well as in the generation.
+    let inclusive = (significand % 2u64) == 0u64;
+    var power: int = 0;
+    if !Scale(state, inclusive, @power) { return false; }
+
+    var written: uint = 0;
+    while written < MaximumShortestDigits {
+        if !state.numerator.MultiplySmall(10u64) { return false; }
+        if !state.upperGap.MultiplySmall(10u64) { return false; }
+        if !state.lowerGap.MultiplySmall(10u64) { return false; }
+        var digit = NextDigit(state);
+
+        // Below the lower gap: what is left is nearer this value than the neighbour under it, so stopping here
+        // still reads back correctly. Above the upper gap: the same on the other side, and the digit rounds up.
+        let order = state.numerator.Compare(state.lowerGap);
+        let low = inclusive ? order <= 0i32 : order < 0i32;
+        let high = SumExceeds(state.numerator, state.upperGap, state.denominator, inclusive);
+        if !low && !high {
+            into.data[written] = (digit + 0x30u64) as char8;
+            written = written + 1u;
+            continue;
+        }
+        if low && high {
+            // Both sides allow stopping, so the nearer one wins: twice what is left against the denominator says
+            // which. A tie goes down, which keeps the digit the value's own rather than its neighbour's.
+            var twice = FixedNat();
+            twice.Assign(state.numerator);
+            if !twice.ShiftLeft(1u) { return false; }
+            if twice.Compare(state.denominator) > 0i32 { digit = digit + 1u64; }
+        }
+        else if high {
+            digit = digit + 1u64;
+        }
+        into.data[written] = (digit + 0x30u64) as char8;
+        written = written + 1u;
+        *count = written;
+        *exponent10 = power - 1;
+        return true;
+    }
+    // Seventeen digits without either test allowing a stop cannot happen for a `float64` and cannot happen at all
+    // for a `float32`, since seventeen digits distinguish every `float64` from every other. Reaching here is the
+    // bound being wrong rather than an input to handle.
+    return false;
+}
