@@ -1,0 +1,160 @@
+// What the character widths and character slices share: the replacement rule, and the escape that undoes it.
+//
+// Every character width has values that are not characters. A `char8` above 0x7F is one piece of a character
+// spread over several; a `char16` in the surrogate range is half of one; a `char32` or a `char64` can be cast from
+// a number that is no scalar value at all. There is one rule for all of them and it has two halves.
+//
+// `Display` replaces. A value that is not a whole character is written as U+FFFD, which is what "there was
+// something here and it could not be represented" looks like in text, and it keeps the promise every reader of the
+// output relies on: what comes out is well-formed UTF-8. That is lossy, and it is meant to be — two different
+// invalid values render alike, and neither can be read back.
+//
+// `Debug` preserves. It is the rendering for somebody looking at a program rather than reading its output, and
+// telling them U+FFFD tells them nothing they did not already know. So an invalid value is written as an escape
+// carrying its own number — `'\x{80}'` for a stray byte, `'\u{d800}'` for a lone surrogate — and every value can
+// be told from every other. That is the same split, and the same escape spellings, that `Rux/Path` uses for a
+// native name, and for the same reason.
+//
+// Neither half is a validation. `Text`'s strict conversions still refuse what is not text, and a value that
+// reaches a `Display` implementation has already passed whatever check its own type applies; the replacement here
+// is presentation, and never a substitute for the check.
+
+import Core::{ Result, Unit };
+import Text::{ Encode, FormatError, FormatOk, FormatSpec, IsScalarValue, PaddingAround, TextWriter, WriteAscii,
+               WriteBytes, WriteFill, WriteScalar };
+
+/// The largest value a Unicode scalar can have, past which nothing is a character.
+///
+/// Named because a `char64` has room for a great deal more than this, and the check that it does not hold one has
+/// to happen at the full width: narrowing first would turn `0x100000041` into `A`.
+///
+/// @see https://rux-lang.dev/docs/api/format/maximum-scalar-value
+pub const MaximumScalarValue: uint64 = 0x10FFFF;
+
+/// Whether `value`, at whatever width it was read from, is a Unicode scalar value.
+///
+/// Takes a `uint64` so that a `char64` is checked before it is narrowed rather than after. A value past the last
+/// scalar and a value in the surrogate range are both refused, which is the same rule `Text::IsScalarValue`
+/// applies at thirty-two bits.
+///
+/// Cannot fail; runs in constant time and allocates nothing.
+///
+/// @param value the numeric value of a character, at its own width
+/// @returns true when a character of that value exists
+/// @see https://rux-lang.dev/docs/api/format/is-wide-scalar-value
+pub func IsWideScalarValue(value: uint64) -> bool {
+    if value > MaximumScalarValue { return false; }
+    return IsScalarValue(value as uint32);
+}
+
+// Writes `value` as `count` lower-case hexadecimal digits, most significant first.
+func WriteHexDigits(writer: &var TextWriter, value: uint64, count: uint) -> Result<Unit, FormatError> {
+    let digits = "0123456789abcdef";
+    var shift = count * 4u;
+    while shift > 0 {
+        shift = shift - 4u;
+        WriteAscii(writer, digits.data[((value >> (shift as uint64)) & 0xFu64) as uint])?;
+    }
+    return FormatOk();
+}
+
+/// Writes the escape for a value that is not a character, preserving exactly what it was.
+///
+/// A value that fits a byte is written `\x{nn}`, because a stray byte is not a scalar and should not be shown as
+/// one; anything else is written `\u{...}` with as many digits as its width needs, in fours. No valid character
+/// can collide with either: the escapes are only ever written for values that are not characters.
+///
+/// # Failures
+/// Reports whatever the writer reported, stopping at the first refusal.
+///
+/// @param writer the destination
+/// @param value the numeric value to spell
+/// @returns success when the whole escape was accepted
+/// @see https://rux-lang.dev/docs/api/format/write-invalid-escape
+pub func WriteInvalidEscape(writer: &var TextWriter, value: uint64) -> Result<Unit, FormatError> {
+    if value <= 0xFFu64 {
+        WriteBytes(writer, "\\x{")?;
+        WriteHexDigits(writer, value, 2u)?;
+        return WriteBytes(writer, "}");
+    }
+    WriteBytes(writer, "\\u{")?;
+    var digits: uint = 4;
+    if value > 0xFFFFu64 { digits = 8; }
+    if value > 0xFFFFFFFFu64 { digits = 16; }
+    WriteHexDigits(writer, value, digits)?;
+    return WriteBytes(writer, "}");
+}
+
+/// Writes one character's `Debug` form: quoted, and preserved exactly when it is not a character.
+///
+/// `whole` is the caller's own answer to whether the value is a whole character, because the widths disagree about
+/// it. A `char8` of 0xC3 is a valid scalar value as a number and a piece of a character as a byte, and it is the
+/// byte's answer that governs: `Display` writes U+FFFD for it, so `Debug` must preserve the byte rather than write
+/// the character that number happens to name.
+///
+/// # Failures
+/// Reports whatever the writer reported, stopping at the first refusal.
+///
+/// @param writer the destination
+/// @param value the numeric value of the character, at its own width
+/// @param whole whether the width this value came from calls it a whole character
+/// @returns success when the whole rendering was accepted
+/// @see https://rux-lang.dev/docs/api/format/write-character-debug
+pub func WriteCharacterDebug(writer: &var TextWriter, value: uint64, whole: bool) -> Result<Unit, FormatError> {
+    WriteAscii(writer, c8'\'')?;
+    if whole {
+        WriteEscapedScalar(writer, value as uint32)?;
+    }
+    else {
+        WriteInvalidEscape(writer, value)?;
+    }
+    return WriteAscii(writer, c8'\'');
+}
+
+/// Writes one scalar as it appears inside a quoted rendering, escaping what would otherwise be ambiguous.
+///
+/// The quote, the backslash and the control characters get the escapes `Rux/Text` gives them everywhere else, so a
+/// quoted character reads the same here as inside a quoted string.
+///
+/// # Failures
+/// Reports whatever the writer reported, and `TextFailure(InvalidUtf8)` for a value that is not a scalar, which a
+/// caller checks before calling.
+///
+/// @param writer the destination
+/// @param scalar the Unicode scalar value to write
+/// @returns success when the whole character was accepted
+/// @see https://rux-lang.dev/docs/api/format/write-escaped-scalar
+pub func WriteEscapedScalar(writer: &var TextWriter, scalar: uint32) -> Result<Unit, FormatError> {
+    if scalar == 0x27u32 { return WriteBytes(writer, "\\'"); }
+    if scalar == 0x22u32 { return WriteBytes(writer, "\\\""); }
+    if scalar == 0x5Cu32 { return WriteBytes(writer, "\\\\"); }
+    if scalar == 0x0Au32 { return WriteBytes(writer, "\\n"); }
+    if scalar == 0x0Du32 { return WriteBytes(writer, "\\r"); }
+    if scalar == 0x09u32 { return WriteBytes(writer, "\\t"); }
+    if scalar == 0x00u32 { return WriteBytes(writer, "\\0"); }
+    if scalar < 0x20u32 || scalar == 0x7Fu32 || (scalar >= 0x80u32 && scalar <= 0x9Fu32) {
+        return WriteInvalidEscape(writer, scalar as uint64);
+    }
+    return WriteScalar(writer, scalar as char32);
+}
+
+/// Reports how much fill a spec asks for on each side of a rendering `occupied` characters wide.
+///
+/// A character slice cannot hand its rendering to `WriteAligned`, because the bytes do not exist until they are
+/// transcoded and transcoding into a buffer would bound how long a slice may be. So the width is measured in one
+/// pass over the units and the fill is written around the transcoding instead. Both counts are zero when the
+/// rendering already fills the width, which is the common case and costs nothing.
+///
+/// Cannot fail; runs in constant time and allocates nothing.
+///
+/// @param spec what the placeholder asked for
+/// @param occupied how many characters the rendering will occupy
+/// @param before receives the fill to write first
+/// @param after receives the fill to write last
+/// @see https://rux-lang.dev/docs/api/format/measure-padding
+pub func MeasurePadding(spec: FormatSpec, occupied: uint, before: *var uint, after: *var uint) {
+    *before = 0;
+    *after = 0;
+    if spec.Width() <= occupied { return; }
+    PaddingAround(spec, occupied, false, before, after);
+}

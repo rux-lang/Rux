@@ -4,8 +4,9 @@
 // `Debug` is where the two partings show. Text shown to a reader is its characters; text shown to somebody looking
 // at a program is quoted, so that where it starts and stops is visible and an empty string is not invisible.
 //
-// Only `char8[..]` renders. `char16[..]` and `char32[..]` would each need a transcoding printer,
-// and nothing yet asks for one.
+// This file is the `char8[..]` half, which renders by being copied: it is already the encoding the destination
+// wants. `char16[..]` and `char32[..]` each need a transcoding printer and have one in `WideCharacterSlice.rux`,
+// where the decisions about units that are not characters live.
 
 import Core::{ Result, Unit };
 import Text::{ Debug, Display, FormatError, FormatSpec, RejectStyle, TextWriter };

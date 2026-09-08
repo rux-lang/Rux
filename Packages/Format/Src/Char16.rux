@@ -25,7 +25,10 @@ extend char16 : Display {
 }
 
 extend char16 : Debug {
-    /// The same character, quoted.
+    /// The same character, quoted, with half of a pair preserved as `\u{xxxx}`.
+    ///
+    /// Where `Display` writes U+FFFD for a surrogate half, this writes the code unit itself, so a high half and a
+    /// low half are told apart rather than rendered alike.
     ///
     /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
@@ -35,8 +38,6 @@ extend char16 : Debug {
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/char16/write-debug
     pub func WriteDebug(self: *char16, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
-        WriteAscii(writer, c8'\'')?;
-        self.WriteDisplay(writer, FormatSpec::Plain())?;
-        return WriteAscii(writer, c8'\'');
+        return WriteCharacterDebug(writer, *self as uint64, IsScalarValue(*self as uint32));
     }
 }

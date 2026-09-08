@@ -1,0 +1,38 @@
+// A `bool64` is the word `true` or the word `false`.
+//
+// The fourth boolean width renders exactly as the other three do. A boolean's text has nothing to do with how many
+// bytes it is stored in, and a width that rendered differently would be a width a caller had to remember.
+
+import Core::{ Result, Unit };
+import Text::{ Debug, Display, FormatError, FormatSpec, RejectStyle, TextWriter };
+
+extend bool64 : Display {
+    /// Writes `true` or `false`.
+    ///
+    /// # Failures
+    /// Reports whatever the writer reported, stopping at the first refusal.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the complete rendering was accepted
+    /// @see https://rux-lang.dev/docs/api/format/bool64/write-display
+    pub func WriteDisplay(self: *bool64, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        RejectStyle(spec)?;
+        return WriteAligned(writer, spec, *self ? "true" : "false", false);
+    }
+}
+
+extend bool64 : Debug {
+    /// The same two words.
+    ///
+    /// # Failures
+    /// Reports whatever the writer reported, stopping at the first refusal.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the complete rendering was accepted
+    /// @see https://rux-lang.dev/docs/api/format/bool64/write-debug
+    pub func WriteDebug(self: *bool64, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        return self.WriteDisplay(writer, spec);
+    }
+}

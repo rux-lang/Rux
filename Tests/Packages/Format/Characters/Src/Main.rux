@@ -1,0 +1,210 @@
+import Allocator::{ Allocator, SystemAllocator };
+import Core::{ Assert, Result };
+import Format::Render;
+import Text::{ BufferWriter, Debug, FormatError, FormatSpec, String, StringView, TextWriter, WriteDebugValue };
+
+// Every boolean and character width, and the two character slices that had no printer.
+//
+// One rule runs through all of it, applied at four widths and three slice types. A value that is not a whole
+// character is written as U+FFFD by `Display` and preserved as its own number by `Debug`, so the pair below is the
+// shape of nearly every case here: the same value rendered twice, alike under `Display` where two different
+// invalid values collide, and differently under `Debug` where they must not.
+//
+// Three cases are worth naming. `char64` is checked at its own width, because a number past the last scalar
+// narrows into a character that exists — `0x100000041` becomes `A` — and a check after narrowing would write the
+// wrong character rather than refusing. `char16` carries the surrogate structure: a pair is one character and a
+// half is none, and the two halves have to be told apart. And a `char16[..]` with one damaged unit in the middle
+// has to stay readable on both sides of the damage, which is what advancing a single unit after a replacement
+// buys.
+//
+// `Display` is reached through `Render`, whose variadic argument coerces; `Debug` has no variadic entry point, so
+// each value is bound to the interface first. The binding is required rather than stylistic: a concrete value does
+// not coerce to a non-variadic interface parameter.
+
+// A value that is not a scalar, made at run time.
+//
+// The compiler refuses to fold a surrogate or an out-of-range number into a `char32` or a `char64` at all, which is
+// the right answer for a constant and leaves no way to write one down. Passing the number through a function makes
+// the cast a run-time one, which is how such a value reaches a program in the first place — out of a cast on data
+// that came from somewhere else.
+func AsChar32(value: uint32) -> char32 {
+    return value as char32;
+}
+
+func AsChar64(value: uint64) -> char64 {
+    return value as char64;
+}
+
+func SameBytes(actual: char8[..], expected: char8[..]) -> bool {
+    if actual.length != expected.length { return false; }
+    var index: uint = 0;
+    while index < actual.length {
+        if actual.data[index] != expected.data[index] { return false; }
+        index = index + 1;
+    }
+    return true;
+}
+
+// Whether the outcome is exactly `expected`. Consuming the result is what forces a failure to be visible.
+func Same(outcome: Result<String, FormatError>, expected: char8[..]) -> bool {
+    let wanted = StringView::FromValidated(expected);
+    return match <-outcome {
+        .Success(text) => text.View().Equals(wanted),
+        .Error(_) => false
+    };
+}
+
+// Whether the value's `Debug` rendering is exactly `expected`.
+func Inspected(value: Debug, expected: char8[..]) -> bool {
+    var storage: char8[128];
+    var writer = BufferWriter((@storage[0])[..128]);
+    let sink: &var TextWriter = writer;
+    if WriteDebugValue(sink, value, FormatSpec::Plain()).IsError() { return false; }
+    return SameBytes(writer.Written(), expected);
+}
+
+func Main() -> int {
+    var system = SystemAllocator();
+    let allocator: Allocator = system;
+
+    // The four boolean widths render alike: a boolean's text has nothing to do with how many bytes it is stored in.
+    Assert(Same(Render(allocator, "{}", true), "true"), "the default boolean width");
+    Assert(Same(Render(allocator, "{}", false), "false"), "in both values");
+    Assert(Same(Render(allocator, "{}", true as bool8), "true"), "bool8");
+    Assert(Same(Render(allocator, "{}", true as bool16), "true"), "bool16");
+    Assert(Same(Render(allocator, "{}", true as bool32), "true"), "bool32");
+    Assert(Same(Render(allocator, "{}", true as bool64), "true"), "bool64, the fourth width");
+    Assert(Same(Render(allocator, "{}", false as bool64), "false"), "and its other value");
+    let wideTrue: Debug = true as bool64;
+    Assert(Inspected(wideTrue, "true"), "whose Debug is the same word");
+    Assert(Same(Render(allocator, "{:>7}", true as bool64), "   true"), "and which pads like the others");
+    Assert(Render(allocator, "{:x}", true as bool64).IsError(), "a boolean has no base, and refuses one");
+
+    // char8: a byte below 0x80 is a whole character, and one above it is a piece of one.
+    Assert(Same(Render(allocator, "{}", c8'A'), "A"), "an ASCII byte is itself");
+    Assert(Same(Render(allocator, "{}", 0x80u8 as char8), "\u{FFFD}"), "and a continuation byte is the replacement");
+    Assert(Same(Render(allocator, "{}", 0xC3u8 as char8), "\u{FFFD}"), "as is a lead byte on its own");
+    let continuation: Debug = 0x80u8 as char8;
+    let lead: Debug = 0xC3u8 as char8;
+    let letter8: Debug = c8'A';
+    Assert(Inspected(continuation, "'\\x{80}'"), "Debug preserves the byte itself");
+    Assert(Inspected(lead, "'\\x{c3}'"), "and tells the two apart");
+    Assert(Inspected(letter8, "'A'"), "an ordinary byte is quoted and nothing more");
+
+    // char16: a pair is one character and a half of one is none.
+    Assert(Same(Render(allocator, "{}", 0x0041u16 as char16), "A"), "a code unit below the surrogates");
+    Assert(Same(Render(allocator, "{}", 0x00E9u16 as char16), "é"), "including one past ASCII");
+    Assert(Same(Render(allocator, "{}", 0xD800u16 as char16), "\u{FFFD}"), "a high half alone is the replacement");
+    Assert(Same(Render(allocator, "{}", 0xDC00u16 as char16), "\u{FFFD}"), "and so is a low half");
+    let highHalf: Debug = 0xD800u16 as char16;
+    let lowHalf: Debug = 0xDC00u16 as char16;
+    Assert(Inspected(highHalf, "'\\u{d800}'"), "Debug keeps the high half");
+    Assert(Inspected(lowHalf, "'\\u{dc00}'"), "and the low one, distinctly");
+
+    // char32: an element is a character or it is nothing, and only a cast makes it nothing.
+    Assert(Same(Render(allocator, "{}", c32'A'), "A"), "a scalar is itself");
+    Assert(Same(Render(allocator, "{}", AsChar32(0xD800u32)), "\u{FFFD}"), "a surrogate is not a scalar");
+    Assert(Same(Render(allocator, "{}", AsChar32(0x110000u32)), "\u{FFFD}"), "nor is a value past the last one");
+    let surrogate32: Debug = AsChar32(0xD800u32);
+    let past32: Debug = AsChar32(0x110000u32);
+    Assert(Inspected(surrogate32, "'\\u{d800}'"), "Debug keeps the surrogate");
+    Assert(Inspected(past32, "'\\u{00110000}'"), "and the out-of-range value");
+
+    // char64: the width is the difficulty. A value past the last scalar narrows into a character that exists, so
+    // the check has to happen before the narrowing rather than after it.
+    Assert(Same(Render(allocator, "{}", c32'A' as char64), "A"), "a scalar at the widest character width");
+    Assert(Same(Render(allocator, "{}", c32'\u{1F600}' as char64), "😀"), "including a supplementary one");
+    Assert(Same(Render(allocator, "{}", AsChar64(0x100000041u64)), "\u{FFFD}"),
+           "a value whose low thirty-two bits spell A is still not a character");
+    let disguised: Debug = AsChar64(0x100000041u64);
+    Assert(Inspected(disguised, "'\\u{0000000100000041}'"),
+           "and Debug shows the whole of it, which is what proves the check ran at the full width");
+    Assert(Same(Render(allocator, "{}", AsChar64(0xD800u64)), "\u{FFFD}"), "a surrogate is refused at this width too");
+    let letter64: Debug = c32'A' as char64;
+    Assert(Inspected(letter64, "'A'"), "and an ordinary character is quoted");
+
+    // The quote, the backslash and the controls are escaped inside a Debug rendering, as they are everywhere else.
+    let quote: Debug = c8'\'';
+    let backslash: Debug = c8'\\';
+    let newline: Debug = c8'\n';
+    let zero: Debug = 0x00u8 as char8;
+    let control: Debug = AsChar32(0x01u32);
+    Assert(Inspected(quote, "'\\''"), "a quote is escaped");
+    Assert(Inspected(backslash, "'\\\\'"), "and a backslash");
+    Assert(Inspected(newline, "'\\n'"), "and a newline gets its short form");
+    Assert(Inspected(zero, "'\\0'"), "and a zero byte");
+    Assert(Inspected(control, "'\\x{01}'"), "while another control gets its number");
+
+    // A UTF-32 slice: one element in, one character out.
+    var wide: char32[4];
+    wide[0] = c32'a';
+    wide[1] = c32'\u{1F600}';
+    wide[2] = AsChar32(0xD800u32);
+    wide[3] = c32'b';
+    let wideView: char32[..] = (@wide[0])[..4];
+    let wideDebug: Debug = wideView;
+    Assert(Same(Render(allocator, "{}", wideView), "a😀\u{FFFD}b"), "the surrogate becomes the replacement");
+    Assert(Inspected(wideDebug, "\"a😀\\u{d800}b\""), "and Debug keeps it, quoted");
+    Assert(Same(Render(allocator, "{:>8}", wideView), "    a😀\u{FFFD}b"),
+           "a width counts characters rather than bytes");
+
+    // Two slices differing only in an element that is not a character render alike under Display and differently
+    // under Debug, which is the whole reason both exist.
+    var other: char32[4];
+    other[0] = c32'a';
+    other[1] = c32'\u{1F600}';
+    other[2] = AsChar32(0x110000u32);
+    other[3] = c32'b';
+    let otherView: char32[..] = (@other[0])[..4];
+    let otherDebug: Debug = otherView;
+    Assert(Same(Render(allocator, "{}", otherView), "a😀\u{FFFD}b"), "the two render alike for a reader");
+    Assert(Inspected(otherDebug, "\"a😀\\u{00110000}b\""), "and differently for a program");
+
+    // A UTF-16 slice: a pair is one character, and a half is one replacement.
+    var units: char16[6];
+    units[0] = 0x0061u16 as char16;
+    units[1] = 0xD83Du16 as char16;
+    units[2] = 0xDE00u16 as char16;
+    units[3] = 0xD800u16 as char16;
+    units[4] = 0x0062u16 as char16;
+    units[5] = 0x0063u16 as char16;
+    let unitView: char16[..] = (@units[0])[..6];
+    let unitDebug: Debug = unitView;
+    Assert(Same(Render(allocator, "{}", unitView), "a😀\u{FFFD}bc"),
+           "the pair is one character and the lone half is one replacement");
+    Assert(Inspected(unitDebug, "\"a😀\\u{d800}bc\""), "and Debug keeps the half itself");
+    Assert(Same(Render(allocator, "{:>8}", unitView), "   a😀\u{FFFD}bc"),
+           "a width counts the five characters it renders, not the six units it holds");
+
+    // A high half at the very end has no partner to look at, which is the bound the decoder must not read past.
+    var truncated: char16[2];
+    truncated[0] = 0x0061u16 as char16;
+    truncated[1] = 0xD83Du16 as char16;
+    let truncatedView: char16[..] = (@truncated[0])[..2];
+    let truncatedDebug: Debug = truncatedView;
+    Assert(Same(Render(allocator, "{}", truncatedView), "a\u{FFFD}"), "a high half at the end is a replacement");
+    Assert(Inspected(truncatedDebug, "\"a\\u{d83d}\""), "preserved under Debug");
+
+    // A low half followed by a high half is two halves and not a pair, in that order.
+    var reversed: char16[2];
+    reversed[0] = 0xDE00u16 as char16;
+    reversed[1] = 0xD83Du16 as char16;
+    let reversedView: char16[..] = (@reversed[0])[..2];
+    let reversedDebug: Debug = reversedView;
+    Assert(Same(Render(allocator, "{}", reversedView), "\u{FFFD}\u{FFFD}"), "a reversed pair is two replacements");
+    Assert(Inspected(reversedDebug, "\"\\u{de00}\\u{d83d}\""), "each kept as itself");
+
+    // An empty slice of either width renders as nothing, and as empty quotes.
+    var none: char32[1];
+    none[0] = c32'x';
+    let emptyWide: char32[..] = (@none[0])[..0];
+    let emptyDebug: Debug = emptyWide;
+    Assert(Same(Render(allocator, "{}", emptyWide), ""), "an empty UTF-32 slice is nothing");
+    Assert(Inspected(emptyDebug, "\"\""), "and inspects as empty quotes");
+
+    // Neither slice answers to a style, since neither has a second form.
+    Assert(Render(allocator, "{:x}", wideView).IsError(), "a UTF-32 slice refuses a base");
+    Assert(Render(allocator, "{:q}", unitView).IsError(), "and a UTF-16 slice refuses an invented style");
+
+    return 0;
+}

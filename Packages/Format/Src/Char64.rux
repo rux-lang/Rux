@@ -1,0 +1,46 @@
+// A `char64` holds one Unicode scalar value in eight bytes, which is one to four bytes of UTF-8.
+//
+// The width is the whole difficulty. A scalar value stops at U+10FFFF and a `char64` has room for four billion
+// times that, so a cast can put a number in one that no character has. Checking after narrowing to `uint32` would
+// be worse than not checking: `0x100000041` narrows to `0x41`, which is a perfectly good `A`, and the wrong
+// character is harder to notice than a refused one. So validity is decided at the full sixty-four bits, before
+// anything is narrowed.
+
+import Core::{ Result, Unit };
+import Text::{ Debug, Display, FormatError, FormatSpec, RejectStyle, TextWriter };
+
+extend char64 : Display {
+    /// Writes this character, or the replacement character when the value is not one.
+    ///
+    /// The value is checked at its own width first: a number past the last scalar would otherwise narrow into a
+    /// character that exists, and be written as that one.
+    ///
+    /// # Failures
+    /// Reports whatever the writer reported, stopping at the first refusal.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the complete rendering was accepted
+    /// @see https://rux-lang.dev/docs/api/format/char64/write-display
+    pub func WriteDisplay(self: *char64, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        RejectStyle(spec)?;
+        let value = *self as uint64;
+        if !IsWideScalarValue(value) { return FormatScalar(writer, spec, ReplacementCharacter); }
+        return FormatScalar(writer, spec, (value as uint32) as char32);
+    }
+}
+
+extend char64 : Debug {
+    /// The same character, quoted, with a value that is not one preserved as its own number.
+    ///
+    /// # Failures
+    /// Reports whatever the writer reported, stopping at the first refusal.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the complete rendering was accepted
+    /// @see https://rux-lang.dev/docs/api/format/char64/write-debug
+    pub func WriteDebug(self: *char64, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        return WriteCharacterDebug(writer, *self as uint64, IsWideScalarValue(*self as uint64));
+    }
+}

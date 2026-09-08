@@ -34,7 +34,11 @@ extend char8 : Display {
 }
 
 extend char8 : Debug {
-    /// The same byte, quoted, as a character literal is written.
+    /// The same byte, quoted, with one that is not a whole character preserved as `\x{nn}`.
+    ///
+    /// Where `Display` writes U+FFFD, this writes the byte itself. Two different stray bytes render alike under
+    /// `Display` and differently here, which is the point of having both: one is for a reader and the other is for
+    /// somebody working out which byte arrived.
     ///
     /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
@@ -44,8 +48,6 @@ extend char8 : Debug {
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/char8/write-debug
     pub func WriteDebug(self: *char8, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
-        WriteAscii(writer, c8'\'')?;
-        self.WriteDisplay(writer, FormatSpec::Plain())?;
-        return WriteAscii(writer, c8'\'');
+        return WriteCharacterDebug(writer, *self as uint64, (*self as uint32) <= 0x7Fu32);
     }
 }

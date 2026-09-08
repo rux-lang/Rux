@@ -1,0 +1,188 @@
+// The UTF-16 and UTF-32 slices, transcoded on the way out.
+//
+// A `char8[..]` renders by being copied: it is already the encoding the destination wants. Neither of these is, so
+// each needs a printer that decodes its units and writes UTF-8, and that is the whole reason they had none until
+// now. What the printer decides is what to do with the units that are not characters, and the answer is the one
+// every character width here already gives: `Display` replaces them with U+FFFD and `Debug` preserves them as
+// escapes carrying their own numbers.
+//
+// The UTF-16 case is the one with structure. A scalar past U+FFFF is written as two units, a high half and a low
+// half, and only the pair means anything; a half on its own is not a character and never becomes one. So the
+// decoder reads a pair where there is one and reports a lone half where there is not, advancing a single unit
+// after it — which keeps a slice with one damaged unit in the middle of it readable on both sides of the damage.
+//
+// Nothing here transcodes into a buffer first. A buffer would bound how long a slice may be, and a slice has no
+// bound, so the width a placeholder asks for is measured in one pass over the units and the padding is written
+// around the transcoding instead.
+
+import Core::{ Result, Unit };
+import Text::{ Debug, Display, FormatError, FormatOk, FormatSpec, RejectStyle, TextWriter, WriteAscii, WriteFill,
+               WriteScalar };
+
+// One scalar out of the UTF-16 units at `index`: a unit outside the surrogate range, or a high-low pair.
+//
+// Answers false for a low half first and for a high half with no partner after it, leaving `scalar` holding the
+// unit itself so a caller that preserves rather than replaces has it.
+func DecodeUtf16(units: char16[..], index: uint, scalar: *var uint32, width: *var uint) -> bool {
+    let unit = units.data[index] as uint32;
+    *scalar = unit;
+    *width = 1;
+    if unit < 0xD800u32 || unit > 0xDFFFu32 { return true; }
+    if unit >= 0xDC00u32 { return false; }
+    if index + 1 >= units.length { return false; }
+    let low = units.data[index + 1] as uint32;
+    if low < 0xDC00u32 || low > 0xDFFFu32 { return false; }
+    *scalar = 0x10000u32 + ((unit - 0xD800u32) << 10u32) + (low - 0xDC00u32);
+    *width = 2;
+    return true;
+}
+
+// How many characters a UTF-16 slice occupies once rendered, counting a replaced unit as the one character it
+// becomes. This is the width a placeholder's alignment is measured against.
+func CountUtf16(units: char16[..]) -> uint {
+    var count: uint = 0;
+    var index: uint = 0;
+    while index < units.length {
+        var scalar: uint32 = 0;
+        var width: uint = 0;
+        DecodeUtf16(units, index, @scalar, @width);
+        index = index + width;
+        count = count + 1;
+    }
+    return count;
+}
+
+extend char16[..] : Display {
+    /// Writes this text as UTF-8, with every unit that is not part of a character replaced by U+FFFD.
+    ///
+    /// Lossy where the units are: a lone surrogate half has no character to be, and the replacement is what says
+    /// so in text. Two slices differing only in their invalid halves render alike here, and differently under
+    /// `Debug`.
+    ///
+    /// # Failures
+    /// Reports whatever the writer reported, stopping at the first refusal, and `UnsupportedRequest` for a style.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the complete rendering was accepted
+    /// @see https://rux-lang.dev/docs/api/format/wide-character-slice/write-display-16
+    pub func WriteDisplay(self: &char16[..], writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        RejectStyle(spec)?;
+        let units = (self.data)[..self.length];
+        var before: uint = 0;
+        var after: uint = 0;
+        MeasurePadding(spec, CountUtf16(units), @before, @after);
+        WriteFill(writer, spec, before)?;
+        var index: uint = 0;
+        while index < units.length {
+            var scalar: uint32 = 0;
+            var width: uint = 0;
+            if DecodeUtf16(units, index, @scalar, @width) {
+                WriteScalar(writer, scalar as char32)?;
+            }
+            else {
+                WriteScalar(writer, ReplacementCharacter)?;
+            }
+            index = index + width;
+        }
+        return WriteFill(writer, spec, after);
+    }
+}
+
+extend char16[..] : Debug {
+    /// Writes this text quoted, with every unit preserved: a lone half becomes `\u{xxxx}`.
+    ///
+    /// Nothing is lost, so two slices that differ only in units that are not characters render differently, and
+    /// what was in the slice can be read back off the output. The quote, the backslash and the controls are
+    /// escaped the way this repository escapes them everywhere else.
+    ///
+    /// # Failures
+    /// Reports whatever the writer reported, stopping at the first refusal, and `UnsupportedRequest` for a style.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the complete rendering was accepted
+    /// @see https://rux-lang.dev/docs/api/format/wide-character-slice/write-debug-16
+    pub func WriteDebug(self: &char16[..], writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        RejectStyle(spec)?;
+        let units = (self.data)[..self.length];
+        WriteAscii(writer, c8'"')?;
+        var index: uint = 0;
+        while index < units.length {
+            var scalar: uint32 = 0;
+            var width: uint = 0;
+            if DecodeUtf16(units, index, @scalar, @width) {
+                WriteEscapedScalar(writer, scalar)?;
+            }
+            else {
+                WriteInvalidEscape(writer, scalar as uint64)?;
+            }
+            index = index + width;
+        }
+        return WriteAscii(writer, c8'"');
+    }
+}
+
+extend char32[..] : Display {
+    /// Writes this text as UTF-8, with every element that is not a character replaced by U+FFFD.
+    ///
+    /// Every element stands alone here: UTF-32 has no pairs, so an element is a character or it is nothing, and
+    /// the only way it becomes nothing is a cast. One element renders as exactly one character either way.
+    ///
+    /// # Failures
+    /// Reports whatever the writer reported, stopping at the first refusal, and `UnsupportedRequest` for a style.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the complete rendering was accepted
+    /// @see https://rux-lang.dev/docs/api/format/wide-character-slice/write-display-32
+    pub func WriteDisplay(self: &char32[..], writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        RejectStyle(spec)?;
+        let units = (self.data)[..self.length];
+        var before: uint = 0;
+        var after: uint = 0;
+        MeasurePadding(spec, units.length, @before, @after);
+        WriteFill(writer, spec, before)?;
+        var index: uint = 0;
+        while index < units.length {
+            let value = units.data[index] as uint32;
+            if IsWideScalarValue(value as uint64) {
+                WriteScalar(writer, value as char32)?;
+            }
+            else {
+                WriteScalar(writer, ReplacementCharacter)?;
+            }
+            index = index + 1;
+        }
+        return WriteFill(writer, spec, after);
+    }
+}
+
+extend char32[..] : Debug {
+    /// Writes this text quoted, with every element preserved: one that is not a character becomes `\u{xxxx}`.
+    ///
+    /// # Failures
+    /// Reports whatever the writer reported, stopping at the first refusal, and `UnsupportedRequest` for a style.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the complete rendering was accepted
+    /// @see https://rux-lang.dev/docs/api/format/wide-character-slice/write-debug-32
+    pub func WriteDebug(self: &char32[..], writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        RejectStyle(spec)?;
+        let units = (self.data)[..self.length];
+        WriteAscii(writer, c8'"')?;
+        var index: uint = 0;
+        while index < units.length {
+            let value = units.data[index] as uint32;
+            if IsWideScalarValue(value as uint64) {
+                WriteEscapedScalar(writer, value)?;
+            }
+            else {
+                WriteInvalidEscape(writer, value as uint64)?;
+            }
+            index = index + 1;
+        }
+        return WriteAscii(writer, c8'"');
+    }
+}
