@@ -7,37 +7,173 @@ Core is an optional declaration provider. Import primitive APIs explicitly, for 
 those APIs to its consumers. Replacement providers can declare the same intrinsic
 types and context values without using Core's package name or registry identity.
 
-## Package Status
+## The v0.1.0 Package Set
 
-Every package below exposes an API and is exercised by tests under `Tests/Packages/`. None is published yet; see [Publication Readiness](#publication-readiness) for what each is waiting on.
+The v0.1.0 release ships **25 packages**. This table is the target catalog: it is the
+authority on which package identities exist, what each one owns, and what it depends on.
 
-| Package       | Description                                                           |
-| ------------- | --------------------------------------------------------------------- |
-| `Algorithms`  | Generic algorithms over slices and mutable slices                     |
-| `Allocator`   | Allocation contracts and the allocators that meet them                |
-| `C`           | C standard library bindings                                           |
-| `Collections` | Generic data structures                                               |
-| `Core`        | Core language intrinsics                                              |
-| `Crypto`      | Cryptographic hashes, message authentication codes and key derivation |
-| `Entropy`     | Unpredictable bytes from the operating system                         |
-| `Format`      | String conversion and formatting                                      |
-| `Hash`        | Named non-cryptographic hashes and checksums                          |
-| `Io`          | Streams, console I/O, readers and writers                             |
-| `Json`        | JSON parsing and serialization                                        |
-| `Math`        | Mathematical constants and functions                                  |
-| `Memory`      | Memory management functions                                           |
-| `Path`        | Native operating-system strings and filesystem paths                  |
-| `Random`      | Pseudorandom number generators and distributions                      |
-| `Storage`     | Files, directories and filesystem operations                          |
-| `Text`        | Strings and fundamental text manipulation                             |
-| `Time`        | Durations, monotonic clocks and wall clocks                           |
-| `Toml`        | TOML parsing, serialization and streaming                             |
-| `Unicode`     | Unicode character properties, case, normalization and segmentation    |
-| `Uuid`        | UUID representation, parsing, formatting and generation               |
+| Package       | Exclusive responsibility                                             | Direct dependencies                                      |
+| ------------- | -------------------------------------------------------------------- | -------------------------------------------------------- |
+| `Algorithms`  | Generic algorithms over caller-owned slices                          | Core                                                     |
+| `Allocator`   | Allocation policies, validated layouts and allocation owners         | Core, Memory                                             |
+| `C`           | Explicit interoperability with C runtime APIs                        | Core                                                     |
+| `Collections` | Owning containers and their traversal/storage invariants             | Core, Memory, Allocator, Algorithms, Hash, Entropy, Text |
+| `Core`        | Optional intrinsic declarations and fundamental value protocols      | None                                                     |
+| `Crypto`      | Cryptographic digest, MAC, KDF and secret-buffer operations          | Core                                                     |
+| `Entropy`     | OS entropy acquisition and failure handling                          | Core, Memory, OS                                         |
+| `FileSystem`  | Files, directories, metadata and filesystem transactions             | Core, Allocator, Text, Path, Io, Time, Entropy, OS       |
+| `Format`      | Placeholder rendering and primitive text conversion                  | Core, Allocator, Text                                    |
+| `FreeBSD`     | FreeBSD ABI declarations and thin binding helpers                    | Core                                                     |
+| `Hash`        | Named non-cryptographic hash and checksum engines                    | Core                                                     |
+| `Io`          | Stream contracts, buffering and console I/O                          | Core, Memory, Allocator, Text, Format, OS                |
+| `Json`        | JSON grammar, values and serialization                               | Core, Allocator, Collections, Text, Format, Io           |
+| `Linux`       | Linux ABI declarations and thin binding helpers                      | Core                                                     |
+| `macOS`       | Darwin/libSystem ABI declarations and thin binding helpers           | Core                                                     |
+| `Math`        | Mathematical operations and numerical classification                 | Core                                                     |
+| `Memory`      | Untyped blocks, page mappings and byte-level operations              | Core, OS                                                 |
+| `Path`        | Lossless native strings and lexical path operations                  | Core, Memory, Allocator, Text                            |
+| `Random`      | Seeded generators, distributions and sampling                        | Core, Math, Entropy                                      |
+| `Text`        | Text storage, encoding, formatting protocols and shared text writers | Core, Memory, Allocator                                  |
+| `Time`        | Clock, duration, calendar and temporal text semantics                | Core, OS, Text                                           |
+| `Toml`        | TOML grammar, values and serialization                               | Core, Allocator, Collections, Text, Format, Math, Time   |
+| `Unicode`     | Unicode database properties and Unicode algorithms                   | Core                                                     |
+| `Uuid`        | UUID representation, generation and textual forms                    | Core, Entropy, Time, Text                                |
+| `Windows`     | Windows ABI declarations and thin binding helpers                    | None                                                     |
 
-## Target-Specific Packages
+`OS` denotes the conditional dependency on `Windows`, `Linux`, `macOS` and `FreeBSD`
+selected by the manifest's `TargetOS` conditions. Every package keeps the `Rux`
+namespace, the `SourceLibrary` type and `Version = "0.1.0"`. Manifest schema
+`Version = 1` and `MinRux = "0.4.0"` are separate fields and are not changed by the
+package release version.
 
-The `FreeBSD`, `Linux`, `macOS`, and `Windows` packages provide operating-system bindings. SourceLibrary packages can conditionally import these packages according to the compilation target.
+### Layering
+
+Arrows point toward dependencies. This is a dependency ordering, not a requirement
+that every package depend on every lower layer.
+
+```text
+Layer 7  FileSystem, Json, Toml
+             |
+Layer 6  Io, Uuid
+             |
+Layer 5  Format, Time, Path, Collections
+             |
+Layer 4  Text, Random
+             |
+Layer 3  Allocator, Entropy
+             |
+Layer 2  Memory
+             |
+Layer 1  Linux, macOS, FreeBSD, C,
+         Algorithms, Hash, Crypto, Math, Unicode
+             |
+Layer 0  Core, Windows
+```
+
+`Linux`, `macOS` and `FreeBSD` import Core intrinsics, so they sit in Layer 1.
+`Windows` imports nothing and sits in Layer 0. All four have the same
+platform-binding responsibility; uniform naming and ABI documentation do not
+require an unused manifest edge.
+
+## Migration Status
+
+The catalog above is the target. The checkout still carries the pre-migration
+package identities until the identity tasks land; until then this section, not the
+directory listing, says what the release set is.
+
+| Identity        | Target state                | Status                                                     |
+| --------------- | --------------------------- | ---------------------------------------------------------- |
+| `Rux/Storage`   | Renamed to `Rux/FileSystem` | Not migrated; `Packages/Storage/` is still the source tree |
+| `Rux/Sync`      | Removed from the release set | Still present in the workspace                            |
+| `Rux/Thread`    | Removed from the release set | Still present in the workspace                            |
+| `Rux/Benchmark` | Removed from the release set | Still present in the workspace                            |
+| `Rux/Simd`      | Removed from the release set | Still present in the workspace                            |
+
+The `Storage` rename covers the registry identity and dependency names, the
+`Packages/` and `Tests/Packages/` trees, imports and qualified references, test
+package names and output paths, the `/storage/` to `/filesystem/` API URL prefix,
+and the root workspace, manifests, READMEs and examples. The separate website
+repository retires or redirects the `/storage/` documentation routes on its own
+schedule; that route migration is recorded here but not published from this
+repository.
+
+`Storage` survives only in historical discussion and in
+`Packages/Collections/Src/Storage.rux`, whose container-private helpers migrate
+separately to `ContainerStorage.rux`. That file is a filename and helper-visibility
+concern, not a second public package identity.
+
+## Not in v0.1.0
+
+These packages are deliberately absent from the release set. Their sources and
+executable tests are deleted rather than excluded: keeping an unreleased but
+compiling subset would be a maintenance commitment this release does not make.
+Git history retains every implementation.
+
+| Package     | Why it is not shipping                                                                                                                                                     |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Benchmark` | Configuration and result arithmetic with no measurement loop, and a `BlackBox` that is an ordinary local store and load. Measurement methodology is not a `Time` concern.  |
+| `Simd`      | Four scalar records performing field-by-field arithmetic. Scalar records do not establish the accelerated SIMD contract the package advertised.                            |
+| `Sync`      | AArch64 updates use ordinary loads and stores, guards expose raw fields and permit copying, and `Once` cannot initialize. The whole package goes, including x86-64 atomics. |
+| `Thread`    | Non-Windows sleep and yield share one spin hint, and `CurrentId` always returns 1.                                                                                         |
+
+Removing `Sync` is not a claim that the inspected x86-64 atomics are incorrect; it
+is a decision not to release a partial concurrency package. A future concurrency
+package must be complete and independently validated. `Time::SleepFor` is the
+supported waiting API for v0.1.0. No thread creation, thread identifier, yield,
+lock or channel is promised.
+
+## Naming and Ownership Decisions
+
+These are settled for v0.1.0. Revisit the decision before changing anything that
+depends on it.
+
+- **`Format` keeps its name** and owns primitive conversion in both directions
+  alongside placeholder rendering, because parsing and rendering share numeric
+  machinery. The allocating entry point is `Format::Render`.
+- **`Text` owns the presentation contracts** — `Display`, `Debug`, `TextWriter`,
+  `FormatSpec`, `FormatError` and the specification parser. Core gains no
+  formatting contract, so value packages do not depend on the conversion engine.
+  `Text` must not depend on `Format`.
+- **`Path` owns native strings.** `OsString`, `OsStringView` and `OsUnit` stay in
+  `Path` as a native-string contract usable by future environment and process
+  packages without `FileSystem` or `Io`. `Text` concerns validated text and
+  encoding rather than OS-dependent native-unit storage. `Path` stays independent
+  of `FileSystem` and `Io`.
+- **`macOS` keeps its name.** It binds the Darwin/libSystem ABI rather than issuing
+  raw syscalls. A libSystem dependency alone does not establish iOS support, so the
+  package retains `#target.os == .macOS`.
+- **`Memory` and `Allocator` stay separate.** Memory owns addresses and page and
+  block operations; Allocator owns layouts, policies and lifetimes.
+- **`FileSystem` owns `File`** and implements Io's interfaces. `Io` does not
+  acquire filesystem resources.
+- **`Entropy` has no presentation dependency.** `EntropyError` implements neither
+  `Display` nor `Debug` in v0.1.0; callers handle its cases or wrap it in their own
+  diagnostic type. `Format` must not acquire an `Entropy` dependency in either
+  direction.
+- **`Entropy`, `Uuid` and `Hash` stay separate identities.** Unpredictable OS
+  input with its retries and zeroization, UUID layout and version semantics, and
+  named non-cryptographic hash engines are each a coherent domain.
+
+A new concern belongs with the package that owns its invariants. Shared
+implementation detail moves downward only when it has an independent contract and
+introduces no upward dependency. Add a package dependency only for actual use.
+
+## Platform Manifest Audit
+
+One rule applies to all four platform packages: declare `Core` when the sources
+import its APIs or intrinsics, and not otherwise. Manifest edges are not added to
+align diagram levels.
+
+| Package   | Imports `Core` in `Src/`  | Declares the `Core` dependency | Result  |
+| --------- | ------------------------- | ------------------------------ | ------- |
+| `Windows` | No                        | No                             | Correct |
+| `Linux`   | Yes (`#target`, `#Error`) | Yes                            | Correct |
+| `macOS`   | Yes (`#target`)           | Yes                            | Correct |
+| `FreeBSD` | Yes (`#target`, `#Error`) | Yes                            | Correct |
+
+All four agree with their sources at the current commit. Do not add a `Windows` to
+`Core` edge for symmetry. `SourceLibrary` packages conditionally import these four
+according to the compilation target.
 
 ## Publication Readiness
 
