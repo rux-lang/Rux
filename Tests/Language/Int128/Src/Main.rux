@@ -1,0 +1,79 @@
+// int128: the narrowest width that no longer fits a machine register.
+//
+// What is worth pinning here is everything the 64-bit widths get for free and this one does not. A literal is
+// decoded exactly rather than through a machine word, arithmetic carries between lanes, a shift moves bits across
+// the lane boundary, and the value is passed and returned in whatever way the ABI chose for something wider than a
+// register. Signedness is the part most likely to break: the sign lives in the high lane, so sign extension,
+// arithmetic shift and truncating division all have to reach it.
+
+import Core::Assert;
+import Core::{ int128, int64 };
+
+func Echo(value: int128) -> int128 {
+    return value;
+}
+
+func Sum(left: int128, right: int128) -> int128 {
+    return left + right;
+}
+
+func Main() -> int {
+    Assert(int128::Bits == 128u && int128::Bytes == 16u, "int128 is 128 bits in 16 bytes");
+    Assert(int128::Min == -170141183460469231731687303715884105728i128, "int128 minimum");
+    Assert(int128::Max == 170141183460469231731687303715884105727i128, "int128 maximum");
+
+    // A literal wider than 64 bits is decoded exactly, not through a machine word.
+    let large: int128 = 170141183460469231731687303715884105727i128;
+    Assert(large == int128::Max, "a full-width literal decodes exactly");
+    Assert(large - 1i128 == 170141183460469231731687303715884105726i128, "the value below the maximum");
+
+    // Arithmetic has to carry between lanes rather than within one.
+    let low: int128 = 18446744073709551615i128;
+    Assert(low + 1i128 == 18446744073709551616i128, "addition carries out of the low lane");
+    Assert(18446744073709551616i128 - 1i128 == low, "subtraction borrows into the low lane");
+    Assert(low * 2i128 == 36893488147419103230i128, "multiplication carries out of the low lane");
+
+    Assert(int128::Max + 1i128 == int128::Min, "addition wraps from the maximum to the minimum");
+    Assert(int128::Min - 1i128 == int128::Max, "subtraction wraps from the minimum to the maximum");
+
+    // Signed division truncates toward zero and the remainder keeps the dividend's sign.
+    let negative: int128 = -100i128;
+    Assert(negative / 7i128 == -14i128, "division truncates toward zero");
+    Assert(negative % 7i128 == -2i128, "the remainder keeps the dividend sign");
+    Assert(100i128 / -7i128 == -14i128, "a negative divisor truncates toward zero");
+    Assert(100i128 % -7i128 == 2i128, "the remainder ignores the divisor sign");
+
+    // Shifts have to move bits across the lane boundary, and >> and >>> differ on a negative value.
+    Assert((1i128 << 64) == 18446744073709551616i128, "a left shift crosses the lane boundary");
+    Assert((1i128 << 126) >> 126 == 1i128, "a right shift returns what the left shift moved");
+    Assert(negative >> 3 == -13i128, "an arithmetic right shift rounds toward negative infinity");
+    Assert((-1i128 >>> 127) == 1i128, "a logical right shift brings in zeros at either signedness");
+    Assert((1i128 << 127) == int128::Min, "shifting into the sign bit gives the minimum");
+
+    Assert((int128::Max & 255i128) == 255i128, "bitwise and reaches the low lane");
+    Assert((0i128 | int128::Min) == int128::Min, "bitwise or reaches the high lane");
+    Assert((int128::Max ^ int128::Max) == 0i128, "bitwise exclusive or of a value with itself");
+    Assert((~0i128) == -1i128, "bitwise not of zero");
+
+    Assert(int128::Max > 0i128 && int128::Min < 0i128, "comparison reads the sign, not the low lane");
+    Assert(low < 18446744073709551616i128, "comparison crosses the lane boundary");
+    Assert(-1i128 > int128::Min, "comparison orders two negative values");
+
+    // Conversion in both directions: narrow to wide sign-extends, wide to narrow keeps the low bits.
+    let widened: int128 = -7i64 as int128;
+    Assert(widened == -7i128, "a narrow signed value sign-extends into the high lane");
+    let narrowed: int64 = int128::Max as int64;
+    Assert(narrowed == -1i64, "a wide value truncates to its low bits");
+    Assert(int64::Max as int128 == 9223372036854775807i128, "the widest narrow value survives widening");
+
+    // Passing and returning something wider than a register.
+    Assert(Echo(int128::Min) == int128::Min, "the minimum survives an argument and a return");
+    Assert(Sum(large, 1i128) == int128::Min, "two wide arguments arrive intact");
+
+    var accumulator: int128 = 0i128;
+    accumulator += large;
+    Assert(accumulator == large, "compound addition");
+    accumulator -= large;
+    Assert(accumulator == 0i128, "compound subtraction");
+    return 0;
+}

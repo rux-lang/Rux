@@ -1,0 +1,75 @@
+// uint256: four lanes of magnitude, with no sign bit anywhere.
+//
+// This width had no coverage of its own before: the shared wide-integer test named int128, int256, uint128 and
+// uint512 and skipped this one entirely. What it pins is unsigned behavior at four lanes — a carry propagating
+// through two lanes it neither starts nor ends in, wrapping at zero rather than at the middle of the range, and a
+// top bit that is worth more than every other bit put together rather than making the value negative.
+
+import Core::Assert;
+import Core::{ int256, uint128, uint256 };
+
+func Echo(value: uint256) -> uint256 {
+    return value;
+}
+
+func Main() -> int {
+    Assert(uint256::Bits == 256u && uint256::Bytes == 32u, "uint256 is 256 bits in 32 bytes");
+    Assert(uint256::Min == 0u256, "the minimum is zero");
+    Assert(uint256::Max ==
+               115792089237316195423570985008687907853269984665640564039457584007913129639935u256,
+           "uint256 maximum");
+
+    let maximum: uint256 = uint256::Max;
+
+    // The top bit is magnitude, so the value carrying it is the largest rather than the smallest.
+    Assert((1u256 << 255) > 0u256, "the top bit is a value bit, not a sign");
+    Assert((1u256 << 255) as int256 == int256::Min, "the same bits read as int256 are the minimum");
+    Assert(maximum as int256 == -1i256, "all bits set is the maximum unsigned and minus one signed");
+
+    // A carry that starts in the low lane and has to reach the high one.
+    let acrossLanes: uint256 = 340282366920938463463374607431768211455u256;
+    Assert(acrossLanes + 1u256 == 340282366920938463463374607431768211456u256,
+           "a carry propagates through two intermediate lanes");
+    Assert(340282366920938463463374607431768211456u256 - 1u256 == acrossLanes,
+           "a borrow propagates back through them");
+    Assert(acrossLanes * 2u256 == 680564733841876926926749214863536422910u256, "multiplication carries upward");
+
+    Assert(maximum + 1u256 == 0u256, "addition wraps from the maximum to zero");
+    Assert(0u256 - 1u256 == maximum, "subtraction wraps from zero to the maximum");
+
+    Assert(maximum / maximum == 1u256, "a value divided by itself");
+    Assert(maximum / 2u256 ==
+               57896044618658097711785492504343953926634992332820282019728792003956564819967u256,
+           "halving the maximum reaches the largest signed value");
+    Assert(maximum % 2u256 == 1u256, "the maximum is odd");
+
+    // Shifts by more than one lane width move whole lanes, and every right shift is logical.
+    Assert((1u256 << 128) == 340282366920938463463374607431768211456u256, "a left shift moves a whole lane");
+    Assert((1u256 << 192) >> 192 == 1u256, "a shift across three lanes and back");
+    Assert(maximum >> 255 == 1u256, "shifting the maximum down leaves one bit rather than sign-extending");
+    Assert(maximum >> 128 == 340282366920938463463374607431768211455u256, "a right shift discards the low lanes");
+
+    Assert((maximum & 255u256) == 255u256, "bitwise and reaches the low lane");
+    Assert((0u256 | (1u256 << 255)) == (1u256 << 255), "bitwise or reaches the high lane");
+    Assert((maximum ^ maximum) == 0u256, "bitwise exclusive or of a value with itself");
+    Assert((~0u256) == maximum, "bitwise not of zero is the maximum");
+
+    Assert(maximum > acrossLanes, "comparison crosses a lane boundary");
+    Assert(0u256 < 1u256, "comparison at the bottom of the range");
+
+    // Conversion in both directions, including from the width below.
+    let widened: uint256 = uint128::Max as uint256;
+    Assert(widened == 340282366920938463463374607431768211455u256, "a narrow unsigned value zero-extends");
+    Assert(widened < maximum, "zero extension did not fill the high lanes");
+    let narrowed: uint128 = maximum as uint128;
+    Assert(narrowed == uint128::Max, "a wide value truncates to its low lanes");
+
+    Assert(Echo(maximum) == maximum, "the maximum survives an argument and a return");
+
+    var accumulator: uint256 = 0u256;
+    accumulator += maximum;
+    Assert(accumulator == maximum, "compound addition");
+    accumulator -= maximum;
+    Assert(accumulator == 0u256, "compound subtraction");
+    return 0;
+}

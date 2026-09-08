@@ -2,10 +2,10 @@
 Version = 1
 
 [Package]
-Name = "WideInteger"
+Name = "Uint256"
 Version = "0.1.0"
 Type = "Executable"
-Description = "Language test: WideInteger"
+Description = "Language test: Uint256"
 
 [Dependencies]
 Core = { Path = "../../../Packages/Core" }

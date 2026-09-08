@@ -1,0 +1,71 @@
+// uint128: the same lanes as int128, with the sign bit spent on magnitude instead.
+//
+// The two differ in exactly the places signedness reaches: there is no sign to extend when widening, `>>` brings in
+// zeros rather than copies of the top bit, wrapping happens at zero rather than at the middle of the range, and the
+// top bit is an ordinary value bit, so a number with it set is the largest rather than the smallest. Those are the
+// assertions worth having here; the shared lane arithmetic is pinned once in the signed case.
+
+import Core::Assert;
+import Core::{ int128, uint128, uint64 };
+
+func Echo(value: uint128) -> uint128 {
+    return value;
+}
+
+func Main() -> int {
+    Assert(uint128::Bits == 128u && uint128::Bytes == 16u, "uint128 is 128 bits in 16 bytes");
+    Assert(uint128::Min == 0u128, "the minimum is zero");
+    Assert(uint128::Max == 340282366920938463463374607431768211455u128, "uint128 maximum");
+
+    let maximum: uint128 = uint128::Max;
+    Assert(maximum == 340282366920938463463374607431768211455u128, "a full-width literal decodes exactly");
+
+    // The top bit is magnitude here, so the value with it set is the largest rather than the smallest.
+    Assert((1u128 << 127) > 0u128, "the top bit is a value bit, not a sign");
+    Assert((1u128 << 127) as int128 < 0i128, "the same bits read as int128 are negative");
+
+    let low: uint128 = 18446744073709551615u128;
+    Assert(low + 1u128 == 18446744073709551616u128, "addition carries out of the low lane");
+    Assert(18446744073709551616u128 - 1u128 == low, "subtraction borrows into the low lane");
+    Assert(low * 2u128 == 36893488147419103230u128, "multiplication carries out of the low lane");
+
+    // Wrapping is at zero and at the maximum, with nothing in between.
+    Assert(maximum + 1u128 == 0u128, "addition wraps from the maximum to zero");
+    Assert(0u128 - 1u128 == maximum, "subtraction wraps from zero to the maximum");
+
+    Assert(100u128 / 7u128 == 14u128, "division truncates");
+    Assert(100u128 % 7u128 == 2u128, "remainder");
+    Assert(maximum / maximum == 1u128, "a value divided by itself");
+
+    // Every right shift is logical, because there is no sign to preserve.
+    Assert((1u128 << 100) == 1267650600228229401496703205376u128, "a left shift crosses the lane boundary");
+    Assert((1u128 << 100) >> 100 == 1u128, "a right shift returns what the left shift moved");
+    Assert(maximum >> 127 == 1u128, "shifting the maximum down leaves one bit");
+    // `>>>` is not written here, and cannot be: it requires a signed left operand, because on an unsigned one `>>`
+    // is already logical and the second spelling would mean nothing different.
+    Assert((1u128 << 127) >> 127 == 1u128, "the top bit shifts down to one rather than sign-extending");
+
+    Assert((maximum & 255u128) == 255u128, "bitwise and reaches the low lane");
+    Assert((0u128 | (1u128 << 127)) == (1u128 << 127), "bitwise or reaches the high lane");
+    Assert((maximum ^ maximum) == 0u128, "bitwise exclusive or of a value with itself");
+    Assert((~0u128) == maximum, "bitwise not of zero is the maximum");
+
+    Assert(maximum > low, "comparison crosses the lane boundary");
+    Assert(0u128 < 1u128, "comparison at the bottom of the range");
+
+    // Widening a narrow unsigned value brings in zeros; narrowing keeps the low bits.
+    let widened: uint128 = uint64::Max as uint128;
+    Assert(widened == 18446744073709551615u128, "a narrow unsigned value zero-extends");
+    Assert(widened < maximum, "zero extension did not fill the high lane");
+    let narrowed: uint64 = maximum as uint64;
+    Assert(narrowed == 18446744073709551615u64, "a wide value truncates to its low bits");
+
+    Assert(Echo(maximum) == maximum, "the maximum survives an argument and a return");
+
+    var accumulator: uint128 = 0u128;
+    accumulator += maximum;
+    Assert(accumulator == maximum, "compound addition");
+    accumulator /= 2u128;
+    Assert(accumulator == 170141183460469231731687303715884105727u128, "compound division halves the range");
+    return 0;
+}

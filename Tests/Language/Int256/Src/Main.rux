@@ -1,0 +1,75 @@
+// int256: four lanes, and the first width that no ABI passes anywhere but in memory.
+//
+// int128 already established that arithmetic carries between lanes. What this width adds is distance: a carry has
+// to propagate through two lanes it does not start or end in, a shift by more than one lane width has to move whole
+// lanes as well as bits, and the value is large enough that the compiler cannot fall back on anything a register
+// can hold. The sign still lives in the top bit of the top lane, three lanes away from the low one.
+
+import Core::Assert;
+import Core::{ int128, int256, int64 };
+
+func Echo(value: int256) -> int256 {
+    return value;
+}
+
+func Sum(left: int256, right: int256) -> int256 {
+    return left + right;
+}
+
+func Main() -> int {
+    Assert(int256::Bits == 256u && int256::Bytes == 32u, "int256 is 256 bits in 32 bytes");
+    Assert(int256::Min ==
+               -57896044618658097711785492504343953926634992332820282019728792003956564819968i256,
+           "int256 minimum");
+    Assert(int256::Max ==
+               57896044618658097711785492504343953926634992332820282019728792003956564819967i256,
+           "int256 maximum");
+    Assert(int256::Min + int256::Max == -1i256, "the range is symmetric about zero but for one value");
+
+    // A carry that starts in the low lane and has to reach the high one.
+    let acrossLanes: int256 = 340282366920938463463374607431768211455i256;
+    Assert(acrossLanes + 1i256 == 340282366920938463463374607431768211456i256,
+           "a carry propagates through two intermediate lanes");
+    Assert(340282366920938463463374607431768211456i256 - 1i256 == acrossLanes,
+           "a borrow propagates back through them");
+
+    Assert(int256::Max + 1i256 == int256::Min, "addition wraps from the maximum to the minimum");
+    Assert(int256::Min - 1i256 == int256::Max, "subtraction wraps from the minimum to the maximum");
+
+    let negative: int256 = -123456789012345678901234567890i256;
+    Assert(negative / 1000000000i256 == -123456789012345678901i256, "division truncates toward zero");
+    Assert(negative % 1000000000i256 == -234567890i256, "the remainder keeps the dividend sign");
+    Assert(negative * -1i256 == 123456789012345678901234567890i256, "negation through multiplication");
+
+    // Shifts by more than one lane width move whole lanes as well as bits.
+    Assert((1i256 << 128) == 340282366920938463463374607431768211456i256, "a left shift moves a whole lane");
+    Assert((1i256 << 192) >> 192 == 1i256, "a shift across three lanes and back");
+    Assert((1i256 << 255) == int256::Min, "shifting into the sign bit gives the minimum");
+    Assert(negative >> 1 == -61728394506172839450617283945i256, "an arithmetic right shift halves toward negative infinity");
+    Assert((-1i256 >>> 255) == 1i256, "a logical right shift brings in zeros at either signedness");
+
+    Assert((int256::Max & 255i256) == 255i256, "bitwise and reaches the low lane");
+    Assert((0i256 | int256::Min) == int256::Min, "bitwise or reaches the high lane");
+    Assert((~0i256) == -1i256, "bitwise not of zero");
+
+    Assert(int256::Max > 0i256 && int256::Min < 0i256, "comparison reads the sign, not the low lane");
+    Assert(acrossLanes < 340282366920938463463374607431768211456i256, "comparison crosses a lane boundary");
+
+    // Conversion in both directions, including from the width below.
+    let widened: int256 = -7i64 as int256;
+    Assert(widened == -7i256, "a narrow signed value sign-extends across every lane");
+    Assert(int128::Max as int256 == 170141183460469231731687303715884105727i256,
+           "the widest int128 value survives widening");
+    let narrowed: int128 = int256::Max as int128;
+    Assert(narrowed == -1i128, "a wide value truncates to its low lanes");
+
+    Assert(Echo(int256::Min) == int256::Min, "the minimum survives an argument and a return");
+    Assert(Sum(int256::Max, 1i256) == int256::Min, "two wide arguments arrive intact");
+
+    var accumulator: int256 = 0i256;
+    accumulator += int256::Max;
+    Assert(accumulator == int256::Max, "compound addition");
+    accumulator -= int256::Max;
+    Assert(accumulator == 0i256, "compound subtraction");
+    return 0;
+}

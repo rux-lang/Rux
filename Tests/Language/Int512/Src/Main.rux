@@ -1,0 +1,92 @@
+// int512: the widest signed integer the language has, and the one nothing exercised before.
+//
+// The shared wide-integer test named int128, int256, uint128 and uint512, so this width was implemented and had no
+// coverage at all. At eight lanes everything is the same in kind as int256 and further apart in practice: a carry
+// crosses six lanes it neither starts nor ends in, a shift by 256 moves half the value, and the sign bit is seven
+// lanes above the low one. This is also where a literal must be decoded exactly, since no intermediate machine
+// representation could hold one on the way in.
+
+import Core::Assert;
+import Core::{ int256, int512, int64 };
+
+func Echo(value: int512) -> int512 {
+    return value;
+}
+
+func Sum(left: int512, right: int512) -> int512 {
+    return left + right;
+}
+
+func Main() -> int {
+    Assert(int512::Bits == 512u && int512::Bytes == 64u, "int512 is 512 bits in 64 bytes");
+    Assert(
+        int512::Min ==
+            -6703903964971298549787012499102923063739682910296196688861780721860882015036773488400937149083451713845015929093243025426876941405973284973216824503042048i512,
+        "int512 minimum");
+    Assert(
+        int512::Max ==
+            6703903964971298549787012499102923063739682910296196688861780721860882015036773488400937149083451713845015929093243025426876941405973284973216824503042047i512,
+        "int512 maximum");
+    Assert(int512::Min + int512::Max == -1i512, "the range is symmetric about zero but for one value");
+
+    // A 155-digit literal has no machine representation to pass through, so it is decoded exactly or not at all.
+    Assert(int512::Max - 1i512 ==
+               6703903964971298549787012499102923063739682910296196688861780721860882015036773488400937149083451713845015929093243025426876941405973284973216824503042046i512,
+           "a full-width literal decodes exactly");
+
+    // A carry starting in the low lane and reaching the high one, six lanes away.
+    let acrossLanes: int512 =
+        115792089237316195423570985008687907853269984665640564039457584007913129639935i512;
+    Assert(acrossLanes + 1i512 ==
+               115792089237316195423570985008687907853269984665640564039457584007913129639936i512,
+           "a carry propagates across six intermediate lanes");
+    Assert(115792089237316195423570985008687907853269984665640564039457584007913129639936i512 - 1i512 ==
+               acrossLanes,
+           "a borrow propagates back across them");
+
+    Assert(int512::Max + 1i512 == int512::Min, "addition wraps from the maximum to the minimum");
+    Assert(int512::Min - 1i512 == int512::Max, "subtraction wraps from the minimum to the maximum");
+
+    let negative: int512 = -123456789012345678901234567890i512;
+    Assert(negative / 1000000000i512 == -123456789012345678901i512, "division truncates toward zero");
+    Assert(negative % 1000000000i512 == -234567890i512, "the remainder keeps the dividend sign");
+    Assert(negative * -1i512 == 123456789012345678901234567890i512, "negation through multiplication");
+
+    // A shift by 256 moves half the value; a shift by 511 reaches the sign bit.
+    Assert((1i512 << 256) ==
+               115792089237316195423570985008687907853269984665640564039457584007913129639936i512,
+           "a left shift by 256 moves half the value");
+    Assert((1i512 << 256) >> 256 == 1i512, "a shift across four lanes and back");
+    Assert((1i512 << 511) == int512::Min, "shifting into the sign bit gives the minimum");
+    Assert(negative >> 1 == -61728394506172839450617283945i512,
+           "an arithmetic right shift halves toward negative infinity");
+    Assert((-1i512 >>> 511) == 1i512, "a logical right shift brings in zeros at either signedness");
+
+    Assert((int512::Max & 255i512) == 255i512, "bitwise and reaches the low lane");
+    Assert((0i512 | int512::Min) == int512::Min, "bitwise or reaches the high lane");
+    Assert((~0i512) == -1i512, "bitwise not of zero");
+
+    Assert(int512::Max > 0i512 && int512::Min < 0i512, "comparison reads the sign, not the low lane");
+    Assert(acrossLanes <
+               115792089237316195423570985008687907853269984665640564039457584007913129639936i512,
+           "comparison crosses a lane boundary");
+
+    // Conversion in both directions, including from the width below.
+    let widened: int512 = -7i64 as int512;
+    Assert(widened == -7i512, "a narrow signed value sign-extends across every lane");
+    Assert(int256::Max as int512 ==
+               57896044618658097711785492504343953926634992332820282019728792003956564819967i512,
+           "the widest int256 value survives widening");
+    let narrowed: int256 = int512::Max as int256;
+    Assert(narrowed == -1i256, "a wide value truncates to its low lanes");
+
+    Assert(Echo(int512::Min) == int512::Min, "the minimum survives an argument and a return");
+    Assert(Sum(int512::Max, 1i512) == int512::Min, "two wide arguments arrive intact");
+
+    var accumulator: int512 = 0i512;
+    accumulator += int512::Max;
+    Assert(accumulator == int512::Max, "compound addition");
+    accumulator -= int512::Max;
+    Assert(accumulator == 0i512, "compound subtraction");
+    return 0;
+}

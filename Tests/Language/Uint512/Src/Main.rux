@@ -1,0 +1,92 @@
+// uint512: eight lanes of magnitude, the widest integer the language has.
+//
+// The shared wide-integer test carried one uint512 assertion — that the maximum survives an argument and a return,
+// and that adding one to it wraps. Everything else about the width was unexercised. What is pinned here is unsigned
+// behavior at the far end of the range: a carry crossing six intermediate lanes, wrapping at zero, a top bit worth
+// more than all 511 others together, and the exact decoding of a 155-digit literal that has no machine
+// representation to pass through on the way in.
+
+import Core::Assert;
+import Core::{ int512, uint256, uint512 };
+
+func Echo(value: uint512) -> uint512 {
+    return value;
+}
+
+func Main() -> int {
+    Assert(uint512::Bits == 512u && uint512::Bytes == 64u, "uint512 is 512 bits in 64 bytes");
+    Assert(uint512::Min == 0u512, "the minimum is zero");
+    Assert(
+        uint512::Max ==
+            13407807929942597099574024998205846127479365820592393377723561443721764030073546976801874298166903427690031858186486050853753882811946569946433649006084095u512,
+        "uint512 maximum");
+
+    let maximum: uint512 = uint512::Max;
+    Assert(maximum - 1u512 ==
+               13407807929942597099574024998205846127479365820592393377723561443721764030073546976801874298166903427690031858186486050853753882811946569946433649006084094u512,
+           "a full-width literal decodes exactly");
+
+    // The top bit is magnitude, so the value carrying it is the largest rather than the smallest.
+    Assert((1u512 << 511) > 0u512, "the top bit is a value bit, not a sign");
+    Assert((1u512 << 511) as int512 == int512::Min, "the same bits read as int512 are the minimum");
+    Assert(maximum as int512 == -1i512, "all bits set is the maximum unsigned and minus one signed");
+
+    // A carry starting in the low lane and reaching the high one, six lanes away.
+    let acrossLanes: uint512 =
+        115792089237316195423570985008687907853269984665640564039457584007913129639935u512;
+    Assert(acrossLanes + 1u512 ==
+               115792089237316195423570985008687907853269984665640564039457584007913129639936u512,
+           "a carry propagates across six intermediate lanes");
+    Assert(115792089237316195423570985008687907853269984665640564039457584007913129639936u512 - 1u512 ==
+               acrossLanes,
+           "a borrow propagates back across them");
+    Assert(acrossLanes * 2u512 ==
+               231584178474632390847141970017375815706539969331281128078915168015826259279870u512,
+           "multiplication carries upward");
+
+    Assert(maximum + 1u512 == 0u512, "addition wraps from the maximum to zero");
+    Assert(0u512 - 1u512 == maximum, "subtraction wraps from zero to the maximum");
+
+    Assert(maximum / maximum == 1u512, "a value divided by itself");
+    Assert(
+        maximum / 2u512 ==
+            6703903964971298549787012499102923063739682910296196688861780721860882015036773488400937149083451713845015929093243025426876941405973284973216824503042047u512,
+        "halving the maximum reaches the largest signed value");
+    Assert(maximum % 2u512 == 1u512, "the maximum is odd");
+
+    // A shift by 256 moves half the value; every right shift is logical.
+    Assert((1u512 << 256) ==
+               115792089237316195423570985008687907853269984665640564039457584007913129639936u512,
+           "a left shift by 256 moves half the value");
+    Assert((1u512 << 256) >> 256 == 1u512, "a shift across four lanes and back");
+    Assert(maximum >> 511 == 1u512, "shifting the maximum down leaves one bit rather than sign-extending");
+    Assert(maximum >> 256 ==
+               115792089237316195423570985008687907853269984665640564039457584007913129639935u512,
+           "a right shift discards the low lanes");
+
+    Assert((maximum & 255u512) == 255u512, "bitwise and reaches the low lane");
+    Assert((0u512 | (1u512 << 511)) == (1u512 << 511), "bitwise or reaches the high lane");
+    Assert((maximum ^ maximum) == 0u512, "bitwise exclusive or of a value with itself");
+    Assert((~0u512) == maximum, "bitwise not of zero is the maximum");
+
+    Assert(maximum > acrossLanes, "comparison crosses a lane boundary");
+    Assert(0u512 < 1u512, "comparison at the bottom of the range");
+
+    // Conversion in both directions, including from the width below.
+    let widened: uint512 = uint256::Max as uint512;
+    Assert(widened ==
+               115792089237316195423570985008687907853269984665640564039457584007913129639935u512,
+           "a narrow unsigned value zero-extends");
+    Assert(widened < maximum, "zero extension did not fill the high lanes");
+    let narrowed: uint256 = maximum as uint256;
+    Assert(narrowed == uint256::Max, "a wide value truncates to its low lanes");
+
+    Assert(Echo(maximum) == maximum, "the maximum survives an argument and a return");
+
+    var accumulator: uint512 = 0u512;
+    accumulator += maximum;
+    Assert(accumulator == maximum, "compound addition");
+    accumulator -= maximum;
+    Assert(accumulator == 0u512, "compound subtraction");
+    return 0;
+}
