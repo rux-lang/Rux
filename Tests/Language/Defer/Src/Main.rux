@@ -1,27 +1,128 @@
+// `defer`: work registered now and run on the way out of the scope.
+//
+// The keyword appeared in one small case before this, which asserted LIFO ordering and that a defer runs before a
+// return. Both are real, and neither says what happens at the edges: a defer registered inside a branch that is
+// never taken, a defer in a loop body, several defers interleaved with early exits, or a defer that mutates the
+// very value being returned.
+//
+// That last one is a known compiler defect and is pinned here deliberately. `return expr;` should read `expr` and
+// then run the deferred statements, and it does the opposite: the defers run first and `expr` is evaluated after,
+// so a mutation leaks into the returned value. See "A return expression is evaluated after the function's defer
+// statements run" in Docs/CompilerDefects.md. The assertions below record what the compiler does today, so fixing
+// it fails this file and points straight at the entry rather than at something unrelated.
+
 import Core::Assert;
 
-func ScopeWithDefer(val: *var int) {
-    defer *val += 5;
-    defer *val *= 2;
-    Assert(*val == 10, "val should be 10 before scope exit");
+func LastInFirstOut(log: *var int) {
+    defer *log = *log * 10 + 1;
+    defer *log = *log * 10 + 2;
+    defer *log = *log * 10 + 3;
 }
 
-func TestEarlyReturn() -> int {
-    var a = 1;
-    defer a += 10;
-    if a == 1 {
-        return a;
+func RunsOnEarlyReturn(counter: *var int) -> int {
+    defer *counter += 1;
+    if *counter == 0 {
+        return 100;
     }
-    return 0;
+    *counter += 50;
+    return 200;
+}
+
+func RunsOnEveryPath(counter: *var int, takeEarly: bool) -> int {
+    defer *counter += 1;
+    if takeEarly {
+        return 1;
+    }
+    return 2;
+}
+
+// Registration is a run-time act: a defer inside a branch that is not taken never registers.
+func ConditionalRegistration(counter: *var int, register: bool) {
+    if register {
+        defer *counter += 1;
+    }
+    *counter += 100;
+}
+
+// A defer inside a loop body belongs to that body's scope, so it runs once per iteration rather than once at the
+// end of the function.
+func PerIteration(counter: *var int) {
+    for index in 0..3 {
+        defer *counter += 1;
+        *counter += 10;
+    }
+}
+
+// The defect: the returned expression is evaluated after the deferred mutation.
+func ReturnsMutatedVariable() -> int {
+    var value = 1;
+    defer value += 10;
+    return value;
+}
+
+func ReturnsMutatedExpression() -> int {
+    var value = 1;
+    defer value += 10;
+    return value * 2;
+}
+
+// Copying first is the workaround, because a copy is a binding no defer touches.
+func ReturnsSnapshot() -> int {
+    var value = 1;
+    defer value += 10;
+    let snapshot = value;
+    return snapshot;
+}
+
+func ReturnsLiteral() -> int {
+    var value = 1;
+    defer value += 10;
+    return 7;
 }
 
 func Main() -> int {
-    var x = 10;
-    ScopeWithDefer(@x);
-    // LIFO: x *= 2 -> 20, then x += 5 -> 25
-    Assert(x == 25, "x should be 25 after defer execution");
+    // Deferred statements run in reverse registration order. The log digits record the order they ran in.
+    var log: int = 0;
+    LastInFirstOut(@log);
+    Assert(log == 321, "defers run last in, first out");
 
-    var ret = TestEarlyReturn();
-    Assert(ret == 11, "ret should be 11 after defer runs before return");
+    // A defer runs on an early return as well as on falling off the end.
+    var early: int = 0;
+    let earlyResult = RunsOnEarlyReturn(@early);
+    Assert(earlyResult == 100, "the early return produced its value");
+    Assert(early == 1, "and the defer still ran");
+
+    var late: int = 5;
+    let lateResult = RunsOnEarlyReturn(@late);
+    Assert(lateResult == 200, "the later return produced its value");
+    Assert(late == 56, "and the defer ran after the body's own work");
+
+    // Both paths out of the same function run the same defer exactly once.
+    var pathA: int = 0;
+    Assert(RunsOnEveryPath(@pathA, true) == 1, "the early path returned");
+    Assert(pathA == 1, "and its defer ran once");
+    var pathB: int = 0;
+    Assert(RunsOnEveryPath(@pathB, false) == 2, "the late path returned");
+    Assert(pathB == 1, "and its defer ran once too");
+
+    // A defer in an untaken branch never registers, so nothing runs for it.
+    var registered: int = 0;
+    ConditionalRegistration(@registered, true);
+    Assert(registered == 101, "a registered defer ran");
+    var unregistered: int = 0;
+    ConditionalRegistration(@unregistered, false);
+    Assert(unregistered == 100, "an unregistered defer did not");
+
+    // A defer in a loop body runs at the end of each iteration.
+    var iterations: int = 0;
+    PerIteration(@iterations);
+    Assert(iterations == 33, "three iterations each added ten then one");
+
+    // The defect, pinned as it currently behaves. The correct answers are 1, 2, 1 and 7.
+    Assert(ReturnsMutatedVariable() == 11, "DEFECT: the deferred mutation leaks into the returned variable");
+    Assert(ReturnsMutatedExpression() == 22,
+           "DEFECT: the return expression is evaluated after the defer, so the mutation is doubled too");
+    Assert(ReturnsSnapshot() == 1, "copying into another binding first avoids the defect");
+    Assert(ReturnsLiteral() == 7, "and a returned literal is unaffected");
     return 0;
 }

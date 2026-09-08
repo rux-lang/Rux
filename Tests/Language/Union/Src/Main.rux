@@ -1,10 +1,75 @@
+// `union`: several members over one piece of storage.
+//
+// The previous case for this keyword constructed a union, returned one field and asserted nothing, so it would have
+// passed with the whole feature broken as long as the field read zero. What a union promises is exactly what that
+// did not check: every member starts at the same address, the whole occupies as much room as its largest member and
+// no more, and writing one member and reading another reinterprets the same bytes rather than converting them.
+//
+// That last property is the reason a union exists — it is how a float's bit pattern is examined without going
+// through memory by hand — and it is also why a union is unlike a `variant`: nothing records which member is live,
+// so reading the wrong one is not an error, it is a reinterpretation.
+
+import Core::Assert;
+import Core::{ float32, int32, uint32, uint8 };
+
 union Bits {
-    asInt:   int32,
+    asSigned: int32,
+    asUnsigned: uint32,
     asFloat: float32,
     asBytes: uint8[4]
 }
 
+union Uneven {
+    small: uint8,
+    large: uint64
+}
+
 func Main() -> int {
-    let bits = Bits { asInt: 0i32 };
-    return bits.asInt;
+    // The whole is as large as its largest member, not the sum of them.
+    Assert(sizeof(Bits) == 4u, "four members of four bytes each occupy four bytes");
+    Assert(sizeof(Uneven) == sizeof(uint64), "a union is as large as its largest member");
+    Assert(sizeof(Uneven) > sizeof(uint8), "and not as large as its smallest");
+
+    // Construction names one member; the others are the same storage read differently.
+    let zero = Bits { asSigned: 0i32 };
+    Assert(zero.asSigned == 0i32, "the member written reads back");
+    Assert(zero.asUnsigned == 0u32, "and every other member sees the same zero bytes");
+    Assert(zero.asBytes[0] == 0u8 && zero.asBytes[3] == 0u8, "including as individual bytes");
+
+    // Writing one member and reading another reinterprets rather than converts. Minus one is every bit set, which
+    // read as unsigned is the maximum. A conversion would have produced zero or a trap.
+    var punned = Bits { asSigned: -1i32 };
+    Assert(punned.asSigned == -1i32, "the signed member holds minus one");
+    Assert(punned.asUnsigned == uint32::Max, "and the unsigned member sees every bit set");
+    Assert(punned.asBytes[0] == 255u8, "as does the first byte");
+    Assert(punned.asBytes[3] == 255u8, "and the last");
+
+    // Assigning through one member is visible through the others, because there is one piece of storage.
+    punned.asUnsigned = 0u32;
+    Assert(punned.asSigned == 0i32, "a write through one member is seen by another");
+    punned.asBytes[0] = 1u8;
+    Assert(punned.asUnsigned == 1u32, "and a write to one byte moves the whole value");
+
+    // A float's bit pattern, which is the classic reason to reach for a union. 1.0f32 is 0x3F800000.
+    let real = Bits { asFloat: 1.0f32 };
+    Assert(real.asFloat == 1.0f32, "the float member holds the value written");
+    Assert(real.asUnsigned == 0x3F800000u32, "and the unsigned member sees its bit pattern");
+
+    // And the same in reverse: a bit pattern written as an integer reads back as the float it encodes.
+    let fromBits = Bits { asUnsigned: 0x40000000u32 };
+    Assert(fromBits.asFloat == 2.0f32, "a bit pattern written as an integer reads back as its float");
+
+    // A member narrower than the union leaves the rest of the storage alone rather than clearing it.
+    var uneven = Uneven { large: 0u64 };
+    uneven.small = 255u8;
+    Assert(uneven.small == 255u8, "the narrow member holds what was written");
+    Assert(uneven.large == 255u64, "and the wide member sees it in its low byte");
+
+    // A union is a value: it copies, and the copy is independent.
+    var original = Bits { asSigned: 7i32 };
+    var copied = original;
+    copied.asSigned = 9i32;
+    Assert(original.asSigned == 7i32, "the original is unchanged by a write to the copy");
+    Assert(copied.asSigned == 9i32, "and the copy holds its own value");
+    return 0;
 }

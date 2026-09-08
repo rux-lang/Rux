@@ -5,7 +5,10 @@ Version = 1
 Name = "Visibility"
 Version = "0.1.0"
 Type = "Executable"
-Description = "Language test: package-private defaults and public members"
+Description = "Language test: Visibility"
+
+[Dependencies]
+Core = { Path = "../../../Packages/Core" }
 
 [Build]
 Output = "../../../Bin/Tests/Language"

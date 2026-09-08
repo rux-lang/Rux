@@ -1,17 +1,55 @@
+// `pub`: what a package shows to the packages that depend on it.
+//
+// Visibility is per declaration, not per type. A public struct may hold private fields, a public type may have
+// private methods beside its public ones, and a public function may return a type that cannot be named outside the
+// package. What none of that changes is access from inside the package, which is what this executable is: every
+// declaration in Library.rux is reachable here whether or not it is `pub`, and that is the property this file can
+// actually observe. What `pub` withholds from a *dependent* package is checked where a dependent package exists —
+// under Tests/Packages — because a single-package test cannot be outside itself.
+//
+// This case previously reported failures by returning 1, 2 or 3, so a failure said which check but not what it
+// saw. It uses Assert now, like the rest of the language tests.
+
+import Core::Assert;
+
 func Main() -> int {
+    // A package-private type, constructor and method, reached from another file of the same package.
     let packageCounter = MakePackageCounter(7);
-    if packageCounter.Read() != 7 || packageCounter.value != 7 {
-        return 1;
-    }
+    Assert(packageCounter.Read() == 7, "a package-private method is callable within the package");
+    Assert(packageCounter.value == 7, "and a package-private field is readable");
 
+    // A public struct with one public field and one private one. Both are reachable from inside the package, and
+    // Read sees the private one, which is how the sum below is 5 rather than 4.
     let publicCounter = PublicCounter(4) + PublicCounter::Zero();
-    if publicCounter.value != 4 || publicCounter.Read() != 5 {
-        return 2;
-    }
+    Assert(publicCounter.value == 4, "the public field holds what the constructor set");
+    Assert(publicCounter.Read() == 5, "and the method reads the private field beside it");
+    Assert(publicCounter.hidden == 1, "which is itself reachable from inside the package");
 
+    // A public operator declared in an extend block.
+    let summed = PublicCounter(2) + PublicCounter(3);
+    Assert(summed.value == 5, "a public operator is an ordinary public method");
+
+    // A public union with one public member and one private one, both usable here.
     let bits = PublicBits { signed: 9i32 };
-    if bits.signed != 9i32 {
-        return 3;
-    }
+    Assert(bits.signed == 9i32, "the public member holds what was written");
+    Assert(bits.raw == 9u32, "and the private member sees the same storage");
+
+    // A public enum and its members.
+    Assert(Level::Low != Level::High, "public enum members are distinct");
+    Assert(Level::High as int32 == 2i32, "and carry their declared discriminants");
+
+    // A public variant, its unit case and its payload case.
+    let absent = Reading::Absent;
+    let present = Reading::Present(100i32);
+    Assert(LevelOf(absent) == Level::Low, "a public function accepts a public variant");
+    Assert(LevelOf(present) == Level::High, "and matches its payload case");
+
+    // A public constant and a public type alias.
+    Assert(Ceiling == 99i32, "a public constant holds its value");
+    let measured: Measure = 42i32;
+    Assert(measured == 42i32, "and a public alias names its type");
+
+    // A public interface, implemented publicly.
+    Assert(publicCounter.Value() == 4i32, "a public interface method is callable");
     return 0;
 }

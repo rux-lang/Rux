@@ -46,3 +46,38 @@ pub union PublicBits {
     pub signed: int32,
     raw: uint32
 }
+
+// `pub` on the remaining declaration kinds. A type being public does not make its members public, and a member
+// being public does not make its type public: each declaration chooses for itself.
+pub enum Level: int32 {
+    Low = 1,
+    High = 2
+}
+
+pub variant Reading {
+    Absent,
+    Present(int32)
+}
+
+pub const Ceiling: int32 = 99i32;
+
+pub type Measure = int32;
+
+pub interface Readable {
+    func Value(self: &Self) -> int32;
+}
+
+extend PublicCounter : Readable {
+    pub func Value(self: &PublicCounter) -> int32 {
+        return self.value as int32;
+    }
+}
+
+// A public function returning a package-private type is still callable from this package; what it returns simply
+// cannot be named outside it.
+pub func LevelOf(reading: &Reading) -> Level {
+    return match reading {
+        .Absent => Level::Low,
+        .Present(value) => value > Ceiling ? Level::High : Level::Low
+    };
+}

@@ -8,6 +8,29 @@ Return to the [main README](../README.md) for the complete documentation index.
 
 ## Open
 
+### A `return` expression is evaluated after the function's `defer` statements run
+
+*Silent, and it changes the value a function returns.* `return expr;` should read `expr` and then run the deferred statements on the way out. It does the opposite: the defers run first and `expr` is evaluated afterwards, so a `defer` that mutates a local is visible in the value the caller receives.
+
+```rux
+func Doubled() -> int {
+    var a = 1;
+    defer a += 10;
+    return a * 2;   // 22, where 2 is correct
+}
+```
+
+Narrowed by probe. `return a;` gives 11 rather than 1, and `return a * 2;` gives 22 rather than 2 — the multiplication is applied to the mutated value, so this is the expression being evaluated late rather than only the return slot aliasing the variable. Two defers compound the same way, in the correct LIFO order: `defer a += 100;` then `defer a *= 3;` over `var a = 1` returns 103. Copying first is a complete workaround, because the copy is a separate binding no defer touches:
+
+```rux
+let snapshot = a;
+return snapshot;    // 1, correct
+```
+
+A `return` of a literal, or of anything no deferred statement mutates, is unaffected, which is why this has gone unnoticed: the existing `Tests/Language/Defer` case asserts the returned value is 11 and reads as though that were intended.
+
+`Tests/Language/Defer` now pins the symptom deliberately, next to a comment naming this entry, so that fixing the defect fails that case and points at itself rather than at a mystery. Nothing in the release is affected: `defer` appears in no first-party package at all, so the blast radius today is language tests and whatever a user writes.
+
 ### `char64` has no character literal prefix, and `c64'x'` fails as a parse error rather than as an unknown prefix
 
 *Loud, and misleading about what is wrong.* `char64` is a fully implemented width — it has a catalog entry, `Min`, `Max`, `Bits` and `Bytes`, and the changelog announces it as the fourth character width — but `Lexer::ScanToken` recognizes only `c8`, `c16` and `c32` as literal prefixes. `c64` therefore lexes as an identifier followed by a separate character literal, and the parser reports something like `expected ',' between arguments before ''A''`, which points at the quote rather than at the prefix and does not mention `c64` at all.
