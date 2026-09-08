@@ -1,0 +1,322 @@
+import Allocator::{ Allocator, SystemAllocator };
+import Collections::{ CollectionError, CompareInt32, EqualsInt32, HashInt32, HashMap, HashSet, TableSeed, TreeMap,
+                      TreeSet, WriteHashMapDebug, WriteHashSetDebug, WriteTreeMapDebug, WriteTreeSetDebug };
+import Core::{ Assert, Result, Unit };
+import Format::WriteFormat;
+import Text::{ BufferWriter, Debug, Display, FormatError, FormatSpec, ParseFormatSpec, TextWriter, WriteAscii,
+               WriteBytes };
+
+// What a map, a set and a failure look like when a program has to say what it has.
+//
+// Maps and sets are written in braces rather than brackets, because what they hold is not a run of things and
+// reading one as a sequence would be reading it wrongly. Past that, the two kinds ask a different question each.
+//
+// An ordered map or set is written in key order, so its rendering is a fact about its contents and can be compared
+// against an exact string. Every case for `TreeMap` and `TreeSet` below does exactly that, including the one that
+// inserts in a deliberately unhelpful order.
+//
+// A hash map or set is written in the order of its table, which follows from a seed drawn from the operating system
+// when the container was made and from the displacement every insertion since has caused. So there is no exact
+// string to compare against, and a test that pinned one would pass on the machine that wrote it and fail somewhere
+// else. What is checked instead is everything that does hold: the braces, one separator fewer than there are
+// entries, each entry present exactly once, a total length that leaves room for nothing else, and that showing one
+// map twice gives the same text both times. The temptation worth naming is the case that is *not* here — two maps
+// made with the same seed and the same entries were expected to agree and do not, because which of two entries
+// wanting one slot gets it depends on which arrived first.
+//
+// `CollectionError` carries the same split every error in this repository has: `Display` is the description a reader
+// is shown and `Debug` names the case a program branches on. Both are checked for all five values, because a case
+// that shared another's words would be exactly the confusion the type exists to prevent.
+
+// An entry that reports each of its own destructions, so "showing it did not take it" is counted. Move-only.
+struct Tracked {
+    counter: *var int32;
+    tag: int32;
+}
+
+extend Tracked {
+    func =(self: &var Tracked, other: &Tracked);
+
+    func ~Tracked(self: &var Tracked) {
+        if self.counter != null {
+            *self.counter = *self.counter + 1i32;
+        }
+    }
+}
+
+extend Tracked : Debug {
+    func WriteDebug(self: &Tracked, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        WriteBytes(writer, "T(")?;
+        let tag: Debug = self.tag;
+        tag.WriteDebug(writer, spec)?;
+        return WriteAscii(writer, c8')');
+    }
+}
+
+func Same(actual: char8[..], expected: char8[..]) -> bool {
+    if actual.length != expected.length { return false; }
+    var index: uint = 0;
+    while index < actual.length {
+        if actual.data[index] != expected.data[index] { return false; }
+        index = index + 1;
+    }
+    return true;
+}
+
+// How many times `needle` occurs in `text`, counting overlaps, which is what an order-independent assertion needs:
+// present is not enough, since a writer that emitted one entry twice would satisfy it.
+func Occurrences(text: char8[..], needle: char8[..]) -> uint {
+    if needle.length == 0 || needle.length > text.length { return 0; }
+    var found: uint = 0;
+    var start: uint = 0;
+    while start + needle.length <= text.length {
+        var index: uint = 0;
+        var matches = true;
+        while index < needle.length {
+            if text.data[start + index] != needle.data[index] {
+                matches = false;
+                break;
+            }
+            index = index + 1;
+        }
+        if matches { found = found + 1; }
+        start = start + 1;
+    }
+    return found;
+}
+
+func Spec(text: char8[..]) -> FormatSpec {
+    var spec = FormatSpec::Plain();
+    Assert(ParseFormatSpec(text).TryIntoValue(@spec), "the spec parses");
+    return spec;
+}
+
+// The rendering of each container, into a buffer of its own so no case can read another's output. The length is
+// returned through the writer the caller keeps, which is what lets the hash cases inspect what was written.
+func RenderHashMap(map: &HashMap<int32, int32>, into: var char8[..]) -> uint {
+    var writer = BufferWriter(into);
+    let sink: &var TextWriter = writer;
+    Assert(WriteHashMapDebug<int32, int32>(sink, map, FormatSpec::Plain()).IsSuccess(), "the map is shown");
+    return writer.Length();
+}
+
+func RenderHashSet(set: &HashSet<int32>, into: var char8[..]) -> uint {
+    var writer = BufferWriter(into);
+    let sink: &var TextWriter = writer;
+    Assert(WriteHashSetDebug<int32>(sink, set, FormatSpec::Plain()).IsSuccess(), "the set is shown");
+    return writer.Length();
+}
+
+func ShownTreeMap(map: &TreeMap<int32, int32>, spec: FormatSpec, expected: char8[..]) -> bool {
+    var storage: char8[256];
+    var writer = BufferWriter((@storage[0])[..256]);
+    let sink: &var TextWriter = writer;
+    if WriteTreeMapDebug<int32, int32>(sink, map, spec).IsError() { return false; }
+    return Same(writer.Written(), expected);
+}
+
+func ShownTreeSet(set: &TreeSet<int32>, spec: FormatSpec, expected: char8[..]) -> bool {
+    var storage: char8[256];
+    var writer = BufferWriter((@storage[0])[..256]);
+    let sink: &var TextWriter = writer;
+    if WriteTreeSetDebug<int32>(sink, set, spec).IsError() { return false; }
+    return Same(writer.Written(), expected);
+}
+
+func ShownError(error: CollectionError, spec: FormatSpec, expected: char8[..]) -> bool {
+    var storage: char8[128];
+    var writer = BufferWriter((@storage[0])[..128]);
+    let sink: &var TextWriter = writer;
+    let shown: Display = error;
+    if shown.WriteDisplay(sink, spec).IsError() { return false; }
+    return Same(writer.Written(), expected);
+}
+
+func InspectedError(error: CollectionError, spec: FormatSpec, expected: char8[..]) -> bool {
+    var storage: char8[128];
+    var writer = BufferWriter((@storage[0])[..128]);
+    let sink: &var TextWriter = writer;
+    let shown: Debug = error;
+    if shown.WriteDebug(sink, spec).IsError() { return false; }
+    return Same(writer.Written(), expected);
+}
+
+func Main() -> int {
+    var system = SystemAllocator();
+    let allocator: Allocator = system;
+    let plain = FormatSpec::Plain();
+
+    // An ordered map is written in key order, which is the order it keeps whatever order it was filled in.
+    var ordered = TreeMap<int32, int32>(allocator, CompareInt32);
+    Assert(ShownTreeMap(ordered, plain, "{}"), "an empty ordered map shows as empty braces");
+    Assert(ordered.Insert(30i32, 3i32) == CollectionError::None, "filled out of order");
+    Assert(ordered.Insert(10i32, 1i32) == CollectionError::None, "deliberately");
+    Assert(ordered.Insert(20i32, 2i32) == CollectionError::None, "so insertion order is not key order");
+    Assert(ShownTreeMap(ordered, plain, "{10: 1, 20: 2, 30: 3}"), "and it still shows in key order");
+
+    // The specification reaches the keys and the values, which is where a base means something.
+    Assert(ShownTreeMap(ordered, Spec("x"), "{a: 1, 14: 2, 1e: 3}"), "a base applies to both sides of an entry");
+
+    // A second map with the same entries in a third order renders identically, which is the property that makes an
+    // ordered map's rendering usable in an assertion at all.
+    var again = TreeMap<int32, int32>(allocator, CompareInt32);
+    Assert(again.Insert(20i32, 2i32) == CollectionError::None, "filled differently");
+    Assert(again.Insert(30i32, 3i32) == CollectionError::None, "again");
+    Assert(again.Insert(10i32, 1i32) == CollectionError::None, "and again");
+    Assert(ShownTreeMap(again, plain, "{10: 1, 20: 2, 30: 3}"), "two ordered maps of the same entries agree");
+
+    // One entry, where a separator written one position out would show.
+    var single = TreeMap<int32, int32>(allocator, CompareInt32);
+    Assert(single.Insert(7i32, 8i32) == CollectionError::None, "one entry");
+    Assert(ShownTreeMap(single, plain, "{7: 8}"), "carries no separator");
+
+    // An ordered set is the same rendering without the values.
+    var elements = TreeSet<int32>(allocator, CompareInt32);
+    var added = false;
+    Assert(ShownTreeSet(elements, plain, "{}"), "an empty ordered set shows as empty braces");
+    Assert(elements.Insert(5i32, @added) == CollectionError::None, "filled out of order");
+    Assert(elements.Insert(1i32, @added) == CollectionError::None, "deliberately");
+    Assert(elements.Insert(3i32, @added) == CollectionError::None, "again");
+    Assert(ShownTreeSet(elements, plain, "{1, 3, 5}"), "and shows its elements in order");
+
+    // A hash map has no order to pin, so what is checked is everything that holds regardless of it: the braces, one
+    // separator fewer than there are entries, and each entry exactly once.
+    var hashed = HashMap<int32, int32>(allocator, HashInt32, EqualsInt32);
+    var empty: char8[64];
+    Assert(RenderHashMap(hashed, (@empty[0])[..64]) == 2u, "an empty hash map is two braces");
+    Assert(Same((@empty[0])[..2], "{}"), "and they are the right two");
+
+    Assert(hashed.Insert(1i32, 10i32) == CollectionError::None, "filled");
+    Assert(hashed.Insert(2i32, 20i32) == CollectionError::None, "filled");
+    Assert(hashed.Insert(3i32, 30i32) == CollectionError::None, "filled");
+
+    var storage: char8[128];
+    let length = RenderHashMap(hashed, (@storage[0])[..128]);
+    let shown = (@storage[0])[..length];
+    Assert(shown.data[0] == c8'{' && shown.data[length - 1] == c8'}', "a hash map is written in braces");
+    Assert(Occurrences(shown, ", ") == 2u, "with one separator fewer than it has entries");
+    Assert(Occurrences(shown, "1: 10") == 1u, "and each entry exactly once");
+    Assert(Occurrences(shown, "2: 20") == 1u, "each");
+    Assert(Occurrences(shown, "3: 30") == 1u, "of them");
+    Assert(length == 2u + 5u + 5u + 5u + 4u, "and nothing else at all");
+
+    // The rendering is stable for as long as the map is: showing the same map twice gives the same text, which is
+    // what makes it usable in a log where two lines are being compared. What is *not* promised is that two maps
+    // holding the same entries agree, and this is where the temptation is to assert it — a map's slot order follows
+    // from its seed and from the displacement every insertion caused, so two maps filled in different orders can
+    // differ even with the same seed. That is why the checks above count entries rather than compare strings.
+    var repeat: char8[128];
+    let repeated = RenderHashMap(hashed, (@repeat[0])[..128]);
+    Assert(Same((@repeat[0])[..repeated], shown), "the same map shows the same way twice");
+
+    // A larger map through the same checks, so the growth a table does partway through filling is covered rather
+    // than assumed away by a map that never rehashed.
+    var seeded = HashMap::WithSeed<int32, int32>(allocator, TableSeed::Of(0x0123456789ABCDEFu64,
+                                                                         0xFEDCBA9876543210u64),
+                                                 HashInt32, EqualsInt32);
+    var key: int32 = 1i32;
+    while key <= 9i32 {
+        Assert(seeded.Insert(key, key) == CollectionError::None, "filled past one growth");
+        key = key + 1i32;
+    }
+    var seededStorage: char8[128];
+    let seededLength = RenderHashMap(seeded, (@seededStorage[0])[..128]);
+    let seededShown = (@seededStorage[0])[..seededLength];
+    Assert(Occurrences(seededShown, ", ") == 8u, "nine entries carry eight separators");
+    key = 1i32;
+    var entry: char8[8];
+    while key <= 9i32 {
+        entry[0] = (key as uint + 0x30u) as char8;
+        entry[1] = c8':';
+        entry[2] = c8' ';
+        entry[3] = (key as uint + 0x30u) as char8;
+        Assert(Occurrences(seededShown, (@entry[0])[..4]) == 1u, "and each of the nine appears exactly once");
+        key = key + 1i32;
+    }
+    Assert(seededLength == 2u + 9u * 4u + 8u * 2u, "with nothing else in the rendering at all");
+
+    // A hash set answers the same way.
+    var members = HashSet<int32>(allocator, HashInt32, EqualsInt32);
+    var setStorage: char8[64];
+    Assert(RenderHashSet(members, (@setStorage[0])[..64]) == 2u, "an empty hash set is two braces");
+    Assert(members.Insert(11i32, @added) == CollectionError::None, "filled");
+    Assert(members.Insert(22i32, @added) == CollectionError::None, "filled");
+    let setLength = RenderHashSet(members, (@setStorage[0])[..64]);
+    let setShown = (@setStorage[0])[..setLength];
+    Assert(setShown.data[0] == c8'{' && setShown.data[setLength - 1] == c8'}', "a hash set is written in braces");
+    Assert(Occurrences(setShown, ", ") == 1u, "with one separator between its two elements");
+    Assert(Occurrences(setShown, "11") == 1u, "and each element exactly once");
+    Assert(Occurrences(setShown, "22") == 1u, "each of them");
+    Assert(setLength == 8u, "and nothing else");
+
+    // Showing a map takes nothing out of it, which is the property that matters for an entry type that cannot be
+    // copied: a walk that yielded entries by value could not have been used here at all.
+    var destroyed: int32 = 0;
+    var owning = TreeMap<int32, Tracked>(allocator, CompareInt32);
+    Assert(owning.Insert(2i32, Tracked { counter: @destroyed, tag: 2i32 }) == CollectionError::None, "filled");
+    Assert(owning.Insert(1i32, Tracked { counter: @destroyed, tag: 1i32 }) == CollectionError::None, "filled");
+
+    var ownedStorage: char8[128];
+    var ownedWriter = BufferWriter((@ownedStorage[0])[..128]);
+    let ownedSink: &var TextWriter = ownedWriter;
+    Assert(WriteTreeMapDebug<int32, Tracked>(ownedSink, owning, plain).IsSuccess(), "a move-only map is shown");
+    Assert(destroyed == 0i32, "and nothing was destroyed to show it");
+    Assert(WriteTreeMapDebug<int32, Tracked>(ownedSink, owning, plain).IsSuccess(), "so it can be shown again");
+    Assert(destroyed == 0i32, "still destroying nothing");
+    Assert(Same(ownedWriter.Written(), "{1: T(1), 2: T(2)}{1: T(1), 2: T(2)}"), "twice, identically");
+    Assert(owning.Length() == 2u, "and the map still holds both entries");
+
+    // A destination that runs out of room reports it and stops.
+    var small: char8[6];
+    var tight = BufferWriter((@small[0])[..6]);
+    let tightSink: &var TextWriter = tight;
+    let refused = WriteTreeMapDebug<int32, int32>(tightSink, ordered, plain);
+    let overflowed = match refused {
+        .Success(_) => false,
+        .Error(reason) => match reason { .InsufficientCapacity => true, else => false }
+    };
+    Assert(overflowed, "an ordered map reports a destination without room");
+
+    var tighter = BufferWriter((@small[0])[..6]);
+    let tighterSink: &var TextWriter = tighter;
+    let alsoRefused = WriteHashMapDebug<int32, int32>(tighterSink, hashed, plain);
+    let alsoOverflowed = match alsoRefused {
+        .Success(_) => false,
+        .Error(reason) => match reason { .InsufficientCapacity => true, else => false }
+    };
+    Assert(alsoOverflowed, "and so does a hash map");
+    Assert(tighter.Length() <= 6u, "having written no more than it had");
+
+    // The error describes itself, and the five cases stay distinguishable in words as they are in the type.
+    Assert(ShownError(CollectionError::None, plain, "no error"), "success has a description too");
+    Assert(ShownError(CollectionError::OutOfMemory, plain, "out of memory"), "a shortage of memory");
+    Assert(ShownError(CollectionError::CapacityOverflow, plain, "size that cannot be represented"),
+           "a size that no allocator could have served");
+    Assert(ShownError(CollectionError::IndexOutOfRange, plain, "index the collection does not have"),
+           "an index that is not there");
+    Assert(ShownError(CollectionError::Unsupported, plain, "layout this allocator cannot serve"),
+           "and a layout refused outright");
+
+    // Debug names the case a program branches on, qualified by its type.
+    Assert(InspectedError(CollectionError::None, plain, "CollectionError::None"), "the case is named");
+    Assert(InspectedError(CollectionError::OutOfMemory, plain, "CollectionError::OutOfMemory"), "and qualified");
+    Assert(InspectedError(CollectionError::CapacityOverflow, plain, "CollectionError::CapacityOverflow"), "each");
+    Assert(InspectedError(CollectionError::IndexOutOfRange, plain, "CollectionError::IndexOutOfRange"), "of");
+    Assert(InspectedError(CollectionError::Unsupported, plain, "CollectionError::Unsupported"), "them");
+
+    // A description has one form, so a style or a precision is a request it cannot answer rather than one it
+    // silently ignores. Truncating a description produces a sentence that says something else.
+    var refusalStorage: char8[128];
+    var refusalWriter = BufferWriter((@refusalStorage[0])[..128]);
+    let refusalSink: &var TextWriter = refusalWriter;
+    let described: Display = CollectionError::OutOfMemory;
+    let truncated = described.WriteDisplay(refusalSink, Spec(".3"));
+    let unsupported = match truncated {
+        .Success(_) => false,
+        .Error(reason) => match reason { .UnsupportedRequest => true, else => false }
+    };
+    Assert(unsupported, "a precision is refused rather than applied");
+    Assert(refusalWriter.Length() == 0u, "and nothing was written before refusing");
+
+    return 0;
+}

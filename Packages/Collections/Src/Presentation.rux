@@ -16,12 +16,28 @@
 // are to a reader — by walking both runs inside one pair of brackets, which is the one thing the slice writer
 // cannot be asked to do.
 //
-// Maps, sets and `CollectionError` are not here. They come with questions these do not have — whether an unordered
-// container may be shown in an order that changes between runs, and what an error's text should be — and they are
-// their own work.
+// Maps and sets are here too, written `{key: value, key: value}` and `{element, element}` — braces rather than
+// brackets, because what a map holds is not a run of things and reading one as a sequence would be reading it
+// wrongly. The two kinds differ in exactly one respect, and it is the only interesting question they raise.
+//
+// An ordered map or set is written in key order, which is the order it keeps and the order every walk of it takes,
+// so its rendering is a fact about its contents and nothing else. A hash map or set is written in the order of its
+// table, which is a fact about the container rather than about what it holds: it follows from the seed drawn when
+// the container was made and from every insertion and removal since, because displacement decides which of two
+// entries that want the same slot gets it. So two containers holding exactly the same entries render differently,
+// and so does the same container in the next run of the same program. That is documented rather than fixed: sorting
+// would need an ordering on the key that a hash container does not have and was built not to need, and inventing
+// one would make every hash container require something extra just so that its diagnostic looked tidy. A caller who
+// needs a stable order has an ordered map.
+//
+// `CollectionError` presents itself here as well, for the same reason the containers do — this package depends on
+// `Rux/Text` and Text does not depend on it, so this is the side of the edge the implementation can live on.
+// `Display` is the description a reader is shown and `Debug` names the case, exactly as for the errors Text
+// presents. The descriptions are stable and are not a parsing contract: a program branches on the case.
 
 import Core::{ Result, Unit };
-import Text::{ Debug, FormatError, FormatSpec, TextWriter, WriteAscii, WriteBytes, WriteSliceDebug };
+import Text::{ Debug, Display, FormatError, FormatSpec, RejectStyle, TextWriter, WriteAscii, WriteBytes,
+               WriteSliceDebug };
 
 // One run of elements written into an open sequence, with `written` saying how many are already there so that the
 // separator lands between elements and never before the first.
@@ -112,4 +128,212 @@ pub func WriteDequeDebug<T: Debug>(writer: &var TextWriter, value: &Deque<T>,
     WriteRun<T>(writer, front, spec, 0)?;
     WriteRun<T>(writer, back, spec, front.length)?;
     return WriteAscii(writer, c8']');
+}
+
+/// Writes a borrowed hash map as `{key: value, key: value}`.
+///
+/// An empty map is `{}`. Braces rather than brackets, because a map is not a run of elements and reading its
+/// rendering as one would be reading it wrongly.
+///
+/// The order is the table's, which follows from the seed the map was made with and from every insertion and removal
+/// since — so it is not the insertion order, it does not hold between two maps with the same entries, and it changes
+/// between runs of the same program. Nothing here sorts, since that would need an ordering on the key that a hash
+/// map does not have. `TreeMap` is the container whose rendering is stable.
+///
+/// Every key and value is shown through a borrow of it, so a map of move-only entries is shown without taking one
+/// out. `spec` is handed to each of them unchanged.
+///
+/// # Failures
+/// Reports whatever the writer or an entry's implementation reported, stopping at the first refusal.
+///
+/// @typeParam K the key type, which must know how to show itself
+/// @typeParam V the value type, which must know how to show itself
+/// @param writer the destination
+/// @param value the map to show, borrowed for the call
+/// @param spec what to show each key and value under
+/// @returns success when the whole rendering was accepted
+/// @see https://rux-lang.dev/docs/api/collections/write-hash-map-debug
+pub func WriteHashMapDebug<K: Debug, V: Debug>(writer: &var TextWriter, value: &HashMap<K, V>,
+                                               spec: FormatSpec) -> Result<Unit, FormatError> {
+    WriteAscii(writer, c8'{')?;
+    var index: uint = 0;
+    var written: uint = 0;
+    while index < value.table.Capacity() {
+        if value.table.IsOccupied(index) {
+            if written != 0 {
+                WriteBytes(writer, ", ")?;
+            }
+            value.table.keys[index].WriteDebug(writer, spec)?;
+            WriteBytes(writer, ": ")?;
+            value.table.values[index].WriteDebug(writer, spec)?;
+            written = written + 1;
+        }
+        index = index + 1;
+    }
+    return WriteAscii(writer, c8'}');
+}
+
+/// Writes a borrowed hash set as `{first, second, third}`.
+///
+/// An empty set is `{}`. The order is the table's and carries the same warning as a hash map's: it follows from the
+/// seed and from what the set has been through, so it is not the insertion order and does not hold between runs.
+/// `TreeSet` is the ordered one.
+///
+/// Every element is shown through a borrow of it, and `spec` is handed to each unchanged.
+///
+/// # Failures
+/// Reports whatever the writer or an element's implementation reported, stopping at the first refusal.
+///
+/// @typeParam T the element type, which must know how to show itself
+/// @param writer the destination
+/// @param value the set to show, borrowed for the call
+/// @param spec what to show each element under
+/// @returns success when the whole rendering was accepted
+/// @see https://rux-lang.dev/docs/api/collections/write-hash-set-debug
+pub func WriteHashSetDebug<T: Debug>(writer: &var TextWriter, value: &HashSet<T>,
+                                     spec: FormatSpec) -> Result<Unit, FormatError> {
+    WriteAscii(writer, c8'{')?;
+    var index: uint = 0;
+    var written: uint = 0;
+    while index < value.table.Capacity() {
+        if value.table.IsOccupied(index) {
+            if written != 0 {
+                WriteBytes(writer, ", ")?;
+            }
+            value.table.keys[index].WriteDebug(writer, spec)?;
+            written = written + 1;
+        }
+        index = index + 1;
+    }
+    return WriteAscii(writer, c8'}');
+}
+
+/// Writes a borrowed ordered map as `{key: value, key: value}`, in key order.
+///
+/// An empty map is `{}`. The order is the map's own — the order `Iterate` walks, the order `First` and `Last` name
+/// the ends of — so two maps holding the same entries render identically and one map renders identically every
+/// time. That is what makes an ordered map's rendering usable in an assertion where a hash map's is not.
+///
+/// The walk crosses every edge of the tree twice and allocates nothing, and nothing is taken out of the map: every
+/// key and value is shown through a borrow of the node holding it. `spec` is handed to each unchanged.
+///
+/// # Failures
+/// Reports whatever the writer or an entry's implementation reported, stopping at the first refusal.
+///
+/// @typeParam K the key type, which must know how to show itself
+/// @typeParam V the value type, which must know how to show itself
+/// @param writer the destination
+/// @param value the map to show, borrowed for the call
+/// @param spec what to show each key and value under
+/// @returns success when the whole rendering was accepted
+/// @see https://rux-lang.dev/docs/api/collections/write-tree-map-debug
+pub func WriteTreeMapDebug<K: Debug, V: Debug>(writer: &var TextWriter, value: &TreeMap<K, V>,
+                                               spec: FormatSpec) -> Result<Unit, FormatError> {
+    WriteAscii(writer, c8'{')?;
+    var node = Tree::Minimum<K, V>(value.tree.root);
+    var written: uint = 0;
+    while node != null {
+        if written != 0 {
+            WriteBytes(writer, ", ")?;
+        }
+        node.key.WriteDebug(writer, spec)?;
+        WriteBytes(writer, ": ")?;
+        node.value.WriteDebug(writer, spec)?;
+        written = written + 1;
+        node = Tree::Successor<K, V>(node);
+    }
+    return WriteAscii(writer, c8'}');
+}
+
+/// Writes a borrowed ordered set as `{first, second, third}`, in order.
+///
+/// An empty set is `{}`. The order is the set's own, so the rendering is stable between sets holding the same
+/// elements and between runs, unlike a hash set's.
+///
+/// Every element is shown through a borrow of the node holding it, and `spec` is handed to each unchanged.
+///
+/// # Failures
+/// Reports whatever the writer or an element's implementation reported, stopping at the first refusal.
+///
+/// @typeParam T the element type, which must know how to show itself
+/// @param writer the destination
+/// @param value the set to show, borrowed for the call
+/// @param spec what to show each element under
+/// @returns success when the whole rendering was accepted
+/// @see https://rux-lang.dev/docs/api/collections/write-tree-set-debug
+pub func WriteTreeSetDebug<T: Debug>(writer: &var TextWriter, value: &TreeSet<T>,
+                                     spec: FormatSpec) -> Result<Unit, FormatError> {
+    WriteAscii(writer, c8'{')?;
+    var node = Tree::Minimum<T, Unit>(value.tree.root);
+    var written: uint = 0;
+    while node != null {
+        if written != 0 {
+            WriteBytes(writer, ", ")?;
+        }
+        node.key.WriteDebug(writer, spec)?;
+        written = written + 1;
+        node = Tree::Successor<T, Unit>(node);
+    }
+    return WriteAscii(writer, c8'}');
+}
+
+// Whether the specification is one an error description can answer. Neither a style nor a precision is: a
+// description has one form, and truncating it produces a sentence that says something else.
+func AcceptsErrorSpec(spec: FormatSpec) -> Result<Unit, FormatError> {
+    RejectStyle(spec)?;
+    if spec.HasPrecision() { return Result::Error<Unit, FormatError>(FormatError::UnsupportedRequest); }
+    return Result::Success<Unit, FormatError>(Unit {});
+}
+
+extend CollectionError : Display {
+    /// Writes the description of why an operation did not happen, or `no error` for success.
+    ///
+    /// The five cases stay distinguishable in words as they are in the type: a shortage of memory is not a size that
+    /// cannot be named, and neither is a layout the allocator refuses outright. Those distinctions decide whether a
+    /// caller retries, so a description that blurred them would send somebody to fix the wrong thing.
+    ///
+    /// The descriptions are stable. They are not a parsing contract: a program branches on the case.
+    ///
+    /// # Failures
+    /// Reports whatever the writer reported, and `UnsupportedRequest` for any style or precision.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the whole description was accepted
+    /// @see https://rux-lang.dev/docs/api/collections/collection-error/write-display
+    pub func WriteDisplay(self: &CollectionError, writer: &var TextWriter,
+                          spec: FormatSpec) -> Result<Unit, FormatError> {
+        AcceptsErrorSpec(spec)?;
+        return match self {
+            .None => WriteBytes(writer, "no error"),
+            .OutOfMemory => WriteBytes(writer, "out of memory"),
+            .CapacityOverflow => WriteBytes(writer, "size that cannot be represented"),
+            .IndexOutOfRange => WriteBytes(writer, "index the collection does not have"),
+            .Unsupported => WriteBytes(writer, "layout this allocator cannot serve")
+        };
+    }
+}
+
+extend CollectionError : Debug {
+    /// Names the case, qualified by its type: `CollectionError::OutOfMemory`.
+    ///
+    /// # Failures
+    /// Reports whatever the writer reported, and `UnsupportedRequest` for any style or precision.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the whole name was accepted
+    /// @see https://rux-lang.dev/docs/api/collections/collection-error/write-debug
+    pub func WriteDebug(self: &CollectionError, writer: &var TextWriter,
+                        spec: FormatSpec) -> Result<Unit, FormatError> {
+        AcceptsErrorSpec(spec)?;
+        WriteBytes(writer, "CollectionError::")?;
+        return match self {
+            .None => WriteBytes(writer, "None"),
+            .OutOfMemory => WriteBytes(writer, "OutOfMemory"),
+            .CapacityOverflow => WriteBytes(writer, "CapacityOverflow"),
+            .IndexOutOfRange => WriteBytes(writer, "IndexOutOfRange"),
+            .Unsupported => WriteBytes(writer, "Unsupported")
+        };
+    }
 }
