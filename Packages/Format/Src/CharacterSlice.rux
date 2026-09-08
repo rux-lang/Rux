@@ -8,7 +8,7 @@
 // and nothing yet asks for one.
 
 import Core::{ Result, Unit };
-import Text::{ Debug, Display, FormatError, FormatSpec, TextWriter };
+import Text::{ Debug, Display, FormatError, FormatSpec, RejectStyle, TextWriter };
 
 extend char8[..] : Display {
     /// Writes this text.
@@ -21,6 +21,7 @@ extend char8[..] : Display {
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/character-slice/write-display
     pub func WriteDisplay(self: &char8[..], writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        RejectStyle(spec)?;
         return WriteAligned(writer, spec, (self.data)[..self.length], false);
     }
 }

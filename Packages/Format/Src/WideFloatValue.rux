@@ -7,7 +7,8 @@
 
 import Allocator::{ Allocator, SystemAllocator };
 import Core::{ Result, Unit };
-import Text::{ Debug, Display, FormatError, FormatOk, FormatSpec, TextFailureKind, TextWriter, WriteAligned };
+import Text::{ Debug, Display, FormatError, FormatOk, FormatSpec, RejectStyle, TextFailureKind, TextWriter,
+               WriteAligned };
 
 /// An x87 extended-precision value, held as its eighty bits.
 ///
@@ -95,6 +96,7 @@ extend Float80 : Display {
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/float80/write-display
     pub func WriteDisplay(self: &Float80, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        RejectStyle(spec)?;
         var system = SystemAllocator();
         let allocator: Allocator = system;
         return self.FormatWith(allocator, writer, spec);
@@ -202,6 +204,7 @@ extend Float128 : Display {
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/float128/write-display
     pub func WriteDisplay(self: &Float128, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        RejectStyle(spec)?;
         var system = SystemAllocator();
         let allocator: Allocator = system;
         return self.FormatWith(allocator, writer, spec);
@@ -309,6 +312,7 @@ extend Float256 : Display {
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/float256/write-display
     pub func WriteDisplay(self: &Float256, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        RejectStyle(spec)?;
         var system = SystemAllocator();
         let allocator: Allocator = system;
         return self.FormatWith(allocator, writer, spec);
@@ -416,6 +420,7 @@ extend Float512 : Display {
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/float512/write-display
     pub func WriteDisplay(self: &Float512, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        RejectStyle(spec)?;
         var system = SystemAllocator();
         let allocator: Allocator = system;
         return self.FormatWith(allocator, writer, spec);

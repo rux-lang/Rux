@@ -16,6 +16,7 @@ extend char32 : Display {
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/char32/write-display
     pub func WriteDisplay(self: *char32, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        RejectStyle(spec)?;
         let value = *self as uint32;
         if !IsScalarValue(value) { return FormatScalar(writer, spec, ReplacementCharacter); }
         return FormatScalar(writer, spec, value as char32);

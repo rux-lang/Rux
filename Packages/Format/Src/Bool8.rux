@@ -3,7 +3,7 @@
 // Lower case, unquoted, and the same for `Debug`: there is no second way to read a boolean.
 
 import Core::{ Result, Unit };
-import Text::{ Debug, Display, FormatError, FormatSpec, TextWriter };
+import Text::{ Debug, Display, FormatError, FormatSpec, RejectStyle, TextWriter };
 
 extend bool8 : Display {
     /// Writes `true` or `false`.
@@ -16,6 +16,7 @@ extend bool8 : Display {
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/bool8/write-display
     pub func WriteDisplay(self: *bool8, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        RejectStyle(spec)?;
         return WriteAligned(writer, spec, *self ? "true" : "false", false);
     }
 }

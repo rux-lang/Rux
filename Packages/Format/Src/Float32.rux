@@ -6,7 +6,7 @@
 
 
 import Core::{ Result, Unit };
-import Text::{ Debug, Display, FormatError, FormatSpec, TextWriter };
+import Text::{ Debug, Display, FormatError, FormatSpec, RejectStyle, TextWriter };
 
 // The largest finite float32, held here as the float64 it widens to exactly.
 const MaxFinite32 = 3.4028234663852886e38;
@@ -57,6 +57,7 @@ extend float32 : Display {
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/float32/write-display
     pub func WriteDisplay(self: *float32, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        RejectStyle(spec)?;
         var storage: char8[52];
         var cursor = ByteCursor((@storage[2])[..50]);
         // Precision means digits after the point, honoured where the arithmetic can honour it: a value too large

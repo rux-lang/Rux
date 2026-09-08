@@ -2,7 +2,7 @@
 import Core::{ Result, Unit };
 import Allocator::{ Allocator, SystemAllocator };
 import Format::Format;
-import Text::{ FormatError, String, StringView };
+import Text::{ FormatError, ParseFormatSpec, String, StringView };
 
 // The bytes a string spans, which is how a text overload reaches the slice one.
 func TextBytes(text: char8[..]) -> char8[..] {
@@ -13,6 +13,18 @@ func TextBytes(text: char8[..]) -> char8[..] {
 // its edges: alignment with and without a named fill, zero-padding around a sign, each base with and without its
 // prefix, precision on text at a multi-byte boundary, and the ill-formed specs that must come through as literal
 // text rather than half-applied.
+
+// Zero when `text` fails to parse with `InvalidSpecification` carrying exactly `offset`, and non-zero otherwise,
+// so a caller can distinguish "parsed", "failed elsewhere" and "failed at the wrong place".
+func MalformedAt(text: char8[..], offset: uint) -> int {
+    return match ParseFormatSpec(text) {
+        .Success(_) => 1,
+        .Error(reason) => match reason {
+            .InvalidSpecification(found) => found == offset ? 0 : 2,
+            else => 3
+        }
+    };
+}
 
 func Matches(allocator: Allocator, format: char8[..], expected: char8[..]) -> bool {
     let rendered = Rendered(allocator, Format(allocator, format, 0));
@@ -138,10 +150,39 @@ func Main() -> int {
     got = floatPlus.View();
     if !got.Equals(wantedFloatPlus) { return 51; }
 
-    // A spec that does not parse is literal text, mistake and all.
-    if !Matches(allocator, "{:q}", "{:q}") { return 60; }
+    // A spec that does not parse is literal text, mistake and all. `{:>>>}` has a third alignment mark where a
+    // sign, a width or a style could go, and `{:.}` opens a precision it never gives digits to.
     if !Matches(allocator, "{:>>>}", "{:>>>}") { return 61; }
     if !Matches(allocator, "{:.}", "{:.}") { return 62; }
+    if !Matches(allocator, "{:8q!}", "{:8q!}") { return 63; }
+
+    // `{:q}` is no longer among them. A style is an identifier in the grammar, so `q` parses; whether it means
+    // anything is the value's question, and every value here answers no. The failure moved from the parser to the
+    // value, which is where it belongs — the parser cannot know what an integer or a string supports.
+    if Format(allocator, "{:q}", 42).IsSuccess() { return 64; }
+    if Format(allocator, "{:q}", "text").IsSuccess() { return 65; }
+    if Format(allocator, "{:q}", true).IsSuccess() { return 66; }
+    if Format(allocator, "{:iso8601}", 42).IsSuccess() { return 67; }
+
+    // What an integer does support is its four bases, checked above: those are styles too, and they parse by the
+    // same rule as `iso8601` does, which is why `{:x}` still works and `{:q}` does not.
+
+    // The parser itself, where a failure carries where it was found. Going through a format call cannot show this,
+    // since a placeholder that fails to parse becomes literal text and the offset is discarded on the way.
+    if ParseFormatSpec("").IsError() { return 80; }
+    if ParseFormatSpec(">8.2iso8601").IsError() { return 81; }
+    if MalformedAt("{>8", 0u) != 0 { return 82; }
+    if MalformedAt(".", 1u) != 0 { return 83; }
+    if MalformedAt(".x", 1u) != 0 { return 84; }
+    if MalformedAt(">>>", 2u) != 0 { return 85; }
+    if MalformedAt("8!", 1u) != 0 { return 86; }
+    if MalformedAt("8q!", 2u) != 0 { return 87; }
+
+    // Width and precision arithmetic is checked rather than wrapped, and the offset names the digit that would not
+    // fit, which is the twentieth digit: nineteen nines fit a 64-bit uint and twenty do not.
+    if MalformedAt("999999999999999999999", 19u) != 0 { return 88; }
+    if MalformedAt(".999999999999999999999", 20u) != 0 { return 89; }
+    if ParseFormatSpec("18446744073709551615").IsError() { return 90; }
 
     // Float precision: digits after the point, rounded half away from zero, carry and all.
     let twoPlaces = Rendered(allocator, Format(allocator, "{:.2}", 2.5));

@@ -6,7 +6,7 @@
 // shortest-round-trip renderer is separate work.
 
 import Core::{ Result, Unit };
-import Text::{ Debug, Display, FormatError, FormatSpec, TextWriter };
+import Text::{ Debug, Display, FormatError, FormatSpec, RejectStyle, TextWriter };
 
 // The largest finite float64. Anything past it is an infinity, which is how
 // the tests below classify a value without reading its bits.
@@ -61,6 +61,7 @@ extend float64 : Display {
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/float64/write-display
     pub func WriteDisplay(self: *float64, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        RejectStyle(spec)?;
         var storage: char8[52];
         var cursor = ByteCursor((@storage[2])[..50]);
         // Precision means digits after the point, honoured where the arithmetic can honour it: a value too large

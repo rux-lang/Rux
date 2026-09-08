@@ -53,7 +53,7 @@ func Precision(places: uint) -> FormatSpec {
     var text: char8[2];
     text[0] = c8'.';
     text[1] = (0x30u + places) as char8;
-    Assert(ParseFormatSpec((@text[0])[..2], @spec), "the precision spec parses");
+    Assert(ParseFormatSpec((@text[0])[..2]).TryIntoValue(@spec), "the precision spec parses");
     return spec;
 }
 
@@ -122,7 +122,7 @@ func Main() -> int {
     Assert(Same(Render(Bits("0.0006", b128), b128, Precision(3u), room), "0.001"), "and above it is one");
     Assert(Same(Render(0u512, b128, Precision(2u), room), "0.00"), "zero to two places");
     var signed = FormatSpec::Plain();
-    Assert(ParseFormatSpec("+", @signed), "the sign spec parses");
+    Assert(ParseFormatSpec("+").TryIntoValue(@signed), "the sign spec parses");
     Assert(Same(Render(Bits("1", b128), b128, signed, room), "+1.0"), "an asked-for sign");
 
     // A huge value to a fixed precision is every one of its integer digits: the largest float128 has 4933 of

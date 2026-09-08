@@ -7,7 +7,7 @@
 // reader of the result together.
 
 import Core::{ Result, Unit };
-import Text::{ Debug, Display, FormatError, FormatSpec, TextWriter };
+import Text::{ Debug, Display, FormatError, FormatSpec, RejectStyle, TextWriter };
 
 /// The character written in place of anything that is not one.
 ///
@@ -25,6 +25,7 @@ extend char8 : Display {
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/char8/write-display
     pub func WriteDisplay(self: *char8, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        RejectStyle(spec)?;
         if (*self as uint32) > 0x7F { return FormatScalar(writer, spec, ReplacementCharacter); }
         var one: char8[1];
         one[0] = *self;

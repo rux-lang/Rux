@@ -11,7 +11,7 @@
 // reachable by anything in Format, and moving it here would otherwise have handed the same reach to every package
 // that renders a value. Reading is what implementations need; writing belongs to the parser alone.
 
-import Core::{ Result, Unit };
+import Core::{ Result, Unit, uint };
 
 /// Where the padding goes when the rendering is narrower than the width.
 ///
@@ -72,8 +72,14 @@ pub struct FormatSpec {
     precision: uint;
     /// Whether the spec named a precision.
     hasPrecision: bool;
-    /// The base an integer renders in.
+    /// The base an integer renders in, derived from a single-letter style so an integer need not read style text.
     base: FormatBase;
+    /// The style the specification named, borrowed from the specification text. Empty when none was written.
+    ///
+    /// This borrows rather than copies because a style is read during the call that parses it and never held: a
+    /// value applies its specification and is done. Storing one past the text it names is a lifetime error nothing
+    /// here can catch.
+    style: char8[..];
 }
 
 extend FormatSpec {
@@ -93,7 +99,8 @@ extend FormatSpec {
             width: 0,
             precision: 0,
             hasPrecision: false,
-            base: FormatBase::Decimal
+            base: FormatBase::Decimal,
+            style: []
         };
     }
 
@@ -194,6 +201,52 @@ extend FormatSpec {
     pub func Base(self: &FormatSpec) -> FormatBase {
         return self.base;
     }
+
+    /// The style the specification named, or an empty slice when it named none.
+    ///
+    /// A value compares this against the styles it understands and reports `UnsupportedRequest` for anything else.
+    /// The four single-letter integer bases are also reflected in `Base`, so an integer has no reason to read this.
+    ///
+    /// # Safety
+    /// The result borrows the specification text this was parsed from and must not outlive it.
+    ///
+    /// Borrows the spec. Cannot fail; runs in constant time and allocates nothing.
+    ///
+    /// @returns the style bytes, empty when no style was written
+    /// @see https://rux-lang.dev/docs/api/text/format-spec/style
+    pub func Style(self: &FormatSpec) -> char8[..] {
+        return self.style;
+    }
+
+    /// Whether the specification named a style at all.
+    ///
+    /// Borrows the spec. Cannot fail; runs in constant time and allocates nothing.
+    ///
+    /// @returns true when a style was written
+    /// @see https://rux-lang.dev/docs/api/text/format-spec/has-style
+    pub func HasStyle(self: &FormatSpec) -> bool {
+        return self.style.length > 0;
+    }
+
+    /// Whether the specification named exactly the style `name`.
+    ///
+    /// The comparison a value makes to decide whether a style is one of its own, written once so each renderer does
+    /// not repeat a byte loop.
+    ///
+    /// Borrows the spec. Cannot fail; runs in time proportional to `name`, and allocates nothing.
+    ///
+    /// @param name the style to compare against
+    /// @returns true when the specification named exactly that style
+    /// @see https://rux-lang.dev/docs/api/text/format-spec/style-is
+    pub func StyleIs(self: &FormatSpec, name: char8[..]) -> bool {
+        if self.style.length != name.length { return false; }
+        var index: uint = 0;
+        while index < name.length {
+            if self.style.data[index] != name.data[index] { return false; }
+            index = index + 1;
+        }
+        return true;
+    }
 }
 
 // Whether `byte` is one of the three alignment marks, and which.
@@ -213,25 +266,93 @@ func AlignOf(byte: char8, align: *var FormatAlign) -> bool {
     return false;
 }
 
-/// Parses the text between `{:` and `}` into `spec`, reporting whether it is well-formed.
+// Whether `byte` may be the fill. Printable ASCII only, and not a brace: a brace inside a specification would end
+// the placeholder before the parser ever saw it, so accepting one here would describe input that cannot occur.
+func IsFillByte(byte: char8) -> bool {
+    let code = byte as uint32;
+    if code < 0x20u32 || code > 0x7Eu32 { return false; }
+    return byte != c8'{' && byte != c8'}';
+}
+
+// Whether `byte` may open a style. A style is an identifier, so it starts with a letter; a digit there would be
+// indistinguishable from a width.
+func IsStyleStart(byte: char8) -> bool {
+    return (byte >= c8'a' && byte <= c8'z') || (byte >= c8'A' && byte <= c8'Z');
+}
+
+// Whether `byte` may continue a style.
+func IsStyleByte(byte: char8) -> bool {
+    if IsStyleStart(byte) { return true; }
+    if byte >= c8'0' && byte <= c8'9' { return true; }
+    return byte == c8'_' || byte == c8'-';
+}
+
+// Whether `byte` is an ASCII digit.
+func IsDigit(byte: char8) -> bool {
+    return byte >= c8'0' && byte <= c8'9';
+}
+
+// One malformed-specification failure, carrying where it was found.
+func Malformed(offset: uint) -> Result<FormatSpec, FormatError> {
+    return Result::Error<FormatSpec, FormatError>(FormatError::InvalidSpecification(offset));
+}
+
+// Reads a run of digits into `value`, reporting the offset of the digit that would overflow.
+//
+// The check is exact rather than a generous cap: a value is refused precisely when multiplying it by ten and adding
+// the next digit would not fit a `uint`. A width nobody could satisfy is still a width the parser understood, so
+// only arithmetic that cannot be represented fails here.
+func ReadNumber(text: char8[..], start: uint, value: *var uint, end: *var uint) -> bool {
+    var index = start;
+    var total: uint = 0;
+    while index < text.length && IsDigit(text.data[index]) {
+        let digit = ((text.data[index] as uint32) - 0x30u32) as uint;
+        if total > (uint::Max - digit) / 10u {
+            *end = index;
+            return false;
+        }
+        total = total * 10u + digit;
+        index = index + 1;
+    }
+    *value = total;
+    *end = index;
+    return true;
+}
+
+/// Parses the text between `{:` and `}`.
 ///
-/// The empty spec is well-formed and asks for nothing. A spec that fails here is not a spec, and the placeholder
-/// that carried it is literal text.
+/// The grammar is `[[fill]align][+][#][0][width][.precision][style]`, every piece optional, so the empty
+/// specification is well-formed and asks for nothing. A style is an identifier: an ASCII letter followed by
+/// letters, digits, `_` or `-`. That covers the single-letter integer bases `b`, `o`, `x` and `X`, which also set
+/// `Base` so an integer need not inspect the style text, and the domain styles such as `iso8601` and `hyphenated`
+/// that a value interprets for itself.
 ///
-/// Cannot allocate. Runs in time proportional to the spec, which is a handful of bytes.
+/// Syntax is recognized here once; whether a style or flag *applies* is the value's question, since only the value
+/// knows whether a precision means digits, characters or nothing at all. A specification this accepts may still be
+/// refused with `UnsupportedRequest` by the value it is handed to.
+///
+/// # Safety
+/// The returned specification's style borrows `text`. It must not outlive the specification text it was parsed
+/// from, and nothing here tracks that.
+///
+/// # Failures
+/// Reports `InvalidSpecification` carrying the zero-based byte offset into `text` where parsing stopped: an
+/// unprintable or brace fill, a `.` with no digits after it, a width or precision whose arithmetic will not fit a
+/// `uint`, or any byte that can begin none of the remaining pieces. Nothing is written and no partial
+/// specification escapes.
 ///
 /// @param text the specification body, without the surrounding braces or the colon
-/// @param spec where the parsed specification is written; set to `Plain` before parsing begins
-/// @returns true when the whole of `text` was consumed as a well-formed specification
+/// @returns the parsed specification, or where it was malformed
 /// @see https://rux-lang.dev/docs/api/text/parse-format-spec
-pub func ParseFormatSpec(text: char8[..], spec: *var FormatSpec) -> bool {
-    *spec = FormatSpec::Plain();
+pub func ParseFormatSpec(text: char8[..]) -> Result<FormatSpec, FormatError> {
+    var spec = FormatSpec::Plain();
     var index: uint = 0;
 
     // Fill-and-align comes first, and the fill is only a fill when an alignment mark follows it — `{:x}` is a
-    // base, not an x-shaped padding.
+    // style, not an x-shaped padding.
     var align = FormatAlign::Default;
     if index + 1 < text.length && AlignOf(text.data[index + 1], @align) {
+        if !IsFillByte(text.data[index]) { return Malformed(index); }
         spec.fill = text.data[index];
         spec.align = align;
         index = index + 2;
@@ -249,43 +370,87 @@ pub func ParseFormatSpec(text: char8[..], spec: *var FormatSpec) -> bool {
         spec.alternate = true;
         index = index + 1;
     }
+    // A leading zero is the zero-padding flag rather than the first digit of the width, which is why it is read
+    // before the number and why `{:0}` asks for padding to no width at all.
     if index < text.length && text.data[index] == c8'0' {
         spec.zeroPad = true;
         index = index + 1;
     }
-    while index < text.length && text.data[index] >= c8'0' && text.data[index] <= c8'9' {
-        if spec.width > 0xFFFFFFFFu { return false; }
-        spec.width = spec.width * 10 + ((text.data[index] as uint32) - 0x30) as uint;
-        index = index + 1;
-    }
+
+    var width: uint = 0;
+    var after: uint = index;
+    if !ReadNumber(text, index, @width, @after) { return Malformed(after); }
+    spec.width = width;
+    index = after;
+
     if index < text.length && text.data[index] == c8'.' {
         index = index + 1;
-        if index >= text.length || text.data[index] < c8'0' || text.data[index] > c8'9' { return false; }
+        if index >= text.length || !IsDigit(text.data[index]) { return Malformed(index); }
+        var precision: uint = 0;
+        if !ReadNumber(text, index, @precision, @after) { return Malformed(after); }
         spec.hasPrecision = true;
-        while index < text.length && text.data[index] >= c8'0' && text.data[index] <= c8'9' {
-            if spec.precision > 0xFFFFFFFFu { return false; }
-            spec.precision = spec.precision * 10 + ((text.data[index] as uint32) - 0x30) as uint;
+        spec.precision = precision;
+        index = after;
+    }
+
+    if index < text.length {
+        if !IsStyleStart(text.data[index]) { return Malformed(index); }
+        let start = index;
+        while index < text.length && IsStyleByte(text.data[index]) {
             index = index + 1;
         }
+        if index != text.length { return Malformed(index); }
+        spec.style = (@text.data[start])[..index - start];
+        spec.base = BaseOfStyle(spec.style);
     }
-    if index < text.length {
-        let mark = text.data[index];
-        if mark == c8'b' {
-            spec.base = FormatBase::Binary;
-        }
-        else if mark == c8'o' {
-            spec.base = FormatBase::Octal;
-        }
-        else if mark == c8'x' {
-            spec.base = FormatBase::LowerHex;
-        }
-        else if mark == c8'X' {
-            spec.base = FormatBase::UpperHex;
-        }
-        else {
-            return false;
-        }
-        index = index + 1;
+
+    return Result::Success<FormatSpec, FormatError>(spec);
+}
+
+// The base a style names, for the four single letters that carry one. Every other style leaves the base decimal,
+// including a longer one that happens to begin with `x`.
+func BaseOfStyle(style: char8[..]) -> FormatBase {
+    if style.length != 1 { return FormatBase::Decimal; }
+    let mark = style.data[0];
+    if mark == c8'b' { return FormatBase::Binary; }
+    if mark == c8'o' { return FormatBase::Octal; }
+    if mark == c8'x' { return FormatBase::LowerHex; }
+    if mark == c8'X' { return FormatBase::UpperHex; }
+    return FormatBase::Decimal;
+}
+
+/// Refuses a specification that names any style.
+///
+/// The parser recognizes a style wherever the grammar allows one; whether it *means* anything is the value's
+/// question. A value with no styles of its own calls this so that `{:q}` is refused rather than silently rendered
+/// as though nothing had been asked for.
+///
+/// # Failures
+/// Reports `UnsupportedRequest` when a style was written.
+///
+/// @param spec the specification to check
+/// @returns success when no style was named
+/// @see https://rux-lang.dev/docs/api/text/reject-style
+pub func RejectStyle(spec: FormatSpec) -> Result<Unit, FormatError> {
+    if spec.HasStyle() { return Result::Error<Unit, FormatError>(FormatError::UnsupportedRequest); }
+    return FormatOk();
+}
+
+/// Refuses a specification whose style is not one of the integer bases.
+///
+/// What an integer supports is exactly `b`, `o`, `x` and `X`, and each of those is already reflected in `Base`.
+/// So a style that left the base decimal is one this value has no meaning for, which is what this refuses. It is
+/// the integer counterpart of `RejectStyle` and exists for the same reason.
+///
+/// # Failures
+/// Reports `UnsupportedRequest` for a style that names no base.
+///
+/// @param spec the specification to check
+/// @returns success when no style was named, or the style named a base
+/// @see https://rux-lang.dev/docs/api/text/reject-non-base-style
+pub func RejectNonBaseStyle(spec: FormatSpec) -> Result<Unit, FormatError> {
+    if spec.HasStyle() && spec.Base() == FormatBase::Decimal {
+        return Result::Error<Unit, FormatError>(FormatError::UnsupportedRequest);
     }
-    return index == text.length;
+    return FormatOk();
 }

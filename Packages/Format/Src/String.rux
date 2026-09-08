@@ -8,8 +8,8 @@
 // looking at a program is quoted, so that where it starts and stops is visible and an empty one is not invisible.
 
 import Core::{ Result, Unit };
-import Text::{ Debug, DecodeAt, Display, FormatError, FormatSpec, String, StringView, TextWriter, WriteAligned,
-               WriteAscii, WriteBytes };
+import Text::{ Debug, DecodeAt, Display, FormatError, FormatSpec, RejectStyle, String, StringView, TextWriter,
+               WriteAligned, WriteAscii, WriteBytes };
 
 extend String : Display {
     /// Writes this string's bytes.
@@ -54,6 +54,7 @@ extend StringView : Display {
     /// @returns success when the view's text was accepted
     /// @see https://rux-lang.dev/docs/api/format/string-view/write-display
     pub func WriteDisplay(self: &StringView, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        RejectStyle(spec)?;
         return WriteAligned(writer, spec, Truncated(self, spec), false);
     }
 }
@@ -74,6 +75,7 @@ extend StringView : Debug {
     /// @returns success when the quoted view was accepted
     /// @see https://rux-lang.dev/docs/api/format/string-view/write-debug
     pub func WriteDebug(self: &StringView, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        RejectStyle(spec)?;
         WriteAscii(writer, c8'"')?;
         WriteBytes(writer, Truncated(self, spec))?;
         return WriteAscii(writer, c8'"');

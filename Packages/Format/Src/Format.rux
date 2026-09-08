@@ -61,7 +61,11 @@ pub func WriteFormat(writer: &var TextWriter, format: char8[..], args: Display..
             if placeholder && close > index + 1 {
                 if format[index + 1] == c8':' {
                     let body = (@format.data[index + 2])[..close - index - 2];
-                    placeholder = ParseFormatSpec(body, @spec);
+                    // A specification that does not parse leaves the placeholder as literal text, which is the
+                    // lenient behaviour task 18 replaces with a reported InvalidSpecification. The offset the
+                    // parser produced is relative to `body`, so an embedding parser adding `index + 2` is what
+                    // will turn it into an offset into the pattern.
+                    placeholder = ParseFormatSpec(body).TryIntoValue(@spec);
                 }
                 else {
                     placeholder = false;
