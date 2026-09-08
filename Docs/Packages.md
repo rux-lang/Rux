@@ -83,7 +83,7 @@ directory listing, says what the release set is.
 
 | Identity        | Target state                | Status                                                     |
 | --------------- | --------------------------- | ---------------------------------------------------------- |
-| `Rux/Storage`   | Renamed to `Rux/FileSystem` | Not migrated; `Packages/Storage/` is still the source tree |
+| `Rux/Storage`   | Renamed to `Rux/FileSystem` | Migrated; the identity no longer exists                    |
 | `Rux/Sync`      | Removed from the release set | Still present in the workspace                            |
 | `Rux/Thread`    | Removed from the release set | Still present in the workspace                            |
 | `Rux/Benchmark` | Removed from the release set | Still present in the workspace                            |

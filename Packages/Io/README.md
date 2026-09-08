@@ -26,7 +26,7 @@ primitive and text overloads.
 
 Stream helpers borrow concrete implementations directly as `&var Reader` or `&var Writer` interface views. The
 borrow neither copies nor consumes the stream. `BufferedReader` and `BufferedWriter` must keep their streams after
-construction, so they store ordinary interface handles; raw-pointer adapters such as `Storage::FileStream` remain
+construction, so they store ordinary interface handles; raw-pointer adapters such as `FileSystem::FileStream` remain
 for that deliberately escaping case. Both buffered types prohibit copying, move with `<-`, and release their owned
 buffers through `~BufferedReader` and `~BufferedWriter`.
 
