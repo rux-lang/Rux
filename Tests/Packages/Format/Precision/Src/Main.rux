@@ -1,0 +1,121 @@
+import Allocator::{ Allocator, SystemAllocator };
+import Core::{ Assert, Result };
+import Format::{ MaximumPrecision, Render };
+import Text::{ FormatError, String, StringView };
+
+// A precision means digits after the decimal point, exactly that many, rounded to nearest with ties to even.
+//
+// Four things go wrong in a fixed-precision renderer and each has its own section here. The rounding decision has
+// to be exact, which it is because the tail past the last digit is still held as a ratio — so a tie is a tie and
+// not a value that landed near one. Ties go to even, which is what reading the result back would do. A carry out
+// of the rounding runs the whole length of the digits, so 9.99 at one decimal is 10.0 and not 9.10. And a value
+// far below the last requested place produces a tail of zeros rather than nothing.
+//
+// The fifth is not a rounding question at all: a precision past what is supported is refused. The old engine fell
+// back to the shortest form when its arithmetic could not reach the precision asked for, which answered a question
+// nobody asked and answered it silently. There is no fallback now, and the cases at the bottom check that.
+//
+// The long expectations are exact expansions rather than approximations. `0.1` is not a tenth: the float64 nearest
+// it is 0.1000000000000000055511151231257827..., and asking for twenty places is asking for that, which is what
+// makes the case worth having.
+
+func Same(outcome: Result<String, FormatError>, expected: char8[..]) -> bool {
+    let wanted = StringView::FromValidated(expected);
+    return match <-outcome {
+        .Success(text) => text.View().Equals(wanted),
+        .Error(_) => false
+    };
+}
+
+func Refused(outcome: Result<String, FormatError>) -> bool {
+    return match <-outcome {
+        .Success(_) => false,
+        .Error(reason) => match reason {
+            .UnsupportedRequest => true,
+            else => false
+        }
+    };
+}
+
+func Main() -> int {
+    var system = SystemAllocator();
+    let allocator: Allocator = system;
+
+    // The ordinary case, at both widths.
+    Assert(Same(Render(allocator, "{:.2}", 3.14159), "3.14"), "a precision names digits after the point");
+    Assert(Same(Render(allocator, "{:.4}", 3.14159), "3.1416"), "and rounds the last of them");
+    Assert(Same(Render(allocator, "{:.2}", -1.5), "-1.50"), "a negative value keeps its sign");
+    Assert(Same(Render(allocator, "{:.2}", 1.5f32), "1.50"), "and a float32 renders the same way");
+
+    // Zero digits is a precision like any other: the point goes with them.
+    Assert(Same(Render(allocator, "{:.0}", 1.0), "1"), "zero digits drops the point as well");
+    Assert(Same(Render(allocator, "{:.0}", 12.4), "12"), "and rounds to a whole number");
+
+    // Ties to even, which is the rule that says what a value exactly halfway does. Three and a half rounds up
+    // because three is odd; two and a half rounds down because two is even. A renderer that always rounded halves
+    // up would give four for both, and would drift upwards over a column of numbers.
+    Assert(Same(Render(allocator, "{:.0}", 3.5), "4"), "a tie rounds to the even neighbour, which here is up");
+    Assert(Same(Render(allocator, "{:.0}", 2.5), "2"), "and here is down");
+    Assert(Same(Render(allocator, "{:.0}", 0.5), "0"), "a half rounds to zero, which is even");
+    Assert(Same(Render(allocator, "{:.0}", 1.5), "2"), "and one and a half to two");
+    Assert(Same(Render(allocator, "{:.1}", 0.25), "0.2"), "a quarter at one decimal is a tie, and two is even");
+    Assert(Same(Render(allocator, "{:.1}", 0.75), "0.8"), "and three quarters ties up to eight");
+    Assert(Same(Render(allocator, "{:.2}", 0.125), "0.12"), "an eighth at two decimals ties down");
+    Assert(Same(Render(allocator, "{:.2}", 0.375), "0.38"), "and three eighths ties up");
+
+    // Only an exactly representable value can be an exact tie, which is why the cases above are halves, quarters
+    // and eighths. A decimal that looks like a tie is not one: 0.15 is really a shade under, and rounds down.
+    Assert(Same(Render(allocator, "{:.1}", 0.15), "0.1"),
+           "0.15 is not a tie, because the float below the decimal is a shade under it");
+    Assert(Same(Render(allocator, "{:.1}", 0.35), "0.3"), "and neither is 0.35");
+
+    // A carry runs the whole length of the digits rather than stopping at the last.
+    Assert(Same(Render(allocator, "{:.1}", 9.99), "10.0"), "a carry out of the last digit runs the whole way");
+    Assert(Same(Render(allocator, "{:.2}", 9.999), "10.00"), "at two digits as well");
+    Assert(Same(Render(allocator, "{:.0}", 9.9), "10"), "and with no digits after the point at all");
+    Assert(Same(Render(allocator, "{:.3}", 0.9999), "1.000"), "a value below one carries into the integer part");
+    Assert(Same(Render(allocator, "{:.2}", 99.999), "100.00"), "and one that gains a whole digit");
+
+    // A value far below the last requested place is a tail of zeros, not an absence.
+    Assert(Same(Render(allocator, "{:.5}", 1.0e-300), "0.00000"), "a value far below the last place is all zeros");
+    Assert(Same(Render(allocator, "{:.3}", 0.0), "0.000"), "the positive zero has the tail too");
+    Assert(Same(Render(allocator, "{:.3}", -0.0), "-0.000"), "and the negative one keeps its sign with it");
+    Assert(Same(Render(allocator, "{:.0}", 0.0), "0"), "and at zero digits it is a bare zero");
+    Assert(Same(Render(allocator, "{:.2}", 5.0e-324), "0.00"), "the smallest subnormal rounds away at two digits");
+    Assert(Same(Render(allocator, "{:.1}", 0.04), "0.0"), "a value under half the last place rounds away");
+    Assert(Same(Render(allocator, "{:.1}", 0.06), "0.1"), "and one over it rounds into it");
+
+    // The exact expansions, which are what "exactly that many digits" means for a value that is not a decimal.
+    Assert(Same(Render(allocator, "{:.20}", 0.1), "0.10000000000000000555"),
+           "twenty digits of a tenth is the float's own expansion, not a tenth's");
+    Assert(Same(Render(allocator, "{:.17}", 1.0 / 3.0), "0.33333333333333331"),
+           "and seventeen of a third is the float's, which ends in a one");
+    Assert(Same(Render(allocator, "{:.10}", 1.0f32 / 3.0f32), "0.3333333433"),
+           "a float32 third expands to its own value rather than to a float64's");
+
+    // Large values render every integer digit they have and then the fraction, because that is what digits after
+    // the decimal point means. There is no threshold past which the request quietly becomes something else.
+    Assert(Same(Render(allocator, "{:.2}", 1.0e20), "100000000000000000000.00"),
+           "a large value renders in full rather than switching to an exponent");
+    Assert(Same(Render(allocator, "{:.1}", 1.5e10), "15000000000.0"), "and a middling one likewise");
+
+    // The specification's other parts still apply around the digits.
+    Assert(Same(Render(allocator, "{:+.2}", 1.5), "+1.50"), "an explicit sign goes in front");
+    Assert(Same(Render(allocator, "{:10.2}", 1.5), "      1.50"), "a width pads to the left of a number");
+    Assert(Same(Render(allocator, "{:<10.2}", 1.5), "1.50      "), "and an alignment moves the padding");
+
+    // The bound, and the absence of a fallback. The old engine answered a precision it could not reach with the
+    // shortest form instead, which is the behaviour these two cases exist to keep out.
+    Assert(MaximumPrecision == 1100u, "the supported precision is eleven hundred digits");
+    Assert(Render(allocator, "{:.1100}", 1.0).IsSuccess(), "the bound itself is supported");
+    Assert(Refused(Render(allocator, "{:.1101}", 1.0)), "one past it is refused");
+    Assert(Refused(Render(allocator, "{:.2000}", 3.14159)), "and so is a request well past it");
+    Assert(Refused(Render(allocator, "{:.1101}", 1.0f32)), "at the narrow width too");
+
+    // A supported precision that the value cannot fill is still supported: the digits are there, they are zeros.
+    Assert(Render(allocator, "{:.1000}", 1.0).IsSuccess(), "a thousand digits of one is a thousand zeros");
+    Assert(Render(allocator, "{:.1074}", 5.0e-324).IsSuccess(),
+           "and the smallest subnormal's exact expansion fits inside the bound");
+
+    return 0;
+}

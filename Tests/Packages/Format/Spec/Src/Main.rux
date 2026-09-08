@@ -199,19 +199,21 @@ func Main() -> int {
     if MalformedAt(".999999999999999999999", 20u) != 0 { return 89; }
     if ParseFormatSpec("18446744073709551615").IsError() { return 90; }
 
-    // Float precision: digits after the point, rounded half away from zero, carry and all.
+    // Float precision: digits after the point, rounded to nearest with ties to even. A tie goes to the even
+    // neighbour rather than away from zero, which is what reading the result back would do with it — so 1.25 at one
+    // decimal is 1.2 and 2.5 at none is 2. Tests/Packages/Format/Precision is where that rule is covered properly.
     let twoPlaces = Rendered(allocator, Render(allocator, "{:.2}", 2.5));
     let wantedTwo = StringView::FromValidated("2.50");
     got = twoPlaces.View();
     if !got.Equals(wantedTwo) { return 70; }
 
     let carried = Rendered(allocator, Render(allocator, "{:.1}", 1.25));
-    let wantedCarried = StringView::FromValidated("1.3");
+    let wantedCarried = StringView::FromValidated("1.2");
     got = carried.View();
     if !got.Equals(wantedCarried) { return 71; }
 
     let rounded = Rendered(allocator, Render(allocator, "{:.0}", 2.5));
-    let wantedRounded = StringView::FromValidated("3");
+    let wantedRounded = StringView::FromValidated("2");
     got = rounded.View();
     if !got.Equals(wantedRounded) { return 72; }
 
@@ -221,7 +223,7 @@ func Main() -> int {
     if !got.Equals(wantedStretched) { return 73; }
 
     let negRounded = Rendered(allocator, Render(allocator, "{:.0}", -2.5));
-    let wantedNeg = StringView::FromValidated("-3");
+    let wantedNeg = StringView::FromValidated("-2");
     got = negRounded.View();
     if !got.Equals(wantedNeg) { return 74; }
 

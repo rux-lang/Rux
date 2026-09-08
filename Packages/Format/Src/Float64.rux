@@ -59,16 +59,17 @@ extend float64 : Display {
     /// @see https://rux-lang.dev/docs/api/format/float64/write-display
     pub func WriteDisplay(self: *float64, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
         RejectStyle(spec)?;
+        // Two bytes of head room in front, so that a requested sign can be put where the rendering starts
+        // without moving it.
         var storage: char8[52];
         var cursor = ByteCursor((@storage[2])[..50]);
-        // Precision means digits after the point, honoured where the arithmetic can honour it: a value too large
-        // to scale into a word renders shortest instead of pretending.
-        if spec.HasPrecision() && FitsPrecision(*self, spec.Precision()) {
-            WriteFixedPrecision(cursor, *self, spec.Precision());
+        // Precision means digits after the decimal point, exactly, with ties to even. A request past the
+        // supported bound is refused rather than clamped or answered with a different rendering: falling back
+        // would answer a question nobody asked, and quietly.
+        if spec.HasPrecision() {
+            return WritePrecision(writer, spec, DecomposeFloat64(*self));
         }
-        else {
-            WriteFloat(cursor, *self);
-        }
+        WriteFloat(cursor, *self);
         var rendered = cursor.Written();
         // A requested sign goes in front of a value that has none of its own; a NaN carries no sign to show.
         if spec.ShowsSign() && rendered.length > 0 && rendered.data[0] != c8'-' && rendered.data[0] != c8'N' {
