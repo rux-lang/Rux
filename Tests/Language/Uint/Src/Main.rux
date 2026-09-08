@@ -1,0 +1,66 @@
+// uint: the pointer-sized unsigned width, and the type a length is.
+//
+// Like `int`, its size is the target's answer rather than a fixed promise, so the assertions here are relationships
+// to `#target.pointerBits` and `sizeof` rather than comparisons against 64. What is different from `int` is that
+// this is the width the language uses for sizes: `sizeof` reports one, a slice's `.length` is one, and an index is
+// one. That makes its wrapping behavior the interesting part — a length computation that wraps produces a small
+// number rather than a negative one, which is why allocation arithmetic is checked rather than trusted.
+
+import Core::Assert;
+import Core::{ #target };
+import Core::{ int, uint, uint64 };
+
+func Echo(value: uint) -> uint {
+    return value;
+}
+
+func Main() -> int {
+    // The defining property: as wide as a pointer, whatever that is on this target.
+    Assert(uint::Bits == #target.pointerBits, "uint is exactly pointer-wide");
+    Assert(uint::Bytes * 8u == uint::Bits, "the byte count and the bit count agree");
+    Assert(sizeof(uint) == uint::Bytes, "Bytes is what sizeof reports");
+    Assert(sizeof(uint) == sizeof(*uint), "uint is as wide as a pointer to it");
+
+    // The limits are derived from the width rather than written down.
+    Assert(uint::Min == 0u, "the minimum is zero");
+    Assert(uint::Max == ~0u, "the maximum is every bit set");
+    Assert(uint::Max > 0u, "the top bit is magnitude, not a sign");
+    Assert((uint::Max >> (uint::Bits - 1u)) == 1u, "shifting the maximum down leaves one bit");
+
+    // Wrapping is at zero and at the maximum, which is what makes a size computation dangerous: the wrapped result
+    // is a small length rather than an obviously wrong negative one.
+    Assert(uint::Max + 1u == 0u, "addition wraps from the maximum to zero");
+    Assert(0u - 1u == uint::Max, "subtraction wraps from zero to the maximum");
+    Assert(uint::Max * 2u == uint::Max - 1u, "multiplication wraps rather than widening");
+
+    // The same bits read as signed are negative, which is the reason a length is never an int.
+    Assert(uint::Max as int == -1, "every bit set is minus one when read as signed");
+    Assert((1u << (uint::Bits - 1u)) as int == int::Min, "the top bit is the signed minimum");
+    Assert((1u << (uint::Bits - 1u)) > 0u, "and is an ordinary large value when read as unsigned");
+
+    Assert(100u / 7u == 14u, "division truncates");
+    Assert(100u % 7u == 2u, "remainder");
+    Assert((~0u) == uint::Max, "bitwise not of zero is the maximum");
+
+    // This is the width sizes and lengths are expressed in.
+    let bytes: uint = sizeof(uint64);
+    Assert(bytes == 8u, "sizeof reports a uint");
+    var storage: uint64[4];
+    let view = (@storage[0])[..4];
+    Assert(view.length == 4u, "a slice length is a uint");
+
+    // Conversion against the fixed width that currently matches it, asserted as a round trip rather than a number.
+    when uint::Bits <= 64u {
+        let widened: uint64 = uint::Max as uint64;
+        Assert(widened as uint == uint::Max, "a round trip through uint64 is lossless");
+    }
+
+    Assert(Echo(uint::Max) == uint::Max, "the maximum survives an argument and a return");
+
+    var counter: uint = 0u;
+    counter += uint::Max;
+    Assert(counter == uint::Max, "compound addition reaches the maximum");
+    counter -= uint::Max;
+    Assert(counter == 0u, "compound subtraction returns to zero");
+    return 0;
+}

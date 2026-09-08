@@ -1,0 +1,66 @@
+// int: the one signed width whose size the target chooses.
+//
+// Every other integer width is a promise about a number of bits. This one is a promise about the machine: it is as
+// wide as a pointer, and its limits are derived rather than written, from `sizeof(int)` and from `~0u` shifted
+// down. That derivation is the thing worth testing, and it cannot be tested by comparing against 64 — a test that
+// spells the answer would keep passing on a target where the answer changed, which is the only case that matters.
+//
+// So every assertion here is a relationship: to `#target.pointerBits`, to `sizeof`, or between `Min` and `Max`.
+// Both currently supported architectures are 64-bit, and none of these assertions says so.
+
+import Core::Assert;
+import Core::{ #target };
+import Core::{ int, int64, uint };
+
+func Echo(value: int) -> int {
+    return value;
+}
+
+func Main() -> int {
+    // The defining property: as wide as a pointer, whatever that is on this target.
+    Assert(int::Bits == #target.pointerBits, "int is exactly pointer-wide");
+    Assert(int::Bytes * 8u == int::Bits, "the byte count and the bit count agree");
+    Assert(sizeof(int) == int::Bytes, "Bytes is what sizeof reports");
+    Assert(sizeof(int) == sizeof(uint), "the signed and unsigned pointer-sized widths match");
+    Assert(sizeof(int) == sizeof(*int), "int is as wide as a pointer to it");
+
+    // The limits are derived from the width rather than written down, so check the derivation's shape.
+    Assert(int::Min < 0 && int::Max > 0, "the range spans zero");
+    Assert(int::Min + int::Max == -1, "two's complement: one more negative value than positive");
+    Assert(int::Max as uint == (uint::Max >> 1u), "the maximum is the unsigned maximum without its top bit");
+    Assert(int::Min as uint == (uint::Max >> 1u) + 1u, "the minimum is the next value round");
+
+    // Wrapping happens at the derived limits, not at any particular bit count.
+    Assert(int::Max + 1 == int::Min, "addition wraps from the maximum to the minimum");
+    Assert(int::Min - 1 == int::Max, "subtraction wraps from the minimum to the maximum");
+    Assert((1 << (int::Bits - 1u)) == int::Min, "shifting into the sign bit gives the minimum");
+
+    // Ordinary signed behavior, at whatever width the target picked.
+    Assert(-100 / 7 == -14, "division truncates toward zero");
+    Assert(-100 % 7 == -2, "the remainder keeps the dividend sign");
+    Assert(-8 >> 2 == -2, "an arithmetic right shift keeps the sign");
+    Assert((-1 >>> (int::Bits - 1u)) == 1, "a logical right shift brings in zeros");
+    Assert((~0) == -1, "bitwise not of zero");
+
+    // Conversion against the fixed width that currently matches it. The relationship, not the number, is asserted:
+    // a round trip through int64 must be lossless while int is no wider than int64.
+    when int::Bits <= 64u {
+        let widened: int64 = int::Max as int64;
+        Assert(widened as int == int::Max, "a round trip through int64 is lossless");
+        Assert((int::Min as int64) as int == int::Min, "the minimum survives the round trip too");
+    }
+
+    Assert(Echo(int::Min) == int::Min, "the minimum survives an argument and a return");
+    Assert(Echo(int::Max) == int::Max, "the maximum survives an argument and a return");
+
+    // int is the type an ordinary integer literal takes, which is why Main returns one.
+    let inferred = 42;
+    Assert(inferred == 42, "an unsuffixed literal in an int context");
+
+    var counter: int = 0;
+    counter += int::Max;
+    Assert(counter == int::Max, "compound addition reaches the maximum");
+    counter -= int::Max;
+    Assert(counter == 0, "compound subtraction returns to zero");
+    return 0;
+}
