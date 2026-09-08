@@ -1,0 +1,115 @@
+// Showing what a sequential container holds, without disturbing it.
+//
+// A container cannot implement `Debug` itself: what a `Vector<T>` looks like is entirely a question about `T`, and
+// an interface implementation has nowhere to say "when the element can be shown". So these are handwritten
+// functions carrying the bound — `WriteVectorDebug<T: Debug>` — which is the shape the language does have. Each
+// instantiation resolves its element's `WriteDebug` at compile time; nothing is dispatched at run time.
+//
+// They borrow, and that is the whole design. A container owns its elements and hands out no copies of a move-only
+// one, so a diagnostic that took an element out to print it would be taking ownership of it — which is exactly what
+// a caller with a container they still need cannot afford. Every element here is shown through a borrow of it, so a
+// vector of a move-only type can be written as many times as wanted and still holds everything afterwards.
+//
+// A vector and an array are one run of elements, so both hand `Rux/Text` their slice and it does the rest. A deque
+// is the exception, and the reason is its shape rather than an oversight: its elements live in a ring, so a deque
+// that has wrapped holds them in two runs with a gap between. It writes them as one sequence — which is what they
+// are to a reader — by walking both runs inside one pair of brackets, which is the one thing the slice writer
+// cannot be asked to do.
+//
+// Maps, sets and `CollectionError` are not here. They come with questions these do not have — whether an unordered
+// container may be shown in an order that changes between runs, and what an error's text should be — and they are
+// their own work.
+
+import Core::{ Result, Unit };
+import Text::{ Debug, FormatError, FormatSpec, TextWriter, WriteAscii, WriteBytes, WriteSliceDebug };
+
+// One run of elements written into an open sequence, with `written` saying how many are already there so that the
+// separator lands between elements and never before the first.
+func WriteRun<T: Debug>(writer: &var TextWriter, items: T[..], spec: FormatSpec,
+                        written: uint) -> Result<Unit, FormatError> {
+    var index: uint = 0;
+    while index < items.length {
+        if written + index != 0 {
+            WriteBytes(writer, ", ")?;
+        }
+        items.data[index].WriteDebug(writer, spec)?;
+        index = index + 1;
+    }
+    return Result::Success<Unit, FormatError>(Unit {});
+}
+
+/// Writes a borrowed vector as `[first, second, third]`.
+///
+/// An empty vector is `[]`, and its capacity is not shown: the spare room past the length holds nothing, so it is
+/// not part of what the vector is. The vector and every element are borrowed, so this may be called on a vector of
+/// a move-only element type and the vector still holds all of them afterwards.
+///
+/// `spec` is handed to each element unchanged and means whatever that element type makes of it. The brackets and
+/// commas are punctuation and are never padded.
+///
+/// # Failures
+/// Reports whatever the writer or an element's implementation reported, stopping at the first refusal.
+///
+/// @typeParam T the element type, which must know how to show itself
+/// @param writer the destination
+/// @param value the vector to show, borrowed for the call
+/// @param spec what to show each element under
+/// @returns success when the whole rendering was accepted
+/// @see https://rux-lang.dev/docs/api/collections/write-vector-debug
+pub func WriteVectorDebug<T: Debug>(writer: &var TextWriter, value: &Vector<T>,
+                                    spec: FormatSpec) -> Result<Unit, FormatError> {
+    return WriteSliceDebug<T>(writer, value.AsSlice(), spec);
+}
+
+/// Writes a borrowed array as `[first, second, third]`.
+///
+/// An empty array is `[]`. The array and every element are borrowed, so an array of a move-only element type is
+/// shown without disturbing one of them.
+///
+/// `spec` describes the elements, exactly as for a vector.
+///
+/// # Failures
+/// Reports whatever the writer or an element's implementation reported, stopping at the first refusal.
+///
+/// @typeParam T the element type, which must know how to show itself
+/// @param writer the destination
+/// @param value the array to show, borrowed for the call
+/// @param spec what to show each element under
+/// @returns success when the whole rendering was accepted
+/// @see https://rux-lang.dev/docs/api/collections/write-array-debug
+pub func WriteArrayDebug<T: Debug>(writer: &var TextWriter, value: &Array<T>,
+                                   spec: FormatSpec) -> Result<Unit, FormatError> {
+    return WriteSliceDebug<T>(writer, value.AsSlice(), spec);
+}
+
+/// Writes a borrowed deque as `[front, ..., back]`, front element first.
+///
+/// The order is the deque's own — what `PopFront` would yield, in the order it would yield it — whether or not the
+/// ring has wrapped. A wrapped deque holds its elements in two runs, and both are walked inside one pair of
+/// brackets, so where the ring happens to be split is not visible in the output and does not need to be.
+///
+/// Nothing is rearranged to write it: this is the reason the deque is borrowed rather than borrowed mutably, since
+/// making the elements contiguous first would be a diagnostic quietly moving a caller's data around.
+///
+/// `spec` describes the elements, exactly as for a vector.
+///
+/// # Failures
+/// Reports whatever the writer or an element's implementation reported, stopping at the first refusal.
+///
+/// @typeParam T the element type, which must know how to show itself
+/// @param writer the destination
+/// @param value the deque to show, borrowed for the call
+/// @param spec what to show each element under
+/// @returns success when the whole rendering was accepted
+/// @see https://rux-lang.dev/docs/api/collections/write-deque-debug
+pub func WriteDequeDebug<T: Debug>(writer: &var TextWriter, value: &Deque<T>,
+                                   spec: FormatSpec) -> Result<Unit, FormatError> {
+    var front: T[..];
+    var back: T[..];
+    value.AsSlices(@front, @back);
+
+    WriteAscii(writer, c8'[')?;
+    WriteRun<T>(writer, front, spec, 0)?;
+    WriteRun<T>(writer, back, spec, front.length)?;
+    return WriteAscii(writer, c8']');
+}

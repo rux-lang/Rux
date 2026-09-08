@@ -1,0 +1,16 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "TextStructure"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Text: borrowed Debug rendering of options, results and runs of elements"
+
+[Dependencies]
+Allocator = { Path = "../../../../Packages/Allocator" }
+Core = { Path = "../../../../Packages/Core" }
+Text = { Path = "../../../../Packages/Text" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Text"

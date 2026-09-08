@@ -205,6 +205,24 @@ let kept = Unique<int32>(view);
 numbers.Truncate(kept);
 ```
 
+## Showing what a container holds
+
+`WriteVectorDebug`, `WriteArrayDebug` and `WriteDequeDebug` write a sequential container as `[first, second, third]` into any [`Rux/Text`](../Text) `TextWriter`, given an element type that implements `Debug`:
+
+```rux
+import Collections::WriteVectorDebug;
+import Text::{ FormatSpec, TextWriter };
+
+let sink: &var TextWriter = writer;
+WriteVectorDebug<int32>(sink, numbers, FormatSpec::Plain())?;
+```
+
+They are functions carrying the bound rather than `Debug` implementations, because what a `Vector<T>` looks like is entirely a question about `T` and an implementation has nowhere to say "when the element can be shown". Each instantiation resolves the element's `WriteDebug` at compile time.
+
+Everything is borrowed. A container owns its elements and hands out no copy of a move-only one, so a diagnostic that took an element out to print it would be taking ownership of it; these show every element through a borrow, and a vector of move-only elements can be written as often as wanted and still holds all of them. Capacity is not shown, since the spare room past the length holds nothing. A deque is written front to back whether or not its ring has wrapped, and nothing is rearranged to do it — `MakeContiguous` is a caller's decision, not a side effect of printing. The specification reaches the elements unchanged, so `{:x}` over a vector of integers writes each one in hexadecimal.
+
+Maps, sets and `CollectionError` have no writers yet.
+
 ## Guarantees and limitations
 
 - **Owners are move-only.** Their copy operation is prohibited and their canonical destructor releases elements and storage. `Clone` is explicit and copies elements, so it is available only when the instantiated element operations permit it.

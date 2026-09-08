@@ -1,0 +1,198 @@
+import Allocator::{ Allocator, SystemAllocator };
+import Collections::{ Array, CollectionError, Deque, Vector, WriteArrayDebug, WriteDequeDebug, WriteVectorDebug };
+import Core::{ Assert, Result, Unit };
+import Format::WriteFormat;
+import Text::{ BufferWriter, Debug, FormatError, FormatSpec, ParseFormatSpec, TextWriter, WriteAscii, WriteBytes };
+
+// What a sequential container looks like when a program has to say what is in it.
+//
+// The containers cannot implement `Debug` themselves — what a `Vector<T>` looks like is a question about `T`, and an
+// implementation has nowhere to say "when the element can be shown" — so these are functions carrying the bound, and
+// the questions are the ones that shape raises rather than the ones a method would.
+//
+// The first is whether showing a container takes anything out of it. It must not: the container owns its elements
+// and hands out no copy of a move-only one, so a diagnostic that consumed what it printed would be useless on
+// exactly the values worth printing. The tracked element below reports each of its own destructions, so a vector of
+// them is written twice and the count says whether the claim is true.
+//
+// The second is the deque, whose elements are in a ring and are therefore in two runs once it has wrapped. A reader
+// wants the order the deque has — what `PopFront` would yield — and wants no sign of where the split happens to be.
+// The wrapped case is built deliberately below, since a deque that has never wrapped would pass a writer that only
+// walked the first run.
+//
+// The third is that the capacity is not part of it. A vector reserved for a thousand elements and holding two shows
+// two, because the spare room holds nothing.
+
+// An element that reports each of its own destructions. Move-only, which is the case that matters: a copyable
+// element could be shown by taking a copy, and this one cannot be.
+struct Tracked {
+    counter: *var int32;
+    tag: int32;
+}
+
+extend Tracked {
+    func =(self: &var Tracked, other: &Tracked);
+
+    func ~Tracked(self: &var Tracked) {
+        if self.counter != null {
+            *self.counter = *self.counter + 1i32;
+        }
+    }
+}
+
+extend Tracked : Debug {
+    func WriteDebug(self: &Tracked, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        WriteBytes(writer, "T(")?;
+        let tag: Debug = self.tag;
+        tag.WriteDebug(writer, spec)?;
+        return WriteAscii(writer, c8')');
+    }
+}
+
+func Same(actual: char8[..], expected: char8[..]) -> bool {
+    if actual.length != expected.length { return false; }
+    var index: uint = 0;
+    while index < actual.length {
+        if actual.data[index] != expected.data[index] { return false; }
+        index = index + 1;
+    }
+    return true;
+}
+
+func Spec(text: char8[..]) -> FormatSpec {
+    var spec = FormatSpec::Plain();
+    Assert(ParseFormatSpec(text).TryIntoValue(@spec), "the spec parses");
+    return spec;
+}
+
+func ShownVector(value: &Vector<int32>, spec: FormatSpec, expected: char8[..]) -> bool {
+    var storage: char8[128];
+    var writer = BufferWriter((@storage[0])[..128]);
+    let sink: &var TextWriter = writer;
+    if WriteVectorDebug<int32>(sink, value, spec).IsError() { return false; }
+    return Same(writer.Written(), expected);
+}
+
+func ShownArray(value: &Array<int32>, spec: FormatSpec, expected: char8[..]) -> bool {
+    var storage: char8[128];
+    var writer = BufferWriter((@storage[0])[..128]);
+    let sink: &var TextWriter = writer;
+    if WriteArrayDebug<int32>(sink, value, spec).IsError() { return false; }
+    return Same(writer.Written(), expected);
+}
+
+func ShownDeque(value: &Deque<int32>, spec: FormatSpec, expected: char8[..]) -> bool {
+    var storage: char8[128];
+    var writer = BufferWriter((@storage[0])[..128]);
+    let sink: &var TextWriter = writer;
+    if WriteDequeDebug<int32>(sink, value, spec).IsError() { return false; }
+    return Same(writer.Written(), expected);
+}
+
+func Main() -> int {
+    var system = SystemAllocator();
+    let allocator: Allocator = system;
+    let plain = FormatSpec::Plain();
+
+    // A vector is its elements in order, bracketed. The empty case is a visible pair of brackets rather than
+    // nothing, which is the difference between "it holds nothing" and "the writer did nothing".
+    var numbers = Vector<int32>(allocator);
+    Assert(ShownVector(numbers, plain, "[]"), "an empty vector shows as empty");
+    var value: int32 = 1i32;
+    while value <= 3i32 {
+        Assert(numbers.Push(value * 10i32) == CollectionError::None, "filled");
+        value = value + 1i32;
+    }
+    Assert(ShownVector(numbers, plain, "[10, 20, 30]"), "and a full one as its elements in order");
+
+    // Capacity is not part of what a vector holds, so reserving room changes nothing about what it shows.
+    Assert(numbers.Reserve(1000u) == CollectionError::None, "room is taken");
+    Assert(numbers.Capacity() >= 1003u, "and the vector is much larger than its length");
+    Assert(ShownVector(numbers, plain, "[10, 20, 30]"), "but shows exactly what it holds");
+
+    // The specification reaches the elements, which is where a base or a width means something.
+    Assert(ShownVector(numbers, Spec("x"), "[a, 14, 1e]"), "a base applies to each element");
+    Assert(ShownVector(numbers, Spec("04"), "[0010, 0020, 0030]"), "and so does zero padding");
+
+    // An array is the same rendering over a fixed length.
+    var arrayError = CollectionError::None;
+    var fixed = Array::Filled<int32>(allocator, 3u, 7i32, @arrayError);
+    Assert(arrayError == CollectionError::None, "an array is built");
+    Assert(ShownArray(fixed, plain, "[7, 7, 7]"), "and shows its elements");
+    var emptyError = CollectionError::None;
+    var nothing = Array::Filled<int32>(allocator, 0u, 0i32, @emptyError);
+    Assert(emptyError == CollectionError::None, "an empty array is built");
+    Assert(ShownArray(nothing, plain, "[]"), "and shows as empty");
+
+    // A deque shows front to back. This one has not wrapped.
+    var queue = Deque<int32>(allocator);
+    Assert(ShownDeque(queue, plain, "[]"), "an empty deque shows as empty");
+    Assert(queue.PushBack(1i32) == CollectionError::None, "a deque takes one at the back");
+    Assert(queue.PushBack(2i32) == CollectionError::None, "and another");
+    Assert(ShownDeque(queue, plain, "[1, 2]"), "and shows them in order");
+
+    // Now the wrapped case, which is the one a writer that only walked the first run would fail. Pushing at the
+    // front of a deque whose head is at the start of the block puts the element at the end of it, so the elements
+    // are in two runs with the gap in the middle.
+    Assert(queue.PushFront(0i32) == CollectionError::None, "and one at the front, which wraps the ring");
+    Assert(!queue.IsContiguous(), "so its elements are in two runs");
+    Assert(ShownDeque(queue, plain, "[0, 1, 2]"), "and it still shows them front to back, as one sequence");
+    Assert(!queue.IsContiguous(), "having rearranged nothing to do it");
+
+    // The order is the deque's own, which is what PopFront yields, and it survives the ring wrapping again.
+    Assert(queue.PushFront(-1i32) == CollectionError::None, "another at the front");
+    Assert(queue.PushBack(3i32) == CollectionError::None, "and another at the back");
+    Assert(ShownDeque(queue, plain, "[-1, 0, 1, 2, 3]"), "the whole ring reads front to back");
+    Assert(queue.PopFront().ValueOr(99i32) == -1i32, "and the front is what the rendering said it was");
+
+    // Showing a container takes nothing out of it. Every element is reached through a borrow, so a vector of a
+    // move-only element type can be shown as many times as wanted and still holds all of them.
+    var destroyed: int32 = 0;
+    var owned = Vector<Tracked>(allocator);
+    var tag: int32 = 0;
+    while tag < 3i32 {
+        Assert(owned.Push(Tracked { counter: @destroyed, tag: tag }) == CollectionError::None, "filled");
+        tag = tag + 1i32;
+    }
+
+    var storage: char8[128];
+    var writer = BufferWriter((@storage[0])[..128]);
+    let sink: &var TextWriter = writer;
+    Assert(WriteVectorDebug<Tracked>(sink, owned, plain).IsSuccess(), "a move-only vector is shown");
+    Assert(destroyed == 0i32, "and nothing was destroyed to show it");
+    Assert(WriteVectorDebug<Tracked>(sink, owned, plain).IsSuccess(), "so it can be shown again");
+    Assert(destroyed == 0i32, "still destroying nothing");
+    Assert(Same(writer.Written(), "[T(0), T(1), T(2)][T(0), T(1), T(2)]"), "twice, identically");
+    Assert(owned.Length() == 3u, "and the vector still holds every element");
+
+    // The same for a deque of them, including the wrapped case, since that is where a writer walking the wrong run
+    // would read an element the deque does not hold.
+    var ring = Deque<Tracked>(allocator);
+    Assert(ring.PushBack(Tracked { counter: @destroyed, tag: 1i32 }) == CollectionError::None, "back");
+    Assert(ring.PushBack(Tracked { counter: @destroyed, tag: 2i32 }) == CollectionError::None, "back again");
+    Assert(ring.PushFront(Tracked { counter: @destroyed, tag: 0i32 }) == CollectionError::None, "front, wrapping");
+    Assert(!ring.IsContiguous(), "so this one is in two runs too");
+
+    var ringStorage: char8[128];
+    var ringWriter = BufferWriter((@ringStorage[0])[..128]);
+    let ringSink: &var TextWriter = ringWriter;
+    Assert(WriteDequeDebug<Tracked>(ringSink, ring, plain).IsSuccess(), "a wrapped move-only deque is shown");
+    Assert(Same(ringWriter.Written(), "[T(0), T(1), T(2)]"), "front to back across the split");
+    Assert(destroyed == 0i32, "and destroyed none of them");
+
+    // A destination that runs out of room reports it and stops, rather than losing its tail quietly.
+    var small: char8[6];
+    var tight = BufferWriter((@small[0])[..6]);
+    let tightSink: &var TextWriter = tight;
+    let refused = WriteVectorDebug<Tracked>(tightSink, owned, plain);
+    let overflowed = match refused {
+        .Success(_) => false,
+        .Error(reason) => match reason { .InsufficientCapacity => true, else => false }
+    };
+    Assert(overflowed, "a destination without room reports it");
+    Assert(tight.Length() <= 6u, "having written no more than it had");
+    Assert(destroyed == 0i32, "and a failed rendering destroys nothing either");
+    Assert(owned.Length() == 3u, "leaving the vector as it was");
+
+    return 0;
+}

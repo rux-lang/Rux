@@ -1,0 +1,193 @@
+import Core::{ Assert, Option, Result, Unit };
+import Text::{ BufferWriter, Debug, FormatError, FormatSpec, ParseFormatSpec, StringView, TextWriter, WriteAscii,
+               WriteBytes, WriteOptionDebug, WriteResultDebug, WriteSliceDebug };
+
+// Showing an outcome or a run of elements without taking it apart.
+//
+// Three writers, and one property runs through all of them: they borrow. `Option::ValueOr` and `TryIntoValue`
+// consume the option because taking a payload out is a transfer of ownership, and there is no borrowing accessor
+// for one — so the question a test has to answer is whether showing a value is also taking it. The tracked element
+// below reports its own destruction, so the answer is counted rather than argued: an option holding a move-only
+// value is written twice, nothing is destroyed, and the option still holds it.
+//
+// The other half is what the specification means. It reaches each element unchanged, because a sequence has no
+// numeric or textual form of its own for a width or a precision to apply to — so a precision truncates each element
+// and the brackets and commas are punctuation that is never padded. What an element makes of a specification is that
+// element's own business, which is why the last of these cases is an element that reports what it was handed rather
+// than one that renders a value.
+//
+// And a refused write stops the rendering. A destination that has already said no is not written to again, and what
+// came after the failing element does not appear, which is the difference between a diagnostic that reports a full
+// buffer and one that quietly loses its tail.
+
+// An element that reports each of its own destructions, so "nothing was destroyed" is a count. Move-only, since a
+// copy would be a second destruction of the same thing and would hide exactly the defect this is here to catch.
+struct Tracked {
+    counter: *var int32;
+    tag: uint;
+}
+
+extend Tracked {
+    func =(self: &var Tracked, other: &Tracked);
+
+    func ~Tracked(self: &var Tracked) {
+        if self.counter != null {
+            *self.counter = *self.counter + 1i32;
+        }
+    }
+}
+
+extend Tracked : Debug {
+    func WriteDebug(self: &Tracked, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        WriteBytes(writer, "T(")?;
+        WriteNumber(writer, self.tag)?;
+        return WriteAscii(writer, c8')');
+    }
+}
+
+// An element that reports the specification it was handed rather than any value, so what reaches an element can be
+// read out of the output. Nothing else can show that: the elements a run is written from are the only place a
+// specification could be applied or dropped, and a wrapper that quietly replaced it with a plain one would produce
+// output identical to a correct one for every element type that ignores width.
+struct Spy {}
+
+extend Spy : Debug {
+    func WriteDebug(self: &Spy, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        WriteAscii(writer, c8'w')?;
+        WriteNumber(writer, spec.Width())?;
+        WriteAscii(writer, c8'p')?;
+        return WriteNumber(writer, spec.Precision());
+    }
+}
+
+// A decimal count, written here because this package converts no numbers and depends on nothing that does.
+func WriteNumber(writer: &var TextWriter, value: uint) -> Result<Unit, FormatError> {
+    if value >= 10u {
+        WriteNumber(writer, value / 10u)?;
+    }
+    return WriteAscii(writer, ((value % 10u) + 0x30u) as char8);
+}
+
+func Same(actual: char8[..], expected: char8[..]) -> bool {
+    if actual.length != expected.length { return false; }
+    var index: uint = 0;
+    while index < actual.length {
+        if actual.data[index] != expected.data[index] { return false; }
+        index = index + 1;
+    }
+    return true;
+}
+
+func Spec(text: char8[..]) -> FormatSpec {
+    var spec = FormatSpec::Plain();
+    Assert(ParseFormatSpec(text).TryIntoValue(@spec), "the spec parses");
+    return spec;
+}
+
+// Each shape rendered into a buffer of its own and compared, so one case cannot read another's output.
+func ShownOption(value: &Option<StringView>, spec: FormatSpec, expected: char8[..]) -> bool {
+    var storage: char8[128];
+    var writer = BufferWriter((@storage[0])[..128]);
+    let sink: &var TextWriter = writer;
+    if WriteOptionDebug<StringView>(sink, value, spec).IsError() { return false; }
+    return Same(writer.Written(), expected);
+}
+
+func ShownResult(value: &Result<StringView, StringView>, spec: FormatSpec, expected: char8[..]) -> bool {
+    var storage: char8[128];
+    var writer = BufferWriter((@storage[0])[..128]);
+    let sink: &var TextWriter = writer;
+    if WriteResultDebug<StringView, StringView>(sink, value, spec).IsError() { return false; }
+    return Same(writer.Written(), expected);
+}
+
+func ShownSlice(items: StringView[..], spec: FormatSpec, expected: char8[..]) -> bool {
+    var storage: char8[128];
+    var writer = BufferWriter((@storage[0])[..128]);
+    let sink: &var TextWriter = writer;
+    if WriteSliceDebug<StringView>(sink, items, spec).IsError() { return false; }
+    return Same(writer.Written(), expected);
+}
+
+func Main() -> int {
+    let plain = FormatSpec::Plain();
+    let hello = StringView::FromValidated("hello");
+
+    // An option names its case and shows its payload the way the payload shows itself — quoted, here, because that
+    // is what a string's Debug is.
+    var some = Option::Some<StringView>(hello);
+    var none = Option::None<StringView>();
+    Assert(ShownOption(some, plain, "Some(\"hello\")"), "a full option names its case around its payload");
+    Assert(ShownOption(none, plain, "None"), "and an empty one is the case alone");
+
+    // The empty payload is where a wrapper that wrote nothing would be indistinguishable from one that worked.
+    var empty = Option::Some<StringView>(StringView::FromValidated(""));
+    Assert(ShownOption(empty, plain, "Some(\"\")"), "an empty payload is still visibly a payload");
+
+    // A result names the case a reader would branch on, on both sides.
+    var success = Result::Success<StringView, StringView>(hello);
+    var failure = Result::Error<StringView, StringView>(StringView::FromValidated("nope"));
+    Assert(ShownResult(success, plain, "Success(\"hello\")"), "a result names its success case");
+    Assert(ShownResult(failure, plain, "Error(\"nope\")"), "and its failure case");
+
+    // A run of elements, including the two edges: none at all, and exactly one, which is where a separator written
+    // one position out would show.
+    var three: StringView[3] = [hello, StringView::FromValidated("a"), StringView::FromValidated("")];
+    Assert(ShownSlice(three[..], plain, "[\"hello\", \"a\", \"\"]"), "a run is bracketed and comma-separated");
+    Assert(ShownSlice(three[..1], plain, "[\"hello\"]"), "one element carries no separator");
+    Assert(ShownSlice(three[..0], plain, "[]"), "and none at all is a visible pair of brackets");
+
+    // The specification describes the elements. A precision counts characters of each element, not of the
+    // rendering, so the brackets and the comma survive a precision that is shorter than either.
+    Assert(ShownOption(some, Spec(".2"), "Some(\"he\")"), "a precision truncates the payload");
+    Assert(ShownSlice(three[..2], Spec(".1"), "[\"h\", \"a\"]"), "and each element of a run");
+
+    // What reaches an element is the specification the caller passed, unchanged. The spy writes what it was handed,
+    // so a wrapper that substituted a plain specification would be caught here and nowhere else.
+    var watchers: Spy[2] = [Spy {}, Spy {}];
+    var spyStorage: char8[64];
+    var spyWriter = BufferWriter((@spyStorage[0])[..64]);
+    let spySink: &var TextWriter = spyWriter;
+    Assert(WriteSliceDebug<Spy>(spySink, watchers[..], Spec("7.3")).IsSuccess(), "a run of spies is shown");
+    Assert(Same(spyWriter.Written(), "[w7p3, w7p3]"), "and every element was handed the caller's own specification");
+
+    // Showing a value does not take it. The tracked element is move-only and reports its own destruction, so this
+    // is the property counted rather than assumed.
+    var destroyed: int32 = 0;
+    var held = Option::Some<Tracked>(Tracked { counter: @destroyed, tag: 7u });
+    var storage: char8[128];
+    var writer = BufferWriter((@storage[0])[..128]);
+    let sink: &var TextWriter = writer;
+    Assert(WriteOptionDebug<Tracked>(sink, held, plain).IsSuccess(), "a move-only payload is shown");
+    Assert(destroyed == 0i32, "and nothing was destroyed to show it");
+    Assert(WriteOptionDebug<Tracked>(sink, held, plain).IsSuccess(), "so it can be shown again");
+    Assert(destroyed == 0i32, "still destroying nothing");
+    Assert(held.IsSome(), "and the option still holds its value");
+    Assert(Same(writer.Written(), "Some(T(7))Some(T(7))"), "twice, identically");
+
+    // The same for a run of them: every element is reached through a borrow.
+    var elements: Tracked[3] = [Tracked { counter: @destroyed, tag: 0u }, Tracked { counter: @destroyed, tag: 12u },
+                                Tracked { counter: @destroyed, tag: 345u }];
+    var runStorage: char8[128];
+    var runWriter = BufferWriter((@runStorage[0])[..128]);
+    let runSink: &var TextWriter = runWriter;
+    Assert(WriteSliceDebug<Tracked>(runSink, elements[..], plain).IsSuccess(), "a move-only run is shown");
+    Assert(Same(runWriter.Written(), "[T(0), T(12), T(345)]"), "in order, each through a borrow");
+    Assert(destroyed == 0i32, "and not one of them was destroyed");
+
+    // A refused write stops the rendering where it was refused. Eleven bytes holds `[T(0), T(12)` up to the point
+    // the third element needs room, so what appears is the prefix that fit and nothing after it.
+    var small: char8[11];
+    var tight = BufferWriter((@small[0])[..11]);
+    let tightSink: &var TextWriter = tight;
+    let refused = WriteSliceDebug<Tracked>(tightSink, elements[..], plain);
+    let overflowed = match refused {
+        .Success(_) => false,
+        .Error(reason) => match reason { .InsufficientCapacity => true, else => false }
+    };
+    Assert(overflowed, "a destination without room reports it");
+    Assert(tight.Length() <= 11u, "having written no more than it had");
+    Assert(destroyed == 0i32, "and a failed rendering destroys nothing either");
+
+    return 0;
+}
