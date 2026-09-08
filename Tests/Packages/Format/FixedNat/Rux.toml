@@ -1,0 +1,15 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "FixedNat"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Format: the fixed-capacity integer workspace the narrow float conversion runs in"
+
+[Dependencies]
+Core = { Path = "../../../../Packages/Core" }
+Format = { Path = "../../../../Packages/Format" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Format"

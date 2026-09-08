@@ -53,6 +53,7 @@ For anything beyond the quick start, see the detailed guides:
 | [Rux.toml Manifest](Docs/Manifest.md)             | Versioned package, workspace and dependency contract            |
 | [First-Party Packages](Docs/Packages.md)          | Package status, layout, dependencies, and centralized tests     |
 | [Known Compiler Defects](Docs/CompilerDefects.md) | Defects that shape how the first-party packages are written     |
+| [Narrow Float Conversion](Docs/NarrowFloat.md)    | The algorithm, workspace bound, precision and reference vectors  |
 | [Cryptographic Review](Docs/CryptoReview.md)      | What an independent reviewer of `Rux/Crypto` needs first        |
 | [Branch Architecture](Docs/Branches.md)           | What `main` and `dev` are for, naming, protection rules         |
 | [Pull Request Lifecycle](Docs/PullRequest.md)     | From opening a PR to merge: review, CI gates, etiquette         |

@@ -1,0 +1,170 @@
+import Core::Assert;
+import Format::{ FixedNat, FixedNatBits, FixedNatLimbs };
+
+// The workspace the narrow float conversion runs in, checked at the three places a fixed-capacity integer goes
+// wrong: the carry between limbs, the shift across a limb boundary, and the capacity itself.
+//
+// The capacity is the one that matters most, because the alternative to reporting it is a wrong answer from an
+// algorithm whose whole claim is that it has nothing to approximate. Every operation that could pass the bound is
+// driven past it here and checked to say so, rather than to truncate, wrap or saturate.
+//
+// The bound is 1,280 bits against a worst case of 1,131, derived in Docs/NarrowFloat.md. The two values that reach
+// that worst case have cases of their own at the bottom: `2^54 × 10^324`, which is the smallest float64 subnormal
+// scaled to where its first significant digit appears, and `2^1075`, which is the denominator that subnormal is
+// formed over. Both must fit, with the headroom the derivation claims.
+
+// Whether `value` is exactly two to the `bits`, checked through the only two questions the type answers about
+// magnitude: its bit length, and its comparison against a power of two built independently.
+func IsPowerOfTwo(value: &FixedNat, bits: uint) -> bool {
+    var expected = FixedNat();
+    if !expected.SetPowerOfTwo(bits) { return false; }
+    return value.Compare(expected) == 0i32 && value.BitLength() == bits + 1u;
+}
+
+func Main() -> int {
+    // Zero is the value with no limbs, and says so.
+    var zero = FixedNat();
+    Assert(zero.IsZero(), "a new workspace is zero");
+    Assert(zero.BitLength() == 0u, "and zero occupies no bits");
+    Assert(zero.Low64() == 0u64, "and reads back as zero");
+
+    // One limb, and the bit length that counts from the highest set bit rather than from the limb count.
+    var one = FixedNat::FromUint64(1u64);
+    Assert(!one.IsZero() && one.BitLength() == 1u, "one occupies one bit");
+    var top = FixedNat::FromUint64(0xFFFFFFFFFFFFFFFFu64);
+    Assert(top.BitLength() == 64u, "a full limb occupies sixty-four");
+    Assert(top.Low64() == 0xFFFFFFFFFFFFFFFFu64, "and reads back whole");
+
+    // Ordering, including the case where the lengths differ and the case where they do not.
+    var two = FixedNat::FromUint64(2u64);
+    Assert(one.Compare(two) == -1i32, "one is less than two");
+    Assert(two.Compare(one) == 1i32, "and two is more than one");
+    Assert(one.Compare(one) == 0i32, "and a value equals itself");
+    Assert(zero.Compare(one) == -1i32, "zero is less than anything");
+
+    // The carry between limbs, which is what a single-limb implementation gets wrong. Multiplying the largest
+    // limb by two needs a second limb and exactly one bit of it.
+    var carried = FixedNat::FromUint64(0xFFFFFFFFFFFFFFFFu64);
+    Assert(carried.MultiplySmall(2u64), "a full limb doubled still fits");
+    Assert(carried.BitLength() == 65u, "and occupies sixty-five bits");
+    Assert(carried.Low64() == 0xFFFFFFFFFFFFFFFEu64, "with the low limb one short of full");
+
+    // Adding one to a full limb carries into the next and leaves the low limb zero, which a carry that is dropped
+    // rather than propagated would not.
+    var rolling = FixedNat::FromUint64(0xFFFFFFFFFFFFFFFFu64);
+    Assert(rolling.AddSmall(1u64), "a full limb plus one fits");
+    Assert(IsPowerOfTwo(rolling, 64u), "and is two to the sixty-fourth exactly");
+    Assert(rolling.Low64() == 0u64, "with nothing left in the low limb");
+
+    // Multiply-and-add is one operation because reading a digit is one operation. Ten times a full limb plus nine
+    // exercises both halves against a carry.
+    var absorbed = FixedNat::FromUint64(0xFFFFFFFFFFFFFFFFu64);
+    Assert(absorbed.MultiplyAddSmall(10u64, 9u64), "the pair fits");
+    var byHand = FixedNat::FromUint64(0xFFFFFFFFFFFFFFFFu64);
+    Assert(byHand.MultiplySmall(10u64) && byHand.AddSmall(9u64), "and so does doing it in two steps");
+    Assert(absorbed.Compare(byHand) == 0i32, "which is the same value either way");
+
+    // Subtraction borrows across a limb, which is the mirror of the carry and the other half a single-limb
+    // implementation gets wrong.
+    var borrowed = FixedNat();
+    Assert(borrowed.SetPowerOfTwo(64u), "two to the sixty-fourth is built directly");
+    borrowed.Subtract(one);
+    Assert(borrowed.BitLength() == 64u, "and one less than it is a single full limb");
+    Assert(borrowed.Low64() == 0xFFFFFFFFFFFFFFFFu64, "which is all ones");
+    let sameValue = borrowed;
+    borrowed.Subtract(sameValue);
+    Assert(borrowed.IsZero(), "a value minus itself is zero, with no leading limbs left behind");
+
+    // Shifts, across a limb boundary and across several. A shift is not a multiply here, so it gets its own cases.
+    var shifted = FixedNat::FromUint64(1u64);
+    Assert(shifted.ShiftLeft(0u), "shifting by nothing is nothing");
+    Assert(shifted.BitLength() == 1u, "and leaves the value alone");
+    Assert(shifted.ShiftLeft(63u), "a shift within one limb fits");
+    Assert(IsPowerOfTwo(shifted, 63u), "and lands on the limb's top bit");
+    Assert(shifted.ShiftLeft(1u), "one more crosses into the next limb");
+    Assert(IsPowerOfTwo(shifted, 64u), "and is two to the sixty-fourth");
+    Assert(shifted.ShiftLeft(200u), "a shift of several whole limbs and a remainder fits");
+    Assert(IsPowerOfTwo(shifted, 264u), "and lands where the arithmetic says");
+
+    // A shift that carries bits out of the top limb into a new one, which is the case the width check exists for.
+    var spilling = FixedNat::FromUint64(0xFFFFFFFFFFFFFFFFu64);
+    Assert(spilling.ShiftLeft(1u), "a full limb shifted by one needs a second");
+    Assert(spilling.BitLength() == 65u, "and occupies sixty-five bits");
+
+    // Zero shifts to zero rather than growing a limb of zeros.
+    var stillZero = FixedNat();
+    Assert(stillZero.ShiftLeft(500u), "shifting zero fits trivially");
+    Assert(stillZero.IsZero(), "and leaves it zero");
+
+    // Addition of two multi-limb values, with a carry that propagates the whole way.
+    var left = FixedNat();
+    Assert(left.SetPowerOfTwo(128u), "two to the one hundred and twenty-eighth");
+    left.Subtract(one);
+    var right = FixedNat::FromUint64(1u64);
+    Assert(left.Add(right), "one less than it, plus one, fits");
+    Assert(IsPowerOfTwo(left, 128u), "and is the power itself again");
+
+    // Powers of ten, which the conversion applies in chunks of nineteen rather than one digit at a time.
+    var ten = FixedNat::FromUint64(1u64);
+    Assert(ten.MultiplyPowerOfTen(0u), "ten to the nothing is one");
+    Assert(ten.Compare(one) == 0i32, "and leaves the value alone");
+    var thousand = FixedNat::FromUint64(1u64);
+    Assert(thousand.MultiplyPowerOfTen(3u), "ten cubed fits");
+    let athousand = FixedNat::FromUint64(1000u64);
+    Assert(thousand.Compare(athousand) == 0i32, "and is a thousand");
+    var chunked = FixedNat::FromUint64(1u64);
+    Assert(chunked.MultiplyPowerOfTen(19u), "exactly one chunk fits");
+    let tenToNineteen = FixedNat::FromUint64(10000000000000000000u64);
+    Assert(chunked.Compare(tenToNineteen) == 0i32, "and is ten to the nineteenth");
+    var crossing = FixedNat::FromUint64(1u64);
+    Assert(crossing.MultiplyPowerOfTen(20u), "one past a chunk fits");
+    var alsoCrossing = FixedNat::FromUint64(1u64);
+    Assert(alsoCrossing.MultiplyPowerOfTen(19u) && alsoCrossing.MultiplySmall(10u64), "and so does doing it by hand");
+    Assert(crossing.Compare(alsoCrossing) == 0i32, "which is the same value, so the chunking is not a shortcut");
+
+    // The capacity, and what every operation does when it is reached. A wrong answer is worse than no answer here,
+    // because the algorithm this serves has nothing to approximate and so nothing to be slightly wrong about.
+    Assert(FixedNatLimbs == 20u, "the workspace is twenty limbs");
+    Assert(FixedNatBits == 1280u, "which is one thousand two hundred and eighty bits");
+
+    var full = FixedNat();
+    Assert(full.SetPowerOfTwo(FixedNatBits - 1u), "the highest bit the capacity holds is reachable");
+    Assert(full.BitLength() == FixedNatBits, "and fills it exactly");
+    Assert(!full.SetPowerOfTwo(FixedNatBits), "one past it is refused rather than wrapped to zero");
+    Assert(!full.ShiftLeft(1u), "shifting the top bit out is refused");
+    Assert(!full.MultiplySmall(2u64), "and so is doubling it");
+    Assert(!full.MultiplyPowerOfTen(1u), "and multiplying it by ten");
+    var alsoFull = FixedNat();
+    Assert(alsoFull.SetPowerOfTwo(FixedNatBits - 1u), "a second copy of the top value");
+    Assert(!full.Add(alsoFull), "and adding the two is refused");
+
+    // A value one bit below the top still has room for one doubling, which is what makes the refusals above about
+    // the bound rather than about the operations always refusing.
+    var nearlyFull = FixedNat();
+    Assert(nearlyFull.SetPowerOfTwo(FixedNatBits - 2u), "one bit below the top");
+    Assert(nearlyFull.MultiplySmall(2u64), "doubles into the top bit");
+    Assert(IsPowerOfTwo(nearlyFull, FixedNatBits - 1u), "and lands exactly there");
+
+    // The two boundary vectors the bound was derived from, which are the largest values the narrow conversion
+    // actually forms. Both must fit, with the headroom Docs/NarrowFloat.md claims.
+    var smallestSubnormalScaled = FixedNat();
+    Assert(smallestSubnormalScaled.SetPowerOfTwo(54u), "the smallest float64 subnormal's numerator");
+    Assert(smallestSubnormalScaled.MultiplyPowerOfTen(324u),
+           "scaled to where its first significant digit appears, which is the worst case the bound covers");
+    let reached = smallestSubnormalScaled.BitLength();
+    Assert(reached > 1100u && reached < FixedNatBits, "occupies over eleven hundred bits and still fits");
+    Assert(FixedNatBits - reached > 128u, "with more than two limbs of headroom, as the derivation claims");
+
+    var subnormalDenominator = FixedNat();
+    Assert(subnormalDenominator.SetPowerOfTwo(1075u), "the denominator that subnormal is formed over");
+    Assert(subnormalDenominator.BitLength() == 1076u, "occupies one thousand and seventy-six bits");
+
+    var largestFinite = FixedNat::FromUint64(9007199254740991u64);
+    Assert(largestFinite.ShiftLeft(972u), "the largest finite float64's numerator");
+    Assert(largestFinite.BitLength() == 1025u, "occupies one thousand and twenty-five bits");
+    var largestScaled = FixedNat::FromUint64(2u64);
+    Assert(largestScaled.MultiplyPowerOfTen(309u), "and the denominator it is scaled against");
+    Assert(largestScaled.BitLength() < FixedNatBits, "also fits");
+
+    return 0;
+}
