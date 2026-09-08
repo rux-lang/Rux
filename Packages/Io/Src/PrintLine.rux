@@ -1,4 +1,13 @@
 // The line-ending variants: the value, then a newline, with the first failure returned.
+//
+// The newline is written only when the value's own write succeeded. That used to be unconditional, which meant a
+// line whose value could not be written still moved the cursor — so a program logging into a pipe that had
+// closed emitted a run of empty lines, and one whose value was refused for a bad request emitted a line with
+// nothing on it. Neither is what the caller asked for: a line is the value and its terminator together, and half
+// of one is worse than none of it.
+//
+// One helper decides that for every overload rather than each repeating the rule. There are twenty-two of them,
+// and a rule written twenty-two times is a rule that will be written wrongly once.
 
 import Format::Display;
 import Text::{ String, StringView };
@@ -10,200 +19,163 @@ pub func PrintLine() -> IoError {
     return PrintBytes("\n");
 }
 
+// The terminator, written only if what came before it was. `first` is what the value's own write reported, and a
+// failed value keeps its own failure rather than being overwritten by whatever the newline would have said.
+func Terminate(first: IoError) -> IoError {
+    if first.IsError() { return first; }
+    return PrintLine();
+}
+
 /// Provides the public `PrintLine` operation.
 ///
 /// https://rux-lang.dev/docs/api/io/print-line
 pub func PrintLine(value: String) -> IoError {
-    let first = Print(value);
-    let second = PrintLine();
-    return first.IsError() ? first : second;
+    return Terminate(Print(value));
 }
 
 /// Provides the public `PrintLine` operation.
 ///
 /// https://rux-lang.dev/docs/api/io/print-line
 pub func PrintLine(value: char8[..]) -> IoError {
-    let first = Print(value);
-    let second = PrintLine();
-    return first.IsError() ? first : second;
+    return Terminate(Print(value));
 }
 
 /// Provides the public `PrintLine` operation.
 ///
 /// https://rux-lang.dev/docs/api/io/print-line
 pub func PrintLine(value: StringView) -> IoError {
-    let first = Print(value);
-    let second = PrintLine();
-    return first.IsError() ? first : second;
+    return Terminate(Print(value));
 }
 
 /// Provides the public `PrintLine` operation.
 ///
 /// https://rux-lang.dev/docs/api/io/print-line
 pub func PrintLine(format: char8[..], args: Display...) -> IoError {
-    let first = Print(format, args...);
-    let second = PrintLine();
-    return first.IsError() ? first : second;
+    return Terminate(Print(format, args...));
 }
 
 /// Provides the public `PrintLine` operation.
 ///
 /// https://rux-lang.dev/docs/api/io/print-line
 pub func PrintLine(value: bool8) -> IoError {
-    let first = Print(value);
-    let second = PrintLine();
-    return first.IsError() ? first : second;
+    return Terminate(Print(value));
 }
 
 /// Provides the public `PrintLine` operation.
 ///
 /// https://rux-lang.dev/docs/api/io/print-line
 pub func PrintLine(value: bool16) -> IoError {
-    let first = Print(value);
-    let second = PrintLine();
-    return first.IsError() ? first : second;
+    return Terminate(Print(value));
 }
 
 /// Provides the public `PrintLine` operation.
 ///
 /// https://rux-lang.dev/docs/api/io/print-line
 pub func PrintLine(value: bool32) -> IoError {
-    let first = Print(value);
-    let second = PrintLine();
-    return first.IsError() ? first : second;
+    return Terminate(Print(value));
 }
 
 /// Provides the public `PrintLine` operation.
 ///
 /// https://rux-lang.dev/docs/api/io/print-line
 pub func PrintLine(value: char8) -> IoError {
-    let first = Print(value);
-    let second = PrintLine();
-    return first.IsError() ? first : second;
+    return Terminate(Print(value));
 }
 
 /// Provides the public `PrintLine` operation.
 ///
 /// https://rux-lang.dev/docs/api/io/print-line
 pub func PrintLine(value: char16) -> IoError {
-    let first = Print(value);
-    let second = PrintLine();
-    return first.IsError() ? first : second;
+    return Terminate(Print(value));
 }
 
 /// Provides the public `PrintLine` operation.
 ///
 /// https://rux-lang.dev/docs/api/io/print-line
 pub func PrintLine(value: char32) -> IoError {
-    let first = Print(value);
-    let second = PrintLine();
-    return first.IsError() ? first : second;
+    return Terminate(Print(value));
 }
 
 /// Provides the public `PrintLine` operation.
 ///
 /// https://rux-lang.dev/docs/api/io/print-line
 pub func PrintLine(value: int8) -> IoError {
-    let first = Print(value);
-    let second = PrintLine();
-    return first.IsError() ? first : second;
+    return Terminate(Print(value));
 }
 
 /// Provides the public `PrintLine` operation.
 ///
 /// https://rux-lang.dev/docs/api/io/print-line
 pub func PrintLine(value: int16) -> IoError {
-    let first = Print(value);
-    let second = PrintLine();
-    return first.IsError() ? first : second;
+    return Terminate(Print(value));
 }
 
 /// Provides the public `PrintLine` operation.
 ///
 /// https://rux-lang.dev/docs/api/io/print-line
 pub func PrintLine(value: int32) -> IoError {
-    let first = Print(value);
-    let second = PrintLine();
-    return first.IsError() ? first : second;
+    return Terminate(Print(value));
 }
 
 /// Provides the public `PrintLine` operation.
 ///
 /// https://rux-lang.dev/docs/api/io/print-line
 pub func PrintLine(value: int64) -> IoError {
-    let first = Print(value);
-    let second = PrintLine();
-    return first.IsError() ? first : second;
+    return Terminate(Print(value));
 }
 
 /// Provides the public `PrintLine` operation.
 ///
 /// https://rux-lang.dev/docs/api/io/print-line
 pub func PrintLine(value: uint8) -> IoError {
-    let first = Print(value);
-    let second = PrintLine();
-    return first.IsError() ? first : second;
+    return Terminate(Print(value));
 }
 
 /// Provides the public `PrintLine` operation.
 ///
 /// https://rux-lang.dev/docs/api/io/print-line
 pub func PrintLine(value: uint16) -> IoError {
-    let first = Print(value);
-    let second = PrintLine();
-    return first.IsError() ? first : second;
+    return Terminate(Print(value));
 }
 
 /// Provides the public `PrintLine` operation.
 ///
 /// https://rux-lang.dev/docs/api/io/print-line
 pub func PrintLine(value: uint32) -> IoError {
-    let first = Print(value);
-    let second = PrintLine();
-    return first.IsError() ? first : second;
+    return Terminate(Print(value));
 }
 
 /// Provides the public `PrintLine` operation.
 ///
 /// https://rux-lang.dev/docs/api/io/print-line
 pub func PrintLine(value: uint64) -> IoError {
-    let first = Print(value);
-    let second = PrintLine();
-    return first.IsError() ? first : second;
+    return Terminate(Print(value));
 }
 
 /// Provides the public `PrintLine` operation.
 ///
 /// https://rux-lang.dev/docs/api/io/print-line
 pub func PrintLine(value: int) -> IoError {
-    let first = Print(value);
-    let second = PrintLine();
-    return first.IsError() ? first : second;
+    return Terminate(Print(value));
 }
 
 /// Provides the public `PrintLine` operation.
 ///
 /// https://rux-lang.dev/docs/api/io/print-line
 pub func PrintLine(value: uint) -> IoError {
-    let first = Print(value);
-    let second = PrintLine();
-    return first.IsError() ? first : second;
+    return Terminate(Print(value));
 }
 
 /// Provides the public `PrintLine` operation.
 ///
 /// https://rux-lang.dev/docs/api/io/print-line
 pub func PrintLine(value: float32) -> IoError {
-    let first = Print(value);
-    let second = PrintLine();
-    return first.IsError() ? first : second;
+    return Terminate(Print(value));
 }
 
 /// Provides the public `PrintLine` operation.
 ///
 /// https://rux-lang.dev/docs/api/io/print-line
 pub func PrintLine(value: float64) -> IoError {
-    let first = Print(value);
-    let second = PrintLine();
-    return first.IsError() ? first : second;
+    return Terminate(Print(value));
 }

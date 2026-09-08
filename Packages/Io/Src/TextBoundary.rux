@@ -1,0 +1,246 @@
+// Where a stream and the text protocols meet, and what each says to the other.
+//
+// `Rux/Text` describes values and knows nothing about streams; this package moves bytes and knows nothing about
+// rendering. They have to agree at exactly one place — a `TextWriter` over a stream — and the whole difficulty is
+// that neither error type can hold the other's failures. `FormatError` has one case for a destination failing,
+// `WriterFailure`, with deliberately no room for details, because Text has no vocabulary for a broken pipe and
+// should not pretend to. `IoError` has no case for a placeholder that does not parse.
+//
+// So the crossing is made in both directions, once, here.
+//
+// Going out, `FromIoError` turns what a stream reported into what a formatter understands: success becomes
+// `Success(Unit())` and every failure becomes `WriterFailure`. That is lossy on purpose, and the loss is made good
+// by the adapter, which records the original `IoError` in a slot the caller holds. So the formatter learns exactly
+// what it can act on — stop writing — and the caller learns exactly what happened.
+//
+// Coming back, `ToIoError` turns a formatting failure into something a stream's caller can act on, and the one
+// distinction it must preserve is the one that decides what to do next: a destination that failed may be worth
+// retrying elsewhere, while a request that was wrong will be wrong again. A malformed pattern, a specification a
+// value does not support, an argument count that does not match, and a value outside the form asked for are all
+// the caller's own request, and all arrive as `InvalidInput`. Text that was not valid UTF-8 is `InvalidText`, which
+// is a fact about the bytes. A bounded destination that filled up is `LimitExceeded`. This used to be one line
+// mapping everything to `InvalidText`, which told a caller who had written `{:q}` that their bytes were not text.
+//
+// What is *not* done is stuffing a `FormatError` into `IoError`'s `raw` field. That field is `errno` on the Unix
+// systems and the Win32 code on Windows, and a caller reading it expects to be able to look the number up. A
+// caller who needs to know which formatting failure it was builds a `ConsoleWriter` — or any other `TextWriter` —
+// and calls `Text::WriteValue` themselves, which hands back the `FormatError` whole.
+
+import Core::{ Result, Unit };
+import Format::WriteFormat;
+import Text::{ Display, FormatError, FormatOk, FormatSpec, TextFailureKind, TextWriter };
+
+/// Turns what a stream reported into what a formatter understands.
+///
+/// Success becomes the formatter's success value; every failure becomes `WriterFailure`, which is the only thing
+/// `FormatError` can say about a destination. The details do not travel this way — an adapter records the original
+/// `IoError` where its caller can read it, which is what keeps the loss from being a loss.
+///
+/// The end of a stream is a failure here. Nothing is being read, so a write that reports it is a destination that
+/// cannot take the bytes, whatever it calls that.
+///
+/// @param error what the stream reported
+/// @returns success for `IsOk`, and `WriterFailure` otherwise
+/// @see https://rux-lang.dev/docs/api/io/from-io-error
+pub func FromIoError(error: IoError) -> Result<Unit, FormatError> {
+    if error.IsOk() { return FormatOk(); }
+    return Result::Error<Unit, FormatError>(FormatError::WriterFailure);
+}
+
+/// Turns a formatting failure into something a stream's caller can act on.
+///
+/// The distinction that survives is the one worth having: a request that was wrong is `InvalidInput` and will be
+/// wrong again, while a destination that failed came back as an `IoError` in the first place and never reaches
+/// here. Bytes that were not text are `InvalidText`; a bounded destination that filled is `LimitExceeded`.
+///
+/// `WriterFailure` should not arrive: an adapter records the stream's own error and its caller reports that
+/// instead. It maps to `Other` rather than being ignored, so an adapter that forgets to keep the original is
+/// visibly wrong rather than quietly reporting success.
+///
+/// @param error the formatting failure to translate
+/// @returns the closest I/O meaning, with no platform code, since none applies
+/// @see https://rux-lang.dev/docs/api/io/to-io-error
+pub func ToIoError(error: &FormatError) -> IoError {
+    return match error {
+        .InvalidSpecification(_) => IoError::Of(IoErrorKind::InvalidInput),
+        .UnsupportedRequest => IoError::Of(IoErrorKind::InvalidInput),
+        .ArgumentCountMismatch(_, _) => IoError::Of(IoErrorKind::InvalidInput),
+        .ValueOutOfRange => IoError::Of(IoErrorKind::InvalidInput),
+        .InsufficientCapacity => IoError::Of(IoErrorKind::LimitExceeded),
+        .TextFailure(kind) => KindOf(kind),
+        .WriterFailure => IoError::Of(IoErrorKind::Other)
+    };
+}
+
+// What a text-handling failure means to a stream's caller. Only one of the three is a fact about bytes; the other
+// two are the machine, and neither has an I/O meaning of its own.
+func KindOf(kind: &TextFailureKind) -> IoError {
+    return match kind {
+        .InvalidUtf8 => IoError::Of(IoErrorKind::InvalidText),
+        else => IoError::Of(IoErrorKind::Other)
+    };
+}
+
+/// A `TextWriter` over standard output that records the stream's failure where the caller can see it.
+///
+/// The protocol has one case for a destination failing, `WriterFailure`, and deliberately no room for the details:
+/// Text has no vocabulary for a broken pipe and does not pretend to. So this adapter keeps both halves. It reports
+/// `WriterFailure` to the formatter, which stops the write, and records the original `IoError` in the slot it was
+/// built over, which is what the caller reads afterwards. Nothing about the stream failure is lost, and nothing
+/// about it leaks into a package that could not interpret it.
+///
+/// # Safety
+/// The slot must outlive the writer. It is a stored address, so nothing here tracks that.
+///
+/// @see https://rux-lang.dev/docs/api/io/console-writer
+pub struct ConsoleWriter {
+    /// Where the first stream failure is recorded.
+    failure: *var IoError;
+}
+
+extend ConsoleWriter {
+    /// A writer over standard output, recording into `failure`.
+    ///
+    /// The slot is read before every write as well as written on failure, so a writer built over a slot that
+    /// already holds a failure writes nothing at all.
+    ///
+    /// @param failure where the first stream failure is recorded
+    /// @returns a writer over standard output
+    /// @see https://rux-lang.dev/docs/api/io/console-writer/new
+    pub func ConsoleWriter(failure: *var IoError) -> ConsoleWriter {
+        return ConsoleWriter { failure: failure };
+    }
+}
+
+extend ConsoleWriter : TextWriter {
+    /// Writes `bytes` to standard output.
+    ///
+    /// # Failures
+    /// Reports `WriterFailure` when the stream refuses, having recorded the original `IoError` in the slot. Once a
+    /// failure has been recorded every later write is refused without touching the stream, so a value that is
+    /// part-way through rendering does not go on writing into a handle that has already failed, and a trailing
+    /// newline is not emitted after a failed line. This is the only case this writer can produce: the bytes are not
+    /// revalidated, and standard output is not a bounded destination.
+    ///
+    /// @param bytes the UTF-8 run to write
+    /// @returns success when the stream accepted the whole run
+    /// @see https://rux-lang.dev/docs/api/io/console-writer/write
+    pub func Write(self: &var ConsoleWriter, bytes: char8[..]) -> Result<Unit, FormatError> {
+        if (*self.failure).IsError() {
+            return Result::Error<Unit, FormatError>(FormatError::WriterFailure);
+        }
+        let outcome = PrintBytes(bytes);
+        if outcome.IsError() {
+            *self.failure = outcome;
+        }
+        return FromIoError(outcome);
+    }
+}
+
+/// A `TextWriter` over any stream, recording the stream's failure where the caller can see it.
+///
+/// The same two halves as `ConsoleWriter`, over a destination the caller chose: a file, a buffered writer, a pipe.
+/// It is what lets a value describe itself into a stream at all — `Display` writes into a `TextWriter` and a stream
+/// takes bytes, and until something stands between them a value can only be rendered to standard output or into
+/// memory.
+///
+/// Whole runs go out through `WriteAll`, so a stream that takes a partial write is looped over rather than losing
+/// the rest of a value's text.
+///
+/// # Safety
+/// The slot must outlive the writer. It is a stored address, so nothing here tracks that.
+///
+/// @see https://rux-lang.dev/docs/api/io/stream-writer
+pub struct StreamWriter {
+    /// Where the bytes go.
+    sink: Writer;
+    /// Where the first stream failure is recorded.
+    failure: *var IoError;
+}
+
+extend StreamWriter {
+    /// A text writer over `sink`, recording into `failure`.
+    ///
+    /// `sink` is borrowed for the call and kept. The slot is read before every write as well as written on failure,
+    /// so a writer built over a slot that already holds a failure writes nothing at all.
+    ///
+    /// @param sink where the bytes go
+    /// @param failure where the first stream failure is recorded
+    /// @returns a text writer over that stream
+    /// @see https://rux-lang.dev/docs/api/io/stream-writer/new
+    pub func StreamWriter(sink: Writer, failure: *var IoError) -> StreamWriter {
+        return StreamWriter { sink: sink, failure: failure };
+    }
+}
+
+extend StreamWriter : TextWriter {
+    /// Writes `bytes` to the stream.
+    ///
+    /// # Failures
+    /// Reports `WriterFailure` when the stream refuses, having recorded the original `IoError` in the slot. Once a
+    /// failure has been recorded every later write is refused without touching the stream, so a value part-way
+    /// through rendering does not go on writing into a destination that has already failed.
+    ///
+    /// @param bytes the UTF-8 run to write
+    /// @returns success when the stream accepted the whole run
+    /// @see https://rux-lang.dev/docs/api/io/stream-writer/write
+    pub func Write(self: &var StreamWriter, bytes: char8[..]) -> Result<Unit, FormatError> {
+        if (*self.failure).IsError() {
+            return Result::Error<Unit, FormatError>(FormatError::WriterFailure);
+        }
+        let outcome = WriteAll(self.sink, bytes);
+        if outcome.IsError() {
+            *self.failure = outcome;
+        }
+        return FromIoError(outcome);
+    }
+}
+
+/// Writes a value's text, then a newline, and writes the newline only if the value went out whole.
+///
+/// The rule is the whole point. A line is a value and its terminator together, so a value that could not be written
+/// must not be followed by a terminator: a destination that refused halfway would otherwise get a line break
+/// marking the end of something that is not there, and a caller reading the output back would see a blank line
+/// where a value should be. This is what every `PrintLine` overload does over standard output, written once for any
+/// destination.
+///
+/// The value is taken by bound rather than as an interface value, and that is the difference between writing a
+/// value and taking it: binding a move-only value to a `Display` transfers ownership of it, so a surface that
+/// accepted one could write such a value exactly once and the caller would not have it afterwards. Here it is
+/// borrowed, so it may be written as often as wanted and is still the caller's.
+///
+/// # Failures
+/// Reports the value's own failure when it has one, without attempting the newline. Otherwise reports whatever the
+/// newline's write reported.
+///
+/// @typeParam T the value's type, which must know how to show itself
+/// @param writer the destination
+/// @param value the value to write, borrowed for the call
+/// @returns success when both the value and the newline were accepted
+/// @see https://rux-lang.dev/docs/api/io/write-value-line
+pub func WriteValueLine<T: Display>(writer: &var TextWriter, value: &T) -> Result<Unit, FormatError> {
+    value.WriteDisplay(writer, FormatSpec::Plain())?;
+    return writer.Write("\n");
+}
+
+/// Writes `format` with each `{}` replaced by the next argument, then a newline, on the same rule.
+///
+/// The newline goes out only if the whole pattern did, so a pattern that does not parse, an argument count that
+/// does not match and a destination that refused all leave no terminator behind. Nothing is allocated: the
+/// arguments write themselves as they are reached. They arrive as interface values, which is what a variadic can
+/// carry, so a move-only argument goes through `WriteValueLine` instead of through a placeholder.
+///
+/// # Failures
+/// Reports the formatting failure when there is one, without attempting the newline. Otherwise reports whatever the
+/// newline's write reported.
+///
+/// @param writer the destination
+/// @param format the pattern, whose placeholders are filled from the arguments
+/// @param args the values to fill them with, borrowed for the call
+/// @returns success when the whole line was accepted
+/// @see https://rux-lang.dev/docs/api/io/write-format-line
+pub func WriteFormatLine(writer: &var TextWriter, format: char8[..],
+                         args: Display...) -> Result<Unit, FormatError> {
+    WriteFormat(writer, format, args...)?;
+    return writer.Write("\n");
+}
