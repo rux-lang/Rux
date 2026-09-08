@@ -1,0 +1,87 @@
+// `as`: the explicit conversion, and the one place a value is allowed to change meaning.
+//
+// The keyword appears throughout the language tests as a means to an end and had no case of its own. What belongs
+// here is the conversion rules themselves, and specifically the ones where `as` does something other than
+// reinterpret bits: a widening that sign-extends only when the source is signed, a narrowing that keeps the low
+// bits and nothing else, a float conversion that truncates toward zero rather than rounding, and a boolean cast
+// that asks whether the whole source is non-zero.
+//
+// Character conversions get their own section because the implicit rule and the explicit one differ. A character
+// widens implicitly only to a wider character carrying the same thing, so `char8` and `char16` — which hold one
+// code unit of an encoding — widen implicitly to nothing at all. `as` crosses those boundaries anyway, which is
+// what makes it explicit.
+
+import Core::Assert;
+import Core::{ bool8, char16, char32, char64, char8, float32, float64, int16, int32, int64, int8, uint16, uint32,
+               uint64, uint8 };
+
+func Main() -> int {
+    // Widening: a signed source sign-extends, an unsigned source brings in zeros. The same bit pattern, -1 as int8
+    // and 255 as uint8, goes two different ways.
+    let negative: int8 = -1i8;
+    let unsigned: uint8 = 255u8;
+    Assert(negative as int32 == -1i32, "a signed source sign-extends");
+    Assert(unsigned as uint32 == 255u32, "an unsigned source zero-extends");
+    Assert(negative as uint8 == 255u8, "the two share a bit pattern at their own width");
+    Assert(unsigned as int8 == -1i8, "and reinterpreting one gives the other");
+
+    // Narrowing keeps the low bits and discards the rest, with no report and no saturation.
+    Assert(300i32 as int8 == 44i8, "narrowing keeps the low bits");
+    Assert(-1i64 as uint8 == 255u8, "every bit set narrows to every bit set at the smaller width");
+    Assert(int32::Max as int16 == -1i16, "a value that does not fit becomes whatever its low bits say");
+    Assert(65536i32 as int16 == 0i16, "a value whose low bits are zero narrows to zero");
+
+    // Same-width reinterpretation between signednesses changes what the bits mean, not the bits.
+    Assert(int32::Min as uint32 == 2147483648u32, "the signed minimum is the unsigned half-way point");
+    Assert(uint64::Max as int64 == -1i64, "every bit set is minus one when read as signed");
+    Assert((-1i16 as uint16) as int16 == -1i16, "a round trip through the other signedness is lossless");
+
+    // A boolean cast asks whether the whole source is non-zero, then stores one or zero. It is not a truncation:
+    // 256 has a zero low byte and is still true.
+    Assert((256 as bool8), "a source with a zero low byte is still true");
+    Assert(!(0 as bool8), "zero is the only false source");
+    Assert((256 as bool8) as int32 == 1i32, "what is stored is one, not the source bits");
+    Assert((true as int32) == 1i32, "a boolean converts back to one");
+    Assert((false as int32) == 0i32, "and to zero");
+
+    // Integer to float, and float back to integer. The float conversion truncates toward zero rather than rounding,
+    // which is the difference that matters for a negative value.
+    Assert(7i32 as float64 == 7.0f64, "an integer converts exactly while it fits");
+    Assert(7.9f64 as int32 == 7i32, "a float truncates toward zero rather than rounding");
+    Assert(-7.9f64 as int32 == -7i32, "and truncates toward zero from below too");
+    Assert(7.0f64 as int32 == 7i32, "an exact value converts exactly");
+    Assert(-1.5f32 as int32 == -1i32, "the same rule at the narrower float width");
+
+    // Between the two float widths. Narrowing rounds; widening is exact, because every float32 is a float64.
+    Assert(1.5f32 as float64 == 1.5f64, "a value with an exact binary form survives widening");
+    Assert(1.5f64 as float32 == 1.5f32, "and survives narrowing back");
+    Assert((0.5f32 as float64) as float32 == 0.5f32, "a round trip through the wider width is lossless");
+
+    // Characters. char8 and char16 hold one code unit, char32 and char64 hold a scalar value, and `as` crosses
+    // between those two kinds where an implicit conversion would not.
+    let unit: char8 = c8'A';
+    Assert(unit as char32 == c32'A', "a code unit converts explicitly to a scalar value");
+    Assert(unit as char16 == c16'A', "and to the other code-unit width");
+    Assert(c32'A' as char8 == c8'A', "and back, while the value fits");
+    // char64 has no literal prefix of its own — see Docs/CompilerDefects.md — so it is reached by converting.
+    Assert((c32'A' as char64) as uint64 == 65u64, "a scalar value widens to the wider scalar width");
+
+    // Characters and integers convert both ways, which is how a code point becomes arithmetic.
+    Assert((c8'A' as uint32) == 65u32, "a character converts to its numeric value");
+    Assert((65u32 as char8) == c8'A', "and a number converts back");
+    Assert((c32'\u{10FFFF}' as uint32) == 1114111u32, "the largest scalar value converts to its number");
+
+    // A cast folded while compiling must agree with the same cast performed at run time. These are the same
+    // conversions again, with one side a constant the compiler can see through and the other a value it cannot.
+    var runtime: int32 = 300i32;
+    Assert(runtime as int8 == 300i32 as int8, "a run-time narrowing agrees with the folded one");
+    var floating: float64 = -7.9f64;
+    Assert(floating as int32 == -7.9f64 as int32, "a run-time truncation agrees with the folded one");
+    var wide: uint64 = uint64::Max;
+    Assert(wide as int64 == uint64::Max as int64, "a run-time reinterpretation agrees with the folded one");
+
+    // A cast is an expression, so it composes.
+    Assert(((300i32 as int8) as int32) == 44i32, "one cast feeds another");
+    Assert((7i32 as float64 as int32) == 7i32, "a round trip through a float returns the value");
+    return 0;
+}

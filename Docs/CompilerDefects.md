@@ -8,6 +8,14 @@ Return to the [main README](../README.md) for the complete documentation index.
 
 ## Open
 
+### `char64` has no character literal prefix, and `c64'x'` fails as a parse error rather than as an unknown prefix
+
+*Loud, and misleading about what is wrong.* `char64` is a fully implemented width — it has a catalog entry, `Min`, `Max`, `Bits` and `Bytes`, and the changelog announces it as the fourth character width — but `Lexer::ScanToken` recognizes only `c8`, `c16` and `c32` as literal prefixes. `c64` therefore lexes as an identifier followed by a separate character literal, and the parser reports something like `expected ',' between arguments before ''A''`, which points at the quote rather than at the prefix and does not mention `c64` at all.
+
+Every other implemented character width can be written directly; this one is reached only by converting, as `c32'\u{1F600}' as char64`. `Tests/Language/Char64` already does exactly that throughout, and `Tests/Language/As` does the same where it needs a `char64` value, so the workaround is established rather than newly invented.
+
+Found while writing the `as` conversion case for the language test matrix. Two things would each be an improvement on their own: accepting `c64` alongside the other three, or — if the omission is deliberate, since `char64` and `char32` carry the same thing — reporting an unknown character-literal prefix by name instead of letting it fall through to identifier scanning.
+
 ### An untyped `const` imported from another package fails inside a generic that a third package instantiates
 
 *Loud, but only from a distance.* `Math::Tau` used in a generic function of `Rux/Random` reports "cannot determine the type of this expression" at the constant — but only when a test package instantiates that generic, so `rux check` passes and `rux test` fails. Narrowed by probe: a local untyped const works, an imported one works, a nested generic call works, and the generic living in a dependency package rather than the root is what breaks it, so the instantiation appears not to carry the imported-constant scope. Worked around in `Rux/Random` by declaring a typed constant inside the package. Annotating the `let` does not help, since the constant itself is what fails to resolve.
