@@ -4,7 +4,7 @@
 // to even, and that both agree with the reference the compiler computed independently. The vectors in Vectors.rux
 // carry that reference; the cases here are the ones a reader can check by eye.
 
-import Text::{ Display, FormatSpec, ParseFormatSpec, TextWriter };
+import Text::{ FormatSpec, ParseFormatSpec, TextWriter };
 import Allocator::{ Allocator, SystemAllocator };
 import Core::{ Assert, Result };
 import Format::{ ByteCursor, Float128, Float256, Float512, Float80, FloatLayout, ParseError, ParseFloat128, ParseFloat256, ParseFloat512, ParseFloat80, ParseWideFloat, UnpackWide, WideClass, WriteWideFloat };
@@ -210,15 +210,25 @@ func Main() -> int {
     Assert(Bits("NaN", b128) == 0x7FFF8000000000000000000000000000u512, "NaN as formatting spells it");
     Assert(Bits("-Inf", b128) == 0xFFFF0000000000000000000000000000u512, "and the infinities");
 
-    // The interface path, which chooses its own allocator.
+    // The only path there is: a wide value renders through FormatWith and nowhere else, because the exact
+    // arithmetic its text needs allocates and Display offers nowhere to say from where. These four used to
+    // implement Display anyway by reaching for the system allocator, which is the hidden allocation this checks is
+    // gone — there is no longer a rendering of one of these that does not name an allocator.
+    var system = SystemAllocator();
+    let allocator: Allocator = system;
     var cursor = ByteCursor(room);
     let sink: &var TextWriter = cursor;
     let writer: &var TextWriter = sink;
-    let shown: Display = Float128::FromBits(0x3FFF0000000000000000000000000000u128);
-    Assert(shown.WriteDisplay(writer, plain).IsSuccess(), "Display renders");
-    Assert(Same(cursor.Written(), "1.0"), "to the same text");
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
+    let one = Float128::FromBits(0x3FFF0000000000000000000000000000u128);
+    Assert(one.FormatWith(allocator, writer, plain).IsSuccess(), "the explicit entry point renders");
+    Assert(Same(cursor.Written(), "1.0"), "to the same text it always did");
+
+    // A style is refused by the value, which the removed Display wrapper used to do on its way past.
+    var styled = FormatSpec::Plain();
+    Assert(ParseFormatSpec("x").TryIntoValue(@styled), "a base spec parses");
+    var second = ByteCursor(room);
+    let other: &var TextWriter = second;
+    Assert(one.FormatWith(allocator, other, styled).IsError(), "and a style is still refused");
     let typed = ParseFloat256(allocator, "2.5");
     var failure = ParseError::Empty;
     Assert(!typed.TryIntoError(@failure), "the typed entry point reads");

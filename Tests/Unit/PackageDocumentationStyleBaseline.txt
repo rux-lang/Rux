@@ -954,10 +954,6 @@ missing-param|Format/Src/WideFloatParse.rux|func|ParseFloat512|0c625c68b0d17fdb
 missing-param|Format/Src/WideFloatParse.rux|func|ParseFloat80|ed4a7144efb47986
 missing-param|Format/Src/WideFloatParse.rux|func|ParseWideFloat|664d3fc32d6a6421
 missing-param|Format/Src/WideFloatText.rux|func|WriteWideFloat|ed908e3932d23238
-missing-param|Format/Src/WideFloatValue.rux|func|FormatWith|155a6228e09792ce
-missing-param|Format/Src/WideFloatValue.rux|func|FormatWith|6f67f68ec545d78e
-missing-param|Format/Src/WideFloatValue.rux|func|FormatWith|9483bf41514d1a71
-missing-param|Format/Src/WideFloatValue.rux|func|FormatWith|ad7e0a70415ff0a1
 missing-param|Format/Src/WideFloatValue.rux|func|FromBits|10d89621134e9660
 missing-param|Format/Src/WideFloatValue.rux|func|FromBits|66c80118dac27fd7
 missing-param|Format/Src/WideFloatValue.rux|func|FromBits|6d30a2e1d338efd0
@@ -1999,10 +1995,6 @@ missing-returns|Format/Src/WideFloatValue.rux|func|Bits|49719011edf91c6c
 missing-returns|Format/Src/WideFloatValue.rux|func|Bits|7786595bd527fda5
 missing-returns|Format/Src/WideFloatValue.rux|func|Bits|ca5dd6dc35e12110
 missing-returns|Format/Src/WideFloatValue.rux|func|Bits|e23f440dc90d2a25
-missing-returns|Format/Src/WideFloatValue.rux|func|FormatWith|155a6228e09792ce
-missing-returns|Format/Src/WideFloatValue.rux|func|FormatWith|6f67f68ec545d78e
-missing-returns|Format/Src/WideFloatValue.rux|func|FormatWith|9483bf41514d1a71
-missing-returns|Format/Src/WideFloatValue.rux|func|FormatWith|ad7e0a70415ff0a1
 missing-returns|Format/Src/WideFloatValue.rux|func|FromBits|10d89621134e9660
 missing-returns|Format/Src/WideFloatValue.rux|func|FromBits|66c80118dac27fd7
 missing-returns|Format/Src/WideFloatValue.rux|func|FromBits|6d30a2e1d338efd0
@@ -3595,10 +3587,6 @@ missing-see|Format/Src/WideFloatValue.rux|func|Bits|49719011edf91c6c
 missing-see|Format/Src/WideFloatValue.rux|func|Bits|7786595bd527fda5
 missing-see|Format/Src/WideFloatValue.rux|func|Bits|ca5dd6dc35e12110
 missing-see|Format/Src/WideFloatValue.rux|func|Bits|e23f440dc90d2a25
-missing-see|Format/Src/WideFloatValue.rux|func|FormatWith|155a6228e09792ce
-missing-see|Format/Src/WideFloatValue.rux|func|FormatWith|6f67f68ec545d78e
-missing-see|Format/Src/WideFloatValue.rux|func|FormatWith|9483bf41514d1a71
-missing-see|Format/Src/WideFloatValue.rux|func|FormatWith|ad7e0a70415ff0a1
 missing-see|Format/Src/WideFloatValue.rux|func|FromBits|10d89621134e9660
 missing-see|Format/Src/WideFloatValue.rux|func|FromBits|66c80118dac27fd7
 missing-see|Format/Src/WideFloatValue.rux|func|FromBits|6d30a2e1d338efd0

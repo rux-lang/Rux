@@ -1,14 +1,18 @@
 // The four wide widths as values: the bits, the questions a caller asks of them, and their text.
 //
 // Each carries its bits in the narrowest integer that holds them, and answers `IsNan`, `IsInfinite`, `IsFinite`
-// and `IsNegative` from the fields directly. `Display` and `Debug` render through the exact machinery in
-// `WideDecimal`, which needs an allocator; the interface offers none, so those two use the system allocator, and
-// `FormatWith` is there for a caller who wants to choose.
+// and `IsNegative` from the fields directly.
+//
+// None of them implements `Display` or `Debug`, and that absence is the design. Their text is found by exact
+// big-integer arithmetic that allocates — the narrow widths convert in a fixed workspace, but these are too wide
+// for one — and the protocols offer nowhere to pass an allocator. The four used to implement them anyway by
+// reaching for the system allocator, which put a hidden allocation behind an ordinary `{}` and gave a caller who
+// had chosen an allocator for everything else no way to make this follow. `FormatWith` takes one, and taking one
+// is the whole point: where a rendering allocates, the caller says from where.
 
-import Allocator::{ Allocator, SystemAllocator };
+import Allocator::Allocator;
 import Core::{ Result, Unit };
-import Text::{ Debug, Display, FormatError, FormatOk, FormatSpec, RejectStyle, TextFailureKind, TextWriter,
-               WriteAligned };
+import Text::{ FormatError, FormatOk, FormatSpec, RejectStyle, TextFailureKind, TextWriter, WriteAligned };
 
 /// An x87 extended-precision value, held as its eighty bits.
 ///
@@ -77,44 +81,24 @@ extend Float80 {
 
     /// Writes this value's text under `spec`, taking the working storage from `allocator`.
     ///
-    /// https://rux-lang.dev/docs/api/format/float80/format-with
-    pub func FormatWith(self: &Float80, allocator: Allocator, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+    /// The shortest decimal that reads back as the same bits, or the digits a precision asks for. This is the only
+    /// way to render one of these: they implement neither `Display` nor `Debug`, because the exact arithmetic
+    /// their text needs allocates and those protocols offer nowhere to say from where.
+    ///
+    /// # Failures
+    /// Reports whatever the writer reported, `UnsupportedRequest` for any style, and `TextFailure(OutOfMemory)`
+    /// where `allocator` could not supply the working storage.
+    ///
+    /// @param allocator where the working storage comes from
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the complete rendering was accepted
+    /// @see https://rux-lang.dev/docs/api/format/float80/format-with
+    pub func FormatWith(self: &Float80, allocator: Allocator, writer: &var TextWriter,
+                        spec: FormatSpec) -> Result<Unit, FormatError> {
+        RejectStyle(spec)?;
         let layout = FloatLayout::Extended80();
         return WriteWideFloat(allocator, writer, spec, self.bits as uint512, layout);
-    }
-}
-
-extend Float80 : Display {
-    /// Writes this value's decimal text: the shortest that reads back as the same bits, or the digits a precision
-    /// asks for.
-    ///
-    /// # Failures
-    /// Reports whatever the writer reported, stopping at the first refusal.
-    ///
-    /// @param writer the destination
-    /// @param spec what the placeholder asked for
-    /// @returns success when the complete rendering was accepted
-    /// @see https://rux-lang.dev/docs/api/format/float80/write-display
-    pub func WriteDisplay(self: &Float80, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
-        RejectStyle(spec)?;
-        var system = SystemAllocator();
-        let allocator: Allocator = system;
-        return self.FormatWith(allocator, writer, spec);
-    }
-}
-
-extend Float80 : Debug {
-    /// The same text.
-    ///
-    /// # Failures
-    /// Reports whatever the writer reported, stopping at the first refusal.
-    ///
-    /// @param writer the destination
-    /// @param spec what the placeholder asked for
-    /// @returns success when the complete rendering was accepted
-    /// @see https://rux-lang.dev/docs/api/format/float80/write-debug
-    pub func WriteDebug(self: &Float80, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
-        return self.WriteDisplay(writer, spec);
     }
 }
 
@@ -185,44 +169,24 @@ extend Float128 {
 
     /// Writes this value's text under `spec`, taking the working storage from `allocator`.
     ///
-    /// https://rux-lang.dev/docs/api/format/float128/format-with
-    pub func FormatWith(self: &Float128, allocator: Allocator, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+    /// The shortest decimal that reads back as the same bits, or the digits a precision asks for. This is the only
+    /// way to render one of these: they implement neither `Display` nor `Debug`, because the exact arithmetic
+    /// their text needs allocates and those protocols offer nowhere to say from where.
+    ///
+    /// # Failures
+    /// Reports whatever the writer reported, `UnsupportedRequest` for any style, and `TextFailure(OutOfMemory)`
+    /// where `allocator` could not supply the working storage.
+    ///
+    /// @param allocator where the working storage comes from
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the complete rendering was accepted
+    /// @see https://rux-lang.dev/docs/api/format/float128/format-with
+    pub func FormatWith(self: &Float128, allocator: Allocator, writer: &var TextWriter,
+                        spec: FormatSpec) -> Result<Unit, FormatError> {
+        RejectStyle(spec)?;
         let layout = FloatLayout::Binary128();
         return WriteWideFloat(allocator, writer, spec, self.bits as uint512, layout);
-    }
-}
-
-extend Float128 : Display {
-    /// Writes this value's decimal text: the shortest that reads back as the same bits, or the digits a precision
-    /// asks for.
-    ///
-    /// # Failures
-    /// Reports whatever the writer reported, stopping at the first refusal.
-    ///
-    /// @param writer the destination
-    /// @param spec what the placeholder asked for
-    /// @returns success when the complete rendering was accepted
-    /// @see https://rux-lang.dev/docs/api/format/float128/write-display
-    pub func WriteDisplay(self: &Float128, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
-        RejectStyle(spec)?;
-        var system = SystemAllocator();
-        let allocator: Allocator = system;
-        return self.FormatWith(allocator, writer, spec);
-    }
-}
-
-extend Float128 : Debug {
-    /// The same text.
-    ///
-    /// # Failures
-    /// Reports whatever the writer reported, stopping at the first refusal.
-    ///
-    /// @param writer the destination
-    /// @param spec what the placeholder asked for
-    /// @returns success when the complete rendering was accepted
-    /// @see https://rux-lang.dev/docs/api/format/float128/write-debug
-    pub func WriteDebug(self: &Float128, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
-        return self.WriteDisplay(writer, spec);
     }
 }
 
@@ -293,44 +257,24 @@ extend Float256 {
 
     /// Writes this value's text under `spec`, taking the working storage from `allocator`.
     ///
-    /// https://rux-lang.dev/docs/api/format/float256/format-with
-    pub func FormatWith(self: &Float256, allocator: Allocator, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+    /// The shortest decimal that reads back as the same bits, or the digits a precision asks for. This is the only
+    /// way to render one of these: they implement neither `Display` nor `Debug`, because the exact arithmetic
+    /// their text needs allocates and those protocols offer nowhere to say from where.
+    ///
+    /// # Failures
+    /// Reports whatever the writer reported, `UnsupportedRequest` for any style, and `TextFailure(OutOfMemory)`
+    /// where `allocator` could not supply the working storage.
+    ///
+    /// @param allocator where the working storage comes from
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the complete rendering was accepted
+    /// @see https://rux-lang.dev/docs/api/format/float256/format-with
+    pub func FormatWith(self: &Float256, allocator: Allocator, writer: &var TextWriter,
+                        spec: FormatSpec) -> Result<Unit, FormatError> {
+        RejectStyle(spec)?;
         let layout = FloatLayout::Binary256();
         return WriteWideFloat(allocator, writer, spec, self.bits as uint512, layout);
-    }
-}
-
-extend Float256 : Display {
-    /// Writes this value's decimal text: the shortest that reads back as the same bits, or the digits a precision
-    /// asks for.
-    ///
-    /// # Failures
-    /// Reports whatever the writer reported, stopping at the first refusal.
-    ///
-    /// @param writer the destination
-    /// @param spec what the placeholder asked for
-    /// @returns success when the complete rendering was accepted
-    /// @see https://rux-lang.dev/docs/api/format/float256/write-display
-    pub func WriteDisplay(self: &Float256, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
-        RejectStyle(spec)?;
-        var system = SystemAllocator();
-        let allocator: Allocator = system;
-        return self.FormatWith(allocator, writer, spec);
-    }
-}
-
-extend Float256 : Debug {
-    /// The same text.
-    ///
-    /// # Failures
-    /// Reports whatever the writer reported, stopping at the first refusal.
-    ///
-    /// @param writer the destination
-    /// @param spec what the placeholder asked for
-    /// @returns success when the complete rendering was accepted
-    /// @see https://rux-lang.dev/docs/api/format/float256/write-debug
-    pub func WriteDebug(self: &Float256, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
-        return self.WriteDisplay(writer, spec);
     }
 }
 
@@ -401,43 +345,23 @@ extend Float512 {
 
     /// Writes this value's text under `spec`, taking the working storage from `allocator`.
     ///
-    /// https://rux-lang.dev/docs/api/format/float512/format-with
-    pub func FormatWith(self: &Float512, allocator: Allocator, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+    /// The shortest decimal that reads back as the same bits, or the digits a precision asks for. This is the only
+    /// way to render one of these: they implement neither `Display` nor `Debug`, because the exact arithmetic
+    /// their text needs allocates and those protocols offer nowhere to say from where.
+    ///
+    /// # Failures
+    /// Reports whatever the writer reported, `UnsupportedRequest` for any style, and `TextFailure(OutOfMemory)`
+    /// where `allocator` could not supply the working storage.
+    ///
+    /// @param allocator where the working storage comes from
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the complete rendering was accepted
+    /// @see https://rux-lang.dev/docs/api/format/float512/format-with
+    pub func FormatWith(self: &Float512, allocator: Allocator, writer: &var TextWriter,
+                        spec: FormatSpec) -> Result<Unit, FormatError> {
+        RejectStyle(spec)?;
         let layout = FloatLayout::Binary512();
         return WriteWideFloat(allocator, writer, spec, self.bits as uint512, layout);
-    }
-}
-
-extend Float512 : Display {
-    /// Writes this value's decimal text: the shortest that reads back as the same bits, or the digits a precision
-    /// asks for.
-    ///
-    /// # Failures
-    /// Reports whatever the writer reported, stopping at the first refusal.
-    ///
-    /// @param writer the destination
-    /// @param spec what the placeholder asked for
-    /// @returns success when the complete rendering was accepted
-    /// @see https://rux-lang.dev/docs/api/format/float512/write-display
-    pub func WriteDisplay(self: &Float512, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
-        RejectStyle(spec)?;
-        var system = SystemAllocator();
-        let allocator: Allocator = system;
-        return self.FormatWith(allocator, writer, spec);
-    }
-}
-
-extend Float512 : Debug {
-    /// The same text.
-    ///
-    /// # Failures
-    /// Reports whatever the writer reported, stopping at the first refusal.
-    ///
-    /// @param writer the destination
-    /// @param spec what the placeholder asked for
-    /// @returns success when the complete rendering was accepted
-    /// @see https://rux-lang.dev/docs/api/format/float512/write-debug
-    pub func WriteDebug(self: &Float512, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
-        return self.WriteDisplay(writer, spec);
     }
 }
