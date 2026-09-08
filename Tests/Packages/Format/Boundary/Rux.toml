@@ -1,0 +1,17 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Boundary"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Format: the Core type, Text interface, Format implementation arrangement"
+
+[Dependencies]
+Allocator = { Path = "../../../../Packages/Allocator" }
+Core = { Path = "../../../../Packages/Core" }
+Format = { Path = "../../../../Packages/Format" }
+Text = { Path = "../../../../Packages/Text" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Format"

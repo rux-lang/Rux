@@ -1,0 +1,128 @@
+import Allocator::{ Allocator, SystemAllocator };
+import Core::{ Assert, Result, Unit, int32, int64, uint8 };
+import Format::{ Format, WriteFormat };
+import Text::{ BufferWriter, Debug, Display, FormatError, FormatSpec, ParseFormatSpec, String, StringView,
+               TextWriter, WriteDebugValue, WriteValue };
+
+// The arrangement the whole formatting design rests on: the type is declared in Core, the interface it implements is
+// declared in Text, and the implementation joining them lives in Format. Three packages, none of which contains
+// both halves of the conformance.
+//
+// Nothing about that is exotic — a language either allows an implementation to name a type and an interface from
+// elsewhere or it does not — but everything downstream assumes it, and the assumption was checked by reading the
+// compiler's declaration indexing rather than by running a program. This runs the program. If the arrangement ever
+// stops working, it should fail here, in a case whose whole subject is the arrangement, rather than as a puzzling
+// diagnostic in whichever package next adds a renderer.
+//
+// A conformance also has to survive being reached in each of the ways a caller reaches one, because they lower
+// differently: a direct call on the concrete type, a call through an interface value, a borrowed writer passed on to
+// another package's helper, and a variadic argument list that erases the type entirely.
+
+func Same(actual: char8[..], expected: char8[..]) -> bool {
+    if actual.length != expected.length { return false; }
+    var index: uint = 0;
+    while index < actual.length {
+        if actual.data[index] != expected.data[index] { return false; }
+        index = index + 1;
+    }
+    return true;
+}
+
+func Spec(text: char8[..]) -> FormatSpec {
+    var spec = FormatSpec::Plain();
+    Assert(ParseFormatSpec(text).TryIntoValue(@spec), "the spec parses");
+    return spec;
+}
+
+// A helper in this package taking Text's interface and Text's writer, so the borrowed forms cross a package
+// boundary in both directions: the value came from Core, the interface from Text, the implementation from Format.
+func Render(value: Display, spec: FormatSpec, into: &var TextWriter) -> Result<Unit, FormatError> {
+    return value.WriteDisplay(into, spec);
+}
+
+func Main() -> int {
+    var storage: char8[64];
+    var writer = BufferWriter((@storage[0])[..64]);
+    let plain = FormatSpec::Plain();
+
+    // A direct call on the concrete Core type. The method is Format's, the interface is Text's, the receiver is
+    // Core's, and none of the three names the other two in one place.
+    let value: int32 = -42i32;
+    let sink: &var TextWriter = writer;
+    Assert(value.WriteDisplay(sink, plain).IsSuccess(), "a direct call on the concrete type renders");
+    Assert(Same(writer.Written(), "-42"), "and writes the value's text");
+
+    // Through an interface value, which is where the conformance has to be found dynamically rather than resolved
+    // at the call.
+    writer.Clear();
+    let shown: Display = value;
+    let viaInterface: &var TextWriter = writer;
+    Assert(shown.WriteDisplay(viaInterface, plain).IsSuccess(), "a call through an interface value renders");
+    Assert(Same(writer.Written(), "-42"), "to the same text");
+
+    // Through Text's own named entry point, which takes the interface and the writer and belongs to neither the
+    // type's package nor the implementation's.
+    writer.Clear();
+    let viaText: &var TextWriter = writer;
+    let asDisplay: Display = value;
+    Assert(WriteValue(viaText, asDisplay, plain).IsSuccess(), "Text's WriteValue reaches Format's implementation");
+    Assert(Same(writer.Written(), "-42"), "with the same result");
+
+    // Through a helper in this package, so the interface and the writer are both passed on across another boundary.
+    writer.Clear();
+    let viaHelper: &var TextWriter = writer;
+    Assert(Render(asDisplay, plain, viaHelper).IsSuccess(), "a borrowed pass-through renders");
+    Assert(Same(writer.Written(), "-42"), "and still writes the same text");
+
+    // Debug is a second interface over the same type, and resolves independently of Display.
+    writer.Clear();
+    let inspected: Debug = value;
+    let viaDebug: &var TextWriter = writer;
+    Assert(WriteDebugValue(viaDebug, inspected, plain).IsSuccess(), "the Debug conformance resolves too");
+    Assert(Same(writer.Written(), "-42"), "and for an integer says the same thing");
+
+    // A specification travels the same route and is applied by the implementation rather than by the caller.
+    writer.Clear();
+    let padded: &var TextWriter = writer;
+    Assert(Render(asDisplay, Spec("<8"), padded).IsSuccess(), "a spec crosses the boundary with the value");
+    Assert(Same(writer.Written(), "-42     "), "and the implementation applies it");
+
+    writer.Clear();
+    let based: &var TextWriter = writer;
+    let byte: uint8 = 255u8;
+    let byteShown: Display = byte;
+    Assert(Render(byteShown, Spec("#x"), based).IsSuccess(), "a style crosses it too");
+    Assert(Same(writer.Written(), "0xff"), "and reaches the implementation that understands it");
+
+    // A style the implementation does not understand is refused across the boundary rather than lost on the way.
+    writer.Clear();
+    let styled: &var TextWriter = writer;
+    Assert(Render(asDisplay, Spec("iso8601"), styled).IsError(), "an unsupported style is refused");
+    Assert(writer.Length() == 0u, "and nothing was written first");
+
+    // Variadically, which erases the type entirely: what arrives is a list of interface values, and every one of
+    // them has to find its implementation with nothing left of where it came from.
+    writer.Clear();
+    let variadic: &var TextWriter = writer;
+    Assert(WriteFormat(variadic, "{} {} {} {}", -42i32, 255u8, true, c8'A').IsSuccess(),
+           "four Core types of different widths render variadically");
+    Assert(Same(writer.Written(), "-42 255 true A"), "each through its own implementation");
+
+    // Mixed with a Text type in the same argument list, so a value whose implementation is in Text and one whose
+    // implementation is in Format resolve side by side.
+    writer.Clear();
+    let mixed: &var TextWriter = writer;
+    let text = StringView::FromValidated("count");
+    Assert(WriteFormat(mixed, "{}={}", text, 7i64).IsSuccess(), "a Text value and a Core value in one call");
+    Assert(Same(writer.Written(), "count=7"), "each rendered by its own package's implementation");
+
+    // And through the allocating entry point, which is the same route ending in a String rather than a buffer.
+    var system = SystemAllocator();
+    let allocator: Allocator = system;
+    let rendered = match <-Format(allocator, "{:>6}", -42i32) {
+        .Success(built) => Same(built.View().Bytes(), "   -42"),
+        .Error(_) => false
+    };
+    Assert(rendered, "the allocating entry point reaches the same implementation");
+    return 0;
+}
