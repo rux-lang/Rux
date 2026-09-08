@@ -104,6 +104,14 @@ A `return` of a literal, or of anything no deferred statement mutates, is unaffe
 
 `Tests/Language/Defer` now pins the symptom deliberately, next to a comment naming this entry, so that fixing the defect fails that case and points at itself rather than at a mystery. Nothing in the release is affected: `defer` appears in no first-party package at all, so the blast radius today is language tests and whatever a user writes.
 
+### A borrowed scalar cannot be read back out, so a primitive's interface implementation must take a raw pointer
+
+*Loud, and it forces a raw pointer into an otherwise safe surface.* A `&T` over a scalar supports nothing but being passed on: `self as int64`, `self < 0i64` and `let copied: int32 = self;` are each rejected, because a reference is dereferenced automatically for member and index access and for nothing else. There is no deref operator for a reference — `*self` is raw-pointer syntax — so a borrowed `int32` cannot become an `int32` again.
+
+That would be a curiosity if a primitive could implement an interface by value, but it cannot: an implementation whose receiver is `self: int32` reports "method 'WriteDisplay' cannot take its receiver by value because this block implements interface 'Display'". The two rules together leave exactly one form that compiles, and it is the raw pointer. So every primitive `Display` and `Debug` in `Rux/Format` is written `self: *int32`, dereferencing with `*self` — the one place in the first-party packages where a raw pointer receiver is not a documented unsafe boundary but the only thing available.
+
+Found while trying to give the integer widths borrowed receivers, which the package style would otherwise require. Either half would fix it: letting a reference to a `Copy` scalar convert to its value where a value is wanted, or letting an interface implementation take a scalar receiver by value the way an ordinary method does. Until then the raw pointer is load-bearing, and replacing it with `&T` does not compile rather than compiling and misbehaving, which is the one comfort here.
+
 ### `char64` has no character literal prefix, and `c64'x'` fails as a parse error rather than as an unknown prefix
 
 *Loud, and misleading about what is wrong.* `char64` is a fully implemented width — it has a catalog entry, `Min`, `Max`, `Bits` and `Bytes`, and the changelog announces it as the fourth character width — but `Lexer::ScanToken` recognizes only `c8`, `c16` and `c32` as literal prefixes. `c64` therefore lexes as an identifier followed by a separate character literal, and the parser reports something like `expected ',' between arguments before ''A''`, which points at the quote rather than at the prefix and does not mention `c64` at all.

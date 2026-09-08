@@ -1,0 +1,231 @@
+import Allocator::{ Allocator, SystemAllocator };
+import Core::{ #target, Assert, Result };
+import Format::Render;
+import Text::{ FormatError, String, StringView };
+
+// Every implemented integer width, in every base it renders in, with the ends of each range.
+//
+// The per-width tests next door each check one type in decimal. What none of them checks is the matrix: sixteen
+// widths against five bases, which is where a shared digit loop goes wrong in one corner and nowhere else. Three
+// corners are worth naming, and each has its cases below.
+//
+// The signed minimum is the first. Its magnitude has no positive counterpart at its own width, so a renderer that
+// negates rather than taking the magnitude in the unsigned type gives the value back unchanged — and the wrong
+// answer looks like a plausible number rather than like a bug. Every signed width has its minimum here, in every
+// base, and the hexadecimal spelling of each is the one that makes the two's-complement pattern visible.
+//
+// The digit buffer is the second. Each width's buffer is sized for its longest rendering, which is the binary one:
+// sixty-four bytes for a `uint64`, five hundred and twelve for a `uint512`. Those sizes are exact rather than
+// generous, so the all-ones value of every width is rendered in binary here, which is the case that fills the
+// buffer to its last byte. Checking the shape — a run of exactly that many ones — is what makes the case readable
+// at five hundred and twelve digits.
+//
+// The pointer-sized pair is the third. `int` and `uint` are whatever the target says, so their bounds are checked
+// against the width the target actually has rather than against an assumed sixty-four bits.
+
+// Whether the outcome is exactly `expected`. Consuming the result is what forces a failure to be visible rather
+// than read past: an error is never a match.
+func Same(outcome: Result<String, FormatError>, expected: char8[..]) -> bool {
+    let wanted = StringView::FromValidated(expected);
+    return match <-outcome {
+        .Success(text) => text.View().Equals(wanted),
+        .Error(_) => false
+    };
+}
+
+// Whether the outcome is a run of exactly `count` copies of `digit`, optionally opening with a minus sign. This is
+// how an all-ones binary rendering is checked at the wide widths: the shape says what a five-hundred-and-twelve
+// character literal would say, and says it in a line a reader can check.
+func RunOf(outcome: Result<String, FormatError>, signed: bool, digit: char8, count: uint) -> bool {
+    var ok = false;
+    match <-outcome {
+        .Success(text) => {
+            let bytes = text.View().Bytes();
+            let lead = signed ? 1u : 0u;
+            if bytes.length == count + lead {
+                ok = true;
+                if signed && bytes.data[0] != c8'-' { ok = false; }
+                var index = lead;
+                while index < bytes.length {
+                    if bytes.data[index] != digit { ok = false; }
+                    index = index + 1;
+                }
+            }
+        },
+        .Error(_) => {
+            ok = false;
+        }
+    }
+    return ok;
+}
+
+// Whether the outcome is the hexadecimal spelling of a signed minimum: a minus sign, an eight, and `zeros` zeros
+// after it. That is what one set bit at the top of the width looks like, and it is the shape a renderer that
+// negated instead of taking the magnitude would get wrong.
+func TopBitHex(outcome: Result<String, FormatError>, zeros: uint) -> bool {
+    var ok = false;
+    match <-outcome {
+        .Success(text) => {
+            let bytes = text.View().Bytes();
+            if bytes.length == zeros + 2u && bytes.data[0] == c8'-' && bytes.data[1] == c8'8' {
+                ok = true;
+                var index: uint = 2;
+                while index < bytes.length {
+                    if bytes.data[index] != c8'0' { ok = false; }
+                    index = index + 1;
+                }
+            }
+        },
+        .Error(_) => {
+            ok = false;
+        }
+    }
+    return ok;
+}
+
+func Main() -> int {
+    var system = SystemAllocator();
+    let allocator: Allocator = system;
+
+    // Zero renders as one digit in every base, and carries no prefix without the alternate flag.
+    Assert(Same(Render(allocator, "{}", 0i32), "0"), "zero is one digit in decimal");
+    Assert(Same(Render(allocator, "{:b}", 0i32), "0"), "and in binary");
+    Assert(Same(Render(allocator, "{:o}", 0i32), "0"), "and in octal");
+    Assert(Same(Render(allocator, "{:x}", 0i32), "0"), "and in hexadecimal");
+    Assert(Same(Render(allocator, "{:#x}", 0i32), "0x0"), "with the prefix only when it is asked for");
+
+    // One value through all five bases at one width, which fixes what each base spelling means before the matrix
+    // below varies the width instead.
+    Assert(Same(Render(allocator, "{}", 255u32), "255"), "decimal is the default");
+    Assert(Same(Render(allocator, "{:b}", 255u32), "11111111"), "b is binary");
+    Assert(Same(Render(allocator, "{:o}", 255u32), "377"), "o is octal");
+    Assert(Same(Render(allocator, "{:x}", 255u32), "ff"), "x is lower-case hexadecimal");
+    Assert(Same(Render(allocator, "{:X}", 255u32), "FF"), "X is upper-case hexadecimal");
+    Assert(Same(Render(allocator, "{:#b}", 255u32), "0b11111111"), "and the alternate flag adds each base's mark");
+    Assert(Same(Render(allocator, "{:#o}", 255u32), "0o377"), "for octal");
+    Assert(Same(Render(allocator, "{:#x}", 255u32), "0xff"), "for hexadecimal");
+    Assert(Same(Render(allocator, "{:#X}", 255u32), "0xFF"), "whose mark stays lower case while its digits do not");
+
+    // int8: the whole range, in every base. The minimum is the case a negation would get wrong.
+    Assert(Same(Render(allocator, "{}", -128i8), "-128"), "int8 minimum in decimal");
+    Assert(Same(Render(allocator, "{:b}", -128i8), "-10000000"), "int8 minimum in binary");
+    Assert(Same(Render(allocator, "{:o}", -128i8), "-200"), "int8 minimum in octal");
+    Assert(Same(Render(allocator, "{:x}", -128i8), "-80"), "int8 minimum in hexadecimal");
+    Assert(Same(Render(allocator, "{:X}", -128i8), "-80"), "and in upper case, where the digits happen to agree");
+    Assert(Same(Render(allocator, "{}", 127i8), "127"), "int8 maximum");
+    Assert(Same(Render(allocator, "{:x}", 127i8), "7f"), "int8 maximum in hexadecimal");
+    Assert(Same(Render(allocator, "{}", -1i8), "-1"), "and minus one, whose bits are all ones and whose text is not");
+    Assert(Same(Render(allocator, "{:x}", -1i8), "-1"), "in hexadecimal too: the sign is written, not the pattern");
+
+    // int16 and int32.
+    Assert(Same(Render(allocator, "{}", -32768i16), "-32768"), "int16 minimum in decimal");
+    Assert(Same(Render(allocator, "{:x}", -32768i16), "-8000"), "int16 minimum in hexadecimal");
+    Assert(Same(Render(allocator, "{:o}", -32768i16), "-100000"), "int16 minimum in octal");
+    Assert(Same(Render(allocator, "{:b}", -32768i16), "-1000000000000000"), "int16 minimum in binary");
+    Assert(Same(Render(allocator, "{}", 32767i16), "32767"), "int16 maximum");
+    Assert(Same(Render(allocator, "{}", -2147483648i32), "-2147483648"), "int32 minimum in decimal");
+    Assert(Same(Render(allocator, "{:x}", -2147483648i32), "-80000000"), "int32 minimum in hexadecimal");
+    Assert(Same(Render(allocator, "{:o}", -2147483648i32), "-20000000000"), "int32 minimum in octal");
+    Assert(Same(Render(allocator, "{}", 2147483647i32), "2147483647"), "int32 maximum");
+    Assert(Same(Render(allocator, "{:X}", 2147483647i32), "7FFFFFFF"), "int32 maximum in upper-case hexadecimal");
+
+    // int64, the widest width whose digits run through the shared uint64 loop.
+    Assert(Same(Render(allocator, "{}", -9223372036854775808i64), "-9223372036854775808"), "int64 minimum");
+    Assert(Same(Render(allocator, "{:x}", -9223372036854775808i64), "-8000000000000000"), "int64 minimum in hex");
+    Assert(Same(Render(allocator, "{:o}", -9223372036854775808i64), "-1000000000000000000000"), "and in octal");
+    Assert(Same(Render(allocator, "{}", 9223372036854775807i64), "9223372036854775807"), "int64 maximum");
+    Assert(Same(Render(allocator, "{:x}", 9223372036854775807i64), "7fffffffffffffff"), "int64 maximum in hex");
+
+    // The unsigned narrow widths at their maxima, where the top bit is a digit rather than a sign.
+    Assert(Same(Render(allocator, "{}", 255u8), "255"), "uint8 maximum in decimal");
+    Assert(Same(Render(allocator, "{:x}", 255u8), "ff"), "uint8 maximum in hexadecimal");
+    Assert(Same(Render(allocator, "{}", 65535u16), "65535"), "uint16 maximum");
+    Assert(Same(Render(allocator, "{:x}", 65535u16), "ffff"), "uint16 maximum in hexadecimal");
+    Assert(Same(Render(allocator, "{}", 4294967295u32), "4294967295"), "uint32 maximum");
+    Assert(Same(Render(allocator, "{:X}", 4294967295u32), "FFFFFFFF"), "uint32 maximum in upper-case hexadecimal");
+    Assert(Same(Render(allocator, "{}", 18446744073709551615u64), "18446744073709551615"), "uint64 maximum");
+    Assert(Same(Render(allocator, "{:x}", 18446744073709551615u64), "ffffffffffffffff"), "uint64 maximum in hex");
+    Assert(Same(Render(allocator, "{:o}", 18446744073709551615u64), "1777777777777777777777"), "and in octal");
+
+    // The wide widths, whose digit loops are their own. Each signed minimum is one bit set at the top.
+    Assert(Same(Render(allocator, "{}", -170141183460469231731687303715884105728i128),
+                "-170141183460469231731687303715884105728"), "int128 minimum in decimal");
+    Assert(Same(Render(allocator, "{:x}", -170141183460469231731687303715884105728i128),
+                "-80000000000000000000000000000000"), "int128 minimum in hexadecimal");
+    Assert(Same(Render(allocator, "{}", 170141183460469231731687303715884105727i128),
+                "170141183460469231731687303715884105727"), "int128 maximum");
+    Assert(Same(Render(allocator, "{:x}", 340282366920938463463374607431768211455u128),
+                "ffffffffffffffffffffffffffffffff"), "uint128 maximum in hexadecimal");
+    Assert(Same(Render(allocator, "{:#x}", 255u128), "0xff"), "and the prefix reaches the wide widths too");
+
+    // The all-ones value of every width, in binary: the rendering that fills each width's digit buffer exactly.
+    Assert(RunOf(Render(allocator, "{:b}", 255u8), false, c8'1', 8u), "uint8 fills eight digits");
+    Assert(RunOf(Render(allocator, "{:b}", 65535u16), false, c8'1', 16u), "uint16 fills sixteen");
+    Assert(RunOf(Render(allocator, "{:b}", 4294967295u32), false, c8'1', 32u), "uint32 fills thirty-two");
+    Assert(RunOf(Render(allocator, "{:b}", 18446744073709551615u64), false, c8'1', 64u), "uint64 fills sixty-four");
+    Assert(RunOf(Render(allocator, "{:b}", 340282366920938463463374607431768211455u128), false, c8'1', 128u),
+           "uint128 fills one hundred and twenty-eight");
+    Assert(RunOf(Render(allocator, "{:b}",
+                        115792089237316195423570985008687907853269984665640564039457584007913129639935u256),
+                 false, c8'1', 256u),
+           "uint256 fills two hundred and fifty-six");
+    Assert(RunOf(Render(allocator, "{:b}",
+                        13407807929942597099574024998205846127479365820592393377723561443721764030073546976801874298166903427690031858186486050853753882811946569946433649006084095u512),
+                 false, c8'1', 512u),
+           "and uint512 fills five hundred and twelve, which is its buffer to the last byte");
+
+    // The signed wide minima in hexadecimal, checked by shape: one set bit at the top and nothing else, which is
+    // exactly what a renderer that negated rather than taking the magnitude in the unsigned type would lose.
+    Assert(TopBitHex(Render(allocator, "{:x}", -170141183460469231731687303715884105728i128), 31u),
+           "the int128 minimum is one set bit at the top");
+    Assert(TopBitHex(Render(allocator,
+                            "{:x}",
+                            -57896044618658097711785492504343953926634992332820282019728792003956564819968i256),
+                     63u),
+           "and so is the int256 minimum");
+    Assert(TopBitHex(Render(allocator,
+                            "{:x}",
+                            -6703903964971298549787012499102923063739682910296196688861780721860882015036773488400937149083451713845015929093243025426876941405973284973216824503042048i512),
+                     127u),
+           "and the int512 minimum, at one hundred and twenty-eight digits");
+    Assert(Same(Render(allocator, "{:b}", -2i8), "-10"), "a small negative value in binary is its magnitude, signed");
+
+    // The two shape helpers refuse a wrong length rather than answering yes to any run, which is what makes the
+    // checks above about the digits rather than about the helper.
+    Assert(!RunOf(Render(allocator, "{:b}", 255u8), false, c8'1', 9u), "a run one digit too long is not a match");
+    Assert(!RunOf(Render(allocator, "{:b}", 255u8), false, c8'0', 8u), "nor is a run of the wrong digit");
+    Assert(!TopBitHex(Render(allocator, "{:x}", -170141183460469231731687303715884105728i128), 30u),
+           "and a top-bit spelling one digit short is not a match either");
+
+    // The pointer-sized pair follows the target rather than a guess about it.
+    when #target.pointerBits == 64 {
+        Assert(Same(Render(allocator, "{}", -9223372036854775808i64 as int), "-9223372036854775808"),
+               "int carries sixty-four bits on this target");
+        Assert(Same(Render(allocator, "{:x}", 18446744073709551615u64 as uint), "ffffffffffffffff"),
+               "and so does uint");
+        Assert(RunOf(Render(allocator, "{:b}", 18446744073709551615u64 as uint), false, c8'1', 64u),
+               "whose all-ones value fills sixty-four digits");
+    }
+    else {
+        Assert(Same(Render(allocator, "{}", -2147483648i32 as int), "-2147483648"),
+               "int carries thirty-two bits on this target");
+        Assert(Same(Render(allocator, "{:x}", 4294967295u32 as uint), "ffffffff"), "and so does uint");
+        Assert(RunOf(Render(allocator, "{:b}", 4294967295u32 as uint), false, c8'1', 32u),
+               "whose all-ones value fills thirty-two digits");
+    }
+
+    // Width, zero padding and sign compose with a base the same way at every width, and the prefix counts towards
+    // the width rather than being written outside it.
+    Assert(Same(Render(allocator, "{:08x}", 255u32), "000000ff"), "zero padding fills to the width");
+    Assert(Same(Render(allocator, "{:#010x}", 255u32), "0x000000ff"), "and the prefix is inside it, not before it");
+    Assert(Same(Render(allocator, "{:+}", 7i32), "+7"), "an explicit sign is written where it is asked for");
+    Assert(Same(Render(allocator, "{:08}", -42i32), "-0000042"), "and the sign comes before the padding, not after");
+    Assert(Same(Render(allocator, "{:>8x}", 255u32), "      ff"), "alignment pads outside the digits");
+
+    // A style that is not one of the four bases is refused by the value rather than ignored, at every width.
+    Assert(Render(allocator, "{:q}", 1i8).IsError(), "int8 refuses a style it does not have");
+    Assert(Render(allocator, "{:q}", 1u64).IsError(), "and so does uint64");
+    Assert(Render(allocator, "{:q}", 1i512).IsError(), "and so does the widest signed width");
+
+    return 0;
+}
