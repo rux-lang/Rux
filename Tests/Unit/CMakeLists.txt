@@ -72,6 +72,7 @@ set(RUX_TEST_SOURCES
     InterfaceReferenceTests.cpp
     IterationLoweringTests.cpp
     JsonTests.cpp
+    LanguageTestMatrixTests.cpp
     LayoutTests.cpp
     LexerTests.cpp
     LinearScanTests.cpp

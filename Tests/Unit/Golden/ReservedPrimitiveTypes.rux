@@ -1,0 +1,59 @@
+// Every reserved primitive width, and every implemented one, in a single frontend run.
+//
+// A reserved name resolves like any other type and is then refused through PrimitiveInfo::implemented, so the
+// failure has to be the compiler-version reservation message rather than an unknown-type error: the difference
+// tells an author "this compiler cannot do it yet" apart from "you misspelled it". Twelve of the catalog's
+// thirty-eight entries are reserved, and this pins all twelve at once.
+//
+// The implemented widths are declared below the reserved ones on purpose. They must contribute no diagnostic, so
+// this case also proves the refusal discriminates rather than rejecting every wide-sounding name.
+
+func Reserved() {
+    var boolWide: bool128;
+    var boolWider: bool256;
+    var boolWidest: bool512;
+
+    var charWide: char128;
+    var charWider: char256;
+    var charWidest: char512;
+
+    var floatTiny: float8;
+    var floatHalf: float16;
+    var floatExtended: float80;
+    var floatQuad: float128;
+    var floatOcta: float256;
+    var floatHexa: float512;
+}
+
+func Implemented() {
+    var b8: bool8;
+    var b16: bool16;
+    var b32: bool32;
+    var b64: bool64;
+
+    var c8: char8;
+    var c16: char16;
+    var c32: char32;
+    var c64: char64;
+
+    var i8: int8;
+    var i16: int16;
+    var i32: int32;
+    var i64: int64;
+    var i128: int128;
+    var i256: int256;
+    var i512: int512;
+    var iNative: int;
+
+    var u8: uint8;
+    var u16: uint16;
+    var u32: uint32;
+    var u64: uint64;
+    var u128: uint128;
+    var u256: uint256;
+    var u512: uint512;
+    var uNative: uint;
+
+    var f32: float32;
+    var f64: float64;
+}

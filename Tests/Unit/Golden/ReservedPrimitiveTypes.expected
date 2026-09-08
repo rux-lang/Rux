@@ -1,0 +1,12 @@
+12:19: error: primitive type 'bool128' is reserved but is not implemented in this compiler version
+13:20: error: primitive type 'bool256' is reserved but is not implemented in this compiler version
+14:21: error: primitive type 'bool512' is reserved but is not implemented in this compiler version
+16:19: error: primitive type 'char128' is reserved but is not implemented in this compiler version
+17:20: error: primitive type 'char256' is reserved but is not implemented in this compiler version
+18:21: error: primitive type 'char512' is reserved but is not implemented in this compiler version
+20:20: error: primitive type 'float8' is reserved but is not implemented in this compiler version
+21:20: error: primitive type 'float16' is reserved but is not implemented in this compiler version
+22:24: error: primitive type 'float80' is reserved but is not implemented in this compiler version
+23:20: error: primitive type 'float128' is reserved but is not implemented in this compiler version
+24:20: error: primitive type 'float256' is reserved but is not implemented in this compiler version
+25:20: error: primitive type 'float512' is reserved but is not implemented in this compiler version

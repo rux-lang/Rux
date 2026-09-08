@@ -1,0 +1,24 @@
+// char128 is a reserved primitive type: the catalog names it, and this compiler does not implement it.
+//
+// This directory exists so the primitive matrix under Tests/Language is complete by inspection rather than
+// by inference. Every entry in Compiler/Types/PrimitiveCatalog.cpp has a directory here, and
+// LanguageTestMatrixTests checks that the two agree, so a width cannot reach the catalog without somewhere
+// to exercise it.
+//
+// A program using char128 cannot be that exercise, because it does not compile: the compiler reports that the
+// type is reserved but not implemented in this version. A refusal is not something an executable test can
+// assert, since one passes by exiting zero. It is asserted in Tests/Unit/Golden/ReservedPrimitiveTypes.rux
+// instead, where an expected compile failure is the whole point.
+//
+// What is left to check here is the boundary: char64 is the widest implemented character, and this
+// file pins that it is the one carrying the constants. When char128 is implemented, replace this placeholder
+// with the real case rather than adding a directory.
+
+import Core::Assert;
+import Core::char64;
+
+func Main() -> int {
+    Assert(char64::Bits == 64u, "char64 is the implemented width beside reserved char128");
+    Assert(char64::Bytes * 8u == char64::Bits, "its byte and bit counts agree");
+    return 0;
+}

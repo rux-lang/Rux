@@ -1,0 +1,24 @@
+// float16 is a reserved primitive type: the catalog names it, and this compiler does not implement it.
+//
+// This directory exists so the primitive matrix under Tests/Language is complete by inspection rather than
+// by inference. Every entry in Compiler/Types/PrimitiveCatalog.cpp has a directory here, and
+// LanguageTestMatrixTests checks that the two agree, so a width cannot reach the catalog without somewhere
+// to exercise it.
+//
+// A program using float16 cannot be that exercise, because it does not compile: the compiler reports that the
+// type is reserved but not implemented in this version. A refusal is not something an executable test can
+// assert, since one passes by exiting zero. It is asserted in Tests/Unit/Golden/ReservedPrimitiveTypes.rux
+// instead, where an expected compile failure is the whole point.
+//
+// What is left to check here is the boundary: float32 is the narrowest implemented float, and this
+// file pins that it is the one carrying the constants. When float16 is implemented, replace this placeholder
+// with the real case rather than adding a directory.
+
+import Core::Assert;
+import Core::float32;
+
+func Main() -> int {
+    Assert(float32::Bits == 32u, "float32 is the implemented width beside reserved float16");
+    Assert(float32::Bytes * 8u == float32::Bits, "its byte and bit counts agree");
+    return 0;
+}
