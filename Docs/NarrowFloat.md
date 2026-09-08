@@ -16,7 +16,7 @@ That rules out the table-driven shortest-representation algorithms in their publ
 
 **Exact rational digit generation**, the method Steele and White described in *How to Print Floating-Point Numbers Accurately* (1990) and Burger and Dybvig refined in *Printing Floating-Point Numbers Quickly and Accurately* (1996), commonly called Dragon4.
 
-The value is `f × 2^e` with `f` an integer below `2^53` and `e` an integer. The algorithm forms it as an exact ratio of two integers, `R / S`, together with two more integers `M+` and `M-` that measure the distance to the neighbouring representable values. Digits come out one at a time by multiplying the remainder by ten and dividing, and generation stops as soon as what has been emitted is closer to the value than to either neighbour — which is the definition of a shortest representation that reads back to the same bits. Fixed precision stops on a digit count instead and rounds the remainder to nearest with ties to even. Parsing runs the same machinery in the other direction: the decimal is formed as an exact ratio and the quotient is taken to three bits past the significand with a sticky bit, which is enough to round to nearest with ties to even without ever being wrong.
+The value is `f × 2^e` with `f` an integer below `2^53` and `e` an integer. The algorithm forms it as an exact ratio of two integers, `R / S`, together with two more integers `M+` and `M-` that measure the distance to the neighbouring representable values. Digits come out one at a time by multiplying the remainder by ten and dividing, and generation stops as soon as what has been emitted is closer to the value than to either neighbour — which is the definition of a shortest representation that reads back to the same bits. Fixed precision stops on a digit count instead and rounds the remainder to nearest with ties to even. Parsing runs the same machinery in the other direction: the decimal is formed as an exact ratio, scaled into [1, 2), and the significand's bits are taken from it by long division. What the division leaves is the tail, held exactly, so “is it more than half” is a comparison rather than an estimate and a tie is a tie rather than a value that landed near one.
 
 Every step is integer arithmetic on exact values. There is no approximation to correct and therefore no fallback path, no error bound to argue about, and nothing that behaves differently for inputs nobody tested.
 
@@ -30,26 +30,36 @@ This matters more than it looks. The reference implementations of the faster alg
 
 ## The workspace, and why its size is enough
 
-The fixed workspace is `FixedNat`: an unsigned integer of exactly **twenty 64-bit limbs, 1,280 bits**, with an explicit length and no allocation anywhere in it. Every operation that could exceed the capacity reports that it did rather than truncating or wrapping.
+The fixed workspace is `FixedNat`: an unsigned integer of exactly **sixty-four 64-bit limbs, 4,096 bits**, with an explicit length and no allocation anywhere in it. Every operation that could exceed the capacity reports that it did rather than truncating or wrapping, and leaves the value as it was.
 
-The bound comes from the worst case of the four values the algorithm holds, for `float64`, which is the wider of the two narrow formats:
+The bound comes from the worst case of the six quantities the two directions hold, for `float64`, which is the wider of the two narrow formats:
 
-| Quantity                                       | Largest value                        | Bits    |
-| ---------------------------------------------- | ------------------------------------ | ------- |
-| `R` for a large value, `f × 2^(e+1)`           | `2^53 × 2^972` = `2^1025`            | 1,025   |
-| `S` for a small value, `2^(1-e)` at `e = -1074` | `2^1075`                             | 1,075   |
-| `R` after scaling a small value by `10^324`    | `2^54 × 10^324` ≈ `2^1131`           | 1,131   |
-| `S` after scaling a large value by `10^309`    | `2 × 10^309` ≈ `2^1029`              | 1,029   |
+| Direction | Quantity                                          | Largest value                  | Bits    |
+| --------- | -------------------------------------------------- | ------------------------------ | ------- |
+| Rendering | `R` for a large value, `f × 2^(e+1)`              | `2^53 × 2^972` = `2^1025`      | 1,025   |
+| Rendering | `S` for a small value, `2^(1-e)` at `e = -1074`   | `2^1075`                       | 1,075   |
+| Rendering | `R` after scaling a small value by `10^324`       | `2^54 × 10^324` ≈ `2^1131`     | 1,131   |
+| Rendering | `S` after scaling a large value by `10^309`       | `2 × 10^309` ≈ `2^1029`        | 1,029   |
+| Reading   | the retained digits, `10^768`                     | `10^768`                       | 2,551   |
+| Reading   | `S` for a long decimal with a tiny exponent       | `10^1108`                      | 3,681   |
 
-The largest is 1,131 bits, from the smallest subnormal scaled up to where its first significant digit appears. Long division shifts a remainder left by at most one bit per digit and never past the divisor's width, so nothing during generation exceeds that figure by more than a limb. Twenty limbs gives 1,280 bits: **149 bits of headroom over the worst case**, which is more than two limbs.
+The largest is 3,681 bits, from the denominator a decimal with the full retained digit count and an exponent at the bottom of the range is read over. Long division shifts a remainder left by at most one bit per step and never past the divisor's width, so nothing during either direction exceeds that figure by more than a limb. Sixty-four limbs gives 4,096 bits: **415 bits of headroom over the worst case**, which is over six limbs.
 
-`float32` needs 149 bits for the equivalent quantity and is served by the same workspace with room to spare. The size is not tuned per width, because one workspace that serves both is one thing to get right.
+Rendering alone would fit in twenty limbs, and an earlier draft sized the workspace for it. One workspace serves both directions instead, because a second would mean a second derivation and a second set of proofs to keep true, and the cost of the larger one is stack rather than allocation. `float32` needs 149 bits for the rendering quantity and a correspondingly smaller reading one, and is served by the same workspace with room to spare.
 
-The bound is asserted rather than asserted-about: the workspace test drives a value to the capacity limit and checks that the next operation reports the overflow instead of producing a wrong answer, and the conversion tests include the smallest subnormal and the largest finite value of both widths, which are the inputs that reach the figures above.
+## Retained input digits
+
+A reader keeps **768 significant decimal digits** and folds anything beyond them into a sticky flag. The bound is where two arguments meet rather than a round number.
+
+An exact tie — a decimal lying exactly halfway between two adjacent floats — is a dyadic rational, so its decimal expansion terminates, and the longest one any `float64` midpoint has runs to 752 significant digits. Keeping 768 therefore means a tie is held exactly and detected as one.
+
+A nonzero digit past the 768th means the value has more significant digits than any midpoint has, so it cannot be a tie at all: it is strictly above the retained value and strictly between two midpoints, and rounds one way with nothing to resolve. The sticky flag carries exactly that fact, which is why it is enough.
+
+Both bounds are asserted rather than asserted-about. The workspace test drives every operation to the capacity limit and checks that each reports the overflow instead of producing a wrong answer, and builds the two quantities the table's largest rows name. The reading test hands the parser the full 752-digit expansion of the one decimal that is exactly a `float64` tie, and the same expansion with one digit more, which is the pair the retained bound exists to tell apart.
 
 ## Supported precision
 
-Fixed and scientific rendering support a precision of **0 through 1,100 digits inclusive**. A request past that reports `UnsupportedRequest`, with no fallback and no silent clamp.
+A precision renders in fixed notation and supports **0 through 1,100 digits inclusive**. Fixed is the only notation in which “digits after the decimal point” has one meaning, so there is no separate scientific-with-precision form. A request past that reports `UnsupportedRequest`, with no fallback and no silent clamp.
 
 The bound is chosen to be exactly enough rather than round. The smallest `float64` subnormal is `2^-1074`, whose exact decimal expansion has 1,074 fractional digits and no more; the largest finite `float64` has 309 integer digits. Every `float64` therefore has an exact decimal representation within 1,100 digits, and a precision past that could only ask for zeros. `float32` needs 149 fractional digits at most and is covered by the same bound.
 
@@ -67,4 +77,4 @@ Ties, subnormals, adjacent values, long decimal inputs and the absence of alloca
 
 ## What this page does not promise
 
-It describes the intended contract for tasks 22 through 25. Until all four are implemented and verified, `float32` and `float64` conversion is what it was: correct for ordinary values and not held to the exactness claims above. Nothing here should be read as a statement that the current implementation already meets them.
+The contract above is implemented and locally verified on one host and one architecture. It has not been through the extended CI run that any phase acceptance requires, and no claim here is a release claim until it has.

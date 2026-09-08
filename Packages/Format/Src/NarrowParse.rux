@@ -1,0 +1,337 @@
+// Reading a decimal into the nearest narrow float, exactly.
+//
+// The other half of the same claim the renderer makes. The renderer writes the shortest decimal that reads back as
+// the same bits; this reads a decimal into the float nearest it, with ties to even, and between them the pair
+// closes. The old reader scaled in floating point and was wrong across a good part of the exponent range — it read
+// back the largest finite `float64` as a different value than it had been given — which is what made the round
+// trip a claim about the middle of the range rather than about the range.
+//
+// The value is formed as an exact ratio, `digits / 10^-exponent` or `digits * 10^exponent`, scaled into [1, 2),
+// and the significand's bits are taken from it by long division. What the division leaves is the tail, held
+// exactly, so "is it more than half" is a comparison rather than an estimate and a tie is a tie rather than a
+// value that landed near one. A tie goes to the even significand.
+//
+// Long input is where an exact reader has to decide something. Digits are retained up to a bound and anything
+// beyond sets a sticky flag, and the bound is chosen so that the flag is enough: an exact midpoint between two
+// floats is a dyadic rational, its decimal expansion terminates, and the longest one a `float64` has runs to 768
+// significant digits. So a nonzero digit past the 768th means the value is strictly above the retained one and
+// strictly between two midpoints, which rounds one way with no tie to resolve. Below that bound the retained
+// digits are the value exactly and a tie really is a tie.
+
+import Core::{ Result, Unit };
+
+/// How many significant digits a narrow float reader keeps before the rest becomes a sticky bit.
+///
+/// Seven hundred and sixty-eight, which is the longest exact decimal expansion any midpoint between two adjacent
+/// `float64` values has. Keeping that many means a tie is detected exactly, and a nonzero digit beyond them means
+/// the value cannot be a tie at all — so the bound is where the two arguments meet rather than a round number.
+///
+/// @see https://rux-lang.dev/docs/api/format/retained-decimal-digits
+pub const RetainedDecimalDigits: uint = 768;
+
+// What a float format needs to be read into: how many bits its significand has, and the exponent range those bits
+// sit in. One reader serves both narrow widths by taking these rather than by being written twice.
+struct NarrowLayout {
+    precision: uint;
+    minimumExponent: int;
+    maximumExponent: int;
+}
+
+func Float64Layout() -> NarrowLayout {
+    return NarrowLayout { precision: 53, minimumExponent: -1074, maximumExponent: 971 };
+}
+
+func Float32Layout() -> NarrowLayout {
+    return NarrowLayout { precision: 24, minimumExponent: -149, maximumExponent: 104 };
+}
+
+// The exact value as a ratio, and whether digits were dropped past the retained bound.
+struct Reading {
+    numerator: FixedNat;
+    denominator: FixedNat;
+    sticky: bool;
+}
+
+// Builds `digits * 10^exponent` as an exact ratio.
+func BuildRatio(state: &var Reading, digits: &FixedNat, exponent: int) -> bool {
+    state.numerator.Assign(digits);
+    state.denominator = FixedNat();
+    if !state.denominator.SetPowerOfTwo(0u) { return false; }
+    if exponent >= 0 {
+        return state.numerator.MultiplyPowerOfTen(exponent as uint);
+    }
+    return state.denominator.MultiplyPowerOfTen((0 - exponent) as uint);
+}
+
+/// Reads the decimal `digits * 10^exponent` into the bits of a narrow float, rounding to nearest with ties to
+/// even.
+///
+/// `digits` is the retained significant digits as an integer and `truncated` says whether anything nonzero was
+/// dropped past them, which makes the value strictly larger than `digits` says and rules out an exact tie.
+///
+/// The result is the significand and the power of two it is scaled by, both of the format `precision` and the
+/// exponent bounds describe. A value below the smallest subnormal comes back as a zero significand; one past the
+/// largest finite value is refused, since rounding it to an infinity would turn a number the caller wrote into one
+/// they did not.
+///
+/// # Failures
+/// Answers false for a value past the format's range, or where the exact arithmetic could not run in the fixed
+/// workspace. `overflowed` distinguishes the two: true for a value too large, false for a workspace failure, which
+/// Docs/NarrowFloat.md proves the narrow widths do not reach.
+///
+/// @param digits the retained significant digits, as an integer
+/// @param exponent the power of ten they are scaled by
+/// @param truncated whether a nonzero digit was dropped past the retained bound
+/// @param layout the format to read into
+/// @param significand receives the integer significand
+/// @param binaryExponent receives the power of two it is scaled by
+/// @param overflowed receives whether the failure was the value being too large
+/// @returns true when the value was read
+/// @see https://rux-lang.dev/docs/api/format/read-narrow-decimal
+func ReadNarrowDecimal(digits: &FixedNat, exponent: int, truncated: bool, layout: NarrowLayout,
+                       significand: *var uint64, binaryExponent: *var int, overflowed: *var bool) -> bool {
+    *significand = 0;
+    *binaryExponent = 0;
+    *overflowed = false;
+    if digits.IsZero() { return true; }
+
+    var state = Reading { numerator: FixedNat(), denominator: FixedNat(), sticky: truncated };
+    if !BuildRatio(state, digits, exponent) { return false; }
+
+    // Which binade the value is in: the bit lengths give it within one, and one comparison settles which. From
+    // here the ratio is scaled so it sits in [1, 2), which is what the division below expects.
+    var binade = (state.numerator.BitLength() as int) - (state.denominator.BitLength() as int);
+    var probe = FixedNat();
+    if binade >= 0 {
+        probe.Assign(state.denominator);
+        if !probe.ShiftLeft(binade as uint) { return false; }
+        if state.numerator.Compare(probe) < 0i32 { binade = binade - 1; }
+    }
+    else {
+        probe.Assign(state.numerator);
+        if !probe.ShiftLeft((0 - binade) as uint) { return false; }
+        if probe.Compare(state.denominator) < 0i32 { binade = binade - 1; }
+    }
+
+    // Past the largest finite value of the format, which is refused rather than rounded to an infinity: that would
+    // turn a number the caller wrote into one they did not.
+    let highest = layout.maximumExponent + (layout.precision as int) - 1;
+    if binade > highest {
+        *overflowed = true;
+        return false;
+    }
+    // Below half the smallest subnormal there is nothing to round to but zero.
+    if binade < layout.minimumExponent - 1 { return true; }
+
+    // The ratio scaled into [1, 2). The division takes its bits from there, so the setup is the same whether the
+    // value ends up normal or subnormal; only how many bits are taken differs.
+    var remainder = FixedNat();
+    var divisor = FixedNat();
+    if binade >= 0 {
+        remainder.Assign(state.numerator);
+        divisor.Assign(state.denominator);
+        if !divisor.ShiftLeft(binade as uint) { return false; }
+    }
+    else {
+        remainder.Assign(state.numerator);
+        if !remainder.ShiftLeft((0 - binade) as uint) { return false; }
+        divisor.Assign(state.denominator);
+    }
+
+    // A normal value takes the whole significand. Below the normal range the exponent is pinned at the format's
+    // smallest and fewer bits are available, so that what is rounded is the subnormal's own last place rather than
+    // a position it cannot store.
+    let normalLowest = layout.minimumExponent + (layout.precision as int) - 1;
+    var wanted = layout.precision;
+    var scale = binade - (layout.precision as int - 1);
+    if binade < normalLowest {
+        let available = binade - layout.minimumExponent + 1;
+        scale = layout.minimumExponent;
+        if available <= 0 {
+            // The value is under the smallest subnormal but at least half of it, so the whole question is which
+            // side of half it falls. Half exactly is a tie, and zero is the even neighbour.
+            if remainder.Compare(divisor) > 0i32 || state.sticky {
+                *significand = 1;
+                *binaryExponent = layout.minimumExponent;
+            }
+            return true;
+        }
+        wanted = available as uint;
+    }
+
+    // Long division, leading bit first. The ratio is in [1, 2), so the first bit is always a one for a normal
+    // value; a subnormal takes fewer bits and its leading ones fall off the top, which is exactly the precision it
+    // has at that exponent.
+    var quotient = 0u64;
+    var position = wanted;
+    while position > 0u {
+        position = position - 1u;
+        if remainder.Compare(divisor) >= 0i32 {
+            quotient = quotient | (1u64 << (position as uint64));
+            remainder.Subtract(divisor);
+        }
+        if position > 0u && !remainder.ShiftLeft(1u) { return false; }
+    }
+
+    // Round to nearest with ties to even, on what the division left. Twice the remainder against the divisor is
+    // the exact "more than half"; a digit dropped past the retained bound makes the value strictly larger than the
+    // remainder says, so it cannot be a tie and rounds up.
+    var twice = FixedNat();
+    twice.Assign(remainder);
+    if !twice.ShiftLeft(1u) { return false; }
+    let order = twice.Compare(divisor);
+    var roundUp = order > 0i32;
+    if order == 0i32 {
+        roundUp = state.sticky || (quotient & 1u64) == 1u64;
+    }
+    if roundUp {
+        quotient = quotient + 1u64;
+        if quotient == (1u64 << (wanted as uint64)) {
+            if binade < normalLowest {
+                // A subnormal that rounded up into the smallest normal, which the packer spells by itself: the
+                // significand is the implicit bit and the exponent is the format's smallest.
+                *significand = quotient;
+                *binaryExponent = layout.minimumExponent;
+                return true;
+            }
+            // The carry filled the significand, so it steps up a binade and loses its last bit.
+            quotient = quotient >> 1u64;
+            scale = scale + 1;
+            if scale > layout.maximumExponent {
+                *overflowed = true;
+                return false;
+            }
+        }
+    }
+    if quotient == 0u64 { return true; }
+    *significand = quotient;
+    *binaryExponent = scale;
+    return true;
+}
+
+/// Assembles the bits of a `float64` from a significand and a power of two.
+///
+/// @param significand the integer significand, or zero
+/// @param exponent the power of two it is scaled by
+/// @param negative whether the value is negative
+/// @returns the sixty-four bits of the value
+/// @see https://rux-lang.dev/docs/api/format/pack-float64
+func PackFloat64(significand: uint64, exponent: int, negative: bool) -> uint64 {
+    var bits = 0u64;
+    if significand != 0u64 {
+        // A significand with its top bit set is normal, and the leading bit is implicit; anything narrower is a
+        // subnormal and is stored as it stands with a zero exponent field.
+        if (significand >> 52u64) != 0u64 {
+            let biased = ((exponent + 1075) as uint64) & 0x7FFu64;
+            bits = (biased << 52u64) | (significand & 0xFFFFFFFFFFFFFu64);
+        }
+        else {
+            bits = significand;
+        }
+    }
+    if negative { bits = bits | 0x8000000000000000u64; }
+    return bits;
+}
+
+/// Assembles the bits of a `float32` from a significand and a power of two.
+///
+/// @param significand the integer significand, or zero
+/// @param exponent the power of two it is scaled by
+/// @param negative whether the value is negative
+/// @returns the thirty-two bits of the value
+/// @see https://rux-lang.dev/docs/api/format/pack-float32
+func PackFloat32(significand: uint64, exponent: int, negative: bool) -> uint32 {
+    var bits = 0u32;
+    if significand != 0u64 {
+        if (significand >> 23u64) != 0u64 {
+            let biased = ((exponent + 150) as uint32) & 0xFFu32;
+            bits = (biased << 23u32) | ((significand as uint32) & 0x7FFFFFu32);
+        }
+        else {
+            bits = significand as uint32;
+        }
+    }
+    if negative { bits = bits | 0x80000000u32; }
+    return bits;
+}
+
+/// The `float64` whose bits are `bits`.
+///
+/// # Safety
+///
+/// Writes the value's storage from an integer of the same width through a raw pointer, which is the inverse of
+/// `BitsOfFloat64` and unsafe for the same reason: there is no conversion that preserves a representation.
+///
+/// @param bits the sixty-four bits to read as a value
+/// @returns the value they spell
+/// @see https://rux-lang.dev/docs/api/format/float64-from-bits
+pub func Float64FromBits(bits: uint64) -> float64 {
+    let address = (@bits) as *float64;
+    return *address;
+}
+
+/// The `float32` whose bits are `bits`.
+///
+/// # Safety
+///
+/// As `Float64FromBits`, at the narrower width.
+///
+/// @param bits the thirty-two bits to read as a value
+/// @returns the value they spell
+/// @see https://rux-lang.dev/docs/api/format/float32-from-bits
+pub func Float32FromBits(bits: uint32) -> float32 {
+    let address = (@bits) as *float32;
+    return *address;
+}
+
+/// Reads the decimal `digits * 10^exponent` into the nearest `float64`, with ties to even.
+///
+/// # Failures
+/// Answers false for a value past the format's range or a workspace failure, with `overflowed` saying which.
+///
+/// @param digits the retained significant digits
+/// @param exponent the power of ten they are scaled by
+/// @param truncated whether a nonzero digit was dropped past the retained bound
+/// @param negative whether the value is negative
+/// @param value receives the float
+/// @param overflowed receives whether the failure was the value being too large
+/// @returns true when the value was read
+/// @see https://rux-lang.dev/docs/api/format/exact-float64
+pub func ExactFloat64(digits: &FixedNat, exponent: int, truncated: bool, negative: bool, value: *var float64,
+                      overflowed: *var bool) -> bool {
+    var significand = 0u64;
+    var binary: int = 0;
+    if !ReadNarrowDecimal(digits, exponent, truncated, Float64Layout(), @significand, @binary, overflowed) {
+        return false;
+    }
+    *value = Float64FromBits(PackFloat64(significand, binary, negative));
+    return true;
+}
+
+/// Reads the decimal `digits * 10^exponent` into the nearest `float32`, with ties to even.
+///
+/// Read at this width's own precision rather than at a `float64`'s and narrowed: narrowing rounds a second time,
+/// and a value that lands on a `float32` boundary can round the wrong way when it has already been rounded to
+/// fifty-three bits on the way.
+///
+/// # Failures
+/// Answers false for a value past the format's range or a workspace failure, with `overflowed` saying which.
+///
+/// @param digits the retained significant digits
+/// @param exponent the power of ten they are scaled by
+/// @param truncated whether a nonzero digit was dropped past the retained bound
+/// @param negative whether the value is negative
+/// @param value receives the float
+/// @param overflowed receives whether the failure was the value being too large
+/// @returns true when the value was read
+/// @see https://rux-lang.dev/docs/api/format/exact-float32
+pub func ExactFloat32(digits: &FixedNat, exponent: int, truncated: bool, negative: bool, value: *var float32,
+                      overflowed: *var bool) -> bool {
+    var significand = 0u64;
+    var binary: int = 0;
+    if !ReadNarrowDecimal(digits, exponent, truncated, Float32Layout(), @significand, @binary, overflowed) {
+        return false;
+    }
+    *value = Float32FromBits(PackFloat32(significand, binary, negative));
+    return true;
+}

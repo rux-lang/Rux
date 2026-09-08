@@ -5,10 +5,14 @@
 // for want of memory makes every `{}` fallible for a reason that has nothing to do with the value. So the narrow
 // widths convert in storage whose size is fixed when this file is compiled.
 //
-// Twenty limbs of sixty-four bits is 1,280 bits, and the worst case the conversion reaches is 1,131 — the smallest
-// `float64` subnormal scaled up to where its first significant digit appears, `2^54 × 10^324`. The derivation is
-// in Docs/NarrowFloat.md, with the other three quantities it was taken as the largest of. That leaves 149 bits of
-// headroom, which is over two limbs.
+// Sixty-four limbs of sixty-four bits is 4,096 bits, against a worst case of 3,681 — the denominator a decimal
+// with the full retained digit count and a tiny exponent is read over, `10^1108`. The derivation is in
+// Docs/NarrowFloat.md, with the five other quantities it was taken as the largest of. That leaves 415 bits of
+// headroom, over six limbs.
+//
+// One size serves both directions. Rendering needs only 1,131 bits and would fit in twenty limbs, but a second
+// workspace would mean a second derivation and a second set of proofs to keep true, and the cost of the larger
+// one is stack rather than allocation.
 //
 // Every operation that could pass the capacity answers whether it did, and a refused one leaves the value exactly
 // as it was. None of them truncates, wraps or saturates: a wrong answer from an exact algorithm is worse than no
@@ -18,34 +22,34 @@
 //
 // Leaving the value alone costs a copy only where it could matter. An operation whose result needs at most one
 // more limb cannot overflow a workspace that is not already full, so the common path writes in place; only a
-// workspace at its capacity does the work in a local copy and commits it on success. The copy is 168 bytes of
-// stack and happens on the path that is about to report a defect anyway.
+// workspace at its capacity does the work in a local copy and commits it on success. The copy happens on the path
+// that is about to report a defect anyway.
 
 import Core::{ Result, Unit };
 
 /// How many sixty-four-bit limbs a `FixedNat` holds.
 ///
-/// Twenty, which is 1,280 bits: the 1,131 the narrow conversion reaches at worst, and 149 bits of headroom over
-/// it. See Docs/NarrowFloat.md for where the 1,131 comes from.
+/// Sixty-four, which is 4,096 bits: the 3,681 the narrow conversion reaches at worst, and 415 bits of headroom
+/// over it. See Docs/NarrowFloat.md for where the 3,681 comes from.
 ///
 /// @see https://rux-lang.dev/docs/api/format/fixed-nat-limbs
-pub const FixedNatLimbs: uint = 20;
+pub const FixedNatLimbs: uint = 64;
 
 /// How many bits a `FixedNat` holds in total.
 ///
 /// @see https://rux-lang.dev/docs/api/format/fixed-nat-bits
-pub const FixedNatBits: uint = 1280;
+pub const FixedNatBits: uint = 4096;
 
 /// An unsigned integer of fixed capacity, holding no storage of its own.
 ///
-/// `Copy`, and 168 bytes wide, so it is passed by reference rather than by value everywhere in this package. The
+/// `Copy`, and 520 bytes wide, so it is passed by reference rather than by value everywhere in this package. The
 /// limbs are least significant first and `length` counts the ones in use, so zero is `length == 0` and there are
 /// never leading zero limbs above it — every operation restores that before it returns.
 ///
 /// @see https://rux-lang.dev/docs/api/format/fixed-nat
 pub struct FixedNat {
     /// The limbs, least significant first. Only the first `length` are meaningful.
-    limbs: uint64[20];
+    limbs: uint64[64];
     /// How many limbs are in use. Zero for the value zero, and never counting a leading zero limb.
     length: uint;
 }
@@ -110,7 +114,7 @@ extend FixedNat {
     /// @returns the value zero
     /// @see https://rux-lang.dev/docs/api/format/fixed-nat/new
     pub func FixedNat() -> FixedNat {
-        return FixedNat { limbs: [0u64; 20], length: 0 };
+        return FixedNat { limbs: [0u64; 64], length: 0 };
     }
 
     /// The value `initial`.

@@ -1,0 +1,15 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Reading"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Format: reading a decimal into the nearest narrow float, with ties to even"
+
+[Dependencies]
+Core = { Path = "../../../../Packages/Core" }
+Format = { Path = "../../../../Packages/Format" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Format"

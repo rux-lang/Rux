@@ -8,10 +8,10 @@ import Format::{ FixedNat, FixedNatBits, FixedNatLimbs };
 // algorithm whose whole claim is that it has nothing to approximate. Every operation that could pass the bound is
 // driven past it here and checked to say so, rather than to truncate, wrap or saturate.
 //
-// The bound is 1,280 bits against a worst case of 1,131, derived in Docs/NarrowFloat.md. The two values that reach
-// that worst case have cases of their own at the bottom: `2^54 × 10^324`, which is the smallest float64 subnormal
-// scaled to where its first significant digit appears, and `2^1075`, which is the denominator that subnormal is
-// formed over. Both must fit, with the headroom the derivation claims.
+// The bound is 4,096 bits against a worst case of 3,681, derived in Docs/NarrowFloat.md. The values that reach it
+// have cases of their own at the bottom: the rendering side's `2^54 × 10^324`, and the parsing side's `10^1108`,
+// which is the denominator a decimal with the full retained digit count and a tiny exponent is read over. Both
+// must fit, with the headroom the derivation claims.
 
 // Whether `value` is exactly two to the `bits`, checked through the only two questions the type answers about
 // magnitude: its bit length, and its comparison against a power of two built independently.
@@ -124,8 +124,8 @@ func Main() -> int {
 
     // The capacity, and what every operation does when it is reached. A wrong answer is worse than no answer here,
     // because the algorithm this serves has nothing to approximate and so nothing to be slightly wrong about.
-    Assert(FixedNatLimbs == 20u, "the workspace is twenty limbs");
-    Assert(FixedNatBits == 1280u, "which is one thousand two hundred and eighty bits");
+    Assert(FixedNatLimbs == 64u, "the workspace is sixty-four limbs");
+    Assert(FixedNatBits == 4096u, "which is four thousand and ninety-six bits");
 
     var full = FixedNat();
     Assert(full.SetPowerOfTwo(FixedNatBits - 1u), "the highest bit the capacity holds is reachable");
@@ -153,7 +153,14 @@ func Main() -> int {
            "scaled to where its first significant digit appears, which is the worst case the bound covers");
     let reached = smallestSubnormalScaled.BitLength();
     Assert(reached > 1100u && reached < FixedNatBits, "occupies over eleven hundred bits and still fits");
-    Assert(FixedNatBits - reached > 128u, "with more than two limbs of headroom, as the derivation claims");
+
+    // The parsing side's worst case, which is what the workspace is actually sized for.
+    var readDenominator = FixedNat::FromUint64(1u64);
+    Assert(readDenominator.MultiplyPowerOfTen(1108u),
+           "the denominator a long decimal with a tiny exponent is read over fits");
+    let widest = readDenominator.BitLength();
+    Assert(widest > 3600u && widest < FixedNatBits, "occupies over thirty-six hundred bits and still fits");
+    Assert(FixedNatBits - widest > 384u, "with more than six limbs of headroom, as the derivation claims");
 
     var subnormalDenominator = FixedNat();
     Assert(subnormalDenominator.SetPowerOfTwo(1075u), "the denominator that subnormal is formed over");

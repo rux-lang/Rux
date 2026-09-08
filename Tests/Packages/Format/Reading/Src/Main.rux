@@ -1,0 +1,154 @@
+import Core::{ Assert, Result };
+import Format::{ BitsOfFloat32, BitsOfFloat64, ParseError, ParseFloat32, ParseFloat64 };
+
+// Reading a decimal into the float nearest it, checked as bits rather than as numbers.
+//
+// Bits because that is the claim. "Nearest" is a statement about which of two adjacent floats a decimal lands on,
+// and comparing the result against another decimal literal would only ask whether two readings agree — which they
+// would even if both were one step off. Every expectation here is a bit pattern, and the ones that are not
+// structurally obvious are built by walking from a value whose pattern is.
+//
+// Five things go wrong in a decimal reader and each has a section. A value exactly halfway between two floats must
+// go to the even one, and only an exactly representable decimal can be exactly halfway — so the halfway cases are
+// constructed from the midpoint's own decimal expansion rather than from something that looks like a half. A
+// subnormal has fewer significand bits than a normal, so what is rounded is its own last place. Underflow is a
+// rounding question, not a refusal: below half the smallest subnormal the answer is a signed zero. Overflow is a
+// refusal, not an infinity: rounding a number the caller wrote up to an infinity would answer with something they
+// did not write. And long input has to be read exactly however long it is, or truncated in a way that provably
+// cannot change the answer.
+
+func Bits(text: char8[..]) -> uint64 {
+    return match ParseFloat64(text) {
+        .Success(value) => BitsOfFloat64(value),
+        .Error(_) => 0xFFFFFFFFFFFFFFFFu64
+    };
+}
+
+func Bits32(text: char8[..]) -> uint32 {
+    return match ParseFloat32(text) {
+        .Success(value) => BitsOfFloat32(value),
+        .Error(_) => 0xFFFFFFFFu32
+    };
+}
+
+func Overflows(text: char8[..]) -> bool {
+    return match ParseFloat64(text) {
+        .Success(_) => false,
+        .Error(reason) => match reason {
+            .Overflow(_) => true,
+            else => false
+        }
+    };
+}
+
+func Overflows32(text: char8[..]) -> bool {
+    return match ParseFloat32(text) {
+        .Success(_) => false,
+        .Error(reason) => match reason {
+            .Overflow(_) => true,
+            else => false
+        }
+    };
+}
+
+func Main() -> int {
+    // The values whose bit patterns are known without any arithmetic.
+    Assert(Bits("0") == 0u64, "zero reads as the positive zero");
+    Assert(Bits("-0") == 0x8000000000000000u64, "and a signed zero keeps its sign");
+    Assert(Bits("0.0") == 0u64, "written with a fraction as well");
+    Assert(Bits("1") == 0x3FF0000000000000u64, "one reads as one");
+    Assert(Bits("1.0") == 0x3FF0000000000000u64, "however it is spelled");
+    Assert(Bits("1e0") == 0x3FF0000000000000u64, "including with an exponent");
+    Assert(Bits("-1") == 0xBFF0000000000000u64, "minus one carries the sign bit");
+    Assert(Bits("2") == 0x4000000000000000u64, "two");
+    Assert(Bits("0.5") == 0x3FE0000000000000u64, "and a half, which is exact in binary");
+
+    // A tenth is not a tenth: the nearest float64 is a shade over, and this is its pattern. A reader that scaled
+    // in floating point gets the last bit of this wrong about as often as not.
+    Assert(Bits("0.1") == 0x3FB999999999999Au64, "a tenth reads as the float nearest it");
+    Assert(Bits("0.2") == 0x3FC999999999999Au64, "and a fifth");
+    Assert(Bits("0.3") == 0x3FD3333333333333u64, "and three tenths, which is a shade under rather than over");
+
+    // Ties. A decimal exactly halfway between two floats goes to the one with an even significand, and only an
+    // exactly representable value can be exactly halfway. The midpoint between 1 and the float above it is
+    // 1 + 2^-53, whose exact expansion is written out here; 1 has an even significand and takes the tie.
+    Assert(Bits("1.00000000000000011102230246251565404236316680908203125") == 0x3FF0000000000000u64,
+           "the midpoint above one ties down to one, whose significand is even");
+    Assert(Bits("1.0000000000000001110223024625156540423631668090820312500001") == 0x3FF0000000000001u64,
+           "and a hair above that midpoint rounds up, which is the digit the sticky bit is for");
+    Assert(Bits("1.0000000000000001110223024625156540423631668090820312499999") == 0x3FF0000000000000u64,
+           "while a hair below it rounds down");
+
+    // The midpoint between the float above one and the one above that ties up, because the lower neighbour's
+    // significand is odd this time. The pair is what shows the rule is parity rather than direction.
+    Assert(Bits("1.00000000000000033306690738754696212708950042724609375") == 0x3FF0000000000002u64,
+           "a midpoint whose lower neighbour is odd ties up to the even one");
+
+    // Subnormals, where the significand has fewer bits and what is rounded is the value's own last place.
+    Assert(Bits("5e-324") == 1u64, "the smallest subnormal is one unit in the last place");
+    Assert(Bits("4.9406564584124654e-324") == 1u64, "spelled out, it is the same value");
+    Assert(Bits("1e-323") == 2u64, "and two units");
+    Assert(Bits("2.2250738585072014e-308") == 0x0010000000000000u64, "the smallest normal");
+    Assert(Bits("2.2250738585072011e-308") == 0x000FFFFFFFFFFFFFu64,
+           "and the largest subnormal, one step below it");
+
+    // Underflow is a rounding question rather than a refusal, and the question is decided at the one place a
+    // decimal reader can be exactly on the fence: half the smallest subnormal, which is 2^-1075 and is a tie
+    // between zero and that subnormal. Zero is the even neighbour and takes it.
+    //
+    // The tie is written out in full, all seven hundred and fifty-two significant digits of it, because a shorter
+    // spelling is not the tie — it is a value slightly below one, and rounds down for a different reason. Writing
+    // it out is what makes this a tie case rather than an underflow case, and it doubles as the longest input any
+    // of these tests hands the reader.
+    Assert(Bits("2.5e-324") == 1u64, "just over half the smallest subnormal rounds up to it");
+    Assert(Bits("2.4e-324") == 0u64, "and just under it rounds down to zero");
+    Assert(Bits("0.0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000024703282292062327208828439643411068618252990130716238221279284125033775363510437593264991818081799618989828234772285886546332835517796989819938739800539093906315035659515570226392290858392449105184435931802849936536152500319370457678249219365623669863658480757001585769269903706311928279558551332927834338409351978015531246597263579574622766465272827220056374006485499977096599470454020828166226237857393450736339007967761930577506740176324673600968951340535537458516661134223766678604162159680461914467291840300530057530849048765391711386591646239524912623653881879636239373280423891018672348497668235089863388587925628302755995657524455507255189313690836254779186948667994968324049705821028513185451396213837722826145437693412532098591327667236328125") == 0u64,
+           "exactly half of it ties down to zero, which is the even neighbour");
+    Assert(Bits("0.00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000247032822920623272088284396434110686182529901307162382212792841250337753635104375932649918180817996189898282347722858865463328355177969898199387398005390939063150356595155702263922908583924491051844359318028499365361525003193704576782492193656236698636584807570015857692699037063119282795585513329278343384093519780155312465972635795746227664652728272200563740064854999770965994704540208281662262378573934507363390079677619305775067401763246736009689513405355374585166611342237666786041621596804619144672918403005300575308490487653917113865916462395249126236538818796362393732804238910186723484976682350898633885879256283027559956575244555072551893136908362547791869486679949683240497058210285131854513962138377228261454376934125320985913276672363281251") == 1u64,
+           "while one digit above that tie rounds up, which is what the exactness is for");
+    Assert(Bits("1e-400") == 0u64, "and far below it the answer is a zero");
+    Assert(Bits("-1e-400") == 0x8000000000000000u64, "which keeps the sign it was written with");
+
+    // Overflow is a refusal rather than an infinity: a number the caller wrote must not come back as one they
+    // did not.
+    Assert(Bits("1.7976931348623157e308") == 0x7FEFFFFFFFFFFFFFu64, "the largest finite value reads as itself");
+    Assert(Overflows("1.8e308"), "and a value past it is refused");
+    Assert(Overflows("1e309"), "as is one an order of magnitude past");
+    Assert(Overflows("-1e400"), "in either sign");
+    Assert(Bits("1.7976931348623158e308") == 0x7FEFFFFFFFFFFFFFu64,
+           "while a value between the largest finite one and the overflow threshold rounds back down to it");
+
+    // Long input, read exactly however long it is. The first is a tenth written to two hundred digits, which must
+    // give the same float as "0.1"; the second is the same with a nonzero digit far past where any float could
+    // notice, which must not change it either.
+    Assert(Bits("0.10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000") ==
+           0x3FB999999999999Au64,
+           "a tenth written to two hundred digits is still a tenth");
+    Assert(Bits("0.1000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001") ==
+           0x3FB999999999999Au64,
+           "and a digit far past what a float can notice does not move it");
+    Assert(Bits("1000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000") ==
+           0x55BBE7ABD3781ECAu64,
+           "a hundred-and-six-digit integer reads exactly");
+
+    // The special spellings, exactly as formatting writes them.
+    Assert(Bits("Inf") == 0x7FF0000000000000u64, "an infinity reads as one");
+    Assert(Bits("-Inf") == 0xFFF0000000000000u64, "and a negative infinity");
+    Assert(ParseFloat64("NaN").IsSuccess(), "and a NaN, which has no one pattern to check");
+
+    // float32 is read at its own precision rather than at a float64's and narrowed, which would round twice. The
+    // value below is the case that separates the two: read as a float64 first it lands on a float32 boundary and
+    // the second rounding takes it the wrong way.
+    Assert(Bits32("1") == 0x3F800000u32, "one at the narrow width");
+    Assert(Bits32("-0") == 0x80000000u32, "and a signed zero");
+    Assert(Bits32("0.1") == 0x3DCCCCCDu32, "a tenth reads as the float32 nearest it");
+    Assert(Bits32("3.4028235e38") == 0x7F7FFFFFu32, "the largest finite float32 reads as itself");
+    Assert(Overflows32("3.5e38"), "and a value past it is refused rather than made an infinity");
+    Assert(Bits32("1.1754944e-38") == 0x00800000u32, "the smallest normal float32");
+    Assert(Bits32("1e-45") == 1u32, "and the smallest subnormal is one unit in the last place");
+    Assert(Bits32("1e-50") == 0u32, "while far below it the answer is a zero");
+    Assert(Bits32("8e-46") == 1u32, "just over half the smallest float32 subnormal rounds up to it");
+    Assert(Bits32("6e-46") == 0u32, "and just under it rounds down to zero");
+
+    return 0;
+}

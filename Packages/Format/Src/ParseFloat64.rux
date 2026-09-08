@@ -58,57 +58,94 @@ extend ParseError : ParseFailure {
     }
 }
 
-/// Provides the public `ParseFloat64` operation.
+/// What a decimal spells, before any format decides what to do with it.
 ///
-/// https://rux-lang.dev/docs/api/format/parse-float64
-pub func ParseFloat64(str: char8[..]) -> Result<float64, ParseError> {
-    if str.length == 0 { return Result::Error<float64, ParseError>(ParseError::Empty); }
+/// Copy, holding the retained digits and the two flags the rounding needs.
+///
+/// @see https://rux-lang.dev/docs/api/format/decimal-reading
+pub struct DecimalReading {
+    /// The retained significant digits, as an integer.
+    pub digits: FixedNat;
+    /// The power of ten they are scaled by, counting the decimal point and any digits dropped past the bound.
+    pub exponent: int;
+    /// How many significant digits were retained.
+    pub significant: uint;
+    /// Whether a nonzero digit was dropped past the retained bound.
+    pub truncated: bool;
+    /// Whether the value is negative, including a negative zero.
+    pub negative: bool;
+    /// Zero for an ordinary number, one for `NaN`, two for an infinity.
+    pub special: int;
+}
+
+/// Reads the decimal grammar out of `str`, without deciding what float it names.
+///
+/// One scanner for both narrow widths, so what one reads the other reads: the grammar is
+/// `[+-]?(digits[.digits?]?|.digits)([eE][+-]?digits)?`, plus the two special spellings `NaN` and `Inf` exactly as
+/// formatting writes them. The digits are kept exactly up to `RetainedDecimalDigits`, past which a nonzero one
+/// sets `truncated` and moves the exponent instead.
+///
+/// # Failures
+/// Reports `Empty` for no bytes, `InvalidCharacter` at the byte where the shape stopped matching, and
+/// `OutOfMemory` where the retained digits would not fit the workspace.
+///
+/// @param str the text to read
+/// @param reading receives what the decimal spells
+/// @returns success when the whole text was the grammar
+/// @see https://rux-lang.dev/docs/api/format/scan-decimal
+pub func ScanDecimal(str: char8[..], reading: *var DecimalReading) -> Result<Unit, ParseError> {
+    *reading = DecimalReading {
+        digits: FixedNat(),
+        exponent: 0,
+        significant: 0,
+        truncated: false,
+        negative: false,
+        special: 0
+    };
+    if str.length == 0 { return Result::Error<Unit, ParseError>(ParseError::Empty); }
 
     var index: uint = 0;
-    var negative = false;
     if str[index] == c8'+' || str[index] == c8'-' {
-        negative = str[index] == c8'-';
+        reading.negative = str[index] == c8'-';
         index++;
-        if index == str.length { return Result::Error<float64, ParseError>(ParseError::InvalidCharacter(index - 1)); }
+        if index == str.length { return Result::Error<Unit, ParseError>(ParseError::InvalidCharacter(index - 1)); }
     }
 
-    // The two special spellings, exactly as formatting writes them, so what one side prints the other reads. A NaN
-    // has no sign to keep — the sign is accepted because formatting never writes one and input may carry one, and
-    // there is only one NaN as far as comparison is concerned.
+    // The two special spellings. A NaN has no sign to keep — the sign is accepted because formatting never writes
+    // one and input may carry one, and there is only one NaN as far as comparison is concerned.
     if index + 3 == str.length && str[index] == c8'N' && str[index + 1] == c8'a' && str[index + 2] == c8'N' {
-        return Result::Success<float64, ParseError>(0.0 / 0.0);
+        reading.special = 1;
+        return Result::Success<Unit, ParseError>(Unit());
     }
     if index + 3 == str.length && str[index] == c8'I' && str[index + 1] == c8'n' && str[index + 2] == c8'f' {
-        return Result::Success<float64, ParseError>(negative ? -1.0 / 0.0 : 1.0 / 0.0);
+        reading.special = 2;
+        return Result::Success<Unit, ParseError>(Unit());
     }
 
-    // Keep nineteen significant decimal digits. That is more precision than a
-    // float64 can retain, while avoiding an overflowing intermediate value for
-    // long input strings. decimalExponent accounts for the decimal point and
-    // for significant digits omitted after the nineteenth.
-    var value = 0.0;
-    var significantDigits: uint = 0;
-    var decimalExponent: int = 0;
+    // The significant digits are kept exactly, up to the bound past which a dropped digit can only mean "strictly
+    // more than this" — see `RetainedDecimalDigits` for why the bound is where it is.
     var digitCount: uint = 0;
     var afterDecimalPoint = false;
     var significant = false;
-
     while index < str.length {
         let ch = str[index];
         if ch >= c8'0' && ch <= c8'9' {
-            let digit = (ch as uint) - (c8'0' as uint);
+            let digit = ((ch as uint) - (c8'0' as uint)) as uint64;
             digitCount++;
-
             if afterDecimalPoint {
-                decimalExponent--;
+                reading.exponent = reading.exponent - 1;
             }
-            if digit != 0u || significant {
+            if digit != 0u64 || significant {
                 significant = true;
-                if significantDigits < 19u {
-                    value = value * 10.0 + digit as float64;
-                    significantDigits++;
-                } else {
-                    decimalExponent++;
+                if reading.significant < RetainedDecimalDigits {
+                    if !reading.digits.MultiplyAddSmall(10u64, digit) {
+                        return Result::Error<Unit, ParseError>(ParseError::OutOfMemory(index));
+                    }
+                    reading.significant = reading.significant + 1u;
+                }
+                else {
+                    if digit != 0u64 { reading.truncated = true; }
+                    reading.exponent = reading.exponent + 1;
                 }
             }
             index++;
@@ -121,8 +158,7 @@ pub func ParseFloat64(str: char8[..]) -> Result<float64, ParseError> {
         }
         break;
     }
-
-    if digitCount == 0u { return Result::Error<float64, ParseError>(ParseError::InvalidCharacter(index)); }
+    if digitCount == 0u { return Result::Error<Unit, ParseError>(ParseError::InvalidCharacter(index)); }
 
     if index < str.length && (str[index] == c8'e' || str[index] == c8'E') {
         index++;
@@ -133,38 +169,77 @@ pub func ParseFloat64(str: char8[..]) -> Result<float64, ParseError> {
             index++;
         }
         if index == str.length || str[index] < c8'0' || str[index] > c8'9' {
-            return Result::Error<float64, ParseError>(ParseError::InvalidCharacter(exponentMarker));
+            return Result::Error<Unit, ParseError>(ParseError::InvalidCharacter(exponentMarker));
         }
-
         var exponent: int = 0;
         while index < str.length && str[index] >= c8'0' && str[index] <= c8'9' {
             let digit = ((str[index] as uint) - (c8'0' as uint)) as int;
+            // Ten thousand is past every format's range in both directions, so a longer exponent needs no more
+            // arithmetic to be answered.
             if exponent < 10000 {
                 exponent = exponent * 10 + digit;
             }
             index++;
         }
         if exponentNegative {
-            decimalExponent -= exponent;
-        } else {
-            decimalExponent += exponent;
+            reading.exponent = reading.exponent - exponent;
+        }
+        else {
+            reading.exponent = reading.exponent + exponent;
+        }
+    }
+    if index != str.length { return Result::Error<Unit, ParseError>(ParseError::InvalidCharacter(index)); }
+    return Result::Success<Unit, ParseError>(Unit());
+}
+
+/// Reads `str` as the `float64` nearest what it spells, rounding to nearest with ties to even.
+///
+/// Exact: the value is formed as a ratio of integers and the quotient is taken with a sticky bit, so what comes
+/// back is the nearest `float64` and never one step off it. `NaN`, `Inf` and `-Inf` are read exactly as formatting
+/// writes them.
+///
+/// # Failures
+/// Reports `Empty`, `InvalidCharacter` and `OutOfMemory` as `ScanDecimal` does, and `Overflow` at the text's
+/// length for a value past the largest finite `float64` — refused rather than rounded to an infinity, since that
+/// would turn a number the caller wrote into one they did not. A value below the smallest subnormal is the signed
+/// zero it rounds to.
+///
+/// @param str the text to read
+/// @returns the value, or why the text is not one
+/// @see https://rux-lang.dev/docs/api/format/parse-float64
+pub func ParseFloat64(str: char8[..]) -> Result<float64, ParseError> {
+    var reading = DecimalReading {
+        digits: FixedNat(),
+        exponent: 0,
+        significant: 0,
+        truncated: false,
+        negative: false,
+        special: 0
+    };
+    let scanned = ScanDecimal(str, @reading);
+    var failure = ParseError::Empty;
+    if scanned.TryIntoError(@failure) { return Result::Error<float64, ParseError>(failure); }
+    if reading.special == 1 { return Result::Success<float64, ParseError>(0.0 / 0.0); }
+    if reading.special == 2 {
+        return Result::Success<float64, ParseError>(reading.negative ? -1.0 / 0.0 : 1.0 / 0.0);
+    }
+
+    // Anything clearly past the format is answered without building the numbers that would say so exactly: the
+    // value is at least ten to the magnitude less one and below ten to the magnitude, and both ends of the range
+    // are far outside that.
+    if !reading.digits.IsZero() {
+        let magnitude = (reading.significant as int) + reading.exponent;
+        if magnitude > 310 { return Result::Error<float64, ParseError>(ParseError::Overflow(str.length)); }
+        if magnitude < -340 {
+            return Result::Success<float64, ParseError>(reading.negative ? -0.0 : 0.0);
         }
     }
 
-    if index != str.length { return Result::Error<float64, ParseError>(ParseError::InvalidCharacter(index)); }
-
-    if value != 0.0 {
-        if decimalExponent > 308 { return Result::Error<float64, ParseError>(ParseError::Overflow(str.length)); }
-        if decimalExponent < -400 {
-            value = 0.0;
-        } else {
-            value = ScaleByPow10(value, decimalExponent);
-            if IsInfinite(value) { return Result::Error<float64, ParseError>(ParseError::Overflow(str.length)); }
-        }
-    }
-
-    if negative {
-        value = -value;
+    var value = 0.0;
+    var overflowed = false;
+    if !ExactFloat64(reading.digits, reading.exponent, reading.truncated, reading.negative, @value, @overflowed) {
+        if overflowed { return Result::Error<float64, ParseError>(ParseError::Overflow(str.length)); }
+        return Result::Error<float64, ParseError>(ParseError::OutOfMemory(str.length));
     }
     return Result::Success<float64, ParseError>(value);
 }
@@ -178,28 +253,51 @@ pub func ParseFloat64(str: StringView) -> Result<float64, ParseError> {
     return ParseFloat64(str.Bytes());
 }
 
-/// Parses a `float32` by the same grammar, reporting `Overflow` where the narrower width cannot hold the value.
+/// Reads `str` as the `float32` nearest what it spells, rounding to nearest with ties to even.
 ///
-/// The digits are read at `float64` precision and narrowed once at the end, so a value near the edge rounds the
-/// way one conversion rounds rather than accumulating error per digit. A value that underflows `float32` comes
-/// back as the zero it rounds to, exactly as a tiny value does at the wider width.
+/// Read at this width's own precision rather than at a `float64`'s and narrowed. Narrowing rounds a second time,
+/// and a value that lands on a `float32` boundary can round the wrong way once it has already been rounded to
+/// fifty-three bits on the way there.
 ///
-/// https://rux-lang.dev/docs/api/format/parse-float32
+/// # Failures
+/// The failures `ParseFloat64` reports, at this width's range: `Overflow` for a value past the largest finite
+/// `float32`, and the signed zero for one below the smallest subnormal.
+///
+/// @param str the text to read
+/// @returns the value, or why the text is not one
+/// @see https://rux-lang.dev/docs/api/format/parse-float32
 pub func ParseFloat32(str: char8[..]) -> Result<float32, ParseError> {
-    var wide = 0.0;
-    match ParseFloat64(str) {
-        .Success(value) => {
-            wide = value;
-        },
-        .Error(fault) => {
-            return Result::Error<float32, ParseError>(fault);
+    var reading = DecimalReading {
+        digits: FixedNat(),
+        exponent: 0,
+        significant: 0,
+        truncated: false,
+        negative: false,
+        special: 0
+    };
+    let scanned = ScanDecimal(str, @reading);
+    var failure = ParseError::Empty;
+    if scanned.TryIntoError(@failure) { return Result::Error<float32, ParseError>(failure); }
+    if reading.special == 1 { return Result::Success<float32, ParseError>(0.0f32 / 0.0f32); }
+    if reading.special == 2 {
+        return Result::Success<float32, ParseError>(reading.negative ? -1.0f32 / 0.0f32 : 1.0f32 / 0.0f32);
+    }
+
+    if !reading.digits.IsZero() {
+        let magnitude = (reading.significant as int) + reading.exponent;
+        if magnitude > 41 { return Result::Error<float32, ParseError>(ParseError::Overflow(str.length)); }
+        if magnitude < -50 {
+            return Result::Success<float32, ParseError>(reading.negative ? -0.0f32 : 0.0f32);
         }
     }
-    if IsFinite(wide) {
-        let magnitude = wide < 0.0 ? -wide : wide;
-        if magnitude > MaxFinite32 { return Result::Error<float32, ParseError>(ParseError::Overflow(str.length)); }
+
+    var value = 0.0f32;
+    var overflowed = false;
+    if !ExactFloat32(reading.digits, reading.exponent, reading.truncated, reading.negative, @value, @overflowed) {
+        if overflowed { return Result::Error<float32, ParseError>(ParseError::Overflow(str.length)); }
+        return Result::Error<float32, ParseError>(ParseError::OutOfMemory(str.length));
     }
-    return Result::Success<float32, ParseError>(wide as float32);
+    return Result::Success<float32, ParseError>(value);
 }
 
 /// The same grammar for a view.

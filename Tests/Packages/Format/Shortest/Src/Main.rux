@@ -20,15 +20,13 @@ import Text::{ FormatError, String, StringView };
 //
 // The adjacent values are the hard ones. Two floats one bit apart must not render alike, or reading either back
 // gives the same value and one of them is lost. They are built by walking the bits rather than by arithmetic,
-// which is the only way to be sure they really are adjacent. That property is entirely the renderer's, which is
-// why the sweep across the exponent range is built on it rather than on closure.
+// which is the only way to be sure they really are adjacent. That property is entirely the renderer's, so the
+// sweep across the exponent range checks it alongside closure rather than instead of it.
 //
-// Closure is checked where it can be. `ParseFloat64` is still the approximate reader that task 25 replaces, and it
-// is wrong for a good part of the exponent range — it reads back 1e300 as a different value than it was given.
-// So the closure cases below are the ordinary-range ones the current parser gets right, and the section that names
-// the extremes asserts their exact rendering without claiming the pair closes yet. Nothing here is weakened to
-// make it pass: the renderings the extremes are held to are the exact shortest forms, and the closure those
-// renderings will complete arrives with task 25.
+// Closure now holds across the whole range. It did not when the renderer landed: the reader was still the
+// approximate one, and it read back 1e300 as a different value than it was given, so the extremes had to be
+// asserted as *not* closing with the gap named. Those assertions are inverted here, which is what an exact reader
+// arriving looks like from the outside.
 
 func Same(outcome: Result<String, FormatError>, expected: char8[..]) -> bool {
     let wanted = StringView::FromValidated(expected);
@@ -144,39 +142,24 @@ func Main() -> int {
     Assert(RoundTrips64(allocator, -1.5e20), "a negative value in scientific notation round-trips");
     Assert(RoundTrips64(allocator, 2.5e-7), "and a small one");
 
-    // The extremes render exactly, which is checked above, and do not close yet: the current ParseFloat64 reads
-    // back 1.7976931348623157e+308 and 2.2250738585072014e-308 as different values than it was given. That is the
-    // parser task 25 replaces, and these two lines are here so the gap is named rather than left as an absence.
-    Assert(!RoundTrips64(allocator, 1.7976931348623157e308),
-           "the largest finite value does not close yet, because the approximate parser cannot read it back");
-    Assert(!RoundTrips64(allocator, 2.2250738585072014e-308), "nor can it read back the smallest normal");
+    // The extremes, which are where the reader used to be wrong and where the workspace bound is reached.
+    Assert(RoundTrips64(allocator, 1.7976931348623157e308), "the largest finite value closes");
+    Assert(RoundTrips64(allocator, 2.2250738585072014e-308), "and the smallest normal");
+    Assert(RoundTrips64(allocator, 1.0e-323), "and a subnormal two steps above the smallest");
 
-    // Every exponent decade, checked on the property that is entirely the renderer's: a value and the float one
-    // bit above it must not render alike. If they did, one of the two would be unreachable through text whatever
-    // the parser did, so this says what closure would say about the renderer without depending on the parser.
-    // The step is chosen so the values are not powers of ten and so exercise a full significand.
+    // Every exponent decade, on both properties at once. Closure says the pair agrees; adjacency says the renderer
+    // distinguishes values a bit apart, which no parser can rescue if it does not. The step is chosen so the
+    // values are not powers of ten and so exercise a full significand rather than a short one.
     var decade: int = -300;
     var probe = 1.2345678901234567e-300;
     while decade <= 300 {
+        Assert(RoundTrips64(allocator, probe), "every exponent decade closes");
+        Assert(RoundTrips64(allocator, -probe), "in both signs");
         let neighbour = FromBits64(BitsOfFloat64(probe) + 1u64);
         Assert(RenderDiffers64(allocator, probe, neighbour),
-               "a value and its neighbour render differently at every exponent decade");
-        Assert(RenderDiffers64(allocator, -probe, probe), "and a value differs from its own negation");
+               "and a value and its neighbour render differently at every decade");
         probe = probe * 10.0;
         decade = decade + 1;
-    }
-
-    // Closure across the decades, on the band the current approximate parser reads back correctly. The band is
-    // narrow on purpose rather than by discovery: task 25 replaces the parser with an exact one and this sweep
-    // widens to the whole range then. Naming the limit here is what keeps it from being forgotten.
-    var narrow: int = -200;
-    var narrowProbe = 1.2345678901234567e-200;
-    while narrow <= 200 {
-        if RoundTrips64(allocator, narrowProbe) {
-            Assert(RoundTrips64(allocator, -narrowProbe), "a value that round-trips does so in both signs");
-        }
-        narrowProbe = narrowProbe * 10.0;
-        narrow = narrow + 1;
     }
 
     // Adjacent values: two floats one bit apart must not render alike, or reading either back loses one of them.
@@ -202,9 +185,10 @@ func Main() -> int {
     Assert(RoundTrips64(allocator, power), "the power round-trips");
     let abovePower = FromBits64(BitsOfFloat64(power) + 1u64);
     Assert(RenderDiffers64(allocator, power, abovePower), "and the value above it differs too");
-    // The two neighbours themselves need seventeen digits to say what they are, and the approximate parser loses
-    // the last of them. Their renderings are correct and their closure arrives with task 25, like the extremes.
-    Assert(!RoundTrips64(allocator, belowPower), "while the neighbours do not close yet, at seventeen digits");
+    // The two neighbours need seventeen digits to say what they are, which is where the approximate reader used to
+    // lose the last one.
+    Assert(RoundTrips64(allocator, belowPower), "the neighbour below closes, at seventeen digits");
+    Assert(RoundTrips64(allocator, abovePower), "and the one above");
 
     // float32 is a different set of neighbours, so rendering it through float64 would give the wrong answer: the
     // shortest decimal for the widened value is longer than the shortest one for the value itself.
