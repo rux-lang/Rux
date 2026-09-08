@@ -1,7 +1,7 @@
 import Core::{ Result, Unit };
 import Text::{ Debug, Display, FormatSpec, TextWriter };
 import Allocator::{ Allocator, SystemAllocator };
-import Format::{ Format };
+import Format::{ Render };
 import Text::{ FormatError, String, StringBuilder, StringView, TextError };
 
 // Text rendering itself: a string and a view write their bytes straight through, and Debug adds the quotes that
@@ -21,16 +21,16 @@ func Main() -> int {
     if error != TextError::None { return 1; }
 
     // Through a placeholder, which is the path an argument takes.
-    let alone = Rendered(allocator, Format(allocator, "{}", hello.View()));
+    let alone = Rendered(allocator, Render(allocator, "{}", hello.View()));
     if !Matches(alone.View(), "Hello World!") { return 10; }
 
-    let wrapped = Rendered(allocator, Format(allocator, "<{}>", hello.View()));
+    let wrapped = Rendered(allocator, Render(allocator, "<{}>", hello.View()));
     if !Matches(wrapped.View(), "<Hello World!>") { return 11; }
 
     // Alongside arguments of other types, and twice from one value.
-    let mixed = Rendered(allocator, Format(allocator, "{} {} {}", hello.View(), 42, true));
+    let mixed = Rendered(allocator, Render(allocator, "{} {} {}", hello.View(), 42, true));
     if !Matches(mixed.View(), "Hello World! 42 true") { return 12; }
-    let doubled = Rendered(allocator, Format(allocator, "{}{}", hello.View(), hello.View()));
+    let doubled = Rendered(allocator, Render(allocator, "{}{}", hello.View(), hello.View()));
     if !Matches(doubled.View(), "Hello World!Hello World!") { return 13; }
 
     // The receiver is untouched by having been rendered, however many times.

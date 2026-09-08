@@ -1,16 +1,49 @@
-import Allocator::{ Allocator, SystemAllocator };
+import Allocator::{ AllocError, Allocator, Layout, SystemAllocator };
 import Core::{ Result, Unit };
-import Format::Format;
-import Text::{ Display, FormatError, FormatOk, FormatSpec, String, StringView, TextWriter, WriteAscii, WriteBytes };
+import Format::{ Render, WriteFormat };
+import Text::{ BufferWriter, Display, FormatError, FormatOk, FormatSpec, String, StringView, TextWriter, WriteAscii,
+               WriteBytes };
 
-// Placeholder filling: each `{}` takes the next argument in the order they are written, `{{` and `}}` are the two
-// ways to spell a literal brace, and the mismatched calls are the interesting ones — extra arguments go unused, and
-// a placeholder with nothing left renders as nothing, so the mistake shows in the text rather than at the point of
-// printing. Std stays out of the dependencies and a failed check reports through the exit code.
+// Placeholder filling, and what it refuses.
 //
-// Rendering now answers with a `Result<String, FormatError>` rather than a `String` beside an output error, so a
-// caller cannot read the text without having looked at whether there is any. The checks below go through `Matches`
-// and `RenderedLength`, both of which consume the result, which is what forces the success case to be handled.
+// The grammar is four shapes: `{}`, `{:spec}`, `{{` and `}}`. Everything else containing a brace is a mistake in
+// the pattern, and this file's job is mostly the mistakes. Two of them used to be printed rather than reported — a
+// placeholder with no argument left rendered as nothing, and a specification that did not parse was copied through
+// as literal text — and both are now failures that carry where. Printing a mistake is the worst way to report one:
+// the program carries on, the output is wrong in a way that looks deliberate, and the caller hears about it from a
+// reader.
+//
+// The offsets are the half that fails quietly, so every refusal below names the exact byte, and the specification
+// cases are written so that the offset inside the specification is not the offset inside the pattern. A test that
+// only checked the reason would pass with every offset set to zero.
+//
+// The counting allocator at the bottom is what checks the other promise: a failed render gives its block back. A
+// leak is invisible to a test that only reads the result, because the result is an error either way.
+
+// An allocator that forwards to the system one and counts what it hands out and takes back.
+struct CountingAllocator {
+    inner: Allocator;
+    live: int;
+}
+
+extend CountingAllocator : Allocator {
+    func Allocate(self: &var CountingAllocator, layout: Layout, result: *var *var opaque) -> AllocError {
+        let outcome = self.inner.Allocate(layout, result);
+        if outcome == AllocError::None { self.live = self.live + 1; }
+        return outcome;
+    }
+
+    func Deallocate(self: &var CountingAllocator, block: *var opaque, layout: Layout) -> AllocError {
+        let outcome = self.inner.Deallocate(block, layout);
+        if outcome == AllocError::None { self.live = self.live - 1; }
+        return outcome;
+    }
+
+    func Reallocate(self: &var CountingAllocator, block: *var opaque, oldLayout: Layout, newLayout: Layout,
+                    result: *var *var opaque) -> AllocError {
+        return self.inner.Reallocate(block, oldLayout, newLayout, result);
+    }
+}
 
 // A type of this package's own, so an argument reaches the call through the interface and not through an overload.
 struct Point {
@@ -64,43 +97,132 @@ func RenderedLength(outcome: Result<String, FormatError>) -> uint {
     };
 }
 
+// Consumes the outcome and reports whether it failed with `InvalidSpecification` at exactly `at`. Both halves
+// matter: the reason says what kind of mistake it was, and the offset says which character to point at.
+func InvalidAt(outcome: Result<String, FormatError>, at: uint) -> bool {
+    return match <-outcome {
+        .Success(_) => false,
+        .Error(reason) => match reason {
+            .InvalidSpecification(offset) => offset == at,
+            else => false
+        }
+    };
+}
+
+// Consumes the outcome and reports whether it failed with `ArgumentCountMismatch(expected, supplied)`.
+func MismatchOf(outcome: Result<String, FormatError>, expected: uint, supplied: uint) -> bool {
+    return match <-outcome {
+        .Success(_) => false,
+        .Error(reason) => match reason {
+            .ArgumentCountMismatch(wanted, given) => wanted == expected && given == supplied,
+            else => false
+        }
+    };
+}
+
 func Main() -> int {
     var system = SystemAllocator();
     let allocator: Allocator = system;
 
-    // Text outside a placeholder is copied through, and a format with nothing to substitute is copied entire.
-    if !Matches(Format(allocator, ""), "") { return 10; }
-    if !Matches(Format(allocator, "hello"), "hello") { return 11; }
+    // Text outside a placeholder is copied through, and a pattern with nothing to substitute is copied entire.
+    if !Matches(Render(allocator, ""), "") { return 10; }
+    if !Matches(Render(allocator, "hello"), "hello") { return 11; }
 
     // Each placeholder takes the next argument, in the order they are written.
-    if !Matches(Format(allocator, "point = ({}, {})", 3, 4), "point = (3, 4)") { return 20; }
-    if !Matches(Format(allocator, "{}{}{}", 1, 2, 3), "123") { return 21; }
+    if !Matches(Render(allocator, "point = ({}, {})", 3, 4), "point = (3, 4)") { return 20; }
+    if !Matches(Render(allocator, "{}{}{}", 1, 2, 3), "123") { return 21; }
 
     // Arguments of different types in one call, each rendered its own way.
-    if !Matches(Format(allocator, "{} {} {} {}", 42, 0.5, true, c8'A'), "42 0.5 true A") { return 22; }
+    if !Matches(Render(allocator, "{} {} {} {}", 42, 0.5, true, c8'A'), "42 0.5 true A") { return 22; }
 
-    // Arguments past the last placeholder go unused, and a placeholder past the last argument renders as nothing.
-    if !Matches(Format(allocator, "{}", 1, 2), "1") { return 30; }
-    if !Matches(Format(allocator, "[{}][{}]", 1), "[1][]") { return 31; }
-    if !Matches(Format(allocator, "{}"), "") { return 32; }
+    // The argument count has to match the placeholder count exactly, in both directions, and the failure carries
+    // both numbers — expected first, supplied second — because which way the mismatch runs is what a caller fixes.
+    if !MismatchOf(Render(allocator, "{}", 1, 2), 1u, 2u) { return 30; }
+    if !MismatchOf(Render(allocator, "[{}][{}]", 1), 2u, 1u) { return 31; }
+    if !MismatchOf(Render(allocator, "{}"), 1u, 0u) { return 32; }
+    if !MismatchOf(Render(allocator, "none", 1), 0u, 1u) { return 33; }
+    if !MismatchOf(Render(allocator, "{{}} {}", 1, 2), 1u, 2u) { return 34; }
 
-    // Escaped braces, and lone ones copied through as they stand.
-    if !Matches(Format(allocator, "{{}}"), "{}") { return 40; }
-    if !Matches(Format(allocator, "{{{}}}", 7), "{7}") { return 41; }
-    if !Matches(Format(allocator, "{"), "{") { return 50; }
-    if !Matches(Format(allocator, "}"), "}") { return 51; }
-    if !Matches(Format(allocator, "{x} {}", 1), "{x} 1") { return 52; }
+    // Escaped braces are the only way to write one, and a lone brace of either kind is now a refusal rather than
+    // literal text. The offset is the brace itself: that is where the pattern went wrong, not where the scan
+    // noticed.
+    if !Matches(Render(allocator, "{{}}"), "{}") { return 40; }
+    if !Matches(Render(allocator, "{{{}}}", 7), "{7}") { return 41; }
+    if !InvalidAt(Render(allocator, "{"), 0u) { return 50; }
+    if !InvalidAt(Render(allocator, "}"), 0u) { return 51; }
+    if !InvalidAt(Render(allocator, "ab{"), 2u) { return 52; }
+    if !InvalidAt(Render(allocator, "ab}cd"), 2u) { return 53; }
+    if !InvalidAt(Render(allocator, "a{b"), 1u) { return 54; }
+
+    // Between the braces, a specification opens with a colon and nothing else does. Positional and named arguments
+    // are not part of this grammar, so the offset is the first character that is not a colon.
+    if !InvalidAt(Render(allocator, "{x} {}", 1), 1u) { return 55; }
+    if !InvalidAt(Render(allocator, "{0}", 1), 1u) { return 56; }
+    if !InvalidAt(Render(allocator, "ok {name}", 1), 4u) { return 57; }
+
+    // A specification that does not parse is a refusal, and its offset is into the pattern rather than into the
+    // specification — which is the case a test checking only the reason would pass with every offset at zero.
+    if !InvalidAt(Render(allocator, "{:>>>}", 1), 4u) { return 60; }
+    if !InvalidAt(Render(allocator, "ab {:>>>}", 1), 7u) { return 61; }
+    if !InvalidAt(Render(allocator, "{} {:>>>}", 1, 2), 7u) { return 62; }
+
+    // A style the value refuses is a different failure from one the parser refuses: the first parses and is turned
+    // down by the value, and it is reported as unsupported rather than as a malformed pattern.
+    let refusedStyle = match <-Render(allocator, "{:q}", 1) {
+        .Success(_) => false,
+        .Error(reason) => match reason { .UnsupportedRequest => true, else => false }
+    };
+    if !refusedStyle { return 63; }
+
+    // A valid specification still works, which is what makes the refusals above about the malformed ones.
+    if !Matches(Render(allocator, "[{:>6}]", "ab"), "[    ab]") { return 64; }
+    if !Matches(Render(allocator, "{:04}", 7), "0007") { return 65; }
 
     // A type of this package's own, reached through the interface.
-    if !Matches(Format(allocator, "at {}", Point { x: -1, y: 2 }), "at (-1, 2)") { return 70; }
+    if !Matches(Render(allocator, "at {}", Point { x: -1, y: 2 }), "at (-1, 2)") { return 70; }
 
-    // Text as the format and as an argument. A string renders itself, which is what makes it usable as a
+    // Text as the pattern and as an argument. A string renders itself, which is what makes it usable as a
     // variadic argument at all.
-    if !Matches(Format(allocator, "{} and {}", "text", 1), "text and 1") { return 71; }
-    if !Matches(Format(allocator, "[{:>6}]", "ab"), "[    ab]") { return 73; }
+    if !Matches(Render(allocator, "{} and {}", "text", 1), "text and 1") { return 71; }
 
     // A rendering that outgrows any up-front guess: one hundred units of sixteen bytes, plus the frame around them.
-    if RenderedLength(Format(allocator, "<{}>", Filler { count: 100 })) != 1602u { return 80; }
+    if RenderedLength(Render(allocator, "<{}>", Filler { count: 100 })) != 1602u { return 80; }
+
+    // A destination that runs out of room reports it, and stops: what a refused write did not accept is not
+    // written, and nothing after the failing placeholder is either.
+    var room: char8[8];
+    var writer = BufferWriter((@room[0])[..8]);
+    let sink: &var TextWriter = writer;
+    let overflowed = WriteFormat(sink, "12345{}<end>", Filler { count: 1 });
+    let capacity = match overflowed {
+        .Success(_) => false,
+        .Error(reason) => match reason { .InsufficientCapacity => true, else => false }
+    };
+    if !capacity { return 90; }
+    // The literal before the placeholder went in; the sixteen bytes the value wanted did not fit and so landed not
+    // at all, and the text after it never ran.
+    if writer.Length() != 5u { return 91; }
+
+    // A pattern that is wrong writes nothing at all, because it is checked before the first byte goes out.
+    var second = BufferWriter((@room[0])[..8]);
+    let other: &var TextWriter = second;
+    if WriteFormat(other, "abc{", 1).IsSuccess() { return 92; }
+    if second.Length() != 0u { return 93; }
+    var third = BufferWriter((@room[0])[..8]);
+    let last: &var TextWriter = third;
+    if WriteFormat(last, "abc{}", 1, 2).IsSuccess() { return 94; }
+    if third.Length() != 0u { return 95; }
+
+    // A failed render gives its block back. Counted, because a leak leaves the same error behind as a clean
+    // failure and is invisible to a check that only reads the result.
+    var counting = CountingAllocator { inner: allocator, live: 0 };
+    let counted: Allocator = counting;
+    if !Matches(Render(counted, "{} ok", 1), "1 ok") { return 100; }
+    if counting.live != 0 { return 101; }
+    if !InvalidAt(Render(counted, "abcdefghijklmnop {", 1), 17u) { return 102; }
+    if counting.live != 0 { return 103; }
+    if !MismatchOf(Render(counted, "abcdefghijklmnop {}", 1, 2), 1u, 2u) { return 104; }
+    if counting.live != 0 { return 105; }
 
     return 0;
 }

@@ -1,6 +1,6 @@
 import Core::{ Result, Unit };
 import Allocator::{ Allocator, SystemAllocator };
-import Format::Format;
+import Format::Render;
 import Text::{ FormatError, String, StringView };
 
 // The wide widths, checked at their edges: the largest value of each unsigned width, the most negative of each
@@ -21,44 +21,44 @@ func Main() -> int {
     let allocator: Allocator = system;
 
     // Small values render as their narrow selves, whatever the width behind them.
-    let small = Rendered(allocator, Format(allocator, "{}", 42u128));
+    let small = Rendered(allocator, Render(allocator, "{}", 42u128));
     if !Matches(allocator, small.Bytes(), "42") { return 10; }
-    let zero = Rendered(allocator, Format(allocator, "{}", 0u512));
+    let zero = Rendered(allocator, Render(allocator, "{}", 0u512));
     if !Matches(allocator, zero.Bytes(), "0") { return 11; }
-    let negSmall = Rendered(allocator, Format(allocator, "{}", -42i256));
+    let negSmall = Rendered(allocator, Render(allocator, "{}", -42i256));
     if !Matches(allocator, negSmall.Bytes(), "-42") { return 12; }
 
     // The largest uint128: thirty-nine digits.
-    let max128 = Rendered(allocator, Format(allocator, "{}", 340282366920938463463374607431768211455u128));
+    let max128 = Rendered(allocator, Render(allocator, "{}", 340282366920938463463374607431768211455u128));
     if !Matches(allocator, max128.Bytes(), "340282366920938463463374607431768211455") { return 20; }
 
     // The most negative int128, the value a negation cannot reach.
-    let min128 = Rendered(allocator, Format(allocator, "{}", -170141183460469231731687303715884105728i128));
+    let min128 = Rendered(allocator, Render(allocator, "{}", -170141183460469231731687303715884105728i128));
     if !Matches(allocator, min128.Bytes(), "-170141183460469231731687303715884105728") { return 21; }
 
     // Hex of the largest uint128 is thirty-two f's, and the prefix sits outside them.
-    let hex128 = Rendered(allocator, Format(allocator, "{:#x}", 340282366920938463463374607431768211455u128));
+    let hex128 = Rendered(allocator, Render(allocator, "{:#x}", 340282366920938463463374607431768211455u128));
     if !Matches(allocator, hex128.Bytes(), "0xffffffffffffffffffffffffffffffff") { return 22; }
 
     // A power of two straddling the 64-bit line: 2^64 in decimal and hex.
-    let past64 = Rendered(allocator, Format(allocator, "{}", 18446744073709551616u128));
+    let past64 = Rendered(allocator, Render(allocator, "{}", 18446744073709551616u128));
     if !Matches(allocator, past64.Bytes(), "18446744073709551616") { return 23; }
-    let past64hex = Rendered(allocator, Format(allocator, "{:x}", 18446744073709551616u128));
+    let past64hex = Rendered(allocator, Render(allocator, "{:x}", 18446744073709551616u128));
     if !Matches(allocator, past64hex.Bytes(), "10000000000000000") { return 24; }
 
     // 2^128 rendered from a uint256, in decimal and binary digit count.
-    let past128 = Rendered(allocator, Format(allocator, "{}", 340282366920938463463374607431768211456u256));
+    let past128 = Rendered(allocator, Render(allocator, "{}", 340282366920938463463374607431768211456u256));
     if !Matches(allocator, past128.Bytes(), "340282366920938463463374607431768211456") { return 30; }
-    let bits129 = Rendered(allocator, Format(allocator, "{:b}", 340282366920938463463374607431768211456u256));
+    let bits129 = Rendered(allocator, Render(allocator, "{:b}", 340282366920938463463374607431768211456u256));
     if bits129.Length() != 129 { return 31; }
 
     // The largest uint256: seventy-eight digits.
-    let max256 = Rendered(allocator, Format(allocator, "{}", 115792089237316195423570985008687907853269984665640564039457584007913129639935u256));
+    let max256 = Rendered(allocator, Render(allocator, "{}", 115792089237316195423570985008687907853269984665640564039457584007913129639935u256));
     if !Matches(allocator, max256.Bytes(),
         "115792089237316195423570985008687907853269984665640564039457584007913129639935") { return 32; }
 
     // The largest uint512: one hundred fifty-five digits, checked by length and both ends.
-    let max512 = Rendered(allocator, Format(allocator, "{:x}", 13407807929942597099574024998205846127479365820592393377723561443721764030073546976801874298166903427690031858186486050853753882811946569946433649006084095u512));
+    let max512 = Rendered(allocator, Render(allocator, "{:x}", 13407807929942597099574024998205846127479365820592393377723561443721764030073546976801874298166903427690031858186486050853753882811946569946433649006084095u512));
     if max512.Length() != 128 { return 40; }
     let ends = max512.View();
     if !ends.StartsWith(StringView::FromValidated("ff")) || !ends.EndsWith(StringView::FromValidated("ff")) {
@@ -66,7 +66,7 @@ func Main() -> int {
     }
 
     // The spec machinery reaches the wide widths whole: zero-padded hex with a prefix.
-    let padded = Rendered(allocator, Format(allocator, "{:#010x}", 255u128));
+    let padded = Rendered(allocator, Render(allocator, "{:#010x}", 255u128));
     if !Matches(allocator, padded.Bytes(), "0x000000ff") { return 50; }
 
     return 0;

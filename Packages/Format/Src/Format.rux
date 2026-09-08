@@ -1,87 +1,202 @@
 // Filling placeholders in a run of text.
 //
-// `{}` takes the next argument, in the order they are written; `{{` and `}}` are how a literal brace is spelled.
-// A placeholder may carry a specification after a colon, which is parsed once by Text and applied by the value.
+// `{}` takes the next argument, in the order they are written; `{:spec}` carries a specification, parsed once by
+// Text and applied by the value; `{{` and `}}` are how a literal brace is spelled. That is the whole grammar, and
+// anything else containing a brace is a mistake in the pattern rather than text to copy through.
+//
+// Strictness is the decision this file rests on, and it replaces two lenient behaviours that used to live here. A
+// placeholder with no argument left used to render as nothing, and a specification that did not parse used to be
+// copied through as literal text. Both reported the mistake by printing it, which is the worst of the options: the
+// program carries on, the output is wrong in a way that looks deliberate, and the caller finds out from a reader.
+// Both are now failures — `ArgumentCountMismatch` and `InvalidSpecification` — and both are found before anything
+// is written, so a pattern that is wrong produces no output at all rather than a prefix of one.
+//
+// Finding them first is why the pattern is walked twice. The first pass validates: it counts the placeholders,
+// parses every specification, and rejects a brace that is not part of the grammar, without touching the
+// destination. The second pass writes. A pattern is small and the parse is a few comparisons per placeholder, so
+// the cost is the price of never emitting half a rendering of a pattern that was never going to work.
 //
 // Arguments arrive as `Display`, so each one writes itself into the destination directly. Nothing is rendered into
-// a string on the way, which is the difference from the old shape: formatting six values allocated six blocks and
-// copied out of each of them, and now it allocates only what the result itself needs.
-//
-// Two lenient behaviours survive here and are deliberately not fixed yet: a placeholder with no argument left is
-// written as nothing, and one whose specification does not parse is copied through as literal text. Making both
-// fail — with `ArgumentCountMismatch` and `InvalidSpecification` — is a behaviour change with its own task, and
-// doing it here would have hidden it inside a protocol move.
+// a string on the way, which is what keeps the allocation count at what the result itself needs.
 
 import Allocator::Allocator;
 import Core::{ Result, Unit };
 import Text::{ Display, FormatError, FormatOk, FormatSpec, ParseFormatSpec, String, StringBuilder, TextFailureOf,
                TextWriter, WriteAscii };
 
-/// Writes `format` into `writer`, with each `{}` replaced by the next argument.
-///
-/// A placeholder is `{}`, or `{:spec}` carrying fill, alignment, sign, width, precision and base — see
-/// `ParseFormatSpec` for the grammar. `{{` and `}}` stand for a literal brace.
-///
-/// # Failures
-/// Reports whatever the destination or a value's own renderer reported, having written what it managed to first,
-/// and stops at the first failure rather than continuing to a destination that has already refused something.
-///
-/// @param writer the destination
-/// @param format the pattern to write
-/// @returns success when the whole pattern and every consumed argument were accepted
-/// @see https://rux-lang.dev/docs/api/format/write-format
-pub func WriteFormat(writer: &var TextWriter, format: char8[..], args: Display...) -> Result<Unit, FormatError> {
-    // The argument the next placeholder takes. Placeholders are filled in the order they are written, so this only
-    // ever moves forward.
-    var next: uint = 0;
+// Where a placeholder's specification begins and ends inside the pattern, and where the placeholder itself does.
+//
+// `body` is the half-open range of the specification's bytes, empty for a bare `{}`. `after` is the byte just past
+// the closing brace, which is where scanning resumes.
+struct Placeholder {
+    bodyStart: uint;
+    bodyEnd: uint;
+    after: uint;
+}
+
+// Reads the placeholder opening at `at`, where `format[at]` is a `{` that is not part of a `{{`.
+//
+// Reports the failure through the slot rather than returning a `Result`, because `?` delivers a payload-carrying
+// error with its payload zeroed — the defect recorded in Docs/CompilerDefects.md — and every failure here carries
+// the offset that makes it useful. Assigning a variant through a `*var` slot preserves it.
+func ReadPlaceholder(format: char8[..], at: uint, found: *var Placeholder, error: *var FormatError) -> bool {
+    var close = at + 1;
+    while close < format.length && format[close] != c8'}' {
+        close = close + 1;
+    }
+    if close >= format.length {
+        // An opening brace with no closing one. The offset is the brace, which is where the pattern went wrong,
+        // not where the scan gave up.
+        *error = FormatError::InvalidSpecification(at);
+        return false;
+    }
+    if close == at + 1 {
+        *found = Placeholder { bodyStart: close, bodyEnd: close, after: close + 1 };
+        return true;
+    }
+    if format[at + 1] != c8':' {
+        // Anything between the braces has to open with a colon. Positional and named arguments are not part of
+        // this grammar, so `{0}` and `{name}` are mistakes rather than requests, and the offset is the first
+        // character that is not one.
+        *error = FormatError::InvalidSpecification(at + 1);
+        return false;
+    }
+    *found = Placeholder { bodyStart: at + 2, bodyEnd: close, after: close + 1 };
+    return true;
+}
+
+// Parses the specification a placeholder carries, translating the parser's offset into an offset into the pattern.
+//
+// The parser reports where it stopped inside the body it was given; a caller reading the failure is looking at the
+// whole pattern, so the body's own start is added. That is the composition rule `ParseFailure` states, applied at
+// the one place in this package that embeds another parser.
+func ReadSpecification(format: char8[..], found: Placeholder, spec: *var FormatSpec, error: *var FormatError) -> bool {
+    if found.bodyEnd == found.bodyStart {
+        *spec = FormatSpec::Plain();
+        return true;
+    }
+    let body = (@format.data[found.bodyStart])[..found.bodyEnd - found.bodyStart];
+    var parsed = false;
+    match ParseFormatSpec(body) {
+        .Success(value) => {
+            *spec = value;
+            parsed = true;
+        },
+        .Error(reason) => {
+            *error = match reason {
+                .InvalidSpecification(offset) => FormatError::InvalidSpecification(found.bodyStart + offset),
+                else => reason
+            };
+        }
+    }
+    return parsed;
+}
+
+// Walks the pattern without writing, counting its placeholders and rejecting every brace the grammar does not
+// allow. This is what lets a failed pattern leave the destination untouched.
+func ValidatePattern(format: char8[..], count: *var uint, error: *var FormatError) -> bool {
+    var placeholders: uint = 0;
     var index: uint = 0;
     while index < format.length {
         let ch = format[index];
         let paired = index + 1 < format.length;
         if ch == c8'{' && paired && format[index + 1] == c8'{' {
-            WriteAscii(writer, c8'{')?;
-            index += 2;
+            index = index + 2;
             continue;
         }
-        if ch == c8'}' && paired && format[index + 1] == c8'}' {
-            WriteAscii(writer, c8'}')?;
-            index += 2;
-            continue;
-        }
-        if ch == c8'{' && paired && format[index + 1] != c8'{' {
-            // A placeholder runs to the closing brace. `{}` asks for nothing; `{:spec}` asks for what the spec
-            // says; anything else — no closing brace, or a spec that does not parse — is literal text, so the
-            // mistake shows where it was written.
-            var close = index + 1;
-            while close < format.length && format[close] != c8'}' {
-                close++;
-            }
-            var spec = FormatSpec::Plain();
-            var placeholder = close < format.length;
-            if placeholder && close > index + 1 {
-                if format[index + 1] == c8':' {
-                    let body = (@format.data[index + 2])[..close - index - 2];
-                    // A specification that does not parse leaves the placeholder as literal text, which is the
-                    // lenient behaviour task 18 replaces with a reported InvalidSpecification. The offset the
-                    // parser produced is relative to `body`, so an embedding parser adding `index + 2` is what
-                    // will turn it into an offset into the pattern.
-                    placeholder = ParseFormatSpec(body).TryIntoValue(@spec);
-                }
-                else {
-                    placeholder = false;
-                }
-            }
-            if placeholder {
-                if next < args.length {
-                    args[next].WriteDisplay(writer, spec)?;
-                    next++;
-                }
-                index = close + 1;
+        if ch == c8'}' {
+            if paired && format[index + 1] == c8'}' {
+                index = index + 2;
                 continue;
             }
+            // A closing brace that no placeholder opened. It is written `}}` when it is meant, so one on its own is
+            // as much a mistake as an unterminated `{`.
+            *error = FormatError::InvalidSpecification(index);
+            return false;
+        }
+        if ch == c8'{' {
+            var found = Placeholder { bodyStart: 0, bodyEnd: 0, after: 0 };
+            if !ReadPlaceholder(format, index, @found, error) { return false; }
+            var spec = FormatSpec::Plain();
+            if !ReadSpecification(format, found, @spec, error) { return false; }
+            placeholders = placeholders + 1;
+            index = found.after;
+            continue;
+        }
+        index = index + 1;
+    }
+    *count = placeholders;
+    return true;
+}
+
+/// Writes `format` into `writer`, with each `{}` replaced by the next argument.
+///
+/// A placeholder is `{}`, or `{:spec}` carrying fill, alignment, sign, width, precision and style — see
+/// `ParseFormatSpec` for the grammar. `{{` and `}}` stand for a literal brace, and are the only way to write one.
+///
+/// The pattern is checked before any of it is written, so a pattern that is wrong produces no output rather than a
+/// prefix of one. What is checked is the pattern and the argument count, both of which are known at the call site;
+/// a value's own rendering can still fail partway, and what it managed to write stays written.
+///
+/// # Failures
+/// Reports `InvalidSpecification` with the byte offset into `format` for a specification that does not parse, a
+/// brace the grammar does not allow, or a placeholder with no closing brace; `ArgumentCountMismatch` with the
+/// placeholders counted and the arguments supplied when the two differ; and otherwise whatever the destination or
+/// a value's own renderer reported, stopping at the first refusal. The first two are found before anything is
+/// written.
+///
+/// @param writer the destination
+/// @param format the pattern to write
+/// @returns success when the whole pattern and every argument were accepted
+/// @see https://rux-lang.dev/docs/api/format/write-format
+pub func WriteFormat(writer: &var TextWriter, format: char8[..], args: Display...) -> Result<Unit, FormatError> {
+    var expected: uint = 0;
+    var failure = FormatError::UnsupportedRequest;
+    if !ValidatePattern(format, @expected, @failure) {
+        return Result::Error<Unit, FormatError>(failure);
+    }
+    if expected != args.length {
+        return Result::Error<Unit, FormatError>(FormatError::ArgumentCountMismatch(expected, args.length));
+    }
+
+    // The argument the next placeholder takes. Placeholders are filled in the order they are written, so this only
+    // ever moves forward, and the validation pass has already established there are exactly enough.
+    var next: uint = 0;
+    var index: uint = 0;
+    while index < format.length {
+        let ch = format[index];
+        if ch == c8'{' && index + 1 < format.length && format[index + 1] == c8'{' {
+            WriteAscii(writer, c8'{')?;
+            index = index + 2;
+            continue;
+        }
+        if ch == c8'}' {
+            // Validation established that every closing brace here is the first of a `}}`, so there is a second.
+            WriteAscii(writer, c8'}')?;
+            index = index + 2;
+            continue;
+        }
+        if ch == c8'{' {
+            // The two reads cannot fail, since the same walk already succeeded above; the failure paths stay
+            // written out rather than discarded, so a future change to one pass cannot silently diverge from the
+            // other.
+            var found = Placeholder { bodyStart: 0, bodyEnd: 0, after: 0 };
+            var again = FormatError::UnsupportedRequest;
+            if !ReadPlaceholder(format, index, @found, @again) {
+                return Result::Error<Unit, FormatError>(again);
+            }
+            var spec = FormatSpec::Plain();
+            if !ReadSpecification(format, found, @spec, @again) {
+                return Result::Error<Unit, FormatError>(again);
+            }
+            let outcome = args[next].WriteDisplay(writer, spec);
+            if outcome.IsError() { return outcome; }
+            next = next + 1;
+            index = found.after;
+            continue;
         }
         WriteAscii(writer, ch)?;
-        index++;
+        index = index + 1;
     }
     return FormatOk();
 }
@@ -92,22 +207,34 @@ pub func WriteFormat(writer: &var TextWriter, format: char8[..], args: Display..
 /// caller already has. Reserving up front is a guess at the result's size — the literal text plus a little for each
 /// argument — so a short call fills in without a reallocation and a long one grows through the builder as usual.
 ///
+/// It is named for what it does rather than for the package, because `Format(allocator, ...)` read as a noun and a
+/// namespace at once and said nothing about producing a value.
+///
 /// # Failures
-/// Reports `TextFailure(OutOfMemory)` when the initial reservation fails, and otherwise whatever the pattern or a
-/// value reported. On failure the partially built string is released rather than returned, so a caller never
-/// receives half a rendering that looks whole.
+/// Reports `TextFailure(OutOfMemory)` when the initial reservation fails, and otherwise whatever `WriteFormat`
+/// reported. On failure the partially built string is released rather than returned, so a caller never receives
+/// half a rendering that looks whole and the allocator gets its block back either way.
 ///
 /// @param allocator what the returned string is built with and will give its block back to
 /// @param format the pattern to render
 /// @returns the rendered string, or why it could not be produced
-/// @see https://rux-lang.dev/docs/api/format/format
-pub func Format(allocator: Allocator, format: char8[..], args: Display...) -> Result<String, FormatError> {
+/// @see https://rux-lang.dev/docs/api/format/render
+pub func Render(allocator: Allocator, format: char8[..], args: Display...) -> Result<String, FormatError> {
     var builder = StringBuilder(allocator);
     let reserved = builder.Reserve(format.length + args.length * 8);
     if reserved.IsError() {
         return Result::Error<String, FormatError>(FormatError::TextFailure(TextFailureOf(reserved)));
     }
     let sink: &var TextWriter = builder;
-    WriteFormat(sink, format, args...)?;
+    let outcome = WriteFormat(sink, format, args...);
+    // Not `?`: the success types differ, so propagating would have to rebuild the error, and `?` delivers a
+    // payload-carrying one with its payload zeroed — the defect in Docs/CompilerDefects.md, which would turn every
+    // offset and count this function reports into a nought. Lifting the error through a slot preserves it. The
+    // builder releases the partial text as it goes out of scope on this path.
+    var failure = FormatError::UnsupportedRequest;
+    if outcome.TryIntoError(@failure) {
+        builder.Release();
+        return Result::Error<String, FormatError>(failure);
+    }
     return Result::Success<String, FormatError>(builder.IntoString());
 }
