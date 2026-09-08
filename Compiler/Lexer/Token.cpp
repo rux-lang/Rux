@@ -1,52 +1,68 @@
 #include "Lexer/Token.h"
 
+#include <algorithm>
 #include <unordered_map>
+#include <vector>
 
 namespace Rux {
+namespace {
+// The keyword table, built once. string_view keys are fine because the string literals they point to have static
+// storage duration. It is a namespace-scope constant rather than a function-local static so that Keywords() can
+// hand it out: the lexer and anything checking coverage against it then read the same table.
+const std::unordered_map<std::string_view, TokenKind> kKeywords = {
+    {"as", TokenKind::AsKeyword},
+    {"break", TokenKind::BreakKeyword},
+    {"const", TokenKind::ConstKeyword},
+    {"continue", TokenKind::ContinueKeyword},
+    {"defer", TokenKind::DeferKeyword},
+    {"do", TokenKind::DoKeyword},
+    {"else", TokenKind::ElseKeyword},
+    {"enum", TokenKind::EnumKeyword},
+    {"extend", TokenKind::ExtendKeyword},
+    {"extern", TokenKind::ExternKeyword},
+    {"false", TokenKind::BoolLiteral},
+    {"for", TokenKind::ForKeyword},
+    {"func", TokenKind::FuncKeyword},
+    {"if", TokenKind::IfKeyword},
+    {"import", TokenKind::ImportKeyword},
+    {"in", TokenKind::InKeyword},
+    {"interface", TokenKind::InterfaceKeyword},
+    {"intrinsic", TokenKind::IntrinsicKeyword},
+    {"is", TokenKind::IsKeyword},
+    {"let", TokenKind::LetKeyword},
+    {"loop", TokenKind::LoopKeyword},
+    {"match", TokenKind::MatchKeyword},
+    {"module", TokenKind::ModuleKeyword},
+    {"null", TokenKind::NullKeyword},
+    {"pub", TokenKind::PubKeyword},
+    {"return", TokenKind::ReturnKeyword},
+    {"self", TokenKind::SelfKeyword},
+    {"struct", TokenKind::StructKeyword},
+    {"true", TokenKind::BoolLiteral},
+    {"type", TokenKind::TypeKeyword},
+    {"union", TokenKind::UnionKeyword},
+    {"var", TokenKind::VarKeyword},
+    {"variant", TokenKind::VariantKeyword},
+    {"when", TokenKind::WhenKeyword},
+    {"while", TokenKind::WhileKeyword},
+};
+} // namespace
+
 TokenKind KeywordKind(const std::string_view text) noexcept {
-    // Static table built once; string_view keys are fine because the
-    // string literals they point to have static storage duration.
-    static const std::unordered_map<std::string_view, TokenKind> kTable = {
-        {"as", TokenKind::AsKeyword},
-        {"break", TokenKind::BreakKeyword},
-        {"const", TokenKind::ConstKeyword},
-        {"continue", TokenKind::ContinueKeyword},
-        {"defer", TokenKind::DeferKeyword},
-        {"do", TokenKind::DoKeyword},
-        {"else", TokenKind::ElseKeyword},
-        {"enum", TokenKind::EnumKeyword},
-        {"extend", TokenKind::ExtendKeyword},
-        {"extern", TokenKind::ExternKeyword},
-        {"false", TokenKind::BoolLiteral},
-        {"for", TokenKind::ForKeyword},
-        {"func", TokenKind::FuncKeyword},
-        {"if", TokenKind::IfKeyword},
-        {"import", TokenKind::ImportKeyword},
-        {"in", TokenKind::InKeyword},
-        {"interface", TokenKind::InterfaceKeyword},
-        {"intrinsic", TokenKind::IntrinsicKeyword},
-        {"is", TokenKind::IsKeyword},
-        {"let", TokenKind::LetKeyword},
-        {"loop", TokenKind::LoopKeyword},
-        {"match", TokenKind::MatchKeyword},
-        {"module", TokenKind::ModuleKeyword},
-        {"null", TokenKind::NullKeyword},
-        {"pub", TokenKind::PubKeyword},
-        {"return", TokenKind::ReturnKeyword},
-        {"self", TokenKind::SelfKeyword},
-        {"struct", TokenKind::StructKeyword},
-        {"true", TokenKind::BoolLiteral},
-        {"type", TokenKind::TypeKeyword},
-        {"union", TokenKind::UnionKeyword},
-        {"var", TokenKind::VarKeyword},
-        {"variant", TokenKind::VariantKeyword},
-        {"when", TokenKind::WhenKeyword},
-        {"while", TokenKind::WhileKeyword},
-    };
-    if (const auto it = kTable.find(text); it != kTable.end()) {
+    if (const auto it = kKeywords.find(text); it != kKeywords.end()) {
         return it->second;
     }
     return TokenKind::Ident;
+}
+
+std::vector<std::string_view> Keywords() {
+    std::vector<std::string_view> spellings;
+    spellings.reserve(kKeywords.size());
+    for (const auto &[spelling, kind] : kKeywords) {
+        spellings.push_back(spelling);
+    }
+    std::ranges::sort(spellings);
+    return spellings;
 }
 
 std::string_view TokenKindName(const TokenKind kind) noexcept {

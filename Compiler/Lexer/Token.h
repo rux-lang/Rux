@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace Rux {
 /// Every kind of token the language has. The trailing comment on each enumerator is the source spelling it stands for,
@@ -169,6 +170,12 @@ struct Token {
 
 /// Map a keyword string to its TokenKind; returns TokenKind::Ident if not a keyword.
 [[nodiscard]] TokenKind KeywordKind(std::string_view text) noexcept;
+
+/// Every keyword spelling the lexer recognizes, sorted.
+///
+/// The lexer needs only the lookup above; this exists so that coverage checks read the same table the lexer does
+/// rather than a list copied out of it, which is exactly the sort of list that goes stale.
+[[nodiscard]] std::vector<std::string_view> Keywords();
 
 /// Name of a TokenKind suitable for error messages.
 [[nodiscard]] std::string_view TokenKindName(TokenKind kind) noexcept;

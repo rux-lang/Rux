@@ -1,24 +1,34 @@
-// The language test matrix: every primitive the compiler knows has somewhere to be exercised.
+// The language test matrix: every primitive and every keyword the compiler knows has somewhere to be exercised.
 //
 // Tests/Language is organized one directory per language feature, and for the primitive types one directory per
 // width. That layout is only worth having if it stays complete, and completeness is exactly the property that decays
 // silently: a width added to PrimitiveCatalog.cpp compiles, lowers and ships without anyone noticing that nothing
-// runs it. That is how int512 and uint256 came to be implemented with no executable coverage at all.
+// runs it. That is how int512 and uint256 came to be implemented with no executable coverage at all, and how
+// `extern` came to have no language test while being used by five packages.
 //
-// So the catalog is the authority and this file compares the directory set against it, rather than against a list
-// copied from it. A copied list would drift the same way the directories did.
+// So the compiler's own tables are the authority — PrimitiveCatalog.cpp for the types and Token.cpp for the
+// keywords — and this file compares what exists against them rather than against lists copied out of them. A copied
+// list would drift exactly the way the directories did.
+//
+// The two halves check different things, because the two are shaped differently. A primitive owns a directory named
+// after it, so that correspondence is computed. A keyword does not: `do` is exercised by DoWhile, `pub` by
+// Visibility, `import` and `module` both by ModuleScope, and words like `as`, `in` and `is` appear in prose
+// everywhere, so no word search could establish ownership. Keyword ownership is therefore written out and checked,
+// which also means adding a keyword to the language forces someone to say which case covers it.
 //
 // A reserved width gets a directory too, holding a placeholder that says so. It cannot hold a program that uses the
 // type, because such a program does not compile; the refusal is asserted in Golden/ReservedPrimitiveTypes.rux. The
 // placeholder exists so the matrix is complete by inspection and so an implemented width arrives at a directory
 // that already exists.
 
+#include "Lexer/Token.h"
 #include "Types/PrimitiveCatalog.h"
 
 #include <algorithm>
 #include <cctype>
 #include <doctest.h>
 #include <filesystem>
+#include <map>
 #include <set>
 #include <string>
 #include <string_view>
@@ -92,6 +102,79 @@ TEST_CASE("Every primitive test directory names a primitive the catalog has") {
                       " names a primitive spelling the catalog does not have as a canonical name. Rename it to the "
                       "canonical spelling or remove it.");
     }
+}
+
+namespace {
+
+/// Which language test owns each keyword.
+///
+/// Written out rather than derived. Ownership cannot be inferred from a word search: `as`, `in`, `is` and `do` all
+/// occur inside ordinary prose and identifiers, so counting files that mention a keyword measures nothing. Nor does
+/// a keyword map to a directory of its own name — `do` is exercised by DoWhile, `pub` by Visibility, `type` by
+/// TypeAlias, `import` and `module` by ModuleScope. Naming the owner makes the claim checkable: the directory must
+/// exist, and a keyword added to the lexer must be given an owner here before this compiles as coverage.
+const std::map<std::string_view, std::string_view> kKeywordOwners = {
+    {"as", "As"},
+    {"break", "Break"},
+    {"const", "Const"},
+    {"continue", "Continue"},
+    {"defer", "Defer"},
+    {"do", "DoWhile"},
+    {"else", "If"},
+    {"enum", "Enum"},
+    {"extend", "SliceExtend"},
+    {"extern", "Extern"},
+    {"false", "Bool"},
+    {"for", "For"},
+    {"func", "Functions"},
+    {"if", "If"},
+    {"import", "ModuleScope"},
+    {"in", "For"},
+    {"interface", "Interface"},
+    {"intrinsic", "IntrinsicReplacement"},
+    {"is", "Is"},
+    {"let", "Var"},
+    {"loop", "Loop"},
+    {"match", "Match"},
+    {"module", "ModuleScope"},
+    {"null", "Pointers"},
+    {"pub", "Visibility"},
+    {"return", "Functions"},
+    {"self", "Receiver"},
+    {"struct", "Struct"},
+    {"true", "Bool"},
+    {"type", "TypeAlias"},
+    {"union", "Union"},
+    {"var", "Var"},
+    {"variant", "Variant"},
+    {"when", "When"},
+    {"while", "While"},
+};
+
+} // namespace
+
+TEST_CASE("Every keyword the lexer recognizes has a named owning language test") {
+    const auto directories = LanguageTestDirectories();
+
+    for (const auto &keyword : Keywords()) {
+        const auto owner = kKeywordOwners.find(keyword);
+        REQUIRE_MESSAGE(owner != kKeywordOwners.end(), "keyword '", keyword,
+                        "' has no owning language test. Add one and name it in kKeywordOwners, or point the keyword "
+                        "at the existing case that exercises it.");
+        CHECK_MESSAGE(directories.contains(std::string(owner->second)), "keyword '", keyword, "' names Tests/Language/",
+                      owner->second,
+                      " as its owner, and no such directory exists. Update kKeywordOwners after a rename.");
+    }
+}
+
+TEST_CASE("The keyword ownership table names no keyword the lexer does not have") {
+    // The other direction, so a keyword removed from the language does not leave a stale claim of coverage behind.
+    for (const auto &[keyword, owner] : kKeywordOwners) {
+        CHECK_MESSAGE(KeywordKind(keyword) != TokenKind::Ident, "kKeywordOwners names '", keyword,
+                      "', which the lexer does not treat as a keyword. Remove the entry.");
+    }
+    CHECK_MESSAGE(kKeywordOwners.size() == Keywords().size(),
+                  "the ownership table and the lexer's keyword table are different sizes");
 }
 
 TEST_CASE("The catalog's implemented and reserved counts are what the matrix was built against") {
