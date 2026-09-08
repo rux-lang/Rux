@@ -10,23 +10,26 @@
 // `Infinity` produces something that is not JSON and that other parsers reject, which turns a computation
 // problem into an interoperation problem somewhere far away. Refusing is the only honest answer; a caller who
 // has a non-finite value has to decide what it means, and only the caller can.
+//
+// Failures are the ones every writer in this workspace reports, which is what lets a JSON document be written
+// into anything a `TextWriter` reaches without a translation at the seam. This used to be a status enum of its
+// own with one case, `Failed`, standing for everything a destination could say — so a buffer that was simply full
+// and a stream that had died arrived identically, and a caller who could have written the document somewhere
+// larger had no way to know that was the problem. What the destination said now travels unchanged. A non-finite
+// number is `ValueOutOfRange`, which is what that case is for: the value is perfectly good and the requested form
+// cannot hold it.
 
+import Core::{ Result, Unit };
+import Text::{ FormatError, FormatOk, TextWriter };
 
-import Text::TextWriter;
-
-/// Why writing stopped.
+/// How deep a document may nest before the writer refuses.
 ///
-/// https://rux-lang.dev/docs/api/json/write-error
-pub enum JsonWriteError: int32 {
-    /// Nothing went wrong.
-    None = 0,
-    /// The writer refused the bytes.
-    Failed = 1,
-    /// A number that JSON cannot spell — a NaN or an infinity.
-    NonFinite = 2,
-    /// A value nested deeper than the writer will go.
-    TooDeep = 3
-}
+/// The writer descends recursively, so this bounds its own stack rather than the document's shape. It is far past
+/// the parser's default depth, which is what actually decides whether a document of this size can exist: a tree
+/// built in memory rather than parsed is the only way to reach this at all.
+///
+/// @see https://rux-lang.dev/docs/api/json/maximum-write-depth
+pub const MaximumWriteDepth: uint = 512;
 
 /// How a document should be laid out.
 ///
@@ -63,12 +66,19 @@ const JsonHexDigits: char8[..] = "0123456789abcdef";
 /// space. Bytes above that pass through unchanged, so a UTF-8 document stays UTF-8 rather than being expanded
 /// into escapes — which is legal but makes output several times larger for no gain.
 ///
-/// https://rux-lang.dev/docs/api/json/write-escaped
-pub func WriteEscaped(writer: &var TextWriter, text: char8[..]) -> JsonWriteError {
+/// # Failures
+/// Reports whatever the destination reported, stopping at the first refusal, so a destination that has already
+/// refused something is not written to again and a partly written string is not followed by its closing quote.
+///
+/// @param writer the destination
+/// @param text the UTF-8 bytes to escape and write
+/// @returns success when the whole quoted string was accepted
+/// @see https://rux-lang.dev/docs/api/json/write-escaped
+pub func WriteEscaped(writer: &var TextWriter, text: char8[..]) -> Result<Unit, FormatError> {
     var sink = writer;
     var quote: char8[1];
     quote[0] = 0x22u8 as char8;
-    if sink.Write(quote[0..1]).IsError() { return JsonWriteError::Failed; }
+    sink.Write(quote[0..1])?;
     var index: uint = 0;
     var runStart: uint = 0;
     while index < text.length {
@@ -114,19 +124,18 @@ pub func WriteEscaped(writer: &var TextWriter, text: char8[..]) -> JsonWriteErro
         if escapeLength > 0u {
             if index > runStart {
                 let run = (@text.data[runStart])[..index - runStart];
-                if sink.Write(run).IsError() { return JsonWriteError::Failed; }
+                sink.Write(run)?;
             }
-            if sink.Write(escape[0..escapeLength]).IsError() { return JsonWriteError::Failed; }
+            sink.Write(escape[0..escapeLength])?;
             runStart = index + 1u;
         }
         index = index + 1u;
     }
     if index > runStart {
         let run = (@text.data[runStart])[..index - runStart];
-        if sink.Write(run).IsError() { return JsonWriteError::Failed; }
+        sink.Write(run)?;
     }
-    if sink.Write(quote[0..1]).IsError() { return JsonWriteError::Failed; }
-    return JsonWriteError::None;
+    return sink.Write(quote[0..1]);
 }
 
 // Whether a number's text is something JSON can carry. The tree holds numbers as text, so the only way a
@@ -144,19 +153,18 @@ func IsFiniteNumberText(text: char8[..]) -> bool {
     return true;
 }
 
-// Text's WriteBytes, answered as this package's own write failure. Named apart from it deliberately: a
-// name that shadows an imported one is a name that will be reached for by accident.
-func WriteJsonBytes(writer: &var TextWriter, bytes: char8[..]) -> JsonWriteError {
+// One run of bytes to the destination, reporting exactly what the destination said. Named apart from Text's
+// `WriteBytes` deliberately: a name that shadows an imported one is a name that will be reached for by accident.
+func WriteJsonBytes(writer: &var TextWriter, bytes: char8[..]) -> Result<Unit, FormatError> {
     var sink = writer;
-    return sink.Write(bytes).IsSuccess() ? JsonWriteError::None : JsonWriteError::Failed;
+    return sink.Write(bytes);
 }
 
-func WriteNewlineAndIndent(writer: &var TextWriter, style: JsonStyle, level: uint) -> JsonWriteError {
-    if style.indent == 0u { return JsonWriteError::None; }
+func WriteNewlineAndIndent(writer: &var TextWriter, style: JsonStyle, level: uint) -> Result<Unit, FormatError> {
+    if style.indent == 0u { return FormatOk(); }
     var newline: char8[1];
     newline[0] = 0x0Au8 as char8;
-    let broke = WriteJsonBytes(writer, newline[0..1]);
-    if broke != JsonWriteError::None { return broke; }
+    WriteJsonBytes(writer, newline[0..1])?;
     var spaces: char8[64];
     var index: uint = 0;
     while index < 64u {
@@ -166,22 +174,38 @@ func WriteNewlineAndIndent(writer: &var TextWriter, style: JsonStyle, level: uin
     var remaining = style.indent * level;
     while remaining > 0u {
         let step = remaining < 64u ? remaining : 64u;
-        let padded = WriteJsonBytes(writer, spaces[0..step]);
-        if padded != JsonWriteError::None { return padded; }
+        WriteJsonBytes(writer, spaces[0..step])?;
         remaining = remaining - step;
     }
-    return JsonWriteError::None;
+    return FormatOk();
 }
 
 /// Writes `value` to `writer` in the given style.
 ///
-/// https://rux-lang.dev/docs/api/json/write-value
-pub func WriteValue(writer: &var TextWriter, value: &JsonValue, style: JsonStyle) -> JsonWriteError {
+/// The value is borrowed and nothing is allocated: the document writes itself into the destination as it is
+/// walked. A number is written as the text it was read with, which is what keeps an identifier past 2^53 coming
+/// back as itself.
+///
+/// # Failures
+/// Reports whatever the destination reported, unchanged, so a buffer that is merely full stays distinguishable
+/// from a stream that has died — and stops at the first refusal rather than writing the rest of a document into a
+/// destination that has already said no. Reports `ValueOutOfRange` for a number JSON cannot spell, and for a
+/// document nested past `MaximumWriteDepth`.
+///
+/// @param writer the destination
+/// @param value the document to write, borrowed for the call
+/// @param style compact or pretty
+/// @returns success when the whole document was accepted
+/// @see https://rux-lang.dev/docs/api/json/write-value
+pub func WriteValue(writer: &var TextWriter, value: &JsonValue, style: JsonStyle) -> Result<Unit, FormatError> {
     return WriteAtLevel(writer, value, style, 0u);
 }
 
-func WriteAtLevel(writer: &var TextWriter, value: &JsonValue, style: JsonStyle, level: uint) -> JsonWriteError {
-    if level > 512u { return JsonWriteError::TooDeep; }
+func WriteAtLevel(writer: &var TextWriter, value: &JsonValue, style: JsonStyle,
+                  level: uint) -> Result<Unit, FormatError> {
+    // A document this deep cannot have been parsed — the parser's own limit is far shallower — so it was built in
+    // memory, and refusing is better than descending until the stack runs out.
+    if level > MaximumWriteDepth { return Result::Error<Unit, FormatError>(FormatError::ValueOutOfRange); }
     let kind = value.Kind();
     if kind == JsonKind::Null { return WriteJsonBytes(writer, "null"); }
     if kind == JsonKind::Boolean {
@@ -193,8 +217,9 @@ func WriteAtLevel(writer: &var TextWriter, value: &JsonValue, style: JsonStyle, 
         let text = (*value.AsNumber()).Text().Bytes();
         if !IsFiniteNumberText(text) {
             // JSON has no way to spell a NaN or an infinity, so this refuses rather than emitting something
-            // other parsers will reject.
-            return JsonWriteError::NonFinite;
+            // other parsers will reject. The value is not wrong; the form asked for cannot hold it, which is
+            // exactly what `ValueOutOfRange` says.
+            return Result::Error<Unit, FormatError>(FormatError::ValueOutOfRange);
         }
         return WriteJsonBytes(writer, text);
     }
@@ -203,8 +228,7 @@ func WriteAtLevel(writer: &var TextWriter, value: &JsonValue, style: JsonStyle, 
     let isObject = kind == JsonKind::Object;
     let opening = isObject ? "{" : "[";
     let closing = isObject ? "}" : "]";
-    var outcome = WriteJsonBytes(writer, opening);
-    if outcome != JsonWriteError::None { return outcome; }
+    WriteJsonBytes(writer, opening)?;
     let count = value.Length();
     if count == 0u {
         // An empty container stays on one line even when indenting, since a line holding only a bracket says
@@ -214,30 +238,23 @@ func WriteAtLevel(writer: &var TextWriter, value: &JsonValue, style: JsonStyle, 
     var index: uint = 0;
     while index < count {
         if index > 0u {
-            outcome = WriteJsonBytes(writer, ",");
-            if outcome != JsonWriteError::None { return outcome; }
+            WriteJsonBytes(writer, ",")?;
         }
-        outcome = WriteNewlineAndIndent(writer, style, level + 1u);
-        if outcome != JsonWriteError::None { return outcome; }
+        WriteNewlineAndIndent(writer, style, level + 1u)?;
         if isObject {
             let member = value.MemberAt(index);
-            outcome = WriteEscaped(writer, member.name.View().Bytes());
-            if outcome != JsonWriteError::None { return outcome; }
-            outcome = WriteJsonBytes(writer, ":");
-            if outcome != JsonWriteError::None { return outcome; }
+            WriteEscaped(writer, member.name.View().Bytes())?;
+            WriteJsonBytes(writer, ":")?;
             if style.indent > 0u || style.spaceAfterColon {
-                outcome = WriteJsonBytes(writer, " ");
-                if outcome != JsonWriteError::None { return outcome; }
+                WriteJsonBytes(writer, " ")?;
             }
-            outcome = WriteAtLevel(writer, (*member).value, style, level + 1u);
+            WriteAtLevel(writer, (*member).value, style, level + 1u)?;
         }
         else {
-            outcome = WriteAtLevel(writer, *value.At(index), style, level + 1u);
+            WriteAtLevel(writer, *value.At(index), style, level + 1u)?;
         }
-        if outcome != JsonWriteError::None { return outcome; }
         index = index + 1u;
     }
-    outcome = WriteNewlineAndIndent(writer, style, level);
-    if outcome != JsonWriteError::None { return outcome; }
+    WriteNewlineAndIndent(writer, style, level)?;
     return WriteJsonBytes(writer, closing);
 }

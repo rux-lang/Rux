@@ -1084,8 +1084,6 @@ missing-param|Json/Src/Value.rux|func|Object|bb7a260b3b158f15
 missing-param|Json/Src/Value.rux|func|Push|dc1d8aafda0fc2fe
 missing-param|Json/Src/Value.rux|func|RemoveFirst|f14699b07bd815cf
 missing-param|Json/Src/Value.rux|func|Text|0be44b464e32821e
-missing-param|Json/Src/Writer.rux|func|WriteEscaped|d0dce9c53521e526
-missing-param|Json/Src/Writer.rux|func|WriteValue|bc120681ea766735
 missing-param|Linux/Src/Clock.rux|func|ClockGetResolution|dcfe66a548d5e736
 missing-param|Linux/Src/Clock.rux|func|ClockGetTime|d053674a4b7c136d
 missing-param|Linux/Src/Clock.rux|func|ClockNanosleep|ab2929312400ee4c
@@ -2158,8 +2156,6 @@ missing-returns|Json/Src/Value.rux|func|Text|0be44b464e32821e
 missing-returns|Json/Src/Value.rux|func|Text|49a1ef52ba7bd5dc
 missing-returns|Json/Src/Writer.rux|func|Compact|7b8f4ce511c15a62
 missing-returns|Json/Src/Writer.rux|func|Pretty|8c8937c47df073cb
-missing-returns|Json/Src/Writer.rux|func|WriteEscaped|d0dce9c53521e526
-missing-returns|Json/Src/Writer.rux|func|WriteValue|bc120681ea766735
 missing-returns|Linux/Src/Clock.rux|func|ClockGetResolution|dcfe66a548d5e736
 missing-returns|Linux/Src/Clock.rux|func|ClockGetTime|d053674a4b7c136d
 missing-returns|Linux/Src/Clock.rux|func|ClockNanosleep|ab2929312400ee4c
@@ -3881,11 +3877,8 @@ missing-see|Json/Src/Value.rux|func|Text|49a1ef52ba7bd5dc
 missing-see|Json/Src/Value.rux|struct|JsonMember|8f41ecc445058614
 missing-see|Json/Src/Value.rux|struct|JsonNumber|9b1e17e832c37fa1
 missing-see|Json/Src/Value.rux|struct|JsonValue|eba3f37439240b02
-missing-see|Json/Src/Writer.rux|enum|JsonWriteError|4d9a2da86a5a2149
 missing-see|Json/Src/Writer.rux|func|Compact|7b8f4ce511c15a62
 missing-see|Json/Src/Writer.rux|func|Pretty|8c8937c47df073cb
-missing-see|Json/Src/Writer.rux|func|WriteEscaped|d0dce9c53521e526
-missing-see|Json/Src/Writer.rux|func|WriteValue|bc120681ea766735
 missing-see|Json/Src/Writer.rux|struct|JsonStyle|485b22ac894150f4
 missing-see|Linux/Src/Clock.rux|const|ClockMonotonicRaw|6b0bc30b1785e06f
 missing-see|Linux/Src/Clock.rux|const|ClockMonotonic|ce86f70520e45100

@@ -2,21 +2,52 @@
 // legal rather than conventional makes output differ from every other writer for no benefit.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert };
+import Core::{ Assert, Result, Unit };
 import Format::{ TextWriter };
-import Json::{ JsonKind, JsonStyle, JsonValue, JsonWriteError, Parse, WriteValue };
-import Text::{ String, StringBuilder, StringView, TextError };
+import Json::{ JsonKind, JsonStyle, JsonValue, Parse, WriteValue };
+import Text::{ BufferWriter, FormatError, String, StringBuilder, StringView, TextError };
 
 func View(bytes: char8[..]) -> StringView {
     return StringView::FromBytes(bytes).ValueOr(StringView());
 }
 
-// Writes a value and returns the text.
-func Written(allocator: Allocator, value: &JsonValue, style: JsonStyle, outcome: *var JsonWriteError) -> String {
+// Writes a value and returns the text. `outcome` receives whether it went out; which failure it was, when it did
+// not, is checked by `RefusedAs` instead.
+func Written(allocator: Allocator, value: &JsonValue, style: JsonStyle, outcome: *var bool) -> String {
     var builder = StringBuilder(allocator);
     let sink: &var TextWriter = builder;
-    *outcome = WriteValue(sink, value, style);
+    *outcome = WriteValue(sink, value, style).IsSuccess();
     return builder.IntoString();
+}
+
+// Whether writing refused for the named reason. The failures are the ones every writer in this workspace reports
+// now, rather than a status this package invented with one case standing for every destination.
+func RefusedAs(allocator: Allocator, value: &JsonValue, style: JsonStyle, expected: &FormatError) -> bool {
+    var builder = StringBuilder(allocator);
+    let sink: &var TextWriter = builder;
+    let outcome = WriteValue(sink, value, style);
+    var discarded = builder.IntoString();
+    return SameFailure(outcome, expected);
+}
+
+func SameFailure(outcome: &Result<Unit, FormatError>, expected: &FormatError) -> bool {
+    return match outcome {
+        .Success(_) => false,
+        .Error(reason) => CaseOf(reason) == CaseOf(expected)
+    };
+}
+
+// A number standing for each case, so two failures can be compared without an equality operator on the variant.
+func CaseOf(reason: &FormatError) -> int32 {
+    return match reason {
+        .InvalidSpecification(_) => 1i32,
+        .UnsupportedRequest => 2i32,
+        .ArgumentCountMismatch(_, _) => 3i32,
+        .InsufficientCapacity => 4i32,
+        .ValueOutOfRange => 5i32,
+        .TextFailure(_) => 6i32,
+        .WriterFailure => 7i32
+    };
 }
 
 // A document this test knows is well-formed, which is every one of them: what is under test here is the writer.
@@ -30,13 +61,13 @@ func Parsed(allocator: Allocator, text: char8[..]) -> JsonValue {
 func Main() -> int {
     var system = SystemAllocator();
     let allocator: Allocator = system;
-    var wrote = JsonWriteError::None;
+    var wrote = false;
 
     // The scalars.
     var nullValue = Parsed(allocator, "null");
     var nullText = Written(allocator, nullValue, JsonStyle::Compact(), @wrote);
     let expectNull = View("null");
-    Assert(wrote == JsonWriteError::None && nullText.View().Equals(expectNull), "null writes as null");
+    Assert(wrote && nullText.View().Equals(expectNull), "null writes as null");
 
     var number = Parsed(allocator, "-1.5e3");
     var numberText = Written(allocator, number, JsonStyle::Compact(), @wrote);
@@ -71,7 +102,7 @@ func Main() -> int {
     // Pretty output round-trips to the same value, which is the property that matters — the exact layout is a
     // presentation choice and the equality of the values is not.
     var pretty = Written(allocator, document, JsonStyle::Pretty(), @wrote);
-    Assert(wrote == JsonWriteError::None, "the pretty style writes");
+    Assert(wrote, "the pretty style writes");
     Assert(pretty.Length() > compact.Length(), "producing more bytes, since it adds layout");
     var reparsed = Parsed(allocator, pretty.View().Bytes());
     var reflattened = Written(allocator, reparsed, JsonStyle::Compact(), @wrote);
@@ -86,16 +117,38 @@ func Main() -> int {
 
     // A non-finite number cannot be written, because JSON cannot spell one.
     var textError = TextError::None;
+    let outOfRange = FormatError::ValueOutOfRange;
     var notANumber = JsonValue::Number(allocator, "NaN", @textError);
-    var refused = Written(allocator, notANumber, JsonStyle::Compact(), @wrote);
-    Assert(wrote == JsonWriteError::NonFinite, "a NaN is refused rather than written");
+    Assert(RefusedAs(allocator, notANumber, JsonStyle::Compact(), outOfRange),
+           "a NaN is refused as a value the requested form cannot hold");
     var infinite = JsonValue::Number(allocator, "Infinity", @textError);
-    var refusedInfinite = Written(allocator, infinite, JsonStyle::Compact(), @wrote);
-    Assert(wrote == JsonWriteError::NonFinite, "and so is an infinity");
+    Assert(RefusedAs(allocator, infinite, JsonStyle::Compact(), outOfRange), "and so is an infinity");
     var ordinary = JsonValue::Number(allocator, "1e999", @textError);
     var written999 = Written(allocator, ordinary, JsonStyle::Compact(), @wrote);
-    Assert(wrote == JsonWriteError::None,
+    Assert(wrote,
            "while an exponent past what a float holds is still a number JSON can spell, and is written");
+
+    // A destination that runs out of room says which of the two things went wrong. This is what the old shape
+    // could not do: every destination failure was one case called `Failed`, so a buffer that was merely full and a
+    // stream that had died arrived identically, and a caller who could have written the document somewhere larger
+    // had no way to tell that was the problem.
+    var wholeDocument = Parsed(allocator, "{\"a\":[1,2],\"b\":{\"c\":true}}");
+    var room: char8[8];
+    var bounded = BufferWriter((@room[0])[..8]);
+    let boundedSink: &var TextWriter = bounded;
+    let overflowed = WriteValue(boundedSink, wholeDocument, JsonStyle::Compact());
+    let full = FormatError::InsufficientCapacity;
+    Assert(SameFailure(overflowed, full), "a destination without room reports being full, not merely failing");
+    Assert(bounded.Length() <= 8u, "having written no more than it had");
+
+    // And the whole document goes out when there is room, so the check above is about the bound rather than about
+    // a writer that refuses everything.
+    var enough: char8[64];
+    var roomy = BufferWriter((@enough[0])[..64]);
+    let roomySink: &var TextWriter = roomy;
+    Assert(WriteValue(roomySink, wholeDocument, JsonStyle::Compact()).IsSuccess(),
+           "the same document writes whole into a destination that has room");
+    Assert(roomy.Length() == 26u, "all twenty-six bytes of it");
 
     return 0;
 }

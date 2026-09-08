@@ -10,7 +10,7 @@ import Core::{ Assert, Result };
 import Format::{ TextWriter };
 import Io::{ IoError, IoErrorKind, Reader };
 import Json::{ DuplicateKeyPolicy, JsonEvent, JsonEventReader, JsonKind, JsonLimits, JsonParseError, JsonStyle,
-               JsonValue, JsonWriteError, Parse, ParseWith, WriteValue };
+               JsonValue, Parse, ParseWith, WriteValue };
 import Text::{ BufferWriter, FormatSpec, String, StringBuilder, StringView, TextError };
 
 // The bytes a string spans, which is how a text overload reaches the slice one.
@@ -107,7 +107,7 @@ func TreeCounts(value: &JsonValue, scalars: *var uint, opens: *var uint, names: 
 func Main() -> int {
     var system = SystemAllocator();
     let allocator: Allocator = system;
-    var wrote = JsonWriteError::None;
+    var wrote = false;
 
     // Well-formed documents: each parses, writes, parses again, and the two writings agree. That round
     // trip proves the writer and the parser agree about the document rather than each merely being
@@ -208,15 +208,15 @@ func Main() -> int {
 
 // Parses, writes, parses again, and requires the two writings to agree — then requires the streaming reader to
 // see the same shape as the tree.
-func CheckRoundTrip(allocator: Allocator, text: char8[..], wrote: *var JsonWriteError) {
+func CheckRoundTrip(allocator: Allocator, text: char8[..], wrote: *var bool) {
     var outcome = Parse(allocator, text);
     var value = JsonValue::Null(allocator);
     Assert((<-outcome).TryIntoValue(@value), "a well-formed document parses");
 
     var builder = StringBuilder(allocator);
     let sink: &var TextWriter = builder;
-    *wrote = WriteValue(sink, value, JsonStyle::Compact());
-    Assert(*wrote == JsonWriteError::None, "and writes");
+    *wrote = WriteValue(sink, value, JsonStyle::Compact()).IsSuccess();
+    Assert(*wrote, "and writes");
     var once = builder.IntoString();
 
     var second = Parse(allocator, once.View().Bytes());
@@ -224,7 +224,7 @@ func CheckRoundTrip(allocator: Allocator, text: char8[..], wrote: *var JsonWrite
     Assert((<-second).TryIntoValue(@again), "and the written form parses");
     var secondBuilder = StringBuilder(allocator);
     let secondSink: &var TextWriter = secondBuilder;
-    *wrote = WriteValue(secondSink, again, JsonStyle::Compact());
+    *wrote = WriteValue(secondSink, again, JsonStyle::Compact()).IsSuccess();
     var twice = secondBuilder.IntoString();
     let twiceView = twice.View();
     Assert(once.View().Equals(twiceView), "to the same text, so the round trip is settled after one pass");
