@@ -1,0 +1,75 @@
+// bool8: one of two values in one byte, and the width `bool` is an alias for.
+//
+// Boolean logic — short-circuiting, precedence, conditions — is the same at every width and is pinned once in
+// `Bool`. What belongs to a width is how much room it takes, what a cast into it stores, and whether converting to
+// and from another width still means what it meant. Those are what this file asserts.
+//
+// The cast is the part worth being careful about. A cast into a boolean asks whether the whole source value is
+// non-zero, not what its low bits are, so `256 as bool8` is `true` even though 256 truncated to a byte is zero.
+// Getting that wrong is silent: the value would simply be false, and only a source whose low byte happened to be
+// zero would show it.
+
+import Core::Assert;
+import Core::{ bool, bool8, bool64 };
+
+func Echo(value: bool8) -> bool8 {
+    return value;
+}
+
+struct Pair {
+    first: bool8;
+    second: bool8;
+}
+
+func Main() -> int {
+    Assert(bool8::Bits == 8u && bool8::Bytes == 1u, "bool8 is 8 bits in 1 byte");
+    Assert(sizeof(bool8) == 1u, "sizeof agrees with Bytes");
+
+    // `bool` is this width under another name, not a distinct type with its own size.
+    Assert(bool::Bits == bool8::Bits && bool::Bytes == bool8::Bytes, "bool is an alias for bool8");
+    Assert(sizeof(bool) == sizeof(bool8), "the alias has the same size");
+
+    let yes: bool8 = true;
+    let no: bool8 = false;
+    Assert(yes, "true");
+    Assert(!no, "false");
+
+    // A cast asks whether the source is non-zero, not what its low bits are. 256 has a zero low byte, which is the
+    // case that would pass by accident if the cast truncated first.
+    let lowByteZero: int32 = 256;
+    Assert((lowByteZero as bool8), "a source with a zero low byte is still true");
+    Assert((256 as bool8), "and so is the same value folded while compiling");
+    Assert((65536 as bool8), "a source with two zero low bytes is still true");
+    Assert(!(0 as bool8), "zero is the only false source");
+
+    // What is stored is one or zero, never the bits it was cast from.
+    Assert((lowByteZero as bool8) as int32 == 1, "a true bool8 reads back as one");
+    Assert((2 as bool8) as int32 == 1, "and so does one cast from any other value");
+    Assert((0 as bool8) as int32 == 0, "a false bool8 reads back as zero");
+
+    // Conversion to the widest boolean and back preserves meaning rather than bits.
+    Assert((yes as bool64) as bool8, "true survives widening and narrowing");
+    Assert(!((no as bool64) as bool8), "false survives widening and narrowing");
+    Assert((yes as bool64) as int32 == 1, "a widened true is still one, not sign-extended");
+
+    // One byte each, so a pair is two bytes and an array is one byte per element.
+    Assert(sizeof(Pair) == 2u, "two bool8 fields occupy two bytes");
+    var flags: bool8[4];
+    flags[0] = true;
+    flags[1] = false;
+    flags[2] = true;
+    flags[3] = false;
+    Assert(sizeof(bool8[4]) == 4u, "an array of four is four bytes");
+    Assert(flags[0] && !flags[1] && flags[2] && !flags[3], "each element keeps its own value");
+
+    let pair = Pair { first: true, second: false };
+    Assert(pair.first && !pair.second, "each field keeps its own value");
+
+    Assert(Echo(yes), "true survives an argument and a return");
+    Assert(!Echo(no), "false survives an argument and a return");
+
+    var toggle: bool8 = true;
+    toggle = !toggle;
+    Assert(!toggle, "negation assigns back at this width");
+    return 0;
+}

@@ -1,0 +1,71 @@
+// bool64: one of two values in eight bytes, the widest implemented boolean.
+//
+// Boolean logic is pinned once in `Bool`; what belongs to a width is its storage, what a cast into it stores, and
+// whether conversion to another width preserves meaning. This width has one property the others do not: it is as
+// wide as a machine register, so it is the one where a boolean is passed at its own width rather than promoted to
+// something narrower, and where a wide non-zero source with every low byte zero can be written down directly.
+
+import Core::Assert;
+import Core::{ bool16, bool32, bool64, bool8, int64 };
+
+func Echo(value: bool64) -> bool64 {
+    return value;
+}
+
+func Both(left: bool64, right: bool64) -> bool64 {
+    return left && right;
+}
+
+struct Pair {
+    first: bool64;
+    second: bool64;
+}
+
+func Main() -> int {
+    Assert(bool64::Bits == 64u && bool64::Bytes == 8u, "bool64 is 64 bits in 8 bytes");
+    Assert(sizeof(bool64) == 8u, "sizeof agrees with Bytes");
+    Assert(sizeof(bool64) == sizeof(int64), "it is as wide as a machine register");
+    Assert(sizeof(bool64) > sizeof(bool32), "it is the widest implemented boolean");
+
+    let yes: bool64 = true;
+    let no: bool64 = false;
+    Assert(yes, "true");
+    Assert(!no, "false");
+
+    // A cast tests the whole source for non-zero, at the full width of the source.
+    let lowWordZero: int64 = 4294967296i64;
+    Assert((lowWordZero as bool64), "a source with four zero low bytes is still true");
+    Assert((256 as bool64), "and so is one whose low byte alone is zero");
+    Assert((lowWordZero as bool64) as int32 == 1, "what is stored is one, not the source bits");
+    Assert(!((0 as int64) as bool64), "a wide zero source is false");
+    Assert((0 as bool64) as int32 == 0, "a false bool64 reads back as zero");
+
+    // A true is one across the whole eight bytes, not one byte of truth beside seven of anything.
+    Assert((yes as int64) == 1i64, "a true bool64 read as a wide integer is exactly one");
+    Assert((no as int64) == 0i64, "and a false one is exactly zero");
+
+    // Conversion down to every narrower width and back preserves meaning rather than bits.
+    Assert((yes as bool8) && (yes as bool16) && (yes as bool32), "true narrows to every width as true");
+    Assert(!(no as bool8) && !(no as bool16) && !(no as bool32), "false narrows to every width as false");
+    Assert(((yes as bool8) as bool64), "a round trip through the narrowest width keeps true");
+    Assert(!((no as bool8) as bool64), "and keeps false");
+
+    var reached = false;
+    if yes {
+        reached = true;
+    }
+    Assert(reached, "a bool64 drives an if, which tests all eight bytes");
+
+    Assert(sizeof(Pair) == 16u, "two bool64 fields occupy sixteen bytes");
+    var flags: bool64[4];
+    flags[0] = true;
+    flags[1] = false;
+    Assert(sizeof(bool64[4]) == 32u, "an array of four is thirty-two bytes");
+    Assert(flags[0] && !flags[1], "each element keeps its own value");
+
+    // Passed and returned at its own width rather than narrowed on the way.
+    Assert(Echo(yes) && !Echo(no), "both values survive an argument and a return");
+    Assert(Both(yes, yes), "two wide boolean arguments arrive intact");
+    Assert(!Both(yes, no), "and their conjunction is computed from both");
+    return 0;
+}

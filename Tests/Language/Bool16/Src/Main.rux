@@ -1,0 +1,62 @@
+// bool16: one of two values in two bytes.
+//
+// Boolean logic is pinned once in `Bool`; what belongs to a width is its storage, what a cast into it stores, and
+// whether conversion to another width preserves meaning. The interesting source value at this width is one whose
+// low two bytes are zero — 65536 — which a cast that truncated before testing would call false.
+
+import Core::Assert;
+import Core::{ bool16, bool8, bool64 };
+
+func Echo(value: bool16) -> bool16 {
+    return value;
+}
+
+struct Pair {
+    first: bool16;
+    second: bool16;
+}
+
+func Main() -> int {
+    Assert(bool16::Bits == 16u && bool16::Bytes == 2u, "bool16 is 16 bits in 2 bytes");
+    Assert(sizeof(bool16) == 2u, "sizeof agrees with Bytes");
+    Assert(sizeof(bool16) > sizeof(bool8), "it is wider than the narrowest boolean");
+
+    let yes: bool16 = true;
+    let no: bool16 = false;
+    Assert(yes, "true");
+    Assert(!no, "false");
+
+    // A cast tests the whole source for non-zero. 65536 is the value whose low two bytes are zero.
+    Assert((65536 as bool16), "a source with two zero low bytes is still true");
+    Assert((256 as bool16), "and so is one whose low byte alone is zero");
+    Assert((65536 as bool16) as int32 == 1, "what is stored is one, not the source bits");
+    Assert(!(0 as bool16), "zero is the only false source");
+    Assert((0 as bool16) as int32 == 0, "a false bool16 reads back as zero");
+
+    // Conversion in both directions preserves meaning rather than bits.
+    Assert((yes as bool8) && (yes as bool64), "true narrows and widens as true");
+    Assert(!(no as bool8) && !(no as bool64), "false narrows and widens as false");
+    Assert((yes as bool8) as int32 == 1, "a narrowed true is still one");
+
+    // A comparison assigns straight into this width.
+    var computed: bool16 = 10 > 5;
+    Assert(computed, "a comparison assigns into a bool16");
+    computed = 10 < 5;
+    Assert(!computed, "and a false one does too");
+
+    var reached = false;
+    if yes {
+        reached = true;
+    }
+    Assert(reached, "a bool16 drives an if, which tests it at its own width");
+
+    Assert(sizeof(Pair) == 4u, "two bool16 fields occupy four bytes");
+    var flags: bool16[4];
+    flags[0] = true;
+    flags[1] = false;
+    Assert(sizeof(bool16[4]) == 8u, "an array of four is eight bytes");
+    Assert(flags[0] && !flags[1], "each element keeps its own value");
+
+    Assert(Echo(yes) && !Echo(no), "both values survive an argument and a return");
+    return 0;
+}

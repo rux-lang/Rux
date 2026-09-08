@@ -1,4 +1,10 @@
-import Core::bool64;
+// Boolean logic, at the one width that has no number in its name.
+//
+// This file owns what is the same for every boolean width: what a comparison produces, how `&&` and `||`
+// short-circuit and bind, and what a cast into a boolean asks of its source. Storage, per-width casts and
+// conversion between widths belong to `Bool8`, `Bool16`, `Bool32` and `Bool64`, one file each, so a regression at
+// one width has a home rather than being buried in a combined case.
+
 import Core::Assert;
 
 // Counts the operands that were evaluated at all, which is how the short-circuit
@@ -22,53 +28,6 @@ func Main() -> int {
     Assert(10 != 5, "inequality yields a bool");
     Assert(10 >= 10, "greater-or-equal yields a bool");
     Assert(5 <= 10, "less-or-equal yields a bool");
-
-    // The three widths say the same two things: what differs is how much room
-    // they take, not what they can mean.
-    let yes8: bool8 = true;
-    let no8: bool8 = false;
-    Assert(yes8, "bool8 true");
-    Assert(!no8, "bool8 false");
-
-    let yes16: bool16 = true;
-    let no16: bool16 = false;
-    Assert(yes16, "bool16 true");
-    Assert(!no16, "bool16 false");
-
-    let yes32: bool32 = true;
-    let no32: bool32 = false;
-    Assert(yes32, "bool32 true");
-    Assert(!no32, "bool32 false");
-
-    let yes64: bool64 = true;
-    let no64: bool64 = false;
-    Assert(yes64, "bool64 true");
-    Assert(!no64, "bool64 false");
-    Assert(bool64::Bits == 64, "bool64 occupies sixty-four bits");
-    Assert(bool64::Bytes == 8, "bool64 occupies eight bytes");
-
-    // A bool of each width holds up as a condition, which is a test against zero
-    // at whatever width the value really is.
-    var reached = false;
-    if yes16 {
-        reached = true;
-    }
-    Assert(reached, "bool16 drives an if");
-
-    reached = false;
-    if no32 {
-        reached = true;
-    }
-    Assert(!reached, "a false bool32 does not drive an if");
-
-    // A comparison assigned into each width, rather than a literal.
-    var computed16: bool16 = 10 > 5;
-    Assert(computed16, "a comparison assigns into a bool16");
-    computed16 = 10 < 5;
-    Assert(!computed16, "a false comparison assigns into a bool16");
-
-    var computed32: bool32 = 10 != 10;
-    Assert(!computed32, "a false comparison assigns into a bool32");
 
     // Negation, and the double negation that leaves a value as it was.
     Assert(!false, "not false is true");
@@ -122,27 +81,18 @@ func Main() -> int {
 
     // A bool holds one of two values, so a cast into one asks whether the source
     // is non-zero rather than what its low bits are. 256 has a zero low byte and
-    // is still true, at every width and whether the value is known while
-    // compiling or only at run time.
+    // is still true, whether the value is known while compiling or only at run
+    // time. Each width repeats this against a source sized to catch a truncating
+    // cast at that width; here it is the rule itself that is being stated.
     let lowByteZero: int32 = 256;
     Assert((lowByteZero as bool), "a value with a zero low byte is still true");
     Assert((256 as bool), "and so is the same value folded while compiling");
-    Assert((lowByteZero as bool64), "the rule does not change with the width");
     Assert(!(0 as bool), "zero is the only thing that is false");
-    Assert(!((0 as int64) as bool64), "zero stays false at a wider source and target");
 
     // A normalized bool reads back as one, never as the bits it was cast from.
     Assert((lowByteZero as bool) as int32 == 1, "a true bool reads back as one");
     Assert((2 as bool) as int32 == 1, "and so does one cast from any other value");
     Assert((0 as bool) as int32 == 0, "a false bool reads back as zero");
-    Assert((lowByteZero as bool64) as int32 == 1, "a wide true bool reads back as one too");
-
-    // The widths convert between themselves without changing what they mean.
-    let widened: bool64 = yes8 as bool64;
-    Assert(widened, "a narrow true widens to a wide true");
-    let narrowed: bool8 = yes64 as bool8;
-    Assert(narrowed, "and a wide true narrows back");
-    Assert(!(no64 as bool8), "a wide false narrows to a false");
 
     // Assignment and mutation.
     var toggle = true;

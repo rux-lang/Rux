@@ -1,0 +1,63 @@
+// bool32: one of two values in four bytes.
+//
+// Boolean logic is pinned once in `Bool`; what belongs to a width is its storage, what a cast into it stores, and
+// whether conversion to another width preserves meaning. This is the width where a source whose low four bytes are
+// zero first exists without needing a wider source type than int64, so that is the cast worth writing down.
+
+import Core::Assert;
+import Core::{ bool32, bool8, bool64, int64 };
+
+func Echo(value: bool32) -> bool32 {
+    return value;
+}
+
+struct Pair {
+    first: bool32;
+    second: bool32;
+}
+
+func Main() -> int {
+    Assert(bool32::Bits == 32u && bool32::Bytes == 4u, "bool32 is 32 bits in 4 bytes");
+    Assert(sizeof(bool32) == 4u, "sizeof agrees with Bytes");
+    Assert(sizeof(bool32) > sizeof(bool8), "it is wider than the narrowest boolean");
+
+    let yes: bool32 = true;
+    let no: bool32 = false;
+    Assert(yes, "true");
+    Assert(!no, "false");
+
+    // A cast tests the whole source. 4294967296 is the value whose low four bytes are zero, which is the case that
+    // would pass by accident if the cast truncated to this width before testing.
+    let lowWordZero: int64 = 4294967296i64;
+    Assert((lowWordZero as bool32), "a source with four zero low bytes is still true");
+    Assert((65536 as bool32), "and so is one with two zero low bytes");
+    Assert((lowWordZero as bool32) as int32 == 1, "what is stored is one, not the source bits");
+    Assert(!(0 as bool32), "zero is the only false source");
+    Assert(!((0 as int64) as bool32), "a wide zero source is false too");
+
+    // Conversion in both directions preserves meaning rather than bits.
+    Assert((yes as bool8) && (yes as bool64), "true narrows and widens as true");
+    Assert(!(no as bool8) && !(no as bool64), "false narrows and widens as false");
+    Assert((yes as bool64) as int32 == 1, "a widened true is one, not sign-extended");
+
+    var computed: bool32 = 10 != 10;
+    Assert(!computed, "a false comparison assigns into a bool32");
+    computed = 10 == 10;
+    Assert(computed, "and a true one does too");
+
+    var reached = false;
+    if no {
+        reached = true;
+    }
+    Assert(!reached, "a false bool32 does not drive an if");
+
+    Assert(sizeof(Pair) == 8u, "two bool32 fields occupy eight bytes");
+    var flags: bool32[4];
+    flags[0] = true;
+    flags[3] = false;
+    Assert(sizeof(bool32[4]) == 16u, "an array of four is sixteen bytes");
+    Assert(flags[0] && !flags[3], "each element keeps its own value");
+
+    Assert(Echo(yes) && !Echo(no), "both values survive an argument and a return");
+    return 0;
+}
