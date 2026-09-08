@@ -9,6 +9,7 @@ Description = "Package test for Toml: streaming events in document order, with t
 
 [Dependencies]
 Core = { Path = "../../../../Packages/Core" }
+Text = { Path = "../../../../Packages/Text" }
 Toml = { Path = "../../../../Packages/Toml" }
 
 [Build]

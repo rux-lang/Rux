@@ -8,9 +8,10 @@
 // same way, to survive that.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert };
+import Core::{ Assert, Result };
 import Format::{ ByteCursor, TextWriter };
-import Toml::{ TomlEvent, TomlEventReader, TomlKind, TomlParse, TomlParseError, TomlParseOutcome, TomlValue, TomlWriteDocument, TomlWriteError };
+import Toml::{ TomlEvent, TomlEventReader, TomlKind, TomlParse, TomlParseError, TomlParseFailure, TomlValue,
+               TomlWriteDocument, TomlWriteError };
 
 // The bytes a string spans, which is how a text overload reaches the slice one.
 func TextBytes(text: char8[..]) -> char8[..] {
@@ -995,7 +996,7 @@ func StreamedScalars(text: char8[..], clean: *var bool) -> uint {
             return count;
         }
         if event == TomlEvent::End {
-            *clean = reader.Error() == TomlParseError::None;
+            *clean = reader.Failure().IsNone();
             return count;
         }
         if event == TomlEvent::Text || event == TomlEvent::Integer || event == TomlEvent::Float ||
@@ -1031,22 +1032,50 @@ func TreeScalars(value: &TomlValue) -> uint {
     return 1u;
 }
 
+// A document this test knows TOML accepts. A refusal hands back nothing, so there is nothing to fall back on and
+// the assertion is what stops the run.
+func Accepted(allocator: Allocator, text: char8[..], note: char8[..]) -> TomlValue {
+    var outcome = TomlParse(allocator, text);
+    var value = TomlValue::Table(allocator);
+    Assert((<-outcome).TryIntoValue(@value), note);
+    return <-value;
+}
+
+// Whether a refusal names a place a reader can find it: a byte offset for a program, and a line and column for a
+// person. All three name the same byte, and none of them is ever zero for a real refusal.
+func Positioned(outcome: &Result<TomlValue, TomlParseFailure>) -> bool {
+    return match outcome {
+        .Success(_) => false,
+        .Error(failure) => failure.line > 0u && failure.column > 0u && failure.Offset() < 0xFFFFFFFFu
+    };
+}
+
+// Whether the refusal is one the streaming reader is also responsible for.
+func IsStructural(outcome: &Result<TomlValue, TomlParseFailure>) -> bool {
+    return match outcome {
+        .Success(_) => false,
+        .Error(failure) => match failure.reason {
+            .Lexical(_) => true,
+            .Unexpected => true,
+            .Truncated => true,
+            else => false
+        }
+    };
+}
+
 func Main() -> int {
     var system = SystemAllocator();
     let allocator: Allocator = system;
     var storage: char8[8192];
     var second: char8[8192];
-    var outcome = TomlParseOutcome();
 
     // Every document TOML accepts, accepted — and then written, read and written again to the same bytes.
     var index: uint = 0;
     while index < ValidCount {
         let text = Valid(index);
-        var parsed = TomlParse(allocator, text, @outcome);
-        Assert(outcome.error == TomlParseError::None, Label(index));
+        var parsed = Accepted(allocator, text, Label(index));
         let once = Render(parsed, (@storage[0])[..8192]);
-        var again = TomlParse(allocator, once, @outcome);
-        Assert(outcome.error == TomlParseError::None, Reparsed(index));
+        var again = Accepted(allocator, once, Reparsed(index));
         let twice = Render(again, (@second[0])[..8192]);
         Assert(Same(once, twice), Fixed(index));
         index = index + 1u;
@@ -1056,9 +1085,9 @@ func Main() -> int {
     index = 0;
     while index < InvalidCount {
         let text = Invalid(index);
-        var refused = TomlParse(allocator, text, @outcome);
-        Assert(outcome.error != TomlParseError::None, Refusal(index));
-        Assert(outcome.line > 0u && outcome.column > 0u, "reported at a position a reader can find");
+        let outcome = TomlParse(allocator, text);
+        Assert(outcome.IsError(), Refusal(index));
+        Assert(Positioned(outcome), "reported at a position a reader can find, in bytes and in line and column");
         index = index + 1u;
     }
 
@@ -1068,8 +1097,7 @@ func Main() -> int {
     index = 0;
     while index < ValidCount {
         let text = Valid(index);
-        var parsed = TomlParse(allocator, text, @outcome);
-        Assert(outcome.error == TomlParseError::None, "the tree parser accepts it");
+        var parsed = Accepted(allocator, text, "the tree parser accepts it");
         var clean = false;
         let streamed = StreamedScalars(text, @clean);
         Assert(clean, Differential(index));
@@ -1082,13 +1110,11 @@ func Main() -> int {
     index = 0;
     while index < InvalidCount {
         let text = Invalid(index);
-        var refused = TomlParse(allocator, text, @outcome);
+        let outcome = TomlParse(allocator, text);
         // The streaming reader is responsible for the grammar and not for the tables or the values: it cannot
         // know a table was defined twice without keeping every table it has seen, and it hands out the bytes of
         // a number rather than reading it, so `010` is the caller's to refuse when the caller decodes it.
-        let structural = outcome.error == TomlParseError::Lexical ||
-                         outcome.error == TomlParseError::Unexpected ||
-                         outcome.error == TomlParseError::Truncated;
+        let structural = IsStructural(outcome);
         if structural {
             var clean = false;
             StreamedScalars(text, @clean);

@@ -11,7 +11,18 @@ rux add Rux/Toml
 ## What it provides
 
 - **Lexing** — every token TOML 1.1 defines, with source spans: bare and quoted keys, the four string forms, integers in four bases, floats, booleans, and the date and time types.
-- **Parsing** — dotted keys, tables, arrays of tables, and the duplicate-definition rules that make TOML's table syntax unambiguous.
+- **Parsing** — dotted keys, tables, arrays of tables, and the duplicate-definition rules that make TOML's table syntax unambiguous. `TomlParse` returns `Result<TomlValue, TomlParseFailure>`: a document or a reason, never both. A refusal releases whatever had been read rather than handing it back, because a program configured from half a file runs with some settings applied and some defaulted, which is a state nobody wrote down.
+
+  ```rux
+  match TomlParse(allocator, bytes) {
+      .Success(document) => Configure(document),
+      .Error(failure) => Report(failure)
+  }
+  ```
+
+- **Failures that name a rule and a place** — `TomlParseError` keeps all four table-definition cases apart, because `DuplicateKey`, `RedefinedTable`, `ExtendedInlineTable` and `ExtendedDottedTable` are four different mistakes with four different fixes. `Lexical` carries the lexer's reason and `BadValue` carries the scalar reader's, so a caller holding a failure cannot be holding half of one. `TomlParseFailure` adds the position three ways — a byte `offset` for a program to slice with, and `line` and `column` for a person — all naming the same byte, and `Debug` renders the lot: `TomlParseError::BadValue(TomlScalarError::Malformed(4)) at 1:12`. The position is where parsing *stopped*, which for a duplicate key is the value rather than the key, since the pair has to be read before the repeat is known.
+
+  `TomlEventReader::Failure` answers the same `TomlParseFailure`, so the streaming reader and the tree parser report a refusal in one vocabulary rather than two.
 - **A semantic DOM** — ordered, move-only tables and arrays with explicit `<-` transfers and deterministic `~Type` cleanup, and dates and times as `Rux/Time` values rather than strings.
 - **Scalars that say where they went wrong** — `TomlParseInteger`, `TomlParseFloat` and `TomlParseDateTime` return `Result<T, TomlScalarError>`, and every failure carries the byte offset into the scalar's own text, reachable through `Text::ParseFailure`. The offsets are into the text as the caller wrote it, underscores included, so `0b1_0_2` points at the `2` where checking it happened four characters earlier. `TomlParseDateTime` answers a `TomlDateTime` carrying which of the four shapes it is, rather than a shape beside three fields the shape may or may not fill.
 

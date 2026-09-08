@@ -3,26 +3,69 @@
 // dotted key is closed by its line — and a parser that reported them all as "duplicate key" would leave the
 // writer to work out which of the three they had broken.
 
-import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, Option };
+import Allocator::{ AllocError, Allocator, Layout, SystemAllocator };
+import Core::{ Assert, Option, Result };
 import Text::{ BufferWriter, Display, FormatSpec, String, StringView, TextError, TextWriter, WriteAscii };
-import Toml::{ TomlKind, TomlParse, TomlParseError, TomlParseOutcome, TomlScalarError, TomlValue };
+import Toml::{ TomlKind, TomlParse, TomlParseError, TomlParseFailure, TomlScalarError, TomlValue };
 
 func View(bytes: char8[..]) -> StringView {
     return StringView::FromBytes(bytes).ValueOr(StringView());
 }
 
 func Accepts(allocator: Allocator, text: char8[..], note: char8[..]) -> TomlValue {
-    var outcome = TomlParseOutcome();
-    var value = TomlParse(allocator, text, @outcome);
-    Assert(outcome.error == TomlParseError::None, note);
+    var outcome = TomlParse(allocator, text);
+    var value = TomlValue::Table(allocator);
+    Assert((<-outcome).TryIntoValue(@value), note);
     return <-value;
 }
 
-func Refuses(allocator: Allocator, text: char8[..]) -> TomlParseError {
-    var outcome = TomlParseOutcome();
-    var value = TomlParse(allocator, text, @outcome);
-    return outcome.error;
+// The rendering of whatever refused a document: the case, whatever it carries, and where it happened. One string
+// covering all three, since checking them apart would be three assertions saying one thing.
+func Refusal(outcome: &Result<TomlValue, TomlParseFailure>, into: var char8[..]) -> uint {
+    return match outcome {
+        .Success(_) => 0u,
+        .Error(failure) => {
+            var writer = BufferWriter(into);
+            let sink: &var TextWriter = writer;
+            Assert(failure.WriteDebug(sink, FormatSpec::Plain()).IsSuccess(), "a failure renders");
+            return writer.Length();
+        }
+    };
+}
+
+// Which rule a document met, without its position. The table below is about the rules, and four of them describe
+// the same-looking mistake with four different fixes, so what it checks is which one was reported.
+func Refuses(allocator: Allocator, text: char8[..], expected: char8[..]) -> bool {
+    let outcome = TomlParse(allocator, text);
+    var storage: char8[128];
+    let length = Refusal(outcome, (@storage[0])[..128]);
+    // Everything up to " at " is the case and whatever it carries; the position follows.
+    var cut = length;
+    var index: uint = 0;
+    while index + 4u <= length {
+        if Same((@storage[index])[..4], " at ") {
+            cut = index;
+            break;
+        }
+        index = index + 1u;
+    }
+    return Same((@storage[0])[..cut], expected);
+}
+
+// Whether a document is accepted, which is what the two cases below assert about rules that look like the ones
+// above and are not.
+func Allowed(allocator: Allocator, text: char8[..]) -> bool {
+    let outcome = TomlParse(allocator, text);
+    var storage: char8[128];
+    return Refusal(outcome, (@storage[0])[..128]) == 0u;
+}
+
+// The whole rendering, position and all.
+func RefusedAt(allocator: Allocator, text: char8[..], expected: char8[..]) -> bool {
+    let outcome = TomlParse(allocator, text);
+    var storage: char8[128];
+    let length = Refusal(outcome, (@storage[0])[..128]);
+    return Same((@storage[0])[..length], expected);
 }
 
 func Same(actual: char8[..], expected: char8[..]) -> bool {
@@ -35,30 +78,41 @@ func Same(actual: char8[..], expected: char8[..]) -> bool {
     return true;
 }
 
-// Where a scalar refusal landed in the document, and what the scalar reader said, as one string:
-// `2:14 TomlScalarError::Malformed(6)`. One assertion covering the translation and the reason together.
-func ScalarRefusal(allocator: Allocator, text: char8[..], into: var char8[..]) -> uint {
-    var outcome = TomlParseOutcome();
-    var value = TomlParse(allocator, text, @outcome);
-    var writer = BufferWriter(into);
-    let sink: &var TextWriter = writer;
-    Assert(outcome.error == TomlParseError::BadValue, "the document is refused for its value");
-    let line: Display = outcome.line;
-    Assert(line.WriteDisplay(sink, FormatSpec::Plain()).IsSuccess(), "the line writes");
-    Assert(WriteAscii(sink, c8':').IsSuccess(), "a colon");
-    let column: Display = outcome.column;
-    Assert(column.WriteDisplay(sink, FormatSpec::Plain()).IsSuccess(), "the column");
-    Assert(WriteAscii(sink, c8' ').IsSuccess(), "a space");
-    var reason = TomlScalarError::Malformed(0u);
-    Assert(outcome.Scalar().TryIntoValue(@reason), "and the scalar reader's own reason, which a caller can read");
-    Assert(reason.WriteDebug(sink, FormatSpec::Plain()).IsSuccess(), "which renders");
-    return writer.Length();
+// An allocator that counts what is out, so a refused document can be checked for having given back everything it
+// took before it stopped. Everything mutable lives behind a pointer, since an interface adapter is copied.
+struct CountState {
+    inner: Allocator;
+    live: int32;
 }
 
-func RefusedAt(allocator: Allocator, text: char8[..], expected: char8[..]) -> bool {
-    var storage: char8[96];
-    let length = ScalarRefusal(allocator, text, (@storage[0])[..96]);
-    return Same((@storage[0])[..length], expected);
+struct CountingAllocator {
+    state: *var CountState;
+}
+
+extend CountingAllocator : Allocator {
+    func Allocate(self: &var CountingAllocator, layout: Layout, result: *var *var opaque) -> AllocError {
+        let outcome = self.state.inner.Allocate(layout, result);
+        if outcome == AllocError::None { self.state.live = self.state.live + 1i32; }
+        return outcome;
+    }
+
+    func Deallocate(self: &var CountingAllocator, block: *var opaque, layout: Layout) -> AllocError {
+        let outcome = self.state.inner.Deallocate(block, layout);
+        if outcome == AllocError::None { self.state.live = self.state.live - 1i32; }
+        return outcome;
+    }
+
+    func Reallocate(self: &var CountingAllocator, block: *var opaque, oldLayout: Layout, newLayout: Layout,
+                    result: *var *var opaque) -> AllocError {
+        return self.state.inner.Reallocate(block, oldLayout, newLayout, result);
+    }
+}
+
+// A scope for a document, so its destruction happens somewhere the count can be read across. `whileHeld` reports
+// what was out while the document was whole, which separates "released" from "never allocated".
+func ParseAndDrop(allocator: Allocator, text: char8[..], state: *var CountState, whileHeld: *var int32) {
+    var kept = Accepts(allocator, text, "a whole document parses");
+    *whileHeld = state.live;
 }
 
 func Main() -> int {
@@ -117,49 +171,54 @@ func Main() -> int {
            "belongs to the element still being written");
 
     // The three ways of defining a table twice, each reported as itself.
-    Assert(Refuses(allocator, "[a]\n[a]") == TomlParseError::RedefinedTable,
+    Assert(Refuses(allocator, "[a]\n[a]", "TomlParseError::RedefinedTable"),
            "a header that defines a table already defined by one");
-    Assert(Refuses(allocator, "[a.b]\n[a]") == TomlParseError::None,
+    Assert(Allowed(allocator, "[a.b]\n[a]"),
            "while defining a super-table afterwards is allowed, since it was only implied");
-    Assert(Refuses(allocator, "a = { x = 1 }\n[a.b]") == TomlParseError::ExtendedInlineTable,
+    Assert(Refuses(allocator, "a = { x = 1 }\n[a.b]", "TomlParseError::ExtendedInlineTable"),
            "an inline table is closed by its brace");
-    Assert(Refuses(allocator, "a = { x = 1 }\na.y = 2") == TomlParseError::ExtendedInlineTable,
+    Assert(Refuses(allocator, "a = { x = 1 }\na.y = 2", "TomlParseError::ExtendedInlineTable"),
            "by a dotted key as well as by a header");
-    Assert(Refuses(allocator, "[t]\na.b = 1\n[t.a]") == TomlParseError::ExtendedDottedTable,
+    Assert(Refuses(allocator, "[t]\na.b = 1\n[t.a]", "TomlParseError::ExtendedDottedTable"),
            "and a dotted key's table is closed by its line");
 
     // A key given a value twice, and a path through something that is not a table.
-    Assert(Refuses(allocator, "a = 1\na = 2") == TomlParseError::DuplicateKey, "a key defined twice");
-    Assert(Refuses(allocator, "a = 1\na.b = 2") == TomlParseError::NotATable,
+    Assert(Refuses(allocator, "a = 1\na = 2", "TomlParseError::DuplicateKey"), "a key defined twice");
+    Assert(Refuses(allocator, "a = 1\na.b = 2", "TomlParseError::NotATable"),
            "a dotted key running through an integer");
-    Assert(Refuses(allocator, "a = 1\n[a]") == TomlParseError::NotATable,
+    Assert(Refuses(allocator, "a = 1\n[a]", "TomlParseError::NotATable"),
            "and a header naming one");
 
     // The two array spellings are not interchangeable.
-    Assert(Refuses(allocator, "a = [1, 2]\n[[a]]") == TomlParseError::NotATableArray,
+    Assert(Refuses(allocator, "a = [1, 2]\n[[a]]", "TomlParseError::NotATableArray"),
            "a static array is a value, not a place to put tables");
-    Assert(Refuses(allocator, "[[a]]\n[a]") == TomlParseError::NotATable,
+    Assert(Refuses(allocator, "[[a]]\n[a]", "TomlParseError::NotATable"),
            "and an array of tables is not a table");
 
     // Ordinary syntax refusals.
-    Assert(Refuses(allocator, "a") == TomlParseError::Unexpected, "a key with no value");
-    Assert(Refuses(allocator, "a =") == TomlParseError::Truncated, "an equals sign with nothing after it");
-    Assert(Refuses(allocator, "= 1") == TomlParseError::Unexpected, "a value with no key");
-    Assert(Refuses(allocator, "a = 1 b = 2") == TomlParseError::Unexpected,
+    Assert(Refuses(allocator, "a", "TomlParseError::Unexpected"), "a key with no value");
+    Assert(Refuses(allocator, "a =", "TomlParseError::Truncated"), "an equals sign with nothing after it");
+    Assert(Refuses(allocator, "= 1", "TomlParseError::Unexpected"), "a value with no key");
+    Assert(Refuses(allocator, "a = 1 b = 2", "TomlParseError::Unexpected"),
            "two pairs on one line, which is the shape of a missing newline");
-    Assert(Refuses(allocator, "[a") == TomlParseError::Unexpected, "a header with no closing bracket");
-    Assert(Refuses(allocator, "a = [1, 2") == TomlParseError::Truncated, "an array left open");
-    Assert(Refuses(allocator, "a = { x = 1") == TomlParseError::Truncated, "an inline table left open");
-    Assert(Refuses(allocator, "a = \"unterminated") == TomlParseError::Lexical,
+    Assert(Refuses(allocator, "[a", "TomlParseError::Unexpected"), "a header with no closing bracket");
+    Assert(Refuses(allocator, "a = [1, 2", "TomlParseError::Truncated"), "an array left open");
+    Assert(Refuses(allocator, "a = { x = 1", "TomlParseError::Truncated"), "an inline table left open");
+    Assert(Refuses(allocator, "a = \"unterminated", "TomlParseError::Lexical(UnterminatedText)"),
            "and a string the lexer refused, reported as the lexer's own");
 
     // A refusal says where it happened, because a configuration error that cannot point at itself costs more
-    // than the parse did.
-    var located = TomlParseOutcome();
-    var partial = TomlParse(allocator, "a = 1\nb = 2\na = 3", @located);
-    Assert(located.error == TomlParseError::DuplicateKey, "the duplicate is found");
-    Assert(located.line == 3u, "on the line it is written on");
-    Assert(partial.Find(View("b")) != null, "and what was read before it is still there to show");
+    // than the parse did — and it hands back nothing at all. This used to give the caller the part of the document
+    // that had been read, which reads as helpful and is not: a program configured from half a file runs with some
+    // settings applied and some defaulted, which is a state nobody wrote down and nobody tested. What was read is
+    // released instead.
+    // The position is where parsing *stopped*, which for a duplicate key is the value rather than the key: the
+    // parser has to read the whole pair before it can know the key repeats. The line is the half that matters and
+    // is right; a reader wanting the key itself has the line to look along.
+    Assert(RefusedAt(allocator, "a = 1\nb = 2\na = 3", "TomlParseError::DuplicateKey at 3:6"),
+           "the duplicate is found on the line it is written on");
+    let refused = TomlParse(allocator, "a = 1\nb = 2\na = 3");
+    Assert(refused.IsError(), "and the document does not come back beside the reason");
 
     // A bad scalar is reported at the character inside it, which takes two positions added together: the token's
     // own place in the document, and the failure's place inside the token's text. Neither alone is any use — the
@@ -170,16 +229,49 @@ func Main() -> int {
     // the time its text is read, so reporting through the general stop, which reads the lookahead, put every bad
     // number at whatever followed it — at the end of the document for the first case here, and a line late for the
     // third.
-    Assert(RefusedAt(allocator, "port = 0b102", "1:12 TomlScalarError::Malformed(4)"),
+    Assert(RefusedAt(allocator, "port = 0b102",
+                     "TomlParseError::BadValue(TomlScalarError::Malformed(4)) at 1:12"),
            "a digit the base does not have is reported at that digit, not at the end of the line");
-    Assert(RefusedAt(allocator, "port = 010", "1:8 TomlScalarError::Malformed(0)"),
+    Assert(RefusedAt(allocator, "port = 010",
+                     "TomlParseError::BadValue(TomlScalarError::Malformed(0)) at 1:8"),
            "and a leading zero at the zero, which is where the value starts");
-    Assert(RefusedAt(allocator, "x = 1\nport = 0b1_0_2\ny = 2", "2:14 TomlScalarError::Malformed(6)"),
+    Assert(RefusedAt(allocator, "x = 1\nport = 0b1_0_2\ny = 2",
+                     "TomlParseError::BadValue(TomlScalarError::Malformed(6)) at 2:14"),
            "on the line the value is written on, past the underscores as written");
-    Assert(RefusedAt(allocator, "when = 1979-02-30", "1:13 TomlScalarError::Malformed(5)"),
+    Assert(RefusedAt(allocator, "when = 1979-02-30",
+                     "TomlParseError::BadValue(TomlScalarError::Malformed(5)) at 1:13"),
            "a date the calendar has no day for is reported at its month");
-    Assert(RefusedAt(allocator, "big = 9223372036854775808", "1:7 TomlScalarError::OutOfRange(0)"),
+    Assert(RefusedAt(allocator, "big = 9223372036854775808",
+                     "TomlParseError::BadValue(TomlScalarError::OutOfRange(0)) at 1:7"),
            "and a number too large is reported at its first character, since no one character is at fault");
+
+    // A refused document gives back everything it took. A configuration file fails late as often as early — a
+    // duplicate key on the last line, a bad number after a hundred good ones — so by the time the parser stops it
+    // is holding most of a document, every string of it allocated. Those used to go back to the caller; now they
+    // are released, and the count is what says so.
+    var state = CountState { inner: allocator, live: 0i32 };
+    var counting = CountingAllocator { state: @state };
+    let tracked: Allocator = counting;
+
+    Assert(Refuses(tracked, "a = \"one\"\nb = \"two\"\na = \"three\"", "TomlParseError::DuplicateKey"),
+           "a document that fails on its last line is refused");
+    Assert(state.live == 0i32, "and everything the partial document held is released");
+
+    Assert(Refuses(tracked, "[t]\nx = \"a\"\ny = \"b\"\nport = 010", "TomlParseError::BadValue(TomlScalarError::Malformed(0))"),
+           "a document with a bad value after good ones is refused");
+    Assert(state.live == 0i32, "and so is everything that one held");
+
+    Assert(Refuses(tracked, "a = { b = \"deep\", c = [\"x\", \"y\"] }\na.d = 1",
+                   "TomlParseError::ExtendedInlineTable"),
+           "a nested document that fails is refused");
+    Assert(state.live == 0i32, "including every level of it");
+
+    // The same document without its last line parses and takes storage, so the counts above are measuring
+    // cleanup rather than a parser that never allocated.
+    var whileHeld: int32 = 0;
+    ParseAndDrop(tracked, "a = \"one\"\nb = \"two\"", @state, @whileHeld);
+    Assert(whileHeld > 0i32, "a whole document takes storage");
+    Assert(state.live == 0i32, "which comes back when the document's life ends");
 
     return 0;
 }
