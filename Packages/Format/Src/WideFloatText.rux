@@ -14,6 +14,14 @@ import Allocator::{ AllocError, Allocator, Layout };
 import Core::{ Result, Unit };
 import Text::{ Debug, Display, FormatError, FormatOk, FormatSpec, TextFailureKind, TextWriter, WriteAligned };
 
+// Which text failure a digit generator's stop is. An allocator that refused is out of memory, which may go
+// differently on a second attempt; a buffer too small for the digits is a length that does not fit, which will
+// not. Reporting both as the first told a caller the machine was short when their buffer was.
+func KindOf(reason: WideDigitFailure) -> TextFailureKind {
+    return reason == WideDigitFailure::BufferTooSmall ? TextFailureKind::LengthOverflow
+                                                      : TextFailureKind::OutOfMemory;
+}
+
 /// Writes `bits`, read under `layout`, as text under `spec`.
 ///
 /// https://rux-lang.dev/docs/api/format/write-wide-float
@@ -36,7 +44,10 @@ pub func WriteWideFloat(allocator: Allocator, writer: &var TextWriter, spec: For
         var count: uint = 0;
         var exponent10: int = 0;
         let room = (@digits[0])[..160];
-        if !ShortestWideDigits(allocator, value, layout, room, @count, @exponent10) { return Result::Error<Unit, FormatError>(FormatError::TextFailure(TextFailureKind::OutOfMemory)); }
+        var reason = WideDigitFailure::None;
+        if !ShortestWideDigits(allocator, value, layout, room, @count, @exponent10, @reason) {
+            return Result::Error<Unit, FormatError>(FormatError::TextFailure(KindOf(reason)));
+        }
         if value.negative {
             cursor.Push(c8'-');
         }
@@ -78,8 +89,9 @@ func WriteWidePrecision(allocator: Allocator, writer: &var TextWriter, spec: For
     var failure = FormatOk();
     if value.class != WideClass::Zero {
         let room = (digits)[..digitRoom];
-        if !FixedWideDigits(allocator, value, layout, fraction, room, @count, @exponent10) {
-            failure = Result::Error<Unit, FormatError>(FormatError::TextFailure(TextFailureKind::OutOfMemory));
+        var reason = WideDigitFailure::None;
+        if !FixedWideDigits(allocator, value, layout, fraction, room, @count, @exponent10, @reason) {
+            failure = Result::Error<Unit, FormatError>(FormatError::TextFailure(KindOf(reason)));
         }
     }
     if failure.IsSuccess() {

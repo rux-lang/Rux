@@ -16,7 +16,7 @@ import Allocator::{ AllocError, Allocator, Layout };
 /// A natural number of any size, held as little-endian 64-bit limbs.
 ///
 /// https://rux-lang.dev/docs/api/format/big-nat
-pub struct BigNat {
+struct BigNat {
     /// Where the limbs live.
     allocator: Allocator;
     /// The limbs, least significant first.
@@ -34,14 +34,14 @@ extend BigNat {
     /// Zero, holding no storage yet.
     ///
     /// https://rux-lang.dev/docs/api/format/big-nat/new
-    pub func BigNat(allocator: Allocator) -> BigNat {
+    func BigNat(allocator: Allocator) -> BigNat {
         return BigNat { allocator: allocator, limbs: null, capacity: 0, length: 0 };
     }
 
     /// Makes room for `count` limbs, keeping the value. Reports `false` when the allocator refuses.
     ///
     /// https://rux-lang.dev/docs/api/format/big-nat/reserve
-    pub func Reserve(self: &var BigNat, count: uint) -> bool {
+    func Reserve(self: &var BigNat, count: uint) -> bool {
         if count <= self.capacity { return true; }
         // Growing by halves keeps repeated multiplication linear in allocations rather than quadratic.
         var wanted = self.capacity + self.capacity / 2u + 8u;
@@ -91,14 +91,14 @@ extend BigNat {
     /// Whether this is zero.
     ///
     /// https://rux-lang.dev/docs/api/format/big-nat/is-zero
-    pub func IsZero(self: &BigNat) -> bool {
+    func IsZero(self: &BigNat) -> bool {
         return self.length == 0u;
     }
 
     /// Sets this to a small value.
     ///
     /// https://rux-lang.dev/docs/api/format/big-nat/set-small
-    pub func SetSmall(self: &var BigNat, value: uint64) -> bool {
+    func SetSmall(self: &var BigNat, value: uint64) -> bool {
         if !self.Reserve(1u) { return false; }
         self.limbs[0] = value;
         self.length = value == 0u64 ? 0u : 1u;
@@ -108,7 +108,7 @@ extend BigNat {
     /// Sets this to a 512-bit value.
     ///
     /// https://rux-lang.dev/docs/api/format/big-nat/set-wide
-    pub func SetWide(self: &var BigNat, value: uint512) -> bool {
+    func SetWide(self: &var BigNat, value: uint512) -> bool {
         if !self.Reserve(8u) { return false; }
         var index: uint = 0;
         while index < 8u {
@@ -123,7 +123,7 @@ extend BigNat {
     /// Copies `other` into this.
     ///
     /// https://rux-lang.dev/docs/api/format/big-nat/assign
-    pub func Assign(self: &var BigNat, other: &BigNat) -> bool {
+    func Assign(self: &var BigNat, other: &BigNat) -> bool {
         if !self.Reserve(other.length) { return false; }
         var index: uint = 0;
         while index < other.length {
@@ -137,7 +137,7 @@ extend BigNat {
     /// How many bits the value needs; zero for zero.
     ///
     /// https://rux-lang.dev/docs/api/format/big-nat/bit-length
-    pub func BitLength(self: &BigNat) -> uint {
+    func BitLength(self: &BigNat) -> uint {
         if self.length == 0u { return 0u; }
         var top = self.limbs[self.length - 1u];
         var bits: uint = 0;
@@ -151,7 +151,7 @@ extend BigNat {
     /// Orders this against `other`: negative, zero or positive.
     ///
     /// https://rux-lang.dev/docs/api/format/big-nat/compare
-    pub func Compare(self: &BigNat, other: &BigNat) -> int32 {
+    func Compare(self: &BigNat, other: &BigNat) -> int32 {
         if self.length != other.length { return self.length < other.length ? -1i32 : 1i32; }
         var index = self.length;
         while index > 0u {
@@ -166,7 +166,7 @@ extend BigNat {
     /// Multiplies this by 2^`bits` in place.
     ///
     /// https://rux-lang.dev/docs/api/format/big-nat/shift-left
-    pub func ShiftLeft(self: &var BigNat, bits: uint) -> bool {
+    func ShiftLeft(self: &var BigNat, bits: uint) -> bool {
         if self.length == 0u || bits == 0u { return true; }
         let limbShift = bits / 64u;
         let bitShift = bits % 64u;
@@ -199,7 +199,7 @@ extend BigNat {
     /// Multiplies this by a small factor in place.
     ///
     /// https://rux-lang.dev/docs/api/format/big-nat/multiply-small
-    pub func MultiplySmall(self: &var BigNat, factor: uint64) -> bool {
+    func MultiplySmall(self: &var BigNat, factor: uint64) -> bool {
         if factor == 0u64 {
             self.length = 0;
             return true;
@@ -223,7 +223,7 @@ extend BigNat {
     /// Adds a small value in place.
     ///
     /// https://rux-lang.dev/docs/api/format/big-nat/add-small
-    pub func AddSmall(self: &var BigNat, value: uint64) -> bool {
+    func AddSmall(self: &var BigNat, value: uint64) -> bool {
         if !self.Reserve(self.length + 1u) { return false; }
         var carry = value;
         var index: uint = 0;
@@ -243,7 +243,7 @@ extend BigNat {
     /// Adds `other` in place.
     ///
     /// https://rux-lang.dev/docs/api/format/big-nat/add
-    pub func Add(self: &var BigNat, other: &BigNat) -> bool {
+    func Add(self: &var BigNat, other: &BigNat) -> bool {
         let longest = self.length > other.length ? self.length : other.length;
         if !self.Reserve(longest + 1u) { return false; }
         var carry: uint64 = 0;
@@ -267,7 +267,7 @@ extend BigNat {
     /// Subtracts `other` in place. It must not exceed this, which every caller compares for first.
     ///
     /// https://rux-lang.dev/docs/api/format/big-nat/subtract
-    pub func Subtract(self: &var BigNat, other: &BigNat) {
+    func Subtract(self: &var BigNat, other: &BigNat) {
         var borrow: uint64 = 0;
         var index: uint = 0;
         while index < self.length {
@@ -292,7 +292,7 @@ extend BigNat {
     /// Sets this to `left` times `right`. Neither operand may be this.
     ///
     /// https://rux-lang.dev/docs/api/format/big-nat/set-product
-    pub func SetProduct(self: &var BigNat, left: &BigNat, right: &BigNat) -> bool {
+    func SetProduct(self: &var BigNat, left: &BigNat, right: &BigNat) -> bool {
         let total = left.length + right.length;
         if !self.Reserve(total + 1u) { return false; }
         var index: uint = 0;
@@ -325,7 +325,7 @@ extend BigNat {
     /// the division they need.
     ///
     /// https://rux-lang.dev/docs/api/format/big-nat/take-digit
-    pub func TakeDigit(self: &var BigNat, divisor: &BigNat) -> uint {
+    func TakeDigit(self: &var BigNat, divisor: &BigNat) -> uint {
         var digit: uint = 0;
         while digit < 9u && self.Compare(divisor) >= 0i32 {
             self.Subtract(divisor);
@@ -351,7 +351,7 @@ extend BigNat {
 /// the widths where the exponent runs to millions.
 ///
 /// https://rux-lang.dev/docs/api/format/set-power-of-ten
-pub func SetPowerOfTen(target: &var BigNat, power: uint, base: &var BigNat, scratch: &var BigNat) -> bool {
+func SetPowerOfTen(target: &var BigNat, power: uint, base: &var BigNat, scratch: &var BigNat) -> bool {
     if !target.SetSmall(1u64) || !base.SetSmall(5u64) { return false; }
     var remaining = power;
     while remaining > 0u {

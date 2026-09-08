@@ -8,15 +8,29 @@
 //
 // Fixed precision is the same machinery stopped at a chosen digit, with the remainder rounded to nearest and ties
 // to the even digit.
+//
+// Both generators can fail two ways, and they say which. The allocator can refuse the working storage, which is
+// the machine rather than the value and may go differently on a second attempt; or the caller's digit buffer can
+// be too small for what the value needs, which will go the same way every time. Reporting both as one used to
+// tell a caller they were out of memory when their buffer was short — the same confusion the wide parser had
+// between an allocation failure and an overflow, and wrong for the same reason.
 
 import Allocator::Allocator;
 
+// Why a wide digit generator stopped: the allocator refused, or the digits did not fit the buffer it was given.
+enum WideDigitFailure: int32 {
+    None = 0,
+    OutOfMemory = 1,
+    BufferTooSmall = 2
+}
+
 
 // The digits of `value`, as few as read back to the same bits, written into `digits`. `exponent10` receives the
-// power of ten of the first digit, so the value is d.ddd times ten to it. Reports `false` when the allocator refuses
-// or the digits do not fit, and never partially writes either way.
+// power of ten of the first digit, so the value is d.ddd times ten to it. `failure` says which of the two ways it
+// stopped, and nothing is partially written either way.
 func ShortestWideDigits(allocator: Allocator, value: &UnpackedWide, layout: &FloatLayout, digits: var char8[..],
-                        count: *var uint, exponent10: *var int) -> bool {
+                        count: *var uint, exponent10: *var int, failure: *var WideDigitFailure) -> bool {
+    *failure = WideDigitFailure::OutOfMemory;
     let f = value.significand;
     let e = value.exponent;
     let leading = 1u512 << (layout.precision - 1u);
@@ -86,7 +100,10 @@ func ShortestWideDigits(allocator: Allocator, value: &UnpackedWide, layout: &Flo
 
     var produced: uint = 0;
     while true {
-        if produced >= digits.length { return false; }
+        if produced >= digits.length {
+            *failure = WideDigitFailure::BufferTooSmall;
+            return false;
+        }
         if !r.MultiplySmall(10u64) || !high.MultiplySmall(10u64) || !low.MultiplySmall(10u64) { return false; }
         var digit = r.TakeDigit(s);
         let withinLow = even ? r.Compare(low) <= 0i32 : r.Compare(low) < 0i32;
@@ -110,6 +127,7 @@ func ShortestWideDigits(allocator: Allocator, value: &UnpackedWide, layout: &Flo
     }
     *count = produced;
     *exponent10 = k - 1;
+    *failure = WideDigitFailure::None;
     return true;
 }
 
@@ -126,9 +144,11 @@ func BitLengthOf(value: uint512) -> uint {
 
 // The digits of `value` rounded to `fraction` places after the point, integer digits first. `exponent10` receives
 // the power of ten of the first digit as for the shortest form; a value that rounds all the way to zero reports
-// no digits at all. Reports `false` when the allocator refuses or the digits do not fit.
+// no digits at all. `failure` says which of the two ways it stopped.
 func FixedWideDigits(allocator: Allocator, value: &UnpackedWide, layout: &FloatLayout, fraction: uint,
-                     digits: var char8[..], count: *var uint, exponent10: *var int) -> bool {
+                     digits: var char8[..], count: *var uint, exponent10: *var int,
+                     failure: *var WideDigitFailure) -> bool {
+    *failure = WideDigitFailure::OutOfMemory;
     var r = BigNat(allocator);
     var s = BigNat(allocator);
     var tmp = BigNat(allocator);
@@ -172,6 +192,7 @@ func FixedWideDigits(allocator: Allocator, value: &UnpackedWide, layout: &FloatL
     if wanted < 0 {
         // Below half a unit in the last place asked for, so every digit is a zero.
         *count = 0;
+        *failure = WideDigitFailure::None;
         return true;
     }
     if wanted == 0 {
@@ -181,13 +202,18 @@ func FixedWideDigits(allocator: Allocator, value: &UnpackedWide, layout: &FloatL
             digits.data[0] = c8'1';
             *count = 1;
             *exponent10 = 0 - fraction as int;
+            *failure = WideDigitFailure::None;
             return true;
         }
         *count = 0;
+        *failure = WideDigitFailure::None;
         return true;
     }
     let needed = wanted as uint;
-    if needed + 1u > digits.length { return false; }
+    if needed + 1u > digits.length {
+        *failure = WideDigitFailure::BufferTooSmall;
+        return false;
+    }
     var produced: uint = 0;
     while produced < needed {
         if !r.MultiplySmall(10u64) { return false; }
@@ -225,5 +251,6 @@ func FixedWideDigits(allocator: Allocator, value: &UnpackedWide, layout: &FloatL
         }
     }
     *count = produced;
+    *failure = WideDigitFailure::None;
     return true;
 }
