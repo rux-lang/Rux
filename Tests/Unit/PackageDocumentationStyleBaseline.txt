@@ -459,7 +459,6 @@ missing-header|Random/Src/Extract.rux|file||fc428e473dfe6727
 missing-header|Text/Src/String.rux|file||c75af26d81b8d99a
 missing-header|Toml/Src/Lexer.rux|file||9b379534ce9603b5
 missing-header|Toml/Src/Scalar.rux|file||448db033a30431a0
-missing-header|Toml/Src/Writer.rux|file||0a60878f09bf8201
 missing-header|Uuid/Src/Text.rux|file||0fbcab1c4fc5ccf4
 missing-header|macOS/Src/LibSystem.rux|file||7daba0dd4082ad59
 missing-param|Algorithms/Src/Find.rux|func|AllOf|1a2a1252963dddf6
@@ -1320,7 +1319,6 @@ missing-param|Toml/Src/Value.rux|func|OffsetDateTime|d7eed44865b06a4e
 missing-param|Toml/Src/Value.rux|func|Push|9b9232cd773eb01b
 missing-param|Toml/Src/Value.rux|func|Table|c7a238376871b831
 missing-param|Toml/Src/Value.rux|func|Text|f660711bfa7ff693
-missing-param|Toml/Src/Writer.rux|func|TomlWriteDocument|8ffd37557fbd613c
 missing-param|Unicode/Src/Case.rux|func|Fold|5d12a4c0b58dc324
 missing-param|Unicode/Src/Case.rux|func|ToLowerFull|ad57a3cf5cb2fab4
 missing-param|Unicode/Src/Case.rux|func|ToLowerSimple|8e8626044bd77926
@@ -2461,7 +2459,6 @@ missing-returns|Toml/Src/Value.rux|func|OffsetDateTime|d7eed44865b06a4e
 missing-returns|Toml/Src/Value.rux|func|Push|9b9232cd773eb01b
 missing-returns|Toml/Src/Value.rux|func|Table|c7a238376871b831
 missing-returns|Toml/Src/Value.rux|func|Text|f660711bfa7ff693
-missing-returns|Toml/Src/Writer.rux|func|TomlWriteDocument|8ffd37557fbd613c
 missing-returns|Unicode/Src/Case.rux|func|Fold|5d12a4c0b58dc324
 missing-returns|Unicode/Src/Case.rux|func|ToLowerFull|ad57a3cf5cb2fab4
 missing-returns|Unicode/Src/Case.rux|func|ToLowerSimple|8e8626044bd77926
@@ -4338,8 +4335,6 @@ missing-see|Toml/Src/Value.rux|func|Table|c7a238376871b831
 missing-see|Toml/Src/Value.rux|func|Text|f660711bfa7ff693
 missing-see|Toml/Src/Value.rux|struct|TomlEntry|63f6ac953d252422
 missing-see|Toml/Src/Value.rux|struct|TomlValue|eb5adee85e2ec8c6
-missing-see|Toml/Src/Writer.rux|enum|TomlWriteError|0e3030fbcbf61ce9
-missing-see|Toml/Src/Writer.rux|func|TomlWriteDocument|8ffd37557fbd613c
 missing-see|Unicode/Src/Case.rux|func|Fold|5d12a4c0b58dc324
 missing-see|Unicode/Src/Case.rux|func|ToLowerFull|ad57a3cf5cb2fab4
 missing-see|Unicode/Src/Case.rux|func|ToLowerSimple|8e8626044bd77926

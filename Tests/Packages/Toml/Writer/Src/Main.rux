@@ -4,11 +4,11 @@
 // and a document written, read and written again is the same the second time.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, Result };
+import Core::{ Assert, Result, Unit };
 import Format::{ ByteCursor, TextWriter };
-import Text::{ StringView, TextError };
+import Text::{ BufferWriter, FormatError, StringView, TextError };
 import Time::UtcOffset;
-import Toml::{ TomlKind, TomlParse, TomlValue, TomlWriteDocument, TomlWriteError };
+import Toml::{ TomlKind, TomlParse, TomlValue, TomlWriteDocument };
 
 // The bytes a string spans, which is how a text overload reaches the slice one.
 func TextBytes(text: char8[..]) -> char8[..] {
@@ -19,7 +19,7 @@ func TextBytes(text: char8[..]) -> char8[..] {
 func Render(value: &TomlValue, storage: var char8[..]) -> char8[..] {
     var cursor = ByteCursor(storage);
     let writer: &var TextWriter = cursor;
-    Assert(TomlWriteDocument(writer, value) == TomlWriteError::None, "writing succeeds");
+    Assert(TomlWriteDocument(writer, value).IsSuccess(), "writing succeeds");
     return cursor.Written();
 }
 
@@ -39,6 +39,26 @@ func Same(left: char8[..], right: char8[..]) -> bool {
         index = index + 1u;
     }
     return true;
+}
+
+// Which failure a write reported, as a number, since a variant has no equality operator.
+func CaseOf(reason: &FormatError) -> int32 {
+    return match reason {
+        .InvalidSpecification(_) => 1i32,
+        .UnsupportedRequest => 2i32,
+        .ArgumentCountMismatch(_, _) => 3i32,
+        .InsufficientCapacity => 4i32,
+        .ValueOutOfRange => 5i32,
+        .TextFailure(_) => 6i32,
+        .WriterFailure => 7i32
+    };
+}
+
+func SameFailure(outcome: &Result<Unit, FormatError>, expected: &FormatError) -> bool {
+    return match outcome {
+        .Success(_) => false,
+        .Error(reason) => CaseOf(reason) == CaseOf(expected)
+    };
 }
 
 // A document this test knows is well-formed, which is every one of them: what is under test here is the writer.
@@ -158,6 +178,28 @@ func Main() -> int {
     let canonical = Render(spelled, (@storage[0])[..4096]);
     Assert(Same(canonical, "a = 255\nb = 1000.0\nc = \"literal\"\n"),
            "and comes back in one spelling each, because the tree holds values and not the text of them");
+
+    // A destination that runs out of room says which of the two things went wrong. The status this replaced had
+    // one case for every destination failure, so a buffer that was merely full and a stream that had died arrived
+    // identically — and a caller who could have written the document somewhere larger had no way to tell that was
+    // the problem.
+    var bounded = Parsed(allocator, "a = 1\nb = 2\n[t]\nc = 3", "a document for a bounded destination");
+    var room: char8[8];
+    var small = BufferWriter((@room[0])[..8]);
+    let smallSink: &var TextWriter = small;
+    let overflowed = TomlWriteDocument(smallSink, bounded);
+    let full = FormatError::InsufficientCapacity;
+    Assert(SameFailure(overflowed, full), "a destination without room reports being full, not merely failing");
+    Assert(small.Length() <= 8u, "having written no more than it had");
+
+    // And the same document goes out whole when there is room, so the case above is about the bound rather than
+    // about a writer that refuses everything.
+    var enough: char8[128];
+    var roomy = BufferWriter((@enough[0])[..128]);
+    let roomySink: &var TextWriter = roomy;
+    Assert(TomlWriteDocument(roomySink, bounded).IsSuccess(),
+           "the same document writes whole into a destination that has room");
+    Assert(roomy.Length() == 23u, "all twenty-three bytes of it");
 
     return 0;
 }

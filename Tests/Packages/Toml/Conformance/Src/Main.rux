@@ -11,7 +11,7 @@ import Allocator::{ Allocator, SystemAllocator };
 import Core::{ Assert, Result };
 import Format::{ ByteCursor, TextWriter };
 import Toml::{ TomlEvent, TomlEventReader, TomlKind, TomlParse, TomlParseError, TomlParseFailure, TomlValue,
-               TomlWriteDocument, TomlWriteError };
+               TomlWriteDocument };
 
 // The bytes a string spans, which is how a text overload reaches the slice one.
 func TextBytes(text: char8[..]) -> char8[..] {
@@ -967,7 +967,7 @@ func Render(value: &TomlValue, storage: var char8[..]) -> char8[..] {
     var cursor = ByteCursor(storage);
     let writer: &var TextWriter = cursor;
     let failure = TomlWriteDocument(writer, value);
-    Assert(failure == TomlWriteError::None, "every accepted document can be written back out");
+    Assert(failure.IsSuccess(), "every accepted document can be written back out");
     return cursor.Written();
 }
 
