@@ -2,10 +2,10 @@
 Version = 1
 
 [Package]
-Name = "TimeInstant"
+Name = "TimestampText"
 Version = "0.1.0"
 Type = "Executable"
-Description = "Package test for Time: the monotonic clock, interruption-safe sleep and Debug-only presentation"
+Description = "Package test for Time: the wall clock's one default form and its explicit second count"
 
 [Dependencies]
 Core = { Path = "../../../../Packages/Core" }

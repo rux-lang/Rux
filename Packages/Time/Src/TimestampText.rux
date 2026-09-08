@@ -1,0 +1,120 @@
+// The wall clock as text, in one form unless the caller says otherwise.
+//
+// A timestamp is two things at once — a moment on the calendar and a count of seconds — and a type that renders
+// whichever one the caller seems to want is a type nobody can predict. So there is one default and it is the
+// calendar form: RFC 3339 in UTC, which is what a timestamp is for. Naming a moment so another machine recognizes
+// it is the reason the value exists, and 1970-01-01T00:00:00Z reads as a date to every reader and every parser
+// there is, where 0 reads as a date to neither.
+//
+// The second count is still available and still exact, but it has to be asked for by name: `{:unix}`. That is the
+// whole of the "one default" rule. A style that selects between two renderings is a choice made at the placeholder,
+// where it is visible; a value that guesses is a choice made nowhere.
+//
+// The calendar form has a range and the second count does not, which is the one place this file can fail on a value
+// rather than on a request. The package spells four-digit years — `Date::PlusDays` already treats that as the honest
+// bound, and RFC 3339 requires exactly four digits — so a moment outside years 0000 through 9999 has no RFC 3339
+// text at all. It is refused with `ValueOutOfRange` before anything is written, because a destination that has
+// already received "+2724" and then learns the value cannot be spelled is a destination holding a lie.
+
+import Core::{ Result, Unit };
+import Text::{ Debug, Display, FormatError, FormatOk, FormatSpec, TextWriter, WriteAscii };
+
+// The first second the four-digit calendar can spell: 0000-01-01T00:00:00Z, which is epoch day -719468.
+const CalendarFloorSecond: int64 = -62167219200;
+
+// The last: 23:59:59 on 9999-12-31, which is epoch day 2932896 and the final second of it.
+const CalendarCeilingSecond: int64 = 253402300799;
+
+extend Timestamp {
+    /// Whether this moment falls inside the years the calendar spells, and so has an RFC 3339 text.
+    ///
+    /// The bound is years 0000 through 9999, which is the range `Date` arithmetic already treats as the package's
+    /// own and the range RFC 3339's four year digits allow. A caller that must not meet a formatting failure asks
+    /// here first; one that renders through a placeholder learns the same thing as `ValueOutOfRange`.
+    ///
+    /// Borrows the moment and leaves it untouched. Cannot fail; runs in constant time and allocates nothing.
+    ///
+    /// @returns true when the calendar form exists for this moment
+    /// @see https://rux-lang.dev/docs/api/time/timestamp/is-in-calendar-range
+    pub func IsInCalendarRange(self: &Timestamp) -> bool {
+        return self.seconds >= CalendarFloorSecond && self.seconds <= CalendarCeilingSecond;
+    }
+}
+
+// The empty style is the calendar form, `rfc3339` and `iso8601` name it explicitly, and `unix` selects the second
+// count. Nothing else is understood, which is what keeps `{:q}` a reported mistake rather than a printed one.
+func RejectTimestampStyle(spec: FormatSpec) -> Result<Unit, FormatError> {
+    if !spec.HasStyle() || spec.StyleIs("rfc3339") || spec.StyleIs("iso8601") || spec.StyleIs("unix") {
+        return FormatOk();
+    }
+    return Result::Error<Unit, FormatError>(FormatError::UnsupportedRequest);
+}
+
+// Writes the signed second count, with the magnitude recomputed rather than read off the fields.
+//
+// A timestamp normalizes the way a duration does — the sign is in the seconds and the fraction counts up from them
+// — so half a second before the epoch is seconds = -1 with a fraction of 5e8, and printing the fields as they sit
+// would say "-1.5". `Magnitude` is the same recomputation the duration renderer needs, in uint64 for the same
+// reason: the magnitude of the most negative second count has no positive counterpart in int64.
+func WriteUnixSeconds(writer: &var TextWriter, value: &Timestamp, spec: FormatSpec) -> Result<Unit, FormatError> {
+    let span = Duration { seconds: value.seconds, nanoseconds: value.nanoseconds };
+    var whole: uint64 = 0;
+    var fraction: uint32 = 0;
+    let negative = Magnitude(span, @whole, @fraction);
+    if negative { WriteAscii(writer, c8'-')?; }
+    WriteUnsigned(writer, whole)?;
+    return WriteSecondsFraction(writer, fraction, spec);
+}
+
+// Writes the calendar form, refusing first for a moment the calendar cannot spell.
+//
+// The offset is UTC and is written as `Z`, because a timestamp is UTC: there is no local offset here to lose, and
+// attaching the machine's would claim a place the value never held.
+func WriteCalendarForm(writer: &var TextWriter, value: &Timestamp, spec: FormatSpec) -> Result<Unit, FormatError> {
+    if !value.IsInCalendarRange() { return Result::Error<Unit, FormatError>(FormatError::ValueOutOfRange); }
+    let moment = Timestamp { seconds: value.seconds, nanoseconds: value.nanoseconds };
+    let shown = OffsetDateTime(DateTime::FromTimestamp(moment, UtcOffset::Utc()), UtcOffset::Utc());
+    return shown.WriteDisplay(writer, spec);
+}
+
+extend Timestamp : Display {
+    /// Writes the moment as RFC 3339 in UTC, or as the Unix second count under the `unix` style.
+    ///
+    /// The calendar form is the default and the only one an unadorned placeholder produces: `1970-01-01T00:00:00Z`
+    /// rather than `0`. `rfc3339` and `iso8601` name that same form explicitly, and `unix` asks for the signed
+    /// second count instead — a value with two readings does not get to guess which one a caller meant.
+    ///
+    /// A precision names exactly that many fractional digits, 0 through 9, and truncates, in either form. Without
+    /// one the fraction is written to the digits it has with trailing zeros trimmed, and omitted when it is zero.
+    ///
+    /// # Failures
+    /// Reports whatever the writer reported, `UnsupportedRequest` for a style other than the three named above or
+    /// for a precision past nine, and `ValueOutOfRange` for a moment outside years 0000 through 9999, which RFC
+    /// 3339's four year digits cannot spell. The range is checked before anything is written, so a refused moment
+    /// leaves the destination as it was.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the whole moment was accepted
+    /// @see https://rux-lang.dev/docs/api/time/timestamp/write-display
+    pub func WriteDisplay(self: &Timestamp, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        RejectTimestampStyle(spec)?;
+        if spec.StyleIs("unix") { return WriteUnixSeconds(writer, self, spec); }
+        return WriteCalendarForm(writer, self, spec);
+    }
+}
+
+extend Timestamp : Debug {
+    /// The same text as `Display`: a moment has one reading, and the style chooses between the two forms here too.
+    ///
+    /// # Failures
+    /// The failures `WriteDisplay` reports, including `ValueOutOfRange` before any output.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the whole moment was accepted
+    /// @see https://rux-lang.dev/docs/api/time/timestamp/write-debug
+    pub func WriteDebug(self: &Timestamp, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        return self.WriteDisplay(writer, spec);
+    }
+}

@@ -1,0 +1,191 @@
+import Core::Assert;
+import Text::{ BufferWriter, Debug, Display, FormatError, FormatSpec, ParseFormatSpec, TextWriter };
+import Time::{ ParseRfc3339, Timestamp };
+
+// The wall clock as text, where the whole question is which of its two readings a bare placeholder produces.
+//
+// A timestamp is a moment on the calendar and a count of seconds at the same time, and the decision under test is
+// that only the first is the default. `{}` is RFC 3339 in UTC; the second count exists but has to be named. So the
+// cases below are in three groups: what the default writes, what `unix` writes once it is asked for, and what
+// happens at the two edges where the calendar form stops existing but the second count does not.
+//
+// The pre-epoch fractional cases are the ones that catch a wrong implementation. A timestamp normalizes like a
+// duration — the sign in the seconds, the fraction counting up from them — so half a second before the epoch is
+// seconds = -1 with a fraction of 5e8. Printing the fields as they sit gives "-1.5" for a value that is -0.5.
+
+func Same(actual: char8[..], expected: char8[..]) -> bool {
+    if actual.length != expected.length { return false; }
+    var index: uint = 0;
+    while index < actual.length {
+        if actual.data[index] != expected.data[index] { return false; }
+        index = index + 1;
+    }
+    return true;
+}
+
+func Spec(text: char8[..]) -> FormatSpec {
+    var spec = FormatSpec::Plain();
+    Assert(ParseFormatSpec(text).TryIntoValue(@spec), "the spec parses");
+    return spec;
+}
+
+// A moment from its two normalized fields, which is how a pre-epoch fraction is written down at all.
+func At(seconds: int64, nanoseconds: uint32) -> Timestamp {
+    return Timestamp { seconds: seconds, nanoseconds: nanoseconds };
+}
+
+// Whether Display writes exactly `expected`. The interface binding is deliberate: passing a concrete value as an
+// interface argument of an interface method call is a live compiler defect, so the value is bound to its interface
+// type first.
+func Shown(value: Timestamp, spec: FormatSpec, expected: char8[..]) -> bool {
+    var storage: char8[64];
+    var writer = BufferWriter((@storage[0])[..64]);
+    let sink: &var TextWriter = writer;
+    let shown: Display = value;
+    if shown.WriteDisplay(sink, spec).IsError() { return false; }
+    return Same(writer.Written(), expected);
+}
+
+// Whether Debug writes exactly `expected`, which for this type is whatever Display wrote.
+func Inspected(value: Timestamp, spec: FormatSpec, expected: char8[..]) -> bool {
+    var storage: char8[64];
+    var writer = BufferWriter((@storage[0])[..64]);
+    let sink: &var TextWriter = writer;
+    let shown: Debug = value;
+    if shown.WriteDebug(sink, spec).IsError() { return false; }
+    return Same(writer.Written(), expected);
+}
+
+// Whether the rendering was refused with `expected`, and how much of the destination it had already used. The
+// length matters for the out-of-range cases and is checked separately by `RefusedBeforeOutput`.
+func RefusedWith(value: Timestamp, spec: FormatSpec, expected: FormatError, written: *var uint) -> bool {
+    var storage: char8[64];
+    var writer = BufferWriter((@storage[0])[..64]);
+    let sink: &var TextWriter = writer;
+    let shown: Display = value;
+    var reported = FormatError::WriterFailure;
+    if !shown.WriteDisplay(sink, spec).TryIntoError(@reported) { return false; }
+    *written = writer.Length();
+    return match reported {
+        .UnsupportedRequest => match expected { .UnsupportedRequest => true, else => false },
+        .ValueOutOfRange => match expected { .ValueOutOfRange => true, else => false },
+        else => false
+    };
+}
+
+// Whether the rendering was refused with `expected` before the destination received anything. This is the claim a
+// moment outside the calendar range has to meet: a writer that has already accepted "+2724" and then learns the
+// value cannot be spelled is holding text nobody can use.
+func RefusedBeforeOutput(value: Timestamp, spec: FormatSpec, expected: FormatError) -> bool {
+    var written: uint = 0;
+    if !RefusedWith(value, spec, expected, @written) { return false; }
+    return written == 0u;
+}
+
+// Whether the RFC 3339 text of `value` reads back as the same moment.
+func RoundTrips(value: Timestamp) -> bool {
+    var storage: char8[64];
+    var writer = BufferWriter((@storage[0])[..64]);
+    let sink: &var TextWriter = writer;
+    let shown: Display = value;
+    if shown.WriteDisplay(sink, FormatSpec::Plain()).IsError() { return false; }
+    return match ParseRfc3339(writer.Written()) {
+        .Success(parsed) => parsed.ToTimestamp().Equals(value),
+        .Error(_) => false
+    };
+}
+
+func Main() -> int {
+    let plain = FormatSpec::Plain();
+
+    // The default is the calendar form. The epoch is the case that decides it: 0 and 1970-01-01T00:00:00Z are the
+    // same moment, and only one of them is a date.
+    Assert(Shown(Timestamp::Epoch(), plain, "1970-01-01T00:00:00Z"), "the epoch renders as a date, not as zero");
+    Assert(Shown(At(1577836800i64, 0u32), plain, "2020-01-01T00:00:00Z"), "an ordinary moment");
+    Assert(Shown(At(1577836800i64, 500000000u32), plain, "2020-01-01T00:00:00.5Z"), "with its fraction trimmed");
+    Assert(Shown(At(1577836800i64, 123456789u32), plain, "2020-01-01T00:00:00.123456789Z"), "and a full fraction");
+
+    // Before the epoch, where the normalized fields are not the reading.
+    Assert(Shown(At(-1i64, 0u32), plain, "1969-12-31T23:59:59Z"), "one second before the epoch");
+    Assert(Shown(At(-1i64, 500000000u32), plain, "1969-12-31T23:59:59.5Z"),
+           "half a second before it, whose fields say -1 and 5e8");
+    Assert(Shown(At(-86400i64, 0u32), plain, "1969-12-31T00:00:00Z"), "and a whole day before it");
+
+    // The two style names for the same form, and the precision rules the calendar values already use.
+    Assert(Shown(Timestamp::Epoch(), Spec("rfc3339"), "1970-01-01T00:00:00Z"), "rfc3339 names the default");
+    Assert(Shown(Timestamp::Epoch(), Spec("iso8601"), "1970-01-01T00:00:00Z"), "and so does iso8601");
+    Assert(Shown(At(1577836800i64, 500000000u32), Spec(".3"), "2020-01-01T00:00:00.500Z"),
+           "a precision pads where trimming would not");
+    Assert(Shown(At(1577836800i64, 999999999u32), Spec(".1"), "2020-01-01T00:00:00.9Z"),
+           "and truncates rather than rounding into a second the value does not have");
+    Assert(Shown(At(1577836800i64, 500000000u32), Spec(".0"), "2020-01-01T00:00:00Z"),
+           "zero digits drops the fraction and its point");
+
+    // The second count exists, and asking for it is the only way to get it.
+    Assert(Shown(Timestamp::Epoch(), Spec("unix"), "0"), "unix names the second count");
+    Assert(Shown(At(1577836800i64, 0u32), Spec("unix"), "1577836800"), "an ordinary count");
+    Assert(Shown(At(-1i64, 0u32), Spec("unix"), "-1"), "a negative one");
+    Assert(Shown(At(-1i64, 500000000u32), Spec("unix"), "-0.5"),
+           "and half a second before the epoch, which the stored fields spell -1 and 5e8");
+    Assert(Shown(At(-1i64, 500000000u32), Spec(".3unix"), "-0.500"), "a precision applies to the negative magnitude");
+    Assert(Shown(At(1577836800i64, 250000000u32), Spec("unix"), "1577836800.25"), "and a positive fraction trims");
+
+    // The stored fields really are what the comment claims, so the hard case is exercised rather than assumed.
+    let beforeEpoch = At(-1i64, 500000000u32);
+    Assert(beforeEpoch.UnixSeconds() == -1i64, "half a second before the epoch stores seconds as -1");
+    Assert(beforeEpoch.SubsecondNanoseconds() == 500000000u32, "and a positive fraction of half a second");
+
+    // A style is refused rather than ignored, including the one that belongs to the neighbouring type. The style is
+    // checked before anything is rendered, so these leave the destination untouched as well.
+    Assert(RefusedBeforeOutput(Timestamp::Epoch(), Spec("seconds"), FormatError::UnsupportedRequest),
+           "a duration's style is not a timestamp's");
+    Assert(RefusedBeforeOutput(Timestamp::Epoch(), Spec("q"), FormatError::UnsupportedRequest),
+           "nor is an invented one");
+
+    // A precision past nine is refused too, though only once the fraction is reached — the same partial-output
+    // behaviour the calendar values have, since the digits before it were all valid.
+    var partial: uint = 0;
+    Assert(RefusedWith(Timestamp::Epoch(), Spec(".10"), FormatError::UnsupportedRequest, @partial),
+           "a precision past nine is refused");
+    Assert(RefusedWith(Timestamp::Epoch(), Spec(".10unix"), FormatError::UnsupportedRequest, @partial),
+           "in either form");
+
+    // The edges of the calendar range, which is years 0000 through 9999 because that is what four year digits
+    // spell and what the package's date arithmetic already treats as its own bound.
+    let firstMoment = At(-62167219200i64, 0u32);
+    let lastMoment = At(253402300799i64, 999999999u32);
+    Assert(Shown(firstMoment, plain, "0000-01-01T00:00:00Z"), "the first moment the calendar spells");
+    Assert(Shown(lastMoment, plain, "9999-12-31T23:59:59.999999999Z"), "and the last");
+    Assert(firstMoment.IsInCalendarRange(), "the first moment is in range");
+    Assert(lastMoment.IsInCalendarRange(), "and so is the last");
+
+    // One second either side has no RFC 3339 text, and is refused before anything is written.
+    let tooEarly = At(-62167219201i64, 0u32);
+    let tooLate = At(253402300800i64, 0u32);
+    Assert(!tooEarly.IsInCalendarRange(), "a moment before year 0000 is out of range");
+    Assert(!tooLate.IsInCalendarRange(), "and so is one in year 10000");
+    Assert(RefusedBeforeOutput(tooEarly, plain, FormatError::ValueOutOfRange),
+           "the calendar form refuses it, writing nothing");
+    Assert(RefusedBeforeOutput(tooLate, plain, FormatError::ValueOutOfRange), "at the other end too");
+    Assert(RefusedBeforeOutput(tooLate, Spec("rfc3339"), FormatError::ValueOutOfRange),
+           "however the form was named");
+
+    // The second count has no such range, which is the reason it is worth keeping.
+    Assert(Shown(tooEarly, Spec("unix"), "-62167219201"), "the second count spells a moment the calendar cannot");
+    Assert(Shown(At(9223372036854775807i64, 0u32), Spec("unix"), "9223372036854775807"), "up to the top of int64");
+    Assert(Shown(At(-9223372036854775808i64, 0u32), Spec("unix"), "-9223372036854775808"),
+           "and down to the bottom, whose magnitude does not fit an int64");
+
+    // Debug is Display: a moment has one reading, and the style still selects between the two forms.
+    Assert(Inspected(Timestamp::Epoch(), plain, "1970-01-01T00:00:00Z"), "Debug writes the calendar form too");
+    Assert(Inspected(At(-1i64, 500000000u32), Spec("unix"), "-0.5"), "and answers to unix the same way");
+
+    // What Display writes, ParseRfc3339 reads back to the same moment.
+    Assert(RoundTrips(Timestamp::Epoch()), "the epoch round-trips");
+    Assert(RoundTrips(At(1577836800i64, 123456789u32)), "a moment with a full fraction round-trips");
+    Assert(RoundTrips(At(-1i64, 500000000u32)), "and one before the epoch");
+    Assert(RoundTrips(firstMoment), "the first moment of the range round-trips");
+    Assert(RoundTrips(lastMoment), "and the last");
+
+    return 0;
+}

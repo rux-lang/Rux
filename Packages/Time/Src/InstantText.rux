@@ -1,0 +1,40 @@
+// What a monotonic reading looks like to somebody inspecting a program, and why it has no reader's form.
+//
+// `Instant` implements `Debug` and deliberately does not implement `Display`. The absence is the design, not an
+// omission waiting to be filled in. `Display` is the text a value has for a reader, and a reading of the monotonic
+// clock has none: it is a count from an origin the system chose at boot, it means nothing in another process, and
+// it names no moment anybody can look up. A reader handed "812349871234" learns nothing true. What is meaningful is
+// the difference between two readings, and that difference is a `Duration`, which renders itself.
+//
+// So the only rendering here is the diagnostic one. It shows the tick count, because that is the only thing the
+// value holds, and it wraps it in the type's name and the unit so that nobody reads it as a moment: `Instant(...)`
+// is visibly a reading of something rather than a time, and `nanoseconds:` says what the number counts. Debug
+// output is diagnostic and promises no round trip, which is exactly the right promise for a number whose meaning
+// ends with the process that produced it.
+
+import Core::{ Result, Unit };
+import Text::{ Debug, FormatError, FormatSpec, RejectStyle, TextWriter, WriteAscii, WriteBytes };
+
+extend Instant : Debug {
+    /// Writes the reading as `Instant(nanoseconds: N)`.
+    ///
+    /// The tick count is shown as it is held, in the unit it is held in, named and wrapped so it cannot be mistaken
+    /// for a moment on any calendar. There is no `Display` counterpart: a monotonic reading has no text for a
+    /// reader, only a difference from another reading, and that difference is a `Duration`.
+    ///
+    /// # Failures
+    /// Reports whatever the writer reported, and `UnsupportedRequest` for any style or precision — a reading has
+    /// one form, and neither a style nor a fraction has anything to select here.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the whole reading was accepted
+    /// @see https://rux-lang.dev/docs/api/time/instant/write-debug
+    pub func WriteDebug(self: &Instant, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        RejectStyle(spec)?;
+        if spec.HasPrecision() { return Result::Error<Unit, FormatError>(FormatError::UnsupportedRequest); }
+        WriteBytes(writer, "Instant(nanoseconds: ")?;
+        WriteUnsigned(writer, self.ticks)?;
+        return WriteAscii(writer, c8')');
+    }
+}

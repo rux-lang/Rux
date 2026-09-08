@@ -1,10 +1,58 @@
 import Core::Assert;
+import Text::{ BufferWriter, Debug, FormatSpec, ParseFormatSpec, TextWriter };
 import Time::{ Duration, Instant, SleepFor };
 
 // A monotonic clock's whole contract is an inequality: a later reading is never earlier. So the test is bounds,
 // not values — readings never go backwards, a sleep takes at least what was asked, and the reversed subtraction
 // refuses rather than answering with a wildly large span. Nothing here asserts an upper bound on anything, because
 // a loaded machine is allowed to be slow and a test that fails under load is a test that lies.
+//
+// The presentation is the same kind of claim. An `Instant` implements `Debug` and deliberately does not implement
+// `Display`, because a monotonic reading has no text for a reader: it counts from an origin the system chose at
+// boot and means nothing in another process. That absence cannot be asserted from here — `is` is a static type
+// test and cannot ask about interface conformance — so what is checked is the half that can be: the shape Debug
+// promises, and that the number it shows is the reading itself rather than a decoration.
+
+// The tick count `Debug` shows, when the text has exactly the shape it promises: `Instant(nanoseconds: N)` with
+// nothing but digits between the two. Answers false for any other text, so a check cannot pass on a rendering that
+// merely contains a number. The interface binding is deliberate: passing a concrete value as an interface argument
+// of an interface method call is a live compiler defect, so the value is bound to its interface type first.
+func TicksShown(reading: Instant, ticks: *var uint64) -> bool {
+    var storage: char8[64];
+    var writer = BufferWriter((@storage[0])[..64]);
+    let sink: &var TextWriter = writer;
+    let shown: Debug = reading;
+    if shown.WriteDebug(sink, FormatSpec::Plain()).IsError() { return false; }
+    let text = writer.Written();
+    let opening = "Instant(nanoseconds: ";
+    if text.length <= opening.length + 1 { return false; }
+    var index: uint = 0;
+    while index < opening.length {
+        if text.data[index] != opening.data[index] { return false; }
+        index = index + 1;
+    }
+    if text.data[text.length - 1] != c8')' { return false; }
+    var count: uint64 = 0;
+    while index < text.length - 1 {
+        if text.data[index] < c8'0' || text.data[index] > c8'9' { return false; }
+        count = count * 10u64 + (((text.data[index] as uint32) - 0x30u32) as uint64);
+        index = index + 1;
+    }
+    *ticks = count;
+    return true;
+}
+
+// Whether the rendering under `text` as a specification is refused. A reading has one form, so a style or a
+// precision is a request it cannot honour rather than one it may ignore.
+func RefusesSpec(reading: Instant, text: char8[..]) -> bool {
+    var spec = FormatSpec::Plain();
+    Assert(ParseFormatSpec(text).TryIntoValue(@spec), "the spec parses");
+    var storage: char8[64];
+    var writer = BufferWriter((@storage[0])[..64]);
+    let sink: &var TextWriter = writer;
+    let shown: Debug = reading;
+    return shown.WriteDebug(sink, spec).IsError();
+}
 
 func Main() -> int {
     let first = Instant::Now();
@@ -37,6 +85,25 @@ func Main() -> int {
     SleepFor(Duration::FromMilliseconds(-100i64));
     let after = before.Elapsed();
     Assert(after.Compare(Duration::FromSeconds(30i64)).IsLess(), "and the degenerate spans do not sleep");
+
+    // Debug shows the reading, named and in its unit, so nobody reads it as a moment on a calendar.
+    var firstTicks: uint64 = 0;
+    var lastTicks: uint64 = 0;
+    Assert(TicksShown(first, @firstTicks), "Debug writes Instant(nanoseconds: N)");
+    let last = Instant::Now();
+    Assert(TicksShown(last, @lastTicks), "for every reading, whatever the count happens to be");
+    Assert(lastTicks >= firstTicks, "and the number moves the way the clock does");
+
+    // The number shown is the reading itself: the difference between two renderings is the span between them.
+    let measured = last.Since(first).ValueOr(Duration::FromSeconds(-1i64));
+    Assert(!measured.IsNegative(), "the two readings are in order");
+    Assert(lastTicks - firstTicks == measured.TotalNanoseconds().ValueOr(-1i64) as uint64,
+           "and the difference between the two renderings is the span between the readings");
+
+    // A style and a precision are refused rather than ignored, since neither has anything to select here.
+    Assert(RefusesSpec(last, "nanoseconds"), "a style is refused");
+    Assert(RefusesSpec(last, "rfc3339"), "including one that belongs to a calendar value");
+    Assert(RefusesSpec(last, ".3"), "and so is a precision");
 
     return 0;
 }

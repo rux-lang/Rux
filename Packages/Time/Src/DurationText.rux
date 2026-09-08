@@ -39,7 +39,7 @@ func Magnitude(value: &Duration, whole: *var uint64, fraction: *var uint32) -> b
 }
 
 // Writes an unsigned value in as many digits as it needs.
-func WriteWholeSeconds(writer: &var TextWriter, value: uint64) -> Result<Unit, FormatError> {
+func WriteUnsigned(writer: &var TextWriter, value: uint64) -> Result<Unit, FormatError> {
     var digits: char8[20];
     var count: uint = 0;
     var rest = value;
@@ -120,7 +120,7 @@ extend Duration : Display {
         var fraction: uint32 = 0;
         let negative = Magnitude(self, @whole, @fraction);
         if negative { WriteAscii(writer, c8'-')?; }
-        WriteWholeSeconds(writer, whole)?;
+        WriteUnsigned(writer, whole)?;
         WriteSecondsFraction(writer, fraction, spec)?;
         return WriteAscii(writer, c8's');
     }
