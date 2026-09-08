@@ -84,8 +84,8 @@ directory listing, says what the release set is.
 | Identity        | Target state                | Status                                                     |
 | --------------- | --------------------------- | ---------------------------------------------------------- |
 | `Rux/Storage`   | Renamed to `Rux/FileSystem` | Migrated; the identity no longer exists                    |
-| `Rux/Sync`      | Removed from the release set | Still present in the workspace                            |
-| `Rux/Thread`    | Removed from the release set | Still present in the workspace                            |
+| `Rux/Sync`      | Removed from the release set | Removed; the identity no longer exists                    |
+| `Rux/Thread`    | Removed from the release set | Removed; the identity no longer exists                    |
 | `Rux/Benchmark` | Removed from the release set | Still present in the workspace                            |
 | `Rux/Simd`      | Removed from the release set | Still present in the workspace                            |
 
