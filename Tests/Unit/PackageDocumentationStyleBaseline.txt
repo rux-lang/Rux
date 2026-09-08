@@ -1383,9 +1383,6 @@ missing-param|Unicode/Src/Properties.rux|func|IsWhiteSpace|6d8538013958833a
 missing-param|Uuid/Src/Random.rux|func|RandomFromBytes|b45479909a3d4066
 missing-param|Uuid/Src/Random.rux|func|Random|ec732e1956961ef9
 missing-param|Uuid/Src/Random.rux|func|SwapGuidOrder|903e41592394b5d3
-missing-param|Uuid/Src/Text.rux|func|FormatUpper|be7b672482c1fb33
-missing-param|Uuid/Src/Text.rux|func|FormatUrn|73b67dc615308f74
-missing-param|Uuid/Src/Text.rux|func|Format|c20543984159112e
 missing-param|Uuid/Src/TimeOrdered.rux|func|MillisecondOf|2da2c51419c4233f
 missing-param|Uuid/Src/TimeOrdered.rux|func|Next|38e703cafd99d4a7
 missing-param|Uuid/Src/TimeOrdered.rux|func|TimeOrderedAt|833dd0279233456a
@@ -4539,9 +4536,6 @@ missing-see|Uuid/Src/Random.rux|func|Random|ec732e1956961ef9
 missing-see|Uuid/Src/Random.rux|func|SwapGuidOrder|903e41592394b5d3
 missing-see|Uuid/Src/Text.rux|const|UuidTextLength|f8452aef313c0e01
 missing-see|Uuid/Src/Text.rux|const|UuidUrnLength|83e87f0a821bb46d
-missing-see|Uuid/Src/Text.rux|func|FormatUpper|be7b672482c1fb33
-missing-see|Uuid/Src/Text.rux|func|FormatUrn|73b67dc615308f74
-missing-see|Uuid/Src/Text.rux|func|Format|c20543984159112e
 missing-see|Uuid/Src/TimeOrdered.rux|func|MillisecondOf|2da2c51419c4233f
 missing-see|Uuid/Src/TimeOrdered.rux|func|MonotonicUuid|f7b936b93fedbb1f
 missing-see|Uuid/Src/TimeOrdered.rux|func|Next|38e703cafd99d4a7

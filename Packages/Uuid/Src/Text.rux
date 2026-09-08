@@ -20,9 +20,15 @@
 // character to point their own user at, which is the difference between "that is not a UUID" and an underline
 // under the character that is wrong. The offsets are into the text as given, so the URN form's digits are numbered
 // from the start of the whole string rather than from the start of the value inside it.
+//
+// Writing refuses a destination too small rather than filling what fits. A truncated UUID is not a shorter UUID; it
+// is a different string, and one a strict parser refuses and a lenient one might not. The old writers stopped at
+// the end of the buffer and said nothing, so a caller who had miscounted got thirty of the thirty-six characters
+// and no way to learn it. Every writer here checks the room it needs before it writes a byte, so a refusal leaves
+// the destination exactly as it was and a success is always the complete form.
 
-import Core::Result;
-import Text::ParseFailure;
+import Core::{ Result, Unit };
+import Text::{ Debug, Display, FormatError, FormatOk, FormatSpec, ParseFailure, StringView, TextWriter, WriteBytes };
 
 /// How long the canonical text form is: thirty-two digits and four hyphens.
 ///
@@ -164,17 +170,29 @@ pub func Parse(text: char8[..]) -> Result<Uuid, UuidParseError> {
     return Result::Success<Uuid, UuidParseError>(value);
 }
 
-/// Writes the canonical text form into `into`, in lower case.
+/// Reads a UUID from the text a `StringView` borrows.
 ///
-/// `into` must be at least thirty-six bytes. Lower case because RFC 9562 says so, and because a canonical form
-/// that varies by case is not canonical — two systems comparing text would disagree about equal UUIDs.
+/// The same parser, reached without the caller unwrapping the view first: a `StringView` is already validated
+/// UTF-8, and a UUID's text is ASCII, so the bytes it borrows are exactly what the canonical form is made of.
 ///
-/// https://rux-lang.dev/docs/api/uuid/format
-pub func Format(value: &Uuid, into: var char8[..]) {
+/// # Failures
+/// The failures the slice form reports, with offsets into the borrowed text.
+///
+/// @param text the text to read
+/// @returns the identifier, or why the text is not one
+/// @see https://rux-lang.dev/docs/api/uuid/parse
+pub func Parse(text: StringView) -> Result<Uuid, UuidParseError> {
+    return Parse(text.Bytes());
+}
+
+// Writes the canonical form into the first thirty-six bytes of `into`, which the caller has already checked is
+// long enough. Split out so that the buffer writers and the `Display` implementation produce one form from one
+// piece of code rather than from two that can drift.
+func WriteCanonicalInto(value: &Uuid, into: var char8[..]) {
     let digits = "0123456789abcdef";
     var position: uint = 0;
     var byteIndex: uint = 0;
-    while position < UuidTextLength && position < into.length {
+    while position < UuidTextLength {
         if IsHyphenPosition(position) {
             into.data[position] = 0x2Du8 as char8;
         }
@@ -188,35 +206,118 @@ pub func Format(value: &Uuid, into: var char8[..]) {
     }
 }
 
+/// Writes the canonical text form into `into`, in lower case.
+///
+/// Lower case because RFC 9562 says so, and because a canonical form that varies by case is not canonical — two
+/// systems comparing text would disagree about equal UUIDs.
+///
+/// # Failures
+/// Reports `InsufficientCapacity` when `into` is shorter than `UuidTextLength`, leaving it exactly as it was. A
+/// short destination is refused rather than filled with what fits, because a truncated UUID is a different string
+/// rather than a shorter one. Room past the thirty-six characters is not touched.
+///
+/// @param value the identifier to write
+/// @param into the destination, at least `UuidTextLength` bytes
+/// @returns success when the whole form was written
+/// @see https://rux-lang.dev/docs/api/uuid/format
+pub func Format(value: &Uuid, into: var char8[..]) -> Result<Unit, FormatError> {
+    if into.length < UuidTextLength { return Result::Error<Unit, FormatError>(FormatError::InsufficientCapacity); }
+    WriteCanonicalInto(value, into);
+    return FormatOk();
+}
+
 /// Writes the canonical text form into `into`, in upper case.
 ///
 /// Offered because some formats demand it; `Format` is what a program should write when it has the choice.
 ///
-/// https://rux-lang.dev/docs/api/uuid/format-upper
-pub func FormatUpper(value: &Uuid, into: var char8[..]) {
-    Format(value, into);
+/// # Failures
+/// The failure `Format` reports, for the same reason and with the same guarantee.
+///
+/// @param value the identifier to write
+/// @param into the destination, at least `UuidTextLength` bytes
+/// @returns success when the whole form was written
+/// @see https://rux-lang.dev/docs/api/uuid/format-upper
+pub func FormatUpper(value: &Uuid, into: var char8[..]) -> Result<Unit, FormatError> {
+    if into.length < UuidTextLength { return Result::Error<Unit, FormatError>(FormatError::InsufficientCapacity); }
+    WriteCanonicalInto(value, into);
     var index: uint = 0;
-    while index < UuidTextLength && index < into.length {
+    while index < UuidTextLength {
         let c = into.data[index] as uint8;
         if c >= 0x61u8 && c <= 0x7Au8 {
             into.data[index] = (c - 32u8) as char8;
         }
         index = index + 1;
     }
+    return FormatOk();
 }
 
-/// Writes the URN form into `into`, which must be at least forty-five bytes.
+/// Writes the URN form into `into`: the canonical form after `urn:uuid:`.
 ///
-/// https://rux-lang.dev/docs/api/uuid/format-urn
-pub func FormatUrn(value: &Uuid, into: var char8[..]) {
+/// # Failures
+/// Reports `InsufficientCapacity` when `into` is shorter than `UuidUrnLength`, leaving it exactly as it was. The
+/// form is refused whole, so a destination never receives a prefix with nothing after it.
+///
+/// @param value the identifier to write
+/// @param into the destination, at least `UuidUrnLength` bytes
+/// @returns success when the whole form was written
+/// @see https://rux-lang.dev/docs/api/uuid/format-urn
+pub func FormatUrn(value: &Uuid, into: var char8[..]) -> Result<Unit, FormatError> {
+    if into.length < UuidUrnLength { return Result::Error<Unit, FormatError>(FormatError::InsufficientCapacity); }
     let prefix = "urn:uuid:";
     var index: uint = 0;
-    while index < 9u && index < into.length {
+    while index < 9u {
         into.data[index] = prefix.data[index];
         index = index + 1;
     }
-    if into.length > 9u {
-        let rest = (@into.data[9])[..into.length - 9u];
-        Format(value, rest);
+    let rest = (@into.data[9])[..UuidTextLength];
+    WriteCanonicalInto(value, rest);
+    return FormatOk();
+}
+
+// The empty style is the canonical form and `hyphenated` names it; `urn` selects the URN form. Nothing else is
+// understood, and a precision has nothing to apply itself to on a value of exactly one length.
+func AcceptsUuidSpec(spec: FormatSpec) -> Result<Unit, FormatError> {
+    if spec.HasPrecision() { return Result::Error<Unit, FormatError>(FormatError::UnsupportedRequest); }
+    if !spec.HasStyle() || spec.StyleIs("hyphenated") || spec.StyleIs("urn") { return FormatOk(); }
+    return Result::Error<Unit, FormatError>(FormatError::UnsupportedRequest);
+}
+
+extend Uuid : Display {
+    /// Writes the canonical lower-case form, or the URN form under the `urn` style.
+    ///
+    /// The default is the hyphenated form RFC 9562 defines, in lower case, because that is the one representation
+    /// the standard has and the one every other implementation writes. `hyphenated` names it explicitly and `urn`
+    /// selects the `urn:uuid:` form. Upper case is not a style, since a canonical form that varies by case is not
+    /// canonical; `FormatUpper` remains for a format that demands it.
+    ///
+    /// # Failures
+    /// Reports whatever the writer reported, and `UnsupportedRequest` for any other style or for a precision, which
+    /// a value of exactly one length has nothing to apply.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the whole form was accepted
+    /// @see https://rux-lang.dev/docs/api/uuid/uuid/write-display
+    pub func WriteDisplay(self: &Uuid, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        AcceptsUuidSpec(spec)?;
+        if spec.StyleIs("urn") { WriteBytes(writer, "urn:uuid:")?; }
+        var text: char8[36];
+        WriteCanonicalInto(self, (@text[0])[..UuidTextLength]);
+        return WriteBytes(writer, (@text[0])[..UuidTextLength]);
+    }
+}
+
+extend Uuid : Debug {
+    /// The same text as `Display`: an identifier has one reading, and quoting it would say nothing extra.
+    ///
+    /// # Failures
+    /// The failures `WriteDisplay` reports.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the whole form was accepted
+    /// @see https://rux-lang.dev/docs/api/uuid/uuid/write-debug
+    pub func WriteDebug(self: &Uuid, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        return self.WriteDisplay(writer, spec);
     }
 }

@@ -7,10 +7,17 @@
 // in whatever reports it. So each case below names the exact byte, and the URN cases are the ones that decide the
 // convention: the offsets are into the text as given, so a digit inside a URN is numbered from the start of the
 // whole string and not from the value inside it.
+//
+// Writing has the mirror-image claim. The writers refuse a destination that is too small rather than filling what
+// fits, so the short-buffer cases below check two things together: that the call reported `InsufficientCapacity`,
+// and that the destination still holds the sentinel it was filled with beforehand. The second is the half that
+// matters — a writer that reports the failure after laying down thirty of the thirty-six characters has still left
+// a string that is not a UUID where a caller may go on to read one.
 
 import Core::Assert;
-import Text::ParseFailure;
-import Uuid::{ Format, FormatUpper, FormatUrn, Parse, Uuid, UuidParseError };
+import Text::{ BufferWriter, Debug, Display, FormatError, FormatSpec, ParseFailure, ParseFormatSpec, StringView,
+               TextWriter };
+import Uuid::{ Format, FormatUpper, FormatUrn, Parse, Uuid, UuidParseError, UuidTextLength, UuidUrnLength };
 
 // Which failure a result carries, as a small code, so a check names the reason it expects rather than only that
 // something failed: 1 WrongLength, 2 Misplaced, 3 NotHexadecimal, 4 BadPrefix.
@@ -45,6 +52,85 @@ func Accepts(text: char8[..]) -> bool {
     return Parse(text).IsSuccess();
 }
 
+func Spec(text: char8[..]) -> FormatSpec {
+    var spec = FormatSpec::Plain();
+    Assert(ParseFormatSpec(text).TryIntoValue(@spec), "the spec parses");
+    return spec;
+}
+
+func Same(actual: char8[..], expected: char8[..]) -> bool {
+    if actual.length != expected.length { return false; }
+    var index: uint = 0;
+    while index < actual.length {
+        if actual.data[index] != expected.data[index] { return false; }
+        index = index + 1;
+    }
+    return true;
+}
+
+// Whether every byte of `room` is still the sentinel it was filled with, which is what "left exactly as it was"
+// means for a refused write.
+func Untouched(room: char8[..]) -> bool {
+    var index: uint = 0;
+    while index < room.length {
+        if (room.data[index] as uint8) != 0x3Fu8 { return false; }
+        index = index + 1;
+    }
+    return true;
+}
+
+// Whether `Display` writes exactly `expected` under `spec`. The interface binding is deliberate: passing a concrete
+// value as an interface argument of an interface method call is a live compiler defect, so the value is bound to
+// its interface type first.
+func Shown(value: Uuid, spec: FormatSpec, expected: char8[..]) -> bool {
+    var storage: char8[64];
+    var writer = BufferWriter((@storage[0])[..64]);
+    let sink: &var TextWriter = writer;
+    let shown: Display = value;
+    if shown.WriteDisplay(sink, spec).IsError() { return false; }
+    return Same(writer.Written(), expected);
+}
+
+// Whether `Debug` writes exactly `expected`, which for this type is whatever `Display` wrote.
+func Inspected(value: Uuid, spec: FormatSpec, expected: char8[..]) -> bool {
+    var storage: char8[64];
+    var writer = BufferWriter((@storage[0])[..64]);
+    let sink: &var TextWriter = writer;
+    let shown: Debug = value;
+    if shown.WriteDebug(sink, spec).IsError() { return false; }
+    return Same(writer.Written(), expected);
+}
+
+// Whether rendering into a destination of exactly `room` bytes reports `InsufficientCapacity` — the writer's
+// failure travelling out through the protocol rather than being swallowed by it.
+func RefusedByWriter(value: Uuid, spec: FormatSpec, room: uint) -> bool {
+    var storage: char8[64];
+    var writer = BufferWriter((@storage[0])[..room]);
+    let sink: &var TextWriter = writer;
+    let shown: Display = value;
+    var reported = FormatError::WriterFailure;
+    if !shown.WriteDisplay(sink, spec).TryIntoError(@reported) { return false; }
+    return match reported {
+        .InsufficientCapacity => true,
+        else => false
+    };
+}
+
+// Whether the specification is refused by the value rather than applied or ignored.
+func RefusedBySpec(value: Uuid, spec: FormatSpec) -> bool {
+    var storage: char8[64];
+    var writer = BufferWriter((@storage[0])[..64]);
+    let sink: &var TextWriter = writer;
+    let shown: Display = value;
+    var reported = FormatError::WriterFailure;
+    if !shown.WriteDisplay(sink, spec).TryIntoError(@reported) { return false; }
+    if writer.Length() != 0u { return false; }
+    return match reported {
+        .UnsupportedRequest => true,
+        else => false
+    };
+}
+
 func Main() -> int {
     let canonical = "f81d4fae-7dec-11d0-a765-00a0c91e6bf6";
 
@@ -53,7 +139,7 @@ func Main() -> int {
     var value = Parsed(canonical);
     Assert(value.Version() == 1u8, "and its version is read from the right nibble");
     var text: char8[64];
-    Format(value, (@text[0])[..36]);
+    Assert(Format(value, (@text[0])[..36]).IsSuccess(), "and writes back into a destination of exactly its length");
     var index: uint = 0;
     while index < 36u {
         Assert(text[index] == canonical.data[index], "and it formats back to exactly what was parsed");
@@ -66,7 +152,7 @@ func Main() -> int {
     Assert(Parsed("f81D4fAe-7DeC-11d0-A765-00a0C91e6Bf6").Equals(value), "as does mixed case");
 
     var upperText: char8[64];
-    FormatUpper(value, (@upperText[0])[..36]);
+    Assert(FormatUpper(value, (@upperText[0])[..36]).IsSuccess(), "the upper-case form writes");
     Assert((upperText[0] as uint8) == 0x46u8, "the upper-case form writes upper-case digits");
     Assert((upperText[8] as uint8) == 0x2Du8, "and keeps the hyphens");
     Assert(Parsed((@upperText[0])[..36]).Equals(value), "and parses back to the same value");
@@ -77,7 +163,7 @@ func Main() -> int {
            "and its prefix is case-insensitive, which is a different rule from the digits and also the standard's");
 
     var urnText: char8[64];
-    FormatUrn(value, (@urnText[0])[..45]);
+    Assert(FormatUrn(value, (@urnText[0])[..45]).IsSuccess(), "the URN form writes");
     Assert(Parsed((@urnText[0])[..45]).Equals(value), "and the written URN form parses back");
 
     // The refusals: every widely-circulated non-standard form. A text short of the canonical length points at its
@@ -123,11 +209,11 @@ func Main() -> int {
 
     // The sentinels have text forms too.
     var nil = Uuid::Nil();
-    Format(nil, (@text[0])[..36]);
-    Assert(Accepts((@text[0])[..36]) && Parsed((@text[0])[..36]).IsNil(), "the nil UUID round-trips through text");
+    Assert(Format(nil, (@text[0])[..36]).IsSuccess(), "the nil UUID writes");
+    Assert(Accepts((@text[0])[..36]) && Parsed((@text[0])[..36]).IsNil(), "and round-trips through text");
     var max = Uuid::Max();
-    Format(max, (@text[0])[..36]);
-    Assert(Parsed((@text[0])[..36]).IsMax(), "and so does the max UUID");
+    Assert(Format(max, (@text[0])[..36]).IsSuccess(), "and so does the max UUID");
+    Assert(Parsed((@text[0])[..36]).IsMax(), "which reads back as itself");
 
     // Every byte survives the round trip, at every position — which a formatter that swapped a nibble would
     // fail while still producing something that looks like a UUID.
@@ -136,11 +222,81 @@ func Main() -> int {
     while index < 16u {
         probe = Uuid::Nil();
         probe.bytes[index] = 0x9Cu8 as char8;
-        Format(probe, (@text[0])[..36]);
+        Assert(Format(probe, (@text[0])[..36]).IsSuccess(), "every byte position writes");
         Assert(Accepts((@text[0])[..36]) && Parsed((@text[0])[..36]).Equals(probe),
                "every byte position survives the text round trip");
         index = index + 1;
     }
+
+    // A destination one byte short of the form is refused, and refused before anything is written. The sentinel is
+    // what proves the second half: a writer that reported the failure after laying down thirty-five characters
+    // would leave a string that is not a UUID where a caller may go on to read one.
+    var room: char8[64];
+    index = 0;
+    while index < 64u {
+        room[index] = 0x3Fu8 as char8;
+        index = index + 1;
+    }
+    Assert(Format(value, (@room[0])[..35]).IsError(), "one byte short of the canonical form is refused");
+    Assert(Untouched((@room[0])[..64]), "and the destination is left exactly as it was");
+    Assert(FormatUpper(value, (@room[0])[..35]).IsError(), "the upper-case form refuses the same destination");
+    Assert(Untouched((@room[0])[..64]), "and leaves it alone too");
+    Assert(FormatUrn(value, (@room[0])[..44]).IsError(), "and the URN form refuses one byte short of forty-five");
+    Assert(Untouched((@room[0])[..64]), "without leaving a prefix with nothing after it");
+    Assert(Format(value, (@room[0])[..0]).IsError(), "an empty destination is refused");
+    Assert(Untouched((@room[0])[..64]), "and is still empty of anything written");
+    Assert(FormatUrn(value, (@room[0])[..36]).IsError(),
+           "and a destination long enough for the canonical form is still too short for the URN one");
+    Assert(Untouched((@room[0])[..64]), "which is checked before the prefix goes down");
+
+    // Exactly enough room succeeds, and room past the form is not touched.
+    Assert(Format(value, (@room[0])[..36]).IsSuccess(), "exactly thirty-six bytes is enough");
+    Assert(Same((@room[0])[..36], canonical), "and holds the canonical form");
+    Assert(Untouched((@room[36])[..28]), "with the room past it untouched");
+    Assert(FormatUrn(value, (@room[0])[..45]).IsSuccess(), "and exactly forty-five is enough for the URN form");
+    Assert(Same((@room[0])[..45], "urn:uuid:f81d4fae-7dec-11d0-a765-00a0c91e6bf6"), "which is the whole form");
+    Assert(Untouched((@room[45])[..19]), "with the room past that untouched as well");
+
+    // The two lengths are constants a caller can size a destination from, and they are the lengths the writers
+    // actually require.
+    Assert(UuidTextLength == 36u, "the canonical length is thirty-six");
+    Assert(UuidUrnLength == 45u, "and the URN length is that plus the prefix");
+
+    // Presentation: the default is the canonical lower-case form, and the URN form is a style.
+    let plain = FormatSpec::Plain();
+    Assert(Shown(value, plain, canonical), "Display writes the canonical lower-case form");
+    Assert(Shown(value, Spec("hyphenated"), canonical), "which hyphenated names explicitly");
+    Assert(Shown(value, Spec("urn"), "urn:uuid:f81d4fae-7dec-11d0-a765-00a0c91e6bf6"), "and urn selects the URN one");
+    Assert(Shown(nil, plain, "00000000-0000-0000-0000-000000000000"), "the nil UUID shows as all zeros");
+    Assert(Shown(max, plain, "ffffffff-ffff-ffff-ffff-ffffffffffff"), "and the max UUID as all fs, in lower case");
+    Assert(Inspected(value, plain, canonical), "Debug writes the same text");
+    Assert(Inspected(value, Spec("urn"), "urn:uuid:f81d4fae-7dec-11d0-a765-00a0c91e6bf6"),
+           "and answers to the same styles");
+
+    // A style the value does not have is refused rather than ignored, and so is a precision, which a value of one
+    // length has nothing to apply.
+    Assert(RefusedBySpec(value, Spec("upper")), "upper case is not a style, because a varying canonical form is not");
+    Assert(RefusedBySpec(value, Spec("rfc3339")), "nor is one belonging to another domain");
+    Assert(RefusedBySpec(value, Spec(".8")), "and a precision is refused rather than truncating the form");
+
+    // A destination too small reports the writer's own failure through the protocol rather than swallowing it.
+    Assert(RefusedByWriter(value, plain, 35u), "a writer one byte short reports insufficient capacity");
+    Assert(RefusedByWriter(value, Spec("urn"), 44u), "and so does one a byte short of the URN form");
+
+    // What Display writes parses back, in both forms, which is what makes the pair a round trip rather than two
+    // separate opinions about the text.
+    var shownText: char8[64];
+    var shownWriter = BufferWriter((@shownText[0])[..64]);
+    let shownSink: &var TextWriter = shownWriter;
+    let displayed: Display = value;
+    Assert(displayed.WriteDisplay(shownSink, Spec("urn")).IsSuccess(), "the URN rendering succeeds");
+    Assert(Parsed(shownWriter.Written()).Equals(value), "and parses back to the same identifier");
+
+    // The StringView overload reaches the same parser, refusals included.
+    Assert(Parse(StringView::FromValidated(canonical)).IsSuccess(), "a StringView parses");
+    Assert(Parsed(StringView::FromValidated(canonical).Bytes()).Equals(value),
+           "to the same identifier its bytes do");
+    Assert(Parse(StringView::FromValidated("not a uuid")).IsError(), "and a view of something else is refused");
 
     return 0;
 }
