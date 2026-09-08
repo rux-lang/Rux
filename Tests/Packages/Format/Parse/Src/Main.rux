@@ -1,11 +1,81 @@
-import Core::{ Result };
+import Core::{ Assert, Result };
 import Format::{ IsInfinite, IsNan, ParseBool, ParseChar, ParseError, ParseFloat32, ParseFloat64, ParseInt8, ParseInt64, ParseInt128, ParseUint8, ParseUint64, ParseUint128, ParseUint512 };
+import Text::ParseFailure;
 
 // One grammar serves every width — sign, optional base prefix, digits — and the width's own bound is checked
 // last, so what is tested per width is the bound: the largest value in, one past it refused, and for the signed
 // widths the most negative value, which fits where its positive twin does not.
 //
 // The prefixes are exactly the ones formatting writes under `#`, so what one side prints the other reads.
+//
+// Every refusal also says where, and the offsets are the half that fails quietly: a reason with the wrong offset
+// still passes a check that only asks for the reason, and still underlines the wrong character in whatever reports
+// it. So the section at the bottom names the exact byte for each, including the two flavours of overflow, which
+// point at different things on purpose. A number past what the widest integer holds points at the digit that did
+// it, because the number itself is unreadable from there on; a number that merely does not fit the width asked for
+// points at its end, because the whole of it is what does not fit and no single digit is at fault.
+
+// Which failure a result carries, as a small code: 1 Empty, 2 InvalidCharacter, 3 Overflow, 4 OutOfMemory.
+func CodeOf(error: &ParseError) -> int {
+    return match error {
+        .Empty => 1,
+        .InvalidCharacter(_) => 2,
+        .Overflow(_) => 3,
+        .OutOfMemory(_) => 4
+    };
+}
+
+// Whether `outcome` failed with exactly `code` at exactly `at`. The offset is read through `Offset`, which is what
+// a caller embedding this parser in a larger grammar calls, so the test exercises the contract rather than the
+// payload shape.
+func FailedAt(outcome: Result<int64, ParseError>, code: int, at: uint) -> bool {
+    return match outcome {
+        .Success(_) => false,
+        .Error(reason) => CodeOf(reason) == code && reason.Offset() == at
+    };
+}
+
+func FailedAt8(outcome: Result<int8, ParseError>, code: int, at: uint) -> bool {
+    return match outcome {
+        .Success(_) => false,
+        .Error(reason) => CodeOf(reason) == code && reason.Offset() == at
+    };
+}
+
+func FailedAtU8(outcome: Result<uint8, ParseError>, code: int, at: uint) -> bool {
+    return match outcome {
+        .Success(_) => false,
+        .Error(reason) => CodeOf(reason) == code && reason.Offset() == at
+    };
+}
+
+func FailedAtU512(outcome: Result<uint512, ParseError>, code: int, at: uint) -> bool {
+    return match outcome {
+        .Success(_) => false,
+        .Error(reason) => CodeOf(reason) == code && reason.Offset() == at
+    };
+}
+
+func FailedAtBool(outcome: Result<bool, ParseError>, code: int, at: uint) -> bool {
+    return match outcome {
+        .Success(_) => false,
+        .Error(reason) => CodeOf(reason) == code && reason.Offset() == at
+    };
+}
+
+func FailedAtChar(outcome: Result<char32, ParseError>, code: int, at: uint) -> bool {
+    return match outcome {
+        .Success(_) => false,
+        .Error(reason) => CodeOf(reason) == code && reason.Offset() == at
+    };
+}
+
+func FailedAtFloat(outcome: Result<float64, ParseError>, code: int, at: uint) -> bool {
+    return match outcome {
+        .Success(_) => false,
+        .Error(reason) => CodeOf(reason) == code && reason.Offset() == at
+    };
+}
 
 func Main() -> int {
     // The grammar itself, at one width.
@@ -168,6 +238,37 @@ func Main() -> int {
         .Error(_) => { return 109; }
     }
     if ParseInt64("nope").IsSuccess() { return 110; }
+
+    // Where each refusal happened. An empty text has one position and it is zero, which is also its length.
+    Assert(FailedAt(ParseInt64(""), 1, 0u), "an empty text is Empty at zero");
+    Assert(FailedAt(ParseInt64("12a"), 2, 2u), "a byte that is not a digit is reported at that byte");
+    Assert(FailedAt(ParseInt64("-"), 2, 0u), "a sign with nothing after it points at the sign");
+    Assert(FailedAt(ParseInt64("0x"), 2, 1u), "and a prefix with no digits points at its mark");
+    Assert(FailedAt(ParseInt64("1 2"), 2, 1u), "a space inside a number is reported where it stands");
+    Assert(FailedAt(ParseInt64("0b102"), 2, 4u), "and a digit outside the base is reported at itself");
+
+    // The width bound: the whole number is what does not fit, so the offset is its end.
+    Assert(FailedAt8(ParseInt8("128"), 3, 3u), "one past the signed maximum overflows at the end of the number");
+    Assert(FailedAt8(ParseInt8("-129"), 3, 4u), "and one past the signed minimum, whose sign is part of the length");
+    Assert(FailedAtU8(ParseUint8("256"), 3, 3u), "the unsigned maximum likewise");
+    Assert(FailedAtU8(ParseUint8("-1"), 2, 0u), "while a sign on an unsigned width is a character, not an overflow");
+
+    // Past what the widest integer holds, where the digit that did it is the offset rather than the end.
+    Assert(FailedAtU512(ParseUint512("99999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999"),
+                        3, 154u),
+           "a number past the widest magnitude points at the digit that passed it");
+
+    // The two values whose text is a word or a character.
+    Assert(FailedAtBool(ParseBool(""), 1, 0u), "an empty boolean is Empty");
+    Assert(FailedAtBool(ParseBool("yes"), 2, 0u), "and a word that is not one of the two is reported at its start");
+    Assert(FailedAtBool(ParseBool("truex"), 2, 0u), "including a correct word with something after it");
+    Assert(FailedAtChar(ParseChar(""), 1, 0u), "an empty character is Empty");
+    Assert(FailedAtChar(ParseChar("ab"), 2, 1u), "and a second character is reported at itself");
+
+    // Floats, where an exponent past the format is the number failing rather than a byte.
+    Assert(FailedAtFloat(ParseFloat64(""), 1, 0u), "an empty float is Empty");
+    Assert(FailedAtFloat(ParseFloat64("1.2.3"), 2, 3u), "a second point is reported where it stands");
+    Assert(FailedAtFloat(ParseFloat64("1e999"), 3, 5u), "and an exponent past the format overflows at the end");
 
     return 0;
 }

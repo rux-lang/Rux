@@ -124,9 +124,6 @@ missing-documentation|Core/Src/Target.rux|case|TargetFeature::SSE41|acea93674f8c
 missing-documentation|Core/Src/Target.rux|case|TargetFeature::SSE42|acea90674f8c2d10
 missing-documentation|Core/Src/Target.rux|case|TargetFeature::SSSE3|ece0a366e25b9384
 missing-documentation|Core/Src/Target.rux|case|TargetFeature::SVE|5af64e357ba6930b
-missing-documentation|Format/Src/ParseFloat64.rux|case|ParseError::Empty|7a4a1c31215d9b28
-missing-documentation|Format/Src/ParseFloat64.rux|case|ParseError::InvalidCharacter|a9a38c0220b768bd
-missing-documentation|Format/Src/ParseFloat64.rux|case|ParseError::Overflow|135a9bd9da8c3c79
 missing-documentation|Linux/Src/File.rux|const|OpenDirectory|9e1fc08e56ce835f
 missing-documentation|Windows/Src/Clock.rux|extern|GetSystemTimeAsFileTime|293c9dc48780e398
 missing-documentation|Windows/Src/Clock.rux|extern|GetSystemTimePreciseAsFileTime|3cd551cd39afd713
@@ -408,8 +405,6 @@ missing-header|Core/Src/Result.rux|file||0985aa4f2f63cc6c
 missing-header|Core/Src/Unit.rux|file||f2571fe1d1f78d4a
 missing-header|Core/Src/Zeroize.rux|file||c5ed07a20bd72035
 missing-header|FileSystem/Src/Temporary.rux|file||ea06818ecb8ddee3
-missing-header|Format/Src/ParseFloat64.rux|file||ce7cd3f1c5420724
-missing-header|Format/Src/ParseInt64.rux|file||71664867adfb3fce
 missing-header|Format/Src/ParseValue.rux|file||7f090337cdd500ce
 missing-header|Io/Src/Print.rux|file||4dec3065890d3347
 missing-header|Json/Src/Events.rux|file||e5f1d8b8ee088381
@@ -918,8 +913,6 @@ missing-param|Format/Src/Float64.rux|func|IsNan|2df63636a10084ef
 missing-param|Format/Src/ParseFloat64.rux|func|ParseFloat32|7be4166b2c51d1f2
 missing-param|Format/Src/ParseFloat64.rux|func|ParseFloat32|ea17b350d7f39dfc
 missing-param|Format/Src/ParseFloat64.rux|func|ParseFloat64|9ab5ab9edca59a3b
-missing-param|Format/Src/ParseFloat64.rux|func|TryParseFloat64|5b118b1f42adfb3a
-missing-param|Format/Src/ParseInt64.rux|func|TryParseInt64|5cea24809344ab63
 missing-param|Format/Src/ParseInteger.rux|func|ParseInt128|33345a158bf77ef1
 missing-param|Format/Src/ParseInteger.rux|func|ParseInt128|c6589eafec3e0e11
 missing-param|Format/Src/ParseInteger.rux|func|ParseInt16|0e87e8116ff18245
@@ -1954,8 +1947,6 @@ missing-returns|Format/Src/Float64.rux|func|IsNan|2df63636a10084ef
 missing-returns|Format/Src/ParseFloat64.rux|func|ParseFloat32|7be4166b2c51d1f2
 missing-returns|Format/Src/ParseFloat64.rux|func|ParseFloat32|ea17b350d7f39dfc
 missing-returns|Format/Src/ParseFloat64.rux|func|ParseFloat64|9ab5ab9edca59a3b
-missing-returns|Format/Src/ParseFloat64.rux|func|TryParseFloat64|5b118b1f42adfb3a
-missing-returns|Format/Src/ParseInt64.rux|func|TryParseInt64|5cea24809344ab63
 missing-returns|Format/Src/ParseInteger.rux|func|ParseInt128|33345a158bf77ef1
 missing-returns|Format/Src/ParseInteger.rux|func|ParseInt128|c6589eafec3e0e11
 missing-returns|Format/Src/ParseInteger.rux|func|ParseInt16|0e87e8116ff18245
@@ -3550,9 +3541,6 @@ missing-see|Format/Src/Float64.rux|func|IsNan|2df63636a10084ef
 missing-see|Format/Src/ParseFloat64.rux|func|ParseFloat32|7be4166b2c51d1f2
 missing-see|Format/Src/ParseFloat64.rux|func|ParseFloat32|ea17b350d7f39dfc
 missing-see|Format/Src/ParseFloat64.rux|func|ParseFloat64|9ab5ab9edca59a3b
-missing-see|Format/Src/ParseFloat64.rux|func|TryParseFloat64|5b118b1f42adfb3a
-missing-see|Format/Src/ParseFloat64.rux|variant|ParseError|babcd1ead2574916
-missing-see|Format/Src/ParseInt64.rux|func|TryParseInt64|5cea24809344ab63
 missing-see|Format/Src/ParseInteger.rux|func|ParseInt128|33345a158bf77ef1
 missing-see|Format/Src/ParseInteger.rux|func|ParseInt128|c6589eafec3e0e11
 missing-see|Format/Src/ParseInteger.rux|func|ParseInt16|0e87e8116ff18245

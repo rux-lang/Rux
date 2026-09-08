@@ -229,6 +229,11 @@ func Main() -> int {
     let widest = ParseFloat512(allocator, "Inf").ValueOr(Float512::FromBits(0u512));
     Assert(widest.IsInfinite(), "and the widest width reads an infinity");
     let narrow = ParseFloat128(allocator, "1e5000");
-    Assert(narrow.TryIntoError(@failure) && failure == ParseError::Overflow, "with overflow named as such");
+    Assert(narrow.TryIntoError(@failure), "a value past the format is refused");
+    let named = match failure {
+        .Overflow(_) => true,
+        else => false
+    };
+    Assert(named, "with overflow named as such rather than as the allocation failure it used to be confused with");
     return 0;
 }

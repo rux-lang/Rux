@@ -1,7 +1,7 @@
 
 import Text::{ Display, FormatSpec, TextWriter };
 import Text::StringView;
-import Format::{ ByteCursor, IsNan, IsInfinite, IsFinite, ParseError, ParseFloat64, TryParseFloat64 };
+import Format::{ ByteCursor, IsNan, IsInfinite, IsFinite, ParseError, ParseFloat64 };
 import Core::Result;
 
 
@@ -67,7 +67,7 @@ func CheckParseErrors() -> int {
     if code != 0 { return code; }
     code = CheckParseError("12x", ParseError::InvalidCharacter(2u), 111);
     if code != 0 { return code; }
-    return CheckParseError("1e400", ParseError::Overflow, 112);
+    return CheckParseError("1e400", ParseError::Overflow(5u), 112);
 }
 
 func CheckParseOverloads() -> int {
@@ -79,21 +79,26 @@ func CheckParseOverloads() -> int {
     };
     if code != 0 { return code; }
 
+    // The bool-and-output-slot overload is gone: a caller reads the Result, which cannot be ignored the way a
+    // returned bool could and carries why as well as whether.
     var value = 9.0;
-    if !TryParseFloat64("6.25", @value) { return 121; }
+    match ParseFloat64("6.25") {
+        .Success(parsedValue) => { value = parsedValue; },
+        .Error(_) => { return 121; }
+    }
     if value != 6.25 { return 122; }
-    if TryParseFloat64("invalid", @value) { return 123; }
+    if ParseFloat64("invalid").IsSuccess() { return 123; }
     if value != 6.25 { return 124; }
-    if TryParseFloat64("1.0", null) { return 125; }
 
     text = StringView::FromBytes("-4.5").ValueOr(StringView());
-    let ok = TryParseFloat64(text, @value);
-    if !ok { return 126; }
+    match ParseFloat64(text) {
+        .Success(parsedView) => { value = parsedView; },
+        .Error(_) => { return 126; }
+    }
     if value != -4.5 { return 127; }
 
     text = StringView::FromBytes("bad").ValueOr(StringView());
-    let failed = TryParseFloat64(text, @value);
-    if failed { return 128; }
+    if ParseFloat64(text).IsSuccess() { return 128; }
     if value != -4.5 { return 129; }
     return 0;
 }

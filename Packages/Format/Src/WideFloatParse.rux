@@ -46,7 +46,7 @@ pub func ParseWideFloat(allocator: Allocator, str: char8[..], layout: &FloatLayo
             }
             if digit != 0u64 || significant > 0u {
                 if !digits.MultiplySmall(10u64) || !digits.AddSmall(digit) {
-                    return Result::Error<uint512, ParseError>(ParseError::Overflow);
+                    return Result::Error<uint512, ParseError>(ParseError::OutOfMemory(index));
                 }
                 significant = significant + 1u;
             }
@@ -92,29 +92,29 @@ pub func ParseWideFloat(allocator: Allocator, str: char8[..], layout: &FloatLayo
     let magnitude = (significant as int) + decimalExponent;
     let largest = ((layout.bias as int64 * 30103i64) / 100000i64) as int + 2;
     let smallest = 0 - ((((layout.bias + layout.precision as int) as int64 * 30103i64) / 100000i64) as int + 3);
-    if magnitude > largest { return Result::Error<uint512, ParseError>(ParseError::Overflow); }
+    if magnitude > largest { return Result::Error<uint512, ParseError>(ParseError::Overflow(str.length)); }
     if magnitude < smallest { return Result::Success<uint512, ParseError>(PackWide(negative, 0u512, 0, layout)); }
-    return RoundRatio(allocator, digits, decimalExponent, negative, layout);
+    return RoundRatio(allocator, digits, decimalExponent, negative, layout, str.length);
 }
 
 // The bits nearest to `digits` times ten to `decimalExponent`, found by exact division.
 func RoundRatio(allocator: Allocator, digits: &var BigNat, decimalExponent: int, negative: bool,
-                layout: &FloatLayout) -> Result<uint512, ParseError> {
+                layout: &FloatLayout, where: uint) -> Result<uint512, ParseError> {
     var numerator = BigNat(allocator);
     var denominator = BigNat(allocator);
     var power = BigNat(allocator);
     var base = BigNat(allocator);
     var scratch = BigNat(allocator);
-    if !denominator.SetSmall(1u64) { return Result::Error<uint512, ParseError>(ParseError::Overflow); }
+    if !denominator.SetSmall(1u64) { return Result::Error<uint512, ParseError>(ParseError::OutOfMemory(where)); }
     if decimalExponent >= 0 {
         if !SetPowerOfTen(power, decimalExponent as uint, base, scratch) || !numerator.SetProduct(digits, power) {
-            return Result::Error<uint512, ParseError>(ParseError::Overflow);
+            return Result::Error<uint512, ParseError>(ParseError::OutOfMemory(where));
         }
     }
     else {
         if !numerator.Assign(digits) ||
             !SetPowerOfTen(denominator, (0 - decimalExponent) as uint, base, scratch) {
-            return Result::Error<uint512, ParseError>(ParseError::Overflow);
+            return Result::Error<uint512, ParseError>(ParseError::OutOfMemory(where));
         }
     }
 
@@ -122,7 +122,7 @@ func RoundRatio(allocator: Allocator, digits: &var BigNat, decimalExponent: int,
     var exponent = numerator.BitLength() as int - denominator.BitLength() as int;
     if exponent >= 0 {
         if !scratch.Assign(denominator) || !scratch.ShiftLeft(exponent as uint) {
-            return Result::Error<uint512, ParseError>(ParseError::Overflow);
+            return Result::Error<uint512, ParseError>(ParseError::OutOfMemory(where));
         }
         if numerator.Compare(scratch) < 0i32 {
             exponent = exponent - 1;
@@ -130,14 +130,14 @@ func RoundRatio(allocator: Allocator, digits: &var BigNat, decimalExponent: int,
     }
     else {
         if !scratch.Assign(numerator) || !scratch.ShiftLeft((0 - exponent) as uint) {
-            return Result::Error<uint512, ParseError>(ParseError::Overflow);
+            return Result::Error<uint512, ParseError>(ParseError::OutOfMemory(where));
         }
         if scratch.Compare(denominator) < 0i32 {
             exponent = exponent - 1;
         }
     }
     let precision = layout.precision;
-    if exponent > layout.bias { return Result::Error<uint512, ParseError>(ParseError::Overflow); }
+    if exponent > layout.bias { return Result::Error<uint512, ParseError>(ParseError::Overflow(where)); }
     // Below the normal range the quotient is taken at fewer bits, so that what is rounded is the subnormal's own
     // last place and not a position it cannot store.
     var wanted = precision + 3u;
@@ -153,12 +153,12 @@ func RoundRatio(allocator: Allocator, digits: &var BigNat, decimalExponent: int,
     var divisor = BigNat(allocator);
     if exponent >= 0 {
         if !remainder.Assign(numerator) || !divisor.Assign(denominator) || !divisor.ShiftLeft(exponent as uint) {
-            return Result::Error<uint512, ParseError>(ParseError::Overflow);
+            return Result::Error<uint512, ParseError>(ParseError::OutOfMemory(where));
         }
     }
     else if !remainder.Assign(numerator) || !remainder.ShiftLeft((0 - exponent) as uint) ||
              !divisor.Assign(denominator) {
-        return Result::Error<uint512, ParseError>(ParseError::Overflow);
+        return Result::Error<uint512, ParseError>(ParseError::OutOfMemory(where));
     }
     var quotient = 0u512;
     var position = wanted;
@@ -169,7 +169,7 @@ func RoundRatio(allocator: Allocator, digits: &var BigNat, decimalExponent: int,
             remainder.Subtract(divisor);
         }
         if position > 0u && !remainder.ShiftLeft(1u) {
-            return Result::Error<uint512, ParseError>(ParseError::Overflow);
+            return Result::Error<uint512, ParseError>(ParseError::OutOfMemory(where));
         }
     }
     if !remainder.IsZero() {
@@ -194,7 +194,7 @@ func RoundRatio(allocator: Allocator, digits: &var BigNat, decimalExponent: int,
     if significand == (1u512 << precision) {
         significand = significand >> 1u;
         exponent = exponent + 1;
-        if exponent > layout.bias { return Result::Error<uint512, ParseError>(ParseError::Overflow); }
+        if exponent > layout.bias { return Result::Error<uint512, ParseError>(ParseError::Overflow(where)); }
     }
     return Result::Success<uint512, ParseError>(PackWide(negative, significand, exponent - (precision as int - 1),
                                                           layout));

@@ -1,19 +1,63 @@
+// Reading a decimal float, and the failure every parser in this package reports.
+//
+// `ParseError` lives here because this is where it was first needed, and it now serves every width: the integers,
+// the booleans, the characters and the wide floats all answer with it. Every case says where it was found, because
+// a reason on its own leaves a caller re-reading its own input to guess. "Invalid character" is a different report
+// from "invalid character at byte 7", and only the second lets anything underline what is wrong. The offsets are
+// into the text as given, so a parser embedded in a larger grammar adds the offset of the token it was handed and
+// the positions compose.
+//
+// `OutOfMemory` is a correction rather than an addition. The wide float parser builds exact big integers to round
+// with, and every allocation those need used to be reported as `Overflow` — which told a caller their number was
+// too large when the machine had simply run out of room. The two want different responses from a caller, so they
+// are different cases.
+//
+// The grammar this file accepts is `[+-]?(digits[.digits?]?|.digits)([eE][+-]?digits)?`, plus the two special
+// spellings `NaN` and `Inf` exactly as formatting writes them, so what one side prints the other reads.
 
-import Core::Result;
-import Text::StringView;
+import Core::{ Result, Unit };
+import Text::{ ParseFailure, StringView };
 
-// Why a decimal string could not be converted to a float64.
-/// The `ParseError` values exposed by this package.
+/// Why text could not be read as a value.
 ///
-/// https://rux-lang.dev/docs/api/format/parse-error
+/// Failure-only: every case is a failure, and each says where in the text it was found. Success is
+/// `Result::Success` rather than a case here.
+///
+/// Copy, carrying one offset.
+///
+/// @see https://rux-lang.dev/docs/api/format/parse-error
 pub variant ParseError {
+    /// There were no bytes to read. The offset is zero, which is both the start of the text and its length.
     Empty,
+    /// A byte that is not part of the grammar, or a well-formed value with something after it. The offset is that
+    /// byte, which is the text's length when the value stopped short.
     InvalidCharacter(uint),
-    Overflow
+    /// The value is well formed and does not fit the width asked for. The offset is the digit that passed the
+    /// widest representable magnitude, or the end of the number when the number itself is what does not fit.
+    Overflow(uint),
+    /// The exact arithmetic a wide float needs could not get the storage for it. This is the machine rather than
+    /// the text: the same input on a less busy machine reads fine, which is what tells it apart from `Overflow`.
+    /// The offset is where the parser had reached, which is the end of the number.
+    OutOfMemory(uint)
 }
 
-// Parses a decimal float. The accepted grammar is
-// `[+-]?(digits[.digits?]?|.digits)([eE][+-]?digits)?`.
+extend ParseError : ParseFailure {
+    /// Where in the input the failure was found.
+    ///
+    /// Borrows the error and leaves it untouched. Cannot fail; runs in constant time and allocates nothing.
+    ///
+    /// @returns the zero-based UTF-8 byte offset, which is the text's length at end of input
+    /// @see https://rux-lang.dev/docs/api/format/parse-error/offset
+    pub func Offset(self: &ParseError) -> uint {
+        return match self {
+            .Empty => 0u,
+            .InvalidCharacter(at) => at,
+            .Overflow(at) => at,
+            .OutOfMemory(at) => at
+        };
+    }
+}
+
 /// Provides the public `ParseFloat64` operation.
 ///
 /// https://rux-lang.dev/docs/api/format/parse-float64
@@ -110,12 +154,12 @@ pub func ParseFloat64(str: char8[..]) -> Result<float64, ParseError> {
     if index != str.length { return Result::Error<float64, ParseError>(ParseError::InvalidCharacter(index)); }
 
     if value != 0.0 {
-        if decimalExponent > 308 { return Result::Error<float64, ParseError>(ParseError::Overflow); }
+        if decimalExponent > 308 { return Result::Error<float64, ParseError>(ParseError::Overflow(str.length)); }
         if decimalExponent < -400 {
             value = 0.0;
         } else {
             value = ScaleByPow10(value, decimalExponent);
-            if IsInfinite(value) { return Result::Error<float64, ParseError>(ParseError::Overflow); }
+            if IsInfinite(value) { return Result::Error<float64, ParseError>(ParseError::Overflow(str.length)); }
         }
     }
 
@@ -132,33 +176,6 @@ pub func ParseFloat64(str: char8[..]) -> Result<float64, ParseError> {
 /// https://rux-lang.dev/docs/api/format/parse-float64
 pub func ParseFloat64(str: StringView) -> Result<float64, ParseError> {
     return ParseFloat64(str.Bytes());
-}
-
-// Parses into value and reports only whether conversion succeeded. On failure,
-// value is left unchanged. A null output pointer also reports failure.
-/// Provides the public `TryParseFloat64` operation.
-///
-/// https://rux-lang.dev/docs/api/format/try-parse-float64
-pub func TryParseFloat64(str: char8[..], value: *var float64) -> bool {
-    if value == null { return false; }
-
-    match ParseFloat64(str) {
-        .Success(parsed) => {
-            *value = parsed;
-            return true;
-        },
-        .Error(_) => {
-            return false;
-        }
-    }
-}
-
-// The same for a view.
-/// Provides the public `TryParseFloat64` operation.
-///
-/// https://rux-lang.dev/docs/api/format/try-parse-float64
-pub func TryParseFloat64(str: StringView, value: *var float64) -> bool {
-    return TryParseFloat64(str.Bytes(), value);
 }
 
 /// Parses a `float32` by the same grammar, reporting `Overflow` where the narrower width cannot hold the value.
@@ -180,7 +197,7 @@ pub func ParseFloat32(str: char8[..]) -> Result<float32, ParseError> {
     }
     if IsFinite(wide) {
         let magnitude = wide < 0.0 ? -wide : wide;
-        if magnitude > MaxFinite32 { return Result::Error<float32, ParseError>(ParseError::Overflow); }
+        if magnitude > MaxFinite32 { return Result::Error<float32, ParseError>(ParseError::Overflow(str.length)); }
     }
     return Result::Success<float32, ParseError>(wide as float32);
 }

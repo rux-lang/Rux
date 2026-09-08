@@ -1,7 +1,7 @@
 import Text::{ Display, FormatSpec, TextWriter };
 import Core::{ int64 };
 import Text::StringView;
-import Format::{ ByteCursor, ParseError, ParseInt64, TryParseInt64 };
+import Format::{ ByteCursor, ParseError, ParseInt64 };
 import Core::Result;
 
 
@@ -67,9 +67,9 @@ func CheckParseErrors() -> int {
     if code != 0 { return code; }
     code = CheckParseError("-", ParseError::InvalidCharacter(0u), 112);
     if code != 0 { return code; }
-    code = CheckParseError("9223372036854775808", ParseError::Overflow, 113);
+    code = CheckParseError("9223372036854775808", ParseError::Overflow(19u), 113);
     if code != 0 { return code; }
-    return CheckParseError("-9223372036854775809", ParseError::Overflow, 114);
+    return CheckParseError("-9223372036854775809", ParseError::Overflow(20u), 114);
 }
 
 func CheckParseOverloads() -> int {
@@ -81,21 +81,26 @@ func CheckParseOverloads() -> int {
     };
     if code != 0 { return code; }
 
+    // The bool-and-output-slot overload is gone: a caller reads the Result, which cannot be ignored the way a
+    // returned bool could and carries why as well as whether.
     var value = 9i64;
-    if !TryParseInt64("456", @value) { return 121; }
+    match ParseInt64("456") {
+        .Success(parsedValue) => { value = parsedValue; },
+        .Error(_) => { return 121; }
+    }
     if value != 456i64 { return 122; }
-    if TryParseInt64("invalid", @value) { return 123; }
+    if ParseInt64("invalid").IsSuccess() { return 123; }
     if value != 456i64 { return 124; }
-    if TryParseInt64("1", null) { return 125; }
 
     text = StringView::FromBytes("-789").ValueOr(StringView());
-    let ok = TryParseInt64(text, @value);
-    if !ok { return 126; }
+    match ParseInt64(text) {
+        .Success(parsedView) => { value = parsedView; },
+        .Error(_) => { return 126; }
+    }
     if value != -789i64 { return 127; }
 
     text = StringView::FromBytes("bad").ValueOr(StringView());
-    let failed = TryParseInt64(text, @value);
-    if failed { return 128; }
+    if ParseInt64(text).IsSuccess() { return 128; }
     if value != -789i64 { return 129; }
     return 0;
 }
