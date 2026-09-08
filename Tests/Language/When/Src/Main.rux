@@ -1,0 +1,124 @@
+// `when`: the conditional that runs while compiling.
+//
+// `if` chooses at run time between two branches that both had to type-check. `when` chooses while compiling and
+// keeps only the branch it took — the other is never resolved, so it may name things that do not exist on this
+// build. That is the whole reason the keyword exists: platform code cannot be written with `if`, because the
+// branch for the other operating system would still have to compile here.
+//
+// This file pins both properties, and the second is the one worth being careful about. Two untaken branches below
+// call functions that are never declared anywhere, and the compile-time match ends in an `#Error` arm that would
+// stop the build if it were reached. If untaken branches were being resolved, none of this would compile.
+//
+// A chain keeps the keyword it opened with, so `else when` continues a `when` chain and `else if` inside one is an
+// error. That cannot be asserted from a program that compiles, so it is stated here rather than tested.
+
+import Core::Assert;
+import Core::{ #target, #Error };
+import Core::{ int32, uint };
+
+// Between declarations: the taken branch's items are spliced into the enclosing list, so what it declares is
+// visible afterwards exactly as if it had been written there.
+when true {
+    const Selected: int32 = 1i32;
+} else {
+    const Selected: int32 = 2i32;
+    // Never resolved, so naming a function that does not exist is not an error.
+    const Unreachable: int32 = NoSuchFunction();
+}
+
+// A three-branch chain. Only the middle condition holds.
+when 1 > 2 {
+    const Chosen: int32 = 10i32;
+} else when 2 > 1 {
+    const Chosen: int32 = 20i32;
+} else {
+    const Chosen: int32 = 30i32;
+}
+
+// The compile-time match form, over a value the compiler supplies. Every supported target takes one of the four
+// arms, so the `#Error` arm is unreachable on any build this test can run on — and it is a directive rather than a
+// declaration, which is a shape only a match arm accepts.
+when #target.os {
+    .FreeBSD => const PlatformCode: int32 = 1i32;
+    .Linux => const PlatformCode: int32 = 2i32;
+    .macOS => const PlatformCode: int32 = 3i32;
+    .Windows => const PlatformCode: int32 = 4i32;
+    else => #Error("Unsupported operating system")
+}
+
+// A condition built from a primitive's associated constants rather than from a literal.
+when int32::Bits == 32u {
+    const WidthChecked: bool = true;
+} else {
+    const WidthChecked: bool = false;
+}
+
+// A condition reading a compile-time constant an earlier `when` declared.
+when Chosen == 20i32 {
+    const Derived: int32 = Chosen * 2i32;
+} else {
+    const Derived: int32 = 0i32;
+}
+
+func Main() -> int {
+    // What the taken branches declared is ordinary, usable code.
+    Assert(Selected == 1i32, "the taken branch's declaration is what exists");
+    Assert(Chosen == 20i32, "the first true condition in a chain wins");
+    Assert(Derived == 40i32, "a later when may read what an earlier one declared");
+    Assert(WidthChecked, "a condition may be built from associated constants");
+
+    // The match form selected an arm, and it is the one this target should have taken. Exactly one of these four
+    // blocks survives compilation.
+    Assert(PlatformCode >= 1i32 && PlatformCode <= 4i32, "the match form selected a supported platform");
+    when #target.os == .Windows {
+        Assert(PlatformCode == 4i32, "on Windows the Windows arm was taken");
+    }
+    when #target.os == .Linux {
+        Assert(PlatformCode == 2i32, "on Linux the Linux arm was taken");
+    }
+    when #target.os == .macOS {
+        Assert(PlatformCode == 3i32, "on macOS the macOS arm was taken");
+    }
+    when #target.os == .FreeBSD {
+        Assert(PlatformCode == 1i32, "on FreeBSD the FreeBSD arm was taken");
+    }
+
+    // Inside a body, `when` introduces no scope of its own, so a binding made in a taken branch outlives it.
+    when true {
+        let inner: int32 = 5i32;
+        Assert(inner == 5i32, "the taken branch runs");
+    }
+
+    // A statement-level untaken branch is not resolved either, so this calls nothing that exists.
+    when false {
+        NoSuchFunctionEither();
+    }
+
+    // Both forms nest.
+    var reached: int32 = 0i32;
+    when true {
+        when int32::Bits == 32u {
+            reached = 1i32;
+        } else {
+            reached = 2i32;
+        }
+    }
+    Assert(reached == 1i32, "a nested when resolves independently");
+
+    // `if` remains the run-time conditional, and the two coexist.
+    var runtime: int32 = 0i32;
+    when true {
+        if 2 > 1 {
+            runtime = 7i32;
+        }
+    }
+    Assert(runtime == 7i32, "an if inside a taken when is an ordinary run-time branch");
+
+    // A pointer-width condition, which is the other thing `when` is genuinely needed for.
+    when uint::Bits == 64u {
+        Assert(sizeof(uint) == 8u, "the pointer-width branch agrees with sizeof");
+    } else {
+        Assert(sizeof(uint) != 8u, "and so would the other one");
+    }
+    return 0;
+}

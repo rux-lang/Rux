@@ -1,0 +1,96 @@
+// `type`: giving an existing type a second name.
+//
+// An alias is a spelling and nothing more. It introduces no new type, so a value of the alias and a value of the
+// aliased type are the same type, interchangeable everywhere without a conversion — which is exactly what makes
+// aliases useful for the C bindings, where `c_int` has to be whatever the platform's `int` is and callers should
+// not have to care.
+//
+// It is also what makes them a trap worth pinning: an alias gives no type safety. Two aliases of the same type are
+// interchangeable with each other, so `type Metres = int32` and `type Feet = int32` do not stop the two being
+// added together. A distinct type needs a struct.
+
+import Core::Assert;
+import Core::{ int32, int64, uint8 };
+
+type Count = int32;
+type Offset = int32;
+type Byte = uint8;
+type Wide = int64;
+
+// An alias may name a compound type, which is most of the point: the spelling is written once.
+type Bytes = uint8[..];
+type Triple = int32[3];
+
+struct Point {
+    x: Count;
+    y: Count;
+}
+
+type Position = Point;
+
+func Total(values: Bytes) -> int32 {
+    var sum: int32 = 0i32;
+    for index in 0u..values.length {
+        sum += values[index] as int32;
+    }
+    return sum;
+}
+
+func Shift(value: Count, by: Offset) -> Count {
+    return value + by;
+}
+
+func Main() -> int {
+    // The alias and the type it names are the same type, so `is` answers to both spellings.
+    let counted: Count = 7i32;
+    Assert(counted is Count, "a value answers to its alias");
+    Assert(counted is int32, "and to the type the alias names");
+
+    let direct: int32 = 7i32;
+    Assert(direct is Count, "the relationship holds from the other side too");
+
+    // Interchangeable without a conversion, in both directions.
+    Assert(counted == direct, "an alias compares against the aliased type");
+    let assigned: int32 = counted;
+    Assert(assigned == 7i32, "an alias assigns to the aliased type");
+    let back: Count = direct;
+    Assert(back == 7i32, "and the aliased type assigns to the alias");
+
+    // Two aliases of the same type are the same type as each other. This is a warning, not a feature: an alias
+    // gives a name, never a distinct type, so nothing stops these being mixed.
+    let offset: Offset = 3i32;
+    Assert(Shift(counted, offset) == 10i32, "an alias is accepted where its own name is written");
+    Assert(Shift(offset, counted) == 10i32, "and the two aliases are interchangeable with each other");
+    Assert(Shift(direct, direct) == 14i32, "as is the underlying type");
+
+    // The alias carries the aliased type's associated constants, because there is nothing else to carry them.
+    Assert(Count::Bits == int32::Bits, "an alias exposes the aliased type's constants");
+    Assert(Count::Max == int32::Max, "including its limits");
+    Assert(Byte::Max == 255u8, "and at another width");
+    Assert(Wide::Bits == 64u, "and for a wider alias");
+
+    // An alias over a slice type, used as a parameter.
+    var storage: uint8[4];
+    storage[0] = 1u8;
+    storage[1] = 2u8;
+    storage[2] = 3u8;
+    storage[3] = 4u8;
+    let view: Bytes = (@storage[0])[..4];
+    Assert(view.length == 4u, "a slice alias is the slice type");
+    Assert(Total(view) == 10i32, "and is accepted where the alias is written");
+
+    // An alias over a fixed array type.
+    var triple: Triple;
+    triple[0] = 10i32;
+    triple[1] = 20i32;
+    triple[2] = 30i32;
+    Assert(sizeof(Triple) == sizeof(int32) * 3u, "an array alias has the array's size");
+    Assert(triple[0] + triple[1] + triple[2] == 60i32, "and its elements");
+
+    // An alias over a declared type, and an alias used inside one.
+    let here: Position = Point { x: 1i32, y: 2i32 };
+    Assert(here is Point, "an alias of a struct is that struct");
+    Assert(here.x == 1i32 && here.y == 2i32, "whose fields were declared through another alias");
+    Assert(sizeof(Position) == sizeof(Point), "and which has the same layout");
+    return 0;
+}
