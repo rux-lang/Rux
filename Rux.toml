@@ -6,7 +6,6 @@ MinRux = "0.4.0"
 Packages = [
     "Packages/Algorithms",
     "Packages/Allocator",
-    "Packages/Benchmark",
     "Packages/C",
     "Packages/Collections",
     "Packages/Core",
@@ -24,7 +23,6 @@ Packages = [
     "Packages/Memory",
     "Packages/Path",
     "Packages/Random",
-    "Packages/Simd",
     "Packages/Text",
     "Packages/Time",
     "Packages/Toml",

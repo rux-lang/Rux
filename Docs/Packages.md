@@ -2,15 +2,11 @@
 
 First-party Rux packages live under `Packages/` in the repository root. Return to the [main README](../README.md) for the complete documentation index.
 
-Core is an optional declaration provider. Import primitive APIs explicitly, for example
-`import Core::int8;` before using `int8::Min`. A dependency's imports do not expose
-those APIs to its consumers. Replacement providers can declare the same intrinsic
-types and context values without using Core's package name or registry identity.
+Core is an optional declaration provider. Import primitive APIs explicitly, for example `import Core::int8;` before using `int8::Min`. A dependency's imports do not expose those APIs to its consumers. Replacement providers can declare the same intrinsic types and context values without using Core's package name or registry identity.
 
 ## The v0.1.0 Package Set
 
-The v0.1.0 release ships **25 packages**. This table is the target catalog: it is the
-authority on which package identities exist, what each one owns, and what it depends on.
+The v0.1.0 release ships **25 packages**. This table is the target catalog: it is the authority on which package identities exist, what each one owns, and what it depends on.
 
 | Package       | Exclusive responsibility                                             | Direct dependencies                                      |
 | ------------- | -------------------------------------------------------------------- | -------------------------------------------------------- |
@@ -40,16 +36,11 @@ authority on which package identities exist, what each one owns, and what it dep
 | `Uuid`        | UUID representation, generation and textual forms                    | Core, Entropy, Time, Text                                |
 | `Windows`     | Windows ABI declarations and thin binding helpers                    | None                                                     |
 
-`OS` denotes the conditional dependency on `Windows`, `Linux`, `macOS` and `FreeBSD`
-selected by the manifest's `TargetOS` conditions. Every package keeps the `Rux`
-namespace, the `SourceLibrary` type and `Version = "0.1.0"`. Manifest schema
-`Version = 1` and `MinRux = "0.4.0"` are separate fields and are not changed by the
-package release version.
+`OS` denotes the conditional dependency on `Windows`, `Linux`, `macOS` and `FreeBSD` selected by the manifest's `TargetOS` conditions. Every package keeps the `Rux` namespace, the `SourceLibrary` type and `Version = "0.1.0"`. Manifest schema `Version = 1` and `MinRux = "0.4.0"` are separate fields and are not changed by the package release version.
 
 ### Layering
 
-Arrows point toward dependencies. This is a dependency ordering, not a requirement
-that every package depend on every lower layer.
+Arrows point toward dependencies. This is a dependency ordering, not a requirement that every package depend on every lower layer.
 
 ```text
 Layer 7  FileSystem, Json, Toml
@@ -70,99 +61,55 @@ Layer 1  Linux, macOS, FreeBSD, C,
 Layer 0  Core, Windows
 ```
 
-`Linux`, `macOS` and `FreeBSD` import Core intrinsics, so they sit in Layer 1.
-`Windows` imports nothing and sits in Layer 0. All four have the same
-platform-binding responsibility; uniform naming and ABI documentation do not
-require an unused manifest edge.
+`Linux`, `macOS` and `FreeBSD` import Core intrinsics, so they sit in Layer 1. `Windows` imports nothing and sits in Layer 0. All four have the same platform-binding responsibility; uniform naming and ABI documentation do not require an unused manifest edge.
 
-## Migration Status
+## Retired Identities
 
-The catalog above is the target. The checkout still carries the pre-migration
-package identities until the identity tasks land; until then this section, not the
-directory listing, says what the release set is.
+The workspace matches the catalog above: 25 packages, and none of the five identities below resolves any more. The table is kept so that a reader who meets one of these names in older documentation, a branch or an issue can see what happened to it.
 
-| Identity        | Target state                | Status                                                     |
-| --------------- | --------------------------- | ---------------------------------------------------------- |
-| `Rux/Storage`   | Renamed to `Rux/FileSystem` | Migrated; the identity no longer exists                    |
-| `Rux/Sync`      | Removed from the release set | Removed; the identity no longer exists                    |
-| `Rux/Thread`    | Removed from the release set | Removed; the identity no longer exists                    |
-| `Rux/Benchmark` | Removed from the release set | Still present in the workspace                            |
-| `Rux/Simd`      | Removed from the release set | Still present in the workspace                            |
+| Former identity | What happened               | Status                                  |
+| --------------- | --------------------------- | --------------------------------------- |
+| `Rux/Storage`   | Renamed to `Rux/FileSystem` | Migrated; the identity no longer exists |
+| `Rux/Sync`      | Withdrawn from the release  | Deleted; the identity no longer exists  |
+| `Rux/Thread`    | Withdrawn from the release  | Deleted; the identity no longer exists  |
+| `Rux/Benchmark` | Withdrawn from the release  | Deleted; the identity no longer exists  |
+| `Rux/Simd`      | Withdrawn from the release  | Deleted; the identity no longer exists  |
 
-The `Storage` rename covers the registry identity and dependency names, the
-`Packages/` and `Tests/Packages/` trees, imports and qualified references, test
-package names and output paths, the `/storage/` to `/filesystem/` API URL prefix,
-and the root workspace, manifests, READMEs and examples. The separate website
-repository retires or redirects the `/storage/` documentation routes on its own
-schedule; that route migration is recorded here but not published from this
-repository.
+The `Storage` rename covered the registry identity and dependency names, the `Packages/` and `Tests/Packages/` trees, imports and qualified references, test package names and output paths, the `/storage/` to `/filesystem/` API URL prefix, and the root workspace, manifests, READMEs and examples. The separate website repository retires or redirects the `/storage/` documentation routes on its own schedule; that route migration is recorded here but not published from this repository.
 
-`Storage` survives only in historical discussion and in
-`Packages/Collections/Src/Storage.rux`, whose container-private helpers migrate
-separately to `ContainerStorage.rux`. That file is a filename and helper-visibility
-concern, not a second public package identity.
+`Storage` survives only in historical discussion and in `Packages/Collections/Src/Storage.rux`, whose container-private helpers migrate separately to `ContainerStorage.rux`. That file is a filename and helper-visibility concern, not a second public package identity.
 
 ## Not in v0.1.0
 
-These packages are deliberately absent from the release set. Their sources and
-executable tests are deleted rather than excluded: keeping an unreleased but
-compiling subset would be a maintenance commitment this release does not make.
-Git history retains every implementation.
+These packages are deliberately absent from the release set. Their sources and executable tests were deleted rather than excluded: keeping an unreleased but compiling subset would be a maintenance commitment this release does not make. Git history retains every implementation.
 
 | Package     | Why it is not shipping                                                                                                                                                     |
 | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Benchmark` | Configuration and result arithmetic with no measurement loop, and a `BlackBox` that is an ordinary local store and load. Measurement methodology is not a `Time` concern.  |
-| `Simd`      | Four scalar records performing field-by-field arithmetic. Scalar records do not establish the accelerated SIMD contract the package advertised.                            |
+| `Benchmark` | Configuration and result arithmetic with no measurement loop, and a `BlackBox` that is an ordinary local store and load. Measurement methodology is not a `Time` concern.   |
+| `Simd`      | Four scalar records performing field-by-field arithmetic. Scalar records do not establish the accelerated SIMD contract the package advertised.                             |
 | `Sync`      | AArch64 updates use ordinary loads and stores, guards expose raw fields and permit copying, and `Once` cannot initialize. The whole package goes, including x86-64 atomics. |
-| `Thread`    | Non-Windows sleep and yield share one spin hint, and `CurrentId` always returns 1.                                                                                         |
+| `Thread`    | Non-Windows sleep and yield share one spin hint, and `CurrentId` always returns 1.                                                                                          |
 
-Removing `Sync` is not a claim that the inspected x86-64 atomics are incorrect; it
-is a decision not to release a partial concurrency package. A future concurrency
-package must be complete and independently validated. `Time::SleepFor` is the
-supported waiting API for v0.1.0. No thread creation, thread identifier, yield,
-lock or channel is promised.
+Removing `Sync` is not a claim that the inspected x86-64 atomics are incorrect; it is a decision not to release a partial concurrency package. A future concurrency package must be complete and independently validated. `Time::SleepFor` is the supported waiting API for v0.1.0. No thread creation, thread identifier, yield, lock or channel is promised.
 
 ## Naming and Ownership Decisions
 
-These are settled for v0.1.0. Revisit the decision before changing anything that
-depends on it.
+These are settled for v0.1.0. Revisit the decision before changing anything that depends on it.
 
-- **`Format` keeps its name** and owns primitive conversion in both directions
-  alongside placeholder rendering, because parsing and rendering share numeric
-  machinery. The allocating entry point is `Format::Render`.
-- **`Text` owns the presentation contracts** — `Display`, `Debug`, `TextWriter`,
-  `FormatSpec`, `FormatError` and the specification parser. Core gains no
-  formatting contract, so value packages do not depend on the conversion engine.
-  `Text` must not depend on `Format`.
-- **`Path` owns native strings.** `OsString`, `OsStringView` and `OsUnit` stay in
-  `Path` as a native-string contract usable by future environment and process
-  packages without `FileSystem` or `Io`. `Text` concerns validated text and
-  encoding rather than OS-dependent native-unit storage. `Path` stays independent
-  of `FileSystem` and `Io`.
-- **`macOS` keeps its name.** It binds the Darwin/libSystem ABI rather than issuing
-  raw syscalls. A libSystem dependency alone does not establish iOS support, so the
-  package retains `#target.os == .macOS`.
-- **`Memory` and `Allocator` stay separate.** Memory owns addresses and page and
-  block operations; Allocator owns layouts, policies and lifetimes.
-- **`FileSystem` owns `File`** and implements Io's interfaces. `Io` does not
-  acquire filesystem resources.
-- **`Entropy` has no presentation dependency.** `EntropyError` implements neither
-  `Display` nor `Debug` in v0.1.0; callers handle its cases or wrap it in their own
-  diagnostic type. `Format` must not acquire an `Entropy` dependency in either
-  direction.
-- **`Entropy`, `Uuid` and `Hash` stay separate identities.** Unpredictable OS
-  input with its retries and zeroization, UUID layout and version semantics, and
-  named non-cryptographic hash engines are each a coherent domain.
+- **`Format` keeps its name** and owns primitive conversion in both directions alongside placeholder rendering, because parsing and rendering share numeric machinery. The allocating entry point is `Format::Render`.
+- **`Text` owns the presentation contracts** — `Display`, `Debug`, `TextWriter`, `FormatSpec`, `FormatError` and the specification parser. Core gains no formatting contract, so value packages do not depend on the conversion engine. `Text` must not depend on `Format`.
+- **`Path` owns native strings.** `OsString`, `OsStringView` and `OsUnit` stay in `Path` as a native-string contract usable by future environment and process packages without `FileSystem` or `Io`. `Text` concerns validated text and encoding rather than OS-dependent native-unit storage. `Path` stays independent of `FileSystem` and `Io`.
+- **`macOS` keeps its name.** It binds the Darwin/libSystem ABI rather than issuing raw syscalls. A libSystem dependency alone does not establish iOS support, so the package retains `#target.os == .macOS`.
+- **`Memory` and `Allocator` stay separate.** Memory owns addresses and page and block operations; Allocator owns layouts, policies and lifetimes.
+- **`FileSystem` owns `File`** and implements Io's interfaces. `Io` does not acquire filesystem resources.
+- **`Entropy` has no presentation dependency.** `EntropyError` implements neither `Display` nor `Debug` in v0.1.0; callers handle its cases or wrap it in their own diagnostic type. `Format` must not acquire an `Entropy` dependency in either direction.
+- **`Entropy`, `Uuid` and `Hash` stay separate identities.** Unpredictable OS input with its retries and zeroization, UUID layout and version semantics, and named non-cryptographic hash engines are each a coherent domain.
 
-A new concern belongs with the package that owns its invariants. Shared
-implementation detail moves downward only when it has an independent contract and
-introduces no upward dependency. Add a package dependency only for actual use.
+A new concern belongs with the package that owns its invariants. Shared implementation detail moves downward only when it has an independent contract and introduces no upward dependency. Add a package dependency only for actual use.
 
 ## Platform Manifest Audit
 
-One rule applies to all four platform packages: declare `Core` when the sources
-import its APIs or intrinsics, and not otherwise. Manifest edges are not added to
-align diagram levels.
+One rule applies to all four platform packages: declare `Core` when the sources import its APIs or intrinsics, and not otherwise. Manifest edges are not added to align diagram levels.
 
 | Package   | Imports `Core` in `Src/`  | Declares the `Core` dependency | Result  |
 | --------- | ------------------------- | ------------------------------ | ------- |
@@ -171,9 +118,7 @@ align diagram levels.
 | `macOS`   | Yes (`#target`)           | Yes                            | Correct |
 | `FreeBSD` | Yes (`#target`, `#Error`) | Yes                            | Correct |
 
-All four agree with their sources at the current commit. Do not add a `Windows` to
-`Core` edge for symmetry. `SourceLibrary` packages conditionally import these four
-according to the compilation target.
+All four agree with their sources at the current commit. Do not add a `Windows` to `Core` edge for symmetry. `SourceLibrary` packages conditionally import these four according to the compilation target.
 
 ## Publication Readiness
 

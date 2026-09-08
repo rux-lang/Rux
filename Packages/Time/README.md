@@ -20,12 +20,7 @@ fallible factories retain names such as `Now`, `FromSeconds`, and `New`.
 
 ## Waiting, and what is not here
 
-`SleepFor` is the supported way to wait. It is a clock operation — it blocks the calling thread against the platform
-clock — and it is the only one v0.1.0 offers, because v0.1.0 has no concurrency support at all. There is no thread
-creation, no thread identifier, no yield, no lock, no atomic and no channel in any first-party package; see
-[First-Party Packages](../../Docs/Packages.md#not-in-v010) for why the `Sync` and `Thread` packages were withdrawn
-rather than shipped. A caller that needs those must supply them, and `SleepFor` does not imply that a second thread
-exists to be woken.
+`SleepFor` is the supported way to wait. It is a clock operation — it blocks the calling thread against the platform clock — and it is the only one v0.1.0 offers, because v0.1.0 has no concurrency support at all. There is no thread creation, no thread identifier, no yield, no lock, no atomic and no channel in any first-party package; see [First-Party Packages](../../Docs/Packages.md#not-in-v010) for why the `Sync` and `Thread` packages were withdrawn rather than shipped. A caller that needs those must supply them, and `SleepFor` does not imply that a second thread exists to be woken.
 
 ## Installation
 
