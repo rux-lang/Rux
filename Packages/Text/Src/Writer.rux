@@ -99,16 +99,26 @@ pub func WriteScalar(writer: &var TextWriter, scalar: char32) -> Result<Unit, Fo
 extend StringBuilder : TextWriter {
     /// Appends `bytes` to the builder.
     ///
+    /// The bytes are validated here, which `AppendValidated` does not do: that one names bytes a caller has already
+    /// checked and takes their validity as a precondition. A writer cannot, because what reaches it came from a
+    /// value that may have produced anything, and the builder's promise to hold text at every moment is what
+    /// everything reading from it relies on.
+    ///
     /// # Failures
-    /// Reports `TextFailure(OutOfMemory)` when the builder cannot make room, having appended nothing: the builder is
-    /// exactly as it was, so a caller may retry elsewhere without first undoing a partial write. Rejected UTF-8
-    /// arrives as `TextFailure(InvalidUtf8)`. A `WriterFailure` is impossible here, since there is no destination
-    /// beyond the allocator.
+    /// Reports `TextFailure(InvalidUtf8)` for bytes that are not well-formed UTF-8, and
+    /// `TextFailure(OutOfMemory)` when the builder cannot make room. In both cases nothing was appended: validity
+    /// is decided before any byte moves, so the builder is exactly as it was and a caller may retry elsewhere
+    /// without first undoing a partial write. A `WriterFailure` is impossible here, since there is no destination
+    /// beyond the allocator, and `InsufficientCapacity` cannot arise because a builder grows.
     ///
     /// @param bytes the UTF-8 run to append, whole
     /// @returns success when the complete run was appended
     /// @see https://rux-lang.dev/docs/api/text/string-builder/write
     pub func Write(self: &var StringBuilder, bytes: char8[..]) -> Result<Unit, FormatError> {
+        var failure: uint = 0;
+        if Validate(bytes, @failure).IsError() {
+            return Result::Error<Unit, FormatError>(FormatError::TextFailure(TextFailureKind::InvalidUtf8));
+        }
         return FromTextError(self.AppendValidated(bytes));
     }
 }

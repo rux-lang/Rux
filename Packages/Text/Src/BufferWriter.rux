@@ -1,0 +1,137 @@
+// A fixed buffer that holds text, and holds it at every moment.
+//
+// `Rux/Format`'s `ByteCursor` is the other fixed-buffer destination and answers a different question. It is
+// conversion machinery: a number's digits go into it and it never asks whether they are text, because the code
+// putting them there already knows. It also keeps whatever fitted when a write overruns, since the partial content
+// is the caller's own buffer and is visible through `Written`.
+//
+// This one is for text a caller does not vouch for. Every write is validated as UTF-8 before any of it lands, and a
+// write that does not fit lands not at all. That second promise is what makes the buffer usable after a failure: a
+// caller who runs out of room can write somewhere larger without first working out how much of the last run went in
+// and undoing it. `Written` is therefore always exactly the runs that succeeded, in order, and always valid UTF-8.
+//
+// Neither promise costs a copy. Validation reads the run in place, and the fit is decided by comparing two lengths;
+// bytes move once, after both have passed.
+
+import Core::{ Result, Unit };
+
+/// A fixed buffer being filled with text from the front.
+///
+/// Holds well-formed UTF-8 at every moment. A write either appends its whole run or changes nothing, so what has
+/// been written is always the concatenation of the runs that succeeded.
+///
+/// Copying is not prohibited, but a copy is a second cursor over the same storage rather than a second buffer, so
+/// writes through one are invisible to the other and the two will overwrite each other. Borrow it as
+/// `&var TextWriter` and let it be the one writer over its room.
+///
+/// # Safety
+/// The room it was built over must outlive it. It stores the slice, and nothing here tracks that.
+///
+/// @see https://rux-lang.dev/docs/api/text/buffer-writer
+pub struct BufferWriter {
+    /// The room available.
+    room: var char8[..];
+    /// How much of it holds text.
+    length: uint;
+}
+
+extend BufferWriter {
+    /// A writer over `room`, filling from its start.
+    ///
+    /// Nothing in `room` is read or cleared: what has not been written is not part of the text, and `Written` never
+    /// reaches it.
+    ///
+    /// Cannot fail. Runs in constant time and allocates nothing.
+    ///
+    /// @param room the storage to fill, which must outlive the writer
+    /// @returns a writer holding no text yet
+    /// @see https://rux-lang.dev/docs/api/text/buffer-writer/new
+    pub func BufferWriter(room: var char8[..]) -> BufferWriter {
+        return BufferWriter { room: room, length: 0 };
+    }
+
+    /// The text written so far.
+    ///
+    /// Well-formed UTF-8, and exactly the runs that succeeded: a refused write left nothing behind to appear here.
+    ///
+    /// # Safety
+    /// The result borrows the writer's room and must not outlive it.
+    ///
+    /// Borrows the writer. Cannot fail; runs in constant time and allocates nothing.
+    ///
+    /// @returns the bytes written, which are valid UTF-8
+    /// @see https://rux-lang.dev/docs/api/text/buffer-writer/written
+    pub func Written(self: &BufferWriter) -> char8[..] {
+        return (self.room.data)[..self.length];
+    }
+
+    /// How many bytes of text the writer holds.
+    ///
+    /// Borrows the writer. Cannot fail; runs in constant time and allocates nothing.
+    ///
+    /// @returns the byte count, which is not a character count
+    /// @see https://rux-lang.dev/docs/api/text/buffer-writer/length
+    pub func Length(self: &BufferWriter) -> uint {
+        return self.length;
+    }
+
+    /// How many more bytes will fit.
+    ///
+    /// A caller sizing a write can ask, but need not: a write that does not fit is refused whole rather than
+    /// truncated, so asking first is an optimization and never a correctness requirement.
+    ///
+    /// Borrows the writer. Cannot fail; runs in constant time and allocates nothing.
+    ///
+    /// @returns the remaining capacity in bytes
+    /// @see https://rux-lang.dev/docs/api/text/buffer-writer/remaining
+    pub func Remaining(self: &BufferWriter) -> uint {
+        return self.room.length - self.length;
+    }
+
+    /// Discards the text written so far, keeping the room.
+    ///
+    /// The bytes are not overwritten, because they are no longer text as far as this writer is concerned and
+    /// nothing can reach them: `Written` stops at the length. A caller clearing secrets wants `ZeroizeBlock` from
+    /// `Rux/Memory` on the room itself.
+    ///
+    /// Borrows the writer exclusively. Cannot fail; runs in constant time and allocates nothing.
+    ///
+    /// @see https://rux-lang.dev/docs/api/text/buffer-writer/clear
+    pub func Clear(self: &var BufferWriter) {
+        self.length = 0;
+    }
+}
+
+extend BufferWriter : TextWriter {
+    /// Appends `bytes`, whole or not at all.
+    ///
+    /// # Failures
+    /// Reports `InsufficientCapacity` when the run does not fit, and `TextFailure(InvalidUtf8)` when it is not
+    /// well-formed UTF-8. In both cases the buffer is exactly as it was, so a caller may write the same run to a
+    /// larger destination without first undoing a partial one. Capacity is decided before validity, since a run
+    /// that cannot land is not worth reading.
+    ///
+    /// These are the only two failures this writer produces. There is no destination beyond the buffer, so a
+    /// `WriterFailure` cannot arise, and the other `TextFailure` reasons belong to allocation and to boundary
+    /// arithmetic, neither of which a fixed buffer performs.
+    ///
+    /// @param bytes the UTF-8 run to append, whole
+    /// @returns success when the complete run was appended
+    /// @see https://rux-lang.dev/docs/api/text/buffer-writer/write
+    pub func Write(self: &var BufferWriter, bytes: char8[..]) -> Result<Unit, FormatError> {
+        if bytes.length > self.room.length - self.length {
+            return Result::Error<Unit, FormatError>(FormatError::InsufficientCapacity);
+        }
+        var failure: uint = 0;
+        if Validate(bytes, @failure).IsError() {
+            return Result::Error<Unit, FormatError>(FormatError::TextFailure(TextFailureKind::InvalidUtf8));
+        }
+        var index: uint = 0;
+        while index < bytes.length {
+            self.room[self.length + index] = bytes.data[index];
+            index = index + 1;
+        }
+        self.length = self.length + bytes.length;
+        return FormatOk();
+    }
+}
