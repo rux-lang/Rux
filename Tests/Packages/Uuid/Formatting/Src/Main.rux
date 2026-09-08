@@ -1,25 +1,56 @@
-
 // A strict parser is only worth having if it actually refuses things, so most of this test is refusals — the
 // forms that circulate widely and are not the standard's, each rejected with the reason that names what is
 // wrong rather than a single catch-all.
+//
+// Every refusal now also carries where, and the offset is the half that is easy to get wrong quietly. A reason
+// with a wrong offset still passes a test that only checks the reason, and still underlines the wrong character
+// in whatever reports it. So each case below names the exact byte, and the URN cases are the ones that decide the
+// convention: the offsets are into the text as given, so a digit inside a URN is numbered from the start of the
+// whole string and not from the value inside it.
 
-import Core::{ Assert };
+import Core::Assert;
+import Text::ParseFailure;
 import Uuid::{ Format, FormatUpper, FormatUrn, Parse, Uuid, UuidParseError };
 
-func Refuses(text: char8[..], expected: UuidParseError, what: char8[..]) {
-    var error = UuidParseError::None;
-    var value = Parse(text, @error);
-    Assert(error == expected, what);
-    Assert(value.IsNil(), "and a refused parse gives nil rather than a half-filled value");
+// Which failure a result carries, as a small code, so a check names the reason it expects rather than only that
+// something failed: 1 WrongLength, 2 Misplaced, 3 NotHexadecimal, 4 BadPrefix.
+func CodeOf(error: &UuidParseError) -> int {
+    return match error {
+        .WrongLength(_) => 1,
+        .Misplaced(_) => 2,
+        .NotHexadecimal(_) => 3,
+        .BadPrefix(_) => 4
+    };
+}
+
+// Whether `text` is refused with exactly `code` at exactly `at`. Both halves matter: a reason with the wrong
+// offset underlines the wrong character, and an offset with the wrong reason describes the wrong mistake.
+func Refuses(text: char8[..], code: int, at: uint) -> bool {
+    return match Parse(text) {
+        .Success(_) => false,
+        .Error(reason) => CodeOf(reason) == code && reason.Offset() == at
+    };
+}
+
+// The value `text` parses to, or nil when it does not parse. Nil is a real UUID, so the callers below pair this
+// with a check that the parse succeeded rather than treating nil as a failure signal.
+func Parsed(text: char8[..]) -> Uuid {
+    return match Parse(text) {
+        .Success(value) => value,
+        .Error(_) => Uuid::Nil()
+    };
+}
+
+func Accepts(text: char8[..]) -> bool {
+    return Parse(text).IsSuccess();
 }
 
 func Main() -> int {
-    var error = UuidParseError::None;
     let canonical = "f81d4fae-7dec-11d0-a765-00a0c91e6bf6";
 
     // The canonical form round-trips.
-    var value = Parse(canonical, @error);
-    Assert(error == UuidParseError::None, "the canonical form parses");
+    Assert(Accepts(canonical), "the canonical form parses");
+    var value = Parsed(canonical);
     Assert(value.Version() == 1u8, "and its version is read from the right nibble");
     var text: char8[64];
     Format(value, (@text[0])[..36]);
@@ -30,69 +61,73 @@ func Main() -> int {
     }
 
     // Upper case is read and gives the same value, but is never written by `Format`.
-    var upper = Parse("F81D4FAE-7DEC-11D0-A765-00A0C91E6BF6", @error);
-    Assert(error == UuidParseError::None, "upper case parses");
-    Assert(upper.Equals(value), "and means the same thing");
-    var mixed = Parse("f81D4fAe-7DeC-11d0-A765-00a0C91e6Bf6", @error);
-    Assert(error == UuidParseError::None && mixed.Equals(value), "as does mixed case");
+    Assert(Accepts("F81D4FAE-7DEC-11D0-A765-00A0C91E6BF6"), "upper case parses");
+    Assert(Parsed("F81D4FAE-7DEC-11D0-A765-00A0C91E6BF6").Equals(value), "and means the same thing");
+    Assert(Parsed("f81D4fAe-7DeC-11d0-A765-00a0C91e6Bf6").Equals(value), "as does mixed case");
 
     var upperText: char8[64];
     FormatUpper(value, (@upperText[0])[..36]);
     Assert((upperText[0] as uint8) == 0x46u8, "the upper-case form writes upper-case digits");
     Assert((upperText[8] as uint8) == 0x2Du8, "and keeps the hyphens");
-    var reparsed = Parse((@upperText[0])[..36], @error);
-    Assert(error == UuidParseError::None && reparsed.Equals(value), "and parses back to the same value");
+    Assert(Parsed((@upperText[0])[..36]).Equals(value), "and parses back to the same value");
 
     // The URN form, in both cases of its prefix.
-    var urn = Parse("urn:uuid:f81d4fae-7dec-11d0-a765-00a0c91e6bf6", @error);
-    Assert(error == UuidParseError::None && urn.Equals(value), "the URN form parses");
-    var urnUpper = Parse("URN:UUID:f81d4fae-7dec-11d0-a765-00a0c91e6bf6", @error);
-    Assert(error == UuidParseError::None && urnUpper.Equals(value),
+    Assert(Parsed("urn:uuid:f81d4fae-7dec-11d0-a765-00a0c91e6bf6").Equals(value), "the URN form parses");
+    Assert(Parsed("URN:UUID:f81d4fae-7dec-11d0-a765-00a0c91e6bf6").Equals(value),
            "and its prefix is case-insensitive, which is a different rule from the digits and also the standard's");
 
     var urnText: char8[64];
     FormatUrn(value, (@urnText[0])[..45]);
-    var urnRoundTrip = Parse((@urnText[0])[..45], @error);
-    Assert(error == UuidParseError::None && urnRoundTrip.Equals(value), "and the written URN form parses back");
+    Assert(Parsed((@urnText[0])[..45]).Equals(value), "and the written URN form parses back");
 
-    // The refusals: every widely-circulated non-standard form.
-    Refuses("f81d4fae7dec11d0a76500a0c91e6bf6", UuidParseError::WrongLength,
-            "the hyphen-free form some databases store is refused");
-    Refuses("{f81d4fae-7dec-11d0-a765-00a0c91e6bf6}", UuidParseError::WrongLength,
-            "the brace-wrapped form Windows tools print is refused");
-    Refuses("f81d4fae-7dec-11d0-a765-00a0c91e6bf", UuidParseError::WrongLength, "one digit short is refused");
-    Refuses("f81d4fae-7dec-11d0-a765-00a0c91e6bf67", UuidParseError::WrongLength, "one digit long is refused");
-    Refuses("", UuidParseError::WrongLength, "and so is nothing at all");
+    // The refusals: every widely-circulated non-standard form. A text short of the canonical length points at its
+    // own end, where the missing character would have gone; a longer one points at the first character that has
+    // nowhere to be.
+    Assert(Refuses("f81d4fae7dec11d0a76500a0c91e6bf6", 1, 32u),
+           "the hyphen-free form some databases store is refused at its end");
+    Assert(Refuses("{f81d4fae-7dec-11d0-a765-00a0c91e6bf6}", 1, 36u),
+           "the brace-wrapped form Windows tools print is refused at the first character past the form");
+    Assert(Refuses("f81d4fae-7dec-11d0-a765-00a0c91e6bf", 1, 35u), "one digit short points at the missing digit");
+    Assert(Refuses("f81d4fae-7dec-11d0-a765-00a0c91e6bf67", 1, 36u), "one digit long points at the extra one");
+    Assert(Refuses("", 1, 0u), "and nothing at all is refused at offset zero");
 
     // Hyphens in the wrong places, which is the error a length check alone would miss.
-    Refuses("f81d4fae7-dec-11d0-a765-00a0c91e6bf6", UuidParseError::Misplaced,
-            "a hyphen one position late is refused");
-    Refuses("f81d4fa-e7dec-11d0-a765-00a0c91e6bf6", UuidParseError::Misplaced,
-            "and one position early");
-    Refuses("f81d4fae_7dec-11d0-a765-00a0c91e6bf6", UuidParseError::Misplaced,
-            "and a separator that is not a hyphen");
+    Assert(Refuses("f81d4fae7-dec-11d0-a765-00a0c91e6bf6", 2, 8u),
+           "a hyphen one position late is refused where the hyphen belonged");
+    Assert(Refuses("f81d4fa-e7dec-11d0-a765-00a0c91e6bf6", 2, 7u),
+           "and one position early, where the hyphen stands and a digit belongs");
+    Assert(Refuses("f81d4fae_7dec-11d0-a765-00a0c91e6bf6", 2, 8u), "and a separator that is not a hyphen");
 
-    // Characters that are not hexadecimal.
-    Refuses("g81d4fae-7dec-11d0-a765-00a0c91e6bf6", UuidParseError::NotHexadecimal,
-            "a letter past f is refused");
-    Refuses("f81d4fae-7dec-11d0-a765-00a0c91e6bf ", UuidParseError::NotHexadecimal,
-            "and so is a space");
+    // Every one of the four hyphen positions is checked, not only the first.
+    Assert(Refuses("f81d4fae-7dec_11d0-a765-00a0c91e6bf6", 2, 13u), "the second hyphen position is checked");
+    Assert(Refuses("f81d4fae-7dec-11d0_a765-00a0c91e6bf6", 2, 18u), "and the third");
+    Assert(Refuses("f81d4fae-7dec-11d0-a765_00a0c91e6bf6", 2, 23u), "and the fourth");
 
-    // A URN prefix that is misspelled, which is its own kind of wrong.
-    Refuses("urn:uuix:f81d4fae-7dec-11d0-a765-00a0c91e6bf6", UuidParseError::BadPrefix,
-            "a misspelled URN prefix is refused as such");
-    Refuses("uri:uuid:f81d4fae-7dec-11d0-a765-00a0c91e6bf6", UuidParseError::BadPrefix,
-            "as is the wrong scheme");
+    // Characters that are not hexadecimal, at the first, middle and last digit positions.
+    Assert(Refuses("g81d4fae-7dec-11d0-a765-00a0c91e6bf6", 3, 0u), "a letter past f is refused at its position");
+    Assert(Refuses("f81d4fae-7dec-11d0-a765-00a0c91e6bf ", 3, 35u), "and so is a trailing space");
+    Assert(Refuses("f81d4fae-7dec-11z0-a765-00a0c91e6bf6", 3, 16u), "and one in the middle of a group");
+
+    // A URN prefix that is misspelled, which is its own kind of wrong, pointing at the character that is wrong.
+    Assert(Refuses("urn:uuix:f81d4fae-7dec-11d0-a765-00a0c91e6bf6", 4, 7u),
+           "a misspelled URN prefix is refused at the misspelling");
+    Assert(Refuses("uri:uuid:f81d4fae-7dec-11d0-a765-00a0c91e6bf6", 4, 2u), "as is the wrong scheme");
+    Assert(Refuses("urn uuid:f81d4fae-7dec-11d0-a765-00a0c91e6bf6", 4, 3u), "and a missing separator");
+
+    // Inside a URN, the offsets are into the whole text rather than into the value it wraps. That is the
+    // convention a caller underlining a character depends on, and the case that proves it.
+    Assert(Refuses("urn:uuid:g81d4fae-7dec-11d0-a765-00a0c91e6bf6", 3, 9u),
+           "a bad digit in a URN is numbered from the start of the URN");
+    Assert(Refuses("urn:uuid:f81d4fae_7dec-11d0-a765-00a0c91e6bf6", 2, 17u),
+           "and so is a misplaced hyphen inside one");
 
     // The sentinels have text forms too.
     var nil = Uuid::Nil();
     Format(nil, (@text[0])[..36]);
-    var nilParsed = Parse((@text[0])[..36], @error);
-    Assert(error == UuidParseError::None && nilParsed.IsNil(), "the nil UUID round-trips through text");
+    Assert(Accepts((@text[0])[..36]) && Parsed((@text[0])[..36]).IsNil(), "the nil UUID round-trips through text");
     var max = Uuid::Max();
     Format(max, (@text[0])[..36]);
-    var maxParsed = Parse((@text[0])[..36], @error);
-    Assert(error == UuidParseError::None && maxParsed.IsMax(), "and so does the max UUID");
+    Assert(Parsed((@text[0])[..36]).IsMax(), "and so does the max UUID");
 
     // Every byte survives the round trip, at every position — which a formatter that swapped a nibble would
     // fail while still producing something that looks like a UUID.
@@ -102,8 +137,7 @@ func Main() -> int {
         probe = Uuid::Nil();
         probe.bytes[index] = 0x9Cu8 as char8;
         Format(probe, (@text[0])[..36]);
-        var back = Parse((@text[0])[..36], @error);
-        Assert(error == UuidParseError::None && back.Equals(probe),
+        Assert(Accepts((@text[0])[..36]) && Parsed((@text[0])[..36]).Equals(probe),
                "every byte position survives the text round trip");
         index = index + 1;
     }

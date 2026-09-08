@@ -15,8 +15,14 @@
 // they mean the same thing and rejecting upper case would break interoperation, but only lower case is
 // *written*, because RFC 9562 says output should be lower case and a canonical form that varies is not
 // canonical.
+//
+// A refusal says where. The reason alone tells a caller what kind of mistake was made; the offset tells them which
+// character to point their own user at, which is the difference between "that is not a UUID" and an underline
+// under the character that is wrong. The offsets are into the text as given, so the URN form's digits are numbered
+// from the start of the whole string rather than from the start of the value inside it.
 
-
+import Core::Result;
+import Text::ParseFailure;
 
 /// How long the canonical text form is: thirty-two digits and four hyphens.
 ///
@@ -28,20 +34,44 @@ pub const UuidTextLength: uint = 36;
 /// https://rux-lang.dev/docs/api/uuid/urn-length
 pub const UuidUrnLength: uint = 45;
 
-/// Why a string could not be read as a UUID.
+/// Why text could not be read as a UUID.
 ///
-/// https://rux-lang.dev/docs/api/uuid/parse-error
-pub enum UuidParseError: int32 {
-    /// The string is a UUID.
-    None = 0,
-    /// The string is not thirty-six characters, or forty-five with the URN prefix.
-    WrongLength = 1,
-    /// A hyphen is missing, or one appears where a digit belongs.
-    Misplaced = 2,
-    /// A character that is not a hexadecimal digit.
-    NotHexadecimal = 3,
-    /// The `urn:uuid:` prefix is present but misspelled.
-    BadPrefix = 4
+/// Failure-only: every case is a failure, and each carries the zero-based UTF-8 byte offset into the text where it
+/// was found. Success is `Result::Success`, so there is no case here meaning nothing went wrong.
+///
+/// Copy, carrying one offset and owning nothing.
+///
+/// @see https://rux-lang.dev/docs/api/uuid/parse-error
+pub variant UuidParseError {
+    /// The text is neither thirty-six characters nor forty-five with the URN prefix. The offset is the text's
+    /// length when it is too short, which is where the missing character would have gone, and the first character
+    /// the canonical form has no room for when it is too long.
+    WrongLength(uint),
+    /// A hyphen is missing where the form puts one, or one appears where a digit belongs. The offset is that
+    /// character.
+    Misplaced(uint),
+    /// A character that is not a hexadecimal digit. The offset is that character.
+    NotHexadecimal(uint),
+    /// The text has the length of the URN form but its `urn:uuid:` prefix is misspelled. The offset is the first
+    /// character that does not match.
+    BadPrefix(uint)
+}
+
+extend UuidParseError : ParseFailure {
+    /// Where in the input the failure was found.
+    ///
+    /// Borrows the error and leaves it untouched. Cannot fail; runs in constant time and allocates nothing.
+    ///
+    /// @returns the zero-based UTF-8 byte offset, which is the text's length at end of input
+    /// @see https://rux-lang.dev/docs/api/uuid/parse-error/offset
+    pub func Offset(self: &UuidParseError) -> uint {
+        return match self {
+            .WrongLength(at) => at,
+            .Misplaced(at) => at,
+            .NotHexadecimal(at) => at,
+            .BadPrefix(at) => at
+        };
+    }
 }
 
 // The value of one hexadecimal digit, or sixteen for anything else.
@@ -59,16 +89,22 @@ func IsHyphenPosition(index: uint) -> bool {
 
 /// Reads a UUID from its canonical or URN text form.
 ///
-/// Both cases are accepted; nothing else is. `error` says why a string was refused, and the returned value is
-/// nil in that case rather than partially filled — a half-parsed identifier is worse than none.
+/// Both cases of the digits are accepted, because the standard says the two mean the same thing; nothing else is.
+/// The URN prefix is compared case-insensitively, which is RFC 8141's rule for a scheme name and a different rule
+/// from the digits — both are the standard's.
 ///
-/// https://rux-lang.dev/docs/api/uuid/parse
-pub func Parse(text: char8[..], error: *var UuidParseError) -> Uuid {
-    *error = UuidParseError::None;
+/// # Failures
+/// Reports `WrongLength` for text that is neither form's length, `BadPrefix` for a misspelled `urn:uuid:`,
+/// `Misplaced` for a hyphen that is missing or one that stands where a digit belongs, and `NotHexadecimal` for any
+/// other character that is not a digit. Each carries the byte offset into `text` where it was found. A refused
+/// parse produces no value at all rather than a half-filled one.
+///
+/// @param text the text to read
+/// @returns the identifier, or why the text is not one
+/// @see https://rux-lang.dev/docs/api/uuid/parse
+pub func Parse(text: char8[..]) -> Result<Uuid, UuidParseError> {
     var start: uint = 0;
     if text.length == UuidUrnLength {
-        // The prefix is compared case-insensitively, since RFC 8141 says a URN scheme name is not case
-        // sensitive — which is a different rule from the digits, and both are the standard's.
         let prefix = "urn:uuid:";
         var index: uint = 0;
         while index < 9u {
@@ -77,16 +113,17 @@ pub func Parse(text: char8[..], error: *var UuidParseError) -> Uuid {
                 mine = mine + 32u8;
             }
             if mine != (prefix.data[index] as uint8) {
-                *error = UuidParseError::BadPrefix;
-                return Uuid::Nil();
+                return Result::Error<Uuid, UuidParseError>(UuidParseError::BadPrefix(index));
             }
             index = index + 1;
         }
         start = 9u;
     }
     else if text.length != UuidTextLength {
-        *error = UuidParseError::WrongLength;
-        return Uuid::Nil();
+        // Too short, and the offset is the end of the text, where the character that is missing would go. Too long,
+        // and it is the first character past the form, which is the one that has nowhere to be.
+        let at = text.length < UuidTextLength ? text.length : UuidTextLength;
+        return Result::Error<Uuid, UuidParseError>(UuidParseError::WrongLength(at));
     }
 
     var value = Uuid::Nil();
@@ -95,20 +132,22 @@ pub func Parse(text: char8[..], error: *var UuidParseError) -> Uuid {
     var pending = 0u8;
     var haveHigh = false;
     while position < UuidTextLength {
-        let c = text.data[start + position] as uint8;
+        let at = start + position;
+        let c = text.data[at] as uint8;
         if IsHyphenPosition(position) {
             if c != 0x2Du8 {
-                *error = UuidParseError::Misplaced;
-                return Uuid::Nil();
+                return Result::Error<Uuid, UuidParseError>(UuidParseError::Misplaced(at));
             }
         }
         else {
             let digit = HexValue(c);
             if digit == 16u8 {
                 // A hyphen where a digit belongs is a misplacement rather than a bad character, which is a more
-                // useful thing to be told.
-                *error = c == 0x2Du8 ? UuidParseError::Misplaced : UuidParseError::NotHexadecimal;
-                return Uuid::Nil();
+                // useful thing to be told: the digits are right and the grouping is not.
+                if c == 0x2Du8 {
+                    return Result::Error<Uuid, UuidParseError>(UuidParseError::Misplaced(at));
+                }
+                return Result::Error<Uuid, UuidParseError>(UuidParseError::NotHexadecimal(at));
             }
             if haveHigh {
                 value.bytes[byteIndex] = ((pending << 4u8) | digit) as char8;
@@ -122,7 +161,7 @@ pub func Parse(text: char8[..], error: *var UuidParseError) -> Uuid {
         }
         position = position + 1u;
     }
-    return value;
+    return Result::Success<Uuid, UuidParseError>(value);
 }
 
 /// Writes the canonical text form into `into`, in lower case.

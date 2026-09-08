@@ -9,6 +9,7 @@ Description = "Package test for Uuid: parsing and formatting UUID text."
 
 [Dependencies]
 Core = { Path = "../../../../Packages/Core" }
+Text = { Path = "../../../../Packages/Text" }
 Uuid = { Path = "../../../../Packages/Uuid" }
 
 [Build]
