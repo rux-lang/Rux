@@ -12,8 +12,7 @@
 // has a non-finite value has to decide what it means, and only the caller can.
 
 
-import Format::TextWriter;
-import Text::TextError;
+import Text::TextWriter;
 
 /// Why writing stopped.
 ///
@@ -69,7 +68,7 @@ pub func WriteEscaped(writer: &var TextWriter, text: char8[..]) -> JsonWriteErro
     var sink = writer;
     var quote: char8[1];
     quote[0] = 0x22u8 as char8;
-    if sink.Write(quote[0..1]) != TextError::None { return JsonWriteError::Failed; }
+    if sink.Write(quote[0..1]).IsError() { return JsonWriteError::Failed; }
     var index: uint = 0;
     var runStart: uint = 0;
     while index < text.length {
@@ -115,18 +114,18 @@ pub func WriteEscaped(writer: &var TextWriter, text: char8[..]) -> JsonWriteErro
         if escapeLength > 0u {
             if index > runStart {
                 let run = (@text.data[runStart])[..index - runStart];
-                if sink.Write(run) != TextError::None { return JsonWriteError::Failed; }
+                if sink.Write(run).IsError() { return JsonWriteError::Failed; }
             }
-            if sink.Write(escape[0..escapeLength]) != TextError::None { return JsonWriteError::Failed; }
+            if sink.Write(escape[0..escapeLength]).IsError() { return JsonWriteError::Failed; }
             runStart = index + 1u;
         }
         index = index + 1u;
     }
     if index > runStart {
         let run = (@text.data[runStart])[..index - runStart];
-        if sink.Write(run) != TextError::None { return JsonWriteError::Failed; }
+        if sink.Write(run).IsError() { return JsonWriteError::Failed; }
     }
-    if sink.Write(quote[0..1]) != TextError::None { return JsonWriteError::Failed; }
+    if sink.Write(quote[0..1]).IsError() { return JsonWriteError::Failed; }
     return JsonWriteError::None;
 }
 
@@ -147,7 +146,7 @@ func IsFiniteNumberText(text: char8[..]) -> bool {
 
 func WriteBytes(writer: &var TextWriter, bytes: char8[..]) -> JsonWriteError {
     var sink = writer;
-    return sink.Write(bytes) == TextError::None ? JsonWriteError::None : JsonWriteError::Failed;
+    return sink.Write(bytes).IsSuccess() ? JsonWriteError::None : JsonWriteError::Failed;
 }
 
 func WriteNewlineAndIndent(writer: &var TextWriter, style: JsonStyle, level: uint) -> JsonWriteError {

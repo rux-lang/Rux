@@ -8,6 +8,20 @@ Return to the [main README](../README.md) for the complete documentation index.
 
 ## Open
 
+### Building one package test directly resolves its dependency's dependencies from the install cache, not the workspace
+
+*Loud, once the two disagree, and silently wrong until then.* `rux test` from the repository root resolves everything locally and is unaffected. Building a single package test by its own manifest is not:
+
+```sh
+rux --manifest Tests/Packages/Format/Uint8/Rux.toml build --release
+```
+
+That test declares `Format` and `Text` as path dependencies, but `Format`'s own manifest declares `Text` by version, as a publishable manifest must. The version requirement is satisfied from the user-level install cache (`%LOCALAPPDATA%/rux/Packages` on Windows) rather than from the path the root already supplies for the same package identity, so the build compiles the workspace's `Format` against a cached `Text`. Where the two agree, everything passes and nothing indicates which was used; where they differ, the failure names declarations that plainly exist — `name 'Display' was not found in package 'Text'` against a `Text` whose sources declare it.
+
+Found while moving the formatting contracts into `Text`: the workspace `rux check` and `rux test` passed while the standalone build of a Format test failed on every new declaration. Confirmed by adding a declaration to an existing `Text` source and watching a single-test build fail to see it, and by moving the cache aside, after which the same build cannot resolve `Rux/Allocator` at all — so the cache is genuinely what satisfies a dependency's own dependencies here.
+
+This contradicts what CONTRIBUTING promises: "Repository tests resolve every dependency from the local workspace, so no registry installation is needed." Use `rux test` from the root, which is the documented workflow and is correct. Note that no first-party package is published, so whatever populated that cache was local; it is a stale copy of an older working tree rather than anything the registry served.
+
 ### A `return` expression is evaluated after the function's `defer` statements run
 
 *Silent, and it changes the value a function returns.* `return expr;` should read `expr` and then run the deferred statements on the way out. It does the opposite: the defers run first and `expr` is evaluated afterwards, so a `defer` that mutates a local is visible in the value the caller receives.

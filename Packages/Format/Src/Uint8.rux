@@ -1,14 +1,21 @@
 // The decimal text of a `uint8`.
 
-import Text::TextError;
+import Core::{ Result, Unit };
+import Text::{ Debug, Display, FormatError, FormatSpec, TextWriter };
 
 extend uint8 : Display {
     /// Writes this value's digits.
     ///
     /// Allocates nothing: the digits go into a buffer on the stack and reach the writer in one call.
     ///
-    /// https://rux-lang.dev/docs/api/format/uint8/format
-    pub func Format(self: *uint8, writer: &var TextWriter, spec: FormatSpec) -> TextError {
+    /// # Failures
+    /// Reports whatever the writer reported, stopping at the first refusal.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the complete rendering was accepted
+    /// @see https://rux-lang.dev/docs/api/format/uint8/write-display
+    pub func WriteDisplay(self: *uint8, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
         return WriteIntegerSpec(writer, spec, *self as uint64, false);
     }
 }
@@ -16,8 +23,14 @@ extend uint8 : Display {
 extend uint8 : Debug {
     /// The same digits.
     ///
-    /// https://rux-lang.dev/docs/api/format/uint8/format-debug
-    pub func FormatDebug(self: *uint8, writer: &var TextWriter, spec: FormatSpec) -> TextError {
-        return self.Format(writer, spec);
+    /// # Failures
+    /// Reports whatever the writer reported, stopping at the first refusal.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the complete rendering was accepted
+    /// @see https://rux-lang.dev/docs/api/format/uint8/write-debug
+    pub func WriteDebug(self: *uint8, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        return self.WriteDisplay(writer, spec);
     }
 }

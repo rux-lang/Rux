@@ -2,13 +2,20 @@
 //
 // Lower case, unquoted, and the same for `Debug`: there is no second way to read a boolean.
 
-import Text::TextError;
+import Core::{ Result, Unit };
+import Text::{ Debug, Display, FormatError, FormatSpec, TextWriter };
 
 extend bool8 : Display {
     /// Writes `true` or `false`.
     ///
-    /// https://rux-lang.dev/docs/api/format/bool8/format
-    pub func Format(self: *bool8, writer: &var TextWriter, spec: FormatSpec) -> TextError {
+    /// # Failures
+    /// Reports whatever the writer reported, stopping at the first refusal.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the complete rendering was accepted
+    /// @see https://rux-lang.dev/docs/api/format/bool8/write-display
+    pub func WriteDisplay(self: *bool8, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
         return WriteAligned(writer, spec, *self ? "true" : "false", false);
     }
 }
@@ -16,8 +23,14 @@ extend bool8 : Display {
 extend bool8 : Debug {
     /// The same two words.
     ///
-    /// https://rux-lang.dev/docs/api/format/bool8/format-debug
-    pub func FormatDebug(self: *bool8, writer: &var TextWriter, spec: FormatSpec) -> TextError {
-        return self.Format(writer, spec);
+    /// # Failures
+    /// Reports whatever the writer reported, stopping at the first refusal.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the complete rendering was accepted
+    /// @see https://rux-lang.dev/docs/api/format/bool8/write-debug
+    pub func WriteDebug(self: *bool8, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        return self.WriteDisplay(writer, spec);
     }
 }

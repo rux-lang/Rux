@@ -11,6 +11,9 @@
 
 
 
+import Core::{ Result, Unit };
+import Text::{ FormatError, FormatOk, TextWriter };
+
 /// A fixed buffer being filled from the front.
 ///
 /// https://rux-lang.dev/docs/api/format/byte-cursor
@@ -66,5 +69,26 @@ extend ByteCursor {
     /// https://rux-lang.dev/docs/api/format/byte-cursor/overran
     pub func Overran(self: &ByteCursor) -> bool {
         return self.overran;
+    }
+}
+
+extend ByteCursor : TextWriter {
+    /// Writes `bytes` into the buffer.
+    ///
+    /// # Failures
+    /// Reports `InsufficientCapacity` when the bytes do not all fit. The cursor is a bounded destination, so this
+    /// is the failure it exists to report; a `WriterFailure` is impossible, since there is no destination beyond
+    /// the buffer, and the bytes are not revalidated here, so no `TextFailure` arises either.
+    ///
+    /// Unlike a builder, a cursor that overruns keeps whatever fitted rather than leaving itself unchanged: the
+    /// buffer is the caller's, the partial content is visible through `Written`, and `Overran` says it is partial.
+    ///
+    /// @param bytes the UTF-8 run to write
+    /// @returns success when every byte fitted
+    /// @see https://rux-lang.dev/docs/api/format/byte-cursor/write
+    pub func Write(self: &var ByteCursor, bytes: char8[..]) -> Result<Unit, FormatError> {
+        self.PushBytes(bytes);
+        if self.Overran() { return Result::Error<Unit, FormatError>(FormatError::InsufficientCapacity); }
+        return FormatOk();
     }
 }

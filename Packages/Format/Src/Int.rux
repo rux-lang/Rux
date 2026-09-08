@@ -6,15 +6,22 @@
 // `int` is a type of its own rather than a name for `int64`, so it needs its own implementation even where
 // the two happen to be the same width. Widening to `int64` first is what makes that implementation one line.
 
-import Text::TextError;
+import Core::{ Result, Unit };
+import Text::{ Debug, Display, FormatError, FormatSpec, TextWriter };
 
 extend int : Display {
     /// Writes this value's digits.
     ///
     /// Allocates nothing: the digits go into a buffer on the stack and reach the writer in one call.
     ///
-    /// https://rux-lang.dev/docs/api/format/int/format
-    pub func Format(self: *int, writer: &var TextWriter, spec: FormatSpec) -> TextError {
+    /// # Failures
+    /// Reports whatever the writer reported, stopping at the first refusal.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the complete rendering was accepted
+    /// @see https://rux-lang.dev/docs/api/format/int/write-display
+    pub func WriteDisplay(self: *int, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
         let wide = *self as int64;
         // The magnitude is taken in uint64 rather than by negating in int64, because the most negative value has
         // no positive counterpart there.
@@ -27,8 +34,14 @@ extend int : Display {
 extend int : Debug {
     /// The same digits: a number reads the same whoever is looking.
     ///
-    /// https://rux-lang.dev/docs/api/format/int/format-debug
-    pub func FormatDebug(self: *int, writer: &var TextWriter, spec: FormatSpec) -> TextError {
-        return self.Format(writer, spec);
+    /// # Failures
+    /// Reports whatever the writer reported, stopping at the first refusal.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the complete rendering was accepted
+    /// @see https://rux-lang.dev/docs/api/format/int/write-debug
+    pub func WriteDebug(self: *int, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        return self.WriteDisplay(writer, spec);
     }
 }

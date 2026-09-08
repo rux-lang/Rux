@@ -1,0 +1,129 @@
+// Why a value could not be turned into text.
+//
+// `TextError` next door answers a different question. It is this package's storage-and-validation status, it has a
+// `None` case, and callers test it with `IsOk`. That shape suits an operation whose answer is "did this work", but
+// it is the wrong shape for a protocol that returns `Result`: a `Result::Error` carrying `TextError::None` would be
+// a failure that says nothing failed, and nothing prevents one being constructed.
+//
+// So `FormatError` is failure-only. Every case denotes a failure, there is no `None`, `Ok` or `Success` case, and
+// success lives exclusively in `Result::Success`. The same rule applies one level down: `TextFailureKind` carries
+// the four ways text handling actually fails and cannot express the fifth thing `TextError` can say.
+//
+// The categories are split by who is at fault, because that is what a caller can act on. A malformed specification
+// or an argument-count mismatch is the call site's mistake and carries where. An unsupported request or a value out
+// of range is a mismatch between a value and what was asked of it. Insufficient capacity is the destination being
+// too small. A writer failure is the destination itself failing, and its details stay in the adapter that knows
+// them: this package has no vocabulary for a broken pipe and does not pretend to.
+
+import Core::{ Result, Unit };
+
+/// The ways text handling fails, with no case for success.
+///
+/// A deliberate narrowing of `TextError`: the same four failures, minus its `None`. That absence is the point, since
+/// this is what a `FormatError::TextFailure` carries and a failure payload must not be able to say "nothing went
+/// wrong".
+///
+/// Copy, carrying no payload and owning nothing.
+///
+/// @see https://rux-lang.dev/docs/api/text/text-failure-kind
+pub variant TextFailureKind {
+    /// The allocator could not supply the storage a write needed.
+    OutOfMemory,
+    /// A length or offset computation passed what a `uint` can hold.
+    LengthOverflow,
+    /// The bytes offered were not well-formed UTF-8.
+    InvalidUtf8,
+    /// A byte offset that is not where a character starts, and so not a place text may be cut.
+    NotABoundary
+}
+
+/// Why a formatting operation did not produce the text it was asked for.
+///
+/// Failure-only: every case is a failure, and success is `Result::Success` rather than a case here. Which case
+/// arises says who must fix it, so the categories are not interchangeable and a writer may not invent the ones that
+/// belong to the parser or the value.
+///
+/// Copy, and cheap to return: the widest payload is a pair of counts.
+///
+/// @see https://rux-lang.dev/docs/api/text/format-error
+pub variant FormatError {
+    /// The pattern or specification was malformed, at the zero-based UTF-8 byte offset carried here. The offset is
+    /// into the text that was being parsed, and end-of-input is that text's length.
+    InvalidSpecification(uint),
+    /// The style or flag asked for is not one this value supports. A precision on a boolean, or a base on a string,
+    /// arrives here rather than being ignored.
+    UnsupportedRequest,
+    /// A pattern's placeholders and the arguments supplied did not agree: expected first, supplied second.
+    ArgumentCountMismatch(uint, uint),
+    /// The destination is bounded and cannot accept the whole write. Nothing partial is left behind by a writer
+    /// that promises otherwise; see the writer's own contract.
+    InsufficientCapacity,
+    /// The value is valid but cannot be represented in the form requested, such as a timestamp outside the
+    /// calendar range a format covers.
+    ValueOutOfRange,
+    /// Text handling failed, for the reason carried. This is where an allocation failure or rejected UTF-8 arrives.
+    TextFailure(TextFailureKind),
+    /// The destination failed on its own terms. Its details stay with the adapter that produced it, which is the
+    /// only thing that knows what a failure of that destination means.
+    WriterFailure
+}
+
+extend FormatError {
+    /// Whether this failure came from the destination rather than from the text or the request.
+    ///
+    /// Useful at a boundary that must tell an unusable destination apart from a request that was wrong: the first is
+    /// worth retrying elsewhere and the second never is.
+    ///
+    /// Borrows the error and leaves it untouched. Cannot fail; runs in constant time and allocates nothing.
+    ///
+    /// @returns true for `WriterFailure`, false for every other case
+    /// @see https://rux-lang.dev/docs/api/text/format-error/is-writer-failure
+    pub func IsWriterFailure(self: &FormatError) -> bool {
+        return match self {
+            .WriterFailure => true,
+            else => false
+        };
+    }
+}
+
+/// The success value a formatting operation with nothing to return produces.
+///
+/// Spelled once here because it is written at the end of nearly every writer, and `Result::Success<Unit,
+/// FormatError>(Unit())` is a great deal of syntax for "that worked".
+///
+/// Takes nothing. Cannot fail; runs in constant time and allocates nothing.
+///
+/// @returns a successful result carrying `Unit`
+/// @see https://rux-lang.dev/docs/api/text/format-ok
+pub func FormatOk() -> Result<Unit, FormatError> {
+    return Result::Success<Unit, FormatError>(Unit());
+}
+
+/// The failure-only kind corresponding to `error`, or `InvalidUtf8` when it reports success.
+///
+/// The fallback exists because the two types deliberately disagree about whether success is expressible. A caller
+/// that might hold `TextError::None` must ask `FromTextError` instead, which answers with a `Result` and so has
+/// somewhere to put success.
+///
+/// @param error the text status to narrow, which must be a failure
+/// @returns the matching failure kind
+/// @see https://rux-lang.dev/docs/api/text/text-failure-of
+pub func TextFailureOf(error: TextError) -> TextFailureKind {
+    if error == TextError::OutOfMemory { return TextFailureKind::OutOfMemory; }
+    if error == TextError::LengthOverflow { return TextFailureKind::LengthOverflow; }
+    if error == TextError::NotABoundary { return TextFailureKind::NotABoundary; }
+    return TextFailureKind::InvalidUtf8;
+}
+
+/// `error` translated across the boundary between this package's status convention and the formatting protocol.
+///
+/// This is the only sanctioned crossing. `TextError::None` becomes `Result::Success`, and every other case becomes
+/// a `TextFailure` carrying the reason, so a status never becomes an error payload that means success.
+///
+/// @param error the text status a storage or validation operation returned
+/// @returns success for `None`, and a `TextFailure` carrying the reason otherwise
+/// @see https://rux-lang.dev/docs/api/text/from-text-error
+pub func FromTextError(error: TextError) -> Result<Unit, FormatError> {
+    if error == TextError::None { return FormatOk(); }
+    return Result::Error<Unit, FormatError>(FormatError::TextFailure(TextFailureOf(error)));
+}

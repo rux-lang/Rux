@@ -1,5 +1,12 @@
+// The text of a `float32`.
+//
+// The shortest decimal that reads back as the same value, which is what a reader almost always wants: 0.1 prints as
+// "0.1" rather than as the seventeen digits its binary value really is. A precision in the placeholder asks for
+// fixed notation instead, and is honoured exactly when the value has that many digits to give.
 
-import Text::TextError;
+
+import Core::{ Result, Unit };
+import Text::{ Debug, Display, FormatError, FormatSpec, TextWriter };
 
 // The largest finite float32, held here as the float64 it widens to exactly.
 const MaxFinite32 = 3.4028234663852886e38;
@@ -42,21 +49,27 @@ extend float32 : Display {
     /// Allocates nothing: the digits go into a buffer on the stack and reach the writer in one call. Fifty bytes is
     /// more than the longest rendering — sign, digits, point and exponent — can need.
     ///
-    /// https://rux-lang.dev/docs/api/format/float32/format
-    pub func Format(self: *float32, writer: &var TextWriter, spec: FormatSpec) -> TextError {
+    /// # Failures
+    /// Reports whatever the writer reported, stopping at the first refusal.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the complete rendering was accepted
+    /// @see https://rux-lang.dev/docs/api/format/float32/write-display
+    pub func WriteDisplay(self: *float32, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
         var storage: char8[52];
         var cursor = ByteCursor((@storage[2])[..50]);
         // Precision means digits after the point, honoured where the arithmetic can honour it: a value too large
         // to scale into a word renders shortest instead of pretending.
-        if spec.hasPrecision && FitsPrecision(*self as float64, spec.precision) {
-            WriteFixedPrecision(cursor, *self as float64, spec.precision);
+        if spec.HasPrecision() && FitsPrecision(*self as float64, spec.Precision()) {
+            WriteFixedPrecision(cursor, *self as float64, spec.Precision());
         }
         else {
             WriteFloat(cursor, *self);
         }
         var rendered = cursor.Written();
         // A requested sign goes in front of a value that has none of its own; a NaN carries no sign to show.
-        if spec.showSign && rendered.length > 0 && rendered.data[0] != c8'-' && rendered.data[0] != c8'N' {
+        if spec.ShowsSign() && rendered.length > 0 && rendered.data[0] != c8'-' && rendered.data[0] != c8'N' {
             storage[1] = c8'+';
             rendered = (@storage[1])[..rendered.length + 1];
         }
@@ -67,9 +80,15 @@ extend float32 : Display {
 extend float32 : Debug {
     /// The same text.
     ///
-    /// https://rux-lang.dev/docs/api/format/float32/format-debug
-    pub func FormatDebug(self: *float32, writer: &var TextWriter, spec: FormatSpec) -> TextError {
-        return self.Format(writer, spec);
+    /// # Failures
+    /// Reports whatever the writer reported, stopping at the first refusal.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the complete rendering was accepted
+    /// @see https://rux-lang.dev/docs/api/format/float32/write-debug
+    pub func WriteDebug(self: *float32, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        return self.WriteDisplay(writer, spec);
     }
 }
 

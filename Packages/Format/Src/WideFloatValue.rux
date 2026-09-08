@@ -6,7 +6,8 @@
 // `FormatWith` is there for a caller who wants to choose.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Text::TextError;
+import Core::{ Result, Unit };
+import Text::{ Debug, Display, FormatError, FormatOk, FormatSpec, TextFailureKind, TextWriter, WriteAligned };
 
 /// An x87 extended-precision value, held as its eighty bits.
 ///
@@ -76,7 +77,7 @@ extend Float80 {
     /// Writes this value's text under `spec`, taking the working storage from `allocator`.
     ///
     /// https://rux-lang.dev/docs/api/format/float80/format-with
-    pub func FormatWith(self: &Float80, allocator: Allocator, writer: &var TextWriter, spec: FormatSpec) -> TextError {
+    pub func FormatWith(self: &Float80, allocator: Allocator, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
         let layout = FloatLayout::Extended80();
         return WriteWideFloat(allocator, writer, spec, self.bits as uint512, layout);
     }
@@ -86,8 +87,14 @@ extend Float80 : Display {
     /// Writes this value's decimal text: the shortest that reads back as the same bits, or the digits a precision
     /// asks for.
     ///
-    /// https://rux-lang.dev/docs/api/format/float80/format
-    pub func Format(self: &Float80, writer: &var TextWriter, spec: FormatSpec) -> TextError {
+    /// # Failures
+    /// Reports whatever the writer reported, stopping at the first refusal.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the complete rendering was accepted
+    /// @see https://rux-lang.dev/docs/api/format/float80/write-display
+    pub func WriteDisplay(self: &Float80, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
         var system = SystemAllocator();
         let allocator: Allocator = system;
         return self.FormatWith(allocator, writer, spec);
@@ -97,9 +104,15 @@ extend Float80 : Display {
 extend Float80 : Debug {
     /// The same text.
     ///
-    /// https://rux-lang.dev/docs/api/format/float80/format-debug
-    pub func FormatDebug(self: &Float80, writer: &var TextWriter, spec: FormatSpec) -> TextError {
-        return self.Format(writer, spec);
+    /// # Failures
+    /// Reports whatever the writer reported, stopping at the first refusal.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the complete rendering was accepted
+    /// @see https://rux-lang.dev/docs/api/format/float80/write-debug
+    pub func WriteDebug(self: &Float80, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        return self.WriteDisplay(writer, spec);
     }
 }
 
@@ -171,7 +184,7 @@ extend Float128 {
     /// Writes this value's text under `spec`, taking the working storage from `allocator`.
     ///
     /// https://rux-lang.dev/docs/api/format/float128/format-with
-    pub func FormatWith(self: &Float128, allocator: Allocator, writer: &var TextWriter, spec: FormatSpec) -> TextError {
+    pub func FormatWith(self: &Float128, allocator: Allocator, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
         let layout = FloatLayout::Binary128();
         return WriteWideFloat(allocator, writer, spec, self.bits as uint512, layout);
     }
@@ -181,8 +194,14 @@ extend Float128 : Display {
     /// Writes this value's decimal text: the shortest that reads back as the same bits, or the digits a precision
     /// asks for.
     ///
-    /// https://rux-lang.dev/docs/api/format/float128/format
-    pub func Format(self: &Float128, writer: &var TextWriter, spec: FormatSpec) -> TextError {
+    /// # Failures
+    /// Reports whatever the writer reported, stopping at the first refusal.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the complete rendering was accepted
+    /// @see https://rux-lang.dev/docs/api/format/float128/write-display
+    pub func WriteDisplay(self: &Float128, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
         var system = SystemAllocator();
         let allocator: Allocator = system;
         return self.FormatWith(allocator, writer, spec);
@@ -192,9 +211,15 @@ extend Float128 : Display {
 extend Float128 : Debug {
     /// The same text.
     ///
-    /// https://rux-lang.dev/docs/api/format/float128/format-debug
-    pub func FormatDebug(self: &Float128, writer: &var TextWriter, spec: FormatSpec) -> TextError {
-        return self.Format(writer, spec);
+    /// # Failures
+    /// Reports whatever the writer reported, stopping at the first refusal.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the complete rendering was accepted
+    /// @see https://rux-lang.dev/docs/api/format/float128/write-debug
+    pub func WriteDebug(self: &Float128, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        return self.WriteDisplay(writer, spec);
     }
 }
 
@@ -266,7 +291,7 @@ extend Float256 {
     /// Writes this value's text under `spec`, taking the working storage from `allocator`.
     ///
     /// https://rux-lang.dev/docs/api/format/float256/format-with
-    pub func FormatWith(self: &Float256, allocator: Allocator, writer: &var TextWriter, spec: FormatSpec) -> TextError {
+    pub func FormatWith(self: &Float256, allocator: Allocator, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
         let layout = FloatLayout::Binary256();
         return WriteWideFloat(allocator, writer, spec, self.bits as uint512, layout);
     }
@@ -276,8 +301,14 @@ extend Float256 : Display {
     /// Writes this value's decimal text: the shortest that reads back as the same bits, or the digits a precision
     /// asks for.
     ///
-    /// https://rux-lang.dev/docs/api/format/float256/format
-    pub func Format(self: &Float256, writer: &var TextWriter, spec: FormatSpec) -> TextError {
+    /// # Failures
+    /// Reports whatever the writer reported, stopping at the first refusal.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the complete rendering was accepted
+    /// @see https://rux-lang.dev/docs/api/format/float256/write-display
+    pub func WriteDisplay(self: &Float256, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
         var system = SystemAllocator();
         let allocator: Allocator = system;
         return self.FormatWith(allocator, writer, spec);
@@ -287,9 +318,15 @@ extend Float256 : Display {
 extend Float256 : Debug {
     /// The same text.
     ///
-    /// https://rux-lang.dev/docs/api/format/float256/format-debug
-    pub func FormatDebug(self: &Float256, writer: &var TextWriter, spec: FormatSpec) -> TextError {
-        return self.Format(writer, spec);
+    /// # Failures
+    /// Reports whatever the writer reported, stopping at the first refusal.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the complete rendering was accepted
+    /// @see https://rux-lang.dev/docs/api/format/float256/write-debug
+    pub func WriteDebug(self: &Float256, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        return self.WriteDisplay(writer, spec);
     }
 }
 
@@ -361,7 +398,7 @@ extend Float512 {
     /// Writes this value's text under `spec`, taking the working storage from `allocator`.
     ///
     /// https://rux-lang.dev/docs/api/format/float512/format-with
-    pub func FormatWith(self: &Float512, allocator: Allocator, writer: &var TextWriter, spec: FormatSpec) -> TextError {
+    pub func FormatWith(self: &Float512, allocator: Allocator, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
         let layout = FloatLayout::Binary512();
         return WriteWideFloat(allocator, writer, spec, self.bits as uint512, layout);
     }
@@ -371,8 +408,14 @@ extend Float512 : Display {
     /// Writes this value's decimal text: the shortest that reads back as the same bits, or the digits a precision
     /// asks for.
     ///
-    /// https://rux-lang.dev/docs/api/format/float512/format
-    pub func Format(self: &Float512, writer: &var TextWriter, spec: FormatSpec) -> TextError {
+    /// # Failures
+    /// Reports whatever the writer reported, stopping at the first refusal.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the complete rendering was accepted
+    /// @see https://rux-lang.dev/docs/api/format/float512/write-display
+    pub func WriteDisplay(self: &Float512, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
         var system = SystemAllocator();
         let allocator: Allocator = system;
         return self.FormatWith(allocator, writer, spec);
@@ -382,8 +425,14 @@ extend Float512 : Display {
 extend Float512 : Debug {
     /// The same text.
     ///
-    /// https://rux-lang.dev/docs/api/format/float512/format-debug
-    pub func FormatDebug(self: &Float512, writer: &var TextWriter, spec: FormatSpec) -> TextError {
-        return self.Format(writer, spec);
+    /// # Failures
+    /// Reports whatever the writer reported, stopping at the first refusal.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the complete rendering was accepted
+    /// @see https://rux-lang.dev/docs/api/format/float512/write-debug
+    pub func WriteDebug(self: &Float512, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        return self.WriteDisplay(writer, spec);
     }
 }

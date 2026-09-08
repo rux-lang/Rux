@@ -7,13 +7,20 @@
 // Only `char8[..]` renders. `char16[..]` and `char32[..]` would each need a transcoding printer,
 // and nothing yet asks for one.
 
-import Text::TextError;
+import Core::{ Result, Unit };
+import Text::{ Debug, Display, FormatError, FormatSpec, TextWriter };
 
 extend char8[..] : Display {
     /// Writes this text.
     ///
-    /// https://rux-lang.dev/docs/api/format/character-slice/format
-    pub func Format(self: &char8[..], writer: &var TextWriter, spec: FormatSpec) -> TextError {
+    /// # Failures
+    /// Reports whatever the writer reported, stopping at the first refusal.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the complete rendering was accepted
+    /// @see https://rux-lang.dev/docs/api/format/character-slice/write-display
+    pub func WriteDisplay(self: &char8[..], writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
         return WriteAligned(writer, spec, (self.data)[..self.length], false);
     }
 }
@@ -24,12 +31,16 @@ extend char8[..] : Debug {
     /// The quotes are all that is added. Escaping the characters between them is a question about which of them
     /// need it, which is a Unicode question and belongs where the Unicode tables are.
     ///
-    /// https://rux-lang.dev/docs/api/format/character-slice/format-debug
-    pub func FormatDebug(self: &char8[..], writer: &var TextWriter, spec: FormatSpec) -> TextError {
-        let opening = WriteAscii(writer, c8'"');
-        if opening.IsError() { return opening; }
-        let body = self.Format(writer, spec);
-        if body.IsError() { return body; }
+    /// # Failures
+    /// Reports whatever the writer reported, stopping at the first refusal.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the complete rendering was accepted
+    /// @see https://rux-lang.dev/docs/api/format/character-slice/write-debug
+    pub func WriteDebug(self: &char8[..], writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        WriteAscii(writer, c8'"')?;
+        self.WriteDisplay(writer, spec)?;
         return WriteAscii(writer, c8'"');
     }
 }

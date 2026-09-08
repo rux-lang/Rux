@@ -16,6 +16,8 @@ rux add Rux/Text
 - **UTF-8** — validation, decoding and encoding by Table 3-7 of the Unicode standard, so overlong forms, surrogate halves and values past U+10FFFF are refused structurally.
 - **`CString`** — move-only, NUL-checked interop with C: text holding a zero byte is refused rather than truncated on the way out, and bytes from C are bounded and validated on the way in.
 - **Transforms** — `Concat`, `Repeat`, `Replace`, and the ASCII-only case conversions, each allocating exactly once.
+- **The presentation contracts** — `Display` and `Debug` are what a value implements to describe itself, `TextWriter` is where the text goes, and `FormatSpec` is what a placeholder asked for. They live here rather than in [`Rux/Format`](../Format) so that a package can describe its own values without depending on the numeric conversion engine: `Time`, `Uuid` and `Path` all implement them and none of them needs to know how a float is rounded. `WriteAligned` applies a spec's width, fill and alignment, which is the one part every type applies the same way.
+- **`FormatError`** — why a value could not be turned into text, with no case for success. `TextError` next door keeps its `None` and its `IsOk` idiom for this package's storage and validation operations; `FromTextError` is the one sanctioned crossing between the two, and it turns success into `Result::Success` rather than into an error payload that means nothing went wrong.
 
 ## Example
 

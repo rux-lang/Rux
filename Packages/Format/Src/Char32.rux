@@ -8,8 +8,14 @@ import Text::{ IsScalarValue, TextError };
 extend char32 : Display {
     /// Writes this character, or the replacement character when the value is not one.
     ///
-    /// https://rux-lang.dev/docs/api/format/char32/format
-    pub func Format(self: *char32, writer: &var TextWriter, spec: FormatSpec) -> TextError {
+    /// # Failures
+    /// Reports whatever the writer reported, stopping at the first refusal.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the complete rendering was accepted
+    /// @see https://rux-lang.dev/docs/api/format/char32/write-display
+    pub func WriteDisplay(self: *char32, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
         let value = *self as uint32;
         if !IsScalarValue(value) { return FormatScalar(writer, spec, ReplacementCharacter); }
         return FormatScalar(writer, spec, value as char32);
@@ -19,12 +25,16 @@ extend char32 : Display {
 extend char32 : Debug {
     /// The same character, quoted.
     ///
-    /// https://rux-lang.dev/docs/api/format/char32/format-debug
-    pub func FormatDebug(self: *char32, writer: &var TextWriter, spec: FormatSpec) -> TextError {
-        let opening = WriteAscii(writer, c8'\'');
-        if opening.IsError() { return opening; }
-        let body = self.Format(writer, FormatSpec::Plain());
-        if body.IsError() { return body; }
+    /// # Failures
+    /// Reports whatever the writer reported, stopping at the first refusal.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the complete rendering was accepted
+    /// @see https://rux-lang.dev/docs/api/format/char32/write-debug
+    pub func WriteDebug(self: *char32, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        WriteAscii(writer, c8'\'')?;
+        self.WriteDisplay(writer, FormatSpec::Plain())?;
         return WriteAscii(writer, c8'\'');
     }
 }

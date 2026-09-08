@@ -1,6 +1,8 @@
+import Core::{ Result, Unit };
+import Text::{ Debug, Display, FormatSpec, TextWriter };
 import Allocator::{ Allocator, SystemAllocator };
-import Format::{ Debug, Display, Format, FormatSpec, TextWriter };
-import Text::{ String, StringBuilder, StringView, TextError };
+import Format::{ Format };
+import Text::{ FormatError, String, StringBuilder, StringView, TextError };
 
 // Text rendering itself: a string and a view write their bytes straight through, and Debug adds the quotes that
 // make an empty one visible. Std stays out of the dependencies and a failed check reports through the exit code.
@@ -13,24 +15,23 @@ func Matches(actual: StringView, expected: char8[..]) -> bool {
 func Main() -> int {
     var system = SystemAllocator();
     let allocator: Allocator = system;
-    var error = TextError::None;
 
+    var error = TextError::None;
     let hello = String::FromBytes(allocator, "Hello World!", @error);
     if error != TextError::None { return 1; }
 
     // Through a placeholder, which is the path an argument takes.
-    let alone = Format(allocator, "{}", @error, hello.View());
-    if error != TextError::None { return 2; }
+    let alone = Rendered(allocator, Format(allocator, "{}", hello.View()));
     if !Matches(alone.View(), "Hello World!") { return 10; }
 
-    let wrapped = Format(allocator, "<{}>", @error, hello.View());
-    if error != TextError::None || !Matches(wrapped.View(), "<Hello World!>") { return 11; }
+    let wrapped = Rendered(allocator, Format(allocator, "<{}>", hello.View()));
+    if !Matches(wrapped.View(), "<Hello World!>") { return 11; }
 
     // Alongside arguments of other types, and twice from one value.
-    let mixed = Format(allocator, "{} {} {}", @error, hello.View(), 42, true);
-    if error != TextError::None || !Matches(mixed.View(), "Hello World! 42 true") { return 12; }
-    let doubled = Format(allocator, "{}{}", @error, hello.View(), hello.View());
-    if error != TextError::None || !Matches(doubled.View(), "Hello World!Hello World!") { return 13; }
+    let mixed = Rendered(allocator, Format(allocator, "{} {} {}", hello.View(), 42, true));
+    if !Matches(mixed.View(), "Hello World! 42 true") { return 12; }
+    let doubled = Rendered(allocator, Format(allocator, "{}{}", hello.View(), hello.View()));
+    if !Matches(doubled.View(), "Hello World!Hello World!") { return 13; }
 
     // The receiver is untouched by having been rendered, however many times.
     if hello.Length() != 12 { return 14; }
@@ -40,31 +41,39 @@ func Main() -> int {
     let empty = String(allocator);
     let shownPlain: Display = empty.View();
     let plainWriter: &var TextWriter = builder;
-    if shownPlain.Format(plainWriter, FormatSpec::Plain()) != TextError::None { return 20; }
+    if shownPlain.WriteDisplay(plainWriter, FormatSpec::Plain()).IsError() { return 20; }
     if builder.Length() != 0 { return 21; }
     let shownDebug: Debug = empty.View();
     let emptyDebugWriter: &var TextWriter = builder;
-    if shownDebug.FormatDebug(emptyDebugWriter, FormatSpec::Plain()) != TextError::None { return 22; }
+    if shownDebug.WriteDebug(emptyDebugWriter, FormatSpec::Plain()).IsError() { return 22; }
     if !Matches(builder.View(), "\"\"") { return 23; }
 
     // A character slice containing a text literal renders and quotes the same way.
     builder.Clear();
     let shownText: Display = "Hello World!";
     let textWriter: &var TextWriter = builder;
-    if shownText.Format(textWriter, FormatSpec::Plain()) != TextError::None { return 30; }
+    if shownText.WriteDisplay(textWriter, FormatSpec::Plain()).IsError() { return 30; }
     if !Matches(builder.View(), "Hello World!") { return 31; }
 
     builder.Clear();
     let shownTextDebug: Debug = "";
     let textDebugWriter: &var TextWriter = builder;
-    if shownTextDebug.FormatDebug(textDebugWriter, FormatSpec::Plain()) != TextError::None { return 32; }
+    if shownTextDebug.WriteDebug(textDebugWriter, FormatSpec::Plain()).IsError() { return 32; }
     if !Matches(builder.View(), "\"\"") { return 33; }
 
     builder.Clear();
     let shownHello: Debug = hello.View();
     let helloDebugWriter: &var TextWriter = builder;
-    if shownHello.FormatDebug(helloDebugWriter, FormatSpec::Plain()) != TextError::None { return 24; }
+    if shownHello.WriteDebug(helloDebugWriter, FormatSpec::Plain()).IsError() { return 24; }
     if !Matches(builder.View(), "\"Hello World!\"") { return 25; }
 
     return 0;
+}
+
+// The rendered text, or an empty string when rendering failed. Every check above compares against text it expects
+// to be non-empty, so a failure cannot pass as a success.
+func Rendered(allocator: Allocator, outcome: Result<String, FormatError>) -> String {
+    var text = String(allocator);
+    outcome.TryIntoValue(@text);
+    return <-text;
 }

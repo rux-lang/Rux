@@ -11,17 +11,18 @@
 
 import Allocator::{ AllocError, Allocator, Layout };
 
-import Text::TextError;
+import Core::{ Result, Unit };
+import Text::{ Debug, Display, FormatError, FormatOk, FormatSpec, TextFailureKind, TextWriter, WriteAligned };
 
 /// Writes `bits`, read under `layout`, as text under `spec`.
 ///
 /// https://rux-lang.dev/docs/api/format/write-wide-float
 pub func WriteWideFloat(allocator: Allocator, writer: &var TextWriter, spec: FormatSpec, bits: uint512,
-                    layout: &FloatLayout) -> TextError {
+                    layout: &FloatLayout) -> Result<Unit, FormatError> {
     let value = UnpackWide(bits, layout);
     if value.class == WideClass::NaN { return WriteAligned(writer, spec, "NaN", true); }
     if value.class == WideClass::Infinity { return WriteAligned(writer, spec, value.negative ? "-Inf" : "Inf", true); }
-    if spec.hasPrecision { return WriteWidePrecision(allocator, writer, spec, value, layout); }
+    if spec.HasPrecision() { return WriteWidePrecision(allocator, writer, spec, value, layout); }
     var storage: char8[256];
     var digits: char8[160];
     var cursor = ByteCursor((@storage[2])[..254]);
@@ -35,7 +36,7 @@ pub func WriteWideFloat(allocator: Allocator, writer: &var TextWriter, spec: For
         var count: uint = 0;
         var exponent10: int = 0;
         let room = (@digits[0])[..160];
-        if !ShortestWideDigits(allocator, value, layout, room, @count, @exponent10) { return TextError::OutOfMemory; }
+        if !ShortestWideDigits(allocator, value, layout, room, @count, @exponent10) { return Result::Error<Unit, FormatError>(FormatError::TextFailure(TextFailureKind::OutOfMemory)); }
         if value.negative {
             cursor.Push(c8'-');
         }
@@ -48,38 +49,40 @@ pub func WriteWideFloat(allocator: Allocator, writer: &var TextWriter, spec: For
         }
     }
     var rendered = cursor.Written();
-    if spec.showSign && rendered.length > 0u && rendered.data[0] != c8'-' {
+    if spec.ShowsSign() && rendered.length > 0u && rendered.data[0] != c8'-' {
         storage[1] = c8'+';
         rendered = (@storage[1])[..rendered.length + 1u];
     }
     return WriteAligned(writer, spec, rendered, true);
 }
 
-// Fixed notation with exactly `spec.precision` digits after the point. The text can be as long as the exponent is
-// large, so it is built in storage from the allocator rather than on the stack.
+// Fixed notation with exactly the requested precision in digits after the point. The text can be as long as the
+// exponent is large, so it is built in storage from the allocator rather than on the stack.
 func WriteWidePrecision(allocator: Allocator, writer: &var TextWriter, spec: FormatSpec, value: &UnpackedWide,
-                        layout: &FloatLayout) -> TextError {
-    let fraction = spec.precision;
+                        layout: &FloatLayout) -> Result<Unit, FormatError> {
+    let fraction = spec.Precision();
     let integerRoom = ((layout.bias as uint) * 30103u) / 100000u + 4u;
     let digitRoom = integerRoom + fraction + 4u;
     let textRoom = digitRoom + fraction + 8u;
     let empty = Layout { size: 0, alignment: 1 };
     let blockLayout = Layout::New(digitRoom + textRoom, 1u).ValueOr(empty);
-    if blockLayout.size == 0u { return TextError::LengthOverflow; }
+    if blockLayout.size == 0u { return Result::Error<Unit, FormatError>(FormatError::TextFailure(TextFailureKind::LengthOverflow)); }
     var block: *var opaque = null;
-    if allocator.Allocate(blockLayout, @block) != AllocError::None { return TextError::OutOfMemory; }
+    if allocator.Allocate(blockLayout, @block) != AllocError::None { return Result::Error<Unit, FormatError>(FormatError::TextFailure(TextFailureKind::OutOfMemory)); }
     let digits = block as *var char8;
     let text = digits + digitRoom;
     var count: uint = 0;
     var exponent10: int = 0;
-    var failure = TextError::None;
+    // A block was allocated above and must be released on every path, so failure is accumulated and returned at
+    // the end rather than propagated with `?`, which would leave the block behind.
+    var failure = FormatOk();
     if value.class != WideClass::Zero {
         let room = (digits)[..digitRoom];
         if !FixedWideDigits(allocator, value, layout, fraction, room, @count, @exponent10) {
-            failure = TextError::OutOfMemory;
+            failure = Result::Error<Unit, FormatError>(FormatError::TextFailure(TextFailureKind::OutOfMemory));
         }
     }
-    if failure == TextError::None {
+    if failure.IsSuccess() {
         var cursor = ByteCursor((text + 1u)[..textRoom - 1u]);
         if value.negative && value.class != WideClass::Zero {
             cursor.Push(c8'-');
@@ -110,11 +113,16 @@ func WriteWidePrecision(allocator: Allocator, writer: &var TextWriter, spec: For
             }
         }
         var rendered = cursor.Written();
-        if spec.showSign && rendered.length > 0u && rendered.data[0] != c8'-' {
+        if spec.ShowsSign() && rendered.length > 0u && rendered.data[0] != c8'-' {
             text[0] = c8'+';
             rendered = (text)[..rendered.length + 1u];
         }
-        failure = cursor.Overran() ? TextError::LengthOverflow : WriteAligned(writer, spec, rendered, true);
+        if cursor.Overran() {
+            failure = Result::Error<Unit, FormatError>(FormatError::TextFailure(TextFailureKind::LengthOverflow));
+        }
+        else {
+            failure = WriteAligned(writer, spec, rendered, true);
+        }
     }
     allocator.Deallocate(block, blockLayout);
     return failure;

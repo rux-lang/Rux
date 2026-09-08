@@ -1,27 +1,36 @@
 // Filling placeholders in a run of text.
 //
 // `{}` takes the next argument, in the order they are written; `{{` and `}}` are how a literal brace is spelled.
-// There is nothing else yet: width, alignment, precision and base are a specification inside the braces, which is a
-// separate piece of work and belongs to the placeholder rather than to the value.
+// A placeholder may carry a specification after a colon, which is parsed once by Text and applied by the value.
 //
-// Arguments arrive as `Display`, so each one writes itself into the builder directly. Nothing is rendered into a
-// string on the way, which is the difference from the old shape: formatting six values allocated six blocks and
+// Arguments arrive as `Display`, so each one writes itself into the destination directly. Nothing is rendered into
+// a string on the way, which is the difference from the old shape: formatting six values allocated six blocks and
 // copied out of each of them, and now it allocates only what the result itself needs.
+//
+// Two lenient behaviours survive here and are deliberately not fixed yet: a placeholder with no argument left is
+// written as nothing, and one whose specification does not parse is copied through as literal text. Making both
+// fail — with `ArgumentCountMismatch` and `InvalidSpecification` — is a behaviour change with its own task, and
+// doing it here would have hidden it inside a protocol move.
 
 import Allocator::Allocator;
-import Text::{ String, StringBuilder, TextError };
+import Core::{ Result, Unit };
+import Text::{ Display, FormatError, FormatOk, FormatSpec, ParseFormatSpec, String, StringBuilder, TextFailureOf,
+               TextWriter, WriteAscii };
 
 /// Writes `format` into `writer`, with each `{}` replaced by the next argument.
 ///
 /// A placeholder is `{}`, or `{:spec}` carrying fill, alignment, sign, width, precision and base — see
-/// `ParseFormatSpec` for the grammar. One with no argument left is written as nothing rather than refused, and one
-/// whose spec does not parse is literal text, so either mistake shows where it was written instead of failing at
-/// the point of printing, which is usually where it can least be handled. `{{` and `}}` stand for a literal brace.
+/// `ParseFormatSpec` for the grammar. `{{` and `}}` stand for a literal brace.
 ///
-/// Reports whatever the writer reported, having written what it managed to first.
+/// # Failures
+/// Reports whatever the destination or a value's own renderer reported, having written what it managed to first,
+/// and stops at the first failure rather than continuing to a destination that has already refused something.
 ///
-/// https://rux-lang.dev/docs/api/format/write-format
-pub func WriteFormat(writer: &var TextWriter, format: char8[..], args: Display...) -> TextError {
+/// @param writer the destination
+/// @param format the pattern to write
+/// @returns success when the whole pattern and every consumed argument were accepted
+/// @see https://rux-lang.dev/docs/api/format/write-format
+pub func WriteFormat(writer: &var TextWriter, format: char8[..], args: Display...) -> Result<Unit, FormatError> {
     // The argument the next placeholder takes. Placeholders are filled in the order they are written, so this only
     // ever moves forward.
     var next: uint = 0;
@@ -30,14 +39,12 @@ pub func WriteFormat(writer: &var TextWriter, format: char8[..], args: Display..
         let ch = format[index];
         let paired = index + 1 < format.length;
         if ch == c8'{' && paired && format[index + 1] == c8'{' {
-            let written = WriteAscii(writer, c8'{');
-            if written.IsError() { return written; }
+            WriteAscii(writer, c8'{')?;
             index += 2;
             continue;
         }
         if ch == c8'}' && paired && format[index + 1] == c8'}' {
-            let written = WriteAscii(writer, c8'}');
-            if written.IsError() { return written; }
+            WriteAscii(writer, c8'}')?;
             index += 2;
             continue;
         }
@@ -62,35 +69,41 @@ pub func WriteFormat(writer: &var TextWriter, format: char8[..], args: Display..
             }
             if placeholder {
                 if next < args.length {
-                    let written = args[next].Format(writer, spec);
-                    if written.IsError() { return written; }
+                    args[next].WriteDisplay(writer, spec)?;
                     next++;
                 }
                 index = close + 1;
                 continue;
             }
         }
-        let written = WriteAscii(writer, ch);
-        if written.IsError() { return written; }
+        WriteAscii(writer, ch)?;
         index++;
     }
-    return TextError::None;
+    return FormatOk();
 }
 
 /// The text `format` becomes with its placeholders filled, as a string of its own.
 ///
-/// `allocator` is what the string is built with and what it will give its block back to. `error` receives what went
-/// wrong, and the string comes back holding whatever was written before that.
+/// This is the allocating entry point, and the only one: every other way of rendering writes into a destination the
+/// caller already has. Reserving up front is a guess at the result's size — the literal text plus a little for each
+/// argument — so a short call fills in without a reallocation and a long one grows through the builder as usual.
 ///
-/// https://rux-lang.dev/docs/api/format/format
-pub func Format(allocator: Allocator, format: char8[..], error: *var TextError, args: Display...) -> String {
+/// # Failures
+/// Reports `TextFailure(OutOfMemory)` when the initial reservation fails, and otherwise whatever the pattern or a
+/// value reported. On failure the partially built string is released rather than returned, so a caller never
+/// receives half a rendering that looks whole.
+///
+/// @param allocator what the returned string is built with and will give its block back to
+/// @param format the pattern to render
+/// @returns the rendered string, or why it could not be produced
+/// @see https://rux-lang.dev/docs/api/format/format
+pub func Format(allocator: Allocator, format: char8[..], args: Display...) -> Result<String, FormatError> {
     var builder = StringBuilder(allocator);
-    // The literal text, plus a little for each argument. Too small a guess costs a reallocation, which is what the
-    // builder is there to absorb; the short calls that most of them are fill in without one.
-    *error = builder.Reserve(format.length + args.length * 8);
-    if error.IsError() { return builder.IntoString(); }
+    let reserved = builder.Reserve(format.length + args.length * 8);
+    if reserved.IsError() {
+        return Result::Error<String, FormatError>(FormatError::TextFailure(TextFailureOf(reserved)));
+    }
     let sink: &var TextWriter = builder;
-    let writer: &var TextWriter = sink;
-    *error = WriteFormat(writer, format, args...);
-    return builder.IntoString();
+    WriteFormat(sink, format, args...)?;
+    return Result::Success<String, FormatError>(builder.IntoString());
 }

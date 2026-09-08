@@ -3,15 +3,22 @@
 // A negative value opens with a minus sign; a positive one carries no sign, since a sign that is always there is
 // noise and one that is there on request belongs to the placeholder rather than the value.
 
-import Text::TextError;
+import Core::{ Result, Unit };
+import Text::{ Debug, Display, FormatError, FormatSpec, TextWriter };
 
 extend int16 : Display {
     /// Writes this value's digits.
     ///
     /// Allocates nothing: the digits go into a buffer on the stack and reach the writer in one call.
     ///
-    /// https://rux-lang.dev/docs/api/format/int16/format
-    pub func Format(self: *int16, writer: &var TextWriter, spec: FormatSpec) -> TextError {
+    /// # Failures
+    /// Reports whatever the writer reported, stopping at the first refusal.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the complete rendering was accepted
+    /// @see https://rux-lang.dev/docs/api/format/int16/write-display
+    pub func WriteDisplay(self: *int16, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
         let wide = *self as int64;
         // The magnitude is taken in uint64 rather than by negating in int64, because the most negative value has
         // no positive counterpart there.
@@ -24,8 +31,14 @@ extend int16 : Display {
 extend int16 : Debug {
     /// The same digits: a number reads the same whoever is looking.
     ///
-    /// https://rux-lang.dev/docs/api/format/int16/format-debug
-    pub func FormatDebug(self: *int16, writer: &var TextWriter, spec: FormatSpec) -> TextError {
-        return self.Format(writer, spec);
+    /// # Failures
+    /// Reports whatever the writer reported, stopping at the first refusal.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the complete rendering was accepted
+    /// @see https://rux-lang.dev/docs/api/format/int16/write-debug
+    pub func WriteDebug(self: *int16, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        return self.WriteDisplay(writer, spec);
     }
 }

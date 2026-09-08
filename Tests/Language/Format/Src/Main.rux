@@ -1,7 +1,8 @@
 import Allocator::{ Allocator, SystemAllocator };
+import Core::{ Result, Unit };
 import Core::Assert;
 import Format::Format;
-import Text::{ StringView, TextError };
+import Text::{ FormatError, String, StringView };
 
 // A format call reached the way a program reaches one: literal text, two placeholders, two values of different
 // types, and the result checked as text rather than byte by byte.
@@ -9,14 +10,21 @@ import Text::{ StringView, TextError };
 func Main() -> int {
     var system = SystemAllocator();
     let allocator: Allocator = system;
-    var error = TextError::None;
 
-    let rendered = Format(allocator, "Integer: {}, Float: {}", @error, 255, 3.141592653589793);
-    Assert(error == TextError::None, "the format call succeeds");
+    let rendered = Rendered(allocator, Format(allocator, "Integer: {}, Float: {}", 255, 3.141592653589793));
 
     let expected = StringView::FromValidated("Integer: 255, Float: 3.14159265358979");
     let renderedView = rendered.View();
     Assert(renderedView.Equals(expected), "and fills both placeholders in order");
 
     return 0;
+}
+
+// The rendered text, or an empty string when rendering failed. Every check above compares against text it expects
+// to be non-empty, so a failure cannot pass as a success: an empty string matches none of them, and an empty one
+// handed to a parser is refused.
+func Rendered(allocator: Allocator, outcome: Result<String, FormatError>) -> String {
+    var text = String(allocator);
+    outcome.TryIntoValue(@text);
+    return <-text;
 }

@@ -10,9 +10,9 @@ rux add Rux/Format
 
 ## What it provides
 
-- **`Display` and `Debug`** — the two ways a value turns into text: what a reader sees, and what an inspector sees, with quoting where the two differ. Both write into a `Writer` rather than answering with a string, so printing a value allocates nothing. Every primitive implements both, along with `String` and `StringView`.
-- **`TextWriter`** — a mutable borrowed destination: a builder, fixed buffer, or console, without the value knowing which. Formatting updates the original writer state rather than a copied interface handle.
-- **`Format`** — placeholder-based formatting, used by [`Rux/Io`](../Io) to implement `Print` and `PrintLine`.
+- **Placeholder rendering** — `WriteFormat` fills each `{}` from the next argument into a destination the caller supplies, and `Format` is the allocating entry point that answers with a `String` of its own. Used by [`Rux/Io`](../Io) to implement `Print` and `PrintLine`.
+- **Primitive conversion, both directions** — every implemented boolean, character, integer and floating width implements `Display` and `Debug`, and the parsers read text back. The two halves share the numeric machinery, which is why they are one package.
+- **The presentation contracts live in [`Rux/Text`](../Text)** — `Display`, `Debug`, `TextWriter`, `FormatSpec` and `FormatError` are declared there, so a package can describe its own values without depending on this conversion engine. What stays here is the numeric spelling of a value: digits, sign, base prefix and zero padding.
 - **The digit machinery** — `WriteInt`, `WriteUint`, `WriteFloat` and the decimal helpers, writing into a stack buffer through `ByteCursor` so no primitive's rendering allocates.
 - **Parsing** — `ParseInt64` and `ParseFloat64`, plus the non-trapping `TryParseInt64` and `TryParseFloat64`, which report failure through `ParseError`.
 - **`ReplacementCharacter`** — what is written in place of anything that is not a whole character.
@@ -22,11 +22,22 @@ rux add Rux/Format
 ## Example
 
 ```rux
-import Format::{ ToString, TryParseInt64 };
+import Allocator::SystemAllocator;
+import Format::{ ByteCursor, Format, WriteFormat };
+import Text::TextWriter;
 
-var text = ToString(42);
-var parsed = TryParseInt64("42");
+// Into a destination the caller owns, allocating nothing.
+var storage: char8[64];
+var cursor = ByteCursor((@storage[0])[..64]);
+let writer: &var TextWriter = cursor;
+let written = WriteFormat(writer, "count={}", 42i64);
+
+// Or into a string of its own, which is the one place rendering allocates.
+var system = SystemAllocator();
+let rendered = Format(system, "pi={:.2}", 3.14159f64);
 ```
+
+Both answer with a `Result`: `WriteFormat` with `Result<Unit, FormatError>` and `Format` with `Result<String, FormatError>`. There is no status to forget to read, and no string handed back beside an error that says it is not really there.
 
 ## Documentation
 

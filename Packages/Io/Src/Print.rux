@@ -6,8 +6,9 @@
 // while one whose output feeds a closed pipe finally has something to look at. The bytes go through the standard
 // output handle, so the console-versus-redirection encoding is decided where it always is, not re-decided here.
 
-import Format::{ Display, FormatSpec, TextWriter, WriteFormat };
-import Text::{ String, StringView, TextError };
+import Core::{ Result, Unit };
+import Format::WriteFormat;
+import Text::{ Display, FormatError, FormatOk, FormatSpec, String, StringView, TextWriter };
 
 // The one write under everything here.
 func PrintBytes(bytes: char8[..]) -> IoError {
@@ -17,12 +18,16 @@ func PrintBytes(bytes: char8[..]) -> IoError {
 
 /// A `TextWriter` over standard output that records the stream's failure where the caller can see it.
 ///
-/// The formatting interfaces speak `TextError`, which has no vocabulary for a broken stream; so the writer
-/// reports `None` to the formatter — the formatting itself did not fail — while recording the `IoError` in the
-/// slot it was built over and discarding everything after the failure. The caller reads the slot when the value
-/// is done writing itself.
+/// The protocol has one case for a destination failing, `WriterFailure`, and deliberately no room for the details:
+/// Text has no vocabulary for a broken pipe and does not pretend to. So this adapter keeps both halves. It reports
+/// `WriterFailure` to the formatter, which stops the write, and records the original `IoError` in the slot it was
+/// built over, which is what the caller reads afterwards. Nothing about the stream failure is lost, and nothing
+/// about it leaks into a package that could not interpret it.
 ///
-/// https://rux-lang.dev/docs/api/io/console-writer
+/// # Safety
+/// The slot must outlive the writer. It is a stored address, so nothing here tracks that.
+///
+/// @see https://rux-lang.dev/docs/api/io/console-writer
 pub struct ConsoleWriter {
     /// Where the first stream failure is recorded.
     failure: *var IoError;
@@ -39,23 +44,36 @@ extend ConsoleWriter {
 }
 
 extend ConsoleWriter : TextWriter {
-    /// Writes `bytes` to standard output, unless a failure has already been recorded.
+    /// Writes `bytes` to standard output.
     ///
-    /// https://rux-lang.dev/docs/api/io/console-writer/write
-    pub func Write(self: &var ConsoleWriter, bytes: char8[..]) -> TextError {
-        if (*self.failure).IsError() { return TextError::None; }
+    /// # Failures
+    /// Reports `WriterFailure` when the stream refuses, having recorded the original `IoError` in the slot. Once a
+    /// failure has been recorded every later write is refused without touching the stream, so a value that is
+    /// part-way through rendering does not go on writing into a handle that has already failed, and a trailing
+    /// newline is not emitted after a failed line. This is the only case this writer can produce: the bytes are not
+    /// revalidated, and standard output is not a bounded destination.
+    ///
+    /// @param bytes the UTF-8 run to write
+    /// @returns success when the stream accepted the whole run
+    /// @see https://rux-lang.dev/docs/api/io/console-writer/write
+    pub func Write(self: &var ConsoleWriter, bytes: char8[..]) -> Result<Unit, FormatError> {
+        if (*self.failure).IsError() {
+            return Result::Error<Unit, FormatError>(FormatError::WriterFailure);
+        }
         let outcome = PrintBytes(bytes);
         if outcome.IsError() {
             *self.failure = outcome;
+            return Result::Error<Unit, FormatError>(FormatError::WriterFailure);
         }
-        return TextError::None;
+        return FormatOk();
     }
 }
 
-// A formatting failure on a healthy stream, carried in the one error type this surface returns. The raw value
-// is the `TextError`, so nothing is lost to the translation.
-func OfTextFailure(failure: TextError) -> IoError {
-    return IoError { kind: IoErrorKind::InvalidText, raw: failure as int32 };
+// A formatting failure on a healthy stream, carried in the one error type this surface returns. A stream failure
+// never reaches here: the adapter records it in the slot, which is checked first, so anything left is a fault of
+// the request or the value rather than of the destination.
+func OfFormatFailure() -> IoError {
+    return IoError { kind: IoErrorKind::InvalidText, raw: 0i32 };
 }
 
 /// Writes a value's text to standard output.
@@ -68,9 +86,9 @@ pub func PrintValue(value: Display) -> IoError {
     var failure = IoError::Ok();
     var sink = ConsoleWriter(@failure);
     let writer: &var TextWriter = sink;
-    let formatted = value.Format(writer, FormatSpec::Plain());
+    let formatted = value.WriteDisplay(writer, FormatSpec::Plain());
     if failure.IsError() { return failure; }
-    if formatted != TextError::None { return OfTextFailure(formatted); }
+    if formatted.IsError() { return OfFormatFailure(); }
     return IoError::Ok();
 }
 
@@ -116,7 +134,7 @@ pub func Print(format: char8[..], args: Display...) -> IoError {
     let writer: &var TextWriter = sink;
     let formatted = WriteFormat(writer, format, args...);
     if failure.IsError() { return failure; }
-    if formatted != TextError::None { return OfTextFailure(formatted); }
+    if formatted.IsError() { return OfFormatFailure(); }
     return IoError::Ok();
 }
 

@@ -20,8 +20,8 @@
 // will produce a diff of the whole file.
 
 
-import Format::{ ByteCursor, ParseFloat64, TextWriter, WriteDecimal };
-import Text::TextError;
+import Format::{ ByteCursor, ParseFloat64, WriteDecimal };
+import Text::TextWriter;
 
 /// Why writing stopped.
 ///
@@ -76,7 +76,7 @@ func IsBareKey(name: char8[..]) -> bool {
 
 func Emit(writer: &var TextWriter, bytes: char8[..]) -> TomlWriteError {
     var sink = writer;
-    return sink.Write(bytes) == TextError::None ? TomlWriteError::None : TomlWriteError::Failed;
+    return sink.Write(bytes).IsSuccess() ? TomlWriteError::None : TomlWriteError::Failed;
 }
 
 func EmitByte(writer: &var TextWriter, byte: uint8) -> TomlWriteError {

@@ -1,0 +1,135 @@
+// Spelling an integer: sign, base prefix, zero padding and digits, in that order.
+//
+// This is what is left in Format once the text-only half of padding moved into Text. Measuring a rendering and
+// writing fill around it is a text operation and lives there as `WriteAligned`; deciding that `-7` at width four is
+// `-007` rather than `00-7` is a fact about how a number is spelled, and lives here.
+//
+// The two interlock through `PaddingAround`, which hands back the two fill counts without requiring the rendered
+// text to exist anywhere as one run. That matters: a number goes out as sign, then prefix, then zeros, then digits,
+// each straight to the writer, so the widest integer costs no more storage than its own digit buffer.
+
+import Core::{ Result, Unit };
+import Text::{ Encode, FormatAlign, FormatBase, FormatError, FormatOk, FormatSpec, PaddingAround, TextFailureKind,
+               TextWriter, WriteAligned, WriteAscii, WriteFill };
+
+/// Writes an integer whose digits are already produced, applying sign, prefix, zero-padding and alignment.
+///
+/// `digits` holds the digits least significant first, which is the order a division loop makes them; `count` says
+/// how many. Zero-padding puts its zeros between the sign and the digits and wins over alignment when both are
+/// asked for. Nothing here allocates or copies the digits: each piece goes to the writer as it is reached.
+///
+/// # Failures
+/// Reports whatever the writer reported, stopping at the first refusal.
+///
+/// @param writer the destination
+/// @param spec what the placeholder asked for
+/// @param digits the decimal or based digits, least significant first
+/// @param count how many entries of `digits` are meaningful
+/// @param negative whether a minus sign precedes the digits
+/// @returns success when the complete rendering was accepted
+/// @see https://rux-lang.dev/docs/api/format/write-integer-digits
+pub func WriteIntegerDigits(writer: &var TextWriter, spec: FormatSpec, digits: char8[..], count: uint,
+                            negative: bool) -> Result<Unit, FormatError> {
+    var lead: uint = 0;
+    if negative || spec.ShowsSign() {
+        lead = 1;
+    }
+    if spec.IsAlternate() && spec.Base() != FormatBase::Decimal {
+        lead = lead + 2;
+    }
+    var zeros: uint = 0;
+    if spec.ZeroPads() && spec.Width() > lead + count {
+        zeros = spec.Width() - lead - count;
+    }
+
+    var before: uint = 0;
+    var after: uint = 0;
+    PaddingAround(spec, lead + zeros + count, true, @before, @after);
+    WriteFill(writer, spec, before)?;
+    if negative {
+        WriteAscii(writer, c8'-')?;
+    }
+    else if spec.ShowsSign() {
+        WriteAscii(writer, c8'+')?;
+    }
+    if spec.IsAlternate() && spec.Base() != FormatBase::Decimal {
+        WriteAscii(writer, c8'0')?;
+        let mark = spec.Base() == FormatBase::Binary ? c8'b' : (spec.Base() == FormatBase::Octal ? c8'o' : c8'x');
+        WriteAscii(writer, mark)?;
+    }
+    var padded: uint = 0;
+    while padded < zeros {
+        WriteAscii(writer, c8'0')?;
+        padded = padded + 1;
+    }
+    var index = count;
+    while index > 0 {
+        index = index - 1;
+        WriteAscii(writer, digits.data[index])?;
+    }
+    return WriteFill(writer, spec, after);
+}
+
+/// Writes an integer under the whole of `spec`: base, sign, alternate prefix, zero-padding and alignment.
+///
+/// `magnitude` is the absolute value and `negative` its sign, kept apart because the most negative value of a
+/// signed width has no positive counterpart to negate into.
+///
+/// # Failures
+/// Reports whatever the writer reported.
+///
+/// @param writer the destination
+/// @param spec what the placeholder asked for
+/// @param magnitude the absolute value to render
+/// @param negative whether the value is negative
+/// @returns success when the complete rendering was accepted
+/// @see https://rux-lang.dev/docs/api/format/write-integer-spec
+pub func WriteIntegerSpec(writer: &var TextWriter, spec: FormatSpec, magnitude: uint64,
+                          negative: bool) -> Result<Unit, FormatError> {
+    var digits: char8[64];
+    var count: uint = 0;
+    var radix: uint64 = 10;
+    if spec.Base() == FormatBase::Binary {
+        radix = 2;
+    }
+    else if spec.Base() == FormatBase::Octal {
+        radix = 8;
+    }
+    else if spec.Base() == FormatBase::LowerHex || spec.Base() == FormatBase::UpperHex {
+        radix = 16;
+    }
+    let letter = spec.Base() == FormatBase::UpperHex ? 0x37u64 : 0x57u64;
+    var rest = magnitude;
+    if rest == 0u64 {
+        digits[0] = c8'0';
+        count = 1;
+    }
+    while rest > 0u64 {
+        let digit = rest % radix;
+        digits[count] = (digit < 10u64 ? digit + 0x30u64 : digit + letter) as char8;
+        count = count + 1;
+        rest = rest / radix;
+    }
+    return WriteIntegerDigits(writer, spec, (@digits[0])[..count], count, negative);
+}
+
+/// Writes one character under `spec`'s width, fill and alignment.
+///
+/// # Failures
+/// Reports `TextFailure(InvalidUtf8)` when `scalar` is not a Unicode scalar value, and otherwise whatever the
+/// writer reported.
+///
+/// @param writer the destination
+/// @param spec what the placeholder asked for
+/// @param scalar the Unicode scalar value to render
+/// @returns success when the padded character was accepted
+/// @see https://rux-lang.dev/docs/api/format/format-scalar
+pub func FormatScalar(writer: &var TextWriter, spec: FormatSpec, scalar: char32) -> Result<Unit, FormatError> {
+    var encoded: char8[4];
+    var written: uint = 0;
+    let sink = (@encoded[0])[..4];
+    if Encode(scalar, sink, @written).IsError() {
+        return Result::Error<Unit, FormatError>(FormatError::TextFailure(TextFailureKind::InvalidUtf8));
+    }
+    return WriteAligned(writer, spec, (@encoded[0])[..written], false);
+}

@@ -7,33 +7,53 @@
 // `Debug` is where the two part company. A string shown to a reader is its characters; a string shown to somebody
 // looking at a program is quoted, so that where it starts and stops is visible and an empty one is not invisible.
 
-import Text::{ DecodeAt, String, StringView, TextError };
+import Core::{ Result, Unit };
+import Text::{ Debug, DecodeAt, Display, FormatError, FormatSpec, String, StringView, TextWriter, WriteAligned,
+               WriteAscii, WriteBytes };
 
 extend String : Display {
     /// Writes this string's bytes.
     ///
-    /// https://rux-lang.dev/docs/api/format/string/format
-    pub func Format(self: &String, writer: &var TextWriter, spec: FormatSpec) -> TextError {
+    /// # Failures
+    /// Reports whatever the writer reported.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the string's text was accepted
+    /// @see https://rux-lang.dev/docs/api/format/string/write-display
+    pub func WriteDisplay(self: &String, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
         let view = self.View();
-        return view.Format(writer, spec);
+        return view.WriteDisplay(writer, spec);
     }
 }
 
 extend String : Debug {
     /// Writes this string quoted.
     ///
-    /// https://rux-lang.dev/docs/api/format/string/format-debug
-    pub func FormatDebug(self: &String, writer: &var TextWriter, spec: FormatSpec) -> TextError {
+    /// # Failures
+    /// Reports whatever the writer reported.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the quoted string was accepted
+    /// @see https://rux-lang.dev/docs/api/format/string/write-debug
+    pub func WriteDebug(self: &String, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
         let view = self.View();
-        return view.FormatDebug(writer, spec);
+        return view.WriteDebug(writer, spec);
     }
 }
 
 extend StringView : Display {
-    /// Writes what this view spans.
+    /// Writes what this view spans, truncated to the spec's precision and padded to its width.
     ///
-    /// https://rux-lang.dev/docs/api/format/string-view/format
-    pub func Format(self: &StringView, writer: &var TextWriter, spec: FormatSpec) -> TextError {
+    /// # Failures
+    /// Reports whatever the writer reported.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the view's text was accepted
+    /// @see https://rux-lang.dev/docs/api/format/string-view/write-display
+    pub func WriteDisplay(self: &StringView, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
         return WriteAligned(writer, spec, Truncated(self, spec), false);
     }
 }
@@ -45,12 +65,17 @@ extend StringView : Debug {
     /// say where it stops. Escaping the characters between them is a question about which of them need it, which
     /// is a Unicode question and belongs where the Unicode tables are.
     ///
-    /// https://rux-lang.dev/docs/api/format/string-view/format-debug
-    pub func FormatDebug(self: &StringView, writer: &var TextWriter, spec: FormatSpec) -> TextError {
-        let opening = WriteAscii(writer, c8'"');
-        if opening.IsError() { return opening; }
-        let body = WriteBytes(writer, Truncated(self, spec));
-        if body.IsError() { return body; }
+    /// # Failures
+    /// Reports whatever the writer reported, stopping at the first refusal, so a failed opening quote is not
+    /// followed by a body.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the quoted view was accepted
+    /// @see https://rux-lang.dev/docs/api/format/string-view/write-debug
+    pub func WriteDebug(self: &StringView, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        WriteAscii(writer, c8'"')?;
+        WriteBytes(writer, Truncated(self, spec))?;
         return WriteAscii(writer, c8'"');
     }
 }
@@ -59,10 +84,10 @@ extend StringView : Debug {
 // boundary by construction: it walks whole characters and stops.
 func Truncated(view: &StringView, spec: FormatSpec) -> char8[..] {
     let bytes = view.Bytes();
-    if !spec.hasPrecision { return bytes; }
+    if !spec.HasPrecision() { return bytes; }
     var kept: uint = 0;
     var index: uint = 0;
-    while index < bytes.length && kept < spec.precision {
+    while index < bytes.length && kept < spec.Precision() {
         var scalar = 0u32 as char32;
         var width: uint = 0;
         if DecodeAt(bytes, index, @scalar, @width).IsError() {

@@ -1,0 +1,114 @@
+// Where formatted text goes.
+//
+// Formatting used to answer with a `String`, which meant every value rendered allocated a block, had its bytes
+// copied somewhere else, and released the block again. Printing a line of six values allocated six times to produce
+// text that went straight to a file descriptor.
+//
+// A writer is the other way round: a value writes its bytes into whatever the caller supplies, and what that is —
+// a builder, a file, a fixed buffer — is the caller's business. Rendering a value into a string is then one
+// particular writer rather than the only shape available, and printing one allocates nothing at all.
+//
+// What is written must be well-formed UTF-8 and must not stop part-way through a character. Every writer relies on
+// that; a builder's promise that it holds text at every moment is exactly this promise passed along.
+//
+// A writer's permitted failures are deliberately narrow, and the narrowness is the contract. Only the destination
+// can say it is full, that its backing text failed, or that it failed on its own terms. A malformed specification,
+// an unsupported request, an argument-count mismatch and a value out of range all belong to the parser, the value
+// or the placeholder engine, so a writer that invented one would be reporting a fault it cannot have observed.
+
+import Core::{ Result, Unit };
+
+/// Somewhere formatted text can be written.
+///
+/// Implementations hold their state behind a pointer, as an allocator does, because an interface value is copied
+/// when it is passed and a writer that lost its position each time would write everything at the start.
+///
+/// @see https://rux-lang.dev/docs/api/text/text-writer
+pub interface TextWriter {
+    /// Writes `bytes`, which must be well-formed UTF-8 and must not end part-way through a character.
+    ///
+    /// A successful write accepted the complete run: there is no partial success to report, and a caller may write
+    /// the next run without asking how much of this one landed.
+    ///
+    /// # Failures
+    /// May return only `InsufficientCapacity`, `TextFailure` or `WriterFailure`. An implementation must not
+    /// originate `InvalidSpecification`, `UnsupportedRequest`, `ArgumentCountMismatch` or `ValueOutOfRange`, none of
+    /// which a destination is in a position to observe. Whether anything was written before a failure is the
+    /// implementation's own documented guarantee: a bounded buffer leaves itself unchanged, while a stream may
+    /// already have emitted a prefix.
+    ///
+    /// @param bytes the UTF-8 run to write, whole
+    /// @returns success when the complete run was accepted
+    /// @see https://rux-lang.dev/docs/api/text/text-writer/write
+    func Write(bytes: char8[..]) -> Result<Unit, FormatError>;
+}
+
+/// Writes `bytes` to `writer`.
+///
+/// The writer is borrowed exclusively for the call, so position changes remain visible to its owner. This forwards
+/// without inspecting the bytes, which is what keeps the writer's permitted failures exactly the writer's.
+///
+/// @param writer the destination
+/// @param bytes the UTF-8 run to write, whole
+/// @returns whatever the writer reported
+/// @see https://rux-lang.dev/docs/api/text/write-bytes
+pub func WriteBytes(writer: &var TextWriter, bytes: char8[..]) -> Result<Unit, FormatError> {
+    return writer.Write(bytes);
+}
+
+/// Writes one ASCII byte.
+///
+/// # Failures
+/// Reports `TextFailure(InvalidUtf8)` for a byte above 0x7F: a single byte above that is never a whole character,
+/// and a writer takes whole characters. `WriteScalar` is what writes one that needs more than a byte. Otherwise
+/// reports whatever the writer reported.
+///
+/// @param writer the destination
+/// @param byte the ASCII byte to write
+/// @returns success when the byte was accepted
+/// @see https://rux-lang.dev/docs/api/text/write-ascii
+pub func WriteAscii(writer: &var TextWriter, byte: char8) -> Result<Unit, FormatError> {
+    if (byte as uint32) > 0x7F {
+        return Result::Error<Unit, FormatError>(FormatError::TextFailure(TextFailureKind::InvalidUtf8));
+    }
+    var one: char8[1];
+    one[0] = byte;
+    return WriteBytes(writer, (@one[0])[..1]);
+}
+
+/// Writes one character, encoded as UTF-8.
+///
+/// # Failures
+/// Reports `TextFailure(InvalidUtf8)` for a value that is not a Unicode scalar value. This is strict encoding, not
+/// presentation: a caller that wants an invalid value shown as U+FFFD replaces it before calling.
+///
+/// @param writer the destination
+/// @param scalar the Unicode scalar value to encode and write
+/// @returns success when the encoded character was accepted
+/// @see https://rux-lang.dev/docs/api/text/write-scalar
+pub func WriteScalar(writer: &var TextWriter, scalar: char32) -> Result<Unit, FormatError> {
+    var encoded: char8[4];
+    var written: uint = 0;
+    let sink = (@encoded[0])[..4];
+    if Encode(scalar, sink, @written).IsError() {
+        return Result::Error<Unit, FormatError>(FormatError::TextFailure(TextFailureKind::InvalidUtf8));
+    }
+    return WriteBytes(writer, (@encoded[0])[..written]);
+}
+
+extend StringBuilder : TextWriter {
+    /// Appends `bytes` to the builder.
+    ///
+    /// # Failures
+    /// Reports `TextFailure(OutOfMemory)` when the builder cannot make room, having appended nothing: the builder is
+    /// exactly as it was, so a caller may retry elsewhere without first undoing a partial write. Rejected UTF-8
+    /// arrives as `TextFailure(InvalidUtf8)`. A `WriterFailure` is impossible here, since there is no destination
+    /// beyond the allocator.
+    ///
+    /// @param bytes the UTF-8 run to append, whole
+    /// @returns success when the complete run was appended
+    /// @see https://rux-lang.dev/docs/api/text/string-builder/write
+    pub func Write(self: &var StringBuilder, bytes: char8[..]) -> Result<Unit, FormatError> {
+        return FromTextError(self.AppendValidated(bytes));
+    }
+}

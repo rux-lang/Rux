@@ -1,0 +1,94 @@
+// Applying a spec's width, fill and alignment to text that is already rendered.
+//
+// Padding is the one part of a spec every type applies the same way, so it is written once: measure the rendering,
+// and if the width asks for more columns, write fill where the alignment says. It lives here rather than with the
+// numeric conversion engine because it is a text operation — it counts scalars and writes fill bytes, and knows
+// nothing about digits — which is what lets Time, Uuid and Path align their output without depending on Format.
+//
+// Zero-padding is deliberately not here. Its zeros go inside the number, between the sign and the digits, so
+// `-7` at width four is `-007` rather than `00-7`. That is a fact about how a number is spelled, so the numeric
+// writer owns it.
+
+import Core::{ Result, Unit };
+
+/// How many fill characters go on each side of a rendering that occupies `occupied` scalars.
+///
+/// Split out from `WriteAligned` because a numeric writer needs the two counts before it starts, so that a sign, a
+/// base prefix and the digits can go out in order without the rendered text existing anywhere as one run.
+///
+/// `numeric` picks the default alignment: numbers sit to the right and text to the left, which is what makes a
+/// column of numbers line up its units and a column of names line up its first letters.
+///
+/// Cannot fail. Runs in constant time and allocates nothing.
+///
+/// @param spec what the placeholder asked for
+/// @param occupied how many Unicode scalar values the rendering occupies
+/// @param numeric true when the value aligns like a number by default
+/// @param before receives the count of fill characters that precede the rendering
+/// @param after receives the count that follow it
+/// @see https://rux-lang.dev/docs/api/text/padding-around
+pub func PaddingAround(spec: FormatSpec, occupied: uint, numeric: bool, before: *var uint, after: *var uint) {
+    *before = 0;
+    *after = 0;
+    if spec.Width() <= occupied { return; }
+    let missing = spec.Width() - occupied;
+    var align = spec.Alignment();
+    if align == FormatAlign::Default {
+        align = numeric ? FormatAlign::Right : FormatAlign::Left;
+    }
+    if align == FormatAlign::Right {
+        *before = missing;
+    }
+    else if align == FormatAlign::Center {
+        *before = missing / 2;
+    }
+    *after = missing - *before;
+}
+
+/// Writes `count` copies of the spec's fill byte.
+///
+/// # Failures
+/// Reports whatever the writer reported, stopping at the first refusal rather than continuing to a destination
+/// that has already said no.
+///
+/// @param writer the destination
+/// @param spec the specification whose fill byte is written
+/// @param count how many copies to write
+/// @returns success when every copy was accepted
+/// @see https://rux-lang.dev/docs/api/text/write-fill
+pub func WriteFill(writer: &var TextWriter, spec: FormatSpec, count: uint) -> Result<Unit, FormatError> {
+    var written: uint = 0;
+    while written < count {
+        WriteAscii(writer, spec.Fill())?;
+        written = written + 1;
+    }
+    return FormatOk();
+}
+
+/// Writes `rendered` into `writer` under `spec`'s width, fill and alignment.
+///
+/// Width is measured in Unicode scalar values rather than bytes, so a name with an accent pads the same as one
+/// without. A rendering already at or past the requested width is written through unpadded.
+///
+/// # Failures
+/// Reports whatever the writer reported. A failure part-way leaves whatever the destination had already accepted;
+/// what that means is the destination's own documented guarantee.
+///
+/// @param writer the destination
+/// @param spec what the placeholder asked for
+/// @param rendered the already-rendered text, which must be well-formed UTF-8
+/// @param numeric true when the value aligns like a number by default
+/// @returns success when the padded rendering was accepted in full
+/// @see https://rux-lang.dev/docs/api/text/write-aligned
+pub func WriteAligned(writer: &var TextWriter, spec: FormatSpec, rendered: char8[..],
+                      numeric: bool) -> Result<Unit, FormatError> {
+    let occupied = CountScalars(rendered);
+    if spec.Width() <= occupied { return WriteBytes(writer, rendered); }
+
+    var before: uint = 0;
+    var after: uint = 0;
+    PaddingAround(spec, occupied, numeric, @before, @after);
+    WriteFill(writer, spec, before)?;
+    WriteBytes(writer, rendered)?;
+    return WriteFill(writer, spec, after);
+}

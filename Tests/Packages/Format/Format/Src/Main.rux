@@ -1,11 +1,16 @@
 import Allocator::{ Allocator, SystemAllocator };
-import Format::{ Display, Format, FormatSpec, WriteAscii, WriteBytes, TextWriter };
-import Text::{ StringView, TextError };
+import Core::{ Result, Unit };
+import Format::Format;
+import Text::{ Display, FormatError, FormatOk, FormatSpec, String, StringView, TextWriter, WriteAscii, WriteBytes };
 
 // Placeholder filling: each `{}` takes the next argument in the order they are written, `{{` and `}}` are the two
 // ways to spell a literal brace, and the mismatched calls are the interesting ones — extra arguments go unused, and
 // a placeholder with nothing left renders as nothing, so the mistake shows in the text rather than at the point of
 // printing. Std stays out of the dependencies and a failed check reports through the exit code.
+//
+// Rendering now answers with a `Result<String, FormatError>` rather than a `String` beside an output error, so a
+// caller cannot read the text without having looked at whether there is any. The checks below go through `Matches`
+// and `RenderedLength`, both of which consume the result, which is what forces the success case to be handled.
 
 // A type of this package's own, so an argument reaches the call through the interface and not through an overload.
 struct Point {
@@ -14,17 +19,13 @@ struct Point {
 }
 
 extend Point : Display {
-    func Format(self: &Point, writer: &var TextWriter) -> TextError {
-        let open = WriteAscii(writer, c8'(');
-        if open.IsError() { return open; }
+    func WriteDisplay(self: &Point, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        WriteAscii(writer, c8'(')?;
         let first: Display = self.x;
-        let leftWritten = first.Format(writer, FormatSpec::Plain());
-        if leftWritten.IsError() { return leftWritten; }
-        let comma = WriteBytes(writer, ", ");
-        if comma.IsError() { return comma; }
+        first.WriteDisplay(writer, FormatSpec::Plain())?;
+        WriteBytes(writer, ", ")?;
         let second: Display = self.y;
-        let rightWritten = second.Format(writer, FormatSpec::Plain());
-        if rightWritten.IsError() { return rightWritten; }
+        second.WriteDisplay(writer, FormatSpec::Plain())?;
         return WriteAscii(writer, c8')');
     }
 }
@@ -35,77 +36,71 @@ struct Filler {
 }
 
 extend Filler : Display {
-    func Format(self: &Filler, writer: &var TextWriter) -> TextError {
+    func WriteDisplay(self: &Filler, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
         var remaining = self.count;
         while remaining > 0 {
-            let written = WriteBytes(writer, "0123456789abcdef");
-            if written.IsError() { return written; }
+            WriteBytes(writer, "0123456789abcdef")?;
             remaining = remaining - 1;
         }
-        return TextError::None;
+        return FormatOk();
     }
 }
 
-func Matches(actual: StringView, expected: char8[..]) -> bool {
+// Consumes the outcome and reports whether it succeeded with exactly `expected`. An error is never a match, so a
+// check cannot pass by accident on a failed render.
+func Matches(outcome: Result<String, FormatError>, expected: char8[..]) -> bool {
     let wanted = StringView::FromValidated(expected);
-    return actual.Equals(wanted);
+    return match <-outcome {
+        .Success(text) => text.View().Equals(wanted),
+        .Error(_) => false
+    };
+}
+
+// Consumes the outcome and reports the rendered length, or a length no check expects when it failed.
+func RenderedLength(outcome: Result<String, FormatError>) -> uint {
+    return match <-outcome {
+        .Success(text) => text.Length(),
+        .Error(_) => 0u
+    };
 }
 
 func Main() -> int {
     var system = SystemAllocator();
     let allocator: Allocator = system;
-    var error = TextError::None;
 
     // Text outside a placeholder is copied through, and a format with nothing to substitute is copied entire.
-    let empty = Format(allocator, "", @error);
-    if error != TextError::None || !empty.IsEmpty() { return 10; }
-    let plain = Format(allocator, "hello", @error);
-    if error != TextError::None || !Matches(plain.View(), "hello") { return 11; }
+    if !Matches(Format(allocator, ""), "") { return 10; }
+    if !Matches(Format(allocator, "hello"), "hello") { return 11; }
 
     // Each placeholder takes the next argument, in the order they are written.
-    let point = Format(allocator, "point = ({}, {})", @error, 3, 4);
-    if error != TextError::None || !Matches(point.View(), "point = (3, 4)") { return 20; }
-    let run = Format(allocator, "{}{}{}", @error, 1, 2, 3);
-    if error != TextError::None || !Matches(run.View(), "123") { return 21; }
+    if !Matches(Format(allocator, "point = ({}, {})", 3, 4), "point = (3, 4)") { return 20; }
+    if !Matches(Format(allocator, "{}{}{}", 1, 2, 3), "123") { return 21; }
 
     // Arguments of different types in one call, each rendered its own way.
-    let mixed = Format(allocator, "{} {} {} {}", @error, 42, 0.5, true, c8'A');
-    if error != TextError::None || !Matches(mixed.View(), "42 0.5 true A") { return 22; }
+    if !Matches(Format(allocator, "{} {} {} {}", 42, 0.5, true, c8'A'), "42 0.5 true A") { return 22; }
 
     // Arguments past the last placeholder go unused, and a placeholder past the last argument renders as nothing.
-    let extra = Format(allocator, "{}", @error, 1, 2);
-    if error != TextError::None || !Matches(extra.View(), "1") { return 30; }
-    let starved = Format(allocator, "[{}][{}]", @error, 1);
-    if error != TextError::None || !Matches(starved.View(), "[1][]") { return 31; }
-    let unfed = Format(allocator, "{}", @error);
-    if error != TextError::None || !unfed.IsEmpty() { return 32; }
+    if !Matches(Format(allocator, "{}", 1, 2), "1") { return 30; }
+    if !Matches(Format(allocator, "[{}][{}]", 1), "[1][]") { return 31; }
+    if !Matches(Format(allocator, "{}"), "") { return 32; }
 
     // Escaped braces, and lone ones copied through as they stand.
-    let escaped = Format(allocator, "{{}}", @error);
-    if error != TextError::None || !Matches(escaped.View(), "{}") { return 40; }
-    let bracketed = Format(allocator, "{{{}}}", @error, 7);
-    if error != TextError::None || !Matches(bracketed.View(), "{7}") { return 41; }
-    let loneOpen = Format(allocator, "{", @error);
-    if error != TextError::None || !Matches(loneOpen.View(), "{") { return 50; }
-    let loneClose = Format(allocator, "}", @error);
-    if error != TextError::None || !Matches(loneClose.View(), "}") { return 51; }
-    let named = Format(allocator, "{x} {}", @error, 1);
-    if error != TextError::None || !Matches(named.View(), "{x} 1") { return 52; }
+    if !Matches(Format(allocator, "{{}}"), "{}") { return 40; }
+    if !Matches(Format(allocator, "{{{}}}", 7), "{7}") { return 41; }
+    if !Matches(Format(allocator, "{"), "{") { return 50; }
+    if !Matches(Format(allocator, "}"), "}") { return 51; }
+    if !Matches(Format(allocator, "{x} {}", 1), "{x} 1") { return 52; }
 
     // A type of this package's own, reached through the interface.
-    let at = Format(allocator, "at {}", @error, Point { x: -1, y: 2 });
-    if error != TextError::None || !Matches(at.View(), "at (-1, 2)") { return 70; }
+    if !Matches(Format(allocator, "at {}", Point { x: -1, y: 2 }), "at (-1, 2)") { return 70; }
 
     // Text as the format and as an argument. A string renders itself, which is what makes it usable as a
     // variadic argument at all.
-    let fromText = Format(allocator, "{} and {}", @error, "text", 1);
-    if error != TextError::None || !Matches(fromText.View(), "text and 1") { return 71; }
-    let padded = Format(allocator, "[{:>6}]", @error, "ab");
-    if error != TextError::None || !Matches(padded.View(), "[    ab]") { return 73; }
+    if !Matches(Format(allocator, "{} and {}", "text", 1), "text and 1") { return 71; }
+    if !Matches(Format(allocator, "[{:>6}]", "ab"), "[    ab]") { return 73; }
 
     // A rendering that outgrows any up-front guess: one hundred units of sixteen bytes, plus the frame around them.
-    let long = Format(allocator, "<{}>", @error, Filler { count: 100 });
-    if error != TextError::None || long.Length() != 1602 { return 80; }
+    if RenderedLength(Format(allocator, "<{}>", Filler { count: 100 })) != 1602u { return 80; }
 
     return 0;
 }

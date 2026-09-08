@@ -6,7 +6,8 @@
 // Writing the byte on its own would produce something that is not UTF-8, and the promise that it is holds every
 // reader of the result together.
 
-import Text::TextError;
+import Core::{ Result, Unit };
+import Text::{ Debug, Display, FormatError, FormatSpec, TextWriter };
 
 /// The character written in place of anything that is not one.
 ///
@@ -16,8 +17,14 @@ pub const ReplacementCharacter: char32 = 0xFFFDu32 as char32;
 extend char8 : Display {
     /// Writes this byte, or the replacement character when it is not a whole one.
     ///
-    /// https://rux-lang.dev/docs/api/format/char8/format
-    pub func Format(self: *char8, writer: &var TextWriter, spec: FormatSpec) -> TextError {
+    /// # Failures
+    /// Reports whatever the writer reported, stopping at the first refusal.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the complete rendering was accepted
+    /// @see https://rux-lang.dev/docs/api/format/char8/write-display
+    pub func WriteDisplay(self: *char8, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
         if (*self as uint32) > 0x7F { return FormatScalar(writer, spec, ReplacementCharacter); }
         var one: char8[1];
         one[0] = *self;
@@ -28,12 +35,16 @@ extend char8 : Display {
 extend char8 : Debug {
     /// The same byte, quoted, as a character literal is written.
     ///
-    /// https://rux-lang.dev/docs/api/format/char8/format-debug
-    pub func FormatDebug(self: *char8, writer: &var TextWriter) -> TextError {
-        let opening = WriteAscii(writer, c8'\'');
-        if opening.IsError() { return opening; }
-        let body = self.Format(writer, FormatSpec::Plain());
-        if body.IsError() { return body; }
+    /// # Failures
+    /// Reports whatever the writer reported, stopping at the first refusal.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the complete rendering was accepted
+    /// @see https://rux-lang.dev/docs/api/format/char8/write-debug
+    pub func WriteDebug(self: *char8, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        WriteAscii(writer, c8'\'')?;
+        self.WriteDisplay(writer, FormatSpec::Plain())?;
         return WriteAscii(writer, c8'\'');
     }
 }

@@ -4,10 +4,10 @@
 // to even, and that both agree with the reference the compiler computed independently. The vectors in Vectors.rux
 // carry that reference; the cases here are the ones a reader can check by eye.
 
+import Text::{ Display, FormatSpec, ParseFormatSpec, TextWriter };
 import Allocator::{ Allocator, SystemAllocator };
 import Core::{ Assert, Result };
-import Format::{ ByteCursor, Display, Float128, Float256, Float512, Float80, FloatLayout, FormatSpec, ParseError, ParseFloat128, ParseFloat256, ParseFloat512, ParseFloat80, ParseWideFloat, TextWriter, UnpackWide, WideClass, WriteWideFloat };
-import Text::TextError;
+import Format::{ ByteCursor, Float128, Float256, Float512, Float80, FloatLayout, ParseError, ParseFloat128, ParseFloat256, ParseFloat512, ParseFloat80, ParseWideFloat, UnpackWide, WideClass, WriteWideFloat };
 
 // The bytes a string spans, which is how a text overload reaches the slice one.
 func TextBytes(text: char8[..]) -> char8[..] {
@@ -42,14 +42,18 @@ func Render(bits: uint512, layout: &FloatLayout, spec: FormatSpec, storage: var 
     var cursor = ByteCursor(storage);
     let sink: &var TextWriter = cursor;
     let writer: &var TextWriter = sink;
-    Assert(WriteWideFloat(allocator, writer, spec, bits, layout) == TextError::None, "rendering succeeds");
+    Assert(WriteWideFloat(allocator, writer, spec, bits, layout).IsSuccess(), "rendering succeeds");
     return cursor.Written();
 }
 
+// A spec is built by parsing one, now that its representation is private: a value applying a spec reads it and
+// cannot construct or alter one field at a time. Only the single-digit precisions this file uses are needed.
 func Precision(places: uint) -> FormatSpec {
     var spec = FormatSpec::Plain();
-    spec.hasPrecision = true;
-    spec.precision = places;
+    var text: char8[2];
+    text[0] = c8'.';
+    text[1] = (0x30u + places) as char8;
+    Assert(ParseFormatSpec((@text[0])[..2], @spec), "the precision spec parses");
     return spec;
 }
 
@@ -118,7 +122,7 @@ func Main() -> int {
     Assert(Same(Render(Bits("0.0006", b128), b128, Precision(3u), room), "0.001"), "and above it is one");
     Assert(Same(Render(0u512, b128, Precision(2u), room), "0.00"), "zero to two places");
     var signed = FormatSpec::Plain();
-    signed.showSign = true;
+    Assert(ParseFormatSpec("+", @signed), "the sign spec parses");
     Assert(Same(Render(Bits("1", b128), b128, signed, room), "+1.0"), "an asked-for sign");
 
     // A huge value to a fixed precision is every one of its integer digits: the largest float128 has 4933 of
@@ -211,7 +215,7 @@ func Main() -> int {
     let sink: &var TextWriter = cursor;
     let writer: &var TextWriter = sink;
     let shown: Display = Float128::FromBits(0x3FFF0000000000000000000000000000u128);
-    Assert(shown.Format(writer, plain) == TextError::None, "Display renders");
+    Assert(shown.WriteDisplay(writer, plain).IsSuccess(), "Display renders");
     Assert(Same(cursor.Written(), "1.0"), "to the same text");
     var system = SystemAllocator();
     let allocator: Allocator = system;
