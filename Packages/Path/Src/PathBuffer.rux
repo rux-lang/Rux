@@ -1,7 +1,7 @@
 // A path that owns its units and can grow.
 //
 // The growable operation a path needs is exactly one: push a segment, with a separator supplied where one is
-// missing. Everything else -- parent, filename, joins that produce fresh paths -- reads structure and lives with
+// missing. Everything else — parent, filename, joins that produce fresh paths — reads structure and lives with
 // it; the buffer is where segments accumulate on the way to a system call.
 
 import Allocator::{ AllocError, Allocator, Layout };
@@ -113,7 +113,7 @@ extend PathBuffer {
 
     /// Appends `segment` as one more component, supplying the separator where one is missing.
     ///
-    /// A segment that is itself absolute -- opening with a separator -- replaces the buffer instead of extending
+    /// A segment that is itself absolute — opening with a separator — replaces the buffer instead of extending
     /// it, which is what joining means everywhere paths are joined: `join(a, /b)` is `/b`.
     ///
     /// https://rux-lang.dev/docs/api/path/path-buffer/push
@@ -167,7 +167,7 @@ pub func Join(allocator: Allocator, base: Path, segment: OsStringView, error: *v
 /// segments dropped, and `..` resolved against the segment before it.
 ///
 /// Lexically is the load-bearing word. Dropping `x/..` is the truth about directories and a lie about symbolic
-/// links -- `a/link/..` need not be `a` when `link` points elsewhere -- so this is for display, comparison and
+/// links — `a/link/..` need not be `a` when `link` points elsewhere — so this is for display, comparison and
 /// deduplication, and the filesystem-true answer is canonicalization, which asks the system. A `..` with nothing
 /// before it survives in a relative path and vanishes at the root, where there is nowhere further up.
 ///

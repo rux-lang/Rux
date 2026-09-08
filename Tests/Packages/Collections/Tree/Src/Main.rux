@@ -6,7 +6,7 @@ import Core::{ Assert, Option, Ordering };
 //
 // A balanced tree that is merely wrong about a colour still answers every lookup correctly, and goes on doing so
 // until an insertion sequence finds the shape that degenerates. So this test does not just ask what the tree holds:
-// after every insertion and every removal it walks the whole thing and checks the four rules directly -- the root is
+// after every insertion and every removal it walks the whole thing and checks the four rules directly — the root is
 // black, no red node has a red child, every path to a missing child crosses the same number of black nodes, and
 // every parent link points back at the node that points down.
 //
@@ -193,7 +193,7 @@ func ReplaceAndDrop(allocator: Allocator, counter: *var int32, afterReplacing: *
 }
 
 // Entries leaving through `Detach` rather than through the tree's own destruction, so the kernel's handover of a
-// value it owns is counted on its own -- away from anything a map built on it does.
+// value it owns is counted on its own — away from anything a map built on it does.
 func DetachAndDrop(allocator: Allocator, counter: *var int32, count: int32, take: int32, afterTaking: *var int32) {
     var tree = Tree<int32, Tracked>(allocator);
     var replaced = Option::None<Tracked>();

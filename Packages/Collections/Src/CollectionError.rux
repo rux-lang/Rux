@@ -82,7 +82,7 @@ extend CollectionError {
 /// The collection error that corresponds to an allocator's.
 ///
 /// `error` is read by value. `None` stays `None`; `OutOfMemory` stays itself; and `Unsupported` and `InvalidBlock`
-/// both become `Unsupported`, because from a collection's side they are the same thing -- the allocator will not
+/// both become `Unsupported`, because from a collection's side they are the same thing — the allocator will not
 /// serve this, and asking again will not change that.
 ///
 /// Cannot fail. Runs in constant time and allocates nothing.

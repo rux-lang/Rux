@@ -2,13 +2,13 @@
 //
 // A system call costs the same for one byte as for four thousand, so a program that reads or writes in small
 // pieces pays the call's price per piece. The buffered reader and writer stand between, turning many small
-// operations into few large ones -- and both step aside for operations already larger than the buffer, where
+// operations into few large ones — and both step aside for operations already larger than the buffer, where
 // copying through it would only add work. They keep interface values because their streams must be stored;
 // call-time helpers elsewhere take borrowed interface references instead.
 //
 // The close contracts differ, and the difference is the design. A reader abandoned mid-buffer loses nothing
 // anybody asked for. A writer abandoned mid-buffer holds bytes the caller believes are written, so its destructor
-// flushes -- but a destructor has nowhere to report failure, so the flush's outcome is discarded there. The
+// flushes — but a destructor has nowhere to report failure, so the flush's outcome is discarded there. The
 // explicit `Flush` is where errors are seen, and a caller who cares calls it; the destructor is the safety net,
 // not the contract.
 
@@ -274,7 +274,7 @@ extend BufferedWriter {
 
     /// Gives the buffer back without sending what it holds.
     ///
-    /// For the caller who has decided the bytes must not go -- the one case where losing them is the point.
+    /// For the caller who has decided the bytes must not go — the one case where losing them is the point.
     ///
     /// https://rux-lang.dev/docs/api/io/buffered-writer/abandon
     pub func Abandon(self: &var BufferedWriter) {
@@ -291,7 +291,7 @@ extend BufferedWriter {
 }
 
 extend BufferedWriter {
-    /// Flushes as a safety net -- the outcome has nowhere to go, so a caller who cares flushed already -- then
+    /// Flushes as a safety net — the outcome has nowhere to go, so a caller who cares flushed already — then
     /// gives the buffer back.
     ///
     /// https://rux-lang.dev/docs/api/io/buffered-writer/destructor

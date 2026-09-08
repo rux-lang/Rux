@@ -32,7 +32,7 @@ func Main() -> int {
     }
 
     // TODO: the Compiler.HasFeature intrinsic is not yet implemented in the
-    // compiler -- calling it crashes at load with STATUS_ENTRYPOINT_NOT_FOUND
+    // compiler — calling it crashes at load with STATUS_ENTRYPOINT_NOT_FOUND
     // (0xC0000139). Re-enable these once the intrinsic links. Reading the plain
     // fields of #compiler above already works.
     //

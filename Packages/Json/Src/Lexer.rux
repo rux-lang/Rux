@@ -10,7 +10,7 @@
 // rather than in constants compiled here.
 //
 // The lexer never allocates. A string token points into the input and reports whether it needs unescaping, so a
-// document whose strings hold no escapes -- which is most of them -- is parsed without copying any of them.
+// document whose strings hold no escapes — which is most of them — is parsed without copying any of them.
 
 
 
@@ -180,7 +180,7 @@ extend JsonLexer {
     }
 
     // JSON's whitespace is exactly four bytes: space, tab, carriage return and line feed. Anything else that
-    // looks like whitespace -- a form feed, a vertical tab, a Unicode space -- is not, and letting one through
+    // looks like whitespace — a form feed, a vertical tab, a Unicode space — is not, and letting one through
     // would accept documents other parsers reject.
     func SkipWhitespace(self: &var JsonLexer) {
         while self.position < self.input.length {
@@ -253,7 +253,7 @@ extend JsonLexer {
                 }
                 else if kind != 0x22u8 && kind != 0x5Cu8 && kind != 0x2Fu8 && kind != 0x62u8 &&
                         kind != 0x66u8 && kind != 0x6Eu8 && kind != 0x72u8 && kind != 0x74u8 {
-                    // The eight escapes JSON defines and no others -- notably not the hex, octal or
+                    // The eight escapes JSON defines and no others — notably not the hex, octal or
                     // line-continuation escapes that appear in JavaScript.
                     self.position = opening;
                     return self.Fail(JsonLexError::BadEscape);

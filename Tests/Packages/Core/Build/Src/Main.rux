@@ -6,7 +6,7 @@ func Main() -> int {
     // the target or the profile.
     Assert(#build.isTest, "isTest");
 
-    // A test package is a binary, so it builds to an executable -- the exit code
+    // A test package is a binary, so it builds to an executable — the exit code
     // is the whole result.
     Assert(#build.outputKind == OutputKind::Executable, "outputKind");
 

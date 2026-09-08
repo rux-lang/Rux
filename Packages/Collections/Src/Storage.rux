@@ -20,7 +20,7 @@ import Allocator::{ AllocError, Allocator, Layout };
 // The layout of `count` elements of `T`, or the arithmetic failure that says there is no such layout.
 func ElementLayout<T>(count: uint, layout: *var Layout) -> CollectionError {
     // An element occupying nothing still needs somewhere to be. A run of them would otherwise be a zero-sized
-    // request, which every allocator here answers with the shared empty address -- and a store into that address
+    // request, which every allocator here answers with the shared empty address — and a store into that address
     // faults, however few bytes it writes. One byte apiece gives the run a real address; every index lands on the
     // same one, which is exactly right for a type with nothing to distinguish.
     let elementSize = sizeof(T) == 0 ? 1u : sizeof(T);

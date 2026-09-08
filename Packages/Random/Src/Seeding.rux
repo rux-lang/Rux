@@ -16,7 +16,7 @@ import Entropy::{ EntropyError, NextUint64 };
 ///
 /// `error` is written with why the entropy could not be obtained, or `None` when it could. On failure the
 /// generator is returned seeded from zero rather than left in an unusable state, so a caller who ignores the
-/// error gets a working -- but entirely predictable -- generator instead of undefined behavior. Anything that
+/// error gets a working — but entirely predictable — generator instead of undefined behavior. Anything that
 /// depends on the seed being unpredictable must check.
 ///
 /// https://rux-lang.dev/docs/api/random/xoshiro-from-entropy

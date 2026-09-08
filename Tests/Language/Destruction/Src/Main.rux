@@ -2,7 +2,7 @@
 //
 // A destructor body has no way to report anything, so every check below counts instead: each tracked value holds a pointer
 // to a counter and bumps it as it is destroyed. The count after a construct is what says destruction happened at the
-// right place -- and, for a value that was moved away, that it did not happen twice.
+// right place — and, for a value that was moved away, that it did not happen twice.
 
 import Core::{ Assert, Option };
 
@@ -204,7 +204,7 @@ func Main() -> int {
 
     // Handing a value to a generic moves it in rather than copying it, so the caller's value is not destroyed behind
     // the callee's back. Whether that store consumes depends on what the parameter stands for, which is known only
-    // at the instantiation -- and a container that kept a copy while the source was destroyed would be holding
+    // at the instantiation — and a container that kept a copy while the source was destroyed would be holding
     // something whose storage had already gone.
     counter.count = 0;
     var room = Tracked { counter: @counter };
@@ -237,7 +237,7 @@ func Main() -> int {
 
     // An option whose payload is an aggregate destroys the aggregate's fields where they are. The payload address is
     // reached by counting bytes, and a byte address has no fields to offset from, so every field was destroyed at
-    // the front of the payload -- correct only when the field that needed destroying happened to sit first.
+    // the front of the payload — correct only when the field that needed destroying happened to sit first.
     counter.count = 0;
     HoldEntry(@counter);
     Assert(counter.count == 1, "a field behind another in an option's payload is destroyed once, where it is");

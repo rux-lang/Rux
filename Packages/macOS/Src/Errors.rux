@@ -2,8 +2,8 @@
 //
 // Darwin reports the way C does: the call returns `-1` and leaves a positive number in the thread's `errno`, which
 // is reached through the `__error` accessor rather than as a variable. That is two different things for a caller to
-// look at, so `Normalize` folds them into the one convention the Linux and FreeBSD packages already use -- a value,
-// or a small negative error number -- and `IsError` and `Errno` then read the result the same way on all three.
+// look at, so `Normalize` folds them into the one convention the Linux and FreeBSD packages already use — a value,
+// or a small negative error number — and `IsError` and `Errno` then read the result the same way on all three.
 //
 // The names keep the system's own spelling. The values are Darwin's, which agree with FreeBSD's more often than with
 // Linux's but match neither completely.

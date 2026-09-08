@@ -1,4 +1,4 @@
-// Opening asks two questions -- what may happen, and what to do about existence -- and every answer is checked
+// Opening asks two questions — what may happen, and what to do about existence — and every answer is checked
 // where it can be checked deterministically: against a name that cannot exist, a file this test just made, and
 // requests that contradict themselves. The scratch file lives under Bin/, which is ignored and rewritten.
 

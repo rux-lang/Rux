@@ -4,8 +4,7 @@ The day-to-day loop for changing the Rux compiler. For where your branch should 
 
 ## 1. Prerequisites
 
-Install the current stable toolchain for your OS — see [Building from Source](../README.md#building-from-source).
-The versions below were verified on September 5, 2026:
+Install the current stable toolchain for your OS — see [Building from Source](../README.md#building-from-source). The versions below were verified on September 5, 2026:
 
 | Tool                                                                             | Current release | Repository requirement                                                 |
 | -------------------------------------------------------------------------------- | --------------- | ---------------------------------------------------------------------- |

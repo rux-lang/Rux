@@ -3,7 +3,7 @@ import Core::{ Assert, Ordering };
 
 // Stability is the whole reason this exists, and it is invisible unless equal elements carry something the ordering
 // ignores. So every element here has an origin the comparison never reads, and the checks are that equal elements
-// come out in ascending origin order -- which is exactly what a stable sort promises and an unstable one does not.
+// come out in ascending origin order — which is exactly what a stable sort promises and an unstable one does not.
 
 // Ordered by key alone. Origin is what makes the stability observable.
 pub struct Ranked {

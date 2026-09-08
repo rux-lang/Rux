@@ -1,6 +1,6 @@
 // A path is a name with structure: segments, separated.
 //
-// `Path` borrows and `PathBuffer` owns, exactly as `OsStringView` and `OsString` do underneath them -- a path adds
+// `Path` borrows and `PathBuffer` owns, exactly as `OsStringView` and `OsString` do underneath them — a path adds
 // meaning, not storage. The meaning is small and lexical: which units separate segments, and how to walk the
 // segments between them. Nothing here touches a filesystem; whether a path names anything real is a question for
 // the S tasks, asked through the system.

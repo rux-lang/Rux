@@ -3,7 +3,7 @@
 //
 // Two things here are not negotiable. Strings are escaped exactly as RFC 8259 requires and no more: the quote,
 // the backslash and every control character below space, using the short escapes where they exist and a
-// four-digit form otherwise. The solidus is *not* escaped, though many writers do it -- it is legal either way,
+// four-digit form otherwise. The solidus is *not* escaped, though many writers do it — it is legal either way,
 // and escaping it makes output differ from every other writer's for no benefit.
 //
 // And a non-finite number cannot be written, because JSON has no way to spell one. A writer that emits `NaN` or
@@ -23,7 +23,7 @@ pub enum JsonWriteError: int32 {
     None = 0,
     /// The writer refused the bytes.
     Failed = 1,
-    /// A number that JSON cannot spell -- a NaN or an infinity.
+    /// A number that JSON cannot spell — a NaN or an infinity.
     NonFinite = 2,
     /// A value nested deeper than the writer will go.
     TooDeep = 3
@@ -62,7 +62,7 @@ const JsonHexDigits: char8[..] = "0123456789abcdef";
 ///
 /// Escapes exactly what the standard requires: the quote, the backslash, and every control character below
 /// space. Bytes above that pass through unchanged, so a UTF-8 document stays UTF-8 rather than being expanded
-/// into escapes -- which is legal but makes output several times larger for no gain.
+/// into escapes — which is legal but makes output several times larger for no gain.
 ///
 /// https://rux-lang.dev/docs/api/json/write-escaped
 pub func WriteEscaped(writer: &var TextWriter, text: char8[..]) -> JsonWriteError {
@@ -131,7 +131,7 @@ pub func WriteEscaped(writer: &var TextWriter, text: char8[..]) -> JsonWriteErro
 }
 
 // Whether a number's text is something JSON can carry. The tree holds numbers as text, so the only way a
-// non-finite value gets in is a caller writing one there deliberately -- and this is where it is caught.
+// non-finite value gets in is a caller writing one there deliberately — and this is where it is caught.
 func IsFiniteNumberText(text: char8[..]) -> bool {
     if text.length == 0u { return false; }
     var index: uint = 0;

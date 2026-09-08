@@ -11,7 +11,7 @@
 /// An opaque kernel object reference.
 ///
 /// Pointer-sized and owned by the kernel. A handle is valid until `CloseHandle` takes it, after which the number may
-/// be reused by the next object opened -- so a stale handle does not fail, it addresses something else.
+/// be reused by the next object opened — so a stale handle does not fail, it addresses something else.
 ///
 /// https://rux-lang.dev/docs/api/windows/handle
 pub type Handle = *var opaque;

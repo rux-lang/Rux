@@ -1,7 +1,7 @@
 import Core::Assert;
 import Entropy::{ EntropyError, FillFromSource, MaxEntropyRequest };
 
-// Entropy cannot be tested by comparing against an expected answer -- the whole point is that there is not one. What
+// Entropy cannot be tested by comparing against an expected answer — the whole point is that there is not one. What
 // can be tested is everything around the bytes: that a request reports success, that it writes the whole buffer and
 // not one byte more, that the same request twice does not give the same answer, that the error values behave, and
 // that the degenerate requests are handled rather than passed to the system.

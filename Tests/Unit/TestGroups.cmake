@@ -2,7 +2,12 @@
 # including skipped cases, so a renamed file or a wildcard overlap cannot silently lose or duplicate coverage.
 set(rux_unit_groups Numeric Frontend Lowering Backends Driver Cli Optimization)
 foreach (source IN LISTS RUX_TEST_SOURCES)
-    if (source MATCHES "^(SoftwareFloat|WideInteger|FloatFormat|AllocationMath|PrimitiveCatalog|Utf|Checksum|Json|AArch64Encoder)Tests\\.cpp$")
+    # Named before the prefix rules below. The package-documentation style suite reads every Packages/ source from
+    # the source tree, so it belongs with the other filesystem-touching cases under the RuxUnitArtifacts lock, and
+    # its assignment must not depend on the "^Package" prefix continuing to mean Driver.
+    if (source STREQUAL "PackageDocumentationStyleTests.cpp")
+        set(group Driver)
+    elseif (source MATCHES "^(SoftwareFloat|WideInteger|FloatFormat|AllocationMath|PrimitiveCatalog|Utf|Checksum|Json|AArch64Encoder)Tests\\.cpp$")
         set(group Numeric)
     elseif (source MATCHES "^(Cli|Cmd|UserMessage|InspectionOutput|Reporter|Reporting|BuildReport)")
         set(group Cli)

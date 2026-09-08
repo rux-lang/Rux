@@ -6,7 +6,7 @@
 // is what SipHash exists to stop.
 //
 // It stops it by being keyed. Without the key, finding two inputs that collide is as hard as breaking the function,
-// and the key is a secret the program picks at startup -- from `Rux/Entropy` -- and never publishes. An attacker who
+// and the key is a secret the program picks at startup — from `Rux/Entropy` — and never publishes. An attacker who
 // cannot guess it cannot aim. The keying is real cryptographic keying rather than a seed mixed in for luck, which is
 // the difference between this and `XxHash64`.
 //
@@ -25,7 +25,7 @@ import Hash::Hasher;
 
 /// The first initialization constant, mixed with the low half of the key.
 ///
-/// The four are the ASCII of "somepseudorandomlygeneratedbytes", split into eight-byte pieces -- an arbitrary
+/// The four are the ASCII of "somepseudorandomlygeneratedbytes", split into eight-byte pieces — an arbitrary
 /// starting point chosen to be visibly arbitrary.
 ///
 /// https://rux-lang.dev/docs/api/hash/sip-init0
@@ -150,7 +150,7 @@ pub struct SipHash24 {
 extend SipHash24 {
     /// A hasher keyed with `low` and `high`, with nothing written into it yet.
     ///
-    /// Both halves are read by value. The key must be unpredictable to whoever supplies the input -- draw it from
+    /// Both halves are read by value. The key must be unpredictable to whoever supplies the input — draw it from
     /// `Rux/Entropy` at startup and keep it. A fixed key compiled into a program is a published key, and a published
     /// key is no key at all.
     ///

@@ -1,7 +1,7 @@
 // A contiguous run of elements that grows as things are appended to it.
 //
-// `Vector<T>` is the container to reach for by default. It is the stack -- `Push` and `TryPop` work at the end that
-// costs nothing to reach -- and it is what a sequence of unknown length is built into before anything else looks at
+// `Vector<T>` is the container to reach for by default. It is the stack — `Push` and `TryPop` work at the end that
+// costs nothing to reach — and it is what a sequence of unknown length is built into before anything else looks at
 // it. `Array<T>` is what it becomes when the length stops changing.
 //
 // A vector owns its storage and its elements, so copying is prohibited and it is move-only. Handing one to a function
@@ -67,7 +67,7 @@ extend Vector<T> {
     /// An empty vector with room for `capacity` elements already taken.
     ///
     /// `allocator` is borrowed for the call and kept; `error` is written with why the room could not be taken. The
-    /// vector is empty either way -- capacity is not length -- and on failure it has no storage, so destroying it is
+    /// vector is empty either way — capacity is not length — and on failure it has no storage, so destroying it is
     /// harmless.
     ///
     /// https://rux-lang.dev/docs/api/collections/vector/with-capacity
@@ -241,7 +241,7 @@ extend Vector<T> {
         if length >= self.length { return; }
         var index = length;
         while index < self.length {
-            // Moving each element into a local destroys it when the local's life ends -- the same mechanism `Array`
+            // Moving each element into a local destroys it when the local's life ends — the same mechanism `Array`
             // uses, and the only one a container has for an element it does not know is droppable.
             let taken <- self.data[index];
             index++;
@@ -466,7 +466,7 @@ extend Vector<T> {
     /// `self` is borrowed mutably. The element is moved out and handed to the caller. Reports `None` and changes
     /// nothing when there is no such index.
     ///
-    /// Order is *not* preserved -- whatever was last now sits where the removed element was -- and that is the whole
+    /// Order is *not* preserved — whatever was last now sits where the removed element was — and that is the whole
     /// point: this is constant time where `RemoveAt` is linear, and for a sequence nobody is reading in order the
     /// difference is free.
     ///
@@ -545,7 +545,7 @@ extend Vector<T> {
 ///
 /// Move-only: it owns the storage the vector owned, prohibits copying, and destroys it with `~VectorIntoIterator`.
 /// This is how a vector of elements that
-/// own something is emptied into somewhere else -- each element is moved out rather than copied, and whatever is
+/// own something is emptied into somewhere else — each element is moved out rather than copied, and whatever is
 /// left when the iterator's life ends is destroyed with it.
 ///
 /// https://rux-lang.dev/docs/api/collections/vector-into-iterator
@@ -639,7 +639,7 @@ extend Vector<T> {
     ///
     /// `self` is borrowed and keeps its own storage, so both are released independently; `error` is written with why
     /// the array could not be made. Copies its elements, so this is for element types where copying means what it
-    /// says -- `IntoArray` is what moves them.
+    /// says — `IntoArray` is what moves them.
     ///
     /// https://rux-lang.dev/docs/api/collections/vector/to-array
     pub func ToArray(self: &Vector<T>, error: *var CollectionError) -> Array<T> {
@@ -652,7 +652,7 @@ extend Vector<T> {
     /// first, and the trim has to succeed: an array releases its block with the layout of its length, so a block
     /// still carrying spare capacity would be given back under a layout it was not taken with.
     ///
-    /// A failed trim is a failed transfer, and the vector is gone either way -- it was consumed by the call -- so
+    /// A failed trim is a failed transfer, and the vector is gone either way — it was consumed by the call — so
     /// its elements are destroyed and an empty array comes back. That costs the elements, which is why it is
     /// reported rather than silent; a shrink refused by an allocator is close to impossible, since it asks for less
     /// than it already holds.

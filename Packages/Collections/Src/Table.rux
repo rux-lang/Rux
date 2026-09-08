@@ -2,7 +2,7 @@ import Core::uint;
 // The open-addressing kernel `HashMap` and `HashSet` are both built on, so the probe sequence, the displacement rule
 // and the deletion exist once rather than twice.
 //
-// **Robin Hood.** Every entry records how far it sits from the slot its hash names -- its probe distance. An
+// **Robin Hood.** Every entry records how far it sits from the slot its hash names — its probe distance. An
 // insertion that meets an entry closer to home than itself takes the slot and carries that entry onward, so the
 // distances along a chain never decrease and the worst one stays near the average. That is what keeps a lookup
 // bounded even when a table is nearly full, where plain linear probing degrades into a long scan of somebody else's
@@ -41,7 +41,7 @@ pub const SlotEmpty: uint8 = 0;
 /// The furthest an entry may sit from home before the table gives up and grows.
 ///
 /// A byte holds the distance plus one, so 254 is what fits. Reaching it means the hash is doing nothing useful for
-/// these keys, and a table that grew would only spread the same collisions over more slots -- so the insertion is
+/// these keys, and a table that grew would only spread the same collisions over more slots — so the insertion is
 /// refused rather than looped on.
 ///
 /// https://rux-lang.dev/docs/api/collections/maximum-probe-distance
@@ -70,7 +70,7 @@ extend TableSeed {
     /// A seed drawn from the operating system.
     ///
     /// Takes nothing. Falls back to a fixed pair of words when the system has no entropy to give, which keeps a
-    /// table working on a system without a generator at the cost of the protection the seed exists for -- a table
+    /// table working on a system without a generator at the cost of the protection the seed exists for — a table
     /// keyed on adversarial input on such a system is as attackable as an unseeded one.
     ///
     /// Runs in constant time and allocates nothing.

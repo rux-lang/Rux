@@ -3,7 +3,7 @@
 // `ClockMonotonic` counts forward from an arbitrary point and never jumps; `ClockRealtime` tracks wall time and can
 // move in either direction. A duration is measured with the first, a timestamp taken from the second.
 //
-// FreeBSD numbers its clocks differently from Linux -- monotonic is 4 here and 1 there -- which is why an identifier
+// FreeBSD numbers its clocks differently from Linux — monotonic is 4 here and 1 there — which is why an identifier
 // must never be carried between the two packages.
 
 import FreeBSD::{ SysClockGetRes, SysClockGetTime, SysNanosleep, Syscall2, Timespec };

@@ -203,7 +203,7 @@ func Main() -> int {
     }
     Assert(total == 18, "iterating covers every element and no spare capacity");
 
-    // Destruction: the vector destroys exactly the elements it holds, once each, when its life ends -- and pushing
+    // Destruction: the vector destroys exactly the elements it holds, once each, when its life ends — and pushing
     // destroys nothing at all, because handing a value to `Push` moves it in rather than copying it.
     var destroyed: int32 = 0;
     var afterPushing: int32 = 0;
@@ -221,7 +221,7 @@ func Main() -> int {
     destroyed = 0;
     PushThenPop(allocator, @destroyed, 5);
     // One, not five: popping moves each element out, and overwriting `taken` on each round destroys nothing --
-    // assignment replaces a binding's value without destroying what was there -- so the only destruction is the last
+    // assignment replaces a binding's value without destroying what was there — so the only destruction is the last
     // element, still held by `taken` when the function ended.
     Assert(destroyed == 1, "popping moves elements out rather than destroying them");
 

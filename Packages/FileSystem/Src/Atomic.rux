@@ -2,18 +2,18 @@
 //
 // The rule every reliable writer follows: write the new contents somewhere else, force them to the device, then
 // move the finished file onto the final name in one step the filesystem cannot interrupt. A reader opening the
-// name at any moment sees the old file or the new one, never a truncated one and never a missing one -- which is
+// name at any moment sees the old file or the new one, never a truncated one and never a missing one — which is
 // what writing in place cannot promise, since a crash between truncating and finishing leaves exactly the
 // half-written file the whole exercise is meant to avoid.
 //
 // Two details are not optional. The temporary must live in the **same directory** as the target, because a
-// rename is atomic only within a volume and a temporary directory is frequently on a different one -- get that
+// rename is atomic only within a volume and a temporary directory is frequently on a different one — get that
 // wrong and the "atomic" publish silently becomes a copy-and-delete. And the contents must be synced **before**
 // the rename, not after: a rename that reaches the disk ahead of the data it names leaves the final name
 // pointing at a file whose contents never arrived.
 //
 // What is not promised is that the directory entry itself survives a crash. That needs the containing directory
-// synced too, which needs a directory opened as a file -- ordinary on the Unix systems, not a thing Windows
+// synced too, which needs a directory opened as a file — ordinary on the Unix systems, not a thing Windows
 // does. Rather than offer durability on one platform and pretend on another, this stops at the atomicity every
 // supported system gives, and says so.
 

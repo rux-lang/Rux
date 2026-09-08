@@ -13,7 +13,7 @@
 // adversary who chooses keys from computing a few thousand that collide and turning every lookup into a scan.
 //
 // A map owns its keys and values, so it prohibits copying and is move-only. Entries are destroyed when the map is,
-// when they are cleared, and when they are replaced -- but not when they are removed, which hands the value back
+// when they are cleared, and when they are replaced — but not when they are removed, which hands the value back
 // instead.
 
 import Allocator::Allocator;
@@ -160,7 +160,7 @@ extend HashMap<K, V> {
     /// Stores `value` under `key`, replacing whatever was there.
     ///
     /// `self` is borrowed mutably; both are moved in. A key already present keeps its stored key and takes the new
-    /// value, and the value it had is destroyed -- use `Remove` first where the old one is wanted.
+    /// value, and the value it had is destroyed — use `Remove` first where the old one is wanted.
     ///
     /// A failure leaves the map exactly as it was and both arguments with the caller.
     ///
@@ -279,7 +279,7 @@ extend HashMap<K, V> {
     /// Points `existing` at the value stored under `key`, inserting `value` first when there is none.
     ///
     /// `self` is borrowed mutably; `key` and `value` are moved in only when there was no entry, and destroyed
-    /// otherwise -- the map keeps what it already had. `existing` receives a pointer to the stored value either way,
+    /// otherwise — the map keeps what it already had. `existing` receives a pointer to the stored value either way,
     /// and `inserted` receives whether the map grew; both may be null.
     ///
     /// This is what an entry API is for, without pretending Rux has closures: a caller that wants to read a value or
@@ -355,7 +355,7 @@ extend HashMap<K, V> {
     /// Takes the entry for `key` out and hands back both halves of it.
     ///
     /// `self` is borrowed mutably. Both the stored key and the value are moved out, so a key that owns something
-    /// leaves intact too -- which `Remove` does not offer, since it destroys the key. Reports `None` when there is
+    /// leaves intact too — which `Remove` does not offer, since it destroys the key. Reports `None` when there is
     /// no such entry.
     ///
     /// The stored key is handed back rather than the one that was looked up: the two compare equal, but a key type

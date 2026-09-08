@@ -3,14 +3,14 @@
 //
 // The tree is convenient and it is also the thing that makes a large document expensive: a gigabyte of JSON
 // becomes several gigabytes of nodes, and a program that only wants the third field of each record pays for all
-// of it. Streaming trades random access for constant memory -- events arrive in document order, once, and the
+// of it. Streaming trades random access for constant memory — events arrive in document order, once, and the
 // caller keeps only what it wants.
 //
 // The buffer here grows only as far as the largest single token requires, not as far as the document. An array
 // of ten million small numbers streams in a few hundred bytes; only a single enormous string forces the buffer
 // up, and the string limit is what bounds that.
 //
-// Nesting is tracked so that structural mistakes are still caught -- a closing brace against an open bracket is
+// Nesting is tracked so that structural mistakes are still caught — a closing brace against an open bracket is
 // refused here exactly as it would be by the tree parser, because a streaming reader that accepted malformed
 // structure would push the problem onto every caller.
 
@@ -133,7 +133,7 @@ extend JsonEventReader {
 
     /// The text of the event just reported, valid until the next one.
     ///
-    /// For a name, a string or a number. Escapes are left as written -- resolving them would mean allocating,
+    /// For a name, a string or a number. Escapes are left as written — resolving them would mean allocating,
     /// and a caller skipping past a field should not pay for its contents.
     ///
     /// https://rux-lang.dev/docs/api/json/json-event-reader/text

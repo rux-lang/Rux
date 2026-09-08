@@ -2,7 +2,7 @@ import Algorithms::{ Clamp, ClampBy, Max, MaxIndex, MaxIndexBy, Min, MinIndex, M
 import Core::{ Assert, Ordering };
 
 // The smallest and largest of a sequence. Two things are worth pinning down beyond the obvious: an empty slice has
-// no answer at all rather than a sentinel one, and a tie goes to the earliest index -- which is only observable if
+// no answer at all rather than a sentinel one, and a tie goes to the earliest index — which is only observable if
 // the elements carry something the ordering ignores, so they do.
 
 // Ordered by key alone, so equivalent-but-distinct elements exist and the choice among them is observable.

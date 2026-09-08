@@ -197,7 +197,7 @@ pub func Max<T>(left: T, right: T) -> T {
 /// `value` brought into the range `low` to `high`, inclusive at both ends.
 ///
 /// All three are read by value and one is returned by copy. A `low` above `high` is an empty range with no answer
-/// that could be right, so `low` is returned -- the caller passed a range it cannot have meant.
+/// that could be right, so `low` is returned — the caller passed a range it cannot have meant.
 ///
 /// Requires `<` on the type.
 ///

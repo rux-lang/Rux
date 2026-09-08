@@ -1,6 +1,6 @@
 /*
     A power with an integer exponent, by repeated squaring.
-    Accuracy: error at most one ulp per squaring, so about log2(|n|) ulps in the worst case -- and exactly zero
+    Accuracy: error at most one ulp per squaring, so about log2(|n|) ulps in the worst case — and exactly zero
     whenever every intermediate is representable. That exactness is the reason to have this beside `Pow`, which goes
     through a logarithm and an exponential and so returns 999.9999999999999 for a cube of ten as readily as 1000. A
     caller raising a value to a whole number almost always wants the exact answer where one exists.

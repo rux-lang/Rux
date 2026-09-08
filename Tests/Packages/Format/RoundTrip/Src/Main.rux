@@ -3,8 +3,8 @@ import Format::{ Format, IsNan, ParseFloat64, ParseInt64, ParseInt128, ParseUint
 import Text::TextError;
 
 // The round trip is the contract the two halves owe each other: what formatting writes, parsing reads back to the
-// value it was. Checked at the values where the halves are most likely to disagree -- the bounds, the bases, the
-// negative edge with no positive twin -- and for floats at the values whose text is exact, since the shortest
+// value it was. Checked at the values where the halves are most likely to disagree — the bounds, the bases, the
+// negative edge with no positive twin — and for floats at the values whose text is exact, since the shortest
 // rendering is fifteen digits and deliberately not a round trip past them.
 
 func TripInt64(allocator: Allocator, value: int64) -> bool {

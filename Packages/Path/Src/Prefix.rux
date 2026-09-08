@@ -1,7 +1,7 @@
 // What stands before a path's first real segment.
 //
-// The Unix systems have one answer: nothing, or the root. Windows has a family -- a drive (`C:`), a UNC share
-// (`\server\share`), and the verbatim prefix (`\?\`) that turns parsing off for everything after it -- and which
+// The Unix systems have one answer: nothing, or the root. Windows has a family — a drive (`C:`), a UNC share
+// (`\server\share`), and the verbatim prefix (`\?\`) that turns parsing off for everything after it — and which
 // one a path carries changes what "absolute" means for it. `C:name` is neither relative nor absolute but
 // drive-relative, a shape only Windows has.
 //
@@ -39,7 +39,7 @@ pub func PrefixLength(path: Path, kind: *var PrefixKind) -> uint {
         var start: uint = 0;
         var verbatim = false;
 
-        // The verbatim opener: two backslashes, a question mark, a backslash. Exactly backslashes -- inside a
+        // The verbatim opener: two backslashes, a question mark, a backslash. Exactly backslashes — inside a
         // verbatim path the forward slash is an ordinary character, which is the whole point of the prefix.
         if units.length >= 4 && (units.data[0] as uint32) == 0x5C && (units.data[1] as uint32) == 0x5C &&
            (units.data[2] as uint32) == 0x3F && (units.data[3] as uint32) == 0x5C {

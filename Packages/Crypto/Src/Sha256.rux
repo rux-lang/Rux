@@ -2,7 +2,7 @@
 //
 // One compression function serves both: they differ only in the initial state and in how much of the final
 // state is kept. That is worth saying plainly, because it is also why SHA-224 is not simply "SHA-256 truncated"
-// -- a different initial state means the two produce unrelated values, so neither can be derived from the other
+// — a different initial state means the two produce unrelated values, so neither can be derived from the other
 // after the fact.
 //
 // The padding is where implementations go wrong, and it is the same shape in every member of the family: a one
@@ -181,7 +181,7 @@ extend Sha256 : Digest {
     ///
     /// The padding is a one bit, then zeros, then the message length in bits as a big-endian sixty-four bit
     /// count. When fewer than nine bytes remain in the final block there is no room for that count, so the
-    /// block is finished with zeros and a whole further block carries it -- the case that separates a correct
+    /// block is finished with zeros and a whole further block carries it — the case that separates a correct
     /// implementation from one that passes the short vectors.
     ///
     /// https://rux-lang.dev/docs/api/crypto/sha256/finish

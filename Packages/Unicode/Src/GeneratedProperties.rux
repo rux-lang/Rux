@@ -1119,7 +1119,7 @@ pub const AlphabeticRanges: uint32[1522] = [
     183984, 191456, 191472, 192093, 194560, 195101, 196608, 201546, 201552, 210041
 ];
 
-/// Numeric ranges -- the Nd, Nl and No categories: first, last.
+/// Numeric ranges — the Nd, Nl and No categories: first, last.
 ///
 /// https://rux-lang.dev/docs/api/unicode/tables
 pub const NumericRanges: uint32[292] = [

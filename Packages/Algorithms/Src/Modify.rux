@@ -2,7 +2,7 @@
 //
 // Everything that writes takes a `var T[..]`; everything that only reads takes a `T[..]`. Nothing here
 // resizes anything, because none of these own the storage they work on. The removals compact survivors toward the
-// front and report how many are left, and it is the caller -- who does own the storage -- that shortens it.
+// front and report how many are left, and it is the caller — who does own the storage — that shortens it.
 //
 // What is left past the reported length after a removal is unspecified. It is neither cleared nor preserved: the
 // elements there were moved from, and reading them back is reading whatever the compaction happened to leave. For a
@@ -53,7 +53,7 @@ pub func Reverse<T>(items: var T[..]) {
 /// `items` is borrowed mutably and rewritten. A `middle` of zero or of the whole length leaves the order alone;
 /// anything past the length is refused, since there is no such element to bring to the front.
 ///
-/// Done as three reversals -- the front, the back, then the whole -- which needs no scratch storage and touches
+/// Done as three reversals — the front, the back, then the whole — which needs no scratch storage and touches
 /// every element at most twice.
 ///
 /// Reports false only for a `middle` past the length.
@@ -137,7 +137,7 @@ pub func MoveTo<T>(destination: var T[..], source: T[..]) -> bool {
 ///
 /// `items` is borrowed mutably and rewritten. Only *adjacent* duplicates go: on a sorted slice that removes every
 /// duplicate, and on an unsorted one it removes only the runs, which is the useful behaviour rather than a
-/// compromise -- it makes this the second half of sort-then-unique without paying for a second sort.
+/// compromise — it makes this the second half of sort-then-unique without paying for a second sort.
 ///
 /// Relative order among the survivors is preserved, nothing is resized, and what lies past the reported length is
 /// unspecified.
@@ -235,7 +235,7 @@ pub func Partition<T>(items: var T[..], predicate: func(T) -> bool) -> uint {
 /// Where the accepted elements of an already-partitioned `items` end.
 ///
 /// `items` is borrowed and read; `predicate` is called about as many times as the logarithm of the length. Requires
-/// that every element the predicate accepts comes before every element it rejects -- which is what `Partition`
+/// that every element the predicate accepts comes before every element it rejects — which is what `Partition`
 /// leaves behind, and what a sorted slice is with respect to any threshold predicate.
 ///
 /// A slice that is not partitioned this way does not fail; it answers, and the answer is meaningless.

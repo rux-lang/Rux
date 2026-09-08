@@ -4,7 +4,7 @@ import Core::Assert;
 // reading them back out of the receiver's printed name, where `T` the parameter
 // and `T` a type that happens to be called that look exactly alike. The parse
 // answered "a type called T" every time, so a field declared `T` came out a
-// different type from the `T` the enclosing function declared -- and the two
+// different type from the `T` the enclosing function declared — and the two
 // were reported against each other as `cannot assign 'T' to 'T'`.
 
 struct Box<T> {

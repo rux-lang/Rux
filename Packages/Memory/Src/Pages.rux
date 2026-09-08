@@ -1,7 +1,7 @@
 // Address space at the granularity the operating system hands it out in: whole pages, with a protection.
 //
 // This is the layer under an allocator rather than an allocator itself. Nothing here tracks what it gave out, keeps
-// a free list, or remembers a length -- a caller releases exactly what it took, and passing a different length is
+// a free list, or remembers a length — a caller releases exactly what it took, and passing a different length is
 // its own mistake to make.
 //
 // The four systems disagree about almost everything here, so the surface is one this package defines rather than any
@@ -9,7 +9,7 @@
 // and a length is rounded up to whole pages by the system whether or not the caller does it first.
 //
 // Windows is the one that differs in kind. It separates reserving address space from committing storage to it, and
-// these calls always do both -- which is the behaviour every other system has and the one an allocator expects. A
+// these calls always do both — which is the behaviour every other system has and the one an allocator expects. A
 // caller wanting a large reservation cheaply has to reach for `Rux/Windows` directly.
 
 import Core::{ #target, #Error };
@@ -68,7 +68,7 @@ pub const PageExecute: uint32 = 4;
 ///
 /// One set of reasons across four systems that report failure three different ways: an errno, a `GetLastError` code,
 /// and a sentinel address. A reason the mapping does not cover arrives as `Failed`, which is not a promise that
-/// nothing went wrong -- only that this module could not name it.
+/// nothing went wrong — only that this module could not name it.
 ///
 /// https://rux-lang.dev/docs/api/memory/page-error
 pub enum PageError: uint8 {
@@ -92,7 +92,7 @@ pub enum PageError: uint8 {
 ///
 /// Takes nothing and returns the size by copy. Always a power of two.
 ///
-/// It is asked of the system where the system will answer -- through `GetSystemInfo` on Windows and `getpagesize` on
+/// It is asked of the system where the system will answer — through `GetSystemInfo` on Windows and `getpagesize` on
 /// Darwin, which is not 4 KiB on Apple Silicon. Linux and FreeBSD keep the answer in the auxiliary vector rather
 /// than behind a system call, and this package calls no libc on those systems, so there the standard 4 KiB is
 /// reported. A kernel configured for larger pages will therefore be under-reported.
@@ -122,7 +122,7 @@ pub func PageSize() -> uint {
 /// Takes `length` bytes of address space with the given protection, and reports where it landed.
 ///
 /// `length` is rounded up to whole pages by the system. `protection` is a combination of the `Page*` flags, and
-/// `PageNone` is legal -- it takes the space and refuses every access to it. `result` receives the base address when
+/// `PageNone` is legal — it takes the space and refuses every access to it. `result` receives the base address when
 /// this reports `None`, and is left unwritten otherwise; it must not be null.
 ///
 /// The pages are zero-filled on every supported system. Nothing else about their contents is promised.
@@ -224,7 +224,7 @@ pub func PageProtect(address: *var opaque, length: uint, protection: uint32) -> 
 /// Rounds `length` up to a whole number of pages.
 ///
 /// `length` is read by value. Returns the rounded length, or `length` itself when rounding would pass the end of the
-/// range -- which a caller sizing an allocation should notice, since the system will refuse such a length anyway.
+/// range — which a caller sizing an allocation should notice, since the system will refuse such a length anyway.
 ///
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///

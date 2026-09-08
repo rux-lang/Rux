@@ -305,7 +305,7 @@ extend HashSet<T> {
 extend HashSet<T> {
     /// Whether every element of this set is also in `other`.
     ///
-    /// Both are borrowed. A set is a subset of itself, and the empty set is a subset of everything -- there is no
+    /// Both are borrowed. A set is a subset of itself, and the empty set is a subset of everything — there is no
     /// element of it to be missing.
     ///
     /// `other` is asked about each of this set's elements, so it decides identity: two sets with different hashes
@@ -424,7 +424,7 @@ extend HashSet<T> {
     pub func IntersectWith(self: &var HashSet<T>, other: &HashSet<T>) {
         if self.Length() == 0 { return; }
         // Removing shifts the entries that follow a slot back into it, and a chain that runs past the end of the
-        // table shifts them past the end too -- so no single sweep in either direction can be sure it looked at
+        // table shifts them past the end too — so no single sweep in either direction can be sure it looked at
         // everything, and which entries move depends on where the seed happened to put them. Staying on a slot that
         // was just emptied covers what shifted into it, and a whole sweep that removes nothing is the proof that
         // there is nothing left to remove.

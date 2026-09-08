@@ -5,7 +5,7 @@
 // text that went straight to a file descriptor.
 //
 // A writer is the other way round: a value writes its bytes into whatever the caller supplies, and what that is --
-// a builder, a file, a fixed buffer -- is the caller's business. Rendering a value into a string is then one
+// a builder, a file, a fixed buffer — is the caller's business. Rendering a value into a string is then one
 // particular writer rather than the only shape available, and printing one allocates nothing at all.
 //
 // What is written must be well-formed UTF-8, and must not stop part-way through a character. Every writer here

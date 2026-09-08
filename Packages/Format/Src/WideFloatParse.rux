@@ -2,7 +2,7 @@
 //
 // The grammar is the one `ParseFloat64` accepts, so what one width reads the others read. The conversion is not
 // the narrow one: every digit of the input is kept as an integer, the value is formed as a ratio of two integers
-// -- the digits against a power of ten -- and the quotient is taken to three bits past the precision with a
+// — the digits against a power of ten — and the quotient is taken to three bits past the precision with a
 // sticky bit for whatever remains. That is enough to round to nearest with ties to even without ever being wrong,
 // at any width, for any length of input.
 

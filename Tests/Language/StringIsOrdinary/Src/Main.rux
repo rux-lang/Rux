@@ -4,7 +4,7 @@ import Core::Assert;
 //
 // The compiler used to know it: any type so named was sized at sixteen bytes and resolved to a built-in kind, so
 // `Rux/Text`'s `String` was `{ data, length }` because it had to be. A string that owns its bytes needs to carry the
-// allocator it must give them back to, which is sixteen bytes more -- and the compiler would have gone on sizing it
+// allocator it must give them back to, which is sixteen bytes more — and the compiler would have gone on sizing it
 // at sixteen, laying out something half the width of the value actually there.
 //
 // Nothing needed the special case. String literals are `char8[..]` and always were; the built-in kind was

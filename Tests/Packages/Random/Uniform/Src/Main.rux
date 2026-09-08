@@ -1,4 +1,4 @@
-// Bias is the whole subject here, and bias is invisible in a handful of draws -- so the tests count. A chi-
+// Bias is the whole subject here, and bias is invisible in a handful of draws — so the tests count. A chi-
 // squared-style spread check over many draws catches the modulo method's bias at a bound near the width, which
 // is where it is enormous, and the range tests check the ends are reachable, since an off-by-one at either end
 // is the other classic failure.

@@ -1,8 +1,8 @@
 // The three things a stream can be asked, and the helpers every asker shares.
 //
 // A `Reader` fills what it can of a buffer and says how much; a `Writer` takes what it can and says how much; a
-// `Seeker` moves the position. Partial progress is the interfaces' honest unit -- a socket hands over what has
-// arrived, a pipe takes what fits -- and the all-or-nothing shapes callers usually want are the shared helpers,
+// `Seeker` moves the position. Partial progress is the interfaces' honest unit — a socket hands over what has
+// arrived, a pipe takes what fits — and the all-or-nothing shapes callers usually want are the shared helpers,
 // written once: `ReadExact` and `WriteAll` loop over partial progress, retry the transient reports, and refuse to
 // spin on a stream that makes none.
 //
@@ -65,7 +65,7 @@ pub const ZeroProgressLimit: uint = 3;
 /// Fills all of `into`, looping over partial reads, or says why it could not.
 ///
 /// Transient reports are retried; the end of the stream before the buffer fills is `EndOfStream` with the buffer
-/// partly written -- how much is not reported, because a caller who needs the count reads incrementally.
+/// partly written — how much is not reported, because a caller who needs the count reads incrementally.
 ///
 /// https://rux-lang.dev/docs/api/io/read-exact
 pub func ReadExact(reader: &var Reader, into: var char8[..]) -> IoError {

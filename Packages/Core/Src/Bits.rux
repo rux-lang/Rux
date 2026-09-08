@@ -7,7 +7,7 @@
 // Signedness is the thing to be careful about here, because `>>` is arithmetic on a signed type: it copies the sign
 // bit down instead of bringing zeros in. Every operation below that has to see a value's bits as bits rather than as
 // a number goes through `ShiftRightLogical`, which brings zeros in at either signedness. Reading a single bit with
-// `(value >> index) & 1` needs no such care -- whatever arithmetic shift replicated above bit zero is masked away.
+// `(value >> index) & 1` needs no such care — whatever arithmetic shift replicated above bit zero is masked away.
 //
 // Nothing here is a machine instruction. A back end may recognize some of these shapes, but the count and reversal
 // operations are written as loops over the width so that a 512-bit type behaves exactly like an 8-bit one.

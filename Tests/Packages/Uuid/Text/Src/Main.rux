@@ -1,5 +1,5 @@
 
-// A strict parser is only worth having if it actually refuses things, so most of this test is refusals -- the
+// A strict parser is only worth having if it actually refuses things, so most of this test is refusals — the
 // forms that circulate widely and are not the standard's, each rejected with the reason that names what is
 // wrong rather than a single catch-all.
 
@@ -94,7 +94,7 @@ func Main() -> int {
     var maxParsed = Parse((@text[0])[..36], @error);
     Assert(error == UuidParseError::None && maxParsed.IsMax(), "and so does the max UUID");
 
-    // Every byte survives the round trip, at every position -- which a formatter that swapped a nibble would
+    // Every byte survives the round trip, at every position — which a formatter that swapped a nibble would
     // fail while still producing something that looks like a UUID.
     var probe = Uuid::Nil();
     index = 0;

@@ -7,7 +7,7 @@
 //
 // Every conversion asks `TargetIsLittleEndian` which order this machine has, rather than reading `#target.endian`.
 // The compile-time target is an intrinsic a package brings into scope by importing Core, which Core cannot do for
-// itself, so the order is established from the target's own storage instead -- exactly, and by the one construct that
+// itself, so the order is established from the target's own storage instead — exactly, and by the one construct that
 // answers the question without being told: writing a value and reading back the byte it starts with.
 
 /// Whether this target stores an integer's least significant byte first.
@@ -40,7 +40,7 @@ pub func ToLittleEndian<T>(value: T) -> T {
 /// The value a little-endian bit pattern stands for on this target.
 ///
 /// `value` is read by value; the result is returned by copy. The exact inverse of `ToLittleEndian`, and the same
-/// operation -- a byte reversal is its own inverse.
+/// operation — a byte reversal is its own inverse.
 ///
 /// Cannot fail. Costs exactly what `ToLittleEndian` costs and allocates nothing.
 ///

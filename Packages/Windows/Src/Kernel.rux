@@ -2,7 +2,7 @@
 //
 // A call reports failure the way Win32 does: a `Bool` of zero, a null pointer, or `InvalidHandleValue`,
 // depending on what it returns. The reason is then in `GetLastError`, which is per thread and is not cleared by
-// a successful call -- so it means something only immediately after a failure.
+// a successful call — so it means something only immediately after a failure.
 
 #Link("Kernel32.dll")
 pub extern {

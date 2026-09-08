@@ -4,7 +4,7 @@ import Core::{ Assert, Option };
 import Path::{ Join, Normalize, OsString, OsStringView, Path, PathBuffer };
 import Text::TextError;
 
-// The named parts at their edges -- the root has no parent, a leading dot is a name, one extension comes off --
+// The named parts at their edges — the root has no parent, a leading dot is a name, one extension comes off --
 // and normalization exercising the honesty line: `.` and `x/..` simplify, a climb past a relative path's start
 // survives, and a climb past the root vanishes.
 

@@ -2,7 +2,7 @@
 //
 // Everything else in this package's tests checks a function against an identity, a symmetry, or itself at
 // another argument. Those catch a great deal, and they cannot catch a function that is uniformly slightly
-// wrong -- an identity holds just as well between two values that are both off by an ulp. This is the test
+// wrong — an identity holds just as well between two values that are both off by an ulp. This is the test
 // that cannot be satisfied that way: the answers come from outside, computed to 58 decimal digits and rounded
 // once, so the only way to pass is to be right.
 //

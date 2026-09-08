@@ -1,6 +1,5 @@
 <!--
-Target branch must be `dev`. Pull requests against `main` are closed automatically. See Docs/PullRequest.md for the full lifecycle.
--->
+Target branch must be `dev`. Pull requests against `main` are closed automatically. See Docs/PullRequest.md for the full lifecycle. -->
 
 ## What and Why
 

@@ -1,4 +1,4 @@
-// Strictness is the point, so most of this is documents that must be refused -- and the ones worth writing down
+// Strictness is the point, so most of this is documents that must be refused — and the ones worth writing down
 // are the ones that are perfectly good JavaScript and are not JSON.
 
 import Allocator::{ Allocator, SystemAllocator };
@@ -77,7 +77,7 @@ func Main() -> int {
     Refuses(allocator, "[1,2] trailing", JsonParseError::TrailingContent, "and text after a value is refused");
 
     // Duplicate names are refused by default, because a document containing them means different things to
-    // different readers -- which is the property that gets exploited.
+    // different readers — which is the property that gets exploited.
     Refuses(allocator, "{\"a\":1,\"a\":2}", JsonParseError::DuplicateName, "a duplicate member name is refused");
 
     // The other policies exist because real documents contain duplicates and someone has to read them.

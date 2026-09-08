@@ -1,6 +1,6 @@
 // A generator's sequence is part of its contract, so the sequences are frozen here: a change to either
 // algorithm, however well intentioned, has to change these numbers too, which makes it a decision rather than
-// an accident. The rest checks the structural properties -- the fixed point that must be unreachable, the
+// an accident. The rest checks the structural properties — the fixed point that must be unreachable, the
 // streams that must not coincide, and the state that must actually advance.
 
 import Core::Assert;
@@ -8,7 +8,7 @@ import Random::{ Pcg64Dxsm, RandomGenerator, Xoshiro256 };
 
 func Main() -> int {
     // Xoshiro256** from a known seed. Frozen, not derived from a reference implementation this machine could
-    // run -- see the backlog note -- but fixed from here on.
+    // run — see the backlog note — but fixed from here on.
     var xoshiro = Xoshiro256(42u64);
     var xoshiroWords: uint64[8];
     var index: uint = 0;

@@ -108,7 +108,7 @@ func Main() -> int {
                  (@reference[0])[..32]),
            "a byte-at-a-time hash matches the one-shot hash across chunk boundaries");
 
-    // Distinct messages give distinct hashes, including ones differing only at a chunk boundary -- which is
+    // Distinct messages give distinct hashes, including ones differing only at a chunk boundary — which is
     // exactly what a mishandled flag would collapse.
     var altered: char8[5000];
     index = 0;

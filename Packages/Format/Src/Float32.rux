@@ -5,8 +5,8 @@ import Text::TextError;
 const MaxFinite32 = 3.4028234663852886e38;
 
 // How many significant digits a float32 is printed to. A float32 widens to a
-// float64 exactly, but what it widens to is the full binary value -- 0.1f is
-// 0.100000001490116119384765625 -- so printing it to the fifteen digits a
+// float64 exactly, but what it widens to is the full binary value — 0.1f is
+// 0.100000001490116119384765625 — so printing it to the fifteen digits a
 // float64 earns would print noise the float32 never carried. Seven is what
 // it does carry, and it renders 0.1f as 0.1.
 const Digits32 = 7u;
@@ -40,7 +40,7 @@ extend float32 : Display {
     /// Writes this value's decimal text.
     ///
     /// Allocates nothing: the digits go into a buffer on the stack and reach the writer in one call. Fifty bytes is
-    /// more than the longest rendering -- sign, digits, point and exponent -- can need.
+    /// more than the longest rendering — sign, digits, point and exponent — can need.
     ///
     /// https://rux-lang.dev/docs/api/format/float32/format
     pub func Format(self: *float32, writer: &var TextWriter, spec: FormatSpec) -> TextError {

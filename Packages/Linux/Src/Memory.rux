@@ -59,7 +59,7 @@ pub const MapAnonymous: int32 = 32;
 /// Returns the mapping's address as an integer. Testing it needs `Errors::IsError` rather than a sign test: a valid
 /// address may have its top bit set, and only the kernel's reserved `-4095` through `-1` range is a failure.
 ///
-/// The mapping outlives nothing on its own -- it stays until `Munmap` releases it or the process ends.
+/// The mapping outlives nothing on its own — it stays until `Munmap` releases it or the process ends.
 ///
 /// # Safety
 ///
@@ -97,7 +97,7 @@ pub func Munmap(address: *opaque, length: uint) -> int64 {
 /// Sets the program break and returns where it ended up.
 ///
 /// `address` is the requested new break, or null to ask where it is. Returns the resulting break, which is the old
-/// one when the request could not be met -- this call reports failure by not moving rather than by an error number.
+/// one when the request could not be met — this call reports failure by not moving rather than by an error number.
 ///
 /// The break is a single process-wide value. Anything else in the process that uses it, including a C runtime that
 /// was linked in, is using the same one.

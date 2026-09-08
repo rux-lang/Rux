@@ -1,4 +1,4 @@
-// The logarithms are checked where they are exact, where they are inverses, and -- for log1p -- where the
+// The logarithms are checked where they are exact, where they are inverses, and — for log1p — where the
 // obvious spelling stops working at all. The exactness claims matter most: Log2 of a power of two and Log10 of
 // a power of ten must be whole numbers, which is precisely what scaling a natural logarithm cannot deliver.
 
@@ -18,7 +18,7 @@ func Main() -> int {
     Assert(Log(infinity) == infinity, "an infinite argument gives infinity");
     Assert(IsNan(Log(notANumber)), "and a NaN stays a NaN");
 
-    // Base two, exact on every power of two the type holds -- including the subnormals, where the argument has
+    // Base two, exact on every power of two the type holds — including the subnormals, where the argument has
     // fewer significant bits but the answer is still a whole number.
     var power: int64 = -1074;
     while power <= 1023i64 {

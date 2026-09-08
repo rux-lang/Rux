@@ -1,7 +1,7 @@
 // The system's own generator, reached the way each system wants to be asked.
 //
 // Four systems, four interfaces. Linux and FreeBSD have a `getrandom` system call that may write fewer bytes than
-// asked for and may be interrupted by a signal, so a caller who needs the whole buffer has to loop -- and looping
+// asked for and may be interrupted by a signal, so a caller who needs the whole buffer has to loop — and looping
 // correctly is most of what this module is. Darwin's `arc4random_buf` is always seeded, never blocks and cannot
 // fail, so it returns nothing at all. Windows has `BCryptGenRandom`, which either fills the whole buffer or fails,
 // and reports through an `NTSTATUS` rather than an error number.

@@ -2,7 +2,7 @@
 //
 // The only source in this package fit for a key, a token, or anything an adversary would like to guess. FreeBSD's
 // generator is always seeded by the time user code runs, so unlike Linux's there is no first-boot wait to think
-// about -- but a short count is still possible and still has to be looped over.
+// about — but a short count is still possible and still has to be looped over.
 
 import FreeBSD::{ SysGetRandom, Syscall3 };
 
@@ -26,7 +26,7 @@ pub const RandomBlockingPool: uint32 = 2;
 /// # Safety
 ///
 /// `buffer` must be writable for `length` bytes. Treat a short count as bytes obtained, not as failure, or the
-/// unwritten tail stays whatever it held -- which for a key is the worst possible outcome.
+/// unwritten tail stays whatever it held — which for a key is the worst possible outcome.
 ///
 /// https://rux-lang.dev/docs/api/freebsd/get-random
 pub func GetRandom(buffer: *var opaque, length: uint, flags: uint32) -> int64 {

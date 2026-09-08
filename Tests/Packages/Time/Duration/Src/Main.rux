@@ -2,8 +2,8 @@ import Core::{ Assert, Ordering };
 import Time::Duration;
 
 // The invariant is the test: the fraction is always in [0, 1e9) with the sign in the seconds, so minus one and a
-// half seconds is seconds -2 and half a billion nanoseconds. Everything else -- carries, borrows, negative unit
-// constructors -- is that invariant holding through arithmetic, and the checked edges refuse at the very ends of
+// half seconds is seconds -2 and half a billion nanoseconds. Everything else — carries, borrows, negative unit
+// constructors — is that invariant holding through arithmetic, and the checked edges refuse at the very ends of
 // the range rather than wrapping.
 
 func Main() -> int {

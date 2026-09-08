@@ -2,7 +2,7 @@
 // Turning TOML text into tokens, with the position of each one.
 //
 // TOML has more lexical surface than JSON and almost all of it is string and number forms. There are four ways
-// to write a string -- basic, multi-line basic, literal, multi-line literal -- and they differ in whether
+// to write a string — basic, multi-line basic, literal, multi-line literal — and they differ in whether
 // escapes are honoured and whether newlines are allowed, which is exactly the sort of distinction an
 // implementation collapses and then surprises someone whose Windows path lost its backslashes.
 //
@@ -25,7 +25,7 @@ pub enum TomlTokenKind: int32 {
     Text = 2,
     /// An integer, in any of the four bases.
     Integer = 3,
-    /// A float, including the infinities and NaN that TOML -- unlike JSON -- can spell.
+    /// A float, including the infinities and NaN that TOML — unlike JSON — can spell.
     Float = 4,
     /// `true` or `false`.
     Boolean = 5,
@@ -285,8 +285,8 @@ extend TomlLexer {
 }
 
 extend TomlLexer {
-    // A bare token: a key, a keyword, a number, or a date-time. TOML does not separate these lexically -- the
-    // run of characters has to be scanned and then classified -- because `1979-05-27` is a date and `1979` is
+    // A bare token: a key, a keyword, a number, or a date-time. TOML does not separate these lexically — the
+    // run of characters has to be scanned and then classified — because `1979-05-27` is a date and `1979` is
     // an integer and both start the same way.
     func LexBare(self: &var TomlLexer) -> TomlToken {
         let start = self.position;
@@ -302,7 +302,7 @@ extend TomlLexer {
                          (c >= 0x30u8 && c <= 0x39u8) || c == 0x5Fu8;
             if isWord {
                 // An underscore between digits is a separator inside a number, so it does not end the run of
-                // digits a decimal point may follow -- otherwise `224_617.445` would lex as two tokens and a
+                // digits a decimal point may follow — otherwise `224_617.445` would lex as two tokens and a
                 // dot. One at the very start begins a bare key instead, and does end it.
                 let digit = c >= 0x30u8 && c <= 0x39u8;
                 let separator = c == 0x5Fu8 && index != start && allDigits;
@@ -402,7 +402,7 @@ extend TomlLexer {
     }
 
     // A hexadecimal float is not TOML, so an `e` that could be a hex digit only counts as an exponent when the
-    // number is decimal -- which is why this looks at the prefix first.
+    // number is decimal — which is why this looks at the prefix first.
     func HasExponent(self: &TomlLexer, start: uint, end: uint) -> bool {
         if end - start > 2u && (self.input.data[start] as uint8) == 0x30u8 {
             let radix = self.input.data[start + 1u] as uint8;
@@ -510,7 +510,7 @@ extend TomlLexer {
 
 /// Decodes a text token's span into an owned string, honouring the escapes its form allows.
 ///
-/// A literal string is copied unchanged -- that is what makes it the right form for a Windows path -- while a
+/// A literal string is copied unchanged — that is what makes it the right form for a Windows path — while a
 /// basic string has its escapes resolved, including the line-ending backslash that lets a multi-line string be
 /// wrapped in the source without the wrapping appearing in the value.
 ///
@@ -528,7 +528,7 @@ pub func TomlDecodeText(allocator: Allocator, span: char8[..], form: TomlTextFor
         let c = span.data[index] as uint8;
         if c != 0x5Cu8 {
             // The run up to the next escape goes in one piece. Byte at a time would split a multi-byte scalar
-            // across two appends, and a builder that validates what it is given refuses half of one -- so an
+            // across two appends, and a builder that validates what it is given refuses half of one — so an
             // accented letter beside an escape would quietly disappear.
             var run = index;
             while run < span.length && (span.data[run] as uint8) != 0x5Cu8 {

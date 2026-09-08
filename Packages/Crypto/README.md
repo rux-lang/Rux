@@ -11,10 +11,7 @@ Cryptographic hashes, message authentication codes and key derivation.
 
 ## Installation
 
-Input buffers use `char8[..]`; output buffers use `var char8[..]`. String literals can be passed directly as inputs.
-Use `storage[..]` for an array-backed writable output and `pointer[..length]` for raw storage. The caller retains
-ownership of every buffer, and each operation's documented output length still applies. Slice lengths count code
-units, which are bytes for `char8`.
+Input buffers use `char8[..]`; output buffers use `var char8[..]`. String literals can be passed directly as inputs. Use `storage[..]` for an array-backed writable output and `pointer[..length]` for raw storage. The caller retains ownership of every buffer, and each operation's documented output length still applies. Slice lengths count code units, which are bytes for `char8`.
 
 ```sh
 rux add Rux/Crypto
@@ -23,24 +20,17 @@ rux add Rux/Crypto
 ## What it provides
 
 - **SHA-2** — SHA-224, SHA-256, SHA-384, SHA-512, and the two SHA-512 truncations.
-- **SHA-3 and SHAKE** — the Keccak permutation, the four fixed-size hashes, and the two extendable-output
-  functions.
+- **SHA-3 and SHAKE** — the Keccak permutation, the four fixed-size hashes, and the two extendable-output functions.
 - **BLAKE3** — unkeyed, keyed, and derive-key modes, with extendable output.
 - **HMAC and HKDF** — generic over any digest, and the two-stage key derivation built on them.
-- **Legacy hashes** — `LegacyMd5` and `LegacySha1`, for reading what already exists. Both are broken; neither
-  implements the digest interface, so nothing takes one by accident.
+- **Legacy hashes** — `LegacyMd5` and `LegacySha1`, for reading what already exists. Both are broken; neither implements the digest interface, so nothing takes one by accident.
 - **Digests** — an incremental contract every algorithm implements, with one-shot forms beside it.
-- **Constant-time comparison** — `Equal`, which takes the same time whichever bytes differ, because the
-  ordinary comparison leaks where the first difference is and that is enough to forge a tag one byte at a time.
+- **Constant-time comparison** — `Equal`, which takes the same time whichever bytes differ, because the ordinary comparison leaks where the first difference is and that is enough to forge a tag one byte at a time.
 - **Zeroization** — `Wipe`, written so it cannot be optimized away.
 
 ## Value and borrowing model
 
-Digest, XOF, and HMAC states are structural `Copy` values: copying a state takes an independent snapshot and owns no
-external resource. Safe mutation uses `&var` receivers, and read-only queries use `&`; calls borrow automatically.
-Construct default states with type calls such as `Sha256()`, `Sha512()`, and `Blake3()`. Descriptive variants such as
-`Sha256::New224()`, `Shake::New128()`, and `Blake3::NewKeyed()` retain their names. Raw pointers remain only inside
-compression helpers and the optimizer barrier, where contiguous word access or an opaque address is intentional.
+Digest, XOF, and HMAC states are structural `Copy` values: copying a state takes an independent snapshot and owns no external resource. Safe mutation uses `&var` receivers, and read-only queries use `&`; calls borrow automatically. Construct default states with type calls such as `Sha256()`, `Sha512()`, and `Blake3()`. Descriptive variants such as `Sha256::New224()`, `Shake::New128()`, and `Blake3::NewKeyed()` retain their names. Raw pointers remain only inside compression helpers and the optimizer barrier, where contiguous word access or an opaque address is intentional.
 
 ## Documentation
 

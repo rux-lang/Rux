@@ -1,8 +1,8 @@
 import Algorithms::{ Fold, FoldRight, IsHeap, IsHeapBy, IsHeapUntil, IsSorted, MakeHeap, MakeHeapBy, MaxIndex, PopHeap, Product, PushHeap, PushHeapBy, SortHeap, SortHeapBy, Sum, Transform };
 import Core::{ Assert, Ordering };
 
-// A heap is an arrangement rather than an order, so what is checked is the arrangement itself -- every element at
-// least as large as its children -- rather than any particular layout. That way the test does not depend on which of
+// A heap is an arrangement rather than an order, so what is checked is the arrangement itself — every element at
+// least as large as its children — rather than any particular layout. That way the test does not depend on which of
 // several valid heaps an implementation happens to build.
 
 func Ints(data: *var int32, length: uint) -> var int32[..] {

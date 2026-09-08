@@ -9,7 +9,7 @@
 /// Fills `into` with random bytes.
 ///
 /// The words are consumed least significant byte first, and a partial final word contributes its low bytes and
-/// discards the rest -- so the same `into.length` always consumes the same number of words, and two runs that
+/// discards the rest — so the same `into.length` always consumes the same number of words, and two runs that
 /// fill buffers of the same size stay in step.
 ///
 /// https://rux-lang.dev/docs/api/random/fill-bytes
@@ -65,7 +65,7 @@ pub func NextUint128<G: RandomGenerator>(generator: &var G) -> uint128 {
 ///
 /// Built from the top 53 bits of a word, which is exactly the number a `float64` can hold without rounding: every
 /// value produced is a multiple of 2^-53, each equally likely, and none is ever exactly one. Dividing a whole
-/// word by 2^64 instead would round -- and rounding upward at the top would produce exactly one, which callers
+/// word by 2^64 instead would round — and rounding upward at the top would produce exactly one, which callers
 /// scaling into an array index do not expect.
 ///
 /// https://rux-lang.dev/docs/api/random/next-float64

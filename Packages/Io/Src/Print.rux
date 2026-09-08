@@ -18,7 +18,7 @@ func PrintBytes(bytes: char8[..]) -> IoError {
 /// A `TextWriter` over standard output that records the stream's failure where the caller can see it.
 ///
 /// The formatting interfaces speak `TextError`, which has no vocabulary for a broken stream; so the writer
-/// reports `None` to the formatter -- the formatting itself did not fail -- while recording the `IoError` in the
+/// reports `None` to the formatter — the formatting itself did not fail — while recording the `IoError` in the
 /// slot it was built over and discarding everything after the failure. The caller reads the slot when the value
 /// is done writing itself.
 ///

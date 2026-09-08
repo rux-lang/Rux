@@ -320,7 +320,7 @@ func EmitValue(writer: &var TextWriter, value: &TomlValue) -> TomlWriteError {
     return EmitDateTime(writer, value);
 }
 
-// Whether an entry belongs to the body of a table -- written as `key = value` -- rather than to a header of its
+// Whether an entry belongs to the body of a table — written as `key = value` — rather than to a header of its
 // own. A table and an array of tables get headers; everything else, including a static array of tables, is a
 // value.
 func IsBodyEntry(value: &TomlValue) -> bool {
@@ -427,7 +427,7 @@ func KeyIntoPath(path: &var TomlPath, name: char8[..]) -> TomlWriteError {
 /// Writes `table` as a TOML document.
 ///
 /// The same tree always produces the same bytes, and a document written, read and written again produces the
-/// same bytes the second time -- which is what makes this safe to run repeatedly over a file this program owns.
+/// same bytes the second time — which is what makes this safe to run repeatedly over a file this program owns.
 ///
 /// It is not safe in the sense of preserving one it does not: comments, blank lines, indentation and the
 /// spelling of a number are not in the tree, so they cannot come out of it. The output is these values laid out

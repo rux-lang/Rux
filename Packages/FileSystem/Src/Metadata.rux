@@ -7,7 +7,7 @@
 // of them the running system actually honors, and a caller who cares can ask before it acts.
 //
 // Timestamps are read on every system and written where the system allows it. Creation time is the one field
-// with no universal answer -- Linux's `stat` does not carry it -- so it arrives as a presence flag beside the
+// with no universal answer — Linux's `stat` does not carry it — so it arrives as a presence flag beside the
 // value rather than as a zero that pretends to be a date.
 
 import Allocator::Allocator;
@@ -53,7 +53,7 @@ pub enum FileKind: int32 {
     File = 0,
     /// A directory.
     Directory = 1,
-    /// A symbolic link -- only ever reported by a no-follow query, since following one lands on its target.
+    /// A symbolic link — only ever reported by a no-follow query, since following one lands on its target.
     SymbolicLink = 2,
     /// A device, socket, pipe, or anything else the filesystem holds that is none of the above.
     Other = 3
@@ -309,7 +309,7 @@ when #target.os == .Windows {
     // BY_HANDLE_FILE_INFORMATION, read at the offsets documented on its declaration: attributes at 0, the
     // creation, access and write FILETIMEs at 4, 12 and 20, the size's high half at 32 and low at 36, and the
     // link count at 40. FILETIME counts hundred-nanosecond ticks from 1601, so the epoch shift and the tick
-    // width are the whole conversion -- the same one `Time` performs for the clock.
+    // width are the whole conversion — the same one `Time` performs for the clock.
     func ReadDwordAt(buffer: *char8, offset: uint) -> uint32 {
         var value = 0u32;
         var index: uint = 0;
@@ -476,7 +476,7 @@ extend File {
 /// Sets who may do what to the file `path` names.
 ///
 /// On the Unix systems the mode bits are written as given. On Windows only the read-only attribute exists, so
-/// that alone is written and the rest of `permissions` is ignored -- ask `CapabilitiesOfSystem` first if the
+/// that alone is written and the rest of `permissions` is ignored — ask `CapabilitiesOfSystem` first if the
 /// difference matters. A symbolic link is always followed: its own bits mean nothing on any supported system.
 ///
 /// https://rux-lang.dev/docs/api/filesystem/set-permissions

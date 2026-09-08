@@ -23,9 +23,7 @@ The wizard shows the MIT license (EULA) and a choose-install-location page.
 ## Prerequisites
 
 - **PowerShell 7+**.
-- **.NET SDK** (provides `dotnet`). The build script installs the
-  [WiX v6](https://wixtoolset.org/) global tool (`wix`) and the
-  version-matched `WixToolset.UI` extension automatically on first run.
+- **.NET SDK** (provides `dotnet`). The build script installs the [WiX v6](https://wixtoolset.org/) global tool (`wix`) and the version-matched `WixToolset.UI` extension automatically on first run.
 - A built `rux.exe` (`cmake --build Build --config Release`).
 
 ## Build locally

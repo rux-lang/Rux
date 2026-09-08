@@ -1,12 +1,12 @@
 // HKDF: turning a shared secret into as many keys as a protocol needs.
 //
 // The two steps do different jobs and it matters which is which. Extract takes input keying material that may be
-// biased -- a Diffie-Hellman shared secret is a group element, not a uniform string -- and concentrates whatever
+// biased — a Diffie-Hellman shared secret is a group element, not a uniform string — and concentrates whatever
 // entropy it has into one fixed-length pseudorandom key. Expand takes that key and stretches it to any length,
 // separated by an info string so that keys for different purposes are unrelated. Skipping extract because the
 // input "looks random enough" is the common mistake, and it is the step that makes the rest sound.
 //
-// The salt is not a secret and does not need to be unpredictable -- a protocol identifier or a session
+// The salt is not a secret and does not need to be unpredictable — a protocol identifier or a session
 // transcript is ideal. It is what stops two protocols deriving the same keys from the same secret. The info
 // string does the same job one level down, between purposes within one protocol.
 //
@@ -23,7 +23,7 @@ pub const HkdfMaximumBlocks: uint = 255;
 /// Extracts a pseudorandom key from `material`, salted with `salt`.
 ///
 /// `into` must be exactly the digest's length. An empty salt is legal and means a string of that many zeros,
-/// which is what the specification says -- so an absent salt is not the same as no salt at all.
+/// which is what the specification says — so an absent salt is not the same as no salt at all.
 ///
 /// https://rux-lang.dev/docs/api/crypto/hkdf-extract
 pub func HkdfExtract<D: Digest>(prototype: D, salt: char8[..], material: char8[..], into: var char8[..]) {

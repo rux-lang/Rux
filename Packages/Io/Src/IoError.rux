@@ -1,7 +1,7 @@
 // What went wrong at the edge of the machine.
 //
-// An I/O failure is not one thing. Some report a fact about the world -- the file is not there, the disk is full,
-// permission was refused -- and a caller acts on which fact. Some report a moment: the operation was interrupted,
+// An I/O failure is not one thing. Some report a fact about the world — the file is not there, the disk is full,
+// permission was refused — and a caller acts on which fact. Some report a moment: the operation was interrupted,
 // or would block, and the right response is to go again. And the end of a stream is not a failure at all, but it
 // arrives through the same channel, so it lives in the same type where nobody can lose it.
 //

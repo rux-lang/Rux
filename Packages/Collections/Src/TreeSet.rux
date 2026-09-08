@@ -6,8 +6,8 @@
 // scatters elements on purpose.
 //
 // Order also changes what the algebra costs. Two hash sets can only be compared by looking every element of one up
-// in the other; two ordered sets could be merged in one pass. That merge is not what runs here -- the predicates
-// below still ask `Contains` per element -- because a merge needs both walks to survive the other's removals, and
+// in the other; two ordered sets could be merged in one pass. That merge is not what runs here — the predicates
+// below still ask `Contains` per element — because a merge needs both walks to survive the other's removals, and
 // what it would save is a logarithm. The operations that change a set do exploit the order, by asking for the next
 // element by key rather than by pointer, which is what lets them remove while walking.
 //
@@ -77,7 +77,7 @@ extend TreeSet<T> {
     /// Puts `value` into the set, and reports through `added` whether it was not already there.
     ///
     /// Takes ownership. An element equal to one already present is destroyed rather than stored, since the one in
-    /// the set is equal to it and is what everything is already ordered against -- so a set never grows past the
+    /// the set is equal to it and is what everything is already ordered against — so a set never grows past the
     /// number of distinct elements put into it.
     ///
     /// Reports `OutOfMemory` when the node cannot be allocated, having changed nothing.
@@ -210,7 +210,7 @@ extend TreeSetRangeIterator<T> : Iterator {}
 
 /// A walk that consumes the set, smallest element first.
 ///
-/// Owns the nodes, and destroys whatever is left in them when it dies -- so a walk stopped part-way destroys the
+/// Owns the nodes, and destroys whatever is left in them when it dies — so a walk stopped part-way destroys the
 /// rest exactly once, and nothing already handed out is destroyed twice.
 ///
 /// https://rux-lang.dev/docs/api/collections/tree-set-into-iterator
@@ -338,7 +338,7 @@ extend TreeSet<T> {
 
     /// Whether the two sets hold exactly the same elements.
     ///
-    /// Order is not part of the question -- two sets are equal when each contains the other -- but having an order
+    /// Order is not part of the question — two sets are equal when each contains the other — but having an order
     /// makes the lengths enough to reject most pairs before looking at an element.
     ///
     /// https://rux-lang.dev/docs/api/collections/tree-set/equals
@@ -350,7 +350,7 @@ extend TreeSet<T> {
 extend TreeSet<T> {
     /// Adds every element of `other` that is not already here.
     ///
-    /// Reports `OutOfMemory` if a node cannot be allocated, having added what it managed to before that -- unlike
+    /// Reports `OutOfMemory` if a node cannot be allocated, having added what it managed to before that — unlike
     /// the hash set's, which reserves the worst case first and is all-or-nothing. A tree has no capacity to reserve:
     /// every element is a separate allocation, so there is no point at which the whole operation can be paid for in
     /// advance. What it gives back instead is that a partial union is still a set with every invariant intact, and
@@ -380,7 +380,7 @@ extend TreeSet<T> {
     /// Allocates nothing and cannot fail: a set only ever gets smaller here.
     ///
     /// The walk asks for the next element by key rather than by following a pointer, because removing relinks the
-    /// nodes around what was removed -- including, when it has two children, the very node a pointer walk would
+    /// nodes around what was removed — including, when it has two children, the very node a pointer walk would
     /// have been about to visit. A key survives that; a pointer does not. The price is a descent per element rather
     /// than an edge.
     ///

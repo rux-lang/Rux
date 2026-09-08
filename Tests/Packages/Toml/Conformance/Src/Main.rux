@@ -2,7 +2,7 @@
 // The coverage that is about the package as a whole rather than about one part of it.
 //
 // Two checks here are worth more than the rest. Every accepted document is written back out, read again and
-// written again, and the two renderings must match -- which catches a writer that loses a value as surely as it
+// written again, and the two renderings must match — which catches a writer that loses a value as surely as it
 // catches one that is not deterministic. And every document is read twice, once into a tree and once as events,
 // by two implementations of the same grammar written separately; a misreading would have to be made twice, the
 // same way, to survive that.
@@ -1038,7 +1038,7 @@ func Main() -> int {
     var second: char8[8192];
     var outcome = TomlParseOutcome();
 
-    // Every document TOML accepts, accepted -- and then written, read and written again to the same bytes.
+    // Every document TOML accepts, accepted — and then written, read and written again to the same bytes.
     var index: uint = 0;
     while index < ValidCount {
         let text = Valid(index);
@@ -1052,7 +1052,7 @@ func Main() -> int {
         index = index + 1u;
     }
 
-    // Every document TOML refuses, refused -- and refused with a position, not merely a flag.
+    // Every document TOML refuses, refused — and refused with a position, not merely a flag.
     index = 0;
     while index < InvalidCount {
         let text = Invalid(index);

@@ -2,8 +2,8 @@
 //
 // A file format or a wire protocol fixes its byte order once, in its specification, and every machine that reads
 // it honors that choice regardless of its own. So every function here takes the order as an argument: the caller
-// names the format's choice, and the code assembles values arithmetically -- shift and or, never a reinterpreted
-// memory read -- so the host's own order never enters into it.
+// names the format's choice, and the code assembles values arithmetically — shift and or, never a reinterpreted
+// memory read — so the host's own order never enters into it.
 //
 // One pair of word functions does the actual work at every width, accumulating in the widest integer there is;
 // the typed functions are the surface, one per primitive width, so a format description reads as what it stores.
@@ -36,7 +36,7 @@ pub func ReadWord(reader: &var Reader, endian: Endian, width: uint, value: *var 
     var word = 0u512;
     var index: uint = 0;
     while index < width {
-        // Most significant first into the accumulator, so each step is one shift -- which byte that is
+        // Most significant first into the accumulator, so each step is one shift — which byte that is
         // is the only place the order matters.
         let at = endian == Endian::Big ? index : width - 1 - index;
         word = (word << 8u512) | ((bytes[at] as uint8) as uint512);

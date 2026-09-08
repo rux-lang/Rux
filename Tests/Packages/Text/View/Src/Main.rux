@@ -8,8 +8,8 @@ func TextBytes(text: char8[..]) -> char8[..] {
 }
 
 // A view is bytes plus a promise that they are UTF-8, and the promise is what everything downstream is allowed to
-// rely on. So the checks are about where the promise is made -- bytes that are not UTF-8 are refused rather than
-// producing a view nobody can trust -- and about the places a byte index can land: a cut through the middle of a
+// rely on. So the checks are about where the promise is made — bytes that are not UTF-8 are refused rather than
+// producing a view nobody can trust — and about the places a byte index can land: a cut through the middle of a
 // character has to be refused, not rounded.
 //
 // The text below is deliberately mixed-width: ASCII, a two-byte character, a three-byte one and a four-byte one, so

@@ -2,11 +2,11 @@
 //
 // A duration is seconds plus a nanosecond fraction, and the fraction is always in [0, 1e9): the value is
 // `seconds + nanoseconds / 1e9` with the sign carried entirely by the seconds. That single invariant is what makes
-// equality bytewise, ordering two comparisons, and arithmetic a carry -- minus one and a half seconds is seconds
+// equality bytewise, ordering two comparisons, and arithmetic a carry — minus one and a half seconds is seconds
 // -2 and half a billion nanoseconds, not two fields that each carry a sign and can disagree.
 //
 // The arithmetic is checked. A duration overflows at about 292 billion years, which no honest computation reaches,
-// so an overflow is a bug in the caller's arithmetic -- and the answer to a bug is a report, not a wrap that turns
+// so an overflow is a bug in the caller's arithmetic — and the answer to a bug is a report, not a wrap that turns
 // a timeout into a deadline in the past.
 
 import Core::{ AddChecked, MulChecked, Option, Ordering, SubChecked };
@@ -143,7 +143,7 @@ extend Duration {
         return self.Total(1000u32);
     }
 
-    /// This span as nanoseconds, or `None` where an `int64` of them cannot hold it -- about 292 years.
+    /// This span as nanoseconds, or `None` where an `int64` of them cannot hold it — about 292 years.
     ///
     /// https://rux-lang.dev/docs/api/time/duration/total-nanoseconds
     pub func TotalNanoseconds(self: &Duration) -> Option<int64> {

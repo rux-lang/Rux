@@ -1,20 +1,20 @@
 // What a digest is, and the two operations every user of one gets wrong.
 //
 // **This package has not been independently reviewed.** Every algorithm matches its published vectors, and that
-// is a weaker statement than it sounds: the failures that matter in cryptographic code -- a comparison that
+// is a weaker statement than it sounds: the failures that matter in cryptographic code — a comparison that
 // leaks timing, a secret that outlives its use, a construction applied outside the assumptions it was proved
-// under -- all pass vectors without complaint. Until a review by someone who did not write this is recorded,
+// under — all pass vectors without complaint. Until a review by someone who did not write this is recorded,
 // nothing here should be relied on where an adversary is in the picture.
 //
-// A digest is used incrementally far more often than in one call -- a file is hashed as it is read, a message as
-// it is assembled -- so the incremental form is the contract and the one-shot form is written on top of it,
+// A digest is used incrementally far more often than in one call — a file is hashed as it is read, a message as
+// it is assembled — so the incremental form is the contract and the one-shot form is written on top of it,
 // rather than the other way round. `Update` may be called any number of times with any split of the same bytes
 // and must produce the same digest, which is a stronger promise than it looks: it is what lets a caller change
 // its buffer size without changing its output.
 //
 // The other two operations are here because they are the ones callers reach for from the standard library and
 // find something subtly unsuitable. Comparing two digests with an ordinary loop returns as soon as it finds a
-// difference, so how long it takes reveals where the difference is -- and an attacker who can time a tag check
+// difference, so how long it takes reveals where the difference is — and an attacker who can time a tag check
 // can find the right tag one byte at a time, which is thousands of guesses instead of astronomically many.
 // Clearing a secret with an ordinary loop is dead code to a compiler, since nothing reads the buffer afterwards,
 // and it is entitled to remove it.
@@ -23,7 +23,7 @@ import Core::{ #target, #Error };
 
 /// An incremental digest.
 ///
-/// Take one by generic bound and mutable reference -- `func Sum<D: Digest>(digest: &var D)` -- so work applies to
+/// Take one by generic bound and mutable reference — `func Sum<D: Digest>(digest: &var D)` — so work applies to
 /// the caller's state without copying it.
 ///
 /// https://rux-lang.dev/docs/api/crypto/digest
@@ -39,7 +39,7 @@ pub interface Digest {
     /// Writes the digest into `into` and leaves the state unusable for further updates.
     ///
     /// `into` must be at least `DigestLength` bytes; anything beyond that is untouched. Finishing twice is a
-    /// caller error rather than a supported operation -- a digest is a one-shot summary of everything fed to it,
+    /// caller error rather than a supported operation — a digest is a one-shot summary of everything fed to it,
     /// and an implementation is free to consume its state producing one.
     ///
     /// https://rux-lang.dev/docs/api/crypto/digest/finish
@@ -52,7 +52,7 @@ pub interface Digest {
 
     /// How many bytes the algorithm processes at a time.
     ///
-    /// Needed by the constructions built on digests -- HMAC pads its key to exactly this -- and by callers
+    /// Needed by the constructions built on digests — HMAC pads its key to exactly this — and by callers
     /// choosing a buffer size that avoids splitting work.
     ///
     /// https://rux-lang.dev/docs/api/crypto/digest/block-length
@@ -82,7 +82,7 @@ pub func Equal(left: char8[..], right: char8[..]) -> bool {
     return difference == 0u8;
 }
 
-// A barrier the optimizer cannot see through. It is handed the address, does nothing, and returns -- but since
+// A barrier the optimizer cannot see through. It is handed the address, does nothing, and returns — but since
 // its body is opaque, every store to that memory must be real by the time it is called, and the call itself
 // cannot be removed. The language has no `volatile`, so this is how a write is made observable.
 when #target.arch {
@@ -102,7 +102,7 @@ when #target.arch {
 /// Overwrites `bytes` with zeros in a way the compiler may not remove.
 ///
 /// A plain loop clearing a buffer nothing reads afterwards is dead code, and an optimizer is entitled to delete
-/// it -- which is how a key a program believed it had erased stays in memory, in a core dump, or in a page
+/// it — which is how a key a program believed it had erased stays in memory, in a core dump, or in a page
 /// written to swap. The barrier below is handed the buffer's address and its body is opaque, so the writes must
 /// have happened before it runs and the call cannot be dropped.
 ///

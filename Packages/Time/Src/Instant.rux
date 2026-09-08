@@ -1,6 +1,6 @@
 // A point on the clock that only moves forward.
 //
-// The monotonic clock answers one question -- how much time passed between two readings -- and answers it even
+// The monotonic clock answers one question — how much time passed between two readings — and answers it even
 // while somebody sets the wall clock, which is exactly when the wall clock answers it wrongly. An `Instant` means
 // nothing as a number: it has no epoch, no calendar, and no meaning in another process. What it has is that a
 // later reading minus an earlier one is the time that really elapsed.
@@ -22,7 +22,7 @@ when #target.os {
 /// A reading of the monotonic clock.
 ///
 /// `Copy`. Meaningful only against another reading from the same process: there is no epoch and no calendar here,
-/// which is the point -- nothing anybody does to the wall clock changes what `Since` answers.
+/// which is the point — nothing anybody does to the wall clock changes what `Since` answers.
 ///
 /// https://rux-lang.dev/docs/api/time/instant
 pub struct Instant {
@@ -89,7 +89,7 @@ extend Instant {
 ///
 /// At least: the system wakes the thread no earlier, and how much later is the scheduler's business. A negative or
 /// zero span returns at once. On the Unix systems a signal can interrupt the wait, and the loop goes back for the
-/// remainder until the whole span has passed -- the interruption is invisible to the caller, which is what makes
+/// remainder until the whole span has passed — the interruption is invisible to the caller, which is what makes
 /// this safe to use for pacing.
 ///
 /// https://rux-lang.dev/docs/api/time/sleep

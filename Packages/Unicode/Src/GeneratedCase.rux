@@ -1326,7 +1326,7 @@ pub const FullFoldElements: uint32[1705] = [
 ];
 
 /// Unconditional full uppercase index: code point, offset, length. The conditional mappings are deliberately absent
-/// -- they depend on locale or context.
+/// — they depend on locale or context.
 ///
 /// https://rux-lang.dev/docs/api/unicode/tables
 pub const FullUpperIndex: uint32[309] = [

@@ -1,7 +1,7 @@
 // The Unicode file and device interface.
 //
 // Every entry point here is the `W` form, which takes UTF-16. The `A` forms in `Kernel` convert through the process
-// code page, which is lossy for any name the page cannot express and differs between machines -- so a path that
+// code page, which is lossy for any name the page cannot express and differs between machines — so a path that
 // works on one system fails on another for reasons the program cannot see. A path is not text the program chose; it
 // is text a user or a file system chose, and the `W` forms are the only ones that carry all of it.
 //
@@ -244,7 +244,7 @@ pub extern {
 
     // Reads the current directory into a UTF-16 buffer
     //
-    // Returns the length written, or the length required when the buffer is too small -- a return larger than the
+    // Returns the length written, or the length required when the buffer is too small — a return larger than the
     // buffer is not a failure but a request to call again.
     // https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-getcurrentdirectory
     func GetCurrentDirectoryW(bufferLength: uint32, buffer: *var char16) -> uint32;

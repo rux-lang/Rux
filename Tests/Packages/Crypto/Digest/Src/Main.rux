@@ -1,5 +1,5 @@
 // The comparison and the wipe are the two operations here that have observable behaviour, so they are what this
-// tests. The digest contract itself has nothing to check until an algorithm implements it -- the first is SHA-256
+// tests. The digest contract itself has nothing to check until an algorithm implements it — the first is SHA-256
 // in the next task, and its test is where the incremental promise gets exercised against real vectors.
 
 import Core::{ Assert };
@@ -19,7 +19,7 @@ func Main() -> int {
 
     Assert(Equal(leftBytes, rightBytes), "identical sequences compare equal");
 
-    // A difference anywhere is found, including at the very last byte -- which the early-return comparison also
+    // A difference anywhere is found, including at the very last byte — which the early-return comparison also
     // manages, but only after telling an observer how long the matching prefix was.
     index = 0;
     while index < 8u {

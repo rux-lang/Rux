@@ -107,7 +107,7 @@ extend Arena {
     /// Rewinds every allocation, keeping the largest block for the next round of work.
     ///
     /// `self` is borrowed mutably. Every pointer the arena ever handed out becomes invalid, including any still held
-    /// by a caller -- an arena reclaims in one operation, which is what makes it fast and what makes this the one
+    /// by a caller — an arena reclaims in one operation, which is what makes it fast and what makes this the one
     /// dangerous call on it.
     ///
     /// The kept block is the current one, which is the largest, so a second round of the same work runs without
@@ -273,7 +273,7 @@ extend ArenaHandle : Allocator {
     /// Accepts a release and reclaims only what it can.
     ///
     /// An arena reclaims in one operation, so an ordinary release has nothing to give back and reports `None` having
-    /// done nothing. The exception is the most recent allocation, whose space is rewound -- which is what lets a
+    /// done nothing. The exception is the most recent allocation, whose space is rewound — which is what lets a
     /// growing collection in an arena not waste every earlier size it passed through.
     ///
     /// Accepting rather than refusing is deliberate: it lets an arena stand in for any allocator in generic code

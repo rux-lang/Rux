@@ -1,7 +1,7 @@
 // User-defined build values, read while compiling.
 //
 // A project sets these in `[Build.Defines]` or on the command line with `--define`, which is how a build carries a
-// choice that is neither a target property nor a profile property -- a feature switch, a vendor name, a limit.
+// choice that is neither a target property nor a profile property — a feature switch, a vendor name, a limit.
 //
 // Everything here is answered while compiling and produces no runtime code. A name that was never defined is absent
 // rather than empty, which `Has` is for: `Get` on an absent name yields an empty value that an intentionally empty

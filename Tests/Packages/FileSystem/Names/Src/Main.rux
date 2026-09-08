@@ -1,6 +1,6 @@
 // The phase gate's name question: a filesystem's names are not text the program chose, and everything here has
 // to carry them unchanged. Each name is created, found again by enumeration, reopened by the name enumeration
-// handed back, and deleted -- so a lossy step anywhere in that circle shows up as a name that cannot be found.
+// handed back, and deleted — so a lossy step anywhere in that circle shows up as a name that cannot be found.
 //
 // On Windows the hard cases are Unicode: characters outside any ANSI code page, and astral-plane characters
 // that occupy a surrogate pair, where a byte-oriented shortcut would split one character in half. On the Unix
@@ -97,7 +97,7 @@ func Main() -> int {
     let combining = PathOf(allocator, "café.txt", @combiningHolder);
     RoundTripCombining(allocator, dir, combining.name);
 
-    // A Unix name need not be text -- except on Darwin, whose filesystems take only valid UTF-8 and refuse the
+    // A Unix name need not be text — except on Darwin, whose filesystems take only valid UTF-8 and refuse the
     // rest with `EILSEQ`, or percent-encode what an older volume let through, so neither half of the round trip
     // holds there.
     when #target.os != .Windows && #target.os != .macOS {

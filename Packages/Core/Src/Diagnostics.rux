@@ -1,6 +1,6 @@
 // The four ways a program says something is wrong: two that stop it while it runs, and two that stop it being built.
 //
-// `Assert` and `Panic` report and terminate. Neither unwinds, so no destructor runs on the way out -- a program that
+// `Assert` and `Panic` report and terminate. Neither unwinds, so no destructor runs on the way out — a program that
 // panics is not a program whose invariants still hold, and running cleanup code written on the assumption that they do
 // is how one failure becomes several. Anything that must be released on a failing path has to be released by a caller
 // that saw the failure, which is what `Result<T, E>` is for.
@@ -40,7 +40,7 @@ pub intrinsic func DebugAssert(condition: bool, message: char8[..]);
 /// Terminates the program, reporting `message`.
 ///
 /// `message` is read by value; this never returns. Use it where a case is unreachable by construction rather than
-/// unlikely -- a caller who could have handled the failure should have been given a `Result<T, E>` instead.
+/// unlikely — a caller who could have handled the failure should have been given a `Result<T, E>` instead.
 ///
 /// Reports the message, the enclosing function, and the file, line and column of the call, then terminates. Does not
 /// unwind: no destructor runs.

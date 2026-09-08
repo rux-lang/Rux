@@ -5,7 +5,7 @@
 //
 // Correct rounding is checked without a higher-precision reference by bracketing: the true root of x lies
 // between two adjacent floats, and squaring each neighbour with exact arithmetic says which side it falls on.
-// Dekker's splitting makes that product exact -- a double's square needs 106 bits, and a pair of doubles holds
+// Dekker's splitting makes that product exact — a double's square needs 106 bits, and a pair of doubles holds
 // them.
 
 import Core::Assert;

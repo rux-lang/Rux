@@ -3,7 +3,7 @@
 // The grammar inside `{}` after the colon is `[[fill]align][sign][#][0][width][.precision][base]`, each piece
 // optional: `{:>8}` right-aligns in eight columns, `{:+}` shows a positive sign, `{:08x}` zero-pads eight hex
 // digits, `{:#b}` prefixes binary with `0b`, `{:.3}` keeps three characters of text. The spec belongs to the
-// placeholder and not to the value -- the same value renders differently under different placeholders -- but it is
+// placeholder and not to the value — the same value renders differently under different placeholders — but it is
 // the value that applies it, because base and sign need the bits and not the rendered text.
 //
 // An unrecognized spec fails to parse, and the placeholder that carried it is copied through as literal text: the
@@ -116,7 +116,7 @@ pub func ParseFormatSpec(text: char8[..], spec: *var FormatSpec) -> bool {
     *spec = FormatSpec::Plain();
     var index: uint = 0;
 
-    // Fill-and-align comes first, and the fill is only a fill when an alignment mark follows it -- `{:x}` is a
+    // Fill-and-align comes first, and the fill is only a fill when an alignment mark follows it — `{:x}` is a
     // base, not an x-shaped padding.
     var align = FormatAlign::Default;
     if index + 1 < text.length && AlignOf(text.data[index + 1], @align) {

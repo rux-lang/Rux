@@ -5,7 +5,7 @@ import Text::{ String, StringView, TextError };
 
 // The fallible direction of the conversion, at the values that make it fallible, and the prefixes as each platform
 // actually has them: none on the Unix systems, where a name is rooted or it is not, and the Windows family with
-// its case left unfolded -- C: and c: are the same drive to the system and different units here, on purpose.
+// its case left unfolded — C: and c: are the same drive to the system and different units here, on purpose.
 
 func PathText(allocator: Allocator, text: char8[..], error: *var TextError) -> OsString {
     return OsString::FromText(allocator, text, error);

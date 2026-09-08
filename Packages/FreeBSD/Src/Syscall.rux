@@ -6,13 +6,13 @@
 // Unlike Linux, both supported architectures share one numbering: FreeBSD assigns a call its number once, in
 // `syscalls.master`, and every architecture uses it. What differs is only where the number and the arguments go.
 //
-// A raw result from these wrappers is already normalized to Linux's convention -- a value, or a small negative error
-// number -- which is what `Errors::IsError` and `Errors::Errno` read.
+// A raw result from these wrappers is already normalized to Linux's convention — a value, or a small negative error
+// number — which is what `Errors::IsError` and `Errors::Errno` read.
 
 import Core::{ #target, #Error };
 
 // The call numbers, which both architectures share. FreeBSD assigns a call its number once, in `syscalls.master`,
-// and every architecture uses it -- unlike Linux, where the two tables agree on nothing.
+// and every architecture uses it — unlike Linux, where the two tables agree on nothing.
 const SysExit: uint64 = 1;
 const SysRead: uint64 = 3;
 const SysWrite: uint64 = 4;

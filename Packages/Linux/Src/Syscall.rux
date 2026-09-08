@@ -2,7 +2,7 @@
 //
 // This is the whole of what this package rests on: every wrapper elsewhere is one of these seven functions with the
 // arguments named. A caller may use them directly for a call this package does not wrap, which is what they are
-// public for -- the numbering is the architecture's, so a number from one architecture means something else on the
+// public for — the numbering is the architecture's, so a number from one architecture means something else on the
 // other, and `SysRead` and its relatives are what keeps that straight.
 //
 // A raw result is not yet an answer. It is either a value or a small negative error number, which `Errors::IsError`
@@ -17,7 +17,7 @@ import Core::{ #target, #Error };
 // The call numbers, which differ by architecture: the two tables were assigned decades apart and agree on nothing.
 //
 // Only calls both architectures have are named. AArch64 came after the directory-relative interface and never got
-// `open`, `stat`, `unlink`, `mkdir`, `rename`, `dup2` or `pipe` -- it has the `*at` forms alone. Naming those here
+// `open`, `stat`, `unlink`, `mkdir`, `rename`, `dup2` or `pipe` — it has the `*at` forms alone. Naming those here
 // keeps one wrapper right on both, and `AtFdCwd` is what makes an ordinary path work through them.
 when #target.arch {
     .X86_64 => {

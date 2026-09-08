@@ -1,5 +1,5 @@
 // Two claims worth testing here: that generated identifiers are well-formed and distinct, and that version 7
-// really does sort by time -- which is the entire reason it exists and would be silently lost by any byte
+// really does sort by time — which is the entire reason it exists and would be silently lost by any byte
 // reordering.
 
 import Core::{ Assert, Ordering };
@@ -68,7 +68,7 @@ func Main() -> int {
         step = step + 1;
     }
 
-    // Two identifiers in the same millisecond are not ordered by the format -- which is what the monotonic
+    // Two identifiers in the same millisecond are not ordered by the format — which is what the monotonic
     // generator exists to fix.
     var monotonic = MonotonicUuid();
     var lastValue = monotonic.Next(@error);

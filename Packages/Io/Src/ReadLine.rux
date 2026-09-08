@@ -1,7 +1,7 @@
 // Reading a line typed at the process, through the standard input handle.
 //
-// This is the console companion to `ReadTextLine`: the same line contract -- a line feed ends the line, a
-// carriage return immediately before it belongs to the ending, the last line needs no ending -- read byte by
+// This is the console companion to `ReadTextLine`: the same line contract — a line feed ends the line, a
+// carriage return immediately before it belongs to the ending, the last line needs no ending — read byte by
 // byte from standard input, so nothing past the line is taken from a stream that may be shared. The bytes come
 // through `StandardIn`, so typed input on a Windows console arrives as correct UTF-8 rather than code-page text.
 

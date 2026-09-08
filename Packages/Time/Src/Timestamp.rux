@@ -1,7 +1,7 @@
 // The wall clock, in UTC, as a count from the Unix epoch.
 //
 // A timestamp is what the machine believes the time is: it jumps when the clock is set, drifts until NTP pulls it
-// back, and two machines disagree about it. That is not a defect to paper over -- it is what a wall clock is, and
+// back, and two machines disagree about it. That is not a defect to paper over — it is what a wall clock is, and
 // the reason `Instant` exists for measuring. What a timestamp is for is naming a moment so another machine, or a
 // later run, can recognize it.
 //

@@ -1,7 +1,7 @@
 import Core::Assert;
 
 // A writable view, `var T[..]`, is the slice whose elements may be written through it. It is built from a writable
-// place -- a `var` array, or a pointer to writable storage with a length -- and it weakens to a read-only view of the
+// place — a `var` array, or a pointer to writable storage with a length — and it weakens to a read-only view of the
 // same storage wherever one is taken.
 
 struct Pair {

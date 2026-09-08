@@ -45,7 +45,7 @@ const Sha512InitialState: uint64[8] = [
 ];
 
 // SHA-384's initial state: the first sixty-four bits of the fractional parts of the square roots of the
-// *ninth through sixteenth* primes -- the same rule as SHA-512's, applied to the next eight primes.
+// *ninth through sixteenth* primes — the same rule as SHA-512's, applied to the next eight primes.
 const Sha384InitialState: uint64[8] = [
     0xCBBB9D5DC1059ED8u64, 0x629A292A367CD507u64, 0x9159015A3070DD17u64, 0x152FECD8F70E5939u64,
     0x67332667FFC00B31u64, 0x8EB44A8768581511u64, 0xDB0C2E0D64F98FA7u64, 0x47B5481DBEFA4FA4u64

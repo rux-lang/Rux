@@ -59,7 +59,7 @@ extend BigNat {
             fresh[index] = self.limbs[index];
             index = index + 1u;
         }
-        // The old block goes back by hand rather than through Release, which also forgets the length -- and the
+        // The old block goes back by hand rather than through Release, which also forgets the length — and the
         // whole point of growing is to keep the value.
         if self.limbs != null {
             let old = Layout::New(self.capacity * 8u, 8u).ValueOr(empty);

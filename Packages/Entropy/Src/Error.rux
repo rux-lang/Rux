@@ -1,12 +1,12 @@
 // Why a request for unpredictable bytes did not produce them.
 //
-// Four systems report the failure four ways -- a negative error number, an `NTSTATUS`, and on Darwin no failure at
-// all -- and a caller asking for a key does not want to know which. What a caller does want to know is whether to
+// Four systems report the failure four ways — a negative error number, an `NTSTATUS`, and on Darwin no failure at
+// all — and a caller asking for a key does not want to know which. What a caller does want to know is whether to
 // try again, whether the source exists on this system, and whether the buffer holds anything.
 //
 // One rule holds across every function in this package: a request either fills the whole buffer and reports `None`,
 // or reports something else and leaves the buffer whatever it already held. There is no partial fill to inspect,
-// because a half-filled key is more dangerous than none at all -- the first half looks exactly as random as a whole
+// because a half-filled key is more dangerous than none at all — the first half looks exactly as random as a whole
 // one.
 
 /// Why unpredictable bytes could not be obtained.

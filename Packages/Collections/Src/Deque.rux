@@ -1,8 +1,8 @@
 // A double-ended queue over a circular buffer.
 //
 // Elements go on and come off at either end in constant time, which is what a vector cannot offer at the front:
-// shifting every element along costs a linear pass per removal. This is the queue -- `PushBack` and `PopFront` are
-// first in, first out -- as `Vector` is the stack.
+// shifting every element along costs a linear pass per removal. This is the queue — `PushBack` and `PopFront` are
+// first in, first out — as `Vector` is the stack.
 //
 // The capacity is always a power of two, or zero. That is what lets the ring wrap with a mask rather than a
 // division: logical element `i` lives at physical `(head + i) & (capacity - 1)`. Because the elements can straddle
@@ -13,7 +13,7 @@
 // injected at construction and kept. Destruction destroys every element it holds and then releases the block.
 //
 // Every operation that can fail leaves the deque exactly as it was. Growth allocates a fresh block, relocates the
-// elements into it, and only then releases the old one, so a refused allocation costs nothing at all -- not even the
+// elements into it, and only then releases the old one, so a refused allocation costs nothing at all — not even the
 // wrapped layout the elements were in.
 
 import Algorithms::Rotate;
@@ -500,7 +500,7 @@ extend Deque<T> {
 
     /// Every element as one borrowed read-only view, moving them together first.
     ///
-    /// `self` is borrowed mutably -- unlike a vector's, producing a single view can move the elements, which is why
+    /// `self` is borrowed mutably — unlike a vector's, producing a single view can move the elements, which is why
     /// this asks for a writable receiver rather than a read-only one.
     ///
     /// # Safety

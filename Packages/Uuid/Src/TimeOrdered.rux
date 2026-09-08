@@ -5,7 +5,7 @@
 // key appends, because its first six bytes are milliseconds since the Unix epoch, big-endian. The remaining
 // bits are random, which is what keeps it unguessable between milliseconds.
 //
-// Within one millisecond the ordering is not guaranteed by the format -- two UUIDs made in the same millisecond
+// Within one millisecond the ordering is not guaranteed by the format — two UUIDs made in the same millisecond
 // have random tails and could sort either way. `MonotonicUuid` fixes that for a caller who needs it, by
 // remembering the last value it produced and stepping the random part forward when the clock has not moved. It
 // is a value the caller owns rather than a global, for the reason the random package gives at length: shared
@@ -18,7 +18,7 @@ import Time::Timestamp;
 /// A version 7 UUID: the current time in its leading bits, entropy in the rest.
 ///
 /// `error` reports why entropy was unavailable, and the result is nil in that case rather than a
-/// timestamp-shaped value with no randomness -- which would be guessable and would look fine.
+/// timestamp-shaped value with no randomness — which would be guessable and would look fine.
 ///
 /// https://rux-lang.dev/docs/api/uuid/time-ordered
 pub func TimeOrdered(error: *var EntropyError) -> Uuid {
@@ -37,7 +37,7 @@ pub func TimeOrderedAt(milliseconds: uint64, error: *var EntropyError) -> Uuid {
     *error = Fill(@bytes[0] as *var opaque, 16u);
     if *error != EntropyError::None { return Uuid::Nil(); }
     var value = Uuid::FromBytes((@bytes[0])[..16]);
-    // Six bytes of milliseconds, most significant first -- which is what makes byte order equal time order.
+    // Six bytes of milliseconds, most significant first — which is what makes byte order equal time order.
     var index: uint = 0;
     while index < 6u {
         let shift = ((5u - index) * 8u) as uint64;
@@ -102,7 +102,7 @@ extend MonotonicUuid {
             return candidate;
         }
         // A fresh draw is used only if it already sorts above the last one; otherwise the previous value is
-        // stepped, which keeps the sequence strictly increasing whatever the clock did -- including going
+        // stepped, which keeps the sequence strictly increasing whatever the clock did — including going
         // backwards, which a clock adjustment can do.
         if candidate.Compare(self.previous) == Ordering::Greater {
             self.previous = candidate;

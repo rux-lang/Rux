@@ -1,7 +1,7 @@
 // UTF-8, decoded and encoded by the table that defines it.
 //
 // A byte sequence is well-formed UTF-8 only if it matches Table 3-7 of the Unicode standard, and that table is not
-// the obvious one. The obvious rule -- read the leading byte for a length, then take that many continuation bytes --
+// the obvious one. The obvious rule — read the leading byte for a length, then take that many continuation bytes --
 // accepts three things the standard rejects, and each of them has been a security hole in something:
 //
 // - **Overlong forms.** `C0 80` would decode to U+0000 under the obvious rule. Encoding one scalar two ways means a
@@ -55,7 +55,7 @@ pub enum Utf8Error: int32 {
     /// A byte that cannot start a sequence: a continuation byte on its own, or one of the values UTF-8 never uses.
     InvalidStart = 2,
     /// A byte where a continuation byte was required, or a continuation outside the range this leading byte allows
-    /// -- which is what rejects an overlong form, a surrogate half, or a value past the last scalar.
+    /// — which is what rejects an overlong form, a surrogate half, or a value past the last scalar.
     InvalidContinuation = 3
 }
 
@@ -107,7 +107,7 @@ pub func IsContinuation(byte: char8) -> bool {
 
 /// Writes `scalar` into `into` as UTF-8 and reports how many bytes it took through `written`.
 ///
-/// `into` is borrowed mutably and must have room for the encoding -- at most `MaxEncodedLength` bytes. Reports
+/// `into` is borrowed mutably and must have room for the encoding — at most `MaxEncodedLength` bytes. Reports
 /// `InvalidStart` for a value that is not a scalar value, and `Truncated` when there is not enough room; `written`
 /// is left at zero in both cases and nothing is written.
 ///
@@ -194,7 +194,7 @@ func SecondByteRange(leading: uint32, low: *var uint32, high: *var uint32) -> ui
 /// Decodes the scalar value starting at `index`, reporting it through `scalar` and its width through `width`.
 ///
 /// `bytes` is borrowed. On any error `scalar` is left at U+0000 and `width` at zero, and the caller decides what to
-/// do -- a decoder replacing bad input with U+FFFD advances one byte and carries on, and one rejecting it stops.
+/// do — a decoder replacing bad input with U+FFFD advances one byte and carries on, and one rejecting it stops.
 ///
 /// Cannot allocate. Runs in constant time.
 ///

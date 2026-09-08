@@ -59,7 +59,7 @@ func Main() -> int {
     // A lone half of a surrogate pair says nothing outside UTF-16: the character
     // it belongs to is spread across two code units, and this conversion sees
     // only one. The compiler rejects a surrogate as a constant, so it can only
-    // arrive through a cast at run time -- which is exactly where the encoder
+    // arrive through a cast at run time — which is exactly where the encoder
     // has to defend itself. It comes out as U+FFFD, the replacement character,
     // rather than as an ill-formed sequence.
     var high: uint32 = 0xD800;

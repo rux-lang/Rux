@@ -1,7 +1,7 @@
 // HMAC: a message authentication code built from any digest that has a block size.
 //
 // The construction exists because the obvious thing does not work. Hashing a key followed by a message is not a
-// MAC for any Merkle-Damgard hash -- SHA-1, SHA-2, MD5 -- because such a hash's output *is* its internal state,
+// MAC for any Merkle-Damgard hash — SHA-1, SHA-2, MD5 — because such a hash's output *is* its internal state,
 // so anyone holding a tag can continue hashing from it and produce a valid tag for a longer message without ever
 // learning the key. HMAC's nesting is what closes that: the outer hash sees only a fixed-length input, so its
 // state is never exposed in a form that can be extended.
@@ -9,7 +9,7 @@
 // The two pads are what make the inner and outer hashes use different keys, and they are different in every bit
 // pair, which is what keeps the two derived keys from being related in a way that helps an attacker.
 //
-// Not needed for BLAKE3 or SHA-3, which resist length extension and can be keyed directly -- but supported for
+// Not needed for BLAKE3 or SHA-3, which resist length extension and can be keyed directly — but supported for
 // them anyway, since a protocol that specifies HMAC specifies HMAC.
 
 

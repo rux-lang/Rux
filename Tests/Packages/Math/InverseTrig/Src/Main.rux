@@ -1,6 +1,6 @@
 // The one-argument inverses are checked against the functions they invert. The two-argument arc tangent is
 // checked against a table, because its whole value is in the quadrant information the one-argument form throws
-// away, and that information lives entirely in special cases -- including the signed zeros, which decide which
+// away, and that information lives entirely in special cases — including the signed zeros, which decide which
 // side of the negative axis a point is on.
 
 import Core::Assert;
@@ -34,7 +34,7 @@ func Main() -> int {
         let value = -1.0 + (step as float64) * 0.01;
         // Measured absolutely rather than in ulps, because a round trip through an angle cannot be relatively
         // accurate near a zero of the outer function: the inverse cosine of zero is the double nearest a quarter
-        // turn, and the cosine of that is 6e-17 rather than 0 -- correct to the last bit, and infinitely far in
+        // turn, and the cosine of that is 6e-17 rather than 0 — correct to the last bit, and infinitely far in
         // ulps from the value it started as.
         Assert(Abs(Sin(ArcSin(value)) - value) < 1.0e-15, "the sine undoes the inverse sine");
         Assert(Abs(Cos(ArcCos(value)) - value) < 1.0e-15, "the cosine undoes the inverse cosine");

@@ -3,10 +3,10 @@
 // `File` implements `Reader`, `Writer` and `Seeker`, which is the whole point of those interfaces: the buffered
 // pair, line reading, binary values and format writing all stack on a file exactly as they stacked on memory and
 // the standard streams, none of them knowing the difference. Reads and writes are one attempt each, partial on
-// purpose -- the looping belongs to `ReadExact` and `WriteAll`, written once for every stream.
+// purpose — the looping belongs to `ReadExact` and `WriteAll`, written once for every stream.
 //
 // `Flush` reports nothing gathered, because nothing is: these writes go to the platform as they are made. What a
-// caller usually wants after writing is `Sync`, which is a different promise -- not "handed to the kernel" but
+// caller usually wants after writing is `Sync`, which is a different promise — not "handed to the kernel" but
 // "acknowledged by the device", the one that holds through a power failure.
 
 import Core::{ #target };
@@ -101,7 +101,7 @@ extend File : Seeker {
     /// Moves the position `offset` bytes from `origin` and reports where it landed.
     ///
     /// A position before the start of the file is refused by the platform; one past the end is allowed, and a
-    /// later write there leaves a hole. A handle opened for appending still seeks -- but its writes land at the
+    /// later write there leaves a hole. A handle opened for appending still seeks — but its writes land at the
     /// end regardless, because append is a property of the writes, not of the position.
     ///
     /// https://rux-lang.dev/docs/api/filesystem/file/seek
@@ -183,7 +183,7 @@ extend File {
     /// Sets the file's length: shrinking discards what was past the new end, growing leaves a hole.
     ///
     /// The position does not move. A position past the new end stays where it was, and the next write there
-    /// grows the file again -- the same rule as seeking past the end.
+    /// grows the file again — the same rule as seeking past the end.
     ///
     /// https://rux-lang.dev/docs/api/filesystem/file/set-length
     pub func SetLength(self: &var File, length: uint64) -> IoError {

@@ -45,8 +45,7 @@ A comparison answers with an `Ordering` rather than a `bool`, and takes one wher
 
 Every search in `Search` assumes the slice is already sorted by the same order the search uses. That is the caller's promise, and nothing checks it on the way in — checking would cost the linear scan a binary search exists to avoid. A search over an unsorted slice does not fail; it answers, and the answer is meaningless. `IsSorted` is there for a caller who wants to check once, where checking is worth it.
 
-A bound is a position rather than an element. `LowerBound` is the first position the value could be inserted at
-without breaking the order and `UpperBound` is the last, so between them lie exactly the equal elements — which is what `EqualRange` returns in one pass. All three answer for a value that is not there at all: the range is empty, and its start is where the value would go.
+A bound is a position rather than an element. `LowerBound` is the first position the value could be inserted at without breaking the order and `UpperBound` is the last, so between them lie exactly the equal elements — which is what `EqualRange` returns in one pass. All three answer for a value that is not there at all: the range is empty, and its start is where the value would go.
 
 Equality in these searches is the ordering's, not the type's. Two elements neither of which is less than the other are equal here, whatever `==` would say. When several compare equal, `BinarySearch` reports the first, so the answer depends on the sequence rather than on how the search happened to divide it.
 
@@ -60,56 +59,33 @@ What lies past that count is unspecified. It is neither cleared nor preserved �
 
 ## Heaps
 
-A heap is an arrangement rather than a type: element `i` is at least as large as elements `2i+1` and `2i+2`, which
-puts the largest at the front and makes both removing it and adding another logarithmic. That is what a priority
-queue is, and it is why these are here rather than in a container — any sequence a caller already has can be one.
+A heap is an arrangement rather than a type: element `i` is at least as large as elements `2i+1` and `2i+2`, which puts the largest at the front and makes both removing it and adding another logarithmic. That is what a priority queue is, and it is why these are here rather than in a container — any sequence a caller already has can be one.
 
-The arrangement is not an order. A heap is not sorted, and only its first element is where a sorted sequence would
-put it; `SortHeap` turns one into the other, which is heapsort.
+The arrangement is not an order. A heap is not sorted, and only its first element is where a sorted sequence would put it; `SortHeap` turns one into the other, which is heapsort.
 
-Growing and shrinking stay the caller's: `PushHeap` is told about an element already appended, and `PopHeap` leaves
-the removed element at the end for the caller to drop. This package does not own storage anywhere.
+Growing and shrinking stay the caller's: `PushHeap` is told about an element already appended, and `PopHeap` leaves the removed element at the end for the caller to drop. This package does not own storage anywhere.
 
 ## Folds
 
-A fold is the general form — an accumulator, a starting value, and a function — and the accumulator's type is
-independent of the element's, so the same operation both sums a sequence and builds something else entirely out of
-one. Direction is part of the contract: `Fold` runs left to right and `FoldRight` right to left, which are different
-answers for any combine that is not associative.
+A fold is the general form — an accumulator, a starting value, and a function — and the accumulator's type is independent of the element's, so the same operation both sums a sequence and builds something else entirely out of one. Direction is part of the contract: `Fold` runs left to right and `FoldRight` right to left, which are different answers for any combine that is not associative.
 
-`Sum` and `Product` are folds with the function already chosen. They take the starting value rather than assuming
-one, because a generic `T` has no zero this package could name. Overflow is the element type's business: they use
-`+` and `*` and behave exactly as those do, and a caller who needs checking folds a checked addition instead.
+`Sum` and `Product` are folds with the function already chosen. They take the starting value rather than assuming one, because a generic `T` has no zero this package could name. Overflow is the element type's business: they use `+` and `*` and behave exactly as those do, and a caller who needs checking folds a checked addition instead.
 
 ## Stability, and what it costs
 
-`Sort` is faster and needs no storage at all, and for most sequences the difference between equal elements is not
-observable. It becomes observable the moment a second key is involved: sort a table by one column, then by another,
-and only a stable sort leaves the first ordering intact within each group of the second.
+`Sort` is faster and needs no storage at all, and for most sequences the difference between equal elements is not observable. It becomes observable the moment a second key is involved: sort a table by one column, then by another, and only a stable sort leaves the first ordering intact within each group of the second.
 
-`StableSort` is a bottom-up merge sort, so it needs somewhere to merge into. It asks the caller for scratch as long
-as the sequence — `RequiredScratch` says how much — and reports false, changing nothing, when given less. Asking
-rather than allocating is deliberate: this package allocates nothing anywhere, which is what lets it be used where
-allocation is not available, and a caller who already has a buffer should not have a second one taken behind their
-back.
+`StableSort` is a bottom-up merge sort, so it needs somewhere to merge into. It asks the caller for scratch as long as the sequence — `RequiredScratch` says how much — and reports false, changing nothing, when given less. Asking rather than allocating is deliberate: this package allocates nothing anywhere, which is what lets it be used where allocation is not available, and a caller who already has a buffer should not have a second one taken behind their back.
 
-Its comparisons and moves are O(n log n) for every input. There is no bad case, unlike a quicksort; what it costs
-over `Sort` is the storage and about a constant factor.
+Its comparisons and moves are O(n log n) for every input. There is no bad case, unlike a quicksort; what it costs over `Sort` is the storage and about a constant factor.
 
 ## What sorting promises
 
-`Sort` is an introsort: quicksort with a three-way partition, falling back to heapsort once the recursion budget is
-spent and to insertion sort on small partitions. Each part covers the others' weakness, and the combination has a
-genuine O(n log n) worst case that no one of the three has alone.
+`Sort` is an introsort: quicksort with a three-way partition, falling back to heapsort once the recursion budget is spent and to insertion sort on small partitions. Each part covers the others' weakness, and the combination has a genuine O(n log n) worst case that no one of the three has alone.
 
-Precisely: comparisons are O(n log n) for **every** input, with nothing probabilistic about it — the depth budget is
-`2 * floor(log2 n)`, and a range still unsorted when it runs out goes to heapsort, which never degrades. Auxiliary
-storage is O(1). Stack depth is O(log n) frames, about sixty-four for any addressable length, because the recursive
-call always takes the smaller side of a partition while the loop handles the larger.
+Precisely: comparisons are O(n log n) for **every** input, with nothing probabilistic about it — the depth budget is `2 * floor(log2 n)`, and a range still unsorted when it runs out goes to heapsort, which never degrades. Auxiliary storage is O(1). Stack depth is O(log n) frames, about sixty-four for any addressable length, because the recursive call always takes the smaller side of a partition while the loop handles the larger.
 
-Sorting is **not stable**: equal elements may come out in a different order than they went in. It is deterministic —
-no randomized pivots, so the same input always gives the same output and the same number of comparisons — but a
-caller who needs equal elements to keep their order needs a stable sort, which needs somewhere to put things.
+Sorting is **not stable**: equal elements may come out in a different order than they went in. It is deterministic — no randomized pivots, so the same input always gives the same output and the same number of comparisons — but a caller who needs equal elements to keep their order needs a stable sort, which needs somewhere to put things.
 
 Type arguments are always explicit — Rux does not infer them for free functions.
 
@@ -295,12 +271,9 @@ extend Record {
 }
 ```
 
-The receiver is a shared reference: comparison borrows the stored element and cannot mutate, consume, or be null.
-The right operand remains the operator's value argument. Plain records are structural `Copy` values; types that
-prohibit copying cannot use algorithms whose operator or callback takes `T` by value.
+The receiver is a shared reference: comparison borrows the stored element and cannot mutate, consume, or be null. The right operand remains the operator's value argument. Plain records are structural `Copy` values; types that prohibit copying cannot use algorithms whose operator or callback takes `T` by value.
 
-Ordering and search algorithms require `func <` in the same form. A missing operator is reported where the
-algorithm is instantiated, not where it is declared.
+Ordering and search algorithms require `func <` in the same form. A missing operator is reported where the algorithm is instantiated, not where it is declared.
 
 ## Guarantees and limitations
 
@@ -308,13 +281,10 @@ algorithm is instantiated, not where it is declared.
 - **Unchecked indexing**, matching native slices and the `At`/`Set` pair on every [`Rux/Collections`](../Collections) container: a length larger than the storage is undefined behavior, not a reported error. Those containers also offer `TryGet`/`TrySet`, which check; nothing here does.
 - **Borrowing, not owning.** A view must not outlive the storage it borrows, and a `Vector` view is invalidated by any growth.
 - **No closures.** A predicate or comparator is a plain function value carrying no captured state; anything it needs beyond the elements must be reachable from the function itself.
-- **Caller-provided stability.** `StableSort` requires a scratch `var T[..]` as long as the input, preserving
-  the package's zero-allocation property.
+- **Caller-provided stability.** `StableSort` requires a scratch `var T[..]` as long as the input, preserving the package's zero-allocation property.
 - `Algorithms::CopyTo` copies typed elements, while [`Memory::Copy`](../Memory) copies raw bytes.
 
-`T[..]` and `var T[..]` are borrowed views and copy only their pointer and length, never their elements.
-Internal pointers used for indexing and pointer arithmetic remain raw. The few scalar output parameters also remain
-raw pointers; pass writable addresses such as `@smallest` and never pass null unless the function documents it.
+`T[..]` and `var T[..]` are borrowed views and copy only their pointer and length, never their elements. Internal pointers used for indexing and pointer arithmetic remain raw. The few scalar output parameters also remain raw pointers; pass writable addresses such as `@smallest` and never pass null unless the function documents it.
 
 ## Documentation
 

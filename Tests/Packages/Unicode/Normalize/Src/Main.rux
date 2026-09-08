@@ -4,7 +4,7 @@ import Unicode::{ DecomposeCanonical, DecomposeCompatibility, NormalizationVecto
 
 // The committed rows of the official NormalizationTest, each carrying five columns c1..c5 and the invariants the
 // standard states: c2 is the NFC of the first three columns, c3 their NFD, c4 the NFKC of all five and c5 their
-// NFKD. A single implementation mistake -- a blocked mark composed, an exclusion composed, Hangul off by one --
+// NFKD. A single implementation mistake — a blocked mark composed, an exclusion composed, Hangul off by one --
 // fails dozens of rows, and which rows fail says where to look.
 
 // The column at `column` of row `row`, as a slice into the element pool.

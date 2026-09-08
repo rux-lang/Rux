@@ -161,7 +161,7 @@ func Main() -> int {
     Assert(sink.flushes == 1, "passed through to the sink");
     Assert(sink.written == 16 && sinkStorage[0] == c8'a' && sinkStorage[15] == c8'b', "carrying every byte in order");
 
-    // A write larger than the buffer goes around it -- after what was gathered, so order holds.
+    // A write larger than the buffer goes around it — after what was gathered, so order holds.
     var taken: uint = 0;
     Assert(writer.Write(TextBytes("xy"), @taken).IsOk(), "a small write gathers");
     Assert(writer.Write(TextBytes("0123456789abcdefghijklmnopqrstuvwxyz"), @taken).IsOk(), "a huge one goes around");

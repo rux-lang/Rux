@@ -1,7 +1,7 @@
 // What every allocator in this package promises, written as a bound a generic can require.
 //
 // The contract is deliberately small: take a layout and give back storage, take it back, and grow or shrink a block
-// in place where that is possible. Everything else -- pooling, arenas, tracking -- is an implementation of these
+// in place where that is possible. Everything else — pooling, arenas, tracking — is an implementation of these
 // three, not an addition to them.
 //
 // Four promises hold for every implementation, and a caller may rely on them without knowing which allocator it has:
@@ -23,7 +23,7 @@ import Allocator::{ AllocError, Layout };
 
 /// The operations every allocator provides.
 ///
-/// Written as an interface so a generic can require it -- `func Build<A: Allocator>(allocator: &var A)` borrows the
+/// Written as an interface so a generic can require it — `func Build<A: Allocator>(allocator: &var A)` borrows the
 /// caller's allocator and resolves calls at each instantiation with nothing dispatched at run time.
 ///
 /// https://rux-lang.dev/docs/api/allocator/allocator
@@ -57,7 +57,7 @@ pub interface Allocator {
     /// Changes the size of a block, preserving as much of its contents as both layouts hold.
     ///
     /// `block` and `oldLayout` describe the existing allocation; `newLayout` is what is wanted. `result` receives
-    /// the address when this reports `None` -- which may or may not be the address it was given, so the caller must
+    /// the address when this reports `None` — which may or may not be the address it was given, so the caller must
     /// use what comes back.
     ///
     /// On success the first `min(old, new)` bytes are preserved and the original block is gone. On failure the

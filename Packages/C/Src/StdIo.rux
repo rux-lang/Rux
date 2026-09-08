@@ -14,7 +14,7 @@ import C::{ FILE, c_int, fpos_t, size_t };
 //     use it correctly. C11 removed it from the language; this package does not bring it back.
 //   - **`sprintf` and `scanf` write as much as the format says to.** Neither is told the size of what it is writing
 //     into, so a format built from anything the program did not write itself is an overrun. The bounded form
-//     `snprintf` exists in the standard, but not in the runtime this module binds on Windows -- see below.
+//     `snprintf` exists in the standard, but not in the runtime this module binds on Windows — see below.
 //   - **`tmpnam` names a file it does not create.** Anything may take the name between the call and the open, which
 //     is what `tmpfile` avoids by doing both at once.
 //
@@ -27,8 +27,8 @@ import C::{ FILE, c_int, fpos_t, size_t };
 //
 // On Windows this names the legacy `msvcrt.dll` rather than the Universal CRT the rest of the package binds against,
 // and that is a defect rather than a decision: the two are separate runtimes with separate state. `ucrtbase.dll` does
-// not export the formatted-output family at all -- `printf` and its relatives are header inlines over
-// `__stdio_common_*` entry points -- so moving these declarations there needs those entry points declared first,
+// not export the formatted-output family at all — `printf` and its relatives are header inlines over
+// `__stdio_common_*` entry points — so moving these declarations there needs those entry points declared first,
 // which is what the stdio task will do. Until then, do not read `errno` after a call made through this module: the
 // value belongs to the other runtime. See the note on `C::Errno`.
 when #target.os {

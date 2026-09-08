@@ -3,7 +3,7 @@
 //
 // The differential check is the valuable one. The tree parser and the streaming reader are two independent
 // implementations of the same grammar, written separately, and requiring them to agree on every document is a
-// far stronger statement than either passing its own tests -- a misreading would have to be made twice, the
+// far stronger statement than either passing its own tests — a misreading would have to be made twice, the
 // same way, to survive it.
 
 import Allocator::{ Allocator, SystemAllocator };
@@ -211,7 +211,7 @@ func Main() -> int {
     return 0;
 }
 
-// Parses, writes, parses again, and requires the two writings to agree -- then requires the streaming reader to
+// Parses, writes, parses again, and requires the two writings to agree — then requires the streaming reader to
 // see the same shape as the tree.
 func CheckRoundTrip(allocator: Allocator, text: char8[..], parsed: *var JsonParseOutcome,
                     wrote: *var JsonWriteError) {

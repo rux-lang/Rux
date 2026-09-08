@@ -69,7 +69,7 @@ func Main() -> int {
     Assert(comments.Next().kind == TomlTokenKind::Newline, "a comment runs to the end of its line");
     Assert(comments.Next().kind == TomlTokenKind::BareKey, "and the key after it survives");
 
-    // Bare keys admit letters, digits, underscores and hyphens -- and nothing else.
+    // Bare keys admit letters, digits, underscores and hyphens — and nothing else.
     Assert(FirstKind("key") == TomlTokenKind::BareKey, "a bare key");
     Assert(FirstKind("bare-key_2") == TomlTokenKind::BareKey, "hyphens and underscores are part of one");
     Assert(FirstKind("!") == TomlTokenKind::Error, "an exclamation mark begins nothing");

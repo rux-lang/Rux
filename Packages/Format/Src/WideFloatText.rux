@@ -6,7 +6,7 @@
 // design.
 //
 // What differs is that the digits come from exact integer arithmetic rather than from a scaled double, so they
-// are the shortest that read back as the same bits at every width -- and that the arithmetic needs an allocator,
+// are the shortest that read back as the same bits at every width — and that the arithmetic needs an allocator,
 // because the numbers it works on are as large as the exponent makes them.
 
 import Allocator::{ AllocError, Allocator, Layout };

@@ -3,7 +3,7 @@ import Format::{ Display, Format, FormatSpec, WriteAscii, WriteBytes, TextWriter
 import Text::{ StringView, TextError };
 
 // Placeholder filling: each `{}` takes the next argument in the order they are written, `{{` and `}}` are the two
-// ways to spell a literal brace, and the mismatched calls are the interesting ones -- extra arguments go unused, and
+// ways to spell a literal brace, and the mismatched calls are the interesting ones — extra arguments go unused, and
 // a placeholder with nothing left renders as nothing, so the mistake shows in the text rather than at the point of
 // printing. Std stays out of the dependencies and a failed check reports through the exit code.
 

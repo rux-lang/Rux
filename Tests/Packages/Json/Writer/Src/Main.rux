@@ -63,7 +63,7 @@ func Main() -> int {
     let expectCompact = View("{\"a\":[1,2],\"b\":{\"c\":true}}");
     Assert(compact.View().Equals(expectCompact), "and writes back byte for byte in the compact style");
 
-    // Pretty output round-trips to the same value, which is the property that matters -- the exact layout is a
+    // Pretty output round-trips to the same value, which is the property that matters — the exact layout is a
     // presentation choice and the equality of the values is not.
     var pretty = Written(allocator, document, JsonStyle::Pretty(), @wrote);
     Assert(wrote == JsonWriteError::None, "the pretty style writes");

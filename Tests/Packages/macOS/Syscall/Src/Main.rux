@@ -5,7 +5,7 @@ when #target.os == OperatingSystem::macOS {
 
     // Every call here goes through libSystem, which is the only interface Apple supports. The previous version of
     // this test drove the trap instruction directly with a call number, which is exactly what a Darwin binary must
-    // not do -- the numbers are private and the interface is not reachable from ordinary code on Apple Silicon.
+    // not do — the numbers are private and the interface is not reachable from ordinary code on Apple Silicon.
 
     func Main() -> int {
         if GetPid() <= 0 {

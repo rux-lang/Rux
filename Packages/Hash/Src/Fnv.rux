@@ -6,7 +6,7 @@
 // mixing that assumed sixteen.
 //
 // That simplicity is also its limit. FNV-1a has no key, its structure is public, and finding two inputs that collide
-// is a small computation -- so it must not key a table whose contents an adversary chooses. `SipHash` is the answer
+// is a small computation — so it must not key a table whose contents an adversary chooses. `SipHash` is the answer
 // there. For a compile-time constant, a short identifier, or a checksum over data nobody is attacking, FNV-1a is
 // smaller and faster than anything that would replace it.
 //
@@ -41,7 +41,7 @@ pub const FnvPrime64: uint64 = 0x100000001B3;
 
 /// FNV-1a over 32 bits, computed one byte at a time.
 ///
-/// Copy, and holding only the accumulator, so passing one by value takes a snapshot of the hash so far -- which is
+/// Copy, and holding only the accumulator, so passing one by value takes a snapshot of the hash so far — which is
 /// occasionally useful and never surprising, since there is nothing else in it.
 ///
 /// https://rux-lang.dev/docs/api/hash/fnv1a32
@@ -110,7 +110,7 @@ extend Fnv1a32 : Hasher {
     ///
     /// `self` is borrowed. The hasher stays usable: asking twice gives the same answer, and writing more continues
     /// from here. The upper 32 bits are always zero, which is what a 32-bit hash promoted to the contract looks
-    /// like -- use `Value` when the 32-bit answer is what is wanted.
+    /// like — use `Value` when the 32-bit answer is what is wanted.
     ///
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///

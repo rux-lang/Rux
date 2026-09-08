@@ -24,23 +24,13 @@ rux add Rux/FreeBSD
 
 The module names describe where each declaration comes from; they are not part of an import path.
 
-FreeBSD reports an error by setting the carry flag and leaving a *positive* errno in the result register, so a raw
-instruction result cannot be tested for sign. The assembly wrappers normalize that to a small negative number, which
-is Linux's convention, so everything above them reads the same on both systems and `IsError` and `Errno` are the same
-two functions.
+FreeBSD reports an error by setting the carry flag and leaving a *positive* errno in the result register, so a raw instruction result cannot be tested for sign. The assembly wrappers normalize that to a small negative number, which is Linux's convention, so everything above them reads the same on both systems and `IsError` and `Errno` are the same two functions.
 
-Nothing here is interchangeable with `Rux/Linux`, and the resemblance is the hazard. The clock identifiers differ —
-monotonic is 4 here and 1 there — the open flags are the BSD ones, `MADV_DONTNEED` does not discard where Linux's
-does, and only the errno numbers below thirty-five agree. A value taken from one package and passed to the other
-compiles and means something else.
+Nothing here is interchangeable with `Rux/Linux`, and the resemblance is the hazard. The clock identifiers differ — monotonic is 4 here and 1 there — the open flags are the BSD ones, `MADV_DONTNEED` does not discard where Linux's does, and only the errno numbers below thirty-five agree. A value taken from one package and passed to the other compiles and means something else.
 
 ## Values and pointers
 
-Kernel records such as `Timespec` are structural values and copy by value. Syscall wrappers deliberately retain raw
-pointers because the kernel consumes untyped integer addresses, buffers carry separate lengths, and optional outputs
-may be null. Pass addresses explicitly, for example `ClockGetTime(ClockMonotonic, @time)`, and uphold each function's
-safety contract. The package does not own raw addresses or descriptors; release them explicitly or use the
-higher-level `Rux/Memory` and `Rux/Io` packages.
+Kernel records such as `Timespec` are structural values and copy by value. Syscall wrappers deliberately retain raw pointers because the kernel consumes untyped integer addresses, buffers carry separate lengths, and optional outputs may be null. Pass addresses explicitly, for example `ClockGetTime(ClockMonotonic, @time)`, and uphold each function's safety contract. The package does not own raw addresses or descriptors; release them explicitly or use the higher-level `Rux/Memory` and `Rux/Io` packages.
 
 ## Platform
 
@@ -58,16 +48,9 @@ Higher-level packages such as [`Rux/Io`](../Io) and [`Rux/Memory`](../Memory) al
 
 ## AArch64 ABI
 
-The AArch64 wrappers follow the FreeBSD syscall convention: the call number
-is placed in `x8`, up to six wrapper arguments are shifted into `x0` through
-`x5`, and `svc #0` enters the kernel. A carry-set return is converted from a
-positive `errno` to the negative result used by the package API.
+The AArch64 wrappers follow the FreeBSD syscall convention: the call number is placed in `x8`, up to six wrapper arguments are shifted into `x0` through `x5`, and `svc #0` enters the kernel. A carry-set return is converted from a positive `errno` to the negative result used by the package API.
 
-Descriptor and clock identifiers are sign-extended before entering the generic
-`uint64` syscall interface. `Mmap` likewise preserves a signed descriptor while
-passing the FreeBSD 15.1 mapping constants and all six arguments directly. The
-same source keeps a separate set of x86-64 wrappers, which reach the kernel
-through `syscall` and normalize the carry flag the same way.
+Descriptor and clock identifiers are sign-extended before entering the generic `uint64` syscall interface. `Mmap` likewise preserves a signed descriptor while passing the FreeBSD 15.1 mapping constants and all six arguments directly. The same source keeps a separate set of x86-64 wrappers, which reach the kernel through `syscall` and normalize the carry flag the same way.
 
 ## Documentation
 

@@ -80,7 +80,7 @@ func FromHighWord(high: uint64) -> float64 {
 }
 
 // x with the low 32 bits of its significand cleared. What survives has at most 21 significant bits, so the product of
-// two such values is exact -- that is the whole reason the double-double steps below can split a number and multiply
+// two such values is exact — that is the whole reason the double-double steps below can split a number and multiply
 // the pieces without losing anything.
 func TruncLow(x: float64) -> float64 {
     return FromBits(FloatBits(x) & 0xFFFFFFFF00000000);

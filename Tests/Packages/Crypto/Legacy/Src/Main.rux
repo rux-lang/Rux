@@ -1,6 +1,6 @@
 
 // These exist to read what already exists, so what matters is that they agree with every other implementation
-// of them -- which the published vectors establish. Nothing here endorses using them.
+// of them — which the published vectors establish. Nothing here endorses using them.
 
 import Core::{ Assert };
 import Crypto::{ Equal, LegacyMd5, LegacyMd5Of, LegacySha1, LegacySha1Of };

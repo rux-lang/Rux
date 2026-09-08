@@ -165,8 +165,7 @@ Package READMEs identify these retained boundaries beside the APIs that expose t
 
 ### Intrinsic declarations
 
-An intrinsic declaration binds a source API to a compiler representation. It does not load a package or give its
-declaring package special privileges. Core supplies the standard declarations; another package can supply its own.
+An intrinsic declaration binds a source API to a compiler representation. It does not load a package or give its declaring package special privileges. Core supplies the standard declarations; another package can supply its own.
 
 ```rux
 pub intrinsic type int8;
@@ -177,22 +176,15 @@ extend int8 {
 }
 ```
 
-Scalar representation and arithmetic exist independently of these declarations. Associated constants are source
-members: `import Core::int8;` exposes Core's public constants, while merely depending on Core does not. Constants
-retain normal package visibility. Their initializers are checked in the declaring package, not the caller's scope.
+Scalar representation and arithmetic exist independently of these declarations. Associated constants are source members: `import Core::int8;` exposes Core's public constants, while merely depending on Core does not. Constants retain normal package visibility. Their initializers are checked in the declaring package, not the caller's scope.
 
-`intrinsic type` is reserved for implemented scalar types. Slices and ranges are native types, with no source
-declaration controlling their representation. An ordinary struct never acquires compiler-owned behavior from its name.
+`intrinsic type` is reserved for implemented scalar types. Slices and ranges are native types, with no source declaration controlling their representation. An ordinary struct never acquires compiler-owned behavior from its name.
 
-Extension blocks may contain ordinary typed constants as well as methods. The only compiler-supplied associated
-constant values are `intrinsic const Infinity: float32;` and `intrinsic const NaN: float32;`, and their `float64`
-counterparts, declared inside extensions of the corresponding floating-point type. Other limits and metadata belong
-in ordinary source initializers.
+Extension blocks may contain ordinary typed constants as well as methods. The only compiler-supplied associated constant values are `intrinsic const Infinity: float32;` and `intrinsic const NaN: float32;`, and their `float64` counterparts, declared inside extensions of the corresponding floating-point type. Other limits and metadata belong in ordinary source initializers.
 
 ### Writable sequence views
 
-`T[..]` is a read-only slice and `var T[..]` is a writable slice. Both contain a data pointer and an element count.
-The storage must outlive the view. Copying a view copies its descriptor, not its elements.
+`T[..]` is a read-only slice and `var T[..]` is a writable slice. Both contain a data pointer and an element count. The storage must outlive the view. Copying a view copies its descriptor, not its elements.
 
 ```rux
 var values: int[3] = [1, 2, 3];
@@ -202,13 +194,9 @@ let shared: int[..] = writable;
 let empty: var int[..] = [];
 ```
 
-Writability belongs to the view: a `let` binding can write through a writable view, while a `var` binding of a
-read-only view cannot write its elements. Writable slices implicitly weaken to read-only slices; the reverse is
-rejected. Array views inherit the writability of the array place, and sub-slices preserve their parent's writability.
+Writability belongs to the view: a `let` binding can write through a writable view, while a `var` binding of a read-only view cannot write its elements. Writable slices implicitly weaken to read-only slices; the reverse is rejected. Array views inherit the writability of the array place, and sub-slices preserve their parent's writability.
 
-A pointer can form a slice with `p[..n]`, `p[a..b]`, or an inclusive end such as `p[..=n]`. Pointer views inherit
-pointee writability. A pointer has no stored length, so `p[..]` and `p[a..]` are rejected. Slice indexing and iteration
-use element counts, including when elements occupy more than one byte. Empty slice literals have null data.
+A pointer can form a slice with `p[..n]`, `p[a..b]`, or an inclusive end such as `p[..=n]`. Pointer views inherit pointee writability. A pointer has no stored length, so `p[..]` and `p[a..]` are rejected. Slice indexing and iteration use element counts, including when elements occupy more than one byte. Empty slice literals have null data.
 
 ### Literal encodings
 
@@ -221,15 +209,9 @@ c16"Hello"    char16[..]   UTF-16
 c32"Hello"    char32[..]   UTF-32
 ```
 
-Each descriptor occupies sixteen bytes, aligned to eight, with `data` at offset zero and `length` at offset eight.
-Slices are passed by address on every supported ABI. Literal storage includes a trailing NUL code unit; its length
-excludes that terminator. External callees taking a raw pointer receive `"literal".data` explicitly.
+Each descriptor occupies sixteen bytes, aligned to eight, with `data` at offset zero and `length` at offset eight. Slices are passed by address on every supported ABI. Literal storage includes a trailing NUL code unit; its length excludes that terminator. External callees taking a raw pointer receive `"literal".data` explicitly.
 
-Lengths and indexing count code units. A supplementary Unicode scalar occupies four UTF-8 units, two UTF-16 units,
-or one UTF-32 unit. Slicing and iteration operate on those units, so a sub-slice can split an encoded scalar.
-Use the Text and Unicode packages when an operation requires validated text, scalar iteration, or grapheme boundaries.
-An arbitrary character slice does not promise valid Unicode. Literal bytes are read-only and cannot become a
-writable character slice.
+Lengths and indexing count code units. A supplementary Unicode scalar occupies four UTF-8 units, two UTF-16 units, or one UTF-32 unit. Slicing and iteration operate on those units, so a sub-slice can split an encoded scalar. Use the Text and Unicode packages when an operation requires validated text, scalar iteration, or grapheme boundaries. An arbitrary character slice does not promise valid Unicode. Literal bytes are read-only and cannot become a writable character slice.
 
 ```rux
 func First(text: char8[..]) -> char8 {
@@ -254,11 +236,9 @@ Range expressions and annotations use the same punctuation family. Bounds in a t
 | `..=4` | `..=int` | `.end` |
 | `..` | `..` | none |
 
-Range members are compiler-owned and need no import. Inclusive ranges include their final bound; ordinary
-two-sided ranges exclude it. The full range selects an entire array or slice. A pointer requires an explicit end.
+Range members are compiler-owned and need no import. Inclusive ranges include their final bound; ordinary two-sided ranges exclude it. The full range selects an entire array or slice. A pointer requires an explicit end.
 
-Concrete extensions such as `extend int[..]` and `extend char8[..]` have separate method sets. Generic slice
-extensions such as `extend T[..]` are rejected; generic reusable algorithms remain ordinary functions.
+Concrete extensions such as `extend int[..]` and `extend char8[..]` have separate method sets. Generic slice extensions such as `extend T[..]` are rejected; generic reusable algorithms remain ordinary functions.
 
 ## Copy and Move
 

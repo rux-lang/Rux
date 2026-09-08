@@ -35,20 +35,13 @@ func Main() -> int {
 }
 ```
 
-Without the `int8` import, `int8` still names the scalar type, but `int8::Min`
-is unavailable. Loading a dependency that imports it does not import its APIs
-into the caller. The same rule applies between source files.
+Without the `int8` import, `int8` still names the scalar type, but `int8::Min` is unavailable. Loading a dependency that imports it does not import its APIs into the caller. The same rule applies between source files.
 
-Core defines integer and character limits, width metadata, and finite floating
-constants using ordinary constant expressions. Native integer metadata uses
-`sizeof`, so it follows the compilation target. Only floating-point `Infinity`
-and `NaN` use bodyless `intrinsic const` declarations inside extensions.
+Core defines integer and character limits, width metadata, and finite floating constants using ordinary constant expressions. Native integer metadata uses `sizeof`, so it follows the compilation target. Only floating-point `Infinity` and `NaN` use bodyless `intrinsic const` declarations inside extensions.
 
 ## Sequence views and ranges
 
-The language supplies read-only `T[..]` and writable `var T[..]` views. Neither annotation needs a Core import.
-Their `.data` and `.length` fields are compiler-owned. A view owns no storage, and copying it copies two words.
-Its backing storage must remain alive while it is used.
+The language supplies read-only `T[..]` and writable `var T[..]` views. Neither annotation needs a Core import. Their `.data` and `.length` fields are compiler-owned. A view owns no storage, and copying it copies two words. Its backing storage must remain alive while it is used.
 
 ```rux
 func Sum(values: int[..]) -> int {
@@ -69,22 +62,13 @@ func Main() -> int {
 }
 ```
 
-A writable view weakens to a read-only one implicitly; a read-only view cannot be strengthened. Binding a view with
-`let` does not freeze its pointee. `[]` constructs an empty view when a slice type is expected.
-Use `pointer[..length]` to view raw storage, and `view[start..end]` to select a subview. Pointer ranges require an end
-because pointers carry no length. These operations use element counts rather than byte counts.
+A writable view weakens to a read-only one implicitly; a read-only view cannot be strengthened. Binding a view with `let` does not freeze its pointee. `[]` constructs an empty view when a slice type is expected. Use `pointer[..length]` to view raw storage, and `view[start..end]` to select a subview. Pointer ranges require an end because pointers carry no length. These operations use element counts rather than byte counts.
 
-Ranges are written `int..int`, `int..=int`, `int..`, `..int`, `..=int`, and `..` in annotations. Their `.start` and
-`.end` fields exist only when the corresponding bound exists, with no declaration or import required.
+Ranges are written `int..int`, `int..=int`, `int..`, `..int`, `..=int`, and `..` in annotations. Their `.start` and `.end` fields exist only when the corresponding bound exists, with no declaration or import required.
 
-Literal text is `char8[..]`, `char16[..]`, or `char32[..]`; the prefixes are `c8`, `c16`, and `c32`, and an unprefixed
-literal uses UTF-8. The descriptor length counts code units, excluding the trailing NUL in literal storage.
-Text can be passed directly to a function taking the corresponding read-only character slice. Slicing can split an
-encoded scalar, so validated-text operations belong in Text and Unicode. A literal cannot become a writable view.
+Literal text is `char8[..]`, `char16[..]`, or `char32[..]`; the prefixes are `c8`, `c16`, and `c32`, and an unprefixed literal uses UTF-8. The descriptor length counts code units, excluding the trailing NUL in literal storage. Text can be passed directly to a function taking the corresponding read-only character slice. Slicing can split an encoded scalar, so validated-text operations belong in Text and Unicode. A literal cannot become a writable view.
 
-Core diagnostic messages and compile-time context text use `char8[..]`. External functions taking raw pointers
-receive `"literal".data`. Concrete slice extensions can add methods for one element type; reusable generic
-algorithms use ordinary generic functions.
+Core diagnostic messages and compile-time context text use `char8[..]`. External functions taking raw pointers receive `"literal".data`. Concrete slice extensions can add methods for one element type; reusable generic algorithms use ordinary generic functions.
 
 ## Ownership and borrowing
 

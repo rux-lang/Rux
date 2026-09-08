@@ -5,7 +5,7 @@
 // a value here carries a `Date` and a `TimeOfDay` from `Time` rather than the text it was written with.
 //
 // A table also remembers how it came to exist. TOML forbids defining the same table twice, and forbids adding to
-// one that was written inline or reached through a dotted key -- three different mistakes with three different
+// one that was written inline or reached through a dotted key — three different mistakes with three different
 // reasons. The flags below are what let the parser say which one happened instead of reporting a duplicate and
 // leaving the writer to work out why.
 
@@ -77,7 +77,7 @@ pub struct TomlValue {
     elements: Vector<TomlValue>;
     /// The entries of a `Table`, in the order they were seen.
     entries: Vector<TomlEntry>;
-    /// Whether a table was written out -- as a header or an inline table -- rather than merely implied by a
+    /// Whether a table was written out — as a header or an inline table — rather than merely implied by a
     /// longer key passing through it.
     defined: bool;
     /// Whether a table was written inline, which closes it to any later addition.
@@ -160,7 +160,7 @@ extend TomlValue {
         return <-held;
     }
 
-    /// A float value, which TOML -- unlike JSON -- allows to be an infinity or a NaN.
+    /// A float value, which TOML — unlike JSON — allows to be an infinity or a NaN.
     ///
     /// https://rux-lang.dev/docs/api/toml/value/float
     pub func Float(allocator: Allocator, value: float64) -> TomlValue {
@@ -232,7 +232,7 @@ extend TomlValue {
         return self.kind;
     }
 
-    /// The boolean payload, or `false` when this is not a boolean -- which `Kind` distinguishes from a genuine
+    /// The boolean payload, or `false` when this is not a boolean — which `Kind` distinguishes from a genuine
     /// `false`.
     ///
     /// https://rux-lang.dev/docs/api/toml/value/as-boolean
@@ -332,7 +332,7 @@ extend TomlValue {
     /// Appends an entry to a table, copying the key and taking ownership of the value.
     ///
     /// The order entries are added in is the order they are kept and written, which is what makes a document
-    /// round-trip recognisably. Nothing here rejects a repeated key -- that is the parser's business, where the
+    /// round-trip recognisably. Nothing here rejects a repeated key — that is the parser's business, where the
     /// three different ways of repeating one can be told apart.
     ///
     /// https://rux-lang.dev/docs/api/toml/value/insert

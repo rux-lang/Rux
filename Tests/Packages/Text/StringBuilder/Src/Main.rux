@@ -33,7 +33,7 @@ func Main() -> int {
 
     // What is not a whole character is refused, which is what keeps the invariant.
     Assert(builder.AppendAscii(0xC3u8 as char8) == TextError::InvalidUtf8, "a lone byte above ASCII is refused");
-    // A surrogate half cannot be written as a literal -- the compiler refuses the cast -- so it is reached the way
+    // A surrogate half cannot be written as a literal — the compiler refuses the cast — so it is reached the way
     // a program would reach one by accident, through a value that is only known at run time.
     var surrogate: uint32 = 0xD000;
     surrogate = surrogate + 0x0800;

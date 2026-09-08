@@ -5,7 +5,7 @@
 //
 // **Zero length is always legal, and null is legal with it.** A length of zero does nothing at all, and the pointers
 // are not examined, so `Copy(null, null, 0)` is defined and does nothing. That is deliberately not C's rule, where
-// passing null to `memcpy` is undefined even for a zero length -- a rule that turns an ordinary empty case into a
+// passing null to `memcpy` is undefined even for a zero length — a rule that turns an ordinary empty case into a
 // trap and forces every caller to guard. A non-zero length requires real, usable storage.
 //
 // Overlap is where `Copy` and `Move` part company. `Copy` may be read as copying byte zero first and byte `length -
@@ -58,7 +58,7 @@ pub func Copy(destination: *var opaque, source: *opaque, length: uint) {
 /// before the move began. Sliding a run forward within one buffer therefore works, which is what an insertion into
 /// the middle of an array needs.
 ///
-/// Cannot fail. Runs in time proportional to `length` and allocates nothing -- the temporary is notional, and the
+/// Cannot fail. Runs in time proportional to `length` and allocates nothing — the temporary is notional, and the
 /// direction of the copy is what actually makes it right.
 ///
 /// # Safety
@@ -214,7 +214,7 @@ pub func Equal(left: *opaque, right: *opaque, length: uint) -> bool {
 /// The offset of the first byte equal to `value`, or `length` when there is none.
 ///
 /// `haystack` is borrowed and read. A `length` of zero reports zero and accepts a null pointer, which is also what a
-/// search that found nothing reports -- an empty block contains nothing to find either way.
+/// search that found nothing reports — an empty block contains nothing to find either way.
 ///
 /// Cannot fail. Runs in time proportional to the offset returned and allocates nothing.
 ///

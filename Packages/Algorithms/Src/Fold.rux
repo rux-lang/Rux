@@ -10,7 +10,7 @@
 // caller nothing and keeps the operation honest about what it does.
 //
 // Overflow is the element type's business. `Sum` adds with `+`, so a sum that does not fit behaves exactly as `+`
-// behaves on that type -- these do not check, and a caller who needs checking folds `AddChecked` instead. That is
+// behaves on that type — these do not check, and a caller who needs checking folds `AddChecked` instead. That is
 // the fold's whole reason for being general.
 //
 // Nothing here allocates.
@@ -81,7 +81,7 @@ pub func Sum<T>(items: T[..], initial: T) -> T {
 
 /// The product of `initial` and every element of `items`.
 ///
-/// `items` is borrowed and read; `initial` is read by value and is what an empty sequence gives back -- which is why
+/// `items` is borrowed and read; `initial` is read by value and is what an empty sequence gives back — which is why
 /// it must be one rather than zero for the answer to mean anything.
 ///
 /// Requires `*` on the element type. Overflow behaves exactly as `*` does on that type.
@@ -104,7 +104,7 @@ pub func Product<T>(items: T[..], initial: T) -> T {
 /// `source` is borrowed and read; `destination` is borrowed mutably and written; `transform` is called once per
 /// element. The two sequences may have different element types, and may be the same storage when they do not.
 ///
-/// Reports false, having written nothing, when the two lengths differ -- for the same reason `CopyTo` does: a
+/// Reports false, having written nothing, when the two lengths differ — for the same reason `CopyTo` does: a
 /// partial result is worse than a refused one when the caller cannot tell how far it got.
 ///
 /// Runs in time proportional to the length and allocates nothing beyond whatever `transform` does.

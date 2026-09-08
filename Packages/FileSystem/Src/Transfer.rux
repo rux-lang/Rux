@@ -49,7 +49,7 @@ func ReleaseNativePathPair(allocator: Allocator, first: Path, second: Path, firs
 /// Renames `from` to `to`, moving it between directories if the paths differ there.
 ///
 /// An existing `to` is replaced, atomically within one volume: a reader sees the old file or the new, never a
-/// gap. Across volumes Windows copies and deletes instead -- not atomic -- and the Unix systems refuse.
+/// gap. Across volumes Windows copies and deletes instead — not atomic — and the Unix systems refuse.
 ///
 /// https://rux-lang.dev/docs/api/filesystem/rename
 pub func Rename(allocator: Allocator, from: Path, to: Path) -> IoError {
@@ -75,7 +75,7 @@ pub func Rename(allocator: Allocator, from: Path, to: Path) -> IoError {
 
 /// Creates `link` as a hard link: a second name for the file `existing` names.
 ///
-/// The two names are then equals -- neither is "the original" -- and the content lives until the last name is
+/// The two names are then equals — neither is "the original" — and the content lives until the last name is
 /// deleted. A symbolic link at `existing` is not followed: the link is made to the name given. Directories
 /// cannot be hard-linked on any supported system.
 ///
@@ -137,7 +137,7 @@ pub func CreateSymbolicLink(allocator: Allocator, target: Path, link: Path, targ
 /// Copies the file `from` names to `to`, following a symbolic link to the bytes it points at.
 ///
 /// An existing `to` is replaced. The copy is the bytes and nothing else: permissions, timestamps and the rest of
-/// the metadata are the destination's own, fresh -- carrying them is a policy the metadata work owns.
+/// the metadata are the destination's own, fresh — carrying them is a policy the metadata work owns.
 ///
 /// https://rux-lang.dev/docs/api/filesystem/copy-file
 pub func CopyFile(allocator: Allocator, from: Path, to: Path) -> IoError {

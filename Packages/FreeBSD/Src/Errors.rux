@@ -2,7 +2,7 @@
 //
 // FreeBSD does not report an error the way Linux does. The kernel sets the carry flag and leaves a *positive* errno
 // in the result register, so the raw instruction result cannot be tested for sign. The assembly wrappers in
-// `Syscall` normalize that to Linux's convention -- a small negative number -- so everything above them reads the
+// `Syscall` normalize that to Linux's convention — a small negative number — so everything above them reads the
 // same on both systems, and `IsError` and `Errno` are then the same two functions.
 //
 // The names keep the system's own spelling, because `EINVAL` is what a man page names. The values below are

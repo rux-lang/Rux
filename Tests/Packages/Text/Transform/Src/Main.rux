@@ -40,7 +40,7 @@ func Main() -> int {
     let degenerateView = degenerate.View();
     Assert(error == TextError::None && degenerateView.Equals(stillSame), "and the empty needle matches nothing");
 
-    // Case, ASCII only: letters shift, and everything else -- digits, punctuation, multi-byte characters -- passes
+    // Case, ASCII only: letters shift, and everything else — digits, punctuation, multi-byte characters — passes
     // through untouched, which is what keeps the result the same length and still text.
     let upper = ToAsciiUpper(allocator, View("Hello, World 123 é!"), @error);
     let allUpper = View("HELLO, WORLD 123 é!");

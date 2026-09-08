@@ -5,7 +5,7 @@ import Core::{ Assert, Unit };
 // The back end sizes a move from the type, and a size of zero used to fall through to the same eight-byte default a
 // width it could not work out gets. Those are different answers to different questions: an unknown width has to
 // guess, and a known width of zero has nothing to do. Storing a word for a field that occupies none wrote over
-// whatever came after it -- and a zero-sized field is almost always followed by something, since it is put there to
+// whatever came after it — and a zero-sized field is almost always followed by something, since it is put there to
 // take up no room beside real data.
 //
 // A tree whose nodes carry no value is where this bites: the node's value sits between its key and its links, so

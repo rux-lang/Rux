@@ -105,7 +105,7 @@ func Main() -> int {
     //
     // `Filled` copies its value into every position, then destroys the source parameter when the call ends.
     // rather than copied and destroyed, so the count is the length exactly. An element type that owns something
-    // could not be filled this way at all -- the copies would each claim what one of them owns -- which is why the
+    // could not be filled this way at all — the copies would each claim what one of them owns — which is why the
     // element here owns nothing but a pointer to the counter.
     var destroyed: int32 = 0;
     Assert(FillAndDrop(allocator, @destroyed, 5) == CollectionError::None, "an array of tracked elements is made");

@@ -1,7 +1,7 @@
 // Reading and writing through a file descriptor, and the three descriptors a process starts with.
 //
 // Each wrapper returns the normalized raw result: a byte count, or a small negative error number. A short count is
-// not an error and not an end of file -- only a zero-length read means the source has ended.
+// not an error and not an end of file — only a zero-length read means the source has ended.
 //
 // The three descriptor constants are annotated `int32` rather than `FileDescriptor`, because a `const` cannot name a
 // type alias declared in another file of the package.
@@ -171,7 +171,7 @@ pub func Lseek(fd: FileDescriptor, offset: FileOffset, whence: int32) -> int64 {
 
 /// Writes the current working directory's absolute path into `buffer`, NUL-terminated.
 ///
-/// Returns zero, or a negative error number -- unlike Linux's, which returns the length. `ERANGE` where the
+/// Returns zero, or a negative error number — unlike Linux's, which returns the length. `ERANGE` where the
 /// buffer is too small for the answer.
 ///
 /// # Safety
@@ -236,7 +236,7 @@ pub func FchmodAt(directoryFd: FileDescriptor, path: *char8, mode: FileMode, fla
 
 /// Sets the access and modification times of the file `path` names.
 ///
-/// `times` is borrowed and holds two `timespec` values -- access first, then modification -- each a whole-second
+/// `times` is borrowed and holds two `timespec` values — access first, then modification — each a whole-second
 /// count and a nanosecond fraction, both 8 bytes. A null `times` sets both to now. `flags` may carry
 /// `SymlinkNoFollow`. Returns zero, or a negative error number.
 ///

@@ -193,7 +193,7 @@ extern {
 // `fstatat` is the one entry point whose symbol depends on the architecture. Darwin grew a 64-bit `ino_t` after
 // x86-64 shipped, so on that architecture the modern layout lives behind a decorated symbol and the plain name
 // still answers with the older, narrower `struct stat`; Apple Silicon, which has never had the old layout, exports
-// only the plain name. Binding the wrong one does not fail to link -- it fills a differently shaped buffer -- so
+// only the plain name. Binding the wrong one does not fail to link — it fills a differently shaped buffer — so
 // the architecture picks the symbol here, once, and everything above reads one layout.
 when #target.arch {
     .X86_64 => {

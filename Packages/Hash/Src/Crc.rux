@@ -1,19 +1,19 @@
-// CRC-32, the checksum that answers "did these bytes arrive intact?" -- and its Castagnoli variant, which answers it
+// CRC-32, the checksum that answers "did these bytes arrive intact?" — and its Castagnoli variant, which answers it
 // better and is what modern formats and hardware use.
 //
 // A cyclic redundancy check is division: treat the message as a polynomial over GF(2), divide by a fixed generator,
-// and keep the remainder. What that buys over a sum is a guarantee rather than a hope -- a 32-bit CRC detects every
+// and keep the remainder. What that buys over a sum is a guarantee rather than a hope — a 32-bit CRC detects every
 // burst error up to 32 bits long, every single-bit and double-bit error, and every error of odd weight, which no
 // general-purpose hash promises about anything.
 //
 // Both forms here are the reflected, table-driven ones every implementation uses: bits enter least significant end
 // first, the state starts at all ones, and the answer is the state complemented. Those three conventions are not
-// arbitrary -- the initial ones make leading zero bytes change the answer, and the final complement makes trailing
+// arbitrary — the initial ones make leading zero bytes change the answer, and the final complement makes trailing
 // ones do the same, so a message padded at either end is not mistaken for the message itself.
 //
 // The two differ only in the generator. CRC-32 uses the IEEE 802.3 polynomial that gzip, PNG and zip all use.
 // CRC-32C uses Castagnoli's, which detects more of the double-bit errors that matter at the lengths storage systems
-// care about, and which x86-64 and AArch64 both implement in hardware -- iSCSI, ext4, Btrfs and SCTP all chose it.
+// care about, and which x86-64 and AArch64 both implement in hardware — iSCSI, ext4, Btrfs and SCTP all chose it.
 // This implementation is the table, not the instruction: correct everywhere, and about a byte per cycle.
 //
 // A CRC is a checksum, not a hash and emphatically not a digest. It detects accident, never intent: given any

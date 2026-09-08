@@ -2,8 +2,8 @@
 // The text form, parsed strictly and written canonically.
 //
 // RFC 9562 defines exactly one textual representation: thirty-two hexadecimal digits in five hyphen-separated
-// groups of 8-4-4-4-12, optionally prefixed by `urn:uuid:`. Everything else in circulation -- the brace-wrapped
-// form Windows tools print, the hyphen-free form some databases store, upper case mixed with lower -- is
+// groups of 8-4-4-4-12, optionally prefixed by `urn:uuid:`. Everything else in circulation — the brace-wrapped
+// form Windows tools print, the hyphen-free form some databases store, upper case mixed with lower — is
 // something a program chose to accept, not something the standard blesses.
 //
 // This parses strictly on purpose. A lenient parser is pleasant right up to the moment two systems disagree
@@ -60,7 +60,7 @@ func IsHyphenPosition(index: uint) -> bool {
 /// Reads a UUID from its canonical or URN text form.
 ///
 /// Both cases are accepted; nothing else is. `error` says why a string was refused, and the returned value is
-/// nil in that case rather than partially filled -- a half-parsed identifier is worse than none.
+/// nil in that case rather than partially filled — a half-parsed identifier is worse than none.
 ///
 /// https://rux-lang.dev/docs/api/uuid/parse
 pub func Parse(text: char8[..], error: *var UuidParseError) -> Uuid {
@@ -68,7 +68,7 @@ pub func Parse(text: char8[..], error: *var UuidParseError) -> Uuid {
     var start: uint = 0;
     if text.length == UuidUrnLength {
         // The prefix is compared case-insensitively, since RFC 8141 says a URN scheme name is not case
-        // sensitive -- which is a different rule from the digits, and both are the standard's.
+        // sensitive — which is a different rule from the digits, and both are the standard's.
         let prefix = "urn:uuid:";
         var index: uint = 0;
         while index < 9u {
@@ -128,7 +128,7 @@ pub func Parse(text: char8[..], error: *var UuidParseError) -> Uuid {
 /// Writes the canonical text form into `into`, in lower case.
 ///
 /// `into` must be at least thirty-six bytes. Lower case because RFC 9562 says so, and because a canonical form
-/// that varies by case is not canonical -- two systems comparing text would disagree about equal UUIDs.
+/// that varies by case is not canonical — two systems comparing text would disagree about equal UUIDs.
 ///
 /// https://rux-lang.dev/docs/api/uuid/format
 pub func Format(value: &Uuid, into: var char8[..]) {

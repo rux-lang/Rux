@@ -41,7 +41,7 @@ func Main() -> int {
         probe = probe + 1;
     }
 
-    // Base two, which is exact for integer arguments -- the reason it exists rather than being exp(x * ln 2),
+    // Base two, which is exact for integer arguments — the reason it exists rather than being exp(x * ln 2),
     // since ln 2 is not representable and that product would round before the exponential ever ran.
     var power: int64 = -1000;
     while power <= 1000i64 {
@@ -55,7 +55,7 @@ func Main() -> int {
     Assert(IsNan(Exp2(notANumber)), "a NaN stays a NaN here too");
 
     // expm1, and the precision it exists to keep. For a tiny argument exp(x) is 1 to every bit the type has, so
-    // exp(x) - 1 is exactly zero while the true answer is x -- a total loss, not a rounding.
+    // exp(x) - 1 is exactly zero while the true answer is x — a total loss, not a rounding.
     Assert(Expm1(0.0) == 0.0 && !SignBit(Expm1(0.0)), "expm1 of zero is zero");
     Assert(SignBit(Expm1(-0.0)), "and of a negative zero keeps the sign");
     let tiny = ScaleByPowerOfTwo(1.0, -60i64);

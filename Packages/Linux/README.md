@@ -24,26 +24,15 @@ rux add Rux/Linux
 
 The module names describe where each declaration comes from; they are not part of an import path.
 
-There is no `errno` here. The kernel returns the error in the result register as a small negative number, and libc is
-what turns that into a positive `errno` and a `-1` return. This package calls the kernel directly, so a caller tests a
-raw result with `IsError` and reads the number with `Errno`. Only `-4095` through `-1` is an error, which is what
-makes `Mmap` workable: a mapping address may legitimately have its top bit set.
+There is no `errno` here. The kernel returns the error in the result register as a small negative number, and libc is what turns that into a positive `errno` and a `-1` return. This package calls the kernel directly, so a caller tests a raw result with `IsError` and reads the number with `Errno`. Only `-4095` through `-1` is an error, which is what makes `Mmap` workable: a mapping address may legitimately have its top bit set.
 
-Only calls both architectures have are wrapped. AArch64 came after the directory-relative interface and never got
-`open`, `stat`, `unlink`, `mkdir`, `rename`, `dup2` or `pipe`, so this package offers the `*at` forms alone and
-`AtFdCwd` is what makes an ordinary path work through them. One wrapper is then right on both.
+Only calls both architectures have are wrapped. AArch64 came after the directory-relative interface and never got `open`, `stat`, `unlink`, `mkdir`, `rename`, `dup2` or `pipe`, so this package offers the `*at` forms alone and `AtFdCwd` is what makes an ordinary path work through them. One wrapper is then right on both.
 
-The errno numbers and the `RTLD_*` flags keep the kernel's own spelling, because `EINVAL` is what a man page names
-and what a reader porting code will look for. The rest of the constants use Rux names, which is what they were
-published under.
+The errno numbers and the `RTLD_*` flags keep the kernel's own spelling, because `EINVAL` is what a man page names and what a reader porting code will look for. The rest of the constants use Rux names, which is what they were published under.
 
 ## Values and pointers
 
-Kernel records such as `Timespec` are structural values and copy by value. Syscall wrappers deliberately retain raw
-pointers: the kernel receives untyped integer addresses, buffers carry separate byte counts, and optional outputs may
-be null. Callers must therefore pass explicit addresses such as `ClockGetTime(ClockMonotonic, @time)` and uphold each
-function's safety contract. No wrapper owns an address or descriptor; release mappings and close descriptors
-explicitly, or prefer the higher-level `Rux/Memory` and `Rux/Io` packages.
+Kernel records such as `Timespec` are structural values and copy by value. Syscall wrappers deliberately retain raw pointers: the kernel receives untyped integer addresses, buffers carry separate byte counts, and optional outputs may be null. Callers must therefore pass explicit addresses such as `ClockGetTime(ClockMonotonic, @time)` and uphold each function's safety contract. No wrapper owns an address or descriptor; release mappings and close descriptors explicitly, or prefer the higher-level `Rux/Memory` and `Rux/Io` packages.
 
 ## Platform
 

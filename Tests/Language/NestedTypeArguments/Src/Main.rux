@@ -3,7 +3,7 @@ import Core::Assert;
 // A type argument that is itself generic ends two argument lists at once, and
 // the lexer hands that over as a single `>>`. Reading it as a right shift left
 // `Depth<Box<int32>>(slice)` rejected while `Depth<Box<int32> >(slice)`
-// compiled -- the same call, one spelling accepted and the other not. Both
+// compiled — the same call, one spelling accepted and the other not. Both
 // spellings work now, and a `>>` that really is a shift still is one.
 
 struct Box<T> {

@@ -15,7 +15,7 @@
 // between the sequence and the scratch so that nothing is copied merely to move it back. An odd number of merge
 // passes ends with the answer in the scratch, and only then is it copied home.
 //
-// Comparisons are O(n log n) for every input -- there is no bad case here at all, unlike a quicksort -- and the
+// Comparisons are O(n log n) for every input — there is no bad case here at all, unlike a quicksort — and the
 // movement is the same. What it costs over `Sort` is the storage and about a constant factor.
 
 import Core::{ Ordering };
@@ -45,7 +45,7 @@ pub func RequiredScratch(length: uint) -> uint {
 ///
 /// Requires `<` on the element type, as a strict weak ordering.
 ///
-/// Makes O(n log n) comparisons and moves for every input -- there is no bad case -- and allocates nothing.
+/// Makes O(n log n) comparisons and moves for every input — there is no bad case — and allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/stable-sort
 pub func StableSort<T>(items: var T[..], scratch: var T[..]) -> bool {

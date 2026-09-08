@@ -27,7 +27,7 @@ func TwoDigits(text: char8[..], at: uint, value: *var uint32) -> bool {
 ///
 /// Strict: four year digits, the dashes and colons where the shape puts them, one to nine fraction digits when the
 /// point appears, and nothing after the offset. `T` may be lower case or a space, and `Z` lower case, which is as
-/// far as the RFC's own liberality goes. Second 60 folds to the last nanosecond of 59 -- the policy the module
+/// far as the RFC's own liberality goes. Second 60 folds to the last nanosecond of 59 — the policy the module
 /// header states.
 ///
 /// https://rux-lang.dev/docs/api/time/parse-rfc3339

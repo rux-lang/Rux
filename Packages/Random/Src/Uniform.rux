@@ -2,7 +2,7 @@
 //
 // `NextUint64() % bound` is the method everyone reaches for and it is not uniform unless `bound` divides 2^64.
 // With a bound of three, the words 0, 1, 2 map to 0, 1, 2 and so on, but the final partial block leaves one or
-// two extra chances at the low residues -- a bias of about `bound / 2^64`, invisible for small bounds and
+// two extra chances at the low residues — a bias of about `bound / 2^64`, invisible for small bounds and
 // glaring for bounds near the width. `(NextFloat64() * bound) as uint64` is worse: it rounds, so it is biased
 // even for bounds that divide evenly, and it can return `bound` itself at the top.
 //
@@ -56,8 +56,8 @@ pub func UniformInRange<G: RandomGenerator>(generator: &var G, low: uint64, high
 
 /// A uniform signed value in `[low, high]`, both ends included.
 ///
-/// The span is computed in unsigned arithmetic, so a range crossing zero -- or spanning the whole width, where
-/// the difference of the ends overflows a signed type -- is ordinary rather than a special case.
+/// The span is computed in unsigned arithmetic, so a range crossing zero — or spanning the whole width, where
+/// the difference of the ends overflows a signed type — is ordinary rather than a special case.
 ///
 /// https://rux-lang.dev/docs/api/random/uniform-in-signed-range
 pub func UniformInSignedRange<G: RandomGenerator>(generator: &var G, low: int64, high: int64) -> int64 {
@@ -78,7 +78,7 @@ pub func UniformFloatInRange<G: RandomGenerator>(generator: &var G, low: float64
     let unit = NextFloat64<G>(generator);
     let span = high - low;
     if IsInfinite(span) {
-        // The span overflowed, so the interval is scaled in halves and recombined -- which keeps every value
+        // The span overflowed, so the interval is scaled in halves and recombined — which keeps every value
         // reachable where `low + unit * span` would have produced a NaN.
         return low * (1.0 - unit) + high * unit;
     }

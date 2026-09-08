@@ -1,7 +1,7 @@
 import Core::{ Assert, Ordering };
 import Time::{ Duration, Timestamp };
 
-// A wall clock cannot be tested for what it says -- the machine's clock is whatever it is -- so what is tested is
+// A wall clock cannot be tested for what it says — the machine's clock is whatever it is — so what is tested is
 // the arithmetic around it and the one claim that survives any clock setting: now is after 2020 and before 2100,
 // or the machine is so wrong that no test suite result means anything.
 
@@ -38,7 +38,7 @@ func Main() -> int {
     Assert(now.Plus(Duration::FromSeconds(9223372036854775807i64)).IsNone(), "and the far edge refuses");
 
     // A second reading is close to the first: within a minute, or the clock jumped mid-test, which is exactly the
-    // kind of claim a wall clock is allowed to break -- so the bound is generous rather than tight.
+    // kind of claim a wall clock is allowed to break — so the bound is generous rather than tight.
     let later = Timestamp::Now();
     let gap = later.Since(now).ValueOr(Duration::FromSeconds(-999i64));
     Assert(gap.Compare(Duration::FromSeconds(60i64)) == Ordering::Less, "two readings sit close together");

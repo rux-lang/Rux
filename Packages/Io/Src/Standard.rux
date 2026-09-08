@@ -3,8 +3,8 @@
 // Nothing here is opened and nothing is closed: stdin, stdout and stderr belong to the process, not to any value
 // in it, and a handle that closed them on drop would take them from every other part of the program. What
 // acquisition does own is the answer to a question that must not be asked per write: whether the stream is a
-// console. On Windows that decides the encoding -- a console wants UTF-16 through its own entry points, while a
-// redirected stream wants the raw UTF-8 bytes on disk exactly as written -- and deciding it per operation would
+// console. On Windows that decides the encoding — a console wants UTF-16 through its own entry points, while a
+// redirected stream wants the raw UTF-8 bytes on disk exactly as written — and deciding it per operation would
 // put a system call in front of every one. Elsewhere the bytes are the bytes, console or not.
 
 import Core::{ #target };

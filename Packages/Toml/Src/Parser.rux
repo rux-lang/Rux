@@ -4,7 +4,7 @@
 // what may happen to each of them afterwards is different: a later `[a]` is fine because `a` was only implied,
 // while a later `[a.b]` is a redefinition. A table written inline is closed the moment its brace shuts, and one
 // reached through a dotted key is closed as soon as the line ends. Three rules, three reasons, three separate
-// errors -- because "duplicate key" tells a writer nothing about which of them they broke.
+// errors — because "duplicate key" tells a writer nothing about which of them they broke.
 //
 // The recursion of inline tables and arrays is bounded by the depth limit rather than by the stack, checked
 // before descending, so a document built to exhaust the stack is refused while there is still stack to refuse
@@ -378,7 +378,7 @@ extend TomlParser {
         let span = self.lexer.TextOf(token);
         var textError = TextError::None;
         var bad = false;
-        // A key made of digits -- `1234 = "x"` -- lexes as an integer and is a perfectly good bare key, so the
+        // A key made of digits — `1234 = "x"` — lexes as an integer and is a perfectly good bare key, so the
         // form for anything that is not a quoted string is the one that copies the bytes unchanged.
         let form = token.kind == TomlTokenKind::Text ? token.form : TomlTextForm::Bare;
         into.ReplaceWith(TomlDecodeText(self.allocator, span, form, @textError, @bad));
@@ -410,7 +410,7 @@ extend TomlParser {
 
 extend TomlParser {
     // A key and its value, written into `into`. A dotted key creates the tables it passes through, and those
-    // tables are closed when the line ends -- which is why they are marked as dotted rather than merely made.
+    // tables are closed when the line ends — which is why they are marked as dotted rather than merely made.
     func ParseKeyValue(self: &var TomlParser, into: *var TomlValue) {
         var parts = Vector<String>(self.allocator);
         if !self.ParseKeyPath(parts) {

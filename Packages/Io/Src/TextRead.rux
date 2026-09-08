@@ -17,7 +17,7 @@ import Text::{ DecodeAt, StringBuilder, Utf8Error, Validate };
 /// stream needs no ending: what stands before the end is a line, and `EndOfStream` is reported only when the
 /// stream ends with nothing before it, so a caller loops until exactly that.
 ///
-/// The line must be UTF-8 -- `InvalidText` otherwise, including a sequence cut short by the end of the stream --
+/// The line must be UTF-8 — `InvalidText` otherwise, including a sequence cut short by the end of the stream --
 /// and at most `limit` bytes, `LimitExceeded` otherwise. Only validated bytes ever reach the builder, and on
 /// either failure it is cleared and the offending line consumed through its ending, so the caller can report the
 /// line and read on. A scalar value split across the buffer's edge is completed from the next refill, not
@@ -75,7 +75,7 @@ pub func ReadTextLine(reader: &var BufferedReader, builder: &var StringBuilder, 
             var width: uint = 0;
             let verdict = DecodeAt(joined[0..carryLength + borrowed], 0, @scalar, @width);
             if verdict == Utf8Error::Truncated && borrowed == held.length {
-                // Still short -- the source is trickling bytes. Take them into the carry and ask again.
+                // Still short — the source is trickling bytes. Take them into the carry and ask again.
                 var taken: uint = 0;
                 while taken < borrowed {
                     carry[carryLength] = held.data[taken];

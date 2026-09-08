@@ -3,7 +3,7 @@
 // SHA-3 is not a Merkle-Damgard hash like SHA-2. There is no compression function taking a chaining value and a
 // block: there is a permutation over a fixed 1600-bit state, and a message is absorbed into part of that state a
 // rate at a time and then squeezed back out. The part that is never touched directly by the message is the
-// capacity, and it is what the security level is set by -- which is why the four hashes differ only in how much
+// capacity, and it is what the security level is set by — which is why the four hashes differ only in how much
 // of the state they expose, not in their permutation.
 //
 // That structure makes SHA-3 immune to the length-extension attack SHA-2 permits, because the output squeezed
@@ -193,7 +193,7 @@ extend Sha3 : Digest {
 
     /// Pads, permutes once more, and squeezes the digest out.
     ///
-    /// The padding is the domain byte, then zeros, then a final bit at the top of the rate -- so a rate with
+    /// The padding is the domain byte, then zeros, then a final bit at the top of the rate — so a rate with
     /// only one byte free receives both in the same byte, which is the case that separates a correct padding
     /// from one that works at every other length.
     ///
@@ -228,7 +228,7 @@ extend Sha3 : Digest {
         return self.outputLength;
     }
 
-    /// The rate, which differs per size -- unlike the SHA-2 family, whose block is fixed.
+    /// The rate, which differs per size — unlike the SHA-2 family, whose block is fixed.
     ///
     /// https://rux-lang.dev/docs/api/crypto/sha3/block-length
     pub func BlockLength(self: &Sha3) -> uint {

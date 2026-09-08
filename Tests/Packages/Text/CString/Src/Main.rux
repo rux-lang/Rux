@@ -3,7 +3,7 @@ import Core::{ Assert };
 import Text::{ CString, StringView, TextError };
 
 // A C string is a pointer and a promise, and both edges of the boundary need a check nothing else needs. Going out,
-// text holding a zero byte is refused rather than truncated -- truncation is how a name that passed a filter and
+// text holding a zero byte is refused rather than truncated — truncation is how a name that passed a filter and
 // the name C uses part company. Coming in, the terminator says how far to read, a limit says how far to look for
 // it, and the bytes are validated because nothing about C promises text.
 

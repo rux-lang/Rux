@@ -32,7 +32,7 @@ pub extern {
     // Reads the monotonic performance counter
     //
     // Writes the current count and returns nonzero. It cannot fail on any system this package supports, and the
-    // count is guaranteed not to go backwards -- unlike the wall clock, which can. The unit is whatever
+    // count is guaranteed not to go backwards — unlike the wall clock, which can. The unit is whatever
     // QueryPerformanceFrequency reports and is not seconds.
     // https://learn.microsoft.com/en-us/windows/win32/api/profileapi/nf-profileapi-queryperformancecounter
     pub func QueryPerformanceCounter(count: *var int64) -> int32;

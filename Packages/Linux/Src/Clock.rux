@@ -22,7 +22,7 @@ pub const ClockMonotonic: int32 = 1;
 
 /// Reads `clockId` into `time`.
 ///
-/// `clockId` is read by value; `time` is borrowed and written. Returns zero, or a negative error number -- `EINVAL`
+/// `clockId` is read by value; `time` is borrowed and written. Returns zero, or a negative error number — `EINVAL`
 /// for a clock this kernel does not have.
 ///
 /// # Safety
@@ -92,7 +92,7 @@ pub func ClockGetResolution(clockId: int32, resolution: *var Timespec) -> int64 
 /// Suspends the caller against a named clock, optionally until an absolute time.
 ///
 /// `flags` is zero for a relative wait or `TimerAbsolute` for a deadline. `remaining` is written only for a relative
-/// wait that a signal cut short, and may be null. Returns zero, or a positive error number -- this one call reports
+/// wait that a signal cut short, and may be null. Returns zero, or a positive error number — this one call reports
 /// its error positively rather than negatively, which is the kernel's inconsistency and not this binding's.
 ///
 /// An absolute wait is what a loop should use: a relative wait restarted after a signal drifts, because the time

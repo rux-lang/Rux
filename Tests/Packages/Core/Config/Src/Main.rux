@@ -3,7 +3,7 @@
 
 func Main() -> int {
     // TODO: Config's whole surface is the Config.Has and Config.Get intrinsics,
-    // and neither is implemented in the compiler yet -- calling either crashes
+    // and neither is implemented in the compiler yet — calling either crashes
     // at load with STATUS_ENTRYPOINT_NOT_FOUND (0xC0000139). Re-enable the body
     // below once the intrinsics link. Until then this package builds and passes
     // as a placeholder so the coverage stays wired into the suite.

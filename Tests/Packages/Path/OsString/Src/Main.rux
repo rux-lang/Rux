@@ -4,8 +4,8 @@ import Path::{ OsString, OsStringView, OsUnit };
 import Text::TextError;
 
 // The one promise a native string makes is losslessness: whatever units go in come back, whether or not they are
-// text. So the test drives exactly the units no text type would accept -- bytes that are not UTF-8 on the Unix
-// systems, an unpaired surrogate on Windows -- alongside ordinary text, whose conversion always succeeds and whose
+// text. So the test drives exactly the units no text type would accept — bytes that are not UTF-8 on the Unix
+// systems, an unpaired surrogate on Windows — alongside ordinary text, whose conversion always succeeds and whose
 // unit count differs per platform in a way the test states rather than papers over.
 
 func Main() -> int {

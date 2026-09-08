@@ -3,7 +3,7 @@
 // A declaration that has to match a C interface cannot be written in Rux's own widths: `int` is not `c_int` on every
 // target, and `long` is not one width at all. The aliases below say what each C type is on the target being built for,
 // so a binding is written once and stays right when the target changes. Nothing here has a run-time representation of
-// its own -- each is exactly the Rux type it names.
+// its own — each is exactly the Rux type it names.
 //
 // The names follow C where C has one. `size_t`, `ptrdiff_t`, `intptr_t`, `uintptr_t`, `wchar_t` and `ssize_t` are the
 // spellings a C header uses, so a binding reads like the prototype it came from. The fundamental types have no typedef
@@ -92,7 +92,7 @@ pub type c_bool = bool8;
 
 // `long` is the type the two data models disagree about, and the reason a binding cannot assume a width: it is 32 bits
 // under LLP64, which Windows uses, and 64 bits under LP64, which every supported Unix uses. `wchar_t` splits the same
-// way for a different reason -- Windows made it a UTF-16 code unit, while the Unix targets made it a Unicode scalar.
+// way for a different reason — Windows made it a UTF-16 code unit, while the Unix targets made it a Unicode scalar.
 when #target.dataModel {
     .LLP64 => {
         /// C's `long`, 32 bits under this target's LLP64 data model.

@@ -14,13 +14,13 @@ extend Record {
 
 
 // `Algorithms::Equal` became `SequenceEqual` over slices when the queries moved to slices. A slice literal cannot be
-// written directly in an `if` condition -- its brace opens the body -- so the comparison lives here.
+// written directly in an `if` condition — its brace opens the body — so the comparison lives here.
 
 // `IsSorted` takes a slice since the ordered searches moved to slices; this keeps the checks below reading the way
 // they did.
 
 // The mutations take views since they moved to slices. A struct literal cannot appear inside an `if` condition --
-// its brace opens the body -- so the views are built here.
+// its brace opens the body — so the views are built here.
 func Ints(data: *var int32, length: uint) -> var int32[..] {
     return (data)[..length];
 }
@@ -121,7 +121,7 @@ func Main() -> int {
     let total: uint = 8;
     let boundary = Partition<int32>(Ints(@split[0], 8), IsEven);
     if boundary != 4 { return 60; }
-    // A slice literal cannot appear anywhere inside an `if` condition -- its brace is taken as the body -- so both
+    // A slice literal cannot appear anywhere inside an `if` condition — its brace is taken as the body — so both
     // halves are named first.
     let accepted = (@split[0])[..boundary];
     let rejected = (@split[4])[..total - boundary];
@@ -191,7 +191,7 @@ func Main() -> int {
     if pruned[1].origin != 2 { return 105; }
 
     // The value-based queries still work alongside the predicate ones. The comparison is against a fresh array
-    // rather than against `all`, which the partitions above reordered -- partitioning is unstable, so what it left
+    // rather than against `all`, which the partitions above reordered — partitioning is unstable, so what it left
     // there is not the order it started in.
     var check: int32[4] = [2, 4, 6, 8];
     var expected: int32[4] = [2, 4, 6, 8];

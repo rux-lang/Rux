@@ -4,8 +4,8 @@ import Core::Assert;
 
 // A set whose elements come back in order, and the algebra over it.
 //
-// The sets the algebra runs on are ones whose overlaps can be written down -- the evens, the odds, and everything
-// below six -- so every answer is one a reader can check by eye rather than by trusting the implementation that
+// The sets the algebra runs on are ones whose overlaps can be written down — the evens, the odds, and everything
+// below six — so every answer is one a reader can check by eye rather than by trusting the implementation that
 // produced it. The vacuous cases are checked too: the empty set is a subset of everything and disjoint from
 // everything, and a set against its own copy has an empty symmetric difference.
 //

@@ -3,7 +3,7 @@
 // Normalization is what makes "the same text" a checkable claim: an e-with-acute is one scalar value or two, and a
 // comparison that has not normalized calls them different. NFD takes everything apart canonically and orders the
 // marks; NFC puts back together what has a composed form; the K forms do the same after compatibility
-// decomposition, which also flattens ligatures, width variants and the like -- a bigger hammer, for callers who
+// decomposition, which also flattens ligatures, width variants and the like — a bigger hammer, for callers who
 // mean "the same characters" more loosely.
 //
 // Everything works on slices of scalar values and writes into a caller's buffer, reporting the length or refusing
@@ -44,7 +44,7 @@ func DecomposeHangul(offset: uint32, into: var char32[..], at: uint, written: *v
     return true;
 }
 
-// Writes one scalar's full decomposition -- canonical or compatibility -- into `into` at `at`.
+// Writes one scalar's full decomposition — canonical or compatibility — into `into` at `at`.
 func DecomposeOne(scalar: char32, compatibility: bool, into: var char32[..], at: uint,
                   written: *var uint) -> bool {
     let value = scalar as uint32;
@@ -83,7 +83,7 @@ func DecomposeOne(scalar: char32, compatibility: bool, into: var char32[..], at:
 }
 
 // Sorts the combining marks into canonical order: a stable exchange of adjacent pairs where the left class is
-// higher and the right is not a starter. The runs between starters are short -- a handful of marks -- which is why
+// higher and the right is not a starter. The runs between starters are short — a handful of marks — which is why
 // the quadratic sort is the right one: it is stable, in place, and never slower than the runs are long.
 func CanonicalOrder(items: var char32[..], length: uint) {
     var sorted = false;

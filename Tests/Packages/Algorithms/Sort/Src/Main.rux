@@ -236,7 +236,7 @@ func Main() -> int {
 
     // A user struct ordered by key alone. Sorting is unstable, so the test
     // asserts the keys are ordered and every original record survives exactly
-    // once -- never that equal keys kept their input order.
+    // once — never that equal keys kept their input order.
     var ranked: Ranked[6] = [Ranked { key: 3, origin: 0 },
                              Ranked { key: 1, origin: 1 },
                              Ranked { key: 3, origin: 2 },

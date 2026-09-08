@@ -4,8 +4,8 @@ import Core::Assert;
 //
 // Nothing in a program calls a destructor: the generated glue does. So a destructor's body was never analyzed at the
 // types it would be built for, and anything it deferred until its type arguments arrived went unanswered. Here the
-// body asks for the size of `Cell<T>` -- a type built from the parameter, which no other line of the program names
-// -- and lowering reached it having never been told what `T` stood for. There is nothing to answer a size with at
+// body asks for the size of `Cell<T>` — a type built from the parameter, which no other line of the program names
+// — and lowering reached it having never been told what `T` stood for. There is nothing to answer a size with at
 // that point, so the compiler stopped, with no diagnostic, because the program had already been accepted.
 //
 // It takes a body reachable no other way. A destructor that calls something the program also calls directly is

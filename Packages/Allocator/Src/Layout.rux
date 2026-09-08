@@ -3,7 +3,7 @@ import Core::uint;
 //
 // A `Layout` exists so that the pair travels together and is checked once. Passing a size and an alignment as two
 // loose arguments is how an allocator ends up asked for an alignment that is not a power of two, or a size whose
-// rounding overflows -- neither of which most allocators check, and both of which produce an allocation that is
+// rounding overflows — neither of which most allocators check, and both of which produce an allocation that is
 // smaller or less aligned than the caller believes.
 //
 // A `Layout` that exists is valid. `New` is the only way to build one and refuses what it cannot represent, so
@@ -21,7 +21,7 @@ import Memory::AlignUpChecked;
 /// Copy and owns nothing. Every instance is valid, because `New` refuses to build an invalid one: the alignment is a
 /// power of two, and the size rounded up to that alignment does not pass the end of the address space.
 ///
-/// A size of zero is valid and is not an allocation of nothing -- see `Allocate` for what an allocator does with it.
+/// A size of zero is valid and is not an allocation of nothing — see `Allocate` for what an allocator does with it.
 ///
 /// https://rux-lang.dev/docs/api/allocator/layout
 pub struct Layout {
@@ -36,7 +36,7 @@ extend Layout {
     ///
     /// `size` and `alignment` are read by value; the layout is returned by copy. Reports `None` when `alignment` is
     /// zero or not a power of two, and when rounding `size` up to `alignment` would pass the end of the address
-    /// space -- which is the case that turns into an allocation far smaller than the caller asked for if it is not
+    /// space — which is the case that turns into an allocation far smaller than the caller asked for if it is not
     /// caught here.
     ///
     /// Runs in constant time and allocates nothing.
@@ -132,7 +132,7 @@ pub func NaturalAlignment(size: uint) -> uint {
 /// `T` is named explicitly, so no value is copied or consumed merely to describe its storage. Cannot fail: a type's
 /// own size and alignment are always a valid pair.
 ///
-/// The alignment is the type's size rounded down to a power of two, capped at a machine word -- which is what every
+/// The alignment is the type's size rounded down to a power of two, capped at a machine word — which is what every
 /// supported target's ABI requires, and which `alignof` will replace when it can be named for a type parameter.
 ///
 /// Runs in constant time and allocates nothing.
@@ -146,7 +146,7 @@ pub func LayoutOf<T>() -> Layout {
 ///
 /// `T` is named explicitly, so no value is copied or consumed merely to describe its storage. Reports `None` when
 /// `count` values would not fit in the address space, which is the multiplication an array allocation has to check
-/// and most callers forget -- a wrapped product is an allocation far smaller than the caller asked for.
+/// and most callers forget — a wrapped product is an allocation far smaller than the caller asked for.
 ///
 /// Runs in constant time and allocates nothing.
 ///

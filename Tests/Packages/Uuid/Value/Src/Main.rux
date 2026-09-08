@@ -42,7 +42,7 @@ func Main() -> int {
     Assert(partialBytes.data[3] == raw[3], "the bytes given are kept");
     Assert((partialBytes.data[4] as uint8) == 0u8, "and the rest are zero");
 
-    // Ordering follows the bytes, most significant first -- which is what makes a time-ordered UUID sort by
+    // Ordering follows the bytes, most significant first — which is what makes a time-ordered UUID sort by
     // time. A comparison that started anywhere else would pass an equality test and fail this.
     var lower = Uuid::Nil();
     var higher = Uuid::Nil();

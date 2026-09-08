@@ -1,7 +1,7 @@
 // Sampling from a stream whose length is not known until it ends.
 //
 // The reservoir is the point: a caller that could hold the whole stream would shuffle it and take a prefix
-// instead. This keeps only the sample, so a stream of any length -- a file being read, a query being scanned --
+// instead. This keeps only the sample, so a stream of any length — a file being read, a query being scanned --
 // costs the memory of the answer rather than the memory of the input.
 
 
@@ -47,7 +47,7 @@ extend Reservoir<T> {
 ///
 /// Algorithm R: while the reservoir has room the item is kept outright, and afterwards the item replaces a
 /// uniformly chosen existing entry with probability equal to the sample size over the number seen. That is what
-/// keeps every subset equally likely at every moment, not merely at the end -- so a stream can be cut short and
+/// keeps every subset equally likely at every moment, not merely at the end — so a stream can be cut short and
 /// the sample is still uniform over what arrived.
 ///
 /// https://rux-lang.dev/docs/api/random/offer

@@ -7,11 +7,11 @@
 //
 // Every hash here is `SipHash`, which is the one in `Rux/Hash` designed for exactly this. An adversary who chooses
 // keys can find collisions in any of the others by hand, and a table full of colliding keys is a table whose every
-// lookup is a linear scan -- a denial of service against anything keyed on input it did not write. `SipHash` makes
+// lookup is a linear scan — a denial of service against anything keyed on input it did not write. `SipHash` makes
 // finding those collisions as hard as guessing the seed.
 //
 // A caller keying on a type not listed here writes the pair itself: a hash that reads the whole key and mixes the
-// seed in, and an equality that agrees with it. The one rule is the usual one -- two keys that compare equal must
+// seed in, and an equality that agrees with it. The one rule is the usual one — two keys that compare equal must
 // hash the same.
 
 import Hash::{ SipHash24, SipHash24Of, WriteUint64 };

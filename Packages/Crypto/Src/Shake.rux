@@ -1,13 +1,13 @@
 // SHAKE128 and SHAKE256: the same sponge, squeezed for as long as the caller wants.
 //
 // A hash gives a fixed number of bytes because that is what a hash is for. An extendable-output function gives
-// as many as asked, from the same absorbed state, as one continuous stream -- so `Read` twice for sixteen bytes
+// as many as asked, from the same absorbed state, as one continuous stream — so `Read` twice for sixteen bytes
 // gives exactly what `Read` once for thirty-two gives. That property is the whole contract, and it is what makes
 // these usable as key-stream generators and as the expansion step of a key derivation.
 //
 // The number in the name is the security level, not the output length: SHAKE128 offers 128 bits of security
 // however many bytes are taken from it, and taking more does not add any. Nothing enforces that, because there
-// is no length at which it becomes wrong -- only a length past which it stops helping.
+// is no length at which it becomes wrong — only a length past which it stops helping.
 //
 // The domain byte is what separates these from SHA-3. The same state absorbing the same message produces a
 // different stream depending on that one byte, which is what stops a SHAKE output from ever colliding with a
@@ -25,7 +25,7 @@ pub struct Shake {
     lanes: uint64[25];
     /// How many bytes of the state the message reaches.
     rate: uint;
-    /// How far into the rate absorption has reached, or -- once reading has begun -- how far into it the
+    /// How far into the rate absorption has reached, or — once reading has begun — how far into it the
     /// squeeze has reached.
     position: uint;
     /// Whether the padding has been applied and reading has started.
@@ -85,7 +85,7 @@ extend Shake {
 
     // Applies the padding and permutes, after which the state is a stream to be read.
     func BeginReading(self: &var Shake) {
-        // 0x1F is the SHAKE domain separator, where SHA-3 uses 0x06 -- one byte, and the only thing keeping the
+        // 0x1F is the SHAKE domain separator, where SHA-3 uses 0x06 — one byte, and the only thing keeping the
         // two families' outputs apart.
         let lane = self.position / 8u;
         let shift = ((self.position % 8u) * 8u) as uint64;

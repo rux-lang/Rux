@@ -111,7 +111,7 @@ pub func GcdChecked<T>(left: T, right: T, result: *var T) -> bool {
     let zero = left - left;
     // Euclid on magnitudes. The magnitudes are taken with the wrapping form on purpose: the most negative value comes
     // back as itself, whose remainder arithmetic below is still correct on the bit pattern, and only the final answer
-    // can be unrepresentable -- which is exactly what the checked magnitude at the end reports.
+    // can be unrepresentable — which is exactly what the checked magnitude at the end reports.
     var a = AbsWrapping<T>(left);
     var b = AbsWrapping<T>(right);
     while b != zero {

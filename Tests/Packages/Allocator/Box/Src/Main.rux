@@ -4,7 +4,7 @@ import Core::Assert;
 // A Box owns an allocation, so what is checked is that the allocation is released exactly once: not twice when the
 // box is moved, and not at all when its value was taken out first. A double release would be caught by the system
 // allocator's header check, and a leak by the loop below, which would exhaust the address space long before it
-// finished -- the system allocator being page-granular.
+// finished — the system allocator being page-granular.
 
 struct Tracked {
     destroyed: *var int32;

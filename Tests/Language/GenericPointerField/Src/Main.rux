@@ -4,7 +4,7 @@ import Core::Assert;
 //
 // The type arguments are spelled in the name of the type that carries them, and a pointer has no name of its own.
 // Reading them off the pointer found none, so the instantiation was treated as the bare declaration and its fields
-// were still spelled in the type parameters -- which resolve to nothing outside the declaration. The result was a
+// were still spelled in the type parameters — which resolve to nothing outside the declaration. The result was a
 // pair of errors that contradicted each other: the parameter's type is unknown, and the struct has no field, listing
 // the field it does not have.
 //

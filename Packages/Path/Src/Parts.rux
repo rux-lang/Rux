@@ -2,7 +2,7 @@
 //
 // Everything here reads units and produces views into them or fresh buffers from them; nothing asks the
 // filesystem anything. That matters most for `Normalize`: it resolves `..` by dropping the segment before it,
-// which is the truth about directories and a lie about symbolic links -- `a/link/..` need not be `a` when `link`
+// which is the truth about directories and a lie about symbolic links — `a/link/..` need not be `a` when `link`
 // points elsewhere. The lie is documented, deliberate, and cheap; the truth costs a filesystem and arrives with
 // canonicalization in the S tasks.
 
@@ -24,7 +24,7 @@ extend Path {
         }
         if end == 0 { return Option::None<Path>(); }
         if end == 1 && IsSeparator(units.data[0]) { return Option::None<Path>(); }
-        // Walk back over the last segment, then over the separators before it -- keeping the one that is the root.
+        // Walk back over the last segment, then over the separators before it — keeping the one that is the root.
         while end > 0 && !IsSeparator(units.data[end - 1]) {
             end = end - 1;
         }
@@ -59,7 +59,7 @@ extend Path {
     /// The file name before its extension, or `None` where there is no file name.
     ///
     /// A leading dot is part of the name, not an extension marker: the stem of `.bashrc` is `.bashrc`. Of
-    /// `a.tar.gz` it is `a.tar` -- one extension comes off, the last.
+    /// `a.tar.gz` it is `a.tar` — one extension comes off, the last.
     ///
     /// https://rux-lang.dev/docs/api/path/path/stem
     pub func Stem(self: &Path) -> Option<OsStringView> {

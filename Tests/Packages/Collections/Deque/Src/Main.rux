@@ -5,7 +5,7 @@ import Core::Assert;
 
 // A ring buffer is where off-by-one errors live, so what is checked is the wrapping: elements pushed at one end and
 // taken from the other until the ring has wrapped several times over, and the answers compared against what a queue
-// must give. Ownership is checked the same way as the vector's -- by counting destructions.
+// must give. Ownership is checked the same way as the vector's — by counting destructions.
 
 struct Tracked {
     counter: *var int32;

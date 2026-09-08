@@ -3,7 +3,7 @@
 // The heap property is an arrangement rather than a type: element `i` is at least as large as elements `2i+1` and
 // `2i+2`, which puts the largest element at the front and lets the largest be removed, or a new element added, in
 // time proportional to the logarithm of the length. That is what a priority queue is, and it is why these operations
-// are here rather than in a container -- any sequence a caller already has can be one.
+// are here rather than in a container — any sequence a caller already has can be one.
 //
 // The arrangement is not an order. A heap is not sorted, and only its first element is where a sorted sequence would
 // put it. `SortHeap` turns one into the other, which is what heapsort is.
@@ -23,7 +23,7 @@ import Core::{ Ordering };
 ///
 /// Requires `<` on the element type.
 ///
-/// Cannot fail. Runs in time proportional to the length -- linear, not `n log n`, because sifting from the bottom up
+/// Cannot fail. Runs in time proportional to the length — linear, not `n log n`, because sifting from the bottom up
 /// does most of its work on the short subtrees near the leaves. Allocates nothing.
 ///
 /// https://rux-lang.dev/docs/api/algorithms/make-heap

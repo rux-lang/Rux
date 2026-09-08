@@ -5,7 +5,7 @@
 // reading one setting out of a large configuration file never allocates for the rest of it.
 //
 // What a streaming reader cannot do is notice that a table was defined twice, because knowing that requires
-// remembering every table already seen -- which is the tree it was trying not to build. So this checks syntax
+// remembering every table already seen — which is the tree it was trying not to build. So this checks syntax
 // and structure and nothing else, and a caller that needs TOML's redefinition rules enforced wants the parser.
 // Saying so here is better than a reader that quietly accepts a document the parser would refuse.
 //

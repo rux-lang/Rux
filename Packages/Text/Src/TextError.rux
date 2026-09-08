@@ -2,8 +2,8 @@
 //
 // Two things can, and they are different in kind. An allocation can fail, which says nothing about the text and
 // everything about the machine; and bytes can fail to be UTF-8, which says nothing about the machine and everything
-// about where the bytes came from. A caller handles those differently -- one is retried or reported, the other means
-// the input is not text -- so they are not one error.
+// about where the bytes came from. A caller handles those differently — one is retried or reported, the other means
+// the input is not text — so they are not one error.
 
 import Allocator::AllocError;
 

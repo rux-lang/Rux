@@ -4,7 +4,7 @@
     `ArcTan(y / x)` cannot answer this and no accuracy improves it: the division throws away which quadrant the point is
     in, so (-1, -1) and (1, 1) become the same argument and the same answer, and a point on the vertical axis divides by
     zero. Taking the two coordinates separately keeps the quadrant, gives the full turn rather than half of it, and has
-    an answer everywhere except the origin -- where, by the convention every implementation follows, it returns zero
+    an answer everywhere except the origin — where, by the convention every implementation follows, it returns zero
     rather than refusing.
 
     **Accuracy: error at most 2 ulps.** One from the inverse tangent, and one from the quadrant correction, which is
@@ -13,7 +13,7 @@
 
 /**
     The angle from the positive x axis to the point `(x, y)`, in radians, in `(-Pi, Pi]`. The sign of `y` decides the
-    sign of the result, including when `y` is a zero -- which is what makes the function continuous as a point crosses
+    sign of the result, including when `y` is a zero — which is what makes the function continuous as a point crosses
     the negative x axis from below, and why a signed zero matters here more than almost anywhere else.
     @param y Vertical coordinate.
     @param x Horizontal coordinate.

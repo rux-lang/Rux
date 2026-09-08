@@ -6,7 +6,7 @@ import Core::Assert;
 // and one churned in an order nothing about the hash makes convenient.
 //
 // Backward-shift deletion is the part that is easy to get subtly wrong. A shift that stops too early strands entries
-// past the gap, and one that goes too far moves an entry back past its own home -- and neither shows on a table that
+// past the gap, and one that goes too far moves an entry back past its own home — and neither shows on a table that
 // is nearly empty or removed from in insertion order. So the removals here run in a stride that walks the table
 // unevenly, and every surviving key is looked up again after each pass.
 

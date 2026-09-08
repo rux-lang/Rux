@@ -3,7 +3,7 @@ import Core::{ Assert };
 
 // Rearranging in place. Two things run through all of it: nothing resizes anything, and a removal reports how many
 // elements are left rather than shortening the storage it does not own. What lies past that count is unspecified, so
-// nothing here asserts anything about it -- which is itself the point worth making.
+// nothing here asserts anything about it — which is itself the point worth making.
 
 func View(data: *var int32, length: uint) -> var int32[..] {
     return (data)[..length];

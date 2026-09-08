@@ -19,7 +19,7 @@ pub enum AllocError: uint8 {
     Unsupported = 1,
     /// The allocator has no storage left. A smaller request might succeed, and so might this one later.
     OutOfMemory = 2,
-    /// The arguments do not describe an allocation this allocator handed out -- a pointer it did not give, or a
+    /// The arguments do not describe an allocation this allocator handed out — a pointer it did not give, or a
     /// layout that does not match the one it was given with. This is a caller's mistake rather than a shortage.
     InvalidBlock = 3
 }

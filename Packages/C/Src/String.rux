@@ -2,14 +2,14 @@
 //
 // Two families live in one header for historical reasons, and they are not alike. The `mem*` calls take a length and
 // touch exactly that many bytes. The `str*` calls take no length and stop at the first zero byte, which means the
-// caller has promised there is one -- and that promise, not the call, is what usually fails. Where both forms exist,
+// caller has promised there is one — and that promise, not the call, is what usually fails. Where both forms exist,
 // the counted one is the one to reach for.
 //
 // Every declaration here names the exact symbol the C runtime exports, and is written against the C ABI types, so a
 // length is a `size_t` and a returned comparison is a `c_int`. Byte strings are `*char8` rather than `*c_char`: the
 // two are the same width, and `char8` is what a Rux string literal's `.data` already yields.
 //
-// Nothing here is a safe interface, and none of it is what Rux code should reach for first -- `Rux/Memory` and
+// Nothing here is a safe interface, and none of it is what Rux code should reach for first — `Rux/Memory` and
 // `Rux/Text` do these jobs with lengths that are checked. This module exists to talk to C.
 //
 // The notes below are plain comments rather than `///` documentation because an external block does not accept a doc

@@ -2,7 +2,7 @@
 //
 // Padding is the one part of a spec every type applies the same way, so it is written once: measure the rendering,
 // and if the width asks for more columns, write fill where the alignment says. Zero-padding is deliberately not
-// here -- its zeros go inside the number, between sign and digits, so the numeric writer owns them.
+// here — its zeros go inside the number, between sign and digits, so the numeric writer owns them.
 
 import Text::{ CountScalars, Encode, TextError };
 
@@ -83,8 +83,8 @@ pub func WriteFill(writer: &var TextWriter, spec: FormatSpec, count: uint) -> Te
 /// Writes an integer whose digits are already produced, applying sign, prefix, zero-padding and alignment.
 ///
 /// `digits` holds the digits least significant first, which is the order a division loop makes them; `count` says
-/// how many. Zero-padding puts its zeros between the sign and the digits -- `-7` at width four is `-007`, not
-/// `00-7` -- and wins over alignment when both are asked for. Nothing here allocates or copies the digits: each
+/// how many. Zero-padding puts its zeros between the sign and the digits — `-7` at width four is `-007`, not
+/// `00-7` — and wins over alignment when both are asked for. Nothing here allocates or copies the digits: each
 /// piece goes to the writer as it is reached, so the widest integer costs no more room than its own digit buffer.
 ///
 /// https://rux-lang.dev/docs/api/format/write-integer-digits

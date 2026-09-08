@@ -2,7 +2,7 @@
 //
 // `BCryptGenRandom` is the supported source on Windows, and the only one here fit for a key, a token, or anything an
 // adversary would like to guess. It lives in `bcrypt.dll` rather than in Kernel32, and reports failure as an
-// `NtStatus` rather than through `GetLastError` -- two departures from the rest of this package that come from its
+// `NtStatus` rather than through `GetLastError` — two departures from the rest of this package that come from its
 // being part of the cryptographic interface rather than the kernel one.
 //
 // The older `RtlGenRandom`, sometimes reached as `SystemFunction036`, is not declared here: it is undocumented as an
@@ -39,7 +39,7 @@ extern {
 /// Fills `length` bytes of `buffer` with unpredictable bytes.
 ///
 /// `buffer` is borrowed and written; `length` is read by value. Returns true when the whole buffer was filled, and
-/// false when the provider refused -- there is no partial success to handle, unlike every Unix source.
+/// false when the provider refused — there is no partial success to handle, unlike every Unix source.
 ///
 /// Runs in time proportional to `length` and allocates nothing.
 ///

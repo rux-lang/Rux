@@ -10,7 +10,7 @@ import Random::{ Beta, Binomial, Gamma, GammaWithScale, Poisson, RandomGenerator
 func Main() -> int {
     var generator = Xoshiro256(31337u64);
 
-    // Gamma: mean equals the shape and variance equals the shape, at a shape above one and below it -- the two
+    // Gamma: mean equals the shape and variance equals the shape, at a shape above one and below it — the two
     // sides of the boosting cutoff.
     var shapeIndex: uint = 0;
     let shapes: float64[4] = [0.3, 0.9, 2.5, 12.0];

@@ -1,7 +1,7 @@
 // Where text is assembled.
 //
 // A `String` is immutable, so building one a piece at a time through `String` alone would allocate and copy on every
-// step -- quadratic work to produce a linear result. A builder keeps spare room and doubles it, so a sequence of
+// step — quadratic work to produce a linear result. A builder keeps spare room and doubles it, so a sequence of
 // appends costs each byte a constant amount on average, and hands the block over at the end without copying it.
 //
 // The builder holds well-formed UTF-8 at every moment, not only at the end. That is why it accepts whole characters
@@ -198,7 +198,7 @@ extend StringBuilder {
 
     /// Appends one character.
     ///
-    /// Reports `InvalidUtf8` for a value that is not a scalar value -- a surrogate half, or one past U+10FFFF --
+    /// Reports `InvalidUtf8` for a value that is not a scalar value — a surrogate half, or one past U+10FFFF --
     /// which is what keeps a builder from holding something that is not text.
     ///
     /// https://rux-lang.dev/docs/api/text/string-builder/append-scalar

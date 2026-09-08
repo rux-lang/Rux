@@ -29,7 +29,7 @@ pub func ParseFloat64(str: char8[..]) -> Result<float64, ParseError> {
     }
 
     // The two special spellings, exactly as formatting writes them, so what one side prints the other reads. A NaN
-    // has no sign to keep -- the sign is accepted because formatting never writes one and input may carry one, and
+    // has no sign to keep — the sign is accepted because formatting never writes one and input may carry one, and
     // there is only one NaN as far as comparison is concerned.
     if index + 3 == str.length && str[index] == c8'N' && str[index + 1] == c8'a' && str[index + 2] == c8'N' {
         return Result::Success<float64, ParseError>(0.0 / 0.0);

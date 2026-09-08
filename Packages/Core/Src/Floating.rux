@@ -77,7 +77,7 @@ pub func IsNegativeZero<T>(value: T) -> bool {
 
 /// Whether the value carries a minus sign.
 ///
-/// `value` is read by value. Every negative number reports `true`, and so does `-0.0` -- which is why this is named
+/// `value` is read by value. Every negative number reports `true`, and so does `-0.0` — which is why this is named
 /// for the sign rather than for the comparison: `-0.0 < 0` is false. A NaN reports `false` whichever sign its
 /// encoding carries, since a NaN is outside the ordering and its sign has no arithmetic meaning.
 ///

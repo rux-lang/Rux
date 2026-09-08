@@ -4,7 +4,7 @@
 // Every rule here is one a permissive reader would let through and a strict one would not: an underscore has to
 // sit between two digits, a decimal integer may not carry a leading zero, a float needs digits on both sides of
 // its point. None of that is decoration. `010` meaning eight to one reader and ten to another is how a port
-// number becomes the wrong port number, and TOML's answer is that it means neither -- it is simply not a TOML
+// number becomes the wrong port number, and TOML's answer is that it means neither — it is simply not a TOML
 // integer, and saying so is the job of this file.
 
 
@@ -62,7 +62,7 @@ func IsBaseDigit(c: uint8) -> bool {
 ///
 /// A leading zero is refused for a decimal integer, because `010` is eight in one language and ten in another
 /// and TOML declines to pick: it is not an integer at all. A sign is refused on a based integer for the same
-/// reason -- the grammar does not offer one, so accepting it would be inventing a dialect.
+/// reason — the grammar does not offer one, so accepting it would be inventing a dialect.
 ///
 /// https://rux-lang.dev/docs/api/toml/parse-integer
 pub func TomlParseInteger(text: char8[..], result: *var int64) -> TomlScalarError {
@@ -124,7 +124,7 @@ func DigitFits(c: uint8, radix: uint8) -> bool {
 
 /// Reads a float, including the infinities and NaN that TOML can spell and JSON cannot.
 ///
-/// A point needs a digit on either side of it, which is what refuses `.7` and `7.` -- both of which some readers
+/// A point needs a digit on either side of it, which is what refuses `.7` and `7.` — both of which some readers
 /// accept and some do not, so a document containing one means different things in different places.
 ///
 /// https://rux-lang.dev/docs/api/toml/parse-float
@@ -150,7 +150,7 @@ pub func TomlParseFloat(text: char8[..], result: *var float64) -> TomlScalarErro
         return TomlScalarError::None;
     }
     if MatchesWord(digits, start, "nan") {
-        // The sign of a NaN is not a value, so `-nan` is the same NaN as `nan` -- which is what TOML means when
+        // The sign of a NaN is not a value, so `-nan` is the same NaN as `nan` — which is what TOML means when
         // it says the sign is allowed but carries no information.
         *result = QuietNan64();
         return TomlScalarError::None;

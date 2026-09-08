@@ -2,7 +2,7 @@
 //
 // Each wrapper folds libSystem's `-1`-and-`errno` reporting into the one normalized value the Linux and FreeBSD
 // packages already use, so a caller reads all three the same way. A short count is not an error and not an end of
-// file -- only a zero-length read means the source has ended.
+// file — only a zero-length read means the source has ended.
 //
 // The descriptor constants are annotated `int32` rather than `FileDescriptor`, because a `const` cannot name a type
 // alias declared in another file of the package.
@@ -239,7 +239,7 @@ pub func FchmodAt(directoryFd: FileDescriptor, path: *char8, mode: FileMode, fla
 
 /// Sets the access and modification times of the file `path` names.
 ///
-/// `times` is borrowed and holds two `timespec` values -- access first, then modification -- each a whole-second
+/// `times` is borrowed and holds two `timespec` values — access first, then modification — each a whole-second
 /// count and a nanosecond fraction, both 8 bytes. A null `times` sets both to now. `flags` may carry
 /// `SymlinkNoFollow`. Returns zero, or a negative error number.
 ///
@@ -362,7 +362,7 @@ pub func Dup2(oldFd: FileDescriptor, newFd: FileDescriptor) -> int64 {
 /// Creates a pipe and writes its two descriptors into `descriptors`.
 ///
 /// The reading end lands at index zero and the writing end at index one. Darwin has no `pipe2`, so close-on-exec has
-/// to be set afterwards through `fcntl` -- which leaves a window another thread can execute through.
+/// to be set afterwards through `fcntl` — which leaves a window another thread can execute through.
 ///
 /// # Safety
 ///

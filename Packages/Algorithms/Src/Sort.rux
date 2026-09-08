@@ -1,6 +1,6 @@
 // Sorting: putting a sequence in order, in place, with no storage but its own.
 //
-// `Sort` is an introsort -- quicksort with a three-way partition, falling back to heapsort once the recursion budget
+// `Sort` is an introsort — quicksort with a three-way partition, falling back to heapsort once the recursion budget
 // is spent and to insertion sort on small partitions. Each part covers the others' weakness. Quicksort is the
 // fastest of the three on ordinary input and the only one that degrades to quadratic on input chosen to defeat its
 // pivot rule; heapsort never degrades and is slower on everything; insertion sort beats both below about sixteen
@@ -9,13 +9,13 @@
 //
 // **The worst case, precisely.** Comparisons are O(n log n) for every input, with no exceptions and nothing
 // probabilistic about it: the depth budget is `2 * floor(log2 n)`, and a range still unsorted when it runs out is
-// handed to heapsort, which is O(n log n) unconditionally. Auxiliary storage is O(1) -- one pivot and a few indices.
+// handed to heapsort, which is O(n log n) unconditionally. Auxiliary storage is O(1) — one pivot and a few indices.
 // Stack depth is O(log n) frames, about sixty-four for any addressable length, because the recursive call always
 // takes the smaller side of a partition while the larger is handled by the loop. None of that depends on the input
 // being random, and there are no randomized pivots to make it depend on the run.
 //
 // **Sorting is not stable.** Equivalent elements may come out in a different order than they went in. It is
-// deterministic -- the same input always gives the same output and the same number of comparisons -- but a caller
+// deterministic — the same input always gives the same output and the same number of comparisons — but a caller
 // who needs equal elements to keep their original order needs a stable sort, which needs somewhere to put things.
 //
 // The plain forms require `<` on the element type and nothing else, under the same strict-weak-ordering contract as
@@ -29,7 +29,7 @@
 //
 // The `By` machinery below mirrors the operator-based helpers rather than sharing them. A generic function cannot be
 // used as a value in Rux, so the operator forms cannot pass `<` as a comparator into one shared implementation, and
-// threading a runtime flag instead would put a branch in the innermost comparison of every sort -- the one place it
+// threading a runtime flag instead would put a branch in the innermost comparison of every sort — the one place it
 // would be felt. When generic functions become usable as values, the two sets collapse into one.
 
 // Below this many elements, insertion sort beats partitioning: the cost of
@@ -88,7 +88,7 @@ pub func SortDescending<T>(items: var T[..]) {
 ///
 /// `items` is borrowed mutably and rewritten; `n` is read by value. Afterwards everything before `n` is at most the
 /// element at `n` and everything after is at least it. Neither side is ordered any further, which is the whole
-/// point: this is what to reach for when only one order statistic is wanted -- a median, a percentile -- because it
+/// point: this is what to reach for when only one order statistic is wanted — a median, a percentile — because it
 /// is linear on average where a full sort is not.
 ///
 /// Reports false, changing nothing, when `n` is not an index into `items`. That is the only way this fails.

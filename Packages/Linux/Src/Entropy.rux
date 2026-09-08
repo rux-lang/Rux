@@ -1,7 +1,7 @@
 // Unpredictable bytes, from the kernel's own generator.
 //
 // This is the only source in this package worth using for a key, a token, or anything an adversary would like to
-// guess. It draws from the same pool `/dev/urandom` exposes, without needing a descriptor -- which matters, because
+// guess. It draws from the same pool `/dev/urandom` exposes, without needing a descriptor — which matters, because
 // opening a file can fail in ways a security decision should not depend on.
 //
 // The call can return fewer bytes than asked for, and a caller who needs all of them has to loop. That is not an
@@ -35,7 +35,7 @@ pub const RandomBlockingPool: uint32 = 2;
 /// # Safety
 ///
 /// `buffer` must be writable for `length` bytes. Treat a short count as bytes obtained, not as failure, or the
-/// unwritten tail stays whatever it held -- which for a key is the worst possible outcome.
+/// unwritten tail stays whatever it held — which for a key is the worst possible outcome.
 ///
 /// https://rux-lang.dev/docs/api/linux/get-random
 pub func GetRandom(buffer: *var opaque, length: uint, flags: uint32) -> int64 {

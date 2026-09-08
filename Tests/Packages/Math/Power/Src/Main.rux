@@ -1,5 +1,5 @@
 // Pow's special cases are a table in the standard, and a table is exactly the sort of thing that is right in
-// nine rows and wrong in the tenth, so every row is written out here -- including the two that surprise
+// nine rows and wrong in the tenth, so every row is written out here — including the two that surprise
 // everyone: anything to the zeroth power is one even for a NaN, and one to any power is one even for a NaN.
 
 import Core::Assert;
@@ -59,7 +59,7 @@ func Main() -> int {
     Assert(PowInteger(2.0, -3i64) == 0.125, "a negative exponent takes the reciprocal");
     Assert(PowInteger(10.0, 22i64) == 1.0e22, "the largest exactly representable power of ten is exact");
 
-    // Every power of two the type holds, exactly -- something the logarithm-and-exponential route cannot promise.
+    // Every power of two the type holds, exactly — something the logarithm-and-exponential route cannot promise.
     var power: int64 = -1000;
     while power <= 1000i64 {
         Assert(PowInteger(2.0, power) == Pow(2.0, power as float64),

@@ -4,7 +4,7 @@
 // convention meets Rux text at exactly two edges, and both need a check nothing else in this package needs.
 //
 // Going out, the text must not contain a zero byte. One in the middle would silently truncate whatever C does with
-// the pointer -- a path that opens the wrong file, a query that drops its tail -- so a string holding one is
+// the pointer — a path that opens the wrong file, a query that drops its tail — so a string holding one is
 // refused, not truncated. Truncation is the attack, not the accident: text that reads one way to a checker reading
 // lengths and another way to a C API reading terminators is how "safe.txt\0.exe" gets past a filter.
 //
@@ -50,11 +50,11 @@ extend CString {
 
     /// A terminated copy of `view`, or nothing when the text cannot cross the boundary.
     ///
-    /// Reports `InvalidUtf8` through `error` when the text contains a zero byte -- refused rather than truncated,
+    /// Reports `InvalidUtf8` through `error` when the text contains a zero byte — refused rather than truncated,
     /// because text that ends early on the C side of the boundary is the classic way a checked name and a used name
     /// part company. Reports `OutOfMemory` when the copy cannot be made.
     ///
-    /// Runs in time proportional to the length -- one pass to check, one to copy -- and allocates once.
+    /// Runs in time proportional to the length — one pass to check, one to copy — and allocates once.
     ///
     /// https://rux-lang.dev/docs/api/text/c-string/from-view
     pub func FromView(allocator: Allocator, view: StringView, error: *var TextError) -> Option<CString> {
@@ -98,7 +98,7 @@ extend CString {
     ///
     /// `raw` is borrowed for the call and its bytes are copied, so the C side keeps whatever it handed over.
     /// `limit` bounds the search for the terminator: C promises one exists, and this is what the promise costs when
-    /// it is broken -- reports `InvalidUtf8` after `limit` bytes rather than reading memory forever. Bytes that are
+    /// it is broken — reports `InvalidUtf8` after `limit` bytes rather than reading memory forever. Bytes that are
     /// not UTF-8 are refused the same way, since nothing about C promises text.
     ///
     /// https://rux-lang.dev/docs/api/text/c-string/from-raw
@@ -147,7 +147,7 @@ extend CString {
 
     /// The pointer C expects: the text, then one zero byte.
     ///
-    /// Borrowed. Valid until this `CString` is released or dies, and no longer -- C code that keeps it past that is
+    /// Borrowed. Valid until this `CString` is released or dies, and no longer — C code that keeps it past that is
     /// keeping a pointer into a freed block.
     ///
     /// https://rux-lang.dev/docs/api/text/c-string/raw

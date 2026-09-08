@@ -7,12 +7,12 @@
 // is finished eight, four and one byte at a time.
 //
 // The mixing is arithmetic rather than table lookup, which is what keeps it fast on data that does not fit in cache:
-// there is no table to evict. The final avalanche -- shift, multiply, shift, multiply, shift -- is what makes a
+// there is no table to evict. The final avalanche — shift, multiply, shift, multiply, shift — is what makes a
 // one-bit change in the input change about half the output bits, which the round function alone does not give.
 //
 // A seed is part of the algorithm here, not an afterthought: two runs with different seeds produce unrelated hashes
 // of the same input, which is enough to stop accidental collisions from following data between two tables. It is not
-// enough to stop a deliberate one -- xxHash is not keyed in the cryptographic sense, and an adversary who learns the
+// enough to stop a deliberate one — xxHash is not keyed in the cryptographic sense, and an adversary who learns the
 // seed can find collisions as easily as without it. `SipHash` is the answer where that matters.
 //
 // The result matches the reference implementation exactly, for every input length and every seed.
@@ -58,7 +58,7 @@ pub const XxBlockSize: uint = 32;
 /// The eight bytes at `bytes` as a 64-bit value, least significant byte first.
 ///
 /// `bytes` is borrowed and read. Assembled a byte at a time rather than read as a word, so the answer is the same at
-/// any address on any machine -- xxHash is defined on a little-endian byte stream, not on whatever the machine
+/// any address on any machine — xxHash is defined on a little-endian byte stream, not on whatever the machine
 /// happens to hold.
 ///
 /// Cannot fail. Runs in constant time and allocates nothing.
@@ -101,8 +101,8 @@ pub func ReadLittleEndian32(bytes: *byte) -> uint32 {
 
 /// One accumulator round: mix `lane` into `accumulator`.
 ///
-/// Both are read by value and the new accumulator is returned. This is the whole of xxHash64's inner loop -- scale
-/// the input, add, rotate, scale again -- and it is what the four lanes each run independently.
+/// Both are read by value and the new accumulator is returned. This is the whole of xxHash64's inner loop — scale
+/// the input, add, rotate, scale again — and it is what the four lanes each run independently.
 ///
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///

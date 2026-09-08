@@ -1,6 +1,6 @@
 // Looking through text without copying any of it.
 //
-// Everything here answers about a `StringView` and gives back views, positions or booleans -- never a new string.
+// Everything here answers about a `StringView` and gives back views, positions or booleans — never a new string.
 // That is the point: asking whether text starts with something, or where something occurs in it, or what it is
 // without its surrounding spaces, are all questions about bytes that already exist. A design that answered with
 // owning strings would allocate to answer a question, and a caller who only wanted to look would pay for a copy.
@@ -175,7 +175,7 @@ extend SplitIterator {
     /// The next part, or `None` when the walk is over.
     ///
     /// Two adjacent separators give an empty part between them, and a separator at either end gives an empty part
-    /// there -- so the parts always number one more than the separators, and joining them back with the separator
+    /// there — so the parts always number one more than the separators, and joining them back with the separator
     /// gives what was split. An empty separator gives the whole view as one part, since anything else would be an
     /// endless walk.
     ///

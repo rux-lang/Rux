@@ -203,7 +203,7 @@ func Pow10(exp: uint) -> float64 {
 // value * 10^exp, for a value on its way into [1, 10). The scaling walks in
 // steps of the exactly representable 10^22 rather than going through a single
 // 10^exp, which would be rounded once when it was built and again when it was
-// applied -- and which, for the exponent a subnormal needs, would have
+// applied — and which, for the exponent a subnormal needs, would have
 // overflowed to infinity before it could be used at all.
 func ScaleByPow10(value: float64, exp: int) -> float64 {
     let step = Pow10(22u);

@@ -4,7 +4,7 @@
 // literals and constants reach code generation, but arithmetic on them does not exist, so the compiler keeps them
 // out of reach rather than let `a + b` compile into an integer addition of the bits. What formatting needs is none
 // of that. A float is an integer significand and a power of two, both of which sit in the bits as plain integer
-// fields, and turning them into decimal digits -- or decimal digits back into them -- is integer arithmetic all
+// fields, and turning them into decimal digits — or decimal digits back into them — is integer arithmetic all
 // the way down. So the values here are the bits, held in the integer width that fits, and every conversion below
 // reads and writes those fields directly.
 //

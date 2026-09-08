@@ -74,7 +74,7 @@ extend String {
     /// A copy of bytes the caller vouches are UTF-8.
     ///
     /// Skips the pass `FromBytes` makes, which is what to use when the bytes came from something that already
-    /// guarantees it -- another string, a view, this package's own output.
+    /// guarantees it — another string, a view, this package's own output.
     ///
     /// `error` receives `OutOfMemory` when the copy cannot be made, and `None` when the string was built.
     ///
@@ -116,7 +116,7 @@ extend String {
     /// `bytes` is borrowed and copied, so what it names stays the caller's. `error` receives `InvalidUtf8` when the
     /// bytes are not text and `OutOfMemory` when the copy cannot be made.
     ///
-    /// Runs in time proportional to the length -- one pass to check, one to copy -- and allocates once.
+    /// Runs in time proportional to the length — one pass to check, one to copy — and allocates once.
     ///
     /// https://rux-lang.dev/docs/api/text/string/from-bytes
     pub func FromBytes(allocator: Allocator, bytes: char8[..], error: *var TextError) -> String {

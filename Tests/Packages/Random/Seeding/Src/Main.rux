@@ -1,4 +1,4 @@
-// Two claims are checked here. That entropy seeding actually varies -- a seeding path that quietly failed would
+// Two claims are checked here. That entropy seeding actually varies — a seeding path that quietly failed would
 // hand back the same predictable generator every time, which is the failure worth catching. And that generators
 // are independent values, so drawing from one cannot disturb another; that is the property a global generator
 // would destroy, and the reason this package does not offer one.

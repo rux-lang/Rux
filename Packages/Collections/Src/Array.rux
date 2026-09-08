@@ -14,7 +14,7 @@
 // which is what lets an arena's arrays disappear with the arena and a pool's come back to the pool.
 //
 // Every constructor copies its elements into the storage. A move-only element type cannot be copied, so an array of
-// those has to be built another way -- `Vector<T>` and its `Push` is the shape that works, since each element is
+// those has to be built another way — `Vector<T>` and its `Push` is the shape that works, since each element is
 // moved in exactly once.
 
 import Allocator::Allocator;
@@ -45,7 +45,7 @@ extend Array<T> {
     /// empty array that owns a zero-sized block and is released like any other.
     ///
     /// The array is returned rather than written through an out-parameter, because the compiler tracks a binding's
-    /// initialization and cannot see a write through a pointer as one -- an array delivered that way would be owned
+    /// initialization and cannot see a write through a pointer as one — an array delivered that way would be owned
     /// by a binding believed to own nothing. The error is what travels by pointer instead.
     ///
     /// On failure the returned array is empty and owns nothing, so destroying it is harmless.
@@ -104,7 +104,7 @@ extend Array<T> {
     /// `self` is borrowed and left alone; `error` is written with why the copy could not be made. The copy has its
     /// own storage from the same allocator, so both are released independently.
     ///
-    /// Copying elements is what this does, so an element that owns something ends up owned twice -- which is why
+    /// Copying elements is what this does, so an element that owns something ends up owned twice — which is why
     /// this is only usable where copying an element means what it says.
     ///
     /// Runs in time proportional to the length.
@@ -233,7 +233,7 @@ extend Array<T> {
         if self.data == null { return; }
         var index: uint = 0;
         while index < self.length {
-            // Reading the element into a local moves it there, and the local's life ends on the next line -- which
+            // Reading the element into a local moves it there, and the local's life ends on the next line — which
             // is what destroys an element whose type owns something, and copies nothing at all for one that does
             // not. There is no other way for a container to destroy an element it does not know is droppable.
             let taken <- self.data[index];

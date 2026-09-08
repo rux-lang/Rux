@@ -1,6 +1,6 @@
 // Directories: made, deleted, and read entry by entry with nothing lost in the names.
 //
-// Enumeration hands back each entry's name as an `OsString` -- the units the system actually stores, not a text
+// Enumeration hands back each entry's name as an `OsString` — the units the system actually stores, not a text
 // conversion that a hostile or merely foreign name would fail. The `.` and `..` entries are skipped, because no
 // caller walking a directory has ever wanted the directory itself twice. Order is whatever the filesystem
 // chooses; nothing here sorts, because a sorted walk is a policy and this is a primitive.

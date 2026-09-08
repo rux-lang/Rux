@@ -1,7 +1,7 @@
 
 // TOML has real types, so the interesting question about a value is not what it can be coerced into but what it
 // refuses to be. An integer is not a float here even when the float is whole, and a local date-time has no
-// offset -- inventing one is how a meeting ends up an hour out.
+// offset — inventing one is how a meeting ends up an hour out.
 
 import Allocator::{ Allocator, SystemAllocator };
 import Core::{ Assert };
@@ -85,7 +85,7 @@ func Main() -> int {
     Assert((*found).AsInteger(@readInteger) && readInteger == 2i64, "with the value it was stored with");
     Assert(table.Find(View("pear")) == null, "and a key that is not there is not");
 
-    // An array keeps its order too, and a borrowed element can be modified in place -- which is how an array of
+    // An array keeps its order too, and a borrowed element can be modified in place — which is how an array of
     // tables grows a member after its header has already been read.
     var array = TomlValue::Array(allocator);
     array.Push(TomlValue::Integer(allocator, 10i64));

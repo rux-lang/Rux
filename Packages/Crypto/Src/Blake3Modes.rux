@@ -3,7 +3,7 @@
 // The point of having modes at all is domain separation. The same bytes hashed unkeyed, hashed with a key, and
 // used as key material produce three unrelated outputs, and no amount of work with one mode says anything about
 // another. That is what lets one algorithm serve as a hash, as a message authentication code, and as a key
-// derivation function without the three interfering -- which is otherwise the sort of thing that turns a
+// derivation function without the three interfering — which is otherwise the sort of thing that turns a
 // perfectly good hash into a vulnerability when someone uses it for two purposes at once.
 //
 // Keyed hashing is a MAC, and a proper one: BLAKE3 is not vulnerable to length extension, so unlike SHA-2 it can
@@ -39,7 +39,7 @@ extend Blake3 {
     /// A keyed BLAKE3 hash: a message authentication code.
     ///
     /// `key` must be exactly thirty-two bytes; a shorter one is padded with zeros, which is a caller error
-    /// rather than a supported shortening -- a key with less entropy than the algorithm expects is weaker than
+    /// rather than a supported shortening — a key with less entropy than the algorithm expects is weaker than
     /// it looks, and padding it hides that rather than fixing it.
     ///
     /// Unlike SHA-2, this needs no nested construction: BLAKE3 resists length extension, so starting the tree
@@ -56,7 +56,7 @@ extend Blake3 {
     ///
     /// The context string names what the derived key is *for*, and it is hashed separately from the key
     /// material so that two derivations from the same material under different contexts are unrelated. It
-    /// should be a hard-coded, globally unique string -- an application name, a purpose, and a date -- and it
+    /// should be a hard-coded, globally unique string — an application name, a purpose, and a date — and it
     /// must not be a variable, since two callers who accidentally share one lose the separation entirely.
     ///
     /// https://rux-lang.dev/docs/api/crypto/blake3/new-derive-key

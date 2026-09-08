@@ -3,7 +3,7 @@
 // RFC 8259 says a number is a sequence of digits with an optional fraction and exponent, and then says
 // implementations may set whatever limits they like on range and precision. That is the whole of it: JSON has no
 // integer type, no float type, and no stated precision, so every parser decides for itself and they disagree.
-// A parser that turns everything into a double silently corrupts an identifier past 2^53 -- which is how a
+// A parser that turns everything into a double silently corrupts an identifier past 2^53 — which is how a
 // Twitter status id became a different status id in a great deal of software.
 //
 // So a number here keeps its text, and answers questions about itself from that. It reports whether it fits an
@@ -38,7 +38,7 @@ pub enum JsonKind: int32 {
 /// A JSON number, held as the text it was written with.
 ///
 /// JSON does not say what precision a number has, so nothing here decides on the caller's behalf. Ask for the
-/// shape wanted -- `AsInt64`, `AsUint64`, `AsFloat64` -- and each reports whether the value fits. Keeping the
+/// shape wanted — `AsInt64`, `AsUint64`, `AsFloat64` — and each reports whether the value fits. Keeping the
 /// text is also what lets a document round-trip exactly, which a parser converting to a double cannot do.
 ///
 /// https://rux-lang.dev/docs/api/json/json-number
@@ -136,7 +136,7 @@ pub struct JsonMember {
 /// A JSON value: one of the six kinds, owning whatever it holds.
 ///
 /// Move-only, because it owns strings and nested values. The allocator it was built with is carried along, so a
-/// subtree can be released without the caller having to remember where it came from -- which is what makes a
+/// subtree can be released without the caller having to remember where it came from — which is what makes a
 /// document assembled from several sources safe to take apart.
 ///
 /// The tag is inspected with `Kind` and the payload read with the matching accessor; asking for the wrong one
@@ -242,7 +242,7 @@ extend JsonValue {
         return self.kind == JsonKind::Null;
     }
 
-    /// The boolean payload, or `false` when this is not a boolean -- which `Kind` distinguishes from a genuine
+    /// The boolean payload, or `false` when this is not a boolean — which `Kind` distinguishes from a genuine
     /// `false`.
     ///
     /// https://rux-lang.dev/docs/api/json/json-value/as-boolean
@@ -292,7 +292,7 @@ extend JsonValue {
     /// Appends a member to an object, taking ownership of both name and value.
     ///
     /// The order members are added in is the order they are kept and written, which is what makes a document
-    /// round-trip recognisably. Nothing here rejects a duplicate name -- that policy lives in the parser, where
+    /// round-trip recognisably. Nothing here rejects a duplicate name — that policy lives in the parser, where
     /// the caller can choose it.
     ///
     /// https://rux-lang.dev/docs/api/json/json-value/insert
@@ -313,7 +313,7 @@ extend JsonValue {
 
     /// The value of the member named `name`, borrowed, or null when there is none.
     ///
-    /// With duplicate names present -- which only a permissive parser policy allows -- this finds the first,
+    /// With duplicate names present — which only a permissive parser policy allows — this finds the first,
     /// since that is the one a reader encounters.
     ///
     /// https://rux-lang.dev/docs/api/json/json-value/find

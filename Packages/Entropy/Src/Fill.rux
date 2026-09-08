@@ -5,7 +5,7 @@
 // it reaches the system through an interface rather than by name.
 //
 // That last part is the point of the module. Entropy failures are the ones nobody tests: they need a kernel with no
-// generator, a process being signalled steadily, or a cryptographic provider that refuses -- none of which a test
+// generator, a process being signalled steadily, or a cryptographic provider that refuses — none of which a test
 // can arrange. So the source is an `EntropySource`, `SystemEntropy` is the one that asks the operating system, and a
 // test supplies one that fails exactly when the test wants it to. The code that handles a failure is then the same
 // code in the test and in production, which is the only way to know it works.
@@ -23,7 +23,7 @@ pub interface EntropySource {
     /// Fills `length` bytes of `buffer` with unpredictable bytes.
     ///
     /// `buffer` is borrowed and written; `length` is read by value. Reports `None` only when every byte was written.
-    /// An implementation may write part of the buffer before failing -- the caller is what guarantees nothing
+    /// An implementation may write part of the buffer before failing — the caller is what guarantees nothing
     /// partial survives.
     ///
     /// # Safety
@@ -116,7 +116,7 @@ pub func FillFrom(source: &var EntropySource, buffer: *var opaque, length: uint)
 /// `source` is borrowed for the call; `buffer` is borrowed and written; `length` and `attempts` are read by value.
 /// `attempts` is how many extra tries to make, so zero is one attempt and behaves exactly like `FillFrom`.
 ///
-/// Only a transient failure is retried -- `Interrupted`, which says a signal arrived rather than that anything is
+/// Only a transient failure is retried — `Interrupted`, which says a signal arrived rather than that anything is
 /// wrong. A system with no source and a provider that refused are both reported at once, because repeating them
 /// would only take longer to reach the same answer.
 ///
@@ -159,7 +159,7 @@ pub func Fill(buffer: *var opaque, length: uint) -> EntropyError {
 /// An unpredictable 64-bit value, which is what a generator wants for a seed.
 ///
 /// `error` is borrowed and written with why the value could not be obtained, or `None` when it could. Returns zero
-/// on failure -- a value a caller who ignores `error` will notice, rather than one that looks plausible.
+/// on failure — a value a caller who ignores `error` will notice, rather than one that looks plausible.
 ///
 /// Runs in constant time and allocates nothing.
 ///

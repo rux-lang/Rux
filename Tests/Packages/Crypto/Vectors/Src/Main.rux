@@ -8,7 +8,7 @@
 //
 // The avalanche check is the one that catches a hash which is merely *shaped* correctly. An implementation with
 // a round loop that runs one iteration too few, or a schedule that never mixes the last word, still produces
-// deterministic output of the right length that passes every structural test -- and shows up here immediately,
+// deterministic output of the right length that passes every structural test — and shows up here immediately,
 // because a weak diffusion changes far fewer than half the bits.
 
 import Core::{ Assert };
@@ -68,7 +68,7 @@ func CheckAvalanche(digestLength: uint, which: uint, what: char8[..]) {
             worstHigh = differing;
         }
         // A quarter to three quarters is a very loose band around a half, and no real hash comes near either
-        // edge -- but an implementation with a truncated round loop falls far outside it.
+        // edge — but an implementation with a truncated round loop falls far outside it.
         Assert(differing * 4u > totalBits && differing * 4u < totalBits * 3u, what);
         position = position + 1;
     }
@@ -111,7 +111,7 @@ func HashWith(which: uint, message: char8[..], into: var char8[..]) {
 }
 
 func Main() -> int {
-    // Avalanche, on every algorithm the package offers -- including the legacy pair, which are broken for
+    // Avalanche, on every algorithm the package offers — including the legacy pair, which are broken for
     // collisions and still diffuse properly, since that is not what broke them.
     CheckAvalanche(32u, 0u, "SHA-256 diffuses a single flipped bit across about half its output");
     CheckAvalanche(64u, 1u, "SHA-512 diffuses a single flipped bit");

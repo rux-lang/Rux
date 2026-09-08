@@ -1,6 +1,6 @@
 // A generator's whole value is that it is reproducible, so this pins its output rather than describing it: the
 // first words from a known seed are written down, and a change to the algorithm has to change them here too.
-// The rest checks the properties the derived shapes promise -- that a byte fill consumes words predictably,
+// The rest checks the properties the derived shapes promise — that a byte fill consumes words predictably,
 // that a narrow draw costs a whole word, and that the floats stay inside their half-open interval.
 
 import Core::{ Assert };
@@ -15,12 +15,12 @@ func Main() -> int {
     Assert(mixer.NextUint64() == 0x06C45D188009454Fu64, "the third");
     Assert(mixer.NextUint64() == 0xF88BB8A8724C81ECu64, "and the fourth");
 
-    // Every seed gives the full period, so no seed is a bad one -- including the one people reach for first.
+    // Every seed gives the full period, so no seed is a bad one — including the one people reach for first.
     var fromZero = SplitMix64(0u64);
     var fromOne = SplitMix64(1u64);
     Assert(fromZero.NextUint64() != fromOne.NextUint64(), "adjacent seeds do not give adjacent output");
 
-    // A generator is a value, so two copies from the same seed march in step -- which is what reproducibility
+    // A generator is a value, so two copies from the same seed march in step — which is what reproducibility
     // means and what a test suite depends on.
     var first = SplitMix64(12345u64);
     var second = SplitMix64(12345u64);

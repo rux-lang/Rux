@@ -86,7 +86,7 @@ func Main() -> int {
         inner = inner + 1;
     }
     // Below 2^-28 the cubic term of the series is under half an ulp, so the answer is the argument exactly.
-    // That is the range the short path claims, and it is the range this checks -- above it the cubic term is
+    // That is the range the short path claims, and it is the range this checks — above it the cubic term is
     // real and the answer genuinely differs.
     var tinyPower: int64 = -80;
     while tinyPower <= -29i64 {

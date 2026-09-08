@@ -1,7 +1,7 @@
 // Choosing from a collection: uniformly, by weight, and from a stream whose length is not known in advance.
 //
 // Each of these has a famous wrong version. A shuffle written as "for each position, swap with a random position
-// anywhere" is not uniform -- it produces n^n equally likely swap sequences over n! permutations, and since n!
+// anywhere" is not uniform — it produces n^n equally likely swap sequences over n! permutations, and since n!
 // does not divide n^n some permutations come out more often. Weighted choice written as a linear scan over
 // running totals is correct but reads the weights twice and drifts when they are large. Reservoir sampling done
 // by collecting everything first is not reservoir sampling at all, and defeats the only reason to use it.
@@ -47,7 +47,7 @@ pub func ChooseIndex<G: RandomGenerator>(generator: &var G, count: uint) -> uint
 ///
 /// A weight of zero is never chosen; negative weights are treated as zero rather than subtracting from the
 /// total, since a negative probability has no meaning and silently reversing a comparison is worse than
-/// ignoring the entry. Weights that are all zero, or an empty slice, give the length -- the same
+/// ignoring the entry. Weights that are all zero, or an empty slice, give the length — the same
 /// out-of-range answer `ChooseIndex` gives for an empty collection.
 ///
 /// Runs in time proportional to the length, reading the weights twice: once to total them and once to select.

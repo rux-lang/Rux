@@ -12,7 +12,7 @@ import Math::{ Cos, Log, Sin, Sqrt };
 /// A probability at or below zero never comes up true and one at or above one always does, so a caller
 /// computing a probability that drifts slightly out of range gets the sensible answer rather than an
 /// occasional inversion. The comparison is against a draw in `[0, 1)`, so a probability of exactly zero is
-/// impossible rather than merely rare -- which is what makes the two ends behave.
+/// impossible rather than merely rare — which is what makes the two ends behave.
 ///
 /// https://rux-lang.dev/docs/api/random/bernoulli
 pub func Bernoulli<G: RandomGenerator>(generator: &var G, probability: float64) -> bool {
@@ -24,7 +24,7 @@ pub func Bernoulli<G: RandomGenerator>(generator: &var G, probability: float64) 
 /// A value from the exponential distribution with rate one.
 ///
 /// The inverse-transform method: the negated logarithm of a uniform draw. Written on `1 - u` rather than on `u`
-/// because `NextFloat64` can return exactly zero, whose logarithm is an infinity -- so the draw that would
+/// because `NextFloat64` can return exactly zero, whose logarithm is an infinity — so the draw that would
 /// produce an infinite sample is instead the one that produces zero, which the distribution does allow.
 ///
 /// Multiply the result by a mean, or divide by a rate, to scale it.
@@ -51,7 +51,7 @@ const FullTurn: float64 = 6.283185307179586;
 
 /// A pair of independent standard normal values.
 ///
-/// The Box-Muller transform, which produces two at a time from two uniform draws -- so this returns both rather
+/// The Box-Muller transform, which produces two at a time from two uniform draws — so this returns both rather
 /// than throwing one away. The radial draw is taken on `1 - u` for the same reason as the exponential: the
 /// logarithm of an exact zero is an infinity, and the generator will produce an exact zero eventually.
 ///

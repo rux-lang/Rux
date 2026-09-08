@@ -1,7 +1,7 @@
 // Case, without a locale.
 //
 // Three kinds of mapping live here and they answer different questions. The simple mappings take one scalar value
-// to one: cheap, allocation-free, and wrong for the handful of characters whose case changes their length -- a
+// to one: cheap, allocation-free, and wrong for the handful of characters whose case changes their length — a
 // sharp s uppercases to two letters, which one-to-one cannot say. The full mappings say it, writing up to three
 // values. And folding is neither case: it is the canonical form two strings are taken to before asking whether
 // they are the same text, chosen so the answer is the same in every locale.

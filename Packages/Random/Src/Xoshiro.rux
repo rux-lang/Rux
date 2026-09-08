@@ -2,7 +2,7 @@
 //
 // The state is four words and the step is shifts and exclusive-ors, which is why it is fast; the output goes
 // through two multiplications, which is what makes it pass the statistical tests the raw state would fail. Its
-// period is 2^256 - 1, and the all-zero state is the one state outside the cycle -- it maps to itself forever --
+// period is 2^256 - 1, and the all-zero state is the one state outside the cycle — it maps to itself forever --
 // so seeding refuses to leave it there.
 //
 // Suitable for simulation, shuffling and sampling. **Not suitable for anything that must resist an adversary:**
@@ -27,7 +27,7 @@ extend Xoshiro256 {
     ///
     /// Every seed is acceptable, zero included: the mixer's output is what fills the state, and it cannot
     /// produce four zero words from any seed. Seeding by copying the seed into one word and leaving the rest
-    /// zero -- which is what a caller does by hand -- gives a state so close to the fixed point that the first
+    /// zero — which is what a caller does by hand — gives a state so close to the fixed point that the first
     /// several outputs are visibly poor, which is the whole reason this goes through the mixer.
     ///
     /// https://rux-lang.dev/docs/api/random/xoshiro256/new

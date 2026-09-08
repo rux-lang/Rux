@@ -2,7 +2,7 @@ import Core::{ Assert };
 import Unicode::{ GraphemeVectorBreaks, GraphemeVectorIndex, GraphemeVectorPoints, IsGraphemeBoundary };
 
 // Every row of the official GraphemeBreakTest, boundary by boundary. Each row is a run of code points and a mask
-// saying where the boundaries fall -- bit N for the position before point N, the bit past the last for the end --
+// saying where the boundaries fall — bit N for the position before point N, the bit past the last for the end --
 // and the rules must agree at every position of every row: the Hangul rows, the emoji joins, the flag pairs and
 // the Indic conjuncts are all in here.
 

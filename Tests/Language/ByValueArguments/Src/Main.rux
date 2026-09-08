@@ -2,7 +2,7 @@
 // An aggregate argument is placed by its own size, and the calling conventions disagree about where a wide one
 // goes: System V copies it onto the stack, Win64 and AAPCS64 pass the address of a copy. A literal array or tuple
 // used to be handed over as the address of the slot it was built in, which is only what the callee expects on the
-// two conventions that pass by address -- on System V the callee read the address as the first element and the
+// two conventions that pass by address — on System V the callee read the address as the first element and the
 // scalar after it from a slot nobody had written. The named-variable form always went by value, so each case here
 // is written as a literal, as a constant and as a local, and each puts a scalar after the aggregate, which is the
 // argument that lands in the wrong place when the aggregate consumes registers it should not.

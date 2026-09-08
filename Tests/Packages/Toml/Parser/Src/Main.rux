@@ -1,6 +1,6 @@
 // A TOML parser is mostly bookkeeping about tables, so most of this is about the ways a document may not define
-// one twice. The three rules have three reasons -- a header redefines, an inline table is closed by its brace, a
-// dotted key is closed by its line -- and a parser that reported them all as "duplicate key" would leave the
+// one twice. The three rules have three reasons — a header redefines, an inline table is closed by its brace, a
+// dotted key is closed by its line — and a parser that reported them all as "duplicate key" would leave the
 // writer to work out which of the three they had broken.
 
 import Allocator::{ Allocator, SystemAllocator };

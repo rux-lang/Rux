@@ -2,12 +2,12 @@
 //
 // `as` always produces a value of the destination type, wrapping or truncating whatever did not fit and saying
 // nothing about it. That is the right default for the places a conversion is known to be safe, and the wrong one
-// everywhere else -- an index narrowed to a smaller width, a signed count handed to an unsigned parameter, a
+// everywhere else — an index narrowed to a smaller width, a signed count handed to an unsigned parameter, a
 // measurement rounded to a narrower float. These say what happened.
 //
 // Every check here is a round trip: convert, convert back, and compare in the source type. Nothing compares a value
 // of one type against a value of another, so no comparison has to decide which of two widths or signednesses to use.
-// The round trip catches truncation on its own, and one further test catches the pairs it cannot see -- a value and
+// The round trip catches truncation on its own, and one further test catches the pairs it cannot see — a value and
 // its conversion that disagree in sign, which is how `-1` reaches `uint64` and how `2^63` reaches `int64` while
 // converting back to exactly what they started as.
 //
@@ -49,7 +49,7 @@ pub func IsSignedType<T>(sample: T) -> bool {
 /// https://rux-lang.dev/docs/api/core/convert-checked
 pub func ConvertChecked<From, To>(value: From, result: *var To) -> bool {
     *result = value as To;
-    // Converting back lands on the value it started from exactly when nothing was lost on the way out -- with one
+    // Converting back lands on the value it started from exactly when nothing was lost on the way out — with one
     // exception, below, that the round trip cannot see.
     if (*result as From) != value { return true; }
     // A value and its conversion that disagree in sign came back equal only because both conversions wrapped the same

@@ -1,5 +1,5 @@
-// A distribution is checked by its moments -- a sample large enough for the mean and variance to settle close to
-// the true values -- and by the edges, where a transform that is fine in real arithmetic goes wrong. The edges
+// A distribution is checked by its moments — a sample large enough for the mean and variance to settle close to
+// the true values — and by the edges, where a transform that is fine in real arithmetic goes wrong. The edges
 // are the part worth writing tests for: the moments would pass for several subtly wrong implementations, and
 // the edges would not.
 
@@ -30,7 +30,7 @@ func Main() -> int {
     }
 
     // Exponential: mean and standard deviation are both one, and every value is finite and non-negative. The
-    // finiteness is the real check -- the naive transform produces an infinity when the uniform draw is zero,
+    // finiteness is the real check — the naive transform produces an infinity when the uniform draw is zero,
     // and over this many draws that happens.
     var total = 0.0;
     var totalSquares = 0.0;

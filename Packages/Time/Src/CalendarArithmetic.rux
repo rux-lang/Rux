@@ -1,7 +1,7 @@
 // Moving through the calendar, with the awkward cases decided rather than discovered.
 //
 // Days are the honest unit: adding days is adding to the epoch count, total and exact. Months and years are not --
-// the 31st of January has no counterpart one month on, and the leap day none one year on -- so those operations
+// the 31st of January has no counterpart one month on, and the leap day none one year on — so those operations
 // need a policy, and the policy here is **clamp to the month's end**: January 31st plus a month is the last day of
 // February, and February 29th plus a year is February 28th. Clamping is what a human means by "same day next
 // month" when the day is missing, and it keeps the operation total; the alternative, refusing, would make month

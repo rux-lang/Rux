@@ -8,8 +8,8 @@ import Core::Assert;
 // re-queued once the enclosing generic said what `T` was, so `sizeof(T)` inside it had no layout to fold against and
 // the compiler stopped where nothing was left to ask.
 //
-// This is what every container that allocates its own nodes does -- a tree asks its allocator for a `TreeNode<K, V>`
-// from inside `Tree<K, V>` -- so it is reached by allocating anything with a shape of its own.
+// This is what every container that allocates its own nodes does — a tree asks its allocator for a `TreeNode<K, V>`
+// from inside `Tree<K, V>` — so it is reached by allocating anything with a shape of its own.
 
 struct Node<T> {
     value: T;

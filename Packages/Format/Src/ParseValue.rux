@@ -1,7 +1,7 @@
 
 // Parsing the two values whose text is a word or a character rather than digits.
 //
-// A boolean is exactly `true` or `false` -- not `True`, not `1`, not `yes`. Every widening of that set has to
+// A boolean is exactly `true` or `false` — not `True`, not `1`, not `yes`. Every widening of that set has to
 // choose which spellings count, and the choice differs by language and context; a caller wanting one applies it
 // before parsing, where the choice is visible.
 //
@@ -36,7 +36,7 @@ pub func ParseBool(str: StringView) -> Result<bool, ParseError> {
 
 /// Parses exactly one character.
 ///
-/// Reports `Empty` for no bytes, and `InvalidCharacter` for bytes that are not one whole scalar value -- ill-formed
+/// Reports `Empty` for no bytes, and `InvalidCharacter` for bytes that are not one whole scalar value — ill-formed
 /// UTF-8 at zero, a second character at its own index.
 ///
 /// https://rux-lang.dev/docs/api/format/parse-char

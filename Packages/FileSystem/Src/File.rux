@@ -1,7 +1,7 @@
 // An owned file handle, opened under options that say what they mean.
 //
-// Opening a file asks two separate questions -- what may happen through the handle, and what to do about the
-// file's existence -- and most APIs tangle them. `OpenOptions` keeps them apart: `read`, `write` and `append`
+// Opening a file asks two separate questions — what may happen through the handle, and what to do about the
+// file's existence — and most APIs tangle them. `OpenOptions` keeps them apart: `read`, `write` and `append`
 // answer the first; `create`, `createNew` and `truncate` answer the second. The contradictions are refused here,
 // before the platform is asked, so an impossible request fails the same way on every system instead of however
 // each platform happens to take it.
@@ -247,7 +247,7 @@ extend File {
             if options.truncate {
                 flags = flags | OpenTruncate;
             }
-            // Read and write for everyone, cut down by the process umask -- the ordinary permissions an
+            // Read and write for everyone, cut down by the process umask — the ordinary permissions an
             // ordinary file is born with.
             let opened = OpenAt(AtFdCwd, native as *char8, flags, 438);
             if opened < 0 {

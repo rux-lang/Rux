@@ -5,7 +5,7 @@
 // worth having.
 //
 // `ValueIterator` yields elements by copy, which is what reading a sequence of numbers wants and what a move-only
-// element type must not be walked with -- copying one would give two owners to a value that promises one.
+// element type must not be walked with — copying one would give two owners to a value that promises one.
 // `ReferenceIterator` yields a pointer to each element, which works for any element type at all and is how a
 // move-only one is read without being moved.
 //
@@ -16,7 +16,7 @@
 // `var T[..]` and indexing it, which is what `Rux/Algorithms` does throughout. See Docs/CompilerDefects.md.
 //
 // Both borrow. Neither owns the storage it walks, and neither may outlive the container it came from or survive that
-// container growing, rehashing or being freed -- which is the one thing about iteration in this package worth
+// container growing, rehashing or being freed — which is the one thing about iteration in this package worth
 // remembering.
 //
 // A consuming iterator, which moves elements out of a container and leaves it empty, belongs to the container that

@@ -14,16 +14,11 @@ rux add Rux/Random
 
 ## What it provides
 
-- **Generators** — `Xoshiro256` and `Pcg64Dxsm`, each seedable explicitly so a run is reproducible, or from
-  `Rux/Entropy` when it should not be.
-- **A generator contract** — `RandomGenerator`, which everything else is written against, so a caller's own
-  generator works with all of it.
-- **Uniform values** — integers of every width, floats in the unit interval, and bounded draws that are
-  unbiased rather than merely close, using Lemire's method instead of a modulo.
-- **Distributions** — normal, exponential, gamma, beta, Bernoulli, binomial, Poisson and weighted choice,
-  built on exact reductions rather than on approximations that drift in the tail.
-- **Sampling** — shuffling, choosing an index, weighted choice, and reservoir sampling for a stream whose
-  length is not known in advance.
+- **Generators** — `Xoshiro256` and `Pcg64Dxsm`, each seedable explicitly so a run is reproducible, or from `Rux/Entropy` when it should not be.
+- **A generator contract** — `RandomGenerator`, which everything else is written against, so a caller's own generator works with all of it.
+- **Uniform values** — integers of every width, floats in the unit interval, and bounded draws that are unbiased rather than merely close, using Lemire's method instead of a modulo.
+- **Distributions** — normal, exponential, gamma, beta, Bernoulli, binomial, Poisson and weighted choice, built on exact reductions rather than on approximations that drift in the tail.
+- **Sampling** — shuffling, choosing an index, weighted choice, and reservoir sampling for a stream whose length is not known in advance.
 
 ## Documentation
 

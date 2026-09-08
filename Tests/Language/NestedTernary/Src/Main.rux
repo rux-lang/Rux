@@ -7,7 +7,7 @@ import Core::Assert;
 // conditional ends somewhere further along, so the merge was told to take its value from a block that does not
 // reach it, and none of the blocks that do.
 //
-// The verifier catches it, so this was a build that failed rather than a program that ran wrongly -- but only
+// The verifier catches it, so this was a build that failed rather than a program that ran wrongly — but only
 // because the verifier exists, and only on the arms that happen to be shaped this way.
 
 func Chain(value: uint) -> uint {

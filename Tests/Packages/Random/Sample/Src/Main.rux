@@ -1,5 +1,5 @@
 // Uniformity is the claim in every case here, and uniformity is exactly what a handful of runs cannot show. So
-// the shuffle is measured by counting where each element lands over many runs -- which is what catches the
+// the shuffle is measured by counting where each element lands over many runs — which is what catches the
 // famously biased variant, since that one still produces every permutation, just not equally often.
 
 import Core::{ Assert };
@@ -38,7 +38,7 @@ func Main() -> int {
     }
 
     // Uniformity: over many shuffles each element should land in each position about equally often. The biased
-    // variant -- swapping with any position rather than one at or below -- fails this and passes everything
+    // variant — swapping with any position rather than one at or below — fails this and passes everything
     // above it.
     var landings: uint[64];
     index = 0;

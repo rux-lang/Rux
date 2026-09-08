@@ -1,7 +1,7 @@
 // Reading and writing through a file descriptor, and the three descriptors a process starts with.
 //
 // The wrappers here name their arguments and nothing more: each returns the kernel's raw result, which is a byte
-// count or a small negative error number. A short count is not an error and not an end of file -- a read that returns
+// count or a small negative error number. A short count is not an error and not an end of file — a read that returns
 // fewer bytes than asked for has to be called again, which is the caller's loop to write.
 
 import Core::{ #target, #Error };
@@ -268,7 +268,7 @@ pub func FchmodAt(directoryFd: FileDescriptor, path: *char8, mode: FileMode, fla
 
 /// Sets the access and modification times of the file `path` names.
 ///
-/// `times` is borrowed and holds two `timespec` values -- access first, then modification -- each a whole-second
+/// `times` is borrowed and holds two `timespec` values — access first, then modification — each a whole-second
 /// count and a nanosecond fraction, both 8 bytes. A null `times` sets both to now. `flags` may carry
 /// `SymlinkNoFollow`. Returns zero, or a negative error number.
 ///
@@ -357,7 +357,7 @@ pub const RemoveDirectory: int32 = 512;
 
 /// Creates a directory named `path` with permission bits `mode`.
 ///
-/// Returns zero, or a negative error number -- `EEXIST` when the name is taken, which is how this is used as a lock.
+/// Returns zero, or a negative error number — `EEXIST` when the name is taken, which is how this is used as a lock.
 ///
 /// # Safety
 ///

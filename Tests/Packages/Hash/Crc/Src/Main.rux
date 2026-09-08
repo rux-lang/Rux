@@ -7,7 +7,7 @@ func TextBytes(text: char8[..]) -> char8[..] {
     return (text.data)[..text.length];
 }
 
-// Both CRCs are specified, so the test is the standard answers -- above all the check value every CRC catalogue
+// Both CRCs are specified, so the test is the standard answers — above all the check value every CRC catalogue
 // lists, which is the checksum of the nine characters "123456789". A CRC that agrees on that and on the empty
 // message has its polynomial, its reflection, its initial value and its final complement all right at once, since
 // getting any one of them wrong changes it.
@@ -55,7 +55,7 @@ func Main() -> int {
     Assert(Crcc("The quick brown fox jumps over the lazy dog") == 0x22620404, "CRC-32C of the pangram");
 
     // The two are different functions. They share everything but the generator, so a table swapped by accident would
-    // still produce plausible-looking answers -- and identical ones here.
+    // still produce plausible-looking answers — and identical ones here.
     Assert(Crc("123456789") != Crcc("123456789"), "the two polynomials give different answers");
 
     // Every table entry is its index divided by the generator. This is the table's own definition, checked rather

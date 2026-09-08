@@ -4,7 +4,7 @@
 // are wrong in ways that only show up in the tail. Summing `n` Bernoulli draws for a binomial is exact but takes
 // `n` draws, which is unusable for the large `n` that makes a binomial interesting. Multiplying uniforms for a
 // Poisson is exact but takes about `lambda` draws and underflows to a hang for a large mean. And a normal
-// approximation to either is not the distribution at all -- it is a different one that happens to look similar
+// approximation to either is not the distribution at all — it is a different one that happens to look similar
 // near the middle.
 //
 // So each is exact at every parameter, and each reduces to the gamma distribution when its parameter grows: the

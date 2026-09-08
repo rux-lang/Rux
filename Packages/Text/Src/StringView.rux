@@ -1,7 +1,7 @@
 // A borrowed run of text that is known to be UTF-8.
 //
 // The point of a separate type is that the check happens once. A `char8[..]` may or may not be UTF-8, so every
-// function taking one either re-validates -- which turns a linear pass into a linear pass per call -- or assumes,
+// function taking one either re-validates — which turns a linear pass into a linear pass per call — or assumes,
 // which is where the bugs are. A `StringView` cannot be built without the bytes being checked, so everything
 // downstream may assume and be right.
 //
@@ -51,7 +51,7 @@ extend StringView {
     /// A view over bytes the caller vouches are UTF-8.
     ///
     /// Skips the pass `FromBytes` makes, which is worth having when the bytes came from something that already
-    /// guarantees it -- another view, a `String`, a literal.
+    /// guarantees it — another view, a `String`, a literal.
     ///
     /// # Safety
     ///

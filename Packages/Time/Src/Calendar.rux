@@ -198,7 +198,7 @@ extend UtcOffset {
 
     /// The offset `hours` and `minutes` from UTC, when it is one an offset can be.
     ///
-    /// The two carry the same sign -- minus five thirty is `Of(-5, -30)` -- and the whole must stay within a day.
+    /// The two carry the same sign — minus five thirty is `Of(-5, -30)` — and the whole must stay within a day.
     /// Real offsets stop at eighteen hours, but text may carry any legal-looking one and refusing to represent it
     /// would turn parsing into policy.
     ///
@@ -220,7 +220,7 @@ extend UtcOffset {
 
 /// A date and a time of day together, in some understood offset.
 ///
-/// `Copy`. What offset the pair is in is the caller's knowledge, carried beside it where it matters -- attaching
+/// `Copy`. What offset the pair is in is the caller's knowledge, carried beside it where it matters — attaching
 /// one permanently would make every arithmetic answer depend on a field that is usually UTC anyway.
 ///
 /// https://rux-lang.dev/docs/api/time/date-time
@@ -269,7 +269,7 @@ extend DateTime {
 
     /// Whether two pairs name the same date and time.
     ///
-    /// Same field values -- two pairs in different offsets naming one moment are different here, which is what
+    /// Same field values — two pairs in different offsets naming one moment are different here, which is what
     /// carrying the offset beside the pair means.
     ///
     /// https://rux-lang.dev/docs/api/time/date-time/equals

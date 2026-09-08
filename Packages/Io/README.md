@@ -21,14 +21,9 @@ rux add Rux/Io
 | `WriteAll`     | Send a byte slice to any writer              |
 | `ReadTextLine` | Append one validated line from a byte stream |
 
-`Print` and `PrintLine` accept values implementing `Display` from [`Rux/Format`](../Format), along with their
-primitive and text overloads.
+`Print` and `PrintLine` accept values implementing `Display` from [`Rux/Format`](../Format), along with their primitive and text overloads.
 
-Stream helpers borrow concrete implementations directly as `&var Reader` or `&var Writer` interface views. The
-borrow neither copies nor consumes the stream. `BufferedReader` and `BufferedWriter` must keep their streams after
-construction, so they store ordinary interface handles; raw-pointer adapters such as `FileSystem::FileStream` remain
-for that deliberately escaping case. Both buffered types prohibit copying, move with `<-`, and release their owned
-buffers through `~BufferedReader` and `~BufferedWriter`.
+Stream helpers borrow concrete implementations directly as `&var Reader` or `&var Writer` interface views. The borrow neither copies nor consumes the stream. `BufferedReader` and `BufferedWriter` must keep their streams after construction, so they store ordinary interface handles; raw-pointer adapters such as `FileSystem::FileStream` remain for that deliberately escaping case. Both buffered types prohibit copying, move with `<-`, and release their owned buffers through `~BufferedReader` and `~BufferedWriter`.
 
 ## Example
 

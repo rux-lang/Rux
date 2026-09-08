@@ -6,7 +6,7 @@ import Core::uint;
 // records what has to be given back.
 //
 // The header is why a release needs its layout. The block handed to the caller is not the block taken from the
-// system -- there is a header before it and padding before that -- and the header holds the length to release. Both
+// system — there is a header before it and padding before that — and the header holds the length to release. Both
 // the layout and the header are checked against each other, so a mismatched release is reported rather than
 // corrupting the next allocation.
 //
@@ -184,7 +184,7 @@ extend SystemAllocator : Allocator {
 }
 
 // Copying is spelled out here rather than taken from `Rux/Memory` because that module's `Copy` takes a `*opaque`
-// source, and a block being reallocated is `*var opaque` -- the cast is the whole of the difference.
+// source, and a block being reallocated is `*var opaque` — the cast is the whole of the difference.
 func CopyBlock(destination: *var opaque, source: *var opaque, length: uint) {
     let target = destination as *var byte;
     let origin = source as *byte;

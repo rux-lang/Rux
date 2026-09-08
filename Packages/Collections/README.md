@@ -83,10 +83,7 @@ Every count is checked for overflow. `count * sizeof(T)` is the most dangerous e
 
 ## Ownership
 
-Every owning container prohibits copying. Hand one to a consuming function with `<-`; the compiler rejects later
-reads of the source. Canonical destructors destroy initialized elements before releasing their storage. The same
-capability is derived through generic fields, so a map or consuming iterator containing an owning kernel is also
-move-only.
+Every owning container prohibits copying. Hand one to a consuming function with `<-`; the compiler rejects later reads of the source. Canonical destructors destroy initialized elements before releasing their storage. The same capability is derived through generic fields, so a map or consuming iterator containing an owning kernel is also move-only.
 
 Canonical empty construction is `Vector<T>(allocator)`, `Deque<T>(allocator)`, `HashMap<K, V>(...)`, `HashSet<T>(...)`, `TreeMap<K, V>(...)`, and `TreeSet<T>(...)`. Descriptive or fallible factories such as `FromSlice`, `WithCapacity`, and `Filled` retain their names.
 
@@ -169,8 +166,7 @@ Its elements are the keys of a tree whose values are `Unit`, which occupies no b
 
 An element must be copyable, exactly as a `HashSet`'s must: the comparison takes its two elements by value and every descent compares against elements the set holds, so an element that owned something would be destroyed by the first comparison it took part in. Owning values belong in a `TreeMap` under copyable keys.
 
-`IntersectWith` and `Subtract` allocate nothing, and ask for the next element by key rather than by following a
-pointer: removal relinks the nodes around what was removed, including the very node a pointer walk would visit next. `UnionWith` and `SymmetricDifferenceWith` can grow and report a `CollectionError`; unlike the hash set's, they are not all-or-nothing, because a tree has no capacity to reserve in advance — a partial union is still a set with every invariant intact, and running the call again finishes it.
+`IntersectWith` and `Subtract` allocate nothing, and ask for the next element by key rather than by following a pointer: removal relinks the nodes around what was removed, including the very node a pointer walk would visit next. `UnionWith` and `SymmetricDifferenceWith` can grow and report a `CollectionError`; unlike the hash set's, they are not all-or-nothing, because a tree has no capacity to reserve in advance — a partial union is still a set with every invariant intact, and running the call again finishes it.
 
 ## Set algebra
 

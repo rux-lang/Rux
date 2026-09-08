@@ -362,7 +362,7 @@ pub func ScaleByPowerOfTwo(value: float64, exponent: int64) -> float64 {
 pub func ScaleByPowerOfTwo(value: float32, exponent: int64) -> float32 {
     if !IsFinite(value) || IsZero(value) { return value; }
     // The wide type has enough exponent range that a narrow result is exact before narrowing, so the single rounding
-    // happens on the way back down -- including into the narrow subnormals.
+    // happens on the way back down — including into the narrow subnormals.
     return Scalb(value as float64, exponent) as float32;
 }
 

@@ -2,7 +2,7 @@ import Core::uint;
 // An allocator that serves small blocks from free lists, one per size class, and reuses what is given back.
 //
 // The arena is fast because it never reclaims. This is the allocator for the other shape: many small values whose
-// lives end at different times and in no particular order -- list nodes, hash table entries, small strings. Both
+// lives end at different times and in no particular order — list nodes, hash table entries, small strings. Both
 // allocation and release are a handful of instructions and a pointer swap, with no search and no coalescing.
 //
 // A request is rounded up to one of a few power-of-two classes, and each class keeps its own list of blocks that
@@ -10,7 +10,7 @@ import Core::uint;
 // blocks of that class, so the backing allocator sees one request per chunk rather than one per block.
 //
 // Rounding up is what pays for the speed. A 17-byte request occupies a 32-byte block, and the 15 bytes are not
-// recoverable until the whole chunk is released -- which is the trade a pool makes, and the reason it is not the
+// recoverable until the whole chunk is released — which is the trade a pool makes, and the reason it is not the
 // allocator to reach for when sizes vary widely.
 //
 // A request too large for the largest class, or needing an alignment stricter than a chunk is taken at, is passed
@@ -352,7 +352,7 @@ extend PoolHandle : Allocator {
     /// Changes the size of a block, which costs nothing when both sizes land in the same class.
     ///
     /// The two layouts must share an alignment. A block whose new size fits the class it already occupies comes back
-    /// unmoved -- growing a 20-byte allocation to 30 does not touch storage at all. Anything else takes a new block,
+    /// unmoved — growing a 20-byte allocation to 30 does not touch storage at all. Anything else takes a new block,
     /// copies, and releases the old one.
     ///
     /// https://rux-lang.dev/docs/api/allocator/pool-handle/reallocate

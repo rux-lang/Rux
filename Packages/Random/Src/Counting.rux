@@ -41,8 +41,8 @@ pub func Binomial<G: RandomGenerator>(generator: &var G, trials: uint64, probabi
 
 /// The number of events in one interval when they arrive independently at the given mean rate.
 ///
-/// A mean at or below zero gives zero. A small mean uses Knuth's method -- multiply uniforms until the product
-/// falls below `exp(-mean)` -- which costs about `mean` draws and is exact. A large mean would cost too many
+/// A mean at or below zero gives zero. A small mean uses Knuth's method — multiply uniforms until the product
+/// falls below `exp(-mean)` — which costs about `mean` draws and is exact. A large mean would cost too many
 /// draws that way, and the product would underflow to zero before the loop ended, so the mean is consumed in
 /// chunks: a gamma draw of integer shape is the waiting time for that many events, and either it overshoots the
 /// interval, in which case the count is a binomial of what is left, or it fits and the remainder carries on.

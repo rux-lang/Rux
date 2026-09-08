@@ -6,7 +6,7 @@
 // nothing, satisfies every universal claim, and matches no search.
 //
 // The value-based queries need `==` on the element type and nothing more, so a type with equality but no ordering
-// can use them. The predicate-based ones need nothing at all -- the caller's function supplies the test -- and the
+// can use them. The predicate-based ones need nothing at all — the caller's function supplies the test — and the
 // ordered searches live in `Search`, which needs `<`.
 //
 // A predicate is an ordinary function value. Rux has no closures, so it carries no captured state: anything it needs
@@ -178,7 +178,7 @@ pub func NoneOf<T>(items: T[..], predicate: func(T) -> bool) -> bool {
 /// The index of the first position where `left` and `right` differ.
 ///
 /// Both are borrowed and read. Reports `None` when neither runs out before a difference is found and the two are
-/// equal for their whole common length -- so two slices of different lengths that agree on the shorter one report
+/// equal for their whole common length — so two slices of different lengths that agree on the shorter one report
 /// the shorter length, and two identical slices report `None`.
 ///
 /// Cannot fail. Runs in time proportional to the shorter length and allocates nothing.
@@ -236,7 +236,7 @@ pub func Compare<T>(left: T[..], right: T[..]) -> Ordering {
 /// How `left` orders against `right`, with `compare` deciding each pair.
 ///
 /// Both slices are borrowed and read; `compare` is called at most once per position of the shorter one. Lexicographic
-/// exactly as `Compare` is, and the way to order a sequence whose elements have no `<` of their own -- or to order it
+/// exactly as `Compare` is, and the way to order a sequence whose elements have no `<` of their own — or to order it
 /// by something other than their own.
 ///
 /// Cannot fail. Runs in time proportional to the shorter length and allocates nothing beyond whatever `compare` does.

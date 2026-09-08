@@ -2,7 +2,7 @@ import Core::Assert;
 import Time::{ Duration, Instant, SleepFor };
 
 // A monotonic clock's whole contract is an inequality: a later reading is never earlier. So the test is bounds,
-// not values -- readings never go backwards, a sleep takes at least what was asked, and the reversed subtraction
+// not values — readings never go backwards, a sleep takes at least what was asked, and the reversed subtraction
 // refuses rather than answering with a wildly large span. Nothing here asserts an upper bound on anything, because
 // a loaded machine is allowed to be slow and a test that fails under load is a test that lies.
 

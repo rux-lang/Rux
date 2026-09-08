@@ -2,12 +2,12 @@
 //
 // Everything here assumes the slice is sorted by the same order the search uses. That is the caller's promise, and
 // nothing checks it on the way in: checking would cost the linear scan the binary search exists to avoid. A search
-// over an unsorted slice does not fail -- it answers, and the answer is meaningless. `IsSorted` is there for a
+// over an unsorted slice does not fail — it answers, and the answer is meaningless. `IsSorted` is there for a
 // caller who wants to check, once, where checking is worth it.
 //
 // A bound is a position rather than an element: `LowerBound` is the first position where the value could be inserted
 // without breaking the order, and `UpperBound` is the last. Between them lie exactly the elements equal to it, which
-// is what `EqualRange` returns in one pass. All three answer for a value that is not present at all -- the answer is
+// is what `EqualRange` returns in one pass. All three answer for a value that is not present at all — the answer is
 // an empty range at the position it would go.
 //
 // The plain forms need `<` on the element type. The `By` forms take a three-way comparison, which is what to use for
@@ -57,7 +57,7 @@ pub func IsSortedUntil<T>(items: T[..]) -> uint {
 /// The first position where `value` could be inserted without breaking the order.
 ///
 /// `items` is borrowed and read; `value` is read by value. This is the index of the first element not less than
-/// `value` -- the first equal one when there are equals, and where it would go when there are none. A value larger
+/// `value` — the first equal one when there are equals, and where it would go when there are none. A value larger
 /// than everything gives the length.
 ///
 /// Requires `<` on the element type, and requires `items` to be sorted by that order.
@@ -83,7 +83,7 @@ pub func LowerBound<T>(items: T[..], value: T) -> uint {
 /// The last position where `value` could be inserted without breaking the order.
 ///
 /// `items` is borrowed and read; `value` is read by value. This is the index of the first element greater than
-/// `value` -- one past the last equal one when there are equals, and the same as `LowerBound` when there are none.
+/// `value` — one past the last equal one when there are equals, and the same as `LowerBound` when there are none.
 ///
 /// Requires `<` on the element type, and requires `items` to be sorted by that order.
 ///
@@ -127,7 +127,7 @@ pub func BinarySearch<T>(items: T[..], value: T) -> Option<uint> {
 /// The range of positions in `items` holding elements equal to `value`.
 ///
 /// `items` is borrowed and read; `value` is read by value. The range runs from `LowerBound` to `UpperBound`, so it
-/// is empty when no element is equal -- and its `start` is then where the value would be inserted, which is the
+/// is empty when no element is equal — and its `start` is then where the value would be inserted, which is the
 /// answer a caller inserting into a sorted sequence wants.
 ///
 /// Requires `<` on the element type, and requires `items` to be sorted by that order.

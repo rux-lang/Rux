@@ -36,7 +36,7 @@ func Check(value: uint, expected: char8[..], code: int) -> int {
 func Main() -> int {
     // uint is the unsigned integer as wide as a pointer. As with int, it is a
     // type of its own rather than another name for uint64, so it has a
-    // conversion of its own -- and reaching that conversion through a variable
+    // conversion of its own — and reaching that conversion through a variable
     // of the type is what proves the two overloads do not collide, which is the
     // whole point of this test.
     let zero: uint = 0;

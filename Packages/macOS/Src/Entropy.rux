@@ -1,7 +1,7 @@
 // Unpredictable bytes, from the system's own generator.
 //
 // Darwin's generator is always seeded, never blocks, and cannot fail, which is why the call it is reached through
-// returns nothing at all. There is no short count to loop over and no error to check -- the only such source among
+// returns nothing at all. There is no short count to loop over and no error to check — the only such source among
 // the four supported systems.
 
 import macOS::arc4random_buf;

@@ -1,7 +1,7 @@
 // The three integer widths past the machine word.
 //
 // A `uint512` in decimal is one hundred fifty-five digits, and its digit loop is the same division loop every
-// narrower width uses -- the arithmetic itself is the compiler's, which lowers wide division natively. What differs
+// narrower width uses — the arithmetic itself is the compiler's, which lowers wide division natively. What differs
 // per width is only the type the loop runs in, so each width carries its loop and everything after the digits is
 // shared with the narrow widths through `WriteIntegerDigits`.
 //
@@ -43,8 +43,8 @@ func WriteDigits128(writer: &var TextWriter, spec: FormatSpec, magnitude: uint12
 extend uint128 : Display {
     /// Writes this value's digits in the spec's base.
     ///
-    /// Allocates nothing: the digits go into a buffer on the stack -- 128 bytes covers the binary rendering,
-    /// which is the longest -- and reach the writer one piece at a time.
+    /// Allocates nothing: the digits go into a buffer on the stack — 128 bytes covers the binary rendering,
+    /// which is the longest — and reach the writer one piece at a time.
     ///
     /// https://rux-lang.dev/docs/api/format/uint128/format
     pub func Format(self: *uint128, writer: &var TextWriter, spec: FormatSpec) -> TextError {
@@ -113,8 +113,8 @@ func WriteDigits256(writer: &var TextWriter, spec: FormatSpec, magnitude: uint25
 extend uint256 : Display {
     /// Writes this value's digits in the spec's base.
     ///
-    /// Allocates nothing: the digits go into a buffer on the stack -- 256 bytes covers the binary rendering,
-    /// which is the longest -- and reach the writer one piece at a time.
+    /// Allocates nothing: the digits go into a buffer on the stack — 256 bytes covers the binary rendering,
+    /// which is the longest — and reach the writer one piece at a time.
     ///
     /// https://rux-lang.dev/docs/api/format/uint256/format
     pub func Format(self: *uint256, writer: &var TextWriter, spec: FormatSpec) -> TextError {
@@ -183,8 +183,8 @@ func WriteDigits512(writer: &var TextWriter, spec: FormatSpec, magnitude: uint51
 extend uint512 : Display {
     /// Writes this value's digits in the spec's base.
     ///
-    /// Allocates nothing: the digits go into a buffer on the stack -- 512 bytes covers the binary rendering,
-    /// which is the longest -- and reach the writer one piece at a time.
+    /// Allocates nothing: the digits go into a buffer on the stack — 512 bytes covers the binary rendering,
+    /// which is the longest — and reach the writer one piece at a time.
     ///
     /// https://rux-lang.dev/docs/api/format/uint512/format
     pub func Format(self: *uint512, writer: &var TextWriter, spec: FormatSpec) -> TextError {

@@ -9,7 +9,7 @@ const MaxFinite64 = 1.7976931348623157e308;
 // it always carries without the noise of the binary representation showing
 // through: seventeen would print 0.1 as 0.10000000000000001, which is what
 // the value really is. The cost of stopping at fifteen is that the text is
-// not a round trip -- two values that differ only past the fifteenth digit
+// not a round trip — two values that differ only past the fifteenth digit
 // print the same.
 const Digits64 = 15u;
 
@@ -44,7 +44,7 @@ extend float64 : Display {
     /// Writes this value's decimal text.
     ///
     /// Allocates nothing: the digits go into a buffer on the stack and reach the writer in one call. Fifty bytes is
-    /// more than the longest rendering -- sign, digits, point and exponent -- can need.
+    /// more than the longest rendering — sign, digits, point and exponent — can need.
     ///
     /// https://rux-lang.dev/docs/api/format/float64/format
     pub func Format(self: *float64, writer: &var TextWriter, spec: FormatSpec) -> TextError {

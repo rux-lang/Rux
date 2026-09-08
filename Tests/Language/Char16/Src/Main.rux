@@ -52,8 +52,8 @@ func Main() -> int {
 
 
     // char16 is a UTF-16 code unit, so every value it can hold is a valid one.
-    // A surrogate is a code unit and nothing else -- half of the pair that
-    // encodes a code point above the first plane -- so a char16 holds one and
+    // A surrogate is a code unit and nothing else — half of the pair that
+    // encodes a code point above the first plane — so a char16 holds one and
     // the scalar-valued widths refuse it.
     let high: char16 = 0xD800 as char16;
     let low: char16 = 0xDFFF as char16;

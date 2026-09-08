@@ -1,12 +1,12 @@
 
 // Text as the operating system stores it, kept lossless.
 //
-// A filename is not text. On the Unix systems it is bytes with two exclusions -- no slash, no NUL -- and nothing
+// A filename is not text. On the Unix systems it is bytes with two exclusions — no slash, no NUL — and nothing
 // obliges those bytes to be UTF-8. On Windows it is UTF-16 code units, and nothing obliges them to pair: names
 // with unpaired surrogates exist on real disks. A path type built on `String` would refuse those names, and a
 // program that cannot open a file because of its name is wrong in the way that loses data.
 //
-// So the native string stores exactly what the system does -- bytes there, code units here -- behind one alias,
+// So the native string stores exactly what the system does — bytes there, code units here — behind one alias,
 // and the conversions are asymmetric on purpose: UTF-8 in always succeeds, since valid text encodes into either
 // representation; UTF-8 out is fallible, since the system's names are under no obligation to be text at all.
 
@@ -53,7 +53,7 @@ extend OsStringView {
         return OsStringView { units: units };
     }
 
-    /// How many native units the view spans -- bytes or code units, not characters.
+    /// How many native units the view spans — bytes or code units, not characters.
     ///
     /// https://rux-lang.dev/docs/api/path/os-string-view/length
     pub func Length(self: &OsStringView) -> uint {
@@ -282,7 +282,7 @@ extend OsStringView {
     ///
     /// The fallible direction, and fallible for a different reason per platform: Unix bytes may simply not be
     /// UTF-8, and Windows units may hold an unpaired surrogate, which no UTF-8 sequence can spell. `error` says
-    /// `InvalidUtf8` for both, because both mean the same thing to the caller -- this name is not text, and a
+    /// `InvalidUtf8` for both, because both mean the same thing to the caller — this name is not text, and a
     /// program that must show it anyway shows it lossily by its own policy, knowingly.
     ///
     /// https://rux-lang.dev/docs/api/path/os-string-view/to-text
@@ -334,7 +334,7 @@ extend OsStringView {
 
 when #target.os == .Windows {
     // One scalar out of the UTF-16 units at `index`: a lone unit below the surrogates, or a high-low pair.
-    // Anything else -- a low half first, a high half with no partner -- is not text.
+    // Anything else — a low half first, a high half with no partner — is not text.
     func DecodeUnit(units: uint16[..], index: uint, scalar: *var uint32, width: *var uint) -> bool {
         let unit = units.data[index] as uint32;
         if unit < 0xD800 || unit > 0xDFFF {

@@ -1,5 +1,5 @@
-// A struct of six booleans is six bytes, and six is not a register width. Every move of such a value -- out of
-// a return, through an assignment, into a by-value parameter -- must copy all of it: a scalar move rounded down
+// A struct of six booleans is six bytes, and six is not a register width. Every move of such a value — out of
+// a return, through an assignment, into a by-value parameter — must copy all of it: a scalar move rounded down
 // to a register width loses the tail, and one rounded up reads or writes past the object. Sizes one, two, four
 // and eight ride along to pin the widths that always worked.
 

@@ -3,7 +3,7 @@
 // BLAKE3 is a tree hash, and that is the whole of what makes it different. A message is cut into chunks of a
 // kibibyte; each chunk is compressed to a chaining value independently, and the chaining values are joined
 // pairwise up a binary tree until one remains. Nothing in that depends on the order the chunks are processed,
-// which is why the algorithm parallelizes -- and it is also why the implementation is more intricate than a
+// which is why the algorithm parallelizes — and it is also why the implementation is more intricate than a
 // sequential hash, since the tree has to be maintained rather than just a running state.
 //
 // The tree is kept as a stack of subtree chaining values, and the trick that keeps it small is arithmetic: after
@@ -12,7 +12,7 @@
 //
 // The flags carry the position information a tree hash needs and a sequential one does not. A chaining value
 // means nothing without knowing whether it came from the start of a chunk, the end of one, a parent node, or the
-// root -- and mixing that into the compression is what stops one part of the tree being substituted for another.
+// root — and mixing that into the compression is what stops one part of the tree being substituted for another.
 
 
 
@@ -22,7 +22,7 @@ const Blake3ChunkLength: uint = 1024;
 // Bytes per compression: the unit the compression function consumes.
 const Blake3BlockLength: uint = 64;
 
-// The initial chaining value, which is SHA-256's -- the fractional square roots of the first eight primes.
+// The initial chaining value, which is SHA-256's — the fractional square roots of the first eight primes.
 const Blake3InitialValue: uint32[8] = [
     0x6A09E667, 0xBB67AE85, 0x3C6EF372, 0xA54FF53A, 0x510E527F, 0x9B05688C, 0x1F83D9AB, 0x5BE0CD19
 ];
@@ -390,7 +390,7 @@ extend Blake3 : Digest {
         }
         else {
             // Fold the stack downward, the current chunk entering as the rightmost child, until one join is
-            // left -- that last one is the root, and it is the only compression carrying the root flag.
+            // left — that last one is the root, and it is the only compression carrying the root flag.
             var carried: uint32[16];
             self.chunk.Output(0u32, @carried[0]);
             var depth = self.stackDepth;

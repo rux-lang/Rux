@@ -2,12 +2,12 @@
 //
 // This is the arena's shape without the arena's appetite: allocation is an addition and a bounds check, everything
 // is reclaimed at once, and when the buffer runs out the answer is `OutOfMemory` rather than another block. That
-// makes it the allocator for the places where allocation must not happen -- a fixed working set, a signal-safe path,
+// makes it the allocator for the places where allocation must not happen — a fixed working set, a signal-safe path,
 // an embedded target with no allocator underneath at all.
 //
 // It owns nothing, so it has no destructor and the buffer's life is entirely the caller's business. What it does
 // have is mutable state, and an allocator that is copied while it is being used would hand out the same storage
-// twice -- so `Handle` is what implements `Allocator`, exactly as it is for the arena.
+// twice — so `Handle` is what implements `Allocator`, exactly as it is for the arena.
 
 import Allocator::{ AllocError, Allocator, EmptyBlockAddress, IsEmptyBlock, Layout };
 import Memory::{ AlignUp, Copy };
@@ -36,7 +36,7 @@ extend FixedBuffer {
     /// An allocator over `capacity` bytes at `storage`.
     ///
     /// `storage` is borrowed and kept; nothing is copied and nothing is taken ownership of. A `capacity` of zero, or
-    /// a null `storage`, gives an allocator that refuses every request with `OutOfMemory` -- which is a usable
+    /// a null `storage`, gives an allocator that refuses every request with `OutOfMemory` — which is a usable
     /// allocator rather than an error, and is what a caller testing exhaustion wants.
     ///
     /// Cannot fail. Runs in constant time and allocates nothing.

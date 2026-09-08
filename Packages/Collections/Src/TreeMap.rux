@@ -2,7 +2,7 @@
 //
 // `HashMap` is the one to reach for by default: it answers a lookup in constant expected time and this one takes a
 // pointer chase per level. What this offers instead is order. It walks its entries smallest key first, answers what
-// the nearest key above or below a bound is, and hands back everything between two bounds -- none of which a hash
+// the nearest key above or below a bound is, and hands back everything between two bounds — none of which a hash
 // table can do at all, since a hash scatters keys on purpose and moves them between slots whenever it grows.
 //
 // The ordering is the caller's, given once as a function and used for every descent. It has to be consistent, the
@@ -76,7 +76,7 @@ extend TreeMap<K, V> {
 
     /// A borrow of the value stored under `key`, or `None`.
     ///
-    /// The borrow stays valid while the map is untouched -- and, unlike a hash map's, across insertions and removals
+    /// The borrow stays valid while the map is untouched — and, unlike a hash map's, across insertions and removals
     /// of other keys too, since a node keeps its address while the tree is rearranged around it. It ends when this
     /// key is removed or the map dies.
     ///
@@ -104,7 +104,7 @@ extend TreeMap<K, V> {
     /// Stores `value` under `key`, replacing and destroying whatever was there.
     ///
     /// Takes ownership of both. Reports `OutOfMemory` when the node cannot be allocated, in which case the map is
-    /// unchanged -- but the key and the value are destroyed rather than handed back, since there is nowhere to put
+    /// unchanged — but the key and the value are destroyed rather than handed back, since there is nowhere to put
     /// them. `Replace` is the one to use when the displaced value is wanted.
     ///
     /// Runs in time proportional to the height, with at most two rotations, and allocates one node for a key that is
@@ -286,7 +286,7 @@ extend TreeMapRangeIterator<K, V> {
 
 /// A walk that consumes the map, smallest key first.
 ///
-/// Owns the nodes, and destroys whatever is left in them when it dies -- so a walk stopped part-way destroys the
+/// Owns the nodes, and destroys whatever is left in them when it dies — so a walk stopped part-way destroys the
 /// rest exactly once, and nothing already handed out is destroyed twice.
 ///
 /// https://rux-lang.dev/docs/api/collections/tree-map-into-iterator
@@ -303,7 +303,7 @@ extend TreeMapIntoIterator<K, V> {
     ///
     /// Takes the smallest entry out of the tree rather than reading past it, which is what makes the entry the
     /// caller's and leaves the destructor with one less thing to do. Each step costs a removal, so a whole walk is
-    /// linearithmic where the borrowed walk is linear -- the price of handing out ownership one entry at a time.
+    /// linearithmic where the borrowed walk is linear — the price of handing out ownership one entry at a time.
     ///
     /// https://rux-lang.dev/docs/api/collections/tree-map-into-iterator/next
     pub func Next(self: &var TreeMapIntoIterator<K, V>) -> Option<KeyValue<K, V>> {

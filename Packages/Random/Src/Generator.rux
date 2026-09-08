@@ -5,8 +5,8 @@
 // the state the caller observes. Generic bounds retain static dispatch for the distribution helpers without
 // forcing callers to expose a raw pointer.
 //
-// Everything is built on one primitive, `NextUint64`, because every other shape -- bytes, narrower words,
-// bounded integers, floats -- is a deterministic function of a stream of 64-bit words. Deriving them here rather
+// Everything is built on one primitive, `NextUint64`, because every other shape — bytes, narrower words,
+// bounded integers, floats — is a deterministic function of a stream of 64-bit words. Deriving them here rather
 // than letting each generator supply its own is what makes two generators seeded alike produce the same
 // sequence of *values*, not merely the same sequence of words.
 
@@ -28,7 +28,7 @@ pub interface RandomGenerator {
 
 /// The seeding generator: a fast mixer with a 64-bit state, used to spread one seed over a larger one.
 ///
-/// Not for general use -- its period is only 2^64 and it fails statistical tests a real generator passes. Its
+/// Not for general use — its period is only 2^64 and it fails statistical tests a real generator passes. Its
 /// job is the one thing it is very good at: turning a seed a human chose, which is very likely to be zero or
 /// one or a timestamp, into a full-entropy state for a generator that deserves better input than that. Seeding
 /// a 256-bit generator by copying a small integer into one word and leaving the rest zero is a classic way to

@@ -1,7 +1,7 @@
 import Algorithms::{ AllOf, AnyOf, Compare, CompareBy, Contains, Count, CountWhere, IndexOf, IndexWhere, LastIndexOf, LastIndexWhere, Mismatch, NoneOf, SequenceEqual };
 import Core::{ Assert, Ordering };
 
-// The linear queries. What is worth checking is not that a search finds a match -- it is the boundaries: an empty
+// The linear queries. What is worth checking is not that a search finds a match — it is the boundaries: an empty
 // slice, a match at the first position, a match at the last, no match at all, and the difference between the first
 // match and the last when there are several.
 

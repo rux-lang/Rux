@@ -6,7 +6,7 @@
 //
 // Duplicate object names are rejected by default. RFC 8259 says their behaviour is unpredictable and leaves
 // implementations to choose, which means a document with duplicates means different things to different
-// readers -- and that difference has been used to smuggle one value past a validator and a different one to the
+// readers — and that difference has been used to smuggle one value past a validator and a different one to the
 // consumer behind it. Refusing is the only choice that cannot be exploited that way, so it is the default; the
 // alternatives exist because some real documents contain duplicates and someone has to read them.
 
@@ -138,7 +138,7 @@ extend JsonParser {
             if c != 0x5Cu8 {
                 // The run up to the next escape goes in one piece. Byte at a time would split a multi-byte
                 // scalar across two appends, and a builder that validates what it is given refuses half of one
-                // -- so an accented letter beside an escape would quietly disappear.
+                // — so an accented letter beside an escape would quietly disappear.
                 var run = index;
                 while run < span.length && (span.data[run] as uint8) != 0x5Cu8 {
                     run = run + 1;
@@ -379,7 +379,7 @@ extend JsonParser {
 
     /// Parses the whole document and returns its top-level value.
     ///
-    /// Anything after that value is `TrailingContent` -- a document is one value, and two concatenated ones are
+    /// Anything after that value is `TrailingContent` — a document is one value, and two concatenated ones are
     /// not a document however well-formed each is.
     ///
     /// https://rux-lang.dev/docs/api/json/json-parser/parse

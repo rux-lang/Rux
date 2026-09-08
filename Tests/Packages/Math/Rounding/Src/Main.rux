@@ -1,5 +1,5 @@
 // All five directions agree everywhere except the halfway cases, so the halfway cases are what this spends its
-// time on -- at both signs, since three of the five are not symmetric about zero.
+// time on — at both signs, since three of the five are not symmetric about zero.
 
 import Core::Assert;
 import Math::{ Ceil, Floor, IsNan, PositiveInfinity64, QuietNan64, Round, RoundingMode, RoundTiesToEven, RoundTo, SignBit, ToIntegerChecked, Trunc };

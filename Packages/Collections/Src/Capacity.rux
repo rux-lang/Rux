@@ -7,7 +7,7 @@ import Core::uint;
 // this package sizes itself through `ByteSize` rather than multiplying inline.
 //
 // The checks are written out rather than reached for from `Core`, because each of these does something beyond the
-// arithmetic -- choosing a growth, falling back when a doubling does not fit -- and a checked multiply is one line
+// arithmetic — choosing a growth, falling back when a doubling does not fit — and a checked multiply is one line
 // of that. What matters is that the dangerous product is never evaluated: `ByteSize` divides instead.
 //
 // These report through `CollectionError` like the public operations that call them, and none of them writes its

@@ -4,7 +4,7 @@
 // program that switches on those numbers at each call site rewrites this table badly, several times, in
 // disagreement with itself. So the table is written once per platform, and everything in this package reports
 // through it: an `IoError` whose kind is the meaning a caller acts on and whose raw field is the platform's own
-// code, preserved because the translation is honest about being lossy -- many codes fold to `Other`, and the
+// code, preserved because the translation is honest about being lossy — many codes fold to `Other`, and the
 // number is how the rest stays diagnosable.
 
 import Core::{ #target };

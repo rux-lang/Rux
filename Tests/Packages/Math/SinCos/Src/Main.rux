@@ -1,4 +1,4 @@
-// The combined pair has one job beyond the two separate functions -- to return exactly what they would -- so
+// The combined pair has one job beyond the two separate functions — to return exactly what they would — so
 // that is what is checked, at every argument the other tests reach. The rest pins the values and symmetries the
 // three functions are defined by.
 
@@ -39,7 +39,7 @@ func Main() -> int {
     Assert(UlpDistance(Sin(Pi * 0.25), 0.7071067811865476) <= 2u64, "an eighth turn gives the expected root");
     Assert(UlpDistance(Tan(Pi * 0.25), 1.0) <= 2u64, "and its tangent is one");
 
-    // The combined pair agrees with the separate functions exactly -- bit for bit, not approximately, since it
+    // The combined pair agrees with the separate functions exactly — bit for bit, not approximately, since it
     // runs the same kernels on the same reduction.
     var probe: uint = 0;
     while probe < 400u {

@@ -1,7 +1,7 @@
 // A fixed run of bytes being filled from the front.
 //
-// Every primitive has a longest possible rendering that is known in advance -- twenty digits for a `uint64`, a
-// handful more for a float's sign, point and exponent -- so the digits go into a buffer on the stack and reach the
+// Every primitive has a longest possible rendering that is known in advance — twenty digits for a `uint64`, a
+// handful more for a float's sign, point and exponent — so the digits go into a buffer on the stack and reach the
 // writer in one call. Nothing here allocates, which is the point: printing a number should not need an allocator to
 // exist, let alone succeed.
 //
