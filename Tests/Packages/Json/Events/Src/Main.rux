@@ -1,11 +1,11 @@
-
 // Streaming exists so a large document costs little, so the test that matters is the one measuring cost: a
 // document far larger than the buffer must stream through it without the buffer growing.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert };
+import Core::{ Assert, Option };
 import Io::{ IoError, IoErrorKind, Reader };
 import Json::{ JsonEvent, JsonEventReader, JsonLimits, JsonParseError };
+import Text::{ BufferWriter, FormatSpec, TextWriter };
 
 // The bytes a string spans, which is how a caller holding text reaches an entry point that takes bytes.
 func TextBytes(text: char8[..]) -> char8[..] {
@@ -46,6 +46,28 @@ extend SliceHandle : Reader {
     }
 }
 
+// Whether a reader stopped for the named reason. The rendering carries the position too, which is checked by the
+// parser test against exact documents; here what matters is that a streaming reader reports the same cases a
+// whole-document parse does, and that it reports them through the same positioned failure rather than through a
+// pair of fields a caller has to read in the right order.
+func StoppedAt(failure: Option<JsonParseError>, expected: char8[..]) -> bool {
+    var reason = JsonParseError::OutOfMemory(0);
+    if !failure.TryIntoValue(@reason) { return false; }
+    var storage: char8[96];
+    var writer = BufferWriter((@storage[0])[..96]);
+    let sink: &var TextWriter = writer;
+    if reason.WriteDebug(sink, FormatSpec::Plain()).IsError() { return false; }
+    let shown = writer.Written();
+    if shown.length < expected.length { return false; }
+    var index: uint = 0;
+    while index < expected.length {
+        if shown.data[index] != expected.data[index] { return false; }
+        index = index + 1;
+    }
+    // What follows the case name is its offset in parentheses, which this check deliberately does not pin.
+    return shown.data[expected.length] == c8'(';
+}
+
 func Main() -> int {
     var system = SystemAllocator();
     let allocator: Allocator = system;
@@ -72,7 +94,7 @@ func Main() -> int {
     Assert(reader.Next() == JsonEvent::ObjectEnd, "the object closes");
     Assert(reader.Depth() == 0u, "back to the top");
     Assert(reader.Next() == JsonEvent::End, "and the document ends");
-    Assert(reader.Failure() == JsonParseError::None, "with nothing wrong");
+    Assert(reader.Failure().IsNone(), "with nothing wrong");
     reader.Release();
 
     // The point of streaming: a document far larger than the buffer streams through it. Ten thousand records,
@@ -123,7 +145,7 @@ func Main() -> int {
     Assert(seen == 10000u, "every record arrives as an event");
     Assert(event == JsonEvent::ArrayEnd, "and the array closes");
     Assert(bigReader.Next() == JsonEvent::End, "leaving the document finished");
-    Assert(bigReader.Failure() == JsonParseError::None, "with nothing wrong");
+    Assert(bigReader.Failure().IsNone(), "with nothing wrong");
     bigReader.Release();
 
     // Structural mistakes are still caught, which a reader that only emitted tokens would leave to the caller.
@@ -134,7 +156,7 @@ func Main() -> int {
     Assert(mismatched.Next() == JsonEvent::Name, "a name arrives");
     Assert(mismatched.Next() == JsonEvent::Number, "and a value");
     Assert(mismatched.Next() == JsonEvent::Error, "and a bracket closing a brace is refused");
-    Assert(mismatched.Failure() == JsonParseError::Unexpected, "as a structural mistake");
+    Assert(StoppedAt(mismatched.Failure(), "JsonParseError::Unexpected"), "as a structural mistake");
     mismatched.Release();
 
     // Depth is bounded here as it is in the tree parser.
@@ -146,7 +168,7 @@ func Main() -> int {
     Assert(deep.Next() == JsonEvent::ArrayStart, "the first level opens");
     Assert(deep.Next() == JsonEvent::ArrayStart, "and the second");
     Assert(deep.Next() == JsonEvent::Error, "and the third is refused");
-    Assert(deep.Failure() == JsonParseError::TooDeep, "for being too deep");
+    Assert(StoppedAt(deep.Failure(), "JsonParseError::TooDeep"), "for being too deep");
     deep.Release();
 
     return 0;

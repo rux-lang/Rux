@@ -13,7 +13,9 @@
 import Allocator::Allocator;
 import Collections::CollectionError;
 
-import Text::{ String, StringBuilder, StringView, TextError };
+import Core::{ Option, Result, Unit };
+import Text::{ Debug, Display, FormatError, FormatSpec, ParseFailure, RejectStyle, String, StringBuilder,
+               StringView, TextError, TextWriter, WriteAscii, WriteBytes };
 
 /// What to do about an object containing the same name twice.
 ///
@@ -29,42 +31,190 @@ pub enum DuplicateKeyPolicy: int32 {
     KeepAll = 3
 }
 
-/// Why parsing stopped.
+/// Why parsing stopped, and where.
 ///
-/// https://rux-lang.dev/docs/api/json/parse-error
-pub enum JsonParseError: int32 {
-    /// Nothing went wrong.
-    None = 0,
-    /// The lexer refused the input; its reason is reported separately.
-    Lexical = 1,
+/// Failure-only: there is no case meaning nothing went wrong, because a parse that did not fail hands back a
+/// document instead. Every case carries the zero-based byte offset into the input where the parser stopped, which
+/// is the first thing anybody debugging a document asks for and used to live in a separate structure that a caller
+/// had to remember to read.
+///
+/// @see https://rux-lang.dev/docs/api/json/parse-error
+pub variant JsonParseError {
+    /// The lexer refused the input, for the reason carried. Nested rather than reported beside this, so a caller
+    /// holding the failure cannot be holding half of it.
+    Lexical(JsonLexError, uint),
     /// A token that cannot appear where it did.
-    Unexpected = 2,
+    Unexpected(uint),
     /// The document ended in the middle of a value.
-    Truncated = 3,
-    /// Text after the end of the top-level value.
-    TrailingContent = 4,
-    /// An object contained the same name twice, under the rejecting policy.
-    DuplicateName = 5,
+    Truncated(uint),
+    /// Text after the end of the top-level value. The offset is where that text begins.
+    TrailingContent(uint),
+    /// An object contained the same name twice, under the rejecting policy. The offset is the second occurrence.
+    DuplicateName(uint),
     /// Containers nested deeper than the limit allowed.
-    TooDeep = 6,
+    TooDeep(uint),
     /// A container held more entries than the limit allowed.
-    TooManyEntries = 7,
+    TooManyEntries(uint),
     /// The allocator refused.
-    OutOfMemory = 8,
-    /// A `\u` escape pair that is not a valid surrogate pair, or a lone surrogate.
-    BadSurrogate = 9
+    OutOfMemory(uint),
+    /// A `\u` escape naming half of a surrogate pair with no valid partner. JSON's escapes are UTF-16, and a lone
+    /// surrogate is not a character; the offset is the escape that has no partner.
+    BadSurrogate(uint)
 }
 
-/// The outcome of a parse: the value, and why it stopped if it did.
-///
-/// https://rux-lang.dev/docs/api/json/parse-outcome
-pub struct JsonParseOutcome {
-    /// Why parsing stopped, or `None`.
-    pub error: JsonParseError;
-    /// The lexer's reason, when `error` is `Lexical`.
-    pub lexical: JsonLexError;
-    /// Where in the input it stopped.
-    pub position: uint;
+extend JsonParseError : ParseFailure {
+    /// Where in the input parsing stopped.
+    ///
+    /// Borrows the failure and leaves it untouched. Cannot fail; runs in constant time and allocates nothing.
+    ///
+    /// @returns the zero-based byte offset into the document
+    /// @see https://rux-lang.dev/docs/api/json/parse-error/offset
+    pub func Offset(self: &JsonParseError) -> uint {
+        return match self {
+            .Lexical(_, at) => at,
+            .Unexpected(at) => at,
+            .Truncated(at) => at,
+            .TrailingContent(at) => at,
+            .DuplicateName(at) => at,
+            .TooDeep(at) => at,
+            .TooManyEntries(at) => at,
+            .OutOfMemory(at) => at,
+            .BadSurrogate(at) => at
+        };
+    }
+}
+
+// The description of a lexical refusal, which a parse failure quotes rather than restates.
+func WriteLexicalDescription(writer: &var TextWriter, reason: &JsonLexError) -> Result<Unit, FormatError> {
+    return match reason {
+        .None => WriteBytes(writer, "no error"),
+        .UnexpectedByte => WriteBytes(writer, "byte that begins no token"),
+        .UnterminatedText => WriteBytes(writer, "string the document ended before closing"),
+        .BadEscape => WriteBytes(writer, "escape sequence JSON does not define"),
+        .BadUnicodeEscape => WriteBytes(writer, "\\u escape that is not four hexadecimal digits"),
+        .MalformedNumber => WriteBytes(writer, "number whose shape JSON does not allow"),
+        .InvalidUtf8 => WriteBytes(writer, "bytes that are not well-formed UTF-8"),
+        .UnescapedControl => WriteBytes(writer, "unescaped control character inside a string"),
+        .TooManyBytes => WriteBytes(writer, "document longer than the limit allows"),
+        .TextTooLong => WriteBytes(writer, "string longer than the limit allows"),
+        .TooDeep => WriteBytes(writer, "containers nested deeper than the limit allows"),
+        .TooManyEntries => WriteBytes(writer, "container holding more entries than the limit allows")
+    };
+}
+
+extend JsonParseError : Display {
+    /// Writes the description of why parsing stopped, without the position.
+    ///
+    /// The offset is a number a caller renders where it makes sense for them — beside a line and column they
+    /// computed, or not at all — so it is not written into the middle of a sentence here. `Debug` carries it.
+    ///
+    /// # Failures
+    /// Reports whatever the writer reported, and `UnsupportedRequest` for any style or precision.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the whole description was accepted
+    /// @see https://rux-lang.dev/docs/api/json/parse-error/write-display
+    pub func WriteDisplay(self: &JsonParseError, writer: &var TextWriter,
+                          spec: FormatSpec) -> Result<Unit, FormatError> {
+        RejectStyle(spec)?;
+        if spec.HasPrecision() { return Result::Error<Unit, FormatError>(FormatError::UnsupportedRequest); }
+        return match self {
+            .Lexical(reason, _) => WriteLexicalDescription(writer, reason),
+            .Unexpected(_) => WriteBytes(writer, "token that cannot appear here"),
+            .Truncated(_) => WriteBytes(writer, "document ended in the middle of a value"),
+            .TrailingContent(_) => WriteBytes(writer, "text after the end of the document"),
+            .DuplicateName(_) => WriteBytes(writer, "object with the same name twice"),
+            .TooDeep(_) => WriteBytes(writer, "containers nested deeper than the limit allows"),
+            .TooManyEntries(_) => WriteBytes(writer, "container holding more entries than the limit allows"),
+            .OutOfMemory(_) => WriteBytes(writer, "out of memory"),
+            .BadSurrogate(_) => WriteBytes(writer, "escape naming half of a surrogate pair with no partner")
+        };
+    }
+}
+
+// The name of a lexical refusal, for the debug rendering that quotes it.
+func WriteLexicalName(writer: &var TextWriter, reason: &JsonLexError) -> Result<Unit, FormatError> {
+    return match reason {
+        .None => WriteBytes(writer, "None"),
+        .UnexpectedByte => WriteBytes(writer, "UnexpectedByte"),
+        .UnterminatedText => WriteBytes(writer, "UnterminatedText"),
+        .BadEscape => WriteBytes(writer, "BadEscape"),
+        .BadUnicodeEscape => WriteBytes(writer, "BadUnicodeEscape"),
+        .MalformedNumber => WriteBytes(writer, "MalformedNumber"),
+        .InvalidUtf8 => WriteBytes(writer, "InvalidUtf8"),
+        .UnescapedControl => WriteBytes(writer, "UnescapedControl"),
+        .TooManyBytes => WriteBytes(writer, "TooManyBytes"),
+        .TextTooLong => WriteBytes(writer, "TextTooLong"),
+        .TooDeep => WriteBytes(writer, "TooDeep"),
+        .TooManyEntries => WriteBytes(writer, "TooManyEntries")
+    };
+}
+
+// The case name, and the offset in parentheses after it.
+func WriteCase(writer: &var TextWriter, name: char8[..], at: uint) -> Result<Unit, FormatError> {
+    WriteBytes(writer, "JsonParseError::")?;
+    WriteBytes(writer, name)?;
+    WriteAscii(writer, c8'(')?;
+    let offset: Display = at;
+    offset.WriteDisplay(writer, FormatSpec::Plain())?;
+    return WriteAscii(writer, c8')');
+}
+
+extend JsonParseError : Debug {
+    /// Names the case and its position: `JsonParseError::Unexpected(12)`.
+    ///
+    /// A lexical failure names both, so nothing about it has to be looked up elsewhere:
+    /// `JsonParseError::Lexical(BadEscape, 12)`.
+    ///
+    /// # Failures
+    /// Reports whatever the writer reported, and `UnsupportedRequest` for any style or precision.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the whole name was accepted
+    /// @see https://rux-lang.dev/docs/api/json/parse-error/write-debug
+    pub func WriteDebug(self: &JsonParseError, writer: &var TextWriter,
+                        spec: FormatSpec) -> Result<Unit, FormatError> {
+        RejectStyle(spec)?;
+        if spec.HasPrecision() { return Result::Error<Unit, FormatError>(FormatError::UnsupportedRequest); }
+        return match self {
+            .Lexical(reason, at) => WriteLexicalCase(writer, reason, at),
+            .Unexpected(at) => WriteCase(writer, "Unexpected", at),
+            .Truncated(at) => WriteCase(writer, "Truncated", at),
+            .TrailingContent(at) => WriteCase(writer, "TrailingContent", at),
+            .DuplicateName(at) => WriteCase(writer, "DuplicateName", at),
+            .TooDeep(at) => WriteCase(writer, "TooDeep", at),
+            .TooManyEntries(at) => WriteCase(writer, "TooManyEntries", at),
+            .OutOfMemory(at) => WriteCase(writer, "OutOfMemory", at),
+            .BadSurrogate(at) => WriteCase(writer, "BadSurrogate", at)
+        };
+    }
+}
+
+// The lexical case, which carries two things rather than one.
+func WriteLexicalCase(writer: &var TextWriter, reason: &JsonLexError, at: uint) -> Result<Unit, FormatError> {
+    WriteBytes(writer, "JsonParseError::Lexical(")?;
+    WriteLexicalName(writer, reason)?;
+    WriteBytes(writer, ", ")?;
+    let offset: Display = at;
+    offset.WriteDisplay(writer, FormatSpec::Plain())?;
+    return WriteAscii(writer, c8')');
+}
+
+// Why the parser stopped, without the position, which the parser tracks beside it. The public failure is built
+// from these two once, at the boundary, so nothing inside has to carry a payload around.
+enum JsonStop: int32 {
+    None = 0,
+    Lexical = 1,
+    Unexpected = 2,
+    Truncated = 3,
+    TrailingContent = 4,
+    DuplicateName = 5,
+    TooDeep = 6,
+    TooManyEntries = 7,
+    OutOfMemory = 8,
+    BadSurrogate = 9
 }
 
 /// A parser over a document.
@@ -83,8 +233,13 @@ pub struct JsonParser {
     input: char8[..];
     /// How deep the current value is nested.
     depth: uint;
-    /// Why parsing stopped.
-    outcome: JsonParseOutcome;
+    /// Why parsing stopped, or `None`. Kept as its parts rather than as the public failure, so nothing inside has
+    /// to carry a payload around; the failure is built from them once, where the parse ends.
+    stop: JsonStop;
+    /// The lexer's reason, when `stop` is `Lexical`.
+    lexical: JsonLexError;
+    /// Where in the input it stopped.
+    position: uint;
 }
 
 extend JsonParser {
@@ -99,9 +254,9 @@ extend JsonParser {
             duplicates: DuplicateKeyPolicy::Reject,
             input: input,
             depth: 0,
-            outcome: JsonParseOutcome {
-                error: JsonParseError::None, lexical: JsonLexError::None, position: 0
-            }
+            stop: JsonStop::None,
+            lexical: JsonLexError::None,
+            position: 0
         };
     }
 
@@ -112,17 +267,42 @@ extend JsonParser {
         self.duplicates = policy;
     }
 
-    /// Why parsing stopped.
+    /// Whether parsing stopped, and why.
     ///
-    /// https://rux-lang.dev/docs/api/json/json-parser/outcome
-    pub func Outcome(self: &JsonParser) -> JsonParseOutcome {
-        return self.outcome;
+    /// `None` while nothing has gone wrong, which for a parser that has finished means the document was read.
+    /// A caller using `Parse` never needs this: the failure comes back in the result.
+    ///
+    /// @returns the failure, positioned, or `None`
+    /// @see https://rux-lang.dev/docs/api/json/json-parser/failure
+    pub func Failure(self: &JsonParser) -> Option<JsonParseError> {
+        return BuildFailure(self.stop, self.lexical, self.position);
     }
 
-    func Stop(self: &var JsonParser, reason: JsonParseError) -> JsonValue {
-        if self.outcome.error == JsonParseError::None {
-            self.outcome.error = reason;
-            self.outcome.position = self.lexer.Position();
+    // The first refusal wins: a later one is a consequence of the first, and reporting it would send a reader to
+    // the wrong place in the document.
+    func Stop(self: &var JsonParser, reason: JsonStop) -> JsonValue {
+        if self.stop == JsonStop::None {
+            self.stop = reason;
+            self.position = self.lexer.Position();
+        }
+        return JsonValue::Null(self.allocator);
+    }
+
+    // A refusal found at a known place, rather than wherever the lexer has reached.
+    func Fail(self: &var JsonParser, reason: JsonStop, at: uint) {
+        if self.stop == JsonStop::None {
+            self.stop = reason;
+            self.position = at;
+        }
+    }
+
+    // A lexical refusal, which carries the lexer's own reason and the token's own position rather than the
+    // lexer's current one.
+    func StopLexical(self: &var JsonParser, token: JsonToken) -> JsonValue {
+        if self.stop == JsonStop::None {
+            self.stop = JsonStop::Lexical;
+            self.lexical = token.error;
+            self.position = token.start;
         }
         return JsonValue::Null(self.allocator);
     }
@@ -152,18 +332,33 @@ extend JsonParser {
             index = index + 1;
             if kind == 0x75u8 {
                 var scalar = HexQuad(span, index);
+                let escapeAt = index - 2u;
                 index = index + 4u;
                 if scalar >= 0xD800u32 && scalar <= 0xDBFFu32 {
                     // A high surrogate must be followed by its low partner; JSON's escapes are UTF-16, so this
                     // is the one place a JSON string is not simply a sequence of scalar values.
+                    var paired = false;
                     if index + 6u <= span.length && (span.data[index] as uint8) == 0x5Cu8 &&
                         (span.data[index + 1u] as uint8) == 0x75u8 {
                         let low = HexQuad(span, index + 2u);
                         if low >= 0xDC00u32 && low <= 0xDFFFu32 {
                             scalar = 0x10000u32 + ((scalar - 0xD800u32) << 10u32) + (low - 0xDC00u32);
                             index = index + 6u;
+                            paired = true;
                         }
                     }
+                    if !paired {
+                        // Half of a character. It used to be handed to the builder, which refused it as invalid
+                        // text, and the parser reported that as being out of memory — a caller sent to check the
+                        // machine over a document that was wrong.
+                        self.Fail(JsonStop::BadSurrogate, token.start + escapeAt);
+                        return builder.IntoString();
+                    }
+                }
+                else if scalar >= 0xDC00u32 && scalar <= 0xDFFFu32 {
+                    // A low surrogate with nothing before it. The same half a character, from the other end.
+                    self.Fail(JsonStop::BadSurrogate, token.start + escapeAt);
+                    return builder.IntoString();
                 }
                 *error = builder.AppendScalar(scalar as char32);
             }
@@ -220,13 +415,8 @@ func HexQuad(span: char8[..], at: uint) -> uint32 {
 extend JsonParser {
     // One value, whatever kind the next token opens.
     func ParseValue(self: &var JsonParser, token: JsonToken) -> JsonValue {
-        if token.kind == JsonTokenKind::Error {
-            self.outcome.error = JsonParseError::Lexical;
-            self.outcome.lexical = token.error;
-            self.outcome.position = token.start;
-            return JsonValue::Null(self.allocator);
-        }
-        if token.kind == JsonTokenKind::End { return self.Stop(JsonParseError::Truncated); }
+        if token.kind == JsonTokenKind::Error { return self.StopLexical(token); }
+        if token.kind == JsonTokenKind::End { return self.Stop(JsonStop::Truncated); }
         if token.kind == JsonTokenKind::Null { return JsonValue::Null(self.allocator); }
         if token.kind == JsonTokenKind::True { return JsonValue::Boolean(self.allocator, true); }
         if token.kind == JsonTokenKind::False { return JsonValue::Boolean(self.allocator, false); }
@@ -234,15 +424,19 @@ extend JsonParser {
             var textError = TextError::None;
             let span = (@self.input.data[token.start])[..token.end - token.start];
             var value = JsonValue::Number(self.allocator, span, @textError);
-            if textError != TextError::None { return self.Stop(JsonParseError::OutOfMemory); }
+            if textError != TextError::None { return self.Stop(JsonStop::OutOfMemory); }
             return <-value;
         }
         if token.kind == JsonTokenKind::Text {
             var textError = TextError::None;
             var held = self.TakeText(token, @textError);
+            if self.stop != JsonStop::None {
+                held.Clear();
+                return JsonValue::Null(self.allocator);
+            }
             if textError != TextError::None {
                 held.Clear();
-                return self.Stop(JsonParseError::OutOfMemory);
+                return self.Stop(JsonStop::OutOfMemory);
             }
             var value = JsonValue::Null(self.allocator);
             value.kind = JsonKind::Text;
@@ -251,13 +445,13 @@ extend JsonParser {
         }
         if token.kind == JsonTokenKind::ArrayStart { return self.ParseArray(); }
         if token.kind == JsonTokenKind::ObjectStart { return self.ParseObject(); }
-        return self.Stop(JsonParseError::Unexpected);
+        return self.Stop(JsonStop::Unexpected);
     }
 
     func ParseArray(self: &var JsonParser) -> JsonValue {
         // The depth check happens before descending, so a document built to exhaust the stack is refused while
         // there is still stack to refuse it with.
-        if self.depth >= self.limits.maximumDepth { return self.Stop(JsonParseError::TooDeep); }
+        if self.depth >= self.limits.maximumDepth { return self.Stop(JsonStop::TooDeep); }
         self.depth = self.depth + 1u;
         var array = JsonValue::Array(self.allocator);
         var token = self.lexer.Next();
@@ -268,10 +462,10 @@ extend JsonParser {
         var entries: uint = 0;
         while true {
             var element = self.ParseValue(token);
-            if self.outcome.error != JsonParseError::None { return <-array; }
+            if self.stop != JsonStop::None { return <-array; }
             entries = entries + 1u;
-            if entries > self.limits.maximumEntries { return self.Stop(JsonParseError::TooManyEntries); }
-            if !array.Push(<-element) { return self.Stop(JsonParseError::OutOfMemory); }
+            if entries > self.limits.maximumEntries { return self.Stop(JsonStop::TooManyEntries); }
+            if !array.Push(<-element) { return self.Stop(JsonStop::OutOfMemory); }
             token = self.lexer.Next();
             if token.kind == JsonTokenKind::ArrayEnd {
                 self.depth = self.depth - 1u;
@@ -279,8 +473,8 @@ extend JsonParser {
             }
             if token.kind != JsonTokenKind::Comma {
                 // A trailing comma lands here, since after one the next token is the closing bracket.
-                return self.Stop(token.kind == JsonTokenKind::End ? JsonParseError::Truncated
-                                                                  : JsonParseError::Unexpected);
+                return self.Stop(token.kind == JsonTokenKind::End ? JsonStop::Truncated
+                                                                  : JsonStop::Unexpected);
             }
             token = self.lexer.Next();
         }
@@ -290,7 +484,7 @@ extend JsonParser {
 
 extend JsonParser {
     func ParseObject(self: &var JsonParser) -> JsonValue {
-        if self.depth >= self.limits.maximumDepth { return self.Stop(JsonParseError::TooDeep); }
+        if self.depth >= self.limits.maximumDepth { return self.Stop(JsonStop::TooDeep); }
         self.depth = self.depth + 1u;
         var object = JsonValue::Object(self.allocator);
         var token = self.lexer.Next();
@@ -300,33 +494,32 @@ extend JsonParser {
         }
         var entries: uint = 0;
         while true {
-            if token.kind == JsonTokenKind::Error {
-                self.outcome.error = JsonParseError::Lexical;
-                self.outcome.lexical = token.error;
-                self.outcome.position = token.start;
-                return <-object;
-            }
+            if token.kind == JsonTokenKind::Error { return self.StopLexical(token); }
             if token.kind != JsonTokenKind::Text {
                 // A member name must be a string. An unquoted name is JavaScript, not JSON.
-                return self.Stop(token.kind == JsonTokenKind::End ? JsonParseError::Truncated
-                                                                  : JsonParseError::Unexpected);
+                return self.Stop(token.kind == JsonTokenKind::End ? JsonStop::Truncated
+                                                                  : JsonStop::Unexpected);
             }
             var textError = TextError::None;
             var name = self.TakeText(token, @textError);
+            if self.stop != JsonStop::None {
+                name.Clear();
+                return JsonValue::Null(self.allocator);
+            }
             if textError != TextError::None {
                 name.Clear();
-                return self.Stop(JsonParseError::OutOfMemory);
+                return self.Stop(JsonStop::OutOfMemory);
             }
 
             let colon = self.lexer.Next();
             if colon.kind != JsonTokenKind::Colon {
                 name.Clear();
-                return self.Stop(colon.kind == JsonTokenKind::End ? JsonParseError::Truncated
-                                                                  : JsonParseError::Unexpected);
+                return self.Stop(colon.kind == JsonTokenKind::End ? JsonStop::Truncated
+                                                                  : JsonStop::Unexpected);
             }
 
             var value = self.ParseValue(self.lexer.Next());
-            if self.outcome.error != JsonParseError::None {
+            if self.stop != JsonStop::None {
                 name.Clear();
                 return <-object;
             }
@@ -335,7 +528,7 @@ extend JsonParser {
             if existing != null {
                 if self.duplicates == DuplicateKeyPolicy::Reject {
                     name.Clear();
-                    return self.Stop(JsonParseError::DuplicateName);
+                    return self.Stop(JsonStop::DuplicateName);
                 }
                 if self.duplicates == DuplicateKeyPolicy::KeepFirst {
                     // The first is already in place, so this one is simply not added.
@@ -346,7 +539,7 @@ extend JsonParser {
                         self.depth = self.depth - 1u;
                         return <-object;
                     }
-                    if token.kind != JsonTokenKind::Comma { return self.Stop(JsonParseError::Unexpected); }
+                    if token.kind != JsonTokenKind::Comma { return self.Stop(JsonStop::Unexpected); }
                     token = self.lexer.Next();
                     continue;
                 }
@@ -359,9 +552,9 @@ extend JsonParser {
             entries = entries + 1u;
             if entries > self.limits.maximumEntries {
                 name.Clear();
-                return self.Stop(JsonParseError::TooManyEntries);
+                return self.Stop(JsonStop::TooManyEntries);
             }
-            if !object.Insert(name, <-value) { return self.Stop(JsonParseError::OutOfMemory); }
+            if !object.Insert(name, <-value) { return self.Stop(JsonStop::OutOfMemory); }
 
             token = self.lexer.Next();
             if token.kind == JsonTokenKind::ObjectEnd {
@@ -369,40 +562,87 @@ extend JsonParser {
                 return <-object;
             }
             if token.kind != JsonTokenKind::Comma {
-                return self.Stop(token.kind == JsonTokenKind::End ? JsonParseError::Truncated
-                                                                  : JsonParseError::Unexpected);
+                return self.Stop(token.kind == JsonTokenKind::End ? JsonStop::Truncated
+                                                                  : JsonStop::Unexpected);
             }
             token = self.lexer.Next();
         }
         return <-object;
     }
 
-    /// Parses the whole document and returns its top-level value.
+    /// Parses the whole document and returns its top-level value, or why it could not.
     ///
     /// Anything after that value is `TrailingContent` — a document is one value, and two concatenated ones are
     /// not a document however well-formed each is.
     ///
-    /// https://rux-lang.dev/docs/api/json/json-parser/parse
-    pub func Parse(self: &var JsonParser) -> JsonValue {
+    /// A failure gives back nothing at all. Whatever had been built when the parser stopped is released here, which
+    /// is the only place that can be done once: an array that failed at its third element owns two, and handing
+    /// those back beside an error would leave a caller holding a document that is not one.
+    ///
+    /// # Failures
+    /// Every case of `JsonParseError`, positioned at the byte where parsing stopped.
+    ///
+    /// @returns the document, or the failure that stopped it
+    /// @see https://rux-lang.dev/docs/api/json/json-parser/parse
+    pub func Parse(self: &var JsonParser) -> Result<JsonValue, JsonParseError> {
         var value = self.ParseValue(self.lexer.Next());
-        if self.outcome.error != JsonParseError::None { return <-value; }
-        let trailing = self.lexer.Next();
-        if trailing.kind != JsonTokenKind::End {
-            self.outcome.error = JsonParseError::TrailingContent;
-            self.outcome.position = trailing.start;
+        if self.stop == JsonStop::None {
+            let trailing = self.lexer.Next();
+            if trailing.kind != JsonTokenKind::End {
+                self.stop = JsonStop::TrailingContent;
+                self.position = trailing.start;
+            }
         }
-        return <-value;
+        if self.stop != JsonStop::None {
+            // The partial document goes here, at the end of this scope, rather than out to a caller who asked for
+            // a document and is being told there is none.
+            return Result::Error<JsonValue, JsonParseError>(BuiltFailure(self.stop, self.lexical, self.position));
+        }
+        return Result::Success<JsonValue, JsonParseError>(<-value);
     }
+}
+
+// The public failure, built from the parts the parser tracked. One place, so every entry point positions a failure
+// the same way and the `Lexical` case is the only one that carries two things.
+func BuiltFailure(stop: JsonStop, lexical: JsonLexError, position: uint) -> JsonParseError {
+    return match stop {
+        .Lexical => JsonParseError::Lexical(lexical, position),
+        .Unexpected => JsonParseError::Unexpected(position),
+        .Truncated => JsonParseError::Truncated(position),
+        .TrailingContent => JsonParseError::TrailingContent(position),
+        .DuplicateName => JsonParseError::DuplicateName(position),
+        .TooDeep => JsonParseError::TooDeep(position),
+        .TooManyEntries => JsonParseError::TooManyEntries(position),
+        .OutOfMemory => JsonParseError::OutOfMemory(position),
+        .BadSurrogate => JsonParseError::BadSurrogate(position),
+        // A parser that has not stopped has no failure; callers reach this only through `Failure`, which asks
+        // first, so naming a case here is naming one that cannot arrive.
+        .None => JsonParseError::OutOfMemory(position)
+    };
+}
+
+// The same, as an `Option`, for the reader that reports whether it stopped rather than what it produced.
+func BuildFailure(stop: JsonStop, lexical: JsonLexError, position: uint) -> Option<JsonParseError> {
+    if stop == JsonStop::None { return Option::None<JsonParseError>(); }
+    return Option::Some<JsonParseError>(BuiltFailure(stop, lexical, position));
 }
 
 /// Parses `input` into a value, rejecting duplicate names.
 ///
-/// https://rux-lang.dev/docs/api/json/parse
-pub func Parse(allocator: Allocator, input: char8[..], outcome: *var JsonParseOutcome) -> JsonValue {
+/// The default limits apply. A failure gives back the reason and its position and no value at all, so a document
+/// that is not a document cannot be mistaken for one that is — which the old shape allowed, since it answered a
+/// refused parse with `null`, and `null` is a document.
+///
+/// # Failures
+/// Every case of `JsonParseError`, positioned at the byte where parsing stopped.
+///
+/// @param allocator where the value is built
+/// @param input the document, as UTF-8 bytes
+/// @returns the document, or the failure that stopped it
+/// @see https://rux-lang.dev/docs/api/json/parse
+pub func Parse(allocator: Allocator, input: char8[..]) -> Result<JsonValue, JsonParseError> {
     var parser = JsonParser(allocator, input, JsonLimits::Default());
-    var value = parser.Parse();
-    *outcome = parser.Outcome();
-    return <-value;
+    return parser.Parse();
 }
 
 /// Parses `input` under chosen limits and a chosen duplicate-name policy.
@@ -411,12 +651,20 @@ pub func Parse(allocator: Allocator, input: char8[..], outcome: *var JsonParseOu
 /// parameter rather than a mutable setting on a shared parser, so two documents read under different policies
 /// in the same program cannot influence one another.
 ///
-/// https://rux-lang.dev/docs/api/json/parse-with
-pub func ParseWith(allocator: Allocator, input: char8[..], limits: JsonLimits, duplicates: DuplicateKeyPolicy,
-               outcome: *var JsonParseOutcome) -> JsonValue {
+/// # Failures
+/// Every case of `JsonParseError`, positioned at the byte where parsing stopped. A limit that the document exceeds
+/// arrives as `TooDeep` or `TooManyEntries` from the parser, or nested inside `Lexical` when it was the lexer that
+/// measured it.
+///
+/// @param allocator where the value is built
+/// @param input the document, as UTF-8 bytes
+/// @param limits what to accept
+/// @param duplicates what to do about an object naming the same member twice
+/// @returns the document, or the failure that stopped it
+/// @see https://rux-lang.dev/docs/api/json/parse-with
+pub func ParseWith(allocator: Allocator, input: char8[..], limits: JsonLimits,
+                   duplicates: DuplicateKeyPolicy) -> Result<JsonValue, JsonParseError> {
     var parser = JsonParser(allocator, input, limits);
     parser.SetDuplicatePolicy(duplicates);
-    var value = parser.Parse();
-    *outcome = parser.Outcome();
-    return <-value;
+    return parser.Parse();
 }

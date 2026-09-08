@@ -1,4 +1,3 @@
-
 // The coverage that is about the package as a whole rather than about one part of it.
 //
 // The differential check is the valuable one. The tree parser and the streaming reader are two independent
@@ -7,11 +6,12 @@
 // same way, to survive it.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert };
+import Core::{ Assert, Result };
 import Format::{ TextWriter };
 import Io::{ IoError, IoErrorKind, Reader };
-import Json::{ JsonEvent, JsonEventReader, JsonKind, JsonLexError, JsonLimits, JsonParseError, JsonParseOutcome, JsonStyle, JsonValue, JsonWriteError, DuplicateKeyPolicy, Parse, ParseWith, WriteValue };
-import Text::{ String, StringBuilder, StringView, TextError };
+import Json::{ DuplicateKeyPolicy, JsonEvent, JsonEventReader, JsonKind, JsonLimits, JsonParseError, JsonStyle,
+               JsonValue, JsonWriteError, Parse, ParseWith, WriteValue };
+import Text::{ BufferWriter, FormatSpec, String, StringBuilder, StringView, TextError };
 
 // The bytes a string spans, which is how a text overload reaches the slice one.
 func TextBytes(text: char8[..]) -> char8[..] {
@@ -107,89 +107,85 @@ func TreeCounts(value: &JsonValue, scalars: *var uint, opens: *var uint, names: 
 func Main() -> int {
     var system = SystemAllocator();
     let allocator: Allocator = system;
-    var parsed = JsonParseOutcome { error: JsonParseError::None, lexical: JsonLexError::None, position: 0 };
     var wrote = JsonWriteError::None;
 
     // Well-formed documents: each parses, writes, parses again, and the two writings agree. That round
     // trip proves the writer and the parser agree about the document rather than each merely being
     // self-consistent. Each is also read by the streaming reader, which must see the same shape.
-    CheckRoundTrip(allocator, "{}", @parsed, @wrote);
-    CheckRoundTrip(allocator, "[]", @parsed, @wrote);
-    CheckRoundTrip(allocator, "null", @parsed, @wrote);
-    CheckRoundTrip(allocator, "true", @parsed, @wrote);
-    CheckRoundTrip(allocator, "false", @parsed, @wrote);
-    CheckRoundTrip(allocator, "0", @parsed, @wrote);
-    CheckRoundTrip(allocator, "-0", @parsed, @wrote);
-    CheckRoundTrip(allocator, "123", @parsed, @wrote);
-    CheckRoundTrip(allocator, "-1.5e-3", @parsed, @wrote);
-    CheckRoundTrip(allocator, "1e999", @parsed, @wrote);
-    CheckRoundTrip(allocator, "[1,2,3]", @parsed, @wrote);
-    CheckRoundTrip(allocator, "[[[[1]]]]", @parsed, @wrote);
-    CheckRoundTrip(allocator, "{\"a\":1}", @parsed, @wrote);
-    CheckRoundTrip(allocator, "{\"a\":{\"b\":{\"c\":[1,2,{\"d\":null}]}}}", @parsed, @wrote);
-    CheckRoundTrip(allocator, "[\"\",  \"x\", \"\\n\", \"\\u0041\", \"\\ud83d\\ude00\"]", @parsed, @wrote);
-    CheckRoundTrip(allocator, "{\"\":1}", @parsed, @wrote);
-    CheckRoundTrip(allocator, "[null,true,false]", @parsed, @wrote);
-    CheckRoundTrip(allocator, "{\"a\":[],\"b\":{}}", @parsed, @wrote);
-    CheckRoundTrip(allocator, "[{\"x\":1},{\"x\":2},{\"x\":3}]", @parsed, @wrote);
-    CheckRoundTrip(allocator, "{\"n\":-0.0,\"m\":1e-400}", @parsed, @wrote);
+    CheckRoundTrip(allocator, "{}", @wrote);
+    CheckRoundTrip(allocator, "[]", @wrote);
+    CheckRoundTrip(allocator, "null", @wrote);
+    CheckRoundTrip(allocator, "true", @wrote);
+    CheckRoundTrip(allocator, "false", @wrote);
+    CheckRoundTrip(allocator, "0", @wrote);
+    CheckRoundTrip(allocator, "-0", @wrote);
+    CheckRoundTrip(allocator, "123", @wrote);
+    CheckRoundTrip(allocator, "-1.5e-3", @wrote);
+    CheckRoundTrip(allocator, "1e999", @wrote);
+    CheckRoundTrip(allocator, "[1,2,3]", @wrote);
+    CheckRoundTrip(allocator, "[[[[1]]]]", @wrote);
+    CheckRoundTrip(allocator, "{\"a\":1}", @wrote);
+    CheckRoundTrip(allocator, "{\"a\":{\"b\":{\"c\":[1,2,{\"d\":null}]}}}", @wrote);
+    CheckRoundTrip(allocator, "[\"\",  \"x\", \"\\n\", \"\\u0041\", \"\\ud83d\\ude00\"]", @wrote);
+    CheckRoundTrip(allocator, "{\"\":1}", @wrote);
+    CheckRoundTrip(allocator, "[null,true,false]", @wrote);
+    CheckRoundTrip(allocator, "{\"a\":[],\"b\":{}}", @wrote);
+    CheckRoundTrip(allocator, "[{\"x\":1},{\"x\":2},{\"x\":3}]", @wrote);
+    CheckRoundTrip(allocator, "{\"n\":-0.0,\"m\":1e-400}", @wrote);
 
     // Malformed documents: every one refused, with no crash and no partial value handed back.
-    CheckRefused(allocator, "", @parsed);
-    CheckRefused(allocator, "{", @parsed);
-    CheckRefused(allocator, "[", @parsed);
-    CheckRefused(allocator, "}", @parsed);
-    CheckRefused(allocator, "]", @parsed);
-    CheckRefused(allocator, "{}}", @parsed);
-    CheckRefused(allocator, "[]]", @parsed);
-    CheckRefused(allocator, "[1,]", @parsed);
-    CheckRefused(allocator, "{\"a\":1,}", @parsed);
-    CheckRefused(allocator, "{a:1}", @parsed);
-    CheckRefused(allocator, "{'a':1}", @parsed);
-    CheckRefused(allocator, "[1 2]", @parsed);
-    CheckRefused(allocator, "{\"a\" 1}", @parsed);
-    CheckRefused(allocator, "01", @parsed);
-    CheckRefused(allocator, "+1", @parsed);
-    CheckRefused(allocator, ".5", @parsed);
-    CheckRefused(allocator, "1.", @parsed);
-    CheckRefused(allocator, "1e", @parsed);
-    CheckRefused(allocator, "NaN", @parsed);
-    CheckRefused(allocator, "Infinity", @parsed);
-    CheckRefused(allocator, "-Infinity", @parsed);
-    CheckRefused(allocator, "tru", @parsed);
-    CheckRefused(allocator, "nul", @parsed);
-    CheckRefused(allocator, "\"unterminated", @parsed);
-    CheckRefused(allocator, "{\"a\":}", @parsed);
-    CheckRefused(allocator, "[,1]", @parsed);
-    CheckRefused(allocator, "{,}", @parsed);
-    CheckRefused(allocator, "1 2", @parsed);
-    CheckRefused(allocator, "[1][2]", @parsed);
-    CheckRefused(allocator, "{\"a\":1}{\"b\":2}", @parsed);
-    CheckRefused(allocator, "[[1],", @parsed);
-    CheckRefused(allocator, "\"\\q\"", @parsed);
-    CheckRefused(allocator, "\"\\u12\"", @parsed);
-    CheckRefused(allocator, "{\"a\":1,\"a\":2}", @parsed);
+    CheckRefused(allocator, "");
+    CheckRefused(allocator, "{");
+    CheckRefused(allocator, "[");
+    CheckRefused(allocator, "}");
+    CheckRefused(allocator, "]");
+    CheckRefused(allocator, "{}}");
+    CheckRefused(allocator, "[]]");
+    CheckRefused(allocator, "[1,]");
+    CheckRefused(allocator, "{\"a\":1,}");
+    CheckRefused(allocator, "{a:1}");
+    CheckRefused(allocator, "{'a':1}");
+    CheckRefused(allocator, "[1 2]");
+    CheckRefused(allocator, "{\"a\" 1}");
+    CheckRefused(allocator, "01");
+    CheckRefused(allocator, "+1");
+    CheckRefused(allocator, ".5");
+    CheckRefused(allocator, "1.");
+    CheckRefused(allocator, "1e");
+    CheckRefused(allocator, "NaN");
+    CheckRefused(allocator, "Infinity");
+    CheckRefused(allocator, "-Infinity");
+    CheckRefused(allocator, "tru");
+    CheckRefused(allocator, "nul");
+    CheckRefused(allocator, "\"unterminated");
+    CheckRefused(allocator, "{\"a\":}");
+    CheckRefused(allocator, "[,1]");
+    CheckRefused(allocator, "{,}");
+    CheckRefused(allocator, "1 2");
+    CheckRefused(allocator, "[1][2]");
+    CheckRefused(allocator, "{\"a\":1}{\"b\":2}");
+    CheckRefused(allocator, "[[1],");
+    CheckRefused(allocator, "\"\\q\"");
+    CheckRefused(allocator, "\"\\u12\"");
+    CheckRefused(allocator, "{\"a\":1,\"a\":2}");
 
 
     // Resource limits, each refused under its own reason rather than a general failure.
     var tight = JsonLimits::Default();
     tight.maximumDepth = 4;
-    var deepOutcome = JsonParseOutcome { error: JsonParseError::None, lexical: JsonLexError::None, position: 0 };
-    var tooDeep = ParseWith(allocator, "[[[[[1]]]]]", tight, DuplicateKeyPolicy::Reject, @deepOutcome);
-    Assert(deepOutcome.error == JsonParseError::TooDeep, "depth is bounded");
+    let tooDeep = ParseWith(allocator, "[[[[[1]]]]]", tight, DuplicateKeyPolicy::Reject);
+    Assert(RefusedWith(tooDeep, "JsonParseError::TooDeep(5)"), "depth is bounded");
 
     tight = JsonLimits::Default();
     tight.maximumEntries = 3;
-    var wideOutcome = JsonParseOutcome { error: JsonParseError::None, lexical: JsonLexError::None, position: 0 };
-    var tooWide = ParseWith(allocator, "[1,2,3,4]", tight, DuplicateKeyPolicy::Reject, @wideOutcome);
-    Assert(wideOutcome.error == JsonParseError::TooManyEntries, "entry counts are bounded");
+    let tooWide = ParseWith(allocator, "[1,2,3,4]", tight, DuplicateKeyPolicy::Reject);
+    Assert(RefusedWith(tooWide, "JsonParseError::TooManyEntries(8)"), "entry counts are bounded");
 
     tight = JsonLimits::Default();
     tight.maximumBytes = 4;
-    var bigOutcome = JsonParseOutcome { error: JsonParseError::None, lexical: JsonLexError::None, position: 0 };
-    var tooBig = ParseWith(allocator, "[1,2,3,4]", tight, DuplicateKeyPolicy::Reject, @bigOutcome);
-    Assert(bigOutcome.error == JsonParseError::Lexical, "document size is bounded");
-    Assert(bigOutcome.lexical == JsonLexError::TooManyBytes, "with the size as the reason");
+    let tooBig = ParseWith(allocator, "[1,2,3,4]", tight, DuplicateKeyPolicy::Reject);
+    Assert(RefusedWith(tooBig, "JsonParseError::Lexical(TooManyBytes, 0)"),
+           "document size is bounded, with the size as the reason and the byte it was reached at");
 
     // A deeply nested document that would exhaust a stack is refused rather than crashing, which is the whole
     // reason the depth check happens before the descent.
@@ -203,9 +199,8 @@ func Main() -> int {
         nest[index] = 0x5Du8 as char8;
         index = index + 1;
     }
-    var nestOutcome = JsonParseOutcome { error: JsonParseError::None, lexical: JsonLexError::None, position: 0 };
-    var nested = Parse(allocator, (@nest[0])[..600], @nestOutcome);
-    Assert(nestOutcome.error == JsonParseError::TooDeep,
+    let nested = Parse(allocator, (@nest[0])[..600]);
+    Assert(RefusedWith(nested, "JsonParseError::TooDeep(129)"),
            "three hundred levels exceeds the default depth and is refused rather than descended into");
 
     return 0;
@@ -213,10 +208,10 @@ func Main() -> int {
 
 // Parses, writes, parses again, and requires the two writings to agree — then requires the streaming reader to
 // see the same shape as the tree.
-func CheckRoundTrip(allocator: Allocator, text: char8[..], parsed: *var JsonParseOutcome,
-                    wrote: *var JsonWriteError) {
-    var value = Parse(allocator, text, parsed);
-    Assert(parsed.error == JsonParseError::None, "a well-formed document parses");
+func CheckRoundTrip(allocator: Allocator, text: char8[..], wrote: *var JsonWriteError) {
+    var outcome = Parse(allocator, text);
+    var value = JsonValue::Null(allocator);
+    Assert((<-outcome).TryIntoValue(@value), "a well-formed document parses");
 
     var builder = StringBuilder(allocator);
     let sink: &var TextWriter = builder;
@@ -224,8 +219,9 @@ func CheckRoundTrip(allocator: Allocator, text: char8[..], parsed: *var JsonPars
     Assert(*wrote == JsonWriteError::None, "and writes");
     var once = builder.IntoString();
 
-    var again = Parse(allocator, once.View().Bytes(), parsed);
-    Assert(parsed.error == JsonParseError::None, "and the written form parses");
+    var second = Parse(allocator, once.View().Bytes());
+    var again = JsonValue::Null(allocator);
+    Assert((<-second).TryIntoValue(@again), "and the written form parses");
     var secondBuilder = StringBuilder(allocator);
     let secondSink: &var TextWriter = secondBuilder;
     *wrote = WriteValue(secondSink, again, JsonStyle::Compact());
@@ -248,8 +244,35 @@ func CheckRoundTrip(allocator: Allocator, text: char8[..], parsed: *var JsonPars
     Assert(streamNames == treeNames, "and the same member names");
 }
 
-// Requires a document to be refused, and the value handed back to be the empty one rather than a partial tree.
-func CheckRefused(allocator: Allocator, text: char8[..], parsed: *var JsonParseOutcome) {
-    var value = Parse(allocator, text, parsed);
-    Assert(parsed.error != JsonParseError::None, "a malformed document is refused");
+// Requires a document to be refused, and nothing at all to come back with the refusal.
+//
+// That second half is the shape rather than a check: the result carries either a document or a failure, so a
+// refused parse cannot hand over a partial tree the way the old outcome-beside-a-value form could. What is left to
+// check is that whatever the parser built before it stopped was released rather than leaked, and the allocator
+// counting that is in the parser test.
+func CheckRefused(allocator: Allocator, text: char8[..]) {
+    let outcome = Parse(allocator, text);
+    Assert(outcome.IsError(), "a malformed document is refused");
+}
+
+// Whether an outcome is the refusal it should be, by the failure's own rendering, which names the case and the
+// byte it stopped at.
+func RefusedWith(outcome: &Result<JsonValue, JsonParseError>, expected: char8[..]) -> bool {
+    return match outcome {
+        .Success(_) => false,
+        .Error(reason) => {
+            var storage: char8[96];
+            var writer = BufferWriter((@storage[0])[..96]);
+            let sink: &var TextWriter = writer;
+            if reason.WriteDebug(sink, FormatSpec::Plain()).IsError() { return false; }
+            let shown = writer.Written();
+            if shown.length != expected.length { return false; }
+            var index: uint = 0;
+            while index < expected.length {
+                if shown.data[index] != expected.data[index] { return false; }
+                index = index + 1;
+            }
+            return true;
+        }
+    };
 }

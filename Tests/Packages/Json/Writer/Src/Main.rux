@@ -4,7 +4,7 @@
 import Allocator::{ Allocator, SystemAllocator };
 import Core::{ Assert };
 import Format::{ TextWriter };
-import Json::{ JsonKind, JsonLexError, JsonParseError, JsonParseOutcome, JsonStyle, JsonValue, JsonWriteError, Parse, WriteValue };
+import Json::{ JsonKind, JsonStyle, JsonValue, JsonWriteError, Parse, WriteValue };
 import Text::{ String, StringBuilder, StringView, TextError };
 
 func View(bytes: char8[..]) -> StringView {
@@ -19,46 +19,51 @@ func Written(allocator: Allocator, value: &JsonValue, style: JsonStyle, outcome:
     return builder.IntoString();
 }
 
+// A document this test knows is well-formed, which is every one of them: what is under test here is the writer.
+func Parsed(allocator: Allocator, text: char8[..]) -> JsonValue {
+    var outcome = Parse(allocator, text);
+    var value = JsonValue::Null(allocator);
+    Assert((<-outcome).TryIntoValue(@value), "the document parses");
+    return <-value;
+}
+
 func Main() -> int {
     var system = SystemAllocator();
     let allocator: Allocator = system;
-    var parsed = JsonParseOutcome { error: JsonParseError::None, lexical: JsonLexError::None, position: 0 };
     var wrote = JsonWriteError::None;
 
     // The scalars.
-    var nullValue = Parse(allocator, "null", @parsed);
+    var nullValue = Parsed(allocator, "null");
     var nullText = Written(allocator, nullValue, JsonStyle::Compact(), @wrote);
     let expectNull = View("null");
     Assert(wrote == JsonWriteError::None && nullText.View().Equals(expectNull), "null writes as null");
 
-    var number = Parse(allocator, "-1.5e3", @parsed);
+    var number = Parsed(allocator, "-1.5e3");
     var numberText = Written(allocator, number, JsonStyle::Compact(), @wrote);
     let expectNumber = View("-1.5e3");
     Assert(numberText.View().Equals(expectNumber),
            "a number writes exactly as it was written, since its text was kept");
 
     // Escapes: the required ones and no others.
-    var escaped = Parse(allocator, "\"a\\nb\\t\"", @parsed);
-    Assert(parsed.error == JsonParseError::None, "a string with escapes parses");
+    var escaped = Parsed(allocator, "\"a\\nb\\t\"");
     var escapedText = Written(allocator, escaped, JsonStyle::Compact(), @wrote);
     let expectEscaped = View("\"a\\nb\\t\"");
     Assert(escapedText.View().Equals(expectEscaped), "and writes back with the short escapes");
 
-    var solidus = Parse(allocator, "\"a\\/b\"", @parsed);
+    var solidus = Parsed(allocator, "\"a\\/b\"");
     var solidusText = Written(allocator, solidus, JsonStyle::Compact(), @wrote);
     let expectSolidus = View("\"a/b\"");
     Assert(solidusText.View().Equals(expectSolidus),
            "a solidus is written unescaped, which is legal and is what every other writer does");
 
-    var control = Parse(allocator, "\"a\\u0001b\"", @parsed);
+    var control = Parsed(allocator, "\"a\\u0001b\"");
     var controlText = Written(allocator, control, JsonStyle::Compact(), @wrote);
     let expectControl = View("\"a\\u0001b\"");
     Assert(controlText.View().Equals(expectControl),
            "a control character with no short escape takes the four-digit form");
 
     // Compact output has no whitespace anywhere.
-    var document = Parse(allocator, "{\"a\":[1,2],\"b\":{\"c\":true}}", @parsed);
-    Assert(parsed.error == JsonParseError::None, "a document parses");
+    var document = Parsed(allocator, "{\"a\":[1,2],\"b\":{\"c\":true}}");
     var compact = Written(allocator, document, JsonStyle::Compact(), @wrote);
     let expectCompact = View("{\"a\":[1,2],\"b\":{\"c\":true}}");
     Assert(compact.View().Equals(expectCompact), "and writes back byte for byte in the compact style");
@@ -68,13 +73,12 @@ func Main() -> int {
     var pretty = Written(allocator, document, JsonStyle::Pretty(), @wrote);
     Assert(wrote == JsonWriteError::None, "the pretty style writes");
     Assert(pretty.Length() > compact.Length(), "producing more bytes, since it adds layout");
-    var reparsed = Parse(allocator, pretty.View().Bytes(), @parsed);
-    Assert(parsed.error == JsonParseError::None, "and parses back");
+    var reparsed = Parsed(allocator, pretty.View().Bytes());
     var reflattened = Written(allocator, reparsed, JsonStyle::Compact(), @wrote);
     Assert(reflattened.View().Equals(expectCompact), "to exactly the document it started as");
 
     // Empty containers stay on one line even when indenting.
-    var empties = Parse(allocator, "{\"a\":[],\"b\":{}}", @parsed);
+    var empties = Parsed(allocator, "{\"a\":[],\"b\":{}}");
     var prettyEmpties = Written(allocator, empties, JsonStyle::Pretty(), @wrote);
     let expectEmpties = View("{\n  \"a\": [],\n  \"b\": {}\n}");
     Assert(prettyEmpties.View().Equals(expectEmpties),

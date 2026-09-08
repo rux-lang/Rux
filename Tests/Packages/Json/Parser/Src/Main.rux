@@ -1,26 +1,113 @@
 // Strictness is the point, so most of this is documents that must be refused — and the ones worth writing down
 // are the ones that are perfectly good JavaScript and are not JSON.
+//
+// A refusal is checked by its debug rendering, which names the case and the byte it happened at:
+// `JsonParseError::Truncated(4)`. That is one assertion covering three things — that the right case was reported,
+// that it was positioned where the document actually goes wrong, and that the failure can say so — and the
+// position is the half that was easiest to get wrong while it lived in a structure beside the value.
+//
+// A refused parse hands back no value at all. That is the point of the shape: the old one answered a refusal with
+// `null`, which is a perfectly good document, so a caller who forgot to read the outcome could not tell a document
+// that said nothing from one that was not a document.
 
-import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert };
-import Json::{ DuplicateKeyPolicy, JsonKind, JsonLexError, JsonLimits, JsonParseError, JsonParseOutcome, JsonParser, JsonValue, Parse, ParseWith };
-import Text::{ StringView, TextError };
+import Allocator::{ AllocError, Allocator, Layout, SystemAllocator };
+import Core::{ Assert, Result };
+import Json::{ DuplicateKeyPolicy, JsonKind, JsonLexError, JsonLimits, JsonParseError, JsonParser, JsonValue, Parse,
+               ParseWith };
+import Text::{ BufferWriter, FormatSpec, StringView, TextError, TextWriter };
 
 func View(bytes: char8[..]) -> StringView {
     return StringView::FromBytes(bytes).ValueOr(StringView());
 }
 
-func Refuses(allocator: Allocator, text: char8[..], expected: JsonParseError, what: char8[..]) {
-    var outcome = JsonParseOutcome { error: JsonParseError::None, lexical: JsonLexError::None, position: 0 };
-    var value = Parse(allocator, text, @outcome);
-    Assert(outcome.error == expected, what);
+func Same(actual: char8[..], expected: char8[..]) -> bool {
+    if actual.length != expected.length { return false; }
+    var index: uint = 0;
+    while index < actual.length {
+        if actual.data[index] != expected.data[index] { return false; }
+        index = index + 1;
+    }
+    return true;
+}
+
+// The debug rendering of a failure, into a caller's buffer, and how much of it was written. Empty for a parse that
+// succeeded, which no case below expects.
+func Rendered(reason: &JsonParseError, into: var char8[..]) -> uint {
+    var writer = BufferWriter(into);
+    let sink: &var TextWriter = writer;
+    Assert(reason.WriteDebug(sink, FormatSpec::Plain()).IsSuccess(), "a failure renders");
+    return writer.Length();
+}
+
+// Parses, requires a refusal, and checks its rendering — the case and the offset together.
+func Refuses(allocator: Allocator, text: char8[..], expected: char8[..], what: char8[..]) {
+    let outcome = Parse(allocator, text);
+    Assert(Refusal(outcome, expected), what);
 }
 
 func Accepts(allocator: Allocator, text: char8[..], what: char8[..]) -> JsonValue {
-    var outcome = JsonParseOutcome { error: JsonParseError::None, lexical: JsonLexError::None, position: 0 };
-    var value = Parse(allocator, text, @outcome);
-    Assert(outcome.error == JsonParseError::None, what);
+    var outcome = Parse(allocator, text);
+    var value = JsonValue::Null(allocator);
+    Assert((<-outcome).TryIntoValue(@value), what);
     return <-value;
+}
+
+// Whether an outcome a caller already holds is the refusal it should be, rendering and all.
+func Refusal(outcome: &Result<JsonValue, JsonParseError>, expected: char8[..]) -> bool {
+    return match outcome {
+        .Success(_) => false,
+        .Error(reason) => {
+            var storage: char8[96];
+            let length = Rendered(reason, (@storage[0])[..96]);
+            return Same((@storage[0])[..length], expected);
+        }
+    };
+}
+
+// A parser used directly, for the cases that need a limit or a policy the one-call form does not take.
+func Built(allocator: Allocator, parser: &var JsonParser, what: char8[..]) -> JsonValue {
+    var outcome = parser.Parse();
+    var value = JsonValue::Null(allocator);
+    Assert((<-outcome).TryIntoValue(@value), what);
+    return <-value;
+}
+
+
+// An allocator that counts what is out, so a refused parse can be checked for having given back everything it took
+// before it stopped. Everything mutable lives behind a pointer, since an interface adapter is copied.
+struct CountState {
+    inner: Allocator;
+    live: int32;
+}
+
+struct CountingAllocator {
+    state: *var CountState;
+}
+
+extend CountingAllocator : Allocator {
+    func Allocate(self: &var CountingAllocator, layout: Layout, result: *var *var opaque) -> AllocError {
+        let outcome = self.state.inner.Allocate(layout, result);
+        if outcome == AllocError::None { self.state.live = self.state.live + 1i32; }
+        return outcome;
+    }
+
+    func Deallocate(self: &var CountingAllocator, block: *var opaque, layout: Layout) -> AllocError {
+        let outcome = self.state.inner.Deallocate(block, layout);
+        if outcome == AllocError::None { self.state.live = self.state.live - 1i32; }
+        return outcome;
+    }
+
+    func Reallocate(self: &var CountingAllocator, block: *var opaque, oldLayout: Layout, newLayout: Layout,
+                    result: *var *var opaque) -> AllocError {
+        return self.state.inner.Reallocate(block, oldLayout, newLayout, result);
+    }
+}
+
+// A scope for a document, so its destruction happens somewhere the count can be read across. `whileHeld` reports
+// what was out while the document was still whole, which is what separates "released" from "never allocated".
+func ParseAndDrop(allocator: Allocator, text: char8[..], state: *var CountState, whileHeld: *var int32) {
+    var kept = Accepts(allocator, text, "a whole document parses");
+    *whileHeld = state.live;
 }
 
 func Main() -> int {
@@ -61,30 +148,39 @@ func Main() -> int {
     var astral = Accepts(allocator, "\"\\ud83d\\ude00\"", "a surrogate pair parses");
     Assert(astral.AsText().Length() == 4u, "into the four UTF-8 bytes of one astral character");
 
+    // Half a pair is half a character, and JSON's escapes are the one place a JSON string is not simply scalar
+    // values. This used to be handed to the string builder, which refused it as invalid text, and the parser
+    // reported that as being out of memory — sending a caller to check the machine over a document that was wrong.
+    Refuses(allocator, "\"\\ud83d\"", "JsonParseError::BadSurrogate(1)",
+            "a high surrogate with no partner is refused");
+    Refuses(allocator, "\"\\udc00x\"", "JsonParseError::BadSurrogate(1)",
+            "and a low surrogate standing alone");
+    Refuses(allocator, "\"\\ud83dA\"", "JsonParseError::BadSurrogate(1)",
+            "and one followed by something that is not its partner");
+
     // The refusals: a document is one value, and these are all JavaScript rather than JSON.
-    Refuses(allocator, "", JsonParseError::Truncated, "an empty document is not a value");
-    Refuses(allocator, "[1,2", JsonParseError::Truncated, "an unclosed array is truncated");
-    Refuses(allocator, "{\"a\":1", JsonParseError::Truncated, "and so is an unclosed object");
-    Refuses(allocator, "[1,]", JsonParseError::Unexpected, "a trailing comma in an array is refused");
-    Refuses(allocator, "{\"a\":1,}", JsonParseError::Unexpected, "and in an object");
+    Refuses(allocator, "", "JsonParseError::Truncated(0)", "an empty document is not a value");
+    Refuses(allocator, "[1,2", "JsonParseError::Truncated(4)", "an unclosed array is truncated");
+    Refuses(allocator, "{\"a\":1", "JsonParseError::Truncated(6)", "and so is an unclosed object");
+    Refuses(allocator, "[1,]", "JsonParseError::Unexpected(4)", "a trailing comma in an array is refused");
+    Refuses(allocator, "{\"a\":1,}", "JsonParseError::Unexpected(8)", "and in an object");
     // An unquoted name never reaches the parser: `a` begins no JSON token, so the lexer refuses it first and
     // the failure is reported as lexical. That is the more precise answer, not a weaker one.
-    Refuses(allocator, "{a:1}", JsonParseError::Lexical, "an unquoted member name is refused by the lexer");
-    Refuses(allocator, "[1 2]", JsonParseError::Unexpected, "a missing comma is refused");
-    Refuses(allocator, "{\"a\" 1}", JsonParseError::Unexpected, "as is a missing colon");
-    Refuses(allocator, "1 2", JsonParseError::TrailingContent, "two values are not one document");
-    Refuses(allocator, "{} []", JsonParseError::TrailingContent, "however well-formed each is");
-    Refuses(allocator, "[1,2] trailing", JsonParseError::TrailingContent, "and text after a value is refused");
+    Refuses(allocator, "{a:1}", "JsonParseError::Lexical(UnexpectedByte, 1)", "an unquoted member name is refused by the lexer");
+    Refuses(allocator, "[1 2]", "JsonParseError::Unexpected(4)", "a missing comma is refused");
+    Refuses(allocator, "{\"a\" 1}", "JsonParseError::Unexpected(6)", "as is a missing colon");
+    Refuses(allocator, "1 2", "JsonParseError::TrailingContent(2)", "two values are not one document");
+    Refuses(allocator, "{} []", "JsonParseError::TrailingContent(3)", "however well-formed each is");
+    Refuses(allocator, "[1,2] trailing", "JsonParseError::TrailingContent(6)", "and text after a value is refused");
 
     // Duplicate names are refused by default, because a document containing them means different things to
     // different readers — which is the property that gets exploited.
-    Refuses(allocator, "{\"a\":1,\"a\":2}", JsonParseError::DuplicateName, "a duplicate member name is refused");
+    Refuses(allocator, "{\"a\":1,\"a\":2}", "JsonParseError::DuplicateName(12)", "a duplicate member name is refused");
 
     // The other policies exist because real documents contain duplicates and someone has to read them.
     var keepFirstParser = JsonParser(allocator, "{\"a\":1,\"a\":2}", JsonLimits::Default());
     keepFirstParser.SetDuplicatePolicy(DuplicateKeyPolicy::KeepFirst);
-    var keptFirst = keepFirstParser.Parse();
-    Assert(keepFirstParser.Outcome().error == JsonParseError::None, "keeping the first accepts the document");
+    var keptFirst = Built(allocator, keepFirstParser, "keeping the first accepts the document");
     Assert(keptFirst.Length() == 1u, "and leaves one member");
     let nameA = View("a");
     var firstValue: int64 = 0;
@@ -93,8 +189,7 @@ func Main() -> int {
 
     var keepLastParser = JsonParser(allocator, "{\"a\":1,\"a\":2}", JsonLimits::Default());
     keepLastParser.SetDuplicatePolicy(DuplicateKeyPolicy::KeepLast);
-    var keptLast = keepLastParser.Parse();
-    Assert(keepLastParser.Outcome().error == JsonParseError::None, "keeping the last accepts it too");
+    var keptLast = Built(allocator, keepLastParser, "keeping the last accepts it too");
     Assert(keptLast.Length() == 1u, "and also leaves one member");
     var lastValue: int64 = 0;
     Assert((*(*keptLast.Find(nameA)).AsNumber()).AsInt64(@lastValue) && lastValue == 2i64,
@@ -102,8 +197,7 @@ func Main() -> int {
 
     var keepAllParser = JsonParser(allocator, "{\"a\":1,\"a\":2}", JsonLimits::Default());
     keepAllParser.SetDuplicatePolicy(DuplicateKeyPolicy::KeepAll);
-    var keptAll = keepAllParser.Parse();
-    Assert(keepAllParser.Outcome().error == JsonParseError::None, "keeping all accepts it");
+    var keptAll = Built(allocator, keepAllParser, "keeping all accepts it");
     Assert(keptAll.Length() == 2u, "and keeps both members, so the document is preserved exactly");
     var foundValue: int64 = 0;
     Assert((*(*keptAll.Find(nameA)).AsNumber()).AsInt64(@foundValue) && foundValue == 1i64,
@@ -120,39 +214,66 @@ func Main() -> int {
     var shallow = JsonLimits::Default();
     shallow.maximumDepth = 3;
     var deepParser = JsonParser(allocator, "[[[[1]]]]", shallow);
-    var deep = deepParser.Parse();
-    Assert(deepParser.Outcome().error == JsonParseError::TooDeep,
+    var deepOutcome = deepParser.Parse();
+    Assert(Refusal(deepOutcome, "JsonParseError::TooDeep(4)"),
            "nesting past the depth limit is refused before the stack is at risk");
     var fittingParser = JsonParser(allocator, "[[[1]]]", shallow);
-    var fitting = fittingParser.Parse();
-    Assert(fittingParser.Outcome().error == JsonParseError::None, "while nesting that fits is accepted");
+    var fitting = Built(allocator, fittingParser, "while nesting that fits is accepted");
 
     var few = JsonLimits::Default();
     few.maximumEntries = 2;
     var manyParser = JsonParser(allocator, "[1,2,3]", few);
-    var many = manyParser.Parse();
-    Assert(manyParser.Outcome().error == JsonParseError::TooManyEntries,
+    var manyOutcome = manyParser.Parse();
+    Assert(Refusal(manyOutcome, "JsonParseError::TooManyEntries(6)"),
            "a container past the entry limit is refused");
     var enoughParser = JsonParser(allocator, "[1,2]", few);
-    var enough = enoughParser.Parse();
-    Assert(enoughParser.Outcome().error == JsonParseError::None, "and one that fits is not");
+    var enough = Built(allocator, enoughParser, "and one that fits is not");
 
-    // A lexical failure is reported as such, with the lexer's own reason preserved.
+    // A lexical failure carries the lexer's own reason inside it rather than in a second field a caller has to
+    // know to read, which is what makes it impossible to hold half of one.
     var badParser = JsonParser(allocator, "[01]", JsonLimits::Default());
-    var bad = badParser.Parse();
-    Assert(badParser.Outcome().error == JsonParseError::Lexical, "a lexical failure is reported as lexical");
-    Assert(badParser.Outcome().lexical == JsonLexError::MalformedNumber, "with the lexer's own reason kept");
+    var badOutcome = badParser.Parse();
+    Assert(Refusal(badOutcome, "JsonParseError::Lexical(MalformedNumber, 1)"),
+           "a lexical failure keeps the lexer's own reason and its position");
 
     // The same choices through the one-call form, which is what most callers will reach for.
-    var directOutcome = JsonParseOutcome { error: JsonParseError::None, lexical: JsonLexError::None, position: 0 };
-    var directAll = ParseWith(allocator, "{\"a\":1,\"a\":2}", JsonLimits::Default(), DuplicateKeyPolicy::KeepAll,
-                              @directOutcome);
-    Assert(directOutcome.error == JsonParseError::None && directAll.Length() == 2u,
+    var directAllOutcome = ParseWith(allocator, "{\"a\":1,\"a\":2}", JsonLimits::Default(),
+                                     DuplicateKeyPolicy::KeepAll);
+    var directAll = JsonValue::Null(allocator);
+    Assert((<-directAllOutcome).TryIntoValue(@directAll) && directAll.Length() == 2u,
            "the one-call form honours a chosen policy");
-    var directReject = ParseWith(allocator, "{\"a\":1,\"a\":2}", JsonLimits::Default(), DuplicateKeyPolicy::Reject,
-                                 @directOutcome);
-    Assert(directOutcome.error == JsonParseError::DuplicateName,
+    let directRejectOutcome = ParseWith(allocator, "{\"a\":1,\"a\":2}", JsonLimits::Default(),
+                                        DuplicateKeyPolicy::Reject);
+    Assert(Refusal(directRejectOutcome, "JsonParseError::DuplicateName(12)"),
            "and refuses under the default one, so the choice is per call rather than per program");
+
+    // A refused parse gives back everything it took. This is the half of the shape that is not visible in the
+    // types: a document that fails at its third element has already built two, and an object that fails on a
+    // duplicate name is holding every member before it. Those were handed back beside the error before, which left
+    // a caller holding a partial document; now they are released, and the count is what says so rather than the
+    // absence of a crash.
+    var state = CountState { inner: allocator, live: 0i32 };
+    var counting = CountingAllocator { state: @state };
+    let counted: Allocator = counting;
+
+    Refuses(counted, "[1,2,\"three\",", "JsonParseError::Truncated(13)",
+            "an array that fails partway through is refused");
+    Assert(state.live == 0i32, "and everything the partial array held is released");
+
+    Refuses(counted, "{\"a\":[1,2],\"b\":\"x\",\"a\":3}", "JsonParseError::DuplicateName(24)",
+            "an object with a duplicate name is refused");
+    Assert(state.live == 0i32, "and everything the partial object held is released");
+
+    Refuses(counted, "[[[\"deep\",1,2],3],", "JsonParseError::Truncated(18)",
+            "a nested document that fails is refused");
+    Assert(state.live == 0i32, "and every level of it is released");
+
+    // A document that parses and is then dropped ends at the same count, so the check above is measuring cleanup
+    // rather than a parser that never allocated.
+    var whileHeld: int32 = 0;
+    ParseAndDrop(counted, "[1,2,\"three\"]", @state, @whileHeld);
+    Assert(whileHeld > 0i32, "and the same document, whole, takes storage");
+    Assert(state.live == 0i32, "which comes back when the document's life ends");
 
     // Insertion order survives everything, including a document whose names are already sorted the other way.
     var reversed = Accepts(allocator, "{\"three\":3,\"two\":2,\"one\":1}", "a reverse-sorted object parses");

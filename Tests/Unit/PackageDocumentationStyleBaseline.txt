@@ -1066,8 +1066,6 @@ missing-param|Io/Src/TextRead.rux|func|ReadTextLine|421af20cc7608c6d
 missing-param|Json/Src/Events.rux|func|New|265c5ac0c71b9767
 missing-param|Json/Src/Lexer.rux|func|JsonLexer|e8bf96c53e9ac659
 missing-param|Json/Src/Parser.rux|func|JsonParser|071e3c08dcae0925
-missing-param|Json/Src/Parser.rux|func|ParseWith|5516703878ffa279
-missing-param|Json/Src/Parser.rux|func|Parse|ed9fd25600502b77
 missing-param|Json/Src/Parser.rux|func|SetDuplicatePolicy|f31470be063608ee
 missing-param|Json/Src/Value.rux|func|Array|7da716cffd397e15
 missing-param|Json/Src/Value.rux|func|AsBoolean|38dd5286eedef815
@@ -2124,8 +2122,6 @@ missing-returns|Io/Src/Stream.rux|func|WriteAll|3bf3b443634c84ae
 missing-returns|Io/Src/Stream.rux|func|Write|add79ab3b0721d7e
 missing-returns|Io/Src/TextRead.rux|func|ReadTextLine|421af20cc7608c6d
 missing-returns|Json/Src/Events.rux|func|Depth|59cd30105080f43e
-missing-returns|Json/Src/Events.rux|func|Failure|e24ef8c064a35f6a
-missing-returns|Json/Src/Events.rux|func|LexicalFailure|13b08f114384ddd2
 missing-returns|Json/Src/Events.rux|func|New|265c5ac0c71b9767
 missing-returns|Json/Src/Events.rux|func|Next|9dd3e9b0624a0a2d
 missing-returns|Json/Src/Events.rux|func|TextIsEscaped|5b093fbb0f23ce62
@@ -2136,10 +2132,6 @@ missing-returns|Json/Src/Lexer.rux|func|Next|cc66a847bddd914b
 missing-returns|Json/Src/Lexer.rux|func|Position|dd8f07f1a89b1b47
 missing-returns|Json/Src/Lexer.rux|func|Unlimited|261cd4c89e1ee3c3
 missing-returns|Json/Src/Parser.rux|func|JsonParser|071e3c08dcae0925
-missing-returns|Json/Src/Parser.rux|func|Outcome|a049673d9b639a12
-missing-returns|Json/Src/Parser.rux|func|ParseWith|5516703878ffa279
-missing-returns|Json/Src/Parser.rux|func|Parse|004eb969c5e6ff42
-missing-returns|Json/Src/Parser.rux|func|Parse|ed9fd25600502b77
 missing-returns|Json/Src/Value.rux|func|Array|7da716cffd397e15
 missing-returns|Json/Src/Value.rux|func|AsBoolean|38dd5286eedef815
 missing-returns|Json/Src/Value.rux|func|AsFloat64|b9de18607a954b25
@@ -3840,8 +3832,6 @@ missing-see|Io/Src/Stream.rux|interface|Writer|5a8b9cb2c39e1d8f
 missing-see|Io/Src/TextRead.rux|func|ReadTextLine|421af20cc7608c6d
 missing-see|Json/Src/Events.rux|enum|JsonEvent|a95105e9525fb062
 missing-see|Json/Src/Events.rux|func|Depth|59cd30105080f43e
-missing-see|Json/Src/Events.rux|func|Failure|e24ef8c064a35f6a
-missing-see|Json/Src/Events.rux|func|LexicalFailure|13b08f114384ddd2
 missing-see|Json/Src/Events.rux|func|New|265c5ac0c71b9767
 missing-see|Json/Src/Events.rux|func|Next|9dd3e9b0624a0a2d
 missing-see|Json/Src/Events.rux|func|Release|c94ad0f0451995f8
@@ -3859,14 +3849,8 @@ missing-see|Json/Src/Lexer.rux|struct|JsonLexer|1650676848b3da24
 missing-see|Json/Src/Lexer.rux|struct|JsonLimits|b5ff3e1aaef9ded5
 missing-see|Json/Src/Lexer.rux|struct|JsonToken|00599c3e8406c4d0
 missing-see|Json/Src/Parser.rux|enum|DuplicateKeyPolicy|555fde7ff797e2b8
-missing-see|Json/Src/Parser.rux|enum|JsonParseError|52fb74f58f9dce41
 missing-see|Json/Src/Parser.rux|func|JsonParser|071e3c08dcae0925
-missing-see|Json/Src/Parser.rux|func|Outcome|a049673d9b639a12
-missing-see|Json/Src/Parser.rux|func|ParseWith|5516703878ffa279
-missing-see|Json/Src/Parser.rux|func|Parse|004eb969c5e6ff42
-missing-see|Json/Src/Parser.rux|func|Parse|ed9fd25600502b77
 missing-see|Json/Src/Parser.rux|func|SetDuplicatePolicy|f31470be063608ee
-missing-see|Json/Src/Parser.rux|struct|JsonParseOutcome|0145cbea8dff068e
 missing-see|Json/Src/Parser.rux|struct|JsonParser|ceb878c1b4e83676
 missing-see|Json/Src/Value.rux|enum|JsonKind|bdd01693bd0934cc
 missing-see|Json/Src/Value.rux|func|Array|7da716cffd397e15

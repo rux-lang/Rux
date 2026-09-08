@@ -12,6 +12,7 @@ Allocator = { Path = "../../../../Packages/Allocator" }
 Core = { Path = "../../../../Packages/Core" }
 Io = { Path = "../../../../Packages/Io" }
 Json = { Path = "../../../../Packages/Json" }
+Text = { Path = "../../../../Packages/Text" }
 
 [Build]
 Output = "../../../../Bin/Tests/Packages/Json"

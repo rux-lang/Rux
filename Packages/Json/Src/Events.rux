@@ -78,10 +78,11 @@ pub struct JsonEventReader {
     tokenEnd: uint;
     /// Whether that text holds escapes.
     tokenEscaped: bool;
-    /// Why reading stopped.
-    failure: JsonParseError;
-    /// The lexer's reason, when the failure was lexical.
-    pub lexical: JsonLexError;
+    /// Why reading stopped, as its parts. The public failure is built from these and the position, once, in
+    /// `Failure` — a reader that carried the payload around would be copying an offset it already knows.
+    stop: JsonStop;
+    /// The lexer's reason, when `stop` is `Lexical`.
+    lexical: JsonLexError;
     /// Whether a value is expected next rather than a name or a separator.
     expectingValue: bool;
 }
@@ -103,7 +104,7 @@ extend JsonEventReader {
             source: source, data: null, capacity: 0, filled: 0, position: 0, exhausted: false,
             allocator: allocator, limits: limits, stack: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
             depth: 0, tokenStart: 0, tokenEnd: 0, tokenEscaped: false,
-            failure: JsonParseError::None, lexical: JsonLexError::None, expectingValue: true
+            stop: JsonStop::None, lexical: JsonLexError::None, expectingValue: true
         };
         var borrowed = allocator;
         var block: *var opaque = null;
@@ -117,18 +118,15 @@ extend JsonEventReader {
         return <-reader;
     }
 
-    /// Why reading stopped, or `None`.
+    /// Why reading stopped, positioned, or `None` while nothing has gone wrong.
     ///
-    /// https://rux-lang.dev/docs/api/json/json-event-reader/failure
-    pub func Failure(self: &JsonEventReader) -> JsonParseError {
-        return self.failure;
-    }
-
-    /// The lexer's reason, when the failure was lexical.
+    /// This is what a caller asks after `Next` reports `Error`. A lexical refusal carries the lexer's own reason
+    /// inside it rather than in a second call, so a caller holding the failure is holding all of it.
     ///
-    /// https://rux-lang.dev/docs/api/json/json-event-reader/lexical-failure
-    pub func LexicalFailure(self: &JsonEventReader) -> JsonLexError {
-        return self.lexical;
+    /// @returns the failure, positioned at the byte the reader stopped on, or `None`
+    /// @see https://rux-lang.dev/docs/api/json/json-event-reader/failure
+    pub func Failure(self: &JsonEventReader) -> Option<JsonParseError> {
+        return BuildFailure(self.stop, self.lexical, self.position);
     }
 
     /// The text of the event just reported, valid until the next one.
@@ -170,14 +168,14 @@ extend JsonEventReader {
         if self.filled == self.capacity {
             let wanted = self.capacity * 2u;
             if wanted > self.limits.maximumTextBytes + JsonStreamChunk {
-                self.failure = JsonParseError::TooManyEntries;
+                self.stop = JsonStop::TooManyEntries;
                 return false;
             }
             var borrowed = self.allocator;
             var block: *var opaque = null;
             let bigger = Layout { size: wanted, alignment: 1 };
             if borrowed.Allocate(bigger, @block) != AllocError::None {
-                self.failure = JsonParseError::OutOfMemory;
+                self.stop = JsonStop::OutOfMemory;
                 return false;
             }
             let grown = block as *var char8;
@@ -198,7 +196,7 @@ extend JsonEventReader {
         if outcome.IsError() {
             self.exhausted = true;
             if !outcome.IsEnd() {
-                self.failure = JsonParseError::Lexical;
+                self.stop = JsonStop::Lexical;
                 self.lexical = JsonLexError::UnexpectedByte;
             }
             return false;
@@ -261,7 +259,7 @@ extend JsonEventReader {
                 let shift = start;
                 if !self.Refill() {
                     if isText {
-                        self.failure = JsonParseError::Lexical;
+                        self.stop = JsonStop::Lexical;
                         self.lexical = JsonLexError::UnterminatedText;
                         return false;
                     }
@@ -284,14 +282,14 @@ extend JsonEventReader {
                     self.tokenEscaped = escaped;
                     self.position = index + 1u;
                     if self.tokenEnd - self.tokenStart > self.limits.maximumTextBytes {
-                        self.failure = JsonParseError::Lexical;
+                        self.stop = JsonStop::Lexical;
                         self.lexical = JsonLexError::TextTooLong;
                         return false;
                     }
                     return true;
                 }
                 if c < 0x20u8 {
-                    self.failure = JsonParseError::Lexical;
+                    self.stop = JsonStop::Lexical;
                     self.lexical = JsonLexError::UnescapedControl;
                     return false;
                 }
@@ -314,7 +312,7 @@ extend JsonEventReader {
 extend JsonEventReader {
     func PushContainer(self: &var JsonEventReader, isObject: bool) -> bool {
         if self.depth >= self.limits.maximumDepth || self.depth >= 1024u {
-            self.failure = JsonParseError::TooDeep;
+            self.stop = JsonStop::TooDeep;
             return false;
         }
         let word = self.depth / 64u;
@@ -355,7 +353,7 @@ extend JsonEventReader {
     ///
     /// https://rux-lang.dev/docs/api/json/json-event-reader/next
     pub func Next(self: &var JsonEventReader) -> JsonEvent {
-        if self.failure != JsonParseError::None { return JsonEvent::Error; }
+        if self.stop != JsonStop::None { return JsonEvent::Error; }
         self.SkipWhitespace();
         // Skip a separator, whichever kind is due here.
         while self.position < self.filled {
@@ -366,7 +364,7 @@ extend JsonEventReader {
         }
         if !self.Available() {
             if self.depth > 0u {
-                self.failure = JsonParseError::Truncated;
+                self.stop = JsonStop::Truncated;
                 return JsonEvent::Error;
             }
             return JsonEvent::End;
@@ -389,7 +387,7 @@ extend JsonEventReader {
             if self.depth == 0u || self.InObject() != wantsObject {
                 // A brace closing a bracket, or a closer with nothing open. A streaming reader that let this
                 // through would push the problem onto every caller.
-                self.failure = JsonParseError::Unexpected;
+                self.stop = JsonStop::Unexpected;
                 return JsonEvent::Error;
             }
             self.position = self.position + 1u;
@@ -415,7 +413,7 @@ extend JsonEventReader {
         if self.Matches("true") { return JsonEvent::True; }
         if self.Matches("false") { return JsonEvent::False; }
         if self.Matches("null") { return JsonEvent::Null; }
-        self.failure = JsonParseError::Lexical;
+        self.stop = JsonStop::Lexical;
         self.lexical = JsonLexError::UnexpectedByte;
         return JsonEvent::Error;
     }
