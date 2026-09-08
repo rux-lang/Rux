@@ -2,10 +2,10 @@
 Version = 1
 
 [Package]
-Name = "CollectionsPlumbing"
+Name = "CollectionsContainerStorage"
 Version = "0.1.0"
 Type = "Executable"
-Description = "Package test for Collections: errors, capacity arithmetic and iterators"
+Description = "Package test for Collections: what the shared storage plumbing does, seen through the containers"
 
 [Dependencies]
 Allocator = { Path = "../../../../Packages/Allocator" }

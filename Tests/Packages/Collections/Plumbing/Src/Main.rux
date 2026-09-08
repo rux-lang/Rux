@@ -1,18 +1,16 @@
 import Core::{ uint };
-import Allocator::{ AllocError, Allocator, IsEmptyBlock, SystemAllocator };
-import Collections::{ AllocateBlock, CollectionError, FromAllocError, ReallocateBlock, ReferenceIterator, ReleaseBlock, ValueIterator };
+import Allocator::AllocError;
+import Collections::{ CollectionError, FromAllocError, ReferenceIterator, ValueIterator };
 import Core::Assert;
 
-// The plumbing every container shares: what an error means, what the allocator helpers do with a count of elements,
-// and what the three iterators yield. None of it is interesting on its own, which is exactly why it is worth testing
-// once here rather than discovering it through whichever container gets it wrong.
-
-// Size sixteen, alignment eight: the two answers differ, which is what a layout computed from the wrong one would
-// get away with on a type where they agree.
-struct Element {
-    wide: int64;
-    narrow: int8;
-}
+// The plumbing every container shares: what an error means, and what the iterators yield. None of it is
+// interesting on its own, which is exactly why it is worth testing once here rather than discovering it through
+// whichever container gets it wrong.
+//
+// The allocator helpers used to be checked here directly. They are package-private now — they are how a container
+// talks to an allocator in elements rather than bytes, not something a caller composes with — so what they do is
+// checked through the containers instead, in Tests/Packages/Collections/ContainerStorage. That is the better place for it:
+// it exercises the surface a caller can actually reach.
 
 func Main() -> int {
     // The error's own questions.
@@ -34,56 +32,9 @@ func Main() -> int {
     Assert(FromAllocError(AllocError::InvalidBlock) == CollectionError::Unsupported,
            "and so does a block the allocator did not hand out, which is the same thing from here");
 
-    var system = SystemAllocator();
-    let allocator: Allocator = system;
-
-    // Storage for a count of elements, sized from the element type rather than from anything the caller says.
-    var block: *var Element = null;
-    Assert(AllocateBlock<Element>(allocator, 8, @block) == CollectionError::None, "storage for eight elements");
-    Assert(block != null, "which reports an address");
-    Assert((block as uint) % 8 == 0, "aligned to what the element needs");
-
-    // Writing every element must not disturb its neighbours, which is what proves the block is really that long.
-    var index: uint = 0;
-    while index < 8 {
-        block[index] = Element { wide: (index * 1000) as int64, narrow: index as int8 };
-        index++;
-    }
-    index = 0;
-    while index < 8 {
-        Assert(block[index].wide == (index * 1000) as int64, "every element keeps what was written to it");
-        Assert(block[index].narrow == index as int8, "in both of its fields");
-        index++;
-    }
-
-    // Growing carries the old contents across.
-    var grown: *var Element = null;
-    Assert(ReallocateBlock<Element>(allocator, block, 8, 32, @grown) == CollectionError::None, "growing the block");
-    Assert(grown != null, "reports an address");
-    index = 0;
-    while index < 8 {
-        Assert(grown[index].wide == (index * 1000) as int64, "and carries every old element across");
-        index++;
-    }
-    ReleaseBlock<Element>(allocator, grown, 32);
-
-    // A zero count is a request like any other: it succeeds, gives the shared empty block, and is released the same
-    // way. That is what keeps an empty container from being a special shape.
-    var empty: *var Element = null;
-    Assert(AllocateBlock<Element>(allocator, 0, @empty) == CollectionError::None, "storage for no elements succeeds");
-    Assert(IsEmptyBlock(empty as *var opaque), "giving the shared empty block");
-    ReleaseBlock<Element>(allocator, empty, 0);
-
-    // A count whose byte size cannot be named is arithmetic that failed, not an allocator that ran short. The
-    // distinction matters: one is worth retrying and the other never will be.
-    var impossible: *var Element = null;
-    let refused = AllocateBlock<Element>(allocator, uint::Max, @impossible);
-    Assert(refused == CollectionError::CapacityOverflow, "a count that cannot be sized is refused as arithmetic");
-    Assert(!refused.IsTransient(), "and says so by not being worth retrying");
-
     // The iterators, over a run the test owns.
     var values: int32[5];
-    index = 0;
+    var index: uint = 0;
     while index < 5 {
         values[index] = (index * 10) as int32;
         index++;

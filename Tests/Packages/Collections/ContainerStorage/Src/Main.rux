@@ -1,0 +1,288 @@
+import Allocator::{ AllocError, Allocator, IsEmptyBlock, Layout, SystemAllocator };
+import Collections::{ Array, CollectionError, Deque, Vector };
+import Core::Assert;
+
+// What the shared storage plumbing does, checked at the surface a caller can reach.
+//
+// Every container in this package talks to its allocator through three helpers, and those helpers are package-
+// private, so nothing here calls one. That is deliberate rather than a limitation: a defect in the plumbing is met
+// through a container, so a container is where it should be caught. Three things the plumbing is responsible for,
+// and a section each.
+//
+// A zero-sized element still needs somewhere to be. A run of them is zero bytes long, and a zero-sized request is
+// answered by every allocator here with one shared address that nothing may be written to — so the plumbing gives
+// the run a byte apiece instead, and every index lands on a real address. What that buys is that a container of
+// them has a length, a capacity and a block like any other, rather than being a shape the rest of the package has
+// to know about.
+//
+// A growth the allocator refuses must leave the container exactly as it was. The failure test says out-of-memory
+// cannot be forced portably and does not exercise it; that was true of the system allocator and never true of the
+// interface, since an allocator that refuses on demand is thirty lines. It is forced here, at each of the two sites
+// the plumbing has — a first allocation and a reallocation — because those fail differently: one has no block to
+// preserve and the other does, and the block it has is the container's only pointer to its elements.
+//
+// And everything held is destroyed exactly once. Not zero times, which leaks the elements; not twice, which is
+// worse. The counted element below reports each of its own destructions through a pointer the test holds, so the
+// number is read rather than inferred, and the refusing allocator counts blocks out against blocks back, so a
+// container that gave up its elements but kept its storage is visible too.
+
+// Everything mutable lives behind a pointer, so the copies an interface adapter makes all observe the same refusal
+// and the same counts.
+struct StorageState {
+    backing: Allocator;
+    // Whether the next request is refused. Set around exactly the operation a test wants to fail.
+    refusing: bool;
+    // How many blocks are out. Zero at the end, or something kept storage it no longer had elements for.
+    live: int32;
+    // How many requests arrived, refused or not, so a section can tell "did not fail" from "did not ask".
+    requests: int32;
+}
+
+struct RefusingAllocator {
+    state: *var StorageState;
+}
+
+extend RefusingAllocator : Allocator {
+    func Allocate(self: &var RefusingAllocator, layout: Layout, result: *var *var opaque) -> AllocError {
+        self.state.requests = self.state.requests + 1i32;
+        if self.state.refusing { return AllocError::OutOfMemory; }
+        let error = self.state.backing.Allocate(layout, result);
+        if error == AllocError::None { self.state.live = self.state.live + 1i32; }
+        return error;
+    }
+
+    func Deallocate(self: &var RefusingAllocator, block: *var opaque, layout: Layout) -> AllocError {
+        let error = self.state.backing.Deallocate(block, layout);
+        if error == AllocError::None { self.state.live = self.state.live - 1i32; }
+        return error;
+    }
+
+    func Reallocate(self: &var RefusingAllocator, block: *var opaque, oldLayout: Layout, newLayout: Layout,
+                    result: *var *var opaque) -> AllocError {
+        self.state.requests = self.state.requests + 1i32;
+        if self.state.refusing { return AllocError::OutOfMemory; }
+        return self.state.backing.Reallocate(block, oldLayout, newLayout, result);
+    }
+}
+
+func Refusing(state: *var StorageState) -> RefusingAllocator {
+    return RefusingAllocator { state: state };
+}
+
+// An element occupying no bytes. A run of these has nothing to tell one from another, which is exactly the case the
+// plumbing's byte apiece is for.
+struct Nothing {}
+
+// An element that reports its own destruction, so "exactly once" is counted rather than assumed. Move-only, like
+// every element type whose destruction is worth counting: a copy would be a second destruction of the same thing.
+struct Counted {
+    counter: *var int32;
+    tag: int32;
+}
+
+extend Counted {
+    func =(self: &var Counted, other: &Counted);
+
+    func ~Counted(self: &var Counted) {
+        if self.counter != null {
+            *self.counter = *self.counter + 1i32;
+        }
+    }
+}
+
+// A scope holding a vector of counted elements, so that the vector's own destruction happens somewhere the test can
+// see across. `afterFilling` reports what the counter read while everything was still held.
+func FillAndDrop(allocator: Allocator, counter: *var int32, count: uint, afterFilling: *var int32) {
+    var vector = Vector<Counted>(allocator);
+    var index: uint = 0;
+    while index < count {
+        Assert(vector.Push(Counted { counter: counter, tag: index as int32 }) == CollectionError::None,
+               "a counted element goes in");
+        index++;
+    }
+    Assert(vector.Length() == count, "and the vector holds every one of them");
+    *afterFilling = *counter;
+}
+
+// A scope in which a growth is refused while counted elements are held, so what a refusal does to them is separable
+// from what the vector's destruction does. `afterRefusal` reports the counter at the moment the refusal came back.
+func RefuseWhileHolding(state: *var StorageState, counter: *var int32, afterRefusal: *var int32) {
+    var guarded = Refusing(state);
+    let allocator: Allocator = guarded;
+    var vector = Vector<Counted>(allocator);
+    var index: uint = 0;
+    while index < 4u {
+        Assert(vector.Push(Counted { counter: counter, tag: index as int32 }) == CollectionError::None, "filled");
+        index++;
+    }
+
+    state.refusing = true;
+    Assert(vector.Reserve(4096u) == CollectionError::OutOfMemory, "a growth the allocator refuses is reported");
+    state.refusing = false;
+    Assert(vector.Length() == 4u, "with every element still held");
+    *afterRefusal = *counter;
+}
+
+func Main() -> int {
+    var system = SystemAllocator();
+    let plain: Allocator = system;
+
+    // A zero-sized element. The run gets a real address rather than the shared empty one, and everything else about
+    // the container is ordinary.
+    var empties = Vector<Nothing>(plain);
+    Assert(empties.IsEmpty(), "a vector of nothing starts empty");
+    var pushed: uint = 0;
+    while pushed < 5u {
+        Assert(empties.Push(Nothing {}) == CollectionError::None, "an element occupying nothing still goes in");
+        pushed++;
+    }
+    Assert(empties.Length() == 5u, "and the length counts them");
+    Assert(empties.Capacity() >= 5u, "with capacity to hold them");
+    Assert(empties.AsSlice().data != null, "the run has an address");
+    Assert(!IsEmptyBlock(empties.AsSlice().data as *var opaque),
+           "and a real one rather than the address a zero-sized request answers with");
+    Assert(empties.AsSlice().length == 5u, "spanning every element");
+    var walked: uint = 0;
+    for item in empties.Iterate() {
+        walked++;
+    }
+    Assert(walked == 5u, "and iteration yields each of them");
+    var taken = Nothing {};
+    Assert(empties.TryPop(@taken), "one comes back off the end");
+    Assert(empties.Length() == 4u, "leaving one fewer");
+    empties.Clear();
+    Assert(empties.IsEmpty(), "and clearing leaves none");
+
+    // The same element through the other two containers, since the plumbing is shared and a byte apiece is what all
+    // three depend on for their indexing to land anywhere.
+    var arrayError = CollectionError::None;
+    var markers = Array::Filled<Nothing>(plain, 6u, Nothing {}, @arrayError);
+    Assert(arrayError == CollectionError::None, "an array of nothing is built");
+    Assert(markers.Length() == 6u, "holding the length it was asked for");
+    Assert(!IsEmptyBlock(markers.AsSlice().data as *var opaque), "on a real address");
+
+    var ring = Deque<Nothing>(plain);
+    Assert(ring.PushBack(Nothing {}) == CollectionError::None, "a deque of nothing takes one at the back");
+    Assert(ring.PushFront(Nothing {}) == CollectionError::None, "and one at the front");
+    Assert(ring.Length() == 2u, "counting both");
+    Assert(ring.PopFront().IsSome() && ring.PopBack().IsSome(), "and gives both back");
+    Assert(ring.IsEmpty(), "leaving none");
+
+    // A growth the allocator refuses, at the first of the plumbing's two sites: a container with no block yet.
+    var state = StorageState { backing: plain, refusing: true, live: 0i32, requests: 0i32 };
+    var refusing = Refusing(@state);
+    let hostile: Allocator = refusing;
+
+    var reservedError = CollectionError::None;
+    var reserved = Vector::WithCapacity<int64>(hostile, 16u, @reservedError);
+    Assert(reservedError == CollectionError::OutOfMemory, "asking a refusing allocator for capacity fails");
+    Assert(state.requests == 1i32, "having actually asked");
+    Assert(reserved.IsEmpty() && reserved.Capacity() == 0u, "and gives back a container holding nothing");
+    Assert(reserved.AsSlice().data == null, "with no block");
+    Assert(reserved.Push(1i64) == CollectionError::OutOfMemory, "which still cannot grow");
+    Assert(reserved.IsEmpty(), "and is still empty afterwards");
+    Assert(state.live == 0i32, "nothing was handed out, so nothing is out");
+
+    // The second site: a reallocation, where the container already has a block and elements in it. This is the one
+    // that matters — the failed call must leave the old block valid, because it is the only pointer to them.
+    state.refusing = false;
+    var populated = Vector<int64>(hostile);
+    var value: int64 = 0;
+    while value < 8i64 {
+        Assert(populated.Push(value) == CollectionError::None, "a vector fills while the allocator is willing");
+        value = value + 1i64;
+    }
+    let block = populated.AsSlice().data;
+    let length = populated.Length();
+    let capacity = populated.Capacity();
+    let outstanding = state.live;
+
+    state.refusing = true;
+    Assert(populated.Reserve(1024u) == CollectionError::OutOfMemory,
+           "a reservation the allocator refuses is reported as out of memory");
+    Assert(populated.AsSlice().data == block, "leaving the block where it was");
+    Assert(populated.Length() == length, "with the same length");
+    Assert(populated.Capacity() == capacity, "and the same capacity");
+    Assert(state.live == outstanding, "and the same block out: a refused growth neither takes nor gives back");
+    var index: uint = 0;
+    while index < length {
+        Assert(populated.Get(index).ValueOr(-1i64) == index as int64, "and every element still where it was put");
+        index++;
+    }
+
+    // The failure is transient in the sense the error type promises, and the container proves it: the same request
+    // succeeds once the allocator is willing. A container that had half-updated itself would not survive this.
+    Assert(CollectionError::OutOfMemory.IsTransient(), "an allocator that ran short may not have next time");
+    state.refusing = false;
+    Assert(populated.Reserve(1024u) == CollectionError::None, "and the same reservation succeeds when it is willing");
+    Assert(populated.Capacity() >= length + 1024u, "taking the room this time");
+    Assert(populated.Length() == length, "without disturbing what was already there");
+    index = 0;
+    while index < length {
+        Assert(populated.Get(index).ValueOr(-1i64) == index as int64, "or where any of it was");
+        index++;
+    }
+
+    // A deque grows through the same plumbing and answers a refusal the same way.
+    var queue = Deque<int64>(hostile);
+    Assert(queue.PushBack(7i64) == CollectionError::None, "a deque fills while the allocator is willing");
+    let queueCapacity = queue.Capacity();
+    state.refusing = true;
+    Assert(queue.Reserve(8192u) == CollectionError::OutOfMemory, "and reports a refused reservation too");
+    Assert(queue.Capacity() == queueCapacity, "at the capacity it had");
+    Assert(queue.Length() == 1u && queue.Get(0).ValueOr(-1i64) == 7i64, "still holding what it held");
+    state.refusing = false;
+
+    // Everything held is destroyed exactly once. `Clear` destroys what it drops, and nothing before that.
+    var tally: int32 = 0;
+    var counted = Vector<Counted>(plain);
+    var tag: int32 = 0;
+    while tag < 6i32 {
+        Assert(counted.Push(Counted { counter: @tally, tag: tag }) == CollectionError::None, "counted elements go in");
+        tag = tag + 1i32;
+    }
+    Assert(tally == 0i32, "nothing is destroyed while it is held");
+    counted.Clear();
+    Assert(tally == 6i32, "and clearing destroys every element exactly once");
+    Assert(counted.Capacity() >= 6u, "keeping the storage, which holds nothing now");
+
+    // `Truncate` destroys exactly what it drops and leaves the rest alive.
+    tally = 0i32;
+    tag = 0i32;
+    while tag < 6i32 {
+        Assert(counted.Push(Counted { counter: @tally, tag: tag }) == CollectionError::None, "refilled");
+        tag = tag + 1i32;
+    }
+    counted.Truncate(2u);
+    Assert(tally == 4i32, "truncating destroys the four it dropped");
+    Assert(counted.Length() == 2u, "and keeps the two it did not");
+    counted.Clear();
+    Assert(tally == 6i32, "which are destroyed in their turn, once each");
+
+    // The vector's own destruction destroys what it still holds, once each, and gives the block back.
+    var dropped: int32 = 0;
+    var held: int32 = -1i32;
+    FillAndDrop(plain, @dropped, 9u, @held);
+    Assert(held == 0i32, "nothing is destroyed while the vector holds it");
+    Assert(dropped == 9i32, "and the vector's destruction destroys all nine, once each");
+
+    // A refused growth destroys nothing: the elements are still held, so they are still alive. Getting this wrong is
+    // how a failure path leaks or double-destroys, and neither shows in the error the caller reads.
+    var survivors: int32 = 0;
+    var atRefusal: int32 = -1i32;
+    RefuseWhileHolding(@state, @survivors, @atRefusal);
+    Assert(atRefusal == 0i32, "a refused growth destroys none of what is held");
+    Assert(survivors == 4i32, "and they are each destroyed exactly once when the vector finally goes");
+
+    // Every block the guarded allocator handed out has come back. This is the question no amount of reading a
+    // container's own answers can settle, and the reason the counting is in the allocator rather than the test.
+    populated.Clear();
+    Assert(populated.ShrinkToFit() == CollectionError::None, "the storage goes back when it is asked for");
+    Assert(populated.Capacity() == 0u, "leaving a vector as cheap as a new one");
+    queue.Clear();
+    Assert(queue.ShrinkToFit() == CollectionError::None, "and the deque's too");
+    Assert(state.live == 0i32, "and every block the allocator handed out has been given back");
+    Assert(state.requests > 0i32, "having been asked for a good many");
+
+    return 0;
+}

@@ -19,8 +19,11 @@ import Collections::{ EqualsInt32, HashInt32 };
 // rewritten to fix was exactly a failure that left a container claiming
 // storage it did not own.
 //
-// Out-of-memory itself cannot be forced portably, so it is not exercised
-// directly; it shares its reporting path with the overflow cases that are.
+// What is checked here is the capacity arithmetic: a size that cannot be
+// named, and an index that is not there. An allocator that actually refuses is
+// forced in Tests/Packages/Collections/ContainerStorage, where the same question is
+// asked of the other failure — that a refusal leaves the container as it was —
+// against a real allocation rather than a rejected layout.
 //
 // See Tests/Packages/Collections/Array for the numbered exit-code convention.
 

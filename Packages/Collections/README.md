@@ -81,6 +81,8 @@ if numbers.TryPop(@last) {
 
 Every count is checked for overflow. `count * sizeof(T)` is the most dangerous expression a container writes: a product that wraps asks for a small block and then writes far past it.
 
+Containers talk to the allocator in elements rather than bytes, through three helpers in `ContainerStorage.rux` that compute the layout from `sizeof(T)` and `alignof(T)` once. Those helpers are package-private, and there is nothing to import: they are how a container is built, not something a caller composes with. What they promise is visible through any container — an element occupying no bytes still gets a run with a real address rather than the shared empty one, a growth the allocator refuses leaves the container exactly as it was, and everything held is destroyed exactly once.
+
 ## Ownership
 
 Every owning container prohibits copying. Hand one to a consuming function with `<-`; the compiler rejects later reads of the source. Canonical destructors destroy initialized elements before releasing their storage. The same capability is derived through generic fields, so a map or consuming iterator containing an owning kernel is also move-only.

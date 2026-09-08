@@ -77,7 +77,7 @@ The workspace matches the catalog above: 25 packages, and none of the five ident
 
 The `Storage` rename covered the registry identity and dependency names, the `Packages/` and `Tests/Packages/` trees, imports and qualified references, test package names and output paths, the `/storage/` to `/filesystem/` API URL prefix, and the root workspace, manifests, READMEs and examples. The separate website repository retires or redirects the `/storage/` documentation routes on its own schedule; that route migration is recorded here but not published from this repository.
 
-`Storage` survives only in historical discussion and in `Packages/Collections/Src/Storage.rux`, whose container-private helpers migrate separately to `ContainerStorage.rux`. That file is a filename and helper-visibility concern, not a second public package identity.
+`Storage` survives only in historical discussion. The last file carrying the name, `Packages/Collections/Src/Storage.rux`, is now `ContainerStorage.rux`, and its helpers are package-private: they are how a container talks to an allocator in elements rather than bytes, which is a container's business and not a caller's. That was a filename and helper-visibility concern rather than a second public package identity, and it is closed.
 
 ## Not in v0.1.0
 

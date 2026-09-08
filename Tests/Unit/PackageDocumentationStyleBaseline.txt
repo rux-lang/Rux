@@ -643,9 +643,6 @@ missing-param|Collections/Src/Hashing.rux|func|HashUint64|d63c29b80669307a
 missing-param|Collections/Src/Hashing.rux|func|HashUint|40ff2e9897a0a9a3
 missing-param|Collections/Src/Iteration.rux|func|ReferenceIterator|a27a792ac9ecf79c
 missing-param|Collections/Src/Iteration.rux|func|ValueIterator|59f291ca017d615d
-missing-param|Collections/Src/Storage.rux|func|AllocateBlock|82f268b9b5a7f13c
-missing-param|Collections/Src/Storage.rux|func|ReallocateBlock|215f5ed8afb6ac3a
-missing-param|Collections/Src/Storage.rux|func|ReleaseBlock|61b4b70025495438
 missing-param|Collections/Src/Table.rux|func|CapacityFor|af6dd270d1a880a0
 missing-param|Collections/Src/Table.rux|func|EnsureRoom|2b9bcdb68e6d6333
 missing-param|Collections/Src/Table.rux|func|Find|827f4c0688e2a832
@@ -1620,8 +1617,6 @@ missing-returns|Collections/Src/Iteration.rux|func|Next|163b5eb81baf9409
 missing-returns|Collections/Src/Iteration.rux|func|Next|2e1ccbf1f89dd7ed
 missing-returns|Collections/Src/Iteration.rux|func|ReferenceIterator|a27a792ac9ecf79c
 missing-returns|Collections/Src/Iteration.rux|func|ValueIterator|59f291ca017d615d
-missing-returns|Collections/Src/Storage.rux|func|AllocateBlock|82f268b9b5a7f13c
-missing-returns|Collections/Src/Storage.rux|func|ReallocateBlock|215f5ed8afb6ac3a
 missing-returns|Collections/Src/Table.rux|func|CapacityFor|af6dd270d1a880a0
 missing-returns|Collections/Src/Table.rux|func|Capacity|ab706cd796c772ad
 missing-returns|Collections/Src/Table.rux|func|EnsureRoom|2b9bcdb68e6d6333
@@ -2907,9 +2902,6 @@ missing-see|Collections/Src/Iteration.rux|func|ReferenceIterator|a27a792ac9ecf79
 missing-see|Collections/Src/Iteration.rux|func|ValueIterator|59f291ca017d615d
 missing-see|Collections/Src/Iteration.rux|struct|ReferenceIterator|ea88a34d69e089be
 missing-see|Collections/Src/Iteration.rux|struct|ValueIterator|3dc8621fedffc375
-missing-see|Collections/Src/Storage.rux|func|AllocateBlock|82f268b9b5a7f13c
-missing-see|Collections/Src/Storage.rux|func|ReallocateBlock|215f5ed8afb6ac3a
-missing-see|Collections/Src/Storage.rux|func|ReleaseBlock|61b4b70025495438
 missing-see|Collections/Src/Table.rux|const|MaximumProbeDistance|5501583b17d65541
 missing-see|Collections/Src/Table.rux|const|MinimumTableCapacity|88f6732a5947c6ca
 missing-see|Collections/Src/Table.rux|const|SlotEmpty|9e05a338a8cb6976
@@ -4747,9 +4739,6 @@ missing-typeparam|Collections/Src/HashSet.rux|struct|HashSetIterator|b18c1815dc1
 missing-typeparam|Collections/Src/HashSet.rux|struct|HashSet|992e377c4c41b234
 missing-typeparam|Collections/Src/Iteration.rux|struct|ReferenceIterator|ea88a34d69e089be
 missing-typeparam|Collections/Src/Iteration.rux|struct|ValueIterator|3dc8621fedffc375
-missing-typeparam|Collections/Src/Storage.rux|func|AllocateBlock|82f268b9b5a7f13c
-missing-typeparam|Collections/Src/Storage.rux|func|ReallocateBlock|215f5ed8afb6ac3a
-missing-typeparam|Collections/Src/Storage.rux|func|ReleaseBlock|61b4b70025495438
 missing-typeparam|Collections/Src/Table.rux|struct|Table|6e9e16474d132c07
 missing-typeparam|Collections/Src/Tree.rux|struct|TreeNode|f6dc88c8eedadd34
 missing-typeparam|Collections/Src/Tree.rux|struct|Tree|d19084ee92a3bc4d
