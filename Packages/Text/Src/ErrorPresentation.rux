@@ -1,0 +1,372 @@
+// What an error looks like when a program has to say what went wrong.
+//
+// Two renderings, and the split is the same one `Display` and `Debug` have everywhere else, applied to the case
+// where it matters most. `Display` is the description a reader is shown — a short phrase that fits inside a
+// sentence a program is already writing, such as "could not read the file: out of memory". `Debug` names the case
+// itself, with whatever payload it carries: `FormatError::InvalidSpecification(12)`. One is for the person the
+// program is talking to; the other is for the person reading a log.
+//
+// The descriptions are stable. That is a promise worth making explicitly, because an error description ends up in
+// somebody's log, somebody's issue report and eventually somebody's grep, and changing the words later breaks all
+// three quietly. What is not promised is that a description is a parsing contract: it says what happened, and the
+// case name is what a program should branch on.
+//
+// This file presents the low-level errors this package already depends on — `AllocError` from Allocator and
+// `PageError` from Memory — because they surface through `TextError` and a caller holding one should not have to
+// write the words itself. Those are the only foreign types here. In particular `EntropyError` is deliberately
+// absent and has no `Display` or `Debug` in v0.1.0: presenting it would require an edge between Entropy and either
+// this package or Format, and the layering forbids both. A caller holding an `EntropyError` handles its cases or
+// wraps it in a diagnostic type of its own.
+
+import Allocator::AllocError;
+import Core::{ Result, Unit };
+import Memory::PageError;
+
+// Whether the specification is one an error description can answer. Neither a style nor a precision is: a
+// description has one form, and truncating it produces a sentence that says something else.
+func AcceptsErrorSpec(spec: FormatSpec) -> Result<Unit, FormatError> {
+    RejectStyle(spec)?;
+    if spec.HasPrecision() { return Result::Error<Unit, FormatError>(FormatError::UnsupportedRequest); }
+    return FormatOk();
+}
+
+// Writes an unsigned value in as many decimal digits as it needs.
+//
+// Written here rather than borrowed from Format, which converts numbers for a living: Text does not depend on
+// Format and must not, so the two payload cases below carry their own twenty lines.
+func WriteCount(writer: &var TextWriter, value: uint) -> Result<Unit, FormatError> {
+    var digits: char8[20];
+    var count: uint = 0;
+    var rest = value;
+    if rest == 0u {
+        digits[0] = c8'0';
+        count = 1;
+    }
+    while rest > 0u {
+        digits[count] = ((rest % 10u) + 0x30u) as char8;
+        count = count + 1;
+        rest = rest / 10u;
+    }
+    var index = count;
+    while index > 0 {
+        index = index - 1;
+        WriteAscii(writer, digits[index])?;
+    }
+    return FormatOk();
+}
+
+// The description of one text-handling failure, shared by `TextError` and `TextFailureKind`, which name the same
+// four things and must not describe them differently.
+func WriteTextFailureDescription(writer: &var TextWriter, kind: &TextFailureKind) -> Result<Unit, FormatError> {
+    return match kind {
+        .OutOfMemory => WriteBytes(writer, "out of memory"),
+        .LengthOverflow => WriteBytes(writer, "length overflow"),
+        .InvalidUtf8 => WriteBytes(writer, "invalid UTF-8"),
+        .NotABoundary => WriteBytes(writer, "not a character boundary")
+    };
+}
+
+func WriteTextFailureName(writer: &var TextWriter, kind: &TextFailureKind) -> Result<Unit, FormatError> {
+    return match kind {
+        .OutOfMemory => WriteBytes(writer, "TextFailureKind::OutOfMemory"),
+        .LengthOverflow => WriteBytes(writer, "TextFailureKind::LengthOverflow"),
+        .InvalidUtf8 => WriteBytes(writer, "TextFailureKind::InvalidUtf8"),
+        .NotABoundary => WriteBytes(writer, "TextFailureKind::NotABoundary")
+    };
+}
+
+extend TextError : Display {
+    /// Writes the description of what went wrong, or `no error` for success.
+    ///
+    /// The words are stable: they end up in logs and issue reports, and changing them later breaks every reader
+    /// quietly. They are a description and not a parsing contract — a program branches on the case, not the text.
+    ///
+    /// # Failures
+    /// Reports whatever the writer reported, and `UnsupportedRequest` for any style or precision.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the whole description was accepted
+    /// @see https://rux-lang.dev/docs/api/text/text-error/write-display
+    pub func WriteDisplay(self: &TextError, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        AcceptsErrorSpec(spec)?;
+        return match self {
+            .None => WriteBytes(writer, "no error"),
+            .OutOfMemory => WriteBytes(writer, "out of memory"),
+            .LengthOverflow => WriteBytes(writer, "length overflow"),
+            .InvalidUtf8 => WriteBytes(writer, "invalid UTF-8"),
+            .NotABoundary => WriteBytes(writer, "not a character boundary")
+        };
+    }
+}
+
+extend TextError : Debug {
+    /// Names the case, qualified by its type: `TextError::InvalidUtf8`.
+    ///
+    /// # Failures
+    /// Reports whatever the writer reported, and `UnsupportedRequest` for any style or precision.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the whole name was accepted
+    /// @see https://rux-lang.dev/docs/api/text/text-error/write-debug
+    pub func WriteDebug(self: &TextError, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        AcceptsErrorSpec(spec)?;
+        return match self {
+            .None => WriteBytes(writer, "TextError::None"),
+            .OutOfMemory => WriteBytes(writer, "TextError::OutOfMemory"),
+            .LengthOverflow => WriteBytes(writer, "TextError::LengthOverflow"),
+            .InvalidUtf8 => WriteBytes(writer, "TextError::InvalidUtf8"),
+            .NotABoundary => WriteBytes(writer, "TextError::NotABoundary")
+        };
+    }
+}
+
+extend TextFailureKind : Display {
+    /// The same description `TextError` gives the same failure, which is the point of sharing one writer.
+    ///
+    /// # Failures
+    /// Reports whatever the writer reported, and `UnsupportedRequest` for any style or precision.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the whole description was accepted
+    /// @see https://rux-lang.dev/docs/api/text/text-failure-kind/write-display
+    pub func WriteDisplay(self: &TextFailureKind, writer: &var TextWriter,
+                          spec: FormatSpec) -> Result<Unit, FormatError> {
+        AcceptsErrorSpec(spec)?;
+        return WriteTextFailureDescription(writer, self);
+    }
+}
+
+extend TextFailureKind : Debug {
+    /// Names the case, qualified by its type: `TextFailureKind::InvalidUtf8`.
+    ///
+    /// # Failures
+    /// Reports whatever the writer reported, and `UnsupportedRequest` for any style or precision.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the whole name was accepted
+    /// @see https://rux-lang.dev/docs/api/text/text-failure-kind/write-debug
+    pub func WriteDebug(self: &TextFailureKind, writer: &var TextWriter,
+                        spec: FormatSpec) -> Result<Unit, FormatError> {
+        AcceptsErrorSpec(spec)?;
+        return WriteTextFailureName(writer, self);
+    }
+}
+
+extend FormatError : Display {
+    /// Writes the description of why a value could not be turned into text.
+    ///
+    /// The position an `InvalidSpecification` carries, and the two counts an `ArgumentCountMismatch` carries, are
+    /// deliberately absent: they are what `Debug` adds. A description says what happened, and a reader who needs
+    /// the byte offset is reading a log rather than a message.
+    ///
+    /// # Failures
+    /// Reports whatever the writer reported, and `UnsupportedRequest` for any style or precision.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the whole description was accepted
+    /// @see https://rux-lang.dev/docs/api/text/format-error/write-display
+    pub func WriteDisplay(self: &FormatError, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        AcceptsErrorSpec(spec)?;
+        return match self {
+            .InvalidSpecification(_) => WriteBytes(writer, "malformed format specification"),
+            .UnsupportedRequest => WriteBytes(writer, "unsupported formatting request"),
+            .ArgumentCountMismatch(_, _) => WriteBytes(writer, "argument count does not match the pattern"),
+            .InsufficientCapacity => WriteBytes(writer, "insufficient capacity"),
+            .ValueOutOfRange => WriteBytes(writer, "value out of range for the form requested"),
+            .TextFailure(kind) => WriteTextFailureDescription(writer, kind),
+            .WriterFailure => WriteBytes(writer, "the destination failed")
+        };
+    }
+}
+
+extend FormatError : Debug {
+    /// Names the case and the payload it carries: `FormatError::InvalidSpecification(12)`.
+    ///
+    /// This is where the position and the counts appear, since they are what makes one occurrence of a failure
+    /// different from another and what a log is read for.
+    ///
+    /// # Failures
+    /// Reports whatever the writer reported, and `UnsupportedRequest` for any style or precision.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the whole rendering was accepted
+    /// @see https://rux-lang.dev/docs/api/text/format-error/write-debug
+    pub func WriteDebug(self: &FormatError, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        AcceptsErrorSpec(spec)?;
+        return match self {
+            .InvalidSpecification(at) => WriteSpecificationFailure(writer, at),
+            .UnsupportedRequest => WriteBytes(writer, "FormatError::UnsupportedRequest"),
+            .ArgumentCountMismatch(expected, supplied) => WriteCountMismatch(writer, expected, supplied),
+            .InsufficientCapacity => WriteBytes(writer, "FormatError::InsufficientCapacity"),
+            .ValueOutOfRange => WriteBytes(writer, "FormatError::ValueOutOfRange"),
+            .TextFailure(kind) => WriteTextFailure(writer, kind),
+            .WriterFailure => WriteBytes(writer, "FormatError::WriterFailure")
+        };
+    }
+}
+
+// The three payload-carrying cases, written out so that the match above stays one expression per case.
+func WriteSpecificationFailure(writer: &var TextWriter, at: uint) -> Result<Unit, FormatError> {
+    WriteBytes(writer, "FormatError::InvalidSpecification(")?;
+    WriteCount(writer, at)?;
+    return WriteAscii(writer, c8')');
+}
+
+func WriteCountMismatch(writer: &var TextWriter, expected: uint, supplied: uint) -> Result<Unit, FormatError> {
+    WriteBytes(writer, "FormatError::ArgumentCountMismatch(")?;
+    WriteCount(writer, expected)?;
+    WriteBytes(writer, ", ")?;
+    WriteCount(writer, supplied)?;
+    return WriteAscii(writer, c8')');
+}
+
+func WriteTextFailure(writer: &var TextWriter, kind: &TextFailureKind) -> Result<Unit, FormatError> {
+    WriteBytes(writer, "FormatError::TextFailure(")?;
+    WriteTextFailureName(writer, kind)?;
+    return WriteAscii(writer, c8')');
+}
+
+extend Utf8Error : Display {
+    /// Writes the description of what is wrong with a byte sequence, or `well-formed UTF-8` for success.
+    ///
+    /// # Failures
+    /// Reports whatever the writer reported, and `UnsupportedRequest` for any style or precision.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the whole description was accepted
+    /// @see https://rux-lang.dev/docs/api/text/utf8-error/write-display
+    pub func WriteDisplay(self: &Utf8Error, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        AcceptsErrorSpec(spec)?;
+        return match self {
+            .None => WriteBytes(writer, "well-formed UTF-8"),
+            .Truncated => WriteBytes(writer, "truncated UTF-8 sequence"),
+            .InvalidStart => WriteBytes(writer, "invalid UTF-8 start byte"),
+            .InvalidContinuation => WriteBytes(writer, "invalid UTF-8 continuation byte")
+        };
+    }
+}
+
+extend Utf8Error : Debug {
+    /// Names the case, qualified by its type: `Utf8Error::Truncated`.
+    ///
+    /// # Failures
+    /// Reports whatever the writer reported, and `UnsupportedRequest` for any style or precision.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the whole name was accepted
+    /// @see https://rux-lang.dev/docs/api/text/utf8-error/write-debug
+    pub func WriteDebug(self: &Utf8Error, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        AcceptsErrorSpec(spec)?;
+        return match self {
+            .None => WriteBytes(writer, "Utf8Error::None"),
+            .Truncated => WriteBytes(writer, "Utf8Error::Truncated"),
+            .InvalidStart => WriteBytes(writer, "Utf8Error::InvalidStart"),
+            .InvalidContinuation => WriteBytes(writer, "Utf8Error::InvalidContinuation")
+        };
+    }
+}
+
+extend AllocError : Display {
+    /// Writes the description of why an allocation did not happen, or `no error` for success.
+    ///
+    /// Presented here rather than in Allocator because the protocols live here and Allocator does not depend on
+    /// this package. The distinctions are the allocator's own and are kept: a layout it can never serve is not a
+    /// shortage, and a block it did not hand out is a caller's mistake.
+    ///
+    /// # Failures
+    /// Reports whatever the writer reported, and `UnsupportedRequest` for any style or precision.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the whole description was accepted
+    /// @see https://rux-lang.dev/docs/api/text/alloc-error/write-display
+    pub func WriteDisplay(self: &AllocError, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        AcceptsErrorSpec(spec)?;
+        return match self {
+            .None => WriteBytes(writer, "no error"),
+            .Unsupported => WriteBytes(writer, "layout this allocator cannot serve"),
+            .OutOfMemory => WriteBytes(writer, "out of memory"),
+            .InvalidBlock => WriteBytes(writer, "block this allocator did not hand out")
+        };
+    }
+}
+
+extend AllocError : Debug {
+    /// Names the case, qualified by its type: `AllocError::OutOfMemory`.
+    ///
+    /// # Failures
+    /// Reports whatever the writer reported, and `UnsupportedRequest` for any style or precision.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the whole name was accepted
+    /// @see https://rux-lang.dev/docs/api/text/alloc-error/write-debug
+    pub func WriteDebug(self: &AllocError, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        AcceptsErrorSpec(spec)?;
+        return match self {
+            .None => WriteBytes(writer, "AllocError::None"),
+            .Unsupported => WriteBytes(writer, "AllocError::Unsupported"),
+            .OutOfMemory => WriteBytes(writer, "AllocError::OutOfMemory"),
+            .InvalidBlock => WriteBytes(writer, "AllocError::InvalidBlock")
+        };
+    }
+}
+
+extend PageError : Display {
+    /// Writes the description of why a page operation did not happen, or `no error` for success.
+    ///
+    /// Presented here for the same reason `AllocError` is. The system's own code is not carried: three systems
+    /// report failure three different ways, and `PageError` is the shape they were already reduced to.
+    ///
+    /// # Failures
+    /// Reports whatever the writer reported, and `UnsupportedRequest` for any style or precision.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the whole description was accepted
+    /// @see https://rux-lang.dev/docs/api/text/page-error/write-display
+    pub func WriteDisplay(self: &PageError, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        AcceptsErrorSpec(spec)?;
+        return match self {
+            .None => WriteBytes(writer, "no error"),
+            .InvalidLength => WriteBytes(writer, "invalid length"),
+            .InvalidAddress => WriteBytes(writer, "invalid address"),
+            .OutOfMemory => WriteBytes(writer, "out of memory"),
+            .PermissionDenied => WriteBytes(writer, "permission denied"),
+            .Unsupported => WriteBytes(writer, "unsupported on this system"),
+            .Failed => WriteBytes(writer, "the system reported an unnamed failure")
+        };
+    }
+}
+
+extend PageError : Debug {
+    /// Names the case, qualified by its type: `PageError::PermissionDenied`.
+    ///
+    /// # Failures
+    /// Reports whatever the writer reported, and `UnsupportedRequest` for any style or precision.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the whole name was accepted
+    /// @see https://rux-lang.dev/docs/api/text/page-error/write-debug
+    pub func WriteDebug(self: &PageError, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        AcceptsErrorSpec(spec)?;
+        return match self {
+            .None => WriteBytes(writer, "PageError::None"),
+            .InvalidLength => WriteBytes(writer, "PageError::InvalidLength"),
+            .InvalidAddress => WriteBytes(writer, "PageError::InvalidAddress"),
+            .OutOfMemory => WriteBytes(writer, "PageError::OutOfMemory"),
+            .PermissionDenied => WriteBytes(writer, "PageError::PermissionDenied"),
+            .Unsupported => WriteBytes(writer, "PageError::Unsupported"),
+            .Failed => WriteBytes(writer, "PageError::Failed")
+        };
+    }
+}

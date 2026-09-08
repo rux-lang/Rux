@@ -955,6 +955,62 @@ TEST_CASE("the first-party dependency graph is acyclic and resolves inside the w
     CHECK(order.front() == "Core");
 }
 
+TEST_CASE("the presentation boundary around Entropy holds in both directions") {
+    // Entropy has no Display or Debug in v0.1.0, and the reason is a dependency edge that must not exist: giving
+    // EntropyError a presentation means either Entropy depending on Text, or Text or Format depending on Entropy.
+    // The decision is easy to undo by accident, because adding the implementation would look local to whoever adds
+    // it, so the edge itself is what is checked here. Text must additionally never reach Format, since the
+    // protocols are meant to be usable without the numeric conversion engine.
+    const auto packagesRoot = std::filesystem::weakly_canonical(std::filesystem::path(RUX_PACKAGES_DIR));
+    std::map<std::string, std::vector<std::string>> graph;
+
+    for (const auto &entry : std::filesystem::directory_iterator(packagesRoot)) {
+        const auto path = entry.path() / "Rux.toml";
+        if (!entry.is_directory() || !std::filesystem::is_regular_file(path)) {
+            continue;
+        }
+        const auto result = Manifest::Load(path);
+        REQUIRE_MESSAGE(result.Ok(), "invalid package manifest: ", path.string());
+        auto &edges = graph[result.manifest->package.name.Text()];
+        for (const auto &dependency : result.manifest->dependencies) {
+            edges.push_back(dependency.package.Text());
+        }
+    }
+    REQUIRE(graph.contains("Entropy"));
+    REQUIRE(graph.contains("Format"));
+    REQUIRE(graph.contains("Text"));
+
+    // Everything reachable from a package, so a forbidden edge cannot hide one level down.
+    const auto Reaches = [&](const std::string &from, const std::string &target) {
+        std::set<std::string> seen;
+        std::vector<std::string> pending{from};
+        while (!pending.empty()) {
+            const auto package = pending.back();
+            pending.pop_back();
+            if (!seen.insert(package).second) {
+                continue;
+            }
+            if (package == target) {
+                return true;
+            }
+            const auto edges = graph.find(package);
+            if (edges == graph.end()) {
+                continue;
+            }
+            for (const auto &dependency : edges->second) {
+                pending.push_back(dependency);
+            }
+        }
+        return false;
+    };
+
+    CHECK_MESSAGE(!Reaches("Format", "Entropy"), "Format must not reach Entropy: EntropyError has no presentation");
+    CHECK_MESSAGE(!Reaches("Text", "Entropy"), "Text must not reach Entropy, for the same reason");
+    CHECK_MESSAGE(!Reaches("Entropy", "Text"), "and Entropy must not reach Text, which is the other direction");
+    CHECK_MESSAGE(!Reaches("Entropy", "Format"), "nor Format");
+    CHECK_MESSAGE(!Reaches("Text", "Format"), "Text owns the protocols and must not depend on the conversion engine");
+}
+
 TEST_CASE("repository Rux tests use canonical local manifests") {
     const auto testsRoot = std::filesystem::weakly_canonical(std::filesystem::path(RUX_TESTS_DIR));
     const auto packagesRoot = std::filesystem::weakly_canonical(std::filesystem::path(RUX_PACKAGES_DIR));
