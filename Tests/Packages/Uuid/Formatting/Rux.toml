@@ -2,10 +2,10 @@
 Version = 1
 
 [Package]
-Name = "Text"
+Name = "Formatting"
 Version = "0.1.0"
 Type = "Executable"
-Description = "Package test for Uuid: strict canonical and URN parsing, and canonical formatting"
+Description = "Package test for Uuid: parsing and formatting UUID text."
 
 [Dependencies]
 Core = { Path = "../../../../Packages/Core" }

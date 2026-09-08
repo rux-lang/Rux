@@ -1,0 +1,379 @@
+// What a calendar value looks like, and what it refuses to pretend to know.
+//
+// The whole design here is one decision applied four times: a value renders what it holds and never invents what it
+// does not. A `DateTime` is a date and a time with no offset field, so it renders without one — not with `Z`, which
+// would claim UTC, and not with the machine's local offset, which would claim a place. A reader who wants an offset
+// in the text attaches one and renders an `OffsetDateTime`, which has somewhere to keep it.
+//
+// That is why `OffsetDateTime` exists at all. RFC 3339 requires an offset, so a type that cannot carry one cannot
+// produce RFC 3339, and the alternative — letting `DateTime` take an offset argument at render time — puts the
+// decision in the wrong place: a format call has no way to pass one.
+//
+// The renderers write digits directly rather than borrowing Format's integer machinery, which they could not do
+// anyway without Time depending on it. Every field here has a known width, so the loops are fixed and nothing
+// allocates: a year is four digits or as many as it needs, everything else is exactly two.
+
+import Core::{ Result, Unit };
+import Text::{ Debug, Display, FormatError, FormatOk, FormatSpec, RejectStyle, TextWriter, WriteAscii, WriteBytes };
+
+/// A date and time together with the offset from UTC they are stated in.
+///
+/// `DateTime` deliberately carries no offset, since what offset a bare date and time is in is usually the caller's
+/// knowledge rather than the value's. This is the pairing for when it is not: an instant written down for
+/// interchange, where the offset is part of what was recorded and losing it changes the meaning.
+///
+/// `Copy`, and exactly as wide as its two halves.
+///
+/// @see https://rux-lang.dev/docs/api/time/offset-date-time
+pub struct OffsetDateTime {
+    /// The local date and time, as stated in `offset`.
+    pub dateTime: DateTime;
+    /// The offset from UTC that `dateTime` is stated in.
+    pub offset: UtcOffset;
+}
+
+extend OffsetDateTime {
+    /// The local date and time `dateTime` paired with the offset it is stated in.
+    ///
+    /// Cannot fail: both halves are already valid, and no combination of a valid date-time and a valid offset is
+    /// invalid. Runs in constant time and allocates nothing.
+    ///
+    /// @param dateTime the local date and time
+    /// @param offset the offset from UTC that `dateTime` is stated in
+    /// @returns the pairing
+    /// @see https://rux-lang.dev/docs/api/time/offset-date-time/new
+    pub func OffsetDateTime(dateTime: DateTime, offset: UtcOffset) -> OffsetDateTime {
+        return OffsetDateTime { dateTime: dateTime, offset: offset };
+    }
+
+    /// The moment this names in UTC.
+    ///
+    /// Cannot fail; runs in constant time and allocates nothing.
+    ///
+    /// @returns the instant, as a timestamp
+    /// @see https://rux-lang.dev/docs/api/time/offset-date-time/to-timestamp
+    pub func ToTimestamp(self: &OffsetDateTime) -> Timestamp {
+        return self.dateTime.ToTimestamp(self.offset);
+    }
+}
+
+// Writes `value` as exactly `width` decimal digits, zero-padded, which is what every calendar field but the year is.
+func WriteFixed(writer: &var TextWriter, value: uint32, width: uint) -> Result<Unit, FormatError> {
+    var digits: char8[10];
+    var index = width;
+    var rest = value;
+    while index > 0 {
+        index = index - 1;
+        digits[index] = ((rest % 10u32) + 0x30u32) as char8;
+        rest = rest / 10u32;
+    }
+    return WriteBytes(writer, (@digits[0])[..width]);
+}
+
+// Writes a year: four digits at least, more when the year needs them, and a leading sign outside that range.
+//
+// ISO 8601 requires a sign for a year outside 0 through 9999 because four digits is the agreed width and anything
+// else is ambiguous without one. Year 0 exists here and is 1 BCE, which is the astronomical numbering the rest of
+// this package uses.
+func WriteYear(writer: &var TextWriter, year: int32) -> Result<Unit, FormatError> {
+    if year < 0i32 {
+        WriteAscii(writer, c8'-')?;
+        let magnitude = (0i32 - year) as uint32;
+        if magnitude > 9999u32 { return WriteWide(writer, magnitude); }
+        return WriteFixed(writer, magnitude, 4u);
+    }
+    if year > 9999i32 {
+        WriteAscii(writer, c8'+')?;
+        return WriteWide(writer, year as uint32);
+    }
+    return WriteFixed(writer, year as uint32, 4u);
+}
+
+// Writes an unsigned value in as many digits as it needs, for the years past four digits.
+func WriteWide(writer: &var TextWriter, value: uint32) -> Result<Unit, FormatError> {
+    var digits: char8[10];
+    var count: uint = 0;
+    var rest = value;
+    if rest == 0u32 {
+        digits[0] = c8'0';
+        count = 1;
+    }
+    while rest > 0u32 {
+        digits[count] = ((rest % 10u32) + 0x30u32) as char8;
+        count = count + 1;
+        rest = rest / 10u32;
+    }
+    var index = count;
+    while index > 0 {
+        index = index - 1;
+        WriteAscii(writer, digits[index])?;
+    }
+    return FormatOk();
+}
+
+// Writes the fractional second under `spec`.
+//
+// A precision names exactly that many digits, 0 through 9, and truncates rather than rounding: a fraction rendered
+// short is a fraction read short, and rounding one up could carry into a second the value does not have. Without a
+// precision the fraction is written to whatever digits it actually has, trailing zeros trimmed, and omitted
+// entirely when it is zero — so a whole second renders as a whole second rather than as nine zeros.
+func WriteFraction(writer: &var TextWriter, nanosecond: uint32, spec: FormatSpec) -> Result<Unit, FormatError> {
+    var digits: char8[9];
+    var index: uint = 9;
+    var rest = nanosecond;
+    while index > 0 {
+        index = index - 1;
+        digits[index] = ((rest % 10u32) + 0x30u32) as char8;
+        rest = rest / 10u32;
+    }
+
+    var kept: uint = 9;
+    if spec.HasPrecision() {
+        kept = spec.Precision();
+        if kept > 9u { return Result::Error<Unit, FormatError>(FormatError::UnsupportedRequest); }
+        if kept == 0u { return FormatOk(); }
+    }
+    else {
+        while kept > 0 && digits[kept - 1] == c8'0' {
+            kept = kept - 1;
+        }
+        if kept == 0u { return FormatOk(); }
+    }
+    WriteAscii(writer, c8'.')?;
+    return WriteBytes(writer, (@digits[0])[..kept]);
+}
+
+// Whether the style is one a calendar value answers to. The empty style is the default rendering, and `iso8601` and
+// `rfc3339` name it explicitly; nothing else is understood.
+func AcceptsCalendarStyle(spec: FormatSpec) -> bool {
+    return !spec.HasStyle() || spec.StyleIs("iso8601") || spec.StyleIs("rfc3339");
+}
+
+func RejectCalendarStyle(spec: FormatSpec) -> Result<Unit, FormatError> {
+    if !AcceptsCalendarStyle(spec) { return Result::Error<Unit, FormatError>(FormatError::UnsupportedRequest); }
+    return FormatOk();
+}
+
+extend Date : Display {
+    /// Writes the date as `YYYY-MM-DD`.
+    ///
+    /// A year outside 0 through 9999 carries a sign and as many digits as it needs, which is what ISO 8601 requires
+    /// for one: four digits is the agreed width, and anything wider is ambiguous without a sign to mark it.
+    ///
+    /// # Failures
+    /// Reports whatever the writer reported, and `UnsupportedRequest` for a style other than `iso8601` or
+    /// `rfc3339`, or for a precision, which a date has nothing to apply one to.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the whole date was accepted
+    /// @see https://rux-lang.dev/docs/api/time/date/write-display
+    pub func WriteDisplay(self: &Date, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        RejectCalendarStyle(spec)?;
+        if spec.HasPrecision() { return Result::Error<Unit, FormatError>(FormatError::UnsupportedRequest); }
+        WriteYear(writer, self.year)?;
+        WriteAscii(writer, c8'-')?;
+        WriteFixed(writer, self.month as uint32, 2u)?;
+        WriteAscii(writer, c8'-')?;
+        return WriteFixed(writer, self.day as uint32, 2u);
+    }
+}
+
+extend Date : Debug {
+    /// The same text as `Display`: a date has one reading, and quoting it would say nothing extra.
+    ///
+    /// # Failures
+    /// The failures `WriteDisplay` reports.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the whole date was accepted
+    /// @see https://rux-lang.dev/docs/api/time/date/write-debug
+    pub func WriteDebug(self: &Date, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        return self.WriteDisplay(writer, spec);
+    }
+}
+
+extend TimeOfDay : Display {
+    /// Writes the time as `HH:MM:SS`, with a fractional part when there is one.
+    ///
+    /// A precision names exactly that many fractional digits, 0 through 9, and truncates. Without one the fraction
+    /// is written to the digits it has with trailing zeros trimmed, and omitted when it is zero.
+    ///
+    /// # Failures
+    /// Reports whatever the writer reported, `UnsupportedRequest` for a style other than `iso8601` or `rfc3339`,
+    /// and `UnsupportedRequest` for a precision past nine, which no fraction has.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the whole time was accepted
+    /// @see https://rux-lang.dev/docs/api/time/time-of-day/write-display
+    pub func WriteDisplay(self: &TimeOfDay, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        RejectCalendarStyle(spec)?;
+        WriteFixed(writer, self.hour as uint32, 2u)?;
+        WriteAscii(writer, c8':')?;
+        WriteFixed(writer, self.minute as uint32, 2u)?;
+        WriteAscii(writer, c8':')?;
+        WriteFixed(writer, self.second as uint32, 2u)?;
+        return WriteFraction(writer, self.nanosecond, spec);
+    }
+}
+
+extend TimeOfDay : Debug {
+    /// The same text as `Display`.
+    ///
+    /// # Failures
+    /// The failures `WriteDisplay` reports.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the whole time was accepted
+    /// @see https://rux-lang.dev/docs/api/time/time-of-day/write-debug
+    pub func WriteDebug(self: &TimeOfDay, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        return self.WriteDisplay(writer, spec);
+    }
+}
+
+extend UtcOffset : Display {
+    /// Writes the offset as `Z` for UTC, and as a signed `+HH:MM` otherwise.
+    ///
+    /// `Z` rather than `+00:00` because that is what RFC 3339 names UTC, and because the two are the same offset
+    /// written two ways rather than two different offsets. A value that must be `+00:00` in its output is not
+    /// asking about the offset but about the format, which is a question for whatever assembles the text.
+    ///
+    /// # Failures
+    /// Reports whatever the writer reported, and `UnsupportedRequest` for a style other than `iso8601` or
+    /// `rfc3339`, or for a precision, which an offset has nothing to apply one to.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the whole offset was accepted
+    /// @see https://rux-lang.dev/docs/api/time/utc-offset/write-display
+    pub func WriteDisplay(self: &UtcOffset, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        RejectCalendarStyle(spec)?;
+        if spec.HasPrecision() { return Result::Error<Unit, FormatError>(FormatError::UnsupportedRequest); }
+        let total = self.TotalSeconds();
+        if total == 0i32 { return WriteAscii(writer, c8'Z'); }
+        let negative = total < 0i32;
+        let magnitude = (negative ? 0i32 - total : total) as uint32;
+        WriteAscii(writer, negative ? c8'-' : c8'+')?;
+        WriteFixed(writer, magnitude / 3600u32, 2u)?;
+        WriteAscii(writer, c8':')?;
+        return WriteFixed(writer, (magnitude / 60u32) % 60u32, 2u);
+    }
+}
+
+extend UtcOffset : Debug {
+    /// The same text as `Display`.
+    ///
+    /// # Failures
+    /// The failures `WriteDisplay` reports.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the whole offset was accepted
+    /// @see https://rux-lang.dev/docs/api/time/utc-offset/write-debug
+    pub func WriteDebug(self: &UtcOffset, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        return self.WriteDisplay(writer, spec);
+    }
+}
+
+extend DateTime : Display {
+    /// Writes the local date and time as `YYYY-MM-DDTHH:MM:SS`, with no offset.
+    ///
+    /// The absence is deliberate and is the point of the type. A `DateTime` holds no offset, so writing one would
+    /// mean inventing it: `Z` would claim UTC and the machine's local offset would claim a place, and both would
+    /// be a guess presented as a fact. `OffsetDateTime` is the type that has somewhere to keep an offset, and it
+    /// is what produces RFC 3339.
+    ///
+    /// # Failures
+    /// Reports whatever the writer reported, `UnsupportedRequest` for a style other than `iso8601` or `rfc3339`,
+    /// and `UnsupportedRequest` for a precision past nine.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the whole date and time were accepted
+    /// @see https://rux-lang.dev/docs/api/time/date-time/write-display
+    pub func WriteDisplay(self: &DateTime, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        RejectCalendarStyle(spec)?;
+        WriteDateOnly(writer, self.date)?;
+        WriteAscii(writer, c8'T')?;
+        return self.time.WriteDisplay(writer, spec);
+    }
+}
+
+extend DateTime : Debug {
+    /// The same text as `Display`.
+    ///
+    /// # Failures
+    /// The failures `WriteDisplay` reports.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the whole date and time were accepted
+    /// @see https://rux-lang.dev/docs/api/time/date-time/write-debug
+    pub func WriteDebug(self: &DateTime, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        return self.WriteDisplay(writer, spec);
+    }
+}
+
+// The date part alone, without the precision check a bare `Date` applies: inside a date-time a precision belongs to
+// the fraction, and rejecting it here would refuse a specification the whole value accepts.
+func WriteDateOnly(writer: &var TextWriter, date: Date) -> Result<Unit, FormatError> {
+    WriteYear(writer, date.year)?;
+    WriteAscii(writer, c8'-')?;
+    WriteFixed(writer, date.month as uint32, 2u)?;
+    WriteAscii(writer, c8'-')?;
+    return WriteFixed(writer, date.day as uint32, 2u);
+}
+
+extend OffsetDateTime : Display {
+    /// Writes the moment as RFC 3339: `YYYY-MM-DDTHH:MM:SS[.fraction]` followed by `Z` or a signed `HH:MM`.
+    ///
+    /// This is the type that can produce RFC 3339, because it is the one that carries an offset. The offset is
+    /// written as it is held rather than normalized to UTC: what was recorded includes where, and shifting it away
+    /// would discard that.
+    ///
+    /// # Failures
+    /// Reports whatever the writer reported, `UnsupportedRequest` for a style other than `iso8601` or `rfc3339`,
+    /// and `UnsupportedRequest` for a precision past nine.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the whole moment was accepted
+    /// @see https://rux-lang.dev/docs/api/time/offset-date-time/write-display
+    pub func WriteDisplay(self: &OffsetDateTime, writer: &var TextWriter,
+                          spec: FormatSpec) -> Result<Unit, FormatError> {
+        RejectCalendarStyle(spec)?;
+        self.dateTime.WriteDisplay(writer, spec)?;
+        return WriteOffsetOnly(writer, self.offset);
+    }
+}
+
+extend OffsetDateTime : Debug {
+    /// The same text as `Display`.
+    ///
+    /// # Failures
+    /// The failures `WriteDisplay` reports.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the whole moment was accepted
+    /// @see https://rux-lang.dev/docs/api/time/offset-date-time/write-debug
+    pub func WriteDebug(self: &OffsetDateTime, writer: &var TextWriter,
+                        spec: FormatSpec) -> Result<Unit, FormatError> {
+        return self.WriteDisplay(writer, spec);
+    }
+}
+
+// The offset part alone, without the precision check a bare `UtcOffset` applies, for the same reason as the date.
+func WriteOffsetOnly(writer: &var TextWriter, offset: UtcOffset) -> Result<Unit, FormatError> {
+    let total = offset.TotalSeconds();
+    if total == 0i32 { return WriteAscii(writer, c8'Z'); }
+    let negative = total < 0i32;
+    let magnitude = (negative ? 0i32 - total : total) as uint32;
+    WriteAscii(writer, negative ? c8'-' : c8'+')?;
+    WriteFixed(writer, magnitude / 3600u32, 2u)?;
+    WriteAscii(writer, c8':')?;
+    return WriteFixed(writer, (magnitude / 60u32) % 60u32, 2u);
+}

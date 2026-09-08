@@ -8,6 +8,7 @@ Nanosecond durations, monotonic and wall clocks, Gregorian calendar values, and 
 - **`Instant` and `Timestamp`** — monotonic readings for measuring elapsed time and UTC wall-clock moments for interchange. `SleepFor` waits against the platform clock without exposing its raw handles.
 - **Calendar values** — validated `Date` and `TimeOfDay` values, fixed `UtcOffset`s, `DateTime` conversion, and checked date arithmetic over the proleptic Gregorian calendar.
 - **RFC 3339** — strict parsing with an explicit leap-second fold and canonical formatting with trimmed fractions.
+- **Presentation** — `Date`, `TimeOfDay`, `UtcOffset`, `DateTime` and `OffsetDateTime` implement `Display` and `Debug`. A `DateTime` writes no offset, because it holds none: `Z` would claim UTC and the machine's offset would claim a place. `OffsetDateTime` is the pairing that carries one and therefore the type that produces RFC 3339. A precision names 0 to 9 fractional digits and truncates; without one the fraction is written to the digits it has, trailing zeros trimmed.
 
 All public value receivers borrow with `&T`. The remaining raw pointers are writable scalar/aggregate output slots and platform FFI addresses, never ownership handles. The package's value types are structurally `Copy`; descriptive and fallible factories retain names such as `Now`, `FromSeconds`, and `New`.
 

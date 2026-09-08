@@ -2,10 +2,10 @@
 Version = 1
 
 [Package]
-Name = "TimeDuration"
+Name = "CalendarText"
 Version = "0.1.0"
 Type = "Executable"
-Description = "Package test for Time: normalized checked Duration arithmetic"
+Description = "Package test for Time: calendar presentation"
 
 [Dependencies]
 Core = { Path = "../../../../Packages/Core" }

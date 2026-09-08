@@ -9,6 +9,7 @@ Description = "Package test for Time: the monotonic clock and interruption-safe 
 
 [Dependencies]
 Core = { Path = "../../../../Packages/Core" }
+Text = { Path = "../../../../Packages/Text" }
 Time = { Path = "../../../../Packages/Time" }
 
 [Build]

@@ -1,0 +1,150 @@
+import Core::{ Assert, Option };
+import Text::{ BufferWriter, Display, FormatSpec, ParseFormatSpec, TextWriter };
+import Time::{ Date, DateTime, OffsetDateTime, TimeOfDay, UtcOffset };
+
+// What a calendar value looks like, and the one thing it refuses to do.
+//
+// The refusal is the subject worth testing hardest. A `DateTime` holds no offset, so it must not write one: not
+// `Z`, which would claim UTC, and not the machine's, which would claim a place. `OffsetDateTime` is the type that
+// carries one and therefore the one that can produce RFC 3339. Everything else here is field widths and the
+// fraction rules, which are easy to get subtly wrong and hard to notice.
+
+func Same(actual: char8[..], expected: char8[..]) -> bool {
+    if actual.length != expected.length { return false; }
+    var index: uint = 0;
+    while index < actual.length {
+        if actual.data[index] != expected.data[index] { return false; }
+        index = index + 1;
+    }
+    return true;
+}
+
+func Spec(text: char8[..]) -> FormatSpec {
+    var spec = FormatSpec::Plain();
+    Assert(ParseFormatSpec(text).TryIntoValue(@spec), "the spec parses");
+    return spec;
+}
+
+// Renders through Display and compares. The writer is bound to its interface type before the call; see
+// Docs/CompilerDefects.md for why passing the concrete one faults.
+func Shown(value: Display, spec: FormatSpec, expected: char8[..]) -> bool {
+    var storage: char8[64];
+    var writer = BufferWriter((@storage[0])[..64]);
+    let sink: &var TextWriter = writer;
+    if value.WriteDisplay(sink, spec).IsError() { return false; }
+    return Same(writer.Written(), expected);
+}
+
+func Refused(value: Display, spec: FormatSpec) -> bool {
+    var storage: char8[64];
+    var writer = BufferWriter((@storage[0])[..64]);
+    let sink: &var TextWriter = writer;
+    return value.WriteDisplay(sink, spec).IsError();
+}
+
+func DateOf(year: int32, month: uint8, day: uint8) -> Date {
+    return Date::New(year, month, day).ValueOr(Date::FromEpochDays(0i64));
+}
+
+func TimeOf(hour: uint8, minute: uint8, second: uint8, nanosecond: uint32) -> TimeOfDay {
+    return TimeOfDay::New(hour, minute, second, nanosecond).ValueOr(TimeOfDay::Midnight());
+}
+
+func OffsetOf(hours: int32, minutes: int32) -> UtcOffset {
+    return UtcOffset::Of(hours, minutes).ValueOr(UtcOffset::Utc());
+}
+
+func Main() -> int {
+    let plain = FormatSpec::Plain();
+
+    // A date is four digits, two and two, zero-padded throughout.
+    let day: Display = DateOf(2026i32, 9u8, 7u8);
+    Assert(Shown(day, plain, "2026-09-07"), "a date is YYYY-MM-DD");
+    let padded: Display = DateOf(1i32, 1u8, 1u8);
+    Assert(Shown(padded, plain, "0001-01-01"), "and every field is padded to its width");
+    let late: Display = DateOf(9999i32, 12u8, 31u8);
+    Assert(Shown(late, plain, "9999-12-31"), "the last four-digit year");
+
+    // Outside four digits a year carries a sign, which is what makes it unambiguous.
+    let far: Display = DateOf(10000i32, 1u8, 1u8);
+    Assert(Shown(far, plain, "+10000-01-01"), "a year past four digits is signed");
+    let zero: Display = DateOf(0i32, 1u8, 1u8);
+    Assert(Shown(zero, plain, "0000-01-01"), "year zero exists and needs no sign");
+    let before: Display = DateOf(-1i32, 12u8, 31u8);
+    Assert(Shown(before, plain, "-0001-12-31"), "and a negative year is signed and padded");
+
+    // A time is three two-digit fields, and the fraction is written only when it is there.
+    let noon: Display = TimeOf(12u8, 34u8, 56u8, 0u32);
+    Assert(Shown(noon, plain, "12:34:56"), "a whole second carries no fraction");
+    let midnight: Display = TimeOf(0u8, 0u8, 0u8, 0u32);
+    Assert(Shown(midnight, plain, "00:00:00"), "midnight is zeros rather than nothing");
+    let end: Display = TimeOf(23u8, 59u8, 59u8, 0u32);
+    Assert(Shown(end, plain, "23:59:59"), "the last second of a day");
+
+    // Without a precision the fraction is what it is, trailing zeros trimmed.
+    let half: Display = TimeOf(1u8, 2u8, 3u8, 500000000u32);
+    Assert(Shown(half, plain, "01:02:03.5"), "half a second is one digit, not nine");
+    let milli: Display = TimeOf(1u8, 2u8, 3u8, 250000000u32);
+    Assert(Shown(milli, plain, "01:02:03.25"), "and a quarter is two");
+    let nano: Display = TimeOf(1u8, 2u8, 3u8, 123456789u32);
+    Assert(Shown(nano, plain, "01:02:03.123456789"), "a full nanosecond fraction keeps all nine");
+    let tiny: Display = TimeOf(1u8, 2u8, 3u8, 1u32);
+    Assert(Shown(tiny, plain, "01:02:03.000000001"), "and a single nanosecond keeps its leading zeros");
+
+    // A precision names exactly that many digits and truncates rather than rounding.
+    Assert(Shown(nano, Spec(".3"), "01:02:03.123"), "a precision keeps that many digits");
+    Assert(Shown(nano, Spec(".9"), "01:02:03.123456789"), "nine keeps all of them");
+    Assert(Shown(nano, Spec(".0"), "01:02:03"), "zero drops the fraction entirely");
+    Assert(Shown(half, Spec(".3"), "01:02:03.500"), "and a precision pads where trimming would not");
+    let almost: Display = TimeOf(1u8, 2u8, 3u8, 999999999u32);
+    Assert(Shown(almost, Spec(".1"), "01:02:03.9"), "truncation rather than rounding: .999999999 to one digit is .9");
+    Assert(Refused(nano, Spec(".10")), "a precision past nine is refused rather than padded");
+
+    // An offset is Z at UTC and a signed two-and-two otherwise.
+    let utc: Display = UtcOffset::Utc();
+    Assert(Shown(utc, plain, "Z"), "UTC is Z");
+    let east: Display = OffsetOf(2i32, 0i32);
+    Assert(Shown(east, plain, "+02:00"), "an eastern offset is signed positive");
+    let west: Display = OffsetOf(-5i32, -30i32);
+    Assert(Shown(west, plain, "-05:30"), "a western one negative, both halves");
+    let deep: Display = OffsetOf(-11i32, -45i32);
+    Assert(Shown(deep, plain, "-11:45"), "and a three-quarter-hour offset keeps its minutes");
+
+    // A DateTime writes no offset. This is the whole point of the type, so it is checked at both ends of the day
+    // and with a fraction, where an invented `Z` would be easiest to miss.
+    let local: Display = DateTime { date: DateOf(2026i32, 9u8, 7u8), time: TimeOf(12u8, 34u8, 56u8, 0u32) };
+    Assert(Shown(local, plain, "2026-09-07T12:34:56"), "a date-time has no offset because it holds none");
+    let localFraction: Display = DateTime { date: DateOf(2026i32, 9u8, 7u8), time: TimeOf(0u8, 0u8, 0u8, 5000000u32) };
+    Assert(Shown(localFraction, plain, "2026-09-07T00:00:00.005"), "and its fraction follows the same rules");
+    Assert(Shown(localFraction, Spec(".1"), "2026-09-07T00:00:00.0"), "a precision reaches the fraction through it");
+
+    // An OffsetDateTime writes one, because it has one.
+    let moment = OffsetDateTime(DateTime { date: DateOf(2026i32, 9u8, 7u8), time: TimeOf(12u8, 34u8, 56u8, 0u32) },
+                                OffsetOf(2i32, 0i32));
+    let shownMoment: Display = moment;
+    Assert(Shown(shownMoment, plain, "2026-09-07T12:34:56+02:00"), "an offset date-time is RFC 3339");
+    let atUtc = OffsetDateTime(DateTime { date: DateOf(2026i32, 9u8, 7u8), time: TimeOf(12u8, 34u8, 56u8, 0u32) },
+                               UtcOffset::Utc());
+    let shownUtc: Display = atUtc;
+    Assert(Shown(shownUtc, plain, "2026-09-07T12:34:56Z"), "and UTC is spelled Z there too");
+    let fractional = OffsetDateTime(DateTime { date: DateOf(2026i32, 9u8, 7u8), time: TimeOf(1u8, 2u8, 3u8, 400000000u32) },
+                                    OffsetOf(-5i32, -30i32));
+    let shownFractional: Display = fractional;
+    Assert(Shown(shownFractional, plain, "2026-09-07T01:02:03.4-05:30"),
+           "the fraction sits between the seconds and the offset");
+    Assert(Shown(shownFractional, Spec(".0"), "2026-09-07T01:02:03-05:30"),
+           "and a precision of zero closes the gap rather than leaving a stray point");
+
+    // The offset is written as held rather than normalized away: the same instant at two offsets reads differently,
+    // which is the information an OffsetDateTime exists to keep.
+    Assert(moment.ToTimestamp().seconds == atUtc.ToTimestamp().seconds - 7200i64,
+           "the two moments are two hours apart as instants");
+
+    // Named styles are accepted; anything else is refused rather than ignored.
+    Assert(Shown(day, Spec("iso8601"), "2026-09-07"), "iso8601 names the default rendering");
+    Assert(Shown(shownMoment, Spec("rfc3339"), "2026-09-07T12:34:56+02:00"), "and so does rfc3339");
+    Assert(Refused(day, Spec("hyphenated")), "a style belonging to another domain is refused");
+    Assert(Refused(day, Spec(".3")), "and a date has nothing to apply a precision to");
+    Assert(Refused(utc, Spec(".3")), "nor has an offset");
+    return 0;
+}

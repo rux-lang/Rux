@@ -9,6 +9,7 @@ Description = "Package test for Time: the proleptic Gregorian calendar and the e
 
 [Dependencies]
 Core = { Path = "../../../../Packages/Core" }
+Text = { Path = "../../../../Packages/Text" }
 Time = { Path = "../../../../Packages/Time" }
 
 [Build]

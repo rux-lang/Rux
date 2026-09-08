@@ -9,6 +9,7 @@ Description = "Package test for Time: RFC 3339 text both ways, leap-second polic
 
 [Dependencies]
 Core = { Path = "../../../../Packages/Core" }
+Text = { Path = "../../../../Packages/Text" }
 Time = { Path = "../../../../Packages/Time" }
 
 [Build]

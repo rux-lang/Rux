@@ -8,6 +8,14 @@ Return to the [main README](../README.md) for the complete documentation index.
 
 ## Open
 
+### A package cannot have a transitive dependency on a different package that shares its name
+
+*Loud, and the diagnostic points somewhere else entirely.* A package named `Text` whose dependency graph reaches `Rux/Text` further down does not resolve that package: the imports fail with `name 'Display' was not found in package 'Text'`, reported against the *dependency's* source rather than against the root that collides, and nothing in the output mentions a name collision.
+
+Found when `Rux/Time` gained its `Rux/Text` dependency. `Tests/Packages/Uuid/Text` — an executable test whose package was named `Text` — depends on `Uuid`, which depends on `Time`, which now depends on `Text`. Every import inside `Packages/Time/Src/CalendarText.rux` then failed, and the failure looked like `Rux/Text` being stale or half-loaded. It is neither: renaming the test package to anything else fixes it with no other change, which is how it was narrowed. The test is now `Tests/Packages/Uuid/Formatting`.
+
+The bare name appears to be the resolution key, so the root's own name shadows a package of that name anywhere in its graph. Two things would each help: resolving by `Namespace/Name` rather than by name, and reporting the collision where it happens rather than as a missing declaration three packages away.
+
 ### Passing a concrete value as an interface argument *of an interface method call* crashes
 
 *Silent, and it is a segmentation fault.* A concrete local coerces to an interface parameter correctly when the callee is an ordinary function, and incorrectly when the callee is reached through an interface. The second form builds without a diagnostic and faults at the call.
