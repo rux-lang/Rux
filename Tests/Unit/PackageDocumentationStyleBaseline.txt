@@ -1840,7 +1840,6 @@ missing-returns|Entropy/Src/Source.rux|func|FillFromSource|a153e65a70f5566b
 missing-returns|FileSystem/Src/Atomic.rux|func|Abandon|d3c7a485bb0b4982
 missing-returns|FileSystem/Src/Atomic.rux|func|Begin|dde4b95f3f30b59b
 missing-returns|FileSystem/Src/Atomic.rux|func|Commit|86461f6aa400b44a
-missing-returns|FileSystem/Src/Atomic.rux|func|Stream|bc28f8dce7251f19
 missing-returns|FileSystem/Src/Atomic.rux|func|Target|258134524df186a9
 missing-returns|FileSystem/Src/Atomic.rux|func|WriteAtomically|143ae0f1a38a8328
 missing-returns|FileSystem/Src/Directory.rux|func|DeleteDirectory|b057223dccb841bb
@@ -1863,7 +1862,6 @@ missing-returns|FileSystem/Src/FileStream.rux|func|Seek|17e615203828cbd3
 missing-returns|FileSystem/Src/FileStream.rux|func|Seek|1bd717eb901642ef
 missing-returns|FileSystem/Src/FileStream.rux|func|SetLength|7fb1ce7617aa4d46
 missing-returns|FileSystem/Src/FileStream.rux|func|Size|673e4dab06e9c9b3
-missing-returns|FileSystem/Src/FileStream.rux|func|Stream|7e0b287b7fd6b84a
 missing-returns|FileSystem/Src/FileStream.rux|func|Sync|1841f78e8b4a313a
 missing-returns|FileSystem/Src/FileStream.rux|func|Write|b6d9039edc4d2004
 missing-returns|FileSystem/Src/FileStream.rux|func|Write|f122a91011b808bb
@@ -3384,7 +3382,6 @@ missing-see|FileSystem/Src/Atomic.rux|func|Abandon|d3c7a485bb0b4982
 missing-see|FileSystem/Src/Atomic.rux|func|Begin|dde4b95f3f30b59b
 missing-see|FileSystem/Src/Atomic.rux|func|Commit|86461f6aa400b44a
 missing-see|FileSystem/Src/Atomic.rux|func|Release|0fb3f999c98e2add
-missing-see|FileSystem/Src/Atomic.rux|func|Stream|bc28f8dce7251f19
 missing-see|FileSystem/Src/Atomic.rux|func|Target|258134524df186a9
 missing-see|FileSystem/Src/Atomic.rux|func|WriteAtomically|143ae0f1a38a8328
 missing-see|FileSystem/Src/Atomic.rux|struct|AtomicWrite|627298a40c455510
@@ -3412,11 +3409,9 @@ missing-see|FileSystem/Src/FileStream.rux|func|Seek|17e615203828cbd3
 missing-see|FileSystem/Src/FileStream.rux|func|Seek|1bd717eb901642ef
 missing-see|FileSystem/Src/FileStream.rux|func|SetLength|7fb1ce7617aa4d46
 missing-see|FileSystem/Src/FileStream.rux|func|Size|673e4dab06e9c9b3
-missing-see|FileSystem/Src/FileStream.rux|func|Stream|7e0b287b7fd6b84a
 missing-see|FileSystem/Src/FileStream.rux|func|Sync|1841f78e8b4a313a
 missing-see|FileSystem/Src/FileStream.rux|func|Write|b6d9039edc4d2004
 missing-see|FileSystem/Src/FileStream.rux|func|Write|f122a91011b808bb
-missing-see|FileSystem/Src/FileStream.rux|struct|FileStream|5573e08d8bc4340e
 missing-see|FileSystem/Src/Location.rux|const|SymbolicLinkLimit|379b8324f13e27d7
 missing-see|FileSystem/Src/Location.rux|func|Absolute|e5ef48f913b340b5
 missing-see|FileSystem/Src/Location.rux|func|Canonicalize|fe2ddbf5eb294ad5

@@ -1,6 +1,15 @@
 
 // A file is a stream with a position: written through the Writer everything already speaks, read back through
 // the Reader, measured, cut, and stacked under the buffered machinery that has no idea it left memory.
+//
+// Every case here that only needs a stream for the length of a call hands the file itself to the helper. That is
+// the checked way, and it is checked in a way the adapter is not: the compiler ends the borrow at the call, and it
+// refuses a file read through while a borrow of it is still live. The adapter cannot refuse anything, because it
+// holds an address.
+//
+// So the adapter appears exactly once below, under the buffered reader, which is the case it exists for: a value
+// that keeps its source past the call that made it. Binding the file itself into an interface value there would
+// move the file, since it owns its handle and prohibits copying, and there would be nothing left to close.
 
 import Allocator::{ Allocator, SystemAllocator };
 import Core::{ Assert };
@@ -29,8 +38,7 @@ func Main() -> int {
     // Write a known body and make it durable.
     var written = File::Open(allocator, scratch, OpenOptions::Writing(), @error);
     Assert(written.IsOpen() && error.IsOk(), "the scratch file opens for writing");
-    var sink: Writer = written.Stream();
-    Assert(WriteAll(sink, TextBytes("0123456789")).IsOk(), "the body writes");
+    Assert(WriteAll(written, TextBytes("0123456789")).IsOk(), "the body writes");
     var size: uint64 = 0;
     Assert(written.Sync().IsOk(), "and reaches the device");
     Assert(written.Size(@size).IsOk() && size == 10u64, "ten bytes long, measured while open");
@@ -41,14 +49,13 @@ func Main() -> int {
     Assert(reading.IsOpen() && error.IsOk(), "it reopens for reading");
     var storage: char8[16];
     let head = (@storage[0])[..4];
-    var source: Reader = reading.Stream();
-    Assert(ReadExact(source, head).IsOk(), "the first four bytes read");
+    Assert(ReadExact(reading, head).IsOk(), "the first four bytes read");
     Assert(storage[0] == c8'0' && storage[3] == c8'3', "and are the first four");
 
     var position: uint64 = 0;
     Assert(reading.Seek(SeekFrom::End, -4, @position).IsOk() && position == 6u64,
            "four back from the end is position six");
-    Assert(ReadExact(source, head).IsOk(), "the last four bytes read");
+    Assert(ReadExact(reading, head).IsOk(), "the last four bytes read");
     Assert(storage[0] == c8'6' && storage[3] == c8'9', "and are the last four");
     var lone: uint = 0;
     let room = (@storage[0])[..4];
@@ -70,16 +77,14 @@ func Main() -> int {
     var appending = File::Open(allocator, scratch, OpenOptions::Appending(), @error);
     Assert(appending.IsOpen() && error.IsOk(), "it reopens for appending");
     Assert(appending.Seek(SeekFrom::Start, 0, @position).IsOk(), "the position moves to the start");
-    var appendSink: Writer = appending.Stream();
-    Assert(WriteAll(appendSink, TextBytes("XY")).IsOk(), "but the append writes");
+    Assert(WriteAll(appending, TextBytes("XY")).IsOk(), "but the append writes");
     Assert(appending.Size(@size).IsOk() && size == 6u64, "at the end, not the position");
     Assert(appending.Close().IsOk(), "and the appender closes");
 
     // The buffered machinery stacks on a file without knowing it left memory.
     var lines = File::Open(allocator, scratch, OpenOptions::Writing(), @error);
     Assert(lines.IsOpen(), "the file opens once more for line content");
-    var lineSink: Writer = lines.Stream();
-    Assert(WriteAll(lineSink, TextBytes("alpha\r\nbeta\ngamma")).IsOk(), "three lines write");
+    Assert(WriteAll(lines, TextBytes("alpha\r\nbeta\ngamma")).IsOk(), "three lines write");
     Assert(lines.Close().IsOk(), "and close");
     var back = File::Open(allocator, scratch, OpenOptions::Reading(), @error);
     let backSource: Reader = back.Stream();
@@ -105,6 +110,28 @@ func Main() -> int {
     last.Release();
     buffered.Release();
     Assert(back.Close().IsOk(), "the line reader closes");
+
+    // A stored stream over a file that has since been closed is not unsafe, it is refused: the file checks its own
+    // handle, so every operation through the adapter reports `InvalidHandle` rather than reaching a closed one.
+    // This is the one thing the adapter can promise, and it is worth pinning, because it is what makes the
+    // dangerous case — outliving the file itself — the *only* dangerous case.
+    var closed = File::Open(allocator, scratch, OpenOptions::Reading(), @error);
+    Assert(closed.IsOpen() && error.IsOk(), "a file opens");
+    var stale: Reader = closed.Stream();
+    Assert(closed.Close().IsOk(), "and closes while a stream over it is still held");
+    var storage2: char8[4];
+    var filled2: uint = 0;
+    let refused = stale.Read((@storage2[0])[..4], @filled2);
+    Assert(refused.kind == IoErrorKind::InvalidHandle, "the stream refuses through the closed file");
+    Assert(filled2 == 0u, "having read nothing");
+
+    // And the adapter is the file, not a copy of it: what goes out through one is what the other reports.
+    var shared = File::Open(allocator, scratch, OpenOptions::Writing(), @error);
+    Assert(shared.IsOpen() && error.IsOk(), "a file opens for writing");
+    var held: Writer = shared.Stream();
+    Assert(WriteAll(held, TextBytes("abcd")).IsOk(), "four bytes go out through the stored stream");
+    Assert(shared.Size(@size).IsOk() && size == 4u64, "and the file itself measures them");
+    Assert(shared.Close().IsOk(), "and closes");
 
     return 0;
 }

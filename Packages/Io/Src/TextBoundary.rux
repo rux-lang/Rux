@@ -235,8 +235,7 @@ pub func WriteValueLine<T: Display>(writer: &var TextWriter, value: &T) -> Resul
 /// newline's write reported.
 ///
 /// @param writer the destination
-/// @param format the pattern, whose placeholders are filled from the arguments
-/// @param args the values to fill them with, borrowed for the call
+/// @param format the pattern, whose placeholders are filled from the arguments that follow it
 /// @returns success when the whole line was accepted
 /// @see https://rux-lang.dev/docs/api/io/write-format-line
 pub func WriteFormatLine(writer: &var TextWriter, format: char8[..],

@@ -73,14 +73,12 @@ func Main() -> int {
     Assert(Exists(allocator, first.AsPath()) && Exists(allocator, second.AsPath()), "both exist");
 
     // It is a real file, open for reading and writing.
-    var sink: Writer = first.file.Stream();
-    Assert(WriteAll(sink, TextBytes("held briefly")).IsOk(), "the temporary file takes content");
+    Assert(WriteAll(first.file, TextBytes("held briefly")).IsOk(), "the temporary file takes content");
     var position: uint64 = 0;
     Assert(first.file.Seek(SeekFrom::Start, 0, @position).IsOk(), "and rewinds");
     var storage: char8[16];
     let room = (@storage[0])[..12];
-    var source: Reader = first.file.Stream();
-    Assert(ReadExact(source, room).IsOk(), "and reads back what was written");
+    Assert(ReadExact(first.file, room).IsOk(), "and reads back what was written");
     Assert(storage[0] == c8'h' && storage[11] == c8'y', "byte for byte");
 
     // Close deletes it and says so; the name is free afterwards.

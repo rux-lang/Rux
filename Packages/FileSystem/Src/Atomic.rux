@@ -103,9 +103,17 @@ extend AtomicWrite {
         return <-result;
     }
 
-    /// A writer over the partial file.
+    /// A stored writer over the partial file.
     ///
-    /// https://rux-lang.dev/docs/api/filesystem/atomic-write/stream
+    /// Only for a value that must keep the stream, such as a buffered writer. Writing to the replacement for the
+    /// duration of a call borrows the `AtomicWrite` itself, which is a `Writer`.
+    ///
+    /// # Safety
+    ///
+    /// The `AtomicWrite` must outlive the result and must not be moved while it exists. See `FileStream`.
+    ///
+    /// @returns a stream over the partial file, held by address
+    /// @see https://rux-lang.dev/docs/api/filesystem/atomic-write/stream
     pub func Stream(self: &var AtomicWrite) -> FileStream {
         return self.scratch.file.Stream();
     }
@@ -115,6 +123,34 @@ extend AtomicWrite {
     /// https://rux-lang.dev/docs/api/filesystem/atomic-write/target
     pub func Target(self: &AtomicWrite) -> Path {
         return self.target.AsPath();
+    }
+}
+
+extend AtomicWrite : Writer {
+    /// Writes into the partial file.
+    ///
+    /// Writing to a replacement is what the type is for, so it is a `Writer` itself rather than something a caller
+    /// reaches a stream out of: `let sink: &var Writer = replacement;` borrows it, and nothing has to be kept alive
+    /// beside it.
+    ///
+    /// One attempt, partial on purpose, exactly as the underlying file's is; `WriteAll` does the looping.
+    ///
+    /// @param bytes the run to write
+    /// @param taken receives how much of it the file took
+    /// @returns what the file reported
+    /// @see https://rux-lang.dev/docs/api/filesystem/atomic-write/write
+    pub func Write(self: &var AtomicWrite, bytes: char8[..], taken: *var uint) -> IoError {
+        return self.scratch.file.Write(bytes, taken);
+    }
+
+    /// Flushes the partial file, which holds nothing back.
+    ///
+    /// `Commit` is what makes the contents durable, and it syncs before it renames.
+    ///
+    /// @returns what the file reported
+    /// @see https://rux-lang.dev/docs/api/filesystem/atomic-write/flush
+    pub func Flush(self: &var AtomicWrite) -> IoError {
+        return self.scratch.file.Flush();
     }
 }
 
@@ -186,8 +222,7 @@ pub func WriteAtomically(allocator: Allocator, target: Path, contents: char8[..]
     var error = IoError::Ok();
     var replacement = AtomicWrite::Begin(allocator, target, @error);
     if error.IsError() { return error; }
-    var sink: Writer = replacement.Stream();
-    let wrote = WriteAll(sink, contents);
+    let wrote = WriteAll(replacement, contents);
     if wrote.IsError() {
         replacement.Abandon(allocator);
         return wrote;

@@ -25,8 +25,7 @@ func WriteWhole(allocator: Allocator, path: Path, content: char8[..]) {
     var error = IoError::Ok();
     var file = File::Open(allocator, path, OpenOptions::Writing(), @error);
     Assert(file.IsOpen() && error.IsOk(), "the file opens for writing");
-    var sink: Writer = file.Stream();
-    Assert(WriteAll(sink, content).IsOk(), "and takes its content");
+    Assert(WriteAll(file, content).IsOk(), "and takes its content");
     Assert(file.Close().IsOk(), "and closes");
 }
 
@@ -39,8 +38,7 @@ func CheckWhole(allocator: Allocator, path: Path, expected: char8[..]) {
     var size: uint64 = 0;
     Assert(file.Size(@size).IsOk() && size == expected.length as uint64, "it is exactly as long as expected");
     let room = (@storage[0])[..expected.length];
-    var source: Reader = file.Stream();
-    Assert(ReadExact(source, room).IsOk(), "and reads whole");
+    Assert(ReadExact(file, room).IsOk(), "and reads whole");
     var index: uint = 0;
     while index < expected.length {
         Assert(storage[index] == expected.data[index], "byte for byte");

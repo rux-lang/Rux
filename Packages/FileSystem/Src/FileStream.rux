@@ -212,22 +212,51 @@ extend File {
     }
 }
 
-/// A borrow of an open file that speaks the stream interfaces.
+/// A stored borrow of an open file that speaks the stream interfaces.
 ///
-/// Call-time helpers borrow `File` directly as an interface reference. This raw-pointer adapter remains for
-/// buffered readers and other values that must store a stream beyond one call, because references cannot be
-/// stored in fields. It must not outlive or survive a move of the file.
+/// **Reach for this only when a stream has to be kept.** A `File` already implements `Reader`, `Writer` and
+/// `Seeker`, so anything taking one for the duration of a call takes the file itself:
 ///
-/// https://rux-lang.dev/docs/api/filesystem/file-stream
+/// ```rux
+/// let sink: &var Writer = file;
+/// WriteAll(sink, contents);
+/// ```
+///
+/// That borrows, and the file is still the caller's afterwards. What it cannot do is outlive the call, because a
+/// reference cannot be stored in a field — so a `BufferedReader`, which keeps its source, needs a value it can
+/// hold. Binding the file itself into an interface value would move it, since a `File` owns its handle and
+/// prohibits copying, and the caller would no longer have a file to close. This is the value that fills that gap:
+/// it holds the file's address rather than the file, so it can be stored, and the file stays where it is.
+///
+/// The address is private, and `File::Stream` is the only way to obtain one. That is deliberate: a `FileStream`
+/// assembled from an arbitrary pointer would be an unchecked promise about a file that may not exist, and the type
+/// is already the least checkable thing in this package without adding a second way to get it wrong.
+///
+/// # Safety
+///
+/// The file must outlive the stream, and must not be moved while one exists — a move relocates the file and
+/// leaves the stored address pointing at where it used to be. Nothing here tracks either, which is exactly why
+/// this is not the default way to reach a file's streams. A stream over a closed file is not unsafe: every
+/// operation refuses with `InvalidHandle`, because the file itself checks.
+///
+/// @see https://rux-lang.dev/docs/api/filesystem/file-stream
 pub struct FileStream {
-    /// The file being borrowed.
-    pub file: *var File;
+    /// The file being borrowed. Private, so `File::Stream` is the only way to make one.
+    file: *var File;
 }
 
 extend File {
-    /// A borrow of this file that can be passed to anything expecting a stream.
+    /// A stored borrow of this file, for a value that must keep a stream beyond one call.
     ///
-    /// https://rux-lang.dev/docs/api/filesystem/file/stream
+    /// For anything that only needs a stream for the duration of a call, borrow the file directly as
+    /// `let sink: &var Writer = file;` instead: that is checked, and this is not.
+    ///
+    /// # Safety
+    ///
+    /// The file must outlive the result and must not be moved while it exists. See `FileStream`.
+    ///
+    /// @returns a stream over this file, holding its address, which is what makes it storable
+    /// @see https://rux-lang.dev/docs/api/filesystem/file/stream
     pub func Stream(self: *var File) -> FileStream {
         return FileStream { file: self };
     }

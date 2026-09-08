@@ -189,8 +189,7 @@ pub func CopyFile(allocator: Allocator, from: Path, to: Path) -> IoError {
             }
             else {
                 let piece = (block as *char8)[..filled];
-                var sink: Writer = destination.Stream();
-                let wrote = WriteAll(sink, piece);
+                let wrote = WriteAll(destination, piece);
                 if wrote.IsError() {
                     outcome = wrote;
                     copying = false;

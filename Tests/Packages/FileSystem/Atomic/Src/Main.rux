@@ -31,8 +31,7 @@ func CheckWhole(allocator: Allocator, path: Path, expected: char8[..]) {
     Assert(file.Size(@size).IsOk() && size == expected.length as uint64, "and is exactly as long as expected");
     var storage: char8[64];
     let room = (@storage[0])[..expected.length];
-    var source: Reader = file.Stream();
-    Assert(ReadExact(source, room).IsOk(), "and reads whole");
+    Assert(ReadExact(file, room).IsOk(), "and reads whole");
     var index: uint = 0;
     while index < expected.length {
         Assert(storage[index] == expected.data[index], "byte for byte");
@@ -79,8 +78,7 @@ func Main() -> int {
     // Part-way through a replacement, the target still holds the old contents.
     var replacement = AtomicWrite::Begin(allocator, target, @error);
     Assert(error.IsOk(), "a replacement begins");
-    var sink: Writer = replacement.Stream();
-    Assert(WriteAll(sink, TextBytes("second contents, longer")).IsOk(), "and takes the new contents");
+    Assert(WriteAll(replacement, TextBytes("second contents, longer")).IsOk(), "and takes the new contents");
     CheckWhole(allocator, target, "first contents");
     Assert(CountEntries(allocator, dir) == 2, "with the partial file alongside, not on top");
 
@@ -93,8 +91,7 @@ func Main() -> int {
     // Abandoning leaves the target exactly as it was, and cleans up after itself.
     var discarded = AtomicWrite::Begin(allocator, target, @error);
     Assert(error.IsOk(), "a second replacement begins");
-    var discardedSink: Writer = discarded.Stream();
-    Assert(WriteAll(discardedSink, TextBytes("never published")).IsOk(), "and takes contents");
+    Assert(WriteAll(discarded, TextBytes("never published")).IsOk(), "and takes contents");
     Assert(discarded.Abandon(allocator).IsOk(), "abandoning reports success");
     CheckWhole(allocator, target, "second contents, longer");
     Assert(CountEntries(allocator, dir) == 1, "and leaves nothing behind");
@@ -119,6 +116,5 @@ func Dropped(allocator: Allocator, target: Path) {
     var error = IoError::Ok();
     var replacement = AtomicWrite::Begin(allocator, target, @error);
     Assert(error.IsOk(), "the undecided replacement begins");
-    var sink: Writer = replacement.Stream();
-    Assert(WriteAll(sink, TextBytes("abandoned by scope")).IsOk(), "and takes contents");
+    Assert(WriteAll(replacement, TextBytes("abandoned by scope")).IsOk(), "and takes contents");
 }
