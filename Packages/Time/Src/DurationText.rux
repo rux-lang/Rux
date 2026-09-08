@@ -1,0 +1,233 @@
+// A span of time as text, and back.
+//
+// The form is signed decimal seconds with an `s`: `1.5s`, `-0.25s`, `0s`. One unit rather than a broken-down
+// `1h30m` because a duration is a number, and a number with one unit compares, sorts and round-trips without a
+// grammar. `seconds` names the same form explicitly, for a caller who wants the intent in the placeholder.
+//
+// The negative case is the one worth care. A `Duration` is normalized as `seconds + nanoseconds / 1e9` with the
+// fraction always in [0, 1e9), so minus one and a half seconds is *not* seconds = -1 and nanoseconds = 5e8: it is
+// seconds = -2 and nanoseconds = 5e8, because -2 + 0.5 is -1.5. Rendering the fields as they sit would produce
+// "-2.5s", which is wrong by two seconds and looks plausible. The magnitude has to be recomputed, and it is
+// computed in `uint64` so that the most negative duration — whose magnitude has no positive counterpart in
+// `int64` — comes out right rather than wrapping to itself.
+
+import Core::{ Option, Result };
+import Text::{ Debug, Display, FormatError, FormatOk, FormatSpec, TextWriter, WriteAscii, WriteBytes };
+
+// The magnitude of `value` as whole seconds and a fraction, both non-negative, with the sign reported separately.
+//
+// For a negative duration the normalized fields are not the magnitude: -1.5 is stored as (-2, 5e8), so the whole
+// part is -(seconds + 1) and the fraction is 1e9 - nanoseconds. Done in uint64 because the magnitude of
+// int64::Min does not fit int64.
+func Magnitude(value: &Duration, whole: *var uint64, fraction: *var uint32) -> bool {
+    let seconds = value.WholeSeconds();
+    let nanoseconds = value.SubsecondNanoseconds();
+    if seconds >= 0i64 {
+        *whole = seconds as uint64;
+        *fraction = nanoseconds;
+        return false;
+    }
+    if nanoseconds == 0u32 {
+        *whole = ~(seconds as uint64) + 1u64;
+        *fraction = 0u32;
+        return true;
+    }
+    // seconds is negative, so seconds + 1 cannot overflow.
+    *whole = ~((seconds + 1i64) as uint64) + 1u64;
+    *fraction = 1000000000u32 - nanoseconds;
+    return true;
+}
+
+// Writes an unsigned value in as many digits as it needs.
+func WriteWholeSeconds(writer: &var TextWriter, value: uint64) -> Result<Unit, FormatError> {
+    var digits: char8[20];
+    var count: uint = 0;
+    var rest = value;
+    if rest == 0u64 {
+        digits[0] = c8'0';
+        count = 1;
+    }
+    while rest > 0u64 {
+        digits[count] = ((rest % 10u64) + 0x30u64) as char8;
+        count = count + 1;
+        rest = rest / 10u64;
+    }
+    var index = count;
+    while index > 0 {
+        index = index - 1;
+        WriteAscii(writer, digits[index])?;
+    }
+    return FormatOk();
+}
+
+// Writes the fractional second under `spec`, by the same rules a time of day uses: a precision names exactly that
+// many digits and truncates; without one the fraction is trimmed of trailing zeros and omitted when it is zero.
+func WriteSecondsFraction(writer: &var TextWriter, fraction: uint32, spec: FormatSpec) -> Result<Unit, FormatError> {
+    var digits: char8[9];
+    var index: uint = 9;
+    var rest = fraction;
+    while index > 0 {
+        index = index - 1;
+        digits[index] = ((rest % 10u32) + 0x30u32) as char8;
+        rest = rest / 10u32;
+    }
+    var kept: uint = 9;
+    if spec.HasPrecision() {
+        kept = spec.Precision();
+        if kept > 9u { return Result::Error<Unit, FormatError>(FormatError::UnsupportedRequest); }
+        if kept == 0u { return FormatOk(); }
+    }
+    else {
+        while kept > 0 && digits[kept - 1] == c8'0' {
+            kept = kept - 1;
+        }
+        if kept == 0u { return FormatOk(); }
+    }
+    WriteAscii(writer, c8'.')?;
+    return WriteBytes(writer, (@digits[0])[..kept]);
+}
+
+// The empty style is the default rendering and `seconds` names it explicitly. Nothing else is understood.
+func RejectDurationStyle(spec: FormatSpec) -> Result<Unit, FormatError> {
+    if spec.HasStyle() && !spec.StyleIs("seconds") {
+        return Result::Error<Unit, FormatError>(FormatError::UnsupportedRequest);
+    }
+    return FormatOk();
+}
+
+extend Duration : Display {
+    /// Writes the span as signed decimal seconds followed by `s`.
+    ///
+    /// The magnitude is recomputed from the normalized representation rather than read off it: a negative duration
+    /// stores minus one and a half seconds as seconds = -2 with a fraction of 0.5, so printing the fields as they
+    /// sit would say "-2.5s".
+    ///
+    /// A precision names exactly that many fractional digits, 0 through 9, and truncates. Without one the fraction
+    /// is written to the digits it has with trailing zeros trimmed, and omitted when it is zero, so a whole number
+    /// of seconds renders as one.
+    ///
+    /// # Failures
+    /// Reports whatever the writer reported, and `UnsupportedRequest` for a style other than `seconds` or for a
+    /// precision past nine.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the whole rendering was accepted
+    /// @see https://rux-lang.dev/docs/api/time/duration/write-display
+    pub func WriteDisplay(self: &Duration, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        RejectDurationStyle(spec)?;
+        var whole: uint64 = 0;
+        var fraction: uint32 = 0;
+        let negative = Magnitude(self, @whole, @fraction);
+        if negative { WriteAscii(writer, c8'-')?; }
+        WriteWholeSeconds(writer, whole)?;
+        WriteSecondsFraction(writer, fraction, spec)?;
+        return WriteAscii(writer, c8's');
+    }
+}
+
+extend Duration : Debug {
+    /// The same text as `Display`: a span has one reading.
+    ///
+    /// # Failures
+    /// The failures `WriteDisplay` reports.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the whole rendering was accepted
+    /// @see https://rux-lang.dev/docs/api/time/duration/write-debug
+    pub func WriteDebug(self: &Duration, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        return self.WriteDisplay(writer, spec);
+    }
+}
+
+/// Reads a span written as signed decimal seconds followed by `s`.
+///
+/// Accepts what `Display` writes: an optional sign, at least one digit, an optional fraction of up to nine digits,
+/// and a closing `s`. A leading `+` is accepted and means the same as no sign.
+///
+/// # Failures
+/// Reports `InvalidSyntax` with the byte offset where the shape stopped matching, and `ExcessiveFraction` at the
+/// first digit that a nanosecond cannot hold. A magnitude too large for the representation is `InvalidSyntax` at
+/// the digit that overflowed, since the text is well formed and the value simply is not one.
+///
+/// @param text the text to read
+/// @returns the span, or why the text is not one
+/// @see https://rux-lang.dev/docs/api/time/parse-duration
+pub func ParseDuration(text: char8[..]) -> Result<Duration, TimeParseError> {
+    var at: uint = 0;
+    var negative = false;
+    if at < text.length && (text.data[at] == c8'-' || text.data[at] == c8'+') {
+        negative = text.data[at] == c8'-';
+        at = at + 1;
+    }
+
+    var whole: uint64 = 0;
+    var taken: uint = 0;
+    while at < text.length && text.data[at] >= c8'0' && text.data[at] <= c8'9' {
+        let digit = ((text.data[at] as uint32) - 0x30u32) as uint64;
+        // The magnitude of the most negative duration is 2^63, so that is the ceiling the digits are read against;
+        // whether the value actually fits is decided by the sign, below.
+        if whole > (9223372036854775808u64 - digit) / 10u64 {
+            return Result::Error<Duration, TimeParseError>(TimeParseError::InvalidSyntax(at));
+        }
+        whole = whole * 10u64 + digit;
+        taken = taken + 1;
+        at = at + 1;
+    }
+    if taken == 0u {
+        return Result::Error<Duration, TimeParseError>(TimeParseError::InvalidSyntax(at));
+    }
+
+    var fraction: uint32 = 0;
+    if at < text.length && text.data[at] == c8'.' {
+        at = at + 1;
+        let firstDigit = at;
+        var scale: uint32 = 100000000u32;
+        var digits: uint = 0;
+        while at < text.length && text.data[at] >= c8'0' && text.data[at] <= c8'9' {
+            if digits == 9u {
+                return Result::Error<Duration, TimeParseError>(TimeParseError::ExcessiveFraction(at));
+            }
+            fraction = fraction + (((text.data[at] as uint32) - 0x30u32) * scale);
+            scale = scale / 10u32;
+            digits = digits + 1;
+            at = at + 1;
+        }
+        if digits == 0u {
+            return Result::Error<Duration, TimeParseError>(TimeParseError::InvalidSyntax(firstDigit));
+        }
+    }
+
+    if at >= text.length || text.data[at] != c8's' {
+        return Result::Error<Duration, TimeParseError>(TimeParseError::InvalidSyntax(at));
+    }
+    at = at + 1;
+    if at != text.length {
+        return Result::Error<Duration, TimeParseError>(TimeParseError::InvalidSyntax(at));
+    }
+
+    // Back to the normalized representation, which is the inverse of what Magnitude does.
+    if !negative {
+        if whole > 9223372036854775807u64 {
+            return Result::Error<Duration, TimeParseError>(TimeParseError::InvalidSyntax(0));
+        }
+        return Result::Success<Duration, TimeParseError>(
+            Duration::FromSeconds(whole as int64).Plus(Duration::FromNanoseconds(fraction as int64))
+                .ValueOr(Duration::Zero()));
+    }
+    if fraction == 0u32 {
+        if whole > 9223372036854775808u64 {
+            return Result::Error<Duration, TimeParseError>(TimeParseError::InvalidSyntax(0));
+        }
+        return Result::Success<Duration, TimeParseError>(
+            Duration { seconds: (~whole + 1u64) as int64, nanoseconds: 0u32 });
+    }
+    if whole > 9223372036854775807u64 {
+        return Result::Error<Duration, TimeParseError>(TimeParseError::InvalidSyntax(0));
+    }
+    // -whole.fraction is stored as seconds = -(whole + 1), nanoseconds = 1e9 - fraction.
+    let seconds = (~(whole + 1u64) + 1u64) as int64;
+    return Result::Success<Duration, TimeParseError>(
+        Duration { seconds: seconds, nanoseconds: 1000000000u32 - fraction });
+}

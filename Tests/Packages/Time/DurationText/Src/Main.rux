@@ -1,0 +1,130 @@
+import Core::{ Assert, Option };
+import Text::{ BufferWriter, Display, FormatSpec, ParseFormatSpec, TextWriter };
+import Time::{ Duration, ParseDuration, TimeParseError };
+
+// A span as text, and back.
+//
+// The negative case is the whole reason this file is careful. A `Duration` normalizes to seconds plus a fraction in
+// [0, 1e9), so minus one and a half seconds is stored as seconds = -2 with a fraction of 0.5. An implementation
+// that prints the fields as they sit says "-2.5s" — wrong by two seconds, and plausible enough to survive review.
+// Every negative case below exists to catch exactly that.
+//
+// The extrema are the other half. The magnitude of the most negative duration has no positive counterpart in
+// int64, so computing it there wraps to itself; it is computed in uint64 instead, and the case at the bottom of
+// the range is what proves it.
+
+func Same(actual: char8[..], expected: char8[..]) -> bool {
+    if actual.length != expected.length { return false; }
+    var index: uint = 0;
+    while index < actual.length {
+        if actual.data[index] != expected.data[index] { return false; }
+        index = index + 1;
+    }
+    return true;
+}
+
+func Spec(text: char8[..]) -> FormatSpec {
+    var spec = FormatSpec::Plain();
+    Assert(ParseFormatSpec(text).TryIntoValue(@spec), "the spec parses");
+    return spec;
+}
+
+func Shown(value: Duration, spec: FormatSpec, expected: char8[..]) -> bool {
+    var storage: char8[64];
+    var writer = BufferWriter((@storage[0])[..64]);
+    let sink: &var TextWriter = writer;
+    let shown: Display = value;
+    if shown.WriteDisplay(sink, spec).IsError() { return false; }
+    return Same(writer.Written(), expected);
+}
+
+func Refused(value: Duration, spec: FormatSpec) -> bool {
+    var storage: char8[64];
+    var writer = BufferWriter((@storage[0])[..64]);
+    let sink: &var TextWriter = writer;
+    let shown: Display = value;
+    return shown.WriteDisplay(sink, spec).IsError();
+}
+
+// A span built from whole seconds and a nanosecond fraction added on, which is how a caller makes a fractional one.
+func Of(seconds: int64, nanoseconds: int64) -> Duration {
+    return Duration::FromSeconds(seconds).Plus(Duration::FromNanoseconds(nanoseconds)).ValueOr(Duration::Zero());
+}
+
+// Whether `text` parses back to exactly `expected`, comparing the normalized fields rather than the value.
+func ReadsAs(text: char8[..], expected: Duration) -> bool {
+    return match ParseDuration(text) {
+        .Success(parsed) => parsed.WholeSeconds() == expected.WholeSeconds() &&
+                            parsed.SubsecondNanoseconds() == expected.SubsecondNanoseconds(),
+        .Error(_) => false
+    };
+}
+
+func Main() -> int {
+    let plain = FormatSpec::Plain();
+
+    // Whole seconds carry no fraction at all.
+    Assert(Shown(Duration::Zero(), plain, "0s"), "zero is zero seconds, not nothing");
+    Assert(Shown(Duration::FromSeconds(1i64), plain, "1s"), "one second");
+    Assert(Shown(Duration::FromSeconds(90i64), plain, "90s"), "ninety seconds, not a minute and a half");
+    Assert(Shown(Duration::FromSeconds(-1i64), plain, "-1s"), "and a negative whole second");
+
+    // A fraction is written to the digits it has, trailing zeros trimmed.
+    Assert(Shown(Of(1i64, 500000000i64), plain, "1.5s"), "half a second is one digit");
+    Assert(Shown(Of(0i64, 250000000i64), plain, "0.25s"), "a quarter is two");
+    Assert(Shown(Of(0i64, 1i64), plain, "0.000000001s"), "and one nanosecond keeps its leading zeros");
+    Assert(Shown(Of(0i64, 123456789i64), plain, "0.123456789s"), "a full fraction keeps all nine");
+
+    // The negative fractional cases, which the normalized representation makes easy to get wrong.
+    Assert(Shown(Of(-1i64, -500000000i64), plain, "-1.5s"), "minus one and a half is not minus two and a half");
+    Assert(Shown(Of(0i64, -500000000i64), plain, "-0.5s"), "minus half a second keeps its zero whole part");
+    Assert(Shown(Of(0i64, -1i64), plain, "-0.000000001s"), "and minus one nanosecond");
+    Assert(Shown(Of(-2i64, -250000000i64), plain, "-2.25s"), "a larger negative magnitude");
+
+    // The stored fields really are what the comment claims, so the test is testing the hard case.
+    let negative = Of(-1i64, -500000000i64);
+    Assert(negative.WholeSeconds() == -2i64, "minus one and a half stores seconds as -2");
+    Assert(negative.SubsecondNanoseconds() == 500000000u32, "and a positive fraction of half a second");
+
+    // Precision names exactly that many digits and truncates.
+    Assert(Shown(Of(1i64, 250000000i64), Spec(".3"), "1.250s"), "a precision pads where trimming would not");
+    Assert(Shown(Of(1i64, 999999999i64), Spec(".1"), "1.9s"), "and truncates rather than rounding");
+    Assert(Shown(Of(1i64, 500000000i64), Spec(".0"), "1s"), "zero digits drops the fraction and its point");
+    Assert(Shown(Of(-1i64, -500000000i64), Spec(".3"), "-1.500s"), "a precision applies to a negative magnitude");
+    Assert(Refused(Of(1i64, 0i64), Spec(".10")), "a precision past nine is refused");
+
+    // The style names the same form; anything else is refused rather than ignored.
+    Assert(Shown(Of(1i64, 250000000i64), Spec("seconds"), "1.25s"), "seconds names the default rendering");
+    Assert(Shown(Of(1i64, 250000000i64), Spec(".3seconds"), "1.250s"), "and combines with a precision");
+    Assert(Refused(Of(1i64, 0i64), Spec("iso8601")), "a style from another domain is refused");
+
+    // The extrema, where the magnitude computation has to happen in uint64.
+    let top = Duration::FromSeconds(9223372036854775807i64);
+    Assert(Shown(top, plain, "9223372036854775807s"), "the largest whole span");
+    let bottom = Duration::FromSeconds(-9223372036854775808i64);
+    Assert(Shown(bottom, plain, "-9223372036854775808s"),
+           "and the smallest, whose magnitude does not fit an int64");
+
+    // Round trips: what Display writes, ParseDuration reads back to the same normalized value.
+    Assert(ReadsAs("0s", Duration::Zero()), "zero round-trips");
+    Assert(ReadsAs("1.5s", Of(1i64, 500000000i64)), "a positive fraction round-trips");
+    Assert(ReadsAs("-1.5s", Of(-1i64, -500000000i64)), "and a negative one");
+    Assert(ReadsAs("-0.5s", Of(0i64, -500000000i64)), "including one with a zero whole part");
+    Assert(ReadsAs("0.000000001s", Of(0i64, 1i64)), "and a single nanosecond");
+    Assert(ReadsAs("9223372036854775807s", top), "the top of the range round-trips");
+    Assert(ReadsAs("-9223372036854775808s", bottom), "and so does the bottom");
+
+    // A leading plus is accepted and means what no sign means.
+    Assert(ReadsAs("+1.5s", Of(1i64, 500000000i64)), "a leading plus is the same as none");
+
+    // What parsing refuses.
+    Assert(ParseDuration("1.5").IsError(), "a missing unit is refused");
+    Assert(ParseDuration("s").IsError(), "so is a unit with no digits");
+    Assert(ParseDuration("1.s").IsError(), "and a point with no fraction");
+    Assert(ParseDuration("1.5s ").IsError(), "and text after the unit");
+    Assert(ParseDuration("1.5m").IsError(), "and a unit this form does not have");
+    Assert(ParseDuration("").IsError(), "and nothing at all");
+    Assert(ParseDuration("1.0000000005s").IsError(), "a tenth fraction digit does not fit a nanosecond");
+    Assert(ParseDuration("99999999999999999999s").IsError(), "nor does a magnitude past the range");
+    return 0;
+}

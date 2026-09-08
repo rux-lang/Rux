@@ -1,0 +1,16 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "DurationText"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Time: duration presentation and parsing"
+
+[Dependencies]
+Core = { Path = "../../../../Packages/Core" }
+Text = { Path = "../../../../Packages/Text" }
+Time = { Path = "../../../../Packages/Time" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Time"
