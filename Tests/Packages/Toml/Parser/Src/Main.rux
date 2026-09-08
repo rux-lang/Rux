@@ -4,9 +4,9 @@
 // writer to work out which of the three they had broken.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert };
-import Text::{ String, StringView, TextError };
-import Toml::{ TomlKind, TomlParse, TomlParseError, TomlParseOutcome, TomlValue };
+import Core::{ Assert, Option };
+import Text::{ BufferWriter, Display, FormatSpec, String, StringView, TextError, TextWriter, WriteAscii };
+import Toml::{ TomlKind, TomlParse, TomlParseError, TomlParseOutcome, TomlScalarError, TomlValue };
 
 func View(bytes: char8[..]) -> StringView {
     return StringView::FromBytes(bytes).ValueOr(StringView());
@@ -23,6 +23,42 @@ func Refuses(allocator: Allocator, text: char8[..]) -> TomlParseError {
     var outcome = TomlParseOutcome();
     var value = TomlParse(allocator, text, @outcome);
     return outcome.error;
+}
+
+func Same(actual: char8[..], expected: char8[..]) -> bool {
+    if actual.length != expected.length { return false; }
+    var index: uint = 0;
+    while index < actual.length {
+        if actual.data[index] != expected.data[index] { return false; }
+        index = index + 1;
+    }
+    return true;
+}
+
+// Where a scalar refusal landed in the document, and what the scalar reader said, as one string:
+// `2:14 TomlScalarError::Malformed(6)`. One assertion covering the translation and the reason together.
+func ScalarRefusal(allocator: Allocator, text: char8[..], into: var char8[..]) -> uint {
+    var outcome = TomlParseOutcome();
+    var value = TomlParse(allocator, text, @outcome);
+    var writer = BufferWriter(into);
+    let sink: &var TextWriter = writer;
+    Assert(outcome.error == TomlParseError::BadValue, "the document is refused for its value");
+    let line: Display = outcome.line;
+    Assert(line.WriteDisplay(sink, FormatSpec::Plain()).IsSuccess(), "the line writes");
+    Assert(WriteAscii(sink, c8':').IsSuccess(), "a colon");
+    let column: Display = outcome.column;
+    Assert(column.WriteDisplay(sink, FormatSpec::Plain()).IsSuccess(), "the column");
+    Assert(WriteAscii(sink, c8' ').IsSuccess(), "a space");
+    var reason = TomlScalarError::Malformed(0u);
+    Assert(outcome.Scalar().TryIntoValue(@reason), "and the scalar reader's own reason, which a caller can read");
+    Assert(reason.WriteDebug(sink, FormatSpec::Plain()).IsSuccess(), "which renders");
+    return writer.Length();
+}
+
+func RefusedAt(allocator: Allocator, text: char8[..], expected: char8[..]) -> bool {
+    var storage: char8[96];
+    let length = ScalarRefusal(allocator, text, (@storage[0])[..96]);
+    return Same((@storage[0])[..length], expected);
 }
 
 func Main() -> int {
@@ -124,6 +160,26 @@ func Main() -> int {
     Assert(located.error == TomlParseError::DuplicateKey, "the duplicate is found");
     Assert(located.line == 3u, "on the line it is written on");
     Assert(partial.Find(View("b")) != null, "and what was read before it is still there to show");
+
+    // A bad scalar is reported at the character inside it, which takes two positions added together: the token's
+    // own place in the document, and the failure's place inside the token's text. Neither alone is any use — the
+    // token's place points at the value rather than at what is wrong with it, and the failure's place is an offset
+    // into a few characters nobody can find without the first.
+    //
+    // The token's place is also the *consumed* token's, not the lookahead's. A scalar has already been taken by
+    // the time its text is read, so reporting through the general stop, which reads the lookahead, put every bad
+    // number at whatever followed it — at the end of the document for the first case here, and a line late for the
+    // third.
+    Assert(RefusedAt(allocator, "port = 0b102", "1:12 TomlScalarError::Malformed(4)"),
+           "a digit the base does not have is reported at that digit, not at the end of the line");
+    Assert(RefusedAt(allocator, "port = 010", "1:8 TomlScalarError::Malformed(0)"),
+           "and a leading zero at the zero, which is where the value starts");
+    Assert(RefusedAt(allocator, "x = 1\nport = 0b1_0_2\ny = 2", "2:14 TomlScalarError::Malformed(6)"),
+           "on the line the value is written on, past the underscores as written");
+    Assert(RefusedAt(allocator, "when = 1979-02-30", "1:13 TomlScalarError::Malformed(5)"),
+           "a date the calendar has no day for is reported at its month");
+    Assert(RefusedAt(allocator, "big = 9223372036854775808", "1:7 TomlScalarError::OutOfRange(0)"),
+           "and a number too large is reported at its first character, since no one character is at fault");
 
     return 0;
 }

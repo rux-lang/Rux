@@ -17,6 +17,7 @@
 // else.
 
 import Allocator::Allocator;
+import Core::Option;
 import Collections::{ CollectionError, Vector };
 import Text::{ String, StringView, TextError };
 import Time::{ Date, TimeOfDay, UtcOffset };
@@ -88,8 +89,8 @@ pub struct TomlParseOutcome {
     pub error: TomlParseError;
     /// The lexer's reason, when `error` is `Lexical`.
     lexical: TomlLexError;
-    /// The scalar reader's reason, when `error` is `BadValue`.
-    scalar: TomlScalarError;
+    /// The scalar reader's own reason, when `error` is `BadValue`, positioned inside the scalar it came from.
+    scalar: Option<TomlScalarError>;
     /// Which line it stopped on, counting from one.
     pub line: uint;
     /// Which column, counting from one, in bytes.
@@ -104,12 +105,24 @@ extend TomlParseOutcome {
         return TomlParseOutcome {
             error: TomlParseError::None,
             lexical: TomlLexError::None,
-            scalar: TomlScalarError::None,
+            scalar: Option::None<TomlScalarError>(),
             line: 1,
             column: 1
         };
     }
 
+    /// The scalar reader's own reason, when a value was refused, or `None`.
+    ///
+    /// `error` says a value was bad; this says what was wrong with it and where inside it, which is the half a
+    /// caller needs to say anything useful about a configuration file. The failure's own offset is into the
+    /// scalar's text, while `line` and `column` already point at the character in the document — the two are the
+    /// same place said two ways, so a caller uses whichever suits what they are printing.
+    ///
+    /// @returns the scalar failure, positioned within its own text, or `None`
+    /// @see https://rux-lang.dev/docs/api/toml/parse-outcome/scalar
+    pub func Scalar(self: &TomlParseOutcome) -> Option<TomlScalarError> {
+        return self.scalar;
+    }
 }
 
 /// A parser over a document.
@@ -149,7 +162,7 @@ extend TomlParser {
             outcome: TomlParseOutcome {
                 error: TomlParseError::None,
                 lexical: TomlLexError::None,
-                scalar: TomlScalarError::None,
+                scalar: Option::None<TomlScalarError>(),
                 line: 1,
                 column: 1
             }
@@ -180,6 +193,36 @@ extend TomlParser {
         if reason == TomlParseError::Lexical {
             self.outcome.lexical = self.ahead.error;
         }
+    }
+
+    // A scalar failure knows where it is inside the scalar's own text; the token knows where the scalar is in the
+    // document. This is the one place the two are added, so a caller reading the line and column is pointed at the
+    // character rather than at the value that contains it.
+    //
+    // The position is the *token's*, not the lookahead's. `Stop` uses the lookahead because that is where a
+    // structural refusal is found, but a scalar has already been consumed by the time its text is read, so
+    // reporting through `Stop` alone put every bad number at the position of whatever followed it.
+    func RefuseScalar(self: &var TomlParser, token: TomlToken, reason: TomlScalarError) -> TomlValue {
+        if self.outcome.error == TomlParseError::None {
+            self.outcome.error = TomlParseError::BadValue;
+            self.outcome.scalar = Option::Some<TomlScalarError>(reason);
+            self.outcome.line = token.line;
+            // A scalar token is one line, so the offset moves the column and nothing else.
+            self.outcome.column = token.column + reason.Offset();
+        }
+        return TomlValue::Table(self.allocator);
+    }
+
+    // Whichever of the four shapes the text turned out to be, as the value that shape names.
+    func MomentValue(self: &var TomlParser, moment: TomlDateTime) -> TomlValue {
+        if moment.shape == TomlDateTimeShape::Offset {
+            return TomlValue::OffsetDateTime(self.allocator, moment.date, moment.time, moment.offset);
+        }
+        if moment.shape == TomlDateTimeShape::Local {
+            return TomlValue::LocalDateTime(self.allocator, moment.date, moment.time);
+        }
+        if moment.shape == TomlDateTimeShape::DateOnly { return TomlValue::LocalDate(self.allocator, moment.date); }
+        return TomlValue::LocalTime(self.allocator, moment.time);
     }
 
     func Advance(self: &var TomlParser) -> TomlToken {
@@ -221,39 +264,22 @@ extend TomlParser {
         }
         if token.kind == TomlTokenKind::Boolean { return TomlValue::Boolean(self.allocator, span.length == 4u); }
         if token.kind == TomlTokenKind::Integer {
-            var value = 0i64;
-            let failure = TomlParseInteger(span, @value);
-            if failure != TomlScalarError::None {
-                self.outcome.scalar = failure;
-                self.Stop(TomlParseError::BadValue);
-                return TomlValue::Table(self.allocator);
-            }
-            return TomlValue::Integer(self.allocator, value);
+            return match TomlParseInteger(span) {
+                .Success(value) => TomlValue::Integer(self.allocator, value),
+                .Error(reason) => self.RefuseScalar(token, reason)
+            };
         }
         if token.kind == TomlTokenKind::Float {
-            var value = 0.0;
-            let failure = TomlParseFloat(span, @value);
-            if failure != TomlScalarError::None {
-                self.outcome.scalar = failure;
-                self.Stop(TomlParseError::BadValue);
-                return TomlValue::Table(self.allocator);
-            }
-            return TomlValue::Float(self.allocator, value);
+            return match TomlParseFloat(span) {
+                .Success(value) => TomlValue::Float(self.allocator, value),
+                .Error(reason) => self.RefuseScalar(token, reason)
+            };
         }
         if token.kind == TomlTokenKind::DateTime {
-            var date = Date { year: 1970, month: 1u8, day: 1u8 };
-            var time = TimeOfDay { hour: 0u8, minute: 0u8, second: 0u8, nanosecond: 0u32 };
-            var offset = UtcOffset::Utc();
-            let shape = TomlParseDateTime(span, @date, @time, @offset);
-            if shape == TomlDateTimeShape::Offset {
-                return TomlValue::OffsetDateTime(self.allocator, date, time, offset);
-            }
-            if shape == TomlDateTimeShape::Local { return TomlValue::LocalDateTime(self.allocator, date, time); }
-            if shape == TomlDateTimeShape::DateOnly { return TomlValue::LocalDate(self.allocator, date); }
-            if shape == TomlDateTimeShape::TimeOnly { return TomlValue::LocalTime(self.allocator, time); }
-            self.outcome.scalar = TomlScalarError::Malformed;
-            self.Stop(TomlParseError::BadValue);
-            return TomlValue::Table(self.allocator);
+            return match TomlParseDateTime(span) {
+                .Success(moment) => self.MomentValue(moment),
+                .Error(reason) => self.RefuseScalar(token, reason)
+            };
         }
         if token.kind == TomlTokenKind::End {
             self.Stop(TomlParseError::Truncated);

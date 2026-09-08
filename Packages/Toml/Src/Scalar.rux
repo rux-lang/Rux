@@ -6,24 +6,109 @@
 // its point. None of that is decoration. `010` meaning eight to one reader and ten to another is how a port
 // number becomes the wrong port number, and TOML's answer is that it means neither — it is simply not a TOML
 // integer, and saying so is the job of this file.
+//
+// Each refusal says where. A scalar is short, so a reader given only "malformed" has to find the offending
+// character themselves — and the reader most often given one is a person looking at a configuration file that
+// stopped a program starting. The offsets are into the scalar's own text, counted in bytes from its first
+// character, and the parser adds the token's own position to reach a line and a column in the document.
+//
+// Getting that right takes one piece of bookkeeping: underscores are stripped before the digits are checked, so
+// an offset into the stripped text is not an offset into what the caller wrote. `Stripped` keeps, for each byte
+// it copies, where that byte came from, and every offset reported below is mapped back through it. `1_0_x0` must
+// point at the `x`, not at the fourth character of something the caller never saw.
 
-
+import Core::{ Result };
 import Format::{ ParseFloat64, ParseInt64, ParseError };
 import Math::{ PositiveInfinity64, QuietNan64 };
+import Text::{ Debug, Display, FormatError, FormatSpec, ParseFailure, RejectStyle, TextWriter, WriteAscii,
+               WriteBytes };
 import Time::{ Date, TimeOfDay, UtcOffset };
 
-/// Why a scalar could not be read.
+/// Why a scalar could not be read, and where in it.
 ///
-/// https://rux-lang.dev/docs/api/toml/scalar-error
-pub enum TomlScalarError: int32 {
-    /// Nothing went wrong.
-    None = 0,
-    /// The digits do not form a number of the shape TOML defines.
-    Malformed = 1,
-    /// The value is outside what an `int64` or the calendar can hold.
-    OutOfRange = 2,
-    /// The number has more characters than any TOML number needs.
-    TooLong = 3
+/// Failure-only: there is no case meaning nothing went wrong, because a scalar that read hands back its value
+/// instead. Every offset is a zero-based byte offset into the scalar's own text, as the caller wrote it —
+/// underscores included — and reachable through `Text::ParseFailure`.
+///
+/// @see https://rux-lang.dev/docs/api/toml/scalar-error
+pub variant TomlScalarError {
+    /// The text does not have the shape TOML defines, at the byte carried. That is the first character that
+    /// cannot be part of what was being read: a digit the base does not have, a point with nothing after it, an
+    /// underscore that is not between two digits, or the end of the text when it stops early.
+    Malformed(uint),
+    /// The value is outside what an `int64`, a `float64` or the calendar can hold. The offset is the start of the
+    /// text, since it is the whole value that does not fit rather than any one character of it.
+    OutOfRange(uint),
+    /// The text is longer than any TOML scalar needs. The offset is the first character past the bound.
+    TooLong(uint)
+}
+
+extend TomlScalarError : ParseFailure {
+    /// Where in the scalar's text the failure was found.
+    ///
+    /// Borrows the failure and leaves it untouched. Cannot fail; runs in constant time and allocates nothing.
+    ///
+    /// @returns the zero-based byte offset into the scalar's own text
+    /// @see https://rux-lang.dev/docs/api/toml/scalar-error/offset
+    pub func Offset(self: &TomlScalarError) -> uint {
+        return match self {
+            .Malformed(at) => at,
+            .OutOfRange(at) => at,
+            .TooLong(at) => at
+        };
+    }
+}
+
+extend TomlScalarError : Display {
+    /// Writes the description of why the scalar could not be read, without the position.
+    ///
+    /// The offset is a number a caller places where it makes sense for them — beside a line and column, or not at
+    /// all — so it is not written into the middle of a sentence here. `Debug` carries it.
+    ///
+    /// # Failures
+    /// Reports whatever the writer reported, and `UnsupportedRequest` for any style or precision.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the whole description was accepted
+    /// @see https://rux-lang.dev/docs/api/toml/scalar-error/write-display
+    pub func WriteDisplay(self: &TomlScalarError, writer: &var TextWriter,
+                          spec: FormatSpec) -> Result<Unit, FormatError> {
+        RejectStyle(spec)?;
+        if spec.HasPrecision() { return Result::Error<Unit, FormatError>(FormatError::UnsupportedRequest); }
+        return match self {
+            .Malformed(_) => WriteBytes(writer, "not the shape TOML defines"),
+            .OutOfRange(_) => WriteBytes(writer, "value outside what its type can hold"),
+            .TooLong(_) => WriteBytes(writer, "longer than any TOML scalar needs")
+        };
+    }
+}
+
+extend TomlScalarError : Debug {
+    /// Names the case and its position: `TomlScalarError::Malformed(3)`.
+    ///
+    /// # Failures
+    /// Reports whatever the writer reported, and `UnsupportedRequest` for any style or precision.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the whole name was accepted
+    /// @see https://rux-lang.dev/docs/api/toml/scalar-error/write-debug
+    pub func WriteDebug(self: &TomlScalarError, writer: &var TextWriter,
+                        spec: FormatSpec) -> Result<Unit, FormatError> {
+        RejectStyle(spec)?;
+        if spec.HasPrecision() { return Result::Error<Unit, FormatError>(FormatError::UnsupportedRequest); }
+        WriteBytes(writer, "TomlScalarError::")?;
+        match self {
+            .Malformed(_) => WriteBytes(writer, "Malformed")?,
+            .OutOfRange(_) => WriteBytes(writer, "OutOfRange")?,
+            .TooLong(_) => WriteBytes(writer, "TooLong")?
+        }
+        WriteAscii(writer, c8'(')?;
+        let at: Display = self.Offset();
+        at.WriteDisplay(writer, FormatSpec::Plain())?;
+        return WriteAscii(writer, c8')');
+    }
 }
 
 // The longest number TOML can spell that this will accept: sixty-four binary digits, a prefix, a sign and a
@@ -31,23 +116,48 @@ pub enum TomlScalarError: int32 {
 // document that was going to parse.
 const ScalarCapacity: uint = 160;
 
+// The digits with underscores removed, and where each of them came from, so an offset found in the stripped text
+// can be reported against the text the caller actually wrote.
+struct Stripped {
+    digits: char8[160];
+    origin: uint[160];
+    length: uint;
+    // How long the original was, which is where an offset at the end of the digits points.
+    source: uint;
+}
+
+extend Stripped {
+    // The byte of the original text that stripped byte `at` came from. At the end of the digits, the end of the
+    // original — which is where "it stopped early" points.
+    func Source(self: &Stripped, at: uint) -> uint {
+        if at >= self.length { return self.source; }
+        return self.origin[at];
+    }
+}
+
 // Copies `text` into `into`, dropping underscores and refusing any that is not surrounded by digits of the base.
-func StripUnderscores(text: char8[..], into: var char8[..], length: *var uint) -> bool {
-    *length = 0u;
-    if text.length > into.length { return false; }
+// A refused underscore reports its own position in the original, since that is the character at fault.
+func StripUnderscores(text: char8[..], into: *var Stripped, at: *var uint) -> bool {
+    into.length = 0u;
+    into.source = text.length;
     var index: uint = 0;
     while index < text.length {
         let c = text.data[index] as uint8;
         if c == 0x5Fu8 {
-            if index == 0u || index + 1u == text.length { return false; }
+            if index == 0u || index + 1u == text.length {
+                *at = index;
+                return false;
+            }
             if !IsBaseDigit(text.data[index - 1u] as uint8) || !IsBaseDigit(text.data[index + 1u] as uint8) {
+                *at = index;
                 return false;
             }
             index = index + 1u;
             continue;
         }
-        into.data[*length] = text.data[index];
-        *length = *length + 1u;
+        into.digits[into.length] = text.data[index];
+        into.origin[into.length] = index;
+        into.length = into.length + 1u;
         index = index + 1u;
     }
     return true;
@@ -64,15 +174,25 @@ func IsBaseDigit(c: uint8) -> bool {
 /// and TOML declines to pick: it is not an integer at all. A sign is refused on a based integer for the same
 /// reason — the grammar does not offer one, so accepting it would be inventing a dialect.
 ///
-/// https://rux-lang.dev/docs/api/toml/parse-integer
-pub func TomlParseInteger(text: char8[..], result: *var int64) -> TomlScalarError {
-    if text.length == 0u { return TomlScalarError::Malformed; }
-    var storage: char8[160];
-    let buffer = (@storage[0])[..ScalarCapacity];
-    var length: uint = 0;
-    if text.length > ScalarCapacity { return TomlScalarError::TooLong; }
-    if !StripUnderscores(text, buffer, @length) { return TomlScalarError::Malformed; }
-    let digits = (@storage[0])[..length];
+/// # Failures
+/// `Malformed` at the first character that cannot be part of the integer, `TooLong` past the length bound, and
+/// `OutOfRange` at the start when the digits are a number `int64` cannot hold. Every offset is into `text` as
+/// written, underscores included.
+///
+/// @param text the scalar's own bytes
+/// @returns the integer, or why it could not be read and where
+/// @see https://rux-lang.dev/docs/api/toml/parse-integer
+pub func TomlParseInteger(text: char8[..]) -> Result<int64, TomlScalarError> {
+    if text.length == 0u { return Result::Error<int64, TomlScalarError>(TomlScalarError::Malformed(0u)); }
+    if text.length > ScalarCapacity {
+        return Result::Error<int64, TomlScalarError>(TomlScalarError::TooLong(ScalarCapacity));
+    }
+    var stripped = Stripped { digits: [c8'0'; 160], origin: [0u; 160], length: 0, source: 0 };
+    var badUnderscore: uint = 0;
+    if !StripUnderscores(text, @stripped, @badUnderscore) {
+        return Result::Error<int64, TomlScalarError>(TomlScalarError::Malformed(badUnderscore));
+    }
+    let digits = (@stripped.digits[0])[..stripped.length];
     var start: uint = 0;
     var signed = false;
     if digits.length > 0u {
@@ -82,27 +202,40 @@ pub func TomlParseInteger(text: char8[..], result: *var int64) -> TomlScalarErro
             start = 1u;
         }
     }
-    if start >= digits.length { return TomlScalarError::Malformed; }
+    if start >= digits.length {
+        return Result::Error<int64, TomlScalarError>(TomlScalarError::Malformed(stripped.Source(start)));
+    }
     var based = false;
     if digits.length - start > 1u && (digits.data[start] as uint8) == 0x30u8 {
         let mark = digits.data[start + 1u] as uint8;
         based = mark == 0x78u8 || mark == 0x6Fu8 || mark == 0x62u8;
-        if based && signed { return TomlScalarError::Malformed; }
-        // A leading zero is only ever a base prefix; `010` is not a TOML integer in any base.
-        if !based { return TomlScalarError::Malformed; }
+        // A sign on a based integer is a dialect the grammar does not offer; the sign is the character at fault.
+        if based && signed {
+            return Result::Error<int64, TomlScalarError>(TomlScalarError::Malformed(stripped.Source(0u)));
+        }
+        // A leading zero is only ever a base prefix; `010` is not a TOML integer in any base, and the zero is
+        // where a reader has to look.
+        if !based {
+            return Result::Error<int64, TomlScalarError>(TomlScalarError::Malformed(stripped.Source(start)));
+        }
     }
     var index = based ? start + 2u : start;
-    if index >= digits.length { return TomlScalarError::Malformed; }
+    if index >= digits.length {
+        return Result::Error<int64, TomlScalarError>(TomlScalarError::Malformed(stripped.Source(index)));
+    }
     let radix = based ? BaseOf(digits.data[start + 1u] as uint8) : 10u8;
     while index < digits.length {
-        if !DigitFits(digits.data[index] as uint8, radix) { return TomlScalarError::Malformed; }
+        if !DigitFits(digits.data[index] as uint8, radix) {
+            return Result::Error<int64, TomlScalarError>(TomlScalarError::Malformed(stripped.Source(index)));
+        }
         index = index + 1u;
     }
     let parsed = ParseInt64(digits);
     var failure = ParseError::Empty;
-    if parsed.TryIntoError(@failure) { return TomlScalarError::OutOfRange; }
-    *result = parsed.ValueOr(0i64);
-    return TomlScalarError::None;
+    if parsed.TryIntoError(@failure) {
+        return Result::Error<int64, TomlScalarError>(TomlScalarError::OutOfRange(0u));
+    }
+    return Result::Success<int64, TomlScalarError>(parsed.ValueOr(0i64));
 }
 
 // The base a prefix letter names.
@@ -127,15 +260,25 @@ func DigitFits(c: uint8, radix: uint8) -> bool {
 /// A point needs a digit on either side of it, which is what refuses `.7` and `7.` — both of which some readers
 /// accept and some do not, so a document containing one means different things in different places.
 ///
-/// https://rux-lang.dev/docs/api/toml/parse-float
-pub func TomlParseFloat(text: char8[..], result: *var float64) -> TomlScalarError {
-    if text.length == 0u { return TomlScalarError::Malformed; }
-    if text.length > ScalarCapacity { return TomlScalarError::TooLong; }
-    var storage: char8[160];
-    let buffer = (@storage[0])[..ScalarCapacity];
-    var length: uint = 0;
-    if !StripUnderscores(text, buffer, @length) { return TomlScalarError::Malformed; }
-    let digits = (@storage[0])[..length];
+/// # Failures
+/// `Malformed` at the first character that cannot be part of the float, `TooLong` past the length bound, and
+/// `OutOfRange` at the start when the digits are a number `float64` cannot hold. Every offset is into `text` as
+/// written, underscores included.
+///
+/// @param text the scalar's own bytes
+/// @returns the float, or why it could not be read and where
+/// @see https://rux-lang.dev/docs/api/toml/parse-float
+pub func TomlParseFloat(text: char8[..]) -> Result<float64, TomlScalarError> {
+    if text.length == 0u { return Result::Error<float64, TomlScalarError>(TomlScalarError::Malformed(0u)); }
+    if text.length > ScalarCapacity {
+        return Result::Error<float64, TomlScalarError>(TomlScalarError::TooLong(ScalarCapacity));
+    }
+    var stripped = Stripped { digits: [c8'0'; 160], origin: [0u; 160], length: 0, source: 0 };
+    var badUnderscore: uint = 0;
+    if !StripUnderscores(text, @stripped, @badUnderscore) {
+        return Result::Error<float64, TomlScalarError>(TomlScalarError::Malformed(badUnderscore));
+    }
+    let digits = (@stripped.digits[0])[..stripped.length];
     var start: uint = 0;
     var negative = false;
     let sign = digits.data[0] as uint8;
@@ -143,24 +286,30 @@ pub func TomlParseFloat(text: char8[..], result: *var float64) -> TomlScalarErro
         negative = sign == 0x2Du8;
         start = 1u;
     }
-    if start >= digits.length { return TomlScalarError::Malformed; }
+    if start >= digits.length {
+        return Result::Error<float64, TomlScalarError>(TomlScalarError::Malformed(stripped.Source(start)));
+    }
     // The three named values, which have no digits to check.
     if MatchesWord(digits, start, "inf") {
-        *result = negative ? -PositiveInfinity64() : PositiveInfinity64();
-        return TomlScalarError::None;
+        return Result::Success<float64, TomlScalarError>(negative ? -PositiveInfinity64() : PositiveInfinity64());
     }
     if MatchesWord(digits, start, "nan") {
         // The sign of a NaN is not a value, so `-nan` is the same NaN as `nan` — which is what TOML means when
         // it says the sign is allowed but carries no information.
-        *result = QuietNan64();
-        return TomlScalarError::None;
+        return Result::Success<float64, TomlScalarError>(QuietNan64());
     }
-    if !CheckFloatShape(digits, start) { return TomlScalarError::Malformed; }
+    var shapeAt: uint = 0;
+    if !CheckFloatShape(digits, start, @shapeAt) {
+        return Result::Error<float64, TomlScalarError>(TomlScalarError::Malformed(stripped.Source(shapeAt)));
+    }
     let parsed = ParseFloat64(digits);
     var failure = ParseError::Empty;
-    if parsed.TryIntoError(@failure) { return TomlScalarError::Malformed; }
-    *result = parsed.ValueOr(0.0);
-    return TomlScalarError::None;
+    if parsed.TryIntoError(@failure) {
+        // The shape is a float's; what the reader refused is the magnitude, which is the whole value rather than
+        // any character of it.
+        return Result::Error<float64, TomlScalarError>(TomlScalarError::OutOfRange(0u));
+    }
+    return Result::Success<float64, TomlScalarError>(parsed.ValueOr(0.0));
 }
 
 // Whether `digits` from `start` is exactly `word`.
@@ -176,15 +325,20 @@ func MatchesWord(digits: char8[..], start: uint, word: char8[..]) -> bool {
 
 // TOML's float shape: digits, optionally a point with digits after it, optionally an exponent with digits after
 // its own optional sign. A leading zero is allowed only as the whole integer part, exactly as for an integer.
-func CheckFloatShape(digits: char8[..], start: uint) -> bool {
+func CheckFloatShape(digits: char8[..], start: uint, at: *var uint) -> bool {
     var index = start;
     var whole: uint = 0;
     while index < digits.length && IsDecimal(digits.data[index] as uint8) {
         whole = whole + 1u;
         index = index + 1u;
     }
+    *at = index;
     if whole == 0u { return false; }
-    if whole > 1u && (digits.data[start] as uint8) == 0x30u8 { return false; }
+    if whole > 1u && (digits.data[start] as uint8) == 0x30u8 {
+        // The leading zero is the character at fault, not wherever the digits happened to stop.
+        *at = start;
+        return false;
+    }
     var fraction = false;
     if index < digits.length && (digits.data[index] as uint8) == 0x2Eu8 {
         index = index + 1u;
@@ -193,12 +347,14 @@ func CheckFloatShape(digits: char8[..], start: uint) -> bool {
             after = after + 1u;
             index = index + 1u;
         }
+        *at = index;
         if after == 0u { return false; }
         fraction = true;
     }
     var exponent = false;
     if index < digits.length {
         let mark = digits.data[index] as uint8;
+        *at = index;
         if mark != 0x65u8 && mark != 0x45u8 { return false; }
         index = index + 1u;
         if index < digits.length {
@@ -212,10 +368,12 @@ func CheckFloatShape(digits: char8[..], start: uint) -> bool {
             after = after + 1u;
             index = index + 1u;
         }
+        *at = index;
         if after == 0u { return false; }
         exponent = true;
     }
     // Without one or the other it is an integer, and the caller has already decided which it is reading.
+    *at = index;
     return index == digits.length && (fraction || exponent);
 }
 
@@ -225,10 +383,11 @@ func IsDecimal(c: uint8) -> bool {
 
 /// Which of the four date-time shapes a token turned out to be.
 ///
-/// https://rux-lang.dev/docs/api/toml/date-time-shape
+/// There is no case for "not a date-time": text that is none of the four is a failure with a position, not a
+/// fifth shape a caller has to remember to check for before reading the fields beside it.
+///
+/// @see https://rux-lang.dev/docs/api/toml/date-time-shape
 pub enum TomlDateTimeShape: int32 {
-    /// The text is not a date-time at all.
-    NotDateTime = 0,
     /// A date and a time with an offset, which names a moment.
     Offset = 1,
     /// A date and a time with no offset, which names a wall clock reading.
@@ -239,6 +398,24 @@ pub enum TomlDateTimeShape: int32 {
     TimeOnly = 4
 }
 
+/// A date-time as TOML writes it: which of the four shapes it is, and the parts that shape carries.
+///
+/// The parts that the shape does not carry are present and meaningless — a `DateOnly` has a time of midnight
+/// because the fields have to hold something — so `shape` is what decides which of them to read. That is why the
+/// shape travels with the value rather than being returned beside it.
+///
+/// @see https://rux-lang.dev/docs/api/toml/date-time
+pub struct TomlDateTime {
+    /// Which of the four forms the text was.
+    pub shape: TomlDateTimeShape;
+    /// The date, for every shape but `TimeOnly`.
+    pub date: Date;
+    /// The time, for every shape but `DateOnly`.
+    pub time: TimeOfDay;
+    /// The offset, for `Offset` alone. UTC otherwise, which means nothing there.
+    pub offset: UtcOffset;
+}
+
 /// Reads any of TOML's four date-time forms, reporting which one it was.
 ///
 /// The four are genuinely different things and the difference matters: an offset date-time names a moment, and a
@@ -246,40 +423,90 @@ pub enum TomlDateTimeShape: int32 {
 /// them by assuming UTC is how a meeting ends up an hour out, so nothing here supplies an offset that the text
 /// did not.
 ///
-/// https://rux-lang.dev/docs/api/toml/parse-date-time
-pub func TomlParseDateTime(text: char8[..], date: *var Date, time: *var TimeOfDay,
-                       offset: *var UtcOffset) -> TomlDateTimeShape {
-    *offset = UtcOffset::Utc();
+/// # Failures
+/// `Malformed` at the byte where the text stops being one of the four forms — the separator that is not one, the
+/// field the calendar rejects, or the end of the text when it stops early. The calendar's own refusals arrive
+/// here too: the thirty-first of February is four correct digit pairs and not a date.
+///
+/// @param text the scalar's own bytes
+/// @returns the date-time and which shape it is, or why it could not be read and where
+/// @see https://rux-lang.dev/docs/api/toml/parse-date-time
+pub func TomlParseDateTime(text: char8[..]) -> Result<TomlDateTime, TomlScalarError> {
+    var built = TomlDateTime {
+        shape: TomlDateTimeShape::DateOnly,
+        date: Date { year: 1970, month: 1u8, day: 1u8 },
+        time: TimeOfDay { hour: 0u8, minute: 0u8, second: 0u8, nanosecond: 0u32 },
+        offset: UtcOffset::Utc()
+    };
+    var at: uint = 0;
     if text.length >= 5u && (text.data[2] as uint8) == 0x3Au8 {
         var consumed: uint = 0;
-        if !ReadTime(text, 0u, time, @consumed) || consumed != text.length { return TomlDateTimeShape::NotDateTime; }
-        return TomlDateTimeShape::TimeOnly;
+        if !ReadTime(text, 0u, @built.time, @consumed, @at) {
+            return Result::Error<TomlDateTime, TomlScalarError>(TomlScalarError::Malformed(at));
+        }
+        if consumed != text.length {
+            return Result::Error<TomlDateTime, TomlScalarError>(TomlScalarError::Malformed(consumed));
+        }
+        built.shape = TomlDateTimeShape::TimeOnly;
+        return Result::Success<TomlDateTime, TomlScalarError>(built);
     }
-    if text.length < 10u { return TomlDateTimeShape::NotDateTime; }
-    if !ReadDate(text, 0u, date) { return TomlDateTimeShape::NotDateTime; }
-    if text.length == 10u { return TomlDateTimeShape::DateOnly; }
+    if text.length < 10u {
+        return Result::Error<TomlDateTime, TomlScalarError>(TomlScalarError::Malformed(text.length));
+    }
+    if !ReadDate(text, 0u, @built.date, @at) {
+        return Result::Error<TomlDateTime, TomlScalarError>(TomlScalarError::Malformed(at));
+    }
+    if text.length == 10u { return Result::Success<TomlDateTime, TomlScalarError>(built); }
     let separator = text.data[10] as uint8;
-    if separator != 0x54u8 && separator != 0x74u8 && separator != 0x20u8 { return TomlDateTimeShape::NotDateTime; }
+    if separator != 0x54u8 && separator != 0x74u8 && separator != 0x20u8 {
+        return Result::Error<TomlDateTime, TomlScalarError>(TomlScalarError::Malformed(10u));
+    }
     var consumed: uint = 0;
-    if !ReadTime(text, 11u, time, @consumed) { return TomlDateTimeShape::NotDateTime; }
-    if consumed == text.length { return TomlDateTimeShape::Local; }
-    if !ReadOffset(text, consumed, offset) { return TomlDateTimeShape::NotDateTime; }
-    return TomlDateTimeShape::Offset;
+    if !ReadTime(text, 11u, @built.time, @consumed, @at) {
+        return Result::Error<TomlDateTime, TomlScalarError>(TomlScalarError::Malformed(at));
+    }
+    if consumed == text.length {
+        built.shape = TomlDateTimeShape::Local;
+        return Result::Success<TomlDateTime, TomlScalarError>(built);
+    }
+    if !ReadOffset(text, consumed, @built.offset, @at) {
+        return Result::Error<TomlDateTime, TomlScalarError>(TomlScalarError::Malformed(at));
+    }
+    built.shape = TomlDateTimeShape::Offset;
+    return Result::Success<TomlDateTime, TomlScalarError>(built);
 }
 
 // `YYYY-MM-DD` at `at`, validated by the calendar rather than by digit ranges: the thirty-first of February is
 // four correct digit pairs and not a date.
-func ReadDate(text: char8[..], at: uint, date: *var Date) -> bool {
-    if at + 10u > text.length { return false; }
+func ReadDate(text: char8[..], at: uint, date: *var Date, stopped: *var uint) -> bool {
+    *stopped = at;
+    if at + 10u > text.length {
+        *stopped = text.length;
+        return false;
+    }
     var year: uint32 = 0;
     var month: uint32 = 0;
     var day: uint32 = 0;
-    if !Digits(text, at, 4u, @year) || !Digits(text, at + 5u, 2u, @month) || !Digits(text, at + 8u, 2u, @day) {
+    if !Digits(text, at, 4u, @year) { return false; }
+    *stopped = at + 5u;
+    if !Digits(text, at + 5u, 2u, @month) { return false; }
+    *stopped = at + 8u;
+    if !Digits(text, at + 8u, 2u, @day) { return false; }
+    if (text.data[at + 4u] as uint8) != 0x2Du8 {
+        *stopped = at + 4u;
         return false;
     }
-    if (text.data[at + 4u] as uint8) != 0x2Du8 || (text.data[at + 7u] as uint8) != 0x2Du8 { return false; }
+    if (text.data[at + 7u] as uint8) != 0x2Du8 {
+        *stopped = at + 7u;
+        return false;
+    }
     let made = Date::New(year as int32, month as uint8, day as uint8);
-    if made.IsNone() { return false; }
+    if made.IsNone() {
+        // Four correct digit pairs that name no day. The month is where a reader has to look, since that is what
+        // decides how many days there are.
+        *stopped = at + 5u;
+        return false;
+    }
     *date = made.ValueOr(Date { year: 1970, month: 1u8, day: 1u8 });
     return true;
 }
@@ -288,15 +515,26 @@ func ReadDate(text: char8[..], at: uint, date: *var Date) -> bool {
 //
 // TOML 1.1 lets the seconds be left off, which is the shape a person writes when they mean a time of day rather
 // than an instant. They are read as zero, since that is what the shorter text names.
-func ReadTime(text: char8[..], at: uint, time: *var TimeOfDay, consumed: *var uint) -> bool {
-    if at + 5u > text.length { return false; }
+func ReadTime(text: char8[..], at: uint, time: *var TimeOfDay, consumed: *var uint,
+              stopped: *var uint) -> bool {
+    *stopped = at;
+    if at + 5u > text.length {
+        *stopped = text.length;
+        return false;
+    }
     var hour: uint32 = 0;
     var minute: uint32 = 0;
     var second: uint32 = 0;
-    if !Digits(text, at, 2u, @hour) || !Digits(text, at + 3u, 2u, @minute) { return false; }
-    if (text.data[at + 2u] as uint8) != 0x3Au8 { return false; }
+    if !Digits(text, at, 2u, @hour) { return false; }
+    *stopped = at + 3u;
+    if !Digits(text, at + 3u, 2u, @minute) { return false; }
+    if (text.data[at + 2u] as uint8) != 0x3Au8 {
+        *stopped = at + 2u;
+        return false;
+    }
     var index = at + 5u;
     if index < text.length && (text.data[index] as uint8) == 0x3Au8 {
+        *stopped = index + 1u;
         if !Digits(text, index + 1u, 2u, @second) { return false; }
         index = index + 3u;
     }
@@ -315,7 +553,10 @@ func ReadTime(text: char8[..], at: uint, time: *var TimeOfDay, consumed: *var ui
             place = place + 1u;
             index = index + 1u;
         }
-        if place == 0u { return false; }
+        if place == 0u {
+            *stopped = index;
+            return false;
+        }
     }
     // Second sixty is a leap second, which the calendar does not represent; it folds to the last nanosecond of
     // fifty-nine, the same policy `Time` states for RFC 3339.
@@ -324,25 +565,39 @@ func ReadTime(text: char8[..], at: uint, time: *var TimeOfDay, consumed: *var ui
         nanosecond = 999999999u32;
     }
     let made = TimeOfDay::New(hour as uint8, minute as uint8, second as uint8, nanosecond);
-    if made.IsNone() { return false; }
+    if made.IsNone() {
+        *stopped = at;
+        return false;
+    }
     *time = made.ValueOr(TimeOfDay { hour: 0u8, minute: 0u8, second: 0u8, nanosecond: 0u32 });
     *consumed = index;
     return true;
 }
 
 // `Z`, or `+HH:MM` and its negative.
-func ReadOffset(text: char8[..], at: uint, offset: *var UtcOffset) -> bool {
+func ReadOffset(text: char8[..], at: uint, offset: *var UtcOffset, stopped: *var uint) -> bool {
+    *stopped = at;
     let mark = text.data[at] as uint8;
     if mark == 0x5Au8 || mark == 0x7Au8 {
         *offset = UtcOffset::Utc();
+        *stopped = at + 1u;
         return at + 1u == text.length;
     }
     if mark != 0x2Bu8 && mark != 0x2Du8 { return false; }
-    if at + 6u != text.length { return false; }
+    if at + 6u != text.length {
+        *stopped = text.length;
+        return false;
+    }
     var hours: uint32 = 0;
     var minutes: uint32 = 0;
-    if !Digits(text, at + 1u, 2u, @hours) || !Digits(text, at + 4u, 2u, @minutes) { return false; }
-    if (text.data[at + 3u] as uint8) != 0x3Au8 { return false; }
+    *stopped = at + 1u;
+    if !Digits(text, at + 1u, 2u, @hours) { return false; }
+    *stopped = at + 4u;
+    if !Digits(text, at + 4u, 2u, @minutes) { return false; }
+    if (text.data[at + 3u] as uint8) != 0x3Au8 {
+        *stopped = at + 3u;
+        return false;
+    }
     var signedHours = hours as int32;
     var signedMinutes = minutes as int32;
     if mark == 0x2Du8 {
@@ -350,7 +605,10 @@ func ReadOffset(text: char8[..], at: uint, offset: *var UtcOffset) -> bool {
         signedMinutes = -signedMinutes;
     }
     let made = UtcOffset::Of(signedHours, signedMinutes);
-    if made.IsNone() { return false; }
+    if made.IsNone() {
+        *stopped = at + 1u;
+        return false;
+    }
     *offset = made.ValueOr(UtcOffset::Utc());
     return true;
 }

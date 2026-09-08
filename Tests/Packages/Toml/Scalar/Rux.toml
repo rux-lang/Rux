@@ -9,6 +9,7 @@ Description = "Package test for Toml: integers in four bases, floats, and the fo
 
 [Dependencies]
 Core = { Path = "../../../../Packages/Core" }
+Text = { Path = "../../../../Packages/Text" }
 Time = { Path = "../../../../Packages/Time" }
 Toml = { Path = "../../../../Packages/Toml" }
 

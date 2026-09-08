@@ -1297,9 +1297,6 @@ missing-param|Toml/Src/Lexer.rux|func|TomlDecodeText|45188c0fe99b0b78
 missing-param|Toml/Src/Lexer.rux|func|TomlLexer|8abf7f2e65d431c0
 missing-param|Toml/Src/Parser.rux|func|TomlParser|e2acc61acd2c84d8
 missing-param|Toml/Src/Parser.rux|func|TomlParse|2e67c88b72ef1e79
-missing-param|Toml/Src/Scalar.rux|func|TomlParseDateTime|74899598c09574e5
-missing-param|Toml/Src/Scalar.rux|func|TomlParseFloat|5354c6b4d2f4f2d2
-missing-param|Toml/Src/Scalar.rux|func|TomlParseInteger|16b8f65798b9cae5
 missing-param|Toml/Src/Value.rux|func|Array|79eafced41340870
 missing-param|Toml/Src/Value.rux|func|AsBoolean|19466a4de74c5ebc
 missing-param|Toml/Src/Value.rux|func|AsDate|2e31ccb734a83e80
@@ -2443,9 +2440,6 @@ missing-returns|Toml/Src/Parser.rux|func|TomlParseOutcome|d655d296f6306acd
 missing-returns|Toml/Src/Parser.rux|func|TomlParser|e2acc61acd2c84d8
 missing-returns|Toml/Src/Parser.rux|func|TomlParse|2e67c88b72ef1e79
 missing-returns|Toml/Src/Parser.rux|func|Unlimited|691687b3b9fad026
-missing-returns|Toml/Src/Scalar.rux|func|TomlParseDateTime|74899598c09574e5
-missing-returns|Toml/Src/Scalar.rux|func|TomlParseFloat|5354c6b4d2f4f2d2
-missing-returns|Toml/Src/Scalar.rux|func|TomlParseInteger|16b8f65798b9cae5
 missing-returns|Toml/Src/Value.rux|func|Array|79eafced41340870
 missing-returns|Toml/Src/Value.rux|func|AsBoolean|19466a4de74c5ebc
 missing-returns|Toml/Src/Value.rux|func|AsDate|2e31ccb734a83e80
@@ -4327,11 +4321,6 @@ missing-see|Toml/Src/Parser.rux|func|Unlimited|691687b3b9fad026
 missing-see|Toml/Src/Parser.rux|struct|TomlLimits|0aa7609b056b895d
 missing-see|Toml/Src/Parser.rux|struct|TomlParseOutcome|be8d62f1024a6274
 missing-see|Toml/Src/Parser.rux|struct|TomlParser|e1a1609e31d43199
-missing-see|Toml/Src/Scalar.rux|enum|TomlDateTimeShape|52100b183445c154
-missing-see|Toml/Src/Scalar.rux|enum|TomlScalarError|a797b5670ac3dd10
-missing-see|Toml/Src/Scalar.rux|func|TomlParseDateTime|74899598c09574e5
-missing-see|Toml/Src/Scalar.rux|func|TomlParseFloat|5354c6b4d2f4f2d2
-missing-see|Toml/Src/Scalar.rux|func|TomlParseInteger|16b8f65798b9cae5
 missing-see|Toml/Src/Value.rux|enum|TomlKind|6f508ece3fe88c8a
 missing-see|Toml/Src/Value.rux|func|Array|79eafced41340870
 missing-see|Toml/Src/Value.rux|func|AsBoolean|19466a4de74c5ebc
