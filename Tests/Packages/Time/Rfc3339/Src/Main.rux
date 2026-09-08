@@ -1,110 +1,147 @@
+import Core::{ Assert, Option };
+import Text::{ BufferWriter, Display, FormatSpec, TextWriter };
+import Time::{ Date, DateTime, OffsetDateTime, ParseDate, ParseDateTime, ParseRfc3339, ParseTimeOfDay,
+               TimeOfDay, TimeParseError, UtcOffset };
 
-import Core::{ Assert };
-import Time::{ Date, DateTime, FormatRfc3339, ParseRfc3339, TimeOfDay, UtcOffset };
+// Reading a moment out of text, and saying where the text went wrong.
+//
+// The parsers answer a `Result` now rather than a bool through output slots, so the interesting half of this file
+// is the failures: which category a mistake lands in, and which byte it points at. A caller that cannot tell a typo
+// from a February the thirtieth cannot report either usefully, and one that cannot point at a character makes its
+// user re-read their own input to guess.
+//
+// The categories are the ones a caller acts on differently. A malformed shape is the writer's mistake. A month of
+// 13, a day the month does not have, and an hour of 24 are well-formed text naming something that does not exist,
+// which is usually a different bug. An excessive fraction and an impossible offset are fields that parsed and then
+// would not fit.
 
-// The text boundary of time, both directions: the strict shape parses, every near-miss of it is refused, the
-// formatter never writes what the parser would not read, and the leap second folds exactly as the module says --
-// accepted going in, never produced coming out.
-
-func Parses(text: char8[..]) -> bool {
-    var dateTime = DateTime { date: Date::FromEpochDays(0i64), time: TimeOfDay::Midnight() };
-    var offset = UtcOffset::Utc();
-    return ParseRfc3339(text, @dateTime, @offset);
+// Which failure a result carries, as a small code, so a check names the reason it expects rather than only that
+// something failed: 0 success, 1 InvalidSyntax, 2 InvalidMonth, 3 NonexistentDay, 4 InvalidTime,
+// 5 ExcessiveFraction, 6 InvalidOffset.
+func CodeOf(error: &TimeParseError) -> int {
+    return match error {
+        .InvalidSyntax(_) => 1,
+        .InvalidMonth(_) => 2,
+        .NonexistentDay(_) => 3,
+        .InvalidTime(_) => 4,
+        .ExcessiveFraction(_) => 5,
+        .InvalidOffset(_) => 6
+    };
 }
 
-func Renders(dateTime: DateTime, offset: UtcOffset, expected: char8[..]) -> bool {
-    var storage: char8[40];
-    let room = (@storage[0])[..40];
-    var written: uint = 0;
-    if !FormatRfc3339(dateTime, offset, room, @written) {
-        return false;
-    }
-    if written != expected.length {
-        return false;
-    }
-    var index: uint = 0;
-    while index < written {
-        if storage[index] != expected.data[index] {
-            return false;
+// Zero when `text` fails to parse as RFC 3339 with exactly `code` at exactly `at`; a distinct non-zero value
+// otherwise, so a check cannot pass by failing for another reason or in another place.
+func FailsAt(text: char8[..], code: int, at: uint) -> int {
+    let outcome = ParseRfc3339(text);
+    if outcome.IsSuccess() { return 1; }
+    var found: int = 0;
+    var where: uint = 0;
+    match outcome {
+        .Success(_) => {
+        },
+        .Error(reason) => {
+            found = CodeOf(reason);
+            where = reason.Offset();
         }
+    }
+    if found != code { return 2; }
+    if where != at { return 3; }
+    return 0;
+}
+
+func Same(actual: char8[..], expected: char8[..]) -> bool {
+    if actual.length != expected.length { return false; }
+    var index: uint = 0;
+    while index < actual.length {
+        if actual.data[index] != expected.data[index] { return false; }
         index = index + 1;
     }
     return true;
 }
 
+// The RFC 3339 text of a moment, through the Display the value now has.
+func Rendered(moment: OffsetDateTime, expected: char8[..]) -> bool {
+    var storage: char8[64];
+    var writer = BufferWriter((@storage[0])[..64]);
+    let sink: &var TextWriter = writer;
+    let shown: Display = moment;
+    if shown.WriteDisplay(sink, FormatSpec::Plain()).IsError() { return false; }
+    return Same(writer.Written(), expected);
+}
+
 func Main() -> int {
-    var dateTime = DateTime { date: Date::FromEpochDays(0i64), time: TimeOfDay::Midnight() };
-    var offset = UtcOffset::Utc();
+    // The shapes that parse, and what they parse to.
+    let plain = ParseRfc3339("2024-02-29T12:30:45Z");
+    Assert(plain.IsSuccess(), "the plain shape parses");
+    let moment = plain.ValueOr(OffsetDateTime(DateTime { date: Date::FromEpochDays(0i64), time: TimeOfDay::Midnight() },
+                                              UtcOffset::Utc()));
+    Assert(moment.dateTime.date.year == 2024i32 && moment.dateTime.date.month == 2u8 &&
+           moment.dateTime.date.day == 29u8, "a leap day in a leap year is a day");
+    Assert(moment.dateTime.time.hour == 12u8 && moment.dateTime.time.minute == 30u8 &&
+           moment.dateTime.time.second == 45u8, "and the time is what was written");
+    Assert(moment.offset.TotalSeconds() == 0i32, "and Z is UTC");
 
-    // The strict shape, in its variants.
-    Assert(ParseRfc3339("2024-02-29T12:30:45Z", @dateTime, @offset), "the plain shape parses");
-    Assert(dateTime.date.year == 2024i32 && dateTime.date.month == 2u8 && dateTime.date.day == 29u8,
-           "into the leap day it names");
-    Assert(dateTime.time.hour == 12u8 && dateTime.time.second == 45u8, "and the time of day");
-    Assert(offset.TotalSeconds() == 0i32, "with Z meaning UTC");
+    Assert(ParseRfc3339("2024-02-29t12:30:45.5z").IsSuccess(), "the lower-case letters parse too");
+    Assert(ParseRfc3339("2024-02-29 12:30:45.123456789+05:30").IsSuccess(), "a space separator parses");
+    Assert(ParseRfc3339("1970-01-01T00:00:00-08:00").IsSuccess(), "a negative offset parses");
+    Assert(ParseRfc3339("2024-01-01T00:00:00.000000000Z").IsSuccess(), "nine fraction digits parse");
 
-    Assert(ParseRfc3339("2024-02-29t12:30:45.5z", @dateTime, @offset), "the lower-case letters parse too");
-    Assert(dateTime.time.nanosecond == 500000000u32, "and one fraction digit means half a second");
-    Assert(ParseRfc3339("2024-02-29 12:30:45.123456789+05:30", @dateTime, @offset), "a space separator parses");
-    Assert(dateTime.time.nanosecond == 123456789u32, "nine fraction digits arrive whole");
-    Assert(offset.TotalSeconds() == 19800i32, "and the offset with them");
-    Assert(ParseRfc3339("1970-01-01T00:00:00-08:00", @dateTime, @offset), "a negative offset parses");
-    Assert(offset.TotalSeconds() == -28800i32, "as minus eight hours");
-    Assert(ParseRfc3339("2024-01-01T00:00:00.0000000005Z", @dateTime, @offset),
-           "fraction digits past the ninth parse");
-    Assert(dateTime.time.nanosecond == 0u32, "and truncate rather than round");
+    // The leap second parses and folds, which is the one lossy acceptance this package makes on purpose.
+    let leap = ParseRfc3339("2016-12-31T23:59:60Z");
+    Assert(leap.IsSuccess(), "the leap second parses");
+    let folded = leap.ValueOr(OffsetDateTime(DateTime { date: Date::FromEpochDays(0i64), time: TimeOfDay::Midnight() },
+                                             UtcOffset::Utc()));
+    Assert(folded.dateTime.time.second == 59u8 && folded.dateTime.time.nanosecond == 999999999u32,
+           "and folds to the last nanosecond of second 59");
 
-    // The near-misses, each refused for its own reason.
-    Assert(!Parses(""), "nothing is not a moment");
-    Assert(!Parses("2024-02-29T12:30:45"), "a missing offset is refused");
-    Assert(!Parses("2024-02-29T12:30:45Zx"), "and trailing bytes after it");
-    Assert(!Parses("2023-02-29T12:30:45Z"), "a date that does not exist is refused");
-    Assert(!Parses("2024-13-01T12:30:45Z"), "a thirteenth month");
-    Assert(!Parses("2024-02-29T24:00:00Z"), "the twenty-fourth hour");
-    Assert(!Parses("2024-02-29T12:30:45.Z"), "a point with no digits");
-    Assert(!Parses("2024/02/29T12:30:45Z"), "the wrong separators");
-    Assert(!Parses("2024-02-29T12:30:45+5:30"), "a one-digit offset hour");
-    Assert(!Parses("2024-02-29T12:30:45+24:00"), "and an offset no clock has");
+    // A syntax failure points at the byte where the shape stopped matching.
+    Assert(FailsAt("2024-02-29X12:30:45Z", 1, 10u) == 0, "a wrong separator is a syntax failure at the separator");
+    Assert(FailsAt("2024/02/29T12:30:45Z", 1, 4u) == 0, "and a wrong dash at the dash");
+    Assert(FailsAt("2024-02-29T12:30:45Z ", 1, 20u) == 0, "text after the offset is a syntax failure where it starts");
+    Assert(FailsAt("2024-02-29T12:30:45", 1, 19u) == 0, "and running out points one past the end");
+    Assert(FailsAt("", 1, 0u) == 0, "empty text fails at the beginning, which is also the end");
+    Assert(FailsAt("2O24-02-29T12:30:45Z", 1, 1u) == 0, "a letter where a digit belongs points at the letter");
 
-    // The leap-second policy, exactly as stated: accepted, folded, never produced.
-    Assert(ParseRfc3339("2016-12-31T23:59:60Z", @dateTime, @offset), "the leap second parses");
-    Assert(dateTime.time.second == 59u8, "folded into second 59");
-    Assert(dateTime.time.nanosecond == 999999999u32, "at its last representable nanosecond");
-    Assert(!Parses("2016-12-31T23:59:61Z"), "and second 61 is refused, having never existed");
+    // A well-formed field naming something that does not exist is a different category from a typo.
+    Assert(FailsAt("2024-13-01T00:00:00Z", 2, 5u) == 0, "month 13 is an invalid month at its first digit");
+    Assert(FailsAt("2024-00-01T00:00:00Z", 2, 5u) == 0, "and so is month 0");
+    Assert(FailsAt("2023-02-29T00:00:00Z", 3, 8u) == 0, "February 29 outside a leap year is a nonexistent day");
+    Assert(FailsAt("2024-04-31T00:00:00Z", 3, 8u) == 0, "and April has no 31st");
+    Assert(FailsAt("2024-01-00T00:00:00Z", 3, 8u) == 0, "nor has any month a zeroth");
+    Assert(FailsAt("2024-01-01T24:00:00Z", 4, 11u) == 0, "hour 24 is an invalid time at the hour");
+    Assert(FailsAt("2024-01-01T00:60:00Z", 4, 14u) == 0, "minute 60 at the minute");
+    Assert(FailsAt("2024-01-01T00:00:61Z", 4, 17u) == 0, "second 61 at the second, since 60 is the leap second");
 
-    // Formatting, and the round trip.
-    let moment = DateTime {
-        date: Date::New(2024i32, 2u8, 29u8).ValueOr(Date::FromEpochDays(0i64)),
-        time: TimeOfDay::New(12u8, 30u8, 45u8, 0u32).ValueOr(TimeOfDay::Midnight())
-    };
-    Assert(Renders(moment, UtcOffset::Utc(), "2024-02-29T12:30:45Z"), "a whole second renders bare");
-    let fractional = DateTime {
-        date: moment.date,
-        time: TimeOfDay::New(12u8, 30u8, 45u8, 500000000u32).ValueOr(TimeOfDay::Midnight())
-    };
-    Assert(Renders(fractional, UtcOffset::Utc(), "2024-02-29T12:30:45.5Z"), "a fraction trims its zeros");
-    let precise = DateTime {
-        date: moment.date,
-        time: TimeOfDay::New(12u8, 30u8, 45u8, 123456789u32).ValueOr(TimeOfDay::Midnight())
-    };
-    Assert(Renders(precise, UtcOffset::Utc(), "2024-02-29T12:30:45.123456789Z"), "nine digits render whole");
-    let shifted = UtcOffset::Of(-5i32, -30i32).ValueOr(UtcOffset::Utc());
-    Assert(Renders(moment, shifted, "2024-02-29T12:30:45-05:30"), "an offset renders signed");
+    // A fraction that will not fit, and an offset that is not one.
+    Assert(FailsAt("2024-01-01T00:00:00.0000000005Z", 5, 29u) == 0,
+           "a tenth fraction digit is an excessive fraction at that digit");
+    Assert(FailsAt("2024-01-01T00:00:00.Z", 1, 20u) == 0, "a point with no digits is a syntax failure");
+    Assert(FailsAt("2024-01-01T00:00:00+24:00", 6, 19u) == 0, "an impossible offset points at its sign");
+    Assert(FailsAt("2024-01-01T00:00:00+05:60", 6, 19u) == 0, "and so does an impossible offset minute");
+    Assert(FailsAt("2024-01-01T00:00:00", 1, 19u) == 0, "a missing offset runs out rather than defaulting to UTC");
 
-    var reparsed = DateTime { date: Date::FromEpochDays(0i64), time: TimeOfDay::Midnight() };
-    var reparsedOffset = UtcOffset::Utc();
-    var storage: char8[40];
-    let room = (@storage[0])[..40];
-    var written: uint = 0;
-    Assert(FormatRfc3339(precise, shifted, room, @written), "the round trip renders");
-    Assert(ParseRfc3339((@storage[0])[..written], @reparsed, @reparsedOffset),
-           "and parses back");
-    Assert(reparsed.Equals(precise), "to the same fields");
-    Assert(reparsedOffset.TotalSeconds() == shifted.TotalSeconds(), "and the same offset");
+    // The three narrower parsers read what they name and nothing more.
+    Assert(ParseDate("2024-02-29").IsSuccess(), "a date parses on its own");
+    Assert(ParseDate("2024-02-29T00:00:00Z").IsError(), "and refuses a whole moment");
+    Assert(ParseTimeOfDay("12:30:45").IsSuccess(), "a time parses on its own");
+    Assert(ParseTimeOfDay("12:30:45.25").IsSuccess(), "with a fraction");
+    Assert(ParseDateTime("2024-02-29T12:30:45").IsSuccess(), "a local date-time parses without an offset");
+    Assert(ParseDateTime("2024-02-29T12:30:45Z").IsError(),
+           "and refuses one with an offset, having nowhere to keep it");
 
-    // A year the four digits cannot spell refuses rather than truncating.
-    let wide = DateTime { date: Date::FromEpochDays(4000000i64), time: TimeOfDay::Midnight() };
-    Assert(!FormatRfc3339(wide, UtcOffset::Utc(), room, @written), "a five-digit year refuses");
+    // The round trip: what Display writes, ParseRfc3339 reads back to the same moment.
+    let source = ParseRfc3339("2024-02-29T12:30:45.5-08:00");
+    Assert(source.IsSuccess(), "the round-trip source parses");
+    let original = source.ValueOr(OffsetDateTime(DateTime { date: Date::FromEpochDays(0i64), time: TimeOfDay::Midnight() },
+                                                 UtcOffset::Utc()));
+    Assert(Rendered(original, "2024-02-29T12:30:45.5-08:00"), "and renders back to the text it came from");
+    let again = ParseRfc3339("2024-02-29T12:30:45.5-08:00");
+    Assert(again.IsSuccess(), "which parses again");
+    let second = again.ValueOr(original);
+    Assert(second.ToTimestamp().seconds == original.ToTimestamp().seconds, "to the same instant");
+    Assert(second.offset.TotalSeconds() == original.offset.TotalSeconds(), "at the same offset");
 
+    // Formatting never produces second 60, which is what makes the fold one-way.
+    Assert(Rendered(folded, "2016-12-31T23:59:59.999999999Z"), "the folded leap second renders as second 59");
     return 0;
 }

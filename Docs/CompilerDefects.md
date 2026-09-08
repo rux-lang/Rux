@@ -8,6 +8,34 @@ Return to the [main README](../README.md) for the complete documentation index.
 
 ## Open
 
+### `?` discards a payload-carrying error's payload
+
+*Silent, and it empties the part of an error a caller reads.* Propagating a failure with `?` delivers the right variant case with its payload zeroed. Matching the same result directly delivers it intact, so the value exists and is lost in transit.
+
+```rux
+variant Reason { First(uint), Second(uint) }
+
+func Step(at: uint) -> Result<Unit, Reason> {
+    return Result::Error<Unit, Reason>(Reason::First(at));
+}
+
+func Outer(at: uint) -> Result<uint, Reason> {
+    Step(at)?;                                   // the payload does not survive this
+    return Result::Success<uint, Reason>(0u);
+}
+```
+
+`Step(10)` matched directly yields `First(10)`. `Outer(10)` yields `First(0)`. Narrowed by probe: it happens whether or not the success types differ, and whether or not the source's success type is `Unit`, so it is `?` itself rather than anything about the payload being zero-sized. A payload-less error propagates correctly, which is why nothing had noticed.
+
+This is why `Rux/Time`'s calendar parsers report failure through an output slot and re-wrap it at the entry point rather than using `?` throughout. Assigning a variant through a `*var` slot preserves the payload, and so does returning `Result::Error` built from it, so the workaround is complete:
+
+```rux
+var error = TimeParseError::InvalidSyntax(0);
+if !ReadDate(reader, @date, @error) { return Result::Error<Date, TimeParseError>(error); }
+```
+
+Found while giving the temporal parsers byte offsets: every failure reported offset 0, and the offsets were correct right up to the point they crossed a `?`. Nothing earlier in this workspace had caught it because the errors `?` had been used with — `FormatError` at the writer boundary, `AllocError` — either carry no payload or are returned directly rather than propagated. `Rux/Format`'s `ParseFormatSpec` is unaffected for the same reason: it returns its positioned failure rather than propagating one.
+
 ### A package cannot have a transitive dependency on a different package that shares its name
 
 *Loud, and the diagnostic points somewhere else entirely.* A package named `Text` whose dependency graph reaches `Rux/Text` further down does not resolve that package: the imports fail with `name 'Display' was not found in package 'Text'`, reported against the *dependency's* source rather than against the root that collides, and nothing in the output mentions a name collision.

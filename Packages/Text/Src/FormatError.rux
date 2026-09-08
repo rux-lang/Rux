@@ -127,3 +127,22 @@ pub func FromTextError(error: TextError) -> Result<Unit, FormatError> {
     if error == TextError::None { return FormatOk(); }
     return Result::Error<Unit, FormatError>(FormatError::TextFailure(TextFailureOf(error)));
 }
+
+/// A parsing failure that can say where it happened.
+///
+/// Every domain owns its own parse error, because what went wrong in a UUID and what went wrong in a timestamp are
+/// different questions with different answers, and flattening them into one type would lose the distinctions a
+/// caller acts on. What they share is the position, and that is what this names.
+///
+/// The offset is a zero-based UTF-8 byte offset into the text that was handed to the parser. End of input is the
+/// text's length, which is a position and not a failure to have one. A parser embedded in a larger grammar adds the
+/// offset of the token it was given, so positions compose.
+///
+/// @see https://rux-lang.dev/docs/api/text/parse-failure
+pub interface ParseFailure {
+    /// Where in the input the failure was found.
+    ///
+    /// @returns the zero-based UTF-8 byte offset, which is the text's length at end of input
+    /// @see https://rux-lang.dev/docs/api/text/parse-failure/offset
+    func Offset() -> uint;
+}

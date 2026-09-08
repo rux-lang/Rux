@@ -1322,8 +1322,6 @@ missing-param|Time/Src/Duration.rux|func|Plus|5c3546352a329ff5
 missing-param|Time/Src/Duration.rux|func|Times|14f0318d51476b94
 missing-param|Time/Src/Instant.rux|func|Since|2328074c996d23e9
 missing-param|Time/Src/Instant.rux|func|SleepFor|67e25c7d758d0c62
-missing-param|Time/Src/Rfc3339.rux|func|FormatRfc3339|ea095e32176ab80d
-missing-param|Time/Src/Rfc3339.rux|func|ParseRfc3339|b9239c8c5fb7ba2b
 missing-param|Time/Src/Timestamp.rux|func|Compare|b95cfe66b3f16d8c
 missing-param|Time/Src/Timestamp.rux|func|Equals|8df0b9b97ff25c76
 missing-param|Time/Src/Timestamp.rux|func|FromUnixSeconds|a0c05e6b366c9f8d
@@ -2490,8 +2488,6 @@ missing-returns|Time/Src/Duration.rux|func|Zero|b8f88a1d5867805a
 missing-returns|Time/Src/Instant.rux|func|Elapsed|82c4fdd80276741c
 missing-returns|Time/Src/Instant.rux|func|Now|eba1241d9bab9942
 missing-returns|Time/Src/Instant.rux|func|Since|2328074c996d23e9
-missing-returns|Time/Src/Rfc3339.rux|func|FormatRfc3339|ea095e32176ab80d
-missing-returns|Time/Src/Rfc3339.rux|func|ParseRfc3339|b9239c8c5fb7ba2b
 missing-returns|Time/Src/Timestamp.rux|func|Compare|b95cfe66b3f16d8c
 missing-returns|Time/Src/Timestamp.rux|func|Epoch|577582a2b59b89a2
 missing-returns|Time/Src/Timestamp.rux|func|Equals|8df0b9b97ff25c76
@@ -4409,8 +4405,6 @@ missing-see|Time/Src/Instant.rux|func|Now|eba1241d9bab9942
 missing-see|Time/Src/Instant.rux|func|Since|2328074c996d23e9
 missing-see|Time/Src/Instant.rux|func|SleepFor|67e25c7d758d0c62
 missing-see|Time/Src/Instant.rux|struct|Instant|0673bc108e24338a
-missing-see|Time/Src/Rfc3339.rux|func|FormatRfc3339|ea095e32176ab80d
-missing-see|Time/Src/Rfc3339.rux|func|ParseRfc3339|b9239c8c5fb7ba2b
 missing-see|Time/Src/Timestamp.rux|func|Compare|b95cfe66b3f16d8c
 missing-see|Time/Src/Timestamp.rux|func|Epoch|577582a2b59b89a2
 missing-see|Time/Src/Timestamp.rux|func|Equals|8df0b9b97ff25c76
