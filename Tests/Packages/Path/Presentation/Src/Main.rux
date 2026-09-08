@@ -1,0 +1,254 @@
+import Allocator::{ Allocator, SystemAllocator };
+import Core::{ #target, Assert };
+import Path::{ OsString, OsStringView, OsUnit, Path, PathBuffer };
+import Text::{ BufferWriter, Debug, Display, FormatSpec, ParseFormatSpec, TextError, TextWriter };
+
+// Two renderings of one name, and the reason there have to be two.
+//
+// A native name is not obliged to be text. `Display` shows it to a reader anyway, replacing every unit that is not
+// text with U+FFFD, because a program reporting which file it could not open still has to name it. `Debug` shows it
+// as it is, escaping those units so that nothing is lost.
+//
+// The case that proves both at once is at the bottom of this file: two different names whose only difference is in
+// units that are not text render identically under `Display` and differently under `Debug`. That is the whole
+// contract in one assertion — the lossy form is for a message and never for identity, and the exact form is what
+// tells two names apart.
+//
+// Every case runs on both platforms with the units that platform's names are made of: bytes that are not UTF-8 on
+// the Unix systems, an unpaired surrogate on Windows. The expectations differ because the units do, and are
+// written out per platform rather than hidden behind a helper that would obscure which is being checked.
+
+func Same(actual: char8[..], expected: char8[..]) -> bool {
+    if actual.length != expected.length { return false; }
+    var index: uint = 0;
+    while index < actual.length {
+        if actual.data[index] != expected.data[index] { return false; }
+        index = index + 1;
+    }
+    return true;
+}
+
+func Spec(text: char8[..]) -> FormatSpec {
+    var spec = FormatSpec::Plain();
+    Assert(ParseFormatSpec(text).TryIntoValue(@spec), "the spec parses");
+    return spec;
+}
+
+// Whether the view's `Display` writes exactly `expected`. The interface binding is deliberate: passing a concrete
+// value as an interface argument of an interface method call is a live compiler defect, so the value is bound to
+// its interface type first.
+func Shown(view: OsStringView, spec: FormatSpec, expected: char8[..]) -> bool {
+    var storage: char8[128];
+    var writer = BufferWriter((@storage[0])[..128]);
+    let sink: &var TextWriter = writer;
+    let shown: Display = view;
+    if shown.WriteDisplay(sink, spec).IsError() { return false; }
+    return Same(writer.Written(), expected);
+}
+
+// Whether the view's `Debug` writes exactly `expected`, quotes included.
+func Inspected(view: OsStringView, spec: FormatSpec, expected: char8[..]) -> bool {
+    var storage: char8[128];
+    var writer = BufferWriter((@storage[0])[..128]);
+    let sink: &var TextWriter = writer;
+    let shown: Debug = view;
+    if shown.WriteDebug(sink, spec).IsError() { return false; }
+    return Same(writer.Written(), expected);
+}
+
+// Whether the path's `Display` writes exactly `expected`, which is how the structure layer is checked to render
+// the same units its view does.
+func PathShown(path: Path, expected: char8[..]) -> bool {
+    var storage: char8[128];
+    var writer = BufferWriter((@storage[0])[..128]);
+    let sink: &var TextWriter = writer;
+    let shown: Display = path;
+    if shown.WriteDisplay(sink, FormatSpec::Plain()).IsError() { return false; }
+    return Same(writer.Written(), expected);
+}
+
+func PathInspected(path: Path, expected: char8[..]) -> bool {
+    var storage: char8[128];
+    var writer = BufferWriter((@storage[0])[..128]);
+    let sink: &var TextWriter = writer;
+    let shown: Debug = path;
+    if shown.WriteDebug(sink, FormatSpec::Plain()).IsError() { return false; }
+    return Same(writer.Written(), expected);
+}
+
+// The owning types are rendered through their concrete methods rather than through an interface binding, because
+// what is under test there is that they render the units they own, not how they are dispatched.
+func OwnedShown(text: &OsString, expected: char8[..]) -> bool {
+    var storage: char8[128];
+    var writer = BufferWriter((@storage[0])[..128]);
+    let sink: &var TextWriter = writer;
+    if text.WriteDisplay(sink, FormatSpec::Plain()).IsError() { return false; }
+    return Same(writer.Written(), expected);
+}
+
+func OwnedInspected(text: &OsString, expected: char8[..]) -> bool {
+    var storage: char8[128];
+    var writer = BufferWriter((@storage[0])[..128]);
+    let sink: &var TextWriter = writer;
+    if text.WriteDebug(sink, FormatSpec::Plain()).IsError() { return false; }
+    return Same(writer.Written(), expected);
+}
+
+func BufferShown(buffer: &PathBuffer, expected: char8[..]) -> bool {
+    var storage: char8[128];
+    var writer = BufferWriter((@storage[0])[..128]);
+    let sink: &var TextWriter = writer;
+    if buffer.WriteDisplay(sink, FormatSpec::Plain()).IsError() { return false; }
+    return Same(writer.Written(), expected);
+}
+
+func BufferInspected(buffer: &PathBuffer, expected: char8[..]) -> bool {
+    var storage: char8[128];
+    var writer = BufferWriter((@storage[0])[..128]);
+    let sink: &var TextWriter = writer;
+    if buffer.WriteDebug(sink, FormatSpec::Plain()).IsError() { return false; }
+    return Same(writer.Written(), expected);
+}
+
+func Refused(view: OsStringView, spec: FormatSpec) -> bool {
+    var storage: char8[128];
+    var writer = BufferWriter((@storage[0])[..128]);
+    let sink: &var TextWriter = writer;
+    let shown: Display = view;
+    if !shown.WriteDisplay(sink, spec).IsError() { return false; }
+    let inspected: Debug = view;
+    var second = BufferWriter((@storage[0])[..128]);
+    let other: &var TextWriter = second;
+    return inspected.WriteDebug(other, spec).IsError();
+}
+
+func Main() -> int {
+    var system = SystemAllocator();
+    let allocator: Allocator = system;
+    var error = TextError::None;
+
+    // Ordinary text renders as itself in both forms; only the quoting differs.
+    let plain = OsString::FromText(allocator, "usr/local/bin", @error);
+    Assert(error == TextError::None, "ordinary text converts");
+    let plainView = plain.View();
+    Assert(Shown(plainView, FormatSpec::Plain(), "usr/local/bin"), "text renders as itself");
+    Assert(Inspected(plainView, FormatSpec::Plain(), "\"usr/local/bin\""), "and Debug quotes it");
+    Assert(OwnedShown(plain, "usr/local/bin"), "the owning type renders the units it owns");
+    Assert(OwnedInspected(plain, "\"usr/local/bin\""), "in both forms");
+
+    // Non-ASCII text is text: it passes through untouched, since nothing here is invalid.
+    let accented = OsString::FromText(allocator, "héllo/wörld", @error);
+    Assert(Shown(accented.View(), FormatSpec::Plain(), "héllo/wörld"), "valid non-ASCII text is not replaced");
+    Assert(Inspected(accented.View(), FormatSpec::Plain(), "\"héllo/wörld\""), "nor escaped");
+    let emoji = OsString::FromText(allocator, "😀", @error);
+    Assert(Shown(emoji.View(), FormatSpec::Plain(), "😀"), "and neither is a supplementary character");
+    Assert(Inspected(emoji.View(), FormatSpec::Plain(), "\"😀\""), "which is one scalar in either representation");
+
+    // A name with units that are not text: the case both renderings exist for.
+    var hostile: OsUnit[4];
+    when #target.os == .Windows {
+        // An unpaired high surrogate between letters, which Windows keeps on disk without complaint.
+        hostile[0] = 0x0061u16;
+        hostile[1] = 0xD800u16;
+        hostile[2] = 0x0062u16;
+        hostile[3] = 0x0063u16;
+    }
+    else {
+        // A lone continuation byte and a lead byte with nothing after it, between letters.
+        hostile[0] = 0x61u8 as char8;
+        hostile[1] = 0x80u8 as char8;
+        hostile[2] = 0xC0u8 as char8;
+        hostile[3] = 0x63u8 as char8;
+    }
+    let hostileView = OsStringView::FromUnits(hostile[0..4]);
+
+    when #target.os == .Windows {
+        Assert(Shown(hostileView, FormatSpec::Plain(), "a�bc"), "the unpaired surrogate becomes U+FFFD");
+        Assert(Inspected(hostileView, FormatSpec::Plain(), "\"a\\u{d800}bc\""), "and Debug spells the unit itself");
+    }
+    else {
+        Assert(Shown(hostileView, FormatSpec::Plain(), "a��c"), "each byte that is not text becomes U+FFFD");
+        Assert(Inspected(hostileView, FormatSpec::Plain(), "\"a\\x{80}\\x{c0}c\""),
+               "and Debug spells each byte itself");
+    }
+
+    // The owning native string renders its own units the same way.
+    let hostileOwned = OsString::FromView(allocator, hostileView, @error);
+    Assert(error == TextError::None, "the hostile units copy");
+    when #target.os == .Windows {
+        Assert(OwnedShown(hostileOwned, "a�bc"), "an owning native string renders lossily too");
+        Assert(OwnedInspected(hostileOwned, "\"a\\u{d800}bc\""), "and exactly");
+    }
+    else {
+        Assert(OwnedShown(hostileOwned, "a��c"), "an owning native string renders lossily too");
+        Assert(OwnedInspected(hostileOwned, "\"a\\x{80}\\x{c0}c\""), "and exactly");
+    }
+
+    // The path layer renders the same units: it adds structure, not storage, and neither rendering normalizes a
+    // separator, because which separators a name contains is part of what it is.
+    let path = Path::FromView(plainView);
+    Assert(PathShown(path, "usr/local/bin"), "a path renders the units under it");
+    Assert(PathInspected(path, "\"usr/local/bin\""), "quoted, so a trailing separator or a space has visible ends");
+    let hostilePath = Path::FromView(hostileView);
+    when #target.os == .Windows {
+        Assert(PathShown(hostilePath, "a�bc"), "including the units that are not text");
+    }
+    else {
+        Assert(PathShown(hostilePath, "a��c"), "including the units that are not text");
+    }
+
+    var buffer = PathBuffer::FromPath(allocator, path, @error);
+    Assert(error == TextError::None, "the buffer takes the path's units");
+    Assert(BufferShown(buffer, "usr/local/bin"), "and an owning path renders them");
+    Assert(BufferInspected(buffer, "\"usr/local/bin\""), "in both forms");
+
+    // Debug escapes what would otherwise be ambiguous inside the quotes.
+    let quoted = OsString::FromText(allocator, "a\"b", @error);
+    Assert(Inspected(quoted.View(), FormatSpec::Plain(), "\"a\\\"b\""), "a quote inside the name is escaped");
+    let slashed = OsString::FromText(allocator, "a\\b", @error);
+    Assert(Inspected(slashed.View(), FormatSpec::Plain(), "\"a\\\\b\""), "and so is a backslash");
+    let controlled = OsString::FromText(allocator, "a\nb", @error);
+    Assert(Inspected(controlled.View(), FormatSpec::Plain(), "\"a\\nb\""),
+           "and a newline, which would otherwise act on the terminal rather than be read");
+    Assert(Shown(controlled.View(), FormatSpec::Plain(), "a\nb"), "while Display writes the name as it is");
+
+    // Neither rendering answers to a style or a precision. A precision is the one worth refusing rather than
+    // applying: a truncated path is a different path, and may be one that exists.
+    Assert(Refused(plainView, Spec(".4")), "a precision is refused rather than cutting the name");
+    Assert(Refused(plainView, Spec("lossy")), "and so is a style, invented");
+    Assert(Refused(plainView, Spec("rfc3339")), "or borrowed from another domain");
+
+    // The contract in one place: two names differing only in units that are not text render alike under Display
+    // and differently under Debug. This is why the lossy form is never an identity.
+    var other: OsUnit[4];
+    when #target.os == .Windows {
+        other[0] = 0x0061u16;
+        other[1] = 0xDBFFu16;
+        other[2] = 0x0062u16;
+        other[3] = 0x0063u16;
+    }
+    else {
+        other[0] = 0x61u8 as char8;
+        other[1] = 0x81u8 as char8;
+        other[2] = 0xC1u8 as char8;
+        other[3] = 0x63u8 as char8;
+    }
+    let otherView = OsStringView::FromUnits(other[0..4]);
+    Assert(!otherView.Equals(hostileView), "the two names are different names");
+    when #target.os == .Windows {
+        Assert(Shown(otherView, FormatSpec::Plain(), "a�bc"), "and render alike under Display");
+        Assert(Inspected(otherView, FormatSpec::Plain(), "\"a\\u{dbff}bc\""), "while Debug tells them apart");
+    }
+    else {
+        Assert(Shown(otherView, FormatSpec::Plain(), "a��c"), "and render alike under Display");
+        Assert(Inspected(otherView, FormatSpec::Plain(), "\"a\\x{81}\\x{c1}c\""), "while Debug tells them apart");
+    }
+
+    // Nothing here is empty-hostile: a name of no units renders as nothing, and as empty quotes.
+    let nothing = OsStringView();
+    Assert(Shown(nothing, FormatSpec::Plain(), ""), "an empty name shows as nothing");
+    Assert(Inspected(nothing, FormatSpec::Plain(), "\"\""), "and inspects as empty quotes");
+
+    buffer.Release();
+    return 0;
+}

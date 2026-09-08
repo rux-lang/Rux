@@ -1,0 +1,17 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "PathPresentation"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Path: lossy Display and exact Debug over native units"
+
+[Dependencies]
+Allocator = { Path = "../../../../Packages/Allocator" }
+Core = { Path = "../../../../Packages/Core" }
+Path = { Path = "../../../../Packages/Path" }
+Text = { Path = "../../../../Packages/Text" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Path"

@@ -1,0 +1,340 @@
+// Showing a name the system may not have written in text, without pretending either that it is text or that it
+// is not.
+//
+// A native name is bytes on the Unix systems and UTF-16 code units on Windows, and neither is obliged to be valid.
+// Real disks hold names that are not text: a byte sequence that is not UTF-8, a code unit with no partner. That is
+// why `OsString` exists and why converting out of it is fallible. But a program still has to say something when it
+// reports which file it could not open, and refusing to render the name is not an answer a user can act on.
+//
+// So the two protocols answer two different questions and neither one compromises. `Display` is the name as a
+// reader should see it: every unit that is not text becomes U+FFFD, the replacement character, which is exactly
+// what the substitution is for. It is lossy and says so; it is for a message, never for reopening the file.
+// `Debug` is the name as it actually is: every native unit survives, with the ones that are not text spelled as
+// escapes, so two different names never render alike. The exact conversions in `OsStringView::ToText` and the
+// filesystem operations are untouched by either — a path still travels to a system call as the units it is.
+//
+// One rule follows from that and is worth stating: a precision is refused rather than applied. Truncating a path
+// produces a different path, and one that may well exist; a rendering that silently answers about another file is
+// worse than a rendering that refuses.
+
+import Core::{ #target, Result, Unit };
+import Text::{ Debug, DecodeAt, Display, Encode, FormatError, FormatOk, FormatSpec, RejectStyle, TextWriter,
+               WriteAscii, WriteBytes, WriteEscaped, WriteScalar };
+
+// The character a unit that is not text is shown as by `Display`.
+const ReplacementScalar: uint32 = 0xFFFD;
+
+// Whether the specification is one a native name can answer. Neither a style nor a precision is: a name has one
+// form, and a precision would cut it into a different name.
+func AcceptsNameSpec(spec: FormatSpec) -> Result<Unit, FormatError> {
+    RejectStyle(spec)?;
+    if spec.HasPrecision() { return Result::Error<Unit, FormatError>(FormatError::UnsupportedRequest); }
+    return FormatOk();
+}
+
+// Writes the low `count` hexadecimal digits of `value`, most significant first, in lower case.
+func WriteHexDigits(writer: &var TextWriter, value: uint32, count: uint) -> Result<Unit, FormatError> {
+    let digits = "0123456789abcdef";
+    var shift = count * 4u;
+    while shift > 0 {
+        shift = shift - 4u;
+        WriteAscii(writer, digits.data[((value >> (shift as uint32)) & 0xFu32) as uint])?;
+    }
+    return FormatOk();
+}
+
+// Writes one native byte as `\x{nn}`, the escape for a byte that is not part of any character.
+func WriteByteEscape(writer: &var TextWriter, value: uint32) -> Result<Unit, FormatError> {
+    WriteBytes(writer, "\\x{")?;
+    WriteHexDigits(writer, value, 2u)?;
+    return WriteBytes(writer, "}");
+}
+
+// Writes one UTF-16 code unit as `\u{xxxx}`, the escape for a code unit with no partner.
+func WriteUnitEscape(writer: &var TextWriter, value: uint32) -> Result<Unit, FormatError> {
+    WriteBytes(writer, "\\u{")?;
+    WriteHexDigits(writer, value, 4u)?;
+    return WriteBytes(writer, "}");
+}
+
+when #target.os == .Windows {
+    // Writes the units as text, with every unit that is not part of a scalar replaced by U+FFFD.
+    //
+    // A lone surrogate is one unit and becomes one replacement character; a well-formed pair is one scalar and is
+    // written as itself. Advancing by a single unit after a replacement is what keeps a name with one bad unit in
+    // the middle of it readable on both sides of the damage.
+    func WriteLossy(writer: &var TextWriter, units: OsUnit[..]) -> Result<Unit, FormatError> {
+        var index: uint = 0;
+        while index < units.length {
+            var scalar: uint32 = 0;
+            var width: uint = 0;
+            if DecodeNativeUnit(units, index, @scalar, @width) {
+                WriteScalar(writer, scalar as char32)?;
+                index = index + width;
+            }
+            else {
+                WriteScalar(writer, ReplacementScalar as char32)?;
+                index = index + 1;
+            }
+        }
+        return FormatOk();
+    }
+
+    // Writes the units so that every one of them can be read back off the output.
+    //
+    // A scalar is escaped the way this repository escapes text everywhere else, by encoding it and handing it to
+    // `WriteEscaped`, so the quote, the backslash and the controls get the same treatment they get in a `String`.
+    // A unit that is not part of a scalar is spelled `\u{xxxx}` with its own four digits, which no valid scalar
+    // can collide with: the surrogate range is not a scalar range.
+    func WriteExact(writer: &var TextWriter, units: OsUnit[..]) -> Result<Unit, FormatError> {
+        var index: uint = 0;
+        while index < units.length {
+            var scalar: uint32 = 0;
+            var width: uint = 0;
+            if DecodeNativeUnit(units, index, @scalar, @width) {
+                var encoded: char8[4];
+                var written: uint = 0;
+                let sink = (@encoded[0])[..4];
+                if Encode(scalar as char32, sink, @written).IsError() {
+                    return Result::Error<Unit, FormatError>(FormatError::UnsupportedRequest);
+                }
+                WriteEscaped(writer, (@encoded[0])[..written])?;
+                index = index + width;
+            }
+            else {
+                WriteUnitEscape(writer, units.data[index] as uint32)?;
+                index = index + 1;
+            }
+        }
+        return FormatOk();
+    }
+
+    // One scalar out of the UTF-16 units at `index`: a lone unit outside the surrogates, or a high-low pair.
+    func DecodeNativeUnit(units: OsUnit[..], index: uint, scalar: *var uint32, width: *var uint) -> bool {
+        let unit = units.data[index] as uint32;
+        if unit < 0xD800u32 || unit > 0xDFFFu32 {
+            *scalar = unit;
+            *width = 1;
+            return true;
+        }
+        if unit >= 0xDC00u32 { return false; }
+        if index + 1 >= units.length { return false; }
+        let low = units.data[index + 1] as uint32;
+        if low < 0xDC00u32 || low > 0xDFFFu32 { return false; }
+        *scalar = 0x10000u32 + ((unit - 0xD800u32) << 10u32) + (low - 0xDC00u32);
+        *width = 2;
+        return true;
+    }
+}
+else {
+    // Writes the bytes as text, with every byte that is not part of a well-formed UTF-8 sequence replaced by
+    // U+FFFD.
+    //
+    // Runs of valid bytes are written whole rather than one scalar at a time, since they are already the UTF-8 the
+    // destination wants. A bad byte costs one replacement character and advances one byte: replacing a maximal
+    // subpart instead would produce fewer replacements for a truncated sequence, but one replacement per byte is
+    // the rule that never merges two damaged names into one rendering.
+    func WriteLossy(writer: &var TextWriter, units: OsUnit[..]) -> Result<Unit, FormatError> {
+        var index: uint = 0;
+        var runStart: uint = 0;
+        while index < units.length {
+            var scalar = 0u32 as char32;
+            var width: uint = 0;
+            if DecodeAt(units, index, @scalar, @width).IsError() {
+                if index > runStart {
+                    WriteBytes(writer, (@units.data[runStart])[..index - runStart])?;
+                }
+                WriteScalar(writer, ReplacementScalar as char32)?;
+                index = index + 1;
+                runStart = index;
+            }
+            else {
+                index = index + width;
+            }
+        }
+        if index > runStart {
+            return WriteBytes(writer, (@units.data[runStart])[..index - runStart]);
+        }
+        return FormatOk();
+    }
+
+    // Writes the bytes so that every one of them can be read back off the output.
+    //
+    // A run of valid text goes through `WriteEscaped`, so the quote, the backslash and the controls get the same
+    // treatment they get in a `String`. A byte that is not text is spelled `\x{nn}`, which is a distinct escape
+    // from the `\u{...}` a scalar uses, because a stray byte is not a scalar and should not be shown as one.
+    func WriteExact(writer: &var TextWriter, units: OsUnit[..]) -> Result<Unit, FormatError> {
+        var index: uint = 0;
+        var runStart: uint = 0;
+        while index < units.length {
+            var scalar = 0u32 as char32;
+            var width: uint = 0;
+            if DecodeAt(units, index, @scalar, @width).IsError() {
+                if index > runStart {
+                    WriteEscaped(writer, (@units.data[runStart])[..index - runStart])?;
+                }
+                WriteByteEscape(writer, units.data[index] as uint32)?;
+                index = index + 1;
+                runStart = index;
+            }
+            else {
+                index = index + width;
+            }
+        }
+        if index > runStart {
+            return WriteEscaped(writer, (@units.data[runStart])[..index - runStart]);
+        }
+        return FormatOk();
+    }
+}
+
+// The whole of a `Debug` rendering: the exact units, quoted, so that a name with a space or a trailing separator
+// has visible ends.
+func WriteQuoted(writer: &var TextWriter, units: OsUnit[..]) -> Result<Unit, FormatError> {
+    WriteBytes(writer, "\"")?;
+    WriteExact(writer, units)?;
+    return WriteBytes(writer, "\"");
+}
+
+extend OsStringView : Display {
+    /// Writes the name as text, with every native unit that is not text replaced by U+FFFD.
+    ///
+    /// Lossy, deliberately and only here. A name the system holds is not obliged to be text, and a program
+    /// reporting which file it could not open still has to name it; U+FFFD is what the standard provides for
+    /// exactly that. What this produces is for a reader, never for reopening the file — two different names can
+    /// render alike, and `Debug` is the rendering that does not.
+    ///
+    /// # Failures
+    /// Reports whatever the writer reported, and `UnsupportedRequest` for any style or precision. A precision is
+    /// refused rather than applied because a truncated path is a different path, and may be one that exists.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the whole name was accepted
+    /// @see https://rux-lang.dev/docs/api/path/os-string-view/write-display
+    pub func WriteDisplay(self: &OsStringView, writer: &var TextWriter,
+                          spec: FormatSpec) -> Result<Unit, FormatError> {
+        AcceptsNameSpec(spec)?;
+        return WriteLossy(writer, self.units);
+    }
+}
+
+extend OsStringView : Debug {
+    /// Writes the name exactly, quoted, with every unit that is not text spelled as an escape.
+    ///
+    /// Nothing is lost: a Unix byte outside a well-formed sequence is written `\x{nn}` and a Windows code unit
+    /// with no partner is written `\u{xxxx}`, so the native units can be read back off the output and two
+    /// different names never render alike. The quote, the backslash and the control characters are escaped the way
+    /// this repository escapes them everywhere else.
+    ///
+    /// # Failures
+    /// Reports whatever the writer reported, and `UnsupportedRequest` for any style or precision.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the whole name was accepted
+    /// @see https://rux-lang.dev/docs/api/path/os-string-view/write-debug
+    pub func WriteDebug(self: &OsStringView, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        AcceptsNameSpec(spec)?;
+        return WriteQuoted(writer, self.units);
+    }
+}
+
+extend OsString : Display {
+    /// The lossy rendering of the units this text owns.
+    ///
+    /// # Failures
+    /// The failures `OsStringView::WriteDisplay` reports.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the whole name was accepted
+    /// @see https://rux-lang.dev/docs/api/path/os-string/write-display
+    pub func WriteDisplay(self: &OsString, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        AcceptsNameSpec(spec)?;
+        return WriteLossy(writer, self.View().Units());
+    }
+}
+
+extend OsString : Debug {
+    /// The exact rendering of the units this text owns.
+    ///
+    /// # Failures
+    /// The failures `OsStringView::WriteDebug` reports.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the whole name was accepted
+    /// @see https://rux-lang.dev/docs/api/path/os-string/write-debug
+    pub func WriteDebug(self: &OsString, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        AcceptsNameSpec(spec)?;
+        return WriteQuoted(writer, self.View().Units());
+    }
+}
+
+extend Path : Display {
+    /// The lossy rendering of the path's units.
+    ///
+    /// The separators are written as they stand: a path is shown as it is, not normalized towards the platform's
+    /// preferred separator, because which separators a name contains is part of what it is.
+    ///
+    /// # Failures
+    /// The failures `OsStringView::WriteDisplay` reports.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the whole path was accepted
+    /// @see https://rux-lang.dev/docs/api/path/path/write-display
+    pub func WriteDisplay(self: &Path, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        AcceptsNameSpec(spec)?;
+        return WriteLossy(writer, self.name.Units());
+    }
+}
+
+extend Path : Debug {
+    /// The exact, quoted rendering of the path's units.
+    ///
+    /// # Failures
+    /// The failures `OsStringView::WriteDebug` reports.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the whole path was accepted
+    /// @see https://rux-lang.dev/docs/api/path/path/write-debug
+    pub func WriteDebug(self: &Path, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        AcceptsNameSpec(spec)?;
+        return WriteQuoted(writer, self.name.Units());
+    }
+}
+
+extend PathBuffer : Display {
+    /// The lossy rendering of the units the buffer owns.
+    ///
+    /// # Failures
+    /// The failures `OsStringView::WriteDisplay` reports.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the whole path was accepted
+    /// @see https://rux-lang.dev/docs/api/path/path-buffer/write-display
+    pub func WriteDisplay(self: &PathBuffer, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        AcceptsNameSpec(spec)?;
+        return WriteLossy(writer, self.AsPath().AsView().Units());
+    }
+}
+
+extend PathBuffer : Debug {
+    /// The exact, quoted rendering of the units the buffer owns.
+    ///
+    /// # Failures
+    /// The failures `OsStringView::WriteDebug` reports.
+    ///
+    /// @param writer the destination
+    /// @param spec what the placeholder asked for
+    /// @returns success when the whole path was accepted
+    /// @see https://rux-lang.dev/docs/api/path/path-buffer/write-debug
+    pub func WriteDebug(self: &PathBuffer, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        AcceptsNameSpec(spec)?;
+        return WriteQuoted(writer, self.AsPath().AsView().Units());
+    }
+}
