@@ -246,6 +246,9 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 
 - **A style is refused by the value, not ignored** — the parser recognizes syntax once; whether a style *means* anything is the value's question, since only the value knows whether a precision counts digits or characters. So `{:q}` now parses, and every first-party value refuses it with `UnsupportedRequest`: integers accept only the four bases, and booleans, characters, text and floats accept none. This replaces the old behaviour where an unrecognized specification failed to parse and its placeholder was copied through as literal text, which reported the mistake by silently printing it.
 
+- **Text's own presentation moved into `Rux/Text`** — `String` and `StringView` implement `Display` and `Debug` where they are declared, so describing text no longer requires the package that converts numbers. `Debug` now escapes as well as quotes: the quote and the backslash, and the C0 and C1 controls, with `
+`, ``, `	` and ` ` in their short forms and every other control as `{XX}`. Ordinary non-ASCII text is written unchanged.
+
 - **`Rux/Text` gains `BufferWriter`** — the fixed-buffer destination for text a caller does not vouch for: it validates every run as UTF-8 and appends it whole or not at all. `Rux/Format`'s `ByteCursor` stays as conversion machinery, where a number's digits go in and validity is the caller's to know; the two differ deliberately, and each now documents which of the three permitted writer failures it can actually produce.
 
 - **A `FormatSpec`'s representation is private** — fill, alignment, sign, alternate form, zero padding, width, precision and base are read through accessors. A spec is what a placeholder asked for, and a value applying one has no business changing it. Before the move the fields were reachable by anything in `Format`; leaving them public would have handed the same reach to every package that renders a value.

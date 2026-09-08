@@ -8,6 +8,29 @@ Return to the [main README](../README.md) for the complete documentation index.
 
 ## Open
 
+### Passing a concrete value as an interface argument *of an interface method call* crashes
+
+*Silent, and it is a segmentation fault.* A concrete local coerces to an interface parameter correctly when the callee is an ordinary function, and incorrectly when the callee is reached through an interface. The second form builds without a diagnostic and faults at the call.
+
+```rux
+var writer = BufferWriter((@storage[0])[..32]);
+let value: Display = StringView::FromValidated("abc");
+
+WriteBytes(writer, "abc");                          // free function: correct
+value.WriteDisplay(writer, FormatSpec::Plain());    // interface method: faults
+```
+
+Binding the argument to its interface type first is a complete workaround, and is what the first-party code already does:
+
+```rux
+let sink: &var TextWriter = writer;
+value.WriteDisplay(sink, FormatSpec::Plain());      // correct
+```
+
+Narrowed by probe to exactly that difference: three functions doing the same write, differing only in whether the callee is a free function, an interface method given the concrete local, or an interface method given a bound reference. The first and third return 3; the second faults. Both the argument and the receiver being interfaces appears to be what does it — the argument alone is fine.
+
+Found while writing `Tests/Packages/Text/Presentation`, whose helper called `value.WriteDisplay(writer, spec)` directly. It is written with the bound reference now, and says why. Existing first-party callers were unaffected because they already hold a `&var TextWriter` parameter rather than a concrete writer, so the coercion has happened before the interface call.
+
 ### Building one package test directly resolves its dependency's dependencies from the install cache, not the workspace
 
 *Loud, once the two disagree, and silently wrong until then.* `rux test` from the repository root resolves everything locally and is unaffected. Building a single package test by its own manifest is not:

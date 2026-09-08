@@ -1,0 +1,137 @@
+import Allocator::{ Allocator, SystemAllocator };
+import Core::{ Assert, Result, Unit };
+import Text::{ BufferWriter, Debug, Display, FormatError, FormatSpec, ParseFormatSpec, String, StringView, TextError,
+               TextWriter };
+
+// How text presents itself, checked through the protocols rather than through a format call, so a failure here is
+// about the value and not about the placeholder engine above it.
+//
+// Display is the text; Debug is the text quoted and escaped. The escaping is the part with judgement in it: the
+// quote and the backslash collide with the quoting, and the controls act on a terminal instead of being read, so
+// those are escaped and nothing else is. Ordinary non-ASCII text stays as it is, which is the case worth pinning,
+// because escaping it would make text in most of the world's scripts unreadable in the one place a reader is
+// trying to read it.
+//
+// Precision counts characters rather than bytes, so the multi-byte cases are where a byte-counting implementation
+// would be caught.
+
+// Renders `value` through Display under `spec`, into a buffer, and compares. Zero on a match.
+func Shown(view: StringView, spec: FormatSpec, expected: char8[..]) -> bool {
+    var storage: char8[128];
+    var writer = BufferWriter((@storage[0])[..128]);
+    // The writer is bound to its interface type before the call. Passing the concrete BufferWriter straight into an
+    // interface method faults; see Docs/CompilerDefects.md.
+    let sink: &var TextWriter = writer;
+    let value: Display = view;
+    if value.WriteDisplay(sink, spec).IsError() { return false; }
+    return Same(writer.Written(), expected);
+}
+
+// The same through Debug.
+func Inspected(view: StringView, spec: FormatSpec, expected: char8[..]) -> bool {
+    var storage: char8[128];
+    var writer = BufferWriter((@storage[0])[..128]);
+    let sink: &var TextWriter = writer;
+    let value: Debug = view;
+    if value.WriteDebug(sink, spec).IsError() { return false; }
+    return Same(writer.Written(), expected);
+}
+
+func Same(actual: char8[..], expected: char8[..]) -> bool {
+    if actual.length != expected.length { return false; }
+    var index: uint = 0;
+    while index < actual.length {
+        if actual.data[index] != expected.data[index] { return false; }
+        index = index + 1;
+    }
+    return true;
+}
+
+func Spec(text: char8[..]) -> FormatSpec {
+    var spec = FormatSpec::Plain();
+    Assert(ParseFormatSpec(text).TryIntoValue(@spec), "the spec parses");
+    return spec;
+}
+
+func Main() -> int {
+    let plain = FormatSpec::Plain();
+    let hello = StringView::FromValidated("hello");
+
+    // Display is the text, with nothing added.
+    Assert(Shown(hello, plain, "hello"), "a view displays as its characters");
+    Assert(Shown(StringView::FromValidated(""), plain, ""), "and an empty one as nothing at all");
+
+    // Debug quotes, which is what makes an empty string visible.
+    Assert(Inspected(hello, plain, "\"hello\""), "a view inspects as quoted text");
+    Assert(Inspected(StringView::FromValidated(""), plain, "\"\""), "and an empty one is two quotes");
+
+    // Width and alignment apply to Display. Text sits left by default.
+    Assert(Shown(hello, Spec("8"), "hello   "), "text pads on the right by default");
+    Assert(Shown(hello, Spec(">8"), "   hello"), "and to the left when asked");
+    Assert(Shown(hello, Spec("^9"), "  hello  "), "and centres, odd column to the right");
+    Assert(Shown(hello, Spec("*>8"), "***hello"), "with a named fill");
+    Assert(Shown(hello, Spec("3"), "hello"), "a width under the length changes nothing");
+
+    // Precision keeps characters, not bytes, and cuts on a boundary.
+    Assert(Shown(hello, Spec(".3"), "hel"), "precision keeps that many characters");
+    Assert(Shown(hello, Spec(".0"), ""), "a precision of zero keeps none");
+    Assert(Shown(hello, Spec(".9"), "hello"), "a precision past the end keeps all of it");
+
+    let accented = StringView::FromValidated("héllo");
+    Assert(Shown(accented, plain, "héllo"), "multi-byte text displays unchanged");
+    Assert(Shown(accented, Spec(".2"), "hé"), "precision counts characters, not the two bytes of é");
+    Assert(Shown(accented, Spec(".1"), "h"), "and stops before a character rather than inside it");
+
+    // Width counts characters too, so an accented name pads the same as an unaccented one.
+    Assert(Shown(accented, Spec("7"), "héllo  "), "width counts characters, not bytes");
+
+    // Width and precision together: cut first, then pad what is left.
+    Assert(Shown(hello, Spec("6.2"), "he    "), "precision applies before width");
+
+    // Escaping. The quote and the backslash would be ambiguous with the quoting around the value.
+    Assert(Inspected(StringView::FromValidated("a\"b"), plain, "\"a\\\"b\""), "a quote is escaped");
+    Assert(Inspected(StringView::FromValidated("a\\b"), plain, "\"a\\\\b\""), "and so is a backslash");
+
+    // The controls that have short forms.
+    Assert(Inspected(StringView::FromValidated("a\nb"), plain, "\"a\\nb\""), "a newline reads as one");
+    Assert(Inspected(StringView::FromValidated("a\rb"), plain, "\"a\\rb\""), "and a carriage return");
+    Assert(Inspected(StringView::FromValidated("a\tb"), plain, "\"a\\tb\""), "and a tab");
+
+    // Every other control becomes a numeric escape rather than acting on the terminal.
+    Assert(Inspected(StringView::FromValidated("a\u{0007}b"), plain, "\"a\\u{7}b\""), "a bell is spelled out");
+    Assert(Inspected(StringView::FromValidated("a\u{001B}b"), plain, "\"a\\u{1b}b\""), "and an escape character");
+    Assert(Inspected(StringView::FromValidated("a\u{007F}b"), plain, "\"a\\u{7f}b\""), "and delete");
+    Assert(Inspected(StringView::FromValidated("a\u{0085}b"), plain, "\"a\\u{85}b\""), "and a C1 control");
+
+    // Ordinary text is not escaped, which is the point: it is text, and a reader is reading it.
+    Assert(Inspected(accented, plain, "\"héllo\""), "an accented letter is left alone");
+    Assert(Inspected(StringView::FromValidated("日本語"), plain, "\"日本語\""), "and so is a script that is not Latin");
+    Assert(Inspected(StringView::FromValidated("\u{1F600}"), plain, "\"\u{1F600}\""),
+           "and a character above the first plane");
+
+    // Runs between escapes are preserved whole and in order.
+    Assert(Inspected(StringView::FromValidated("one\ttwo\tthree"), plain, "\"one\\ttwo\\tthree\""),
+           "the text between escapes survives");
+    Assert(Inspected(StringView::FromValidated("\n\n"), plain, "\"\\n\\n\""), "two adjacent escapes and nothing else");
+
+    // Debug's precision cuts the text; the quotes sit outside it and are not part of what is counted.
+    Assert(Inspected(hello, Spec(".2"), "\"he\""), "precision applies inside the quotes");
+
+    // A style is not something text understands, so it is refused rather than ignored.
+    var storage: char8[32];
+    var writer = BufferWriter((@storage[0])[..32]);
+    let styled: &var TextWriter = writer;
+    let shown: Display = hello;
+    Assert(shown.WriteDisplay(styled, Spec("iso8601")).IsError(), "a style on text is refused");
+    Assert(writer.Length() == 0u, "and nothing was written before the refusal");
+
+    // A String presents as the view it spans, and is untouched by having been rendered.
+    var system = SystemAllocator();
+    let allocator: Allocator = system;
+    var error = TextError::None;
+    let owned = String::FromBytes(allocator, "owned", @error);
+    Assert(Shown(owned.View(), plain, "owned"), "an owned string displays its text");
+    Assert(Inspected(owned.View(), plain, "\"owned\""), "and inspects quoted");
+    Assert(owned.Length() == 5u, "and is unchanged by either");
+    return 0;
+}
