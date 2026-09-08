@@ -1,0 +1,91 @@
+// `extern`: declaring something this program did not compile.
+//
+// The keyword had no language test at all. It is exercised heavily through the C, Windows, Linux, macOS and FreeBSD
+// packages, but always as a means to an end — those cases fail when a binding is wrong, not when the declaration
+// form itself is. What belongs here is the form: which spellings of `#Link` exist, what a block applies to its
+// members, that a Rux name and an exported symbol can differ, and which shapes are declarable but not callable.
+//
+// Every function named below is in the platform's own C runtime, which is present wherever this test can run. They
+// are chosen for being universally exported and boring: `abs` and `strlen` do the same thing on all four systems.
+// `snprintf` deliberately does not appear — the standard has it, and the runtime this binds on Windows does not,
+// which is exactly the sort of thing a binding test should not step in.
+
+import Core::Assert;
+import Core::{ #target, #Error };
+import Core::{ int32, uint };
+
+// `#Link` takes a constant declared in this file, so the runtime is selected while compiling.
+when #target.os {
+    .FreeBSD => const CRuntime = "libc.so.7";
+    .Linux => const CRuntime = "libc.so.6";
+    .macOS => const CRuntime = "libSystem.B.dylib";
+    .Windows => const CRuntime = "ucrtbase.dll";
+    else => #Error("Unsupported operating system")
+}
+
+// A block applies its library to every member, so the library is written once rather than per declaration.
+#Link(CRuntime)
+extern {
+    // Absolute value of an integer. c_int is int32 on every target this compiles for.
+    func abs(n: int32) -> int32;
+
+    // Length of a NUL-terminated string, not counting the NUL. size_t is pointer-sized, so uint.
+    func strlen(text: *char8) -> uint;
+}
+
+// The one-argument `#Link` on a single declaration, rather than on a block.
+//
+// `llabs` rather than `labs`, because C's `long` is 32 bits on Windows and 64 on the Unix systems, so no single Rux
+// width declares `labs` correctly everywhere. `long long` is 64 bits on all four. That difference is why the C
+// package has a `c_long` alias at all, and why a binding that guesses a width is a portability bug rather than a
+// style choice.
+#Link(CRuntime)
+extern func llabs(n: int64) -> int64;
+
+// The two-argument form: the Rux name and the exported symbol differ. Nothing else in this file could tell whether
+// the second argument was honoured, since a matching name would link either way.
+#Link(CRuntime, "abs")
+extern func AbsoluteValue(n: int32) -> int32;
+
+// Declarable but deliberately not called. A C variadic tail has no Rux spelling that captures it — the limitation is
+// documented rather than worked around — so what is pinned here is that the declaration form is accepted.
+#Link(CRuntime)
+extern func printf(format: *char8, ...) -> int32;
+
+// `#NoReturn()` on an extern says control does not come back. Declared, obviously not called.
+#NoReturn()
+#Link(CRuntime)
+extern func abort();
+
+func Main() -> int {
+    // A call through a block member reaches the real runtime.
+    Assert(abs(-5i32) == 5i32, "a negative argument comes back positive");
+    Assert(abs(5i32) == 5i32, "a positive argument is unchanged");
+    Assert(abs(0i32) == 0i32, "zero is unchanged");
+
+    // A call through a single declaration outside any block.
+    Assert(llabs(-5000000000i64) == 5000000000i64, "the wide form reaches its own symbol");
+
+    // The renamed declaration must reach the symbol named second, not the one named first.
+    Assert(AbsoluteValue(-42i32) == 42i32, "a Rux name may differ from the exported symbol");
+    Assert(AbsoluteValue(-42i32) == abs(-42i32), "and reaches the same code as the matching name");
+
+    // A literal keeps its trailing NUL, excluded from .length, which is what makes .data a C string.
+    let greeting = "hello";
+    Assert(greeting.length == 5u, "the length excludes the terminator");
+    Assert(strlen(greeting.data) == 5u, "and the runtime finds the terminator that is still there");
+
+    let empty = "";
+    Assert(empty.length == 0u, "an empty literal has no content");
+    Assert(strlen(empty.data) == 0u, "and is still terminated");
+
+    // A pointer argument may come from storage this program owns rather than from a literal.
+    var buffer: char8[4];
+    buffer[0] = c8'a';
+    buffer[1] = c8'b';
+    buffer[2] = c8'c';
+    buffer[3] = c8'\0';
+    Assert(strlen(@buffer[0]) == 3u, "a pointer into local storage is an ordinary argument");
+
+    return 0;
+}
