@@ -1,0 +1,167 @@
+// `match`: choosing an arm by the shape of a value.
+//
+// The keyword is used throughout the first-party packages and had no case of its own, so its behaviour was only
+// ever asserted incidentally, by tests that were really about the container or the option they happened to match
+// on. What belongs here is the construct: which patterns exist, that a payload binds, that a match is an expression
+// as well as a statement, and that arms are tried in order with only the first taken.
+//
+// Exhaustiveness is the property worth being deliberate about. A match over a closed set needs no `else` when it
+// names every case, and the arms below are written without one wherever that is true, so removing a case from a
+// variant would fail to compile rather than silently fall through.
+
+import Core::Assert;
+
+enum Direction: int32 {
+    North = 0,
+    East = 1,
+    South = 2,
+    West = 3
+}
+
+variant Shape {
+    Empty,
+    Round(int32),
+    Boxed(int32, int32)
+}
+
+func Opposite(heading: Direction) -> Direction {
+    return match heading {
+        .North => Direction::South,
+        .East => Direction::West,
+        .South => Direction::North,
+        .West => Direction::East
+    };
+}
+
+func Area(shape: &Shape) -> int32 {
+    return match shape {
+        .Empty => 0i32,
+        .Round(radius) => radius * radius * 3i32,
+        .Boxed(width, height) => width * height
+    };
+}
+
+func Describe(value: int32) -> int32 {
+    return match value {
+        0 => 100i32,
+        1 => 101i32,
+        else => 999i32
+    };
+}
+
+func Main() -> int {
+    // Every member of a closed enum, with no else. A match over all four needs no default.
+    Assert(Opposite(Direction::North) == Direction::South, "an enum member selects its arm");
+    Assert(Opposite(Direction::East) == Direction::West, "and so does the next");
+    Assert(Opposite(Direction::South) == Direction::North, "and the third");
+    Assert(Opposite(Direction::West) == Direction::East, "and the fourth");
+
+    // A variant's payload binds in the arm that matched, and only there.
+    let empty = Shape::Empty;
+    let round = Shape::Round(4i32);
+    let boxed = Shape::Boxed(3i32, 5i32);
+    Assert(Area(empty) == 0i32, "a unit case carries nothing");
+    Assert(Area(round) == 48i32, "a one-field payload binds its value");
+    Assert(Area(boxed) == 15i32, "a two-field payload binds both");
+
+    // `_` accepts a payload without naming it, which is how a case is matched for its shape alone.
+    let isRound = match round {
+        .Round(_) => true,
+        else => false
+    };
+    Assert(isRound, "a wildcard payload matches without binding");
+
+    // Literal patterns, with an else for everything they do not name.
+    Assert(Describe(0i32) == 100i32, "a literal pattern matches its value");
+    Assert(Describe(1i32) == 101i32, "and the next literal matches its own");
+    Assert(Describe(7i32) == 999i32, "and else takes everything left over");
+    Assert(Describe(-1i32) == 999i32, "including a negative value");
+
+    // A specific arm is taken in preference to the `else` that would also have accepted the value, and two arms
+    // with the same pattern are rejected rather than silently shadowing one another.
+    let specific = match 1i32 {
+        1 => 10i32,
+        else => 30i32
+    };
+    Assert(specific == 10i32, "a named value beats the default that would also have matched");
+    let defaulted = match 2i32 {
+        1 => 10i32,
+        else => 30i32
+    };
+    Assert(defaulted == 30i32, "and the default takes what nothing named");
+
+    // A runtime arm takes one pattern. Listing several separated by commas is a `when` feature — the compile-time
+    // match folds to a single branch, so grouping patterns there costs nothing — and it is not available here.
+    // Several values sharing an outcome are written as separate arms.
+    let grouped = match 3i32 {
+        1 => 111i32,
+        2 => 111i32,
+        3 => 111i32,
+        else => 333i32
+    };
+    Assert(grouped == 111i32, "separate arms may share an outcome");
+
+    // A match is an expression, so it produces a value that can be bound, returned or used in place.
+    let bound = match Direction::South {
+        .North => 1i32,
+        .East => 2i32,
+        .South => 3i32,
+        .West => 4i32
+    };
+    Assert(bound == 3i32, "a match expression produces a value");
+    Assert(Opposite(Direction::North) == Direction::South, "and a match can be returned directly");
+
+    // A match is also a statement, whose arms are blocks run for their effect.
+    var effect: int32 = 0;
+    match Direction::East {
+        .North => {
+            effect = 1i32;
+        },
+        .East => {
+            effect = 2i32;
+        },
+        .South => {
+            effect = 3i32;
+        },
+        .West => {
+            effect = 4i32;
+        }
+    }
+    Assert(effect == 2i32, "a match statement runs the matching arm for its effect");
+
+    // Only the matching arm runs: the others leave no trace.
+    var touched: int32 = 0;
+    match Shape::Round(2i32) {
+        .Empty => {
+            touched += 1i32;
+        },
+        .Round(radius) => {
+            touched += radius;
+        },
+        .Boxed(width, height) => {
+            touched += width + height;
+        }
+    }
+    Assert(touched == 2i32, "the other arms did not run");
+
+    // A block arm may hold more than one statement.
+    var accumulated: int32 = 0;
+    match 1i32 {
+        1 => {
+            accumulated += 5i32;
+            accumulated *= 2i32;
+        },
+        else => {
+            accumulated = -1i32;
+        }
+    }
+    Assert(accumulated == 10i32, "a block arm runs every statement in it");
+
+    // The subject is an expression, not only a name.
+    let computed = match 2i32 + 1i32 {
+        3 => true,
+        else => false
+    };
+    Assert(computed, "the subject may be computed");
+    return 0;
+}

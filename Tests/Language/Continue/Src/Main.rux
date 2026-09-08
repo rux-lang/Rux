@@ -1,0 +1,120 @@
+// `continue`: skipping the rest of one pass without leaving the loop.
+//
+// The keyword appeared in exactly one language test before this, so whatever that file happened to assert was the
+// entire language-level contract for it. What makes `continue` worth its own case is that it is not "go to the top
+// of the body": it goes to whatever each loop form does between passes, and those differ. A `while` re-tests its
+// condition, a `do`-`while` re-tests its condition too but at the bottom, a `for` advances its iterator, and a
+// `loop` does nothing at all — which is why a `continue` in a `loop` whose counter is incremented after it never
+// terminates. Every loop here therefore advances its counter before continuing.
+//
+// The labelled form is the other half: it resumes the loop it names, abandoning the rest of every loop inside it.
+
+import Core::Assert;
+
+func Main() -> int {
+    // The rest of the body is skipped; the loop is not left.
+    var evens: int = 0;
+    var passes: int = 0;
+    for value in 0..10 {
+        passes += 1;
+        if value % 2 != 0 {
+            continue;
+        }
+        evens += 1;
+    }
+    Assert(passes == 10, "every pass began");
+    Assert(evens == 5, "and half of them finished");
+
+    // In a while, `continue` goes to the condition, not past it. The counter is advanced before the continue, or
+    // this would not terminate.
+    var index: int = 0;
+    var body: int = 0;
+    while index < 10 {
+        index += 1;
+        if index % 3 == 0 {
+            continue;
+        }
+        body += 1;
+    }
+    Assert(index == 10, "the condition was re-tested each time");
+    Assert(body == 7, "and three passes skipped the rest of the body");
+
+    // In a do-while, `continue` goes to the condition at the bottom rather than back to the top of the body.
+    var attempts: int = 0;
+    var completed: int = 0;
+    do {
+        attempts += 1;
+        if attempts == 2 {
+            continue;
+        }
+        completed += 1;
+    } while attempts < 4;
+    Assert(attempts == 4, "the trailing condition still ended the loop");
+    Assert(completed == 3, "and one pass skipped the rest of the body");
+
+    // In a loop, `continue` starts the next pass with nothing in between, so an exit must already be reachable.
+    var ticks: int = 0;
+    var skipped: int = 0;
+    loop {
+        ticks += 1;
+        if ticks == 10 {
+            break;
+        }
+        if ticks % 2 == 0 {
+            skipped += 1;
+            continue;
+        }
+    }
+    Assert(ticks == 10, "the loop ended through its break");
+    Assert(skipped == 4, "and four passes continued early");
+
+    // Unlabelled, `continue` affects only the innermost loop; the outer one is unaffected.
+    var outerPasses: int = 0;
+    var innerBodies: int = 0;
+    for outer in 0..3 {
+        outerPasses += 1;
+        for inner in 0..4 {
+            if inner % 2 == 0 {
+                continue;
+            }
+            innerBodies += 1;
+        }
+    }
+    Assert(outerPasses == 3, "the outer loop ran every pass");
+    Assert(innerBodies == 6, "and the inner one finished two bodies each time");
+
+    // Labelled, `continue` resumes the loop it names and abandons the rest of the inner one. The inner counter is
+    // what distinguishes this from an unlabelled continue: only one inner pass happens per outer pass.
+    var outerReached: int = 0;
+    var innerReached: int = 0;
+    rows: for outer in 0..4 {
+        outerReached += 1;
+        for inner in 0..5 {
+            innerReached += 1;
+            continue rows;
+        }
+    }
+    Assert(outerReached == 4, "the named loop ran every pass");
+    Assert(innerReached == 4, "and the inner loop was abandoned after one pass each time");
+
+    // Naming the innermost loop is the same as naming nothing.
+    var named: int = 0;
+    for outer in 0..3 {
+        inner: for value in 0..4 {
+            if value % 2 == 0 {
+                continue inner;
+            }
+            named += 1;
+        }
+    }
+    Assert(named == 6, "naming the innermost loop behaves like the plain form");
+
+    // Code after the continue in the same body is not reached.
+    var afterContinue: int = 0;
+    for value in 0..3 {
+        continue;
+        afterContinue += 1;
+    }
+    Assert(afterContinue == 0, "nothing after a continue in the same body runs");
+    return 0;
+}

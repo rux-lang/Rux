@@ -1,0 +1,123 @@
+// `break`: leaving a loop early, and choosing which loop to leave.
+//
+// Unlabelled `break` leaves the innermost loop, which is the easy half. The labelled form is what needs a test: a
+// `break` naming an outer loop has to leave every loop between it and the one it names, and getting that wrong is
+// not a crash but a program that quietly does the inner loop's remaining work first. Every case below therefore
+// counts iterations rather than only checking the value that survived, so an extra pass is visible.
+//
+// `break` also has to interact correctly with the four loop forms, since each ends differently: `loop` has no
+// condition to fall out of, `while` re-tests before the body, `do`-`while` re-tests after it, and `for` advances an
+// iterator.
+
+import Core::Assert;
+
+func Main() -> int {
+    // The plain form: leave the innermost loop at once.
+    var passes: int = 0;
+    loop {
+        passes += 1;
+        break;
+    }
+    Assert(passes == 1, "break leaves an unconditional loop after one pass");
+
+    var counted: int = 0;
+    var index: int = 0;
+    while index < 10 {
+        index += 1;
+        if index == 4 {
+            break;
+        }
+        counted += 1;
+    }
+    Assert(index == 4 && counted == 3, "break leaves a while before its condition would have");
+
+    // do-while re-tests after the body, so a break still skips that test.
+    var attempts: int = 0;
+    do {
+        attempts += 1;
+        break;
+    } while attempts < 10;
+    Assert(attempts == 1, "break leaves a do-while without re-testing");
+
+    // A for loop stops advancing its range.
+    var visited: int = 0;
+    var last: int = -1;
+    for value in 0..10 {
+        last = value;
+        visited += 1;
+        if value == 2 {
+            break;
+        }
+    }
+    Assert(visited == 3 && last == 2, "break stops a for loop mid-range");
+
+    // Unlabelled, `break` leaves only the innermost loop. The outer one keeps going, which is what the counts show.
+    var outerPasses: int = 0;
+    var innerPasses: int = 0;
+    for outer in 0..3 {
+        outerPasses += 1;
+        for inner in 0..5 {
+            innerPasses += 1;
+            break;
+        }
+    }
+    Assert(outerPasses == 3, "the outer loop ran to completion");
+    Assert(innerPasses == 3, "and the inner one stopped after one pass each time");
+
+    // Labelled, `break` leaves the loop it names and every loop inside it. If the outer loop resumed instead, the
+    // counts below would be larger, so this distinguishes leaving from merely stopping the inner loop.
+    var outerReached: int = 0;
+    var innerReached: int = 0;
+    search: for outer in 0..4 {
+        outerReached += 1;
+        for inner in 0..4 {
+            innerReached += 1;
+            if outer == 1 && inner == 2 {
+                break search;
+            }
+        }
+    }
+    Assert(outerReached == 2, "the labelled break left the outer loop rather than continuing it");
+    Assert(innerReached == 7, "having run four inner passes, then three more");
+
+    // A labelled break naming the innermost loop behaves exactly like the unlabelled one.
+    var namedInner: int = 0;
+    for outer in 0..3 {
+        inner: for value in 0..5 {
+            namedInner += 1;
+            break inner;
+        }
+    }
+    Assert(namedInner == 3, "naming the innermost loop is the same as naming nothing");
+
+    // Three levels, leaving the outermost from the innermost.
+    var deepest: int = 0;
+    top: loop {
+        for middle in 0..3 {
+            for inner in 0..3 {
+                deepest += 1;
+                break top;
+            }
+        }
+    }
+    Assert(deepest == 1, "a labelled break crosses two loops at once");
+
+    // A loop whose only exit is a break still terminates, which is the reason `loop` needs no condition.
+    var ticks: int = 0;
+    loop {
+        ticks += 1;
+        if ticks == 5 {
+            break;
+        }
+    }
+    Assert(ticks == 5, "a conditional break is an unconditional loop's exit");
+
+    // Code after the break in the same body is not reached.
+    var afterBreak: int = 0;
+    loop {
+        break;
+        afterBreak = 1;
+    }
+    Assert(afterBreak == 0, "nothing after a break in the same body runs");
+    return 0;
+}

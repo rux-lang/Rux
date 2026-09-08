@@ -1,0 +1,99 @@
+// `do`: the loop that runs its body before asking whether it should have.
+//
+// This is the only loop form whose body is guaranteed to run at least once, and that guarantee is the whole reason
+// the form exists. It is also the property most easily lost: a `do`-`while` compiled as a `while` behaves
+// identically for every input except the one where the condition is false to begin with, so a test that only tries
+// true conditions proves nothing. Every case here starts with a condition that is already false, or checks the
+// count that distinguishes the two.
+
+import Core::Assert;
+
+func Main() -> int {
+    // The defining property: a condition that is false from the start still runs the body once.
+    var runs: int = 0;
+    do {
+        runs += 1;
+    } while false;
+    Assert(runs == 1, "the body runs before the condition is asked");
+
+    // The same shape with a real condition that is already false, rather than a literal the compiler folds.
+    var value: int = 100;
+    var bodies: int = 0;
+    do {
+        bodies += 1;
+        value += 1;
+    } while value < 10;
+    Assert(bodies == 1, "an already-false condition still gets one pass");
+    Assert(value == 101, "and the body's effect happened");
+
+    // The comparison the form exists for: the equivalent while never runs at all.
+    var whileBodies: int = 0;
+    var same: int = 100;
+    while same < 10 {
+        whileBodies += 1;
+        same += 1;
+    }
+    Assert(whileBodies == 0, "a while with the same condition runs no passes");
+
+    // Counting: n passes means the condition was tested n times, the last one falsely.
+    var index: int = 0;
+    do {
+        index += 1;
+    } while index < 5;
+    Assert(index == 5, "the loop ends the first time the condition fails");
+
+    // The condition is evaluated after the body, so it sees what the body just did. Written the other way round
+    // this would loop forever or not at all.
+    var accumulated: int = 0;
+    var steps: int = 0;
+    do {
+        accumulated += 10;
+        steps += 1;
+    } while accumulated < 35;
+    Assert(steps == 4 && accumulated == 40, "the condition reads the body's result");
+
+    // A nested do-while: the inner one restarts completely on each outer pass, body first every time.
+    var outerPasses: int = 0;
+    var innerPasses: int = 0;
+    var outer: int = 0;
+    do {
+        outerPasses += 1;
+        outer += 1;
+        var inner: int = 100;
+        do {
+            innerPasses += 1;
+            inner += 1;
+        } while inner < 10;
+    } while outer < 3;
+    Assert(outerPasses == 3, "the outer loop ran three passes");
+    Assert(innerPasses == 3, "and the inner body ran once per outer pass despite its false condition");
+
+    // break leaves without re-testing; continue jumps to the test rather than to the top of the body.
+    var broken: int = 0;
+    do {
+        broken += 1;
+        break;
+    } while true;
+    Assert(broken == 1, "break leaves a do-while that would otherwise never end");
+
+    var continued: int = 0;
+    var skipped: int = 0;
+    do {
+        continued += 1;
+        if continued == 2 {
+            skipped += 1;
+            continue;
+        }
+    } while continued < 4;
+    Assert(continued == 4, "continue reaches the trailing condition");
+    Assert(skipped == 1, "having skipped the rest of one body");
+
+    // A do-while whose body always ends the loop is a way to run a block once, which is a real use of the form.
+    var once: int = 0;
+    do {
+        once = 42;
+        break;
+    } while true;
+    Assert(once == 42, "the body ran exactly once");
+    return 0;
+}
