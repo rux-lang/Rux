@@ -23,7 +23,7 @@ when #target.os {
 /// `Copy`. Meaningful only against another reading from the same process: there is no epoch and no calendar here,
 /// which is the point — nothing anybody does to the wall clock changes what `Since` answers.
 ///
-/// https://rux-lang.dev/docs/api/time/instant
+/// @see https://rux-lang.dev/docs/api/time/instant
 pub struct Instant {
     /// Nanoseconds since some origin fixed for the life of the process.
     ticks: uint64;
@@ -34,7 +34,8 @@ extend Instant {
     ///
     /// Cannot fail on any supported system: the monotonic clock exists from boot and needs no permission.
     ///
-    /// https://rux-lang.dev/docs/api/time/instant/now
+    /// @returns the monotonic clock, read now
+    /// @see https://rux-lang.dev/docs/api/time/instant/now
     pub func Now() -> Instant {
         when #target.os == .Windows {
             // The counter runs in units the machine chooses, so the frequency turns it into nanoseconds. Splitting
@@ -61,7 +62,9 @@ extend Instant {
     /// Refusing the reversed pair rather than answering with garbage is what makes a mixed-up argument order a
     /// visible bug instead of a wildly large duration.
     ///
-    /// https://rux-lang.dev/docs/api/time/instant/since
+    /// @param earlier the earlier reading
+    /// @returns the time between the two readings, or `None` when `earlier` is not earlier
+    /// @see https://rux-lang.dev/docs/api/time/instant/since
     pub func Since(self: &Instant, earlier: Instant) -> Option<Duration> {
         if self.ticks < earlier.ticks { return Option::None<Duration>(); }
         let gap = self.ticks - earlier.ticks;
@@ -72,7 +75,8 @@ extend Instant {
 
     /// The time from this reading to now.
     ///
-    /// https://rux-lang.dev/docs/api/time/instant/elapsed
+    /// @returns the time from this reading to now
+    /// @see https://rux-lang.dev/docs/api/time/instant/elapsed
     pub func Elapsed(self: &Instant) -> Duration {
         let now = Instant::Now();
         return now.Since(Instant { ticks: self.ticks }).ValueOr(Duration::Zero());

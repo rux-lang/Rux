@@ -51,7 +51,11 @@ func ReleaseNativePathPair(allocator: Allocator, first: Path, second: Path, firs
 /// An existing `to` is replaced, atomically within one volume: a reader sees the old file or the new, never a
 /// gap. Across volumes Windows copies and deletes instead — not atomic — and the Unix systems refuse.
 ///
-/// https://rux-lang.dev/docs/api/filesystem/rename
+/// @param allocator where the storage comes from
+/// @param from the path that exists now
+/// @param to the path it should have afterwards
+/// @returns `None` when the file is at its new path
+/// @see https://rux-lang.dev/docs/api/filesystem/rename
 pub func Rename(allocator: Allocator, from: Path, to: Path) -> IoError {
     var fromNative: *var OsUnit = null;
     var toNative: *var OsUnit = null;
@@ -79,7 +83,11 @@ pub func Rename(allocator: Allocator, from: Path, to: Path) -> IoError {
 /// deleted. A symbolic link at `existing` is not followed: the link is made to the name given. Directories
 /// cannot be hard-linked on any supported system.
 ///
-/// https://rux-lang.dev/docs/api/filesystem/create-hard-link
+/// @param allocator where the storage comes from
+/// @param existing the file that exists now
+/// @param link the link to create
+/// @returns `None` when the new name refers to the same file
+/// @see https://rux-lang.dev/docs/api/filesystem/create-hard-link
 pub func CreateHardLink(allocator: Allocator, existing: Path, link: Path) -> IoError {
     var existingNative: *var OsUnit = null;
     var linkNative: *var OsUnit = null;
@@ -108,7 +116,12 @@ pub func CreateHardLink(allocator: Allocator, existing: Path, link: Path) -> IoE
 /// behind a privilege unless the machine runs Developer Mode, so `PermissionDenied` here is an environment, not
 /// a bug.
 ///
-/// https://rux-lang.dev/docs/api/filesystem/create-symbolic-link
+/// @param allocator where the storage comes from
+/// @param target the path the link will point at, which need not exist
+/// @param link the link to create
+/// @param targetIsDirectory whether the target is a directory, which Windows must be told in advance
+/// @returns `None` when the link was created; Windows needs a privilege for this
+/// @see https://rux-lang.dev/docs/api/filesystem/create-symbolic-link
 pub func CreateSymbolicLink(allocator: Allocator, target: Path, link: Path, targetIsDirectory: bool) -> IoError {
     var targetNative: *var OsUnit = null;
     var linkNative: *var OsUnit = null;
@@ -139,7 +152,11 @@ pub func CreateSymbolicLink(allocator: Allocator, target: Path, link: Path, targ
 /// An existing `to` is replaced. The copy is the bytes and nothing else: permissions, timestamps and the rest of
 /// the metadata are the destination's own, fresh — carrying them is a policy the metadata work owns.
 ///
-/// https://rux-lang.dev/docs/api/filesystem/copy-file
+/// @param allocator where the storage comes from
+/// @param from the path that exists now
+/// @param to the path it should have afterwards
+/// @returns `None` when the destination holds a copy
+/// @see https://rux-lang.dev/docs/api/filesystem/copy-file
 pub func CopyFile(allocator: Allocator, from: Path, to: Path) -> IoError {
     when #target.os == .Windows {
         var fromNative: *var OsUnit = null;

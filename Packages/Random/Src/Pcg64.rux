@@ -17,12 +17,12 @@
 ///
 /// PCG's "cheap" 64-bit multiplier, which the DXSM variant uses in the 128-bit step as well.
 ///
-/// https://rux-lang.dev/docs/api/random/pcg-multiplier
+/// @see https://rux-lang.dev/docs/api/random/pcg-multiplier
 pub const PcgMultiplier: uint64 = 0xDA942042E4DD58B5;
 
 /// A PCG64-DXSM generator.
 ///
-/// https://rux-lang.dev/docs/api/random/pcg64-dxsm
+/// @see https://rux-lang.dev/docs/api/random/pcg64-dxsm
 pub struct Pcg64Dxsm {
     /// The 128-bit linear congruential state.
     state: uint128;
@@ -33,7 +33,9 @@ pub struct Pcg64Dxsm {
 extend Pcg64Dxsm {
     /// A generator seeded by spreading `seed` through `SplitMix64`, on the default stream.
     ///
-    /// https://rux-lang.dev/docs/api/random/pcg64-dxsm/new
+    /// @param seed the value the generator starts from
+    /// @returns a generator seeded with that value, on the default stream
+    /// @see https://rux-lang.dev/docs/api/random/pcg64-dxsm/new
     pub func Pcg64Dxsm(seed: uint64) -> Pcg64Dxsm {
         return Pcg64Dxsm::WithStream(seed, 0u64);
     }
@@ -44,7 +46,10 @@ extend Pcg64Dxsm {
     /// which is how independent parallel streams are made without the workers having to agree on anything but
     /// their own index.
     ///
-    /// https://rux-lang.dev/docs/api/random/pcg64-dxsm/with-stream
+    /// @param seed the value the generator starts from
+    /// @param stream which of the generator's independent sequences to draw from
+    /// @returns a generator seeded with that value, on the given stream
+    /// @see https://rux-lang.dev/docs/api/random/pcg64-dxsm/with-stream
     pub func WithStream(seed: uint64, stream: uint64) -> Pcg64Dxsm {
         var mixer = SplitMix64(seed);
         let stateHigh = mixer.NextUint64() as uint128;
@@ -79,7 +84,8 @@ extend Pcg64Dxsm : RandomGenerator {
     /// multiplied by the low half forced odd — an odd multiplier is invertible, so that last step permutes the
     /// value rather than collapsing any of it.
     ///
-    /// https://rux-lang.dev/docs/api/random/pcg64-dxsm/next-uint64
+    /// @returns the next 64 bits
+    /// @see https://rux-lang.dev/docs/api/random/pcg64-dxsm/next-uint64
     pub func NextUint64(self: &var Pcg64Dxsm) -> uint64 {
         var high = (self.state >> 64u128) as uint64;
         let low = ((self.state as uint64) | 1u64);

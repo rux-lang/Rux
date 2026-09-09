@@ -19,7 +19,9 @@ import Entropy::{ EntropyError, NextUint64 };
 /// error gets a working — but entirely predictable — generator instead of undefined behavior. Anything that
 /// depends on the seed being unpredictable must check.
 ///
-/// https://rux-lang.dev/docs/api/random/xoshiro-from-entropy
+/// @param error receives why the generator could not be seeded, or `None`
+/// @returns a generator seeded from the system, or one seeded with zeros on failure
+/// @see https://rux-lang.dev/docs/api/random/xoshiro-from-entropy
 pub func XoshiroFromEntropy(error: *var EntropyError) -> Xoshiro256 {
     let seed = NextUint64(error);
     if *error != EntropyError::None { return Xoshiro256(0u64); }
@@ -30,7 +32,9 @@ pub func XoshiroFromEntropy(error: *var EntropyError) -> Xoshiro256 {
 ///
 /// Fails and recovers exactly as `XoshiroFromEntropy` does.
 ///
-/// https://rux-lang.dev/docs/api/random/pcg-from-entropy
+/// @param error receives why the generator could not be seeded, or `None`
+/// @returns a generator seeded from the system, or one seeded with zeros on failure
+/// @see https://rux-lang.dev/docs/api/random/pcg-from-entropy
 pub func PcgFromEntropy(error: *var EntropyError) -> Pcg64Dxsm {
     let seed = NextUint64(error);
     if *error != EntropyError::None { return Pcg64Dxsm(0u64); }
@@ -42,7 +46,10 @@ pub func PcgFromEntropy(error: *var EntropyError) -> Pcg64Dxsm {
 /// The intended shape for parallel work: every worker calls this with its own index, so the streams are
 /// independent by construction and the whole run is reproducible from the one seed if it is recorded.
 ///
-/// https://rux-lang.dev/docs/api/random/pcg-from-entropy-with-stream
+/// @param stream which of the generator's independent sequences to draw from
+/// @param error receives why the generator could not be seeded, or `None`
+/// @returns a generator on that stream seeded from the system, or one seeded with zeros on failure
+/// @see https://rux-lang.dev/docs/api/random/pcg-from-entropy-with-stream
 pub func PcgFromEntropyWithStream(stream: uint64, error: *var EntropyError) -> Pcg64Dxsm {
     let seed = NextUint64(error);
     if *error != EntropyError::None { return Pcg64Dxsm::WithStream(0u64, stream); }

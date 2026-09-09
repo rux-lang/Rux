@@ -17,7 +17,7 @@
 
 /// The most blocks `Expand` can produce, since its counter is one byte.
 ///
-/// https://rux-lang.dev/docs/api/crypto/hkdf-maximum-blocks
+/// @see https://rux-lang.dev/docs/api/crypto/hkdf-maximum-blocks
 pub const HkdfMaximumBlocks: uint = 255;
 
 /// Extracts a pseudorandom key from `material`, salted with `salt`.
@@ -25,7 +25,12 @@ pub const HkdfMaximumBlocks: uint = 255;
 /// `into` must be exactly the digest's length. An empty salt is legal and means a string of that many zeros,
 /// which is what the specification says — so an absent salt is not the same as no salt at all.
 ///
-/// https://rux-lang.dev/docs/api/crypto/hkdf-extract
+/// @typeParam D the digest type
+/// @param prototype any value of the digest type, read only to select it
+/// @param salt the salt, which may be empty
+/// @param material the input keying material
+/// @param into receives the output
+/// @see https://rux-lang.dev/docs/api/crypto/hkdf-extract
 pub func HkdfExtract<D: Digest>(prototype: D, salt: char8[..], material: char8[..], into: var char8[..]) {
     var probe = prototype;
     let digestLength = probe.DigestLength();
@@ -50,7 +55,13 @@ pub func HkdfExtract<D: Digest>(prototype: D, salt: char8[..], material: char8[.
 /// nothing is written in that case. `info` names what the derived key is for, and two expansions of one key
 /// under different info strings are unrelated.
 ///
-/// https://rux-lang.dev/docs/api/crypto/hkdf-expand
+/// @typeParam D the digest type
+/// @param prototype any value of the digest type, read only to select it
+/// @param key the key
+/// @param info the context and application-specific information
+/// @param into receives the output
+/// @returns whether `into` was a length this construction can produce
+/// @see https://rux-lang.dev/docs/api/crypto/hkdf-expand
 pub func HkdfExpand<D: Digest>(prototype: D, key: char8[..], info: char8[..],
                            into: var char8[..]) -> bool {
     var probe = prototype;
@@ -88,7 +99,14 @@ pub func HkdfExpand<D: Digest>(prototype: D, key: char8[..], info: char8[..],
 ///
 /// Returns `false` for an output longer than 255 digests, exactly as `HkdfExpand` does.
 ///
-/// https://rux-lang.dev/docs/api/crypto/hkdf
+/// @typeParam D the digest type
+/// @param prototype any value of the digest type, read only to select it
+/// @param salt the salt, which may be empty
+/// @param material the input keying material
+/// @param info the context and application-specific information
+/// @param into receives the output
+/// @returns whether `into` was a length this construction can produce
+/// @see https://rux-lang.dev/docs/api/crypto/hkdf
 pub func Hkdf<D: Digest>(prototype: D, salt: char8[..], material: char8[..], info: char8[..],
                      into: var char8[..]) -> bool {
     var probe = prototype;

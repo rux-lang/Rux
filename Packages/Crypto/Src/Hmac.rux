@@ -25,7 +25,7 @@ const HmacOuterPad: uint8 = 0x5C;
 /// eight and SHA-256's sixty four. The buffers below are written as that literal because an array length must
 /// be a compile-time integer and a constant does not satisfy that yet.
 ///
-/// https://rux-lang.dev/docs/api/crypto/hmac-maximum-block
+/// @see https://rux-lang.dev/docs/api/crypto/hmac-maximum-block
 pub const HmacMaximumBlock: uint = 168;
 
 /// An incremental HMAC over any digest.
@@ -35,7 +35,8 @@ pub const HmacMaximumBlock: uint = 168;
 ///
 /// Structural `Copy` whenever `D` is copyable; copying snapshots both digest states independently.
 ///
-/// https://rux-lang.dev/docs/api/crypto/hmac
+/// @typeParam D the digest type
+/// @see https://rux-lang.dev/docs/api/crypto/hmac
 pub struct Hmac<D: Digest> {
     /// The inner hash, which sees the padded key followed by the message.
     inner: D;
@@ -52,7 +53,10 @@ extend Hmac<D> {
     /// and is worth knowing: two keys differing only past the block length authenticate identically, because
     /// they are the same key after this step. A shorter key is padded with zeros.
     ///
-    /// https://rux-lang.dev/docs/api/crypto/hmac/new
+    /// @param prototype any value of the digest type, read only to select it
+    /// @param key the key
+    /// @returns an authenticator keyed with those bytes
+    /// @see https://rux-lang.dev/docs/api/crypto/hmac/new
     pub func Hmac(prototype: D, key: char8[..]) -> Hmac<D> {
         var probe = prototype;
         let blockLength = probe.BlockLength();
@@ -101,14 +105,18 @@ extend Hmac<D> {
 
     /// Adds `bytes` to the message being authenticated.
     ///
-    /// https://rux-lang.dev/docs/api/crypto/hmac/update
+    /// @typeParam D the digest type
+    /// @param bytes the bytes to absorb
+    /// @see https://rux-lang.dev/docs/api/crypto/hmac/update
     pub func Update<D: Digest>(self: &var Hmac<D>, bytes: char8[..]) {
         self.inner.Update(bytes);
     }
 
     /// Writes the authentication tag into `into`.
     ///
-    /// https://rux-lang.dev/docs/api/crypto/hmac/finish
+    /// @typeParam D the digest type
+    /// @param into receives the output
+    /// @see https://rux-lang.dev/docs/api/crypto/hmac/finish
     pub func Finish<D: Digest>(self: &var Hmac<D>, into: var char8[..]) {
         var innerDigest: char8[64];
         self.inner.Finish((@innerDigest[0])[..self.digestLength]);
@@ -118,7 +126,9 @@ extend Hmac<D> {
 
     /// How many bytes `Finish` writes: the underlying digest's length.
     ///
-    /// https://rux-lang.dev/docs/api/crypto/hmac/tag-length
+    /// @typeParam D the digest type
+    /// @returns how many bytes a tag occupies, which is the digest's length
+    /// @see https://rux-lang.dev/docs/api/crypto/hmac/tag-length
     pub func TagLength<D: Digest>(self: &Hmac<D>) -> uint {
         return self.digestLength;
     }
@@ -126,7 +136,12 @@ extend Hmac<D> {
 
 /// The HMAC of `message` under `key`, in one call.
 ///
-/// https://rux-lang.dev/docs/api/crypto/hmac-of
+/// @typeParam D the digest type
+/// @param prototype any value of the digest type, read only to select it
+/// @param key the key
+/// @param message the message to authenticate
+/// @param into receives the output
+/// @see https://rux-lang.dev/docs/api/crypto/hmac-of
 pub func HmacOf<D: Digest>(prototype: D, key: char8[..], message: char8[..], into: var char8[..]) {
     var state = Hmac<D>(prototype, key);
     state.Update(message);

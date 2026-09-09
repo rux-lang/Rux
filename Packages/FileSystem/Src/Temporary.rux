@@ -1,4 +1,3 @@
-
 // Temporary files and directories: unguessable names, and cleanup that is not left to chance.
 //
 // The name comes from the entropy source rather than from a counter or the process id, because a predictable
@@ -28,7 +27,7 @@ when #target.os == .Windows {
 /// With 128 bits of name, one collision is already a surprise and three in a row is not chance; failing is the
 /// honest response to an entropy source that has stopped being one.
 ///
-/// https://rux-lang.dev/docs/api/filesystem/temporary-name-attempts
+/// @see https://rux-lang.dev/docs/api/filesystem/temporary-name-attempts
 pub const TemporaryNameAttempts: uint = 4;
 
 /// The directory the system sets aside for temporary files.
@@ -37,7 +36,10 @@ pub const TemporaryNameAttempts: uint = 4;
 /// Unix systems it is `/tmp`: reading `TMPDIR` needs environment access this package does not have yet, so a
 /// caller who must honor it passes the directory to the functions below instead.
 ///
-/// https://rux-lang.dev/docs/api/filesystem/temporary-directory
+/// @param allocator where the storage comes from
+/// @param error receives why the operation failed, or `None`
+/// @returns the system's directory for temporary files
+/// @see https://rux-lang.dev/docs/api/filesystem/temporary-directory
 pub func TemporaryDirectory(allocator: Allocator, error: *var IoError) -> PathBuffer {
     *error = IoError::Ok();
     var textError = TextError::None;
@@ -115,7 +117,7 @@ func RandomName(allocator: Allocator, prefix: char8[..], error: *var IoError) ->
 /// discarded. `Keep` gives up ownership of the name instead, for the caller who has decided the file should
 /// outlive this value — which is what a rename into place is built on.
 ///
-/// https://rux-lang.dev/docs/api/filesystem/temporary-file
+/// @see https://rux-lang.dev/docs/api/filesystem/temporary-file
 pub struct TemporaryFile {
     /// The open file.
     pub file: File;
@@ -134,7 +136,12 @@ extend TemporaryFile {
     /// The file is opened for reading and writing and is created, never opened: a name that already exists is a
     /// collision, and the next name is tried.
     ///
-    /// https://rux-lang.dev/docs/api/filesystem/temporary-file/create
+    /// @param allocator where the storage comes from
+    /// @param directory the directory to create it in
+    /// @param prefix the text the generated name starts with
+    /// @param error receives why the operation failed, or `None`
+    /// @returns the created file or directory, which is removed when closed unless kept
+    /// @see https://rux-lang.dev/docs/api/filesystem/temporary-file/create
     pub func Create(allocator: Allocator, directory: Path, prefix: char8[..],
                 error: *var IoError) -> TemporaryFile {
         *error = IoError::Ok();
@@ -189,14 +196,17 @@ extend TemporaryFile {
 
     /// The file's path, for handing to something that needs a name.
     ///
-    /// https://rux-lang.dev/docs/api/filesystem/temporary-file/path
+    /// @returns the path it was created at
+    /// @see https://rux-lang.dev/docs/api/filesystem/temporary-file/path
     pub func AsPath(self: &TemporaryFile) -> Path {
         return self.path.AsPath();
     }
 
     /// Closes the file and deletes it, reporting the first thing that went wrong.
     ///
-    /// https://rux-lang.dev/docs/api/filesystem/temporary-file/close
+    /// @param allocator where the storage comes from
+    /// @returns `None` when it was removed
+    /// @see https://rux-lang.dev/docs/api/filesystem/temporary-file/close
     pub func Close(self: &var TemporaryFile, allocator: Allocator) -> IoError {
         var outcome = self.file.Close();
         if self.owned {
@@ -212,7 +222,8 @@ extend TemporaryFile {
 
     /// Closes the file and leaves it where it is, giving up the name.
     ///
-    /// https://rux-lang.dev/docs/api/filesystem/temporary-file/keep
+    /// @returns `None` when it will be left in place rather than removed
+    /// @see https://rux-lang.dev/docs/api/filesystem/temporary-file/keep
     pub func Keep(self: &var TemporaryFile) -> IoError {
         self.owned = false;
         return self.file.Close();
@@ -226,7 +237,7 @@ extend TemporaryFile {
 /// here deletes a tree, because a temporary directory that silently erased whatever a caller put inside it
 /// would be a worse surprise than a refusal.
 ///
-/// https://rux-lang.dev/docs/api/filesystem/temporary-directory-handle
+/// @see https://rux-lang.dev/docs/api/filesystem/temporary-directory-handle
 pub struct TemporaryDirectoryHandle {
     /// The directory's full path.
     path: PathBuffer;
@@ -240,7 +251,12 @@ extend TemporaryDirectoryHandle {
 
     /// Creates a new temporary directory in `directory`, named from `prefix` and sixteen hex digits of entropy.
     ///
-    /// https://rux-lang.dev/docs/api/filesystem/temporary-directory-handle/create
+    /// @param allocator where the storage comes from
+    /// @param directory the directory to create it in
+    /// @param prefix the text the generated name starts with
+    /// @param error receives why the operation failed, or `None`
+    /// @returns the created file or directory, which is removed when closed unless kept
+    /// @see https://rux-lang.dev/docs/api/filesystem/temporary-directory-handle/create
     pub func Create(allocator: Allocator, directory: Path, prefix: char8[..],
                 error: *var IoError) -> TemporaryDirectoryHandle {
         *error = IoError::Ok();
@@ -286,14 +302,17 @@ extend TemporaryDirectoryHandle {
 
     /// The directory's path, for building names inside it.
     ///
-    /// https://rux-lang.dev/docs/api/filesystem/temporary-directory-handle/path
+    /// @returns the path it was created at
+    /// @see https://rux-lang.dev/docs/api/filesystem/temporary-directory-handle/path
     pub func AsPath(self: &TemporaryDirectoryHandle) -> Path {
         return self.path.AsPath();
     }
 
     /// Removes the directory and reports what the removal said.
     ///
-    /// https://rux-lang.dev/docs/api/filesystem/temporary-directory-handle/close
+    /// @param allocator where the storage comes from
+    /// @returns `None` when it was removed
+    /// @see https://rux-lang.dev/docs/api/filesystem/temporary-directory-handle/close
     pub func Close(self: &var TemporaryDirectoryHandle, allocator: Allocator) -> IoError {
         var outcome = IoError::Ok();
         if self.owned {
@@ -306,7 +325,7 @@ extend TemporaryDirectoryHandle {
 
     /// Leaves the directory where it is, giving up the name.
     ///
-    /// https://rux-lang.dev/docs/api/filesystem/temporary-directory-handle/keep
+    /// @see https://rux-lang.dev/docs/api/filesystem/temporary-directory-handle/keep
     pub func Keep(self: &var TemporaryDirectoryHandle) {
         self.owned = false;
     }
@@ -319,7 +338,7 @@ extend TemporaryFile {
     /// this guarantees is that a temporary file is never left behind by an early return or a failure path, which
     /// is the reason the type exists.
     ///
-    /// https://rux-lang.dev/docs/api/filesystem/temporary-file/destructor
+    /// @see https://rux-lang.dev/docs/api/filesystem/temporary-file/destructor
     func ~TemporaryFile(self: &var TemporaryFile) {
         self.file.Close();
         if self.owned {
@@ -333,7 +352,7 @@ extend TemporaryFile {
 extend TemporaryDirectoryHandle {
     /// Removes the directory with the outcome discarded: the safety net, not the contract.
     ///
-    /// https://rux-lang.dev/docs/api/filesystem/temporary-directory-handle/destructor
+    /// @see https://rux-lang.dev/docs/api/filesystem/temporary-directory-handle/destructor
     func ~TemporaryDirectoryHandle(self: &var TemporaryDirectoryHandle) {
         if self.owned {
             self.owned = false;

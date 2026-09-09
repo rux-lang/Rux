@@ -47,7 +47,7 @@ when #target.os {
 
 /// What kind of thing a name refers to.
 ///
-/// https://rux-lang.dev/docs/api/filesystem/file-kind
+/// @see https://rux-lang.dev/docs/api/filesystem/file-kind
 pub enum FileKind: int32 {
     /// An ordinary file of bytes.
     File = 0,
@@ -66,7 +66,7 @@ pub enum FileKind: int32 {
 /// attribute (`0o444` when read-only, `0o666` otherwise) so a program that reasons in Unix terms is not blocked,
 /// and on Unix `readOnly` reports whether the owner-write bit is clear. `Capabilities` says which one is real.
 ///
-/// https://rux-lang.dev/docs/api/filesystem/permissions
+/// @see https://rux-lang.dev/docs/api/filesystem/permissions
 pub struct Permissions {
     /// The Unix permission bits.
     pub mode: uint32;
@@ -77,21 +77,26 @@ pub struct Permissions {
 extend Permissions {
     /// Permissions from Unix mode bits, with `readOnly` derived from the owner-write bit.
     ///
-    /// https://rux-lang.dev/docs/api/filesystem/permissions/from-mode
+    /// @param mode the permission bits
+    /// @returns permissions carrying those bits
+    /// @see https://rux-lang.dev/docs/api/filesystem/permissions/from-mode
     pub func FromMode(mode: uint32) -> Permissions {
         return Permissions { mode: mode & 0xFFFu32, readOnly: (mode & 0x80u32) == 0u32 };
     }
 
     /// Permissions from the read-only flag alone, with the mode synthesized from it.
     ///
-    /// https://rux-lang.dev/docs/api/filesystem/permissions/from-read-only
+    /// @param readOnly whether the file may only be read
+    /// @returns permissions that are writable or not, which is all Windows records
+    /// @see https://rux-lang.dev/docs/api/filesystem/permissions/from-read-only
     pub func FromReadOnly(readOnly: bool) -> Permissions {
         return Permissions { mode: readOnly ? 0x124u32 : 0x1B6u32, readOnly: readOnly };
     }
 
     /// Whether the owner may write.
     ///
-    /// https://rux-lang.dev/docs/api/filesystem/permissions/is-writable
+    /// @returns whether the owner may write the file
+    /// @see https://rux-lang.dev/docs/api/filesystem/permissions/is-writable
     pub func IsWritable(self: &Permissions) -> bool {
         return !self.readOnly;
     }
@@ -99,7 +104,7 @@ extend Permissions {
 
 /// Everything a single query can say about a file.
 ///
-/// https://rux-lang.dev/docs/api/filesystem/metadata
+/// @see https://rux-lang.dev/docs/api/filesystem/metadata
 pub struct Metadata {
     /// What the name refers to.
     pub kind: FileKind;
@@ -121,7 +126,7 @@ pub struct Metadata {
 
 /// What the running system can actually answer, so a caller can ask before it assumes.
 ///
-/// https://rux-lang.dev/docs/api/filesystem/capabilities
+/// @see https://rux-lang.dev/docs/api/filesystem/capabilities
 pub struct Capabilities {
     /// Whether `Permissions::mode` is the system's own answer rather than one synthesized from a flag.
     pub unixPermissions: bool;
@@ -135,7 +140,8 @@ pub struct Capabilities {
 
 /// What this system can answer.
 ///
-/// https://rux-lang.dev/docs/api/filesystem/capabilities-of-system
+/// @returns what this system's metadata actually carries, so a caller can tell an absent value from a false one
+/// @see https://rux-lang.dev/docs/api/filesystem/capabilities-of-system
 pub func CapabilitiesOfSystem() -> Capabilities {
     when #target.os == .Windows {
         return Capabilities { unixPermissions: false, creationTime: true, hardLinkCounts: true,
@@ -379,7 +385,12 @@ when #target.os == .Windows {
 /// `followLinks` decides what a symbolic link at the end of the path means: following it describes the target,
 /// and not following it describes the link, which is the only way `SymbolicLink` is ever reported.
 ///
-/// https://rux-lang.dev/docs/api/filesystem/metadata-of
+/// @param allocator where the storage comes from
+/// @param path the path to act on
+/// @param followLinks whether a final symbolic link is followed rather than described
+/// @param error receives why the operation failed, or `None`
+/// @returns what the system knows about the path, or an empty record on failure
+/// @see https://rux-lang.dev/docs/api/filesystem/metadata-of
 pub func MetadataOf(allocator: Allocator, path: Path, followLinks: bool, error: *var IoError) -> Metadata {
     *error = IoError::Ok();
     var result = Metadata {
@@ -431,7 +442,9 @@ extend File {
     /// Answers about the file the handle holds, so nothing can rename or replace the name out from under the
     /// query the way a path-based one can.
     ///
-    /// https://rux-lang.dev/docs/api/filesystem/file/metadata
+    /// @param error receives why the operation failed, or `None`
+    /// @returns what the system knows about the open file, or an empty record on failure
+    /// @see https://rux-lang.dev/docs/api/filesystem/file/metadata
     pub func Metadata(self: &File, error: *var IoError) -> Metadata {
         *error = IoError::Ok();
         var result = Metadata {
@@ -473,7 +486,11 @@ extend File {
 /// that alone is written and the rest of `permissions` is ignored — ask `CapabilitiesOfSystem` first if the
 /// difference matters. A symbolic link is always followed: its own bits mean nothing on any supported system.
 ///
-/// https://rux-lang.dev/docs/api/filesystem/set-permissions
+/// @param allocator where the storage comes from
+/// @param path the path to act on
+/// @param permissions the permissions to apply
+/// @returns `None` when the permissions were applied
+/// @see https://rux-lang.dev/docs/api/filesystem/set-permissions
 pub func SetPermissions(allocator: Allocator, path: Path, permissions: Permissions) -> IoError {
     var native: *var OsUnit = null;
     let converted = NativePath(allocator, path, @native);
@@ -512,7 +529,13 @@ pub func SetPermissions(allocator: Allocator, path: Path, permissions: Permissio
 /// Creation time is not settable here: Windows would allow it and the Unix systems would not, and an operation
 /// that silently means different things on different systems is worse than one that is not offered.
 ///
-/// https://rux-lang.dev/docs/api/filesystem/set-times
+/// @param allocator where the storage comes from
+/// @param path the path to act on
+/// @param accessed the access time to set, or `None` to leave it
+/// @param modified the modification time to set, or `None` to leave it
+/// @param followLinks whether a final symbolic link is followed rather than described
+/// @returns `None` when the times were applied
+/// @see https://rux-lang.dev/docs/api/filesystem/set-times
 pub func SetTimes(allocator: Allocator, path: Path, accessed: Timestamp, modified: Timestamp,
               followLinks: bool) -> IoError {
     var native: *var OsUnit = null;

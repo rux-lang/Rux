@@ -33,7 +33,10 @@ when #target.os {
 
 /// Creates the directory `path` names. Its parent must already exist; `AlreadyExists` if the name is taken.
 ///
-/// https://rux-lang.dev/docs/api/filesystem/make-directory
+/// @param allocator where the storage comes from
+/// @param path the path to act on
+/// @returns `None` when the directory now exists
+/// @see https://rux-lang.dev/docs/api/filesystem/make-directory
 pub func MakeDirectory(allocator: Allocator, path: Path) -> IoError {
     var native: *var OsUnit = null;
     let converted = NativePath(allocator, path, @native);
@@ -57,7 +60,10 @@ pub func MakeDirectory(allocator: Allocator, path: Path) -> IoError {
 
 /// Deletes the empty directory `path` names; a directory with anything still in it is refused.
 ///
-/// https://rux-lang.dev/docs/api/filesystem/delete-directory
+/// @param allocator where the storage comes from
+/// @param path the path to act on
+/// @returns `None` when the directory is gone
+/// @see https://rux-lang.dev/docs/api/filesystem/delete-directory
 pub func DeleteDirectory(allocator: Allocator, path: Path) -> IoError {
     var native: *var OsUnit = null;
     let converted = NativePath(allocator, path, @native);
@@ -80,7 +86,10 @@ pub func DeleteDirectory(allocator: Allocator, path: Path) -> IoError {
 
 /// Deletes the file `path` names. Removing the name does not disturb any handle still open on the file.
 ///
-/// https://rux-lang.dev/docs/api/filesystem/delete-file
+/// @param allocator where the storage comes from
+/// @param path the path to act on
+/// @returns `None` when the file is gone
+/// @see https://rux-lang.dev/docs/api/filesystem/delete-file
 pub func DeleteFile(allocator: Allocator, path: Path) -> IoError {
     var native: *var OsUnit = null;
     let converted = NativePath(allocator, path, @native);
@@ -106,7 +115,7 @@ pub func DeleteFile(allocator: Allocator, path: Path) -> IoError {
 /// Move-only: `Release` (or destruction) gives back the platform handle and the record buffer. `Next` hands each
 /// name over as a fresh `OsString` owned by the caller.
 ///
-/// https://rux-lang.dev/docs/api/filesystem/directory-iterator
+/// @see https://rux-lang.dev/docs/api/filesystem/directory-iterator
 pub struct DirectoryIterator {
     /// Where the record buffer came from, and where the names come from.
     allocator: Allocator;
@@ -138,7 +147,11 @@ func DirectoryBufferSize() -> uint {
 
 /// Begins enumerating the directory `path` names.
 ///
-/// https://rux-lang.dev/docs/api/filesystem/read-directory
+/// @param allocator where the storage comes from
+/// @param path the path to act on
+/// @param error receives why the operation failed, or `None`
+/// @returns a cursor over the directory's entries
+/// @see https://rux-lang.dev/docs/api/filesystem/read-directory
 pub func ReadDirectory(allocator: Allocator, path: Path, error: *var IoError) -> DirectoryIterator {
     *error = IoError::Ok();
     var iterator = DirectoryIterator {
@@ -235,7 +248,10 @@ extend DirectoryIterator {
     /// Reports `true` with `name` freshly owned by the caller; `false` at the end with `failure` still `None`,
     /// or `false` with `failure` saying what went wrong. The `.` and `..` entries are skipped.
     ///
-    /// https://rux-lang.dev/docs/api/filesystem/directory-iterator/next
+    /// @param name receives the entry's name
+    /// @param failure receives why the enumeration stopped, or `None`
+    /// @returns whether an entry was read; false both at the end and on failure, which `failure` tells apart
+    /// @see https://rux-lang.dev/docs/api/filesystem/directory-iterator/next
     pub func Next(self: &var DirectoryIterator, name: *var OsString, failure: *var IoError) -> bool {
         *failure = IoError::Ok();
         if !self.open {
@@ -343,7 +359,7 @@ extend DirectoryIterator {
 
     /// Gives back the handle and the buffer.
     ///
-    /// https://rux-lang.dev/docs/api/filesystem/directory-iterator/release
+    /// @see https://rux-lang.dev/docs/api/filesystem/directory-iterator/release
     pub func Release(self: &var DirectoryIterator) {
         if self.open {
             self.open = false;
@@ -364,7 +380,7 @@ extend DirectoryIterator {
 
     /// `Release`, as the safety net.
     ///
-    /// https://rux-lang.dev/docs/api/filesystem/directory-iterator/destructor
+    /// @see https://rux-lang.dev/docs/api/filesystem/directory-iterator/destructor
     func ~DirectoryIterator(self: &var DirectoryIterator) {
         self.Release();
     }

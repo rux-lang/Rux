@@ -35,7 +35,10 @@ func ClosedFile() -> IoError {
 extend File : Reader {
     /// Reads what one attempt yields into `into`; a short count is not an error and the end is `EndOfStream`.
     ///
-    /// https://rux-lang.dev/docs/api/filesystem/file/read
+    /// @param into receives the bytes
+    /// @param filled receives how many bytes were read
+    /// @returns `None` when the read was accepted; zero in `filled` is end of file, not a failure
+    /// @see https://rux-lang.dev/docs/api/filesystem/file/read
     pub func Read(self: &var File, into: var char8[..], filled: *var uint) -> IoError {
         *filled = 0;
         if !self.open { return ClosedFile(); }
@@ -66,7 +69,10 @@ extend File : Reader {
 extend File : Writer {
     /// Writes what one attempt takes of `bytes`; a short count means call again, which `WriteAll` does.
     ///
-    /// https://rux-lang.dev/docs/api/filesystem/file/write
+    /// @param bytes the bytes to write
+    /// @param taken receives how many bytes were taken
+    /// @returns `None` when the bytes were taken, which may be fewer than offered
+    /// @see https://rux-lang.dev/docs/api/filesystem/file/write
     pub func Write(self: &var File, bytes: char8[..], taken: *var uint) -> IoError {
         *taken = 0;
         if !self.open { return ClosedFile(); }
@@ -90,7 +96,8 @@ extend File : Writer {
 
     /// Nothing: these writes hold nothing back. Durability is `Sync`, which is a different promise.
     ///
-    /// https://rux-lang.dev/docs/api/filesystem/file/flush
+    /// @returns `None` when everything written reached the system
+    /// @see https://rux-lang.dev/docs/api/filesystem/file/flush
     pub func Flush(self: &var File) -> IoError {
         if !self.open { return ClosedFile(); }
         return IoError::Ok();
@@ -104,7 +111,11 @@ extend File : Seeker {
     /// later write there leaves a hole. A handle opened for appending still seeks — but its writes land at the
     /// end regardless, because append is a property of the writes, not of the position.
     ///
-    /// https://rux-lang.dev/docs/api/filesystem/file/seek
+    /// @param origin where the offset is measured from
+    /// @param offset how far to move
+    /// @param position receives the resulting offset from the start
+    /// @returns `None` when the offset moved
+    /// @see https://rux-lang.dev/docs/api/filesystem/file/seek
     pub func Seek(self: &var File, origin: SeekFrom, offset: int64, position: *var uint64) -> IoError {
         *position = 0;
         if !self.open { return ClosedFile(); }
@@ -138,7 +149,8 @@ extend File {
     /// Not "handed to the kernel" but "acknowledged by the device": the promise that holds through a power
     /// failure, and the one a caller who just wrote something they cannot lose actually wants.
     ///
-    /// https://rux-lang.dev/docs/api/filesystem/file/sync
+    /// @returns `None` when the system reported the data durable
+    /// @see https://rux-lang.dev/docs/api/filesystem/file/sync
     pub func Sync(self: &var File) -> IoError {
         if !self.open { return ClosedFile(); }
         when #target.os == .Windows {
@@ -158,7 +170,9 @@ extend File {
     /// position for a moment; a reader racing this on the same open file may see it. The stat-based answer
     /// arrives with the metadata work.
     ///
-    /// https://rux-lang.dev/docs/api/filesystem/file/size
+    /// @param size receives the file's size in bytes
+    /// @returns `None` when the size was read
+    /// @see https://rux-lang.dev/docs/api/filesystem/file/size
     pub func Size(self: &var File, size: *var uint64) -> IoError {
         *size = 0;
         if !self.open { return ClosedFile(); }
@@ -185,7 +199,9 @@ extend File {
     /// The position does not move. A position past the new end stays where it was, and the next write there
     /// grows the file again — the same rule as seeking past the end.
     ///
-    /// https://rux-lang.dev/docs/api/filesystem/file/set-length
+    /// @param length the size the file should have afterwards
+    /// @returns `None` when the file is that size; extending reads back as zeros
+    /// @see https://rux-lang.dev/docs/api/filesystem/file/set-length
     pub func SetLength(self: &var File, length: uint64) -> IoError {
         if !self.open { return ClosedFile(); }
         when #target.os == .Windows {
@@ -265,7 +281,10 @@ extend File {
 extend FileStream : Reader {
     /// Reads through the borrowed file.
     ///
-    /// https://rux-lang.dev/docs/api/filesystem/file-stream/read
+    /// @param into receives the bytes
+    /// @param filled receives how many bytes were read
+    /// @returns `None` when the read was accepted; zero in `filled` is end of file, not a failure
+    /// @see https://rux-lang.dev/docs/api/filesystem/file-stream/read
     pub func Read(self: &var FileStream, into: var char8[..], filled: *var uint) -> IoError {
         return (*self.file).Read(into, filled);
     }
@@ -274,14 +293,18 @@ extend FileStream : Reader {
 extend FileStream : Writer {
     /// Writes through the borrowed file.
     ///
-    /// https://rux-lang.dev/docs/api/filesystem/file-stream/write
+    /// @param bytes the bytes to write
+    /// @param taken receives how many bytes were taken
+    /// @returns `None` when the bytes were taken, which may be fewer than offered
+    /// @see https://rux-lang.dev/docs/api/filesystem/file-stream/write
     pub func Write(self: &var FileStream, bytes: char8[..], taken: *var uint) -> IoError {
         return (*self.file).Write(bytes, taken);
     }
 
     /// Flushes the borrowed file, which holds nothing back.
     ///
-    /// https://rux-lang.dev/docs/api/filesystem/file-stream/flush
+    /// @returns `None` when everything written reached the system
+    /// @see https://rux-lang.dev/docs/api/filesystem/file-stream/flush
     pub func Flush(self: &var FileStream) -> IoError {
         return (*self.file).Flush();
     }
@@ -290,7 +313,11 @@ extend FileStream : Writer {
 extend FileStream : Seeker {
     /// Seeks the borrowed file.
     ///
-    /// https://rux-lang.dev/docs/api/filesystem/file-stream/seek
+    /// @param origin where the offset is measured from
+    /// @param offset how far to move
+    /// @param position receives the resulting offset from the start
+    /// @returns `None` when the offset moved
+    /// @see https://rux-lang.dev/docs/api/filesystem/file-stream/seek
     pub func Seek(self: &var FileStream, origin: SeekFrom, offset: int64, position: *var uint64) -> IoError {
         return (*self.file).Seek(origin, offset, position);
     }

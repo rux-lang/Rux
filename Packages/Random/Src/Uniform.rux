@@ -19,7 +19,11 @@ import Math::{ IsInfinite, NextDown };
 ///
 /// Runs in constant expected time; the loop below runs more than once with probability under `bound / 2^64`.
 ///
-/// https://rux-lang.dev/docs/api/random/uniform-below
+/// @typeParam G the generator's type
+/// @param generator where the bits come from
+/// @param bound the exclusive upper bound
+/// @returns a value in `[0, bound)`, each equally likely and with no modulo bias
+/// @see https://rux-lang.dev/docs/api/random/uniform-below
 pub func UniformBelow<G: RandomGenerator>(generator: &var G, bound: uint64) -> uint64 {
     if bound == 0u64 { return 0u64; }
     var product = (generator.NextUint64() as uint128) * (bound as uint128);
@@ -43,7 +47,12 @@ pub func UniformBelow<G: RandomGenerator>(generator: &var G, bound: uint64) -> u
 /// a span of every value is a bound of 2^64, which does not fit in a `uint64`, and is handled as its own case
 /// rather than by an arithmetic accident.
 ///
-/// https://rux-lang.dev/docs/api/random/uniform-in-range
+/// @typeParam G the generator's type
+/// @param generator where the bits come from
+/// @param low the inclusive lower bound
+/// @param high the exclusive upper bound
+/// @returns a value in `[low, high)`, each equally likely
+/// @see https://rux-lang.dev/docs/api/random/uniform-in-range
 pub func UniformInRange<G: RandomGenerator>(generator: &var G, low: uint64, high: uint64) -> uint64 {
     if high < low { return low; }
     let span = high - low;
@@ -59,7 +68,12 @@ pub func UniformInRange<G: RandomGenerator>(generator: &var G, low: uint64, high
 /// The span is computed in unsigned arithmetic, so a range crossing zero — or spanning the whole width, where
 /// the difference of the ends overflows a signed type — is ordinary rather than a special case.
 ///
-/// https://rux-lang.dev/docs/api/random/uniform-in-signed-range
+/// @typeParam G the generator's type
+/// @param generator where the bits come from
+/// @param low the inclusive lower bound
+/// @param high the exclusive upper bound
+/// @returns a value in `[low, high)`, each equally likely
+/// @see https://rux-lang.dev/docs/api/random/uniform-in-signed-range
 pub func UniformInSignedRange<G: RandomGenerator>(generator: &var G, low: int64, high: int64) -> int64 {
     if high < low { return low; }
     let span = (high as uint64) - (low as uint64);
@@ -72,7 +86,12 @@ pub func UniformInSignedRange<G: RandomGenerator>(generator: &var G, low: int64,
 /// The interval is half-open at the top, matching `NextFloat64`. A reversed pair gives `low`, and an interval so
 /// wide that its span overflows to an infinity gives values across the whole of it rather than a NaN.
 ///
-/// https://rux-lang.dev/docs/api/random/uniform-float-in-range
+/// @typeParam G the generator's type
+/// @param generator where the bits come from
+/// @param low the inclusive lower bound
+/// @param high the exclusive upper bound
+/// @returns a value in `[low, high)`
+/// @see https://rux-lang.dev/docs/api/random/uniform-float-in-range
 pub func UniformFloatInRange<G: RandomGenerator>(generator: &var G, low: float64, high: float64) -> float64 {
     if !(low < high) { return low; }
     let unit = NextFloat64<G>(generator);

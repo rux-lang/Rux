@@ -1,4 +1,3 @@
-
 // Everything that is not a 64-bit word, derived from the stream of 64-bit words.
 //
 // These live here rather than on each generator so that two different generators seeded alike agree on more
@@ -12,7 +11,10 @@
 /// discards the rest — so the same `into.length` always consumes the same number of words, and two runs that
 /// fill buffers of the same size stay in step.
 ///
-/// https://rux-lang.dev/docs/api/random/fill-bytes
+/// @typeParam G the generator's type
+/// @param generator where the bits come from
+/// @param into receives the bytes
+/// @see https://rux-lang.dev/docs/api/random/fill-bytes
 pub func FillBytes<G: RandomGenerator>(generator: &var G, into: var char8[..]) {
     var index: uint = 0;
     while index < into.length {
@@ -33,28 +35,40 @@ pub func FillBytes<G: RandomGenerator>(generator: &var G, into: var char8[..]) {
 /// a generator that handed out the halves in turn would produce different sequences depending on how many
 /// narrow draws happened to precede a wide one.
 ///
-/// https://rux-lang.dev/docs/api/random/next-uint32
+/// @typeParam G the generator's type
+/// @param generator where the bits come from
+/// @returns the next 32 bits
+/// @see https://rux-lang.dev/docs/api/random/next-uint32
 pub func NextUint32<G: RandomGenerator>(generator: &var G) -> uint32 {
     return (generator.NextUint64() & 0xFFFFFFFFu64) as uint32;
 }
 
 /// The next 16-bit word.
 ///
-/// https://rux-lang.dev/docs/api/random/next-uint16
+/// @typeParam G the generator's type
+/// @param generator where the bits come from
+/// @returns the next 16 bits
+/// @see https://rux-lang.dev/docs/api/random/next-uint16
 pub func NextUint16<G: RandomGenerator>(generator: &var G) -> uint16 {
     return (generator.NextUint64() & 0xFFFFu64) as uint16;
 }
 
 /// The next 8-bit word.
 ///
-/// https://rux-lang.dev/docs/api/random/next-uint8
+/// @typeParam G the generator's type
+/// @param generator where the bits come from
+/// @returns the next 8 bits
+/// @see https://rux-lang.dev/docs/api/random/next-uint8
 pub func NextUint8<G: RandomGenerator>(generator: &var G) -> uint8 {
     return (generator.NextUint64() & 0xFFu64) as uint8;
 }
 
 /// The next 128-bit word, high half drawn first.
 ///
-/// https://rux-lang.dev/docs/api/random/next-uint128
+/// @typeParam G the generator's type
+/// @param generator where the bits come from
+/// @returns the next 128 bits
+/// @see https://rux-lang.dev/docs/api/random/next-uint128
 pub func NextUint128<G: RandomGenerator>(generator: &var G) -> uint128 {
     let high = generator.NextUint64() as uint128;
     let low = generator.NextUint64() as uint128;
@@ -68,7 +82,10 @@ pub func NextUint128<G: RandomGenerator>(generator: &var G) -> uint128 {
 /// word by 2^64 instead would round — and rounding upward at the top would produce exactly one, which callers
 /// scaling into an array index do not expect.
 ///
-/// https://rux-lang.dev/docs/api/random/next-float64
+/// @typeParam G the generator's type
+/// @param generator where the bits come from
+/// @returns a value in `[0, 1)`, with 53 bits of significance
+/// @see https://rux-lang.dev/docs/api/random/next-float64
 pub func NextFloat64<G: RandomGenerator>(generator: &var G) -> float64 {
     let bits = generator.NextUint64() >> 11u64;
     return (bits as float64) * 1.1102230246251565e-16; // 2^-53
@@ -76,7 +93,10 @@ pub func NextFloat64<G: RandomGenerator>(generator: &var G) -> float64 {
 
 /// A `float32` uniformly distributed in `[0, 1)`, from the top 24 bits.
 ///
-/// https://rux-lang.dev/docs/api/random/next-float32
+/// @typeParam G the generator's type
+/// @param generator where the bits come from
+/// @returns a value in `[0, 1)`, with 24 bits of significance
+/// @see https://rux-lang.dev/docs/api/random/next-float32
 pub func NextFloat32<G: RandomGenerator>(generator: &var G) -> float32 {
     let bits = generator.NextUint64() >> 40u64;
     return ((bits as float64) * 5.960464477539063e-8) as float32; // 2^-24

@@ -13,14 +13,14 @@ import Core::{ AddChecked, MulChecked, Option, Ordering, SubChecked };
 
 /// How many nanoseconds one second holds.
 ///
-/// https://rux-lang.dev/docs/api/time/nanoseconds-per-second
+/// @see https://rux-lang.dev/docs/api/time/nanoseconds-per-second
 pub const NanosecondsPerSecond: uint32 = 1000000000;
 
 /// A span of time: seconds and a fraction, normalized.
 ///
 /// `Copy`. The value is `seconds + nanoseconds / 1e9`, and `nanoseconds` is always in [0, 1e9).
 ///
-/// https://rux-lang.dev/docs/api/time/duration
+/// @see https://rux-lang.dev/docs/api/time/duration
 pub struct Duration {
     /// The whole seconds, carrying the sign.
     pub seconds: int64;
@@ -31,21 +31,26 @@ pub struct Duration {
 extend Duration {
     /// No time at all.
     ///
-    /// https://rux-lang.dev/docs/api/time/duration/zero
+    /// @returns a span of no time at all
+    /// @see https://rux-lang.dev/docs/api/time/duration/zero
     pub func Zero() -> Duration {
         return Duration { seconds: 0, nanoseconds: 0 };
     }
 
     /// Exactly `seconds` seconds.
     ///
-    /// https://rux-lang.dev/docs/api/time/duration/from-seconds
+    /// @param seconds how many seconds
+    /// @returns that many seconds
+    /// @see https://rux-lang.dev/docs/api/time/duration/from-seconds
     pub func FromSeconds(seconds: int64) -> Duration {
         return Duration { seconds: seconds, nanoseconds: 0 };
     }
 
     /// Exactly `minutes` minutes, or `None` past the range.
     ///
-    /// https://rux-lang.dev/docs/api/time/duration/from-minutes
+    /// @param minutes how many minutes
+    /// @returns that many minutes, or `None` when the count does not fit
+    /// @see https://rux-lang.dev/docs/api/time/duration/from-minutes
     pub func FromMinutes(minutes: int64) -> Option<Duration> {
         var seconds: int64 = 0;
         if MulChecked<int64>(minutes, 60i64, @seconds) { return Option::None<Duration>(); }
@@ -54,7 +59,9 @@ extend Duration {
 
     /// Exactly `hours` hours, or `None` past the range.
     ///
-    /// https://rux-lang.dev/docs/api/time/duration/from-hours
+    /// @param hours how many hours
+    /// @returns that many hours, or `None` when the count does not fit
+    /// @see https://rux-lang.dev/docs/api/time/duration/from-hours
     pub func FromHours(hours: int64) -> Option<Duration> {
         var seconds: int64 = 0;
         if MulChecked<int64>(hours, 3600i64, @seconds) { return Option::None<Duration>(); }
@@ -65,21 +72,27 @@ extend Duration {
     ///
     /// Cannot overflow: every `int64` count of milliseconds fits.
     ///
-    /// https://rux-lang.dev/docs/api/time/duration/from-milliseconds
+    /// @param milliseconds how many milliseconds
+    /// @returns that many milliseconds
+    /// @see https://rux-lang.dev/docs/api/time/duration/from-milliseconds
     pub func FromMilliseconds(milliseconds: int64) -> Duration {
         return Duration::FromScaled(milliseconds, 1000000u32);
     }
 
     /// Exactly `microseconds` microseconds.
     ///
-    /// https://rux-lang.dev/docs/api/time/duration/from-microseconds
+    /// @param microseconds how many microseconds
+    /// @returns that many microseconds
+    /// @see https://rux-lang.dev/docs/api/time/duration/from-microseconds
     pub func FromMicroseconds(microseconds: int64) -> Duration {
         return Duration::FromScaled(microseconds, 1000u32);
     }
 
     /// Exactly `nanoseconds` nanoseconds.
     ///
-    /// https://rux-lang.dev/docs/api/time/duration/from-nanoseconds
+    /// @param nanoseconds how many nanoseconds
+    /// @returns that many nanoseconds
+    /// @see https://rux-lang.dev/docs/api/time/duration/from-nanoseconds
     pub func FromNanoseconds(nanoseconds: int64) -> Duration {
         return Duration::FromScaled(nanoseconds, 1u32);
     }
@@ -101,7 +114,8 @@ extend Duration {
 extend Duration {
     /// Whether this span is exactly nothing.
     ///
-    /// https://rux-lang.dev/docs/api/time/duration/is-zero
+    /// @returns whether the span is exactly zero
+    /// @see https://rux-lang.dev/docs/api/time/duration/is-zero
     pub func IsZero(self: &Duration) -> bool {
         return self.seconds == 0i64 && self.nanoseconds == 0u32;
     }
@@ -110,42 +124,48 @@ extend Duration {
     ///
     /// The sign lives in the seconds alone, which the normalization guarantees.
     ///
-    /// https://rux-lang.dev/docs/api/time/duration/is-negative
+    /// @returns whether the span runs backwards
+    /// @see https://rux-lang.dev/docs/api/time/duration/is-negative
     pub func IsNegative(self: &Duration) -> bool {
         return self.seconds < 0i64;
     }
 
     /// The whole seconds, rounded toward negative infinity.
     ///
-    /// https://rux-lang.dev/docs/api/time/duration/whole-seconds
+    /// @returns the whole seconds, truncated toward zero
+    /// @see https://rux-lang.dev/docs/api/time/duration/whole-seconds
     pub func WholeSeconds(self: &Duration) -> int64 {
         return self.seconds;
     }
 
     /// The fraction beyond the whole seconds, in nanoseconds, always in [0, 1e9).
     ///
-    /// https://rux-lang.dev/docs/api/time/duration/subsecond-nanoseconds
+    /// @returns the nanoseconds within the second, in `[0, 999999999]`
+    /// @see https://rux-lang.dev/docs/api/time/duration/subsecond-nanoseconds
     pub func SubsecondNanoseconds(self: &Duration) -> uint32 {
         return self.nanoseconds;
     }
 
     /// This span as milliseconds, truncated toward zero, or `None` where an `int64` of them cannot hold it.
     ///
-    /// https://rux-lang.dev/docs/api/time/duration/total-milliseconds
+    /// @returns the whole span in milliseconds, or `None` when it does not fit
+    /// @see https://rux-lang.dev/docs/api/time/duration/total-milliseconds
     pub func TotalMilliseconds(self: &Duration) -> Option<int64> {
         return self.Total(1000000u32);
     }
 
     /// This span as microseconds, truncated toward zero.
     ///
-    /// https://rux-lang.dev/docs/api/time/duration/total-microseconds
+    /// @returns the whole span in microseconds, or `None` when it does not fit
+    /// @see https://rux-lang.dev/docs/api/time/duration/total-microseconds
     pub func TotalMicroseconds(self: &Duration) -> Option<int64> {
         return self.Total(1000u32);
     }
 
     /// This span as nanoseconds, or `None` where an `int64` of them cannot hold it — about 292 years.
     ///
-    /// https://rux-lang.dev/docs/api/time/duration/total-nanoseconds
+    /// @returns the whole span in nanoseconds, or `None` when it does not fit
+    /// @see https://rux-lang.dev/docs/api/time/duration/total-nanoseconds
     pub func TotalNanoseconds(self: &Duration) -> Option<int64> {
         return self.Total(1u32);
     }
@@ -162,7 +182,9 @@ extend Duration {
 
     /// The sum of two spans, or `None` past the range.
     ///
-    /// https://rux-lang.dev/docs/api/time/duration/plus
+    /// @param other the value to compare against
+    /// @returns the sum, or `None` when it does not fit
+    /// @see https://rux-lang.dev/docs/api/time/duration/plus
     pub func Plus(self: &Duration, other: Duration) -> Option<Duration> {
         var seconds: int64 = 0;
         if AddChecked<int64>(self.seconds, other.seconds, @seconds) { return Option::None<Duration>(); }
@@ -176,7 +198,9 @@ extend Duration {
 
     /// The difference of two spans, or `None` past the range.
     ///
-    /// https://rux-lang.dev/docs/api/time/duration/minus
+    /// @param other the value to compare against
+    /// @returns the difference, or `None` when it does not fit
+    /// @see https://rux-lang.dev/docs/api/time/duration/minus
     pub func Minus(self: &Duration, other: Duration) -> Option<Duration> {
         var seconds: int64 = 0;
         if SubChecked<int64>(self.seconds, other.seconds, @seconds) { return Option::None<Duration>(); }
@@ -190,7 +214,8 @@ extend Duration {
 
     /// This span negated, or `None` for the one value whose negation does not fit.
     ///
-    /// https://rux-lang.dev/docs/api/time/duration/negated
+    /// @returns the span running the other way, or `None` when it does not fit
+    /// @see https://rux-lang.dev/docs/api/time/duration/negated
     pub func Negated(self: &Duration) -> Option<Duration> {
         let zero = Duration::Zero();
         return zero.Minus(Duration { seconds: self.seconds, nanoseconds: self.nanoseconds });
@@ -198,7 +223,9 @@ extend Duration {
 
     /// This span scaled by a whole factor, or `None` past the range.
     ///
-    /// https://rux-lang.dev/docs/api/time/duration/times
+    /// @param factor what to multiply by
+    /// @returns the product, or `None` when it does not fit
+    /// @see https://rux-lang.dev/docs/api/time/duration/times
     pub func Times(self: &Duration, factor: int64) -> Option<Duration> {
         // The fraction times the factor is nanoseconds that may carry whole seconds; the carry rides along
         // checked, so the largest representable spans still refuse rather than wrap.
@@ -214,7 +241,9 @@ extend Duration {
 
     /// Whether two spans are the same time.
     ///
-    /// https://rux-lang.dev/docs/api/time/duration/equals
+    /// @param other the value to compare against
+    /// @returns whether the two spans are the same length
+    /// @see https://rux-lang.dev/docs/api/time/duration/equals
     pub func Equals(self: &Duration, other: Duration) -> bool {
         return self.seconds == other.seconds && self.nanoseconds == other.nanoseconds;
     }
@@ -223,7 +252,9 @@ extend Duration {
     ///
     /// Two comparisons, which the normalization pays for: the seconds decide, and the fractions only tie-break.
     ///
-    /// https://rux-lang.dev/docs/api/time/duration/compare
+    /// @param other the value to compare against
+    /// @returns how this span orders against `other`
+    /// @see https://rux-lang.dev/docs/api/time/duration/compare
     pub func Compare(self: &Duration, other: Duration) -> Ordering {
         if self.seconds < other.seconds { return Ordering::Less; }
         if self.seconds > other.seconds { return Ordering::Greater; }

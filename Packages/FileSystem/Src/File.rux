@@ -52,7 +52,7 @@ else {
 /// what happens to the file itself. `append` positions every write at the end, whatever was written in between,
 /// which is the property log writers need and `write` alone does not have.
 ///
-/// https://rux-lang.dev/docs/api/filesystem/open-options
+/// @see https://rux-lang.dev/docs/api/filesystem/open-options
 pub struct OpenOptions {
     /// The handle may read.
     read: bool;
@@ -72,14 +72,16 @@ pub struct OpenOptions {
 extend OpenOptions {
     /// Nothing at all: the caller states every intention.
     ///
-    /// https://rux-lang.dev/docs/api/filesystem/open-options/new
+    /// @returns options that permit nothing, which must be added to before opening
+    /// @see https://rux-lang.dev/docs/api/filesystem/open-options/new
     pub func OpenOptions() -> OpenOptions {
         return OpenOptions { read: false, write: false, append: false, truncate: false, create: false, createNew: false };
     }
 
     /// Reading an existing file.
     ///
-    /// https://rux-lang.dev/docs/api/filesystem/open-options/reading
+    /// @returns options that open an existing file for reading
+    /// @see https://rux-lang.dev/docs/api/filesystem/open-options/reading
     pub func Reading() -> OpenOptions {
         var options = OpenOptions();
         options.read = true;
@@ -88,7 +90,8 @@ extend OpenOptions {
 
     /// Writing a file from its beginning: created if missing, emptied if not.
     ///
-    /// https://rux-lang.dev/docs/api/filesystem/open-options/writing
+    /// @returns options that create or truncate a file for writing
+    /// @see https://rux-lang.dev/docs/api/filesystem/open-options/writing
     pub func Writing() -> OpenOptions {
         var options = OpenOptions();
         options.write = true;
@@ -99,7 +102,8 @@ extend OpenOptions {
 
     /// Adding to a file's end: created if missing, appended to if not.
     ///
-    /// https://rux-lang.dev/docs/api/filesystem/open-options/appending
+    /// @returns options that create or open a file and write at its end
+    /// @see https://rux-lang.dev/docs/api/filesystem/open-options/appending
     pub func Appending() -> OpenOptions {
         var options = OpenOptions();
         options.append = true;
@@ -124,7 +128,7 @@ extend OpenOptions {
 /// error-visible path; destruction discards the outcome, which is fine for a file that was read and a silent
 /// loss for one that was written.
 ///
-/// https://rux-lang.dev/docs/api/filesystem/file
+/// @see https://rux-lang.dev/docs/api/filesystem/file
 pub struct File {
     /// The platform's handle.
     handle: RawFile;
@@ -180,7 +184,12 @@ extend File {
     /// The allocator is borrowed for the platform form of the path and holds nothing afterward. On failure the
     /// returned value is not open, and `error` says why in the platform's own terms, translated.
     ///
-    /// https://rux-lang.dev/docs/api/filesystem/file/open
+    /// @param allocator where the storage comes from
+    /// @param path the path to act on
+    /// @param options what may be done with the file, and what to do about existence
+    /// @param error receives why the operation failed, or `None`
+    /// @returns the open file, or a closed one when it could not be opened
+    /// @see https://rux-lang.dev/docs/api/filesystem/file/open
     pub func Open(allocator: Allocator, path: Path, options: OpenOptions, error: *var IoError) -> File {
         *error = options.Validate();
         var file = File { handle: NoFile(), open: false };
@@ -264,7 +273,8 @@ extend File {
 
     /// Whether the handle is still open.
     ///
-    /// https://rux-lang.dev/docs/api/filesystem/file/is-open
+    /// @returns whether the file is open
+    /// @see https://rux-lang.dev/docs/api/filesystem/file/is-open
     pub func IsOpen(self: &File) -> bool {
         return self.open;
     }
@@ -274,7 +284,8 @@ extend File {
     /// Closing twice is not an error here: the second call is a no-op reporting `Ok`, because the first already
     /// gave the handle back. This is the error-visible path; a written file deserves it.
     ///
-    /// https://rux-lang.dev/docs/api/filesystem/file/close
+    /// @returns `None` when the descriptor was released; closing twice is not an error
+    /// @see https://rux-lang.dev/docs/api/filesystem/file/close
     pub func Close(self: &var File) -> IoError {
         if !self.open { return IoError::Ok(); }
         self.open = false;
@@ -290,7 +301,7 @@ extend File {
     }
     /// Closes with the outcome discarded: the safety net, not the contract.
     ///
-    /// https://rux-lang.dev/docs/api/filesystem/file/destructor
+    /// @see https://rux-lang.dev/docs/api/filesystem/file/destructor
     func ~File(self: &var File) {
         self.Close();
     }

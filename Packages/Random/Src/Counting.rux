@@ -16,7 +16,12 @@ import Math::{ Exp, Floor, Log };
 /// answer falls on and leaves a strictly smaller problem. That halves the count each step, so a binomial over a
 /// billion trials costs about thirty draws rather than a billion.
 ///
-/// https://rux-lang.dev/docs/api/random/binomial
+/// @typeParam G the generator's type
+/// @param generator where the bits come from
+/// @param trials how many independent trials
+/// @param probability the chance of success, in `[0, 1]`
+/// @returns how many of `trials` succeeded
+/// @see https://rux-lang.dev/docs/api/random/binomial
 pub func Binomial<G: RandomGenerator>(generator: &var G, trials: uint64, probability: float64) -> uint64 {
     if trials == 0u64 || !(probability > 0.0) { return 0u64; }
     if probability >= 1.0 { return trials; }
@@ -47,7 +52,11 @@ pub func Binomial<G: RandomGenerator>(generator: &var G, trials: uint64, probabi
 /// chunks: a gamma draw of integer shape is the waiting time for that many events, and either it overshoots the
 /// interval, in which case the count is a binomial of what is left, or it fits and the remainder carries on.
 ///
-/// https://rux-lang.dev/docs/api/random/poisson
+/// @typeParam G the generator's type
+/// @param generator where the bits come from
+/// @param mean the distribution's mean
+/// @returns a draw from the Poisson distribution with that mean
+/// @see https://rux-lang.dev/docs/api/random/poisson
 pub func Poisson<G: RandomGenerator>(generator: &var G, mean: float64) -> uint64 {
     if !(mean > 0.0) { return 0u64; }
     var remaining = mean;

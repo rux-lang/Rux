@@ -16,7 +16,11 @@
 ///
 /// Runs in time proportional to the length and allocates nothing.
 ///
-/// https://rux-lang.dev/docs/api/random/shuffle
+/// @typeParam G the generator's type
+/// @typeParam T the item type
+/// @param generator where the bits come from
+/// @param items the sequence to shuffle in place
+/// @see https://rux-lang.dev/docs/api/random/shuffle
 pub func Shuffle<G: RandomGenerator, T>(generator: &var G, items: var T[..]) {
     if items.length < 2u { return; }
     var index = items.length - 1u;
@@ -37,7 +41,11 @@ pub func Shuffle<G: RandomGenerator, T>(generator: &var G, items: var T[..]) {
 /// Returning the count for an empty collection gives the caller a value that cannot be mistaken for a valid
 /// index, which a zero would be.
 ///
-/// https://rux-lang.dev/docs/api/random/choose-index
+/// @typeParam G the generator's type
+/// @param generator where the bits come from
+/// @param count how many there are to choose among
+/// @returns an index in `[0, count)`, each equally likely
+/// @see https://rux-lang.dev/docs/api/random/choose-index
 pub func ChooseIndex<G: RandomGenerator>(generator: &var G, count: uint) -> uint {
     if count == 0u { return 0u; }
     return UniformBelow<G>(generator, count as uint64) as uint;
@@ -52,7 +60,11 @@ pub func ChooseIndex<G: RandomGenerator>(generator: &var G, count: uint) -> uint
 ///
 /// Runs in time proportional to the length, reading the weights twice: once to total them and once to select.
 ///
-/// https://rux-lang.dev/docs/api/random/weighted-index
+/// @typeParam G the generator's type
+/// @param generator where the bits come from
+/// @param weights the relative weight of each index; they need not sum to one
+/// @returns an index chosen in proportion to its weight
+/// @see https://rux-lang.dev/docs/api/random/weighted-index
 pub func WeightedIndex<G: RandomGenerator>(generator: &var G, weights: float64[..]) -> uint {
     var total = 0.0;
     var index: uint = 0;

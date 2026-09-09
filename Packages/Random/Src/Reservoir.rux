@@ -11,7 +11,8 @@
 /// arrived, each subset of that size equally likely. The caller owns the storage, and its length is the sample
 /// size.
 ///
-/// https://rux-lang.dev/docs/api/random/reservoir
+/// @typeParam T the item type
+/// @see https://rux-lang.dev/docs/api/random/reservoir
 pub struct Reservoir<T> {
     /// Where the sample is kept; its length is the sample size.
     room: var T[..];
@@ -22,7 +23,9 @@ pub struct Reservoir<T> {
 extend Reservoir<T> {
     /// A reservoir that will fill `room`.
     ///
-    /// https://rux-lang.dev/docs/api/random/reservoir/new
+    /// @param room how many items the reservoir keeps
+    /// @returns an empty reservoir that will keep `room` items
+    /// @see https://rux-lang.dev/docs/api/random/reservoir/new
     pub func Reservoir(room: var T[..]) -> Reservoir<T> {
         return Reservoir<T> { room: room, seen: 0 };
     }
@@ -30,14 +33,16 @@ extend Reservoir<T> {
     /// How many items the reservoir currently holds, which is the smaller of the sample size and the number
     /// offered.
     ///
-    /// https://rux-lang.dev/docs/api/random/reservoir/length
+    /// @returns how many items it currently holds
+    /// @see https://rux-lang.dev/docs/api/random/reservoir/length
     pub func Length(self: &Reservoir<T>) -> uint {
         return self.seen < self.room.length ? self.seen : self.room.length;
     }
 
     /// How many items have been offered.
     ///
-    /// https://rux-lang.dev/docs/api/random/reservoir/seen
+    /// @returns how many items have been offered to it in total
+    /// @see https://rux-lang.dev/docs/api/random/reservoir/seen
     pub func Seen(self: &Reservoir<T>) -> uint {
         return self.seen;
     }
@@ -50,7 +55,12 @@ extend Reservoir<T> {
 /// keeps every subset equally likely at every moment, not merely at the end — so a stream can be cut short and
 /// the sample is still uniform over what arrived.
 ///
-/// https://rux-lang.dev/docs/api/random/offer
+/// @typeParam G the generator's type
+/// @typeParam T the item type
+/// @param generator where the bits come from
+/// @param reservoir the reservoir to offer the item to
+/// @param item the item being offered
+/// @see https://rux-lang.dev/docs/api/random/offer
 pub func Offer<G: RandomGenerator, T>(generator: &var G, reservoir: &var Reservoir<T>, item: T) {
     if reservoir.room.length == 0u {
         reservoir.seen = reservoir.seen + 1u;

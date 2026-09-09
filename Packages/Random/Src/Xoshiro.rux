@@ -11,7 +11,7 @@
 
 /// A Xoshiro256** generator.
 ///
-/// https://rux-lang.dev/docs/api/random/xoshiro256
+/// @see https://rux-lang.dev/docs/api/random/xoshiro256
 pub struct Xoshiro256 {
     /// The four words of state.
     state: uint64[4];
@@ -30,7 +30,9 @@ extend Xoshiro256 {
     /// zero — which is what a caller does by hand — gives a state so close to the fixed point that the first
     /// several outputs are visibly poor, which is the whole reason this goes through the mixer.
     ///
-    /// https://rux-lang.dev/docs/api/random/xoshiro256/new
+    /// @param seed the value the generator starts from
+    /// @returns a generator seeded with that value
+    /// @see https://rux-lang.dev/docs/api/random/xoshiro256/new
     pub func Xoshiro256(seed: uint64) -> Xoshiro256 {
         var mixer = SplitMix64(seed);
         var generator = Xoshiro256 { state: [0, 0, 0, 0] };
@@ -47,7 +49,9 @@ extend Xoshiro256 {
     /// An all-zero state is the one state with no future, so it is replaced by the mixer's output for a zero
     /// seed rather than accepted into a generator that would return zero forever.
     ///
-    /// https://rux-lang.dev/docs/api/random/xoshiro256/from-state
+    /// @param words the generator's state words, taken as they are
+    /// @returns a generator with exactly those state words
+    /// @see https://rux-lang.dev/docs/api/random/xoshiro256/from-state
     pub func FromState(words: uint64[4]) -> Xoshiro256 {
         if words[0] == 0u64 && words[1] == 0u64 && words[2] == 0u64 && words[3] == 0u64 { return Xoshiro256(0u64); }
         return Xoshiro256 { state: words };
@@ -60,7 +64,8 @@ extend Xoshiro256 : RandomGenerator {
     /// The result is computed from the state *before* it advances, which is the published order and the reason
     /// two implementations agree on the first word rather than being one step apart forever.
     ///
-    /// https://rux-lang.dev/docs/api/random/xoshiro256/next-uint64
+    /// @returns the next 64 bits
+    /// @see https://rux-lang.dev/docs/api/random/xoshiro256/next-uint64
     pub func NextUint64(self: &var Xoshiro256) -> uint64 {
         let result = RotateLeft64(self.state[1] * 5u64, 7u64) * 9u64;
         let t = self.state[1] << 17u64;

@@ -37,12 +37,15 @@ when #target.os {
 /// A link that points at itself, or at a chain that returns to it, would otherwise be followed forever. The
 /// limit is what every system uses for the same reason, and reaching it is reported as `LimitExceeded`.
 ///
-/// https://rux-lang.dev/docs/api/filesystem/symbolic-link-limit
+/// @see https://rux-lang.dev/docs/api/filesystem/symbolic-link-limit
 pub const SymbolicLinkLimit: uint = 40;
 
 /// The process's working directory, as an absolute path.
 ///
-/// https://rux-lang.dev/docs/api/filesystem/current-directory
+/// @param allocator where the storage comes from
+/// @param error receives why the operation failed, or `None`
+/// @returns the working directory, or an empty string on failure
+/// @see https://rux-lang.dev/docs/api/filesystem/current-directory
 pub func CurrentDirectory(allocator: Allocator, error: *var IoError) -> OsString {
     *error = IoError::Ok();
     var units: OsUnit[4096];
@@ -91,7 +94,10 @@ pub func CurrentDirectory(allocator: Allocator, error: *var IoError) -> OsString
 /// Process-wide and immediately visible to every thread, which invalidates every relative path any of them was
 /// about to resolve. Nothing in this package calls it.
 ///
-/// https://rux-lang.dev/docs/api/filesystem/set-current-directory
+/// @param allocator where the storage comes from
+/// @param path the path to act on
+/// @returns `None` when the working directory changed
+/// @see https://rux-lang.dev/docs/api/filesystem/set-current-directory
 pub func SetCurrentDirectory(allocator: Allocator, path: Path) -> IoError {
     var native: *var OsUnit = null;
     let converted = NativePath(allocator, path, @native);
@@ -118,7 +124,11 @@ pub func SetCurrentDirectory(allocator: Allocator, path: Path) -> IoError {
 /// link is resolved — so a `..` that crosses one is simplified away as though it did not. `Canonicalize` is the
 /// operation that tells the truth about links, at the cost of requiring the file to be there.
 ///
-/// https://rux-lang.dev/docs/api/filesystem/absolute
+/// @param allocator where the storage comes from
+/// @param path the path to act on
+/// @param error receives why the operation failed, or `None`
+/// @returns the path made absolute without touching the file system
+/// @see https://rux-lang.dev/docs/api/filesystem/absolute
 pub func Absolute(allocator: Allocator, path: Path, error: *var IoError) -> PathBuffer {
     *error = IoError::Ok();
     var textError = TextError::None;
@@ -275,7 +285,11 @@ when #target.os != .Windows {
 /// name actually has, short names expanded — because that is what the system reports, and rewriting it would be
 /// this package guessing.
 ///
-/// https://rux-lang.dev/docs/api/filesystem/canonicalize
+/// @param allocator where the storage comes from
+/// @param path the path to act on
+/// @param error receives why the operation failed, or `None`
+/// @returns the path with every link and relative component resolved, which needs the file system and so can fail
+/// @see https://rux-lang.dev/docs/api/filesystem/canonicalize
 pub func Canonicalize(allocator: Allocator, path: Path, error: *var IoError) -> PathBuffer {
     *error = IoError::Ok();
     when #target.os == .Windows {

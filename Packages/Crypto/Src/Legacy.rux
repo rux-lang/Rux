@@ -54,7 +54,7 @@ func Md5Rotate(value: uint32, amount: uint32) -> uint32 {
 ///
 /// Structural `Copy`; copying takes an independent snapshot of the digest state.
 ///
-/// https://rux-lang.dev/docs/api/crypto/legacy-md5
+/// @see https://rux-lang.dev/docs/api/crypto/legacy-md5
 pub struct LegacyMd5 {
     /// The four working words.
     state: uint32[4];
@@ -69,7 +69,8 @@ pub struct LegacyMd5 {
 extend LegacyMd5 {
     /// An MD5 state.
     ///
-    /// https://rux-lang.dev/docs/api/crypto/legacy-md5/new
+    /// @returns an MD5 hasher, which is broken and is here only to read what already exists
+    /// @see https://rux-lang.dev/docs/api/crypto/legacy-md5/new
     pub func LegacyMd5() -> LegacyMd5 {
         var buffer: char8[64];
         var index: uint = 0;
@@ -142,7 +143,8 @@ extend LegacyMd5 {
 
     /// Adds `bytes` to the message.
     ///
-    /// https://rux-lang.dev/docs/api/crypto/legacy-md5/update
+    /// @param bytes the bytes to absorb
+    /// @see https://rux-lang.dev/docs/api/crypto/legacy-md5/update
     pub func Update(self: &var LegacyMd5, bytes: char8[..]) {
         self.length = self.length + (bytes.length as uint64);
         var index: uint = 0;
@@ -161,7 +163,8 @@ extend LegacyMd5 {
     ///
     /// The length is appended little-endian, unlike the SHA family's big-endian count.
     ///
-    /// https://rux-lang.dev/docs/api/crypto/legacy-md5/finish
+    /// @param into receives the output
+    /// @see https://rux-lang.dev/docs/api/crypto/legacy-md5/finish
     pub func Finish(self: &var LegacyMd5, into: var char8[..]) {
         let bitLength = self.length * 8u64;
         self.buffer[self.buffered] = 0x80u8 as char8;
@@ -197,7 +200,9 @@ extend LegacyMd5 {
 
 /// The MD5 digest of `bytes`. **Broken; see the note at the top of this file.**
 ///
-/// https://rux-lang.dev/docs/api/crypto/legacy-md5-of
+/// @param bytes the bytes to absorb
+/// @param into receives the output
+/// @see https://rux-lang.dev/docs/api/crypto/legacy-md5-of
 pub func LegacyMd5Of(bytes: char8[..], into: var char8[..]) {
     var digest = LegacyMd5();
     digest.Update(bytes);
@@ -208,7 +213,7 @@ pub func LegacyMd5Of(bytes: char8[..], into: var char8[..]) {
 ///
 /// Structural `Copy`; copying takes an independent snapshot of the digest state.
 ///
-/// https://rux-lang.dev/docs/api/crypto/legacy-sha1
+/// @see https://rux-lang.dev/docs/api/crypto/legacy-sha1
 pub struct LegacySha1 {
     /// The five working words.
     state: uint32[5];
@@ -223,7 +228,8 @@ pub struct LegacySha1 {
 extend LegacySha1 {
     /// A SHA-1 state.
     ///
-    /// https://rux-lang.dev/docs/api/crypto/legacy-sha1/new
+    /// @returns a SHA-1 hasher, which is broken and is here only to read what already exists
+    /// @see https://rux-lang.dev/docs/api/crypto/legacy-sha1/new
     pub func LegacySha1() -> LegacySha1 {
         var buffer: char8[64];
         var index: uint = 0;
@@ -300,7 +306,8 @@ extend LegacySha1 {
 
     /// Adds `bytes` to the message.
     ///
-    /// https://rux-lang.dev/docs/api/crypto/legacy-sha1/update
+    /// @param bytes the bytes to absorb
+    /// @see https://rux-lang.dev/docs/api/crypto/legacy-sha1/update
     pub func Update(self: &var LegacySha1, bytes: char8[..]) {
         self.length = self.length + (bytes.length as uint64);
         var index: uint = 0;
@@ -317,7 +324,8 @@ extend LegacySha1 {
 
     /// Writes the twenty-byte digest into `into`.
     ///
-    /// https://rux-lang.dev/docs/api/crypto/legacy-sha1/finish
+    /// @param into receives the output
+    /// @see https://rux-lang.dev/docs/api/crypto/legacy-sha1/finish
     pub func Finish(self: &var LegacySha1, into: var char8[..]) {
         let bitLength = self.length * 8u64;
         self.buffer[self.buffered] = 0x80u8 as char8;
@@ -354,7 +362,9 @@ extend LegacySha1 {
 
 /// The SHA-1 digest of `bytes`. **Broken for collision resistance; see the note at the top of this file.**
 ///
-/// https://rux-lang.dev/docs/api/crypto/legacy-sha1-of
+/// @param bytes the bytes to absorb
+/// @param into receives the output
+/// @see https://rux-lang.dev/docs/api/crypto/legacy-sha1-of
 pub func LegacySha1Of(bytes: char8[..], into: var char8[..]) {
     var digest = LegacySha1();
     digest.Update(bytes);
