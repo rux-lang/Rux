@@ -1,0 +1,180 @@
+// Three failure domains that look alike from a distance, and the ways a binding confuses them.
+//
+// Win32 has no single "it failed" value. A handle-returning call reports `InvalidHandleValue`, which is `-1` cast to
+// a pointer and is emphatically not null. A memory-returning call reports null, which is emphatically not
+// `InvalidHandleValue`. Both then leave the reason in a thread-local Win32 code that `GetLastError` reads. And
+// `BCryptGenRandom`, which is not a kernel call at all, reports an `NTSTATUS` and never touches that code.
+//
+// Every one of those pairings is a real mistake someone writes: testing a handle against null, testing an
+// allocation against `InvalidHandleValue`, reading `GetLastError` after a call that never set it. This file asserts
+// that the values stay apart, which is a property of the bindings rather than of any caller.
+//
+// This is the one platform-binding test that runs where it was written, so unlike its POSIX counterparts every
+// number in it was read out of a probe rather than out of documentation. Two of them were surprises and are called
+// out where they appear.
+
+import Core::{ Assert, OperatingSystem, #target };
+
+when #target.os == OperatingSystem::Windows {
+    import Windows::{ CloseHandle, CreateFileW, CreationDisposition, ERROR_ACCESS_DENIED, ERROR_FILE_NOT_FOUND,
+                      ERROR_INVALID_ADDRESS, ERROR_INVALID_HANDLE, ERROR_INVALID_PARAMETER,
+                      ERROR_NOT_ENOUGH_MEMORY, ERROR_PATH_NOT_FOUND, ERROR_SUCCESS, FILE_ATTRIBUTE_NORMAL,
+                      FILE_SHARE_READ, GENERIC_READ, GetFileAttributesW, GetLastError, GetProcessHeap, GetRandom,
+                      HeapAlloc, INVALID_FILE_ATTRIBUTES, InvalidHandleValue, MEM_COMMIT, MEM_RELEASE, MEM_RESERVE,
+                      PAGE_READWRITE, STATUS_SUCCESS, VirtualAlloc, VirtualFree };
+
+    /// Writes `name` as UTF-16 code units, NUL-terminated.
+    ///
+    /// Rux has no UTF-16 string literal — a literal is a `char8[..]` — so handing a literal's bytes to a `W` entry
+    /// point would pass UTF-8 to a call that reads pairs of bytes as code units. That is the mistake the `W` forms
+    /// exist to prevent, so this file does not quietly make it. Every name below is ASCII, which is why widening a
+    /// byte at a time is enough here and is not a general conversion.
+    func WriteWide(units: *var char16, name: char8[..]) {
+        var index = 0u;
+        while index < name.length {
+            units[index] = name[index] as uint8 as uint32 as char16;
+            index = index + 1;
+        }
+        units[name.length] = 0 as char16;
+    }
+
+    func Main() -> int {
+        // --- The two sentinels are different values -----------------------------------------------------------
+
+        // This is why the domains have to be kept apart. `InvalidHandleValue` is all ones, so a caller who writes
+        // `if handle == null` after a handle-returning call finds nothing wrong and carries a broken handle
+        // forward.
+        Assert(InvalidHandleValue != 0, "the invalid-handle sentinel is not null");
+        Assert(InvalidHandleValue == 0xFFFFFFFFFFFFFFFF, "the invalid-handle sentinel is all ones");
+        Assert(InvalidHandleValue > 0xFFFFFFFFu64, "and it is wider than a Win32 code, which cannot collide with it");
+        Assert((INVALID_FILE_ATTRIBUTES as uint64) != InvalidHandleValue,
+               "the attribute sentinel is a third value again, all ones in thirty-two bits");
+
+        // --- A handle-returning failure ------------------------------------------------------------------------
+
+        // A name that is missing inside a directory that exists.
+        var filePath: char16[64];
+        WriteWide(@filePath[0], "Bin\\WindowsFailuresNoSuchFile.tmp");
+        let missingFile = CreateFileW(@filePath[0], GENERIC_READ, FILE_SHARE_READ, null,
+                                      CreationDisposition::OpenExisting as uint32, FILE_ATTRIBUTE_NORMAL, null);
+        Assert((missingFile as uint64) == InvalidHandleValue, "opening a missing file reports the handle sentinel");
+        Assert(missingFile != null, "and the failure is not null, which is what a null test would miss");
+        Assert(GetLastError() == ERROR_FILE_NOT_FOUND, "a missing name in a real directory is FILE_NOT_FOUND");
+
+        // The directory half of the same question is a different code. A binding that folded the two together
+        // would report a mistyped drive as a missing file. `K:` is chosen because a drive letter that late in the
+        // alphabet is essentially never mapped.
+        var drivePath: char16[32];
+        WriteWide(@drivePath[0], "K:\\no-such-path-2f8c1e");
+        let missingPath = CreateFileW(@drivePath[0], GENERIC_READ, FILE_SHARE_READ, null,
+                                      CreationDisposition::OpenExisting as uint32, FILE_ATTRIBUTE_NORMAL, null);
+        Assert((missingPath as uint64) == InvalidHandleValue, "opening a missing path reports the handle sentinel");
+        Assert(GetLastError() == ERROR_PATH_NOT_FOUND, "an unmapped drive is PATH_NOT_FOUND, not FILE_NOT_FOUND");
+        Assert(ERROR_PATH_NOT_FOUND != ERROR_FILE_NOT_FOUND, "and the two codes are distinct");
+
+        // The attribute query has a sentinel of its own and leaves the same code the open did.
+        Assert(GetFileAttributesW(@filePath[0]) == INVALID_FILE_ATTRIBUTES,
+               "querying a missing file reports the attribute sentinel");
+        Assert(GetLastError() == ERROR_FILE_NOT_FOUND, "and leaves the same Win32 code as the open did");
+
+        // Closing something that was never a handle is refused, and says which way it was wrong.
+        Assert(!CloseHandle(null), "closing null fails");
+        Assert(GetLastError() == ERROR_INVALID_HANDLE, "closing null is INVALID_HANDLE");
+        Assert(!CloseHandle(0x1234 as *var opaque), "closing an arbitrary number fails");
+        Assert(GetLastError() == ERROR_INVALID_HANDLE, "closing an arbitrary number is INVALID_HANDLE too");
+
+        // The first surprise, and the reason this test exists rather than a reading of the documentation:
+        // `CloseHandle` **succeeds** on the invalid-handle sentinel. `(HANDLE)-1` is the current process's
+        // pseudo-handle, and closing a pseudo-handle is a no-op that reports success. So a cleanup path that closes
+        // the sentinel defensively is not caught by its return value — it silently does nothing, which is the
+        // opposite of what its name suggests and the opposite of what null and garbage do two lines above.
+        Assert(CloseHandle(InvalidHandleValue as *var opaque),
+               "closing the handle sentinel SUCCEEDS: it is the current-process pseudo-handle, not an invalid one");
+
+        // --- A memory-returning failure ------------------------------------------------------------------------
+
+        // A zero-size request is refused, and the refusal is null — not the handle sentinel. A caller comparing
+        // against `InvalidHandleValue` here would treat a failed allocation as a success and dereference null.
+        let emptyAllocation = VirtualAlloc(null, 0, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        Assert(emptyAllocation == null, "a zero-size reservation reports null");
+        Assert((emptyAllocation as uint64) != InvalidHandleValue, "and null is not the handle sentinel");
+        Assert(GetLastError() == ERROR_INVALID_PARAMETER, "a zero-size reservation is INVALID_PARAMETER");
+
+        // More address space than the process can have. Windows calls this a bad parameter rather than a memory
+        // shortage, which is worth pinning: the size is rejected before anything is asked of the memory manager.
+        let enormous = VirtualAlloc(null, 0x7FFFFFFFFFFF, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+        Assert(enormous == null, "an impossible reservation reports null");
+        Assert((enormous as uint64) != InvalidHandleValue, "and still not the handle sentinel");
+        Assert(GetLastError() == ERROR_INVALID_PARAMETER, "an impossible reservation is INVALID_PARAMETER");
+
+        // The heap refuses the same size with a different code, so the two allocators do not share a failure
+        // vocabulary either. A translation layer that mapped one and assumed the other would lose the distinction.
+        let heap = GetProcessHeap();
+        Assert(heap != null, "the process heap exists");
+        Assert(HeapAlloc(heap, 0, 0x7FFFFFFFFFFF) == null, "an impossible heap request reports null");
+        Assert(GetLastError() == ERROR_NOT_ENOUGH_MEMORY, "and the heap calls it NOT_ENOUGH_MEMORY, not a bad size");
+        Assert(ERROR_NOT_ENOUGH_MEMORY != ERROR_INVALID_PARAMETER, "the two allocators' refusals are distinct codes");
+
+        // --- Releasing -------------------------------------------------------------------------------------------
+
+        const Size: uint = 65536;
+        let reserved = VirtualAlloc(null, Size, MEM_RESERVE, PAGE_READWRITE);
+        Assert(reserved != null, "an ordinary reservation succeeds");
+        Assert((reserved as uint64) != InvalidHandleValue, "a success is not the handle sentinel either");
+
+        // MEM_RELEASE takes a size of zero and the exact base address. Passing the size is the mistake a caller who
+        // thinks of release as the inverse of commit will make, and it is refused rather than partially honored.
+        Assert(VirtualFree(reserved, Size, MEM_RELEASE) == 0, "releasing with a non-zero size fails");
+        Assert(GetLastError() == ERROR_INVALID_PARAMETER, "releasing with a non-zero size is INVALID_PARAMETER");
+        Assert(VirtualFree(reserved, 0, MEM_RELEASE) != 0, "releasing with a zero size succeeds");
+
+        // The second surprise, and it runs the other way from POSIX: releasing an already-released reservation
+        // fails here, where `munmap` on an already-unmapped range succeeds. Anything that treats a double release
+        // as harmless is portable in one direction only.
+        Assert(VirtualFree(reserved, 0, MEM_RELEASE) == 0, "releasing an already-released reservation fails");
+        Assert(GetLastError() == ERROR_INVALID_ADDRESS, "a double release is INVALID_ADDRESS, a third distinct code");
+
+        // --- NTSTATUS is not a Win32 code -----------------------------------------------------------------------
+
+        // Both domains spell success as zero, which is exactly why they are easy to confuse.
+        Assert(STATUS_SUCCESS == 0, "the NTSTATUS success value is zero");
+        Assert(ERROR_SUCCESS == 0, "and so is the Win32 one");
+
+        // `BCryptGenRandom` reports an NTSTATUS and never touches the Win32 code. `GetRandom` folds that status
+        // into a boolean, so the boolean is the only thing a caller may read. Leaving a known non-zero code in
+        // place first is what makes that checkable: a successful draw must not disturb it, and a caller who read
+        // `GetLastError` afterwards would see a failure that belongs to something else entirely.
+        Assert(!CloseHandle(null), "closing null fails, leaving a known code");
+        let beforeSuccess = GetLastError();
+        Assert(beforeSuccess == ERROR_INVALID_HANDLE, "the standing Win32 code is INVALID_HANDLE");
+
+        var seed: uint64[4] = [0, 0, 0, 0];
+        Assert(GetRandom(@seed[0] as *var opaque, 32), "the generator succeeds while that code stands");
+        Assert(GetLastError() == beforeSuccess,
+               "and a SUCCESSFUL draw leaves the stale Win32 code untouched, so GetLastError says nothing about it");
+        Assert(seed[0] != 0 || seed[1] != 0 || seed[2] != 0 || seed[3] != 0, "the draw wrote something");
+
+        // The refusal above four gigabytes happens in Rux, before the provider is reached, so it cannot have set a
+        // code either. Asserting that makes "does not report through GetLastError" a checked claim rather than a
+        // sentence in a README.
+        Assert(!GetRandom(@seed[0] as *var opaque, 4294967296u64), "a request above four gigabytes is refused");
+        Assert(GetLastError() == beforeSuccess, "and the refusal leaves the Win32 code untouched as well");
+
+        // --- The codes this package names hold their published values --------------------------------------------
+
+        // Each is a value a translation layer maps to a different outcome, so a typo in one would silently merge
+        // two distinct failures. Nothing else exercises these constants.
+        Assert(ERROR_SUCCESS == 0 && ERROR_FILE_NOT_FOUND == 2 && ERROR_PATH_NOT_FOUND == 3,
+               "the first three Win32 codes hold their published values");
+        Assert(ERROR_ACCESS_DENIED == 5 && ERROR_INVALID_HANDLE == 6 && ERROR_NOT_ENOUGH_MEMORY == 8,
+               "and so do the next three");
+        Assert(ERROR_INVALID_PARAMETER == 87 && ERROR_INVALID_ADDRESS == 487,
+               "and the two larger ones this file relies on");
+
+        return 0;
+    }
+} else {
+    func Main() -> int {
+        return 0;
+    }
+}

@@ -141,12 +141,15 @@ std::optional<long long> LiteralValue(const Expr *value) {
     if (text.empty()) {
         return std::nullopt;
     }
+    // Unsigned, then reinterpreted. `InvalidHandleValue` is written `0xFFFFFFFFFFFFFFFF`, which a signed parse
+    // saturates to the largest positive value rather than reading as the all-ones pattern it is. Every other
+    // constant here is small enough that the two readings agree.
     char *end = nullptr;
-    const long long parsed = std::strtoll(text.c_str(), &end, 0);
+    const unsigned long long parsed = std::strtoull(text.c_str(), &end, 0);
     if (end == text.c_str()) {
         return std::nullopt;
     }
-    return parsed;
+    return static_cast<long long>(parsed);
 }
 
 /// Everything one platform package publishes that this file has an opinion about.
@@ -430,6 +433,59 @@ TEST_CASE("Every shared ABI type is declared by all three platform packages") {
             CHECK_MESSAGE(surface.types.contains(type), "Packages/", package, " does not declare the shared ABI type '",
                           type, "'. Its width is this system's own; its name is not.");
         }
+    }
+}
+
+TEST_CASE("Windows keeps its failure sentinels and error codes distinct") {
+    // Win32 fails in three shapes and they must not collide: a handle-returning call reports an all-ones handle, a
+    // memory-returning call reports null, and an attribute query reports all ones in thirty-two bits. A caller who
+    // tests a handle against null, or an allocation against the handle sentinel, sees a failure as a success.
+    // Tests/Packages/Windows/Failures asserts the behaviour on a Windows host; the values are asserted here, where
+    // any host can check them.
+    const auto &constants = Surface("Windows").constants;
+
+    REQUIRE_MESSAGE(constants.contains("InvalidHandleValue"), "Packages/Windows does not declare InvalidHandleValue");
+    CHECK_MESSAGE(constants.at("InvalidHandleValue") == -1,
+                  "the invalid-handle sentinel is all ones, which is what makes it different from null");
+
+    REQUIRE(constants.contains("INVALID_FILE_ATTRIBUTES"));
+    CHECK(static_cast<std::uint32_t>(constants.at("INVALID_FILE_ATTRIBUTES")) == 0xFFFFFFFFU);
+
+    // Both domains spell success as zero, which is why the rest of the values have to stay apart.
+    CHECK(constants.at("STATUS_SUCCESS") == 0);
+    CHECK(constants.at("ERROR_SUCCESS") == 0);
+
+    // Every Win32 code this package names, at its published value. A typo in one silently merges two distinct
+    // failures wherever they are translated.
+    for (const auto &[name, value] : std::map<std::string, long long>{{"ERROR_FILE_NOT_FOUND", 2},
+                                                                      {"ERROR_PATH_NOT_FOUND", 3},
+                                                                      {"ERROR_ACCESS_DENIED", 5},
+                                                                      {"ERROR_INVALID_HANDLE", 6},
+                                                                      {"ERROR_NOT_ENOUGH_MEMORY", 8},
+                                                                      {"ERROR_OUTOFMEMORY", 14},
+                                                                      {"ERROR_NO_MORE_FILES", 18},
+                                                                      {"ERROR_NOT_SUPPORTED", 50},
+                                                                      {"ERROR_FILE_EXISTS", 80},
+                                                                      {"ERROR_INVALID_PARAMETER", 87},
+                                                                      {"ERROR_DISK_FULL", 112},
+                                                                      {"ERROR_ALREADY_EXISTS", 183},
+                                                                      {"ERROR_INVALID_ADDRESS", 487},
+                                                                      {"ERROR_COMMITMENT_LIMIT", 1455},
+                                                                      {"ERROR_PRIVILEGE_NOT_HELD", 1314}}) {
+        REQUIRE_MESSAGE(constants.contains(name), "Packages/Windows does not declare ", name);
+        CHECK_MESSAGE(constants.at(name) == value, "Windows ", name, " is ", constants.at(name), ", expected ", value);
+    }
+
+    // No two of them may share a number.
+    std::map<long long, std::string> seen;
+    for (const auto &[name, value] : constants) {
+        if (!name.starts_with("ERROR_")) {
+            continue;
+        }
+        const auto found = seen.find(value);
+        CHECK_MESSAGE(found == seen.end(), "Windows ", name, " and ", found == seen.end() ? "" : found->second,
+                      " share the value ", value, ", so a translation cannot tell them apart");
+        seen.emplace(value, name);
     }
 }
 
