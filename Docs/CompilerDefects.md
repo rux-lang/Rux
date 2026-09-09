@@ -36,14 +36,6 @@ if !ReadDate(reader, @date, @error) { return Result::Error<Date, TimeParseError>
 
 Found while giving the temporal parsers byte offsets: every failure reported offset 0, and the offsets were correct right up to the point they crossed a `?`. Nothing earlier in this workspace had caught it because the errors `?` had been used with — `FormatError` at the writer boundary, `AllocError` — either carry no payload or are returned directly rather than propagated. `Rux/Format`'s `ParseFormatSpec` is unaffected for the same reason: it returns its positioned failure rather than propagating one.
 
-### A package cannot have a transitive dependency on a different package that shares its name
-
-*Loud, and the diagnostic points somewhere else entirely.* A package named `Text` whose dependency graph reaches `Rux/Text` further down does not resolve that package: the imports fail with `name 'Display' was not found in package 'Text'`, reported against the *dependency's* source rather than against the root that collides, and nothing in the output mentions a name collision.
-
-Found when `Rux/Time` gained its `Rux/Text` dependency. `Tests/Packages/Uuid/Text` — an executable test whose package was named `Text` — depends on `Uuid`, which depends on `Time`, which now depends on `Text`. Every import inside `Packages/Time/Src/CalendarText.rux` then failed, and the failure looked like `Rux/Text` being stale or half-loaded. It is neither: renaming the test package to anything else fixes it with no other change, which is how it was narrowed. The test is now `Tests/Packages/Uuid/Formatting`.
-
-The bare name appears to be the resolution key, so the root's own name shadows a package of that name anywhere in its graph. Two things would each help: resolving by `Namespace/Name` rather than by name, and reporting the collision where it happens rather than as a missing declaration three packages away.
-
 ### Passing a concrete value as an interface argument *of an interface method call* crashes
 
 *Silent, and it is a segmentation fault.* A concrete local coerces to an interface parameter correctly when the callee is an ordinary function, and incorrectly when the callee is reached through an interface. The second form builds without a diagnostic and faults at the call.
@@ -66,20 +58,6 @@ value.WriteDisplay(sink, FormatSpec::Plain());      // correct
 Narrowed by probe to exactly that difference: three functions doing the same write, differing only in whether the callee is a free function, an interface method given the concrete local, or an interface method given a bound reference. The first and third return 3; the second faults. Both the argument and the receiver being interfaces appears to be what does it — the argument alone is fine.
 
 Found while writing `Tests/Packages/Text/Presentation`, whose helper called `value.WriteDisplay(writer, spec)` directly. It is written with the bound reference now, and says why. Existing first-party callers were unaffected because they already hold a `&var TextWriter` parameter rather than a concrete writer, so the coercion has happened before the interface call.
-
-### Building one package test directly resolves its dependency's dependencies from the install cache, not the workspace
-
-*Loud, once the two disagree, and silently wrong until then.* `rux test` from the repository root resolves everything locally and is unaffected. Building a single package test by its own manifest is not:
-
-```sh
-rux --manifest Tests/Packages/Format/Uint8/Rux.toml build --release
-```
-
-That test declares `Format` and `Text` as path dependencies, but `Format`'s own manifest declares `Text` by version, as a publishable manifest must. The version requirement is satisfied from the user-level install cache (`%LOCALAPPDATA%/rux/Packages` on Windows) rather than from the path the root already supplies for the same package identity, so the build compiles the workspace's `Format` against a cached `Text`. Where the two agree, everything passes and nothing indicates which was used; where they differ, the failure names declarations that plainly exist — `name 'Display' was not found in package 'Text'` against a `Text` whose sources declare it.
-
-Found while moving the formatting contracts into `Text`: the workspace `rux check` and `rux test` passed while the standalone build of a Format test failed on every new declaration. Confirmed by adding a declaration to an existing `Text` source and watching a single-test build fail to see it, and by moving the cache aside, after which the same build cannot resolve `Rux/Allocator` at all — so the cache is genuinely what satisfies a dependency's own dependencies here.
-
-This contradicts what CONTRIBUTING promises: "Repository tests resolve every dependency from the local workspace, so no registry installation is needed." Use `rux test` from the root, which is the documented workflow and is correct. Note that no first-party package is published, so whatever populated that cache was local; it is a stale copy of an older working tree rather than anything the registry served.
 
 ### A `return` expression is evaluated after the function's `defer` statements run
 

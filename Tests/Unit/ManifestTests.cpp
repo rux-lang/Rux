@@ -474,6 +474,19 @@ TEST_CASE("Dependency entries follow the documented rules") {
         const auto diagnostic =
             Rejected(WithPackage("\n[Dependencies]\nMy_Pkg = { Path = \"../A\" }\n\"my-pkg\" = { Path = \"../B\" }\n"));
         CHECK(diagnostic.message.find("collides with 'My_Pkg' after normalization") != std::string::npos);
+        REQUIRE(diagnostic.help);
+        CHECK(diagnostic.help->contains("path '../A' at line"));
+        CHECK(diagnostic.help->contains("path '../B' at line"));
+    }
+    SUBCASE("conflicting registry aliases name both qualified identities") {
+        const auto diagnostic = Rejected(
+            WithPackage("\n[Dependencies]\nWords = { Namespace = \"Rux\", Package = \"Text\", Version = \"^0.4.0\" }\n"
+                        "words = { Namespace = \"Other\", Package = \"Text\", Version = \"^0.5.0\" }\n"));
+        CHECK(diagnostic.message.contains("collides with 'Words' after normalization"));
+        REQUIRE(diagnostic.help);
+        CHECK(diagnostic.help->contains("Rux/Text@^0.4.0 at line"));
+        CHECK(diagnostic.help->contains("Other/Text@^0.5.0 at line"));
+        CHECK(diagnostic.help->contains("column"));
     }
     SUBCASE("an alias keeps both names") {
         const Manifest manifest =
@@ -1031,7 +1044,16 @@ TEST_CASE("repository Rux tests use canonical local manifests") {
         if (IsBelow(entry.path(), fixturesRoot)) {
             CHECK_MESSAGE(manifest.package.type == ManifestPackageType::SourceLibrary,
                           "declaration providers must be source libraries: ", entry.path().string());
-            CHECK_MESSAGE(!manifest.package.ns.has_value(), "test providers must be local packages");
+            const auto relative = entry.path().lexically_relative(fixturesRoot).generic_string();
+            if (relative == "PackageIdentity/FirstText/Rux.toml" || relative == "PackageIdentity/SecondText/Rux.toml") {
+                REQUIRE(manifest.package.ns);
+                CHECK(manifest.package.ns->Text() == (relative.contains("FirstText") ? "Rux" : "Other"));
+                CHECK(manifest.package.name.Text() == "Text");
+                CHECK(manifest.dependencies.empty());
+            }
+            else {
+                CHECK_MESSAGE(!manifest.package.ns.has_value(), "test providers must be local packages");
+            }
             continue;
         }
         CHECK_MESSAGE(manifest.package.type == ManifestPackageType::Executable,

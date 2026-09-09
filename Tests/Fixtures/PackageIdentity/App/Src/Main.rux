@@ -1,0 +1,40 @@
+import First::{ First, FirstBool, FirstRead, FirstWord };
+import Second::{ Second, SecondBool, SecondRead, SecondWord };
+
+when false {
+    import Missing::Unavailable;
+}
+
+func Compute<T>(value: T) -> int {
+    return 100 + (sizeof(T) as int);
+}
+
+func Main() -> int {
+    if First<int32>(7) != 15 || Second<int32>(7) != 26 {
+        return 1;
+    }
+    if First<int64>(9) != 19 || Second<int64>(9) != 30 {
+        return 2;
+    }
+    if Second<uint16>(3) != 24 || First<uint16>(3) != 13 {
+        return 3;
+    }
+    if First<int32>(8) != 15 || Second<int32>(8) != 26 {
+        return 4;
+    }
+    if FirstBool(true) != 11 || SecondBool(true) != 22 {
+        return 5;
+    }
+    if FirstRead() != 11 || SecondRead() != 22 {
+        return 6;
+    }
+    if Compute<int32>(7) != 104 || Compute<uint16>(3) != 102 {
+        return 7;
+    }
+    let first: FirstWord = 11;
+    let second: SecondWord = 22;
+    if first + second != 33 {
+        return 8;
+    }
+    return 0;
+}

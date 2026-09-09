@@ -150,6 +150,12 @@ void AnalysisContext::BuildFinalSymbolIdentities() {
         return FunctionIsOverloadedInModule(declaration) ? MangleFunctionWithParams(declaration) : declaration.name;
     };
     const auto qualifyFunctionName = [&](const FuncDecl &declaration, std::string name) {
+        const auto *owner = programIndex.InfoFor(declaration);
+        if (declaration.name == "Main" && owner) {
+            if (owner->ownerPackage == packageName && owner->modulePath.empty())
+                return name;
+            return functionModulePaths.at(&declaration) + "::" + name;
+        }
         const std::string local = localFunctionName(declaration);
         const std::string &modulePath = functionModulePaths.at(&declaration);
         if (owners[local].size() > 1 && !modulePath.empty()) {

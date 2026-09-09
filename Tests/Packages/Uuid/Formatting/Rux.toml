@@ -2,7 +2,7 @@
 Version = 1
 
 [Package]
-Name = "Formatting"
+Name = "Text"
 Version = "0.1.0"
 Type = "Executable"
 Description = "Package test for Uuid: parsing and formatting UUID text."

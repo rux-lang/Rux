@@ -1,0 +1,8 @@
+[Manifest]
+Version = 1
+
+[Package]
+Namespace = "Other"
+Name = "Text"
+Version = "0.4.0"
+Type = "SourceLibrary"

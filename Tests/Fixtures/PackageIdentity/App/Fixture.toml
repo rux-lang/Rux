@@ -1,0 +1,14 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Text"
+Version = "0.4.0"
+Type = "Executable"
+
+[Dependencies]
+First = { Package = "Bridge", Path = "../FirstBridge" }
+Second = { Package = "Bridge", Path = "../SecondBridge" }
+
+[Build]
+Output = "../../../../Bin/Tests/Fixtures/PackageIdentity"

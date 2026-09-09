@@ -150,6 +150,8 @@ Either form may also declare a non-empty `TargetOS` allow-list. The dependency p
 
 The import name is an identity segment, and two dependencies cannot produce the same import name after normalization. Each name belongs to the manifest that declares it: different packages can use the same alias for different dependencies. Path dependencies are valid for local builds but make a manifest unpublishable.
 
+Different namespaces may publish packages with the same name. A local executable named `Text` can depend transitively on `Rux/Text`; its top-level `Main` remains the entry point even when a dependency declares its own private `Main`. Alias-collision diagnostics identify both dependency sources and their positions in the declaring manifest.
+
 `rux add Namespace/Name@<requirement>` writes a registry dependency. Omitting the requirement writes `*`. `rux add Name --path <path>` writes a local path dependency.
 
 Workspace members and the root package's path dependencies override registry dependencies by normalized qualified identity, independently of source import order. The selected local manifest must satisfy the declared version requirement. A namespace-free package cannot override a qualified registry dependency. Compiling two different source locations for one qualified identity, or offering multiple local overrides for that identity, produces a diagnostic naming the conflicting manifests; an installed cache copy cannot silently replace the selected local source. Unused path dependencies are loaded only when imported, and target restrictions still apply.

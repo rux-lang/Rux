@@ -1,0 +1,10 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Bridge"
+Version = "0.4.0"
+Type = "SourceLibrary"
+
+[Dependencies]
+Words = { Package = "Text", Path = "../SecondText" }

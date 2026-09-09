@@ -41,6 +41,23 @@ struct GraphFixture {
     DependencyGraph Graph(Manifest manifest, const std::vector<std::filesystem::path> &locals = {}) const {
         return {std::move(manifest), root / "App" / "Rux.toml", Target::TargetTriple::Host(), locals};
     }
+
+    CompileOptions StageOptions() const {
+        const auto source = std::filesystem::path(RUX_TESTS_DIR) / "Fixtures" / "PackageIdentity";
+        CompileOptions options;
+        for (const std::string directory : {"App", "FirstText", "SecondText", "FirstBridge", "SecondBridge"}) {
+            const auto loaded = Manifest::Load(source / directory / (directory == "App" ? "Fixture.toml" : "Rux.toml"));
+            REQUIRE(loaded.Ok());
+            auto manifest = *loaded.manifest;
+            manifest.build.output = "Bin";
+            Save(directory, manifest);
+            WriteTextFile(root / directory / "Src" / "Main.rux", ReadTextFile(source / directory / "Src" / "Main.rux"));
+            if (directory == "App")
+                options.manifest = std::move(manifest);
+        }
+        options.manifestPath = root / "App" / "Rux.toml";
+        return options;
+    }
 };
 } // namespace
 
@@ -222,4 +239,95 @@ TEST_CASE("compiler driver executes distinct owner-local aliases in both profile
             CHECK(executed->exitCode == 0);
         }
     }
+}
+
+TEST_CASE("same-named packages preserve generic declarations and the executable entry in either import order") {
+    GraphFixture fixture;
+    auto options = fixture.StageOptions();
+    const auto path = fixture.root / "App" / "Src" / "Main.rux";
+    const auto original = ReadTextFile(path);
+    for (const bool reverse : {false, true}) {
+        auto source = original;
+        if (reverse) {
+            const auto first = source.find('\n');
+            const auto second = source.find('\n', first + 1);
+            source = source.substr(first + 1, second - first) + source.substr(0, first + 1) + source.substr(second + 1);
+        }
+        WriteTextFile(path, source);
+        for (const auto profile : {BuildProfile::Debug, BuildProfile::Release}) {
+            options.profile = profile;
+            const auto compiled = CompilerDriver(options).Compile();
+            for (const auto &diagnostic : compiled.diagnostics)
+                INFO(diagnostic.message);
+            REQUIRE(compiled.ok);
+            CHECK(compiled.stats.dependencyFiles == 4);
+            const auto executed = System::RunCaptured(compiled.primaryArtifactPath, std::vector<std::string_view>{});
+            REQUIRE(executed);
+            CHECK(executed->exitCode == 0);
+        }
+    }
+}
+
+TEST_CASE("a dependency or nested module Main cannot supply a missing executable entry") {
+    GraphFixture fixture;
+    auto options = fixture.StageOptions();
+    SUBCASE("dependency entry") {
+        WriteTextFile(fixture.root / "App" / "Src" / "Main.rux",
+                      "import First::First; pub func Answer() -> int { return First<int32>(7); }");
+    }
+    SUBCASE("nested entry") {
+        WriteTextFile(fixture.root / "App" / "Src" / "Main.rux", "module Nested { func Main() -> int { return 0; } }");
+    }
+    const auto compiled = CompilerDriver(options).Compile();
+    CHECK_FALSE(compiled.ok);
+    REQUIRE_FALSE(compiled.diagnostics.empty());
+    CHECK(compiled.diagnostics.back().message.contains("entry point symbol 'Main' is undefined"));
+}
+
+TEST_CASE("same-named package imports retain private declaration and module boundaries") {
+    GraphFixture fixture;
+    auto options = fixture.StageOptions();
+    options.checkOnly = true;
+    fixture.Path(options.manifest, "Words", "FirstText");
+    SUBCASE("private function") {
+        WriteTextFile(fixture.root / "App" / "Src" / "Main.rux",
+                      "import Words::Inner; func Main() -> int { return Inner<int32>(7); }");
+    }
+    SUBCASE("private module") {
+        WriteTextFile(fixture.root / "App" / "Src" / "Main.rux",
+                      "import Words::Hidden::Secret; func Main() -> int { return Secret(); }");
+    }
+    const auto compiled = CompilerDriver(options).Compile();
+    CHECK_FALSE(compiled.ok);
+    CHECK(std::ranges::any_of(compiled.diagnostics,
+                              [](const Diagnostic &diagnostic) { return diagnostic.message.contains("private"); }));
+}
+
+TEST_CASE("a caller cannot import an alias declared only by a transitive package") {
+    GraphFixture fixture;
+    auto options = fixture.StageOptions();
+    WriteTextFile(fixture.root / "App" / "Src" / "Main.rux",
+                  "import First::First; import Words::Compute; func Main() -> int { return Compute<int32>(7); }");
+    const auto compiled = CompilerDriver(options).Compile();
+    CHECK_FALSE(compiled.ok);
+    const auto error = std::ranges::find_if(compiled.diagnostics, [](const Diagnostic &diagnostic) {
+        return diagnostic.message.contains("package 'Words' is not listed in [Dependencies]");
+    });
+    REQUIRE(error != compiled.diagnostics.end());
+    CHECK(error->sourceName == std::filesystem::weakly_canonical(options.manifestPath).string());
+}
+
+TEST_CASE("package graph defers unused paths and respects target restrictions") {
+    GraphFixture fixture;
+    auto app = fixture.Make("App", "App");
+    fixture.Path(app, "Absent", "Absent");
+    fixture.Path(app, "Excluded", "Excluded");
+    app.dependencies.back().targetOS = {Target::OS::Linux};
+    DependencyGraph graph(app, fixture.root / "App" / "Rux.toml", *Target::TargetTriple::Parse("windows-x86_64"));
+    CHECK(graph.Diagnostics().empty());
+    CHECK_FALSE(graph.Resolve(graph.Root(), "Excluded"));
+    REQUIRE(graph.Diagnostics().size() == 1);
+    CHECK(graph.Diagnostics().front().message.contains("not available for target"));
+    CHECK_FALSE(graph.Resolve(graph.Root(), "Absent"));
+    CHECK(graph.Diagnostics().back().message.contains("cannot load dependency package"));
 }

@@ -539,9 +539,23 @@ private:
 
         for (const auto &existing : dependencies) {
             if (existing.importName == dependency.importName) {
+                const auto describe = [](const ManifestDependency &source) {
+                    if (const auto *registry = source.Registry()) {
+                        return std::format("{}/{}@{}", registry->ns.Text(), source.package.Text(),
+                                           registry->version.Text());
+                    }
+                    return std::format("path '{}'", source.Path());
+                };
+                const auto &entries = Find("Dependencies")->entries;
+                const auto previous = std::ranges::find(entries, existing.importName.Text(), &KeyValue::key);
+                const Location earlier = previous->keyLocation;
                 FailAt(entry.keyLocation,
                        std::format("[Dependencies] import name '{}' collides with '{}' after normalization", entry.key,
-                                   existing.importName.Text()));
+                                   existing.importName.Text()),
+                       std::format("choose distinct import names: '{}' selects {} at line {}, column {}; '{}' selects "
+                                   "{} at line {}, column {}",
+                                   existing.importName.Text(), describe(existing), earlier.line, earlier.column,
+                                   entry.key, describe(dependency), entry.keyLocation.line, entry.keyLocation.column));
             }
         }
         dependencies.push_back(std::move(dependency));

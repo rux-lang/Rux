@@ -1,0 +1,16 @@
+import Words::{ Compute, Word };
+import Words::Api;
+
+pub func Second<T>(value: T) -> int {
+    return Compute<T>(value);
+}
+
+pub func SecondBool(value: bool) -> int {
+    return Compute(value, 0);
+}
+
+pub func SecondRead() -> int {
+    return Api::Read();
+}
+
+pub type SecondWord = Word;

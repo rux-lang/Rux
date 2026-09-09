@@ -38,6 +38,8 @@ During workspace tests, transitive dependencies in publishable first-party packa
 
 `Language/CoreOptional` exercises inference, arrays, range syntax, and scalar arithmetic without dependencies. `Language/IntrinsicReplacement` imports `Fixtures/IntrinsicProvider` as `Foundation`, including scalar aliases, constants, a character-slice alias, and compiler context. Slice and range operations need no provider. Fixture providers are local-only `SourceLibrary` packages; they are not executable tests or workspace library APIs.
 
+`Fixtures/PackageIdentity` verifies a root named `Text` alongside transitive `Rux/Text` and `Other/Text`, owner-local aliases, repeated generic calls, and private entry names. Its two `Text` source providers deliberately declare distinct namespaces; all edges use local paths. Build `App/Fixture.toml` with `--all` for both profiles and every target. Unit tests copy the source graph into isolated temporary directories to check execution, reversed imports, visibility, and missing root entry points.
+
 ## Native Runtime Fixtures
 
 Native fixtures use `Fixture.toml`, rather than `Rux.toml`, so ordinary workspace test discovery never launches platform-specific programs. The scripts under `Native/` build a named target, inspect the artifact, launch it only on compatible native hardware, and validate exact OS-visible results.

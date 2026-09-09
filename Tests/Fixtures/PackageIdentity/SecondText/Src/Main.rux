@@ -1,0 +1,29 @@
+func Main() -> int {
+    return 22;
+}
+
+func Inner<T>(value: T) -> int {
+    return Main() + sizeof(T);
+}
+
+pub func Compute<T>(value: T) -> int {
+    return Inner<T>(value);
+}
+
+pub func Compute(value: bool, offset: int) -> int {
+    return value ? Main() + offset : 0;
+}
+
+pub type Word = int;
+
+pub module Api {
+    pub func Read() -> int {
+        return 22;
+    }
+}
+
+module Hidden {
+    pub func Secret() -> int {
+        return 22;
+    }
+}
