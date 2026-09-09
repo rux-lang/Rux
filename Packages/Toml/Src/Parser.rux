@@ -242,7 +242,7 @@ enum TomlStop: int32 {
 
 /// What a parse will accept.
 ///
-/// https://rux-lang.dev/docs/api/toml/limits
+/// @see https://rux-lang.dev/docs/api/toml/limits
 pub struct TomlLimits {
     /// How deeply arrays and inline tables may nest.
     maximumDepth: uint;
@@ -252,14 +252,16 @@ extend TomlLimits {
     /// Limits that suit a configuration file: deep enough for anything written by hand, shallow enough that a
     /// document built to exhaust the stack does not.
     ///
-    /// https://rux-lang.dev/docs/api/toml/limits/default
+    /// @returns the limits an ordinary parse uses
+    /// @see https://rux-lang.dev/docs/api/toml/limits/default
     pub func Default() -> TomlLimits {
         return TomlLimits { maximumDepth: 64 };
     }
 
     /// Limits that refuse nothing, for input already known to be trustworthy.
     ///
-    /// https://rux-lang.dev/docs/api/toml/limits/unlimited
+    /// @returns limits that refuse nothing, for input that is already trusted
+    /// @see https://rux-lang.dev/docs/api/toml/limits/unlimited
     pub func Unlimited() -> TomlLimits {
         return TomlLimits { maximumDepth: 18446744073709551615u };
     }
@@ -302,7 +304,7 @@ func BuiltFailure(stopped: &TomlStopped) -> TomlParseFailure {
 
 /// A parser over a document.
 ///
-/// https://rux-lang.dev/docs/api/toml/parser
+/// @see https://rux-lang.dev/docs/api/toml/parser
 pub struct TomlParser {
     /// Where tokens come from.
     lexer: TomlLexer;
@@ -323,7 +325,11 @@ pub struct TomlParser {
 extend TomlParser {
     /// A parser over `input` under `limits`.
     ///
-    /// https://rux-lang.dev/docs/api/toml/parser/new
+    /// @param allocator where the storage comes from
+    /// @param input the text to read
+    /// @param limits the bounds the parse refuses to exceed
+    /// @returns a parser ready to read the input
+    /// @see https://rux-lang.dev/docs/api/toml/parser/new
     pub func TomlParser(allocator: Allocator, input: char8[..], limits: TomlLimits) -> TomlParser {
         var lexer = TomlLexer(input);
         let first = lexer.Next();
@@ -358,7 +364,8 @@ extend TomlParser {
 
     /// Whether parsing has failed.
     ///
-    /// https://rux-lang.dev/docs/api/toml/parser/failed
+    /// @returns whether the parse stopped on a failure
+    /// @see https://rux-lang.dev/docs/api/toml/parser/failed
     pub func Failed(self: &TomlParser) -> bool {
         return self.outcome.stop != TomlStop::None;
     }
@@ -865,7 +872,8 @@ extend TomlParser {
     /// blank line someone put between two sections or the fact that a number was written in hexadecimal. This
     /// reads configuration; it does not edit files.
     ///
-    /// https://rux-lang.dev/docs/api/toml/parser/parse
+    /// @returns the document, or the failure and where it was found
+    /// @see https://rux-lang.dev/docs/api/toml/parser/parse
     pub func Parse(self: &var TomlParser) -> Result<TomlValue, TomlParseFailure> {
         var root = TomlValue::Table(self.allocator);
         root.defined = true;

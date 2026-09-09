@@ -21,7 +21,9 @@ import Entropy::{ EntropyError, Fill };
 /// predictable. A caller that ignores the error gets something obviously wrong rather than something subtly
 /// wrong.
 ///
-/// https://rux-lang.dev/docs/api/uuid/random
+/// @param error receives why the value could not be produced, or `None`
+/// @returns a version 4 value drawn from the system's generator, or the nil value on failure
+/// @see https://rux-lang.dev/docs/api/uuid/random
 pub func Random(error: *var EntropyError) -> Uuid {
     var bytes: char8[16];
     *error = Fill(@bytes[0] as *var opaque, 16u);
@@ -39,7 +41,9 @@ pub func Random(error: *var EntropyError) -> Uuid {
 /// version and variant bits are set regardless of what the bytes say, so the result is always a well-formed
 /// version 4 UUID.
 ///
-/// https://rux-lang.dev/docs/api/uuid/random-from-bytes
+/// @param bytes sixteen bytes to take as the value, in big-endian order
+/// @returns those bytes with the version and variant fields set for version 4
+/// @see https://rux-lang.dev/docs/api/uuid/random-from-bytes
 pub func RandomFromBytes(bytes: char8[..]) -> Uuid {
     var value = Uuid::FromBytes(bytes);
     value.bytes[6] = (((value.bytes[6] as uint8) & 0x0Fu8) | 0x40u8) as char8;
@@ -54,7 +58,9 @@ pub func RandomFromBytes(bytes: char8[..]) -> Uuid {
 /// deliberately — applying it by accident, or failing to apply it when crossing the boundary, both produce a
 /// well-formed identifier that refers to something else entirely.
 ///
-/// https://rux-lang.dev/docs/api/uuid/swap-guid-order
+/// @param value the value to act on
+/// @returns the same sixteen bytes with the first three fields byte-swapped
+/// @see https://rux-lang.dev/docs/api/uuid/swap-guid-order
 pub func SwapGuidOrder(value: &Uuid) -> Uuid {
     var swapped = Uuid::FromBytes(value.Bytes());
     // The first field is four bytes, the next two are two bytes each; the remaining eight are a byte array in

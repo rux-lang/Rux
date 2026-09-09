@@ -13,7 +13,7 @@ import Core::{ #target };
 
 /// The kind of prefix a path opens with.
 ///
-/// https://rux-lang.dev/docs/api/path/prefix-kind
+/// @see https://rux-lang.dev/docs/api/path/prefix-kind
 pub enum PrefixKind: int32 {
     /// No prefix: the path is a plain name, rooted or not.
     None = 0,
@@ -31,7 +31,10 @@ pub enum PrefixKind: int32 {
 /// it. On Windows the drive is two units, a share runs through the end of its share name, and the verbatim prefix
 /// covers its four units plus the drive or share inside it.
 ///
-/// https://rux-lang.dev/docs/api/path/prefix-length
+/// @param path the path to act on
+/// @param kind which prefix form to measure
+/// @returns how many leading units the prefix occupies, or zero when there is none
+/// @see https://rux-lang.dev/docs/api/path/prefix-length
 pub func PrefixLength(path: Path, kind: *var PrefixKind) -> uint {
     *kind = PrefixKind::None;
     when #target.os == .Windows {
@@ -103,7 +106,9 @@ when #target.os == .Windows {
 
 /// Whether `path` has a root: a separator standing where the segments begin.
 ///
-/// https://rux-lang.dev/docs/api/path/has-root
+/// @param path the path to act on
+/// @returns whether the path begins at a root
+/// @see https://rux-lang.dev/docs/api/path/has-root
 pub func HasRoot(path: Path) -> bool {
     var kind = PrefixKind::None;
     let prefix = PrefixLength(path, @kind);
@@ -120,7 +125,9 @@ pub func HasRoot(path: Path) -> bool {
 /// On the Unix systems, rooted is absolute. On Windows a rooted drive (`C:\x`), a share and a verbatim path are
 /// absolute; `C:name` is drive-relative and `\name` drive-absent, and neither names one place on its own.
 ///
-/// https://rux-lang.dev/docs/api/path/is-absolute
+/// @param path the path to act on
+/// @returns whether the path names a location without needing a working directory
+/// @see https://rux-lang.dev/docs/api/path/is-absolute
 pub func IsAbsolute(path: Path) -> bool {
     when #target.os == .Windows {
         var kind = PrefixKind::None;

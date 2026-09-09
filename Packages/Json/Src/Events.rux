@@ -1,4 +1,3 @@
-
 // Reading a document as a stream of events, without building a tree.
 //
 // The tree is convenient and it is also the thing that makes a large document expensive: a gigabyte of JSON
@@ -20,7 +19,7 @@ import Io::{ IoError, IoErrorKind, Reader };
 
 /// What just happened in the document.
 ///
-/// https://rux-lang.dev/docs/api/json/json-event
+/// @see https://rux-lang.dev/docs/api/json/json-event
 pub enum JsonEvent: int32 {
     /// The document is finished.
     End = 0,
@@ -50,7 +49,7 @@ pub enum JsonEvent: int32 {
 
 /// Reads a document as events, pulling bytes as it needs them.
 ///
-/// https://rux-lang.dev/docs/api/json/json-event-reader
+/// @see https://rux-lang.dev/docs/api/json/json-event-reader
 pub struct JsonEventReader {
     /// Where bytes come from.
     source: Reader;
@@ -96,7 +95,12 @@ extend JsonEventReader {
 
     /// A reader over `source` under `limits`.
     ///
-    /// https://rux-lang.dev/docs/api/json/json-event-reader/new
+    /// @param allocator where the storage comes from
+    /// @param source the text to read
+    /// @param limits the bounds the parse refuses to exceed
+    /// @param error receives why the operation failed, or `None`
+    /// @returns a reader positioned before the first event
+    /// @see https://rux-lang.dev/docs/api/json/json-event-reader/new
     pub func New(allocator: Allocator, source: Reader, limits: JsonLimits,
              error: *var IoError) -> JsonEventReader {
         *error = IoError::Ok();
@@ -134,21 +138,24 @@ extend JsonEventReader {
     /// For a name, a string or a number. Escapes are left as written — resolving them would mean allocating,
     /// and a caller skipping past a field should not pay for its contents.
     ///
-    /// https://rux-lang.dev/docs/api/json/json-event-reader/text
+    /// @returns the current event's text, borrowed from the input
+    /// @see https://rux-lang.dev/docs/api/json/json-event-reader/text
     pub func Text(self: &JsonEventReader) -> char8[..] {
         return (@self.data[self.tokenStart])[..self.tokenEnd - self.tokenStart];
     }
 
     /// Whether that text holds escapes a caller must resolve.
     ///
-    /// https://rux-lang.dev/docs/api/json/json-event-reader/text-is-escaped
+    /// @returns whether the text still holds escape sequences a caller must decode
+    /// @see https://rux-lang.dev/docs/api/json/json-event-reader/text-is-escaped
     pub func TextIsEscaped(self: &JsonEventReader) -> bool {
         return self.tokenEscaped;
     }
 
     /// How deeply nested the reader currently is.
     ///
-    /// https://rux-lang.dev/docs/api/json/json-event-reader/depth
+    /// @returns how many arrays and objects are currently open
+    /// @see https://rux-lang.dev/docs/api/json/json-event-reader/depth
     pub func Depth(self: &JsonEventReader) -> uint {
         return self.depth;
     }
@@ -207,7 +214,7 @@ extend JsonEventReader {
 
     /// Gives the buffer back.
     ///
-    /// https://rux-lang.dev/docs/api/json/json-event-reader/release
+    /// @see https://rux-lang.dev/docs/api/json/json-event-reader/release
     pub func Release(self: &var JsonEventReader) {
         if self.data != null {
             var borrowed = self.allocator;
@@ -219,7 +226,7 @@ extend JsonEventReader {
     }
     /// Releases the buffer.
     ///
-    /// https://rux-lang.dev/docs/api/json/json-event-reader/destructor
+    /// @see https://rux-lang.dev/docs/api/json/json-event-reader/destructor
     func ~JsonEventReader(self: &var JsonEventReader) {
         self.Release();
     }
@@ -351,7 +358,8 @@ extend JsonEventReader {
     /// Separators are consumed silently: a caller sees values and structure, not commas and colons, which is
     /// the level a streaming reader is useful at.
     ///
-    /// https://rux-lang.dev/docs/api/json/json-event-reader/next
+    /// @returns the next event, or the end-of-input event
+    /// @see https://rux-lang.dev/docs/api/json/json-event-reader/next
     pub func Next(self: &var JsonEventReader) -> JsonEvent {
         if self.stop != JsonStop::None { return JsonEvent::Error; }
         self.SkipWhitespace();

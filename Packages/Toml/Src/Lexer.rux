@@ -1,4 +1,3 @@
-
 // Turning TOML text into tokens, with the position of each one.
 //
 // TOML has more lexical surface than JSON and almost all of it is string and number forms. There are four ways
@@ -15,7 +14,7 @@ import Text::{ String, StringBuilder, TextError };
 
 /// What kind of token this is.
 ///
-/// https://rux-lang.dev/docs/api/toml/token-kind
+/// @see https://rux-lang.dev/docs/api/toml/token-kind
 pub enum TomlTokenKind: int32 {
     /// The input is exhausted.
     End = 0,
@@ -53,7 +52,7 @@ pub enum TomlTokenKind: int32 {
 
 /// Which of the four string forms a text token was written in.
 ///
-/// https://rux-lang.dev/docs/api/toml/text-form
+/// @see https://rux-lang.dev/docs/api/toml/text-form
 pub enum TomlTextForm: int32 {
     /// Not a text token.
     NotText = 0,
@@ -72,7 +71,7 @@ pub enum TomlTextForm: int32 {
 
 /// Why lexing stopped.
 ///
-/// https://rux-lang.dev/docs/api/toml/lex-error
+/// @see https://rux-lang.dev/docs/api/toml/lex-error
 pub enum TomlLexError: int32 {
     /// Nothing went wrong.
     None = 0,
@@ -96,7 +95,7 @@ pub enum TomlLexError: int32 {
 
 /// One token, and where it came from.
 ///
-/// https://rux-lang.dev/docs/api/toml/token
+/// @see https://rux-lang.dev/docs/api/toml/token
 pub struct TomlToken {
     /// What kind of token this is.
     pub kind: TomlTokenKind;
@@ -116,7 +115,7 @@ pub struct TomlToken {
 
 /// A TOML lexer over a byte slice.
 ///
-/// https://rux-lang.dev/docs/api/toml/lexer
+/// @see https://rux-lang.dev/docs/api/toml/lexer
 pub struct TomlLexer {
     /// The document.
     input: char8[..];
@@ -131,7 +130,9 @@ pub struct TomlLexer {
 extend TomlLexer {
     /// A lexer over `input`.
     ///
-    /// https://rux-lang.dev/docs/api/toml/lexer/new
+    /// @param input the text to read
+    /// @returns a lexer positioned at the start of the input
+    /// @see https://rux-lang.dev/docs/api/toml/lexer/new
     pub func TomlLexer(input: char8[..]) -> TomlLexer {
         return TomlLexer { input: input, position: 0, line: 1, lineStart: 0 };
     }
@@ -431,7 +432,8 @@ extend TomlLexer {
 extend TomlLexer {
     /// The next token, or `End` at the end of the input.
     ///
-    /// https://rux-lang.dev/docs/api/toml/lexer/next
+    /// @returns the next token, or the end-of-input token
+    /// @see https://rux-lang.dev/docs/api/toml/lexer/next
     pub func Next(self: &var TomlLexer) -> TomlToken {
         self.SkipSpaceAndComments();
         if self.position >= self.input.length {
@@ -502,7 +504,9 @@ extend TomlLexer {
 
     /// The bytes a token spans, which for a text token excludes the quotes and is still escaped.
     ///
-    /// https://rux-lang.dev/docs/api/toml/lexer/text-of
+    /// @param token the token to read
+    /// @returns the token's text, borrowed from the input
+    /// @see https://rux-lang.dev/docs/api/toml/lexer/text-of
     pub func TextOf(self: &TomlLexer, token: &TomlToken) -> char8[..] {
         return (self.input.data + token.start)[..token.end - token.start];
     }
@@ -514,7 +518,13 @@ extend TomlLexer {
 /// basic string has its escapes resolved, including the line-ending backslash that lets a multi-line string be
 /// wrapped in the source without the wrapping appearing in the value.
 ///
-/// https://rux-lang.dev/docs/api/toml/decode-text
+/// @param allocator where the storage comes from
+/// @param span the raw text the token covers
+/// @param form which quoting form the text was written in
+/// @param error receives why the operation failed, or `None`
+/// @param bad receives the offset of the first byte that could not be decoded
+/// @returns the decoded text, or an empty string when a byte could not be decoded
+/// @see https://rux-lang.dev/docs/api/toml/decode-text
 pub func TomlDecodeText(allocator: Allocator, span: char8[..], form: TomlTextForm, error: *var TextError,
                     bad: *var bool) -> String {
     *bad = false;

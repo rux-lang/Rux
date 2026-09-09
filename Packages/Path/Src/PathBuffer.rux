@@ -13,7 +13,7 @@ import Text::{ FromAllocError, TextError };
 ///
 /// Move-only: it prohibits copying and gives its block back with `~PathBuffer`.
 ///
-/// https://rux-lang.dev/docs/api/path/path-buffer
+/// @see https://rux-lang.dev/docs/api/path/path-buffer
 pub struct PathBuffer {
     /// The units, or null before the first push.
     pub data: *var OsUnit;
@@ -31,14 +31,20 @@ extend PathBuffer {
 
     /// An empty buffer that has allocated nothing.
     ///
-    /// https://rux-lang.dev/docs/api/path/path-buffer/new
+    /// @param allocator where the storage comes from
+    /// @returns an empty buffer that has taken no storage yet
+    /// @see https://rux-lang.dev/docs/api/path/path-buffer/new
     pub func PathBuffer(allocator: Allocator) -> PathBuffer {
         return PathBuffer { data: null, length: 0, capacity: 0, allocator: allocator };
     }
 
     /// A buffer opening with `path`'s units.
     ///
-    /// https://rux-lang.dev/docs/api/path/path-buffer/from-path
+    /// @param allocator where the storage comes from
+    /// @param path the path to act on
+    /// @param error receives why the operation failed, or `None`
+    /// @returns a copy of `path` this buffer owns, or an empty one when the allocator refused
+    /// @see https://rux-lang.dev/docs/api/path/path-buffer/from-path
     pub func FromPath(allocator: Allocator, path: Path, error: *var TextError) -> PathBuffer {
         var buffer = PathBuffer(allocator);
         *error = buffer.AppendUnits(path.AsView().Units());
@@ -47,14 +53,16 @@ extend PathBuffer {
 
     /// How many units the buffer holds.
     ///
-    /// https://rux-lang.dev/docs/api/path/path-buffer/length
+    /// @returns how many units the buffer holds
+    /// @see https://rux-lang.dev/docs/api/path/path-buffer/length
     pub func Length(self: &PathBuffer) -> uint {
         return self.length;
     }
 
     /// Whether the buffer holds nothing.
     ///
-    /// https://rux-lang.dev/docs/api/path/path-buffer/is-empty
+    /// @returns whether the buffer holds no units
+    /// @see https://rux-lang.dev/docs/api/path/path-buffer/is-empty
     pub func IsEmpty(self: &PathBuffer) -> bool {
         return self.length == 0;
     }
@@ -63,7 +71,8 @@ extend PathBuffer {
     ///
     /// The path borrows the buffer and must not outlive it or survive a push.
     ///
-    /// https://rux-lang.dev/docs/api/path/path-buffer/as-path
+    /// @returns a borrowed path over the buffer's units
+    /// @see https://rux-lang.dev/docs/api/path/path-buffer/as-path
     pub func AsPath(self: &PathBuffer) -> Path {
         return Path::FromView(OsStringView::FromUnits((self.data)[..self.length]));
     }
@@ -116,7 +125,9 @@ extend PathBuffer {
     /// A segment that is itself absolute — opening with a separator — replaces the buffer instead of extending
     /// it, which is what joining means everywhere paths are joined: `join(a, /b)` is `/b`.
     ///
-    /// https://rux-lang.dev/docs/api/path/path-buffer/push
+    /// @param segment the component to append
+    /// @returns `None` when the component was appended
+    /// @see https://rux-lang.dev/docs/api/path/path-buffer/push
     pub func Push(self: &var PathBuffer, segment: OsStringView) -> TextError {
         let units = segment.Units();
         if units.length == 0 { return TextError::None; }
@@ -135,7 +146,7 @@ extend PathBuffer {
 
     /// Gives the block back and leaves an empty buffer.
     ///
-    /// https://rux-lang.dev/docs/api/path/path-buffer/release
+    /// @see https://rux-lang.dev/docs/api/path/path-buffer/release
     pub func Release(self: &var PathBuffer) {
         if self.data != null {
             let unitSize = sizeof(OsUnit) as uint;
@@ -155,7 +166,12 @@ extend PathBuffer {
 /// The join every path library means: a separator supplied where one is missing, and an absolute `segment`
 /// replacing `base` entirely.
 ///
-/// https://rux-lang.dev/docs/api/path/join
+/// @param allocator where the storage comes from
+/// @param base the path to extend
+/// @param segment the component to append
+/// @param error receives why the operation failed, or `None`
+/// @returns `base` with `segment` appended, or an empty buffer on failure
+/// @see https://rux-lang.dev/docs/api/path/join
 pub func Join(allocator: Allocator, base: Path, segment: OsStringView, error: *var TextError) -> PathBuffer {
     var buffer = PathBuffer::FromPath(allocator, base, error);
     if error.IsError() { return <-buffer; }
@@ -171,7 +187,11 @@ pub func Join(allocator: Allocator, base: Path, segment: OsStringView, error: *v
 /// deduplication, and the filesystem-true answer is canonicalization, which asks the system. A `..` with nothing
 /// before it survives in a relative path and vanishes at the root, where there is nowhere further up.
 ///
-/// https://rux-lang.dev/docs/api/path/normalize
+/// @param allocator where the storage comes from
+/// @param path the path to act on
+/// @param error receives why the operation failed, or `None`
+/// @returns the path with its redundant components resolved, or an empty buffer on failure
+/// @see https://rux-lang.dev/docs/api/path/normalize
 pub func Normalize(allocator: Allocator, path: Path, error: *var TextError) -> PathBuffer {
     var buffer = PathBuffer(allocator);
     *error = TextError::None;
@@ -260,7 +280,7 @@ func IsDoubleDot(segment: OsStringView) -> bool {
 extend PathBuffer {
     /// Gives the block back.
     ///
-    /// https://rux-lang.dev/docs/api/path/path-buffer/destructor
+    /// @see https://rux-lang.dev/docs/api/path/path-buffer/destructor
     func ~PathBuffer(self: &var PathBuffer) {
         self.Release();
     }

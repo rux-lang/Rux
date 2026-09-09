@@ -32,7 +32,7 @@ when #target.os {
 /// must not spin forever inside what its caller believes is one operation. Reaching this reports `Interrupted`,
 /// which says exactly that and leaves trying again to the caller, who knows whether it is worth it.
 ///
-/// https://rux-lang.dev/docs/api/entropy/max-entropy-attempts
+/// @see https://rux-lang.dev/docs/api/entropy/max-entropy-attempts
 pub const MaxEntropyAttempts: uint = 16;
 
 /// The largest request the source accepts in a single call.
@@ -40,7 +40,7 @@ pub const MaxEntropyAttempts: uint = 16;
 /// Windows takes a 32-bit count, so this is what a portable caller may ask for at once. A larger buffer is filled by
 /// asking more than once, which `Fill` does.
 ///
-/// https://rux-lang.dev/docs/api/entropy/max-entropy-request
+/// @see https://rux-lang.dev/docs/api/entropy/max-entropy-request
 pub const MaxEntropyRequest: uint = 0xFFFFFFFF;
 
 /// Fills `length` bytes of `buffer` from the system's generator, in one pass.
@@ -62,7 +62,10 @@ pub const MaxEntropyRequest: uint = 0xFFFFFFFF;
 /// `buffer` must be writable for `length` bytes. On any failure the buffer is zeroized, so a caller who ignores the
 /// result gets zeros rather than a partly random buffer that would pass a glance.
 ///
-/// https://rux-lang.dev/docs/api/entropy/fill-from-source
+/// @param buffer receives the bytes
+/// @param length how many bytes to fill
+/// @returns `None` only when every byte was written in this one pass
+/// @see https://rux-lang.dev/docs/api/entropy/fill-from-source
 pub func FillFromSource(buffer: *var opaque, length: uint) -> EntropyError {
     if length == 0 { return EntropyError::None; }
     if length > MaxEntropyRequest { return EntropyError::TooLarge; }

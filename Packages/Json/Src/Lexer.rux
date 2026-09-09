@@ -1,4 +1,3 @@
-
 // Turning JSON text into tokens, under limits a caller sets.
 //
 // The limits are the point of having a separate lexing stage at all. JSON is a recursive format read from
@@ -16,7 +15,7 @@
 
 /// What kind of token this is.
 ///
-/// https://rux-lang.dev/docs/api/json/token-kind
+/// @see https://rux-lang.dev/docs/api/json/token-kind
 pub enum JsonTokenKind: int32 {
     /// The input is exhausted.
     End = 0,
@@ -48,7 +47,7 @@ pub enum JsonTokenKind: int32 {
 
 /// Why lexing stopped.
 ///
-/// https://rux-lang.dev/docs/api/json/lex-error
+/// @see https://rux-lang.dev/docs/api/json/lex-error
 pub enum JsonLexError: int32 {
     /// Nothing went wrong.
     None = 0,
@@ -81,7 +80,7 @@ pub enum JsonLexError: int32 {
 /// Every field is a refusal a caller might need to make against untrusted input, and every default is generous
 /// enough for ordinary documents and far short of what exhausts a machine.
 ///
-/// https://rux-lang.dev/docs/api/json/json-limits
+/// @see https://rux-lang.dev/docs/api/json/json-limits
 pub struct JsonLimits {
     /// The longest document, in bytes.
     pub maximumBytes: uint;
@@ -97,7 +96,8 @@ extend JsonLimits {
     /// Limits generous enough for ordinary documents: sixty-four mebibytes, sixteen mebibyte strings, a hundred
     /// and twenty-eight levels of nesting, and a million entries per container.
     ///
-    /// https://rux-lang.dev/docs/api/json/json-limits/default
+    /// @returns the limits an ordinary parse uses
+    /// @see https://rux-lang.dev/docs/api/json/json-limits/default
     pub func Default() -> JsonLimits {
         return JsonLimits {
             maximumBytes: 67108864,
@@ -112,7 +112,8 @@ extend JsonLimits {
     /// Named so that choosing it is visible: a document read from the network should never use this, and a
     /// reviewer should be able to find every place that did.
     ///
-    /// https://rux-lang.dev/docs/api/json/json-limits/unlimited
+    /// @returns limits that refuse nothing, for input that is already trusted
+    /// @see https://rux-lang.dev/docs/api/json/json-limits/unlimited
     pub func Unlimited() -> JsonLimits {
         return JsonLimits {
             maximumBytes: 0xFFFFFFFFFFFFFFFF,
@@ -125,7 +126,7 @@ extend JsonLimits {
 
 /// One token, and where in the input it came from.
 ///
-/// https://rux-lang.dev/docs/api/json/json-token
+/// @see https://rux-lang.dev/docs/api/json/json-token
 pub struct JsonToken {
     /// What kind of token this is.
     pub kind: JsonTokenKind;
@@ -142,7 +143,7 @@ pub struct JsonToken {
 
 /// A JSON lexer over a byte slice.
 ///
-/// https://rux-lang.dev/docs/api/json/json-lexer
+/// @see https://rux-lang.dev/docs/api/json/json-lexer
 pub struct JsonLexer {
     /// The document.
     input: char8[..];
@@ -155,14 +156,18 @@ pub struct JsonLexer {
 extend JsonLexer {
     /// A lexer over `input` under `limits`.
     ///
-    /// https://rux-lang.dev/docs/api/json/json-lexer/new
+    /// @param input the text to read
+    /// @param limits the bounds the parse refuses to exceed
+    /// @returns a lexer positioned at the start of the input
+    /// @see https://rux-lang.dev/docs/api/json/json-lexer/new
     pub func JsonLexer(input: char8[..], limits: JsonLimits) -> JsonLexer {
         return JsonLexer { input: input, position: 0, limits: limits };
     }
 
     /// Where reading has reached, as a byte offset.
     ///
-    /// https://rux-lang.dev/docs/api/json/json-lexer/position
+    /// @returns how many bytes have been consumed
+    /// @see https://rux-lang.dev/docs/api/json/json-lexer/position
     pub func Position(self: &JsonLexer) -> uint {
         return self.position;
     }
@@ -351,7 +356,8 @@ extend JsonLexer {
 extend JsonLexer {
     /// The next token.
     ///
-    /// https://rux-lang.dev/docs/api/json/json-lexer/next
+    /// @returns the next token, or the end-of-input token
+    /// @see https://rux-lang.dev/docs/api/json/json-lexer/next
     pub func Next(self: &var JsonLexer) -> JsonToken {
         if self.input.length > self.limits.maximumBytes { return self.Fail(JsonLexError::TooManyBytes); }
         self.SkipWhitespace();

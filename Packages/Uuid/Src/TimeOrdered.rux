@@ -20,7 +20,9 @@ import Time::Timestamp;
 /// `error` reports why entropy was unavailable, and the result is nil in that case rather than a
 /// timestamp-shaped value with no randomness — which would be guessable and would look fine.
 ///
-/// https://rux-lang.dev/docs/api/uuid/time-ordered
+/// @param error receives why the value could not be produced, or `None`
+/// @returns a version 7 value carrying the current time, or the nil value on failure
+/// @see https://rux-lang.dev/docs/api/uuid/time-ordered
 pub func TimeOrdered(error: *var EntropyError) -> Uuid {
     let now = Timestamp::Now();
     let milliseconds = (now.UnixSeconds() as uint64) * 1000u64 + ((now.SubsecondNanoseconds() / 1000000u32) as uint64);
@@ -31,7 +33,10 @@ pub func TimeOrdered(error: *var EntropyError) -> Uuid {
 ///
 /// For reproducing an identifier from a recorded time, and for testing.
 ///
-/// https://rux-lang.dev/docs/api/uuid/time-ordered-at
+/// @param milliseconds the timestamp to embed, in milliseconds since the Unix epoch
+/// @param error receives why the value could not be produced, or `None`
+/// @returns a version 7 value carrying `milliseconds`, or the nil value on failure
+/// @see https://rux-lang.dev/docs/api/uuid/time-ordered-at
 pub func TimeOrderedAt(milliseconds: uint64, error: *var EntropyError) -> Uuid {
     var bytes: char8[16];
     *error = Fill(@bytes[0] as *var opaque, 16u);
@@ -53,7 +58,9 @@ pub func TimeOrderedAt(milliseconds: uint64, error: *var EntropyError) -> Uuid {
 ///
 /// Meaningless for any other version, which is why the version should be checked first.
 ///
-/// https://rux-lang.dev/docs/api/uuid/millisecond-of
+/// @param value the value to act on
+/// @returns the timestamp a version 7 value carries; meaningless for any other version
+/// @see https://rux-lang.dev/docs/api/uuid/millisecond-of
 pub func MillisecondOf(value: &Uuid) -> uint64 {
     var milliseconds = 0u64;
     var index: uint = 0;
@@ -74,7 +81,7 @@ pub func MillisecondOf(value: &Uuid) -> uint64 {
 /// A caller owns one of these rather than sharing a global, so two components generating identifiers do not
 /// serialize against each other or interleave into one sequence.
 ///
-/// https://rux-lang.dev/docs/api/uuid/monotonic-uuid
+/// @see https://rux-lang.dev/docs/api/uuid/monotonic-uuid
 pub struct MonotonicUuid {
     /// The last value returned, or nil before the first.
     previous: Uuid;
@@ -85,14 +92,17 @@ pub struct MonotonicUuid {
 extend MonotonicUuid {
     /// A generator that has produced nothing yet.
     ///
-    /// https://rux-lang.dev/docs/api/uuid/monotonic-uuid/new
+    /// @returns the generator, which has produced nothing yet
+    /// @see https://rux-lang.dev/docs/api/uuid/monotonic-uuid/new
     pub func MonotonicUuid() -> MonotonicUuid {
         return MonotonicUuid { previous: Uuid::Nil(), started: false };
     }
 
     /// The next identifier, strictly greater than the one before it.
     ///
-    /// https://rux-lang.dev/docs/api/uuid/monotonic-uuid/next
+    /// @param error receives why the value could not be produced, or `None`
+    /// @returns the next value, which sorts after every value this generator has produced
+    /// @see https://rux-lang.dev/docs/api/uuid/monotonic-uuid/next
     pub func Next(self: &var MonotonicUuid, error: *var EntropyError) -> Uuid {
         let candidate = TimeOrdered(error);
         if *error != EntropyError::None { return Uuid::Nil(); }

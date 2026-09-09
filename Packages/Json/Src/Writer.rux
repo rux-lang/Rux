@@ -1,4 +1,3 @@
-
 // Writing a value back out, compactly or for a human.
 //
 // Two things here are not negotiable. Strings are escaped exactly as RFC 8259 requires and no more: the quote,
@@ -33,7 +32,7 @@ pub const MaximumWriteDepth: uint = 512;
 
 /// How a document should be laid out.
 ///
-/// https://rux-lang.dev/docs/api/json/json-style
+/// @see https://rux-lang.dev/docs/api/json/json-style
 pub struct JsonStyle {
     /// Spaces of indentation per level; zero writes everything on one line.
     indent: uint;
@@ -44,14 +43,16 @@ pub struct JsonStyle {
 extend JsonStyle {
     /// The compact style: no whitespace anywhere. What a document on a wire should be.
     ///
-    /// https://rux-lang.dev/docs/api/json/json-style/compact
+    /// @returns a style that writes no whitespace at all
+    /// @see https://rux-lang.dev/docs/api/json/json-style/compact
     pub func Compact() -> JsonStyle {
         return JsonStyle { indent: 0, spaceAfterColon: false };
     }
 
     /// The readable style: two spaces per level.
     ///
-    /// https://rux-lang.dev/docs/api/json/json-style/pretty
+    /// @returns a style that indents and puts each member on its own line
+    /// @see https://rux-lang.dev/docs/api/json/json-style/pretty
     pub func Pretty() -> JsonStyle {
         return JsonStyle { indent: 2, spaceAfterColon: true };
     }

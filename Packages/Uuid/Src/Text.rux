@@ -1,4 +1,3 @@
-
 // The text form, parsed strictly and written canonically.
 //
 // RFC 9562 defines exactly one textual representation: thirty-two hexadecimal digits in five hyphen-separated
@@ -32,12 +31,12 @@ import Text::{ Debug, Display, FormatError, FormatOk, FormatSpec, ParseFailure, 
 
 /// How long the canonical text form is: thirty-two digits and four hyphens.
 ///
-/// https://rux-lang.dev/docs/api/uuid/text-length
+/// @see https://rux-lang.dev/docs/api/uuid/text-length
 pub const UuidTextLength: uint = 36;
 
 /// How long the URN form is: the canonical form after `urn:uuid:`.
 ///
-/// https://rux-lang.dev/docs/api/uuid/urn-length
+/// @see https://rux-lang.dev/docs/api/uuid/urn-length
 pub const UuidUrnLength: uint = 45;
 
 /// Why text could not be read as a UUID.

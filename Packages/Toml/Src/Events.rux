@@ -15,7 +15,7 @@
 
 /// What just happened in the document.
 ///
-/// https://rux-lang.dev/docs/api/toml/event
+/// @see https://rux-lang.dev/docs/api/toml/event
 pub enum TomlEvent: int32 {
     /// The document is finished.
     End = 0,
@@ -63,7 +63,7 @@ enum TomlEventState: int32 {
 
 /// Reads a document as events, in order, without building a tree.
 ///
-/// https://rux-lang.dev/docs/api/toml/event-reader
+/// @see https://rux-lang.dev/docs/api/toml/event-reader
 pub struct TomlEventReader {
     /// Where tokens come from.
     lexer: TomlLexer;
@@ -93,7 +93,9 @@ pub struct TomlEventReader {
 extend TomlEventReader {
     /// A reader over `input`.
     ///
-    /// https://rux-lang.dev/docs/api/toml/event-reader/new
+    /// @param input the text to read
+    /// @returns a reader positioned before the first event
+    /// @see https://rux-lang.dev/docs/api/toml/event-reader/new
     pub func TomlEventReader(input: char8[..]) -> TomlEventReader {
         var lexer = TomlLexer(input);
         let first = lexer.Next();
@@ -137,42 +139,48 @@ extend TomlEventReader {
     /// The bytes the current event's token spans, as written: a string is still escaped and a number is still
     /// text.
     ///
-    /// https://rux-lang.dev/docs/api/toml/event-reader/span
+    /// @returns the raw text the current event covers, borrowed from the input
+    /// @see https://rux-lang.dev/docs/api/toml/event-reader/span
     pub func Span(self: &TomlEventReader) -> char8[..] {
         return (self.input.data + self.current.start)[..self.current.end - self.current.start];
     }
 
     /// Which string form the current text event was written in, which decoding it needs.
     ///
-    /// https://rux-lang.dev/docs/api/toml/event-reader/form
+    /// @returns which quoting form the current text was written in
+    /// @see https://rux-lang.dev/docs/api/toml/event-reader/form
     pub func Form(self: &TomlEventReader) -> TomlTextForm {
         return self.current.form;
     }
 
     /// Which line the current event is on, counting from one.
     ///
-    /// https://rux-lang.dev/docs/api/toml/event-reader/line
+    /// @returns the current event's line, counting from one
+    /// @see https://rux-lang.dev/docs/api/toml/event-reader/line
     pub func Line(self: &TomlEventReader) -> uint {
         return self.current.line;
     }
 
     /// Which column the current event is at, counting from one, in bytes.
     ///
-    /// https://rux-lang.dev/docs/api/toml/event-reader/column
+    /// @returns the current event's column, counting from one
+    /// @see https://rux-lang.dev/docs/api/toml/event-reader/column
     pub func Column(self: &TomlEventReader) -> uint {
         return self.current.column;
     }
 
     /// Whether the header being read was written `[[name]]` rather than `[name]`.
     ///
-    /// https://rux-lang.dev/docs/api/toml/event-reader/is-table-array
+    /// @returns whether the current header opens an array of tables rather than a table
+    /// @see https://rux-lang.dev/docs/api/toml/event-reader/is-table-array
     pub func IsTableArray(self: &TomlEventReader) -> bool {
         return self.tableArray;
     }
 
     /// How deep inside arrays and inline tables the reader is.
     ///
-    /// https://rux-lang.dev/docs/api/toml/event-reader/depth
+    /// @returns how many tables are currently open
+    /// @see https://rux-lang.dev/docs/api/toml/event-reader/depth
     pub func Depth(self: &TomlEventReader) -> uint {
         return self.depth;
     }
@@ -259,7 +267,8 @@ extend TomlEventReader {
     /// After an `Error` every later call returns `End`: everything past a refusal would be read from a position
     /// the document never meant.
     ///
-    /// https://rux-lang.dev/docs/api/toml/event-reader/next
+    /// @returns the next event, or the end-of-input event
+    /// @see https://rux-lang.dev/docs/api/toml/event-reader/next
     pub func Next(self: &var TomlEventReader) -> TomlEvent {
         if self.state == TomlEventState::Finished { return TomlEvent::End; }
         if self.state == TomlEventState::Document { return self.NextAtDocument(); }
