@@ -1,6 +1,13 @@
 import Core::char64;
 import Core::Assert;
 
+const Face = c64'😀';
+const Last: char64 = c64'\u{10FFFF}';
+
+func Identity<T>(value: T) -> T { return value; }
+func Width<T>(value: T) -> uint { return sizeof(T); }
+func Echo(value: char64) -> char64 { return value; }
+
 func Main() -> int {
     // char64 carries a Unicode scalar value, the same thing char32 carries, in
     // twice the room. What it holds is decided by Unicode, not by the width, so
@@ -11,13 +18,13 @@ func Main() -> int {
     Assert(char64::Max as uint64 == 0x10FFFFu64, "char64 stops at the last code point");
 
     // The values a scalar-valued width holds, across the planes.
-    let letter: char64 = 'A' as char64;
+    let letter: char64 = c64'A';
     Assert(letter as uint64 == 65u64, "char64 'A' is 65");
-    let euro: char64 = c32'\u{20AC}' as char64;
+    let euro: char64 = c64'\u{20AC}';
     Assert(euro as uint64 == 0x20ACu64, "char64 holds a first-plane code point");
-    let face: char64 = c32'\u{1F600}' as char64;
+    let face: char64 = c64'\u{1F600}';
     Assert(face as uint64 == 0x1F600u64, "char64 holds a code point above the first plane");
-    let last: char64 = c32'\u{10FFFF}' as char64;
+    let last: char64 = c64'\u{10FFFF}';
     Assert(last as uint64 == 0x10FFFFu64, "char64 holds the last code point");
 
     // A scalar value widens implicitly into a wider scalar value, because every
@@ -27,7 +34,7 @@ func Main() -> int {
     Assert(widened == face, "the widened value is the one it came from");
 
     // Comparison and ordering follow the code points, as at every other width.
-    Assert(letter == 'A' as char64, "char64 equality");
+    Assert(letter == c64'A', "char64 equality");
     Assert(letter != euro, "char64 inequality");
     Assert(letter < euro, "char64 less-than follows the code point");
     Assert(face > euro, "char64 orders a later plane above an earlier one");
@@ -42,9 +49,36 @@ func Main() -> int {
     Assert(face as char32 as uint32 == 0x1F600u32, "char64 narrows to char32 when it fits");
 
     // Assignment and mutation.
-    var cursor: char64 = 'a' as char64;
+    var cursor: char64 = c64'a';
     cursor = face;
     Assert(cursor as uint64 == 0x1F600u64, "char64 var mutation");
 
+    // Prefix recognition does not reserve ordinary identifiers.
+    let c64 = 17;
+    let c64Value = 19;
+    Assert(c64 + c64Value == 36, "c64 remains an ordinary identifier");
+    let inferred = c64'😀';
+    Assert(Width(inferred) == 8u, "the literal infers char64 storage");
+    Assert(Face == inferred && Last == last, "typed and inferred constants keep their width");
+    Assert(Identity(c64'😀') == face, "generic inference keeps the literal type");
+    Assert(Echo(c64'λ') == c64'\u{3BB}', "calls and returns preserve source Unicode");
+    Assert(c64'\0' as uint64 == 0u64, "NUL remains a scalar value");
+    Assert(c64'\n' as uint64 == 10u64 && c64'\r' as uint64 == 13u64, "line escapes decode");
+    Assert(c64'\t' as uint64 == 9u64 && c64'\v' as uint64 == 11u64, "spacing escapes decode");
+    Assert(c64'\a' as uint64 == 7u64 && c64'\b' as uint64 == 8u64, "control escapes decode");
+    Assert(c64'\f' as uint64 == 12u64, "form feed decodes");
+    Assert(c64'\\' as uint64 == 92u64 && c64'\'' as uint64 == 39u64, "quoted escapes decode");
+    Assert(c64'\"' as uint64 == 34u64, "a double quote escape decodes");
+    Assert(c64'\u{00000041}' == letter, "zero-padded Unicode escapes decode");
+    let elements = [c64'A', c64'λ', c64'😀'];
+    Assert(elements[0] == letter && elements[2] == face, "inferred array elements are char64");
+    var chooseFirst = false;
+    let selected = chooseFirst ? c64'A' : c64'😀';
+    Assert(selected == face, "a char64 ternary keeps its selected code point");
+    when c64'A' == c64'\u{41}' {
+        Assert(true, "constant evaluation uses the same decoded scalar");
+    } else {
+        Assert(false, "character spellings must agree at compile time");
+    }
     return 0;
 }

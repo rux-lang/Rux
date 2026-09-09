@@ -111,7 +111,7 @@ func Main() -> int {
     let byte = c8'A';
     let small = c16'\u{03bb}';
     let scalar = c32'\u{1F600}';
-    let wide = scalar as char64;
+    let wide = c64'😀';
     Shown<char8>(byte, plain, "A");
     Inspected<char8>(byte, plain, "'A'");
     Shown<char16>(small, plain, "λ");

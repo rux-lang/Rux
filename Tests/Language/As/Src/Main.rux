@@ -63,8 +63,9 @@ func Main() -> int {
     Assert(unit as char32 == c32'A', "a code unit converts explicitly to a scalar value");
     Assert(unit as char16 == c16'A', "and to the other code-unit width");
     Assert(c32'A' as char8 == c8'A', "and back, while the value fits");
-    // char64 has no literal prefix of its own — see Docs/CompilerDefects.md — so it is reached by converting.
-    Assert((c32'A' as char64) as uint64 == 65u64, "a scalar value widens to the wider scalar width");
+    Assert(c32'A' as char64 == c64'A', "a scalar value widens to the wider scalar width");
+
+    Assert(c64'A' as uint64 == 65u64, "a wide character literal converts to its numeric value");
 
     // Characters and integers convert both ways, which is how a code point becomes arithmetic.
     Assert((c8'A' as uint32) == 65u32, "a character converts to its numeric value");

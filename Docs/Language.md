@@ -220,7 +220,7 @@ A pointer can form a slice with `p[..n]`, `p[a..b]`, or an inclusive end such as
 
 ### Literal encodings
 
-Literals are read-only character slices. They need no package import, and `.data` and `.length` are compiler-owned.
+String literals are read-only character slices. They need no package import, and `.data` and `.length` are compiler-owned.
 
 ```text
 "Hello"       char8[..]    UTF-8
@@ -242,6 +242,12 @@ func Prefix(text: char8[..], count: uint) -> char8[..] {
     return text[..count];
 }
 ```
+
+### Character literals
+
+Character literals hold one value. An unprefixed `'A'` has type `char32`; `c8'A'`, `c16'A'`, `c32'A'`, and `c64'A'` select their respective character widths. `char64` stores the same Unicode scalar values as `char32` in eight bytes, so `c64'😀'` and `c64'\u{1F600}'` have the same value. Prefixes work in constants, generic arguments, and match patterns. An identifier named `c64` remains valid; there is no `c64` string encoding.
+
+Character literals accept the existing simple escapes and `\u{...}` with one to eight hexadecimal digits. Empty literals, multiple characters, invalid escapes, surrogate scalars, and scalars above U+10FFFF are rejected. Character patterns compare decoded values, so a Unicode escape matches its literal spelling and equivalent unguarded arms are duplicate patterns.
 
 ### Range types
 

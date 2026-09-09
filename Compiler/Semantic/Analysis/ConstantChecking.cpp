@@ -113,6 +113,9 @@ TypeRef AnalysisContext::CharLiteralType(const Token &tok) {
     if (tok.text.starts_with("c32'")) {
         return TypeRef::MakeChar32();
     }
+    if (tok.text.starts_with("c64'")) {
+        return TypeRef::MakePrimitive(TypeRef::Kind::Char64);
+    }
     return TypeRef::MakeChar();
 }
 

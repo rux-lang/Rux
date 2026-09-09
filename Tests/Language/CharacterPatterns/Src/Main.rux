@@ -1,0 +1,112 @@
+import Core::Assert;
+
+func Byte(value: char8) -> int {
+    return match value {
+        c8'A' => 1,
+        c8'\n' => 2,
+        c8'\0' => 3,
+        else => 9
+    };
+}
+
+func Unit(value: char16) -> int {
+    return match value {
+        c16'λ' => 1,
+        c16'\t' => 2,
+        c16'\u{20AC}' => 3,
+        else => 9
+    };
+}
+
+func Scalar(value: char32) -> int {
+    return match value {
+        'A' => 1,
+        c32'\u{1F600}' => 2,
+        'λ' => 3,
+        '\0' => 4,
+        '\\' => 5,
+        '\'' => 6,
+        else => 9
+    };
+}
+
+func Wide(value: char64) -> int {
+    return match value {
+        c64'\0' => 1,
+        c64'A' => 2,
+        c64'λ' => 3,
+        c64'\u{1F600}' => 4,
+        c64'\u{10FFFF}' => 5,
+        else => 9
+    };
+}
+
+func Guarded(value: char32, allowed: bool) -> int {
+    return match value {
+        'A' if allowed => 7,
+        'A' => 8,
+        else => 9
+    };
+}
+
+variant Mark {
+    Empty,
+    Glyph(char32)
+}
+
+func Nested(value: Mark) -> int {
+    return match value {
+        .Glyph(scalar) => Scalar(scalar),
+        .Empty => 9
+    };
+}
+
+func Once(calls: *var uint) -> char32 {
+    *calls += 1u;
+    return 'A';
+}
+
+func Main() -> int {
+    Assert(Byte(c8'A') == 1, "the first byte character arm matches");
+    Assert(Byte(c8'\n') == 2, "a later escaped byte arm matches");
+    Assert(Byte(c8'\0') == 3, "NUL selects its own arm instead of the first character");
+    Assert(Byte(c8'B') == 9, "an unmatched byte takes the default");
+    Assert(Unit(c16'λ') == 1, "UTF-16 patterns decode source UTF-8");
+    Assert(Unit(c16'\t') == 2, "UTF-16 patterns decode simple escapes");
+    Assert(Unit(c16'€') == 3, "Unicode escapes match the same code point as literal text");
+    Assert(Unit(c16'B') == 9, "an unmatched UTF-16 value takes the default");
+    Assert(Scalar('A') == 1, "an unprefixed character pattern matches");
+    Assert(Scalar('😀') == 2, "a supplementary character matches its escape");
+    Assert(Scalar(c32'\u{03BB}') == 3, "an escaped subject matches literal non-ASCII text");
+    Assert(Scalar('\0') == 4, "NUL does not match unrelated patterns");
+    Assert(Scalar('\\') == 5, "backslash patterns decode once");
+    Assert(Scalar('\'') == 6, "quote patterns decode once");
+    Assert(Scalar('B') == 9, "a scalar default remains available");
+    Assert(Guarded('A', true) == 7, "a true guard accepts a matching character");
+    Assert(Guarded('A', false) == 8, "a false guard continues to the next character arm");
+    Assert(Nested(Mark::Glyph('A')) == 1, "a matched payload retains its character");
+    Assert(Nested(Mark::Glyph('😀')) == 2, "a matched supplementary payload retains its code point");
+    Assert(Nested(Mark::Empty) == 9, "a different case keeps its default");
+    var selected = 0;
+    match c16'λ' {
+        c16'λ' => { selected = 11; }
+    }
+    Assert(selected == 11, "a sole character arm executes without an else");
+    match c16'B' {
+        c16'λ' => { selected = 99; }
+    }
+    Assert(selected == 11, "an unmatched sole arm has no effect");
+    var calls = 0u;
+    let answer = match Once(@calls) { 'A' => 23, else => 29 };
+    Assert(answer == 23 && calls == 1u, "the character subject is evaluated once");
+    let value = 'A';
+    let borrowed: &char32 = value;
+    Assert(Scalar(borrowed) == 1, "a copied borrowed subject keeps its character value");
+    Assert(Wide(c64'\0') == 1, "a wide NUL does not match another character");
+    Assert(Wide(c64'\u{41}') == 2, "a wide escape matches plain text");
+    Assert(Wide(c64'λ') == 3, "a wide non-ASCII character matches");
+    Assert(Wide(c64'😀') == 4, "a wide supplementary character matches its escape");
+    Assert(Wide(c64'\u{10FFFF}') == 5, "the last scalar matches without truncation");
+    Assert(Wide(c64'B') == 9, "an unmatched wide character uses the default");
+    return 0;
+}

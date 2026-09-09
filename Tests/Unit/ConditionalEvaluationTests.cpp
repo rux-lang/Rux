@@ -416,3 +416,23 @@ module Demo {
     CHECK(values["hasConfig"] == "true");
     CHECK(values["compilerFeature"] == "true");
 }
+
+TEST_CASE("character constants compare decoded scalars during conditional evaluation") {
+    auto parsed = ParseSource(R"(
+        const Face = c64'😀';
+        when c8'A' == c8'\u{41}' && c16'λ' == c16'\u{3BB}' &&
+             c32'😀' == c32'\u{1F600}' && Face == c64'\u{1F600}' &&
+             c64'\0' < c64'A' && c64'\u{10FFFF}' > Face {
+            func Chosen() {}
+        }
+    )");
+    const std::vector<Module *> modules = {&parsed.module};
+    ConditionalEvaluator evaluator(CompileTimeContext{}, modules);
+    evaluator.SetSourceContext(parsed.module.name, "test", "");
+    auto *declaration = dynamic_cast<WhenDecl *>(parsed.module.items[1].get());
+    REQUIRE(declaration != nullptr);
+    const auto result = evaluator.Evaluate(*declaration->branches[0].condition);
+    REQUIRE(result.diagnostics.empty());
+    REQUIRE(result.value.has_value());
+    CHECK(std::get<bool>(*result.value));
+}

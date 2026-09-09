@@ -8,6 +8,7 @@
 #include "Semantic/SemanticAnalyzer.h"
 #include "Syntax/Parser/Parser.h"
 
+#include <algorithm>
 #include <doctest.h>
 #include <stdexcept>
 #include <string>
@@ -147,5 +148,73 @@ TEST_CASE("weakening a returned view preserves its aggregate representation") {
                 CHECK_FALSE((instruction.op == LirOpcode::Cast && instruction.type.IsSlice()));
             }
         }
+    }
+}
+
+TEST_CASE("char64 literals lower as full-width decoded scalar constants") {
+    const LirPackage package = CompileToLir(R"(
+        const Face = c64'\u{1F600}';
+        const Last: char64 = c64'\u{10FFFF}';
+        func Ascii() -> char64 { return c64'A'; }
+        func Supplementary() -> char64 { return Face; }
+        func Boundary() -> char64 { return Last; }
+        func Literal() -> char64 { return c64'😀'; }
+        func Escaped() -> char64 { return c64'\n'; }
+    )");
+    for (const auto &[name, value] : std::vector<std::pair<std::string, std::string>>{{"Ascii", "65"},
+                                                                                      {"Supplementary", "128512"},
+                                                                                      {"Boundary", "1114111"},
+                                                                                      {"Literal", "128512"},
+                                                                                      {"Escaped", "10"}}) {
+        CAPTURE(name);
+        const auto &function = RequireFunction(package, name);
+        CHECK_EQ(function.returnType.kind, TypeRef::Kind::Char64);
+        CHECK_EQ(Constants(function), std::vector<std::string>{value});
+        for (const auto &block : function.blocks) {
+            for (const auto &instruction : block.instrs) {
+                if (instruction.op == LirOpcode::Const) {
+                    CHECK_EQ(instruction.type.kind, TypeRef::Kind::Char64);
+                }
+            }
+        }
+    }
+}
+
+TEST_CASE("character patterns lower decoded code points at every width") {
+    const LirPackage package = CompileToLir(R"(
+        func Byte(value: char8) -> int { return match value { c8'A' => 1, else => 2 }; }
+        func Unit(value: char16) -> int { return match value { c16'λ' => 1, else => 2 }; }
+        func Scalar(value: char32) -> int { return match value { c32'\u{1F600}' => 1, else => 2 }; }
+        func Wide(value: char64) -> int { return match value { c64'😀' => 1, else => 2 }; }
+    )");
+    for (const auto &[name, expected] : std::vector<std::pair<std::string, std::string>>{
+             {"Byte", "65"}, {"Unit", "955"}, {"Scalar", "128512"}, {"Wide", "128512"}}) {
+        CAPTURE(name);
+        const auto values = Constants(RequireFunction(package, name));
+        CHECK(std::find(values.begin(), values.end(), expected) != values.end());
+        for (const auto &value : values) {
+            CHECK(value.find('\'') == std::string::npos);
+        }
+    }
+}
+
+TEST_CASE("equivalent character spellings diagnose duplicate match patterns") {
+    for (const std::string prefix : {"c8", "c16", "c32", "c64"}) {
+        CAPTURE(prefix);
+        const std::string type = "char" + prefix.substr(1);
+        const std::string source = "func Select(value: " + type + ") -> int { return match value { " + prefix +
+                                   "'A' => 1, " + prefix + R"('\u{41}' => 2, else => 3 }; })";
+        Lexer lexer(source, "characters.rux");
+        auto lexed = lexer.Tokenize();
+        REQUIRE_FALSE(lexed.HasErrors());
+        Parser parser(std::move(lexed.tokens), "characters.rux");
+        auto parsed = parser.Parse();
+        REQUIRE_FALSE(parsed.HasErrors());
+        SemanticAnalyzer analyzer({&parsed.module}, {}, "test", CompileTimeContext{});
+        const SemanticModel model = analyzer.Analyze();
+        REQUIRE(model.HasErrors());
+        CHECK(std::any_of(model.diagnostics.begin(), model.diagnostics.end(), [](const Diagnostic &diagnostic) {
+            return diagnostic.message.find("duplicate pattern in match") != std::string::npos;
+        }));
     }
 }

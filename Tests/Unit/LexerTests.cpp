@@ -641,3 +641,66 @@ TEST_CASE("variant is reserved without capturing longer identifiers") {
     CHECK_EQ(result.tokens[7].text, "variants");
     CHECK(result.tokens.back().IsEof());
 }
+
+TEST_CASE("char64 literals retain their spelling and decoded scalar") {
+    const std::vector<std::pair<std::string, std::uint32_t>> cases = {
+        {"c64'A'", 65},
+        {"c64'λ'", 0x3BB},
+        {"c64'😀'", 0x1F600},
+        {R"(c64'\0')", 0},
+        {R"(c64'\n')", 10},
+        {R"(c64'\r')", 13},
+        {R"(c64'\t')", 9},
+        {R"(c64'\a')", 7},
+        {R"(c64'\b')", 8},
+        {R"(c64'\f')", 12},
+        {R"(c64'\v')", 11},
+        {R"(c64'\\')", 92},
+        {R"(c64'\'')", 39},
+        {R"(c64'\"')", 34},
+        {R"(c64'\u{00000041}')", 65},
+        {R"(c64'\u{10FFFF}')", 0x10FFFF},
+    };
+    for (const auto &[source, scalar] : cases) {
+        CAPTURE(source);
+        const auto result = Lex(source);
+        REQUIRE_FALSE(result.HasErrors());
+        REQUIRE_EQ(result.tokens.size(), 2);
+        CHECK(result.tokens[0].Is(TokenKind::CharLiteral));
+        CHECK_EQ(result.tokens[0].text, source);
+        CHECK_EQ(result.tokens[0].location.offset, 0);
+        CHECK_EQ(result.tokens[0].endLocation.offset, source.size());
+        CHECK(Lexer::DecodeCharLiteralCodePoint(source) == scalar);
+    }
+}
+
+TEST_CASE("char64 literals preserve existing character validation") {
+    for (const std::string source :
+         {"c64''", "c64'ab'", "c64'😀A'", "c64'", "c64'A", "c64'\n", R"(c64'\q')", R"(c64'\x41')", R"(c64'\u{}')",
+          R"(c64'\u{xyz}')", R"(c64'\u{D800}')", R"(c64'\u{DFFF}')", R"(c64'\u{110000}')", R"(c64'\u{100000041}')",
+          R"(c64'\u{41')"}) {
+        CAPTURE(source);
+        const auto result = Lex(source);
+        REQUIRE(result.HasErrors());
+        REQUIRE_FALSE(result.tokens.empty());
+        CHECK(result.tokens[0].Is(TokenKind::CharLiteral));
+    }
+}
+
+TEST_CASE("char64 prefix leaves identifiers and string encodings unchanged") {
+    const auto result = Lex(R"(c64 c64Value c640 c64"text" c32"text" c16"text" c8"text")");
+    REQUIRE_FALSE(result.HasErrors());
+    REQUIRE_EQ(result.tokens.size(), 9);
+    for (std::size_t index = 0; index < 4; ++index) {
+        CHECK(result.tokens[index].Is(TokenKind::Ident));
+    }
+    CHECK_EQ(result.tokens[0].text, "c64");
+    CHECK_EQ(result.tokens[1].text, "c64Value");
+    CHECK_EQ(result.tokens[2].text, "c640");
+    CHECK_EQ(result.tokens[3].text, "c64");
+    for (std::size_t index = 4; index < 8; ++index) {
+        CHECK(result.tokens[index].Is(TokenKind::StringLiteral));
+    }
+    CHECK_EQ(result.tokens[4].text, R"("text")");
+    CHECK_EQ(result.tokens[5].text, R"(c32"text")");
+}

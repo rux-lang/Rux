@@ -385,6 +385,9 @@ HirPatternPtr AstToHirContext::LowerPattern(const Pattern &pattern, const TypeRe
         if (literal->value.kind == TokenKind::IntLiteral || literal->value.kind == TokenKind::FloatLiteral) {
             lowered->value = StripNumericLiteralSuffix(literal->value.text);
         }
+        else if (literal->value.kind == TokenKind::CharLiteral) {
+            lowered->value = DecodeCharLiteral(literal->value.text);
+        }
         else {
             lowered->value = literal->value.text;
         }

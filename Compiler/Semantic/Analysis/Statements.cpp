@@ -1,6 +1,7 @@
 // Statement and control-flow checking, including whether a function body
 // definitely returns and whether a match covers its subject.
 
+#include "Lexer/Lexer.h"
 #include "Semantic/Analysis/AnalysisContext.h"
 
 #include <algorithm>
@@ -17,6 +18,9 @@ namespace {
 /// is what lets a duplicate or already-covered arm be reported without implementing full pattern subsumption.
 std::string PatternKey(const Pattern &pattern) {
     if (const auto *literal = dynamic_cast<const LiteralPattern *>(&pattern)) {
+        if (literal->value.kind == TokenKind::CharLiteral) {
+            return "character:" + std::to_string(Lexer::DecodeCharLiteralCodePoint(literal->value.text).value_or(0));
+        }
         return "literal:" + literal->value.text;
     }
     if (dynamic_cast<const WildcardPattern *>(&pattern) || dynamic_cast<const IdentPattern *>(&pattern)) {

@@ -316,7 +316,6 @@ private:
     void ResolveDropGlueSteps(std::vector<DropGlueStep> &steps);
     [[nodiscard]] std::string DestructorSymbol(const TypeRef &type);
 
-    [[nodiscard]] static std::uint32_t DecodeUtf8CodePoint(const std::string &text, std::size_t index);
     static void AppendUtf8(std::string &output, std::uint32_t codePoint);
     [[nodiscard]] static std::size_t ParseUnicodeEscape(const std::string &text, std::size_t position,
                                                         std::uint32_t &codePoint);

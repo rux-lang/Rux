@@ -145,7 +145,7 @@ func Characters() {
     let char32Borrow: &char32 = char32Value;
     let char32Copy: char32 = char32Borrow;
     Assert(char32Copy == char32Value && char32Borrow == char32Value, "char32 references compare loaded code points");
-    var char64Value = c32'\u{1F600}' as char64;
+    var char64Value = c64'\u{1F600}';
     let char64Borrow: &char64 = char64Value;
     let char64Copy: char64 = char64Borrow;
     Assert(char64Copy == char64Value && char64Borrow == char64Value, "char64 references compare loaded code points");

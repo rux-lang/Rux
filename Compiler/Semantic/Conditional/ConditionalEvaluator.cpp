@@ -1,6 +1,7 @@
 // Compile-time evaluation for `#if` conditions: the target, build and compiler
 // values a condition can name, and the constants it can compare against.
 
+#include "Lexer/Lexer.h"
 #include "Numeric/IntegerLiteral.h"
 #include "Semantic/Conditional/ConditionalCompilation.h"
 #include "Semantic/Conditional/ConditionalEvaluatorInternal.h"
@@ -825,6 +826,11 @@ std::optional<CompileTimeValue> ConditionalEvaluator::Impl::Eval(const Expr &exp
                 e->location,
                 std::format("compile-time integer literal '{}' is outside the supported 64-bit range", e->token.text));
             reportedError = true;
+            return std::nullopt;
+        case TokenKind::CharLiteral:
+            if (const auto scalar = Lexer::DecodeCharLiteralCodePoint(e->token.text)) {
+                return Value{static_cast<std::uint64_t>(*scalar)};
+            }
             return std::nullopt;
         case TokenKind::FloatLiteral:
             if (const auto value = ParseFloatValue(e->token.text)) {

@@ -2,6 +2,7 @@
 // spelling and its escapes are resolved here, so HIR carries values rather than syntax.
 
 #include "Ir/Hir/HirInternal.h"
+#include "Lexer/Lexer.h"
 #include "Lowering/AstToHir/Detail/AstToHirContext.h"
 #include "Numeric/IntegerLiteral.h"
 #include "Types/PrimitiveCatalog.h"
@@ -16,27 +17,6 @@
 #include <vector>
 
 namespace Rux::AstToHirDetail {
-std::uint32_t AstToHirContext::DecodeUtf8CodePoint(const std::string &text, std::size_t i) {
-    const auto byte = [&](std::size_t offset) {
-        return static_cast<std::uint32_t>(static_cast<unsigned char>(text[i + offset]));
-    };
-
-    const std::uint32_t b0 = byte(0);
-    if ((b0 & 0x80u) == 0) {
-        return b0;
-    }
-    if ((b0 & 0xE0u) == 0xC0u && i + 1 < text.size()) {
-        return ((b0 & 0x1Fu) << 6) | (byte(1) & 0x3Fu);
-    }
-    if ((b0 & 0xF0u) == 0xE0u && i + 2 < text.size()) {
-        return ((b0 & 0x0Fu) << 12) | ((byte(1) & 0x3Fu) << 6) | (byte(2) & 0x3Fu);
-    }
-    if ((b0 & 0xF8u) == 0xF0u && i + 3 < text.size()) {
-        return ((b0 & 0x07u) << 18) | ((byte(1) & 0x3Fu) << 12) | ((byte(2) & 0x3Fu) << 6) | (byte(3) & 0x3Fu);
-    }
-    return b0;
-}
-
 void AstToHirContext::AppendUtf8(std::string &out, std::uint32_t cp) {
     if (cp <= 0x7F) {
         out += static_cast<char>(cp);
@@ -89,64 +69,9 @@ std::size_t AstToHirContext::ParseUnicodeEscape(const std::string &text, std::si
 }
 
 std::string AstToHirContext::DecodeCharLiteral(const std::string &text) {
-    // text is raw source like 'A' or '\n'; strip quotes and decode.
-    std::uint32_t cp = 0;
-    const std::size_t quote = text.find('\'');
-    if (quote != std::string::npos && quote + 1 < text.size()) {
-        std::size_t i = quote + 1; // skip opening '
-        if (text[i] == '\\' && i + 1 < text.size()) {
-            switch (text[i + 1]) {
-            case 'n':
-                cp = '\n';
-                break;
-            case 't':
-                cp = '\t';
-                break;
-            case 'r':
-                cp = '\r';
-                break;
-            case 'a':
-                cp = '\a';
-                break;
-            case 'b':
-                cp = '\b';
-                break;
-            case 'f':
-                cp = '\f';
-                break;
-            case 'v':
-                cp = '\v';
-                break;
-            case '0':
-                cp = 0;
-                break;
-            case '\\':
-                cp = '\\';
-                break;
-            case '\'':
-                cp = '\'';
-                break;
-            case '"':
-                cp = '"';
-                break;
-            case 'u': {
-                // \u{XXXX} — Unicode escape ('u' sits at i + 1)
-                std::uint32_t u = 0;
-                if (ParseUnicodeEscape(text, i + 1, u) != i + 1) {
-                    cp = u;
-                }
-                break;
-            }
-            default:
-                cp = static_cast<unsigned char>(text[i + 1]);
-                break;
-            }
-        }
-        else if (text[i] != '\'') {
-            cp = DecodeUtf8CodePoint(text, i);
-        }
-    }
-    return std::to_string(cp);
+    const auto codePoint = Lexer::DecodeCharLiteralCodePoint(text);
+    assert(codePoint.has_value() && "accepted character literal must decode to one code point");
+    return std::to_string(codePoint.value_or(0));
 }
 
 std::string AstToHirContext::DecodeStringLiteral(const std::string &text) {
@@ -262,6 +187,9 @@ TypeRef AstToHirContext::CharLiteralType(const Token &tok) {
     }
     if (tok.text.starts_with("c32'")) {
         return TypeRef::MakeChar32();
+    }
+    if (tok.text.starts_with("c64'")) {
+        return TypeRef::MakePrimitive(TypeRef::Kind::Char64);
     }
     return TypeRef::MakeChar();
 }
