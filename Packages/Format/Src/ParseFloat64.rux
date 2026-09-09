@@ -248,7 +248,9 @@ pub func ParseFloat64(str: char8[..]) -> Result<float64, ParseError> {
 // nothing, and the bytes are known to be text.
 /// Provides the public `ParseFloat64` operation.
 ///
-/// https://rux-lang.dev/docs/api/format/parse-float64
+/// @param str the text to parse
+/// @returns the value, or the failure and the byte offset it was found at
+/// @see https://rux-lang.dev/docs/api/format/parse-float64
 pub func ParseFloat64(str: StringView) -> Result<float64, ParseError> {
     return ParseFloat64(str.Bytes());
 }
@@ -302,7 +304,9 @@ pub func ParseFloat32(str: char8[..]) -> Result<float32, ParseError> {
 
 /// The same grammar for a view.
 ///
-/// https://rux-lang.dev/docs/api/format/parse-float32-view
+/// @param str the text to parse
+/// @returns the value, or the failure and the byte offset it was found at
+/// @see https://rux-lang.dev/docs/api/format/parse-float32-view
 pub func ParseFloat32(str: StringView) -> Result<float32, ParseError> {
     return ParseFloat32(str.Bytes());
 }

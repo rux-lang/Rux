@@ -28,7 +28,9 @@ import Core::{ Option, Ordering };
 ///
 /// Its own allocation, so its address survives any rearrangement of the tree around it.
 ///
-/// https://rux-lang.dev/docs/api/collections/tree-node
+/// @typeParam K the key type
+/// @typeParam V the value type
+/// @see https://rux-lang.dev/docs/api/collections/tree-node
 pub struct TreeNode<K, V> {
     /// The key this node is ordered by.
     pub key: K;
@@ -48,7 +50,9 @@ pub struct TreeNode<K, V> {
 ///
 /// Owns every node and everything in them, so it prohibits copying and destroys them with `~Tree`.
 ///
-/// https://rux-lang.dev/docs/api/collections/tree
+/// @typeParam K the key type
+/// @typeParam V the value type
+/// @see https://rux-lang.dev/docs/api/collections/tree
 pub struct Tree<K, V> {
     /// The topmost node, or null for an empty tree. Always black.
     pub root: *var TreeNode<K, V>;
@@ -68,7 +72,9 @@ extend Tree<K, V> {
     ///
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
-    /// https://rux-lang.dev/docs/api/collections/tree/new
+    /// @param allocator where the storage comes from
+    /// @returns an empty tree that has taken no storage yet
+    /// @see https://rux-lang.dev/docs/api/collections/tree/new
     pub func Tree(allocator: Allocator) -> Tree<K, V> {
         return Tree<K, V> { root: null, length: 0, allocator: allocator };
     }
@@ -77,7 +83,8 @@ extend Tree<K, V> {
     ///
     /// `self` is borrowed. Cannot fail; runs in constant time and allocates nothing.
     ///
-    /// https://rux-lang.dev/docs/api/collections/tree/length
+    /// @returns how many nodes it holds
+    /// @see https://rux-lang.dev/docs/api/collections/tree/length
     pub func Length(self: &Tree<K, V>) -> uint {
         return self.length;
     }
@@ -86,7 +93,8 @@ extend Tree<K, V> {
     ///
     /// `self` is borrowed. Cannot fail; runs in constant time and allocates nothing.
     ///
-    /// https://rux-lang.dev/docs/api/collections/tree/is-empty
+    /// @returns whether it holds nothing
+    /// @see https://rux-lang.dev/docs/api/collections/tree/is-empty
     pub func IsEmpty(self: &Tree<K, V>) -> bool {
         return self.length == 0;
     }
@@ -156,7 +164,10 @@ extend Tree<K, V> {
     /// Runs in time proportional to the height, which the colouring holds to at most twice the logarithm of the
     /// length. Allocates nothing.
     ///
-    /// https://rux-lang.dev/docs/api/collections/tree/find
+    /// @param key the key to look up
+    /// @param compare how two keys order against each other
+    /// @returns the node with that key, or null when it is absent
+    /// @see https://rux-lang.dev/docs/api/collections/tree/find
     pub func Find(self: &Tree<K, V>, key: K, compare: func(K, K) -> Ordering) -> *var TreeNode<K, V> {
         var walk = self.root;
         while walk != null {
@@ -185,7 +196,10 @@ extend Tree<K, V> {
     ///
     /// Runs in time proportional to the height and allocates nothing.
     ///
-    /// https://rux-lang.dev/docs/api/collections/tree/above
+    /// @param key the key to look up
+    /// @param compare how two keys order against each other
+    /// @returns the node with the smallest key above this one, or null
+    /// @see https://rux-lang.dev/docs/api/collections/tree/above
     pub func Above(self: &Tree<K, V>, key: K, compare: func(K, K) -> Ordering) -> *var TreeNode<K, V> {
         var best: *var TreeNode<K, V> = null;
         var walk = self.root;
@@ -205,7 +219,10 @@ extend Tree<K, V> {
     ///
     /// The mirror of `Above`, with the same costs and the same use.
     ///
-    /// https://rux-lang.dev/docs/api/collections/tree/below
+    /// @param key the key to look up
+    /// @param compare how two keys order against each other
+    /// @returns the node with the largest key below this one, or null
+    /// @see https://rux-lang.dev/docs/api/collections/tree/below
     pub func Below(self: &Tree<K, V>, key: K, compare: func(K, K) -> Ordering) -> *var TreeNode<K, V> {
         var best: *var TreeNode<K, V> = null;
         var walk = self.root;
@@ -225,7 +242,9 @@ extend Tree<K, V> {
     ///
     /// Runs in time proportional to the height and allocates nothing.
     ///
-    /// https://rux-lang.dev/docs/api/collections/tree/minimum
+    /// @param from the subtree to search
+    /// @returns the leftmost node of that subtree, or null when it is empty
+    /// @see https://rux-lang.dev/docs/api/collections/tree/minimum
     pub func Minimum(from: *var TreeNode<K, V>) -> *var TreeNode<K, V> {
         var walk = from;
         while walk != null && walk.left != null {
@@ -238,7 +257,9 @@ extend Tree<K, V> {
     ///
     /// Runs in time proportional to the height and allocates nothing.
     ///
-    /// https://rux-lang.dev/docs/api/collections/tree/maximum
+    /// @param from the subtree to search
+    /// @returns the rightmost node of that subtree, or null when it is empty
+    /// @see https://rux-lang.dev/docs/api/collections/tree/maximum
     pub func Maximum(from: *var TreeNode<K, V>) -> *var TreeNode<K, V> {
         var walk = from;
         while walk != null && walk.right != null {
@@ -255,7 +276,9 @@ extend Tree<K, V> {
     /// Runs in time proportional to the height for a single step, but a walk of the whole tree by successor is
     /// linear in the length: every edge is crossed exactly twice across the walk. Allocates nothing.
     ///
-    /// https://rux-lang.dev/docs/api/collections/tree/successor
+    /// @param node the node to act on
+    /// @returns the node with the next key in order, or null after the last
+    /// @see https://rux-lang.dev/docs/api/collections/tree/successor
     pub func Successor(node: *var TreeNode<K, V>) -> *var TreeNode<K, V> {
         if node == null { return null; }
         if node.right != null { return Tree::Minimum<K, V>(node.right); }
@@ -272,7 +295,9 @@ extend Tree<K, V> {
     ///
     /// The mirror of `Successor`, with the same costs.
     ///
-    /// https://rux-lang.dev/docs/api/collections/tree/predecessor
+    /// @param node the node to act on
+    /// @returns the node with the previous key in order, or null before the first
+    /// @see https://rux-lang.dev/docs/api/collections/tree/predecessor
     pub func Predecessor(node: *var TreeNode<K, V>) -> *var TreeNode<K, V> {
         if node == null { return null; }
         if node.left != null { return Tree::Maximum<K, V>(node.left); }
@@ -355,7 +380,12 @@ extend Tree<K, V> {
     /// Runs in time proportional to the height, with at most two rotations. Allocates one node for a new key and
     /// nothing at all for one already present.
     ///
-    /// https://rux-lang.dev/docs/api/collections/tree/attach
+    /// @param key the key to look up
+    /// @param value the value to act on
+    /// @param compare how two keys order against each other
+    /// @param replaced receives the entry an equal key already held, when there was one
+    /// @returns the node the key now occupies, or null when the allocator refused
+    /// @see https://rux-lang.dev/docs/api/collections/tree/attach
     pub func Attach(self: &var Tree<K, V>, key: K, value: V, compare: func(K, K) -> Ordering,
                 replaced: *var Option<V>) -> CollectionError {
         *replaced = Option::None<V>();
@@ -526,7 +556,9 @@ extend Tree<K, V> {
     ///
     /// Cannot fail. Runs in time proportional to the height, with at most three rotations, and allocates nothing.
     ///
-    /// https://rux-lang.dev/docs/api/collections/tree/detach
+    /// @param node the node to act on
+    /// @returns the entry the node held
+    /// @see https://rux-lang.dev/docs/api/collections/tree/detach
     pub func Detach(self: &var Tree<K, V>, node: *var TreeNode<K, V>) -> KeyValue<K, V> {
         // Whichever node actually leaves its place, and what moves up into it. A red one leaving costs no path a
         // black, so the fix-up is only run when a black one goes.
@@ -584,7 +616,7 @@ extend Tree<K, V> {
     ///
     /// Cannot fail. Runs in time proportional to the length and allocates nothing.
     ///
-    /// https://rux-lang.dev/docs/api/collections/tree/clear
+    /// @see https://rux-lang.dev/docs/api/collections/tree/clear
     pub func Clear(self: &var Tree<K, V>) {
         // Down the left, then the right, then free and step up — every node reached after both its subtrees are
         // gone. The child link is cut on the way up so the parent does not descend into a node that is already
@@ -626,7 +658,7 @@ extend Tree<K, V> {
     /// Runs when the tree dies. Never called directly; a tree is move-only, so there is exactly one of these per
     /// tree however many times it was passed along.
     ///
-    /// https://rux-lang.dev/docs/api/collections/tree/destructor
+    /// @see https://rux-lang.dev/docs/api/collections/tree/destructor
     func ~Tree(self: &var Tree<K, V>) {
         self.Clear();
     }

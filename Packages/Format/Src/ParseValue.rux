@@ -1,4 +1,3 @@
-
 // Parsing the two values whose text is a word or a character rather than digits.
 //
 // A boolean is exactly `true` or `false` — not `True`, not `1`, not `yes`. Every widening of that set has to
@@ -16,7 +15,9 @@ import Text::{ DecodeAt, StringView };
 /// Reports `Empty` for no bytes and `InvalidCharacter` at the start for anything else, including a correct word
 /// with trailing bytes.
 ///
-/// https://rux-lang.dev/docs/api/format/parse-bool
+/// @param str the text to parse
+/// @returns the value, or the failure and the byte offset it was found at
+/// @see https://rux-lang.dev/docs/api/format/parse-bool
 pub func ParseBool(str: char8[..]) -> Result<bool, ParseError> {
     if str.length == 0 { return Result::Error<bool, ParseError>(ParseError::Empty); }
     let text = StringView::FromValidated(str);
@@ -29,7 +30,9 @@ pub func ParseBool(str: char8[..]) -> Result<bool, ParseError> {
 
 /// The same words for a view.
 ///
-/// https://rux-lang.dev/docs/api/format/parse-bool-view
+/// @param str the text to parse
+/// @returns the value, or the failure and the byte offset it was found at
+/// @see https://rux-lang.dev/docs/api/format/parse-bool-view
 pub func ParseBool(str: StringView) -> Result<bool, ParseError> {
     return ParseBool(str.Bytes());
 }
@@ -39,7 +42,9 @@ pub func ParseBool(str: StringView) -> Result<bool, ParseError> {
 /// Reports `Empty` for no bytes, and `InvalidCharacter` for bytes that are not one whole scalar value — ill-formed
 /// UTF-8 at zero, a second character at its own index.
 ///
-/// https://rux-lang.dev/docs/api/format/parse-char
+/// @param str the text to parse
+/// @returns the value, or the failure and the byte offset it was found at
+/// @see https://rux-lang.dev/docs/api/format/parse-char
 pub func ParseChar(str: char8[..]) -> Result<char32, ParseError> {
     if str.length == 0 { return Result::Error<char32, ParseError>(ParseError::Empty); }
     var scalar = 0u32 as char32;
@@ -53,7 +58,9 @@ pub func ParseChar(str: char8[..]) -> Result<char32, ParseError> {
 
 /// The same single character for a view.
 ///
-/// https://rux-lang.dev/docs/api/format/parse-char-view
+/// @param str the text to parse
+/// @returns the value, or the failure and the byte offset it was found at
+/// @see https://rux-lang.dev/docs/api/format/parse-char-view
 pub func ParseChar(str: StringView) -> Result<char32, ParseError> {
     return ParseChar(str.Bytes());
 }

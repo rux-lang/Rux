@@ -210,11 +210,27 @@ numbers.Truncate(kept);
 `WriteVectorDebug`, `WriteArrayDebug` and `WriteDequeDebug` write a sequential container as `[first, second, third]` into any [`Rux/Text`](../Text) `TextWriter`, given an element type that implements `Debug`:
 
 ```rux
-import Collections::WriteVectorDebug;
-import Text::{ FormatSpec, TextWriter };
+import Allocator::{ Allocator, SystemAllocator };
+import Collections::{ Vector, WriteVectorDebug };
+import Io::{ ConsoleWriter, IoError };
+import Text::{ FormatError, FormatSpec, TextWriter };
 
-let sink: &var TextWriter = writer;
-WriteVectorDebug<int32>(sink, numbers, FormatSpec::Plain())?;
+// `Rux/Format` is imported for its `Debug` implementations, not for a name: `WriteVectorDebug` is bound on
+// `T: Debug`, and the implementation for `int32` lives there. Without this the bound is unsatisfied.
+import Format::*;
+
+func Show() -> Result<Unit, FormatError> {
+    var system = SystemAllocator();
+    let allocator: Allocator = system;
+    var numbers = Vector<int32>(allocator);
+    numbers.Push(1);
+    numbers.Push(2);
+
+    var failure = IoError::Ok();
+    var console = ConsoleWriter(@failure);
+    let sink: &var TextWriter = console;
+    return WriteVectorDebug<int32>(sink, numbers, FormatSpec::Plain());
+}
 ```
 
 They are functions carrying the bound rather than `Debug` implementations, because what a `Vector<T>` looks like is entirely a question about `T` and an implementation has nowhere to say "when the element can be shown". Each instantiation resolves the element's `WriteDebug` at compile time.

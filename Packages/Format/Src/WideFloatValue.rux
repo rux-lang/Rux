@@ -16,7 +16,7 @@ import Text::{ FormatError, FormatOk, FormatSpec, RejectStyle, TextFailureKind, 
 
 /// An x87 extended-precision value, held as its eighty bits.
 ///
-/// https://rux-lang.dev/docs/api/format/float80
+/// @see https://rux-lang.dev/docs/api/format/float80
 pub struct Float80 {
     /// The bits, in the low eighty of a `uint128`; the top forty-eight are padding and stay zero.
     bits: uint128;
@@ -25,21 +25,25 @@ pub struct Float80 {
 extend Float80 {
     /// The value these bits encode.
     ///
-    /// https://rux-lang.dev/docs/api/format/float80/from-bits
+    /// @param bits the value's bit pattern
+    /// @returns the value that bit pattern stands for
+    /// @see https://rux-lang.dev/docs/api/format/float80/from-bits
     pub func FromBits(bits: uint128) -> Float80 {
         return Float80 { bits: bits };
     }
 
     /// The bits.
     ///
-    /// https://rux-lang.dev/docs/api/format/float80/bits
+    /// @returns the value's bit pattern
+    /// @see https://rux-lang.dev/docs/api/format/float80/bits
     pub func Bits(self: &Float80) -> uint128 {
         return self.bits;
     }
 
     /// The format these bits are read under.
     ///
-    /// https://rux-lang.dev/docs/api/format/float80/layout
+    /// @returns which format the bits are in
+    /// @see https://rux-lang.dev/docs/api/format/float80/layout
     pub func Layout() -> FloatLayout {
         return FloatLayout::Extended80();
     }
@@ -51,21 +55,24 @@ extend Float80 {
 
     /// Whether this is not a number.
     ///
-    /// https://rux-lang.dev/docs/api/format/float80/is-nan
+    /// @returns whether the value is a NaN
+    /// @see https://rux-lang.dev/docs/api/format/float80/is-nan
     pub func IsNan(self: &Float80) -> bool {
         return self.Class() == WideClass::NaN;
     }
 
     /// Whether this is an infinity of either sign.
     ///
-    /// https://rux-lang.dev/docs/api/format/float80/is-infinite
+    /// @returns whether the value is either infinity
+    /// @see https://rux-lang.dev/docs/api/format/float80/is-infinite
     pub func IsInfinite(self: &Float80) -> bool {
         return self.Class() == WideClass::Infinity;
     }
 
     /// Whether this is an ordinary value: neither a NaN nor an infinity.
     ///
-    /// https://rux-lang.dev/docs/api/format/float80/is-finite
+    /// @returns whether the value is neither infinite nor a NaN
+    /// @see https://rux-lang.dev/docs/api/format/float80/is-finite
     pub func IsFinite(self: &Float80) -> bool {
         let class = self.Class();
         return class != WideClass::NaN && class != WideClass::Infinity;
@@ -73,7 +80,8 @@ extend Float80 {
 
     /// Whether the sign bit is set, which a negative zero answers yes to.
     ///
-    /// https://rux-lang.dev/docs/api/format/float80/is-negative
+    /// @returns whether the sign bit is set
+    /// @see https://rux-lang.dev/docs/api/format/float80/is-negative
     pub func IsNegative(self: &Float80) -> bool {
         let layout = FloatLayout::Extended80();
         return UnpackWide(self.bits as uint512, layout).negative;
@@ -104,7 +112,7 @@ extend Float80 {
 
 /// An IEEE binary128 value, held as its bits.
 ///
-/// https://rux-lang.dev/docs/api/format/float128
+/// @see https://rux-lang.dev/docs/api/format/float128
 pub struct Float128 {
     /// The bits, all hundred and twenty-eight of them.
     bits: uint128;
@@ -113,21 +121,25 @@ pub struct Float128 {
 extend Float128 {
     /// The value these bits encode.
     ///
-    /// https://rux-lang.dev/docs/api/format/float128/from-bits
+    /// @param bits the value's bit pattern
+    /// @returns the value that bit pattern stands for
+    /// @see https://rux-lang.dev/docs/api/format/float128/from-bits
     pub func FromBits(bits: uint128) -> Float128 {
         return Float128 { bits: bits };
     }
 
     /// The bits.
     ///
-    /// https://rux-lang.dev/docs/api/format/float128/bits
+    /// @returns the value's bit pattern
+    /// @see https://rux-lang.dev/docs/api/format/float128/bits
     pub func Bits(self: &Float128) -> uint128 {
         return self.bits;
     }
 
     /// The format these bits are read under.
     ///
-    /// https://rux-lang.dev/docs/api/format/float128/layout
+    /// @returns which format the bits are in
+    /// @see https://rux-lang.dev/docs/api/format/float128/layout
     pub func Layout() -> FloatLayout {
         return FloatLayout::Binary128();
     }
@@ -139,21 +151,24 @@ extend Float128 {
 
     /// Whether this is not a number.
     ///
-    /// https://rux-lang.dev/docs/api/format/float128/is-nan
+    /// @returns whether the value is a NaN
+    /// @see https://rux-lang.dev/docs/api/format/float128/is-nan
     pub func IsNan(self: &Float128) -> bool {
         return self.Class() == WideClass::NaN;
     }
 
     /// Whether this is an infinity of either sign.
     ///
-    /// https://rux-lang.dev/docs/api/format/float128/is-infinite
+    /// @returns whether the value is either infinity
+    /// @see https://rux-lang.dev/docs/api/format/float128/is-infinite
     pub func IsInfinite(self: &Float128) -> bool {
         return self.Class() == WideClass::Infinity;
     }
 
     /// Whether this is an ordinary value: neither a NaN nor an infinity.
     ///
-    /// https://rux-lang.dev/docs/api/format/float128/is-finite
+    /// @returns whether the value is neither infinite nor a NaN
+    /// @see https://rux-lang.dev/docs/api/format/float128/is-finite
     pub func IsFinite(self: &Float128) -> bool {
         let class = self.Class();
         return class != WideClass::NaN && class != WideClass::Infinity;
@@ -161,7 +176,8 @@ extend Float128 {
 
     /// Whether the sign bit is set, which a negative zero answers yes to.
     ///
-    /// https://rux-lang.dev/docs/api/format/float128/is-negative
+    /// @returns whether the sign bit is set
+    /// @see https://rux-lang.dev/docs/api/format/float128/is-negative
     pub func IsNegative(self: &Float128) -> bool {
         let layout = FloatLayout::Binary128();
         return UnpackWide(self.bits as uint512, layout).negative;
@@ -192,7 +208,7 @@ extend Float128 {
 
 /// An IEEE binary256 value, held as its bits.
 ///
-/// https://rux-lang.dev/docs/api/format/float256
+/// @see https://rux-lang.dev/docs/api/format/float256
 pub struct Float256 {
     /// The bits, all two hundred and fifty-six of them.
     bits: uint256;
@@ -201,21 +217,25 @@ pub struct Float256 {
 extend Float256 {
     /// The value these bits encode.
     ///
-    /// https://rux-lang.dev/docs/api/format/float256/from-bits
+    /// @param bits the value's bit pattern
+    /// @returns the value that bit pattern stands for
+    /// @see https://rux-lang.dev/docs/api/format/float256/from-bits
     pub func FromBits(bits: uint256) -> Float256 {
         return Float256 { bits: bits };
     }
 
     /// The bits.
     ///
-    /// https://rux-lang.dev/docs/api/format/float256/bits
+    /// @returns the value's bit pattern
+    /// @see https://rux-lang.dev/docs/api/format/float256/bits
     pub func Bits(self: &Float256) -> uint256 {
         return self.bits;
     }
 
     /// The format these bits are read under.
     ///
-    /// https://rux-lang.dev/docs/api/format/float256/layout
+    /// @returns which format the bits are in
+    /// @see https://rux-lang.dev/docs/api/format/float256/layout
     pub func Layout() -> FloatLayout {
         return FloatLayout::Binary256();
     }
@@ -227,21 +247,24 @@ extend Float256 {
 
     /// Whether this is not a number.
     ///
-    /// https://rux-lang.dev/docs/api/format/float256/is-nan
+    /// @returns whether the value is a NaN
+    /// @see https://rux-lang.dev/docs/api/format/float256/is-nan
     pub func IsNan(self: &Float256) -> bool {
         return self.Class() == WideClass::NaN;
     }
 
     /// Whether this is an infinity of either sign.
     ///
-    /// https://rux-lang.dev/docs/api/format/float256/is-infinite
+    /// @returns whether the value is either infinity
+    /// @see https://rux-lang.dev/docs/api/format/float256/is-infinite
     pub func IsInfinite(self: &Float256) -> bool {
         return self.Class() == WideClass::Infinity;
     }
 
     /// Whether this is an ordinary value: neither a NaN nor an infinity.
     ///
-    /// https://rux-lang.dev/docs/api/format/float256/is-finite
+    /// @returns whether the value is neither infinite nor a NaN
+    /// @see https://rux-lang.dev/docs/api/format/float256/is-finite
     pub func IsFinite(self: &Float256) -> bool {
         let class = self.Class();
         return class != WideClass::NaN && class != WideClass::Infinity;
@@ -249,7 +272,8 @@ extend Float256 {
 
     /// Whether the sign bit is set, which a negative zero answers yes to.
     ///
-    /// https://rux-lang.dev/docs/api/format/float256/is-negative
+    /// @returns whether the sign bit is set
+    /// @see https://rux-lang.dev/docs/api/format/float256/is-negative
     pub func IsNegative(self: &Float256) -> bool {
         let layout = FloatLayout::Binary256();
         return UnpackWide(self.bits as uint512, layout).negative;
@@ -280,7 +304,7 @@ extend Float256 {
 
 /// An IEEE binary512 value, held as its bits.
 ///
-/// https://rux-lang.dev/docs/api/format/float512
+/// @see https://rux-lang.dev/docs/api/format/float512
 pub struct Float512 {
     /// The bits, all five hundred and twelve of them.
     bits: uint512;
@@ -289,21 +313,25 @@ pub struct Float512 {
 extend Float512 {
     /// The value these bits encode.
     ///
-    /// https://rux-lang.dev/docs/api/format/float512/from-bits
+    /// @param bits the value's bit pattern
+    /// @returns the value that bit pattern stands for
+    /// @see https://rux-lang.dev/docs/api/format/float512/from-bits
     pub func FromBits(bits: uint512) -> Float512 {
         return Float512 { bits: bits };
     }
 
     /// The bits.
     ///
-    /// https://rux-lang.dev/docs/api/format/float512/bits
+    /// @returns the value's bit pattern
+    /// @see https://rux-lang.dev/docs/api/format/float512/bits
     pub func Bits(self: &Float512) -> uint512 {
         return self.bits;
     }
 
     /// The format these bits are read under.
     ///
-    /// https://rux-lang.dev/docs/api/format/float512/layout
+    /// @returns which format the bits are in
+    /// @see https://rux-lang.dev/docs/api/format/float512/layout
     pub func Layout() -> FloatLayout {
         return FloatLayout::Binary512();
     }
@@ -315,21 +343,24 @@ extend Float512 {
 
     /// Whether this is not a number.
     ///
-    /// https://rux-lang.dev/docs/api/format/float512/is-nan
+    /// @returns whether the value is a NaN
+    /// @see https://rux-lang.dev/docs/api/format/float512/is-nan
     pub func IsNan(self: &Float512) -> bool {
         return self.Class() == WideClass::NaN;
     }
 
     /// Whether this is an infinity of either sign.
     ///
-    /// https://rux-lang.dev/docs/api/format/float512/is-infinite
+    /// @returns whether the value is either infinity
+    /// @see https://rux-lang.dev/docs/api/format/float512/is-infinite
     pub func IsInfinite(self: &Float512) -> bool {
         return self.Class() == WideClass::Infinity;
     }
 
     /// Whether this is an ordinary value: neither a NaN nor an infinity.
     ///
-    /// https://rux-lang.dev/docs/api/format/float512/is-finite
+    /// @returns whether the value is neither infinite nor a NaN
+    /// @see https://rux-lang.dev/docs/api/format/float512/is-finite
     pub func IsFinite(self: &Float512) -> bool {
         let class = self.Class();
         return class != WideClass::NaN && class != WideClass::Infinity;
@@ -337,7 +368,8 @@ extend Float512 {
 
     /// Whether the sign bit is set, which a negative zero answers yes to.
     ///
-    /// https://rux-lang.dev/docs/api/format/float512/is-negative
+    /// @returns whether the sign bit is set
+    /// @see https://rux-lang.dev/docs/api/format/float512/is-negative
     pub func IsNegative(self: &Float512) -> bool {
         let layout = FloatLayout::Binary512();
         return UnpackWide(self.bits as uint512, layout).negative;

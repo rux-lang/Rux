@@ -1,4 +1,3 @@
-import Core::uint;
 // Overflow-checked sizing arithmetic, shared by every container in this package so the checks exist once rather than
 // once per type.
 //
@@ -18,6 +17,8 @@ import Core::uint;
 // `count * elementSize`, rejecting a product that does not fit in uint. A zero
 // count or element size is a zero-byte request rather than an error, so a
 // caller may pass a length it has not yet tested.
+
+import Core::uint;
 func ByteSize(count: uint, elementSize: uint, bytes: *var uint) -> CollectionError {
     if count == 0 || elementSize == 0 {
         *bytes = 0;

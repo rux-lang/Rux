@@ -28,14 +28,30 @@ rux add Rux/Io
 `Display` writes into a `TextWriter` and a stream takes bytes, so something has to stand between them. `ConsoleWriter` is that adapter over standard output and `StreamWriter` is it over any `Writer` — a file, a buffered writer, a pipe — which is what lets a value describe itself anywhere other than standard output or memory:
 
 ```rux
-import Io::{ IoError, StreamWriter, WriteValueLine };
+import Io::{ IoError, StandardOut, StreamWriter, Writer, WriteValueLine };
 import Text::TextWriter;
 
-var failure = IoError::Ok();
-var adapter = StreamWriter(sink, @failure);
-let out: &var TextWriter = adapter;
-WriteValueLine(out, measurement);
-if failure.IsError() { /* what the stream said, in full */ }
+func Main() -> int {
+    var out = StandardOut::Acquire();
+    // `StreamWriter` takes a `Writer` by value, and a concrete stream does not coerce to an interface parameter
+    // on its own, so the binding is written out.
+    let sink: Writer = out;
+    let measurement: int32 = 42;
+
+    // The adapter turns a stream into a text writer. It cannot return an I/O error through the text protocol, so
+    // it keeps the first one it saw in `failure` — which is why that is checked afterwards rather than at the call.
+    var failure = IoError::Ok();
+    var adapter = StreamWriter(sink, @failure);
+    let text: &var TextWriter = adapter;
+
+    // The type argument is required: the function is generic over the value so that it can borrow it rather than
+    // take ownership, and a generic bound is not inferred from an interface value.
+    WriteValueLine<int32>(text, measurement);
+    if failure.IsError() {
+        return 1;
+    }
+    return 0;
+}
 ```
 
 Neither error type can hold the other's failures, so the crossing is made explicitly in both directions. `FromIoError` turns what a stream reported into what a formatter understands: success becomes success and every failure becomes `WriterFailure`, which is all `FormatError` can say about a destination. That is lossy on purpose, and the adapter makes the loss good by recording the original `IoError` in a slot the caller holds — the formatter learns the one thing it can act on, and the caller learns exactly what happened. Once a failure is recorded the stream is not touched again, so a value part-way through rendering stops rather than writing into a destination that has already refused.

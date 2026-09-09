@@ -16,7 +16,7 @@ import Allocator::AllocError;
 ///
 /// `None` is success. Every other value means the operation did not happen and the collection is as it was.
 ///
-/// https://rux-lang.dev/docs/api/collections/collection-error
+/// @see https://rux-lang.dev/docs/api/collections/collection-error
 pub enum CollectionError: uint8 {
     /// The operation completed.
     None = 0,
@@ -47,7 +47,8 @@ extend CollectionError {
     ///
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
-    /// https://rux-lang.dev/docs/api/collections/collection-error/is-ok
+    /// @returns whether nothing went wrong
+    /// @see https://rux-lang.dev/docs/api/collections/collection-error/is-ok
     pub func IsOk(self: CollectionError) -> bool {
         return self == CollectionError::None;
     }
@@ -59,7 +60,8 @@ extend CollectionError {
     ///
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
-    /// https://rux-lang.dev/docs/api/collections/collection-error/is-error
+    /// @returns whether something did
+    /// @see https://rux-lang.dev/docs/api/collections/collection-error/is-error
     pub func IsError(self: CollectionError) -> bool {
         return self != CollectionError::None;
     }
@@ -73,7 +75,8 @@ extend CollectionError {
     ///
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
-    /// https://rux-lang.dev/docs/api/collections/collection-error/is-transient
+    /// @returns whether trying again could succeed
+    /// @see https://rux-lang.dev/docs/api/collections/collection-error/is-transient
     pub func IsTransient(self: CollectionError) -> bool {
         return self == CollectionError::OutOfMemory;
     }
@@ -87,7 +90,9 @@ extend CollectionError {
 ///
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
-/// https://rux-lang.dev/docs/api/collections/from-alloc-error
+/// @param error receives why the operation failed, or `None`
+/// @returns the same outcome as a collection error
+/// @see https://rux-lang.dev/docs/api/collections/from-alloc-error
 pub func FromAllocError(error: AllocError) -> CollectionError {
     if error == AllocError::None { return CollectionError::None; }
     if error == AllocError::OutOfMemory { return CollectionError::OutOfMemory; }

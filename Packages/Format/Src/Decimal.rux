@@ -8,7 +8,10 @@
 // rounding: fifteen for a float64, seven for a float32.
 /// Provides the public `WriteDecimal` operation.
 ///
-/// https://rux-lang.dev/docs/api/format/write-decimal
+/// @param cursor the buffer the digits are written into
+/// @param value the value to act on
+/// @param significant how many significant digits to write
+/// @see https://rux-lang.dev/docs/api/format/write-decimal
 pub func WriteDecimal(cursor: &var ByteCursor, value: float64, significant: uint) {
     var abs = value;
     if value < 0.0 {

@@ -17,7 +17,10 @@ import Core::{ Ordering };
 ///
 /// Both are read by value. Cannot fail; runs in constant time and allocates nothing.
 ///
-/// https://rux-lang.dev/docs/api/collections/compare-uint
+/// @param left one of the two values
+/// @param right the other
+/// @returns how `left` orders against `right`
+/// @see https://rux-lang.dev/docs/api/collections/compare-uint
 pub func CompareUint(left: uint, right: uint) -> Ordering {
     if left < right { return Ordering::Less; }
     if left > right { return Ordering::Greater; }
@@ -26,7 +29,10 @@ pub func CompareUint(left: uint, right: uint) -> Ordering {
 
 /// The ordering of two `uint64` values.
 ///
-/// https://rux-lang.dev/docs/api/collections/compare-uint64
+/// @param left one of the two values
+/// @param right the other
+/// @returns how `left` orders against `right`
+/// @see https://rux-lang.dev/docs/api/collections/compare-uint64
 pub func CompareUint64(left: uint64, right: uint64) -> Ordering {
     if left < right { return Ordering::Less; }
     if left > right { return Ordering::Greater; }
@@ -35,7 +41,10 @@ pub func CompareUint64(left: uint64, right: uint64) -> Ordering {
 
 /// The ordering of two `uint32` values.
 ///
-/// https://rux-lang.dev/docs/api/collections/compare-uint32
+/// @param left one of the two values
+/// @param right the other
+/// @returns how `left` orders against `right`
+/// @see https://rux-lang.dev/docs/api/collections/compare-uint32
 pub func CompareUint32(left: uint32, right: uint32) -> Ordering {
     if left < right { return Ordering::Less; }
     if left > right { return Ordering::Greater; }
@@ -46,7 +55,10 @@ pub func CompareUint32(left: uint32, right: uint32) -> Ordering {
 ///
 /// Signed, so this is not the unsigned comparison of the same bits: a negative key sorts below every positive one.
 ///
-/// https://rux-lang.dev/docs/api/collections/compare-int64
+/// @param left one of the two values
+/// @param right the other
+/// @returns how `left` orders against `right`
+/// @see https://rux-lang.dev/docs/api/collections/compare-int64
 pub func CompareInt64(left: int64, right: int64) -> Ordering {
     if left < right { return Ordering::Less; }
     if left > right { return Ordering::Greater; }
@@ -55,7 +67,10 @@ pub func CompareInt64(left: int64, right: int64) -> Ordering {
 
 /// The ordering of two `int32` values.
 ///
-/// https://rux-lang.dev/docs/api/collections/compare-int32
+/// @param left one of the two values
+/// @param right the other
+/// @returns how `left` orders against `right`
+/// @see https://rux-lang.dev/docs/api/collections/compare-int32
 pub func CompareInt32(left: int32, right: int32) -> Ordering {
     if left < right { return Ordering::Less; }
     if left > right { return Ordering::Greater; }
@@ -67,7 +82,10 @@ pub func CompareInt32(left: int32, right: int32) -> Ordering {
 /// By code unit, which for ASCII is alphabetical and for anything above it is UTF-8 byte order — which is the order
 /// of the code points, since UTF-8 is ordered that way by construction.
 ///
-/// https://rux-lang.dev/docs/api/collections/compare-char8
+/// @param left one of the two values
+/// @param right the other
+/// @returns how `left` orders against `right`
+/// @see https://rux-lang.dev/docs/api/collections/compare-char8
 pub func CompareChar8(left: char8, right: char8) -> Ordering {
     if left < right { return Ordering::Less; }
     if left > right { return Ordering::Greater; }
@@ -81,7 +99,10 @@ pub func CompareChar8(left: char8, right: char8) -> Ordering {
 ///
 /// Cannot fail. Runs in time proportional to the shorter length and allocates nothing.
 ///
-/// https://rux-lang.dev/docs/api/collections/compare-slice
+/// @param left one of the two values
+/// @param right the other
+/// @returns how the two order byte by byte, then by length
+/// @see https://rux-lang.dev/docs/api/collections/compare-slice
 pub func CompareSlice(left: char8[..], right: char8[..]) -> Ordering {
     let shared = left.length < right.length ? left.length : right.length;
     var index: uint = 0;

@@ -29,7 +29,8 @@ import Core::{ Iterator, Option };
 /// The element type must be copyable: a move-only element yielded by value would leave the container holding
 /// something it no longer owns. Use `ReferenceIterator` for those.
 ///
-/// https://rux-lang.dev/docs/api/collections/value-iterator
+/// @typeParam T the element type
+/// @see https://rux-lang.dev/docs/api/collections/value-iterator
 pub struct ValueIterator<T> {
     /// The run being walked. Borrowed, never owned.
     data: *T;
@@ -50,7 +51,9 @@ extend ValueIterator<T> {
     ///
     /// The storage must not be grown, freed or otherwise moved while this is alive.
     ///
-    /// https://rux-lang.dev/docs/api/collections/value-iterator/new
+    /// @param items the elements to take
+    /// @returns a cursor yielding copies of those elements
+    /// @see https://rux-lang.dev/docs/api/collections/value-iterator/new
     pub func ValueIterator(items: T[..]) -> ValueIterator<T> {
         return ValueIterator<T> { data: items.data, length: items.length, position: 0 };
     }
@@ -61,7 +64,8 @@ extend ValueIterator<T> {
     ///
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
-    /// https://rux-lang.dev/docs/api/collections/value-iterator/next
+    /// @returns the next element, or `None` at the end
+    /// @see https://rux-lang.dev/docs/api/collections/value-iterator/next
     pub func Next(self: &var ValueIterator<T>) -> Option<T> {
         if self.position >= self.length { return Option::None<T>(); }
         let value = self.data[self.position];
@@ -77,7 +81,8 @@ extend ValueIterator<T> : Iterator {}
 /// Works for any element type, including one that owns something and may not be copied: the pointer borrows the
 /// element where it sits rather than taking it.
 ///
-/// https://rux-lang.dev/docs/api/collections/reference-iterator
+/// @typeParam T the element type
+/// @see https://rux-lang.dev/docs/api/collections/reference-iterator
 pub struct ReferenceIterator<T> {
     /// The run being walked. Borrowed, never owned.
     data: *T;
@@ -99,7 +104,9 @@ extend ReferenceIterator<T> {
     /// Every pointer this yields points into the storage, so the storage must not be grown, freed or moved while
     /// this or any pointer it yielded is still in use.
     ///
-    /// https://rux-lang.dev/docs/api/collections/reference-iterator/new
+    /// @param items the elements to take
+    /// @returns a cursor yielding those elements' addresses
+    /// @see https://rux-lang.dev/docs/api/collections/reference-iterator/new
     pub func ReferenceIterator(items: T[..]) -> ReferenceIterator<T> {
         return ReferenceIterator<T> { data: items.data, length: items.length, position: 0 };
     }
@@ -110,7 +117,8 @@ extend ReferenceIterator<T> {
     ///
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
-    /// https://rux-lang.dev/docs/api/collections/reference-iterator/next
+    /// @returns the next element, or `None` at the end
+    /// @see https://rux-lang.dev/docs/api/collections/reference-iterator/next
     pub func Next(self: &var ReferenceIterator<T>) -> Option<*T> {
         if self.position >= self.length { return Option::None<*T>(); }
         let element = @self.data[self.position];

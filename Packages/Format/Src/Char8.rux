@@ -11,7 +11,7 @@ import Text::{ Debug, Display, FormatError, FormatSpec, RejectStyle, TextWriter 
 
 /// The character written in place of anything that is not one.
 ///
-/// https://rux-lang.dev/docs/api/format/replacement-character
+/// @see https://rux-lang.dev/docs/api/format/replacement-character
 pub const ReplacementCharacter: char32 = 0xFFFDu32 as char32;
 
 extend char8 : Display {
