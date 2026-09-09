@@ -153,15 +153,16 @@ An empty sequence satisfies `All` vacuously and `Any` never, so `All` and `None`
 `Transform` and `Fold` let the result type differ from the element type, so `Fold` both sums a sequence and builds something else entirely out of one:
 
 ```rux
-import Algorithms::{ CountIf, Fold, Partition };
+import Algorithms::{ CountWhere, Fold, Partition };
 
 func IsEven(value: int32) -> bool { return value % 2 == 0; }
 func Add(total: int32, value: int32) -> int32 { return total + value; }
 
 var values: int32[5] = [1, 2, 3, 4, 5];
-let evens = CountIf<int32>(@values[0], 5, IsEven);
-let sum = Fold<int32, int32>(@values[0], 5, 0, Add);
-let boundary = Partition<int32>(@values[0], 5, IsEven);
+let view = (@values[0])[..5];
+let evens = CountWhere<int32>(view, IsEven);
+let sum = Fold<int32, int32>(view, 0, Add);
+let boundary = Partition<int32>(view, IsEven);
 ```
 
 ### Comparators — ordering by something other than `<`
@@ -171,23 +172,32 @@ Every ordering function has a `*By` counterpart taking an explicit comparator: `
 The comparator answers "does `a` come strictly before `b`" — the same question `<` answers — and must be a strict weak ordering. Equivalence is derived from it alone, so **a comparator is enough on its own**: the element type need not define any operator at all.
 
 ```rux
-import Algorithms::{ SortBy, LowerBoundBy };
+import Algorithms::SortBy;
+import Core::Ordering;
 
 struct Task {
     priority: int32;
     id: int32;
 }
 
-func ByPriority(a: Task, b: Task) -> bool { return a.priority < b.priority; }
-func ById(a: Task, b: Task) -> bool { return a.id < b.id; }
+// A comparison answers with an Ordering rather than a boolean, so one call settles which of the three cases holds.
+func ByPriority(a: Task, b: Task) -> Ordering {
+    if a.priority < b.priority { return Ordering::Less; }
+    return a.priority > b.priority ? Ordering::Greater : Ordering::Equal;
+}
+
+func ById(a: Task, b: Task) -> Ordering {
+    if a.id < b.id { return Ordering::Less; }
+    return a.id > b.id ? Ordering::Greater : Ordering::Equal;
+}
 
 var tasks: Task[3] = [Task { priority: 3, id: 40 },
                       Task { priority: 1, id: 50 },
                       Task { priority: 2, id: 30 }];
-let count: uint = 3;
+let view = (@tasks[0])[..3];
 
-SortBy<Task>(@tasks[0], count, ByPriority);
-SortBy<Task>(@tasks[0], count, ById);
+SortBy<Task>(view, ByPriority);
+SortBy<Task>(view, ById);
 ```
 
 They are separate names rather than overloads of the operator forms. Rux resolves an untyped integer literal against a single candidate but not against an overload set, so adding an overload would have made `Sort<int32>(data, 8)` stop compiling for everyone already calling it.

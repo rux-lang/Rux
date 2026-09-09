@@ -45,7 +45,7 @@ Win32 records such as `FileTime` and `SystemTime` are structural values and copy
 Windows only. Guard use behind a compile-time check, so a build for another target never resolves these declarations:
 
 ```rux
-import Core::#target;
+import Core::{ #target };
 
 when #target.os == .Windows {
     import Windows::{ GetStdHandle, StdOutputHandle, WriteConsoleA };

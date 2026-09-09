@@ -51,7 +51,7 @@ Kernel records such as `Timespec` are structural values and copy by value. Sysca
 FreeBSD only. Guard use behind a compile-time check, so a build for another target never resolves these declarations:
 
 ```rux
-import Core::#target;
+import Core::{ #target };
 
 when #target.os {
     .FreeBSD => import FreeBSD::{ StdOut, Write }

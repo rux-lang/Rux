@@ -56,7 +56,7 @@ libSystem declarations retain raw pointers for nullable parameters, byte buffers
 macOS only. Guard use behind a compile-time check, so a build for another target never resolves these declarations:
 
 ```rux
-import Core::#target;
+import Core::{ #target };
 
 when #target.os == .macOS {
     import macOS::{ StdOut, Write };
