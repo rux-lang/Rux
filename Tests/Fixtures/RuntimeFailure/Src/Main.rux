@@ -1,0 +1,10 @@
+import Core::{ Assert, Panic };
+
+func Fail(message: char8[..]) -> int {
+    Panic(message);
+}
+
+func Main() -> int {
+    Assert(true, "successful assertions do not emit output");
+    return Fail("first line\nsecond line: Помилка 🚨");
+}

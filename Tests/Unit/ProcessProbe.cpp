@@ -3,6 +3,7 @@
 #include "System/WinApi.h"
 #include "Target/Platform.h"
 
+#include <cerrno>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -16,7 +17,44 @@
 #endif
 
 namespace Rux::Testing {
+namespace {
+bool WriteProbeBytes(const bool standardError, std::string_view bytes) {
+    while (!bytes.empty()) {
+#if RUX_OS_WINDOWS
+        DWORD written = 0;
+        if (!WriteFile(GetStdHandle(standardError ? STD_ERROR_HANDLE : STD_OUTPUT_HANDLE), bytes.data(),
+                       static_cast<DWORD>(bytes.size()), &written, nullptr) ||
+            written == 0)
+            return false;
+#else
+        const ssize_t written = write(standardError ? STDERR_FILENO : STDOUT_FILENO, bytes.data(), bytes.size());
+        if (written < 0 && errno == EINTR)
+            continue;
+        if (written <= 0)
+            return false;
+#endif
+        bytes.remove_prefix(static_cast<std::size_t>(written));
+    }
+    return true;
+}
+} // namespace
+
 std::optional<int> RunProcessProbe(const int argc, char **argv) {
+    if (argc == 4 && std::string_view(argv[1]) == "--rux-abrupt-process-probe") {
+        const std::string_view marker(argv[2]);
+        const std::string_view mode(argv[3]);
+        const std::size_t size = mode == "large" ? 128 * 1024 : mode == "small" ? 17 : 0;
+        // Native writes report failure through the exit code, independently of what the parent captures. _Exit
+        // bypasses stdio flushing and destructors, so the capture cannot depend on normal child shutdown.
+        const std::string prefix = "begin:" + std::string(marker) + '\n';
+        constexpr std::string_view binary("\0\xff\r\n", 4);
+        const std::string payload(size, 'x');
+        const std::string suffix = "end:" + std::string(marker) + '\n';
+        if (!WriteProbeBytes(false, prefix) || !WriteProbeBytes(true, binary) || !WriteProbeBytes(false, payload) ||
+            !WriteProbeBytes(true, suffix))
+            std::_Exit(98);
+        std::_Exit(23);
+    }
     if (argc > 1 && std::string_view(argv[1]) == "--rux-process-probe") {
         if (std::getchar() != EOF)
             return 98;

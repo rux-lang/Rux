@@ -37,7 +37,6 @@ void X86_64ModuleEmitter::GenInstr(X86_64FunctionEmitter &functionEmitter, X86_6
             // Shadow space, the fifth WriteFile argument, and a DWORD for
             // lpNumberOfBytesWritten. The failure path never returns.
             enc.SubRspImm32(48);
-            enc.MovQwordRspImm32(32, 0);
 
             const auto prepareWrite = [&]() {
                 enc.MovEaxImm32(-12); // STD_ERROR_HANDLE
@@ -47,6 +46,8 @@ void X86_64ModuleEmitter::GenInstr(X86_64FunctionEmitter &functionEmitter, X86_6
                 AddTextReloc(getHandleReloc, getStdHandle);
                 enc.MovArgWin64Rax(0);
                 enc.LeaR9Rsp(40);
+                // Each callee owns its incoming argument slots; a previous WriteFile may have reused this one.
+                enc.MovQwordRspImm32(32, 0);
             };
             const auto writeStatic = [&](const std::string &text) {
                 prepareWrite();

@@ -1,4 +1,8 @@
 #include "CliProcessTestSupport.h"
+#include "Reporting/Reporting.h"
+
+#include <barrier>
+#include <future>
 
 using namespace Rux;
 using namespace Rux::Testing::CliProcessTestSupport;
@@ -367,6 +371,11 @@ Type = "Executable"
     REQUIRE(!copyError);
     WriteTest("RuntimeFail", "import Core::Panic;\nfunc Main() -> int { Panic(\"first line\\nsecond line\"); }\n",
               "\n[Dependencies]\nCore = { Path = \"../../Packages/Core\" }\n");
+    WriteTest("RuntimeEmpty", "import Core::Panic;\nfunc Main() -> int { Panic(\"\"); }\n",
+              "\n[Dependencies]\nCore = { Path = \"../../Packages/Core\" }\n");
+    const std::string largeMessage = "Помилка 🚨 " + std::string(128 * 1024, 'x') + " tail";
+    WriteTest("RuntimeLarge", "import Core::Panic;\nfunc Main() -> int { Panic(\"" + largeMessage + "\"); }\n",
+              "\n[Dependencies]\nCore = { Path = \"../../Packages/Core\" }\n");
     const auto runtimeManifest = Manifest::Load(runtimeRoot / "Rux.toml");
     std::string runtimeManifestErrors;
     for (const auto &diagnostic : runtimeManifest.diagnostics) {
@@ -376,21 +385,68 @@ Type = "Executable"
     REQUIRE(runtimeManifest.Ok());
 
     const auto manifest = manifestPath.string();
-    const auto result = Run(std::array<std::string_view, 4>{"--manifest", manifest, "--color=never", "test"});
-    const auto normalized = NormalizeNewlines(result.output);
-    CAPTURE(normalized);
-    CHECK(result.exitCode == 1);
-    CHECK(normalized.contains("Passed Pass in "));
-    CHECK(normalized.contains("Failed BuildFail in "));
-    CHECK(normalized.contains("note: the test package did not compile"));
-    CHECK(normalized.contains("name 'Missing' is not defined in this scope"));
-    CHECK(normalized.contains("Failed RuntimeFail in "));
-    CHECK(normalized.contains("note: test 'RuntimeFail' exited with code"));
-    CHECK(normalized.contains("  Output:\n"));
-    CHECK(normalized.contains("    Panic: first line\n    second line"));
-    CHECK(normalized.contains("Failed 3 tests in "));
-    CHECK(normalized.contains("(1 passed, 2 failed)"));
-    CHECK_FALSE(normalized.contains("[FAILED]"));
+    for (const bool release : {false, true}) {
+        for (const std::string_view jobs : {"1", "4"}) {
+            CAPTURE(release);
+            CAPTURE(jobs);
+            std::barrier start(5);
+            std::vector<std::future<std::optional<System::RunResult>>> probes;
+            for (std::size_t index = 0; index < 4; ++index) {
+                probes.push_back(std::async(std::launch::async, [&, index] {
+                    const std::string marker = "report companion " + std::to_string(index);
+                    start.arrive_and_wait();
+                    return System::RunCaptured(
+                        std::filesystem::path(RUX_TEST_BIN_DIR) / "Unit" / System::ExecutableFileName("rux-tests"),
+                        std::array<std::string_view, 3>{"--rux-abrupt-process-probe", marker, "large"});
+                }));
+            }
+            std::vector<std::string_view> arguments{"--manifest", manifest, "--color=never", "test", "--jobs", jobs};
+            if (release)
+                arguments.push_back("--release");
+            start.arrive_and_wait();
+            const auto captured = System::RunCaptured(RuxExecutable(), arguments);
+            // Join all companions before assertions can exit the case and destroy their shared barrier.
+            std::vector<std::optional<System::RunResult>> probeResults;
+            for (auto &probe : probes)
+                probeResults.push_back(probe.get());
+            REQUIRE(captured.has_value());
+            const auto normalized = NormalizeNewlines(captured->output);
+            CAPTURE(normalized.size());
+            CAPTURE(normalized.substr(0, 1024));
+            CAPTURE(normalized.substr(normalized.size() > 1024 ? normalized.size() - 1024 : 0));
+            CHECK(captured->exitCode == 1);
+            CHECK(normalized.contains("Passed Pass in "));
+            CHECK(normalized.contains("Failed BuildFail in "));
+            CHECK(normalized.contains("note: the test package did not compile"));
+            CHECK(normalized.contains("name 'Missing' is not defined in this scope"));
+            const std::array<std::string_view, 3> names{"RuntimeEmpty", "RuntimeFail", "RuntimeLarge"};
+            const std::array<std::string_view, 3> messages{"", "first line\nsecond line", largeMessage};
+            for (std::size_t index = 0; index < names.size(); ++index) {
+                CAPTURE(names[index]);
+                const auto row = normalized.find("Failed " + std::string(names[index]) + " in ");
+                REQUIRE(row != std::string::npos);
+                const auto end = normalized.find("\nFailed ", row);
+                const std::string_view report(normalized.data() + row,
+                                              (end == std::string::npos ? normalized.size() : end + 1) - row);
+                CHECK(report.contains("note: test '" + std::string(names[index]) + "' exited with code"));
+                const std::string failure =
+                    "Panic: " + std::string(messages[index]) + "\n  at Main (Src/Main.rux:2:27)\n";
+                CHECK(report.contains("  Output:\n" + Reporting::Indent(failure, 2)));
+            }
+            CHECK(normalized.contains("Failed 5 tests in "));
+            CHECK(normalized.contains("(1 passed, 4 failed)"));
+            CHECK_FALSE(normalized.contains("[FAILED]"));
+            for (std::size_t index = 0; index < probeResults.size(); ++index) {
+                CAPTURE(index);
+                const auto &probe = probeResults[index];
+                REQUIRE(probe.has_value());
+                CHECK(probe->exitCode == 23);
+                const std::string marker = "report companion " + std::to_string(index);
+                CHECK(probe->output == "begin:" + marker + '\n' + std::string("\0\xff\r\n", 4) +
+                                           std::string(128 * 1024, 'x') + "end:" + marker + '\n');
+            }
+        }
+    }
 
     const auto quiet = Run(std::array<std::string_view, 5>{"--manifest", manifest, "--color=never", "test", "--quiet"});
     const auto normalizedQuiet = NormalizeNewlines(quiet.output);
@@ -401,9 +457,9 @@ Type = "Executable"
     CHECK(normalizedQuiet.contains("note: the test package did not compile"));
     CHECK(normalizedQuiet.contains("  Output:\n"));
     CHECK_FALSE(normalizedQuiet.contains("Testing TestReport"));
-    CHECK_FALSE(normalizedQuiet.contains("Running 3 tests"));
+    CHECK_FALSE(normalizedQuiet.contains("Running 5 tests"));
     CHECK_FALSE(normalizedQuiet.contains("Passed Pass"));
-    CHECK_FALSE(normalizedQuiet.contains("Failed 3 tests"));
+    CHECK_FALSE(normalizedQuiet.contains("Failed 5 tests"));
 
     std::error_code error;
     std::filesystem::remove_all(root, error);

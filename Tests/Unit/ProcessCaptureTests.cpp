@@ -99,6 +99,33 @@ TEST_CASE("failed subprocess launches return an error on every host") {
     CHECK(error);
 }
 
+TEST_CASE("concurrent captures retain binary output through abrupt child exit") {
+    constexpr std::size_t count = 12;
+    constexpr std::array<std::string_view, 3> modes{"empty", "small", "large"};
+    constexpr std::array<std::size_t, 3> sizes{0, 17, 128 * 1024};
+    std::barrier start(static_cast<std::ptrdiff_t>(count));
+    std::vector<std::future<std::optional<RunResult>>> children;
+    for (std::size_t index = 0; index < count; ++index) {
+        children.push_back(std::async(std::launch::async, [&, index] {
+            const std::string marker = "abrupt " + std::to_string(index);
+            start.arrive_and_wait();
+            return RunCaptured(ProbeExecutable(),
+                               std::array<std::string_view, 3>{"--rux-abrupt-process-probe", marker, modes[index % 3]});
+        }));
+    }
+    for (std::size_t index = 0; index < count; ++index) {
+        CAPTURE(index);
+        const auto result = children[index].get();
+        REQUIRE(result.has_value());
+        CHECK(result->exitCode == 23);
+        const std::string marker = "abrupt " + std::to_string(index);
+        const std::string expected = "begin:" + marker + '\n' + std::string("\0\xff\r\n", 4) +
+                                     std::string(sizes[index % 3], 'x') + "end:" + marker + '\n';
+        CHECK(result->output.size() == expected.size());
+        CHECK(result->output == expected);
+    }
+}
+
 #if RUX_OS_WINDOWS
 TEST_CASE("Windows children inherit only explicitly selected standard handles") {
     SECURITY_ATTRIBUTES security{sizeof(SECURITY_ATTRIBUTES), nullptr, TRUE};

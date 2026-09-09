@@ -172,13 +172,13 @@ private:
                 NeedExtern("GetStdHandle");
                 NeedExtern("WriteFile");
                 TI("sub     rsp, 48");
-                TI("mov     qword [rsp + 32], 0");
 
                 const auto prepareWrite = [&]() {
                     TI("mov     ecx, -12");
                     TI("call    GetStdHandle");
                     TI("mov     rcx, rax");
                     TI("lea     r9, [rsp + 40]");
+                    TI("mov     qword [rsp + 32], 0");
                 };
                 const auto writeStatic = [&](const std::string &value) {
                     prepareWrite();
