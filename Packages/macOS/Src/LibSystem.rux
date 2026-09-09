@@ -1,5 +1,3 @@
-import Core::{ #target };
-
 // The Darwin ABI: libSystem's own entry points, under the symbols it exports.
 //
 // **Apple does not support calling the kernel directly.** The trap numbers are private, they have changed between
@@ -11,12 +9,13 @@ import Core::{ #target };
 // Every declaration here reports failure the way C does: `-1` and a positive `errno`. The wrappers elsewhere in this
 // package fold that into one value with `Errors::Normalize`, so nothing above them has to look in two places.
 
+import Core::{ #target };
 /// The library every Darwin interface is reached through.
 ///
 /// A single dynamic library re-exporting libc, libm, libpthread and the rest; there is no separate `libc.dylib` to
 /// link on Apple platforms.
 ///
-/// https://rux-lang.dev/docs/api/macos/system-lib
+/// @see https://rux-lang.dev/docs/api/macos/system-lib
 pub const SystemLib = "libSystem.B.dylib";
 
 #Link(SystemLib)
@@ -141,11 +140,17 @@ extern {
     // https://keith.github.io/xcode-man-pages/exit.3.html
     func _exit(status: int32);
 
-    // Reports the system page size; cannot fail
-    //
-    // Darwin's page size is not the same on every machine: Apple Silicon uses 16 KiB where x86-64 uses 4 KiB, which
-    // is why this is asked rather than assumed.
-    // https://keith.github.io/xcode-man-pages/getpagesize.3.html
+    /// Reports the system page size, in bytes.
+    ///
+    /// Darwin's page size is not the same on every machine: Apple Silicon uses 16 KiB where x86-64 uses 4 KiB, which
+    /// is why this is asked rather than assumed. Cannot fail — a process that could not be told its own page size
+    /// could not have been started.
+    ///
+    /// `Memory::QueryPageSize` is the wrapper to call; this is the raw entry point it binds, and is the only
+    /// declaration in this block that is reachable from outside the package.
+    ///
+    /// @returns the page size in bytes
+    /// @see https://rux-lang.dev/docs/api/macos/getpagesize
     pub func getpagesize() -> int32;
 
     // Returns the calling process's identifier; cannot fail

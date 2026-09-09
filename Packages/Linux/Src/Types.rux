@@ -10,34 +10,34 @@
 ///
 /// Signed, because several calls overload the negative range to mean a process group.
 ///
-/// https://rux-lang.dev/docs/api/linux/process-id
+/// @see https://rux-lang.dev/docs/api/linux/process-id
 pub type ProcessId = int32;
 
 /// A file descriptor, as the kernel numbers one.
 ///
 /// Signed and small. A syscall taking one receives it sign-extended to a full register, which `SignExtendFd` does.
 ///
-/// https://rux-lang.dev/docs/api/linux/file-descriptor
+/// @see https://rux-lang.dev/docs/api/linux/file-descriptor
 pub type FileDescriptor = int32;
 
 /// A byte offset within a file, which the 64-bit ABI makes 64 bits everywhere.
 ///
-/// https://rux-lang.dev/docs/api/linux/file-offset
+/// @see https://rux-lang.dev/docs/api/linux/file-offset
 pub type FileOffset = int64;
 
 /// A file's type and permission bits, as `open` and `stat` carry them.
 ///
-/// https://rux-lang.dev/docs/api/linux/file-mode
+/// @see https://rux-lang.dev/docs/api/linux/file-mode
 pub type FileMode = uint32;
 
 /// A user identifier.
 ///
-/// https://rux-lang.dev/docs/api/linux/user-id
+/// @see https://rux-lang.dev/docs/api/linux/user-id
 pub type UserId = uint32;
 
 /// A group identifier.
 ///
-/// https://rux-lang.dev/docs/api/linux/group-id
+/// @see https://rux-lang.dev/docs/api/linux/group-id
 pub type GroupId = uint32;
 
 /// A duration or an instant, as seconds and nanoseconds.
@@ -48,7 +48,7 @@ pub type GroupId = uint32;
 ///
 /// Passed by address to every call that reads or fills one.
 ///
-/// https://rux-lang.dev/docs/api/linux/timespec
+/// @see https://rux-lang.dev/docs/api/linux/timespec
 pub struct Timespec {
     /// Whole seconds.
     pub seconds: int64;

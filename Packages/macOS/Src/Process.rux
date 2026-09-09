@@ -10,7 +10,8 @@ import macOS::{ ProcessId, _exit, getpid };
 /// what the Linux and FreeBSD packages do and is what a raw binding should do. A program wanting the other behaviour
 /// should call C's `exit` through `Rux/C`.
 ///
-/// https://rux-lang.dev/docs/api/macos/exit
+/// @param code the status to report to the parent
+/// @see https://rux-lang.dev/docs/api/macos/exit
 pub func Exit(code: int32) {
     _exit(code);
 }
@@ -19,7 +20,8 @@ pub func Exit(code: int32) {
 ///
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
-/// https://rux-lang.dev/docs/api/macos/get-pid
+/// @returns the calling process's identifier
+/// @see https://rux-lang.dev/docs/api/macos/get-pid
 pub func GetPid() -> ProcessId {
     return getpid();
 }

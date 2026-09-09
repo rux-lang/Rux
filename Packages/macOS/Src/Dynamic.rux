@@ -5,13 +5,13 @@
 
 /// `RTLD_LAZY`: resolve a function symbol the first time it is called rather than at load.
 ///
-/// https://rux-lang.dev/docs/api/macos/rtld-lazy
+/// @see https://rux-lang.dev/docs/api/macos/rtld-lazy
 #Allow("naming.const")
 pub const RTLD_LAZY: int32 = 1;
 
 /// `RTLD_NOW`: resolve every symbol before `dlopen` returns.
 ///
-/// https://rux-lang.dev/docs/api/macos/rtld-now
+/// @see https://rux-lang.dev/docs/api/macos/rtld-now
 #Allow("naming.const")
 pub const RTLD_NOW: int32 = 2;
 
@@ -20,12 +20,12 @@ pub const RTLD_NOW: int32 = 2;
 /// Darwin numbers this 4 and `RTLD_GLOBAL` 8, where both Linux and FreeBSD use 0 and 256. Carrying either value
 /// between packages selects the opposite of what was meant.
 ///
-/// https://rux-lang.dev/docs/api/macos/rtld-local
+/// @see https://rux-lang.dev/docs/api/macos/rtld-local
 #Allow("naming.const")
 pub const RTLD_LOCAL: int32 = 4;
 
 /// `RTLD_GLOBAL`: make this object's symbols available to objects loaded afterwards.
 ///
-/// https://rux-lang.dev/docs/api/macos/rtld-global
+/// @see https://rux-lang.dev/docs/api/macos/rtld-global
 #Allow("naming.const")
 pub const RTLD_GLOBAL: int32 = 8;

@@ -13,31 +13,31 @@ const LoaderLib = "libc.so.6";
 
 /// `RTLD_LAZY`: resolve a function symbol the first time it is called rather than at load.
 ///
-/// https://rux-lang.dev/docs/api/linux/rtld-lazy
+/// @see https://rux-lang.dev/docs/api/linux/rtld-lazy
 #Allow("naming.const")
 pub const RTLD_LAZY: int32 = 1;
 
 /// `RTLD_NOW`: resolve every symbol before `dlopen` returns, so a missing one is reported there.
 ///
-/// https://rux-lang.dev/docs/api/linux/rtld-now
+/// @see https://rux-lang.dev/docs/api/linux/rtld-now
 #Allow("naming.const")
 pub const RTLD_NOW: int32 = 2;
 
 /// `RTLD_GLOBAL`: make this object's symbols available to objects loaded afterwards.
 ///
-/// https://rux-lang.dev/docs/api/linux/rtld-global
+/// @see https://rux-lang.dev/docs/api/linux/rtld-global
 #Allow("naming.const")
 pub const RTLD_GLOBAL: int32 = 256;
 
 /// `RTLD_LOCAL`: keep this object's symbols to itself, which is the default.
 ///
-/// https://rux-lang.dev/docs/api/linux/rtld-local
+/// @see https://rux-lang.dev/docs/api/linux/rtld-local
 #Allow("naming.const")
 pub const RTLD_LOCAL: int32 = 0;
 
 /// `RTLD_NODELETE`: do not unload the object when its last reference goes, so its storage stays valid.
 ///
-/// https://rux-lang.dev/docs/api/linux/rtld-nodelete
+/// @see https://rux-lang.dev/docs/api/linux/rtld-nodelete
 #Allow("naming.const")
 pub const RTLD_NODELETE: int32 = 4096;
 

@@ -5,17 +5,17 @@
 
 /// A process identifier, as `getpid` and its relatives report one.
 ///
-/// https://rux-lang.dev/docs/api/freebsd/process-id
+/// @see https://rux-lang.dev/docs/api/freebsd/process-id
 pub type ProcessId = int32;
 
 /// A file descriptor, as the kernel numbers one.
 ///
-/// https://rux-lang.dev/docs/api/freebsd/file-descriptor
+/// @see https://rux-lang.dev/docs/api/freebsd/file-descriptor
 pub type FileDescriptor = int32;
 
 /// A byte offset within a file, 64 bits on every supported target.
 ///
-/// https://rux-lang.dev/docs/api/freebsd/file-offset
+/// @see https://rux-lang.dev/docs/api/freebsd/file-offset
 pub type FileOffset = int64;
 
 /// A file's type and permission bits.
@@ -43,7 +43,7 @@ pub type GroupId = uint32;
 /// `nanoseconds` is in `[0, 999999999]` for a value the kernel produced; a value the caller builds must normalize it,
 /// since a call given more than a second's worth reports `EINVAL` rather than carrying.
 ///
-/// https://rux-lang.dev/docs/api/freebsd/timespec
+/// @see https://rux-lang.dev/docs/api/freebsd/timespec
 pub struct Timespec {
     /// Whole seconds.
     pub seconds: int64;

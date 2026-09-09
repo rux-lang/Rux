@@ -8,7 +8,7 @@ import macOS::{ Normalize, Timespec, Timeval, clock_getres, clock_gettime, getti
 
 /// `CLOCK_REALTIME`: wall-clock time, which can jump when the system clock is set.
 ///
-/// https://rux-lang.dev/docs/api/macos/clock-realtime
+/// @see https://rux-lang.dev/docs/api/macos/clock-realtime
 pub const ClockRealtime: int32 = 0;
 
 /// `CLOCK_MONOTONIC`: time since boot, which never goes backwards.
@@ -16,12 +16,12 @@ pub const ClockRealtime: int32 = 0;
 /// Darwin numbers this 6, where Linux uses 1 and FreeBSD uses 4. No clock identifier means the same thing on any two
 /// of the three systems.
 ///
-/// https://rux-lang.dev/docs/api/macos/clock-monotonic
+/// @see https://rux-lang.dev/docs/api/macos/clock-monotonic
 pub const ClockMonotonic: int32 = 6;
 
 /// `CLOCK_MONOTONIC_RAW`: like `ClockMonotonic`, but not adjusted by time synchronization.
 ///
-/// https://rux-lang.dev/docs/api/macos/clock-monotonic-raw
+/// @see https://rux-lang.dev/docs/api/macos/clock-monotonic-raw
 pub const ClockMonotonicRaw: int32 = 4;
 
 /// Reads `clockId` into `time`.
