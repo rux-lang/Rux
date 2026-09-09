@@ -16,7 +16,6 @@
 #include "Object/Rcu/RcuDumper.h"
 #include "Object/Rcu/RcuWriter.h"
 #include "Optimization/Pipeline.h"
-#include "Package/Cache.h"
 #include "Semantic/Conditional/ConditionalCompilation.h"
 #include "Semantic/Model/SemanticPrinter.h"
 #include "Semantic/SemanticAnalyzer.h"
@@ -34,8 +33,6 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
-
-using namespace Rux::Packages;
 
 namespace Rux::Driver {
 using namespace Target;
@@ -179,10 +176,6 @@ std::optional<std::string_view> CompilerDriver::Impl::LookupSourceLine(const std
         return std::nullopt;
     }
     return found->second.Line(lineNumber);
-}
-
-std::string CompilerDriver::Impl::TargetSystemName() const {
-    return std::string(Target::ToString(opts.target.Os()));
 }
 
 CompileResult CompilerDriver::Impl::Compile() {
@@ -344,124 +337,18 @@ bool CompilerDriver::Impl::LexAndParseSources() {
 bool CompilerDriver::Impl::LoadDependencies() {
     BeginPhase(CompilePhase::LoadingDependency, opts.manifest.package.name.Text(), root);
 
-    // This package's path dependencies answer to their package names throughout the graph, the way workspace members
-    // do. A package further down that names one of them by namespace and version would otherwise be served from the
-    // install cache, or fail for want of an install, unless this package happened to import the checkout first — so
-    // whether a build succeeded depended on the order its imports were met in.
-    auto localPackageRoots = opts.localPackageRoots;
-    for (const auto &dependency : opts.manifest.dependencies) {
-        if (!dependency.IsPath() || !dependency.MatchesTarget(opts.target.Os())) {
-            continue;
-        }
-        const auto dependencyRoot = (root / dependency.Path()).lexically_normal();
-        const auto loaded = Manifest::Load(dependencyRoot / "Rux.toml");
-        // A manifest that cannot be read is reported by the import that needs it, if anything does.
-        if (loaded.Ok() && !loaded.manifest->package.name.Empty()) {
-            localPackageRoots.try_emplace(loaded.manifest->package.name.Normalized(), dependencyRoot);
-        }
-    }
-
-    struct PendingPackage {
-        std::string name;
-        std::filesystem::path root;
-        Manifest manifest;
-    };
-
-    std::vector<PendingPackage> pendingPackages;
-    std::unordered_set<std::string> queuedPackageNames;
-    auto enqueueDependency = [&](const std::string &pkgName, const Manifest &ownerManifest,
-                                 const std::filesystem::path &ownerRoot) -> bool {
-        if (queuedPackageNames.count(pkgName)) {
-            return true;
-        }
-        const ManifestDependency *dep = nullptr;
-        for (const auto &d : ownerManifest.dependencies) {
-            if (d.importName.Text() == pkgName) {
-                dep = &d;
-                break;
-            }
-        }
-        if (!dep) {
-            Emit(ErrorDiagnostic("package '" + pkgName + "' is not listed in [Dependencies] of '" +
-                                     (ownerRoot / "Rux.toml").string() + "'",
-                                 {"the import requires a package dependency with the same import name"},
-                                 "add the package under [Dependencies] or correct the import path"));
-            return false;
-        }
-        if (!dep->MatchesTarget(opts.target.Os())) {
-            Emit(ErrorDiagnostic(
-                "dependency '" + pkgName + "' is not available for target '" +
-                    std::string(opts.target.CanonicalName()) + "'",
-                {"TargetOS in '" + (ownerRoot / "Rux.toml").string() + "' excludes " + TargetSystemName()},
-                "select an available target or include the target OS in the dependency's TargetOS list"));
-            return false;
-        }
-        std::filesystem::path depRoot;
-        if (dep->IsPath()) {
-            depRoot = (ownerRoot / dep->Path()).lexically_normal();
-        }
-        else if (const auto local = localPackageRoots.find(dep->package.Normalized());
-                 local != localPackageRoots.end()) {
-            depRoot = local->second;
-        }
-        else {
-            if (opts.localDependenciesOnly) {
-                Emit(
-                    ErrorDiagnostic("package '" + DependencyPackageName(*dep) +
-                                        "' is not a local workspace member; registry dependencies are disabled",
-                                    {"workspace checks resolve registry declarations only from matching local members"},
-                                    "add the package to [Workspace].Packages or use a local Path dependency"));
-                return false;
-            }
-            // The cache holds every installed version side by side, so the
-            // requirement in the manifest decides which one this build sees.
-            // Resolution is local: a build never contacts the registry.
-            const RegistryDependencySource *registry = dep->Registry();
-            const std::string identity = registry->ns.Text() + "/" + DependencyPackageName(*dep);
-            const auto installed = FindInstalledPackage(registry->ns, dep->package, registry->version);
-            if (!installed) {
-                const auto present = InstalledVersions(registry->ns, dep->package);
-                std::string listed;
-                for (const auto &candidate : present) {
-                    listed += (listed.empty() ? "" : ", ") + candidate.version.Text();
-                }
-                Emit(ErrorDiagnostic("no installed version of '" + identity + "' satisfies '" +
-                                         registry->version.Text() + "'",
-                                     listed.empty() ? std::vector<std::string>{"no versions are installed"}
-                                                    : std::vector<std::string>{"installed versions: " + listed},
-                                     "run 'rux install' to resolve and cache the dependency"));
-                return false;
-            }
-            depRoot = installed->root;
-        }
-        auto depManifest = Manifest::Load(depRoot / "Rux.toml");
-        if (!depManifest.Ok()) {
-            for (const auto &diagnostic : depManifest.diagnostics) {
-                Emit({Diagnostic::Severity::Error,
-                      diagnostic.path.string(),
-                      {.line = diagnostic.line, .column = diagnostic.column, .offset = 0},
-                      diagnostic.message,
-                      diagnostic.notes,
-                      diagnostic.help,
-                      diagnostic.documentationUrl});
-            }
-            Emit(ErrorDiagnostic("cannot load dependency package '" + pkgName + "' from '" + depRoot.string() + "'",
-                                 {"the dependency manifest is missing or invalid"},
-                                 "check the dependency path and its Rux.toml manifest"));
-            return false;
-        }
-        queuedPackageNames.insert(pkgName);
-        // Keep the import name as the package namespace loaded into Sema,
-        // even when the files came from another package name.
-        pendingPackages.push_back({dep->importName.Text(), depRoot, std::move(*depManifest.manifest)});
-        return true;
-    };
+    dependencyGraph.emplace(opts.manifest, opts.manifestPath, opts.target, opts.localPackageRoots,
+                            opts.localDependenciesOnly);
+    auto &graph = *dependencyGraph;
 
     // Packages are parsed into stable storage before their conditionals ask for imported declarations.
     // The resolver loads only imports in surviving branches, including imports needed by a condition itself.
     std::unordered_map<std::string, std::vector<ParseResult>> parsedPackages;
     std::unordered_set<std::string> loadingPackages;
     std::vector<std::string> packageOrder;
+    std::unordered_map<std::string, const SourcePackage *> sourceOwners;
+    for (const auto &parsed : parseResults)
+        sourceOwners.emplace(parsed.module.name, &graph.Root());
     bool failed = false;
     const auto modulesOf = [](std::vector<ParseResult> &parsed) {
         std::vector<Module *> modules;
@@ -470,33 +357,31 @@ bool CompilerDriver::Impl::LoadDependencies() {
         }
         return modules;
     };
-    const auto loadPackage = [&](this auto &&self, const std::string &name, const Manifest &owner,
-                                 const std::filesystem::path &ownerRoot) -> std::vector<Module *> {
-        if (failed) {
+    const auto loadPackage = [&](this auto &&self, const std::string_view importName,
+                                 const SourcePackage &owner) -> std::vector<Module *> {
+        if (failed)
             return {};
-        }
-        if (loadingPackages.contains(name)) {
-            Emit(ErrorDiagnostic("cyclic dependency while resolving declarations from package '" + name + "'"));
+        const auto *selected = graph.Resolve(owner, importName);
+        if (!selected) {
             failed = true;
             return {};
         }
-        if (const auto loaded = parsedPackages.find(name); loaded != parsedPackages.end()) {
+        const auto &name = selected->id;
+        if (selected == &owner) {
+            return modulesOf(name == graph.Root().id ? parseResults : parsedPackages.at(name));
+        }
+        if (loadingPackages.contains(name) || name == graph.Root().id) {
+            Emit(ErrorDiagnostic("cyclic dependency while resolving declarations from package '" +
+                                     std::string(importName) + "'",
+                                 {"selected manifest: " + selected->manifestPath.string()}));
+            failed = true;
+            return {};
+        }
+        if (const auto loaded = parsedPackages.find(name); loaded != parsedPackages.end())
             return modulesOf(loaded->second);
-        }
-        if (!enqueueDependency(name, owner, ownerRoot)) {
-            failed = true;
-            return {};
-        }
-        const auto found = std::ranges::find(pendingPackages, name, &PendingPackage::name);
-        if (found == pendingPackages.end()) {
-            failed = true;
-            return {};
-        }
-        // Recursive loading may reallocate pendingPackages, so retain an owning copy.
-        const PendingPackage pending = *found; // NOLINT(performance-unnecessary-copy-initialization)
         loadingPackages.insert(name);
-        BeginPhase(CompilePhase::LoadingDependency, name, pending.root);
-        auto loaded = SourceLoader::Load(pending.root);
+        BeginPhase(CompilePhase::LoadingDependency, importName, selected->Root());
+        auto loaded = SourceLoader::Load(selected->Root());
         const auto files = RememberSources(loaded.files);
         stats.dependencyFiles += files.size();
         if (EmitAll(loaded.diagnostics)) {
@@ -527,13 +412,12 @@ bool CompilerDriver::Impl::LoadDependencies() {
             parsed.push_back(std::move(result));
         }
         const auto modules = modulesOf(parsed);
+        for (const auto *module : modules)
+            sourceOwners.emplace(module->name, selected);
         std::vector<Diagnostic> foldDiagnostics;
         ResolveConditionalCompilation(modules, compileTimeContext, foldDiagnostics,
-                                      [&](const std::string_view imported) {
-                                          if (imported == name || imported == pending.manifest.package.name.Text()) {
-                                              return modules;
-                                          }
-                                          return self(std::string(imported), pending.manifest, pending.root);
+                                      [&](const std::string_view imported, const std::string_view source) {
+                                          return self(imported, *sourceOwners.at(std::string(source)));
                                       });
         failed = EmitAll(foldDiagnostics) || failed;
         loadingPackages.erase(name);
@@ -543,13 +427,12 @@ bool CompilerDriver::Impl::LoadDependencies() {
 
     const auto modules = modulesOf(parseResults);
     std::vector<Diagnostic> foldDiagnostics;
-    ResolveConditionalCompilation(modules, compileTimeContext, foldDiagnostics, [&](const std::string_view imported) {
-        if (imported == opts.manifest.package.name.Text()) {
-            return modules;
-        }
-        return loadPackage(std::string(imported), opts.manifest, root);
-    });
+    ResolveConditionalCompilation(modules, compileTimeContext, foldDiagnostics,
+                                  [&](const std::string_view imported, const std::string_view source) {
+                                      return loadPackage(imported, *sourceOwners.at(std::string(source)));
+                                  });
     failed = EmitAll(foldDiagnostics) || failed;
+    failed = EmitAll(graph.Diagnostics()) || failed;
     if (failed) {
         return false;
     }
@@ -593,8 +476,8 @@ bool CompilerDriver::Impl::Analyze() {
             depPackages[it->second].modules.push_back({loadedModuleNames[i], &depParseResults[i].module});
         }
     }
-    SemanticAnalyzer analyzer(std::move(userModules), std::move(depPackages), opts.manifest.package.name.Text(),
-                              compileTimeContext);
+    SemanticAnalyzer analyzer(std::move(userModules), std::move(depPackages), dependencyGraph->Root().id,
+                              compileTimeContext, dependencyGraph->Bindings());
     semanticModel = analyzer.Analyze();
     EmitAll(semanticModel->diagnostics);
     if (opts.dumpSema) {

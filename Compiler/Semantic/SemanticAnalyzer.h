@@ -2,14 +2,21 @@
 
 #include "Semantic/Model/SemanticModel.h"
 
+#include <map>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace Rux {
-/// A dependency package: its name and parsed source modules. Symbols from dep packages are isolated until explicitly
-/// imported.
+/// Import aliases indexed by declaring package identity, then alias. An absent owner supports standalone semantic
+/// callers whose dependency names already serve as identities; a present owner exposes only its declared bindings.
+using PackageImportBindings = std::map<std::string, std::map<std::string, std::string>>;
+[[nodiscard]] std::string ResolvePackageImport(const PackageImportBindings &bindings, const std::string &owner,
+                                               std::string_view alias);
+
+/// A dependency package: its resolved identity and parsed source modules. Symbols remain isolated until imported.
 struct DepPackage {
-    std::string name;
+    std::string name; ///< opaque package identity supplied by the dependency resolver
 
     struct ModuleEntry {
         std::string moduleName; ///< source identifier for diagnostics/bookkeeping
@@ -18,6 +25,10 @@ struct DepPackage {
 
     std::vector<ModuleEntry> modules;
 };
+
+/// Locate a declaration source's owner, including when a conditional evaluator follows an imported alias or constant.
+[[nodiscard]] const std::string &PackageOwningSource(const std::vector<DepPackage> &deps, const std::string &rootId,
+                                                     std::string_view source);
 
 /**
  * @brief Runs semantic analysis over a set of parsed modules.
@@ -31,7 +42,8 @@ struct DepPackage {
 class SemanticAnalyzer {
 public:
     explicit SemanticAnalyzer(std::vector<Module *> userModules, std::vector<DepPackage> inputDeps = {},
-                              std::string inputPackageName = {}, CompileTimeContext inputContext = {});
+                              std::string inputPackageName = {}, CompileTimeContext inputContext = {},
+                              PackageImportBindings inputImports = {});
 
     /// Overload for callers that know only the target system name, leaving the rest of the compile-time context at its
     /// defaults.
@@ -47,6 +59,7 @@ private:
     std::vector<DepPackage> deps;
     std::string packageName;
     CompileTimeContext compileTimeContext;
+    PackageImportBindings imports;
     std::vector<SemanticDiagnostic> diags;
     std::vector<SemanticSymbol> symbols;
 };

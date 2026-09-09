@@ -290,10 +290,11 @@ TEST_CASE("an import in a discarded conditional branch never loads a provider") 
     auto parsed = ParseIntrinsicSource("when false { import Missing::int8; } func Main() {} ");
     bool requested = false;
     std::vector<Diagnostic> diagnostics;
-    ResolveConditionalCompilation({&parsed.module}, CompileTimeContext{}, diagnostics, [&](std::string_view) {
-        requested = true;
-        return std::vector<Module *>{};
-    });
+    ResolveConditionalCompilation({&parsed.module}, CompileTimeContext{}, diagnostics,
+                                  [&](std::string_view, std::string_view) {
+                                      requested = true;
+                                      return std::vector<Module *>{};
+                                  });
     CHECK_FALSE(requested);
     CHECK(diagnostics.empty());
 }
@@ -312,8 +313,9 @@ extend uint {
         auto parsed = ParseIntrinsicSource("import Native::uint; const Width = uint::Bits; const Maximum = uint::Max;");
         CompileTimeContext context;
         context.target.pointer_size = bytes;
-        ConditionalEvaluator evaluator(context, {&parsed.module},
-                                       [&](std::string_view) { return std::vector<Module *>{&dependency.module}; });
+        ConditionalEvaluator evaluator(context, {&parsed.module}, [&](std::string_view, std::string_view) {
+            return std::vector<Module *>{&dependency.module};
+        });
         evaluator.SetImports(parsed.module);
         const auto width = evaluator.EvaluateConstant("Width");
         REQUIRE(width.value);

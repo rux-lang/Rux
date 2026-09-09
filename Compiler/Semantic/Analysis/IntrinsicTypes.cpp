@@ -140,7 +140,11 @@ TypeRef AnalysisContext::CheckAssociatedConstant(const ConstDecl &declaration) {
                 return result;
             };
             const auto ownerModules = packageModules(currentPackage);
-            ConditionalEvaluator evaluator(context, ownerModules, packageModules);
+            ConditionalEvaluator evaluator(
+                context, ownerModules, [&](const std::string_view alias, const std::string_view source) {
+                    return packageModules(
+                        ResolvePackageImport(imports, PackageOwningSource(deps, packageName, source), alias));
+                });
             evaluator.SetSourceContext(currentFile, {}, {});
             for (const Module *module : ownerModules) {
                 if (module->name == currentFile)

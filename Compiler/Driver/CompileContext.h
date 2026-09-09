@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Driver/CompilerDriver.h"
+#include "Driver/DependencyGraph.h"
 #include "Semantic/Model/SemanticModel.h"
 #include "SourceModel/SourceFile.h"
 #include "SourceModel/SourceText.h"
@@ -32,9 +33,6 @@ private:
     [[nodiscard]] std::optional<std::string_view> LookupSourceLine(std::string_view sourceName,
                                                                    std::size_t lineNumber) const;
 
-    /// The operating system of the build target, named exactly ("FreeBSD", not the "BSD" family). This is what
-    /// `#target.os` reports.
-    [[nodiscard]] std::string TargetSystemName() const;
     void InitializeCompileTimeContext();
 
     /// Pipeline phases. Each returns false when the pipeline cannot continue.
@@ -54,9 +52,10 @@ private:
     std::vector<InspectionOutput> inspectionOutputs;
     CompileTimeContext compileTimeContext;
 
+    std::optional<DependencyGraph> dependencyGraph;
     std::vector<ParseResult> parseResults;      // user modules
     std::vector<ParseResult> depParseResults;   // dependency modules
-    std::vector<std::string> loadedPackages;    // parallel: package name per dep entry
+    std::vector<std::string> loadedPackages;    // parallel: package identity per dep entry
     std::vector<std::string> loadedModuleNames; // parallel: source name per dep entry
     std::unordered_map<std::string, SourceText> loadedSourceTexts;
     std::optional<SemanticModel> semanticModel;

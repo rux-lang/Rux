@@ -30,6 +30,7 @@ struct AnalysisInputs {
     std::vector<SemanticDiagnostic> &diagnostics;
     std::vector<SemanticSymbol> &symbols;
     const CompileTimeContext &context;
+    const PackageImportBindings &imports;
 };
 
 class AnalysisContext final {
@@ -391,6 +392,7 @@ private:
     const std::string &packageName;
     std::vector<SemanticDiagnostic> &diags;
     const CompileTimeContext &context;
+    const PackageImportBindings &imports;
     std::unordered_map<const Expr *, TypeRef> &expressionTypes;
     std::unordered_map<const TypeExpr *, const Decl *> &intrinsicTypeBindings;
     std::unordered_map<const Expr *, const ConstDecl *> &associatedConstants;

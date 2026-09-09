@@ -141,7 +141,7 @@ int Cli::RunCheck(std::span<const std::string_view> args, const GlobalOptions &o
         return Finish(1);
     }
     auto manifest = std::move(rootResult.manifest);
-    std::map<std::string, std::filesystem::path> localPackageRoots;
+    std::vector<std::filesystem::path> localPackageRoots;
     bool localDependenciesOnly = false;
     auto CheckPackage = [&](const std::filesystem::path &packageManifestPath, Manifest packageManifest) {
         if (packageManifest.IsWorkspace() || packageManifest.package.name.Empty()) {
@@ -206,13 +206,7 @@ int Cli::RunCheck(std::span<const std::string_view> args, const GlobalOptions &o
                 jobs.push_back({memberManifestPath, label, std::nullopt});
                 continue;
             }
-            const auto [existing, inserted] =
-                localPackageRoots.emplace(memberManifest->package.name.Normalized(), memberManifestPath.parent_path());
-            if (!inserted && existing->second != memberManifestPath.parent_path()) {
-                EmitFatal("duplicate workspace package name '" + memberManifest->package.name.Text() + "'");
-                jobs.push_back({memberManifestPath, label, std::nullopt});
-                continue;
-            }
+            localPackageRoots.push_back(memberManifestPath.parent_path());
             if (IsPlatformPackageName(memberManifest->package.name.Text()) &&
                 !PlatformPackageMatchesTarget(memberManifest->package.name.Text(), *targetTriple)) {
                 continue;

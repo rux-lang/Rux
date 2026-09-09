@@ -104,14 +104,14 @@ int Cli::RunDoc(std::span<const std::string_view> args, const GlobalOptions &opt
         diagnostics.Verbose("Including private items");
     }
 
-    std::map<std::string, std::filesystem::path> localPackages;
+    std::vector<std::filesystem::path> localPackages;
     if (rootManifest->IsWorkspace()) {
         for (const auto &member : rootManifest->workspace.packages) {
             const auto memberPath = root / member / "Rux.toml";
             auto memberManifest = LoadManifest(memberPath);
             if (!memberManifest || memberManifest->IsWorkspace())
                 return DocumentationFailed();
-            localPackages.emplace(memberManifest->package.name.Normalized(), memberPath.parent_path());
+            localPackages.push_back(memberPath.parent_path());
         }
     }
 

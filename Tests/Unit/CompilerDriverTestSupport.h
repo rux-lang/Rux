@@ -195,6 +195,7 @@ func Main() -> int {
 
     void UseRegistryDeclaredTransitiveDependency() {
         Manifest transitive;
+        transitive.package.ns = *IdentitySegment::Parse("Rux");
         transitive.package.name = *IdentitySegment::Parse("Transitive");
         transitive.package.version = *SemanticVersion::Parse("0.1.0");
         transitive.package.type = ManifestPackageType::SourceLibrary;
@@ -229,7 +230,7 @@ pub module Api {
     }
 
     void ConfigureLocalWorkspace(CompileOptions &options) const {
-        options.localPackageRoots.emplace("transitive", transitiveRoot);
+        options.localPackageRoots.push_back(transitiveRoot);
         options.localDependenciesOnly = true;
     }
 

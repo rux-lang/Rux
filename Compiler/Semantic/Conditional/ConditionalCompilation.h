@@ -24,8 +24,8 @@
 #include <vector>
 
 namespace Rux {
-/// Resolves an imported package to its surviving source declarations. The caller owns these modules throughout folding.
-using ConditionalImportResolver = std::function<std::vector<Module *>(std::string_view)>;
+/// Resolves an import alias in its declaring source file to surviving modules, owned by the caller throughout folding.
+using ConditionalImportResolver = std::function<std::vector<Module *>(std::string_view alias, std::string_view source)>;
 
 struct CompileTimeEnumValue {
     std::string type;

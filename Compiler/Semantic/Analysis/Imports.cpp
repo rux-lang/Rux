@@ -85,14 +85,17 @@ std::string AnalysisContext::ImportScopeDisplayName(const std::string &pkgName, 
 AnalysisContext::ImportScope AnalysisContext::ResolveImportScope(const UseDecl &d, const std::string &pkgName,
                                                                  const std::string &modulePath) {
     const std::string logicalModulePath = LogicalModulePathForImport(d);
-    if (auto pkgIt = packageModuleScopes.find(pkgName); pkgIt != packageModuleScopes.end()) {
+    const std::string packageId = ResolvePackageImport(imports, currentPackage, pkgName);
+    if (auto pkgIt = packageModuleScopes.find(packageId); pkgIt != packageModuleScopes.end()) {
         if (auto modIt = pkgIt->second.find(modulePath); modIt != pkgIt->second.end()) {
-            return {&modIt->second->Table(), ImportScopeDisplayName(pkgName, modulePath), pkgName, modulePath};
+            return {&modIt->second->Table(), ImportScopeDisplayName(pkgName, modulePath), packageId, modulePath};
         }
     }
 
     std::vector<std::pair<std::string, Scope *>> matches;
     for (const auto &[candidatePackage, moduleScopes] : packageModuleScopes) {
+        if (imports.contains(currentPackage) && candidatePackage != currentPackage && candidatePackage != packageId)
+            continue;
         auto modIt = moduleScopes.find(logicalModulePath);
         if (modIt == moduleScopes.end()) {
             continue;
@@ -118,7 +121,7 @@ AnalysisContext::ImportScope AnalysisContext::ResolveImportScope(const UseDecl &
                 matches[0].first, logicalModulePath};
     }
 
-    if (!packageModuleScopes.contains(pkgName)) {
+    if (!packageModuleScopes.contains(packageId)) {
         EmitError(d.location, std::format("package or module '{}' is not defined", pkgName));
     }
     else {
@@ -192,7 +195,7 @@ void AnalysisContext::PromoteFromPackage(const UseDecl &d, const std::string &pk
         std::optional<std::string> help;
         // The item is not at this path, but if one of the package's modules
         // holds it, point at the fully-qualified import.
-        if (auto pkgIt = packageModuleScopes.find(pkgName); pkgIt != packageModuleScopes.end()) {
+        if (auto pkgIt = packageModuleScopes.find(scope.ownerPackage); pkgIt != packageModuleScopes.end()) {
             for (const auto &[candidateModule, candidateScope] : pkgIt->second) {
                 if (!candidateModule.empty() && candidateScope->Table().contains(name)) {
                     help = std::format("did you mean 'import {}::{}::{}'?", pkgName, candidateModule, name);
@@ -338,7 +341,7 @@ void AnalysisContext::CheckUseDecl(const UseDecl &d) {
         // Bind `packageModuleScopes[pkgName][moduleName]` as a module alias
         // usable through `::`. Returns true when the module exists.
         auto bindModuleAlias = [&](const std::string &moduleName) -> bool {
-            auto pkgIt = packageModuleScopes.find(pkgName);
+            auto pkgIt = packageModuleScopes.find(ResolvePackageImport(imports, currentPackage, pkgName));
             if (pkgIt == packageModuleScopes.end()) {
                 return false;
             }

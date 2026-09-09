@@ -6,13 +6,35 @@
 #include <utility>
 
 namespace Rux {
+std::string ResolvePackageImport(const PackageImportBindings &bindings, const std::string &owner,
+                                 const std::string_view alias) {
+    const auto package = bindings.find(owner);
+    if (package == bindings.end())
+        return std::string(alias);
+    const auto found = package->second.find(std::string(alias));
+    return found == package->second.end() ? std::string{} : found->second;
+}
+
+const std::string &PackageOwningSource(const std::vector<DepPackage> &deps, const std::string &rootId,
+                                       const std::string_view source) {
+    for (const auto &dependency : deps) {
+        for (const auto &entry : dependency.modules) {
+            if (entry.module->name == source)
+                return dependency.name;
+        }
+    }
+    return rootId;
+}
+
 // Sema public API
 SemanticAnalyzer::SemanticAnalyzer(std::vector<Module *> userModules, std::vector<DepPackage> inputDeps,
-                                   std::string inputPackageName, CompileTimeContext inputContext)
+                                   std::string inputPackageName, CompileTimeContext inputContext,
+                                   PackageImportBindings inputImports)
     : modules(std::move(userModules))
     , deps(std::move(inputDeps))
     , packageName(std::move(inputPackageName))
-    , compileTimeContext(std::move(inputContext)) {
+    , compileTimeContext(std::move(inputContext))
+    , imports(std::move(inputImports)) {
 }
 
 SemanticAnalyzer::SemanticAnalyzer(std::vector<Module *> userModules, std::vector<DepPackage> inputDeps,
@@ -34,7 +56,10 @@ SemanticModel SemanticAnalyzer::Analyze() {
     // Fold `when` first: the branches that were not taken are dropped here, so
     // nothing below ever sees — or type-checks — them. Each package resolves its
     // own conditionals against its own constants.
-    const auto importedModules = [this](const std::string_view name) {
+    const auto importedModules = [this](const std::string_view alias, const std::string_view source) {
+        const auto name = ResolvePackageImport(imports, PackageOwningSource(deps, packageName, source), alias);
+        if (name == packageName)
+            return modules;
         std::vector<Module *> result;
         for (auto &dependency : deps) {
             if (dependency.name == name) {
@@ -57,8 +82,8 @@ SemanticModel SemanticAnalyzer::Analyze() {
 
     std::vector<const Module *> constModules(modules.begin(), modules.end());
     SemanticFacts facts;
-    SemanticDetail::AnalysisContext analyzer({constModules, deps, packageName, diags, symbols, compileTimeContext},
-                                             facts);
+    SemanticDetail::AnalysisContext analyzer(
+        {constModules, deps, packageName, diags, symbols, compileTimeContext, imports}, facts);
     analyzer.Run();
     facts.effectiveVisibilities = analyzer.EffectiveVisibilities();
     std::vector<const Module *> orderedModules;

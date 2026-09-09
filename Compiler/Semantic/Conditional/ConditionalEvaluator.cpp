@@ -309,6 +309,7 @@ void ConditionalEvaluator::Impl::SetSourceContext(const std::string_view file, c
 }
 
 void ConditionalEvaluator::Impl::SetImports(const Module &module) {
+    currentFile = module.name;
     SetRuxImportsForModule(module);
 }
 

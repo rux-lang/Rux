@@ -42,7 +42,7 @@ when #config.Get("allocator") != "system" {
     const std::vector<Module *> modules = {&parsed.module};
     ParseResult provider;
     const DepPackage dependency = ConditionalCoreDependency(provider);
-    ConditionalEvaluator evaluator(context, modules, [&](std::string_view name) {
+    ConditionalEvaluator evaluator(context, modules, [&](std::string_view name, std::string_view) {
         return name == dependency.name ? std::vector<Module *>{&provider.module} : std::vector<Module *>{};
     });
     evaluator.SetSourceContext(parsed.module.name, "test", "");
@@ -92,7 +92,7 @@ when false && #target.HasFeature(.Imaginary) {
     const std::vector<Module *> modules = {&parsed.module};
     ParseResult provider;
     const DepPackage dependency = ConditionalCoreDependency(provider);
-    ConditionalEvaluator evaluator(context, modules, [&](std::string_view name) {
+    ConditionalEvaluator evaluator(context, modules, [&](std::string_view name, std::string_view) {
         return name == dependency.name ? std::vector<Module *>{&provider.module} : std::vector<Module *>{};
     });
     evaluator.SetSourceContext(parsed.module.name, "test", "");

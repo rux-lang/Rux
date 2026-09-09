@@ -130,7 +130,7 @@ Rux        My_Pkg        my-pkg        7zip
 
 Tools preserve spelling for display. Registry lookup and uniqueness lowercase ASCII letters and fold `_` to `-`, so `Rux/My_Pkg` and `rux/my-pkg` identify the same package. `Keywords` use the same grammar and must stay unique after normalization.
 
-A namespace-free package is local-only. `rux new` and `rux init` therefore retain their simple local workflow and accept an optional `--namespace <Namespace>` when a qualified identity is wanted.
+A namespace-free package is local-only. Its canonical manifest location identifies it during compilation, so separate local packages may share a name. `rux new` and `rux init` retain their simple local workflow and accept an optional `--namespace <Namespace>` when a qualified identity is wanted.
 
 ## Dependencies
 
@@ -148,11 +148,11 @@ A registry dependency requires `Namespace` and `Version`. A path dependency requ
 
 Either form may also declare a non-empty `TargetOS` allow-list. The dependency participates in builds and package resolution only when the selected target operating system appears in the list; omitting `TargetOS` makes it unconditional. The accepted values are `FreeBSD`, `Linux`, `macOS` and `Windows`. Values are exact and cannot repeat. A dependency used only on macOS therefore declares `TargetOS = ["macOS"]`.
 
-The import name is an identity segment, and two dependencies cannot produce the same import name after normalization. Path dependencies are valid for local builds but make a manifest unpublishable.
+The import name is an identity segment, and two dependencies cannot produce the same import name after normalization. Each name belongs to the manifest that declares it: different packages can use the same alias for different dependencies. Path dependencies are valid for local builds but make a manifest unpublishable.
 
 `rux add Namespace/Name@<requirement>` writes a registry dependency. Omitting the requirement writes `*`. `rux add Name --path <path>` writes a local path dependency.
 
-Workspace overrides match registry dependencies by normalized qualified identity. A namespace-free workspace member cannot override a qualified registry dependency.
+Workspace members and the root package's path dependencies override registry dependencies by normalized qualified identity, independently of source import order. The selected local manifest must satisfy the declared version requirement. A namespace-free package cannot override a qualified registry dependency. Compiling two different source locations for one qualified identity, or offering multiple local overrides for that identity, produces a diagnostic naming the conflicting manifests; an installed cache copy cannot silently replace the selected local source. Unused path dependencies are loaded only when imported, and target restrictions still apply.
 
 A path dependency of the package being built stands in the same way for a registry dependency of the same package name declared anywhere in its dependency graph, so a checkout does not also have to be installed for its dependents to find it.
 

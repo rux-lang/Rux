@@ -110,7 +110,7 @@ void ConditionalEvaluator::Impl::ImportDeclarations(const UseDecl &use) {
     if (!resolveImports || use.path.empty()) {
         return;
     }
-    const std::vector<Module *> imported = resolveImports(use.path.front());
+    const std::vector<Module *> imported = resolveImports(use.path.front(), currentFile);
     std::vector<std::string> modulePath(use.path.begin() + 1, use.path.end());
     std::vector<std::string> names = use.names;
     if (use.kind == UseDecl::Kind::Single && !modulePath.empty()) {

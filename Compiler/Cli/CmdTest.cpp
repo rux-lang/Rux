@@ -118,7 +118,7 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
 
     std::filesystem::path projectRoot;
     std::vector<TestRoot> testRoots;
-    std::map<std::string, std::filesystem::path> localPackageRoots;
+    std::vector<std::filesystem::path> localPackageRoots;
     if (manifestPath) {
         auto manifestResult = Manifest::Load(*manifestPath);
         if (!manifestResult.Ok()) {
@@ -154,13 +154,7 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
                     diagnostics.Error(std::format("workspace member '{}' is not a package", member));
                     return 1;
                 }
-                const std::string &memberName = memberResult.manifest->package.name.Text();
-                const auto [existing, inserted] =
-                    localPackageRoots.emplace(memberResult.manifest->package.name.Normalized(), memberDir);
-                if (!inserted && existing->second != memberDir) {
-                    diagnostics.Error(std::format("workspace package name '{}' is duplicated", memberName));
-                    return 1;
-                }
+                localPackageRoots.push_back(memberDir);
                 if (auto memberTests = memberDir / "Tests"; std::filesystem::exists(memberTests, ec)) {
                     testRoots.push_back({std::move(memberTests), std::filesystem::path(member).generic_string()});
                 }

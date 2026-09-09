@@ -95,7 +95,7 @@ std::string ReadFileText(const std::filesystem::path &path) {
     std::vector<Module *> modules = {&parsed.module};
     ParseResult provider;
     const DepPackage dependency = Testing::ConditionalCoreDependency(provider);
-    ResolveConditionalCompilation(modules, context, result.diagnostics, [&](std::string_view name) {
+    ResolveConditionalCompilation(modules, context, result.diagnostics, [&](std::string_view name, std::string_view) {
         return name == dependency.name ? std::vector<Module *>{&provider.module} : std::vector<Module *>{};
     });
 

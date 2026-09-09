@@ -417,6 +417,7 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 
 ### Fixed
 
+- **Dependency graph identity** — builds resolve packages by normalized namespace/name, identify namespace-free local packages by canonical manifest location, and keep aliases within their declaring manifest. Workspace members and root path dependencies select matching local sources before transitive registry imports, including with empty or stale caches. Conflicting source locations and incompatible local versions are reported at the responsible manifest.
 - **Windows panic and assertion output** — x86-64 failure paths now supply a fresh null overlapped argument for every `WriteFile` call. A callee may reuse its incoming stack argument slot; retaining that slot across calls could stop output after the prefix. Binary and textual emission follow the same rule, with regression coverage for overwritten argument slots, abrupt child exits, and complete reports under concurrent process activity.
 
 - **Contextual conditional values** — conditional return values, call arguments, and aggregate elements now materialize both arms at the required width before merging. Unsuffixed values above one machine word and negative wide literals retain their complete value. Executable regressions also cover generic argument inference through references and struct literals nested inside conditions; verified historical compiler defects are removed from the open-defect document.

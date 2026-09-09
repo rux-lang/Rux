@@ -98,6 +98,7 @@ set(RUX_TEST_SOURCES
     LirReachabilityTests.cpp
     OsTests.cpp
     PackageCacheTests.cpp
+    PackageDependencyGraphTests.cpp
     PackageDocumentationStyleTests.cpp
     PackageExampleTests.cpp
     PackageIdentityTests.cpp
