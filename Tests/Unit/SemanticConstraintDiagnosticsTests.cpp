@@ -552,3 +552,33 @@ pub func Total<T: Measured>(value: T) -> int { return value.Measure(); }
 
     CHECK_EQ(ReturnedCalleeName(RequireFunctionAnywhere(package, "Total_Square")), "Square::Measure");
 }
+
+TEST_CASE("interface arguments do not require importing the nested interface name") {
+    const HirPackage package = LowerAgainstDependency(R"(
+        import Shapes::{ Square, Caller, Read };
+        func Invoke(caller: Caller, square: &Square) -> int { return caller.Read(square); }
+        func Direct(square: &Square) -> int { return Read(square); }
+    )",
+                                                      "Shapes", R"(
+        pub interface Measured { func Measure() -> int; }
+        pub struct Square { pub size: int; }
+        extend Square : Measured {
+            func Measure(self: &Square) -> int { return self.size * self.size; }
+        }
+        pub interface Caller { func Read(value: &Measured) -> int; }
+        pub func Read(value: &Measured) -> int { return value.Measure(); }
+    )");
+    const HirFunc &invoke = RequireFunctionAnywhere(package, "Invoke");
+    REQUIRE(invoke.body.has_value());
+    const auto *returned = dynamic_cast<const HirReturnStmt *>(invoke.body->stmts.front().get());
+    REQUIRE(returned != nullptr);
+    REQUIRE(returned->value.has_value());
+    const auto *call = dynamic_cast<const HirInterfaceCallExpr *>(returned->value->get());
+    REQUIRE(call != nullptr);
+    REQUIRE_EQ(call->args.size(), 1);
+    const auto *view = dynamic_cast<const HirCoerceToInterfaceExpr *>(call->args.front().get());
+    REQUIRE(view != nullptr);
+    CHECK(view->borrowed);
+    CHECK_FALSE(view->vtableLabel.empty());
+    CHECK_EQ(ReturnedCalleeName(RequireFunctionAnywhere(package, "Direct")), "Read");
+}

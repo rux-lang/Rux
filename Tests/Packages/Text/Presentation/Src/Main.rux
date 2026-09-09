@@ -19,11 +19,8 @@ import Text::{ BufferWriter, Debug, Display, FormatError, FormatSpec, ParseForma
 func Shown(view: StringView, spec: FormatSpec, expected: char8[..]) -> bool {
     var storage: char8[128];
     var writer = BufferWriter((@storage[0])[..128]);
-    // The writer is bound to its interface type before the call. Passing the concrete BufferWriter straight into an
-    // interface method faults; see Docs/CompilerDefects.md.
-    let sink: &var TextWriter = writer;
     let value: Display = view;
-    if value.WriteDisplay(sink, spec).IsError() { return false; }
+    if value.WriteDisplay(writer, spec).IsError() { return false; }
     return Same(writer.Written(), expected);
 }
 
@@ -31,9 +28,8 @@ func Shown(view: StringView, spec: FormatSpec, expected: char8[..]) -> bool {
 func Inspected(view: StringView, spec: FormatSpec, expected: char8[..]) -> bool {
     var storage: char8[128];
     var writer = BufferWriter((@storage[0])[..128]);
-    let sink: &var TextWriter = writer;
     let value: Debug = view;
-    if value.WriteDebug(sink, spec).IsError() { return false; }
+    if value.WriteDebug(writer, spec).IsError() { return false; }
     return Same(writer.Written(), expected);
 }
 

@@ -1,5 +1,5 @@
 import Core::{ Assert, Option };
-import Text::{ BufferWriter, Display, FormatSpec, ParseFormatSpec, TextWriter };
+import Text::{ BufferWriter, Display, FormatSpec, ParseFormatSpec };
 import Time::{ Date, DateTime, OffsetDateTime, TimeOfDay, UtcOffset };
 
 // What a calendar value looks like, and the one thing it refuses to do.
@@ -25,21 +25,18 @@ func Spec(text: char8[..]) -> FormatSpec {
     return spec;
 }
 
-// Renders through Display and compares. The writer is bound to its interface type before the call; see
-// Docs/CompilerDefects.md for why passing the concrete one faults.
+// Renders through Display and compares.
 func Shown(value: Display, spec: FormatSpec, expected: char8[..]) -> bool {
     var storage: char8[64];
     var writer = BufferWriter((@storage[0])[..64]);
-    let sink: &var TextWriter = writer;
-    if value.WriteDisplay(sink, spec).IsError() { return false; }
+    if value.WriteDisplay(writer, spec).IsError() { return false; }
     return Same(writer.Written(), expected);
 }
 
 func Refused(value: Display, spec: FormatSpec) -> bool {
     var storage: char8[64];
     var writer = BufferWriter((@storage[0])[..64]);
-    let sink: &var TextWriter = writer;
-    return value.WriteDisplay(sink, spec).IsError();
+    return value.WriteDisplay(writer, spec).IsError();
 }
 
 func DateOf(year: int32, month: uint8, day: uint8) -> Date {

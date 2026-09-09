@@ -163,9 +163,9 @@ const FuncDecl *AnalysisContext::LookupFunctionOverload(const Symbol &sym, const
     if (sym.kind != Symbol::Kind::Func || sym.funcOverloads.empty()) {
         return nullptr;
     }
-    const auto borrowsAsInterface = [&](const TypeRef &argument, const TypeRef &parameter) {
+    const auto convertsToInterface = [&](const TypeRef &argument, const TypeRef &parameter) {
         if (parameter.kind != TypeRef::Kind::Reference || parameter.inner.empty()) {
-            return false;
+            return TypeImplementsInterface(argument, parameter);
         }
         TypeRef source =
             argument.kind == TypeRef::Kind::Reference && !argument.inner.empty() ? argument.inner.front() : argument;
@@ -211,7 +211,7 @@ const FuncDecl *AnalysisContext::LookupFunctionOverload(const Symbol &sym, const
             }
             if (!argTypes[i].IsAssignableTo(funcType.inner[i]) &&
                 !argTypes[i].CanImplicitlyBorrowTo(funcType.inner[i]) &&
-                !borrowsAsInterface(argTypes[i], funcType.inner[i]) &&
+                !convertsToInterface(argTypes[i], funcType.inner[i]) &&
                 !(argTypes[i].IsInteger() && funcType.inner[i].IsInteger())) {
                 return nullptr;
             }
@@ -271,7 +271,7 @@ const FuncDecl *AnalysisContext::LookupFunctionOverload(const Symbol &sym, const
                     const bool literalToInteger = argTypes[i].kind == TypeRef::Kind::Int && paramType.IsInteger();
                     const bool assignable = argTypes[i].IsAssignableTo(paramType) ||
                                             argTypes[i].CanImplicitlyBorrowTo(paramType) ||
-                                            borrowsAsInterface(argTypes[i], paramType) || literalToInteger;
+                                            convertsToInterface(argTypes[i], paramType) || literalToInteger;
                     if (exactOnly ? !(argTypes[i] == paramType) : !assignable) {
                         match = false;
                         break;

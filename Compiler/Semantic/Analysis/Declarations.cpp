@@ -259,12 +259,28 @@ void AnalysisContext::CheckInterfaceDecl(const InterfaceDecl &d) {
             ValidateStoredType(ResolveType(**method->returnType), method->returnType->get()->location,
                                "interface method return type");
         }
+        bool seenDefault = false;
         for (const auto &p : method->params) {
-            if (!p.isVariadic) {
-                const TypeRef parameterType = ResolveType(*p.type);
-                if (parameterType.kind != TypeRef::Kind::Reference) {
-                    ValidateStoredType(parameterType, p.location, "interface method parameter");
+            const TypeRef parameterType = ResolveType(*p.type);
+            if (parameterType.kind != TypeRef::Kind::Reference) {
+                ValidateStoredType(parameterType, p.location, "interface method parameter");
+            }
+            if (p.defaultValue) {
+                seenDefault = true;
+                const TypeRef defaultType = CheckExpr(**p.defaultValue);
+                if (!defaultType.IsUnknown() && !parameterType.IsUnknown() &&
+                    !CanAssignExprTo(**p.defaultValue, defaultType, parameterType)) {
+                    EmitError(p.location, AssignmentErrorMessage(
+                                              **p.defaultValue, parameterType,
+                                              std::format("default value type '{}' does not match parameter type '{}'",
+                                                          defaultType.ToString(), parameterType.ToString())));
                 }
+            }
+            else if (seenDefault && !p.isVariadic) {
+                EmitError(
+                    p.location,
+                    std::format("parameter '{}' without a default value cannot follow a parameter with a default value",
+                                p.name));
             }
         }
     }

@@ -562,17 +562,19 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
             }
             std::vector<TypeRef> paramTypes = ResolveInterfaceMethodParamTypes(*method, receiverType);
             const bool isVariadic = !method->params.empty() && method->params.back().isVariadic;
+            const auto parameters = VisibleParameters(*method, true);
+            const std::size_t requiredCount = std::ranges::count_if(
+                parameters, [](const Param *parameter) { return !parameter->isVariadic && !parameter->defaultValue; });
             const bool arityOk =
-                isVariadic ? argTypes.size() >= paramTypes.size() : argTypes.size() == paramTypes.size();
+                argTypes.size() >= requiredCount && (isVariadic || argTypes.size() <= paramTypes.size());
             bool callAccepted = arityOk;
 
             if (!arityOk) {
-                emitArityError(field->field, paramTypes.size(), paramTypes.size(), isVariadic, argTypes.size(), method,
+                emitArityError(field->field, requiredCount, paramTypes.size(), isVariadic, argTypes.size(), method,
                                true);
             }
             else {
-                const auto parameters = VisibleParameters(*method, true);
-                for (std::size_t i = 0; i < paramTypes.size(); ++i) {
+                for (std::size_t i = 0; i < std::min(argTypes.size(), paramTypes.size()); ++i) {
                     const TypeRef &argType = argTypes[i];
                     const TypeRef &paramType = paramTypes[i];
                     if (!canPassArgument(i, argType, paramType)) {

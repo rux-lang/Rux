@@ -88,24 +88,21 @@ func Spec(text: char8[..]) -> FormatSpec {
 func ShownOption(value: &Option<StringView>, spec: FormatSpec, expected: char8[..]) -> bool {
     var storage: char8[128];
     var writer = BufferWriter((@storage[0])[..128]);
-    let sink: &var TextWriter = writer;
-    if WriteOptionDebug<StringView>(sink, value, spec).IsError() { return false; }
+    if WriteOptionDebug<StringView>(writer, value, spec).IsError() { return false; }
     return Same(writer.Written(), expected);
 }
 
 func ShownResult(value: &Result<StringView, StringView>, spec: FormatSpec, expected: char8[..]) -> bool {
     var storage: char8[128];
     var writer = BufferWriter((@storage[0])[..128]);
-    let sink: &var TextWriter = writer;
-    if WriteResultDebug<StringView, StringView>(sink, value, spec).IsError() { return false; }
+    if WriteResultDebug<StringView, StringView>(writer, value, spec).IsError() { return false; }
     return Same(writer.Written(), expected);
 }
 
 func ShownSlice(items: StringView[..], spec: FormatSpec, expected: char8[..]) -> bool {
     var storage: char8[128];
     var writer = BufferWriter((@storage[0])[..128]);
-    let sink: &var TextWriter = writer;
-    if WriteSliceDebug<StringView>(sink, items, spec).IsError() { return false; }
+    if WriteSliceDebug<StringView>(writer, items, spec).IsError() { return false; }
     return Same(writer.Written(), expected);
 }
 
@@ -157,10 +154,9 @@ func Main() -> int {
     var held = Option::Some<Tracked>(Tracked { counter: @destroyed, tag: 7u });
     var storage: char8[128];
     var writer = BufferWriter((@storage[0])[..128]);
-    let sink: &var TextWriter = writer;
-    Assert(WriteOptionDebug<Tracked>(sink, held, plain).IsSuccess(), "a move-only payload is shown");
+    Assert(WriteOptionDebug<Tracked>(writer, held, plain).IsSuccess(), "a move-only payload is shown");
     Assert(destroyed == 0i32, "and nothing was destroyed to show it");
-    Assert(WriteOptionDebug<Tracked>(sink, held, plain).IsSuccess(), "so it can be shown again");
+    Assert(WriteOptionDebug<Tracked>(writer, held, plain).IsSuccess(), "so it can be shown again");
     Assert(destroyed == 0i32, "still destroying nothing");
     Assert(held.IsSome(), "and the option still holds its value");
     Assert(Same(writer.Written(), "Some(T(7))Some(T(7))"), "twice, identically");

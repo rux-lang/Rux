@@ -629,12 +629,10 @@ HirExprPtr AstToHirContext::LowerExprAs(const Expr &expression, const TypeRef &t
 
     HirExprPtr lowered = LowerExpr(expression);
     if (targetType.kind == TypeRef::Kind::Reference) {
-        if (lowered->type.kind == TypeRef::Kind::Reference) {
-            lowered->type = targetType;
-            return lowered;
-        }
         const TypeRef &referent = targetType.inner.front();
-        TypeRef expressionValueType = lowered->type;
+        TypeRef expressionValueType = lowered->type.kind == TypeRef::Kind::Reference && !lowered->type.inner.empty()
+                                        ? lowered->type.inner.front()
+                                        : lowered->type;
         TypeRef referentValueType = referent;
         expressionValueType.isMut = false;
         referentValueType.isMut = false;
@@ -662,6 +660,12 @@ HirExprPtr AstToHirContext::LowerExprAs(const Expr &expression, const TypeRef &t
                 coercion->value = std::move(lowered);
                 return coercion;
             }
+        }
+        // A concrete reference still needs interface coercion above. An already compatible reference keeps its
+        // existing address and only weakens the accepted static borrow type.
+        if (lowered->type.kind == TypeRef::Kind::Reference) {
+            lowered->type = targetType;
+            return lowered;
         }
         auto borrow = std::make_unique<HirUnaryExpr>();
         borrow->location = expression.location;

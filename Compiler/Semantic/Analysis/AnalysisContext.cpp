@@ -48,12 +48,20 @@ bool AnalysisContext::TypeImplementsInterface(const TypeRef &expressionType, con
     if (targetType.kind != TypeRef::Kind::Named) {
         return false;
     }
-    Symbol *symbol = currentScope->Lookup(targetType.name);
-    if (!symbol || symbol->kind != Symbol::Kind::Interface) {
+    // The target is already resolved in its declaration's scope. A caller need not import interfaces that only
+    // occur in another interface's signature, just as it need not import a generic declaration's bounds.
+    const auto target = interfaceDecls.find(targetType.name);
+    if (target == interfaceDecls.end()) {
         return false;
     }
-    if (symbol->interfaceMethods.empty()) {
+    if (target->second->methods.empty()) {
         return true;
+    }
+    if (expressionType.kind == TypeRef::Kind::TypeParam) {
+        const auto bounds = currentTypeParamBounds.find(expressionType.name);
+        return bounds != currentTypeParamBounds.end() &&
+               std::ranges::any_of(bounds->second,
+                                   [&](const ResolvedTypeBound &bound) { return bound.interface == target->second; });
     }
     const auto implements = [&](const TypeRef &type) {
         const auto implementation = typeImplementsInterfaces.find(type.ToString());

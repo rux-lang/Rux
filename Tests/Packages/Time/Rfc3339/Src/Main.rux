@@ -1,5 +1,5 @@
 import Core::{ Assert, Option, Result };
-import Text::{ BufferWriter, Display, FormatSpec, TextWriter };
+import Text::{ BufferWriter, Display, FormatSpec };
 import Time::{ Date, DateTime, OffsetDateTime, ParseDate, ParseDateTime, ParseRfc3339, ParseTimeOfDay,
                TimeOfDay, TimeParseError, UtcOffset };
 
@@ -63,9 +63,8 @@ func Same(actual: char8[..], expected: char8[..]) -> bool {
 func Rendered(moment: OffsetDateTime, expected: char8[..]) -> bool {
     var storage: char8[64];
     var writer = BufferWriter((@storage[0])[..64]);
-    let sink: &var TextWriter = writer;
     let shown: Display = moment;
-    if shown.WriteDisplay(sink, FormatSpec::Plain()).IsError() { return false; }
+    if shown.WriteDisplay(writer, FormatSpec::Plain()).IsError() { return false; }
     return Same(writer.Written(), expected);
 }
 

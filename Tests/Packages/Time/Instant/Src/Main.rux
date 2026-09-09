@@ -1,5 +1,5 @@
 import Core::Assert;
-import Text::{ BufferWriter, Debug, FormatSpec, ParseFormatSpec, TextWriter };
+import Text::{ BufferWriter, Debug, FormatSpec, ParseFormatSpec };
 import Time::{ Duration, Instant, SleepFor, TimeError };
 
 // A monotonic clock's whole contract is an inequality: a later reading is never earlier. So the test is bounds,
@@ -15,14 +15,12 @@ import Time::{ Duration, Instant, SleepFor, TimeError };
 
 // The tick count `Debug` shows, when the text has exactly the shape it promises: `Instant(nanoseconds: N)` with
 // nothing but digits between the two. Answers false for any other text, so a check cannot pass on a rendering that
-// merely contains a number. The interface binding is deliberate: passing a concrete value as an interface argument
-// of an interface method call is a live compiler defect, so the value is bound to its interface type first.
+// merely contains a number.
 func TicksShown(reading: Instant, ticks: *var uint64) -> bool {
     var storage: char8[64];
     var writer = BufferWriter((@storage[0])[..64]);
-    let sink: &var TextWriter = writer;
     let shown: Debug = reading;
-    if shown.WriteDebug(sink, FormatSpec::Plain()).IsError() { return false; }
+    if shown.WriteDebug(writer, FormatSpec::Plain()).IsError() { return false; }
     let text = writer.Written();
     let opening = "Instant(nanoseconds: ";
     if text.length <= opening.length + 1 { return false; }
@@ -49,9 +47,8 @@ func RefusesSpec(reading: Instant, text: char8[..]) -> bool {
     Assert(ParseFormatSpec(text).TryIntoValue(@spec), "the spec parses");
     var storage: char8[64];
     var writer = BufferWriter((@storage[0])[..64]);
-    let sink: &var TextWriter = writer;
     let shown: Debug = reading;
-    return shown.WriteDebug(sink, spec).IsError();
+    return shown.WriteDebug(writer, spec).IsError();
 }
 
 func Main() -> int {

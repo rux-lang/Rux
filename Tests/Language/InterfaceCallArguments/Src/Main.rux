@@ -1,0 +1,153 @@
+import Core::Assert;
+
+interface Writer {
+    func Put(value: uint) -> uint;
+}
+
+struct Buffer {
+    total: *var uint;
+}
+
+extend Buffer : Writer {
+    func Put(self: &var Buffer, value: uint) -> uint {
+        *self.total += value;
+        return *self.total;
+    }
+}
+
+interface Reader {
+    func Get() -> uint;
+}
+
+extend Buffer : Reader {
+    func Get(self: &Buffer) -> uint { return *self.total; }
+}
+
+struct Triple {
+    first: uint;
+    second: uint;
+    third: uint;
+}
+
+interface Render {
+    func Write(writer: &var Writer, marker: uint) -> uint;
+    func Read(reader: &Reader, marker: uint) -> uint;
+    func Mixed(first: uint, writer: &var Writer, value: Triple, reader: &Reader,
+               second: &var Writer, last: uint) -> uint;
+    func Defaulted(writer: &var Writer, marker: uint = 7u) -> uint;
+    func Sum(seed: uint, readers: Reader...) -> uint;
+}
+
+struct Frame {
+    value: uint;
+}
+
+extend Frame : Render {
+    func Write(self: &Frame, writer: &var Writer, marker: uint) -> uint {
+        return writer.Put(self.value) + marker;
+    }
+
+    func Read(self: &Frame, reader: &Reader, marker: uint) -> uint {
+        return reader.Get() + self.value + marker;
+    }
+
+    func Mixed(self: &Frame, first: uint, writer: &var Writer, value: Triple, reader: &Reader,
+               second: &var Writer, last: uint) -> uint {
+        let left = writer.Put(first + value.first);
+        let right = second.Put(value.second + last);
+        return left + right + reader.Get() + value.third + self.value;
+    }
+
+    func Defaulted(self: &Frame, writer: &var Writer, marker: uint = 7u) -> uint {
+        return writer.Put(self.value) + marker;
+    }
+
+    func Sum(self: &Frame, seed: uint, readers: Reader...) -> uint {
+        var total = self.value + seed;
+        var index = 0u;
+        while index < readers.length {
+            total += readers[index].Get();
+            index += 1u;
+        }
+        return total;
+    }
+}
+
+func BorrowedWriter(frame: Render) {
+    var total = 0u;
+    var buffer = Buffer { total: @total };
+    let borrowed: &var Buffer = buffer;
+    Assert(frame.Write(borrowed, 9u) == 40u && total == 31u,
+           "a borrowed concrete writer is materialized as the required interface view");
+}
+
+func InterfaceArguments(frame: Render) {
+    var total = 43u;
+    var buffer = Buffer { total: @total };
+    let immutable: &Buffer = buffer;
+    Assert(frame.Read(immutable, 2u) == 76u, "immutable concrete borrows acquire a reader vtable");
+    let view: &Reader = buffer;
+    Assert(frame.Read(view, 3u) == 77u, "an existing interface borrow keeps its data and vtable");
+    let mutable: &var Buffer = buffer;
+    Assert(frame.Read(mutable, 4u) == 78u, "a mutable concrete borrow can provide an immutable interface view");
+    let bound: &var Writer = buffer;
+    Assert(frame.Write(bound, 5u) == 79u && total == 74u, "previously bound mutable interfaces retain their representation");
+    var firstTotal = 0u;
+    var secondTotal = 0u;
+    var first = Buffer { total: @firstTotal };
+    var second = Buffer { total: @secondTotal };
+    let triple = Triple { first: 3u, second: 5u, third: 11u };
+    Assert(frame.Mixed(2u, first, triple, buffer, second, 7u) == 133u,
+           "interface pairs retain their positions beside scalar and aggregate arguments");
+    Assert(firstTotal == 5u && secondTotal == 12u && total == 74u, "each mutable interface writes its own concrete storage");
+    Assert(frame.Defaulted(first) == 43u && firstTotal == 36u, "default arguments use the same receiver offset");
+    Assert(frame.Defaulted(first, 9u) == 76u && firstTotal == 67u, "explicit arguments replace the default at the right slot");
+    Assert(frame.Sum(1u, first, second, buffer) == 185u, "multiple variadic concrete arguments each acquire an interface pair");
+    Assert(frame.Sum(2u) == 33u, "an empty variadic interface list retains the fixed argument");
+}
+
+func Take(value: Reader) -> uint { return value.Get(); }
+func Take(value: bool) -> uint { return value ? 1u : 0u; }
+func Borrow(value: &Reader) -> uint { return value.Get(); }
+func TakeMany(seed: uint, values: Reader...) -> uint {
+    var total = seed;
+    var index = 0u;
+    while index < values.length {
+        total += values[index].Get();
+        index += 1u;
+    }
+    return total;
+}
+
+func Bound<T: Reader>(value: T) -> uint { return Take(value); }
+func BoundBorrow<T: Reader>(value: &T) -> uint { return Borrow(value); }
+func BoundMany<T: Reader>(value: T) -> uint { return TakeMany(1u, value, value); }
+func BoundNested<T: Reader>(value: T) -> uint { return Bound<T>(value); }
+
+// An explicit primitive conformance is available to interface bounds as well as direct coercion.
+extend uint64 : Reader {
+    func Get(self: *uint64) -> uint { return *self as uint; }
+}
+
+func GenericArguments() {
+    var total = 19u;
+    let buffer = Buffer { total: @total };
+    Assert(Bound<Buffer>(buffer) == 19u, "a bound satisfies an ordinary overloaded interface parameter");
+    Assert(BoundBorrow<Buffer>(buffer) == 19u, "a bound satisfies a borrowed interface parameter");
+    Assert(BoundMany<Buffer>(buffer) == 39u, "a bound satisfies every variadic interface element");
+    Assert(BoundNested<Buffer>(buffer) == 19u, "forwarded bounds retain their declaration context");
+    Assert(Bound<uint64>(71u64) == 71u, "an explicitly conforming primitive satisfies the same bound");
+    Assert(BoundMany<uint64>(83u64) == 167u, "primitive bounds support variadic interface conversion");
+}
+
+func Main() -> int {
+    var total = 0u;
+    var buffer = Buffer { total: @total };
+    let frame: Render = Frame { value: 31u };
+    Assert(frame.Write(buffer, 5u) == 36u && total == 31u,
+           "an interface method coerces its concrete writer at the correct argument position");
+    BorrowedWriter(frame);
+    InterfaceArguments(frame);
+    GenericArguments();
+    return 0;
+}

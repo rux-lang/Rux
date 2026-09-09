@@ -133,7 +133,10 @@ std::vector<HirExprPtr> AstToHirContext::LowerBoundArguments(const CallExpr &cal
         }
     }
 
-    const std::size_t typeOffset = hasReceiver ? 1 : 0;
+    // Interface requirements usually omit self, whereas concrete method signatures declare it explicitly.
+    // Only a receiver present in the signature consumes a parameter-type slot.
+    const std::size_t typeOffset =
+        hasReceiver && !declaration.params.empty() && declaration.params.front().IsReceiver() ? 1 : 0;
     const std::size_t fixedCount = binding.variadicBoundary.value_or(parameters.size());
     std::vector<HirExprPtr> arguments;
     arguments.reserve(std::max(call.args.size(), fixedCount) + (binding.variadicBoundary ? 1 : 0));
@@ -319,7 +322,7 @@ HirExprPtr AstToHirContext::LowerBoundInterfaceCall(const CallExpr &call, const 
     lowered->methodIdx = static_cast<int>(std::distance(interface->second->methods.begin(), methodIt));
     lowered->type = functionType.inner.back();
     lowered->fatPtrExpr = LowerExpr(*field->object);
-    // The fat pointer supplies the explicit `self` slot; only source-level arguments belong in the ordinary list.
+    // The fat pointer supplies self; the ordinary list contains only source-level arguments.
     lowered->args = LowerBoundArguments(call, method, binding, functionType, true);
     return lowered;
 }

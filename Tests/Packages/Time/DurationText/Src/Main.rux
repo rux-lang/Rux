@@ -1,5 +1,5 @@
 import Core::{ Assert, Option };
-import Text::{ BufferWriter, Display, FormatSpec, ParseFormatSpec, TextWriter };
+import Text::{ BufferWriter, Display, FormatSpec, ParseFormatSpec };
 import Time::{ Duration, ParseDuration, TimeParseError };
 
 // A span as text, and back.
@@ -32,18 +32,16 @@ func Spec(text: char8[..]) -> FormatSpec {
 func Shown(value: Duration, spec: FormatSpec, expected: char8[..]) -> bool {
     var storage: char8[64];
     var writer = BufferWriter((@storage[0])[..64]);
-    let sink: &var TextWriter = writer;
     let shown: Display = value;
-    if shown.WriteDisplay(sink, spec).IsError() { return false; }
+    if shown.WriteDisplay(writer, spec).IsError() { return false; }
     return Same(writer.Written(), expected);
 }
 
 func Refused(value: Duration, spec: FormatSpec) -> bool {
     var storage: char8[64];
     var writer = BufferWriter((@storage[0])[..64]);
-    let sink: &var TextWriter = writer;
     let shown: Display = value;
-    return shown.WriteDisplay(sink, spec).IsError();
+    return shown.WriteDisplay(writer, spec).IsError();
 }
 
 // A span built from whole seconds and a nanosecond fraction added on, which is how a caller makes a fractional one.

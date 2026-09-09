@@ -22,6 +22,58 @@
 using namespace Rux;
 using namespace Rux::Testing;
 
+TEST_CASE("interface method arguments retain coercions around defaults and variadics") {
+    Lexer lexer(R"(
+        interface Reader { func Read() -> int; }
+        struct Value { number: int; }
+        extend Value : Reader { func Read(self: &Value) -> int { return self.number; } }
+        interface Caller {
+            func Apply(value: &Reader, count: uint = 7u) -> int;
+            func Sum(seed: int, values: Reader...) -> int;
+        }
+        func Invoke(caller: Caller, value: &Value) -> int { return caller.Apply(value); }
+        func Spread(caller: Caller, value: Value) -> int { return caller.Sum(3, value, value); }
+    )",
+                "interface-arguments.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+    Parser parser(std::move(lexed.tokens), "interface-arguments.rux");
+    auto parsed = parser.Parse();
+    REQUIRE_FALSE(parsed.HasErrors());
+    SemanticAnalyzer analyzer({&parsed.module}, {}, "test", CompileTimeContext{});
+    const SemanticModel model = analyzer.Analyze();
+    for (const auto &diagnostic : model.diagnostics) {
+        INFO(diagnostic.message);
+        CHECK_NE(diagnostic.severity, Diagnostic::Severity::Error);
+    }
+    REQUIRE_FALSE(model.HasErrors());
+    HirPackage hir = AstToHirLowering(model).Generate();
+    REQUIRE_EQ(hir.modules.size(), 1);
+    const auto invoke =
+        std::ranges::find_if(hir.modules[0].funcs, [](const HirFunc &function) { return function.name == "Invoke"; });
+    REQUIRE(invoke != hir.modules[0].funcs.end());
+    REQUIRE(invoke->body.has_value());
+    const auto *returned = dynamic_cast<const HirReturnStmt *>(invoke->body->stmts.front().get());
+    REQUIRE(returned != nullptr);
+    REQUIRE(returned->value.has_value());
+    const auto *call = dynamic_cast<const HirInterfaceCallExpr *>(returned->value->get());
+    REQUIRE(call != nullptr);
+    REQUIRE_EQ(call->args.size(), 2);
+    const auto *view = dynamic_cast<const HirCoerceToInterfaceExpr *>(call->args[0].get());
+    REQUIRE(view != nullptr);
+    CHECK(view->borrowed);
+    CHECK_FALSE(view->vtableLabel.empty());
+    CHECK_EQ(view->type, TypeRef::MakeReference(TypeRef::MakeNamed("Reader")));
+    const auto *argument = dynamic_cast<const HirLiteralExpr *>(call->args[1].get());
+    REQUIRE(argument != nullptr);
+    CHECK_EQ(argument->type, TypeRef::MakeUInt());
+
+    HirToLirLowering lowering(std::move(hir), CompileTimeContext{}.target);
+    const LirPackage lir = lowering.Generate();
+    REQUIRE(lowering.Diagnostics().empty());
+    CHECK_FALSE(lir.modules.empty());
+}
+
 namespace {
 std::vector<SemanticDiagnostic> AnalyzeInterfaceReferences(const std::string &source) {
     Lexer lexer(source, "interface-references.rux");
@@ -40,6 +92,75 @@ bool HasErrorContaining(const std::vector<SemanticDiagnostic> &diagnostics, cons
     });
 }
 } // namespace
+
+TEST_CASE("interface argument conversion preserves exclusive borrow restrictions") {
+    const auto diagnostics = AnalyzeInterfaceReferences(R"(
+        interface Reader { func Read() -> int; }
+        struct Value { number: int; }
+        extend Value : Reader { func Read(self: &Value) -> int { return self.number; } }
+        interface Caller { func Apply(value: &var Reader); }
+        func Test(caller: Caller) {
+            let value = Value { number: 2 };
+            caller.Apply(value);
+            var mutable = Value { number: 3 };
+            let shared: &Value = mutable;
+            caller.Apply(shared);
+        }
+    )");
+    CHECK(HasErrorContaining(diagnostics, "requires '&var Reader'"));
+    CHECK_EQ(std::ranges::count_if(diagnostics,
+                                   [](const SemanticDiagnostic &diagnostic) {
+                                       return diagnostic.severity == Diagnostic::Severity::Error;
+                                   }),
+             2);
+}
+
+TEST_CASE("interface argument conversion requires the declared bound") {
+    const auto diagnostics = AnalyzeInterfaceReferences(R"(
+        interface Reader { func Read() -> int; }
+        interface Writer { func Write(value: int); }
+        func Take(value: Reader) {}
+        func TakeMany(values: Reader...) {}
+        func Unbounded<T>(value: T) { Take(value); }
+        func Other<T: Writer>(value: T) { Take(value); }
+        func OtherMany<T: Writer>(value: T) { TakeMany(value); }
+    )");
+    CHECK(HasErrorContaining(diagnostics, "requires 'Reader'"));
+    CHECK_EQ(std::ranges::count_if(diagnostics,
+                                   [](const SemanticDiagnostic &diagnostic) {
+                                       return diagnostic.severity == Diagnostic::Severity::Error;
+                                   }),
+             3);
+}
+
+TEST_CASE("interface requirements validate their defaults before call lowering") {
+    SUBCASE("default type") {
+        const auto diagnostics = AnalyzeInterfaceReferences(R"(
+            interface Caller { func Apply(value: int = true); }
+        )");
+        CHECK(HasErrorContaining(diagnostics, "default value type 'bool8' does not match parameter type 'int'"));
+    }
+    SUBCASE("default order") {
+        const auto diagnostics = AnalyzeInterfaceReferences(R"(
+            interface Caller { func Apply(first: int = 1, second: int); }
+        )");
+        CHECK(HasErrorContaining(diagnostics, "without a default value cannot follow"));
+    }
+    SUBCASE("required argument") {
+        const auto diagnostics = AnalyzeInterfaceReferences(R"(
+            interface Caller { func Apply(first: int, second: int = 1); }
+            func Test(caller: Caller) { caller.Apply(); }
+        )");
+        CHECK(HasErrorContaining(diagnostics, "expects"));
+    }
+    SUBCASE("extra argument") {
+        const auto diagnostics = AnalyzeInterfaceReferences(R"(
+            interface Caller { func Apply(first: int = 1); }
+            func Test(caller: Caller) { caller.Apply(1, 2); }
+        )");
+        CHECK(HasErrorContaining(diagnostics, "expects"));
+    }
+}
 
 TEST_CASE("interface references are borrowed fat views through HIR and LIR") {
     Lexer lexer(R"(

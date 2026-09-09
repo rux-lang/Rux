@@ -161,6 +161,10 @@ T        owned value
 
 References are non-owning, non-null, automatically dereferenced for member and index access, and cannot perform pointer arithmetic. They may be parameters, receivers, or local aliases. They cannot be fields, returned values, or otherwise stored beyond the current call. Any number of immutable borrows may coexist, or one mutable borrow may exist exclusively; a borrow ends after its last use. A reference cannot destroy its referent or move ownership out of it. A concrete value may be borrowed directly as an immutable or mutable interface view without copying or consuming the value.
 
+Interface method arguments follow the same conversions as ordinary function arguments. A concrete local or concrete reference can supply a borrowed interface argument directly; an existing interface view retains its data and vtable. Mutable interface arguments require writable storage. Interface requirements may provide typed default arguments and variadic interface arguments.
+
+Inside `func Render<T: Display>(value: T)`, the declared bound allows `value` to be passed to a `Display` parameter, including a variadic one. Bounds also permit borrowed interface arguments with the usual mutability restrictions. A primitive satisfies a nonempty interface bound only when it has a matching implementation; built-in comparison operators do not implicitly implement `Core::Comparable`.
+
 Raw pointers remain the deliberate mechanism for FFI, nullable or sentinel values, stored addresses, pointer arithmetic, and unsafe memory APIs. Address-taking is explicit with `@value`. Moving a value out through a raw pointer is rejected because the pointer does not own the storage it addresses.
 
 ### First-party raw-pointer boundaries
