@@ -175,3 +175,54 @@ TEST_CASE("ternary expression types unify integer constants contextually") {
 
     CHECK(diagnostics.empty());
 }
+
+TEST_CASE("contextual ternaries check both arms against the required integer range") {
+    for (const std::string source : {
+             "func Select(c: bool) -> uint8 { return c ? 0 : 256; }",
+             "func Select(c: bool) -> uint8 { return c ? -1 : 0; }",
+             "func Select(c: bool) -> int8 { return c ? -129 : 127; }",
+             "func Select(c: bool) -> int8 { return c ? -128 : 128; }",
+             "func Take(n: uint8) {} func Call(c: bool) { Take(c ? 256 : 1); }",
+             "func Call(c: bool) { let n: uint8 = c ? 1 : 256; }",
+             "func Call(c: bool) { var n: uint8 = 0; n = c ? 256 : 1; }",
+             "func Select(c: bool, d: bool) -> uint8 { return c ? 0 : (d ? 1 : 256); }",
+         }) {
+        CAPTURE(source);
+        const auto diagnostics = AnalyzeSource(source);
+        REQUIRE(diagnostics.size() == 1);
+        CHECK(diagnostics.front().IsError());
+    }
+}
+
+TEST_CASE("inference preserves explicit type arguments and mutable borrow requirements") {
+    for (const std::string source : {
+             "func Width<T>(value: &var T) -> uint { return sizeof(T); } "
+             "func Main() { let value: int32 = 1; Width(value); }",
+             "func Width<T>(value: &var T) -> uint { return sizeof(T); } "
+             "func Main() { var value: int32 = 1; let shared: &int32 = value; Width(shared); }",
+             "func Same<T>(first: T, second: T) -> T { return first; } "
+             "func Main() { Same(1i32, true); }",
+             "func Identity<T>(value: T) -> T { return value; } "
+             "func Main() { Identity<uint8>(256); }",
+             "func Width<T>() -> uint { return sizeof(T); } func Main() { Width(); }",
+         }) {
+        CAPTURE(source);
+        const auto diagnostics = AnalyzeSource(source);
+        REQUIRE_FALSE(diagnostics.empty());
+        CHECK(diagnostics.front().IsError());
+    }
+}
+
+TEST_CASE("nested contextual ternaries accept wide unsigned and signed literal boundaries") {
+    const auto diagnostics = AnalyzeSource(R"(
+        func Unsigned(first: bool, second: bool) -> uint128 {
+            return first ? (second ? 18446744073709551616 : 0) :
+                           (second ? 1 : 340282366920938463463374607431768211455);
+        }
+        func Signed(condition: bool) -> int128 {
+            return condition ? -170141183460469231731687303715884105728 :
+                               170141183460469231731687303715884105727;
+        }
+    )");
+    CHECK(diagnostics.empty());
+}

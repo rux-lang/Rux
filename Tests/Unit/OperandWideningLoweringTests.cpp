@@ -71,6 +71,72 @@ std::vector<TypeRef> OperandTypes(const LirFunc &function, const LirOpcode op) {
 } // namespace
 
 TEST_SUITE("OperandWideningLowering") {
+    TEST_CASE("contextual conditional arms reach their merge at the required width") {
+        const LirPackage package = CompileToLir(R"(
+            func Select(first: bool, second: bool, wide: uint128) -> uint128 {
+                return first ? (second ? 18446744073709551616 : 7) : wide;
+            }
+        )");
+        const LirFunc &function = RequireFunction(package, "Select");
+        std::unordered_map<LirReg, TypeRef> produced;
+        for (const LirParam &parameter : function.params) {
+            produced.emplace(parameter.reg, parameter.type);
+        }
+        // A nested arm may end in a block stored after its enclosing merge, so collect definitions first.
+        for (const LirBlock &block : function.blocks) {
+            for (const LirInstr &instruction : block.instrs) {
+                if (instruction.dst != LirNoReg) {
+                    produced.insert_or_assign(instruction.dst, instruction.type);
+                }
+            }
+        }
+        std::size_t merges = 0;
+        bool foundHighWord = false;
+        for (const LirBlock &block : function.blocks) {
+            for (const LirInstr &instruction : block.instrs) {
+                if (instruction.op == LirOpcode::Const && instruction.strArg == "18446744073709551616") {
+                    foundHighWord = true;
+                    CHECK(instruction.type.kind == TypeRef::Kind::UInt128);
+                }
+                if (instruction.op != LirOpcode::Phi) {
+                    continue;
+                }
+                ++merges;
+                CHECK(instruction.type.kind == TypeRef::Kind::UInt128);
+                REQUIRE(instruction.phiPreds.size() == 2);
+                for (const auto &[reg, predecessor] : instruction.phiPreds) {
+                    CAPTURE(predecessor);
+                    REQUIRE(produced.contains(reg));
+                    CHECK(produced.at(reg).kind == TypeRef::Kind::UInt128);
+                }
+            }
+        }
+        CHECK(foundHighWord);
+        CHECK(merges == 2);
+    }
+
+    TEST_CASE("a contextual conditional casts a computed integer before merging") {
+        const LirPackage package = CompileToLir(R"(
+            func Select(condition: bool) -> uint64 {
+                return condition ? 3 + 4 : 9;
+            }
+        )");
+        const LirFunc &function = RequireFunction(package, "Select");
+        const auto castOperands = OperandTypes(function, LirOpcode::Cast);
+        REQUIRE(castOperands.size() == 1);
+        CHECK(castOperands.front().kind == TypeRef::Kind::Int);
+        std::size_t merges = 0;
+        for (const LirBlock &block : function.blocks) {
+            for (const LirInstr &instruction : block.instrs) {
+                if (instruction.op == LirOpcode::Phi) {
+                    ++merges;
+                    CHECK(instruction.type.kind == TypeRef::Kind::UInt64);
+                }
+            }
+        }
+        CHECK(merges == 1);
+    }
+
     TEST_CASE("an untyped literal is added at the wide operand's width") {
         const LirPackage package = CompileToLir(R"(
             func Widen(value: int128) -> int128 {

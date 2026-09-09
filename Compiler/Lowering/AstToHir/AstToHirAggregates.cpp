@@ -505,6 +505,40 @@ std::optional<TypeRef> AstToHirContext::InterfaceImplementationType(const TypeRe
 }
 
 HirExprPtr AstToHirContext::LowerExprAs(const Expr &expression, const TypeRef &targetType) {
+    // A signed literal is one contextual value. Lowering its positive magnitude at the default int width before
+    // negating it loses high words, and cannot represent the magnitude of the target's most negative value.
+    if (const auto *unary = dynamic_cast<const UnaryExpr *>(&expression);
+        unary && unary->op == TokenKind::Minus && UnsuffixedIntegerLiteralFits(expression, targetType)) {
+        if (const auto *literal = dynamic_cast<const LiteralExpr *>(unary->operand.get());
+            literal && literal->token.kind == TokenKind::IntLiteral) {
+            return CompilerLiteral(expression.location, targetType, "-" + LowerLiteralValue(*literal));
+        }
+    }
+
+    // Analysis has accepted both arms against this context. Materialize that width before the merge: converting
+    // the merged value afterwards cannot recover high words already discarded by an untyped literal's default int.
+    if (const auto *ternary = dynamic_cast<const TernaryExpr *>(&expression); ternary && targetType.IsInteger()) {
+        auto lowered = std::make_unique<HirTernaryExpr>();
+        lowered->location = expression.location;
+        lowered->type = targetType;
+        lowered->condition = LowerExpr(*ternary->condition);
+        const auto lowerArm = [&](const Expr &arm) -> HirExprPtr {
+            HirExprPtr value = LowerExprAs(arm, targetType);
+            if (value->type != targetType && value->type.IsNumeric() && targetType.IsNumeric()) {
+                auto cast = std::make_unique<HirCastExpr>();
+                cast->location = arm.location;
+                cast->type = targetType;
+                cast->targetType = targetType;
+                cast->operand = std::move(value);
+                return cast;
+            }
+            return value;
+        };
+        lowered->thenExpr = lowerArm(*ternary->thenExpr);
+        lowered->elseExpr = lowerArm(*ternary->elseExpr);
+        return lowered;
+    }
+
     if (IsNullLiteral(expression) && targetType.kind == TypeRef::Kind::Pointer) {
         return CompilerLiteral(expression.location, targetType, "0");
     }

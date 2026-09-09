@@ -1,6 +1,42 @@
 import Core::Assert;
 
+struct Record {
+    value: int32;
+}
+
+func IsEven(value: Record) -> bool {
+    return value.value % 2i32 == 0i32;
+}
+
+func Both<T>(first: T, second: T, predicate: func(T) -> bool) -> bool {
+    return predicate(first) && predicate(second);
+}
+
+func NestedConditions() -> uint {
+    var score: uint = 0;
+    if !IsEven(Record { value: 3i32 }) {
+        score += 1;
+        if Both<Record>(Record { value: 4i32 }, Record { value: 6i32 }, IsEven) {
+            score += 2;
+        }
+    }
+    if IsEven((Record { value: 5i32 })) {
+        score += 100;
+    } else if IsEven(Record { value: 8i32 }) {
+        score += 4;
+    } else {
+        score += 200;
+    }
+    // The ordinary identifier condition still leaves its brace to the statement parser.
+    let accepted = true;
+    if accepted {
+        score += 8;
+    }
+    return score;
+}
+
 func Main() -> int {
+    Assert(NestedConditions() == 15u, "struct literals inside nested conditions preserve body boundaries");
     var a = 100;
     var b = 200;
     if a > b {

@@ -1,0 +1,113 @@
+import Core::Assert;
+
+// The contextual width must reach the arms before the merge. Widening an int after the merge has already lost
+// every bit above the first word, even when semantic checking accepted the original unsuffixed literal.
+func Wide(condition: bool) -> uint128 {
+    return condition ? 18446744073709551616 : 7;
+}
+
+func WideSigned(condition: bool) -> int128 {
+    return condition ? -18446744073709551616 : 18446744073709551616;
+}
+
+func Narrow(condition: bool) -> uint8 {
+    return condition ? 0 : 255;
+}
+
+func Signed(condition: bool) -> int8 {
+    return condition ? -128 : 127;
+}
+
+func Accept(value: uint128) -> uint128 {
+    return value;
+}
+
+func Identity<T>(value: T) -> T {
+    return value;
+}
+
+func Argument(condition: bool) -> uint128 {
+    return Accept(condition ? 18446744073709551616 : 9);
+}
+
+func GenericArgument(condition: bool) -> uint128 {
+    return Identity<uint128>(condition ? 18446744073709551616 : 11);
+}
+
+func Nested(first: bool, second: bool) -> uint128 {
+    return first ? (second ? 18446744073709551616 : 18446744073709551617) :
+                   (second ? 18446744073709551618 : 18446744073709551619);
+}
+
+struct WideField {
+    value: uint128;
+}
+
+func Field(condition: bool) -> uint128 {
+    let record = WideField { value: condition ? 18446744073709551616 : 13 };
+    return record.value;
+}
+
+func Tuple(condition: bool) -> uint128 {
+    let pair: (uint128, uint8) = (condition ? 18446744073709551616 : 15, 3);
+    return pair.0;
+}
+
+func Array(condition: bool) -> uint128 {
+    let values: uint128[2] = [condition ? 18446744073709551616 : 17, 19];
+    return values[0];
+}
+
+func Local(condition: bool) -> uint128 {
+    var value: uint128 = condition ? 18446744073709551616 : 21;
+    value = condition ? 18446744073709551617 : 23;
+    return value;
+}
+
+struct Calls {
+    count: uint;
+}
+
+func Choose(state: &var Calls, result: bool) -> bool {
+    state.count += 1;
+    return result;
+}
+
+func Arm(state: &var Calls, value: uint128) -> uint128 {
+    state.count += 10;
+    return value;
+}
+
+func Lazy(condition: bool) -> uint128 {
+    var conditionCalls = Calls { count: 0 };
+    var firstCalls = Calls { count: 0 };
+    var secondCalls = Calls { count: 0 };
+    let value: uint128 = Choose(conditionCalls, condition) ?
+                        Arm(firstCalls, 18446744073709551616) : Arm(secondCalls, 25);
+    Assert(conditionCalls.count == 1, "evaluate the condition exactly once");
+    Assert(firstCalls.count == (condition ? 10 : 0), "run the first arm only when selected");
+    Assert(secondCalls.count == (condition ? 0 : 10), "run the second arm only when selected");
+    return value;
+}
+
+func Main() -> int {
+    Assert(Wide(true) == 18446744073709551616u128, "a return retains bits above the first word");
+    Assert(Wide(false) == 7u128, "a narrow literal shares the contextual wide type");
+    Assert(WideSigned(true) == -18446744073709551616i128, "a negative wide arm retains its sign and magnitude");
+    Assert(WideSigned(false) == 18446744073709551616i128, "a positive wide signed arm retains its magnitude");
+    Assert(Narrow(true) == 0u8 && Narrow(false) == 255u8, "unsigned narrow boundaries");
+    Assert(Signed(true) == -128i8 && Signed(false) == 127i8, "signed narrow boundaries");
+    Assert(Argument(true) == 18446744073709551616u128 && Argument(false) == 9u128, "parameter context");
+    Assert(GenericArgument(true) == 18446744073709551616u128, "explicit generic argument context");
+    Assert(GenericArgument(false) == 11u128, "the other generic argument arm");
+    Assert(Nested(true, true) == 18446744073709551616u128, "nested first-first arm");
+    Assert(Nested(true, false) == 18446744073709551617u128, "nested first-second arm");
+    Assert(Nested(false, true) == 18446744073709551618u128, "nested second-first arm");
+    Assert(Nested(false, false) == 18446744073709551619u128, "nested second-second arm");
+    Assert(Field(true) == 18446744073709551616u128 && Field(false) == 13u128, "struct field context");
+    Assert(Tuple(true) == 18446744073709551616u128 && Tuple(false) == 15u128, "tuple element context");
+    Assert(Array(true) == 18446744073709551616u128 && Array(false) == 17u128, "array element context");
+    Assert(Local(true) == 18446744073709551617u128 && Local(false) == 23u128, "local assignment context");
+    Assert(Lazy(true) == 18446744073709551616u128 && Lazy(false) == 25u128, "context preserves laziness");
+    return 0;
+}

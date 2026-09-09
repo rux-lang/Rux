@@ -4,6 +4,14 @@ This page is the settled contract for Rux values, borrowing, copying, moving, co
 
 The design favors locally visible ownership effects, explicit signatures, and separate syntax for safe borrowing and raw addresses. Declarations and members remain private by default and use `pub` for public API. A `struct` declares layout, while functions, operators, constructors, destructors, and interface implementations live in `extend` blocks.
 
+## Contextual Expressions
+
+A typed integer initializer, assignment, return, call argument, or aggregate element supplies the required type to both arms of `condition ? first : second`. Unsuffixed integer literals must fit that type; nested conditional arms receive the same context. Each selected arm is materialized at the required width before the values merge, including integers wider than one machine word. The condition runs once and only the selected arm is evaluated.
+
+Generic function calls may omit type arguments when the argument types determine them, including parameters behind references, pointers, slices, and named generic types. Explicit type arguments remain available and required when no argument determines a parameter. Inference does not relax mutable-borrow or argument-type requirements.
+
+Struct literals can appear inside parenthesized expressions and call arguments within conditions. An ordinary unparenthesized condition still leaves its following brace to the statement body.
+
 ## Package Visibility
 
 Every source declaration is package-private unless it starts with `pub`. Package-private means that every file and module in the defining package can use it; it does not mean file-private or module-private. A dependent package can import or name only effectively public API:

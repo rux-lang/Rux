@@ -23,10 +23,6 @@
 // defining `==` sorts fine. The `By` forms take a three-way comparison instead, for a sequence ordered by something
 // other than its element type's own `<`.
 //
-// The two are separate names rather than overloads of one. Rux resolves an untyped integer literal against a single
-// candidate but not against an overload set, so adding an overload would have made every existing call stop
-// compiling. See Docs/CompilerDefects.md.
-//
 // The `By` machinery below mirrors the operator-based helpers rather than sharing them. A generic function cannot be
 // used as a value in Rux, so the operator forms cannot pass `<` as a comparator into one shared implementation, and
 // threading a runtime flag instead would put a branch in the innermost comparison of every sort — the one place it

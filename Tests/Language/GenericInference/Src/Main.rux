@@ -1,0 +1,87 @@
+import Core::Assert;
+
+struct Counter {
+    value: int32;
+}
+
+struct Pair<T> {
+    first: T;
+    second: T;
+}
+
+func Identity<T>(value: T) -> T {
+    return value;
+}
+
+func Width<T>(value: &T) -> uint {
+    return sizeof(T);
+}
+
+func WritableWidth<T>(value: &var T) -> uint {
+    return sizeof(T);
+}
+
+func PointerWidth<T>(value: *T) -> uint {
+    return sizeof(T);
+}
+
+func Forward<T>(value: T) -> T {
+    return Identity(value);
+}
+
+func First<T>(pair: Pair<T>) -> T {
+    return pair.first;
+}
+
+func Pick<T>(value: T, flag: bool) -> uint {
+    return flag ? 1u : 2u;
+}
+
+func Pick<T>(value: T, offset: uint) -> uint {
+    return offset + 10u;
+}
+
+func Count<T>(values: T[..]) -> uint {
+    return values.length;
+}
+
+func Apply<T>(value: T, callback: func(T) -> T) -> T {
+    return callback(value);
+}
+
+func Twice(value: int32) -> int32 {
+    return value * 2i32;
+}
+
+func Main() -> int {
+    Assert(Identity(17i32) == 17i32, "infer int32 from a suffixed argument");
+    Assert(Identity(19u64) == 19u64, "another instantiation keeps its own type");
+    Assert(Identity<uint8>(255) == 255u8, "explicit arguments retain contextual literal typing");
+    Assert(Forward(23i64) == 23i64, "infer a nested call after substitution");
+    Assert(Apply(11i32, Twice) == 22i32, "infer through a callback signature");
+
+    var counter = Counter { value: 29i32 };
+    Assert(Width(counter) == 4u, "infer through an implicit immutable borrow");
+    Assert(WritableWidth(counter) == 4u, "infer through an implicit mutable borrow");
+    let shared: &Counter = counter;
+    Assert(Width(shared) == 4u, "infer from an existing immutable reference");
+    let exclusive: &var Counter = counter;
+    Assert(WritableWidth(exclusive) == 4u, "infer from an existing mutable reference");
+    counter.value = 31i32;
+    Assert(counter.value == 31i32, "generic borrows end at their last use");
+    Assert(PointerWidth(@counter) == 4u, "infer a raw pointer's pointee");
+
+    let narrow = Pair<int32> { first: 37i32, second: 41i32 };
+    let wide = Pair<int64> { first: 43i64, second: 47i64 };
+    Assert(First(narrow) == 37i32, "infer from a named generic argument");
+    Assert(First(wide) == 43i64, "a second named instantiation remains independent");
+    Assert(First(narrow) == 37i32, "later calls still use the first instantiation");
+    Assert(Pick(narrow, true) == 1u, "inference preserves overload selection by bool");
+    Assert(Pick(wide, 3u) == 13u, "inference preserves overload selection by uint");
+
+    let values: int32[3] = [2, 3, 5];
+    Assert(Count(values) == 3u, "infer a slice element from an array argument");
+    let view: int32[..] = values;
+    Assert(Count(view) == 3u, "infer a slice element from a slice argument");
+    return 0;
+}

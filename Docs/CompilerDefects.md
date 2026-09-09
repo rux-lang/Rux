@@ -130,100 +130,18 @@ Found while writing the `as` conversion case for the language test matrix. Two t
 
 The non-generic form works since `19beafa`, which fixed the two layers above this one: a type read back from its name lost the `var` entirely, and substituting a type argument dropped the mark `*var T` puts on its `T` slot. What remains is the instantiation name itself. `alignof(T)` on a type parameter returning the size was a third defect in the same area, fixed in `4a83949`.
 
-### A ternary does not take its type from context
-
-*Loud.* `return condition ? 0 : 1;` in a function returning `uint` fails with "found 'int'", and so does an untyped literal passed to a `uint` parameter through one. Write the literal with its suffix, or use an `if`.
-
-### A struct literal cannot appear anywhere inside an `if` condition
-
-*Loud.* Its opening brace is taken as the start of the body, even when the literal is nested inside a call: `if !AllOf<int32>(Record { ... }, IsEven) { ... }` is a parse error. Name the value in a `let` first.
-
-### A generic argument is never inferred
-
-*Loud, and merely verbose.* Every type parameter must be written at the call site: `MulWrapping(a, b)` fails where `MulWrapping<uint64>(a, b)` succeeds, and a type parameter behind a reference (`hasher: &var H`) is not deduced from `&var Counter` either.
-
 ### A method with its own type parameter on a non-generic type does not resolve at the call site
 
 *Loud.* Found in `Rux/Memory`; `Layout::ForValue<T>` had to become the free function `LayoutOf<T>`.
 
 ### Equality on a multiword struct or tuple compares only its leading doubleword
 
-*Silent.* `==` between two aggregate values wider than one register still loads the first eight bytes of each side and compares those unless the frontend supplies a structural operation. The AArch64 backend refuses a tuple comparison rather than quietly answering from its first element, while x86-64 silently does the latter. Variants no longer take this path: their equality is case-aware and structural, as recorded below.
+*Silent.* `==` between two aggregate values wider than one register still loads the first eight bytes of each side and compares those unless the frontend supplies a structural operation. The AArch64 backend refuses a tuple comparison rather than quietly answering from its first element, while x86-64 silently does the latter. Variants already use case-aware structural equality.
 
 ### A captured-output unit test is load-dependent
 
 `CliProcessTests` "test keeps failed rows, reasons, diagnostics, and captured output together" fails roughly one run in six of the *full* unit suite, while the same case run alone passed 20 times out of 20 — so it is load-dependent, not logic-dependent. The child it captures panics and traps on `ud2`, and the panic's three `WriteFile` calls to the inherited pipe happen before the trap, so the bytes should already be buffered; `RunCaptured` in `Compiler/System/Process.cpp` then closes its write end and reads to EOF, which also looks right. The compiler binary was byte-identical across a clean full-suite run and a failing one. Worth chasing before it costs someone a red CI run they cannot reproduce.
 
-## Fixed
+### System V x86-64 loses the tail of a 9–15-byte aggregate
 
-Kept because they explain why some packages are written the way they are, and because two of them are the shape of the worst defect this code can surface: silent, wrong, and invisible to any test that does not check the data itself.
-
-### A stack-passed aggregate parameter was spilled over the saved frame pointer — fixed with the first full Linux package-test run
-
-*Silent, and it corrupted the caller's frame rather than the callee's own data.* On System V an aggregate wider than sixteen bytes is passed in the caller's stack argument slots, which the caller fills a whole word at a time, and the callee's prologue copies `AlignUp(size, 8)` bytes of it into the parameter's home slot for the same reason. The x86-64 frame planner sized that slot at the aggregate's exact width. A twenty-byte struct therefore got twenty bytes and the spill wrote twenty-four, and what sits four bytes above a parameter home is the low half of the saved `rbp`. `leave` handed the caller back a frame pointer with its low word zeroed — `0x00007fff00000000` where `0x00007fffffffbe70` belonged — so the fault landed in the caller's next store to a local, one frame and one call away from the code that did the damage.
-
-`Rux/Time`'s `OffsetDateTime` is a `DateTime` and a `UtcOffset`: sixteen bytes and four, twenty in total, and the first by-value parameter in this tree whose width is not a whole number of words. `Tests/Packages/Time/Rfc3339` passes one to `Rendered` and was the only test in the workspace to segfault. Found by disassembling the emitted ELF — the binaries carry no symbols, so the faulting function was recovered by scanning for `55 48 89 e5` — and confirmed by reading the three stores of the prologue: `-0x14`, `-0xc`, `-0x4`, the last of which is not inside a twenty-byte slot ending at `-0x1`.
-
-The AArch64 planner had padded every aggregate slot to a whole number of words since it was written; the x86-64 one padded only the widths no scalar move spells — three, five, six and seven — and left everything above eight alone. Both now round an aggregate slot up the same way, which also settles the matching read: the caller filled the outgoing argument slots by reading `AlignUp(size, 8)` bytes back out of that same under-sized slot.
-
-### A wide string literal held its UTF-8 bytes one per code unit, at the byte count — fixed with the built-in string types
-
-*Silent, and wrong in two ways at once, on every target.* `EncodeStringLiteral` widened a literal's UTF-8 bytes into the element's width by writing each byte followed by padding, so `c16"\u{20AC}"` held three UTF-16 code units — 0x00E2, 0x0082, 0x00AC — rather than the one the character is, and the length published beside them counted bytes rather than code units. Nothing in the tree wrote a `c16` or `c32` string, which is why no test saw it; the defect would have surfaced the moment one did, as text that decodes to different characters than it spells. Both are now answered by one transcoder in `Compiler/Unicode`, shared by lowering and by both back ends, so a length is in the code units of the encoding and the data is the text transcoded into it. `Tests/Language/StringLiterals` pins a character from each UTF-8 sequence width in all three encodings, including the surrogate pair.
-
-### An interface call passed a slice by value where the method takes its address — fixed with the cross-platform bring-up
-
-*Silent on Win64, a crash everywhere else, and the single cause of the Format, Io, Json, Toml and Storage failures on every System V and AArch64 target.* A slice parameter is lowered as a pointer to the `{data, length}` pair, and a direct call takes the argument's address to match. The call through a vtable lowered the same argument as the 16-byte value, which System V and AAPCS64 put in two registers — so `StringBuilder::Write` read `data` as the address of the pair and `Copy` walked off whatever bytes sat at the text's first character. Win64 passes a 16-byte value by reference to a copy, which is a pointer either way, so the one platform the compiler was developed on never saw it. Found by symbolizing the faulting frame of `Tests/Language/Format`: `WriteBytes` is the interface hop between `WriteAscii` and the builder. Interface and direct calls now lower arguments through one function.
-
-### An array or tuple literal argument was passed as the address of its slot — fixed with the cross-platform bring-up
-
-*Silent on Win64 and AArch64, garbage on System V x86-64, and the cause of the Crypto failures on Linux and macOS x86-64.* A named variable of array type reaches a call as a `load` of the whole value, but a literal — `Sha512::Start([0x6A09E667F3BCC908, ...], 64)`, or a `const` array, which lowers through its initializer — evaluated to the slot it was built in, and a slot is a pointer. The callee's parameter is the value, and on System V a value wider than sixteen bytes lives in the caller's stack slots: the callee read those slots, which nothing had written, and took the pointer for the scalar after the array, so `outputLength` was a stack address and `Finish` indexed the state by it. Win64 and AAPCS64 pass a wide aggregate by reference to a copy, and a pointer to the original is indistinguishable from that, which is why both were fine. The callee side had been right all along; the argument is now loaded as a value whatever expression produced it, and `Tests/Language/ByValueArguments` puts a scalar after every shape of literal.
-
-### A System V callee spilled one register of a two-register aggregate — fixed with the cross-platform bring-up
-
-*Silent, and the single cause of over a hundred test failures apiece on Linux and macOS x86-64.* The caller measures an argument as the running program lays it out and passes a 16-byte named struct in two integer registers; the callee prologue classified the same parameter by the LIR-level `SizeOf`, which answers eight for a named struct it holds no layout for, so it spilled only the first register and read the second half of the value from a slot nothing had written. Every by-value 16-byte struct — `Layout` at every allocator call, interface values, `Vector`-shaped pairs — arrived half garbage on System V targets, while Win64 passes the same aggregates by reference and never touched the defective branch. Confirmed by disassembling the emitted ELF: `Vector::Scaled` spilled `rdi` but not `rsi`. The prologue now classifies by the same runtime size the caller uses. A related gap remains open: a by-value named struct whose runtime size is 9–15 bytes still travels as a single register on System V — both sides agree, so it is consistent, but the tail bytes are lost; field padding makes such sizes rare.
-
-### One instantiation's copy or move operation leaked into every other — fixed with the windows-aarch64 bring-up
-
-*Silent on x86-64, loud on AArch64.* The record saying "this generic store copies through a custom `=`" is keyed by the expression in the generic body, which every instantiation shares, and each instantiation's validation overwrote it with its own resolution — the last one won for all of them. Instantiating `Filled<Tracked>` and `Filled<int32>` from one program made `Filled_int32` call `Tracked::=` on an `int32` slot and patch the type mismatch with a cast; the AArch64 backend refused that cast ("cannot generate a cast from 'Tracked' to 'int32'"), which is how the first windows-aarch64 CI run surfaced it, while x86-64 emitted the same wrong LIR and happened to produce the right value because the cast read back the field the copy had just written. The record now keeps the unsubstituted type and no operation, and each instantiation substitutes its own type argument and resolves its own operation when its plan is built.
-
-### An AArch64 store or load of a zero-sized value moved eight bytes — fixed with the windows-aarch64 bring-up
-
-The x86-64 guard from `ace30585` never reached the AArch64 backend: a zero-sized store fell through to the same eight-byte fallback an unknown width gets and wrote over whatever followed the field, and a zero-sized load read past what was allocated. `Tests/Language/ZeroSizedField` fails at its first assertion on any AArch64 target without the guard. Both backends now skip the move entirely when a known width is zero.
-
-### Interface coercion could copy or consume the implementor — fixed in `2f8ec825`
-
-An ordinary by-value interface still has value semantics, but callers that need the original object can now borrow a concrete value directly as `&Interface` or `&var Interface`. The resulting fat reference points at the original data and its vtable without copying or consuming the implementor. `Rux/Entropy`, `Rux/Random`, allocator call sites, and stream helpers use borrowed interface views; stored handles remain raw only where a non-escaping reference cannot be a field.
-
-### Lifecycle declarations depended on `Core::Drop` placement — fixed in `bc3202e5`
-
-The canonical destructor is `func ~T(self: &var T)` inside `extend T`. It is a distinct special operation rather than an ordinary method whose meaning depends on an implemented interface, so the old silent `func Drop` mistake has no equivalent in the final syntax. First-party resource owners use type destructors, and the temporary `Core::Drop` compatibility path has been removed.
-
-### Recursive and partial drop glue could miss or corrupt cleanup — fixed in `4ab7a38d`
-
-Drop planning now handles recursive owners, partially constructed aggregates, non-generic variant payloads, generic destructors, and control-flow exits through branches, loops, returns, and `?`. The explicit `JsonValue` and `TomlValue` destructors remain because they state ownership clearly, not because synthesized recursive glue needs a workaround.
-
-### A `const` array crossing a file boundary read garbage — fixed in `f090653`
-
-A `const` array declared in one file of a package and read from another was not matched across objects at link time, so the reference pointed wherever the relocation landed and read plausible garbage — neither its values nor zeroes, and with nothing reported. Scalars were unaffected because they are folded into their use, which is why this survived until `Rux/Hash` published a lookup table.
-
-### A generic container did not consume what was stored into it — fixed in `32d6d48b`
-
-Storing a `T` into a generic container's storage was not recognized as consuming it, so the container kept a copy and the caller's value was destroyed where it stood — a use-after-free for any element owning memory. Consumption is now recorded as a question where it is asked and answered at each instantiation, and methods and associated functions of generic types are queued as instantiations at all, which they never were.
-
-Reference provenance and explicit move operands now answer the public legality question: ownership cannot move through a reference or caller-visible raw pointer merely because the pointee type is movable. Named transfers use `<-`, so source invalidation is visible where it occurs. Generic owning containers have a narrow internal raw-storage transfer rule because the type system cannot yet distinguish their owned allocation from a borrowed raw pointer; the explicit `<-` remains required, while their public borrowed views never transfer ownership.
-
-### A match-arm payload was destroyed twice, then not at all — fixed in `30d464a8` and `85d5d402`
-
-A payload bound by a match arm now owns what it took and is destroyed when the arm ends, and the subject it came out of is not destroyed as well. The two halves landed together: before them, taking a value out of an option destroyed it twice; between them, not at all. Ownership follows the subject — an arm binding is registered for cleanup only where the subject was handed over, so matching a borrowed option still copies nothing and destroys nothing. Reading an aggregate subject straight out of its slot also had to clear the consumption, which was the one path that skipped it.
-
-### Wide variant equality compared only the tag — fixed in `0b58cdd0` and `85dff083`
-
-Variant equality now branches on the active case. Different cases are unequal without reading payload storage; equal cases compare only their active positional or named payloads, recursively and in declaration order. Wide payloads, nested variants, generic substitutions, inactive bytes, and padding therefore no longer depend on the backend's one-word aggregate comparison.
-
-### A generic's interface bound resolved in the instantiator's scope — fixed in `4a96861`
-
-A call from a package that had not imported the interface recorded no conformance — silently, since a use site does not report — and lowering then aborted the compiler with no output at all in a release build. This is why `Rux/Hash` is written with bounded generics, and why that was not possible before it was fixed.
-
-### AArch64 could not open a 512-byte frame or write an aggregate constant — fixed in `64175ef4`
-
-Two backend defects that `rux check --target` cannot see, because the frontend accepts the programs and only code generation fails. The frame record's immediate spans 512 bytes below the stack pointer but only 504 above it, and the limit was taken from the negative reach alone, so a frame of exactly 512 bytes encoded a prologue its epilogue could not close. Separately, an aggregate whose whole value is a literal — a unit variant case, a zeroed structure — had no lowering at all. Found by cross-building the language suite for all seven non-host target cells, which is worth repeating whenever the backend changes.
+*Silent.* A by-value named struct whose runtime size is 9–15 bytes travels as a single register on System V x86-64. Caller and callee agree on that classification, but the tail beyond the first eight bytes is lost. Field padding makes these sizes uncommon; it does not make dropping their data correct. Argument placement, callee spills, affected returns, and textual assembly must preserve the complete value, including when argument registers are exhausted.
