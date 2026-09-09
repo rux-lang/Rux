@@ -438,6 +438,15 @@ HirExprPtr AstToHirContext::LowerVariantEquality(const BinaryExpr &expression, H
 HirExprPtr AstToHirContext::LowerExpr(const Expr &expr) {
     const auto finish = [&](HirExprPtr lowered) {
         if (lowered) {
+            if (model.HasBorrowedScalarRead(expr) && lowered->type.kind == TypeRef::Kind::Reference) {
+                auto read = std::make_unique<HirUnaryExpr>();
+                read->location = lowered->location;
+                read->op = TokenKind::Star;
+                read->type = lowered->type.inner.front();
+                read->type.isMut = false;
+                read->operand = std::move(lowered);
+                lowered = std::move(read);
+            }
             if (const ValueConsumption *consumption = model.TryGetConsumption(expr)) {
                 const std::uint64_t bindingId = ConsumedBindingId(*lowered);
                 if (consumption->constructsDestination) {

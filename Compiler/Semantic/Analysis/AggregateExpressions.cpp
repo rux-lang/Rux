@@ -797,7 +797,7 @@ std::optional<TypeRef> AnalysisContext::CheckAggregateExpression(const Expr &exp
         const Expr *inferredExpression = nullptr;
         for (std::size_t index = 0; index < array->elements.size(); ++index) {
             const auto &element = array->elements[index];
-            const TypeRef type = CheckExpr(*element);
+            const TypeRef type = ReadBorrowedScalar(*element, CheckExpr(*element));
             bool elementAccepted = !type.IsUnknown();
             if (elementType.IsUnknown()) {
                 elementType = type;
@@ -828,7 +828,7 @@ std::optional<TypeRef> AnalysisContext::CheckAggregateExpression(const Expr &exp
     }
 
     if (const auto *repeat = dynamic_cast<const ArrayRepeatExpr *>(&expression)) {
-        const TypeRef elementType = CheckExpr(*repeat->value);
+        const TypeRef elementType = ReadBorrowedScalar(*repeat->value, CheckExpr(*repeat->value));
         const std::optional<std::uint64_t> count = EvalArrayLength(*repeat->count);
         if (!count) {
             EmitError(repeat->count->location, "array repeat count must be a non-negative compile-time integer");
@@ -844,7 +844,7 @@ std::optional<TypeRef> AnalysisContext::CheckAggregateExpression(const Expr &exp
     if (const auto *tuple = dynamic_cast<const TupleExpr *>(&expression)) {
         std::vector<TypeRef> elementTypes;
         for (const auto &element : tuple->elements) {
-            const TypeRef type = CheckExpr(*element);
+            const TypeRef type = ReadBorrowedScalar(*element, CheckExpr(*element));
             ConsumeValue(*element, type, ValueConsumptionKind::Aggregate, element->location);
             elementTypes.push_back(type);
         }

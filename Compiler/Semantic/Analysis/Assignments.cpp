@@ -20,6 +20,22 @@
 namespace Rux::SemanticDetail {
 using Layout::AlignUp;
 
+TypeRef AnalysisContext::ReadBorrowedScalar(const Expr &expression, const TypeRef &type) {
+    if (type.kind != TypeRef::Kind::Reference || type.inner.empty()) {
+        return type;
+    }
+    TypeRef value = type.inner.front();
+    value.isMut = false;
+    if (!type.CanReadScalarTo(value)) {
+        return type;
+    }
+    if (value.kind == TypeRef::Kind::TypeParam && currentFunctionDecl) {
+        deferredScalarReads[currentFunctionDecl].push_back({type, expression.location});
+    }
+    borrowedScalarReads.insert(&expression);
+    return value;
+}
+
 bool AnalysisContext::CanAssignExprTo(const Expr &expr, const TypeRef &exprType, const TypeRef &targetType) {
     if (targetType.kind == TypeRef::Kind::Reference) {
         TypeRef targetReferent = targetType.inner.front();
@@ -131,6 +147,11 @@ bool AnalysisContext::CanAssignExprTo(const Expr &expr, const TypeRef &exprType,
             CanAssignExprTo(*ternary->elseExpr, elseType, targetType)) {
             return true;
         }
+    }
+
+    if (exprType.CanReadScalarTo(targetType)) {
+        static_cast<void>(ReadBorrowedScalar(expr, exprType));
+        return true;
     }
 
     return exprType.IsAssignableTo(targetType) || (IsNullLiteral(expr) && targetType.kind == TypeRef::Kind::Pointer) ||

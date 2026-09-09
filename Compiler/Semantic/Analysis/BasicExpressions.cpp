@@ -208,6 +208,10 @@ std::optional<TypeRef> AnalysisContext::CheckBasicExpression(const Expr &express
             }
             return TypeRef::MakePointer(std::move(operandType));
         }
+        if (unary->op == TokenKind::Plus || unary->op == TokenKind::Minus || unary->op == TokenKind::Bang ||
+            unary->op == TokenKind::Tilde) {
+            operandType = ReadBorrowedScalar(*unary->operand, operandType);
+        }
         return CheckUnary(unary->op, operandType, unary->location);
     }
     if (const auto *move = dynamic_cast<const MoveExpr *>(&expression)) {
@@ -331,7 +335,7 @@ std::optional<TypeRef> AnalysisContext::CheckBasicExpression(const Expr &express
         return TypeRef::MakeOpaque();
     }
     if (const auto *cast = dynamic_cast<const CastExpr *>(&expression)) {
-        const TypeRef operandType = CheckExpr(*cast->operand);
+        const TypeRef operandType = ReadBorrowedScalar(*cast->operand, CheckExpr(*cast->operand));
         TypeRef targetType = ResolveType(*cast->type);
         // An unsubstituted type parameter is not yet any particular type, so whether it can be cast is a question only
         // an instantiation can answer. Defer it there, the same way a unary or binary operator on a `T` already is,
@@ -404,6 +408,18 @@ void AnalysisContext::CheckCast(const TypeRef &operand, const TypeRef &target, c
 
 void AnalysisContext::ValidateDeferredBasicExpressionChecks(
     const FuncDecl &declaration, const std::unordered_map<std::string, TypeRef> &substitutions) {
+    if (const auto it = deferredScalarReads.find(&declaration); it != deferredScalarReads.end()) {
+        for (const DeferredScalarRead &check : it->second) {
+            const TypeRef reference = SubstituteTypeParameters(check.reference, substitutions);
+            TypeRef value = reference.inner.front();
+            value.isMut = false;
+            if (!reference.CanReadScalarTo(value)) {
+                EmitError(check.location,
+                          std::format("implicit value read through '{}' requires a Copy primitive scalar",
+                                      reference.ToString()));
+            }
+        }
+    }
     if (const auto it = deferredUnaryChecks.find(&declaration); it != deferredUnaryChecks.end()) {
         for (const DeferredUnaryCheck &check : it->second) {
             static_cast<void>(
@@ -543,9 +559,11 @@ TypeRef AnalysisContext::CheckUnary(const TokenKind op, const TypeRef &operand, 
     }
 }
 
-TypeRef AnalysisContext::CheckBinary(const TokenKind op, const TypeRef &left, const TypeRef &right,
+TypeRef AnalysisContext::CheckBinary(const TokenKind op, const TypeRef &leftType, const TypeRef &rightType,
                                      const Expr &leftExpression, const Expr &rightExpression,
                                      const SourceLocation location, const BinaryExpr *binaryExpression) {
+    const TypeRef left = ReadBorrowedScalar(leftExpression, leftType);
+    const TypeRef right = ReadBorrowedScalar(rightExpression, rightType);
     const TokenKind operation = BinaryOperation(op);
     const std::string_view operatorName = OperatorName(op);
     const bool comparesNullPointer = (IsNullLiteral(leftExpression) && right.kind == TypeRef::Kind::Pointer) ||

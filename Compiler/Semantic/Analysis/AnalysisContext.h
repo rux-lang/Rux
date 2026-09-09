@@ -395,6 +395,7 @@ private:
     const CompileTimeContext &context;
     const PackageImportBindings &imports;
     std::unordered_map<const Expr *, TypeRef> &expressionTypes;
+    std::unordered_set<const Expr *> &borrowedScalarReads;
     std::unordered_map<const TypeExpr *, const Decl *> &intrinsicTypeBindings;
     std::unordered_map<const Expr *, const ConstDecl *> &associatedConstants;
     std::unordered_map<const ConstDecl *, EvaluatedAssociatedConstant> &evaluatedAssociatedConstants;
@@ -577,6 +578,11 @@ private:
         SourceLocation location;
     };
 
+    struct DeferredScalarRead {
+        TypeRef reference;
+        SourceLocation location;
+    };
+
     struct DeferredOutcomeCheck {
         TypeRef payload;
         SourceLocation location;
@@ -595,6 +601,7 @@ private:
     std::unordered_map<const FuncDecl *, std::vector<DeferredUnaryCheck>> deferredUnaryChecks;
     std::unordered_map<const FuncDecl *, std::vector<DeferredBinaryCheck>> deferredBinaryChecks;
     std::unordered_map<const FuncDecl *, std::vector<DeferredCastCheck>> deferredCastChecks;
+    std::unordered_map<const FuncDecl *, std::vector<DeferredScalarRead>> deferredScalarReads;
     std::unordered_map<const FuncDecl *, std::vector<DeferredOutcomeCheck>> deferredOutcomeChecks;
     std::unordered_map<const FuncDecl *, std::vector<DeferredConsumption>> deferredConsumptions;
     std::unordered_set<const TypeExpr *> reportedGenericArity;
@@ -618,6 +625,7 @@ private:
                                         const std::unordered_map<std::string, TypeRef> &substitutions);
     TypeRef ResolveRangeType(const RangeTypeExpr &range, const std::function<TypeRef(const TypeExpr &)> &resolveBound);
     TypeRef CheckExpr(const Expr &expression);
+    [[nodiscard]] TypeRef ReadBorrowedScalar(const Expr &expression, const TypeRef &type);
     void EmitDiagnosticIntrinsic(const std::string &intrinsicName, const CallExpr &call);
     [[nodiscard]] const FuncDecl *LookupFunctionOverload(const Symbol &symbol,
                                                          const std::vector<TypeRef> &argumentTypes,

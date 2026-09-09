@@ -209,7 +209,7 @@ const FuncDecl *AnalysisContext::LookupFunctionOverload(const Symbol &sym, const
             if (argTypes[i].IsUnknown() || funcType.inner[i].IsUnknown()) {
                 continue;
             }
-            if (!argTypes[i].IsAssignableTo(funcType.inner[i]) &&
+            if (!argTypes[i].IsAssignableTo(funcType.inner[i]) && !argTypes[i].CanReadScalarTo(funcType.inner[i]) &&
                 !argTypes[i].CanImplicitlyBorrowTo(funcType.inner[i]) &&
                 !convertsToInterface(argTypes[i], funcType.inner[i]) &&
                 !(argTypes[i].IsInteger() && funcType.inner[i].IsInteger())) {
@@ -270,6 +270,7 @@ const FuncDecl *AnalysisContext::LookupFunctionOverload(const Symbol &sym, const
                     // narrowed to a different width.
                     const bool literalToInteger = argTypes[i].kind == TypeRef::Kind::Int && paramType.IsInteger();
                     const bool assignable = argTypes[i].IsAssignableTo(paramType) ||
+                                            argTypes[i].CanReadScalarTo(paramType) ||
                                             argTypes[i].CanImplicitlyBorrowTo(paramType) ||
                                             convertsToInterface(argTypes[i], paramType) || literalToInteger;
                     if (exactOnly ? !(argTypes[i] == paramType) : !assignable) {

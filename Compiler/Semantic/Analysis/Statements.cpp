@@ -265,7 +265,7 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
         }
     }
     else if (const auto *ifStatement = dynamic_cast<const IfStmt *>(&statement)) {
-        TypeRef condition = CheckExpr(*ifStatement->condition);
+        TypeRef condition = ReadBorrowedScalar(*ifStatement->condition, CheckExpr(*ifStatement->condition));
         if (!condition.IsUnknown() && !condition.IsBool()) {
             EmitError(ifStatement->condition->location,
                       std::format("condition for 'if' must have type 'bool', but found '{}'", condition.ToString()));
@@ -278,7 +278,7 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
         exits.push_back(SaveTrackedFlow());
         for (const auto &elseIf : ifStatement->elseIfs) {
             RestoreTrackedFlow(fallthrough);
-            TypeRef elseIfCondition = CheckExpr(*elseIf.condition);
+            TypeRef elseIfCondition = ReadBorrowedScalar(*elseIf.condition, CheckExpr(*elseIf.condition));
             if (!elseIfCondition.IsUnknown() && !elseIfCondition.IsBool()) {
                 EmitError(elseIf.condition->location,
                           std::format("condition for 'else if' must have type 'bool', but found '{}'",
@@ -303,7 +303,7 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
             activeLabels.insert(whileStatement->label);
         }
 
-        TypeRef condition = CheckExpr(*whileStatement->condition);
+        TypeRef condition = ReadBorrowedScalar(*whileStatement->condition, CheckExpr(*whileStatement->condition));
         if (!condition.IsUnknown() && !condition.IsBool()) {
             EmitError(whileStatement->condition->location,
                       std::format("condition for 'while' must have type 'bool', but found '{}'", condition.ToString()));
@@ -352,12 +352,12 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
 
         TypeRef condition;
         if (trackedFlowReachable) {
-            condition = CheckExpr(*doWhileStatement->condition);
+            condition = ReadBorrowedScalar(*doWhileStatement->condition, CheckExpr(*doWhileStatement->condition));
         }
         else {
             const TrackedFlow unreachableExit = SaveTrackedFlow();
             RestoreTrackedFlow(loopEntry);
-            condition = CheckExpr(*doWhileStatement->condition);
+            condition = ReadBorrowedScalar(*doWhileStatement->condition, CheckExpr(*doWhileStatement->condition));
             RestoreTrackedFlow(unreachableExit);
         }
         if (!condition.IsUnknown() && !condition.IsBool()) {
@@ -476,7 +476,7 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
         bool returnAccepted = false;
         if (returnStatement->value) {
             TypeRef valueType = CheckExpr(**returnStatement->value);
-            if (valueType.kind == TypeRef::Kind::Reference) {
+            if (valueType.kind == TypeRef::Kind::Reference && !valueType.CanReadScalarTo(currentReturnType)) {
                 EmitError(returnStatement->location,
                           std::format("reference value '{}' cannot escape through a return", valueType.ToString()),
                           {"references are restricted to parameters, receivers, and local aliases"},

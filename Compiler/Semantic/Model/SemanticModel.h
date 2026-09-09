@@ -10,6 +10,7 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace Rux {
@@ -278,6 +279,8 @@ struct SemanticFacts {
     std::unordered_map<const Expr *, const ConstDecl *> associatedConstants;
     std::unordered_map<const ConstDecl *, EvaluatedAssociatedConstant> evaluatedAssociatedConstants;
     std::unordered_map<const Expr *, TypeRef> expressionTypes;
+    /// Accepted implicit loads of Copy primitive scalars. The expression's type still describes its reference.
+    std::unordered_set<const Expr *> borrowedScalarReads;
     std::unordered_map<const TypeExpr *, TypeRef> typeNodeTypes;
     std::unordered_map<const Pattern *, TypeRef> patternTypes;
     std::unordered_map<const EnumPattern *, ResolvedCasePattern> casePatterns;
@@ -330,6 +333,7 @@ struct SemanticModel {
     /// Returns null when analysis did not accept the node with a resolved type. Returned pointers remain valid for the
     /// lifetime of this model.
     [[nodiscard]] const TypeRef *TryGetType(const Expr &expression) const noexcept;
+    [[nodiscard]] bool HasBorrowedScalarRead(const Expr &expression) const noexcept;
     [[nodiscard]] const TypeRef *TryGetType(const TypeExpr &typeNode) const noexcept;
     [[nodiscard]] const TypeRef *TryGetType(const Pattern &pattern) const noexcept;
 

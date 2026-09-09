@@ -386,6 +386,10 @@ struct TypeRef {
     /// Whether this value type can be implicitly borrowed as `other`. This answers only type compatibility; semantic
     /// analysis separately requires addressable storage and write permission for an exclusive borrow.
     [[nodiscard]] bool CanImplicitlyBorrowTo(const TypeRef &other) const noexcept;
+
+    /// Whether a borrowed primitive can supply this value type. A type parameter remains provisional until analysis
+    /// verifies each instantiation; this never grants an implicit aggregate copy.
+    [[nodiscard]] bool CanReadScalarTo(const TypeRef &other) const noexcept;
     [[nodiscard]] std::optional<std::uint64_t> SizeInBytes() const noexcept;
     [[nodiscard]] std::string ToString() const;
 

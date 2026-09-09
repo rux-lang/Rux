@@ -217,7 +217,7 @@ TypeRef AnalysisContext::CheckShortCircuitExpression(const BinaryExpr &expressio
 }
 
 TypeRef AnalysisContext::CheckTernaryExpression(const TernaryExpr &expression) {
-    const TypeRef condition = CheckExpr(*expression.condition);
+    const TypeRef condition = ReadBorrowedScalar(*expression.condition, CheckExpr(*expression.condition));
     CheckBooleanCondition(condition, expression.condition->location, "?:");
     const TrackedFlow branchEntry = SaveTrackedFlow();
 

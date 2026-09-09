@@ -517,7 +517,9 @@ HirExprPtr AstToHirContext::LowerExprAs(const Expr &expression, const TypeRef &t
 
     // Analysis has accepted both arms against this context. Materialize that width before the merge: converting
     // the merged value afterwards cannot recover high words already discarded by an untyped literal's default int.
-    if (const auto *ternary = dynamic_cast<const TernaryExpr *>(&expression); ternary && targetType.IsInteger()) {
+    if (const auto *ternary = dynamic_cast<const TernaryExpr *>(&expression);
+        ternary && (targetType.IsNumeric() || targetType.IsBool() || targetType.IsChar()) &&
+        !model.HasBorrowedScalarRead(expression)) {
         auto lowered = std::make_unique<HirTernaryExpr>();
         lowered->location = expression.location;
         lowered->type = targetType;

@@ -159,6 +159,10 @@ const TypeRef *SemanticModel::TryGetType(const Expr &expression) const noexcept 
     return type == facts.expressionTypes.end() ? nullptr : &type->second;
 }
 
+bool SemanticModel::HasBorrowedScalarRead(const Expr &expression) const noexcept {
+    return facts.borrowedScalarReads.contains(&expression);
+}
+
 const TypeRef *SemanticModel::TryGetType(const TypeExpr &typeNode) const noexcept {
     const auto type = facts.typeNodeTypes.find(&typeNode);
     return type == facts.typeNodeTypes.end() ? nullptr : &type->second;

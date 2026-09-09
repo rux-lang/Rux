@@ -166,6 +166,16 @@ bool TypeRef::IsAssignableTo(const TypeRef &other) const noexcept {
     return false;
 }
 
+bool TypeRef::CanReadScalarTo(const TypeRef &other) const noexcept {
+    if (kind != Kind::Reference || inner.empty() || other.kind == Kind::Reference) {
+        return false;
+    }
+    TypeRef value = inner.front();
+    value.isMut = false;
+    return (value.IsNumeric() || value.IsBool() || value.IsChar() || value.kind == Kind::TypeParam) &&
+           value.IsAssignableTo(other);
+}
+
 bool TypeRef::CanImplicitlyBorrowTo(const TypeRef &other) const noexcept {
     if (other.kind != Kind::Reference || other.inner.empty()) {
         return false;

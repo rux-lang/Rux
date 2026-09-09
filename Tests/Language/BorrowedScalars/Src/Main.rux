@@ -1,0 +1,176 @@
+import Core::Assert;
+
+func GenericRead<T>(value: &T) -> T { return value; }
+func Take(value: int32) -> int32 { return value; }
+func Take(value: bool) -> int32 { return value ? 1i32 : 0i32; }
+func Borrow(value: &int32) -> int32 { return value; }
+func Select(value: &int32) -> int32 { return 17i32; }
+func Select(value: int32) -> int32 { return 29i32; }
+
+interface Number { func Read() -> int32; }
+extend int32 : Number {
+    func Read(self: &int32) -> int32 { return self; }
+}
+
+struct Calls {}
+extend Calls {
+    func Read(self: &Calls, value: int32) -> int32 { return value; }
+}
+
+func Main() -> int {
+    var source = 41i32;
+    let reference: &var int32 = source;
+    let first: int32 = reference;
+    var assigned = 0i32;
+    assigned = reference;
+    Assert(first == 41i32 && assigned == 41i32, "typed initialization and assignment read the scalar");
+    Assert(Take(reference) == 41i32 && Borrow(reference) == 41i32, "value and reference calls retain their representations");
+    Assert(Select(reference) == 17i32, "an exact borrowed overload precedes a scalar conversion");
+    Assert(reference + 2i32 == 43i32 && 2i32 + reference == 43i32, "arithmetic reads either borrowed operand");
+    Assert(reference > 40i32 && reference == 41i32, "comparisons read the scalar rather than its address");
+    Assert((reference as int64) == 41i64 && (reference as float64) == 41.0, "casts convert a loaded scalar");
+    Assert(-reference == -41i32 && ~reference == ~41i32, "unary operations read their operands");
+    source = 53i32;
+    let next: &int32 = source;
+    Assert(Take(next) == 53i32 && first == 41i32, "a copied value is independent of subsequent storage updates");
+    let number: &Number = source;
+    Assert(number.Read() == 53i32, "primitive interface methods can use borrowed receivers");
+    Assert(GenericRead<int32>(next) == 53i32, "generic returns read only instantiated primitive scalars");
+    let calls = Calls {};
+    Assert(calls.Read(next) == 53i32, "method argument lookup accepts the scalar read");
+    let alternate = 71i32;
+    let other: &int32 = alternate;
+    let selected: int32 = true ? next : other;
+    let array: int32[2] = [next, other];
+    Assert(selected == 53i32 && array[0] == 53i32 && array[1] == 71i32, "contextual aggregates and ternaries read scalar elements");
+    Integers();
+    Floats();
+    Characters();
+    Booleans();
+    return 0;
+}
+
+func Integers() {
+    var uint256Value = 6277101735386680763835789423207666416102355444464034512975u256;
+    let uint256Borrow: &var uint256 = uint256Value;
+    let uint256Copy: uint256 = uint256Borrow;
+    Assert(uint256Copy == 6277101735386680763835789423207666416102355444464034512975u256, "uint256 scalar loads preserve high words");
+    Assert(GenericRead<uint256>(uint256Borrow) == 6277101735386680763835789423207666416102355444464034512975u256, "generic uint256 reads preserve all words");
+    var int256Value = -6277101735386680763835789423207666416102355444464034512979i256;
+    let int256Borrow: &var int256 = int256Value;
+    let int256Copy: int256 = int256Borrow;
+    Assert(int256Copy == -6277101735386680763835789423207666416102355444464034512979i256, "int256 scalar loads preserve high words");
+    Assert(GenericRead<int256>(int256Borrow) == -6277101735386680763835789423207666416102355444464034512979i256, "generic int256 reads preserve all words");
+    var uint512Value = 726838724295606890549323807888004534353641360687318060281490199180639288113397923326191050713763565560762521606266177933534601628614753u512;
+    let uint512Borrow: &var uint512 = uint512Value;
+    let uint512Copy: uint512 = uint512Borrow;
+    Assert(uint512Copy == 726838724295606890549323807888004534353641360687318060281490199180639288113397923326191050713763565560762521606266177933534601628614753u512, "uint512 scalar loads preserve high words");
+    Assert(GenericRead<uint512>(uint512Borrow) == 726838724295606890549323807888004534353641360687318060281490199180639288113397923326191050713763565560762521606266177933534601628614753u512, "generic uint512 reads preserve all words");
+    var int512Value = -726838724295606890549323807888004534353641360687318060281490199180639288113397923326191050713763565560762521606266177933534601628614757i512;
+    let int512Borrow: &var int512 = int512Value;
+    let int512Copy: int512 = int512Borrow;
+    Assert(int512Copy == -726838724295606890549323807888004534353641360687318060281490199180639288113397923326191050713763565560762521606266177933534601628614757i512, "int512 scalar loads preserve high words");
+    Assert(GenericRead<int512>(int512Borrow) == -726838724295606890549323807888004534353641360687318060281490199180639288113397923326191050713763565560762521606266177933534601628614757i512, "generic int512 reads preserve all words");
+    var int8Value = -127i8;
+    let int8Borrow: &var int8 = int8Value;
+    let int8Copy: int8 = int8Borrow;
+    Assert(int8Copy == -127i8 && GenericRead<int8>(int8Borrow) == -127i8, "int8 loads preserve the complete value");
+    var int16Value = -32767i16;
+    let int16Borrow: &var int16 = int16Value;
+    let int16Copy: int16 = int16Borrow;
+    Assert(int16Copy == -32767i16 && GenericRead<int16>(int16Borrow) == -32767i16, "int16 loads preserve the complete value");
+    var int32Value = -2147483647i32;
+    let int32Borrow: &var int32 = int32Value;
+    let int32Copy: int32 = int32Borrow;
+    Assert(int32Copy == -2147483647i32 && GenericRead<int32>(int32Borrow) == -2147483647i32, "int32 loads preserve the complete value");
+    var int64Value = -9223372036854775807i64;
+    let int64Borrow: &var int64 = int64Value;
+    let int64Copy: int64 = int64Borrow;
+    Assert(int64Copy == -9223372036854775807i64 && GenericRead<int64>(int64Borrow) == -9223372036854775807i64, "int64 loads preserve the complete value");
+    var int128Value = -18446744073709551617i128;
+    let int128Borrow: &var int128 = int128Value;
+    let int128Copy: int128 = int128Borrow;
+    Assert(int128Copy == -18446744073709551617i128 && GenericRead<int128>(int128Borrow) == -18446744073709551617i128, "int128 loads preserve the complete value");
+    var uint8Value = 255u8;
+    let uint8Borrow: &var uint8 = uint8Value;
+    let uint8Copy: uint8 = uint8Borrow;
+    Assert(uint8Copy == 255u8 && GenericRead<uint8>(uint8Borrow) == 255u8, "uint8 loads preserve the complete value");
+    var uint16Value = 65535u16;
+    let uint16Borrow: &var uint16 = uint16Value;
+    let uint16Copy: uint16 = uint16Borrow;
+    Assert(uint16Copy == 65535u16 && GenericRead<uint16>(uint16Borrow) == 65535u16, "uint16 loads preserve the complete value");
+    var uint32Value = 4294967295u32;
+    let uint32Borrow: &var uint32 = uint32Value;
+    let uint32Copy: uint32 = uint32Borrow;
+    Assert(uint32Copy == 4294967295u32 && GenericRead<uint32>(uint32Borrow) == 4294967295u32, "uint32 loads preserve the complete value");
+    var uint64Value = 18446744073709551615u64;
+    let uint64Borrow: &var uint64 = uint64Value;
+    let uint64Copy: uint64 = uint64Borrow;
+    Assert(uint64Copy == 18446744073709551615u64 && GenericRead<uint64>(uint64Borrow) == 18446744073709551615u64, "uint64 loads preserve the complete value");
+    var uint128Value = 18446744073709551617u128;
+    let uint128Borrow: &var uint128 = uint128Value;
+    let uint128Copy: uint128 = uint128Borrow;
+    Assert(uint128Copy == 18446744073709551617u128 && GenericRead<uint128>(uint128Borrow) == 18446744073709551617u128, "uint128 loads preserve the complete value");
+    var intValue = -79;
+    let intBorrow: &var int = intValue;
+    let intCopy: int = intBorrow;
+    Assert(intCopy == -79 && GenericRead<int>(intBorrow) == -79, "int loads preserve the complete value");
+    var uintValue = 83u;
+    let uintBorrow: &var uint = uintValue;
+    let uintCopy: uint = uintBorrow;
+    Assert(uintCopy == 83u && GenericRead<uint>(uintBorrow) == 83u, "uint loads preserve the complete value");
+}
+
+func Floats() {
+    var float32Value = -1.25f32;
+    let float32Borrow: &float32 = float32Value;
+    let float32Copy: float32 = float32Borrow;
+    Assert(float32Copy == -1.25f32 && GenericRead<float32>(float32Borrow) == -1.25f32, "float32 borrowed values use floating point loads");
+    var float64Value = 123.5f64;
+    let float64Borrow: &float64 = float64Value;
+    let float64Copy: float64 = float64Borrow;
+    Assert(float64Copy == 123.5f64 && GenericRead<float64>(float64Borrow) == 123.5f64, "float64 borrowed values use floating point loads");
+}
+
+func Characters() {
+    var char8Value = c8'A';
+    let char8Borrow: &char8 = char8Value;
+    let char8Copy: char8 = char8Borrow;
+    Assert(char8Copy == char8Value && char8Borrow == char8Value, "char8 references compare loaded code points");
+    var char16Value = c16'\u{03bb}';
+    let char16Borrow: &char16 = char16Value;
+    let char16Copy: char16 = char16Borrow;
+    Assert(char16Copy == char16Value && char16Borrow == char16Value, "char16 references compare loaded code points");
+    var char32Value = c32'\u{1F600}';
+    let char32Borrow: &char32 = char32Value;
+    let char32Copy: char32 = char32Borrow;
+    Assert(char32Copy == char32Value && char32Borrow == char32Value, "char32 references compare loaded code points");
+    var char64Value = c32'\u{1F600}' as char64;
+    let char64Borrow: &char64 = char64Value;
+    let char64Copy: char64 = char64Borrow;
+    Assert(char64Copy == char64Value && char64Borrow == char64Value, "char64 references compare loaded code points");
+}
+
+func Booleans() {
+    var yes = true;
+    let borrowed: &var bool = yes;
+    let copied: bool = borrowed;
+    Assert(copied && borrowed && !(!borrowed), "boolean and short-circuit operands read values");
+    yes = false;
+    let next: &bool = yes;
+    Assert(!next && (next || copied), "new borrows observe boolean writes");
+    Assert(GenericRead<bool>(next) == false, "generic boolean reads preserve false");
+    if next { Assert(false, "a borrowed false condition skips its body"); }
+    let chosen: bool = next ? next : copied;
+    Assert(chosen, "a contextual boolean ternary loads its chosen value");
+    var wide: bool64 = true;
+    let wideBorrow: &var bool64 = wide;
+    let wideCopy: bool64 = wideBorrow;
+    Assert(wideCopy && GenericRead<bool64>(wideBorrow), "wide boolean loads preserve the complete representation");
+    var medium: bool32 = false;
+    let mediumBorrow: &bool32 = medium;
+    Assert(!mediumBorrow, "a borrowed bool32 supports negation");
+    var narrow: bool16 = true;
+    let narrowBorrow: &bool16 = narrow;
+    Assert(narrowBorrow && GenericRead<bool16>(narrowBorrow), "a borrowed bool16 supplies a boolean value");
+}

@@ -36,6 +36,141 @@ bool HasErrorContaining(const std::vector<SemanticDiagnostic> &diagnostics, cons
 }
 } // namespace
 
+TEST_CASE("borrowed scalar reads retain reference types in semantic facts and load in HIR") {
+    Lexer lexer(R"(
+        func Read(value: &var uint128) -> uint128 {
+            let alias: &uint128 = value;
+            let copied: uint128 = alias;
+            return copied;
+        }
+    )",
+                "scalar-read.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+    Parser parser(std::move(lexed.tokens), "scalar-read.rux");
+    auto parsed = parser.Parse();
+    REQUIRE_FALSE(parsed.HasErrors());
+    const auto *function = dynamic_cast<const FuncDecl *>(parsed.module.items.front().get());
+    REQUIRE(function != nullptr);
+    REQUIRE(function->body != nullptr);
+    const auto *alias = dynamic_cast<const LetStmt *>(function->body->stmts[0].get());
+    const auto *copy = dynamic_cast<const LetStmt *>(function->body->stmts[1].get());
+    REQUIRE(alias != nullptr);
+    REQUIRE(copy != nullptr);
+    REQUIRE(alias->init != nullptr);
+    REQUIRE(copy->init != nullptr);
+    SemanticAnalyzer analyzer({&parsed.module}, {}, "test", CompileTimeContext{});
+    const SemanticModel model = analyzer.Analyze();
+    REQUIRE_FALSE(model.HasErrors());
+    CHECK_FALSE(model.HasBorrowedScalarRead(*alias->init));
+    CHECK(model.HasBorrowedScalarRead(*copy->init));
+    REQUIRE(model.TryGetType(*copy->init) != nullptr);
+    CHECK_EQ(model.TryGetType(*copy->init)->kind, TypeRef::Kind::Reference);
+    CHECK(model.TryGetConsumption(*copy->init) == nullptr);
+    CHECK(model.TryGetCopy(*copy->init) == nullptr);
+
+    HirPackage hir = AstToHirLowering(model).Generate();
+    REQUIRE_EQ(hir.modules.size(), 1);
+    REQUIRE_EQ(hir.modules.front().funcs.size(), 1);
+    const HirFunc &read = hir.modules.front().funcs.front();
+    REQUIRE(read.body.has_value());
+    const auto *loweredAlias = dynamic_cast<const HirLetStmt *>(read.body->stmts[0].get());
+    const auto *loweredCopy = dynamic_cast<const HirLetStmt *>(read.body->stmts[1].get());
+    REQUIRE(loweredAlias != nullptr);
+    REQUIRE(loweredCopy != nullptr);
+    CHECK(dynamic_cast<const HirVarExpr *>(loweredAlias->init.get()) != nullptr);
+    const auto *load = dynamic_cast<const HirUnaryExpr *>(loweredCopy->init.get());
+    REQUIRE(load != nullptr);
+    CHECK_EQ(load->op, TokenKind::Star);
+    CHECK_EQ(load->type.ToString(), "uint128");
+    CHECK_EQ(load->operand->type.kind, TypeRef::Kind::Reference);
+    HirToLirLowering lowering(std::move(hir), CompileTimeContext{}.target);
+    const auto lir = lowering.Generate();
+    REQUIRE(lowering.Diagnostics().empty());
+    CHECK_FALSE(lir.modules.empty());
+}
+
+TEST_CASE("borrowed scalar reads do not copy aggregates or stored pointers") {
+    SUBCASE("Copy struct") {
+        const auto diagnostics = AnalyzeReferences(R"(
+            struct Pair { first: int; second: int; }
+            func Copy(value: &Pair) { let copied: Pair = value; }
+        )");
+        CHECK(HasErrorContaining(diagnostics, "Pair"));
+        CHECK_FALSE(diagnostics.empty());
+    }
+    SUBCASE("move-only struct") {
+        const auto diagnostics = AnalyzeReferences(R"(
+            struct Owner { pointer: *var int; }
+            extend Owner { func ~Owner(self: &var Owner) {} }
+            func Copy(value: &Owner) -> Owner { return value; }
+        )");
+        CHECK(HasErrorContaining(diagnostics, "reference value '&Owner' cannot escape"));
+    }
+    SUBCASE("raw pointer") {
+        const auto diagnostics = AnalyzeReferences(R"(
+            func Copy(value: &(*int)) -> *int { return value; }
+        )");
+        CHECK(HasErrorContaining(diagnostics, "cannot escape through a return"));
+    }
+    SUBCASE("explicit reference move") {
+        const auto diagnostics = AnalyzeReferences(R"(
+            func Move(value: &int) -> int { return <-value; }
+        )");
+        CHECK(HasErrorContaining(diagnostics, "cannot move a non-owning reference"));
+    }
+    SUBCASE("mutable reborrow") {
+        const auto diagnostics = AnalyzeReferences(R"(
+            func Mutate(value: &var int) {}
+            func Forward(value: &int) { Mutate(value); }
+        )");
+        CHECK(HasErrorContaining(diagnostics, "requires '&var int'"));
+    }
+}
+
+TEST_CASE("generic borrowed scalar reads validate every instantiated referent") {
+    SUBCASE("multiple primitive widths") {
+        const auto diagnostics = AnalyzeReferences(R"(
+            func Read<T>(value: &var T) -> T { return value; }
+            func Main() {
+                var narrow = 3i8;
+                var wide = 18446744073709551617u128;
+                let first = Read<int8>(narrow);
+                let second = Read<uint128>(wide);
+            }
+        )");
+        for (const auto &diagnostic : diagnostics) {
+            INFO(diagnostic.message);
+            CHECK_NE(diagnostic.severity, Diagnostic::Severity::Error);
+        }
+    }
+    SUBCASE("Copy aggregate after scalar instantiation") {
+        const auto diagnostics = AnalyzeReferences(R"(
+            struct Pair { first: int; second: int; }
+            func Read<T>(value: &T) -> T { return value; }
+            func Main() {
+                let scalar = 7;
+                let accepted = Read<int>(scalar);
+                let pair = Pair { first: 1, second: 2 };
+                let rejected = Read<Pair>(pair);
+            }
+        )");
+        CHECK(HasErrorContaining(diagnostics, "implicit value read through '&Pair' requires a Copy primitive scalar"));
+    }
+    SUBCASE("generic arithmetic cannot introduce an aggregate copy") {
+        const auto diagnostics = AnalyzeReferences(R"(
+            struct Pair { first: int; second: int; }
+            extend Pair { func +(self: &Pair, other: Pair) -> Pair { return other; } }
+            func Add<T>(left: &T, right: T) -> T { return left + right; }
+            func Main() {
+                let pair = Pair { first: 1, second: 2 };
+                let rejected = Add<Pair>(pair, pair);
+            }
+        )");
+        CHECK(HasErrorContaining(diagnostics, "requires a Copy primitive scalar"));
+    }
+}
+
 TEST_CASE("reference types preserve identity mutability and layout") {
     const TypeRef shared = TypeRef::MakeReference(TypeRef::MakeInt32());
     TypeRef writableReferent = TypeRef::MakeInt32();

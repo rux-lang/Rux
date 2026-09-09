@@ -417,6 +417,8 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 
 ### Fixed
 
+- **Primitive values through references** — Copy numeric, boolean, and character values can be read through immutable or mutable references in value contexts. Semantic facts distinguish the scalar load from reference passing, and generic instantiations reject aggregate or pointer referents.
+
 - **Concrete arguments through interface dispatch** — interface calls now coerce arguments at their source parameter positions, including concrete borrows, defaults, and variadic elements. A declared generic interface bound also satisfies ordinary and variadic interface parameters. Text and Time tests pass their concrete writers directly.
 
 - **Positioned parser failures use ordinary propagation** — Time calendar readers and Format placeholder readers return `Result` values and propagate complete offsets with `?`, removing error output slots and manual builder-release paths. Match expressions now emit the recorded cleanup for owned arm bindings, so matched returned strings release their storage. Format writes literal Unicode as complete UTF-8 characters while rejecting malformed sequences, and allocation tests observe shared counters across interface copies.
