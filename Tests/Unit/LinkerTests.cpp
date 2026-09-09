@@ -187,6 +187,7 @@ TEST_CASE("ELF target profiles own OS and architecture policy") {
     CHECK(linuxAarch64->freestandingExitSyscall == 93);
     CHECK(linuxAarch64->dynamicRelocations.jumpSlot == 1026);
     CHECK_FALSE(linuxAarch64->definesElfAuxVector);
+    CHECK(linuxAarch64->abiNoteName.empty()); // Linux keys nothing on a release note
     CHECK(linuxAarch64->pltInstructionShape == Target::ElfPltInstructionShape::AArch64);
 
     const auto freebsdAarch64 = Target::Elf64ProfileFor(Target::OS::FreeBSD, Target::Arch::AArch64);
@@ -202,6 +203,8 @@ TEST_CASE("ELF target profiles own OS and architecture policy") {
     CHECK(freebsdAarch64->dynamicRelocations.relative == 1027);
     CHECK(freebsdAarch64->definesBsdProcessGlobals);
     CHECK(freebsdAarch64->definesElfAuxVector);
+    CHECK(freebsdAarch64->abiNoteName == "FreeBSD");
+    CHECK(freebsdAarch64->abiNoteOsRelease == 1501000); // 15.1-RELEASE, the syscall table Packages/FreeBSD encodes
 
     // Only the two ELF operating systems have a profile; Windows and macOS
     // reach their own writers instead.
@@ -467,9 +470,10 @@ TEST_CASE("ELF linker gives an AArch64 executable one loadable segment per permi
     // Three sections with three sets of permissions are three segments: the
     // code, the read-only data and the writable data, in that order.
     REQUIRE(loads.size() == 3);
-    CHECK(loads[0].flags == 0x5); // PF_R | PF_X
-    CHECK(loads[1].flags == 0x4); // PF_R
-    CHECK(loads[2].flags == 0x6); // PF_R | PF_W
+    CHECK_FALSE(image.SegmentOfType(4).has_value()); // no PT_NOTE: a Linux kernel reads no ABI tag
+    CHECK(loads[0].flags == 0x5);                    // PF_R | PF_X
+    CHECK(loads[1].flags == 0x4);                    // PF_R
+    CHECK(loads[2].flags == 0x6);                    // PF_R | PF_W
 
     // The first segment holds the entry stub and the object's code, one page
     // above the image base, and each of the others starts a page later.

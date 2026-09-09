@@ -168,6 +168,24 @@ TEST_SUITE("FreeBSD AArch64 freestanding ELF") {
         CHECK(loads[2].memorySize == 40); // data, alignment padding, then 24 zero-initialized bytes
         CHECK(loads[2].offset + loads[2].fileSize == first.bytes.size());
 
+        // The ABI tag the kernel keys its compatibility shims on. It sits after the program headers, inside the
+        // first page of the file, which is where the kernel reads it from before anything is mapped.
+        const auto note = first.SegmentOfType(4); // PT_NOTE
+        REQUIRE(note.has_value());
+        CHECK(note->flags == 0x4); // PF_R
+        CHECK(note->alignment == 4);
+        CHECK(note->offset % 4 == 0);
+        CHECK(note->offset == 64 + static_cast<std::uint64_t>(first.Read16(56)) * 56);
+        CHECK(note->offset + note->fileSize <= 4096);
+        CHECK(note->fileSize == note->memorySize);
+        CHECK(note->address == 0x400000 + note->offset);
+        const auto notes = first.Notes();
+        REQUIRE(notes.size() == 1);
+        CHECK(notes[0].name == "FreeBSD");
+        CHECK(notes[0].type == 1); // NT_FREEBSD_ABI_TAG
+        CHECK(notes[0].descriptor.size() == 4);
+        CHECK(notes[0].Word() == 1501000); // 15.1-RELEASE
+
         const std::uint64_t entry = first.Entry();
         CHECK(first.Word(entry) == 0x910003E9);     // mov x9, sp
         CHECK(first.Word(entry + 4) == 0x927CED29); // and x9, x9, #-16
@@ -350,6 +368,19 @@ TEST_SUITE("FreeBSD AArch64 dynamic ELF") {
         CHECK(dynamic->alignment == 8);
         CHECK(phdr->address == 0x400000 + image.Read64(32));
         CHECK(phdr->fileSize == static_cast<std::uint64_t>(image.Read16(56)) * image.Read16(54));
+
+        // The ABI tag lies inside the executable segment, so the loader and the kernel read the same bytes.
+        const auto note = image.SegmentOfType(4); // PT_NOTE
+        REQUIRE(note.has_value());
+        CHECK(note->offset == 64 + static_cast<std::uint64_t>(image.Read16(56)) * 56);
+        CHECK(note->offset + note->fileSize <= 4096);
+        CHECK(note->address == 0x400000 + note->offset);
+        CHECK(interp->offset == note->offset + note->fileSize);
+        const auto notes = image.Notes();
+        REQUIRE(notes.size() == 1);
+        CHECK(notes[0].name == "FreeBSD");
+        CHECK(notes[0].type == 1);
+        CHECK(notes[0].Word() == 1501000);
 
         const auto loads = LoadSegments(image);
         REQUIRE(loads.size() == 2);
@@ -643,6 +674,12 @@ TEST_SUITE("FreeBSD AArch64 ELF shared") {
 
         const ElfImage image = LinkSharedImage({std::move(library)},
                                                std::filesystem::temp_directory_path() / "libFreeBsdAArch64Answers.so");
+
+        // A library declares the release too, as FreeBSD's own do.
+        const auto notes = image.Notes();
+        REQUIRE(notes.size() == 1);
+        CHECK(notes[0].name == "FreeBSD");
+        CHECK(notes[0].Word() == 1501000);
 
         CHECK(image.OsAbi() == 9);     // ELFOSABI_FREEBSD
         CHECK(image.Type() == 3);      // ET_DYN

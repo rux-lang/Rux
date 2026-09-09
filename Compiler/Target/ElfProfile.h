@@ -40,6 +40,12 @@ struct Elf64Profile {
     ElfPltInstructionShape pltInstructionShape;
     std::size_t pltHeaderSize;
     std::size_t pltEntrySize;
+    /// The vendor name of the ABI-tag note every image carries, or empty when the target reads none. FreeBSD keys each
+    /// of its compatibility shims on the release this note declares — a zero-length mapping, the signal frame, thread
+    /// identifiers — and treats an image without one as older than all of them.
+    std::string_view abiNoteName;
+    /// The release the note declares, in the target's own encoding: FreeBSD's `__FreeBSD_version`.
+    std::uint32_t abiNoteOsRelease;
 };
 
 /// Linux and FreeBSD are the two ELF targets Rux supports, on both architectures.
@@ -65,7 +71,9 @@ struct Elf64Profile {
                          false,
                          aarch64 ? ElfPltInstructionShape::AArch64 : ElfPltInstructionShape::X86_64,
                          aarch64 ? 32U : 16U,
-                         16};
+                         16,
+                         "",
+                         0};
 
     switch (os) {
     case OS::Linux:
@@ -79,6 +87,9 @@ struct Elf64Profile {
         profile.freestandingExitSyscall = 1;
         profile.definesBsdProcessGlobals = true;
         profile.definesElfAuxVector = true;
+        // 15.1-RELEASE: the release whose system call table Packages/FreeBSD encodes and CI runs.
+        profile.abiNoteName = "FreeBSD";
+        profile.abiNoteOsRelease = 1501000;
         return profile;
     default:
         return std::nullopt;

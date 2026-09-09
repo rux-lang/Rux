@@ -100,6 +100,26 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
 
     const auto alignUp = [](const uint64_t v, const uint64_t a) { return (v + a - 1) & ~(a - 1); };
 
+    // The ABI-tag note, when the target reads one. The kernel keys its compatibility shims on the release it
+    // declares and takes an image without one for older than all of them, so every image carries it: four-byte
+    // name and descriptor sizes and a type, the NUL-terminated vendor name padded to a word, then the release.
+    Buf abiNote;
+    if (!profile.abiNoteName.empty()) {
+        WriteU32(abiNote, static_cast<uint32_t>(profile.abiNoteName.size() + 1)); // n_namesz
+        WriteU32(abiNote, 4);                                                     // n_descsz
+        WriteU32(abiNote, 1);                                                     // n_type: NT_*_ABI_TAG
+        for (const char character : profile.abiNoteName) {
+            WriteU8(abiNote, static_cast<uint8_t>(character));
+        }
+        WriteU8(abiNote, 0);
+        while (abiNote.size() % 4 != 0) {
+            WriteU8(abiNote, 0);
+        }
+        WriteU32(abiNote, profile.abiNoteOsRelease);
+    }
+    const bool hasAbiNote = !abiNote.empty();
+    static constexpr uint32_t kPtNote = 4;
+
     // 1. Collect explicit library assignments from declarations first. A
     //    call and its extern declaration may live in different RCU objects;
     //    the call-site symbol then has an empty typeName while the declaration
@@ -500,9 +520,12 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
         // --- Static executable: no imports, no interpreter. ---
         const bool hasRodata = !rodataBuf.empty();
         const bool hasWritable = !dataBuf.empty() || layout.BssSize() != 0;
-        const auto phnum = static_cast<uint16_t>(1 + (hasRodata ? 1 : 0) + (hasWritable ? 1 : 0));
+        const auto phnum =
+            static_cast<uint16_t>(1 + (hasRodata ? 1 : 0) + (hasWritable ? 1 : 0) + (hasAbiNote ? 1 : 0));
         constexpr uint64_t phoff = 64;
-        const uint64_t textOff = alignUp(phoff + static_cast<uint64_t>(phnum) * 56, kPage);
+        // The note follows the program headers, inside the first page, which is where the kernel reads it from.
+        const uint64_t noteOff = phoff + static_cast<uint64_t>(phnum) * 56;
+        const uint64_t textOff = alignUp(noteOff + abiNote.size(), kPage);
         const uint64_t textVA = imageBase + textOff;
 
         const uint64_t rdataOff = alignUp(textOff + textBuf.size(), kPage);
@@ -536,8 +559,12 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
         if (hasWritable) {
             writePhdr(phdrs, 1, kPfR | kPfW, dataOff, dataVA, dataBuf.size(), writableMemorySize, kPage);
         }
+        if (hasAbiNote) {
+            writePhdr(phdrs, kPtNote, kPfR, noteOff, imageBase + noteOff, abiNote.size(), abiNote.size(), 4);
+        }
 
-        return emitFile(phnum, phdrs, {{textOff, &textBuf}, {rdataOff, &rodataBuf}, {dataOff, &dataBuf}}, textVA,
+        return emitFile(phnum, phdrs,
+                        {{noteOff, &abiNote}, {textOff, &textBuf}, {rdataOff, &rodataBuf}, {dataOff, &dataBuf}}, textVA,
                         phoff);
     }
 
@@ -722,9 +749,11 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
 
     // 5. Assign file offsets; every section's VA is imageBase + its file offset.
     constexpr uint64_t phoff = 64;
-    const auto phnum = static_cast<uint16_t>(isShared ? 4 : 5);
+    const auto phnum = static_cast<uint16_t>((isShared ? 4 : 5) + (hasAbiNote ? 1 : 0));
     uint64_t off = 64 + static_cast<uint64_t>(phnum) * 56;
 
+    const uint64_t noteOff = off;
+    off += abiNote.size();
     const uint64_t interpOff = off;
     off += interp.size();
     const uint64_t hashOff = alignUp(off, 8);
@@ -964,9 +993,13 @@ bool Linker::LinkElf64(const std::filesystem::path &outputPath) {
               std::max(rwFileEnd, rwMemoryEnd) - dynamicOff,
               kPage);                                                         // PT_LOAD (rw-)
     writePhdr(phdrs, 2, kPfR | kPfW, dynamicOff, dynamicVA, dynSz, dynSz, 8); // PT_DYNAMIC
+    if (hasAbiNote) {
+        writePhdr(phdrs, kPtNote, kPfR, noteOff, imageBase + noteOff, abiNote.size(), abiNote.size(), 4); // PT_NOTE
+    }
 
     return emitFile(phnum, phdrs,
-                    {{interpOff, &interp},
+                    {{noteOff, &abiNote},
+                     {interpOff, &interp},
                      {hashOff, &hash},
                      {dynsymOff, &dynsym},
                      {dynstrOff, &dynstr},

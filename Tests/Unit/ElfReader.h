@@ -94,6 +94,53 @@ struct ElfImage {
         return found == segments.end() ? std::nullopt : std::optional(*found);
     }
 
+    struct Note {
+        std::string name;
+        std::uint32_t type;
+        std::vector<std::uint8_t> descriptor;
+
+        [[nodiscard]] std::uint32_t Word() const {
+            std::uint32_t value = 0;
+            for (std::size_t i = 0; i < descriptor.size() && i < 4; ++i) {
+                value |= static_cast<std::uint32_t>(descriptor[i]) << (i * 8U);
+            }
+            return value;
+        }
+    };
+
+    /// Every note in every PT_NOTE segment, in file order.
+    [[nodiscard]] std::vector<Note> Notes() const {
+        std::vector<Note> notes;
+        for (const auto &segment : Segments()) {
+            if (segment.type != 4) {
+                continue;
+            }
+            const auto end = static_cast<std::size_t>(segment.offset + segment.fileSize);
+            for (auto at = static_cast<std::size_t>(segment.offset); at + 12 <= end;) {
+                const std::size_t nameSize = Read32(at);
+                const std::size_t descriptorSize = Read32(at + 4);
+                const std::uint32_t type = Read32(at + 8);
+                const std::size_t name = at + 12;
+                const std::size_t descriptor = name + ((nameSize + 3) & ~std::size_t{3});
+                const std::size_t next = descriptor + ((descriptorSize + 3) & ~std::size_t{3});
+                if (next > end) {
+                    break;
+                }
+                const auto byte = [&](const std::size_t offset) {
+                    return bytes.begin() + static_cast<std::ptrdiff_t>(offset);
+                };
+                std::string vendor(byte(name), byte(name + nameSize));
+                if (!vendor.empty() && vendor.back() == 0) {
+                    vendor.pop_back();
+                }
+                notes.push_back({std::move(vendor), type,
+                                 std::vector<std::uint8_t>(byte(descriptor), byte(descriptor + descriptorSize))});
+                at = next;
+            }
+        }
+        return notes;
+    }
+
     [[nodiscard]] std::size_t OffsetOf(const std::uint64_t address) const {
         for (const auto &segment : Segments()) {
             if (segment.type == 1 && address >= segment.address && address < segment.address + segment.fileSize) {
