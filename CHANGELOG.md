@@ -417,6 +417,8 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 
 ### Fixed
 
+- **Borrowed primitive formatting** — all primitive Display and Debug implementations use borrowed receivers and scalar value reads. Direct, constrained, and interface calls preserve numeric boundaries, character validation, and format specifications without a raw-pointer receiver workaround.
+
 - **Primitive values through references** — Copy numeric, boolean, and character values can be read through immutable or mutable references in value contexts. Semantic facts distinguish the scalar load from reference passing, and generic instantiations reject aggregate or pointer referents.
 
 - **Concrete arguments through interface dispatch** — interface calls now coerce arguments at their source parameter positions, including concrete borrows, defaults, and variadic elements. A declared generic interface bound also satisfies ordinary and variadic interface parameters. Text and Time tests pass their concrete writers directly.

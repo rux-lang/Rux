@@ -22,9 +22,9 @@ extend char64 : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/char64/write-display
-    pub func WriteDisplay(self: *char64, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+    pub func WriteDisplay(self: &char64, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
         RejectStyle(spec)?;
-        let value = *self as uint64;
+        let value = self as uint64;
         if !IsWideScalarValue(value) { return FormatScalar(writer, spec, ReplacementCharacter); }
         return FormatScalar(writer, spec, (value as uint32) as char32);
     }
@@ -40,7 +40,7 @@ extend char64 : Debug {
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/char64/write-debug
-    pub func WriteDebug(self: *char64, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
-        return WriteCharacterDebug(writer, *self as uint64, IsWideScalarValue(*self as uint64));
+    pub func WriteDebug(self: &char64, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        return WriteCharacterDebug(writer, self as uint64, IsWideScalarValue(self as uint64));
     }
 }

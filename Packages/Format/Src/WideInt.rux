@@ -54,8 +54,8 @@ extend uint128 : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/uint128/write-display
-    pub func WriteDisplay(self: *uint128, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
-        return WriteDigits128(writer, spec, *self, false);
+    pub func WriteDisplay(self: &uint128, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        return WriteDigits128(writer, spec, self, false);
     }
 }
 
@@ -69,7 +69,7 @@ extend uint128 : Debug {
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/uint128/write-debug
-    pub func WriteDebug(self: *uint128, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+    pub func WriteDebug(self: &uint128, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
         return self.WriteDisplay(writer, spec);
     }
 }
@@ -84,9 +84,9 @@ extend int128 : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/int128/write-display
-    pub func WriteDisplay(self: *int128, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
-        let negative = *self < 0i128;
-        let magnitude = negative ? ~(*self as uint128) + 1u128 : *self as uint128;
+    pub func WriteDisplay(self: &int128, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        let negative = self < 0i128;
+        let magnitude = negative ? ~(self as uint128) + 1u128 : self as uint128;
         return WriteDigits128(writer, spec, magnitude, negative);
     }
 }
@@ -101,7 +101,7 @@ extend int128 : Debug {
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/int128/write-debug
-    pub func WriteDebug(self: *int128, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+    pub func WriteDebug(self: &int128, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
         return self.WriteDisplay(writer, spec);
     }
 }
@@ -148,8 +148,8 @@ extend uint256 : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/uint256/write-display
-    pub func WriteDisplay(self: *uint256, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
-        return WriteDigits256(writer, spec, *self, false);
+    pub func WriteDisplay(self: &uint256, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        return WriteDigits256(writer, spec, self, false);
     }
 }
 
@@ -163,7 +163,7 @@ extend uint256 : Debug {
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/uint256/write-debug
-    pub func WriteDebug(self: *uint256, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+    pub func WriteDebug(self: &uint256, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
         return self.WriteDisplay(writer, spec);
     }
 }
@@ -178,9 +178,9 @@ extend int256 : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/int256/write-display
-    pub func WriteDisplay(self: *int256, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
-        let negative = *self < 0i256;
-        let magnitude = negative ? ~(*self as uint256) + 1u256 : *self as uint256;
+    pub func WriteDisplay(self: &int256, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        let negative = self < 0i256;
+        let magnitude = negative ? ~(self as uint256) + 1u256 : self as uint256;
         return WriteDigits256(writer, spec, magnitude, negative);
     }
 }
@@ -195,7 +195,7 @@ extend int256 : Debug {
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/int256/write-debug
-    pub func WriteDebug(self: *int256, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+    pub func WriteDebug(self: &int256, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
         return self.WriteDisplay(writer, spec);
     }
 }
@@ -242,8 +242,8 @@ extend uint512 : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/uint512/write-display
-    pub func WriteDisplay(self: *uint512, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
-        return WriteDigits512(writer, spec, *self, false);
+    pub func WriteDisplay(self: &uint512, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        return WriteDigits512(writer, spec, self, false);
     }
 }
 
@@ -257,7 +257,7 @@ extend uint512 : Debug {
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/uint512/write-debug
-    pub func WriteDebug(self: *uint512, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+    pub func WriteDebug(self: &uint512, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
         return self.WriteDisplay(writer, spec);
     }
 }
@@ -272,9 +272,9 @@ extend int512 : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/int512/write-display
-    pub func WriteDisplay(self: *int512, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
-        let negative = *self < 0i512;
-        let magnitude = negative ? ~(*self as uint512) + 1u512 : *self as uint512;
+    pub func WriteDisplay(self: &int512, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        let negative = self < 0i512;
+        let magnitude = negative ? ~(self as uint512) + 1u512 : self as uint512;
         return WriteDigits512(writer, spec, magnitude, negative);
     }
 }
@@ -289,7 +289,7 @@ extend int512 : Debug {
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/int512/write-debug
-    pub func WriteDebug(self: *int512, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+    pub func WriteDebug(self: &int512, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
         return self.WriteDisplay(writer, spec);
     }
 }

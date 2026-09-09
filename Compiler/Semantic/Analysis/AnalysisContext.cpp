@@ -85,6 +85,18 @@ bool AnalysisContext::TypeImplementsInterface(const TypeRef &expressionType, con
     return false;
 }
 
+bool AnalysisContext::CanConvertToInterface(const TypeRef &argument, const TypeRef &parameter) const {
+    if (parameter.kind != TypeRef::Kind::Reference || parameter.inner.empty()) {
+        return TypeImplementsInterface(argument, parameter);
+    }
+    TypeRef source =
+        argument.kind == TypeRef::Kind::Reference && !argument.inner.empty() ? argument.inner.front() : argument;
+    TypeRef target = parameter.inner.front();
+    source.isMut = false;
+    target.isMut = false;
+    return TypeImplementsInterface(source, target);
+}
+
 AnalysisContext::AnalysisContext(AnalysisInputs inputs, SemanticFacts &output)
     : modules(inputs.modules)
     , deps(inputs.dependencies)

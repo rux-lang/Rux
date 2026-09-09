@@ -1,0 +1,151 @@
+import Core::Assert;
+import Format::Render;
+import Text::{ BufferWriter, Debug, Display, FormatSpec, ParseFormatSpec };
+
+func Same(actual: char8[..], expected: char8[..]) -> bool {
+    if actual.length != expected.length { return false; }
+    var index = 0u;
+    while index < actual.length {
+        if actual[index] != expected[index] { return false; }
+        index += 1u;
+    }
+    return true;
+}
+
+func Spec(text: char8[..]) -> FormatSpec {
+    var spec = FormatSpec::Plain();
+    Assert(ParseFormatSpec(text).TryIntoValue(@spec), "the regression specification is valid");
+    return spec;
+}
+
+func Shown<T: Display>(value: &T, spec: FormatSpec, expected: char8[..]) {
+    var storage: char8[192];
+    var writer = BufferWriter((@storage[0])[..192]);
+    Assert(value.WriteDisplay(writer, spec).IsSuccess(), "a constrained borrowed receiver renders");
+    Assert(Same(writer.Written(), expected), expected);
+    writer.Clear();
+    let shown: &Display = value;
+    Assert(shown.WriteDisplay(writer, spec).IsSuccess(), "a borrowed interface receiver renders");
+    Assert(Same(writer.Written(), expected), expected);
+}
+
+func Inspected<T: Debug>(value: &T, spec: FormatSpec, expected: char8[..]) {
+    var storage: char8[192];
+    var writer = BufferWriter((@storage[0])[..192]);
+    Assert(value.WriteDebug(writer, spec).IsSuccess(), "a constrained borrowed debug receiver renders");
+    Assert(Same(writer.Written(), expected), expected);
+    writer.Clear();
+    let shown: &Debug = value;
+    Assert(shown.WriteDebug(writer, spec).IsSuccess(), "a borrowed debug interface renders");
+    Assert(Same(writer.Written(), expected), expected);
+}
+
+func Main() -> int {
+    let plain = FormatSpec::Plain();
+    var int8Value = -128i8;
+    Shown<int8>(int8Value, plain, "-128");
+    Inspected<int8>(int8Value, plain, "-128");
+    var int16Value = -32768i16;
+    Shown<int16>(int16Value, plain, "-32768");
+    Inspected<int16>(int16Value, plain, "-32768");
+    var int32Value = -2147483648i32;
+    Shown<int32>(int32Value, plain, "-2147483648");
+    Inspected<int32>(int32Value, plain, "-2147483648");
+    var int64Value = -9223372036854775808i64;
+    Shown<int64>(int64Value, plain, "-9223372036854775808");
+    Inspected<int64>(int64Value, plain, "-9223372036854775808");
+    var int128Value = -170141183460469231731687303715884105728i128;
+    Shown<int128>(int128Value, plain, "-170141183460469231731687303715884105728");
+    Inspected<int128>(int128Value, plain, "-170141183460469231731687303715884105728");
+    var int256Value = -57896044618658097711785492504343953926634992332820282019728792003956564819968i256;
+    Shown<int256>(int256Value, plain, "-57896044618658097711785492504343953926634992332820282019728792003956564819968");
+    Inspected<int256>(int256Value, plain, "-57896044618658097711785492504343953926634992332820282019728792003956564819968");
+    var int512Value = -6703903964971298549787012499102923063739682910296196688861780721860882015036773488400937149083451713845015929093243025426876941405973284973216824503042048i512;
+    Shown<int512>(int512Value, plain, "-6703903964971298549787012499102923063739682910296196688861780721860882015036773488400937149083451713845015929093243025426876941405973284973216824503042048");
+    Inspected<int512>(int512Value, plain, "-6703903964971298549787012499102923063739682910296196688861780721860882015036773488400937149083451713845015929093243025426876941405973284973216824503042048");
+    var intValue = -43;
+    Shown<int>(intValue, plain, "-43");
+    Inspected<int>(intValue, plain, "-43");
+    var uint8Value = 255u8;
+    Shown<uint8>(uint8Value, plain, "255");
+    Inspected<uint8>(uint8Value, plain, "255");
+    var uint16Value = 65535u16;
+    Shown<uint16>(uint16Value, plain, "65535");
+    Inspected<uint16>(uint16Value, plain, "65535");
+    var uint32Value = 4294967295u32;
+    Shown<uint32>(uint32Value, plain, "4294967295");
+    Inspected<uint32>(uint32Value, plain, "4294967295");
+    var uint64Value = 18446744073709551615u64;
+    Shown<uint64>(uint64Value, plain, "18446744073709551615");
+    Inspected<uint64>(uint64Value, plain, "18446744073709551615");
+    var uint128Value = 340282366920938463463374607431768211455u128;
+    Shown<uint128>(uint128Value, plain, "340282366920938463463374607431768211455");
+    Inspected<uint128>(uint128Value, plain, "340282366920938463463374607431768211455");
+    var uint256Value = 115792089237316195423570985008687907853269984665640564039457584007913129639935u256;
+    Shown<uint256>(uint256Value, plain, "115792089237316195423570985008687907853269984665640564039457584007913129639935");
+    Inspected<uint256>(uint256Value, plain, "115792089237316195423570985008687907853269984665640564039457584007913129639935");
+    var uint512Value = 13407807929942597099574024998205846127479365820592393377723561443721764030073546976801874298166903427690031858186486050853753882811946569946433649006084095u512;
+    Shown<uint512>(uint512Value, plain, "13407807929942597099574024998205846127479365820592393377723561443721764030073546976801874298166903427690031858186486050853753882811946569946433649006084095");
+    Inspected<uint512>(uint512Value, plain, "13407807929942597099574024998205846127479365820592393377723561443721764030073546976801874298166903427690031858186486050853753882811946569946433649006084095");
+    var uintValue = 47u;
+    Shown<uint>(uintValue, plain, "47");
+    Inspected<uint>(uintValue, plain, "47");
+    var float32Value = -1.25f32;
+    Shown<float32>(float32Value, plain, "-1.25");
+    Inspected<float32>(float32Value, plain, "-1.25");
+    var float64Value = 123.5f64;
+    Shown<float64>(float64Value, plain, "123.5");
+    Inspected<float64>(float64Value, plain, "123.5");
+    var bool8Value = true as bool8;
+    Shown<bool8>(bool8Value, plain, "true");
+    Inspected<bool8>(bool8Value, plain, "true");
+    var bool16Value = true as bool16;
+    Shown<bool16>(bool16Value, plain, "true");
+    Inspected<bool16>(bool16Value, plain, "true");
+    var bool32Value = true as bool32;
+    Shown<bool32>(bool32Value, plain, "true");
+    Inspected<bool32>(bool32Value, plain, "true");
+    var bool64Value = true as bool64;
+    Shown<bool64>(bool64Value, plain, "true");
+    Inspected<bool64>(bool64Value, plain, "true");
+    let byte = c8'A';
+    let small = c16'\u{03bb}';
+    let scalar = c32'\u{1F600}';
+    let wide = scalar as char64;
+    Shown<char8>(byte, plain, "A");
+    Inspected<char8>(byte, plain, "'A'");
+    Shown<char16>(small, plain, "λ");
+    Inspected<char16>(small, plain, "'λ'");
+    Shown<char32>(scalar, plain, "😀");
+    Inspected<char32>(scalar, plain, "'😀'");
+    Shown<char64>(wide, plain, "😀");
+    Inspected<char64>(wide, plain, "'😀'");
+    var invalidBits = 0x100000041u64;
+    let invalidWide = invalidBits as char64;
+    Shown<char64>(invalidWide, plain, "�");
+    Inspected<char64>(invalidWide, plain, "'\\u{0000000100000041}'");
+    let hex = 255u32;
+    Shown<uint32>(hex, Spec("#08x"), "0x0000ff");
+    let decimal = 1.25f64;
+    Shown<float64>(decimal, Spec(".3"), "1.250");
+    Direct();
+    return 0;
+}
+
+func Direct() {
+    var storage: char8[192];
+    var writer = BufferWriter((@storage[0])[..192]);
+    let plain = FormatSpec::Plain();
+    var number = -71i32;
+    let borrowed: &var int32 = number;
+    Assert(borrowed.WriteDisplay(writer, plain).IsSuccess(), "a direct call accepts a mutable primitive borrow");
+    Assert(Same(writer.Written(), "-71"), "the direct borrowed integer receiver reads its value");
+    writer.Clear();
+    let character = c32'A';
+    Assert(character.WriteDebug(writer, plain).IsSuccess(), "a direct concrete character receiver borrows");
+    Assert(Same(writer.Written(), "'A'"), "the direct character call retains Debug quoting");
+    writer.Clear();
+    let real = -0.5f64;
+    Assert(real.WriteDisplay(writer, plain).IsSuccess(), "a direct floating receiver borrows");
+    Assert(Same(writer.Written(), "-0.5"), "the direct floating receiver reads its value");
+}

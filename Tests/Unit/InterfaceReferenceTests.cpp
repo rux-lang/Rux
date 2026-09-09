@@ -133,6 +133,47 @@ TEST_CASE("interface argument conversion requires the declared bound") {
              3);
 }
 
+TEST_CASE("concrete methods accept concrete interface arguments through shared overload conversion") {
+    const auto diagnostics = AnalyzeInterfaceReferences(R"(
+        interface Writer { func Put(value: int); }
+        struct Buffer { count: int; }
+        extend Buffer : Writer {
+            func Put(self: &var Buffer, value: int) { self.count += value; }
+        }
+        struct Number { value: int; }
+        extend Number {
+            func Render(self: &Number, writer: &var Writer) { writer.Put(self.value); }
+            func Render(self: &Number, value: bool) {}
+        }
+        func Test() {
+            var number = Number { value: 3 };
+            let borrowed: &var Number = number;
+            var buffer = Buffer { count: 0 };
+            borrowed.Render(buffer);
+        }
+    )");
+    for (const auto &diagnostic : diagnostics) {
+        INFO(diagnostic.message);
+        CHECK_NE(diagnostic.severity, Diagnostic::Severity::Error);
+    }
+}
+
+TEST_CASE("concrete method interface arguments still require writable storage") {
+    const auto diagnostics = AnalyzeInterfaceReferences(R"(
+        interface Writer { func Put(value: int); }
+        struct Buffer { count: int; }
+        extend Buffer : Writer {
+            func Put(self: &var Buffer, value: int) { self.count += value; }
+        }
+        struct Number { value: int; }
+        extend Number {
+            func Render(self: &Number, writer: &var Writer) { writer.Put(self.value); }
+        }
+        func Test(number: Number, buffer: &Buffer) { number.Render(buffer); }
+    )");
+    CHECK(HasErrorContaining(diagnostics, "requires '&var Writer'"));
+}
+
 TEST_CASE("interface requirements validate their defaults before call lowering") {
     SUBCASE("default type") {
         const auto diagnostics = AnalyzeInterfaceReferences(R"(

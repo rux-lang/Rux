@@ -24,11 +24,11 @@ extend char8 : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/char8/write-display
-    pub func WriteDisplay(self: *char8, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+    pub func WriteDisplay(self: &char8, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
         RejectStyle(spec)?;
-        if (*self as uint32) > 0x7F { return FormatScalar(writer, spec, ReplacementCharacter); }
+        if (self as uint32) > 0x7F { return FormatScalar(writer, spec, ReplacementCharacter); }
         var one: char8[1];
-        one[0] = *self;
+        one[0] = self;
         return WriteAligned(writer, spec, (@one[0])[..1], false);
     }
 }
@@ -47,7 +47,7 @@ extend char8 : Debug {
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/char8/write-debug
-    pub func WriteDebug(self: *char8, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
-        return WriteCharacterDebug(writer, *self as uint64, (*self as uint32) <= 0x7Fu32);
+    pub func WriteDebug(self: &char8, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        return WriteCharacterDebug(writer, self as uint64, (self as uint32) <= 0x7Fu32);
     }
 }

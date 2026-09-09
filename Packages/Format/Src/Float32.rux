@@ -60,7 +60,7 @@ extend float32 : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/float32/write-display
-    pub func WriteDisplay(self: *float32, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+    pub func WriteDisplay(self: &float32, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
         RejectStyle(spec)?;
         // Two bytes of head room in front, so that a requested sign can be put where the rendering starts
         // without moving it.
@@ -70,9 +70,9 @@ extend float32 : Display {
         // supported bound is refused rather than clamped or answered with a different rendering: falling back
         // would answer a question nobody asked, and quietly.
         if spec.HasPrecision() {
-            return WritePrecision(writer, spec, DecomposeFloat32(*self));
+            return WritePrecision(writer, spec, DecomposeFloat32(self));
         }
-        WriteFloat(cursor, *self);
+        WriteFloat(cursor, self);
         var rendered = cursor.Written();
         // A requested sign goes in front of a value that has none of its own; a NaN carries no sign to show.
         if spec.ShowsSign() && rendered.length > 0 && rendered.data[0] != c8'-' && rendered.data[0] != c8'N' {
@@ -93,7 +93,7 @@ extend float32 : Debug {
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/float32/write-debug
-    pub func WriteDebug(self: *float32, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+    pub func WriteDebug(self: &float32, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
         return self.WriteDisplay(writer, spec);
     }
 }

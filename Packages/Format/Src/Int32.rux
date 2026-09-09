@@ -18,8 +18,8 @@ extend int32 : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/int32/write-display
-    pub func WriteDisplay(self: *int32, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
-        let wide = *self as int64;
+    pub func WriteDisplay(self: &int32, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        let wide = self as int64;
         // The magnitude is taken in uint64 rather than by negating in int64, because the most negative value has
         // no positive counterpart there.
         let negative = wide < 0i64;
@@ -38,7 +38,7 @@ extend int32 : Debug {
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/int32/write-debug
-    pub func WriteDebug(self: *int32, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+    pub func WriteDebug(self: &int32, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
         return self.WriteDisplay(writer, spec);
     }
 }

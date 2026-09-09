@@ -531,7 +531,7 @@ TypeRef AnalysisContext::ResolveTypeWithSubstitution(const TypeExpr &expr,
                 continue;
             }
             if (!argTypes[i].IsAssignableTo(paramTypes[i]) && !argTypes[i].CanImplicitlyBorrowTo(paramTypes[i]) &&
-                !argTypes[i].CanReadScalarTo(paramTypes[i]) &&
+                !argTypes[i].CanReadScalarTo(paramTypes[i]) && !CanConvertToInterface(argTypes[i], paramTypes[i]) &&
                 !(argTypes[i].IsInteger() && paramTypes[i].IsInteger())) {
                 return nullptr;
             }
@@ -547,6 +547,7 @@ TypeRef AnalysisContext::ResolveTypeWithSubstitution(const TypeExpr &expr,
         for (std::size_t i = 0; i < argTypes.size(); ++i) {
             if (!argTypes[i].IsUnknown() && !paramTypes[i].IsUnknown() && !argTypes[i].IsAssignableTo(paramTypes[i]) &&
                 !argTypes[i].CanImplicitlyBorrowTo(paramTypes[i]) && !argTypes[i].CanReadScalarTo(paramTypes[i]) &&
+                !CanConvertToInterface(argTypes[i], paramTypes[i]) &&
                 !(argTypes[i].IsInteger() && paramTypes[i].IsInteger())) {
                 match = false;
                 break;

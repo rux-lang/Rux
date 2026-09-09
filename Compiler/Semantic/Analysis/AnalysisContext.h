@@ -554,6 +554,7 @@ private:
     /// Whether a concrete type supplies the vtable required by an interface target. Empty interfaces accept every
     /// type, and platform-sized integer aliases share implementations with their fixed-width equivalents.
     [[nodiscard]] bool TypeImplementsInterface(const TypeRef &expressionType, const TypeRef &targetType) const;
+    [[nodiscard]] bool CanConvertToInterface(const TypeRef &argument, const TypeRef &parameter) const;
 
 private:
     struct DeferredUnaryCheck {

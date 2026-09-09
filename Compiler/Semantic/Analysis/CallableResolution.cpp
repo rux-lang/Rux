@@ -163,17 +163,6 @@ const FuncDecl *AnalysisContext::LookupFunctionOverload(const Symbol &sym, const
     if (sym.kind != Symbol::Kind::Func || sym.funcOverloads.empty()) {
         return nullptr;
     }
-    const auto convertsToInterface = [&](const TypeRef &argument, const TypeRef &parameter) {
-        if (parameter.kind != TypeRef::Kind::Reference || parameter.inner.empty()) {
-            return TypeImplementsInterface(argument, parameter);
-        }
-        TypeRef source =
-            argument.kind == TypeRef::Kind::Reference && !argument.inner.empty() ? argument.inner.front() : argument;
-        TypeRef target = parameter.inner.front();
-        source.isMut = false;
-        target.isMut = false;
-        return TypeImplementsInterface(source, target);
-    };
     if (sym.funcOverloads.size() == 1) {
         const auto *decl = sym.funcOverloads[0];
         if (!typeArgs.empty() && typeArgs.size() != decl->typeParams.size()) {
@@ -211,7 +200,7 @@ const FuncDecl *AnalysisContext::LookupFunctionOverload(const Symbol &sym, const
             }
             if (!argTypes[i].IsAssignableTo(funcType.inner[i]) && !argTypes[i].CanReadScalarTo(funcType.inner[i]) &&
                 !argTypes[i].CanImplicitlyBorrowTo(funcType.inner[i]) &&
-                !convertsToInterface(argTypes[i], funcType.inner[i]) &&
+                !CanConvertToInterface(argTypes[i], funcType.inner[i]) &&
                 !(argTypes[i].IsInteger() && funcType.inner[i].IsInteger())) {
                 return nullptr;
             }
@@ -272,7 +261,7 @@ const FuncDecl *AnalysisContext::LookupFunctionOverload(const Symbol &sym, const
                     const bool assignable = argTypes[i].IsAssignableTo(paramType) ||
                                             argTypes[i].CanReadScalarTo(paramType) ||
                                             argTypes[i].CanImplicitlyBorrowTo(paramType) ||
-                                            convertsToInterface(argTypes[i], paramType) || literalToInteger;
+                                            CanConvertToInterface(argTypes[i], paramType) || literalToInteger;
                     if (exactOnly ? !(argTypes[i] == paramType) : !assignable) {
                         match = false;
                         break;

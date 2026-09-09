@@ -17,8 +17,8 @@ extend uint : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/uint/write-display
-    pub func WriteDisplay(self: *uint, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
-        return WriteIntegerSpec(writer, spec, *self as uint64, false);
+    pub func WriteDisplay(self: &uint, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        return WriteIntegerSpec(writer, spec, self as uint64, false);
     }
 }
 
@@ -32,7 +32,7 @@ extend uint : Debug {
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/uint/write-debug
-    pub func WriteDebug(self: *uint, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+    pub func WriteDebug(self: &uint, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
         return self.WriteDisplay(writer, spec);
     }
 }

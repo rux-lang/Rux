@@ -15,9 +15,9 @@ extend bool8 : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/bool8/write-display
-    pub func WriteDisplay(self: *bool8, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+    pub func WriteDisplay(self: &bool8, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
         RejectStyle(spec)?;
-        return WriteAligned(writer, spec, *self ? "true" : "false", false);
+        return WriteAligned(writer, spec, self ? "true" : "false", false);
     }
 }
 
@@ -31,7 +31,7 @@ extend bool8 : Debug {
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/bool8/write-debug
-    pub func WriteDebug(self: *bool8, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+    pub func WriteDebug(self: &bool8, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
         return self.WriteDisplay(writer, spec);
     }
 }
