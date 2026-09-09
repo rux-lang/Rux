@@ -92,6 +92,22 @@ private:
         return size > 0 && size != 1 && size != 2 && size != 4 && size != 8;
     }
 
+    // The frame slot a value occupies, which is not always what the value measures. An aggregate is moved a whole
+    // word at a time — spilled from the stack argument slots a caller filled, reloaded into the outgoing area of
+    // the next call — so its slot is padded to a whole number of words and those moves stay inside it. Without the
+    // padding a twenty-byte struct parameter spilled twenty-four bytes over a twenty-byte slot and overwrote the
+    // saved frame pointer sitting just above it. A width no scalar move spells is padded for the same reason.
+    [[nodiscard]] int SlotSize(const TypeRef &type) const {
+        const int size = RuntimeSize(type);
+        if (size <= 0) {
+            return 8;
+        }
+        if (IsAggregate(type)) {
+            return AlignUp(size, 8);
+        }
+        return size == 3 || size == 5 || size == 6 || size == 7 ? 8 : size;
+    }
+
     [[nodiscard]] bool IsSysVMemoryAggregate(const TypeRef &type) const {
         return IsAggregate(type) && RuntimeSize(type) > 16;
     }
@@ -160,7 +176,7 @@ private:
         for (const auto &parameter : func.params) {
             TypeRef registerType = ParameterRegisterType(parameter.type);
             plan.registerTypes[parameter.reg] = registerType;
-            AllocateSlot(parameter.reg, std::max(8, RuntimeSize(registerType)));
+            AllocateSlot(parameter.reg, std::max(8, SlotSize(registerType)));
         }
     }
 
@@ -201,14 +217,7 @@ private:
                 }
 
                 plan.registerTypes[instruction.dst] = instruction.type;
-                const int size = RuntimeSize(instruction.type);
-                int slotSize = size > 0 ? size : 8;
-                if (slotSize == 3 || slotSize == 5 || slotSize == 6 || slotSize == 7) {
-                    // An odd-width aggregate is moved slot-to-slot as a whole word, since no scalar move spells
-                    // its width; the slot is padded to the word so that move stays inside it.
-                    slotSize = 8;
-                }
-                AllocateSlot(instruction.dst, slotSize);
+                AllocateSlot(instruction.dst, SlotSize(instruction.type));
             }
         }
     }

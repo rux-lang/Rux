@@ -6,8 +6,9 @@
 // sign gets a working mapping reported as a failure. The three packages answer that with one window — `-4095`
 // through `-1` and nothing else — and this file asserts both edges of it.
 //
-// Nothing here has ever been executed: the host that wrote it runs Windows, so this file exists to be run by the
-// Linux jobs in CI and its value is entirely in what those jobs report.
+// The host that wrote this runs Windows, so its value is entirely in what the Linux runs report; the first of them
+// is what corrected the `MADV_DONTNEED` case below, which had assumed the advisory meaning the other two systems
+// give that number.
 //
 // An errno is asserted only where POSIX names it and all three supported systems agree. `Mmap` and `Mprotect`
 // disagree about which number an unmapped or oversized request earns, so those cases assert the refusal alone.
@@ -80,9 +81,18 @@ when #target.os == OperatingSystem::Linux {
         bytes[MappingUnit - 1] = c8'z';
         Assert(bytes[0] == c8'a' && bytes[MappingUnit - 1] == c8'z', "the first and last bytes hold what was written");
 
-        // Advice is a hint and reports whether it was understood, not whether it did anything.
+        // Advice is a hint everywhere except here. `MADV_DONTNEED` on Linux actually discards, and an anonymous
+        // page discarded that way reads back as zero, where the same number on FreeBSD and Darwin only deactivates
+        // and leaves the contents alone. That is why an advice value must not be carried between the packages, and
+        // it is the one place where the return value understates what the call did.
         Assert(Madvise(mapping as *opaque, MappingUnit, AdviseWillNeed) == 0, "advising future use succeeds");
         Assert(Madvise(mapping as *opaque, MappingUnit, AdviseDontNeed) == 0, "advising disuse succeeds");
+        Assert(bytes[0] == 0 as char8 && bytes[MappingUnit - 1] == 0 as char8,
+               "and the discarded pages read back as zeros rather than what was written");
+
+        // Written again, so the protection cases below have something of their own to preserve.
+        bytes[0] = c8'a';
+        bytes[MappingUnit - 1] = c8'z';
 
         // --- Protection --------------------------------------------------------------------------------------
 

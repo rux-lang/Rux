@@ -210,3 +210,30 @@ TEST_CASE("x86-64 frame plan caps callee saves and retains homes for spills") {
     CHECK(plan.SlotOffsets().contains(6));
     CHECK_EQ(plan.FrameSize() % 16, 0);
 }
+
+TEST_CASE("x86-64 frame plan pads an aggregate parameter home to a whole word") {
+    // A System V memory aggregate arrives in the caller's stack argument slots, which hold a whole number of words,
+    // and the prologue spills it word by word for that reason. A home sized at the aggregate's exact width is short
+    // of what that spill writes, and what sits above a parameter home is the saved frame pointer.
+    const TypeRef moment = TypeRef::MakeNamed("Moment");
+    LayoutMap layouts;
+    layouts["Moment"] = StructLayout{.fields = {}, .totalSize = 20, .alignment = 4};
+
+    LirFunc function;
+    function.name = "Render";
+    function.callConv = CallingConvention::SysV;
+    function.returnType = TypeRef::MakeBool();
+    function.params.push_back({0, moment, "moment"});
+
+    LirBlock block;
+    block.term.emplace();
+    block.term->kind = LirTermKind::Return;
+    function.blocks.push_back(std::move(block));
+
+    const X86_64FramePlan plan = PlanX86_64Frame(function, layouts, {}, Target::OS::Linux);
+
+    // Offsets count downwards from the frame pointer, so the home covers [-offset, -offset + size).
+    CHECK_EQ(plan.SlotOffsets().at(0), 24);
+    CHECK_LE(plan.FrameSize(), 32);
+    CHECK_EQ(plan.FrameSize() % 16, 0);
+}
