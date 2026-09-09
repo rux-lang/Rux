@@ -1480,7 +1480,6 @@ missing-returns|Allocator/Src/System.rux|func|Deallocate|b24d81a3f86f7554
 missing-returns|Allocator/Src/System.rux|func|Reallocate|500fc5c9d6eefd9a
 missing-returns|Allocator/Src/System.rux|func|SystemAllocator|76f72614122ef39c
 missing-returns|C/Src/Time.rux|func|TimespecGet|63c2d4179ee211cb
-missing-returns|C/Src/Types.rux|func|ErrnoLocation|8611b474b205ae2f
 missing-returns|C/Src/Types.rux|func|Errno|4b7322419d4d8154
 missing-returns|Collections/Src/Array.rux|func|AsMutableSlice|2f7bc9ee4113a25b
 missing-returns|Collections/Src/Array.rux|func|AsSlice|9ad5c198c950d4e5
@@ -2689,7 +2688,6 @@ missing-see|C/Src/Types.rux|const|CRuntime|50f398217784785a
 missing-see|C/Src/Types.rux|const|EDOM|6884db1ac7c85406
 missing-see|C/Src/Types.rux|const|EILSEQ|8b7481cb58f90b1a
 missing-see|C/Src/Types.rux|const|ERANGE|9083a8184c3e61b8
-missing-see|C/Src/Types.rux|func|ErrnoLocation|8611b474b205ae2f
 missing-see|C/Src/Types.rux|func|Errno|4b7322419d4d8154
 missing-see|C/Src/Types.rux|struct|FILE|d2ca2eed7839140c
 missing-see|C/Src/Types.rux|struct|fpos_t|612a28d86f0b1b3c

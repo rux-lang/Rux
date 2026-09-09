@@ -21,12 +21,15 @@ rux add Rux/C
 | `Math`   | `<math.h>` — the elementary functions in both `double` and `float` forms   |
 | `Time`   | `<time.h>` — clocks, calendar time, and `timespec`                          |
 
-A declaration that has to match a C interface is written against the `Types` aliases rather than Rux's own widths: `c_int`, `c_long` and `c_ulong` (which the two data models disagree about), `c_char` and its two explicit-signedness siblings, `size_t`, `ssize_t`, `ptrdiff_t`, `intptr_t`, `uintptr_t` and `wchar_t`. A stream is a `*FILE` and a stream position is a `*fpos_t`, both declared with no fields, so one handle cannot be passed where another was meant. `ErrnoLocation` returns the address of the calling thread's `errno` through whichever accessor the platform exports, `Errno` reads it, and `EDOM`, `ERANGE` and `EILSEQ` are the three values C itself mandates.
+A declaration that has to match a C interface is written against the `Types` aliases rather than Rux's own widths: `c_int`, `c_long` and `c_ulong` (which the two data models disagree about), `c_char` and its two explicit-signedness siblings, `size_t`, `ssize_t`, `ptrdiff_t`, `intptr_t`, `uintptr_t` and `wchar_t`. A stream is a `*FILE` and a stream position is a `*fpos_t`, both declared with no fields, so one handle cannot be passed where another was meant. `ErrnoLocation` returns the address of the calling thread's `errno` through whichever accessor the platform exports, `Errno` reads it, `ErrnoLocationFor` and `ErrnoFor` name which of the package's runtimes to read, and `EDOM`, `ERANGE` and `EILSEQ` are the three values C itself mandates.
 
-> **On Windows this package spans two C runtimes.** `StdLib` and `Math` bind the Universal CRT (`ucrtbase.dll`), while
-> `StdIo` and `Time` are still bound to the legacy `msvcrt.dll`, which is the only one exporting the formatted-output
-> family. The two keep separate state, so an `errno` set by a stream call is not the `errno` this package reads. Do
-> not read `errno` after a call made through `StdIo` or `Time` on Windows.
+## Two C runtimes on Windows
+
+`StdLib` and `Math` bind the Universal CRT (`ucrtbase.dll`); `StdIo` and `Time` bind the legacy `msvcrt.dll`, which is the only one exporting the formatted-output family. They are two loaded modules with two distinct `_errno` entry points, and `CRuntime` and `StreamRuntime` name them. `SeparateStreamRuntime` is true here and false everywhere else, where both constants name the one runtime.
+
+`ErrnoFor(CRuntimeArea::Streams)` reads the runtime `StdIo` and `Time` are bound to and `ErrnoFor(CRuntimeArea::General)` the one `StdLib` and `Math` are bound to, so a caller reads the errno belonging to the call it actually made. Plain `Errno` is the `General` case. On the three Unix systems both areas name the same storage, so passing the area matching the module called is right on all four targets and needs no branch in caller code.
+
+**What was measured, on Windows 11 with the current system DLLs.** The two `_errno` functions are different exports at different addresses, and both return *the same* per-thread storage: today's `msvcrt.dll` defers to the Universal CRT rather than keeping an `errno` of its own. Separately, a failing `fopen` through `msvcrt.dll` sets no `errno` at all, in either runtime — its failure is the null `FILE*` and nothing else. So the rule to follow after a `StdIo` or `Time` call is to read the return value, not `errno`; and where `errno` is consulted anyway, `ErrnoFor` is what names the runtime rather than leaving it to whichever accessor happened to be linked. A different Windows may resolve the two differently, which is exactly why the area is passed rather than assumed.
 
 Both `StdLib` and `StdIo` are curated rather than complete, and what is left out is left out on purpose. `gets` is not declared at all: it reads a line into a buffer whose size it is never told, and C11 removed it. The `ato*` conversions are declared but each one says to prefer the `strto*` family beside it, which can report both where it stopped and a value out of range. `sprintf` and the `scanf` family are marked as writing as much as the format says to; `tmpnam` as naming a file it does not create; `system` as running whatever the shell decides its argument means; `rand` as guaranteeing nothing about its sequence and never to be used for anything an adversary would like to predict.
 
@@ -47,15 +50,31 @@ The module names above describe where each declaration comes from; they are not 
 Declarations are flat under the package, so an import names the function rather than the header it came from:
 
 ```rux
-import C::{ malloc, free, puts };
+import C::{ CRuntimeArea, ErrnoFor, ErrnoLocationFor, free, malloc, puts };
 
-func Main() -> int32 {
+func Main() -> int {
+    // A Rux literal is a `char8[..]` and a C declaration takes a `*char8`, so the address is passed explicitly.
     var buffer = malloc(1024);
-    puts("allocated");
+    if buffer == null {
+        puts("allocation refused".data);
+        return 1;
+    }
+
+    puts("allocated".data);
     free(buffer);
+
+    // Clearing before the call is how C's `errno = 0` is spelled; nothing clears it on success. `malloc` comes from
+    // `StdLib`, so its failure is readable in the `General` area.
+    *ErrnoLocationFor(CRuntimeArea::General) = 0i32;
+    let refused = malloc(18446744073709551615u64);
+    if refused == null && ErrnoFor(CRuntimeArea::General) != 0i32 {
+        puts("and the refusal reported a reason".data);
+    }
     return 0;
 }
 ```
+
+This one compiles and runs on all eight target cells; the previous version of it did not compile at all, because it passed a literal where a `*char8` was wanted.
 
 ## Documentation
 

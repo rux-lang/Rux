@@ -1,5 +1,5 @@
 import Core::{ Assert, #target };
-import C::{ EDOM, EILSEQ, ERANGE, FILE, c_bool, c_char, c_double, c_float, c_int, c_long, c_longlong, c_schar, c_short, c_uchar, c_uint, c_ulong, c_ulonglong, c_ushort, Errno, ErrnoLocation, intptr_t, ptrdiff_t, size_t, ssize_t, uintptr_t, wchar_t };
+import C::{ CRuntimeArea, EDOM, EILSEQ, ERANGE, ErrnoFor, ErrnoLocationFor, FILE, SeparateStreamRuntime, c_bool, c_char, c_double, c_float, c_int, c_long, c_longlong, c_schar, c_short, c_uchar, c_uint, c_ulong, c_ulonglong, c_ushort, Errno, ErrnoLocation, intptr_t, ptrdiff_t, size_t, ssize_t, uintptr_t, wchar_t };
 import C::{ fopen, malloc };
 
 // The widths are what these aliases exist for: a binding written against them has to land on the same layout the C
@@ -72,5 +72,46 @@ func Main() -> int {
     // whatever the call actually returned.
     let missing: *FILE = fopen("no-such-file-e4f1c0.txt".data, "rb".data);
     Assert(missing == null, "opening a file that does not exist fails");
+
+    // --- Which runtime an errno belongs to ------------------------------------------------------------------
+
+    // On Windows this package spans two C runtimes, because the Universal CRT does not export the formatted-output
+    // family. Everywhere else there is one, and both areas name it.
+    when #target.os {
+        .Windows => {
+            Assert(SeparateStreamRuntime, "Windows loads two C runtimes");
+        }
+        else => {
+            Assert(!SeparateStreamRuntime, "every other system has one C runtime");
+            Assert(ErrnoLocationFor(CRuntimeArea::General) == ErrnoLocationFor(CRuntimeArea::Streams),
+                   "so both areas name the same storage");
+        }
+    }
+
+    // Whichever way a target resolves them, both areas answer with a usable, stable address. This is what lets a
+    // caller name the runtime it called rather than being told not to read errno at all.
+    Assert(ErrnoLocationFor(CRuntimeArea::General) != null, "the general area has an errno address");
+    Assert(ErrnoLocationFor(CRuntimeArea::Streams) != null, "and so does the stream area");
+    Assert(ErrnoLocationFor(CRuntimeArea::Streams) == ErrnoLocationFor(CRuntimeArea::Streams),
+           "each address is the same one every time");
+    Assert(ErrnoLocation() == ErrnoLocationFor(CRuntimeArea::General), "plain Errno is the general area");
+
+    // Writing and reading go through the area that was named, and do not disturb the reading of the other. On a
+    // target where both name one storage this is trivially true; where they do not, it is the whole point.
+    *ErrnoLocationFor(CRuntimeArea::Streams) = 0i32;
+    Assert(ErrnoFor(CRuntimeArea::Streams) == 0i32, "the stream area reads what was written to it");
+
+    // A failing call from the general area reports through the general area. Which number is the platform's
+    // business; that it is not zero is not.
+    *ErrnoLocationFor(CRuntimeArea::General) = 0i32;
+    Assert(malloc(18446744073709551615u64) == null, "an impossible allocation is refused");
+    Assert(ErrnoFor(CRuntimeArea::General) != 0i32, "and reports through the area its module is bound to");
+
+    // The rule a caller should actually follow after a stream call: read the return value. `fopen` on Windows
+    // reports its failure as a null `FILE*` and sets no errno in either runtime, so a program that consulted errno
+    // instead would see whatever was left there by something else.
+    Assert(fopen("no-such-file-e4f1c0.txt".data, "rb".data) == null,
+           "a stream failure is visible in the return value, which is where to look for it");
+
     return 0;
 }

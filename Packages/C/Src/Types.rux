@@ -13,7 +13,7 @@
 // currently supported target makes it signed, and that is what is declared; a binding that cares should say `c_schar`
 // or `c_uchar` rather than rely on it.
 
-import Core::{ #target, #Error };
+import Core::{ OperatingSystem, #target, #Error };
 
 /// C's `signed char`: the smallest addressable signed integer.
 ///
@@ -208,6 +208,15 @@ when #target.os {
         /// https://rux-lang.dev/docs/api/c/c-runtime
         pub const CRuntime = "libc.so.7";
 
+        /// The shared object `C::StdIo` and `C::Time` are bound to, which on this target is the same one.
+        ///
+        /// Named separately because Windows splits the package across two runtimes; everywhere else the two
+        /// constants are equal and `SeparateStreamRuntime` is false.
+        ///
+        ///
+        /// @see https://rux-lang.dev/docs/api/c/stream-runtime
+        pub const StreamRuntime = "libc.so.7";
+
         const CRuntimeLink = "libc.so.7";
     }
     .Linux => {
@@ -215,6 +224,15 @@ when #target.os {
         ///
         /// https://rux-lang.dev/docs/api/c/c-runtime
         pub const CRuntime = "libc.so.6";
+
+        /// The shared object `C::StdIo` and `C::Time` are bound to, which on this target is the same one.
+        ///
+        /// Named separately because Windows splits the package across two runtimes; everywhere else the two
+        /// constants are equal and `SeparateStreamRuntime` is false.
+        ///
+        ///
+        /// @see https://rux-lang.dev/docs/api/c/stream-runtime
+        pub const StreamRuntime = "libc.so.6";
 
         const CRuntimeLink = "libc.so.6";
     }
@@ -224,6 +242,15 @@ when #target.os {
         /// https://rux-lang.dev/docs/api/c/c-runtime
         pub const CRuntime = "libSystem.B.dylib";
 
+        /// The shared object `C::StdIo` and `C::Time` are bound to, which on this target is the same one.
+        ///
+        /// Named separately because Windows splits the package across two runtimes; everywhere else the two
+        /// constants are equal and `SeparateStreamRuntime` is false.
+        ///
+        ///
+        /// @see https://rux-lang.dev/docs/api/c/stream-runtime
+        pub const StreamRuntime = "libSystem.B.dylib";
+
         const CRuntimeLink = "libSystem.B.dylib";
     }
     .Windows => {
@@ -232,7 +259,18 @@ when #target.os {
         /// https://rux-lang.dev/docs/api/c/c-runtime
         pub const CRuntime = "ucrtbase.dll";
 
+        /// The shared object `C::StdIo` and `C::Time` are bound to, which on Windows is a different one.
+        ///
+        /// The Universal CRT does not export the formatted-output family, so those two modules bind the legacy
+        /// runtime. It keeps its own `errno`, its own stream table and its own locale, so a failure reported by a
+        /// call through either module is readable only through `ErrnoFor(CRuntimeArea::Streams)`.
+        ///
+        ///
+        /// @see https://rux-lang.dev/docs/api/c/stream-runtime
+        pub const StreamRuntime = "msvcrt.dll";
+
         const CRuntimeLink = "ucrtbase.dll";
+        const StreamRuntimeLink = "msvcrt.dll";
     }
     else => #Error("Unsupported operating system")
 }
@@ -268,19 +306,56 @@ when #target.os {
     .Windows => {
         #Link(CRuntimeLink)
         extern {
-            // Returns the address of the calling thread's errno
+            // Returns the address of the calling thread's errno, in the Universal CRT
             // https://learn.microsoft.com/en-us/cpp/c-runtime-library/errno-doserrno-sys-errlist-and-sys-nerr
             func _errno() -> *var c_int;
         }
+
+        // The legacy runtime exports an accessor of the same name for its own, separate storage. Binding both is
+        // what lets a caller read the errno belonging to the call it actually made, rather than being told not to
+        // read errno at all.
+        #Library("msvcrt.dll")
+        #Symbol("_errno")
+        extern func _stream_errno() -> *var c_int;
     }
     else => #Error("Unsupported operating system")
 }
 
-/// The address of the calling thread's `errno`.
+/// Which of the package's C runtimes a call belongs to.
 ///
-/// Takes nothing and returns a pointer the C runtime owns, valid for as long as the calling thread runs. Writing
-/// through it is how C's `errno = 0` is spelled, which a caller does before a call whose failure is only reported
-/// through `errno`.
+/// On Windows this package spans two: `StdLib` and `Math` bind the Universal CRT, while `StdIo` and `Time` bind the
+/// legacy runtime, because the Universal CRT does not export the formatted-output family. The two keep separate
+/// `errno` storage, so reading one after a call into the other reports a value belonging to something else
+/// entirely.
+///
+/// Everywhere else there is one runtime and both cases name it, so a caller that always passes the area matching
+/// the module it called is right on all four systems and needs no target branch of its own.
+///
+/// @see https://rux-lang.dev/docs/api/c/c-runtime-area
+pub enum CRuntimeArea: uint8 {
+    /// Where `C::StdLib` and `C::Math` are bound, and what plain `Errno` reads.
+    General = 0,
+    /// Where `C::StdIo` and `C::Time` are bound. The same runtime as `General` except on Windows.
+    Streams = 1
+}
+
+/// Whether the two areas are really two runtimes on this target.
+///
+/// True on Windows and false everywhere else. A caller that passes the right area never needs to read this; it is
+/// here so that a program can say why it is being careful, and so that a test can assert the split exists where it
+/// is supposed to and does not where it is not.
+///
+/// @see https://rux-lang.dev/docs/api/c/separate-stream-runtime
+pub const SeparateStreamRuntime: bool = #target.os == OperatingSystem::Windows;
+
+/// The address of the calling thread's `errno`, in the runtime `area` names.
+///
+/// Returns a pointer that runtime owns, valid for as long as the calling thread runs. Writing through it is how
+/// C's `errno = 0` is spelled, which a caller does before a call whose failure is only reported through `errno`.
+///
+/// Pass the area matching the module whose call is being checked: `Streams` after anything from `C::StdIo` or
+/// `C::Time`, `General` after anything from `C::StdLib` or `C::Math`. Passing the wrong one is not a compile error
+/// and not a crash; it reads a different thread-local integer, which is the whole hazard this exists to remove.
 ///
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
@@ -288,14 +363,52 @@ when #target.os {
 ///
 /// The address belongs to the calling thread and must not be handed to another one.
 ///
-/// https://rux-lang.dev/docs/api/c/errno-location
-pub func ErrnoLocation() -> *var c_int {
+/// @param area which runtime's storage to reach
+/// @returns the address of that runtime's `errno` for this thread
+/// @see https://rux-lang.dev/docs/api/c/errno-location-for
+pub func ErrnoLocationFor(area: CRuntimeArea) -> *var c_int {
     when #target.os {
         .Linux => { return __errno_location(); }
         .FreeBSD, .macOS => { return __error(); }
-        .Windows => { return _errno(); }
+        .Windows => { return area == CRuntimeArea::Streams ? _stream_errno() : _errno(); }
         else => #Error("Unsupported operating system")
     }
+}
+
+/// The calling thread's current `errno` value, in the runtime `area` names.
+///
+/// Meaningful only after a call that documents setting it: no C function clears `errno` on success, so a value left
+/// over from an earlier failure is still there. Clear it through `ErrnoLocationFor` before the call whose failure
+/// is to be read.
+///
+/// Cannot fail. Runs in constant time and allocates nothing.
+///
+/// @param area which runtime's storage to read
+/// @returns that runtime's `errno` for this thread
+/// @see https://rux-lang.dev/docs/api/c/errno-for
+pub func ErrnoFor(area: CRuntimeArea) -> c_int {
+    return *ErrnoLocationFor(area);
+}
+
+/// The address of the calling thread's `errno`, in the runtime `C::StdLib` and `C::Math` are bound to.
+///
+/// Exactly `ErrnoLocationFor(CRuntimeArea::General)`, and the spelling to use when the call being checked came from
+/// one of those two modules. After a call from `C::StdIo` or `C::Time` on Windows this reads the wrong runtime's
+/// storage, which is what `ErrnoLocationFor` exists to let a caller avoid.
+///
+/// Writing through it is how C's `errno = 0` is spelled, which a caller does before a call whose failure is only
+/// reported through `errno`.
+///
+/// Cannot fail. Runs in constant time and allocates nothing.
+///
+/// # Safety
+///
+/// The address belongs to the calling thread and must not be handed to another one.
+///
+/// @returns the address of the general runtime's `errno` for this thread
+/// @see https://rux-lang.dev/docs/api/c/errno-location
+pub func ErrnoLocation() -> *var c_int {
+    return ErrnoLocationFor(CRuntimeArea::General);
 }
 
 /// The calling thread's current `errno` value.
