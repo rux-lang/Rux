@@ -22,7 +22,10 @@
 ///
 /// Both pointers must be non-null and writable.
 ///
-/// https://rux-lang.dev/docs/api/algorithms/swap
+/// @typeParam T the element type
+/// @param left one of the two elements
+/// @param right the other
+/// @see https://rux-lang.dev/docs/api/algorithms/swap
 pub func Swap<T>(left: *var T, right: *var T) {
     let held = *left;
     *left = *right;
@@ -36,7 +39,9 @@ pub func Swap<T>(left: *var T, right: *var T) {
 ///
 /// Cannot fail. Runs in time proportional to the length, making half as many exchanges, and allocates nothing.
 ///
-/// https://rux-lang.dev/docs/api/algorithms/reverse
+/// @typeParam T the element type
+/// @param items the sequence to work on
+/// @see https://rux-lang.dev/docs/api/algorithms/reverse
 pub func Reverse<T>(items: var T[..]) {
     if items.length < 2 { return; }
     var low: uint = 0;
@@ -60,7 +65,11 @@ pub func Reverse<T>(items: var T[..]) {
 ///
 /// Runs in time proportional to the length and allocates nothing.
 ///
-/// https://rux-lang.dev/docs/api/algorithms/rotate
+/// @typeParam T the element type
+/// @param items the sequence to work on
+/// @param middle the index that becomes the new first element
+/// @returns whether `middle` was a usable index
+/// @see https://rux-lang.dev/docs/api/algorithms/rotate
 pub func Rotate<T>(items: var T[..], middle: uint) -> bool {
     if middle > items.length { return false; }
     if middle == 0 || middle == items.length { return true; }
@@ -77,7 +86,10 @@ pub func Rotate<T>(items: var T[..], middle: uint) -> bool {
 ///
 /// Cannot fail. Runs in time proportional to the length and allocates nothing.
 ///
-/// https://rux-lang.dev/docs/api/algorithms/fill
+/// @typeParam T the element type
+/// @param items the sequence to work on
+/// @param value the value to write to every element
+/// @see https://rux-lang.dev/docs/api/algorithms/fill
 pub func Fill<T>(items: var T[..], value: T) {
     var index: uint = 0;
     while index < items.length {
@@ -100,7 +112,11 @@ pub func Fill<T>(items: var T[..], value: T) {
 ///
 /// Overlapping the wrong way silently copies elements that were already overwritten.
 ///
-/// https://rux-lang.dev/docs/api/algorithms/copy-to
+/// @typeParam T the element type
+/// @param destination where the results go
+/// @param source where the elements come from
+/// @returns whether `destination` was long enough
+/// @see https://rux-lang.dev/docs/api/algorithms/copy-to
 pub func CopyTo<T>(destination: var T[..], source: T[..]) -> bool {
     if destination.length != source.length { return false; }
     var index: uint = 0;
@@ -121,7 +137,11 @@ pub func CopyTo<T>(destination: var T[..], source: T[..]) -> bool {
 ///
 /// Runs in time proportional to the length and allocates nothing.
 ///
-/// https://rux-lang.dev/docs/api/algorithms/move-to
+/// @typeParam T the element type
+/// @param destination where the results go
+/// @param source where the elements come from
+/// @returns whether `destination` was long enough
+/// @see https://rux-lang.dev/docs/api/algorithms/move-to
 pub func MoveTo<T>(destination: var T[..], source: T[..]) -> bool {
     if destination.length != source.length { return false; }
     if (destination.data as uint) <= (source.data as uint) { return CopyTo<T>(destination, source); }
@@ -146,7 +166,10 @@ pub func MoveTo<T>(destination: var T[..], source: T[..]) -> bool {
 ///
 /// Cannot fail. Runs in time proportional to the length and allocates nothing.
 ///
-/// https://rux-lang.dev/docs/api/algorithms/unique
+/// @typeParam T the element type
+/// @param items the sequence to work on
+/// @returns how many elements are left after collapsing each run of equal neighbours to one
+/// @see https://rux-lang.dev/docs/api/algorithms/unique
 pub func Unique<T>(items: var T[..]) -> uint {
     if items.length < 2 { return items.length; }
     var kept: uint = 1;
@@ -170,7 +193,11 @@ pub func Unique<T>(items: var T[..]) -> uint {
 ///
 /// Cannot fail. Runs in time proportional to the length and allocates nothing.
 ///
-/// https://rux-lang.dev/docs/api/algorithms/remove-value
+/// @typeParam T the element type
+/// @param items the sequence to work on
+/// @param value the value to remove every occurrence of
+/// @returns how many elements are left
+/// @see https://rux-lang.dev/docs/api/algorithms/remove-value
 pub func RemoveValue<T>(items: var T[..], value: T) -> uint {
     var kept: uint = 0;
     var index: uint = 0;
@@ -191,7 +218,11 @@ pub func RemoveValue<T>(items: var T[..], value: T) -> uint {
 ///
 /// Cannot fail. Runs in time proportional to the length and allocates nothing beyond whatever `predicate` does.
 ///
-/// https://rux-lang.dev/docs/api/algorithms/remove-where
+/// @typeParam T the element type
+/// @param items the sequence to work on
+/// @param predicate the test each element is put to
+/// @returns how many elements are left
+/// @see https://rux-lang.dev/docs/api/algorithms/remove-where
 pub func RemoveWhere<T>(items: var T[..], predicate: func(T) -> bool) -> uint {
     var kept: uint = 0;
     var index: uint = 0;
@@ -216,7 +247,11 @@ pub func RemoveWhere<T>(items: var T[..], predicate: func(T) -> bool) -> uint {
 ///
 /// Cannot fail. Runs in time proportional to the length and allocates nothing beyond whatever `predicate` does.
 ///
-/// https://rux-lang.dev/docs/api/algorithms/partition
+/// @typeParam T the element type
+/// @param items the sequence to work on
+/// @param predicate the test each element is put to
+/// @returns the index of the first element that fails `predicate`
+/// @see https://rux-lang.dev/docs/api/algorithms/partition
 pub func Partition<T>(items: var T[..], predicate: func(T) -> bool) -> uint {
     var low: uint = 0;
     var high = items.length;
@@ -243,7 +278,11 @@ pub func Partition<T>(items: var T[..], predicate: func(T) -> bool) -> uint {
 /// Cannot fail. Runs in time proportional to the logarithm of the length and allocates nothing beyond whatever
 /// `predicate` does.
 ///
-/// https://rux-lang.dev/docs/api/algorithms/partition-point
+/// @typeParam T the element type
+/// @param items the sequence to work on
+/// @param predicate the test each element is put to
+/// @returns the index of the first element that fails `predicate`, assuming the sequence is partitioned
+/// @see https://rux-lang.dev/docs/api/algorithms/partition-point
 pub func PartitionPoint<T>(items: T[..], predicate: func(T) -> bool) -> uint {
     var low: uint = 0;
     var high = items.length;

@@ -1,11 +1,11 @@
-import Core::{ #target, #Error };
-import C::{ FILE, c_int, fpos_t, size_t };
-
 // C's stream I/O, declared against the C ABI types rather than against Rux's own widths.
 //
 // A stream is a `*FILE` rather than a `*opaque`, so one handle cannot be passed where another was meant, and the two
 // position calls take a `*fpos_t` whose contents belong to the runtime. Sizes are `size_t` and returns are `c_int`,
 // which is what makes these declarations right on a target where those are not what Rux would have chosen.
+
+import Core::{ #target, #Error };
+import C::{ FILE, c_int, fpos_t, size_t };
 
 //
 // Curated rather than complete, and three things are deliberately absent or marked:
@@ -41,164 +41,297 @@ when #target.os {
 
 #Link(StdIoLib)
 extern {
-    // Clears the end-of-file and error indicators for the given stream
-    // https://en.cppreference.com/c/io/clearerr
+    /// Clears the end-of-file and error indicators for the given stream.
+    ///
+    /// @param stream the stream to act on
+    /// @see https://en.cppreference.com/c/io/clearerr
     func clearerr(stream: *FILE);
 
-    // Closes the given file stream
-    // https://en.cppreference.com/c/io/fclose
+    /// Closes the given file stream.
+    ///
+    /// @param stream the stream to act on
+    /// @returns zero, or `EOF` on failure
+    /// @see https://en.cppreference.com/c/io/fclose
     pub func fclose(stream: *FILE) -> c_int;
 
-    // Checks if the end-of-file indicator is set for the given stream
-    // https://en.cppreference.com/c/io/feof
+    /// Checks if the end-of-file indicator is set for the given stream.
+    ///
+    /// @param stream the stream to act on
+    /// @returns non-zero once a read has hit the end, which is not the same as being at it
+    /// @see https://en.cppreference.com/c/io/feof
     func feof(stream: *FILE) -> c_int;
 
-    // Checks if the error indicator is set for the given stream
-    // https://en.cppreference.com/c/io/ferror
+    /// Checks if the error indicator is set for the given stream.
+    ///
+    /// @param stream the stream to act on
+    /// @returns non-zero once an error has occurred on the stream
+    /// @see https://en.cppreference.com/c/io/ferror
     func ferror(stream: *FILE) -> c_int;
 
-    // Writes any unwritten data from the stream's buffer to the file
-    // https://en.cppreference.com/c/io/fflush
+    /// Writes any unwritten data from the stream's buffer to the file.
+    ///
+    /// @param stream the stream to act on
+    /// @returns zero, or `EOF` on failure
+    /// @see https://en.cppreference.com/c/io/fflush
     func fflush(stream: *FILE) -> c_int;
 
-    // Reads the next character from the given stream
-    // https://en.cppreference.com/c/io/fgetc
+    /// Reads the next character from the given stream.
+    ///
+    /// @param stream the stream to act on
+    /// @returns the byte as an `unsigned char`, or `EOF` at the end or on error
+    /// @see https://en.cppreference.com/c/io/fgetc
     pub func fgetc(stream: *FILE) -> c_int;
 
-    // Gets the current file position of the stream
-    // https://en.cppreference.com/c/io/fgetpos
+    /// Gets the current file position of the stream.
+    ///
+    /// @param stream the stream to act on
+    /// @param pos the stream position
+    /// @returns zero, or non-zero on failure
+    /// @see https://en.cppreference.com/c/io/fgetpos
     func fgetpos(stream: *FILE, pos: *var fpos_t) -> c_int;
 
-    // Reads at most count-1 characters from the stream into a string
-    // https://en.cppreference.com/c/io/fgets
+    /// Reads at most count-1 characters from the stream into a string.
+    ///
+    /// @param str a null-terminated byte string
+    /// @param count how many bytes `str` holds, including the terminator
+    /// @param stream the stream to act on
+    /// @returns `str`, or null at the end or on error
+    /// @see https://en.cppreference.com/c/io/fgets
     func fgets(str: *var char8, count: c_int, stream: *FILE) -> *char8;
 
-    // Opens a file indicated by filename with the given mode
-    // https://en.cppreference.com/c/io/fopen
+    /// Opens a file indicated by filename with the given mode.
+    ///
+    /// @param filename the path, as a null-terminated byte string
+    /// @param mode the open mode, such as `"rb"`
+    /// @returns the stream, or null with the reason in `errno`
+    /// @see https://en.cppreference.com/c/io/fopen
     pub func fopen(filename: *char8, mode: *char8) -> *FILE;
 
-    // Prints formatted output to a file stream
-    // https://en.cppreference.com/c/io/fprintf
+    /// Prints formatted output to a file stream.
+    ///
+    /// @param stream the stream to act on
+    /// @param format the format string
+    /// @returns how many bytes were written, or a negative value on failure
+    /// @see https://en.cppreference.com/c/io/fprintf
     func fprintf(stream: *FILE, format: *char8, ...) -> c_int;
 
-    // Writes a character to the given stream
-    // https://en.cppreference.com/c/io/fputc
+    /// Writes a character to the given stream.
+    ///
+    /// @param ch the character, as an `int` holding an `unsigned char` value or `EOF`
+    /// @param stream the stream to act on
+    /// @returns the byte written, or `EOF` on failure
+    /// @see https://en.cppreference.com/c/io/fputc
     func fputc(ch: c_int, stream: *FILE) -> c_int;
 
-    // Writes a string to the given stream
-    // https://en.cppreference.com/c/io/fputs
+    /// Writes a string to the given stream.
+    ///
+    /// @param str a null-terminated byte string
+    /// @param stream the stream to act on
+    /// @returns a non-negative value, or `EOF` on failure
+    /// @see https://en.cppreference.com/c/io/fputs
     func fputs(str: *char8, stream: *FILE) -> c_int;
 
-    // Reads up to count objects of the given size from the stream into a buffer
-    // https://en.cppreference.com/c/io/fread
+    /// Reads up to count objects of the given size from the stream into a buffer.
+    ///
+    /// @param buffer receives the bytes
+    /// @param size how many bytes one element occupies
+    /// @param count how many elements to read
+    /// @param stream the stream to act on
+    /// @returns how many whole elements were read, which is short at the end or on error
+    /// @see https://en.cppreference.com/c/io/fread
     func fread(buffer: *var opaque, size: size_t, count: size_t, stream: *FILE) -> size_t;
 
-    // Reopens a stream with a different file or mode
-    // https://en.cppreference.com/c/io/freopen
+    /// Reopens a stream with a different file or mode.
+    ///
+    /// @param filename the path, as a null-terminated byte string
+    /// @param mode the open mode, such as `"rb"`
+    /// @param stream the stream to act on
+    /// @returns the stream, or null
+    /// @see https://en.cppreference.com/c/io/freopen
     func freopen(filename: *char8, mode: *char8, stream: *FILE) -> *FILE;
 
-    // Reads formatted input from a file stream
-    // https://en.cppreference.com/c/io/fscanf
+    /// Reads formatted input from a file stream.
+    ///
+    /// @param stream the stream to act on
+    /// @param format the format string
+    /// @returns how many items were assigned, which may be fewer than asked for, or `EOF` before any were
+    /// @see https://en.cppreference.com/c/io/fscanf
     func fscanf(stream: *FILE, format: *char8, ...) -> c_int;
 
-    // Sets the file position indicator for the stream
-    // https://en.cppreference.com/c/io/fseek
+    /// Sets the file position indicator for the stream.
+    ///
+    /// @param stream the stream to act on
+    /// @param offset how far to move
+    /// @param origin where the move is measured from
+    /// @returns zero, or non-zero on failure
+    /// @see https://en.cppreference.com/c/io/fseek
     pub func fseek(stream: *FILE, offset: int64, origin: c_int) -> c_int;
 
-    // Sets the file position of the stream to the given position
-    // https://en.cppreference.com/c/io/fsetpos
+    /// Sets the file position of the stream to the given position.
+    ///
+    /// @param stream the stream to act on
+    /// @param pos the stream position
+    /// @returns zero, or non-zero on failure
+    /// @see https://en.cppreference.com/c/io/fsetpos
     func fsetpos(stream: *FILE, pos: *fpos_t) -> c_int;
 
-    // Returns the current file position of the stream
-    // https://en.cppreference.com/c/io/ftell
+    /// Returns the current file position of the stream.
+    ///
+    /// @param stream the stream to act on
+    /// @returns the current position, or -1 with the reason in `errno`
+    /// @see https://en.cppreference.com/c/io/ftell
     pub func ftell(stream: *FILE) -> int64;
 
-    // Writes count objects of the given size from a buffer to the stream
-    // https://en.cppreference.com/c/io/fwrite
+    /// Writes count objects of the given size from a buffer to the stream.
+    ///
+    /// @param buffer the bytes to write
+    /// @param size how many bytes one element occupies
+    /// @param count how many elements to write
+    /// @param stream the stream to act on
+    /// @returns how many whole elements were written, which is short only on error
+    /// @see https://en.cppreference.com/c/io/fwrite
     pub func fwrite(buffer: *opaque, size: size_t, count: size_t, stream: *FILE) -> size_t;
 
-    // Reads the next character from the given stream
-    // https://en.cppreference.com/c/io/fgetc
+    /// Reads the next character from the given stream.
+    ///
+    /// @param stream the stream to act on
+    /// @returns the byte as an `unsigned char`, or `EOF` at the end or on error
+    /// @see https://en.cppreference.com/c/io/fgetc
     func getc(stream: *FILE) -> c_int;
 
-    // Reads the next character from stdin
-    // https://en.cppreference.com/c/io/getchar
+    /// Reads the next character from stdin.
+    ///
+    /// @returns the byte as an `unsigned char`, or `EOF` at the end or on error
+    /// @see https://en.cppreference.com/c/io/getchar
     func getchar() -> c_int;
 
-    // Prints an error message describing the last error to stderr
-    // https://en.cppreference.com/c/io/perror
+    /// Prints an error message describing the last error to stderr.
+    ///
+    /// @param str a null-terminated byte string
+    /// @see https://en.cppreference.com/c/io/perror
     func perror(str: *char8);
 
-    // Prints formatted output to stdout
-    // https://en.cppreference.com/c/io/printf
+    /// Prints formatted output to stdout.
+    ///
+    /// @param format the format string
+    /// @returns how many bytes were written, or a negative value on failure
+    /// @see https://en.cppreference.com/c/io/printf
     func printf(format: *char8, ...) -> c_int;
 
-    // Writes a character to the given stream
-    // https://en.cppreference.com/c/io/fputc
+    /// Writes a character to the given stream.
+    ///
+    /// @param ch the character, as an `int` holding an `unsigned char` value or `EOF`
+    /// @param stream the stream to act on
+    /// @returns the byte written, or `EOF` on failure
+    /// @see https://en.cppreference.com/c/io/fputc
     func putc(ch: c_int, stream: *FILE) -> c_int;
 
-    // Writes a character to stdout
-    // https://en.cppreference.com/c/io/putchar
+    /// Writes a character to stdout.
+    ///
+    /// @param ch the character, as an `int` holding an `unsigned char` value or `EOF`
+    /// @returns the byte written, or `EOF` on failure
+    /// @see https://en.cppreference.com/c/io/putchar
     pub func putchar(ch: c_int) -> c_int;
 
-    // Writes a string followed by a newline to stdout
-    // https://en.cppreference.com/c/io/puts
+    /// Writes a string followed by a newline to stdout.
+    ///
+    /// @param str a null-terminated byte string
+    /// @returns a non-negative value, or `EOF` on failure
+    /// @see https://en.cppreference.com/c/io/puts
     pub func puts(str: *char8) -> c_int;
 
-    // Deletes the file identified by the given path
-    // https://en.cppreference.com/c/io/remove
+    /// Deletes the file identified by the given path.
+    ///
+    /// @param pathname the path, as a null-terminated byte string
+    /// @returns zero, or non-zero on failure
+    /// @see https://en.cppreference.com/c/io/remove
     pub func remove(pathname: *char8) -> c_int;
 
-    // Renames a file, moving it if necessary
-    // https://en.cppreference.com/c/io/rename
+    /// Renames a file, moving it if necessary.
+    ///
+    /// @param old_filename the path that exists now
+    /// @param new_filename the path it should have afterwards
+    /// @returns zero, or non-zero on failure
+    /// @see https://en.cppreference.com/c/io/rename
     func rename(old_filename: *char8, new_filename: *char8) -> c_int;
 
-    // Moves the file position indicator to the beginning of the stream
-    // https://en.cppreference.com/c/io/rewind
+    /// Moves the file position indicator to the beginning of the stream.
+    ///
+    /// @param stream the stream to act on
+    /// @see https://en.cppreference.com/c/io/rewind
     func rewind(stream: *FILE);
 
-    // Reads formatted input from stdin
-    //
-    // A '%s' conversion is never told the size of what it writes into; give every string conversion an explicit
-    // width.
-    // https://en.cppreference.com/c/io/scanf
+    /// Reads formatted input from stdin.
+    ///
+    /// A '%s' conversion is never told the size of what it writes into; give every string conversion an explicit
+    /// width.
+    ///
+    /// @param format the format string
+    /// @returns how many items were assigned, which may be fewer than asked for, or `EOF` before any were
+    /// @see https://en.cppreference.com/c/io/scanf
     func scanf(format: *char8, ...) -> c_int;
 
-    // Sets the buffer to be used by the given stream
-    // https://en.cppreference.com/c/io/setbuf
+    /// Sets the buffer to be used by the given stream.
+    ///
+    /// @param stream the stream to act on
+    /// @param buffer the bytes
+    /// @see https://en.cppreference.com/c/io/setbuf
     func setbuf(stream: *FILE, buffer: *var char8);
 
-    // Sets the buffering mode and buffer to be used by the given stream
-    // https://en.cppreference.com/c/io/setvbuf
+    /// Sets the buffering mode and buffer to be used by the given stream.
+    ///
+    /// @param stream the stream to act on
+    /// @param buffer the bytes
+    /// @param mode the open mode, such as `"rb"`
+    /// @param size how many bytes `area` holds
+    /// @returns zero, or non-zero when the request could not be honored
+    /// @see https://en.cppreference.com/c/io/setvbuf
     func setvbuf(stream: *FILE, buffer: *var char8, mode: c_int, size: size_t) -> c_int;
 
-    // Prints formatted output to a string
-    //
-    // Never told the size of the buffer, so a longer result than it holds is an overrun. Rux/Format writes into a
-    // destination that knows its own length.
-    // https://en.cppreference.com/c/io/sprintf
+    /// Prints formatted output to a string.
+    ///
+    /// Never told the size of the buffer, so a longer result than it holds is an overrun. Rux/Format writes into a
+    /// destination that knows its own length.
+    ///
+    /// @param buffer the bytes
+    /// @param format the format string
+    /// @returns how many bytes were written, not counting the terminator, or a negative value on failure
+    /// @see https://en.cppreference.com/c/io/sprintf
     pub func sprintf(buffer: *char8, format: *char8, ...) -> c_int;
 
-    // Reads formatted input from a string
-    //
-    // A '%s' conversion is never told the size of what it writes into, so a longer field than it holds is an
-    // overrun; give every string conversion an explicit width.
-    // https://en.cppreference.com/c/io/sscanf
+    /// Reads formatted input from a string.
+    ///
+    /// A '%s' conversion is never told the size of what it writes into, so a longer field than it holds is an
+    /// overrun; give every string conversion an explicit width.
+    ///
+    /// @param buffer the bytes
+    /// @param format the format string
+    /// @returns how many items were assigned, which may be fewer than asked for, or `EOF` before any were
+    /// @see https://en.cppreference.com/c/io/sscanf
     pub func sscanf(buffer: *char8, format: *char8, ...) -> c_int;
 
-    // Creates and opens a temporary file with a unique name
-    // https://en.cppreference.com/c/io/tmpfile
+    /// Creates and opens a temporary file with a unique name.
+    ///
+    /// @returns the stream, removed when closed, or null
+    /// @see https://en.cppreference.com/c/io/tmpfile
     func tmpfile() -> *FILE;
 
-    // Generates a unique filename that does not name an existing file
-    //
-    // Names a file without creating it, so anything may take the name before the caller opens it. Use tmpfile, which
-    // creates and opens in one step. The result points at storage the runtime owns and the next call overwrites.
-    // https://en.cppreference.com/c/io/tmpnam
+    /// Generates a unique filename that does not name an existing file.
+    ///
+    /// Names a file without creating it, so anything may take the name before the caller opens it. Use tmpfile, which
+    /// creates and opens in one step. The result points at storage the runtime owns and the next call overwrites.
+    ///
+    /// @param filename the path, as a null-terminated byte string
+    /// @returns the name, in `filename` or in storage the C runtime owns, or null
+    /// @see https://en.cppreference.com/c/io/tmpnam
     func tmpnam(filename: *char8) -> *char8;
 
-    // Puts a character back into the given stream
-    // https://en.cppreference.com/c/io/ungetc
+    /// Puts a character back into the given stream.
+    ///
+    /// @param ch the character, as an `int` holding an `unsigned char` value or `EOF`
+    /// @param stream the stream to act on
+    /// @returns the byte pushed back, or `EOF` when it could not be
+    /// @see https://en.cppreference.com/c/io/ungetc
     func ungetc(ch: c_int, stream: *FILE) -> c_int;
 }
 
@@ -210,25 +343,25 @@ extern {
 /// Negative, and distinct from every `unsigned char` value, which is why those calls return a `c_int` rather than a
 /// character type. It does not say which of the two happened: `feof` and `ferror` do.
 ///
-/// https://rux-lang.dev/docs/api/c/eof
+/// @see https://rux-lang.dev/docs/api/c/eof
 #Allow("naming.const")
 pub const EOF: int32 = -1;
 
 /// `SEEK_SET`: measure the new stream position from the beginning.
 ///
-/// https://rux-lang.dev/docs/api/c/seek-set
+/// @see https://rux-lang.dev/docs/api/c/seek-set
 #Allow("naming.const")
 pub const SEEK_SET: int32 = 0;
 
 /// `SEEK_CUR`: measure the new stream position from the current one.
 ///
-/// https://rux-lang.dev/docs/api/c/seek-cur
+/// @see https://rux-lang.dev/docs/api/c/seek-cur
 #Allow("naming.const")
 pub const SEEK_CUR: int32 = 1;
 
 /// `SEEK_END`: measure the new stream position from the end.
 ///
-/// https://rux-lang.dev/docs/api/c/seek-end
+/// @see https://rux-lang.dev/docs/api/c/seek-end
 #Allow("naming.const")
 pub const SEEK_END: int32 = 2;
 
@@ -238,147 +371,147 @@ when #target.os {
     .Windows => {
         /// `_IOFBF`: buffer fully, flushing when the buffer fills.
         ///
-        /// https://rux-lang.dev/docs/api/c/iofbf
+        /// @see https://rux-lang.dev/docs/api/c/iofbf
         #Allow("naming.const")
         pub const _IOFBF: int32 = 0;
 
         /// `_IOLBF`: buffer by line.
         ///
-        /// https://rux-lang.dev/docs/api/c/iolbf
+        /// @see https://rux-lang.dev/docs/api/c/iolbf
         #Allow("naming.const")
         pub const _IOLBF: int32 = 64;
 
         /// `_IONBF`: do not buffer.
         ///
-        /// https://rux-lang.dev/docs/api/c/ionbf
+        /// @see https://rux-lang.dev/docs/api/c/ionbf
         #Allow("naming.const")
         pub const _IONBF: int32 = 4;
 
         /// `BUFSIZ`: the buffer size `setbuf` uses.
         ///
-        /// https://rux-lang.dev/docs/api/c/bufsiz
+        /// @see https://rux-lang.dev/docs/api/c/bufsiz
         #Allow("naming.const")
         pub const BUFSIZ: int32 = 512;
 
         /// `FOPEN_MAX`: how many streams the implementation guarantees can be open at once.
         ///
-        /// https://rux-lang.dev/docs/api/c/fopen-max
+        /// @see https://rux-lang.dev/docs/api/c/fopen-max
         #Allow("naming.const")
         pub const FOPEN_MAX: int32 = 20;
 
         /// `FILENAME_MAX`: the length of the longest file name the implementation guarantees it can open.
         ///
-        /// https://rux-lang.dev/docs/api/c/filename-max
+        /// @see https://rux-lang.dev/docs/api/c/filename-max
         #Allow("naming.const")
         pub const FILENAME_MAX: int32 = 260;
 
         /// `L_tmpnam`: the buffer size `tmpnam` needs.
         ///
-        /// https://rux-lang.dev/docs/api/c/l-tmpnam
+        /// @see https://rux-lang.dev/docs/api/c/l-tmpnam
         #Allow("naming.const")
         pub const L_tmpnam: int32 = 260;
 
         /// `TMP_MAX`: how many distinct names `tmpnam` guarantees before it repeats.
         ///
-        /// https://rux-lang.dev/docs/api/c/tmp-max
+        /// @see https://rux-lang.dev/docs/api/c/tmp-max
         #Allow("naming.const")
         pub const TMP_MAX: int32 = 32767;
     }
     .Linux => {
         /// `_IOFBF`: buffer fully, flushing when the buffer fills.
         ///
-        /// https://rux-lang.dev/docs/api/c/iofbf
+        /// @see https://rux-lang.dev/docs/api/c/iofbf
         #Allow("naming.const")
         pub const _IOFBF: int32 = 0;
 
         /// `_IOLBF`: buffer by line.
         ///
-        /// https://rux-lang.dev/docs/api/c/iolbf
+        /// @see https://rux-lang.dev/docs/api/c/iolbf
         #Allow("naming.const")
         pub const _IOLBF: int32 = 1;
 
         /// `_IONBF`: do not buffer.
         ///
-        /// https://rux-lang.dev/docs/api/c/ionbf
+        /// @see https://rux-lang.dev/docs/api/c/ionbf
         #Allow("naming.const")
         pub const _IONBF: int32 = 2;
 
         /// `BUFSIZ`: the buffer size `setbuf` uses.
         ///
-        /// https://rux-lang.dev/docs/api/c/bufsiz
+        /// @see https://rux-lang.dev/docs/api/c/bufsiz
         #Allow("naming.const")
         pub const BUFSIZ: int32 = 8192;
 
         /// `FOPEN_MAX`: how many streams the implementation guarantees can be open at once.
         ///
-        /// https://rux-lang.dev/docs/api/c/fopen-max
+        /// @see https://rux-lang.dev/docs/api/c/fopen-max
         #Allow("naming.const")
         pub const FOPEN_MAX: int32 = 16;
 
         /// `FILENAME_MAX`: the length of the longest file name the implementation guarantees it can open.
         ///
-        /// https://rux-lang.dev/docs/api/c/filename-max
+        /// @see https://rux-lang.dev/docs/api/c/filename-max
         #Allow("naming.const")
         pub const FILENAME_MAX: int32 = 4096;
 
         /// `L_tmpnam`: the buffer size `tmpnam` needs.
         ///
-        /// https://rux-lang.dev/docs/api/c/l-tmpnam
+        /// @see https://rux-lang.dev/docs/api/c/l-tmpnam
         #Allow("naming.const")
         pub const L_tmpnam: int32 = 20;
 
         /// `TMP_MAX`: how many distinct names `tmpnam` guarantees before it repeats.
         ///
-        /// https://rux-lang.dev/docs/api/c/tmp-max
+        /// @see https://rux-lang.dev/docs/api/c/tmp-max
         #Allow("naming.const")
         pub const TMP_MAX: int32 = 238328;
     }
     else => {
         /// `_IOFBF`: buffer fully, flushing when the buffer fills.
         ///
-        /// https://rux-lang.dev/docs/api/c/iofbf
+        /// @see https://rux-lang.dev/docs/api/c/iofbf
         #Allow("naming.const")
         pub const _IOFBF: int32 = 0;
 
         /// `_IOLBF`: buffer by line.
         ///
-        /// https://rux-lang.dev/docs/api/c/iolbf
+        /// @see https://rux-lang.dev/docs/api/c/iolbf
         #Allow("naming.const")
         pub const _IOLBF: int32 = 1;
 
         /// `_IONBF`: do not buffer.
         ///
-        /// https://rux-lang.dev/docs/api/c/ionbf
+        /// @see https://rux-lang.dev/docs/api/c/ionbf
         #Allow("naming.const")
         pub const _IONBF: int32 = 2;
 
         /// `BUFSIZ`: the buffer size `setbuf` uses.
         ///
-        /// https://rux-lang.dev/docs/api/c/bufsiz
+        /// @see https://rux-lang.dev/docs/api/c/bufsiz
         #Allow("naming.const")
         pub const BUFSIZ: int32 = 1024;
 
         /// `FOPEN_MAX`: how many streams the implementation guarantees can be open at once.
         ///
-        /// https://rux-lang.dev/docs/api/c/fopen-max
+        /// @see https://rux-lang.dev/docs/api/c/fopen-max
         #Allow("naming.const")
         pub const FOPEN_MAX: int32 = 20;
 
         /// `FILENAME_MAX`: the length of the longest file name the implementation guarantees it can open.
         ///
-        /// https://rux-lang.dev/docs/api/c/filename-max
+        /// @see https://rux-lang.dev/docs/api/c/filename-max
         #Allow("naming.const")
         pub const FILENAME_MAX: int32 = 1024;
 
         /// `L_tmpnam`: the buffer size `tmpnam` needs.
         ///
-        /// https://rux-lang.dev/docs/api/c/l-tmpnam
+        /// @see https://rux-lang.dev/docs/api/c/l-tmpnam
         #Allow("naming.const")
         pub const L_tmpnam: int32 = 1024;
 
         /// `TMP_MAX`: how many distinct names `tmpnam` guarantees before it repeats.
         ///
-        /// https://rux-lang.dev/docs/api/c/tmp-max
+        /// @see https://rux-lang.dev/docs/api/c/tmp-max
         #Allow("naming.const")
         pub const TMP_MAX: int32 = 308915776;
     }

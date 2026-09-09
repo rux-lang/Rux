@@ -1,6 +1,3 @@
-import Core::{ #target, #Error };
-import C::{ c_double, c_float, c_int, c_long, c_longlong, c_uint, c_ulong, c_ulonglong, size_t };
-
 // C's `<stdlib.h>`: allocation, numeric conversion, sorting and searching, and process control.
 //
 // Curated rather than complete. What is left out is left out on purpose, and the two groups worth naming are:
@@ -20,6 +17,10 @@ import C::{ c_double, c_float, c_int, c_long, c_longlong, c_uint, c_ulong, c_ulo
 // from `C::CRuntime`, which names the same library and is what a reader should trust. Every module of this package
 // must name the same one: on Windows the Universal CRT and the legacy `msvcrt.dll` are separate runtimes with
 // separate state, and a stream opened by one is not a stream the other knows.
+
+import Core::{ #target, #Error };
+import C::{ c_double, c_float, c_int, c_long, c_longlong, c_uint, c_ulong, c_ulonglong, size_t };
+
 when #target.os {
     .FreeBSD => const StdLib = "libc.so.7";
     .Linux => const StdLib = "libc.so.6";
@@ -30,127 +31,216 @@ when #target.os {
 
 #Link(StdLib)
 extern {
-    // Causes abnormal program termination without cleaning up
-    // https://en.cppreference.com/c/program/abort
+    /// Causes abnormal program termination without cleaning up.
+    ///
+    /// @see https://en.cppreference.com/c/program/abort
     func abort();
 
-    // Computes the absolute value of an integer value
-    // https://en.cppreference.com/c/numeric/math/abs
+    /// Computes the absolute value of an integer value.
+    ///
+    /// @param n the value to act on
+    /// @returns the magnitude; the most negative value has none and the result is undefined
+    /// @see https://en.cppreference.com/c/numeric/math/abs
     pub func abs(n: c_int) -> c_int;
 
-    // Converts a byte string to a floating point value
-    //
-    // Cannot report failure: a string that is not a number gives zero, and a value out of range is undefined rather
-    // than reported. Use strtod, which reports both.
-    // https://en.cppreference.com/c/string/byte/atof
+    /// Converts a byte string to a floating point value.
+    ///
+    /// Cannot report failure: a string that is not a number gives zero, and a value out of range is undefined rather
+    /// than reported. Use strtod, which reports both.
+    ///
+    /// @param str a null-terminated byte string
+    /// @returns the value, or zero when nothing was read; there is no way to tell the two apart
+    /// @see https://en.cppreference.com/c/string/byte/atof
     pub func atof(str: *char8) -> c_double;
 
-    // Converts a byte string to an integer value
-    //
-    // Cannot report failure, and a value out of range is undefined rather than reported. Use strtol.
-    // https://en.cppreference.com/c/string/byte/atoi
+    /// Converts a byte string to an integer value.
+    ///
+    /// Cannot report failure, and a value out of range is undefined rather than reported. Use strtol.
+    ///
+    /// @param str a null-terminated byte string
+    /// @returns the value, or zero when nothing was read; there is no way to tell the two apart
+    /// @see https://en.cppreference.com/c/string/byte/atoi
     pub func atoi(str: *char8) -> c_int;
 
-    // Converts a byte string to a long integer value
-    //
-    // Cannot report failure. Use strtol.
-    // https://en.cppreference.com/c/string/byte/atoi
+    /// Converts a byte string to a long integer value.
+    ///
+    /// Cannot report failure. Use strtol.
+    ///
+    /// @param str a null-terminated byte string
+    /// @returns the value, or zero when nothing was read; there is no way to tell the two apart
+    /// @see https://en.cppreference.com/c/string/byte/atoi
     pub func atol(str: *char8) -> int64;
 
-    // Converts a byte string to a long long integer value
-    //
-    // Cannot report failure. Use strtoll.
-    // https://en.cppreference.com/c/string/byte/atoi
+    /// Converts a byte string to a long long integer value.
+    ///
+    /// Cannot report failure. Use strtoll.
+    ///
+    /// @param str a null-terminated byte string
+    /// @returns the value, or zero when nothing was read; there is no way to tell the two apart
+    /// @see https://en.cppreference.com/c/string/byte/atoi
     pub func atoll(str: *char8) -> int64;
 
-    // Allocates memory for an array of num objects of size and zero-initializes it
-    // https://en.cppreference.com/c/memory/calloc
+    /// Allocates memory for an array of num objects of size and zero-initializes it.
+    ///
+    /// @param num how many objects
+    /// @param size how many bytes one object occupies
+    /// @returns the address of the zeroed block, or null
+    /// @see https://en.cppreference.com/c/memory/calloc
     pub func calloc(num: size_t, size: size_t) -> *var opaque;
 
-    // Causes normal program termination with cleanup
-    // https://en.cppreference.com/c/program/exit
+    /// Causes normal program termination with cleanup.
+    ///
+    /// @param status the exit status to report
+    /// @see https://en.cppreference.com/c/program/exit
     func exit(status: c_int);
 
-    // Deallocates the memory previously allocated by malloc, calloc or realloc
-    // https://en.cppreference.com/c/memory/free
+    /// Deallocates the memory previously allocated by malloc, calloc or realloc.
+    ///
+    /// @param ptr the block to act on
+    /// @see https://en.cppreference.com/c/memory/free
     pub func free(ptr: *var opaque);
 
-    // Returns the value of an environment variable
-    //
-    // The result points at storage the runtime owns, which a later change to the environment may overwrite or free,
-    // and the call is not safe to make while another thread changes the environment.
-    // https://en.cppreference.com/c/program/getenv
+    /// Returns the value of an environment variable.
+    ///
+    /// The result points at storage the runtime owns, which a later change to the environment may overwrite or free,
+    /// and the call is not safe to make while another thread changes the environment.
+    ///
+    /// @param name the environment variable's name
+    /// @returns the value, or null; the storage belongs to the environment and must not be written
+    /// @see https://en.cppreference.com/c/program/getenv
     func getenv(name: *char8) -> *char8;
 
-    // Computes the absolute value of a long integer value
-    // https://en.cppreference.com/c/numeric/math/abs
+    /// Computes the absolute value of a long integer value.
+    ///
+    /// @param n the value to act on
+    /// @returns the magnitude; the most negative value has none and the result is undefined
+    /// @see https://en.cppreference.com/c/numeric/math/abs
     pub func labs(n: int64) -> int64;
 
-    // Computes the absolute value of a long long integer value
-    // https://en.cppreference.com/c/numeric/math/abs
+    /// Computes the absolute value of a long long integer value.
+    ///
+    /// @param n the value to act on
+    /// @returns the magnitude; the most negative value has none and the result is undefined
+    /// @see https://en.cppreference.com/c/numeric/math/abs
     pub func llabs(n: int64) -> int64;
 
-    // Allocates size bytes of uninitialized memory
-    // https://en.cppreference.com/c/memory/malloc
+    /// Allocates size bytes of uninitialized memory.
+    ///
+    /// @param size a size in bytes
+    /// @returns the address of the block, or null
+    /// @see https://en.cppreference.com/c/memory/malloc
     pub func malloc(size: size_t) -> *var opaque;
 
-    // Returns a pseudo-random integer value between 0 and RAND_MAX
-    //
-    // Nothing about the sequence is guaranteed, and it must never produce a key, a token, or anything an adversary
-    // would like to predict. Rux/Random names its generators; Rux/Entropy reaches the operating system.
-    // https://en.cppreference.com/c/numeric/random/rand
+    /// Returns a pseudo-random integer value between 0 and RAND_MAX.
+    ///
+    /// Nothing about the sequence is guaranteed, and it must never produce a key, a token, or anything an adversary
+    /// would like to predict. Rux/Random names its generators; Rux/Entropy reaches the operating system.
+    ///
+    /// @returns a value in `[0, RAND_MAX]`, from a sequence that guarantees nothing
+    /// @see https://en.cppreference.com/c/numeric/random/rand
     pub func rand() -> c_int;
 
-    // Changes the size of the memory block pointed to by ptr to size bytes
-    // https://en.cppreference.com/c/memory/realloc
+    /// Changes the size of the memory block pointed to by ptr to size bytes.
+    ///
+    /// @param ptr the block to act on
+    /// @param size a size in bytes
+    /// @returns the address of the resized block, or null with the original still valid
+    /// @see https://en.cppreference.com/c/memory/realloc
     pub func realloc(ptr: *var opaque, size: size_t) -> *var opaque;
 
-    // Seeds the pseudo-random number generator used by rand
-    // https://en.cppreference.com/c/numeric/random/srand
+    /// Seeds the pseudo-random number generator used by rand.
+    ///
+    /// @param seed the value to seed the generator with
+    /// @see https://en.cppreference.com/c/numeric/random/srand
     pub func srand(seed: c_uint);
 
-    // Converts a byte string to a long integer, reporting where it stopped
-    // https://en.cppreference.com/c/string/byte/strtol
+    /// Converts a byte string to a long integer, reporting where it stopped.
+    ///
+    /// @param str a null-terminated byte string
+    /// @param endptr receives the address where parsing stopped, or null
+    /// @param base the radix, 2 through 36, or zero to read a C integer prefix
+    /// @returns the value, zero when nothing was read, or a saturated limit with `errno` set to `ERANGE`
+    /// @see https://en.cppreference.com/c/string/byte/strtol
     pub func strtol(str: *char8, endptr: *var *char8, base: c_int) -> c_long;
 
-    // Converts a byte string to an unsigned long integer, reporting where it stopped
-    // https://en.cppreference.com/c/string/byte/strtoul
+    /// Converts a byte string to an unsigned long integer, reporting where it stopped.
+    ///
+    /// @param str a null-terminated byte string
+    /// @param endptr receives the address where parsing stopped, or null
+    /// @param base the radix, 2 through 36, or zero to read a C integer prefix
+    /// @returns the value, zero when nothing was read, or a saturated limit with `errno` set to `ERANGE`
+    /// @see https://en.cppreference.com/c/string/byte/strtoul
     pub func strtoul(str: *char8, endptr: *var *char8, base: c_int) -> c_ulong;
 
-    // Converts a byte string to a long long integer, reporting where it stopped
-    // https://en.cppreference.com/c/string/byte/strtol
+    /// Converts a byte string to a long long integer, reporting where it stopped.
+    ///
+    /// @param str a null-terminated byte string
+    /// @param endptr receives the address where parsing stopped, or null
+    /// @param base the radix, 2 through 36, or zero to read a C integer prefix
+    /// @returns the value, zero when nothing was read, or a saturated limit with `errno` set to `ERANGE`
+    /// @see https://en.cppreference.com/c/string/byte/strtol
     pub func strtoll(str: *char8, endptr: *var *char8, base: c_int) -> c_longlong;
 
-    // Converts a byte string to an unsigned long long integer, reporting where it stopped
-    // https://en.cppreference.com/c/string/byte/strtoul
+    /// Converts a byte string to an unsigned long long integer, reporting where it stopped.
+    ///
+    /// @param str a null-terminated byte string
+    /// @param endptr receives the address where parsing stopped, or null
+    /// @param base the radix, 2 through 36, or zero to read a C integer prefix
+    /// @returns the value, zero when nothing was read, or a saturated limit with `errno` set to `ERANGE`
+    /// @see https://en.cppreference.com/c/string/byte/strtoul
     pub func strtoull(str: *char8, endptr: *var *char8, base: c_int) -> c_ulonglong;
 
-    // Converts a byte string to a double, reporting where it stopped
-    // https://en.cppreference.com/c/string/byte/strtof
+    /// Converts a byte string to a double, reporting where it stopped.
+    ///
+    /// @param str a null-terminated byte string
+    /// @param endptr receives the address where parsing stopped, or null
+    /// @returns the value, zero when nothing was read, or a saturated value with `errno` set to `ERANGE`
+    /// @see https://en.cppreference.com/c/string/byte/strtof
     pub func strtod(str: *char8, endptr: *var *char8) -> c_double;
 
-    // Converts a byte string to a float, reporting where it stopped
-    // https://en.cppreference.com/c/string/byte/strtof
+    /// Converts a byte string to a float, reporting where it stopped.
+    ///
+    /// @param str a null-terminated byte string
+    /// @param endptr receives the address where parsing stopped, or null
+    /// @returns the value, zero when nothing was read, or a saturated value with `errno` set to `ERANGE`
+    /// @see https://en.cppreference.com/c/string/byte/strtof
     pub func strtof(str: *char8, endptr: *var *char8) -> c_float;
 
-    // Sorts an array in place; the comparison must be a strict weak ordering and the sort is not stable
-    // https://en.cppreference.com/c/algorithm/qsort
+    /// Sorts an array in place; the comparison must be a strict weak ordering and the sort is not stable.
+    ///
+    /// @param base the first element of the array
+    /// @param num how many elements it holds
+    /// @param size how many bytes one element occupies
+    /// @param compare how two elements order against each other
+    /// @see https://en.cppreference.com/c/algorithm/qsort
     pub func qsort(base: *var opaque, num: size_t, size: size_t, compare: func(*opaque, *opaque) -> c_int);
 
-    // Finds an element of a sorted array; the array must already be ordered by the same comparison
-    // https://en.cppreference.com/c/algorithm/bsearch
+    /// Finds an element of a sorted array; the array must already be ordered by the same comparison.
+    ///
+    /// @param key the value to search for
+    /// @param base the first element of the array
+    /// @param num how many elements it holds
+    /// @param size how many bytes one element occupies
+    /// @param compare how two elements order against each other
+    /// @returns the address of a matching element, or null
+    /// @see https://en.cppreference.com/c/algorithm/bsearch
     pub func bsearch(key: *opaque, base: *opaque, num: size_t, size: size_t,
                  compare: func(*opaque, *opaque) -> c_int) -> *opaque;
 
-    // Terminates normally without running any handler registered with atexit and without flushing streams
-    // https://en.cppreference.com/c/program/_Exit
+    /// Terminates normally without running any handler registered with atexit and without flushing streams.
+    ///
+    /// @param status the exit status to report
+    /// @see https://en.cppreference.com/c/program/_Exit
     func _Exit(status: c_int);
 
-    // Calls the host environment's command processor
-    //
-    // Runs whatever the platform's shell decides the string means, so a command built from anything the program did
-    // not write itself is an injection.
-    // https://en.cppreference.com/c/program/system
+    /// Calls the host environment's command processor.
+    ///
+    /// Runs whatever the platform's shell decides the string means, so a command built from anything the program did
+    /// not write itself is an injection.
+    ///
+    /// @param command the command to hand to the shell
+    /// @returns an implementation-defined status, or non-zero when a shell is available and `command` is null
+    /// @see https://en.cppreference.com/c/program/system
     func system(command: *char8) -> c_int;
 }
 
@@ -162,20 +252,30 @@ when #target.os {
     .Windows => {
         #Link(StdLib)
         extern {
-            // Allocates size bytes on the given alignment; release with _aligned_free, never free
-            // https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/aligned-malloc
+            /// Allocates size bytes on the given alignment; release with _aligned_free, never free.
+            ///
+            /// @param size a size in bytes
+            /// @param alignment the boundary the address must be a multiple of
+            /// @returns the address of the aligned block, or null; release it with `_aligned_free`
+            /// @see https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/aligned-malloc
             func _aligned_malloc(size: size_t, alignment: size_t) -> *var opaque;
 
-            // Releases a block obtained from _aligned_malloc
-            // https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/aligned-free
+            /// Releases a block obtained from _aligned_malloc.
+            ///
+            /// @param ptr the block to act on
+            /// @see https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/aligned-free
             func _aligned_free(ptr: *var opaque);
         }
     }
     else => {
         #Link(StdLib)
         extern {
-            // Allocates size bytes on the given alignment; release with free
-            // https://en.cppreference.com/c/memory/aligned_alloc
+            /// Allocates size bytes on the given alignment; release with free.
+            ///
+            /// @param alignment the boundary the address must be a multiple of
+            /// @param size how many bytes to take, a multiple of `alignment`
+            /// @returns the address of the aligned block, or null
+            /// @see https://en.cppreference.com/c/memory/aligned_alloc
             func aligned_alloc(alignment: size_t, size: size_t) -> *var opaque;
         }
     }
@@ -186,13 +286,13 @@ when #target.os {
 // `int32` on every supported target, so nothing is lost but the spelling.
 /// `EXIT_SUCCESS`: the status a program returns to mean it did what it was asked.
 ///
-/// https://rux-lang.dev/docs/api/c/exit-success
+/// @see https://rux-lang.dev/docs/api/c/exit-success
 #Allow("naming.const")
 pub const EXIT_SUCCESS: int32 = 0;
 
 /// `EXIT_FAILURE`: the status a program returns to mean it did not.
 ///
-/// https://rux-lang.dev/docs/api/c/exit-failure
+/// @see https://rux-lang.dev/docs/api/c/exit-failure
 #Allow("naming.const")
 pub const EXIT_FAILURE: int32 = 1;
 
@@ -202,14 +302,14 @@ when #target.os {
     .Windows => {
         /// `RAND_MAX`: the largest value `rand` can return on this target.
         ///
-        /// https://rux-lang.dev/docs/api/c/rand-max
+        /// @see https://rux-lang.dev/docs/api/c/rand-max
         #Allow("naming.const")
         pub const RAND_MAX: int32 = 32767;
     }
     else => {
         /// `RAND_MAX`: the largest value `rand` can return on this target.
         ///
-        /// https://rux-lang.dev/docs/api/c/rand-max
+        /// @see https://rux-lang.dev/docs/api/c/rand-max
         #Allow("naming.const")
         pub const RAND_MAX: int32 = 2147483647;
     }

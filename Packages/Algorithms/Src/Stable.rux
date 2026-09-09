@@ -30,7 +30,9 @@ import Core::{ Ordering };
 ///
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
-/// https://rux-lang.dev/docs/api/algorithms/required-scratch
+/// @param length how many elements are to be sorted
+/// @returns how many elements of working storage a stable sort of that length needs
+/// @see https://rux-lang.dev/docs/api/algorithms/required-scratch
 pub func RequiredScratch(length: uint) -> uint {
     return length;
 }
@@ -47,7 +49,11 @@ pub func RequiredScratch(length: uint) -> uint {
 ///
 /// Makes O(n log n) comparisons and moves for every input — there is no bad case — and allocates nothing.
 ///
-/// https://rux-lang.dev/docs/api/algorithms/stable-sort
+/// @typeParam T the element type
+/// @param items the sequence to work on
+/// @param scratch working storage of at least `RequiredScratch(items.length)` elements
+/// @returns whether `scratch` was large enough; the sequence is untouched when it was not
+/// @see https://rux-lang.dev/docs/api/algorithms/stable-sort
 pub func StableSort<T>(items: var T[..], scratch: var T[..]) -> bool {
     if items.length < 2 { return true; }
     if scratch.length < RequiredScratch(items.length) { return false; }
@@ -106,7 +112,12 @@ pub func StableSort<T>(items: var T[..], scratch: var T[..]) -> bool {
 ///
 /// Makes O(n log n) comparisons and moves for every input, and allocates nothing.
 ///
-/// https://rux-lang.dev/docs/api/algorithms/stable-sort-by
+/// @typeParam T the element type
+/// @param items the sequence to work on
+/// @param scratch working storage of at least `RequiredScratch(items.length)` elements
+/// @param compare how two elements order against each other
+/// @returns whether `scratch` was large enough; the sequence is untouched when it was not
+/// @see https://rux-lang.dev/docs/api/algorithms/stable-sort-by
 pub func StableSortBy<T>(items: var T[..], scratch: var T[..], compare: func(T, T) -> Ordering) -> bool {
     if items.length < 2 { return true; }
     if scratch.length < RequiredScratch(items.length) { return false; }

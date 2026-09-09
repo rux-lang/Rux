@@ -22,7 +22,11 @@ import Core::{ Option, Ordering };
 ///
 /// Cannot fail. Runs in time proportional to the length, stopping at the first match, and allocates nothing.
 ///
-/// https://rux-lang.dev/docs/api/algorithms/contains
+/// @typeParam T the element type
+/// @param items the sequence to work on
+/// @param value the value to look for
+/// @returns whether any element equals `value`
+/// @see https://rux-lang.dev/docs/api/algorithms/contains
 pub func Contains<T>(items: T[..], value: T) -> bool {
     return IndexOf<T>(items, value).IsSome();
 }
@@ -33,7 +37,11 @@ pub func Contains<T>(items: T[..], value: T) -> bool {
 ///
 /// Cannot fail. Runs in time proportional to the length and allocates nothing.
 ///
-/// https://rux-lang.dev/docs/api/algorithms/count
+/// @typeParam T the element type
+/// @param items the sequence to work on
+/// @param value the value to look for
+/// @returns how many elements equal `value`
+/// @see https://rux-lang.dev/docs/api/algorithms/count
 pub func Count<T>(items: T[..], value: T) -> uint {
     var found: uint = 0;
     var index: uint = 0;
@@ -53,7 +61,11 @@ pub func Count<T>(items: T[..], value: T) -> uint {
 ///
 /// Cannot fail. Runs in time proportional to the length, stopping at the first match, and allocates nothing.
 ///
-/// https://rux-lang.dev/docs/api/algorithms/index-of
+/// @typeParam T the element type
+/// @param items the sequence to work on
+/// @param value the value to look for
+/// @returns the first index holding `value`, or `None`
+/// @see https://rux-lang.dev/docs/api/algorithms/index-of
 pub func IndexOf<T>(items: T[..], value: T) -> Option<uint> {
     var index: uint = 0;
     while index < items.length {
@@ -70,7 +82,11 @@ pub func IndexOf<T>(items: T[..], value: T) -> Option<uint> {
 /// Cannot fail. Runs in time proportional to the length, stopping at the first match from the end, and allocates
 /// nothing.
 ///
-/// https://rux-lang.dev/docs/api/algorithms/last-index-of
+/// @typeParam T the element type
+/// @param items the sequence to work on
+/// @param value the value to look for
+/// @returns the last index holding `value`, or `None`
+/// @see https://rux-lang.dev/docs/api/algorithms/last-index-of
 pub func LastIndexOf<T>(items: T[..], value: T) -> Option<uint> {
     var remaining = items.length;
     while remaining > 0 {
@@ -87,7 +103,11 @@ pub func LastIndexOf<T>(items: T[..], value: T) -> Option<uint> {
 ///
 /// Cannot fail. Runs in time proportional to the length and allocates nothing beyond whatever `predicate` does.
 ///
-/// https://rux-lang.dev/docs/api/algorithms/index-where
+/// @typeParam T the element type
+/// @param items the sequence to work on
+/// @param predicate the test each element is put to
+/// @returns the first index whose element satisfies `predicate`, or `None`
+/// @see https://rux-lang.dev/docs/api/algorithms/index-where
 pub func IndexWhere<T>(items: T[..], predicate: func(T) -> bool) -> Option<uint> {
     var index: uint = 0;
     while index < items.length {
@@ -104,7 +124,11 @@ pub func IndexWhere<T>(items: T[..], predicate: func(T) -> bool) -> Option<uint>
 ///
 /// Cannot fail. Runs in time proportional to the length and allocates nothing beyond whatever `predicate` does.
 ///
-/// https://rux-lang.dev/docs/api/algorithms/last-index-where
+/// @typeParam T the element type
+/// @param items the sequence to work on
+/// @param predicate the test each element is put to
+/// @returns the last index whose element satisfies `predicate`, or `None`
+/// @see https://rux-lang.dev/docs/api/algorithms/last-index-where
 pub func LastIndexWhere<T>(items: T[..], predicate: func(T) -> bool) -> Option<uint> {
     var remaining = items.length;
     while remaining > 0 {
@@ -120,7 +144,11 @@ pub func LastIndexWhere<T>(items: T[..], predicate: func(T) -> bool) -> Option<u
 ///
 /// Cannot fail. Runs in time proportional to the length and allocates nothing beyond whatever `predicate` does.
 ///
-/// https://rux-lang.dev/docs/api/algorithms/count-where
+/// @typeParam T the element type
+/// @param items the sequence to work on
+/// @param predicate the test each element is put to
+/// @returns how many elements satisfy `predicate`
+/// @see https://rux-lang.dev/docs/api/algorithms/count-where
 pub func CountWhere<T>(items: T[..], predicate: func(T) -> bool) -> uint {
     var found: uint = 0;
     var index: uint = 0;
@@ -141,7 +169,11 @@ pub func CountWhere<T>(items: T[..], predicate: func(T) -> bool) -> uint {
 /// Cannot fail. Runs in time proportional to the length, stopping at the first rejection, and allocates nothing
 /// beyond whatever `predicate` does.
 ///
-/// https://rux-lang.dev/docs/api/algorithms/all-of
+/// @typeParam T the element type
+/// @param items the sequence to work on
+/// @param predicate the test each element is put to
+/// @returns whether every element satisfies `predicate`; true for an empty sequence
+/// @see https://rux-lang.dev/docs/api/algorithms/all-of
 pub func AllOf<T>(items: T[..], predicate: func(T) -> bool) -> bool {
     var index: uint = 0;
     while index < items.length {
@@ -158,7 +190,11 @@ pub func AllOf<T>(items: T[..], predicate: func(T) -> bool) -> bool {
 /// Cannot fail. Runs in time proportional to the length, stopping at the first acceptance, and allocates nothing
 /// beyond whatever `predicate` does.
 ///
-/// https://rux-lang.dev/docs/api/algorithms/any-of
+/// @typeParam T the element type
+/// @param items the sequence to work on
+/// @param predicate the test each element is put to
+/// @returns whether any element satisfies `predicate`; false for an empty sequence
+/// @see https://rux-lang.dev/docs/api/algorithms/any-of
 pub func AnyOf<T>(items: T[..], predicate: func(T) -> bool) -> bool {
     return IndexWhere<T>(items, predicate).IsSome();
 }
@@ -170,7 +206,11 @@ pub func AnyOf<T>(items: T[..], predicate: func(T) -> bool) -> bool {
 /// Cannot fail. Runs in time proportional to the length, stopping at the first acceptance, and allocates nothing
 /// beyond whatever `predicate` does.
 ///
-/// https://rux-lang.dev/docs/api/algorithms/none-of
+/// @typeParam T the element type
+/// @param items the sequence to work on
+/// @param predicate the test each element is put to
+/// @returns whether no element satisfies `predicate`; true for an empty sequence
+/// @see https://rux-lang.dev/docs/api/algorithms/none-of
 pub func NoneOf<T>(items: T[..], predicate: func(T) -> bool) -> bool {
     return !AnyOf<T>(items, predicate);
 }
@@ -183,7 +223,11 @@ pub func NoneOf<T>(items: T[..], predicate: func(T) -> bool) -> bool {
 ///
 /// Cannot fail. Runs in time proportional to the shorter length and allocates nothing.
 ///
-/// https://rux-lang.dev/docs/api/algorithms/mismatch
+/// @typeParam T the element type
+/// @param left one of the two sequences
+/// @param right the other
+/// @returns the first index where the two differ, or `None` when neither runs out first
+/// @see https://rux-lang.dev/docs/api/algorithms/mismatch
 pub func Mismatch<T>(left: T[..], right: T[..]) -> Option<uint> {
     let shorter = left.length < right.length ? left.length : right.length;
     var index: uint = 0;
@@ -202,7 +246,11 @@ pub func Mismatch<T>(left: T[..], right: T[..]) -> Option<uint> {
 ///
 /// Cannot fail. Runs in time proportional to the shorter length and allocates nothing.
 ///
-/// https://rux-lang.dev/docs/api/algorithms/sequence-equal
+/// @typeParam T the element type
+/// @param left one of the two sequences
+/// @param right the other
+/// @returns whether both hold the same elements in the same order
+/// @see https://rux-lang.dev/docs/api/algorithms/sequence-equal
 pub func SequenceEqual<T>(left: T[..], right: T[..]) -> bool {
     if left.length != right.length { return false; }
     return Mismatch<T>(left, right).IsNone();
@@ -219,7 +267,11 @@ pub func SequenceEqual<T>(left: T[..], right: T[..]) -> bool {
 ///
 /// Cannot fail. Runs in time proportional to the shorter length and allocates nothing.
 ///
-/// https://rux-lang.dev/docs/api/algorithms/compare
+/// @typeParam T the element type
+/// @param left one of the two sequences
+/// @param right the other
+/// @returns how `left` orders against `right`, comparing element by element then by length
+/// @see https://rux-lang.dev/docs/api/algorithms/compare
 pub func Compare<T>(left: T[..], right: T[..]) -> Ordering {
     let shorter = left.length < right.length ? left.length : right.length;
     var index: uint = 0;
@@ -241,7 +293,12 @@ pub func Compare<T>(left: T[..], right: T[..]) -> Ordering {
 ///
 /// Cannot fail. Runs in time proportional to the shorter length and allocates nothing beyond whatever `compare` does.
 ///
-/// https://rux-lang.dev/docs/api/algorithms/compare-by
+/// @typeParam T the element type
+/// @param left one of the two sequences
+/// @param right the other
+/// @param compare how two elements order against each other
+/// @returns how `left` orders against `right` under `compare`, then by length
+/// @see https://rux-lang.dev/docs/api/algorithms/compare-by
 pub func CompareBy<T>(left: T[..], right: T[..], compare: func(T, T) -> Ordering) -> Ordering {
     let shorter = left.length < right.length ? left.length : right.length;
     var index: uint = 0;

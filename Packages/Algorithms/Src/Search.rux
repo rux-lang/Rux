@@ -28,7 +28,10 @@ import Core::{ Option, Ordering };
 /// Cannot fail. Runs in time proportional to the length, stopping at the first pair out of order, and allocates
 /// nothing.
 ///
-/// https://rux-lang.dev/docs/api/algorithms/is-sorted
+/// @typeParam T the element type
+/// @param items the sequence to work on
+/// @returns whether the sequence is in non-descending order
+/// @see https://rux-lang.dev/docs/api/algorithms/is-sorted
 pub func IsSorted<T>(items: T[..]) -> bool {
     return IsSortedUntil<T>(items) == items.length;
 }
@@ -43,7 +46,10 @@ pub func IsSorted<T>(items: T[..]) -> bool {
 ///
 /// Cannot fail. Runs in time proportional to the answer and allocates nothing.
 ///
-/// https://rux-lang.dev/docs/api/algorithms/is-sorted-until
+/// @typeParam T the element type
+/// @param items the sequence to work on
+/// @returns how many leading elements are in non-descending order
+/// @see https://rux-lang.dev/docs/api/algorithms/is-sorted-until
 pub func IsSortedUntil<T>(items: T[..]) -> uint {
     if items.length == 0 { return 0; }
     var index: uint = 1;
@@ -64,7 +70,11 @@ pub func IsSortedUntil<T>(items: T[..]) -> uint {
 ///
 /// Cannot fail. Runs in time proportional to the logarithm of the length and allocates nothing.
 ///
-/// https://rux-lang.dev/docs/api/algorithms/lower-bound
+/// @typeParam T the element type
+/// @param items the sequence to work on
+/// @param value the value to place
+/// @returns the first index where `value` could be inserted and keep the order
+/// @see https://rux-lang.dev/docs/api/algorithms/lower-bound
 pub func LowerBound<T>(items: T[..], value: T) -> uint {
     var low: uint = 0;
     var high = items.length;
@@ -89,7 +99,11 @@ pub func LowerBound<T>(items: T[..], value: T) -> uint {
 ///
 /// Cannot fail. Runs in time proportional to the logarithm of the length and allocates nothing.
 ///
-/// https://rux-lang.dev/docs/api/algorithms/upper-bound
+/// @typeParam T the element type
+/// @param items the sequence to work on
+/// @param value the value to place
+/// @returns the last index where `value` could be inserted and keep the order
+/// @see https://rux-lang.dev/docs/api/algorithms/upper-bound
 pub func UpperBound<T>(items: T[..], value: T) -> uint {
     var low: uint = 0;
     var high = items.length;
@@ -117,7 +131,11 @@ pub func UpperBound<T>(items: T[..], value: T) -> uint {
 ///
 /// Cannot fail. Runs in time proportional to the logarithm of the length and allocates nothing.
 ///
-/// https://rux-lang.dev/docs/api/algorithms/binary-search
+/// @typeParam T the element type
+/// @param items the sequence to work on
+/// @param value the value to look for
+/// @returns the index of a matching element, or `None`; which one is unspecified when several match
+/// @see https://rux-lang.dev/docs/api/algorithms/binary-search
 pub func BinarySearch<T>(items: T[..], value: T) -> Option<uint> {
     let at = LowerBound<T>(items, value);
     if at < items.length && !(value < items.data[at]) { return Option::Some<uint>(at); }
@@ -134,7 +152,11 @@ pub func BinarySearch<T>(items: T[..], value: T) -> Option<uint> {
 ///
 /// Cannot fail. Runs in time proportional to the logarithm of the length and allocates nothing.
 ///
-/// https://rux-lang.dev/docs/api/algorithms/equal-range
+/// @typeParam T the element type
+/// @param items the sequence to work on
+/// @param value the value to bracket
+/// @returns the range of indices holding elements equal to `value`, empty when none does
+/// @see https://rux-lang.dev/docs/api/algorithms/equal-range
 pub func EqualRange<T>(items: T[..], value: T) -> uint..uint {
     return LowerBound<T>(items, value)..UpperBound<T>(items, value);
 }
@@ -146,7 +168,11 @@ pub func EqualRange<T>(items: T[..], value: T) -> uint..uint {
 ///
 /// Cannot fail. Runs in time proportional to the length and allocates nothing beyond whatever `compare` does.
 ///
-/// https://rux-lang.dev/docs/api/algorithms/is-sorted-by
+/// @typeParam T the element type
+/// @param items the sequence to work on
+/// @param compare how two elements order against each other
+/// @returns whether the sequence is in non-descending order under `compare`
+/// @see https://rux-lang.dev/docs/api/algorithms/is-sorted-by
 pub func IsSortedBy<T>(items: T[..], compare: func(T, T) -> Ordering) -> bool {
     return IsSortedUntilBy<T>(items, compare) == items.length;
 }
@@ -158,7 +184,11 @@ pub func IsSortedBy<T>(items: T[..], compare: func(T, T) -> Ordering) -> bool {
 ///
 /// Cannot fail. Runs in time proportional to the answer and allocates nothing beyond whatever `compare` does.
 ///
-/// https://rux-lang.dev/docs/api/algorithms/is-sorted-until-by
+/// @typeParam T the element type
+/// @param items the sequence to work on
+/// @param compare how two elements order against each other
+/// @returns how many leading elements are in non-descending order under `compare`
+/// @see https://rux-lang.dev/docs/api/algorithms/is-sorted-until-by
 pub func IsSortedUntilBy<T>(items: T[..], compare: func(T, T) -> Ordering) -> uint {
     if items.length == 0 { return 0; }
     var index: uint = 1;
@@ -176,7 +206,12 @@ pub func IsSortedUntilBy<T>(items: T[..], compare: func(T, T) -> Ordering) -> ui
 /// Cannot fail. Runs in time proportional to the logarithm of the length and allocates nothing beyond whatever
 /// `compare` does.
 ///
-/// https://rux-lang.dev/docs/api/algorithms/lower-bound-by
+/// @typeParam T the element type
+/// @param items the sequence to work on
+/// @param value the value to place
+/// @param compare how two elements order against each other
+/// @returns the first index where `value` could be inserted and keep the order under `compare`
+/// @see https://rux-lang.dev/docs/api/algorithms/lower-bound-by
 pub func LowerBoundBy<T>(items: T[..], value: T, compare: func(T, T) -> Ordering) -> uint {
     var low: uint = 0;
     var high = items.length;
@@ -199,7 +234,12 @@ pub func LowerBoundBy<T>(items: T[..], value: T, compare: func(T, T) -> Ordering
 /// Cannot fail. Runs in time proportional to the logarithm of the length and allocates nothing beyond whatever
 /// `compare` does.
 ///
-/// https://rux-lang.dev/docs/api/algorithms/upper-bound-by
+/// @typeParam T the element type
+/// @param items the sequence to work on
+/// @param value the value to place
+/// @param compare how two elements order against each other
+/// @returns the last index where `value` could be inserted and keep the order under `compare`
+/// @see https://rux-lang.dev/docs/api/algorithms/upper-bound-by
 pub func UpperBoundBy<T>(items: T[..], value: T, compare: func(T, T) -> Ordering) -> uint {
     var low: uint = 0;
     var high = items.length;
@@ -223,7 +263,12 @@ pub func UpperBoundBy<T>(items: T[..], value: T, compare: func(T, T) -> Ordering
 /// Cannot fail. Runs in time proportional to the logarithm of the length and allocates nothing beyond whatever
 /// `compare` does.
 ///
-/// https://rux-lang.dev/docs/api/algorithms/binary-search-by
+/// @typeParam T the element type
+/// @param items the sequence to work on
+/// @param value the value to look for
+/// @param compare how two elements order against each other
+/// @returns the index of a matching element under `compare`, or `None`
+/// @see https://rux-lang.dev/docs/api/algorithms/binary-search-by
 pub func BinarySearchBy<T>(items: T[..], value: T, compare: func(T, T) -> Ordering) -> Option<uint> {
     let at = LowerBoundBy<T>(items, value, compare);
     if at < items.length && !compare(value, items.data[at]).IsLess() { return Option::Some<uint>(at); }
@@ -238,7 +283,12 @@ pub func BinarySearchBy<T>(items: T[..], value: T, compare: func(T, T) -> Orderi
 /// Cannot fail. Runs in time proportional to the logarithm of the length and allocates nothing beyond whatever
 /// `compare` does.
 ///
-/// https://rux-lang.dev/docs/api/algorithms/equal-range-by
+/// @typeParam T the element type
+/// @param items the sequence to work on
+/// @param value the value to bracket
+/// @param compare how two elements order against each other
+/// @returns the range of indices holding elements equal to `value` under `compare`
+/// @see https://rux-lang.dev/docs/api/algorithms/equal-range-by
 pub func EqualRangeBy<T>(items: T[..], value: T, compare: func(T, T) -> Ordering) -> uint..uint {
     return LowerBoundBy<T>(items, value, compare)..UpperBoundBy<T>(items, value, compare);
 }

@@ -49,7 +49,9 @@ import Core::{ Ordering };
 /// Cannot fail. Makes O(n log n) comparisons for every input, uses O(1) storage beyond the sequence, and recurses
 /// O(log n) deep.
 ///
-/// https://rux-lang.dev/docs/api/algorithms/sort
+/// @typeParam T the element type
+/// @param items the sequence to work on
+/// @see https://rux-lang.dev/docs/api/algorithms/sort
 pub func Sort<T>(items: var T[..]) {
     let data = items.data;
     let length = items.length;
@@ -78,7 +80,9 @@ pub func Sort<T>(items: var T[..]) {
 ///
 /// Cannot fail. Makes O(n log n) comparisons and uses O(1) storage beyond the sequence.
 ///
-/// https://rux-lang.dev/docs/api/algorithms/sort-descending
+/// @typeParam T the element type
+/// @param items the sequence to work on
+/// @see https://rux-lang.dev/docs/api/algorithms/sort-descending
 pub func SortDescending<T>(items: var T[..]) {
     Sort<T>(items);
     Reverse<T>(items);
@@ -99,7 +103,11 @@ pub func SortDescending<T>(items: var T[..]) {
 ///
 /// Requires `<` on the element type. Equal elements may be reordered.
 ///
-/// https://rux-lang.dev/docs/api/algorithms/nth-element
+/// @typeParam T the element type
+/// @param items the sequence to work on
+/// @param n the index whose element should end up in its sorted place
+/// @returns whether `n` was a usable index
+/// @see https://rux-lang.dev/docs/api/algorithms/nth-element
 pub func NthElement<T>(items: var T[..], n: uint) -> bool {
     let data = items.data;
     let length = items.length;
@@ -160,7 +168,11 @@ pub func NthElement<T>(items: var T[..], n: uint) -> bool {
 ///
 /// Requires `<` on the element type. Equal elements may be reordered.
 ///
-/// https://rux-lang.dev/docs/api/algorithms/partial-sort
+/// @typeParam T the element type
+/// @param items the sequence to work on
+/// @param count how many of the smallest elements to place
+/// @returns whether `count` was a usable length
+/// @see https://rux-lang.dev/docs/api/algorithms/partial-sort
 pub func PartialSort<T>(items: var T[..], count: uint) -> bool {
     let data = items.data;
     let length = items.length;
@@ -272,7 +284,11 @@ func PartitionThreeWay<T>(data: *var T, low: uint, high: uint, pivot: T, lessEnd
 // Internal helper; not part of the package API.
 /// Provides the public `InsertionSortRange` operation.
 ///
-/// https://rux-lang.dev/docs/api/algorithms/insertion-sort-range
+/// @typeParam T the element type
+/// @param data the sequence to work on
+/// @param low the first index of the range
+/// @param high the index one past the range
+/// @see https://rux-lang.dev/docs/api/algorithms/insertion-sort-range
 pub func InsertionSortRange<T>(data: *var T, low: uint, high: uint) {
     if high - low < 2 { return; }
 
@@ -324,7 +340,11 @@ func SiftDown<T>(data: *var T, low: uint, start: uint, count: uint) {
 // reached only once the recursion budget is spent.
 /// Provides the public `HeapSortRange` operation.
 ///
-/// https://rux-lang.dev/docs/api/algorithms/heap-sort-range
+/// @typeParam T the element type
+/// @param data the sequence to work on
+/// @param low the first index of the range
+/// @param high the index one past the range
+/// @see https://rux-lang.dev/docs/api/algorithms/heap-sort-range
 pub func HeapSortRange<T>(data: *var T, low: uint, high: uint) {
     let count = high - low;
     if count < 2 { return; }
@@ -403,7 +423,10 @@ func IntroSortRange<T>(data: *var T, low: uint, high: uint, depth: uint) {
 /// Cannot fail. Makes O(n log n) comparisons for every input, uses O(1) storage beyond the sequence, and recurses
 /// O(log n) deep. Equal elements may be reordered: this is not stable.
 ///
-/// https://rux-lang.dev/docs/api/algorithms/sort-by
+/// @typeParam T the element type
+/// @param items the sequence to work on
+/// @param compare how two elements order against each other
+/// @see https://rux-lang.dev/docs/api/algorithms/sort-by
 pub func SortBy<T>(items: var T[..], compare: func(T, T) -> Ordering) {
     let data = items.data;
     let length = items.length;
@@ -424,7 +447,10 @@ pub func SortBy<T>(items: var T[..], compare: func(T, T) -> Ordering) {
 /// Cannot fail. Makes O(n log n) comparisons and uses O(1) storage beyond the sequence. Equal elements may be
 /// reordered.
 ///
-/// https://rux-lang.dev/docs/api/algorithms/sort-descending-by
+/// @typeParam T the element type
+/// @param items the sequence to work on
+/// @param compare how two elements order against each other
+/// @see https://rux-lang.dev/docs/api/algorithms/sort-descending-by
 pub func SortDescendingBy<T>(items: var T[..], compare: func(T, T) -> Ordering) {
     SortBy<T>(items, compare);
     Reverse<T>(items);
@@ -439,7 +465,12 @@ pub func SortDescendingBy<T>(items: var T[..], compare: func(T, T) -> Ordering) 
 ///
 /// O(n) comparisons on average and O(n log n) at worst. Equivalent elements may be reordered.
 ///
-/// https://rux-lang.dev/docs/api/algorithms/nth-element-by
+/// @typeParam T the element type
+/// @param items the sequence to work on
+/// @param n the index whose element should end up in its sorted place
+/// @param compare how two elements order against each other
+/// @returns whether `n` was a usable index
+/// @see https://rux-lang.dev/docs/api/algorithms/nth-element-by
 pub func NthElementBy<T>(items: var T[..], n: uint, compare: func(T, T) -> Ordering) -> bool {
     let data = items.data;
     let length = items.length;
@@ -491,7 +522,12 @@ pub func NthElementBy<T>(items: var T[..], n: uint, compare: func(T, T) -> Order
 ///
 /// O(n log count) comparisons. Equivalent elements may be reordered.
 ///
-/// https://rux-lang.dev/docs/api/algorithms/partial-sort-by
+/// @typeParam T the element type
+/// @param items the sequence to work on
+/// @param count how many of the smallest elements to place
+/// @param compare how two elements order against each other
+/// @returns whether `count` was a usable length
+/// @see https://rux-lang.dev/docs/api/algorithms/partial-sort-by
 pub func PartialSortBy<T>(items: var T[..], count: uint, compare: func(T, T) -> Ordering) -> bool {
     let data = items.data;
     let length = items.length;
