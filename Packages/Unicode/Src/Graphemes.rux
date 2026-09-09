@@ -14,7 +14,7 @@
 ///
 /// The ordinals match the generated table and must not be reordered.
 ///
-/// https://rux-lang.dev/docs/api/unicode/grapheme-break
+/// @see https://rux-lang.dev/docs/api/unicode/grapheme-break
 pub enum GraphemeBreak: int32 {
     /// Everything with no class of its own.
     Any = 0,
@@ -48,14 +48,18 @@ pub enum GraphemeBreak: int32 {
 
 /// The break class of `scalar`.
 ///
-/// https://rux-lang.dev/docs/api/unicode/grapheme-break-of
+/// @param scalar the scalar value to classify
+/// @returns its grapheme cluster break property
+/// @see https://rux-lang.dev/docs/api/unicode/grapheme-break-of
 pub func GraphemeBreakOf(scalar: char32) -> GraphemeBreak {
     return RangeValue(GraphemeBreakRanges[..], scalar as uint32, 0) as GraphemeBreak;
 }
 
 /// Whether `scalar` is an extended pictograph: the emoji and everything reserved to become one.
 ///
-/// https://rux-lang.dev/docs/api/unicode/is-pictographic
+/// @param scalar the scalar value to test
+/// @returns whether it has the Extended_Pictographic property
+/// @see https://rux-lang.dev/docs/api/unicode/is-pictographic
 pub func IsPictographic(scalar: char32) -> bool {
     return InRangePairs(PictographicRanges[..], scalar as uint32);
 }
@@ -81,7 +85,10 @@ func IsConjunctExtend(scalar: char32) -> bool {
 ///
 /// Runs in time proportional to the lookback, which is the run of marks behind the position; allocates nothing.
 ///
-/// https://rux-lang.dev/docs/api/unicode/is-grapheme-boundary
+/// @param text the scalar values to examine
+/// @param index the position to test, in scalar values
+/// @returns whether a grapheme cluster boundary falls before `index`
+/// @see https://rux-lang.dev/docs/api/unicode/is-grapheme-boundary
 pub func IsGraphemeBoundary(text: char32[..], index: uint) -> bool {
     if index == 0 || index >= text.length { return true; }
     let before = GraphemeBreakOf(text.data[index - 1]);
@@ -167,7 +174,9 @@ pub func IsGraphemeBoundary(text: char32[..], index: uint) -> bool {
 
 /// How many grapheme clusters `text` holds.
 ///
-/// https://rux-lang.dev/docs/api/unicode/count-graphemes
+/// @param text the scalar values to count
+/// @returns how many grapheme clusters `text` holds
+/// @see https://rux-lang.dev/docs/api/unicode/count-graphemes
 pub func CountGraphemes(text: char32[..]) -> uint {
     var counted: uint = 0;
     var index: uint = 0;

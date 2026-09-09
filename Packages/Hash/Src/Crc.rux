@@ -26,12 +26,12 @@ import Hash::Hasher;
 
 /// The reflected IEEE 802.3 generator polynomial, which is what gzip, PNG and zip mean by "CRC-32".
 ///
-/// https://rux-lang.dev/docs/api/hash/crc32-polynomial
+/// @see https://rux-lang.dev/docs/api/hash/crc32-polynomial
 pub const Crc32Polynomial: uint32 = 0xEDB88320;
 
 /// The reflected Castagnoli generator polynomial, which is what iSCSI, ext4, Btrfs and SCTP mean by "CRC-32C".
 ///
-/// https://rux-lang.dev/docs/api/hash/crc32c-polynomial
+/// @see https://rux-lang.dev/docs/api/hash/crc32c-polynomial
 pub const Crc32cPolynomial: uint32 = 0x82F63B78;
 
 /// The value a CRC register starts at, and the value the finished register is complemented against.
@@ -39,7 +39,7 @@ pub const Crc32cPolynomial: uint32 = 0x82F63B78;
 /// Both ends are all ones, which is what makes a message padded with zeroes at either end give a different answer
 /// from the message itself.
 ///
-/// https://rux-lang.dev/docs/api/hash/crc32-initial
+/// @see https://rux-lang.dev/docs/api/hash/crc32-initial
 pub const Crc32Initial: uint32 = 0xFFFFFFFF;
 
 /// One byte of division by `Crc32Polynomial`, precomputed for every possible byte.
@@ -47,7 +47,7 @@ pub const Crc32Initial: uint32 = 0xFFFFFFFF;
 /// Entry `i` is `i` divided by the generator, so a whole byte of the message advances the register in one indexed
 /// lookup and one shift rather than eight conditional shifts.
 ///
-/// https://rux-lang.dev/docs/api/hash/crc32-table
+/// @see https://rux-lang.dev/docs/api/hash/crc32-table
 pub const Crc32Table: uint32[256] = [
     0x00000000, 0x77073096, 0xEE0E612C, 0x990951BA, 0x076DC419, 0x706AF48F, 0xE963A535, 0x9E6495A3,
     0x0EDB8832, 0x79DCB8A4, 0xE0D5E91E, 0x97D2D988, 0x09B64C2B, 0x7EB17CBD, 0xE7B82D07, 0x90BF1D91,
@@ -85,7 +85,7 @@ pub const Crc32Table: uint32[256] = [
 
 /// One byte of division by `Crc32cPolynomial`, precomputed for every possible byte.
 ///
-/// https://rux-lang.dev/docs/api/hash/crc32c-table
+/// @see https://rux-lang.dev/docs/api/hash/crc32c-table
 pub const Crc32cTable: uint32[256] = [
     0x00000000, 0xF26B8303, 0xE13B70F7, 0x1350F3F4, 0xC79A971F, 0x35F1141C, 0x26A1E7E8, 0xD4CA64EB,
     0x8AD958CF, 0x78B2DBCC, 0x6BE22838, 0x9989AB3B, 0x4D43CFD0, 0xBF284CD3, 0xAC78BF27, 0x5E133C24,
@@ -125,7 +125,7 @@ pub const Crc32cTable: uint32[256] = [
 ///
 /// Copy, and holding only the register, so passing one by value takes a snapshot of the checksum so far.
 ///
-/// https://rux-lang.dev/docs/api/hash/crc32
+/// @see https://rux-lang.dev/docs/api/hash/crc32
 pub struct Crc32 {
     /// The register, before the final complement. Starts at `Crc32Initial`.
     register: uint32;
@@ -134,7 +134,8 @@ pub struct Crc32 {
 extend Crc32 {
     /// Constructs a checksum with nothing written into it yet.
     ///
-    /// https://rux-lang.dev/docs/api/hash/crc32
+    /// @returns a hasher with nothing written to it yet
+    /// @see https://rux-lang.dev/docs/api/hash/crc32
     pub func Crc32() -> Crc32 {
         return Crc32 { register: Crc32Initial };
     }
@@ -145,7 +146,7 @@ extend Crc32 {
     ///
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
-    /// https://rux-lang.dev/docs/api/hash/crc32/reset
+    /// @see https://rux-lang.dev/docs/api/hash/crc32/reset
     pub func Reset(self: &var Crc32) {
         self.register = Crc32Initial;
     }
@@ -157,7 +158,8 @@ extend Crc32 {
     ///
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
-    /// https://rux-lang.dev/docs/api/hash/crc32/value
+    /// @returns the checksum of everything written so far
+    /// @see https://rux-lang.dev/docs/api/hash/crc32/value
     pub func Value(self: &Crc32) -> uint32 {
         return self.register ^ Crc32Initial;
     }
@@ -175,7 +177,9 @@ extend Crc32 : Hasher {
     ///
     /// `bytes` must be readable for `length` bytes.
     ///
-    /// https://rux-lang.dev/docs/api/hash/crc32/write
+    /// @param bytes the bytes to absorb
+    /// @param length how many bytes; zero absorbs nothing
+    /// @see https://rux-lang.dev/docs/api/hash/crc32/write
     pub func Write(self: &var Crc32, bytes: *byte, length: uint) {
         if length == 0 { return; }
         var index: uint = 0;
@@ -193,7 +197,8 @@ extend Crc32 : Hasher {
     ///
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
-    /// https://rux-lang.dev/docs/api/hash/crc32/finish
+    /// @returns the hash of everything written since the last reset
+    /// @see https://rux-lang.dev/docs/api/hash/crc32/finish
     pub func Finish(self: &var Crc32) -> uint64 {
         return self.Value() as uint64;
     }
@@ -206,7 +211,7 @@ extend Crc32 : Hasher {
 /// existing format requires it.
 /// Structural `Copy`; copying takes an independent snapshot of the register.
 ///
-/// https://rux-lang.dev/docs/api/hash/crc32c
+/// @see https://rux-lang.dev/docs/api/hash/crc32c
 pub struct Crc32c {
     /// The register, before the final complement. Starts at `Crc32Initial`.
     register: uint32;
@@ -215,7 +220,8 @@ pub struct Crc32c {
 extend Crc32c {
     /// Constructs a checksum with nothing written into it yet.
     ///
-    /// https://rux-lang.dev/docs/api/hash/crc32c
+    /// @returns a hasher with nothing written to it yet
+    /// @see https://rux-lang.dev/docs/api/hash/crc32c
     pub func Crc32c() -> Crc32c {
         return Crc32c { register: Crc32Initial };
     }
@@ -226,7 +232,7 @@ extend Crc32c {
     ///
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
-    /// https://rux-lang.dev/docs/api/hash/crc32c/reset
+    /// @see https://rux-lang.dev/docs/api/hash/crc32c/reset
     pub func Reset(self: &var Crc32c) {
         self.register = Crc32Initial;
     }
@@ -237,7 +243,8 @@ extend Crc32c {
     ///
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
-    /// https://rux-lang.dev/docs/api/hash/crc32c/value
+    /// @returns the checksum of everything written so far
+    /// @see https://rux-lang.dev/docs/api/hash/crc32c/value
     pub func Value(self: &Crc32c) -> uint32 {
         return self.register ^ Crc32Initial;
     }
@@ -255,7 +262,9 @@ extend Crc32c : Hasher {
     ///
     /// `bytes` must be readable for `length` bytes.
     ///
-    /// https://rux-lang.dev/docs/api/hash/crc32c/write
+    /// @param bytes the bytes to absorb
+    /// @param length how many bytes; zero absorbs nothing
+    /// @see https://rux-lang.dev/docs/api/hash/crc32c/write
     pub func Write(self: &var Crc32c, bytes: *byte, length: uint) {
         if length == 0 { return; }
         var index: uint = 0;
@@ -272,7 +281,8 @@ extend Crc32c : Hasher {
     ///
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
-    /// https://rux-lang.dev/docs/api/hash/crc32c/finish
+    /// @returns the hash of everything written since the last reset
+    /// @see https://rux-lang.dev/docs/api/hash/crc32c/finish
     pub func Finish(self: &var Crc32c) -> uint64 {
         return self.Value() as uint64;
     }
@@ -289,7 +299,10 @@ extend Crc32c : Hasher {
 ///
 /// `bytes` must be readable for `length` bytes.
 ///
-/// https://rux-lang.dev/docs/api/hash/crc32-of
+/// @param bytes the bytes to hash
+/// @param length how many bytes
+/// @returns their CRC-32 checksum
+/// @see https://rux-lang.dev/docs/api/hash/crc32-of
 pub func Crc32Of(bytes: *byte, length: uint) -> uint32 {
     var checksum = Crc32();
     checksum.Write(bytes, length);
@@ -307,7 +320,10 @@ pub func Crc32Of(bytes: *byte, length: uint) -> uint32 {
 ///
 /// `bytes` must be readable for `length` bytes.
 ///
-/// https://rux-lang.dev/docs/api/hash/crc32c-of
+/// @param bytes the bytes to hash
+/// @param length how many bytes
+/// @returns their CRC-32C checksum
+/// @see https://rux-lang.dev/docs/api/hash/crc32c-of
 pub func Crc32cOf(bytes: *byte, length: uint) -> uint32 {
     var checksum = Crc32c();
     checksum.Write(bytes, length);

@@ -17,7 +17,7 @@ import Memory::{ AlignUp, Copy };
 /// Owns no storage and has no destructor, but prohibits copying because duplicated bump state could hand the same
 /// bytes to two callers. Use `Handle` when a storable `Allocator` adapter is needed.
 ///
-/// https://rux-lang.dev/docs/api/allocator/fixed-buffer
+/// @see https://rux-lang.dev/docs/api/allocator/fixed-buffer
 pub struct FixedBuffer {
     /// The first byte of the storage, or null for a buffer with no storage at all.
     start: uint;
@@ -46,7 +46,10 @@ extend FixedBuffer {
     /// The storage must stay valid and untouched by anything else for as long as this allocator or any handle to it
     /// is used. Nothing here tracks that.
     ///
-    /// https://rux-lang.dev/docs/api/allocator/fixed-buffer/new
+    /// @param storage the caller's bytes to hand out of
+    /// @param capacity how many bytes `storage` holds
+    /// @returns the buffer, having handed out nothing
+    /// @see https://rux-lang.dev/docs/api/allocator/fixed-buffer/new
     pub func FixedBuffer(storage: *var opaque, capacity: uint) -> FixedBuffer {
         let base = storage == null ? 0u : storage as uint;
         return FixedBuffer {
@@ -66,7 +69,8 @@ extend FixedBuffer {
     ///
     /// The handle borrows the allocator and must not outlive it or survive it being moved.
     ///
-    /// https://rux-lang.dev/docs/api/allocator/fixed-buffer/handle
+    /// @returns a copyable adapter pointing at this buffer
+    /// @see https://rux-lang.dev/docs/api/allocator/fixed-buffer/handle
     pub func Handle(self: *var FixedBuffer) -> FixedBufferHandle {
         return FixedBufferHandle { buffer: self };
     }
@@ -81,7 +85,7 @@ extend FixedBuffer {
     ///
     /// Nothing may be read from or written to any earlier allocation afterwards.
     ///
-    /// https://rux-lang.dev/docs/api/allocator/fixed-buffer/reset
+    /// @see https://rux-lang.dev/docs/api/allocator/fixed-buffer/reset
     pub func Reset(self: &var FixedBuffer) {
         self.used = 0;
         self.lastAllocation = 0;
@@ -91,7 +95,8 @@ extend FixedBuffer {
     ///
     /// `self` is borrowed.
     ///
-    /// https://rux-lang.dev/docs/api/allocator/fixed-buffer/bytes-used
+    /// @returns how many bytes have been handed out
+    /// @see https://rux-lang.dev/docs/api/allocator/fixed-buffer/bytes-used
     pub func BytesUsed(self: &FixedBuffer) -> uint {
         return self.used;
     }
@@ -100,7 +105,8 @@ extend FixedBuffer {
     ///
     /// `self` is borrowed. A request of exactly this size succeeds only when it needs no padding.
     ///
-    /// https://rux-lang.dev/docs/api/allocator/fixed-buffer/bytes-remaining
+    /// @returns how many bytes are left to hand out
+    /// @see https://rux-lang.dev/docs/api/allocator/fixed-buffer/bytes-remaining
     pub func BytesRemaining(self: &FixedBuffer) -> uint {
         return self.capacity - self.used;
     }
@@ -108,7 +114,7 @@ extend FixedBuffer {
 
 /// A copyable interface adapter pointing at a `FixedBuffer`.
 ///
-/// https://rux-lang.dev/docs/api/allocator/fixed-buffer-handle
+/// @see https://rux-lang.dev/docs/api/allocator/fixed-buffer-handle
 pub struct FixedBufferHandle {
     /// The allocator this borrows. Never null for a handle `FixedBuffer::Handle` produced.
     buffer: *var FixedBuffer;
@@ -129,7 +135,10 @@ extend FixedBufferHandle : Allocator {
     ///
     /// The storage lives until the allocator is reset, and no longer.
     ///
-    /// https://rux-lang.dev/docs/api/allocator/fixed-buffer-handle/allocate
+    /// @param layout the size and alignment wanted
+    /// @param result receives the address when this reports `None`
+    /// @returns `None` when the storage was taken
+    /// @see https://rux-lang.dev/docs/api/allocator/fixed-buffer-handle/allocate
     pub func Allocate(self: &var FixedBufferHandle, layout: Layout, result: *var *var opaque) -> AllocError {
         if layout.size == 0 {
             *result = EmptyBlockAddress();
@@ -157,7 +166,10 @@ extend FixedBufferHandle : Allocator {
     /// `None` having done nothing. Accepting rather than refusing lets this allocator stand in for any other in
     /// generic code that releases what it takes.
     ///
-    /// https://rux-lang.dev/docs/api/allocator/fixed-buffer-handle/deallocate
+    /// @param block an address this allocator returned
+    /// @param layout the layout it was allocated with
+    /// @returns `None` when the release was accepted
+    /// @see https://rux-lang.dev/docs/api/allocator/fixed-buffer-handle/deallocate
     pub func Deallocate(self: &var FixedBufferHandle, block: *var opaque, layout: Layout) -> AllocError {
         if layout.size == 0 { return IsEmptyBlock(block) ? AllocError::None : AllocError::InvalidBlock; }
         if block == null { return AllocError::InvalidBlock; }

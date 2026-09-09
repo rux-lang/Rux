@@ -10,7 +10,7 @@
 
 /// Why an allocation, reallocation or release did not do what was asked.
 ///
-/// https://rux-lang.dev/docs/api/allocator/alloc-error
+/// @see https://rux-lang.dev/docs/api/allocator/alloc-error
 pub enum AllocError: uint8 {
     /// Nothing went wrong. A successful call reports this, so it is not an error case.
     None = 0,
@@ -30,7 +30,8 @@ extend AllocError {
     /// `self` is borrowed. Reads better at a call site than comparing against `None`, and says which way the test
     /// runs without the reader having to remember that zero means success here.
     ///
-    /// https://rux-lang.dev/docs/api/allocator/alloc-error/is-ok
+    /// @returns whether this is `None`, meaning nothing went wrong
+    /// @see https://rux-lang.dev/docs/api/allocator/alloc-error/is-ok
     pub func IsOk(self: AllocError) -> bool {
         return self == AllocError::None;
     }
@@ -39,7 +40,8 @@ extend AllocError {
     ///
     /// `self` is borrowed.
     ///
-    /// https://rux-lang.dev/docs/api/allocator/alloc-error/is-error
+    /// @returns whether this is anything but `None`
+    /// @see https://rux-lang.dev/docs/api/allocator/alloc-error/is-error
     pub func IsError(self: AllocError) -> bool {
         return self != AllocError::None;
     }
@@ -49,7 +51,8 @@ extend AllocError {
     /// `self` is borrowed. True only for `OutOfMemory`, which is a shortage rather than a mistake: `Unsupported` and
     /// `InvalidBlock` describe the request rather than the moment, so repeating either gives the same answer.
     ///
-    /// https://rux-lang.dev/docs/api/allocator/alloc-error/is-transient
+    /// @returns whether asking again later could succeed
+    /// @see https://rux-lang.dev/docs/api/allocator/alloc-error/is-transient
     pub func IsTransient(self: AllocError) -> bool {
         return self == AllocError::OutOfMemory;
     }

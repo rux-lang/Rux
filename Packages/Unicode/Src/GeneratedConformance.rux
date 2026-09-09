@@ -11,7 +11,7 @@
 
 /// Normalization vector index: five (offset, length) pairs per row, for the columns c1..c5.
 ///
-/// https://rux-lang.dev/docs/api/unicode/tables
+/// @see https://rux-lang.dev/docs/api/unicode/tables
 pub const NormalizationVectorIndex: uint32[15300] = [
     0, 1, 1, 1, 2, 2, 4, 1, 5, 2, 7, 1,
     8, 1, 9, 2, 11, 1, 12, 2, 14, 2, 16, 2,
@@ -1290,9 +1290,13 @@ pub const NormalizationVectorIndex: uint32[15300] = [
     15128, 4, 15132, 3, 15135, 2, 15137, 4, 15141, 2, 15143, 4
 ];
 
-/// Normalization vector elements.
+/// The scalar values of every conformance vector, run together end to end.
 ///
-/// https://rux-lang.dev/docs/api/unicode/tables
+/// `NormalizationVectorIndex` says where each vector's five forms start. These come from the Unicode
+/// Consortium's own NormalizationTest file, so a passing run means agreement with the standard's own
+/// expected output rather than with this implementation's idea of it.
+///
+/// @see https://rux-lang.dev/docs/api/unicode/tables
 pub const NormalizationVectorElements: uint32[15147] = [
     7690, 7690, 68, 775, 7690, 68, 775, 7692, 7692, 68, 803, 7692,
     68, 803, 7690, 803, 7692, 775, 68, 803, 775, 7692, 775, 68,
@@ -2561,7 +2565,7 @@ pub const NormalizationVectorElements: uint32[15147] = [
 
 /// Grapheme vector index: offset, length per row.
 ///
-/// https://rux-lang.dev/docs/api/unicode/tables
+/// @see https://rux-lang.dev/docs/api/unicode/tables
 pub const GraphemeVectorIndex: uint32[1532] = [
     0, 2, 2, 3, 5, 2, 7, 3, 10, 2, 12, 3,
     15, 2, 17, 3, 20, 2, 22, 3, 25, 2, 27, 3,
@@ -2695,7 +2699,7 @@ pub const GraphemeVectorIndex: uint32[1532] = [
 
 /// Grapheme vector code points.
 ///
-/// https://rux-lang.dev/docs/api/unicode/tables
+/// @see https://rux-lang.dev/docs/api/unicode/tables
 pub const GraphemeVectorPoints: uint32[1990] = [
     13, 13, 13, 776, 13, 13, 10, 13, 776, 10, 13, 0,
     13, 776, 0, 13, 2381, 13, 776, 2381, 13, 768, 13, 776,
@@ -2868,7 +2872,7 @@ pub const GraphemeVectorPoints: uint32[1990] = [
 /// Grapheme vector break masks: bit N set when a boundary precedes point N, the highest bit for the end of the row.
 /// No row is longer than thirty-one points.
 ///
-/// https://rux-lang.dev/docs/api/unicode/tables
+/// @see https://rux-lang.dev/docs/api/unicode/tables
 pub const GraphemeVectorBreaks: uint32[766] = [
     7, 15, 5, 15, 7, 15, 7, 11, 7, 11, 7, 11,
     7, 11, 7, 15, 7, 15, 7, 11, 7, 15, 7, 15,

@@ -20,7 +20,7 @@
 /// writing eight bytes at once and writing them one at a time must agree. It must not read anything but the bytes it
 /// is given — no address, no counter, no clock.
 ///
-/// https://rux-lang.dev/docs/api/hash/hasher
+/// @see https://rux-lang.dev/docs/api/hash/hasher
 pub interface Hasher {
     /// Adds `length` bytes at `bytes` to what is being hashed.
     ///
@@ -33,7 +33,9 @@ pub interface Hasher {
     ///
     /// `bytes` must be readable for `length` bytes.
     ///
-    /// https://rux-lang.dev/docs/api/hash/hasher/write
+    /// @param bytes the bytes to absorb
+    /// @param length how many bytes; zero absorbs nothing
+    /// @see https://rux-lang.dev/docs/api/hash/hasher/write
     func Write(bytes: *byte, length: uint);
 
     /// The hash of everything written so far.
@@ -43,7 +45,8 @@ pub interface Hasher {
     ///
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
-    /// https://rux-lang.dev/docs/api/hash/hasher/finish
+    /// @returns the hash of everything written since the last reset
+    /// @see https://rux-lang.dev/docs/api/hash/hasher/finish
     func Finish() -> uint64;
 }
 
@@ -59,7 +62,12 @@ pub interface Hasher {
 ///
 /// `bytes` must be readable for `length` bytes.
 ///
-/// https://rux-lang.dev/docs/api/hash/hash-bytes
+/// @typeParam H the hasher's type
+/// @param hasher the hasher to use, which is reset first
+/// @param bytes the bytes to hash
+/// @param length how many bytes
+/// @returns their hash
+/// @see https://rux-lang.dev/docs/api/hash/hash-bytes
 pub func HashBytes<H: Hasher>(hasher: &var H, bytes: *byte, length: uint) -> uint64 {
     hasher.Write(bytes, length);
     return hasher.Finish();
@@ -71,7 +79,10 @@ pub func HashBytes<H: Hasher>(hasher: &var H, bytes: *byte, length: uint) -> uin
 ///
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
-/// https://rux-lang.dev/docs/api/hash/write-byte
+/// @typeParam H the hasher's type
+/// @param hasher the hasher to write to
+/// @param value the byte to write
+/// @see https://rux-lang.dev/docs/api/hash/write-byte
 pub func WriteByte<H: Hasher>(hasher: &var H, value: byte) {
     var storage = value;
     hasher.Write(@storage as *byte, 1);
@@ -84,7 +95,10 @@ pub func WriteByte<H: Hasher>(hasher: &var H, value: byte) {
 ///
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
-/// https://rux-lang.dev/docs/api/hash/write-uint32
+/// @typeParam H the hasher's type
+/// @param hasher the hasher to write to
+/// @param value the value, written as little-endian bytes
+/// @see https://rux-lang.dev/docs/api/hash/write-uint32
 pub func WriteUint32<H: Hasher>(hasher: &var H, value: uint32) {
     var storage: byte[4];
     var index: uint = 0;
@@ -102,7 +116,10 @@ pub func WriteUint32<H: Hasher>(hasher: &var H, value: uint32) {
 ///
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
-/// https://rux-lang.dev/docs/api/hash/write-uint64
+/// @typeParam H the hasher's type
+/// @param hasher the hasher to write to
+/// @param value the value, written as little-endian bytes
+/// @see https://rux-lang.dev/docs/api/hash/write-uint64
 pub func WriteUint64<H: Hasher>(hasher: &var H, value: uint64) {
     var storage: byte[8];
     var index: uint = 0;

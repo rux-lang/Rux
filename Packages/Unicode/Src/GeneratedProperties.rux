@@ -13,7 +13,7 @@
 
 /// General category ranges: first, last, category ordinal. Sorted by first; a code point in no range is unassigned.
 ///
-/// https://rux-lang.dev/docs/api/unicode/tables
+/// @see https://rux-lang.dev/docs/api/unicode/tables
 pub const CategoryRanges: uint32[10227] = [
     0, 31, 26, 32, 32, 23, 33, 35, 18, 36, 36, 20,
     37, 39, 18, 40, 40, 14, 41, 41, 15, 42, 42, 18,
@@ -873,7 +873,7 @@ pub const CategoryRanges: uint32[10227] = [
 /// Canonical combining class ranges: first, last, class. A code point in no range has class zero, which is nearly
 /// all of them.
 ///
-/// https://rux-lang.dev/docs/api/unicode/tables
+/// @see https://rux-lang.dev/docs/api/unicode/tables
 pub const CombiningClassRanges: uint32[1209] = [
     768, 788, 230, 789, 789, 232, 790, 793, 220, 794, 794, 232,
     795, 795, 216, 796, 800, 220, 801, 802, 202, 803, 806, 220,
@@ -980,7 +980,7 @@ pub const CombiningClassRanges: uint32[1209] = [
 
 /// White_Space ranges: first, last.
 ///
-/// https://rux-lang.dev/docs/api/unicode/tables
+/// @see https://rux-lang.dev/docs/api/unicode/tables
 pub const WhiteSpaceRanges: uint32[20] = [
     9, 13, 32, 32, 133, 133, 160, 160, 5760, 5760, 8192, 8202,
     8232, 8233, 8239, 8239, 8287, 8287, 12288, 12288
@@ -988,7 +988,7 @@ pub const WhiteSpaceRanges: uint32[20] = [
 
 /// Alphabetic ranges: first, last.
 ///
-/// https://rux-lang.dev/docs/api/unicode/tables
+/// @see https://rux-lang.dev/docs/api/unicode/tables
 pub const AlphabeticRanges: uint32[1522] = [
     65, 90, 97, 122, 170, 170, 181, 181, 186, 186, 192, 214,
     216, 246, 248, 705, 710, 721, 736, 740, 748, 748, 750, 750,
@@ -1121,7 +1121,7 @@ pub const AlphabeticRanges: uint32[1522] = [
 
 /// Numeric ranges — the Nd, Nl and No categories: first, last.
 ///
-/// https://rux-lang.dev/docs/api/unicode/tables
+/// @see https://rux-lang.dev/docs/api/unicode/tables
 pub const NumericRanges: uint32[292] = [
     48, 57, 178, 179, 185, 185, 188, 190, 1632, 1641, 1776, 1785,
     1984, 1993, 2406, 2415, 2534, 2543, 2548, 2553, 2662, 2671, 2790, 2799,

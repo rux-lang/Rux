@@ -1,4 +1,3 @@
-import Core::uint;
 // What an allocation is asked for: a size in bytes and an alignment the address must be a multiple of.
 //
 // A `Layout` exists so that the pair travels together and is checked once. Passing a size and an alignment as two
@@ -13,6 +12,7 @@ import Core::uint;
 // on a type that has none does not resolve at the call site in this compiler, so `LayoutOf` and `LayoutOfArray` sit
 // beside `Layout` rather than inside it.
 
+import Core::uint;
 import Core::{ Option, #target };
 import Memory::AlignUpChecked;
 
@@ -23,7 +23,7 @@ import Memory::AlignUpChecked;
 ///
 /// A size of zero is valid and is not an allocation of nothing — see `Allocate` for what an allocator does with it.
 ///
-/// https://rux-lang.dev/docs/api/allocator/layout
+/// @see https://rux-lang.dev/docs/api/allocator/layout
 pub struct Layout {
     /// The number of bytes asked for, before any rounding.
     pub size: uint;
@@ -41,7 +41,10 @@ extend Layout {
     ///
     /// Runs in constant time and allocates nothing.
     ///
-    /// https://rux-lang.dev/docs/api/allocator/layout/new
+    /// @param size how many bytes are wanted
+    /// @param alignment the boundary the address must be a multiple of
+    /// @returns the layout, or `None` when `alignment` is not a usable power of two
+    /// @see https://rux-lang.dev/docs/api/allocator/layout/new
     pub func New(size: uint, alignment: uint) -> Option<Layout> {
         if alignment == 0 || (alignment & (alignment - 1)) != 0 { return Option::None<Layout>(); }
         var rounded: uint = 0;
@@ -59,7 +62,9 @@ extend Layout {
     ///
     /// Runs in constant time and allocates nothing.
     ///
-    /// https://rux-lang.dev/docs/api/allocator/layout/for-bytes
+    /// @param size how many bytes are wanted
+    /// @returns a layout of that size at its natural alignment, or `None` when there is none
+    /// @see https://rux-lang.dev/docs/api/allocator/layout/for-bytes
     pub func ForBytes(size: uint) -> Option<Layout> {
         return Layout::New(size, sizeof(uint));
     }
@@ -72,7 +77,8 @@ extend Layout {
     ///
     /// Runs in constant time and allocates nothing.
     ///
-    /// https://rux-lang.dev/docs/api/allocator/layout/padded-size
+    /// @returns the size rounded up to a whole number of alignments
+    /// @see https://rux-lang.dev/docs/api/allocator/layout/padded-size
     pub func PaddedSize(self: &Layout) -> uint {
         var rounded: uint = 0;
         if AlignUpChecked(self.size, self.alignment, @rounded) { return self.size; }
@@ -85,7 +91,9 @@ extend Layout {
     ///
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
-    /// https://rux-lang.dev/docs/api/allocator/layout/is-satisfied-by
+    /// @param address the address to test
+    /// @returns whether `address` meets this layout's alignment
+    /// @see https://rux-lang.dev/docs/api/allocator/layout/is-satisfied-by
     pub func IsSatisfiedBy(self: &Layout, address: uint) -> bool {
         return address % self.alignment == 0;
     }
@@ -94,14 +102,18 @@ extend Layout {
     ///
     /// `self` is borrowed and `other` is read by value.
     ///
-    /// https://rux-lang.dev/docs/api/allocator/layout/equals
+    /// @param other the layout to compare against
+    /// @returns whether both the size and the alignment match
+    /// @see https://rux-lang.dev/docs/api/allocator/layout/equals
     pub func ==(self: &Layout, other: Layout) -> bool {
         return self.size == other.size && self.alignment == other.alignment;
     }
 
     /// Whether two layouts ask for different things.
     ///
-    /// https://rux-lang.dev/docs/api/allocator/layout/not-equals
+    /// @param other the layout to compare against
+    /// @returns whether either the size or the alignment differs
+    /// @see https://rux-lang.dev/docs/api/allocator/layout/not-equals
     pub func !=(self: &Layout, other: Layout) -> bool {
         return !(self == other);
     }
@@ -116,7 +128,9 @@ extend Layout {
 ///
 /// Runs in time proportional to the word size and allocates nothing.
 ///
-/// https://rux-lang.dev/docs/api/allocator/natural-alignment
+/// @param size the size to choose an alignment for
+/// @returns the largest useful power-of-two alignment for that size
+/// @see https://rux-lang.dev/docs/api/allocator/natural-alignment
 pub func NaturalAlignment(size: uint) -> uint {
     if size == 0 { return 1; }
     let word = sizeof(uint);
@@ -137,7 +151,9 @@ pub func NaturalAlignment(size: uint) -> uint {
 ///
 /// Runs in constant time and allocates nothing.
 ///
-/// https://rux-lang.dev/docs/api/allocator/layout-of
+/// @typeParam T the type to describe
+/// @returns `T`'s own size and alignment
+/// @see https://rux-lang.dev/docs/api/allocator/layout-of
 pub func LayoutOf<T>() -> Layout {
     return Layout { size: sizeof(T), alignment: NaturalAlignment(sizeof(T)) };
 }
@@ -150,7 +166,10 @@ pub func LayoutOf<T>() -> Layout {
 ///
 /// Runs in constant time and allocates nothing.
 ///
-/// https://rux-lang.dev/docs/api/allocator/layout-of-array
+/// @typeParam T the element type
+/// @param count how many elements
+/// @returns the layout of `count` of them, or `None` when the size would overflow
+/// @see https://rux-lang.dev/docs/api/allocator/layout-of-array
 pub func LayoutOfArray<T>(count: uint) -> Option<Layout> {
     let stride = sizeof(T);
     if stride != 0 && count > uint::Max / stride { return Option::None<Layout>(); }

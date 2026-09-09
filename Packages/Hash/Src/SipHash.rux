@@ -28,32 +28,32 @@ import Hash::Hasher;
 /// The four are the ASCII of "somepseudorandomlygeneratedbytes", split into eight-byte pieces — an arbitrary
 /// starting point chosen to be visibly arbitrary.
 ///
-/// https://rux-lang.dev/docs/api/hash/sip-init0
+/// @see https://rux-lang.dev/docs/api/hash/sip-init0
 pub const SipInit0: uint64 = 0x736F6D6570736575;
 
 /// The second initialization constant, mixed with the high half of the key.
 ///
-/// https://rux-lang.dev/docs/api/hash/sip-init1
+/// @see https://rux-lang.dev/docs/api/hash/sip-init1
 pub const SipInit1: uint64 = 0x646F72616E646F6D;
 
 /// The third initialization constant, mixed with the low half of the key.
 ///
-/// https://rux-lang.dev/docs/api/hash/sip-init2
+/// @see https://rux-lang.dev/docs/api/hash/sip-init2
 pub const SipInit2: uint64 = 0x6C7967656E657261;
 
 /// The fourth initialization constant, mixed with the high half of the key.
 ///
-/// https://rux-lang.dev/docs/api/hash/sip-init3
+/// @see https://rux-lang.dev/docs/api/hash/sip-init3
 pub const SipInit3: uint64 = 0x7465646279746573;
 
 /// How many rounds each eight-byte word of input is mixed with: the 2 of SipHash-2-4.
 ///
-/// https://rux-lang.dev/docs/api/hash/sip-compression-rounds
+/// @see https://rux-lang.dev/docs/api/hash/sip-compression-rounds
 pub const SipCompressionRounds: uint = 2;
 
 /// How many rounds finish the hash after the last word: the 4 of SipHash-2-4.
 ///
-/// https://rux-lang.dev/docs/api/hash/sip-finalization-rounds
+/// @see https://rux-lang.dev/docs/api/hash/sip-finalization-rounds
 pub const SipFinalizationRounds: uint = 4;
 
 /// The four words SipHash mixes, and the round that mixes them.
@@ -61,7 +61,7 @@ pub const SipFinalizationRounds: uint = 4;
 /// Copy. Exposed because the round is the whole of the algorithm and worth being able to read, not because a caller
 /// has any reason to drive one directly.
 ///
-/// https://rux-lang.dev/docs/api/hash/sip-state
+/// @see https://rux-lang.dev/docs/api/hash/sip-state
 pub struct SipState {
     first: uint64;
     second: uint64;
@@ -76,7 +76,10 @@ extend SipState {
     ///
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
-    /// https://rux-lang.dev/docs/api/hash/sip-state/from-key
+    /// @param low the key's first eight bytes as a word
+    /// @param high the key's second eight bytes as a word
+    /// @returns the four-word state that key starts from
+    /// @see https://rux-lang.dev/docs/api/hash/sip-state/from-key
     pub func FromKey(low: uint64, high: uint64) -> SipState {
         return SipState {
             first: low ^ SipInit0,
@@ -93,7 +96,8 @@ extend SipState {
     ///
     /// Cannot fail. Runs in time proportional to `count` and allocates nothing.
     ///
-    /// https://rux-lang.dev/docs/api/hash/sip-state/round
+    /// @param count how many rounds to run
+    /// @see https://rux-lang.dev/docs/api/hash/sip-state/round
     pub func Round(self: &var SipState, count: uint) {
         var remaining = count;
         while remaining > 0 {
@@ -131,7 +135,7 @@ extend SipState {
 ///
 /// Copy. Holds up to seven bytes of pending input alongside its state.
 ///
-/// https://rux-lang.dev/docs/api/hash/sip-hash24
+/// @see https://rux-lang.dev/docs/api/hash/sip-hash24
 pub struct SipHash24 {
     /// The low half of the key, kept so `Reset` can start over from it.
     keyLow: uint64;
@@ -156,7 +160,10 @@ extend SipHash24 {
     ///
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
-    /// https://rux-lang.dev/docs/api/hash/sip-hash24/with-key
+    /// @param low the key's first eight bytes as a word
+    /// @param high the key's second eight bytes as a word
+    /// @returns a hasher keyed with those two words
+    /// @see https://rux-lang.dev/docs/api/hash/sip-hash24/with-key
     pub func WithKey(low: uint64, high: uint64) -> SipHash24 {
         return SipHash24 {
             keyLow: low,
@@ -180,7 +187,9 @@ extend SipHash24 {
     ///
     /// `key` must be readable for sixteen bytes.
     ///
-    /// https://rux-lang.dev/docs/api/hash/sip-hash24/with-key-bytes
+    /// @param key sixteen key bytes, read as two little-endian words
+    /// @returns a hasher keyed with them
+    /// @see https://rux-lang.dev/docs/api/hash/sip-hash24/with-key-bytes
     pub func WithKeyBytes(key: *byte) -> SipHash24 {
         var low: uint64 = 0;
         var high: uint64 = 0;
@@ -199,7 +208,7 @@ extend SipHash24 {
     ///
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
-    /// https://rux-lang.dev/docs/api/hash/sip-hash24/reset
+    /// @see https://rux-lang.dev/docs/api/hash/sip-hash24/reset
     pub func Reset(self: &var SipHash24) {
         self.state = SipState::FromKey(self.keyLow, self.keyHigh);
         self.total = 0;
@@ -220,7 +229,9 @@ extend SipHash24 : Hasher {
     ///
     /// `bytes` must be readable for `length` bytes.
     ///
-    /// https://rux-lang.dev/docs/api/hash/sip-hash24/write
+    /// @param bytes the bytes to absorb
+    /// @param length how many bytes; zero absorbs nothing
+    /// @see https://rux-lang.dev/docs/api/hash/sip-hash24/write
     pub func Write(self: &var SipHash24, bytes: *byte, length: uint) {
         if length == 0 { return; }
         self.total = self.total + (length as uint64);
@@ -267,7 +278,8 @@ extend SipHash24 : Hasher {
     ///
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
-    /// https://rux-lang.dev/docs/api/hash/sip-hash24/finish
+    /// @returns the hash of everything written since the last reset
+    /// @see https://rux-lang.dev/docs/api/hash/sip-hash24/finish
     pub func Finish(self: &var SipHash24) -> uint64 {
         // The last word is the trailing bytes with the length's low byte on top, which is what keeps two inputs that
         // differ only in trailing zeroes from hashing alike.
@@ -297,7 +309,9 @@ extend SipHash24 : Hasher {
 ///
 /// `bytes` must be readable for eight bytes.
 ///
-/// https://rux-lang.dev/docs/api/hash/sip-word
+/// @param bytes eight bytes to read
+/// @returns them as a little-endian word
+/// @see https://rux-lang.dev/docs/api/hash/sip-word
 pub func SipWord(bytes: *byte) -> uint64 {
     var value: uint64 = 0;
     var index: uint = 0;
@@ -319,7 +333,12 @@ pub func SipWord(bytes: *byte) -> uint64 {
 ///
 /// `bytes` must be readable for `length` bytes.
 ///
-/// https://rux-lang.dev/docs/api/hash/sip-hash24-of
+/// @param bytes the bytes to hash
+/// @param length how many bytes
+/// @param low the key's first eight bytes as a word
+/// @param high the key's second eight bytes as a word
+/// @returns their keyed hash
+/// @see https://rux-lang.dev/docs/api/hash/sip-hash24-of
 pub func SipHash24Of(bytes: *byte, length: uint, low: uint64, high: uint64) -> uint64 {
     var hasher = SipHash24::WithKey(low, high);
     hasher.Write(bytes, length);
