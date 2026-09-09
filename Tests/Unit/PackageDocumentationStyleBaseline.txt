@@ -541,17 +541,14 @@ missing-param|Algorithms/Src/Stable.rux|func|StableSort|8668e8f4f4a1369d
 missing-param|Allocator/Src/Arena.rux|func|Allocate|1610c5017843ec33
 missing-param|Allocator/Src/Arena.rux|func|Arena|a9b502a773b5f03a
 missing-param|Allocator/Src/Arena.rux|func|Deallocate|e090dae0ba11a122
-missing-param|Allocator/Src/Arena.rux|func|Reallocate|d90839298a1826cc
 missing-param|Allocator/Src/Box.rux|func|Create|957066f62fb7ea5c
 missing-param|Allocator/Src/Box.rux|func|TryTake|3ac26dd217fc6b09
 missing-param|Allocator/Src/Contract.rux|func|Allocate|0e8f16fe47abae2e
 missing-param|Allocator/Src/Contract.rux|func|Deallocate|a1db4f63f8cfedef
 missing-param|Allocator/Src/Contract.rux|func|IsEmptyBlock|94a6bfe9dacfcdd4
-missing-param|Allocator/Src/Contract.rux|func|Reallocate|9cd4276b1c4ead47
 missing-param|Allocator/Src/FixedBuffer.rux|func|Allocate|567f3b9bf67ae109
 missing-param|Allocator/Src/FixedBuffer.rux|func|Deallocate|448e2b4e2dda860c
 missing-param|Allocator/Src/FixedBuffer.rux|func|FixedBuffer|8445c88ba69a09cd
-missing-param|Allocator/Src/FixedBuffer.rux|func|Reallocate|2f333a978b06307b
 missing-param|Allocator/Src/Layout.rux|func|!=|0a703df0ddab2457
 missing-param|Allocator/Src/Layout.rux|func|==|c1add982c1ffeb53
 missing-param|Allocator/Src/Layout.rux|func|ForBytes|c2dfcaa04570fb44
@@ -1444,7 +1441,6 @@ missing-returns|Allocator/Src/Arena.rux|func|BlockCount|0042e24a812b843e
 missing-returns|Allocator/Src/Arena.rux|func|BytesUsed|ddf7fcdd34d9b9df
 missing-returns|Allocator/Src/Arena.rux|func|Deallocate|e090dae0ba11a122
 missing-returns|Allocator/Src/Arena.rux|func|Handle|7a46c3eb2cd7ff91
-missing-returns|Allocator/Src/Arena.rux|func|Reallocate|d90839298a1826cc
 missing-returns|Allocator/Src/Box.rux|func|Create|957066f62fb7ea5c
 missing-returns|Allocator/Src/Box.rux|func|Get|5065e44edca15ee3
 missing-returns|Allocator/Src/Box.rux|func|IsEmpty|5a8d672377af742b
@@ -1453,7 +1449,6 @@ missing-returns|Allocator/Src/Contract.rux|func|Allocate|0e8f16fe47abae2e
 missing-returns|Allocator/Src/Contract.rux|func|Deallocate|a1db4f63f8cfedef
 missing-returns|Allocator/Src/Contract.rux|func|EmptyBlockAddress|5ab0ed56b8b1fb3c
 missing-returns|Allocator/Src/Contract.rux|func|IsEmptyBlock|94a6bfe9dacfcdd4
-missing-returns|Allocator/Src/Contract.rux|func|Reallocate|9cd4276b1c4ead47
 missing-returns|Allocator/Src/Error.rux|func|IsError|1c270943aa324d07
 missing-returns|Allocator/Src/Error.rux|func|IsOk|a752b742b760c35f
 missing-returns|Allocator/Src/Error.rux|func|IsTransient|19a46b802e917126
@@ -1463,7 +1458,6 @@ missing-returns|Allocator/Src/FixedBuffer.rux|func|BytesUsed|c993c56ea528d0ed
 missing-returns|Allocator/Src/FixedBuffer.rux|func|Deallocate|448e2b4e2dda860c
 missing-returns|Allocator/Src/FixedBuffer.rux|func|FixedBuffer|8445c88ba69a09cd
 missing-returns|Allocator/Src/FixedBuffer.rux|func|Handle|7f89647da1e79ca8
-missing-returns|Allocator/Src/FixedBuffer.rux|func|Reallocate|2f333a978b06307b
 missing-returns|Allocator/Src/Layout.rux|func|!=|0a703df0ddab2457
 missing-returns|Allocator/Src/Layout.rux|func|==|c1add982c1ffeb53
 missing-returns|Allocator/Src/Layout.rux|func|ForBytes|c2dfcaa04570fb44
@@ -2605,7 +2599,6 @@ missing-see|Allocator/Src/Arena.rux|func|BlockCount|0042e24a812b843e
 missing-see|Allocator/Src/Arena.rux|func|BytesUsed|ddf7fcdd34d9b9df
 missing-see|Allocator/Src/Arena.rux|func|Deallocate|e090dae0ba11a122
 missing-see|Allocator/Src/Arena.rux|func|Handle|7a46c3eb2cd7ff91
-missing-see|Allocator/Src/Arena.rux|func|Reallocate|d90839298a1826cc
 missing-see|Allocator/Src/Arena.rux|func|Reset|0ff43af518771f89
 missing-see|Allocator/Src/Arena.rux|struct|ArenaBlock|c694be47a64c0bc1
 missing-see|Allocator/Src/Arena.rux|struct|ArenaHandle|e11ef6af58d8cd83
@@ -2620,7 +2613,6 @@ missing-see|Allocator/Src/Contract.rux|func|Allocate|0e8f16fe47abae2e
 missing-see|Allocator/Src/Contract.rux|func|Deallocate|a1db4f63f8cfedef
 missing-see|Allocator/Src/Contract.rux|func|EmptyBlockAddress|5ab0ed56b8b1fb3c
 missing-see|Allocator/Src/Contract.rux|func|IsEmptyBlock|94a6bfe9dacfcdd4
-missing-see|Allocator/Src/Contract.rux|func|Reallocate|9cd4276b1c4ead47
 missing-see|Allocator/Src/Contract.rux|interface|Allocator|494a1c7181205632
 missing-see|Allocator/Src/Error.rux|enum|AllocError|d84b1f70178a750f
 missing-see|Allocator/Src/Error.rux|func|IsError|1c270943aa324d07
@@ -2632,7 +2624,6 @@ missing-see|Allocator/Src/FixedBuffer.rux|func|BytesUsed|c993c56ea528d0ed
 missing-see|Allocator/Src/FixedBuffer.rux|func|Deallocate|448e2b4e2dda860c
 missing-see|Allocator/Src/FixedBuffer.rux|func|FixedBuffer|8445c88ba69a09cd
 missing-see|Allocator/Src/FixedBuffer.rux|func|Handle|7f89647da1e79ca8
-missing-see|Allocator/Src/FixedBuffer.rux|func|Reallocate|2f333a978b06307b
 missing-see|Allocator/Src/FixedBuffer.rux|func|Reset|1c6d5fddd96c0e65
 missing-see|Allocator/Src/FixedBuffer.rux|struct|FixedBufferHandle|5100105266e5a99c
 missing-see|Allocator/Src/FixedBuffer.rux|struct|FixedBuffer|146743aa76e7b21e

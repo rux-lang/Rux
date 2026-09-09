@@ -413,6 +413,8 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 
 ### Fixed
 
+- **A block shrunk to nothing is releasable again** — `Reallocate` down to a zero-sized layout must report the shared empty address, as `Allocate` does, because `Deallocate` refuses a zero-sized release that arrives with anything else. `Arena` and `FixedBuffer` were instead reporting the address they had rewound off of, so a caller following the documented contract — shrink to zero, then release with the layout it asked for — got `InvalidBlock` on those two and `None` on `SystemAllocator` and `Pool`. Both now release the block and report the empty address. The interface contract says so explicitly rather than leaving it to be inferred from the zero-sized-allocation rule, which is the gap the two implementations fell through.
+
 - **CI setup** — extract Linux LLVM archive members without recursive duplicate matching, retain the validated CMake and Ninja ahead of Visual Studio's bundled tools, repair the FreeBSD sysroot checksum guard, and check version documentation without requiring a local `AGENTS.md` file.
 - **Native CI preparation**: Validate Linux and macOS bundles through the POSIX repository entry point and include the union of LLVM and ccache Homebrew dependencies, including Z3, in macOS archives.
 - **macOS CI**: Preserve the `clang++` driver name when resolving Homebrew toolchain paths so C++ executables link their standard library and exception runtime. Repair previously cached compiler-path metadata.

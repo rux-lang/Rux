@@ -301,12 +301,31 @@ extend ArenaHandle : Allocator {
     /// the current block has room; anything else takes new storage and copies, leaving the old space behind for the
     /// next reset to reclaim.
     ///
-    /// https://rux-lang.dev/docs/api/allocator/arena-handle/reallocate
+    /// Shrinking to a zero-sized layout releases the block and reports the shared empty address rather than the one
+    /// it rewound off of, so the result is releasable with the layout it was asked for.
+    ///
+    ///
+    /// @param block the existing allocation's address
+    /// @param oldLayout the layout `block` was allocated with
+    /// @param newLayout the layout wanted, which must have the same alignment
+    /// @param result receives the address the block is at afterwards
+    /// @returns `None` when the block was resized
+    /// @see https://rux-lang.dev/docs/api/allocator/arena-handle/reallocate
     pub func Reallocate(self: &var ArenaHandle, block: *var opaque, oldLayout: Layout, newLayout: Layout,
                     result: *var *var opaque) -> AllocError {
         if oldLayout.alignment != newLayout.alignment { return AllocError::Unsupported; }
         if oldLayout.size == newLayout.size {
             *result = block;
+            return AllocError::None;
+        }
+        // Shrinking to nothing has to give the shared empty address, not the address it is rewinding off of. Every
+        // allocator here answers a zero-sized layout with `EmptyBlockAddress`, and `Deallocate` refuses a
+        // zero-sized release that arrives with anything else — so returning the real address would hand the caller
+        // a block it cannot release. Releasing the old block first is what rewinds the bump pointer.
+        if newLayout.size == 0 {
+            let released = self.Deallocate(block, oldLayout);
+            if released != AllocError::None { return released; }
+            *result = EmptyBlockAddress();
             return AllocError::None;
         }
 

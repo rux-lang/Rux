@@ -18,6 +18,10 @@
 // A zero-sized layout is legal. Every allocator here answers it with a non-null, correctly aligned address that
 // nothing may be read from or written to, and which must still be released. That is cheaper than a null case every
 // caller has to branch on, and it keeps a zero-length collection from being a special shape.
+//
+// A *reallocation* down to a zero-sized layout is one of those, and reports the same address a zero-sized allocation
+// would. Two of the allocators here used to hand back the block they were rewinding off of instead, which left the
+// caller holding an address that `Deallocate` then refused — a zero-sized release must arrive with the empty block.
 
 import Allocator::{ AllocError, Layout };
 
@@ -63,6 +67,9 @@ pub interface Allocator {
     /// On success the first `min(old, new)` bytes are preserved and the original block is gone. On failure the
     /// original block is untouched and still the caller's.
     ///
+    /// A `newLayout` of size zero reports the shared empty address, exactly as `Allocate` would, so the result is
+    /// always releasable with the layout it was asked for.
+    ///
     /// The two layouts must have the same alignment. An allocator reports `Unsupported` rather than silently moving
     /// a block to a different alignment.
     ///
@@ -70,7 +77,13 @@ pub interface Allocator {
     ///
     /// The old pointer is invalid once this succeeds, whether or not the address changed.
     ///
-    /// https://rux-lang.dev/docs/api/allocator/allocator/reallocate
+    ///
+    /// @param block the existing allocation's address
+    /// @param oldLayout the layout `block` was allocated with
+    /// @param newLayout the layout wanted, which must have the same alignment
+    /// @param result receives the address the block is at afterwards
+    /// @returns `None` when the block was resized
+    /// @see https://rux-lang.dev/docs/api/allocator/allocator/reallocate
     func Reallocate(block: *var opaque, oldLayout: Layout, newLayout: Layout,
                     result: *var *var opaque) -> AllocError;
 }
