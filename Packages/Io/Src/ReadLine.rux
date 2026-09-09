@@ -14,7 +14,9 @@ import Text::StringBuilder;
 /// itself, with whatever was read so far left in the builder. Reads one byte at a time on purpose: standard
 /// input may be shared with whatever runs next, and a buffer here would take bytes that were never this line's.
 ///
-/// https://rux-lang.dev/docs/api/io/read-line
+/// @param builder receives the line, appended to whatever it already holds
+/// @returns `None` when a line was read; `IsEnd` at the end of input with nothing appended
+/// @see https://rux-lang.dev/docs/api/io/read-line
 pub func ReadLine(builder: &var StringBuilder) -> IoError {
     var input = StandardIn::Acquire();
     var byte: char8[1];

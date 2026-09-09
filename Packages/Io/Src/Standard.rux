@@ -127,7 +127,7 @@ func WriteRaw(handle: RawStream, console: bool, bytes: char8[..], taken: *var ui
 /// few bytes of a converted character that did not fit the caller's buffer, and a surrogate half waiting for the
 /// other, so no reading pattern can tear a character.
 ///
-/// https://rux-lang.dev/docs/api/io/standard-in
+/// @see https://rux-lang.dev/docs/api/io/standard-in
 pub struct StandardIn {
     /// The platform's handle for the stream.
     handle: RawStream;
@@ -148,7 +148,8 @@ extend StandardIn {
     ///
     /// Asks the platform once whether the stream is a console; nothing is opened, and nothing needs closing.
     ///
-    /// https://rux-lang.dev/docs/api/io/standard-in/acquire
+    /// @returns the stream, which the process owns for its whole life
+    /// @see https://rux-lang.dev/docs/api/io/standard-in/acquire
     pub func Acquire() -> StandardIn {
         when #target.os == .Windows {
             let handle = GetStdHandle(StdInputHandle);
@@ -169,7 +170,10 @@ extend StandardIn {
 extend StandardIn : Reader {
     /// Fills what it can of `into` from standard input.
     ///
-    /// https://rux-lang.dev/docs/api/io/standard-in/read
+    /// @param into receives the bytes
+    /// @param filled receives how many bytes were read
+    /// @returns `None` when the read was accepted; zero in `filled` is end of input
+    /// @see https://rux-lang.dev/docs/api/io/standard-in/read
     pub func Read(self: &var StandardIn, into: var char8[..], filled: *var uint) -> IoError {
         *filled = 0;
         if into.length == 0 { return IoError::Ok(); }
@@ -302,7 +306,7 @@ when #target.os == .Windows {
 
 /// Standard output: a byte `Writer` whose encoding matches where the bytes land.
 ///
-/// https://rux-lang.dev/docs/api/io/standard-out
+/// @see https://rux-lang.dev/docs/api/io/standard-out
 pub struct StandardOut {
     /// The platform's handle for the stream.
     handle: RawStream;
@@ -313,7 +317,8 @@ pub struct StandardOut {
 extend StandardOut {
     /// The process's standard output.
     ///
-    /// https://rux-lang.dev/docs/api/io/standard-out/acquire
+    /// @returns the stream, which the process owns for its whole life
+    /// @see https://rux-lang.dev/docs/api/io/standard-out/acquire
     pub func Acquire() -> StandardOut {
         when #target.os == .Windows {
             let handle = GetStdHandle(StdOutputHandle);
@@ -330,14 +335,18 @@ extend StandardOut {
 extend StandardOut : Writer {
     /// Writes what it can of `bytes` to standard output.
     ///
-    /// https://rux-lang.dev/docs/api/io/standard-out/write
+    /// @param bytes the bytes to write
+    /// @param taken receives how many bytes were taken
+    /// @returns `None` when the bytes were taken
+    /// @see https://rux-lang.dev/docs/api/io/standard-out/write
     pub func Write(self: &var StandardOut, bytes: char8[..], taken: *var uint) -> IoError {
         return WriteRaw(self.handle, self.console, bytes, taken);
     }
 
     /// Nothing: these writes hold nothing back.
     ///
-    /// https://rux-lang.dev/docs/api/io/standard-out/flush
+    /// @returns `None` when everything written reached the system
+    /// @see https://rux-lang.dev/docs/api/io/standard-out/flush
     pub func Flush(self: &var StandardOut) -> IoError {
         return IoError::Ok();
     }
@@ -345,7 +354,7 @@ extend StandardOut : Writer {
 
 /// Standard error: the same contract as standard output, on the stream reports belong to.
 ///
-/// https://rux-lang.dev/docs/api/io/standard-error
+/// @see https://rux-lang.dev/docs/api/io/standard-error
 pub struct StandardError {
     /// The platform's handle for the stream.
     handle: RawStream;
@@ -356,7 +365,8 @@ pub struct StandardError {
 extend StandardError {
     /// The process's standard error.
     ///
-    /// https://rux-lang.dev/docs/api/io/standard-error/acquire
+    /// @returns the stream, which the process owns for its whole life
+    /// @see https://rux-lang.dev/docs/api/io/standard-error/acquire
     pub func Acquire() -> StandardError {
         when #target.os == .Windows {
             let handle = GetStdHandle(StdErrorHandle);
@@ -373,14 +383,18 @@ extend StandardError {
 extend StandardError : Writer {
     /// Writes what it can of `bytes` to standard error.
     ///
-    /// https://rux-lang.dev/docs/api/io/standard-error/write
+    /// @param bytes the bytes to write
+    /// @param taken receives how many bytes were taken
+    /// @returns `None` when the bytes were taken
+    /// @see https://rux-lang.dev/docs/api/io/standard-error/write
     pub func Write(self: &var StandardError, bytes: char8[..], taken: *var uint) -> IoError {
         return WriteRaw(self.handle, self.console, bytes, taken);
     }
 
     /// Nothing: these writes hold nothing back.
     ///
-    /// https://rux-lang.dev/docs/api/io/standard-error/flush
+    /// @returns `None` when everything written reached the system
+    /// @see https://rux-lang.dev/docs/api/io/standard-error/flush
     pub func Flush(self: &var StandardError) -> IoError {
         return IoError::Ok();
     }

@@ -9,7 +9,7 @@ import Allocator::AllocError;
 
 /// What went wrong, or `None` when nothing did.
 ///
-/// https://rux-lang.dev/docs/api/text/text-error
+/// @see https://rux-lang.dev/docs/api/text/text-error
 pub enum TextError: int32 {
     /// Nothing went wrong.
     None = 0,
@@ -26,14 +26,16 @@ pub enum TextError: int32 {
 extend TextError {
     /// Whether this reports success.
     ///
-    /// https://rux-lang.dev/docs/api/text/text-error/is-ok
+    /// @returns whether nothing went wrong
+    /// @see https://rux-lang.dev/docs/api/text/text-error/is-ok
     pub func IsOk(self: TextError) -> bool {
         return self == TextError::None;
     }
 
     /// Whether this reports a failure.
     ///
-    /// https://rux-lang.dev/docs/api/text/text-error/is-error
+    /// @returns whether something did
+    /// @see https://rux-lang.dev/docs/api/text/text-error/is-error
     pub func IsError(self: TextError) -> bool {
         return self != TextError::None;
     }
@@ -45,7 +47,9 @@ extend TextError {
 /// the allocator draws are about the request, and this package makes no requests a caller could have made
 /// differently.
 ///
-/// https://rux-lang.dev/docs/api/text/from-alloc-error
+/// @param error receives why the operation failed, or `None`
+/// @returns the same outcome as a text error
+/// @see https://rux-lang.dev/docs/api/text/from-alloc-error
 pub func FromAllocError(error: AllocError) -> TextError {
     return error == AllocError::None ? TextError::None : TextError::OutOfMemory;
 }

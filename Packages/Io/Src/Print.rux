@@ -56,28 +56,36 @@ pub func PrintValue(value: Display) -> IoError {
 
 /// Writes a value's text to standard output, then a newline.
 ///
-/// https://rux-lang.dev/docs/api/io/print-value-line
+/// @param value the value to write
+/// @returns `None` when the whole value was written
+/// @see https://rux-lang.dev/docs/api/io/print-value-line
 pub func PrintValueLine(value: Display) -> IoError {
     return Terminate(PrintValue(value));
 }
 
 /// Writes a string to standard output.
 ///
-/// https://rux-lang.dev/docs/api/io/print
+/// @param value the value to write
+/// @returns `None` when the whole value was written
+/// @see https://rux-lang.dev/docs/api/io/print
 pub func Print(value: String) -> IoError {
     return PrintBytes((value.data)[..value.length]);
 }
 
 /// Provides the public `Print` operation.
 ///
-/// https://rux-lang.dev/docs/api/io/print
+/// @param value the value to write
+/// @returns `None` when the whole value was written
+/// @see https://rux-lang.dev/docs/api/io/print
 pub func Print(value: StringView) -> IoError {
     return PrintBytes(value.Bytes());
 }
 
 /// Writes text to standard output.
 ///
-/// https://rux-lang.dev/docs/api/io/print
+/// @param value the value to write
+/// @returns `None` when the whole value was written
+/// @see https://rux-lang.dev/docs/api/io/print
 pub func Print(value: char8[..]) -> IoError {
     return PrintBytes(value);
 }
@@ -87,7 +95,9 @@ pub func Print(value: char8[..]) -> IoError {
 /// Allocates nothing: the arguments write themselves to the stream as they are reached. Failures report as
 /// `PrintValue`'s do.
 ///
-/// https://rux-lang.dev/docs/api/io/print-format
+/// @param format the format string, with `{}` for each argument
+/// @returns `None` when the whole value was written
+/// @see https://rux-lang.dev/docs/api/io/print-format
 pub func Print(format: char8[..], args: Display...) -> IoError {
     var failure = IoError::Ok();
     var sink = ConsoleWriter(@failure);
@@ -98,7 +108,9 @@ pub func Print(format: char8[..], args: Display...) -> IoError {
 
 /// Provides the public `Print` operation.
 ///
-/// https://rux-lang.dev/docs/api/io/print
+/// @param value the value to write
+/// @returns `None` when the whole value was written
+/// @see https://rux-lang.dev/docs/api/io/print
 pub func Print(value: bool8) -> IoError {
     let shown: Display = value;
     return PrintValue(shown);
@@ -106,7 +118,9 @@ pub func Print(value: bool8) -> IoError {
 
 /// Provides the public `Print` operation.
 ///
-/// https://rux-lang.dev/docs/api/io/print
+/// @param value the value to write
+/// @returns `None` when the whole value was written
+/// @see https://rux-lang.dev/docs/api/io/print
 pub func Print(value: bool16) -> IoError {
     let shown: Display = value;
     return PrintValue(shown);
@@ -114,7 +128,9 @@ pub func Print(value: bool16) -> IoError {
 
 /// Provides the public `Print` operation.
 ///
-/// https://rux-lang.dev/docs/api/io/print
+/// @param value the value to write
+/// @returns `None` when the whole value was written
+/// @see https://rux-lang.dev/docs/api/io/print
 pub func Print(value: bool32) -> IoError {
     let shown: Display = value;
     return PrintValue(shown);
@@ -122,7 +138,9 @@ pub func Print(value: bool32) -> IoError {
 
 /// Provides the public `Print` operation.
 ///
-/// https://rux-lang.dev/docs/api/io/print
+/// @param value the value to write
+/// @returns `None` when the whole value was written
+/// @see https://rux-lang.dev/docs/api/io/print
 pub func Print(value: char8) -> IoError {
     let shown: Display = value;
     return PrintValue(shown);
@@ -130,7 +148,9 @@ pub func Print(value: char8) -> IoError {
 
 /// Provides the public `Print` operation.
 ///
-/// https://rux-lang.dev/docs/api/io/print
+/// @param value the value to write
+/// @returns `None` when the whole value was written
+/// @see https://rux-lang.dev/docs/api/io/print
 pub func Print(value: char16) -> IoError {
     let shown: Display = value;
     return PrintValue(shown);
@@ -138,7 +158,9 @@ pub func Print(value: char16) -> IoError {
 
 /// Provides the public `Print` operation.
 ///
-/// https://rux-lang.dev/docs/api/io/print
+/// @param value the value to write
+/// @returns `None` when the whole value was written
+/// @see https://rux-lang.dev/docs/api/io/print
 pub func Print(value: char32) -> IoError {
     let shown: Display = value;
     return PrintValue(shown);
@@ -146,7 +168,9 @@ pub func Print(value: char32) -> IoError {
 
 /// Provides the public `Print` operation.
 ///
-/// https://rux-lang.dev/docs/api/io/print
+/// @param value the value to write
+/// @returns `None` when the whole value was written
+/// @see https://rux-lang.dev/docs/api/io/print
 pub func Print(value: int8) -> IoError {
     let shown: Display = value;
     return PrintValue(shown);
@@ -154,7 +178,9 @@ pub func Print(value: int8) -> IoError {
 
 /// Provides the public `Print` operation.
 ///
-/// https://rux-lang.dev/docs/api/io/print
+/// @param value the value to write
+/// @returns `None` when the whole value was written
+/// @see https://rux-lang.dev/docs/api/io/print
 pub func Print(value: int16) -> IoError {
     let shown: Display = value;
     return PrintValue(shown);
@@ -162,7 +188,9 @@ pub func Print(value: int16) -> IoError {
 
 /// Provides the public `Print` operation.
 ///
-/// https://rux-lang.dev/docs/api/io/print
+/// @param value the value to write
+/// @returns `None` when the whole value was written
+/// @see https://rux-lang.dev/docs/api/io/print
 pub func Print(value: int32) -> IoError {
     let shown: Display = value;
     return PrintValue(shown);
@@ -170,7 +198,9 @@ pub func Print(value: int32) -> IoError {
 
 /// Provides the public `Print` operation.
 ///
-/// https://rux-lang.dev/docs/api/io/print
+/// @param value the value to write
+/// @returns `None` when the whole value was written
+/// @see https://rux-lang.dev/docs/api/io/print
 pub func Print(value: int64) -> IoError {
     let shown: Display = value;
     return PrintValue(shown);
@@ -178,7 +208,9 @@ pub func Print(value: int64) -> IoError {
 
 /// Provides the public `Print` operation.
 ///
-/// https://rux-lang.dev/docs/api/io/print
+/// @param value the value to write
+/// @returns `None` when the whole value was written
+/// @see https://rux-lang.dev/docs/api/io/print
 pub func Print(value: uint8) -> IoError {
     let shown: Display = value;
     return PrintValue(shown);
@@ -186,7 +218,9 @@ pub func Print(value: uint8) -> IoError {
 
 /// Provides the public `Print` operation.
 ///
-/// https://rux-lang.dev/docs/api/io/print
+/// @param value the value to write
+/// @returns `None` when the whole value was written
+/// @see https://rux-lang.dev/docs/api/io/print
 pub func Print(value: uint16) -> IoError {
     let shown: Display = value;
     return PrintValue(shown);
@@ -194,7 +228,9 @@ pub func Print(value: uint16) -> IoError {
 
 /// Provides the public `Print` operation.
 ///
-/// https://rux-lang.dev/docs/api/io/print
+/// @param value the value to write
+/// @returns `None` when the whole value was written
+/// @see https://rux-lang.dev/docs/api/io/print
 pub func Print(value: uint32) -> IoError {
     let shown: Display = value;
     return PrintValue(shown);
@@ -202,7 +238,9 @@ pub func Print(value: uint32) -> IoError {
 
 /// Provides the public `Print` operation.
 ///
-/// https://rux-lang.dev/docs/api/io/print
+/// @param value the value to write
+/// @returns `None` when the whole value was written
+/// @see https://rux-lang.dev/docs/api/io/print
 pub func Print(value: uint64) -> IoError {
     let shown: Display = value;
     return PrintValue(shown);
@@ -210,7 +248,9 @@ pub func Print(value: uint64) -> IoError {
 
 /// Provides the public `Print` operation.
 ///
-/// https://rux-lang.dev/docs/api/io/print
+/// @param value the value to write
+/// @returns `None` when the whole value was written
+/// @see https://rux-lang.dev/docs/api/io/print
 pub func Print(value: int) -> IoError {
     let shown: Display = value;
     return PrintValue(shown);
@@ -218,7 +258,9 @@ pub func Print(value: int) -> IoError {
 
 /// Provides the public `Print` operation.
 ///
-/// https://rux-lang.dev/docs/api/io/print
+/// @param value the value to write
+/// @returns `None` when the whole value was written
+/// @see https://rux-lang.dev/docs/api/io/print
 pub func Print(value: uint) -> IoError {
     let shown: Display = value;
     return PrintValue(shown);
@@ -226,7 +268,9 @@ pub func Print(value: uint) -> IoError {
 
 /// Provides the public `Print` operation.
 ///
-/// https://rux-lang.dev/docs/api/io/print
+/// @param value the value to write
+/// @returns `None` when the whole value was written
+/// @see https://rux-lang.dev/docs/api/io/print
 pub func Print(value: float32) -> IoError {
     let shown: Display = value;
     return PrintValue(shown);
@@ -234,7 +278,9 @@ pub func Print(value: float32) -> IoError {
 
 /// Provides the public `Print` operation.
 ///
-/// https://rux-lang.dev/docs/api/io/print
+/// @param value the value to write
+/// @returns `None` when the whole value was written
+/// @see https://rux-lang.dev/docs/api/io/print
 pub func Print(value: float64) -> IoError {
     let shown: Display = value;
     return PrintValue(shown);

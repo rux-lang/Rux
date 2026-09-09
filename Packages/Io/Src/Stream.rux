@@ -14,29 +14,42 @@
 
 /// Somewhere bytes come from.
 ///
-/// https://rux-lang.dev/docs/api/io/reader
+/// @see https://rux-lang.dev/docs/api/io/reader
 pub interface Reader {
     /// Fills what it can of `into` and reports how much through `filled`.
     ///
     /// Zero with `Ok` does not happen: the end of the stream is `EndOfStream`, so a caller never mistakes silence
     /// for data.
+    ///
+    /// @param into receives the bytes
+    /// @param filled receives how many bytes were read, which may be fewer than `into` holds
+    /// @returns `None` when the read was accepted; `IsEnd` at the end of the stream
+    /// @see https://rux-lang.dev/docs/api/io/reader/read
     func Read(into: var char8[..], filled: *var uint) -> IoError;
 }
 
 /// Somewhere bytes go.
 ///
-/// https://rux-lang.dev/docs/api/io/writer
+/// @see https://rux-lang.dev/docs/api/io/writer
 pub interface Writer {
     /// Takes what it can of `bytes` and reports how much through `taken`.
+    ///
+    /// @param bytes the bytes to write
+    /// @param taken receives how many bytes were taken, which may be fewer than offered
+    /// @returns `None` when the write was accepted, whatever it took
+    /// @see https://rux-lang.dev/docs/api/io/writer/write
     func Write(bytes: char8[..], taken: *var uint) -> IoError;
 
     /// Pushes whatever is held toward the destination.
+    ///
+    /// @returns `None` when everything held reached the destination
+    /// @see https://rux-lang.dev/docs/api/io/writer/flush
     func Flush() -> IoError;
 }
 
 /// Where a seek starts counting from.
 ///
-/// https://rux-lang.dev/docs/api/io/seek-from
+/// @see https://rux-lang.dev/docs/api/io/seek-from
 pub enum SeekFrom: int32 {
     /// The start of the stream; the offset must not be negative.
     Start = 0,
@@ -48,9 +61,15 @@ pub enum SeekFrom: int32 {
 
 /// A stream whose position can be moved.
 ///
-/// https://rux-lang.dev/docs/api/io/seeker
+/// @see https://rux-lang.dev/docs/api/io/seeker
 pub interface Seeker {
     /// Moves the position `offset` bytes from `origin` and reports where it landed through `position`.
+    ///
+    /// @param origin where the offset is measured from
+    /// @param offset how far to move, which may be negative
+    /// @param position receives the resulting offset from the start
+    /// @returns `None` when the position moved
+    /// @see https://rux-lang.dev/docs/api/io/seeker/seek
     func Seek(origin: SeekFrom, offset: int64, position: *var uint64) -> IoError;
 }
 
@@ -59,7 +78,7 @@ pub interface Seeker {
 /// A transient report is retried without counting; this counts only rounds where the stream reported success and
 /// moved nothing, which is a stream that will never finish the job.
 ///
-/// https://rux-lang.dev/docs/api/io/zero-progress-limit
+/// @see https://rux-lang.dev/docs/api/io/zero-progress-limit
 pub const ZeroProgressLimit: uint = 3;
 
 /// Fills all of `into`, looping over partial reads, or says why it could not.
@@ -67,7 +86,10 @@ pub const ZeroProgressLimit: uint = 3;
 /// Transient reports are retried; the end of the stream before the buffer fills is `EndOfStream` with the buffer
 /// partly written — how much is not reported, because a caller who needs the count reads incrementally.
 ///
-/// https://rux-lang.dev/docs/api/io/read-exact
+/// @param reader where the bytes come from
+/// @param into receives the bytes
+/// @returns `None` only when `into` was filled completely; `IsEnd` when the stream ran out first
+/// @see https://rux-lang.dev/docs/api/io/read-exact
 pub func ReadExact(reader: &var Reader, into: var char8[..]) -> IoError {
     var at: uint = 0;
     while at < into.length {
@@ -92,7 +114,10 @@ pub func ReadExact(reader: &var Reader, into: var char8[..]) -> IoError {
 /// A writer that accepts nothing while reporting success is refused with `WriteZero` after a few rounds: a loop
 /// that spins on it would hang the caller on a stream that will never take the rest.
 ///
-/// https://rux-lang.dev/docs/api/io/write-all
+/// @param writer the destination
+/// @param bytes the bytes to write
+/// @returns `None` only when every byte was written, looping over short writes
+/// @see https://rux-lang.dev/docs/api/io/write-all
 pub func WriteAll(writer: &var Writer, bytes: char8[..]) -> IoError {
     var at: uint = 0;
     var stalled: uint = 0;

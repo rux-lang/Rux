@@ -16,7 +16,12 @@ import Core::{ Option };
 ///
 /// `error` receives what went wrong, and the string comes back empty.
 ///
-/// https://rux-lang.dev/docs/api/text/concat
+/// @param allocator where the storage comes from
+/// @param left the first piece
+/// @param right the second
+/// @param error receives why the operation failed, or `None`
+/// @returns the two joined, or an empty string when the allocator refused
+/// @see https://rux-lang.dev/docs/api/text/concat
 pub func Concat(allocator: Allocator, left: StringView, right: StringView, error: *var TextError) -> String {
     var builder = StringBuilder(allocator);
     *error = builder.Reserve(left.bytes.length + right.bytes.length);
@@ -32,7 +37,12 @@ pub func Concat(allocator: Allocator, left: StringView, right: StringView, error
 /// A `count` of zero gives empty text, which is what makes repeating agree with joining: repeating twice is the
 /// same as joining a thing to itself.
 ///
-/// https://rux-lang.dev/docs/api/text/repeat
+/// @param allocator where the storage comes from
+/// @param view the borrowed text to act on
+/// @param count how many times
+/// @param error receives why the operation failed, or `None`
+/// @returns the text repeated that many times, or an empty string when the allocator refused
+/// @see https://rux-lang.dev/docs/api/text/repeat
 pub func Repeat(allocator: Allocator, view: StringView, count: uint, error: *var TextError) -> String {
     var builder = StringBuilder(allocator);
     if count != 0 && view.bytes.length != 0 {
@@ -59,7 +69,13 @@ pub func Repeat(allocator: Allocator, view: StringView, count: uint, error: *var
 /// so replacing `a` with `aa` terminates rather than growing forever. An empty `needle` matches nothing, since the
 /// alternative is a replacement between every pair of characters and before and after every one of them.
 ///
-/// https://rux-lang.dev/docs/api/text/replace
+/// @param allocator where the storage comes from
+/// @param view the borrowed text to act on
+/// @param needle the text to look for
+/// @param replacement the text to put in its place
+/// @param error receives why the operation failed, or `None`
+/// @returns the text with every occurrence replaced, or an empty string on failure
+/// @see https://rux-lang.dev/docs/api/text/replace
 pub func Replace(allocator: Allocator, view: StringView, needle: StringView, replacement: StringView,
              error: *var TextError) -> String {
     var builder = StringBuilder(allocator);
@@ -91,7 +107,9 @@ pub func Replace(allocator: Allocator, view: StringView, needle: StringView, rep
 
 /// Whether `byte` is an ASCII letter.
 ///
-/// https://rux-lang.dev/docs/api/text/is-ascii-letter
+/// @param byte the byte
+/// @returns whether the byte is an ASCII letter
+/// @see https://rux-lang.dev/docs/api/text/is-ascii-letter
 pub func IsAsciiLetter(byte: char8) -> bool {
     let value = byte as uint32;
     return (value >= 0x41 && value <= 0x5A) || (value >= 0x61 && value <= 0x7A);
@@ -102,14 +120,22 @@ pub func IsAsciiLetter(byte: char8) -> bool {
 /// ASCII only: every byte above 0x7F passes through untouched, which is why this cannot change the length and
 /// cannot produce anything that is not UTF-8.
 ///
-/// https://rux-lang.dev/docs/api/text/to-ascii-upper
+/// @param allocator where the storage comes from
+/// @param view the borrowed text to act on
+/// @param error receives why the operation failed, or `None`
+/// @returns the text with its ASCII letters uppercased and everything else untouched
+/// @see https://rux-lang.dev/docs/api/text/to-ascii-upper
 pub func ToAsciiUpper(allocator: Allocator, view: StringView, error: *var TextError) -> String {
     return MapAscii(allocator, view, 0x61, 0x7A, 0x20, error);
 }
 
 /// The text of `view` with every ASCII upper-case letter lowered.
 ///
-/// https://rux-lang.dev/docs/api/text/to-ascii-lower
+/// @param allocator where the storage comes from
+/// @param view the borrowed text to act on
+/// @param error receives why the operation failed, or `None`
+/// @returns the text with its ASCII letters lowercased and everything else untouched
+/// @see https://rux-lang.dev/docs/api/text/to-ascii-lower
 pub func ToAsciiLower(allocator: Allocator, view: StringView, error: *var TextError) -> String {
     return MapAscii(allocator, view, 0x41, 0x5A, 0x20, error);
 }

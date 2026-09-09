@@ -10,7 +10,7 @@
 
 /// What an I/O operation reported.
 ///
-/// https://rux-lang.dev/docs/api/io/io-error-kind
+/// @see https://rux-lang.dev/docs/api/io/io-error-kind
 pub enum IoErrorKind: int32 {
     /// Nothing went wrong.
     None = 0,
@@ -53,7 +53,7 @@ pub enum IoErrorKind: int32 {
 /// `Copy`. The `raw` field is `errno` on the Unix systems and the Win32 error code on Windows, kept because
 /// translation loses detail and the detail is sometimes the diagnosis.
 ///
-/// https://rux-lang.dev/docs/api/io/io-error
+/// @see https://rux-lang.dev/docs/api/io/io-error
 pub struct IoError {
     /// The meaning every platform shares.
     pub kind: IoErrorKind;
@@ -64,42 +64,49 @@ pub struct IoError {
 extend IoError {
     /// Nothing went wrong.
     ///
-    /// https://rux-lang.dev/docs/api/io/io-error/ok
+    /// @returns the value meaning nothing went wrong
+    /// @see https://rux-lang.dev/docs/api/io/io-error/ok
     pub func Ok() -> IoError {
         return IoError { kind: IoErrorKind::None, raw: 0 };
     }
 
     /// A failure of `kind` with no platform code.
     ///
-    /// https://rux-lang.dev/docs/api/io/io-error/of
+    /// @param kind which kind of failure this is
+    /// @returns an error of that kind, carrying no platform value
+    /// @see https://rux-lang.dev/docs/api/io/io-error/of
     pub func Of(kind: IoErrorKind) -> IoError {
         return IoError { kind: kind, raw: 0 };
     }
 
     /// Whether nothing went wrong.
     ///
-    /// https://rux-lang.dev/docs/api/io/io-error/is-ok
+    /// @returns whether nothing went wrong
+    /// @see https://rux-lang.dev/docs/api/io/io-error/is-ok
     pub func IsOk(self: &IoError) -> bool {
         return self.kind == IoErrorKind::None;
     }
 
     /// Whether something did.
     ///
-    /// https://rux-lang.dev/docs/api/io/io-error/is-error
+    /// @returns whether something did
+    /// @see https://rux-lang.dev/docs/api/io/io-error/is-error
     pub func IsError(self: &IoError) -> bool {
         return self.kind != IoErrorKind::None;
     }
 
     /// Whether the stream ended, which is the one report that is not a failure.
     ///
-    /// https://rux-lang.dev/docs/api/io/io-error/is-end
+    /// @returns whether the stream ended, which is not a failure
+    /// @see https://rux-lang.dev/docs/api/io/io-error/is-end
     pub func IsEnd(self: &IoError) -> bool {
         return self.kind == IoErrorKind::EndOfStream;
     }
 
     /// Whether going again is the right response: an interruption or a would-block.
     ///
-    /// https://rux-lang.dev/docs/api/io/io-error/is-transient
+    /// @returns whether trying again could succeed
+    /// @see https://rux-lang.dev/docs/api/io/io-error/is-transient
     pub func IsTransient(self: &IoError) -> bool {
         return self.kind == IoErrorKind::Interrupted || self.kind == IoErrorKind::WouldBlock;
     }

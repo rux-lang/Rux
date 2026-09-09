@@ -23,7 +23,11 @@ import Text::{ DecodeAt, StringBuilder, Utf8Error, Validate };
 /// line and read on. A scalar value split across the buffer's edge is completed from the next refill, not
 /// condemned: where the buffer happens to end is not a property of the text.
 ///
-/// https://rux-lang.dev/docs/api/io/read-text-line
+/// @param reader where the bytes come from
+/// @param builder receives the line, appended to whatever it already holds
+/// @param limit the most bytes to accept before reporting the line too long
+/// @returns `None` when a line was read; `IsEnd` at the end of input with nothing appended
+/// @see https://rux-lang.dev/docs/api/io/read-text-line
 pub func ReadTextLine(reader: &var BufferedReader, builder: &var StringBuilder, limit: uint) -> IoError {
     var appended: uint = 0;
     var failure = IoErrorKind::None;

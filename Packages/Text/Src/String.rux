@@ -1,4 +1,3 @@
-
 // Text that owns the bytes it holds.
 //
 // A `String` owns one block, knows the allocator to give it back to, and never writes to it again. Every operation
@@ -24,7 +23,7 @@ import Memory::Copy;
 ///
 /// Copyable with value semantics: each copy owns an independent block and gives it back when it dies.
 ///
-/// https://rux-lang.dev/docs/api/text/string
+/// @see https://rux-lang.dev/docs/api/text/string
 pub struct String {
     /// The bytes, or null for text of no length.
     pub data: *var char8;
@@ -44,7 +43,8 @@ extend String {
     /// The special copy operation cannot report allocation failure, so it terminates on exhaustion. Use `Clone`
     /// when failure must be handled. The source remains valid and unchanged.
     ///
-    /// https://rux-lang.dev/docs/api/text/string/copy
+    /// @param other the value to compare against
+    /// @see https://rux-lang.dev/docs/api/text/string/copy
     pub func =(self: &var String, other: &String) {
         self.data = null;
         self.length = other.length;
@@ -66,7 +66,9 @@ extend String {
     ///
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
-    /// https://rux-lang.dev/docs/api/text/string/new
+    /// @param allocator where the storage comes from
+    /// @returns an empty string that has taken no storage yet
+    /// @see https://rux-lang.dev/docs/api/text/string/new
     pub func String(allocator: Allocator) -> String {
         return String { data: null, length: 0, capacity: 0, allocator: allocator };
     }
@@ -83,7 +85,11 @@ extend String {
     /// The bytes must be well-formed UTF-8. Everything downstream assumes it, so bytes that are not produce wrong
     /// answers rather than errors.
     ///
-    /// https://rux-lang.dev/docs/api/text/string/from-validated
+    /// @param allocator where the storage comes from
+    /// @param bytes the bytes to act on
+    /// @param error receives why the operation failed, or `None`
+    /// @returns a string over those bytes, taken as valid without checking
+    /// @see https://rux-lang.dev/docs/api/text/string/from-validated
     pub func FromValidated(allocator: Allocator, bytes: char8[..], error: *var TextError) -> String {
         *error = TextError::None;
         if bytes.length == 0 { return String(allocator); }
@@ -118,7 +124,11 @@ extend String {
     ///
     /// Runs in time proportional to the length — one pass to check, one to copy — and allocates once.
     ///
-    /// https://rux-lang.dev/docs/api/text/string/from-bytes
+    /// @param allocator where the storage comes from
+    /// @param bytes the bytes to act on
+    /// @param error receives why the operation failed, or `None`
+    /// @returns a string over those bytes, or an empty one when they are not valid UTF-8
+    /// @see https://rux-lang.dev/docs/api/text/string/from-bytes
     pub func FromBytes(allocator: Allocator, bytes: char8[..], error: *var TextError) -> String {
         var failureIndex: uint = 0;
         if Validate(bytes, @failureIndex).IsError() {
@@ -132,7 +142,11 @@ extend String {
     ///
     /// The view was checked when it was made, so this copies without checking again.
     ///
-    /// https://rux-lang.dev/docs/api/text/string/from-view
+    /// @param allocator where the storage comes from
+    /// @param view the borrowed text to act on
+    /// @param error receives why the operation failed, or `None`
+    /// @returns a copy of that text this string owns
+    /// @see https://rux-lang.dev/docs/api/text/string/from-view
     pub func FromView(allocator: Allocator, view: StringView, error: *var TextError) -> String {
         return String::FromValidated(allocator, view.bytes, error);
     }
@@ -143,21 +157,24 @@ extend String {
     ///
     /// Not how many characters: that is `ScalarCount`, and it costs a pass.
     ///
-    /// https://rux-lang.dev/docs/api/text/string/length
+    /// @returns how many bytes the text occupies
+    /// @see https://rux-lang.dev/docs/api/text/string/length
     pub func Length(self: &String) -> uint {
         return self.length;
     }
 
     /// Whether the text spans no bytes.
     ///
-    /// https://rux-lang.dev/docs/api/text/string/is-empty
+    /// @returns whether the text has no bytes
+    /// @see https://rux-lang.dev/docs/api/text/string/is-empty
     pub func IsEmpty(self: &String) -> bool {
         return self.length == 0;
     }
 
     /// The bytes themselves, borrowed.
     ///
-    /// https://rux-lang.dev/docs/api/text/string/bytes
+    /// @returns the text's bytes, borrowed
+    /// @see https://rux-lang.dev/docs/api/text/string/bytes
     pub func Bytes(self: &String) -> char8[..] {
         return (self.data)[..self.length];
     }
@@ -166,21 +183,25 @@ extend String {
     ///
     /// Copies nothing. The view borrows this string and must not outlive it.
     ///
-    /// https://rux-lang.dev/docs/api/text/string/view
+    /// @returns a borrowed view of the text
+    /// @see https://rux-lang.dev/docs/api/text/string/view
     pub func View(self: &String) -> StringView {
         return StringView::FromValidated(self.Bytes());
     }
 
     /// How many characters the text holds.
     ///
-    /// https://rux-lang.dev/docs/api/text/string/scalar-count
+    /// @returns how many Unicode scalar values the text holds, which is not its byte length
+    /// @see https://rux-lang.dev/docs/api/text/string/scalar-count
     pub func ScalarCount(self: &String) -> uint {
         return CountScalars(self.Bytes());
     }
 
     /// Whether `index` is where a character starts, and so a place the text may be cut.
     ///
-    /// https://rux-lang.dev/docs/api/text/string/is-boundary
+    /// @param index the byte offset
+    /// @returns whether `index` falls between two scalar values rather than inside one
+    /// @see https://rux-lang.dev/docs/api/text/string/is-boundary
     pub func IsBoundary(self: &String, index: uint) -> bool {
         return IsBoundary(self.Bytes(), index);
     }
@@ -190,7 +211,10 @@ extend String {
     /// Borrows rather than copying, since a part of a string is bytes the string already owns. `Substring` is what
     /// makes an owning copy.
     ///
-    /// https://rux-lang.dev/docs/api/text/string/part
+    /// @param start the first byte offset, inclusive
+    /// @param end the byte offset one past the last, exclusive
+    /// @returns the text between the two offsets, or `None` when either is not a boundary
+    /// @see https://rux-lang.dev/docs/api/text/string/part
     pub func Part(self: &String, start: uint, end: uint) -> Option<StringView> {
         let whole = self.View();
         return whole.Part(start, end);
@@ -200,7 +224,11 @@ extend String {
     ///
     /// `error` receives `NotABoundary` when either end would cut a character in half.
     ///
-    /// https://rux-lang.dev/docs/api/text/string/substring
+    /// @param start the first byte offset, inclusive
+    /// @param end the byte offset one past the last, exclusive
+    /// @param error receives why the operation failed, or `None`
+    /// @returns an owned copy of that range, or an empty string when it is not a valid one
+    /// @see https://rux-lang.dev/docs/api/text/string/substring
     pub func Substring(self: &String, start: uint, end: uint, error: *var TextError) -> String {
         let part = self.Part(start, end);
         if part.IsNone() {
@@ -212,14 +240,18 @@ extend String {
 
     /// An independent copy, with a block of its own from the same allocator.
     ///
-    /// https://rux-lang.dev/docs/api/text/string/clone
+    /// @param error receives why the operation failed, or `None`
+    /// @returns an independent copy
+    /// @see https://rux-lang.dev/docs/api/text/string/clone
     pub func Clone(self: &String, error: *var TextError) -> String {
         return String::FromValidated(self.allocator, self.Bytes(), error);
     }
 
     /// Whether two strings hold the same bytes.
     ///
-    /// https://rux-lang.dev/docs/api/text/string/equals
+    /// @param other the value to compare against
+    /// @returns whether both hold the same bytes
+    /// @see https://rux-lang.dev/docs/api/text/string/equals
     pub func Equals(self: &String, other: &String) -> bool {
         let mine = self.View();
         let theirs = other.View();
@@ -228,7 +260,9 @@ extend String {
 
     /// How this string orders against `other`, by bytes, which for UTF-8 is also by code point.
     ///
-    /// https://rux-lang.dev/docs/api/text/string/compare
+    /// @param other the value to compare against
+    /// @returns how the two order byte by byte, which is code-point order for UTF-8
+    /// @see https://rux-lang.dev/docs/api/text/string/compare
     pub func Compare(self: &String, other: &String) -> Ordering {
         let mine = self.View();
         let theirs = other.View();
@@ -240,7 +274,7 @@ extend String {
     /// Rarely needed: a string releases itself when it dies. This is for releasing one early, and is safe to call
     /// twice because what it leaves behind owns nothing.
     ///
-    /// https://rux-lang.dev/docs/api/text/string/clear
+    /// @see https://rux-lang.dev/docs/api/text/string/clear
     pub func Clear(self: &var String) {
         if self.data != null {
             let layout = Layout::New(self.capacity, 1);
@@ -257,7 +291,8 @@ extend String {
     ///
     /// A fresh value transfers directly. Passing a named string first invokes its deep copy, so the caller keeps an
     /// independent original.
-    /// https://rux-lang.dev/docs/api/text/string/replace-with
+    /// @param value the value to act on
+    /// @see https://rux-lang.dev/docs/api/text/string/replace-with
     pub func ReplaceWith(self: &var String, value: String) {
         var owned <- value;
         self.Clear();
@@ -276,7 +311,7 @@ extend String {
     ///
     /// Runs when the string dies. Copies have independent blocks, so each destructor releases exactly its own.
     ///
-    /// https://rux-lang.dev/docs/api/text/string/destructor
+    /// @see https://rux-lang.dev/docs/api/text/string/destructor
     func ~String(self: &var String) {
         self.Clear();
     }

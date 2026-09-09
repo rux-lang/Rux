@@ -18,14 +18,14 @@ import Memory::Copy;
 
 /// The room a buffered stream takes when the caller expresses no preference.
 ///
-/// https://rux-lang.dev/docs/api/io/default-buffer-capacity
+/// @see https://rux-lang.dev/docs/api/io/default-buffer-capacity
 pub const DefaultBufferCapacity: uint = 8192;
 
 /// A reader that fills a buffer in large reads and serves small ones from it.
 ///
 /// Move-only: it owns its buffer. The reader it wraps is borrowed through the interface value and must outlive it.
 ///
-/// https://rux-lang.dev/docs/api/io/buffered-reader
+/// @see https://rux-lang.dev/docs/api/io/buffered-reader
 pub struct BufferedReader {
     /// Where bytes come from when the buffer runs out.
     source: Reader;
@@ -50,7 +50,12 @@ extend BufferedReader {
     /// `error` receives `OutOfMemory` when the buffer cannot be had; the reader still works then, passing every
     /// read straight through, because a reader that exists but cannot read would be worse than a slow one.
     ///
-    /// https://rux-lang.dev/docs/api/io/buffered-reader/new
+    /// @param allocator where the storage comes from
+    /// @param source where the bytes come from
+    /// @param capacity how many bytes the buffer holds
+    /// @param error receives why the operation failed, or `None`
+    /// @returns the buffered stream, empty when the allocator refused
+    /// @see https://rux-lang.dev/docs/api/io/buffered-reader/new
     pub func New(allocator: Allocator, source: Reader, capacity: uint, error: *var IoError) -> BufferedReader {
         *error = IoError::Ok();
         var reader = BufferedReader {
@@ -78,7 +83,8 @@ extend BufferedReader {
 
     /// How many buffered bytes wait unread.
     ///
-    /// https://rux-lang.dev/docs/api/io/buffered-reader/available
+    /// @returns how many bytes are already buffered and can be taken without a read
+    /// @see https://rux-lang.dev/docs/api/io/buffered-reader/available
     pub func Available(self: &BufferedReader) -> uint {
         return self.end - self.start;
     }
@@ -87,14 +93,16 @@ extend BufferedReader {
     ///
     /// What line reading is built from: look, decide, then `Consume` what was used.
     ///
-    /// https://rux-lang.dev/docs/api/io/buffered-reader/buffered
+    /// @returns the buffered bytes, borrowed and valid until the next fill
+    /// @see https://rux-lang.dev/docs/api/io/buffered-reader/buffered
     pub func Buffered(self: &BufferedReader) -> char8[..] {
         return (@self.data[self.start])[..self.end - self.start];
     }
 
     /// Marks `count` buffered bytes as read.
     ///
-    /// https://rux-lang.dev/docs/api/io/buffered-reader/consume
+    /// @param count how many bytes to consume
+    /// @see https://rux-lang.dev/docs/api/io/buffered-reader/consume
     pub func Consume(self: &var BufferedReader, count: uint) {
         self.start = self.start + (count <= self.Available() ? count : self.Available());
     }
@@ -104,7 +112,8 @@ extend BufferedReader {
     /// Reports what the source reported; `EndOfStream` when the source is done. A source that reports success
     /// while handing over nothing breaks the `Reader` contract, and is reported as the end rather than looped on.
     ///
-    /// https://rux-lang.dev/docs/api/io/buffered-reader/fill
+    /// @returns `None` when at least one byte was buffered; `IsEnd` at the end of the source
+    /// @see https://rux-lang.dev/docs/api/io/buffered-reader/fill
     pub func Fill(self: &var BufferedReader) -> IoError {
         if self.Available() > 0 { return IoError::Ok(); }
         if self.data == null { return IoError::Of(IoErrorKind::Other); }
@@ -124,7 +133,10 @@ extend BufferedReader {
     /// Fills what it can of `into`: from the buffer while it has bytes, straight from the source for a request
     /// already larger than the whole buffer.
     ///
-    /// https://rux-lang.dev/docs/api/io/buffered-reader/read
+    /// @param into receives the bytes
+    /// @param filled receives how many bytes were read
+    /// @returns `None` when the read was accepted; zero in `filled` is end of input
+    /// @see https://rux-lang.dev/docs/api/io/buffered-reader/read
     pub func Read(self: &var BufferedReader, into: var char8[..], filled: *var uint) -> IoError {
         *filled = 0;
         if into.length == 0 { return IoError::Ok(); }
@@ -151,7 +163,7 @@ extend BufferedReader {
 
     /// Gives the buffer back.
     ///
-    /// https://rux-lang.dev/docs/api/io/buffered-reader/release
+    /// @see https://rux-lang.dev/docs/api/io/buffered-reader/release
     pub func Release(self: &var BufferedReader) {
         if self.data != null {
             let layout = Layout::New(self.capacity, 1);
@@ -168,7 +180,7 @@ extend BufferedReader {
 extend BufferedReader {
     /// Gives the buffer back. Unread buffered bytes are abandoned, which loses nothing anybody asked for.
     ///
-    /// https://rux-lang.dev/docs/api/io/buffered-reader/destructor
+    /// @see https://rux-lang.dev/docs/api/io/buffered-reader/destructor
     func ~BufferedReader(self: &var BufferedReader) {
         self.Release();
     }
@@ -180,7 +192,7 @@ extend BufferedReader {
 /// destructor has nowhere to report; the explicit `Flush` is where errors are seen, and the caller who cares
 /// calls it before letting go.
 ///
-/// https://rux-lang.dev/docs/api/io/buffered-writer
+/// @see https://rux-lang.dev/docs/api/io/buffered-writer
 pub struct BufferedWriter {
     /// Where the gathered bytes go.
     sink: Writer;
@@ -202,7 +214,12 @@ extend BufferedWriter {
     ///
     /// A refused buffer leaves a writer that passes everything straight through, for the reader's reason.
     ///
-    /// https://rux-lang.dev/docs/api/io/buffered-writer/new
+    /// @param allocator where the storage comes from
+    /// @param sink where the bytes go
+    /// @param capacity how many bytes the buffer holds
+    /// @param error receives why the operation failed, or `None`
+    /// @returns the buffered stream, empty when the allocator refused
+    /// @see https://rux-lang.dev/docs/api/io/buffered-writer/new
     pub func New(allocator: Allocator, sink: Writer, capacity: uint, error: *var IoError) -> BufferedWriter {
         *error = IoError::Ok();
         var writer = BufferedWriter { sink: sink, data: null, capacity: 0, length: 0, allocator: allocator };
@@ -223,14 +240,16 @@ extend BufferedWriter {
 
     /// How many bytes wait unsent.
     ///
-    /// https://rux-lang.dev/docs/api/io/buffered-writer/pending
+    /// @returns how many bytes are written but not yet flushed
+    /// @see https://rux-lang.dev/docs/api/io/buffered-writer/pending
     pub func Pending(self: &BufferedWriter) -> uint {
         return self.length;
     }
 
     /// Sends everything gathered, then asks the sink to flush too.
     ///
-    /// https://rux-lang.dev/docs/api/io/buffered-writer/flush
+    /// @returns `None` when everything buffered reached the sink
+    /// @see https://rux-lang.dev/docs/api/io/buffered-writer/flush
     pub func Flush(self: &var BufferedWriter) -> IoError {
         if self.length > 0 {
             let held = (self.data)[..self.length];
@@ -243,7 +262,10 @@ extend BufferedWriter {
 
     /// Takes `bytes`: into the buffer while they fit, around it in one piece when they never would.
     ///
-    /// https://rux-lang.dev/docs/api/io/buffered-writer/write
+    /// @param bytes the bytes to write
+    /// @param taken receives how many bytes were taken
+    /// @returns `None` when the bytes were taken
+    /// @see https://rux-lang.dev/docs/api/io/buffered-writer/write
     pub func Write(self: &var BufferedWriter, bytes: char8[..], taken: *var uint) -> IoError {
         *taken = 0;
         if bytes.length == 0 { return IoError::Ok(); }
@@ -276,7 +298,7 @@ extend BufferedWriter {
     ///
     /// For the caller who has decided the bytes must not go — the one case where losing them is the point.
     ///
-    /// https://rux-lang.dev/docs/api/io/buffered-writer/abandon
+    /// @see https://rux-lang.dev/docs/api/io/buffered-writer/abandon
     pub func Abandon(self: &var BufferedWriter) {
         if self.data != null {
             let layout = Layout::New(self.capacity, 1);
@@ -294,7 +316,7 @@ extend BufferedWriter {
     /// Flushes as a safety net — the outcome has nowhere to go, so a caller who cares flushed already — then
     /// gives the buffer back.
     ///
-    /// https://rux-lang.dev/docs/api/io/buffered-writer/destructor
+    /// @see https://rux-lang.dev/docs/api/io/buffered-writer/destructor
     func ~BufferedWriter(self: &var BufferedWriter) {
         let outcome = self.Flush();
         self.Abandon();
