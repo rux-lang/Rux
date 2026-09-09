@@ -1,0 +1,16 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "TimeSleep"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Sleeping a whole span: chunking, retried interruptions, and reported failures, driven through an injected wait"
+
+[Dependencies]
+Core = { Path = "../../../../Packages/Core" }
+Text = { Path = "../../../../Packages/Text" }
+Time = { Path = "../../../../Packages/Time" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Time"

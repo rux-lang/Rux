@@ -1,0 +1,219 @@
+// What a sleep does when the wait does not simply work.
+//
+// The three cases that matter are all ones a real sleep cannot be made to show on demand: a span longer than the
+// system's own ceiling, a signal arriving in the middle, and a wait the system refuses outright. So the loop is
+// driven here through an injected `Waiter` that can be told to do each of those, and the arithmetic that decides
+// how long one wait may be is checked directly. A hundred-day sleep is checked in microseconds.
+//
+// The real wait is exercised too, but only for the small, fast facts a real clock can confirm.
+
+import Core::Assert;
+import Time::{ Duration, Instant, MaximumWaitAttempts, MaximumWaitMilliseconds, SleepFor, SleepUsing, SystemWaiter,
+               TimeError, WaitChunkMilliseconds, Waiter };
+
+// Everything mutable lives behind a pointer, because an interface adapter is copied and copies would otherwise each
+// keep their own script.
+struct WaiterState {
+    /// How many times `WaitFor` was called.
+    calls: uint;
+    /// The longest span it was handed, in milliseconds, or -1 when handed something with no millisecond count.
+    /// This is what is left of the sleep, not what one wait may take.
+    longestHanded: int64;
+    /// The longest single wait it actually took, in milliseconds. This is the one the ceiling applies to.
+    longestChunk: int64;
+    /// How many of the first calls report an interruption before any of them completes.
+    interruptions: uint;
+    /// The error to report once the interruptions run out.
+    outcome: TimeError;
+    /// Whether the waiter hands back everything it was given rather than waiting any of it.
+    stalls: bool;
+}
+
+/// A wait that does what the test tells it to, and records what it was asked.
+struct ScriptedWaiter {
+    state: *var WaiterState;
+}
+
+extend ScriptedWaiter : Waiter {
+    func WaitFor(self: &var ScriptedWaiter, span: Duration, remaining: *var Duration) -> TimeError {
+        self.state.calls = self.state.calls + 1;
+        let handed = span.TotalMilliseconds().ValueOr(-1i64);
+        if handed > self.state.longestHanded { self.state.longestHanded = handed; }
+        let willTake = WaitChunkMilliseconds(span);
+        if willTake > self.state.longestChunk { self.state.longestChunk = willTake; }
+
+        if self.state.stalls {
+            // Waits for none of it and reports success, which is the one shape that could spin forever.
+            *remaining = span;
+            return TimeError::None;
+        }
+
+        if self.state.interruptions > 0 {
+            // Cut short with a tenth of the span still to go, which is what a signal looks like from here.
+            self.state.interruptions = self.state.interruptions - 1;
+            let tenth = Duration::FromMilliseconds(handed < 0 ? 1000i64 : handed / 10);
+            *remaining = tenth;
+            return TimeError::Interrupted;
+        }
+
+        if self.state.outcome != TimeError::None {
+            // A refused wait leaves the whole span outstanding.
+            *remaining = span;
+            return self.state.outcome;
+        }
+
+        // The chunk this waiter is willing to take, so a span longer than one wait comes back for the rest exactly
+        // as it would against the system.
+        let chunk = WaitChunkMilliseconds(span);
+        let taken = Duration::FromMilliseconds(chunk);
+        let rest = span.Minus(taken).ValueOr(Duration::Zero());
+        *remaining = rest.IsNegative() ? Duration::Zero() : rest;
+        return TimeError::None;
+    }
+}
+
+func Scripted(state: *var WaiterState) -> ScriptedWaiter {
+    return ScriptedWaiter { state: state };
+}
+
+func Fresh() -> WaiterState {
+    return WaiterState {
+        calls: 0,
+        longestHanded: 0,
+        longestChunk: 0,
+        interruptions: 0,
+        outcome: TimeError::None,
+        stalls: false
+    };
+}
+
+func Main() -> int {
+    // --- How long one wait may be asked for -----------------------------------------------------------------
+
+    // The degenerate spans give zero, which is the value the loop stops on.
+    Assert(WaitChunkMilliseconds(Duration::Zero()) == 0, "nothing to wait for asks for nothing");
+    Assert(WaitChunkMilliseconds(Duration::FromMilliseconds(-100i64)) == 0, "and neither does a negative span");
+
+    // An ordinary span is itself.
+    Assert(WaitChunkMilliseconds(Duration::FromMilliseconds(50i64)) == 50, "fifty milliseconds asks for fifty");
+    Assert(WaitChunkMilliseconds(Duration::FromSeconds(2i64)) == 2000, "two seconds asks for two thousand");
+
+    // A sub-millisecond remainder rounds up, because a wait promises at least what was asked and never less. A
+    // truncating version would return early, which is the failure a caller pacing work would see as drift.
+    Assert(WaitChunkMilliseconds(Duration::FromNanoseconds(1i64)) == 1, "a single nanosecond still costs a whole one");
+    Assert(WaitChunkMilliseconds(Duration::FromMicroseconds(1500i64)) == 2, "and one and a half rounds up to two");
+    Assert(WaitChunkMilliseconds(Duration::FromMicroseconds(2000i64)) == 2, "while an exact count does not");
+
+    // The ceiling, and both sides of it. This is where the old clamp silently lost the rest of the span.
+    let atCeiling = Duration::FromMilliseconds(MaximumWaitMilliseconds);
+    Assert(WaitChunkMilliseconds(atCeiling) == MaximumWaitMilliseconds, "the largest single wait is asked for whole");
+    let pastCeiling = Duration::FromMilliseconds(MaximumWaitMilliseconds + 1000);
+    Assert(WaitChunkMilliseconds(pastCeiling) == MaximumWaitMilliseconds, "and anything longer is capped, not clamped");
+
+    // A span with no millisecond count at all is certainly longer than one wait.
+    let enormous = Duration::FromSeconds(0x7FFFFFFFFFFFFFFF);
+    Assert(WaitChunkMilliseconds(enormous) == MaximumWaitMilliseconds,
+           "a span too long to count in milliseconds still asks for the ceiling rather than overflowing");
+
+    // --- A span longer than one wait ------------------------------------------------------------------------
+
+    // A hundred days is about twice the ceiling, so it takes three waits: two full ones and the remainder. The old
+    // version made one wait of 49.7 days and reported that it had slept for a hundred.
+    var state = Fresh();
+    var waiter = Scripted(@state);
+    let hundredDays = Duration::FromHours(2400i64).ValueOr(Duration::Zero());
+    Assert(!hundredDays.IsZero(), "a hundred days is a duration this package can hold");
+    Assert(SleepUsing<ScriptedWaiter>(waiter, hundredDays) == TimeError::None, "a hundred-day sleep completes");
+    Assert(state.calls == 3, "in three waits, because one wait cannot express more than about fifty days");
+    Assert(state.longestChunk == MaximumWaitMilliseconds, "no single wait longer than the ceiling");
+    Assert(state.longestHanded > MaximumWaitMilliseconds,
+           "even though the loop handed it more than one wait could take, which is what the chunking is for");
+
+    // A span that fits in one wait takes exactly one.
+    state = Fresh();
+    Assert(SleepUsing<ScriptedWaiter>(waiter, Duration::FromSeconds(5i64)) == TimeError::None,
+           "a five-second sleep completes");
+    Assert(state.calls == 1, "in a single wait");
+    Assert(state.longestChunk == 5000, "which took exactly what was wanted");
+
+    // --- Degenerate spans -------------------------------------------------------------------------------------
+
+    // The plan's own rule: a negative or zero span succeeds immediately, having asked the system for nothing.
+    state = Fresh();
+    Assert(SleepUsing<ScriptedWaiter>(waiter, Duration::Zero()) == TimeError::None, "a zero span succeeds");
+    Assert(state.calls == 0, "without waiting at all");
+    Assert(SleepUsing<ScriptedWaiter>(waiter, Duration::FromMilliseconds(-1i64)) == TimeError::None,
+           "a negative span succeeds");
+    Assert(state.calls == 0, "also without waiting");
+
+    // --- Interruption is retried, not reported ------------------------------------------------------------------
+
+    // A signal arriving three times running is invisible to the caller: the loop goes back for what is left each
+    // time. A caller asked for a span, not for a span unless the process happened to receive a signal.
+    state = Fresh();
+    state.interruptions = 3;
+    Assert(SleepUsing<ScriptedWaiter>(waiter, Duration::FromSeconds(10i64)) == TimeError::None,
+           "three interruptions still leave a completed sleep");
+    Assert(state.calls == 4, "having gone back for the remainder after each");
+    Assert(state.interruptions == 0, "and used up the script");
+
+    // The remainder shrinks each time rather than the whole span being asked for again, which is what makes an
+    // interrupted sleep take the time it was asked for instead of restarting.
+    Assert(state.longestHanded == 10000, "the most it was ever handed was the original span, not more");
+
+    // --- A refused wait is reported ------------------------------------------------------------------------------
+
+    // This is the case the old version could not see at all: a wait that refuses leaves the remainder untouched,
+    // exactly as a completed one does, so returning success was indistinguishable from having waited.
+    state = Fresh();
+    state.outcome = TimeError::InvalidDuration;
+    Assert(SleepUsing<ScriptedWaiter>(waiter, Duration::FromSeconds(1i64)) == TimeError::InvalidDuration,
+           "a refused wait is reported rather than swallowed");
+    Assert(state.calls == 1, "and is not retried, because asking again would be refused again");
+
+    state = Fresh();
+    state.outcome = TimeError::Failed;
+    Assert(SleepUsing<ScriptedWaiter>(waiter, Duration::FromSeconds(1i64)) == TimeError::Failed,
+           "and so is an unnamed failure");
+
+    // An interruption followed by a refusal reports the refusal, not the interruption.
+    state = Fresh();
+    state.interruptions = 2;
+    state.outcome = TimeError::InvalidDuration;
+    Assert(SleepUsing<ScriptedWaiter>(waiter, Duration::FromSeconds(1i64)) == TimeError::InvalidDuration,
+           "a refusal after an interruption is what gets reported");
+    Assert(state.calls == 3, "after the two interruptions were retried");
+
+    // --- A waiter that never advances -----------------------------------------------------------------------------
+
+    // Reporting success while handing back everything it was given is the one shape that could spin forever. The
+    // attempt count bounds it, and the result says the wait did not happen rather than that it did.
+    state = Fresh();
+    state.stalls = true;
+    Assert(SleepUsing<ScriptedWaiter>(waiter, Duration::FromSeconds(1i64)) == TimeError::Failed,
+           "a waiter that never advances is given up on");
+    Assert(state.calls == MaximumWaitAttempts, "after exactly the documented number of attempts");
+
+    // --- The real wait ----------------------------------------------------------------------------------------
+
+    // What a real clock can confirm quickly: the span is not undershot, and the degenerate cases cost nothing.
+    let before = Instant::Now();
+    Assert(SleepFor(Duration::FromMilliseconds(50i64)) == TimeError::None, "a real fifty-millisecond sleep completes");
+    let slept = before.Elapsed();
+    Assert(!slept.Compare(Duration::FromMilliseconds(50i64)).IsLess(), "and takes at least the span asked for");
+
+    let mark = Instant::Now();
+    Assert(SleepFor(Duration::Zero()) == TimeError::None, "a real zero sleep succeeds");
+    Assert(SleepFor(Duration::FromMilliseconds(-100i64)) == TimeError::None, "and so does a negative one");
+    Assert(mark.Elapsed().Compare(Duration::FromSeconds(1i64)).IsLess(), "neither of them having waited");
+
+    // A sub-millisecond span still waits, because the chunk rounds up rather than truncating to zero.
+    Assert(SleepFor(Duration::FromMicroseconds(200i64)) == TimeError::None, "a sub-millisecond sleep completes");
+
+    // The system waiter reports the same way through the generic entry point as through SleepFor.
+    var system = SystemWaiter();
+    Assert(SleepUsing<SystemWaiter>(system, Duration::FromMilliseconds(1i64)) == TimeError::None,
+           "the system waiter drives the same loop");
+
+    return 0;
+}

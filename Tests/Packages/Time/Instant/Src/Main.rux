@@ -1,6 +1,6 @@
 import Core::Assert;
 import Text::{ BufferWriter, Debug, FormatSpec, ParseFormatSpec, TextWriter };
-import Time::{ Duration, Instant, SleepFor };
+import Time::{ Duration, Instant, SleepFor, TimeError };
 
 // A monotonic clock's whole contract is an inequality: a later reading is never earlier. So the test is bounds,
 // not values — readings never go backwards, a sleep takes at least what was asked, and the reversed subtraction
@@ -73,16 +73,17 @@ func Main() -> int {
     }
 
     // A sleep takes at least what was asked. Fifty milliseconds is long enough that every supported clock can see
-    // it, and short enough not to slow the suite.
+    // it, and short enough not to slow the suite. Chunking, interruption and refusal are exercised against an
+    // injected wait in Tests/Packages/Time/Sleep; what is checked here is that a real one moves a real clock.
     let before = Instant::Now();
-    SleepFor(Duration::FromMilliseconds(50i64));
+    Assert(SleepFor(Duration::FromMilliseconds(50i64)) == TimeError::None, "a real sleep reports that it completed");
     let slept = before.Elapsed();
     let floor = Duration::FromMilliseconds(50i64);
     Assert(!slept.Compare(floor).IsLess(), "a sleep takes at least the span asked for");
 
     // The degenerate spans return at once rather than sleeping forever or refusing.
-    SleepFor(Duration::Zero());
-    SleepFor(Duration::FromMilliseconds(-100i64));
+    Assert(SleepFor(Duration::Zero()) == TimeError::None, "a zero span succeeds");
+    Assert(SleepFor(Duration::FromMilliseconds(-100i64)) == TimeError::None, "and so does a negative one");
     let after = before.Elapsed();
     Assert(after.Compare(Duration::FromSeconds(30i64)).IsLess(), "and the degenerate spans do not sleep");
 

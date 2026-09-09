@@ -5,17 +5,16 @@
 // nothing as a number: it has no epoch, no calendar, and no meaning in another process. What it has is that a
 // later reading minus an earlier one is the time that really elapsed.
 //
-// Sleep lives here because it is the same clock's other direction. A signal can cut a sleep short on the Unix
-// systems, and the loop goes back for the remainder rather than returning early: a caller asked for a span, not
-// for a span unless the process happened to receive a signal.
+// Sleeping used to live here, because it is the same clock's other direction. It moved to `Sleep.rux` when it
+// grew a failure to report and a chunking loop to drive, which is more than a clock reading needs next to it.
 
 import Core::{ #target, #Error, Option };
 
 when #target.os {
-    .FreeBSD => import FreeBSD::{ ClockGetTime, ClockMonotonic, Nanosleep, Timespec },
-    .Linux => import Linux::{ ClockGetTime, ClockMonotonic, Nanosleep, Timespec },
-    .macOS => import macOS::{ ClockGetTime, ClockMonotonic, Nanosleep, Timespec },
-    .Windows => import Windows::{ QueryPerformanceCounter, QueryPerformanceFrequency, Sleep },
+    .FreeBSD => import FreeBSD::{ ClockGetTime, ClockMonotonic, Timespec },
+    .Linux => import Linux::{ ClockGetTime, ClockMonotonic, Timespec },
+    .macOS => import macOS::{ ClockGetTime, ClockMonotonic, Timespec },
+    .Windows => import Windows::{ QueryPerformanceCounter, QueryPerformanceFrequency },
     else => #Error("Unsupported operating system")
 }
 
@@ -77,45 +76,5 @@ extend Instant {
     pub func Elapsed(self: &Instant) -> Duration {
         let now = Instant::Now();
         return now.Since(Instant { ticks: self.ticks }).ValueOr(Duration::Zero());
-    }
-}
-
-/// Stops the calling thread for at least `span`.
-///
-/// At least: the system wakes the thread no earlier, and how much later is the scheduler's business. A negative or
-/// zero span returns at once. On the Unix systems a signal can interrupt the wait, and the loop goes back for the
-/// remainder until the whole span has passed — the interruption is invisible to the caller, which is what makes
-/// this safe to use for pacing.
-///
-/// https://rux-lang.dev/docs/api/time/sleep
-pub func SleepFor(span: Duration) {
-    if span.IsNegative() || span.IsZero() { return; }
-    when #target.os == .Windows {
-        // The system sleep is millisecond-grained, so the span rounds up: at least, never less.
-        let millis = span.TotalMilliseconds().ValueOr(4294967294i64);
-        var rounded = millis;
-        if span.SubsecondNanoseconds() % 1000000u32 != 0u32 {
-            rounded = rounded + 1i64;
-        }
-        if rounded > 4294967294i64 {
-            rounded = 4294967294i64;
-        }
-        Sleep(rounded as uint32);
-    }
-    else {
-        var request = Timespec {
-            seconds: span.WholeSeconds(),
-            nanoseconds: span.SubsecondNanoseconds() as int64
-        };
-        var remaining = Timespec { seconds: 0, nanoseconds: 0 };
-        // Interrupted sleeps hand back what is left, and the loop asks again for exactly that. Any other failure
-        // means the request itself was bad, which a normalized non-negative span cannot be, so the loop ends.
-        var status = Nanosleep(@request, @remaining);
-        while status != 0i64 {
-            if remaining.seconds == 0i64 && remaining.nanoseconds == 0i64 { return; }
-            request = remaining;
-            remaining = Timespec { seconds: 0, nanoseconds: 0 };
-            status = Nanosleep(@request, @remaining);
-        }
     }
 }

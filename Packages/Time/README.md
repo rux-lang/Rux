@@ -5,7 +5,7 @@ Nanosecond durations, monotonic and wall clocks, Gregorian calendar values, and 
 ## What it provides
 
 - **`Duration`** — a span of time exact to the nanosecond, normalized so the fraction is always in [0, 1e9) with the sign carried by the seconds: equality is bytewise, ordering is two comparisons, and arithmetic is a carry. All of it is checked — an overflow at the edge of a 292-billion-year range is a bug in the caller's arithmetic, and gets a report rather than a wrap that turns a timeout into a deadline in the past.
-- **`Instant` and `Timestamp`** — monotonic readings for measuring elapsed time and UTC wall-clock moments for interchange. `SleepFor` waits against the platform clock without exposing its raw handles.
+- **`Instant` and `Timestamp`** — monotonic readings for measuring elapsed time and UTC wall-clock moments for interchange. `SleepFor` waits against the platform clock without exposing its raw handles, and reports a `TimeError` rather than leaving a wait that did not happen indistinguishable from one that did.
 - **Calendar values** — validated `Date` and `TimeOfDay` values, fixed `UtcOffset`s, `DateTime` conversion, and checked date arithmetic over the proleptic Gregorian calendar.
 - **RFC 3339 and the calendar shapes** — `ParseDate`, `ParseTimeOfDay`, `ParseDateTime` and `ParseRfc3339` each answer a `Result`, and every failure carries a zero-based byte offset into the text. The categories are the ones a caller acts on differently: a malformed shape, a month that is not one, a day the month does not have, a time out of range, a fraction too long, and an offset that is not one. Second 60 folds to the last nanosecond of second 59, and formatting never produces it, so the fold is one-way. `ParseDuration` reads the span form back the same way.
 - **Presentation** — `Date`, `TimeOfDay`, `UtcOffset`, `DateTime`, `OffsetDateTime`, `Duration` and `Timestamp` implement `Display` and `Debug`. A `DateTime` writes no offset, because it holds none: `Z` would claim UTC and the machine's offset would claim a place. `OffsetDateTime` is the pairing that carries one and therefore the type that produces RFC 3339. A precision names 0 to 9 fractional digits and truncates; without one the fraction is written to the digits it has, trailing zeros trimmed.
@@ -16,6 +16,12 @@ All public value receivers borrow with `&T`. The remaining raw pointers are writ
 ## Waiting, and what is not here
 
 `SleepFor` is the supported way to wait. It is a clock operation — it blocks the calling thread against the platform clock — and it is the only one v0.1.0 offers, because v0.1.0 has no concurrency support at all. There is no thread creation, no thread identifier, no yield, no lock, no atomic and no channel in any first-party package; see [First-Party Packages](../../Docs/Packages.md#not-in-v010) for why the `Sync` and `Thread` packages were withdrawn rather than shipped. A caller that needs those must supply them, and `SleepFor` does not imply that a second thread exists to be woken.
+
+It waits for the whole span. A signal can cut a Unix wait short, and the loop goes back for what is left rather than returning early — a caller asked for a span, not for a span unless the process happened to receive a signal. Windows takes its interval as a 32-bit millisecond count, which runs out after about 49.7 days, so a longer span is waited for in chunks rather than clamped to the ceiling; `MaximumWaitMilliseconds` is that ceiling and `WaitChunkMilliseconds` is the arithmetic, public so that a hundred-day sleep can be checked without waiting a hundred days.
+
+A wait can also simply fail, and `SleepFor` says so. Its result is `TimeError::None` only when the span really elapsed; `InvalidDuration` means the system refused the request outright, which is a case that used to be indistinguishable from success because a refused wait and a completed one both leave the remainder at zero. A caller with nothing to do about it may ignore the result — the point is that the information exists.
+
+The system wait is reached through the `Waiter` interface, and `SleepUsing` drives whichever one it is given. That is what makes the chunking, the retry and the failure paths testable: a test for a hundred-day sleep must not take a hundred days, and a test for an interrupted sleep cannot arrange a signal.
 
 ## Installation
 
