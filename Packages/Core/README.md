@@ -91,7 +91,7 @@ Assertion failed: message
 import Core::{ #target, #Error };
 
 when #target.os {
-    .Windows, .Linux, .macOS => {},
+    .Windows, .Linux, .macOS, .FreeBSD => {},
     else => #Error("Unsupported operating system")
 }
 ```

@@ -20,11 +20,12 @@ when #target.os == OperatingSystem::Linux {
                     MaximumErrno, Mmap, Mprotect, Munmap, ProtectionNone, ProtectionRead, ProtectionWrite,
                     QueryPageSize };
 
-    /// One mapping unit. Sixteen kibibytes is a whole number of pages on every supported cell: x86-64 pages are
-    /// 4 KiB and Apple Silicon's are 16 KiB, and a length that is a multiple of both is page-aligned on all of
-    /// them. It is a constant rather than a query so that the mapping cases below do not depend on the page-size
-    /// query being right; the query is checked separately, against this constant, in the section that follows.
-    const MappingUnit: uint = 16384;
+    /// One mapping unit. Thirty-two kibibytes is a whole number of pages on every supported cell, and more than one
+    /// of them: x86-64 pages are 4 KiB and Apple Silicon's are 16 KiB, so the unit is at least two pages everywhere,
+    /// which the partial release below relies on. It is a constant rather than a query so that the mapping cases do
+    /// not depend on the page-size query being right; the query is checked separately, against this constant, in
+    /// the section that follows.
+    const MappingUnit: uint = 32768;
 
     func Main() -> int {
         // --- What counts as an error ------------------------------------------------------------------------
@@ -54,7 +55,7 @@ when #target.os == OperatingSystem::Linux {
         Assert(!IsError(pageSize), "the system answers how large its pages are");
         Assert(pageSize >= 4096, "a page is at least four kilobytes on every supported system");
         Assert((pageSize & (pageSize - 1)) == 0, "and its size is a power of two");
-        Assert(pageSize <= MappingUnit as int64, "the mapping unit above is at least one page");
+        Assert(pageSize * 2 <= MappingUnit as int64, "the mapping unit above is at least two pages");
         Assert((MappingUnit as int64) % pageSize == 0, "and a whole number of them, so nothing here is rounded up");
 
         // An address one page in from a mapping's base is itself page-aligned, so releasing from there is accepted
@@ -130,9 +131,11 @@ when #target.os == OperatingSystem::Linux {
         let noDescriptor = Mmap(null, MappingUnit, ProtectionRead, MapPrivate, -1, 0);
         Assert(IsError(noDescriptor), "a file mapping without a descriptor is refused");
 
-        // More address space than the machine has. Which number comes back depends on the system and on how much
-        // it is willing to promise, so only the refusal is asserted.
-        let enormous = Mmap(null, 0x7FFFFFFFFFFF, ProtectionRead | ProtectionWrite, MapPrivate | MapAnonymous, -1, 0);
+        // More address space than any 64-bit system has: an exbibyte, past the 2^56 bytes the widest current page
+        // tables reach. A mere 2^47 is not enough — FreeBSD gives an AArch64 process 256 TiB and, by default, promises
+        // any amount of anonymous memory, so it maps that much and the refusal never comes. Which number comes back
+        // depends on the system, so only the refusal is asserted.
+        let enormous = Mmap(null, 0x1000000000000000, ProtectionRead | ProtectionWrite, MapPrivate | MapAnonymous, -1, 0);
         Assert(IsError(enormous), "a mapping larger than the address space is refused");
 
         // --- Releasing --------------------------------------------------------------------------------------

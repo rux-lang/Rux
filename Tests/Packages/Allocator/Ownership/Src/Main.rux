@@ -133,8 +133,10 @@ func CheckFailedReallocation(allocator: Allocator) {
     Assert(block == before, "the original address is unchanged");
     Assert(Holds(block, 96), "and the original contents survived the refusal");
 
-    // A refused growth is the same claim with a different size.
-    let enormous = LayoutOr(0x7FFFFFFFFFFF, 8);
+    // A refused growth is the same claim with a different size. An exbibyte is past what any 64-bit address space
+    // holds, which a mere 2^47 is not: FreeBSD gives an AArch64 process 256 TiB and promises any amount of anonymous
+    // memory by default, so it served that request and the assertion below failed.
+    let enormous = LayoutOr(0x1000000000000000, 8);
     var stretched: *var opaque = null;
     let stretch = allocator.Reallocate(block, original, enormous, @stretched);
     Assert(stretch != AllocError::None, "growing past what any allocator can serve is refused");
