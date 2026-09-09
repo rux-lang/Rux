@@ -12,13 +12,13 @@ import Windows::{ Bool, Dword, FileTime, Handle };
 
 /// `GENERIC_READ`: the handle may read.
 ///
-/// https://rux-lang.dev/docs/api/windows/generic-read
+/// @see https://rux-lang.dev/docs/api/windows/generic-read
 #Allow("naming.const")
 pub const GENERIC_READ: uint32 = 0x80000000;
 
 /// `GENERIC_WRITE`: the handle may write.
 ///
-/// https://rux-lang.dev/docs/api/windows/generic-write
+/// @see https://rux-lang.dev/docs/api/windows/generic-write
 #Allow("naming.const")
 pub const GENERIC_WRITE: uint32 = 0x40000000;
 
@@ -27,7 +27,7 @@ pub const GENERIC_WRITE: uint32 = 0x40000000;
 /// The access right that makes an append-only handle: every write lands at the end whatever the file pointer
 /// says, which `GENERIC_WRITE` does not promise.
 ///
-/// https://rux-lang.dev/docs/api/windows/file-append-data
+/// @see https://rux-lang.dev/docs/api/windows/file-append-data
 #Allow("naming.const")
 pub const FILE_APPEND_DATA: uint32 = 0x00000004;
 
@@ -36,25 +36,25 @@ pub const FILE_APPEND_DATA: uint32 = 0x00000004;
 /// Windows denies sharing by default, which is the opposite of every Unix. A file opened without this cannot be
 /// opened for reading by anything else, including the same process.
 ///
-/// https://rux-lang.dev/docs/api/windows/file-share-read
+/// @see https://rux-lang.dev/docs/api/windows/file-share-read
 #Allow("naming.const")
 pub const FILE_SHARE_READ: uint32 = 0x00000001;
 
 /// `FILE_SHARE_WRITE`: other openers may write while this handle is open.
 ///
-/// https://rux-lang.dev/docs/api/windows/file-share-write
+/// @see https://rux-lang.dev/docs/api/windows/file-share-write
 #Allow("naming.const")
 pub const FILE_SHARE_WRITE: uint32 = 0x00000002;
 
 /// `FILE_SHARE_DELETE`: the file may be renamed or deleted while this handle is open.
 ///
-/// https://rux-lang.dev/docs/api/windows/file-share-delete
+/// @see https://rux-lang.dev/docs/api/windows/file-share-delete
 #Allow("naming.const")
 pub const FILE_SHARE_DELETE: uint32 = 0x00000004;
 
 /// `FILE_ATTRIBUTE_NORMAL`: no attributes beyond being an ordinary file.
 ///
-/// https://rux-lang.dev/docs/api/windows/file-attribute-normal
+/// @see https://rux-lang.dev/docs/api/windows/file-attribute-normal
 #Allow("naming.const")
 pub const FILE_ATTRIBUTE_NORMAL: uint32 = 0x00000080;
 
@@ -63,25 +63,25 @@ pub const FILE_ATTRIBUTE_NORMAL: uint32 = 0x00000080;
 /// The whole of Windows' permission model as this package uses it: there are ACLs underneath, but nothing in the
 /// portable surface can express them, and this bit is what `chmod` maps onto.
 ///
-/// https://rux-lang.dev/docs/api/windows/file-attribute-readonly
+/// @see https://rux-lang.dev/docs/api/windows/file-attribute-readonly
 #Allow("naming.const")
 pub const FILE_ATTRIBUTE_READONLY: uint32 = 0x00000001;
 
 /// `FILE_ATTRIBUTE_DIRECTORY`: the name is a directory.
 ///
-/// https://rux-lang.dev/docs/api/windows/file-attribute-directory
+/// @see https://rux-lang.dev/docs/api/windows/file-attribute-directory
 #Allow("naming.const")
 pub const FILE_ATTRIBUTE_DIRECTORY: uint32 = 0x00000010;
 
 /// `FILE_ATTRIBUTE_REPARSE_POINT`: the name carries a reparse point, which is what a symbolic link is.
 ///
-/// https://rux-lang.dev/docs/api/windows/file-attribute-reparse-point
+/// @see https://rux-lang.dev/docs/api/windows/file-attribute-reparse-point
 #Allow("naming.const")
 pub const FILE_ATTRIBUTE_REPARSE_POINT: uint32 = 0x00000400;
 
 /// `INVALID_FILE_ATTRIBUTES`: what `GetFileAttributesW` returns when it could not answer.
 ///
-/// https://rux-lang.dev/docs/api/windows/invalid-file-attributes
+/// @see https://rux-lang.dev/docs/api/windows/invalid-file-attributes
 #Allow("naming.const")
 pub const INVALID_FILE_ATTRIBUTES: uint32 = 0xFFFFFFFF;
 
@@ -89,25 +89,25 @@ pub const INVALID_FILE_ATTRIBUTES: uint32 = 0xFFFFFFFF;
 ///
 /// Without it a directory cannot be opened at all, which makes this the flag every metadata query needs.
 ///
-/// https://rux-lang.dev/docs/api/windows/file-flag-backup-semantics
+/// @see https://rux-lang.dev/docs/api/windows/file-flag-backup-semantics
 #Allow("naming.const")
 pub const FILE_FLAG_BACKUP_SEMANTICS: uint32 = 0x02000000;
 
 /// `FILE_FLAG_OPEN_REPARSE_POINT`: open the symbolic link itself rather than what it points at.
 ///
-/// https://rux-lang.dev/docs/api/windows/file-flag-open-reparse-point
+/// @see https://rux-lang.dev/docs/api/windows/file-flag-open-reparse-point
 #Allow("naming.const")
 pub const FILE_FLAG_OPEN_REPARSE_POINT: uint32 = 0x00200000;
 
 /// `FILE_FLAG_DELETE_ON_CLOSE`: remove the file when its last handle closes.
 ///
-/// https://rux-lang.dev/docs/api/windows/file-flag-delete-on-close
+/// @see https://rux-lang.dev/docs/api/windows/file-flag-delete-on-close
 #Allow("naming.const")
 pub const FILE_FLAG_DELETE_ON_CLOSE: uint32 = 0x04000000;
 
 /// `FILE_FLAG_WRITE_THROUGH`: writes reach the device before the call returns.
 ///
-/// https://rux-lang.dev/docs/api/windows/file-flag-write-through
+/// @see https://rux-lang.dev/docs/api/windows/file-flag-write-through
 #Allow("naming.const")
 pub const FILE_FLAG_WRITE_THROUGH: uint32 = 0x80000000;
 
@@ -116,7 +116,7 @@ pub const FILE_FLAG_WRITE_THROUGH: uint32 = 0x80000000;
 /// Windows types its symbolic links: a link made without this flag misbehaves when its target is a directory,
 /// which no Unix symlink ever asked anyone to know in advance.
 ///
-/// https://rux-lang.dev/docs/api/windows/symbolic-link-flag-directory
+/// @see https://rux-lang.dev/docs/api/windows/symbolic-link-flag-directory
 #Allow("naming.const")
 pub const SYMBOLIC_LINK_FLAG_DIRECTORY: uint32 = 0x00000001;
 
@@ -126,13 +126,13 @@ pub const SYMBOLIC_LINK_FLAG_DIRECTORY: uint32 = 0x00000001;
 /// Harmless where the privilege is held; without Developer Mode or the privilege the call still fails with
 /// `ERROR_PRIVILEGE_NOT_HELD`.
 ///
-/// https://rux-lang.dev/docs/api/windows/symbolic-link-flag-allow-unprivileged-create
+/// @see https://rux-lang.dev/docs/api/windows/symbolic-link-flag-allow-unprivileged-create
 #Allow("naming.const")
 pub const SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE: uint32 = 0x00000002;
 
 /// `MOVEFILE_REPLACE_EXISTING`: let the move overwrite an existing target.
 ///
-/// https://rux-lang.dev/docs/api/windows/move-file-replace-existing
+/// @see https://rux-lang.dev/docs/api/windows/move-file-replace-existing
 #Allow("naming.const")
 pub const MOVEFILE_REPLACE_EXISTING: uint32 = 0x00000001;
 
@@ -140,137 +140,238 @@ pub const MOVEFILE_REPLACE_EXISTING: uint32 = 0x00000001;
 ///
 /// With `MOVEFILE_REPLACE_EXISTING`, this is what makes publishing a file under its final name durable.
 ///
-/// https://rux-lang.dev/docs/api/windows/move-file-write-through
+/// @see https://rux-lang.dev/docs/api/windows/move-file-write-through
 #Allow("naming.const")
 pub const MOVEFILE_WRITE_THROUGH: uint32 = 0x00000008;
 
 #Link("Kernel32.dll")
 pub extern {
-    // Creates or opens a file or device, taking a UTF-16 path
-    //
-    // Returns InvalidHandleValue on failure, not null. The share mode is not a default: passing zero denies every
-    // other opener, which is Windows' behaviour and not most callers' intent.
-    // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilew
+    /// Creates or opens a file or device, taking a UTF-16 path.
+    ///
+    /// Returns InvalidHandleValue on failure, not null. The share mode is not a default: passing zero denies every
+    /// other opener, which is Windows' behaviour and not most callers' intent.
+    ///
+    /// @param fileName the path, as a null-terminated string
+    /// @param desiredAccess the access rights wanted, such as `GENERIC_READ`
+    /// @param shareMode what other openers may do meanwhile; zero denies them everything
+    /// @param securityAttributes a security descriptor, or null for the default
+    /// @param creationDisposition one of the `CreationDisposition` values
+    /// @param flagsAndAttributes the file attributes and flags
+    /// @param templateFile a template whose attributes to copy, or null
+    /// @returns the new handle, or `InvalidHandleValue` — which is not null
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilew
     pub func CreateFileW(fileName: *char16, desiredAccess: uint32, shareMode: uint32, securityAttributes: *var opaque,
                      creationDisposition: uint32, flagsAndAttributes: uint32, templateFile: *var opaque) -> *var opaque;
 
-    // Begins a directory enumeration matching a UTF-16 pattern
-    //
-    // Returns InvalidHandleValue on failure. `findFileData` receives a WIN32_FIND_DATAW record: attributes at
-    // offset 0 (4 bytes), three FILETIMEs from 4, the size's halves at 28 and 32, and the entry's NUL-terminated
-    // UTF-16 name from offset 44. The record is 592 bytes.
-    // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-findfirstfilew
+    /// Begins a directory enumeration matching a UTF-16 pattern.
+    ///
+    /// Returns InvalidHandleValue on failure. `findFileData` receives a WIN32_FIND_DATAW record: attributes at
+    /// offset 0 (4 bytes), three FILETIMEs from 4, the size's halves at 28 and 32, and the entry's NUL-terminated
+    /// UTF-16 name from offset 44. The record is 592 bytes.
+    ///
+    /// @param fileName the path, as a null-terminated string
+    /// @param findFileData receives the entry's record
+    /// @returns a search handle, or `InvalidHandleValue`
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-findfirstfilew
     func FindFirstFileW(fileName: *char16, findFileData: *var opaque) -> *var opaque;
 
-    // Continues a directory enumeration; fails with ERROR_NO_MORE_FILES at its end
-    // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-findnextfilew
+    /// Continues a directory enumeration; fails with ERROR_NO_MORE_FILES at its end.
+    ///
+    /// @param findFile a search handle from the matching `FindFirstFile`
+    /// @param findFileData receives the entry's record
+    /// @returns non-zero on success, and zero at the end of the enumeration
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-findnextfilew
     func FindNextFileW(findFile: *var opaque, findFileData: *var opaque) -> int32;
 
-    // Creates a hard link: a second name for an existing file's contents
-    // https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-createhardlinkw
+    /// Creates a hard link: a second name for an existing file's contents.
+    ///
+    /// @param fileName the path, as a null-terminated string
+    /// @param existingFileName the path that exists now
+    /// @param securityAttributes a security descriptor, or null for the default
+    /// @returns non-zero on success
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-createhardlinkw
     func CreateHardLinkW(fileName: *char16, existingFileName: *char16, securityAttributes: *var opaque) -> int32;
 
-    // Creates a symbolic link; returns a BOOLEAN, so only the low byte is meaningful
-    //
-    // Creation needs SeCreateSymbolicLinkPrivilege or a Developer Mode machine with the allow-unprivileged flag;
-    // without either it fails with ERROR_PRIVILEGE_NOT_HELD.
-    // https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-createsymboliclinkw
+    /// Creates a symbolic link; returns a BOOLEAN, so only the low byte is meaningful.
+    ///
+    /// Creation needs SeCreateSymbolicLinkPrivilege or a Developer Mode machine with the allow-unprivileged flag;
+    /// without either it fails with ERROR_PRIVILEGE_NOT_HELD.
+    ///
+    /// @param symlinkFileName the link to create
+    /// @param targetFileName the path the link will point at
+    /// @param flags the call's flag bits, combined with `|`
+    /// @returns non-zero on success; creating one needs a privilege or developer mode
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-createsymboliclinkw
     func CreateSymbolicLinkW(symlinkFileName: *char16, targetFileName: *char16, flags: uint32) -> uint8;
 
-    // Fills a BY_HANDLE_FILE_INFORMATION record for an open handle
-    //
-    // The record is 52 bytes: attributes at offset 0 (4 bytes), the creation, last-access and last-write
-    // FILETIMEs at 4, 12 and 20 (8 bytes each), the volume serial number at 28, the size's high and low halves
-    // at 32 and 36, the link count at 40, and the file index's halves at 44 and 48.
-    // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfileinformationbyhandle
+    /// Fills a BY_HANDLE_FILE_INFORMATION record for an open handle.
+    ///
+    /// The record is 52 bytes: attributes at offset 0 (4 bytes), the creation, last-access and last-write
+    /// FILETIMEs at 4, 12 and 20 (8 bytes each), the volume serial number at 28, the size's high and low halves
+    /// at 32 and 36, the link count at 40, and the file index's halves at 44 and 48.
+    ///
+    /// @param file an open file handle
+    /// @param fileInformation receives the file's information record
+    /// @returns non-zero on success
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfileinformationbyhandle
     func GetFileInformationByHandle(file: *var opaque, fileInformation: *var opaque) -> int32;
 
-    // Sets the creation, last-access and last-write times of an open handle
-    //
-    // Each pointer may be null to leave that time alone.
-    // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-setfiletime
+    /// Sets the creation, last-access and last-write times of an open handle.
+    ///
+    /// Each pointer may be null to leave that time alone.
+    ///
+    /// @param file an open file handle
+    /// @param creationTime the creation time to set, or null to leave it
+    /// @param lastAccessTime the access time to set, or null to leave it
+    /// @param lastWriteTime the write time to set, or null to leave it
+    /// @returns non-zero on success
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-setfiletime
     pub func SetFileTime(file: *var opaque, creationTime: *FileTime, lastAccessTime: *FileTime,
                      lastWriteTime: *FileTime) -> int32;
 
-    // Writes the final, resolved path of an open handle: symbolic links followed, short names expanded, case as
-    // the filesystem stores it
-    //
-    // Returns the length written, without the terminator, or the required length when the buffer is too small,
-    // or zero on failure. VOLUME_NAME_DOS (0) spells the answer with a drive letter where the file has one.
-    // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfinalpathnamebyhandlew
+    /// Writes the final, resolved path of an open handle: symbolic links followed, short names expanded, case as.
+    /// the filesystem stores it
+    ///
+    /// Returns the length written, without the terminator, or the required length when the buffer is too small,
+    /// or zero on failure. VOLUME_NAME_DOS (0) spells the answer with a drive letter where the file has one.
+    ///
+    /// @param file an open file handle
+    /// @param filePath receives the resolved path
+    /// @param filePathLength how many units `filePath` holds
+    /// @param flags the call's flag bits, combined with `|`
+    /// @returns the length written, or zero on failure
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfinalpathnamebyhandlew
     pub func GetFinalPathNameByHandleW(file: *var opaque, filePath: *var char16, filePathLength: uint32,
                                    flags: uint32) -> uint32;
 
-    // Writes the path of the directory designated for temporary files
-    //
-    // Returns the length written without the terminator, or the required length when the buffer is too small, or
-    // zero on failure. The answer always ends in a backslash. Consults TMP, then TEMP, then USERPROFILE, then the
-    // Windows directory, so it answers even where none of those are set.
-    // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-gettemppathw
+    /// Writes the path of the directory designated for temporary files.
+    ///
+    /// Returns the length written without the terminator, or the required length when the buffer is too small, or
+    /// zero on failure. The answer always ends in a backslash. Consults TMP, then TEMP, then USERPROFILE, then the
+    /// Windows directory, so it answers even where none of those are set.
+    ///
+    /// @param bufferLength how many units `buffer` holds
+    /// @param buffer the bytes
+    /// @returns the length written including the separator, or zero on failure
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-gettemppathw
     func GetTempPathW(bufferLength: uint32, buffer: *var char16) -> uint32;
 
-    // Deletes a file, taking a UTF-16 path
-    // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-deletefilew
+    /// Deletes a file, taking a UTF-16 path.
+    ///
+    /// @param fileName the path, as a null-terminated string
+    /// @returns non-zero on success
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-deletefilew
     func DeleteFileW(fileName: *char16) -> int32;
 
-    // Moves or renames a file or directory, taking UTF-16 paths
-    //
-    // With MOVEFILE_REPLACE_EXISTING this replaces the target atomically within a volume, which is how a file is
-    // published under its final name. Across volumes it copies and deletes instead, which is not atomic.
-    // https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-movefileexw
+    /// Moves or renames a file or directory, taking UTF-16 paths.
+    ///
+    /// With MOVEFILE_REPLACE_EXISTING this replaces the target atomically within a volume, which is how a file is
+    /// published under its final name. Across volumes it copies and deletes instead, which is not atomic.
+    ///
+    /// @param existingFileName the path that exists now
+    /// @param newFileName the path it should have afterwards
+    /// @param flags the call's flag bits, combined with `|`
+    /// @returns non-zero on success
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-movefileexw
     func MoveFileExW(existingFileName: *char16, newFileName: *char16, flags: uint32) -> int32;
 
-    // Copies a file, taking UTF-16 paths
-    // https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-copyfilew
+    /// Copies a file, taking UTF-16 paths.
+    ///
+    /// @param existingFileName the path that exists now
+    /// @param newFileName the path it should have afterwards
+    /// @param failIfExists non-zero to refuse rather than overwrite
+    /// @returns non-zero on success
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-copyfilew
     func CopyFileW(existingFileName: *char16, newFileName: *char16, failIfExists: int32) -> int32;
 
-    // Creates a directory, taking a UTF-16 path
-    // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createdirectoryw
+    /// Creates a directory, taking a UTF-16 path.
+    ///
+    /// @param pathName the directory path, as a null-terminated string
+    /// @param securityAttributes a security descriptor, or null for the default
+    /// @returns non-zero on success
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createdirectoryw
     func CreateDirectoryW(pathName: *char16, securityAttributes: *var opaque) -> int32;
 
-    // Removes an empty directory, taking a UTF-16 path
-    // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-removedirectoryw
+    /// Removes an empty directory, taking a UTF-16 path.
+    ///
+    /// @param pathName the directory path, as a null-terminated string
+    /// @returns non-zero on success
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-removedirectoryw
     func RemoveDirectoryW(pathName: *char16) -> int32;
 
-    // Reads a file's attributes, taking a UTF-16 path
-    //
-    // Returns 0xFFFFFFFF on failure, which is INVALID_FILE_ATTRIBUTES and not an attribute value.
-    // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfileattributesw
+    /// Reads a file's attributes, taking a UTF-16 path.
+    ///
+    /// Returns 0xFFFFFFFF on failure, which is INVALID_FILE_ATTRIBUTES and not an attribute value.
+    ///
+    /// @param fileName the path, as a null-terminated string
+    /// @returns the attribute bits, or `INVALID_FILE_ATTRIBUTES`
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfileattributesw
     pub func GetFileAttributesW(fileName: *char16) -> uint32;
 
-    // Sets a file's attributes, taking a UTF-16 path
-    // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-setfileattributesw
+    /// Sets a file's attributes, taking a UTF-16 path.
+    ///
+    /// @param fileName the path, as a null-terminated string
+    /// @param fileAttributes the attribute bits to set
+    /// @returns non-zero on success
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-setfileattributesw
     func SetFileAttributesW(fileName: *char16, fileAttributes: uint32) -> int32;
 
-    // Reads the current directory into a UTF-16 buffer
-    //
-    // Returns the length written, or the length required when the buffer is too small — a return larger than the
-    // buffer is not a failure but a request to call again.
-    // https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-getcurrentdirectory
+    /// Reads the current directory into a UTF-16 buffer.
+    ///
+    /// Returns the length written, or the length required when the buffer is too small — a return larger than the
+    /// buffer is not a failure but a request to call again.
+    ///
+    /// @param bufferLength how many units `buffer` holds
+    /// @param buffer the bytes
+    /// @returns the length written, the length needed when the buffer is too small, or zero on failure
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-getcurrentdirectory
     func GetCurrentDirectoryW(bufferLength: uint32, buffer: *var char16) -> uint32;
 
-    // Sets the current directory, taking a UTF-16 path
-    // https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-setcurrentdirectory
+    /// Sets the current directory, taking a UTF-16 path.
+    ///
+    /// @param pathName the directory path, as a null-terminated string
+    /// @returns non-zero on success
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-setcurrentdirectory
     func SetCurrentDirectoryW(pathName: *char16) -> int32;
 
-    // Flushes a file handle's writes to the device
-    //
-    // Returns zero on failure. This is what makes a write durable; FILE_FLAG_WRITE_THROUGH is the alternative that
-    // does it on every write instead.
-    // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-flushfilebuffers
+    /// Flushes a file handle's writes to the device.
+    ///
+    /// Returns zero on failure. This is what makes a write durable; FILE_FLAG_WRITE_THROUGH is the alternative that
+    /// does it on every write instead.
+    ///
+    /// @param file an open file handle
+    /// @returns non-zero on success
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-flushfilebuffers
     func FlushFileBuffers(file: *var opaque) -> int32;
 
-    // Sets the size of a file to the handle's current position
-    // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-setendoffile
+    /// Sets the size of a file to the handle's current position.
+    ///
+    /// @param file an open file handle
+    /// @returns non-zero on success
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-setendoffile
     func SetEndOfFile(file: *var opaque) -> int32;
 
-    // Writes UTF-16 to a console screen buffer
-    // https://learn.microsoft.com/en-us/windows/console/writeconsole
+    /// Writes UTF-16 to a console screen buffer.
+    ///
+    /// @param consoleOutput a console output handle
+    /// @param buffer the bytes
+    /// @param numberOfCharsToWrite how many units to write
+    /// @param numberOfCharsWritten receives how many were written
+    /// @param reserved reserved; pass null
+    /// @returns non-zero on success, and zero on failure with the reason in `GetLastError`
+    /// @see https://learn.microsoft.com/en-us/windows/console/writeconsole
     pub func WriteConsoleW(consoleOutput: *var opaque, buffer: *opaque, numberOfCharsToWrite: uint32,
                        numberOfCharsWritten: *var uint32, reserved: *var opaque) -> int32;
 
-    // Reads UTF-16 from a console input buffer
-    // https://learn.microsoft.com/en-us/windows/console/readconsole
+    /// Reads UTF-16 from a console input buffer.
+    ///
+    /// @param consoleInput a console input handle
+    /// @param buffer the bytes
+    /// @param numberOfCharsToRead how many units to ask for
+    /// @param numberOfCharsRead receives how many were read
+    /// @param inputControl an input-control record, or null
+    /// @returns non-zero on success
+    /// @see https://learn.microsoft.com/en-us/windows/console/readconsole
     pub func ReadConsoleW(consoleInput: *var opaque, buffer: *var opaque, numberOfCharsToRead: uint32,
                       numberOfCharsRead: *var uint32, inputControl: *var opaque) -> int32;
 }

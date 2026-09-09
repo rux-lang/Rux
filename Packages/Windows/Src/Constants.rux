@@ -7,146 +7,287 @@
 // https://learn.microsoft.com/en-us/windows/win32/Intl/code-page-identifiers
 /// The `CodePage` values exposed by this package.
 ///
-/// https://rux-lang.dev/docs/api/windows/code-page
+/// @see https://rux-lang.dev/docs/api/windows/code-page
 pub enum CodePage: uint32 {
+    /// `37`: EBCDIC US and Canada.
     IbmEbcdicUsCanada = 37,
+    /// `437`: The original IBM PC character set, US English.
     OemUnitedStates = 437,
+    /// `500`: EBCDIC international, Latin-1 repertoire.
     IbmEbcdicInternational = 500,
+    /// `708`: Arabic, ASMO 708.
     OemArabic = 708,
+    /// `720`: Arabic, DOS transparent ASMO.
     OemArabicAsmo720 = 720,
+    /// `737`: Greek, DOS 437G.
     OemGreek = 737,
+    /// `775`: Baltic, DOS.
     OemBaltic = 775,
+    /// `850`: Western European, DOS multilingual Latin-1.
     OemWesternEuropean = 850,
+    /// `852`: Central European, DOS Slavic Latin-2.
     OemCentralEuropean = 852,
+    /// `855`: Cyrillic, DOS; not the Russian page, which is 866.
     OemCyrillicRussian = 855,
+    /// `857`: Turkish, DOS.
     OemTurkish = 857,
+    /// `858`: Western European DOS multilingual with the euro sign in place of the dotless i.
     OemWesternEuropeanEuro = 858,
+    /// `860`: Portuguese, DOS.
     OemPortuguese = 860,
+    /// `861`: Icelandic, DOS.
     OemIcelandic = 861,
+    /// `862`: Hebrew, DOS.
     OemHebrew = 862,
+    /// `863`: French Canadian, DOS.
     OemFrenchCanadian = 863,
+    /// `864`: Arabic, DOS.
     OemArabic864 = 864,
+    /// `865`: Nordic, DOS.
     OemNordic = 865,
+    /// `866`: Cyrillic Russian, DOS; the page Russian MS-DOS actually used.
     OemCyrillicDos = 866,
+    /// `869`: Modern Greek, DOS.
     OemModernGreek = 869,
+    /// `870`: EBCDIC multilingual, Latin-2 repertoire.
     IbmEbcdicMultilingualLatin2 = 870,
+    /// `874`: Thai, Windows.
     Windows874 = 874,
+    /// `875`: EBCDIC modern Greek.
     IbmEbcdicGreekModern = 875,
+    /// `932`: Japanese, Shift-JIS.
     ShiftJis = 932,
+    /// `936`: Simplified Chinese, GBK; a superset of GB2312 despite the name.
     Gb2312 = 936,
+    /// `949`: Korean, Unified Hangul Code; a superset of KS C 5601.
     KsC5601 = 949,
+    /// `950`: Traditional Chinese, Big5.
     Big5 = 950,
+    /// `1047`: EBCDIC Latin-1 open systems.
     IbmEbcdicLatinOpen = 1047,
+    /// `1140`: EBCDIC US and Canada with the euro sign.
     IbmEbcdicUsCanadaEuro = 1140,
+    /// `1141`: EBCDIC Germany with the euro sign.
     IbmEbcdicGermanyEuro = 1141,
+    /// `1142`: EBCDIC Denmark and Norway with the euro sign.
     IbmEbcdicDenmarkNorwayEuro = 1142,
+    /// `1143`: EBCDIC Finland and Sweden with the euro sign.
     IbmEbcdicFinlandSwedenEuro = 1143,
+    /// `1144`: EBCDIC Italy with the euro sign.
     IbmEbcdicItalyEuro = 1144,
+    /// `1145`: EBCDIC Latin America and Spain with the euro sign.
     IbmEbcdicSpainEuro = 1145,
+    /// `1146`: EBCDIC United Kingdom with the euro sign.
     IbmEbcdicUkEuro = 1146,
+    /// `1147`: EBCDIC France with the euro sign.
     IbmEbcdicFranceEuro = 1147,
+    /// `1148`: EBCDIC international with the euro sign.
     IbmEbcdicInternationalEuro = 1148,
+    /// `1149`: EBCDIC Icelandic with the euro sign.
     IbmEbcdicIcelandicEuro = 1149,
+    /// `1200`: UTF-16, little-endian. An identifier only: the conversion calls refuse it, since their output is already
+    /// UTF-16.
     Utf16Le = 1200,
+    /// `1201`: UTF-16, big-endian. An identifier only, refused by the conversion calls for the same reason as 1200.
     Utf16Be = 1201,
+    /// `1250`: Central European, Windows.
     Windows1250 = 1250,
+    /// `1251`: Cyrillic, Windows.
     Windows1251 = 1251,
+    /// `1252`: Western European, Windows; the page Latin-1 text is usually mislabelled as.
     Windows1252 = 1252,
+    /// `1253`: Greek, Windows.
     Windows1253 = 1253,
+    /// `1254`: Turkish, Windows.
     Windows1254 = 1254,
+    /// `1255`: Hebrew, Windows.
     Windows1255 = 1255,
+    /// `1256`: Arabic, Windows.
     Windows1256 = 1256,
+    /// `1257`: Baltic, Windows.
     Windows1257 = 1257,
+    /// `1258`: Vietnamese, Windows.
     Windows1258 = 1258,
+    /// `1361`: Korean, Johab.
     Johab = 1361,
+    /// `10000`: Western European, Macintosh Roman.
     MacRoman = 10000,
+    /// `10001`: Japanese, Macintosh.
     MacJapanese = 10001,
+    /// `10002`: Traditional Chinese, Macintosh.
     MacChineseTraditional = 10002,
+    /// `10003`: Korean, Macintosh.
     MacKorean = 10003,
+    /// `10004`: Arabic, Macintosh.
     MacArabic = 10004,
+    /// `10005`: Hebrew, Macintosh.
     MacHebrew = 10005,
+    /// `10006`: Greek, Macintosh.
     MacGreek = 10006,
+    /// `10007`: Cyrillic, Macintosh.
     MacCyrillic = 10007,
+    /// `10008`: Simplified Chinese, Macintosh.
     MacChineseSimplified = 10008,
+    /// `10010`: Romanian, Macintosh.
     MacRomanian = 10010,
+    /// `10017`: Ukrainian, Macintosh.
     MacUkrainian = 10017,
+    /// `10021`: Thai, Macintosh.
     MacThai = 10021,
+    /// `10029`: Central European, Macintosh Latin-2.
     MacCentralEuropean = 10029,
+    /// `10079`: Icelandic, Macintosh.
     MacIcelandic = 10079,
+    /// `10081`: Turkish, Macintosh.
     MacTurkish = 10081,
+    /// `10082`: Croatian, Macintosh.
     MacCroatian = 10082,
+    /// `12000`: UTF-32, little-endian. An identifier only; the conversion calls do not accept it.
     Utf32Le = 12000,
+    /// `12001`: UTF-32, big-endian. An identifier only; the conversion calls do not accept it.
     Utf32Be = 12001,
+    /// `20000`: Traditional Chinese, CNS 11643.
     CnsTraditionalChinese = 20000,
+    /// `20001`: Traditional Chinese, TCA Taiwan.
     TcaTaiwan = 20001,
+    /// `20002`: Traditional Chinese, Eten.
     EtenTraditionalChinese = 20002,
+    /// `20003`: Traditional Chinese, IBM 5550 Taiwan.
     Ibm5550Taiwan = 20003,
+    /// `20004`: Traditional Chinese, TeleText Taiwan.
     TeleTextTaiwan = 20004,
+    /// `20005`: Traditional Chinese, Wang Taiwan.
     WangTaiwan = 20005,
+    /// `20105`: IA5, the seven-bit international reference version.
     Ia5 = 20105,
+    /// `20106`: IA5, German national variant.
     Ia5German = 20106,
+    /// `20107`: IA5, Swedish national variant.
     Ia5Swedish = 20107,
+    /// `20108`: IA5, Norwegian national variant.
     Ia5Norwegian = 20108,
+    /// `20127`: US-ASCII, seven bits.
     UsAscii = 20127,
+    /// `20261`: T.61, the teletex character set.
     T61 = 20261,
+    /// `20269`: ISO 6937, the non-spacing accent set.
     Iso6937 = 20269,
+    /// `20273`: EBCDIC Germany.
     IbmEbcdicGermany = 20273,
+    /// `20277`: EBCDIC Denmark and Norway.
     IbmEbcdicDenmarkNorway = 20277,
+    /// `20278`: EBCDIC Finland and Sweden.
     IbmEbcdicFinlandSweden = 20278,
+    /// `20280`: EBCDIC Italy.
     IbmEbcdicItaly = 20280,
+    /// `20284`: EBCDIC Latin America and Spain.
     IbmEbcdicLatinAmericaSpain = 20284,
+    /// `20285`: EBCDIC United Kingdom.
     IbmEbcdicUnitedKingdom = 20285,
+    /// `20290`: EBCDIC Japanese katakana extended.
     IbmEbcdicJapaneseKatakana = 20290,
+    /// `20297`: EBCDIC France.
     IbmEbcdicFrance = 20297,
+    /// `20420`: EBCDIC Arabic.
     IbmEbcdicArabic = 20420,
+    /// `20423`: EBCDIC Greek.
     IbmEbcdicGreek = 20423,
+    /// `20424`: EBCDIC Hebrew.
     IbmEbcdicHebrew = 20424,
+    /// `20833`: EBCDIC Korean extended.
     IbmEbcdicKoreanExtended = 20833,
+    /// `20838`: EBCDIC Thai.
     IbmEbcdicThai = 20838,
+    /// `20866`: Cyrillic, KOI8-R; the Russian one.
     Koi8R = 20866,
+    /// `20871`: EBCDIC Icelandic.
     IbmEbcdicIcelandic = 20871,
+    /// `20880`: EBCDIC Cyrillic Russian.
     IbmEbcdicCyrillicRussian = 20880,
+    /// `20905`: EBCDIC Turkish.
     IbmEbcdicTurkish = 20905,
+    /// `20924`: EBCDIC Latin-1 open systems with the euro sign.
     IbmEbcdicLatinOpenEuro = 20924,
+    /// `20932`: Japanese, JIS X 0208-1990 and JIS X 0212-1990.
     EucJpJis = 20932,
+    /// `20936`: Simplified Chinese, GB2312 proper rather than the GBK superset at 936.
     SimplifiedChineseGb2312 = 20936,
+    /// `20949`: Korean, Wansung.
     KoreanWansung = 20949,
+    /// `21025`: EBCDIC Cyrillic Serbian and Bulgarian.
     IbmEbcdicCyrillicSerbianBulgarian = 21025,
+    /// `21866`: Cyrillic, KOI8-U; the Ukrainian one.
     Koi8U = 21866,
+    /// `28591`: ISO 8859-1, Latin-1. Not the same as 1252, which fills the C1 range with printable characters.
     Iso8859Part1 = 28591,
+    /// `28592`: ISO 8859-2, Central European.
     Iso8859Part2 = 28592,
+    /// `28593`: ISO 8859-3, Latin-3.
     Iso8859Part3 = 28593,
+    /// `28594`: ISO 8859-4, Baltic.
     Iso8859Part4 = 28594,
+    /// `28595`: ISO 8859-5, Cyrillic.
     Iso8859Part5 = 28595,
+    /// `28596`: ISO 8859-6, Arabic.
     Iso8859Part6 = 28596,
+    /// `28597`: ISO 8859-7, Greek.
     Iso8859Part7 = 28597,
+    /// `28598`: ISO 8859-8, Hebrew in visual order.
     Iso8859Part8 = 28598,
+    /// `28599`: ISO 8859-9, Turkish Latin-5.
     Iso8859Part9 = 28599,
+    /// `28603`: ISO 8859-13, Estonian.
     Iso8859Part13 = 28603,
+    /// `28605`: ISO 8859-15, Latin-9.
     Iso8859Part15 = 28605,
+    /// `29001`: Europa 3.
     Europa3 = 29001,
+    /// `38598`: ISO 8859-8, Hebrew in logical order.
     Iso8859Part8Logical = 38598,
+    /// `50220`: ISO 2022 Japanese, no halfwidth katakana.
     Iso2022Jp = 50220,
+    /// `50221`: ISO 2022 Japanese, with halfwidth katakana.
     Iso2022JpKana = 50221,
+    /// `50222`: ISO 2022 Japanese, halfwidth katakana reached through shift-out and shift-in.
     Iso2022JpKanaSoSi = 50222,
+    /// `50225`: ISO 2022 Korean.
     Iso2022Kr = 50225,
+    /// `50227`: ISO 2022 simplified Chinese.
     Iso2022SimplifiedChinese = 50227,
+    /// `51932`: EUC-JP.
     EucJp = 51932,
+    /// `51936`: EUC-CN, simplified Chinese.
     EucCn = 51936,
+    /// `51949`: EUC-KR, Korean.
     EucKr = 51949,
+    /// `52936`: HZ-GB2312, simplified Chinese.
     HzGb2312 = 52936,
+    /// `54936`: GB18030, which covers every Unicode scalar value.
     Gb18030 = 54936,
+    /// `57002`: ISCII Devanagari.
     IsciiDevanagari = 57002,
+    /// `57003`: ISCII Bangla.
     IsciiBangla = 57003,
+    /// `57004`: ISCII Tamil.
     IsciiTamil = 57004,
+    /// `57005`: ISCII Telugu.
     IsciiTelugu = 57005,
+    /// `57006`: ISCII Assamese.
     IsciiAssamese = 57006,
+    /// `57007`: ISCII Odia.
     IsciiOdia = 57007,
+    /// `57008`: ISCII Kannada.
     IsciiKannada = 57008,
+    /// `57009`: ISCII Malayalam.
     IsciiMalayalam = 57009,
+    /// `57010`: ISCII Gujarati.
     IsciiGujarati = 57010,
+    /// `57011`: ISCII Punjabi.
     IsciiPunjabi = 57011,
+    /// `65000`: UTF-7. Deprecated and unsafe to accept from anywhere untrusted: one character has more than one
+    /// encoding, so a filter that inspects the bytes can be walked past.
     Utf7 = 65000,
+    /// `65001`: UTF-8. The one to use for anything new.
     Utf8 = 65001
 }
 
@@ -154,11 +295,18 @@ pub enum CodePage: uint32 {
 // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilea
 /// The `CreationDisposition` values exposed by this package.
 ///
-/// https://rux-lang.dev/docs/api/windows/creation-disposition
+/// @see https://rux-lang.dev/docs/api/windows/creation-disposition
 pub enum CreationDisposition: uint32 {
+    /// Create the file, and fail with `ERROR_FILE_EXISTS` if the name is taken.
     CreateNew = 1,
+    /// Create the file, truncating whatever is there. Succeeds either way, and reports `ERROR_ALREADY_EXISTS` through
+    /// `GetLastError` when it truncated rather than created.
     CreateAlways = 2,
+    /// Open the file, and fail with `ERROR_FILE_NOT_FOUND` if it is not there.
     OpenExisting = 3,
+    /// Open the file, creating it if it is not there. Reports `ERROR_ALREADY_EXISTS` when it opened rather than
+    /// created.
     OpenAlways = 4,
+    /// Open the file and truncate it, failing if it is not there. Needs write access.
     TruncateExisting = 5
 }

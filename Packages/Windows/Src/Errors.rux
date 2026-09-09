@@ -13,19 +13,19 @@
 
 /// `ERROR_SUCCESS`: the operation succeeded, which is the value `GetLastError` reports when nothing has failed.
 ///
-/// https://rux-lang.dev/docs/api/windows/error-success
+/// @see https://rux-lang.dev/docs/api/windows/error-success
 #Allow("naming.const")
 pub const ERROR_SUCCESS: uint32 = 0;
 
 /// `ERROR_FILE_NOT_FOUND`: the named file does not exist.
 ///
-/// https://rux-lang.dev/docs/api/windows/error-file-not-found
+/// @see https://rux-lang.dev/docs/api/windows/error-file-not-found
 #Allow("naming.const")
 pub const ERROR_FILE_NOT_FOUND: uint32 = 2;
 
 /// `ERROR_PATH_NOT_FOUND`: a directory along the path does not exist.
 ///
-/// https://rux-lang.dev/docs/api/windows/error-path-not-found
+/// @see https://rux-lang.dev/docs/api/windows/error-path-not-found
 #Allow("naming.const")
 pub const ERROR_PATH_NOT_FOUND: uint32 = 3;
 
@@ -33,13 +33,13 @@ pub const ERROR_PATH_NOT_FOUND: uint32 = 3;
 ///
 /// Also what a sharing violation looks like when the file is already open without the matching share mode.
 ///
-/// https://rux-lang.dev/docs/api/windows/error-access-denied
+/// @see https://rux-lang.dev/docs/api/windows/error-access-denied
 #Allow("naming.const")
 pub const ERROR_ACCESS_DENIED: uint32 = 5;
 
 /// `ERROR_INVALID_HANDLE`: the handle is not one this operation can use.
 ///
-/// https://rux-lang.dev/docs/api/windows/error-invalid-handle
+/// @see https://rux-lang.dev/docs/api/windows/error-invalid-handle
 #Allow("naming.const")
 pub const ERROR_INVALID_HANDLE: uint32 = 6;
 
@@ -48,37 +48,37 @@ pub const ERROR_INVALID_HANDLE: uint32 = 6;
 /// Distinct from `ERROR_OUTOFMEMORY`, and which of the two a call reports is the call's own business, so a caller
 /// checking for exhaustion has to accept either.
 ///
-/// https://rux-lang.dev/docs/api/windows/error-not-enough-memory
+/// @see https://rux-lang.dev/docs/api/windows/error-not-enough-memory
 #Allow("naming.const")
 pub const ERROR_NOT_ENOUGH_MEMORY: uint32 = 8;
 
 /// `ERROR_OUTOFMEMORY`: not enough storage to complete the operation.
 ///
-/// https://rux-lang.dev/docs/api/windows/error-out-of-memory
+/// @see https://rux-lang.dev/docs/api/windows/error-out-of-memory
 #Allow("naming.const")
 pub const ERROR_OUTOFMEMORY: uint32 = 14;
 
 /// `ERROR_NOT_SUPPORTED`: the operation is not supported on this object or this system.
 ///
-/// https://rux-lang.dev/docs/api/windows/error-not-supported
+/// @see https://rux-lang.dev/docs/api/windows/error-not-supported
 #Allow("naming.const")
 pub const ERROR_NOT_SUPPORTED: uint32 = 50;
 
 /// `ERROR_FILE_EXISTS`: the file already exists, and the call was told not to replace it.
 ///
-/// https://rux-lang.dev/docs/api/windows/error-file-exists
+/// @see https://rux-lang.dev/docs/api/windows/error-file-exists
 #Allow("naming.const")
 pub const ERROR_FILE_EXISTS: uint32 = 80;
 
 /// `ERROR_INVALID_PARAMETER`: an argument is not valid.
 ///
-/// https://rux-lang.dev/docs/api/windows/error-invalid-parameter
+/// @see https://rux-lang.dev/docs/api/windows/error-invalid-parameter
 #Allow("naming.const")
 pub const ERROR_INVALID_PARAMETER: uint32 = 87;
 
 /// `ERROR_DISK_FULL`: the volume has no room left.
 ///
-/// https://rux-lang.dev/docs/api/windows/error-disk-full
+/// @see https://rux-lang.dev/docs/api/windows/error-disk-full
 #Allow("naming.const")
 pub const ERROR_DISK_FULL: uint32 = 112;
 
@@ -87,7 +87,7 @@ pub const ERROR_DISK_FULL: uint32 = 112;
 /// What refuses `CreateSymbolicLinkW` on a machine without Developer Mode, where creating a symbolic link needs
 /// `SeCreateSymbolicLinkPrivilege` — a restriction no other supported system places on the same operation.
 ///
-/// https://rux-lang.dev/docs/api/windows/error-privilege-not-held
+/// @see https://rux-lang.dev/docs/api/windows/error-privilege-not-held
 #Allow("naming.const")
 pub const ERROR_PRIVILEGE_NOT_HELD: uint32 = 1314;
 
@@ -96,7 +96,7 @@ pub const ERROR_PRIVILEGE_NOT_HELD: uint32 = 1314;
 /// Reported by `FindNextFileW` at the end of an enumeration, where nothing has gone wrong at all — the caller
 /// distinguishes it from a real failure by this code.
 ///
-/// https://rux-lang.dev/docs/api/windows/error-no-more-files
+/// @see https://rux-lang.dev/docs/api/windows/error-no-more-files
 #Allow("naming.const")
 pub const ERROR_NO_MORE_FILES: uint32 = 18;
 
@@ -105,13 +105,13 @@ pub const ERROR_NO_MORE_FILES: uint32 = 18;
 /// Reported by `CreateDirectoryW` where `ERROR_FILE_EXISTS` is reported by the file calls, which is why a caller
 /// asking "was it already there" has to accept both.
 ///
-/// https://rux-lang.dev/docs/api/windows/error-already-exists
+/// @see https://rux-lang.dev/docs/api/windows/error-already-exists
 #Allow("naming.const")
 pub const ERROR_ALREADY_EXISTS: uint32 = 183;
 
 /// `ERROR_INVALID_ADDRESS`: the address is not one the operation can use.
 ///
-/// https://rux-lang.dev/docs/api/windows/error-invalid-address
+/// @see https://rux-lang.dev/docs/api/windows/error-invalid-address
 #Allow("naming.const")
 pub const ERROR_INVALID_ADDRESS: uint32 = 487;
 
@@ -119,6 +119,6 @@ pub const ERROR_INVALID_ADDRESS: uint32 = 487;
 ///
 /// What a large commit fails with when the page file cannot grow, as distinct from running out of address space.
 ///
-/// https://rux-lang.dev/docs/api/windows/error-commitment-limit
+/// @see https://rux-lang.dev/docs/api/windows/error-commitment-limit
 #Allow("naming.const")
 pub const ERROR_COMMITMENT_LIMIT: uint32 = 1455;

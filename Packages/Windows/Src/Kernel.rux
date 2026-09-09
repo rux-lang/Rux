@@ -6,32 +6,59 @@
 
 #Link("Kernel32.dll")
 pub extern {
-    // Allocates a new console for the calling process
-    // https://learn.microsoft.com/en-us/windows/console/allocconsole
+    /// Allocates a new console for the calling process.
+    ///
+    /// @returns non-zero on success, and zero on failure with the reason in `GetLastError`
+    /// @see https://learn.microsoft.com/en-us/windows/console/allocconsole
     func AllocConsole() -> bool32;
 
-    // Generates simple tones on the speaker
-    // https://learn.microsoft.com/en-us/windows/win32/api/utilapiset/nf-utilapiset-beep
+    /// Generates simple tones on the speaker.
+    ///
+    /// @param freq the tone's frequency in hertz
+    /// @param duration how long to sound it, in milliseconds
+    /// @returns non-zero on success, and zero on failure with the reason in `GetLastError`
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/utilapiset/nf-utilapiset-beep
     func Beep(freq: uint32, duration: uint32) -> bool32;
 
-    // Closes an open object handle.
-    // https://learn.microsoft.com/en-us/windows/win32/api/handleapi/nf-handleapi-closehandle
+    /// Closes an open object handle.
+    ///
+    /// @param handle the handle to act on
+    /// @returns non-zero on success, and zero on failure with the reason in `GetLastError`
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/handleapi/nf-handleapi-closehandle
     func CloseHandle(handle: *opaque) -> bool32;
 
-    // Copies an existing file to a new file.
-    // https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-copyfilea
+    /// Copies an existing file to a new file.
+    ///
+    /// @param existingFileName the path that exists now
+    /// @param newFileName the path it should have afterwards
+    /// @param failIfExists non-zero to refuse rather than overwrite
+    /// @returns non-zero on success, and zero on failure with the reason in `GetLastError`
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-copyfilea
     func CopyFileA(
         existingFileName: *char8,
         newFileName: *char8,
         failIfExists: bool32
     ) -> bool32;
 
-    // Creates a new directory.
-    // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createdirectorya
+    /// Creates a new directory.
+    ///
+    /// @param pathName the directory path, as a null-terminated string
+    /// @param securityAttributes a security descriptor, or null for the default
+    /// @returns non-zero on success, and zero on failure with the reason in `GetLastError`
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createdirectorya
     func CreateDirectoryA(pathName: *char8, securityAttributes: *opaque) -> bool32;
 
-    // Creates or opens a file or I/O device.
-    // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilea
+    /// Creates or opens a file or I/O device.
+    ///
+    /// @param fileName the path, as a null-terminated string
+    /// @param desiredAccess the access rights wanted, such as `GENERIC_READ`
+    /// @param shareMode what other openers may do meanwhile; zero denies them everything
+    /// @param securityAttributes a security descriptor, or null for the default
+    /// @param creationDisposition one of the `CreationDisposition` values
+    /// @param flagsAndAttributes the file attributes and flags
+    /// @param templateFile a template whose attributes to copy, or null
+    /// @returns the new handle, or `InvalidHandleValue` — which is not null
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilea
     func CreateFileA(
         fileName: *char8,
         desiredAccess: uint32,
@@ -42,8 +69,17 @@ pub extern {
         templateFile: *opaque
     ) -> *opaque;
 
-    // Creates or opens a file or I/O device.
-    // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilew
+    /// Creates or opens a file or I/O device.
+    ///
+    /// @param fileName the path, as a null-terminated string
+    /// @param desiredAccess the access rights wanted, such as `GENERIC_READ`
+    /// @param shareMode what other openers may do meanwhile; zero denies them everything
+    /// @param securityAttributes a security descriptor, or null for the default
+    /// @param creationDisposition one of the `CreationDisposition` values
+    /// @param flagsAndAttributes the file attributes and flags
+    /// @param templateFile a template whose attributes to copy, or null
+    /// @returns the new handle, or `InvalidHandleValue` — which is not null
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilew
     func CreateFileW(
         fileName: *char16,
         desiredAccess: uint32,
@@ -54,122 +90,210 @@ pub extern {
         templateFile: *opaque
     ) -> *opaque;
 
-    // Deletes an existing file.
-    // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-deletefilea
+    /// Deletes an existing file.
+    ///
+    /// @param fileName the path, as a null-terminated string
+    /// @returns non-zero on success, and zero on failure with the reason in `GetLastError`
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-deletefilea
     func DeleteFileA(fileName: *char8) -> bool32;
 
-    // Ends the calling process and all its threads
-    // https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-exitprocess
+    /// Ends the calling process and all its threads.
+    ///
+    /// @param exitCode the status to report
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-exitprocess
     func ExitProcess(exitCode: uint32);
 
-    // Closes a file search handle opened by the FindFirstFile, FindFirstFileEx, FindFirstFileNameW,
-    // FindFirstFileNameTransactedW, FindFirstFileTransacted, FindFirstStreamTransactedW, or FindFirstStreamW
-    // functions.
-    // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-findclose
+    /// Closes a file search handle opened by the FindFirstFile, FindFirstFileEx, FindFirstFileNameW,.
+    /// FindFirstFileNameTransactedW, FindFirstFileTransacted, FindFirstStreamTransactedW, or FindFirstStreamW
+    /// functions.
+    ///
+    /// @param findFile a search handle from the matching `FindFirstFile`
+    /// @returns non-zero on success, and zero on failure with the reason in `GetLastError`
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-findclose
     func FindClose(findFile: *opaque) -> bool32;
 
-    // Searches a directory for a file or subdirectory with a name that matches a specific name (or partial name
-    // if wildcards are used).
-    // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-findfirstfilea
+    /// Searches a directory for a file or subdirectory with a name that matches a specific name (or partial name.
+    /// if wildcards are used).
+    ///
+    /// @param fileName the path, as a null-terminated string
+    /// @param findFileData receives the entry's record
+    /// @returns a search handle, or `InvalidHandleValue`
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-findfirstfilea
     func FindFirstFileA(
         fileName: *char8,
         findFileData: *Win32FindDataA
     ) -> *opaque;
 
-    // Continues a file search from a previous call to the FindFirstFile, FindFirstFileEx, or
-    // FindFirstFileTransacted functions.
-    // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-findnextfilea
+    /// Continues a file search from a previous call to the FindFirstFile, FindFirstFileEx, or.
+    /// FindFirstFileTransacted functions.
+    ///
+    /// @param findFile a search handle from the matching `FindFirstFile`
+    /// @param findFileData receives the entry's record
+    /// @returns non-zero on success, and zero on failure with the reason in `GetLastError`
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-findnextfilea
     func FindNextFileA(
         findFile: *opaque,
         findFileData: *Win32FindDataA
     ) -> bool32;
 
-    // Frees the loaded dynamic-link library (DLL) module and, if necessary, decrements its reference count.
-    // When the reference count reaches zero, the module is unloaded from the address space of the calling process
-    // and the handle is no longer valid
-    // https://learn.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-freelibrary
+    /// Frees the loaded dynamic-link library (DLL) module and, if necessary, decrements its reference count.
+    /// When the reference count reaches zero, the module is unloaded from the address space of the calling process
+    /// and the handle is no longer valid
+    ///
+    /// @param libModule a module handle from `LoadLibraryA`
+    /// @returns non-zero on success, and zero on failure with the reason in `GetLastError`
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-freelibrary
     pub func FreeLibrary(libModule: *opaque) -> bool32;
 
-    // Retrieves the current input or output mode of a console screen buffer
-    // https://learn.microsoft.com/en-us/windows/console/getconsolemode
+    /// Retrieves the current input or output mode of a console screen buffer.
+    ///
+    /// @param consoleHandle a console handle
+    /// @param mode receives the console mode bits
+    /// @returns non-zero on success, and zero on failure with the reason in `GetLastError`
+    /// @see https://learn.microsoft.com/en-us/windows/console/getconsolemode
     func GetConsoleMode(consoleHandle: *opaque, mode: *uint32) -> bool32;
 
-    // Retrieves the current directory
-    // https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-getcurrentdirectory
+    /// Retrieves the current directory.
+    ///
+    /// @param bufferLength how many units `buffer` holds
+    /// @param buffer the bytes
+    /// @returns the length written, the length needed when the buffer is too small, or zero on failure
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-getcurrentdirectory
     func GetCurrentDirectoryA(bufferLength: uint32, buffer: *char8) -> uint32;
 
-    // Retrieves the process identifier of the calling process
-    // https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-getcurrentprocessid
+    /// Retrieves the process identifier of the calling process.
+    ///
+    /// @returns the calling process's identifier
+    /// @see https://learn.microsoft.com/windows/win32/api/processthreadsapi/nf-processthreadsapi-getcurrentprocessid
     func GetCurrentProcessId() -> uint32;
 
-    // Retrieves the thread identifier of the calling thread
-    // https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-getcurrentthreadid
+    /// Retrieves the thread identifier of the calling thread.
+    ///
+    /// @returns the calling thread's identifier
+    /// @see https://learn.microsoft.com/windows/win32/api/processthreadsapi/nf-processthreadsapi-getcurrentthreadid
     func GetCurrentThreadId() -> uint32;
 
-    // Retrieves file attributes
-    // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfileattributesa
+    /// Retrieves file attributes.
+    ///
+    /// @param fileName the path, as a null-terminated string
+    /// @returns the attribute bits, or `INVALID_FILE_ATTRIBUTES`
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfileattributesa
     func GetFileAttributesA(fileName: *char8) -> uint32;
 
-    // Retrieves the size of the specified file.
-    // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfilesizeex
+    /// Retrieves the size of the specified file.
+    ///
+    /// @param file an open file handle
+    /// @param size a size in bytes
+    /// @returns non-zero on success, and zero on failure with the reason in `GetLastError`
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfilesizeex
     func GetFileSizeEx(file: *opaque, size: *int64) -> bool32;
 
-    // Reads what the system reports about the machine, including its page size
-    //
-    // Cannot fail and reports nothing: the structure is always filled.
-    // https://learn.microsoft.com/en-us/windows/win32/api/sysinfoapi/nf-sysinfoapi-getsysteminfo
+    /// Reads what the system reports about the machine, including its page size.
+    ///
+    /// Cannot fail and reports nothing: the structure is always filled.
+    ///
+    /// @param info receives the system information
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/sysinfoapi/nf-sysinfoapi-getsysteminfo
     func GetSystemInfo(info: *var SystemInfo);
 
-    // Retrieves the calling thread's last-error code value
-    // https://learn.microsoft.com/en-us/windows/win32/api/errhandlingapi/nf-errhandlingapi-getlasterror
+    /// Retrieves the calling thread's last-error code value.
+    ///
+    /// @returns the calling thread's last error code, which only a documented failure sets
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/errhandlingapi/nf-errhandlingapi-getlasterror
     func GetLastError() -> uint32;
 
-    // Retrieves the current local date and time.
-    // https://learn.microsoft.com/en-us/windows/win32/api/sysinfoapi/nf-sysinfoapi-getlocaltime
+    /// Retrieves the current local date and time.
+    ///
+    /// @param time receives the reading
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/sysinfoapi/nf-sysinfoapi-getlocaltime
     func GetLocalTime(time: *SystemTime);
 
-    // Retrieves the address of an exported symbol.
-    // https://learn.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-getprocaddress
+    /// Retrieves the address of an exported symbol.
+    ///
+    /// @param libModule a module handle from `LoadLibraryA`
+    /// @param procName the exported symbol's name
+    /// @returns the symbol's address, or null
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-getprocaddress
     pub func GetProcAddress(libModule: *opaque, procName: *char8) -> *opaque;
 
-    // Retrieves a handle to the default heap of the calling process
-    // https://learn.microsoft.com/en-us/windows/win32/api/heapapi/nf-heapapi-getprocessheap
+    /// Retrieves a handle to the default heap of the calling process.
+    ///
+    /// @returns the process heap's handle, which is never released
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/heapapi/nf-heapapi-getprocessheap
     func GetProcessHeap() -> *opaque;
 
-    // Retrieves a handle to the specified standard device (standard input, standard output, or standard error)
-    // https://learn.microsoft.com/en-us/windows/console/getstdhandle
+    /// Retrieves a handle to the specified standard device (standard input, standard output, or standard error).
+    ///
+    /// @param stdHandle one of `StdInputHandle`, `StdOutputHandle` or `StdErrorHandle`
+    /// @returns the standard handle, or `InvalidHandleValue`
+    /// @see https://learn.microsoft.com/en-us/windows/console/getstdhandle
     func GetStdHandle(stdHandle: uint32) -> *opaque;
 
-    // Retrieves the current system date and time in Coordinated Universal Time (UTC) format.
-    // https://learn.microsoft.com/en-us/windows/win32/api/sysinfoapi/nf-sysinfoapi-getsystemtime
+    /// Retrieves the current system date and time in Coordinated Universal Time (UTC) format.
+    ///
+    /// @param time receives the reading
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/sysinfoapi/nf-sysinfoapi-getsystemtime
     func GetSystemTime(time: *SystemTime);
 
-    // Retrieves the number of milliseconds that have elapsed since the system was started.
-    // https://learn.microsoft.com/en-us/windows/win32/api/sysinfoapi/nf-sysinfoapi-gettickcount64
+    /// Retrieves the number of milliseconds that have elapsed since the system was started.
+    ///
+    /// @returns milliseconds since the system started
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/sysinfoapi/nf-sysinfoapi-gettickcount64
     func GetTickCount64() -> uint64;
 
-    // Allocates a block of memory from a heap. The allocated memory is not movable
-    // https://learn.microsoft.com/en-us/windows/win32/api/heapapi/nf-heapapi-heapalloc
+    /// Allocates a block of memory from a heap. The allocated memory is not movable.
+    ///
+    /// @param heap a heap handle, from `GetProcessHeap` for the process heap
+    /// @param flags the call's flag bits, combined with `|`
+    /// @param bytes how many bytes to take
+    /// @returns the block's address, or null
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/heapapi/nf-heapapi-heapalloc
     func HeapAlloc(heap: *opaque, flags: uint32, bytes: uint) -> *var opaque;
 
-    // Frees a memory block allocated from a heap by the HeapAlloc or HeapReAlloc function
-    // https://learn.microsoft.com/en-us/windows/win32/api/heapapi/nf-heapapi-heapfree
+    /// Frees a memory block allocated from a heap by the HeapAlloc or HeapReAlloc function.
+    ///
+    /// @param heap a heap handle, from `GetProcessHeap` for the process heap
+    /// @param flags the call's flag bits, combined with `|`
+    /// @param mem the block to act on
+    /// @returns non-zero on success, and zero on failure with the reason in `GetLastError`
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/heapapi/nf-heapapi-heapfree
     func HeapFree(heap: *opaque, flags: uint32, mem: *opaque) -> bool32;
 
-    // Reallocates a block of memory from a heap
-    // https://learn.microsoft.com/en-us/windows/win32/api/heapapi/nf-heapapi-heaprealloc
+    /// Reallocates a block of memory from a heap.
+    ///
+    /// @param heap a heap handle, from `GetProcessHeap` for the process heap
+    /// @param flags the call's flag bits, combined with `|`
+    /// @param mem the block to act on
+    /// @param bytes how many bytes to take
+    /// @returns the resized block's address, or null with the original still valid
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/heapapi/nf-heapapi-heaprealloc
     func HeapReAlloc(heap: *opaque, flags: uint32, mem: *opaque, bytes: uint) -> *var opaque;
 
-    // Loads a DLL into the calling process.
-    // https://learn.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-loadlibrarya
+    /// Loads a DLL into the calling process.
+    ///
+    /// @param libFileName the library's name or path
+    /// @returns the module's handle, or null
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-loadlibrarya
     pub func LoadLibraryA(libFileName: *char8) -> *opaque;
 
-    // Moves an existing file or directory.
-    // https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-movefilea
+    /// Moves an existing file or directory.
+    ///
+    /// @param existingFileName the path that exists now
+    /// @param newFileName the path it should have afterwards
+    /// @returns non-zero on success, and zero on failure with the reason in `GetLastError`
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-movefilea
     func MoveFileA(existingFileName: *char8, newFileName: *char8) -> bool32;
 
-    // Maps a character string to a UTF-16 wide character string
-    // https://learn.microsoft.com/en-us/windows/win32/api/stringapiset/nf-stringapiset-multibytetowidechar
+    /// Maps a character string to a UTF-16 wide character string.
+    ///
+    /// @param codePage the code page to convert through, as a `CodePage` value
+    /// @param flags the call's flag bits, combined with `|`
+    /// @param multiByteStr the bytes to convert
+    /// @param multiByte how many bytes, or -1 to stop at the terminator
+    /// @param wideCharStr receives the UTF-16 units, or null to ask how many are needed
+    /// @param wideChar how many units the output holds, or zero to ask
+    /// @returns the units written, the units needed when asked, or zero on failure
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/stringapiset/nf-stringapiset-multibytetowidechar
     pub func MultiByteToWideChar(
         codePage: CodePage,
         flags: uint32,
@@ -179,8 +303,16 @@ pub extern {
         wideChar: int32
     ) -> int32;
 
-    // Maps a character string to a UTF-16 wide character string
-    // https://learn.microsoft.com/en-us/windows/win32/api/stringapiset/nf-stringapiset-multibytetowidechar
+    /// Maps a character string to a UTF-16 wide character string.
+    ///
+    /// @param codePage the code page to convert through, as a `CodePage` value
+    /// @param flags the call's flag bits, combined with `|`
+    /// @param multiByteStr the bytes to convert
+    /// @param multiByte how many bytes, or -1 to stop at the terminator
+    /// @param wideCharStr receives the UTF-16 units, or null to ask how many are needed
+    /// @param wideChar how many units the output holds, or zero to ask
+    /// @returns the units written, the units needed when asked, or zero on failure
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/stringapiset/nf-stringapiset-multibytetowidechar
     pub func MultiByteToWideChar(
         codePage: uint32,
         flags: uint32,
@@ -190,8 +322,15 @@ pub extern {
         wideChar: int32
     ) -> int32;
 
-    // Reads characters from a console input buffer.
-    // https://learn.microsoft.com/en-us/windows/console/readconsole
+    /// Reads characters from a console input buffer.
+    ///
+    /// @param consoleInput a console input handle
+    /// @param buffer the bytes
+    /// @param numberOfCharsToRead how many units to ask for
+    /// @param numberOfCharsRead receives how many were read
+    /// @param inputControl an input-control record, or null
+    /// @returns non-zero on success, and zero on failure with the reason in `GetLastError`
+    /// @see https://learn.microsoft.com/en-us/windows/console/readconsole
     func ReadConsoleA(
         consoleInput: *opaque,
         buffer: *opaque,
@@ -200,8 +339,15 @@ pub extern {
         inputControl: *opaque
     ) -> bool32;
 
-    // Reads data from the specified file or input/output (I/O) device
-    // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-readfile
+    /// Reads data from the specified file or input/output (I/O) device.
+    ///
+    /// @param file an open file handle
+    /// @param buffer the bytes
+    /// @param numberOfBytesToRead how many bytes to ask for
+    /// @param numberOfBytesRead receives how many were read
+    /// @param overlapped an overlapped record, or null for a synchronous call
+    /// @returns non-zero on success, and zero on failure with the reason in `GetLastError`
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-readfile
     pub func ReadFile(
         file: *opaque,
         buffer: *opaque,
@@ -210,36 +356,68 @@ pub extern {
         overlapped: *opaque
     ) -> bool32;
 
-    // Deletes an existing empty directory.
-    // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-removedirectorya
+    /// Deletes an existing empty directory.
+    ///
+    /// @param pathName the directory path, as a null-terminated string
+    /// @returns non-zero on success, and zero on failure with the reason in `GetLastError`
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-removedirectorya
     func RemoveDirectoryA(pathName: *char8) -> bool32;
 
-    // Compares two blocks of memory and returns the number of bytes that match until the first difference
-    // https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-rtlcomparememory
+    /// Compares two blocks of memory and returns the number of bytes that match until the first difference.
+    ///
+    /// @param source1 one of the two blocks
+    /// @param source2 the other
+    /// @param length how many bytes
+    /// @returns how many leading bytes match
+    /// @see https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-rtlcomparememory
     func RtlCompareMemory(source1: *opaque, source2: *opaque, length: uint) -> uint;
 
-    // Copies a block of memory from one location to another
-    // https://learn.microsoft.com/en-us/previous-versions/windows/desktop/legacy/aa366535(v=vs.85)
+    /// Copies a block of memory from one location to another.
+    ///
+    /// @param destination the bytes to write
+    /// @param source the bytes to read
+    /// @param length how many bytes
+    /// @see https://learn.microsoft.com/en-us/previous-versions/windows/desktop/legacy/aa366535(v=vs.85)
     func RtlCopyMemory(destination: *var opaque, source: *opaque, length: uint);
 
-    // Fills a block of memory with the specified fill value
-    // https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-rtlfillmemory
+    /// Fills a block of memory with the specified fill value.
+    ///
+    /// @param destination the bytes to write
+    /// @param length how many bytes
+    /// @param fill the byte to write to each
+    /// @see https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-rtlfillmemory
     func RtlFillMemory(destination: *opaque, length: uint, fill: int32);
 
-    // Fills a block of memory with zeros, given a pointer to the block and the length in bytes
-    // https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-rtlzeromemory
+    /// Fills a block of memory with zeros, given a pointer to the block and the length in bytes.
+    ///
+    /// @param destination the bytes to write
+    /// @param length how many bytes
+    /// @see https://learn.microsoft.com/en-us/windows-hardware/drivers/ddi/wdm/nf-wdm-rtlzeromemory
     func RtlZeroMemory(destination: *opaque, length: uint);
 
-    // Changes the current directory.
-    // https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-setcurrentdirectory
+    /// Changes the current directory.
+    ///
+    /// @param pathName the directory path, as a null-terminated string
+    /// @returns non-zero on success, and zero on failure with the reason in `GetLastError`
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-setcurrentdirectory
     func SetCurrentDirectoryA(pathName: *char8) -> bool32;
 
-    // Sets file attributes.
-    // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-setfileattributesa
+    /// Sets file attributes.
+    ///
+    /// @param fileName the path, as a null-terminated string
+    /// @param fileAttributes the attribute bits to set
+    /// @returns non-zero on success, and zero on failure with the reason in `GetLastError`
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-setfileattributesa
     func SetFileAttributesA(fileName: *char8, fileAttributes: uint32) -> bool32;
 
-    // Moves the file pointer of the specified file.
-    // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-setfilepointerex
+    /// Moves the file pointer of the specified file.
+    ///
+    /// @param file an open file handle
+    /// @param distanceToMov how far to move, interpreted by `moveMethod`
+    /// @param newFilePointer receives the resulting offset, or null
+    /// @param moveMethod where the move is measured from
+    /// @returns non-zero on success, and zero on failure with the reason in `GetLastError`
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-setfilepointerex
     pub func SetFilePointerEx(
         file: *opaque,
         distanceToMov: int64,
@@ -247,8 +425,16 @@ pub extern {
         moveMethod: uint32
     ) -> bool32;
 
-    // Creates a thread to execute within the virtual address space of the calling process.
-    // https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-createthread
+    /// Creates a thread to execute within the virtual address space of the calling process.
+    ///
+    /// @param securityAttributes a security descriptor, or null for the default
+    /// @param stackSize the initial stack size, or zero for the default
+    /// @param startAddress the thread's entry point
+    /// @param parameter the value handed to the entry point
+    /// @param creationFlags the thread creation flags
+    /// @param threadId receives the new thread's identifier, or null
+    /// @returns the new thread's handle, or null
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-createthread
     func CreateThread(
         securityAttributes: *opaque,
         stackSize: uint64,
@@ -258,24 +444,44 @@ pub extern {
         threadId: *uint32
     ) -> *opaque;
 
-    // Retrieves the thread identifier of the calling thread.
-    // https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-getcurrentthreadid
+    /// Retrieves the thread identifier of the calling thread.
+    ///
+    /// @returns the calling thread's identifier
+    /// @see https://learn.microsoft.com/windows/win32/api/processthreadsapi/nf-processthreadsapi-getcurrentthreadid
     func GetCurrentThreadId() -> uint32;
 
-    // Suspends the execution of the current thread until the time-out interval elapses
-    // https://learn.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-sleep
+    /// Suspends the execution of the current thread until the time-out interval elapses.
+    ///
+    /// @param milliseconds a duration in milliseconds
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-sleep
     func Sleep(milliseconds: uint32);
 
-    // Causes the calling thread to yield execution to another thread that is ready to run.
-    // https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-switchtothread
+    /// Causes the calling thread to yield execution to another thread that is ready to run.
+    ///
+    /// @returns non-zero on success, and zero on failure with the reason in `GetLastError`
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-switchtothread
     func SwitchToThread() -> bool32;
 
-    // Waits until the specified object is in the signaled state or the time-out interval elapses.
-    // https://learn.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-waitforsingleobject
+    /// Waits until the specified object is in the signaled state or the time-out interval elapses.
+    ///
+    /// @param handle the handle to act on
+    /// @param milliseconds a duration in milliseconds
+    /// @returns why the wait ended
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-waitforsingleobject
     func WaitForSingleObject(handle: *opaque, milliseconds: uint32) -> uint32;
 
-    // Converts UTF-16 text to another code page.
-    // https://learn.microsoft.com/en-us/windows/win32/api/stringapiset/nf-stringapiset-widechartomultibyte
+    /// Converts UTF-16 text to another code page.
+    ///
+    /// @param codePage the code page to convert through, as a `CodePage` value
+    /// @param flags the call's flag bits, combined with `|`
+    /// @param wideCharStr receives the UTF-16 units, or null to ask how many are needed
+    /// @param wideChar how many units the output holds, or zero to ask
+    /// @param multiByteStr the bytes to convert
+    /// @param multiByte how many bytes, or -1 to stop at the terminator
+    /// @param defaultChar the byte to substitute for an unconvertible unit, or null
+    /// @param usedDefaultChar receives whether any substitution happened, or null
+    /// @returns the bytes written, the bytes needed when asked, or zero on failure
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/stringapiset/nf-stringapiset-widechartomultibyte
     pub func WideCharToMultiByte(
         codePage: uint32,
         flags: uint32,
@@ -287,8 +493,15 @@ pub extern {
         usedDefaultChar: *bool32
     ) -> int32;
 
-    // Writes a character string to a console screen buffer beginning at the current cursor location
-    // https://learn.microsoft.com/en-us/windows/console/writeconsole
+    /// Writes a character string to a console screen buffer beginning at the current cursor location.
+    ///
+    /// @param consoleOutput a console output handle
+    /// @param buffer the bytes
+    /// @param numberOfCharsToWrite how many units to write
+    /// @param numberOfCharsWritten receives how many were written
+    /// @param reserved reserved; pass null
+    /// @returns non-zero on success, and zero on failure with the reason in `GetLastError`
+    /// @see https://learn.microsoft.com/en-us/windows/console/writeconsole
     func WriteConsoleA(
         consoleOutput: *opaque,
         buffer: *char8,
@@ -297,8 +510,15 @@ pub extern {
         reserved: *opaque
     ) -> bool32;
 
-    // Writes a character string to a console screen buffer beginning at the current cursor location
-    // https://learn.microsoft.com/en-us/windows/console/writeconsole
+    /// Writes a character string to a console screen buffer beginning at the current cursor location.
+    ///
+    /// @param consoleOutput a console output handle
+    /// @param buffer the bytes
+    /// @param numberOfCharsToWrite how many units to write
+    /// @param numberOfCharsWritten receives how many were written
+    /// @param reserved reserved; pass null
+    /// @returns non-zero on success, and zero on failure with the reason in `GetLastError`
+    /// @see https://learn.microsoft.com/en-us/windows/console/writeconsole
     func WriteConsoleW(
         consoleOutput: *opaque,
         buffer: *char16,
@@ -307,8 +527,15 @@ pub extern {
         reserved: *opaque
     ) -> bool32;
 
-    // Writes data to the specified file or input/output (I/O) device.
-    // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-writefile
+    /// Writes data to the specified file or input/output (I/O) device.
+    ///
+    /// @param file an open file handle
+    /// @param buffer the bytes
+    /// @param bytesToWrite how many bytes to offer
+    /// @param bytesWritten receives how many were written
+    /// @param overlapped an overlapped record, or null for a synchronous call
+    /// @returns non-zero on success, and zero on failure with the reason in `GetLastError`
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-writefile
     pub func WriteFile(
         file: *opaque,
         buffer: *opaque,

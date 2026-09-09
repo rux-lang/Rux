@@ -11,7 +11,7 @@ import Windows::{ Dword, Handle };
 
 /// `MEM_COMMIT`: back the range with storage.
 ///
-/// https://rux-lang.dev/docs/api/windows/mem-commit
+/// @see https://rux-lang.dev/docs/api/windows/mem-commit
 #Allow("naming.const")
 pub const MEM_COMMIT: uint32 = 0x00001000;
 
@@ -20,55 +20,55 @@ pub const MEM_COMMIT: uint32 = 0x00001000;
 /// A reserved page cannot be touched. Touching one faults exactly as an unmapped page does, which is what makes
 /// reservation a cheap way to hold a range for later.
 ///
-/// https://rux-lang.dev/docs/api/windows/mem-reserve
+/// @see https://rux-lang.dev/docs/api/windows/mem-reserve
 #Allow("naming.const")
 pub const MEM_RESERVE: uint32 = 0x00002000;
 
 /// `MEM_RESET`: the contents are no longer of interest and need not be written to the page file.
 ///
-/// https://rux-lang.dev/docs/api/windows/mem-reset
+/// @see https://rux-lang.dev/docs/api/windows/mem-reset
 #Allow("naming.const")
 pub const MEM_RESET: uint32 = 0x00080000;
 
 /// `MEM_RELEASE`: give back the whole reservation, which `VirtualFree` requires a size of zero for.
 ///
-/// https://rux-lang.dev/docs/api/windows/mem-release
+/// @see https://rux-lang.dev/docs/api/windows/mem-release
 #Allow("naming.const")
 pub const MEM_RELEASE: uint32 = 0x00008000;
 
 /// `MEM_DECOMMIT`: take back the storage but keep the reservation.
 ///
-/// https://rux-lang.dev/docs/api/windows/mem-decommit
+/// @see https://rux-lang.dev/docs/api/windows/mem-decommit
 #Allow("naming.const")
 pub const MEM_DECOMMIT: uint32 = 0x00004000;
 
 /// `PAGE_NOACCESS`: the pages may not be touched at all.
 ///
-/// https://rux-lang.dev/docs/api/windows/page-no-access
+/// @see https://rux-lang.dev/docs/api/windows/page-no-access
 #Allow("naming.const")
 pub const PAGE_NOACCESS: uint32 = 0x01;
 
 /// `PAGE_READONLY`: the pages may be read.
 ///
-/// https://rux-lang.dev/docs/api/windows/page-read-only
+/// @see https://rux-lang.dev/docs/api/windows/page-read-only
 #Allow("naming.const")
 pub const PAGE_READONLY: uint32 = 0x02;
 
 /// `PAGE_READWRITE`: the pages may be read and written.
 ///
-/// https://rux-lang.dev/docs/api/windows/page-read-write
+/// @see https://rux-lang.dev/docs/api/windows/page-read-write
 #Allow("naming.const")
 pub const PAGE_READWRITE: uint32 = 0x04;
 
 /// `PAGE_EXECUTE`: the pages may be executed.
 ///
-/// https://rux-lang.dev/docs/api/windows/page-execute
+/// @see https://rux-lang.dev/docs/api/windows/page-execute
 #Allow("naming.const")
 pub const PAGE_EXECUTE: uint32 = 0x10;
 
 /// `PAGE_EXECUTE_READ`: the pages may be executed and read.
 ///
-/// https://rux-lang.dev/docs/api/windows/page-execute-read
+/// @see https://rux-lang.dev/docs/api/windows/page-execute-read
 #Allow("naming.const")
 pub const PAGE_EXECUTE_READ: uint32 = 0x20;
 
@@ -77,7 +77,7 @@ pub const PAGE_EXECUTE_READ: uint32 = 0x20;
 /// What a hardened process refuses, and what an exploit needs. Prefer writing through one protection and executing
 /// through another.
 ///
-/// https://rux-lang.dev/docs/api/windows/page-execute-read-write
+/// @see https://rux-lang.dev/docs/api/windows/page-execute-read-write
 #Allow("naming.const")
 pub const PAGE_EXECUTE_READWRITE: uint32 = 0x40;
 
@@ -85,41 +85,66 @@ pub const PAGE_EXECUTE_READWRITE: uint32 = 0x40;
 ///
 /// Combined with another protection. This is how a stack grows on Windows.
 ///
-/// https://rux-lang.dev/docs/api/windows/page-guard
+/// @see https://rux-lang.dev/docs/api/windows/page-guard
 #Allow("naming.const")
 pub const PAGE_GUARD: uint32 = 0x100;
 
 #Link("Kernel32.dll")
 pub extern {
-    // Reserves, commits, or changes the state of a region of pages
-    //
-    // Returns the base address of the region, or null on failure. A null address argument lets the system choose,
-    // which it does at 64 KiB granularity rather than page granularity.
-    // https://learn.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-virtualalloc
+    /// Reserves, commits, or changes the state of a region of pages.
+    ///
+    /// Returns the base address of the region, or null on failure. A null address argument lets the system choose,
+    /// which it does at 64 KiB granularity rather than page granularity.
+    ///
+    /// @param address an address in this process
+    /// @param size a size in bytes
+    /// @param allocationType `MEM_RESERVE`, `MEM_COMMIT`, or both
+    /// @param protect the page protection, as a `PAGE_*` value
+    /// @returns the region's base address, or null — not `InvalidHandleValue`
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-virtualalloc
     pub func VirtualAlloc(address: *var opaque, size: uint, allocationType: uint32, protect: uint32) -> *var opaque;
 
-    // Releases, decommits, or both, a region of pages
-    //
-    // Returns zero on failure. MEM_RELEASE requires a size of zero and the exact base address VirtualAlloc returned;
-    // giving it anything else fails rather than releasing part of the region.
-    // https://learn.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-virtualfree
+    /// Releases, decommits, or both, a region of pages.
+    ///
+    /// Returns zero on failure. MEM_RELEASE requires a size of zero and the exact base address VirtualAlloc returned;
+    /// giving it anything else fails rather than releasing part of the region.
+    ///
+    /// @param address an address in this process
+    /// @param size a size in bytes
+    /// @param freeType `MEM_RELEASE` or `MEM_DECOMMIT`
+    /// @returns non-zero on success
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-virtualfree
     pub func VirtualFree(address: *var opaque, size: uint, freeType: uint32) -> int32;
 
-    // Changes the protection on a region of committed pages
-    //
-    // Writes the previous protection through oldProtect, which must not be null. Returns zero on failure.
-    // https://learn.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-virtualprotect
+    /// Changes the protection on a region of committed pages.
+    ///
+    /// Writes the previous protection through oldProtect, which must not be null. Returns zero on failure.
+    ///
+    /// @param address an address in this process
+    /// @param size a size in bytes
+    /// @param newProtect the protection to apply
+    /// @param oldProtect receives the protection that was in force
+    /// @returns non-zero on success
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-virtualprotect
     pub func VirtualProtect(address: *var opaque, size: uint, newProtect: uint32,
                         oldProtect: *var uint32) -> int32;
 
-    // Locks a region into physical memory so it is never written to the page file
-    //
-    // The way to keep a secret off the disk. The process working-set limit bounds how much may be locked, so this
-    // fails for a large region rather than succeeding slowly.
-    // https://learn.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-virtuallock
+    /// Locks a region into physical memory so it is never written to the page file.
+    ///
+    /// The way to keep a secret off the disk. The process working-set limit bounds how much may be locked, so this
+    /// fails for a large region rather than succeeding slowly.
+    ///
+    /// @param address an address in this process
+    /// @param size a size in bytes
+    /// @returns non-zero on success
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-virtuallock
     func VirtualLock(address: *var opaque, size: uint) -> int32;
 
-    // Unlocks a region previously locked into physical memory
-    // https://learn.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-virtualunlock
+    /// Unlocks a region previously locked into physical memory.
+    ///
+    /// @param address an address in this process
+    /// @param size a size in bytes
+    /// @returns non-zero on success
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-virtualunlock
     func VirtualUnlock(address: *var opaque, size: uint) -> int32;
 }

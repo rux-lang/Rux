@@ -15,24 +15,29 @@ import Windows::NtStatus;
 /// Passed with a null algorithm handle, which is what makes this a one-call interface: nothing has to be opened,
 /// configured, or closed.
 ///
-/// https://rux-lang.dev/docs/api/windows/bcrypt-use-system-preferred-rng
+/// @see https://rux-lang.dev/docs/api/windows/bcrypt-use-system-preferred-rng
 #Allow("naming.const")
 pub const BCRYPT_USE_SYSTEM_PREFERRED_RNG: uint32 = 0x00000002;
 
 /// `STATUS_SUCCESS`: the status an `NtStatus`-reporting call gives when it worked.
 ///
-/// https://rux-lang.dev/docs/api/windows/status-success
+/// @see https://rux-lang.dev/docs/api/windows/status-success
 #Allow("naming.const")
 pub const STATUS_SUCCESS: int32 = 0;
 
 #Link("bcrypt.dll")
 extern {
-    // Fills a buffer with cryptographically random bytes
-    //
-    // Returns STATUS_SUCCESS or a negative NTSTATUS; it does not report through GetLastError. With a null algorithm
-    // handle and BCRYPT_USE_SYSTEM_PREFERRED_RNG it needs nothing opened first. Unlike the Unix generators it either
-    // fills the whole buffer or fails, so there is no short count to loop over.
-    // https://learn.microsoft.com/en-us/windows/win32/api/bcrypt/nf-bcrypt-bcryptgenrandom
+    /// Fills a buffer with cryptographically random bytes.
+    ///
+    /// Returns STATUS_SUCCESS or a negative NTSTATUS; it does not report through GetLastError. With a null algorithm
+    /// handle and BCRYPT_USE_SYSTEM_PREFERRED_RNG it needs nothing opened first. Unlike the Unix generators it either
+    /// fills the whole buffer or fails, so there is no short count to loop over.
+    ///
+    /// @param algorithm an algorithm handle, or null with `BCRYPT_USE_SYSTEM_PREFERRED_RNG`
+    /// @param buffer the bytes
+    /// @param count receives the counter's current value
+    /// @param flags the call's flag bits, combined with `|`
+    /// @see https://learn.microsoft.com/en-us/windows/win32/api/bcrypt/nf-bcrypt-bcryptgenrandom
     func BCryptGenRandom(algorithm: *var opaque, buffer: *var opaque, count: uint32, flags: uint32) -> int32;
 }
 
@@ -48,7 +53,10 @@ extern {
 /// `buffer` must be writable for `length` bytes. `length` is passed as a 32-bit count, so a request above four
 /// gigabytes is refused rather than truncated.
 ///
-/// https://rux-lang.dev/docs/api/windows/get-random
+/// @param buffer receives the bytes
+/// @param length how many bytes to fill
+/// @returns whether the whole buffer was filled; there is no partial success
+/// @see https://rux-lang.dev/docs/api/windows/get-random
 pub func GetRandom(buffer: *var opaque, length: uint) -> bool {
     if length > 4294967295u64 { return false; }
     let status = BCryptGenRandom(null, buffer, length as uint32, BCRYPT_USE_SYSTEM_PREFERRED_RNG);

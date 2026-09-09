@@ -13,12 +13,12 @@
 /// Pointer-sized and owned by the kernel. A handle is valid until `CloseHandle` takes it, after which the number may
 /// be reused by the next object opened — so a stale handle does not fail, it addresses something else.
 ///
-/// https://rux-lang.dev/docs/api/windows/handle
+/// @see https://rux-lang.dev/docs/api/windows/handle
 pub type Handle = *var opaque;
 
 /// A module reference, as `LoadLibraryW` returns one.
 ///
-/// https://rux-lang.dev/docs/api/windows/module-handle
+/// @see https://rux-lang.dev/docs/api/windows/module-handle
 pub type ModuleHandle = *var opaque;
 
 /// Win32's `BOOL`: a 32-bit integer where zero is false and anything else is true.
@@ -26,19 +26,19 @@ pub type ModuleHandle = *var opaque;
 /// Not a one-byte boolean, and not `bool`. A call returning one reports failure as zero and success as anything
 /// else, which is why comparing against `1` is wrong.
 ///
-/// https://rux-lang.dev/docs/api/windows/bool
+/// @see https://rux-lang.dev/docs/api/windows/bool
 pub type Bool = int32;
 
 /// Win32's `DWORD`: a 32-bit unsigned integer.
 ///
-/// https://rux-lang.dev/docs/api/windows/dword
+/// @see https://rux-lang.dev/docs/api/windows/dword
 pub type Dword = uint32;
 
 /// A UTF-16 code unit, which is what every `*W` entry point takes.
 ///
 /// Not a character: a scalar outside the basic plane occupies two of these.
 ///
-/// https://rux-lang.dev/docs/api/windows/wide-char
+/// @see https://rux-lang.dev/docs/api/windows/wide-char
 pub type WideChar = char16;
 
 /// An `NTSTATUS`: the status code the native and cryptographic interfaces report with.
@@ -46,7 +46,7 @@ pub type WideChar = char16;
 /// Zero and above is success; below zero is failure. This is a different scheme from `GetLastError`, and a value of
 /// one must never be read as the other.
 ///
-/// https://rux-lang.dev/docs/api/windows/nt-status
+/// @see https://rux-lang.dev/docs/api/windows/nt-status
 pub type NtStatus = int32;
 
 /// The value a handle-returning call reports failure with.
@@ -54,15 +54,22 @@ pub type NtStatus = int32;
 /// `-1` cast to a pointer, which is not null. `CreateFileW` and `FindFirstFileW` report failure this way; a
 /// memory-returning call such as `VirtualAlloc` reports null instead.
 ///
-/// https://rux-lang.dev/docs/api/windows/invalid-handle-value
+/// @see https://rux-lang.dev/docs/api/windows/invalid-handle-value
 pub const InvalidHandleValue: uint64 = 0xFFFFFFFFFFFFFFFF;
 
-// Contains a 64-bit value representing the number of 100-nanosecond intervals since January 1, 1601 (UTC).
-// https://learn.microsoft.com/en-us/windows/win32/api/minwinbase/ns-minwinbase-filetime
+/// Win32's `FILETIME`: a count of 100-nanosecond ticks since the start of 1601, UTC.
 ///
-/// https://rux-lang.dev/docs/api/windows/file-time
+/// Split across two 32-bit halves because the record predates a 64-bit integer being ordinary, and the halves are
+/// not aligned as one — `FileTimeTicks` joins them, and reading the pair as a `uint64` is what a caller must not do.
+///
+/// The epoch is not the Unix one. `FileTimeToUnixEpochSeconds` is the difference.
+///
+/// @see https://learn.microsoft.com/windows/win32/api/minwinbase/ns-minwinbase-filetime
+/// @see https://rux-lang.dev/docs/api/windows/file-time
 pub struct FileTime {
+    /// The low 32 bits of the tick count.
     pub lowDateTime: uint32;
+    /// The high 32 bits of the tick count.
     pub highDateTime: uint32;
 }
 
@@ -70,29 +77,33 @@ pub struct FileTime {
 // https://learn.microsoft.com/en-us/windows/console/getstdhandle
 /// The public `StdInputHandle` value.
 ///
-/// https://rux-lang.dev/docs/api/windows/std-input-handle
+/// @see https://rux-lang.dev/docs/api/windows/std-input-handle
 pub const StdInputHandle: uint32 = 0xFFFFFFF6;
 
 // The standard output device. Initially, this is the active console screen buffer
 // https://learn.microsoft.com/en-us/windows/console/getstdhandle
 /// The public `StdOutputHandle` value.
 ///
-/// https://rux-lang.dev/docs/api/windows/std-output-handle
+/// @see https://rux-lang.dev/docs/api/windows/std-output-handle
 pub const StdOutputHandle: uint32 = 0xFFFFFFF5;
 
 // The standard error device. Initially, this is the active console screen buffer
 // https://learn.microsoft.com/en-us/windows/console/getstdhandle
 /// The public `StdErrorHandle` value.
 ///
-/// https://rux-lang.dev/docs/api/windows/std-error-handle
+/// @see https://rux-lang.dev/docs/api/windows/std-error-handle
 pub const StdErrorHandle: uint32 = 0xFFFFFFF4;
 
-// Specifies a date and time, using individual members for the month, day, year, weekday, hour, minute, second,
-// and millisecond.
-// The time is either in coordinated universal time (UTC) or local time, depending on the function that is being called.
-// https://learn.microsoft.com/en-us/windows/win32/api/minwinbase/ns-minwinbase-systemtime
+/// Win32's `SYSTEMTIME`: a broken-down date and time, one field per component.
 ///
-/// https://rux-lang.dev/docs/api/windows/system-time
+/// Whether it is UTC or local time is decided by the call that filled it, not by the record — `GetSystemTime` gives
+/// one and `GetLocalTime` the other, and nothing here distinguishes them afterwards.
+///
+/// The fields are private: `Rux/Time` is the calendar interface, and this exists so a Win32 signature can name the
+/// record it takes.
+///
+/// @see https://learn.microsoft.com/windows/win32/api/minwinbase/ns-minwinbase-systemtime
+/// @see https://rux-lang.dev/docs/api/windows/system-time
 pub struct SystemTime {
     year: uint16;
     month: uint16;
@@ -104,10 +115,16 @@ pub struct SystemTime {
     milliseconds: uint16;
 }
 
-// Contains information about the file that is found by the FindFirstFile, FindFirstFileEx, or FindNextFile function.
-// https://learn.microsoft.com/en-us/windows/win32/api/minwinbase/ns-minwinbase-win32_find_dataa
+/// Win32's `WIN32_FIND_DATAA`: one directory entry, as `FindFirstFileA` and `FindNextFileA` fill it.
 ///
-/// https://rux-lang.dev/docs/api/windows/win32-find-data-a
+/// The narrow form, whose names come through the process code page and so cannot express every name a file system
+/// can hold. `Rux/FileSystem` enumerates through the wide entry points instead; this is here so a caller reaching
+/// for the `A` family directly can name the record they take.
+///
+/// The fields are private: the layout is Microsoft's and reading it is the enumerating code's business.
+///
+/// @see https://learn.microsoft.com/windows/win32/api/minwinbase/ns-minwinbase-win32_find_dataa
+/// @see https://rux-lang.dev/docs/api/windows/win32-find-data-a
 pub struct Win32FindDataA {
     fileAttributes: uint32;
     creationTime: FileTime;
@@ -127,7 +144,7 @@ pub struct Win32FindDataA {
 /// while `allocationGranularity` is what a reservation's base address is rounded to, and on every Windows release it
 /// is 64 KiB rather than a page. A reservation therefore wastes address space that a page-granular system would not.
 ///
-/// https://rux-lang.dev/docs/api/windows/system-info
+/// @see https://rux-lang.dev/docs/api/windows/system-info
 pub struct SystemInfo {
     /// The processor architecture, or a union member on the oldest releases; not read by this package.
     processorArchitecture: uint32;
