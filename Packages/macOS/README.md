@@ -17,7 +17,7 @@ rux add Rux/macOS
 | `Errors`    | the errno numbers, `CurrentErrno`, and the `Normalize` / `IsError` / `Errno` fold      |
 | `LibSystem` | every libSystem entry point this package binds, under the symbol it exports            |
 | `File`      | `Read`, `Write`, `Close`, `OpenAt`, `Lseek`, `Fsync`, `Ftruncate`, `UnlinkAt`, `MkdirAt`, `RenameAt`, `Dup2`, `Pipe`, the open flags, and the three standard descriptors |
-| `Memory`    | `Mmap`, `Munmap`, `Mprotect`, `Madvise`, and the protection, mapping and advice flags   |
+| `Memory`    | `Mmap`, `Munmap`, `Mprotect`, `Madvise`, `QueryPageSize`, and the protection, mapping and advice flags |
 | `Clock`     | `ClockGetTime`, `ClockGetResolution`, `GetTimeOfDay`, `Nanosleep`, and the clock identifiers |
 | `Entropy`   | `GetRandom`, which cannot fail and has no short count                                   |
 | `Process`   | `Exit` and `GetPid`                                                                     |

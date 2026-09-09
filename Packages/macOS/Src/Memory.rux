@@ -4,7 +4,7 @@
 // the previous version of this package declared one anyway, through a trap number that was never valid on Apple
 // Silicon. Mapping is the only way to get address space on this system.
 
-import macOS::{ IsError, Normalize, madvise, mmap, mprotect, munmap };
+import macOS::{ IsError, Normalize, getpagesize, madvise, mmap, mprotect, munmap };
 
 /// `PROT_NONE`: the pages may not be touched at all.
 ///
@@ -119,4 +119,16 @@ pub func Mprotect(address: *opaque, length: uint, protection: int32) -> int64 {
 /// https://rux-lang.dev/docs/api/macos/madvise
 pub func Madvise(address: *opaque, length: uint, advice: int32) -> int64 {
     return Normalize(madvise(address, length, advice) as int64);
+}
+/// The size of a page, asked of libSystem.
+///
+/// Darwin's page size is not the same on every machine: Apple Silicon uses 16 KiB where x86-64 uses 4 KiB, so this
+/// is asked rather than assumed. The underlying call cannot fail, which is why this one cannot either — the
+/// negative-error return exists so that one call shape reaches all three POSIX systems, not because Darwin has a
+/// failure to report.
+///
+/// @returns the page size in bytes, always positive on this system
+/// @see https://rux-lang.dev/docs/api/macos/query-page-size
+pub func QueryPageSize() -> int64 {
+    return getpagesize() as int64;
 }

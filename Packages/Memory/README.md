@@ -26,7 +26,7 @@ rux add Rux/Memory
 | `MismatchOffset` | Where two blocks first differ, or their length when they do not  |
 | `Find`           | Where a byte first occurs, or the length when it does not        |
 
-| `PageSize` / `PageAlign` | The system page size, and rounding a length to it                        |
+| `PageSize` / `MinimumPageSize` / `PageAlign` | Asking the system its real page size, the documented floor, and rounding a length to that floor |
 | `PageAllocate` / `PageRelease` / `PageProtect` | Address space at the granularity the system hands it out in |
 
 **Zero length is always legal, and null is legal with it.** `Copy(null, null, 0)` is defined and does nothing. That is deliberately not C's rule, where passing null to `memcpy` is undefined even for a zero length — a rule that turns an ordinary empty case into a trap and makes every caller guard.
@@ -37,7 +37,9 @@ The page layer is what sits under an allocator, not an allocator itself. Nothing
 
 Windows differs in kind: it separates reserving address space from committing storage to it, and `PageAllocate` always does both, which is what every other system does and what an allocator expects. A caller wanting a large reservation cheaply has to reach for `Rux/Windows` directly.
 
-`PageSize` asks the system where the system will answer — `GetSystemInfo` on Windows, `getpagesize` on Darwin, which is not 4 KiB on Apple Silicon. Linux and FreeBSD keep the answer in the auxiliary vector rather than behind a system call and this package calls no libc there, so those report the standard 4 KiB and a kernel configured for larger pages is under-reported. That cannot make an allocation wrong, since every call rounds the length up in the system rather than here; it can only make a caller ask for more than it needed.
+`PageSize` asks the system, and reports whether it got an answer. Each platform package owns its own query — `GetSystemInfo` on Windows, `getpagesize` on Darwin, the `hw.pagesize` sysctl on FreeBSD, and `/proc/self/auxv` on Linux, whose kernel publishes the value in the auxiliary vector rather than behind a system call. Nothing is captured at process start and no libc is called. When the system will not answer — a container built without `/proc` is the ordinary way that happens — this reports `Unsupported` rather than substituting a number, because a caller asking for the real size is worse served by a wrong one than by a refusal.
+
+`PageAlign` rounds to `MinimumPageSize`, which is 4 KiB and is the floor on every supported cell rather than the size on any particular one: Apple Silicon uses 16 KiB, and a Linux kernel may be configured for 16 or 64. Rounding to a divisor of the real size cannot make an allocation wrong — every call here hands the length to a system that rounds again — and it keeps a file read out of an allocator's inner loop. A caller that needs whole *real* pages asks `PageSize` once, keeps the answer, and rounds with `AlignUp` itself.
 
 None of the comparisons is constant-time: each stops at the first difference, so none may compare a secret.
 

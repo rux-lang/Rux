@@ -1,5 +1,5 @@
 import Core::Assert;
-import Memory::{ PageAlign, PageAllocate, PageError, PageExecute, PageNone, PageProtect, PageRead, PageRelease, PageSize, PageWrite, Set };
+import Memory::{ MinimumPageSize, PageAlign, PageAllocate, PageError, PageExecute, PageNone, PageProtect, PageRead, PageRelease, PageSize, PageWrite, Set };
 
 // The page layer is where four systems that agree on nothing are made to look the same, so what is checked here is
 // the shape of the agreement: that a length is rounded up rather than refused, that an empty request is reported
@@ -10,14 +10,32 @@ func Main() -> int {
     let copiedError = error;
     Assert(copiedError == error, "page errors copy structurally");
 
-    let size = PageSize();
-    Assert(size >= 4096, "a page is at least four kilobytes on every supported system");
+    // The real page size is asked of the system, and the query reports whether it got an answer rather than
+    // substituting one. A system that will not answer is not a system to guess about.
+    var size: uint = 0;
+    let sizeError = PageSize(@size);
+    Assert(sizeError == PageError::None, "the system answers how large its pages are");
+    Assert(size >= MinimumPageSize, "a real page is at least the documented minimum");
     Assert((size & (size - 1)) == 0, "and its size is a power of two");
 
+    // A null destination is refused rather than written through, and leaves nothing behind.
+    Assert(PageSize(null) == PageError::InvalidAddress, "asking with nowhere to put the answer is refused");
+
+    // The bound is what `PageAlign` rounds to, and it is a divisor of the real size on every machine — which is
+    // what makes rounding to it safe. On Apple Silicon the two differ by a factor of four, so this is not a
+    // restatement of the assertion above.
+    Assert(MinimumPageSize == 4096, "the documented minimum is four kilobytes");
+    Assert(size % MinimumPageSize == 0, "the real page size is a whole number of minimum pages");
+
     Assert(PageAlign(0) == 0, "nothing rounds to nothing");
-    Assert(PageAlign(1) == size, "one byte takes a whole page");
-    Assert(PageAlign(size) == size, "a whole page is already aligned");
-    Assert(PageAlign(size + 1) == size * 2, "and one byte past it takes two");
+    Assert(PageAlign(1) == MinimumPageSize, "one byte takes a whole minimum page");
+    Assert(PageAlign(MinimumPageSize) == MinimumPageSize, "a whole minimum page is already aligned");
+    Assert(PageAlign(MinimumPageSize + 1) == MinimumPageSize * 2, "and one byte past it takes two");
+
+    // Rounding past the end of the address range gives the length back rather than wrapping to something small,
+    // which the system would then accept as a tiny allocation.
+    let nearTheEnd = 0xFFFFFFFFFFFFFFFFu64 as uint;
+    Assert(PageAlign(nearTheEnd) == nearTheEnd, "a length that cannot be rounded is returned unchanged");
 
     // An empty request is an arithmetic error at the caller, so it is reported rather than accepted.
     var address: *var opaque = null;

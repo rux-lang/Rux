@@ -259,10 +259,11 @@ const std::vector<std::string> &SharedWrappers() {
                                                       "MkdirAt",      "Madvise",
                                                       "Mmap",         "Mprotect",
                                                       "Munmap",       "Nanosleep",
-                                                      "OpenAt",       "Read",
-                                                      "ReadlinkAt",   "RenameAt",
-                                                      "SymlinkAt",    "UnlinkAt",
-                                                      "UtimensAt",    "Write"};
+                                                      "OpenAt",       "QueryPageSize",
+                                                      "Read",         "ReadlinkAt",
+                                                      "RenameAt",     "SymlinkAt",
+                                                      "UnlinkAt",     "UtimensAt",
+                                                      "Write"};
     return wrappers;
 }
 

@@ -16,7 +16,7 @@ rux add Rux/FreeBSD
 | `Errors`  | the errno numbers, and `IsError` / `Errno` for reading a raw result                      |
 | `Syscall` | `Syscall0` through `Syscall6` as inline assembly, the call numbers, and `SignExtendFd`   |
 | `File`    | `Read`, `Write`, `Close`, `OpenAt`, `Lseek`, `Fsync`, `Ftruncate`, `UnlinkAt`, `MkdirAt`, `RenameAt`, `Fstat`, `FstatAt`, `Dup2`, `Pipe2`, the open flags, and the three standard descriptors |
-| `Memory`  | `Mmap`, `Munmap`, `Brk`, `Mprotect`, `Madvise`, and the protection, mapping and advice flags |
+| `Memory`  | `Mmap`, `Munmap`, `Brk`, `Mprotect`, `Madvise`, `QueryPageSize`, and the protection, mapping and advice flags |
 | `Clock`   | `ClockGetTime`, `ClockGetResolution`, `Nanosleep`, and the clock identifiers              |
 | `Entropy` | `GetRandom`, the only source here fit for a key or a token                                |
 | `Process` | `Exit` and `GetPid`                                                                       |
@@ -27,6 +27,8 @@ The module names describe where each declaration comes from; they are not part o
 FreeBSD reports an error by setting the carry flag and leaving a *positive* errno in the result register, so a raw instruction result cannot be tested for sign. The assembly wrappers normalize that to a small negative number, which is Linux's convention, so everything above them reads the same on both systems and `IsError` and `Errno` are the same two functions.
 
 Nothing here is interchangeable with `Rux/Linux`, and the resemblance is the hazard. The clock identifiers differ — monotonic is 4 here and 1 there — the open flags are the BSD ones, `MADV_DONTNEED` does not discard where Linux's does, and only the errno numbers below thirty-five agree. A value taken from one package and passed to the other compiles and means something else.
+
+`QueryPageSize` reads the `hw.pagesize` sysctl, which is how FreeBSD publishes the value; there is no dedicated call and no auxiliary vector to read without libc.
 
 ## The shared POSIX contract
 

@@ -16,7 +16,7 @@ rux add Rux/Linux
 | `Errors`  | the errno numbers, and `IsError` / `Errno` for reading a raw result                      |
 | `Syscall` | `Syscall0` through `Syscall6` as inline assembly, the call numbers, and `SignExtendFd`   |
 | `File`    | `Read`, `Write`, `Close`, `OpenAt`, `Lseek`, `Fsync`, `Ftruncate`, `UnlinkAt`, `MkdirAt`, `RenameAt`, `Fstat`, `FstatAt`, `Dup3`, `Pipe2`, the open flags, and the three standard descriptors |
-| `Memory`  | `Mmap`, `Munmap`, `Brk`, `Mprotect`, `Madvise`, and the protection, mapping and advice flags |
+| `Memory`  | `Mmap`, `Munmap`, `Brk`, `Mprotect`, `Madvise`, `QueryPageSize`, and the protection, mapping and advice flags |
 | `Clock`   | `ClockGetTime`, `ClockGetResolution`, `Nanosleep`, `ClockNanosleep`, and the clock identifiers |
 | `Process` | `Exit` and `GetPid`                                                                      |
 | `Entropy` | `GetRandom`, the only source here fit for a key or a token                                |
@@ -29,6 +29,8 @@ There is no `errno` here. The kernel returns the error in the result register as
 Only calls both architectures have are wrapped. AArch64 came after the directory-relative interface and never got `open`, `stat`, `unlink`, `mkdir`, `rename`, `dup2` or `pipe`, so this package offers the `*at` forms alone and `AtFdCwd` is what makes an ordinary path work through them. One wrapper is then right on both.
 
 The errno numbers and the `RTLD_*` flags keep the kernel's own spelling, because `EINVAL` is what a man page names and what a reader porting code will look for. The rest of the constants use Rux names, which is what they were published under.
+
+`QueryPageSize` is the one wrapper here that is not a system call. Linux publishes the page size in the auxiliary vector the kernel hands to a new process, which libc captures at startup and answers from; this package captures nothing at startup, so it reads the same vector through `/proc/self/auxv`. That costs an open, a read and a close, and it reports the open's own error number when `/proc` is not there — which is ordinary in a container and is why the call is fallible rather than answering 4096 and hoping.
 
 ## The shared POSIX contract
 

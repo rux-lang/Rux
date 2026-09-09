@@ -16,12 +16,13 @@ import Core::{ Assert, OperatingSystem, #target };
 
 when #target.os == OperatingSystem::macOS {
     import macOS::{ AdviseDontNeed, AdviseWillNeed, EINVAL, Errno, IsError, Madvise, MapAnonymous, MapPrivate,
-                    MaximumErrno, Mmap, Mprotect, Munmap, ProtectionNone, ProtectionRead, ProtectionWrite };
+                    MaximumErrno, Mmap, Mprotect, Munmap, ProtectionNone, ProtectionRead, ProtectionWrite,
+                    QueryPageSize };
 
     /// One mapping unit. Sixteen kibibytes is a whole number of pages on every supported cell: x86-64 pages are
     /// 4 KiB and Apple Silicon's are 16 KiB, and a length that is a multiple of both is page-aligned on all of
-    /// them. Nothing here asks the system what its page size is, because nothing here needs to know — task 41 owns
-    /// that question, and a test that guessed 4096 would be exactly the fixed-size assumption task 41 removes.
+    /// them. It is a constant rather than a query so that the mapping cases below do not depend on the page-size
+    /// query being right; the query is checked separately, against this constant, in the section that follows.
     const MappingUnit: uint = 16384;
 
     func Main() -> int {
@@ -43,6 +44,27 @@ when #target.os == OperatingSystem::macOS {
         Assert(Errno(0 - EINVAL) == EINVAL, "an error result carries its number");
         Assert(Errno(0) == 0, "a successful result carries no number");
         Assert(Errno(4096) == 0, "a non-error value carries no number");
+
+        // --- The real page size ---------------------------------------------------------------------------------
+
+        // Asked of the system rather than assumed. Each system answers a different way — `/proc/self/auxv` on
+        // Linux, the `hw.pagesize` sysctl on FreeBSD, `getpagesize` on Darwin — behind one wrapper name.
+        let pageSize = QueryPageSize();
+        Assert(!IsError(pageSize), "the system answers how large its pages are");
+        Assert(pageSize >= 4096, "a page is at least four kilobytes on every supported system");
+        Assert((pageSize & (pageSize - 1)) == 0, "and its size is a power of two");
+        Assert(pageSize <= MappingUnit as int64, "the mapping unit above is at least one page");
+        Assert((MappingUnit as int64) % pageSize == 0, "and a whole number of them, so nothing here is rounded up");
+
+        // An address one page in from a mapping's base is itself page-aligned, so releasing from there is accepted
+        // where releasing from one byte in is not. That is the same distinction the unaligned case below asserts,
+        // made against the size the system actually reported rather than against a constant.
+        let paged = Mmap(null, MappingUnit, ProtectionRead | ProtectionWrite, MapPrivate | MapAnonymous, -1, 0);
+        Assert(!IsError(paged), "a second mapping succeeds");
+        Assert((paged as uint64) % (pageSize as uint64) == 0, "a mapping starts on a page boundary");
+        Assert(Munmap((paged + pageSize) as *opaque, MappingUnit - (pageSize as uint)) == 0,
+               "releasing from one page in is accepted");
+        Assert(Munmap(paged as *opaque, pageSize as uint) == 0, "and releasing the first page finishes it");
 
         // --- A mapping that works ---------------------------------------------------------------------------
 

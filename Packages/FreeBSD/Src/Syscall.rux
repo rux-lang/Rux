@@ -55,6 +55,7 @@ const SysPipe2: uint64 = 542;
 const SysFstat: uint64 = 551;
 const SysGetRandom: uint64 = 563;
 const SysDup2: uint64 = 90;
+const SysSysctl: uint64 = 202;
 
 // The FreeBSD kernel reports an error from every system call the same way on
 // both architectures: it sets the carry flag and leaves a positive errno in the

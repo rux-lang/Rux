@@ -1142,7 +1142,6 @@ missing-param|Memory/Src/Block.rux|func|Move|5f09c20d2b65a34a
 missing-param|Memory/Src/Block.rux|func|Set|5944157fd8323032
 missing-param|Memory/Src/Block.rux|func|Zero|f5ebaf1c91f974d8
 missing-param|Memory/Src/Free.rux|func|Free|af7852b8fa649f12
-missing-param|Memory/Src/Pages.rux|func|PageAlign|869dc756f6a6bd74
 missing-param|Memory/Src/Pages.rux|func|PageAllocate|341ebef91bcd232a
 missing-param|Memory/Src/Pages.rux|func|PageProtect|2c079f1b21b6ce5f
 missing-param|Memory/Src/Pages.rux|func|PageRelease|9e642358fb03f2ba
@@ -2191,11 +2190,9 @@ missing-returns|Memory/Src/Block.rux|func|Compare|816a9c9f57c2ad6c
 missing-returns|Memory/Src/Block.rux|func|Equal|030e37a356fb10fa
 missing-returns|Memory/Src/Block.rux|func|Find|4cd72bfec4544d02
 missing-returns|Memory/Src/Block.rux|func|MismatchOffset|2a2ac8a86870d3f2
-missing-returns|Memory/Src/Pages.rux|func|PageAlign|869dc756f6a6bd74
 missing-returns|Memory/Src/Pages.rux|func|PageAllocate|341ebef91bcd232a
 missing-returns|Memory/Src/Pages.rux|func|PageProtect|2c079f1b21b6ce5f
 missing-returns|Memory/Src/Pages.rux|func|PageRelease|9e642358fb03f2ba
-missing-returns|Memory/Src/Pages.rux|func|PageSize|13e8b090f6ce888a
 missing-returns|Memory/Src/Realloc.rux|func|Realloc|4bdbec9b39c89b0a
 missing-returns|Path/Src/OsString.rux|func|Equals|ee234b469f1b7e2a
 missing-returns|Path/Src/OsString.rux|func|FromText|77e1b8ef1c445f0c
@@ -3998,11 +3995,9 @@ missing-see|Memory/Src/Pages.rux|const|PageNone|6a912004b659f6fd
 missing-see|Memory/Src/Pages.rux|const|PageRead|0d82470bfdb6bdc7
 missing-see|Memory/Src/Pages.rux|const|PageWrite|1cd8bdfe748201de
 missing-see|Memory/Src/Pages.rux|enum|PageError|7897e5020a32a2f7
-missing-see|Memory/Src/Pages.rux|func|PageAlign|869dc756f6a6bd74
 missing-see|Memory/Src/Pages.rux|func|PageAllocate|341ebef91bcd232a
 missing-see|Memory/Src/Pages.rux|func|PageProtect|2c079f1b21b6ce5f
 missing-see|Memory/Src/Pages.rux|func|PageRelease|9e642358fb03f2ba
-missing-see|Memory/Src/Pages.rux|func|PageSize|13e8b090f6ce888a
 missing-see|Memory/Src/Realloc.rux|func|Realloc|4bdbec9b39c89b0a
 missing-see|Path/Src/OsString.rux|func|=|993a3f642494fca5
 missing-see|Path/Src/OsString.rux|func|Clear|d8317b4ac0332247

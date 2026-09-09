@@ -17,16 +17,16 @@ import Memory::AlignUp;
 
 when #target.os {
     .FreeBSD => import FreeBSD::{
-        Errno, IsError, Mmap, Mprotect, Munmap, MapAnonymous, MapPrivate, ProtectionExecute, ProtectionNone,
-        ProtectionRead, ProtectionWrite, EACCES, EINVAL, ENOMEM, EPERM
+        Errno, IsError, Mmap, Mprotect, Munmap, MapAnonymous, MapPrivate, QueryPageSize,
+        ProtectionExecute, ProtectionNone, ProtectionRead, ProtectionWrite, EACCES, EINVAL, ENOMEM, EPERM
     },
     .Linux => import Linux::{
-        Errno, IsError, Mmap, Mprotect, Munmap, MapAnonymous, MapPrivate, ProtectionExecute, ProtectionNone,
-        ProtectionRead, ProtectionWrite, EACCES, EINVAL, ENOMEM, EPERM
+        Errno, IsError, Mmap, Mprotect, Munmap, MapAnonymous, MapPrivate, QueryPageSize,
+        ProtectionExecute, ProtectionNone, ProtectionRead, ProtectionWrite, EACCES, EINVAL, ENOMEM, EPERM
     },
     .macOS => import macOS::{
-        Errno, IsError, Mmap, Mprotect, Munmap, MapAnonymous, MapPrivate, ProtectionExecute, ProtectionNone,
-        ProtectionRead, ProtectionWrite, EACCES, EINVAL, ENOMEM, EPERM, getpagesize
+        Errno, IsError, Mmap, Mprotect, Munmap, MapAnonymous, MapPrivate, QueryPageSize,
+        ProtectionExecute, ProtectionNone, ProtectionRead, ProtectionWrite, EACCES, EINVAL, ENOMEM, EPERM
     },
     .Windows => import Windows::{
         GetLastError, GetSystemInfo, SystemInfo, VirtualAlloc, VirtualFree, VirtualProtect,
@@ -88,33 +88,63 @@ pub enum PageError: uint8 {
     Failed = 6
 }
 
-/// The size of a page on this system.
+/// The smallest page any supported system uses, in bytes.
 ///
-/// Takes nothing and returns the size by copy. Always a power of two.
+/// Four kibibytes, which is the page size on seven of the eight supported target cells and the floor on the eighth:
+/// Apple Silicon uses sixteen, and a Linux kernel may be configured for sixteen or sixty-four, but none of them
+/// goes below this.
 ///
-/// It is asked of the system where the system will answer — through `GetSystemInfo` on Windows and `getpagesize` on
-/// Darwin, which is not 4 KiB on Apple Silicon. Linux and FreeBSD keep the answer in the auxiliary vector rather
-/// than behind a system call, and this package calls no libc on those systems, so there the standard 4 KiB is
-/// reported. A kernel configured for larger pages will therefore be under-reported.
+/// It is a bound, not an answer. `PageAlign` rounds to it because rounding to a divisor of the real page size is
+/// always safe — the system rounds again, up to whatever its pages actually are — and because asking the system on
+/// every call would put a file read or a system call inside an allocator's inner loop. A caller that needs the real
+/// granularity asks `PageSize` once and keeps the answer.
 ///
-/// That under-reporting cannot make an allocation wrong: every call here rounds a length up to whole pages in the
-/// system rather than in this module. It can only make a caller reserve more calls than it needed.
+/// @see https://rux-lang.dev/docs/api/memory/minimum-page-size
+pub const MinimumPageSize: uint = 4096;
+
+/// Asks the system how large a page actually is, in bytes.
 ///
-/// Cannot fail. Runs in constant time and allocates nothing.
+/// The answer is always a power of two, and is the granularity every call in this module rounds a length up to. It
+/// varies by machine and not only by system: Apple Silicon uses sixteen kibibytes where Apple's x86-64 uses four,
+/// and a Linux kernel may be configured for either or for sixty-four.
 ///
-/// https://rux-lang.dev/docs/api/memory/page-size
-pub func PageSize() -> uint {
+/// Each system is asked the way it wants to be asked, by the package that owns it — `GetSystemInfo` on Windows,
+/// `getpagesize` on Darwin, the `hw.pagesize` sysctl on FreeBSD, and `/proc/self/auxv` on Linux, whose kernel
+/// publishes the value in the auxiliary vector rather than behind a system call. Nothing is captured at process
+/// start and no libc is called.
+///
+/// `result` receives the size when this reports `None`, and is left unwritten otherwise; it must not be null.
+///
+/// # Failures
+///
+/// Reports `Unsupported` when the system would not answer — on Linux, a container built without `/proc` is the
+/// ordinary way that happens. A failure is reported rather than a guess substituted, because a caller that is
+/// asking this instead of using `MinimumPageSize` is asking for the real number, and a wrong real number is worse
+/// than a refusal it can handle.
+///
+/// Allocates nothing. Runs in constant time on three systems and performs one open, read and close on Linux, so a
+/// caller that needs the size more than once should keep it.
+///
+/// @param result receives the page size in bytes
+/// @returns `None` when the system answered
+/// @see https://rux-lang.dev/docs/api/memory/page-size
+pub func PageSize(result: *var uint) -> PageError {
+    if result == null { return PageError::InvalidAddress; }
     when #target.os {
         .Windows => {
+            // GetSystemInfo has no failure to report; a system that could not answer could not have started the
+            // process. The zero check is a guard against a future stub rather than an observed case.
             var info: SystemInfo;
             GetSystemInfo(@info);
-            return info.pageSize as uint;
-        }
-        .macOS => {
-            return getpagesize() as uint;
+            if info.pageSize == 0 { return PageError::Unsupported; }
+            *result = info.pageSize as uint;
+            return PageError::None;
         }
         else => {
-            return 4096;
+            let size = QueryPageSize();
+            if size <= 0 { return PageError::Unsupported; }
+            *result = size as uint;
+            return PageError::None;
         }
     }
 }
@@ -221,17 +251,27 @@ pub func PageProtect(address: *var opaque, length: uint, protection: uint32) -> 
     }
 }
 
-/// Rounds `length` up to a whole number of pages.
+/// Rounds `length` up to a whole number of `MinimumPageSize` blocks.
 ///
-/// `length` is read by value. Returns the rounded length, or `length` itself when rounding would pass the end of the
-/// range — which a caller sizing an allocation should notice, since the system will refuse such a length anyway.
+/// It rounds to the bound rather than to the system's real page size, which is a deliberate difference from what
+/// the name suggests and the reason `MinimumPageSize` is public. Rounding to a divisor of the real size cannot make
+/// an allocation wrong — every call in this module hands the length to a system that rounds again, up to whatever
+/// its pages actually are — and it keeps a file read out of an allocator's inner loop. On a machine with larger
+/// pages the result is a length the system will round further, which costs nothing.
+///
+/// A caller that needs the length to be a whole number of *real* pages asks `PageSize` once, keeps the answer, and
+/// rounds with `AlignUp` itself.
+///
+/// Returns the rounded length, or `length` itself when rounding would pass the end of the range — which a caller
+/// sizing an allocation should notice, since the system will refuse such a length anyway.
 ///
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
-/// https://rux-lang.dev/docs/api/memory/page-align
+/// @param length the byte count to round up
+/// @returns the rounded length
+/// @see https://rux-lang.dev/docs/api/memory/page-align
 pub func PageAlign(length: uint) -> uint {
-    let size = PageSize();
-    let rounded = AlignUp(length, size);
+    let rounded = AlignUp(length, MinimumPageSize);
     return rounded < length ? length : rounded;
 }
 
