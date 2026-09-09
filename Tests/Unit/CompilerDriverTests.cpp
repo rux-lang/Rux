@@ -309,6 +309,22 @@ TEST_CASE("compiler driver resolves transitive workspace dependencies by normali
     CHECK(result.stats.dependencyFiles == 2);
 }
 
+TEST_CASE("compiler driver answers a dependency's registry dependency from the root's path dependency") {
+    // `App` holds both `Dependency` and `Transitive` by path, and `Dependency` names `Transitive` by namespace and
+    // version. Nothing is installed and `App` never imports `Transitive` itself, so the checkout has to stand in the
+    // way a workspace member would, whatever order the imports are met in.
+    DependencyFixture fixture;
+    fixture.UseRegistryDeclaredTransitiveDependency();
+    fixture.UseRootPathDependencyForTransitive();
+    std::vector<Diagnostic> diagnostics;
+
+    const auto result = CompilerDriver(fixture.Options(true, diagnostics)).Compile();
+
+    CHECK(result.ok);
+    CHECK(diagnostics.empty());
+    CHECK(result.stats.dependencyFiles == 2);
+}
+
 TEST_CASE("compiler driver supplies manifest and command-line build context") {
     DependencyFixture fixture;
     fixture.SetManifestDefine("allocator", "system");

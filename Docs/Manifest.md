@@ -154,6 +154,8 @@ The import name is an identity segment, and two dependencies cannot produce the 
 
 Workspace overrides match registry dependencies by normalized qualified identity. A namespace-free workspace member cannot override a qualified registry dependency.
 
+A path dependency of the package being built stands in the same way for a registry dependency of the same package name declared anywhere in its dependency graph, so a checkout does not also have to be installed for its dependents to find it.
+
 ## Version requirements
 
 A requirement is a comma-separated intersection of comparators; surrounding whitespace is insignificant:

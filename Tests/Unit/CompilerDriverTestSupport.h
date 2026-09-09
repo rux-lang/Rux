@@ -222,6 +222,12 @@ pub module Api {
 )"));
     }
 
+    /// The application also holds the package its dependency names by registry identity, as a path dependency.
+    void UseRootPathDependencyForTransitive() {
+        REQUIRE(application.AddPathDependency(*IdentitySegment::Parse("Transitive"), "../Transitive"));
+        REQUIRE(application.Save(appRoot / "Rux.toml"));
+    }
+
     void ConfigureLocalWorkspace(CompileOptions &options) const {
         options.localPackageRoots.emplace("transitive", transitiveRoot);
         options.localDependenciesOnly = true;

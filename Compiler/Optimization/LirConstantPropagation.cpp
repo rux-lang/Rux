@@ -3,13 +3,17 @@
 #include "Optimization/ConstantEvaluator.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <optional>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
+#include <vector>
 
 namespace Rux::Optimization {
 namespace {
+using BlockIndex = std::uint32_t;
+
 struct KnownValue {
     std::optional<TypedConstant> constant;
     std::optional<LirReg> copy;
@@ -48,6 +52,115 @@ KnownValue Resolve(const Values &values, const LirReg reg) {
     }
     return KnownValue{std::nullopt, *std::ranges::min_element(visited)};
 }
+
+/// The one case a switch on a known subject reaches, or its default when no case value equals the subject.
+///
+/// @return nullopt when the subject is not known, or a case value cannot be read
+std::optional<BlockIndex> KnownSwitchTarget(const LirTerminator &terminator, const Values &values) {
+    const KnownValue subject = Resolve(values, terminator.cond);
+    if (!subject.constant) {
+        return std::nullopt;
+    }
+    for (const auto &switchCase : terminator.cases) {
+        const auto value = ParseConstant(switchCase.value, terminator.retType);
+        if (!value) {
+            return std::nullopt;
+        }
+        if (SameConstant(*subject.constant, *value)) {
+            return switchCase.target;
+        }
+    }
+    return terminator.defaultTarget;
+}
+
+/// The successors a block's terminator can still transfer to once the constants known so far are honored: a branch on
+/// a known boolean has one, a switch on a known subject has one, and anything else keeps them all.
+std::vector<BlockIndex> SelectableSuccessors(const LirBlock &block, const Values &values) {
+    std::vector<BlockIndex> successors;
+    if (!block.term) {
+        return successors;
+    }
+    const auto add = [&successors](const BlockIndex target) {
+        if (!std::ranges::contains(successors, target)) {
+            successors.push_back(target);
+        }
+    };
+    const auto &terminator = *block.term;
+    switch (terminator.kind) {
+    case LirTermKind::Jump:
+        add(terminator.trueTarget);
+        break;
+    case LirTermKind::Branch: {
+        std::optional<bool> known;
+        if (const KnownValue condition = Resolve(values, terminator.cond); condition.constant) {
+            known = condition.constant->BooleanValue();
+        }
+        if (known) {
+            add(*known ? terminator.trueTarget : terminator.falseTarget);
+        }
+        else {
+            add(terminator.trueTarget);
+            add(terminator.falseTarget);
+        }
+        break;
+    }
+    case LirTermKind::Switch:
+        if (const auto selected = KnownSwitchTarget(terminator, values)) {
+            add(*selected);
+            break;
+        }
+        add(terminator.defaultTarget);
+        for (const auto &switchCase : terminator.cases) {
+            add(switchCase.target);
+        }
+        break;
+    case LirTermKind::Return:
+    case LirTermKind::Unreachable:
+        break;
+    }
+    return successors;
+}
+
+/// The edges a walk from entry can still take once the branch conditions known so far are honored.
+///
+/// What a phi receives along any other edge comes from a block that will never run. Reading it anyway is what kept a
+/// chain of `||` from settling: each join in the chain waited for CFG cleanup, which runs last in an iteration, to
+/// delete the edge from the short-circuit block before the join could be known, so every comparison in the chain cost
+/// the pipeline one whole iteration and seven of them exhausted the limit.
+class LiveEdges {
+public:
+    LiveEdges(const LirFunc &function, const Values &values)
+        : live(function.blocks.size(), false)
+        , successors(function.blocks.size()) {
+        std::vector<BlockIndex> pending;
+        if (!function.blocks.empty()) {
+            pending.push_back(0);
+        }
+        while (!pending.empty()) {
+            const BlockIndex blockIndex = pending.back();
+            pending.pop_back();
+            if (live[blockIndex]) {
+                continue;
+            }
+            live[blockIndex] = true;
+            successors[blockIndex] = SelectableSuccessors(function.blocks[blockIndex], values);
+            for (const BlockIndex target : successors[blockIndex]) {
+                if (target < live.size() && !live[target]) {
+                    pending.push_back(target);
+                }
+            }
+        }
+    }
+
+    /// Whether control can still flow from `from` to `to`.
+    [[nodiscard]] bool IsLive(const BlockIndex from, const BlockIndex to) const {
+        return from < live.size() && live[from] && std::ranges::contains(successors[from], to);
+    }
+
+private:
+    std::vector<bool> live;
+    std::vector<std::vector<BlockIndex>> successors;
+};
 
 std::optional<TokenKind> UnaryToken(const LirOpcode opcode) {
     switch (opcode) {
@@ -103,7 +216,8 @@ std::optional<TokenKind> BinaryToken(const LirOpcode opcode) {
     }
 }
 
-std::optional<KnownValue> Evaluate(const LirInstr &instruction, const Values &values) {
+std::optional<KnownValue> Evaluate(const LirInstr &instruction, const Values &values, const LiveEdges &edges,
+                                   const BlockIndex blockIndex) {
     if (instruction.op == LirOpcode::Const) {
         if (auto value = ParseConstant(instruction.strArg, instruction.type)) {
             return KnownValue{std::move(value), std::nullopt};
@@ -111,14 +225,32 @@ std::optional<KnownValue> Evaluate(const LirInstr &instruction, const Values &va
         return std::nullopt;
     }
     if (instruction.op == LirOpcode::Phi) {
-        std::optional<KnownValue> joined;
-        for (const auto &[reg, predecessor] : instruction.phiPreds) {
-            static_cast<void>(predecessor);
-            KnownValue incoming = Resolve(values, reg);
-            if (joined && !SameValue(*joined, incoming)) {
+        // The one value every incoming edge `admits` agrees on.
+        const auto join = [&](auto &&admits) -> std::optional<KnownValue> {
+            std::optional<KnownValue> joined;
+            for (const auto &[reg, predecessor] : instruction.phiPreds) {
+                if (!admits(predecessor)) {
+                    continue;
+                }
+                KnownValue incoming = Resolve(values, reg);
+                if (joined && !SameValue(*joined, incoming)) {
+                    return std::nullopt;
+                }
+                joined = std::move(incoming);
+            }
+            return joined;
+        };
+        // Over every predecessor first: a value the phi holds whichever way control arrives is safe to name from this
+        // block, because whatever defines it dominates each predecessor and therefore the join.
+        auto joined = join([](BlockIndex) { return true; });
+        if (!joined) {
+            // Over the live predecessors only, a constant is still safe: it is written in place and names nothing. A
+            // copy is not, because until CFG cleanup has removed the dead predecessor the register it names does not
+            // dominate this block.
+            joined = join([&](const BlockIndex predecessor) { return edges.IsLive(predecessor, blockIndex); });
+            if (joined && !joined->constant) {
                 return std::nullopt;
             }
-            joined = std::move(incoming);
         }
         if (joined && joined->copy == instruction.dst) {
             return std::nullopt;
@@ -263,6 +395,9 @@ std::optional<KnownValue> Evaluate(const LirInstr &instruction, const Values &va
 
 /// Work out what each register is known to hold, over the whole function before anything is rewritten. Separating the
 /// two means the rewrite never reads facts it has already invalidated.
+///
+/// The facts only accumulate: a register goes from unknown to known and a known value never changes, so the edges the
+/// facts prove dead only ever grow, and stopping at any point leaves nothing unsound behind.
 Values Analyze(const LirFunc &function) {
     Values values;
     std::size_t definitions = function.params.size();
@@ -272,13 +407,14 @@ Values Analyze(const LirFunc &function) {
     }
 
     for (std::size_t iteration = 0; iteration <= definitions; ++iteration) {
+        const LiveEdges edges(function, values);
         bool changed = false;
-        for (const auto &block : function.blocks) {
-            for (const auto &instruction : block.instrs) {
+        for (BlockIndex blockIndex = 0; blockIndex < function.blocks.size(); ++blockIndex) {
+            for (const auto &instruction : function.blocks[blockIndex].instrs) {
                 if (instruction.dst == LirNoReg) {
                     continue;
                 }
-                const auto evaluated = Evaluate(instruction, values);
+                const auto evaluated = Evaluate(instruction, values, edges, blockIndex);
                 const auto previous = values.find(instruction.dst);
                 if (evaluated && (previous == values.end() || !SameValue(previous->second, *evaluated))) {
                     values[instruction.dst] = *evaluated;

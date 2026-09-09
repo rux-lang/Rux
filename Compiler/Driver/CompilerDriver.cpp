@@ -344,6 +344,23 @@ bool CompilerDriver::Impl::LexAndParseSources() {
 bool CompilerDriver::Impl::LoadDependencies() {
     BeginPhase(CompilePhase::LoadingDependency, opts.manifest.package.name.Text(), root);
 
+    // This package's path dependencies answer to their package names throughout the graph, the way workspace members
+    // do. A package further down that names one of them by namespace and version would otherwise be served from the
+    // install cache, or fail for want of an install, unless this package happened to import the checkout first — so
+    // whether a build succeeded depended on the order its imports were met in.
+    auto localPackageRoots = opts.localPackageRoots;
+    for (const auto &dependency : opts.manifest.dependencies) {
+        if (!dependency.IsPath() || !dependency.MatchesTarget(opts.target.Os())) {
+            continue;
+        }
+        const auto dependencyRoot = (root / dependency.Path()).lexically_normal();
+        const auto loaded = Manifest::Load(dependencyRoot / "Rux.toml");
+        // A manifest that cannot be read is reported by the import that needs it, if anything does.
+        if (loaded.Ok() && !loaded.manifest->package.name.Empty()) {
+            localPackageRoots.try_emplace(loaded.manifest->package.name.Normalized(), dependencyRoot);
+        }
+    }
+
     struct PendingPackage {
         std::string name;
         std::filesystem::path root;
@@ -383,8 +400,8 @@ bool CompilerDriver::Impl::LoadDependencies() {
         if (dep->IsPath()) {
             depRoot = (ownerRoot / dep->Path()).lexically_normal();
         }
-        else if (const auto local = opts.localPackageRoots.find(dep->package.Normalized());
-                 local != opts.localPackageRoots.end()) {
+        else if (const auto local = localPackageRoots.find(dep->package.Normalized());
+                 local != localPackageRoots.end()) {
             depRoot = local->second;
         }
         else {

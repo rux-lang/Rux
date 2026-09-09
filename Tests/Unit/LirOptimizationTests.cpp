@@ -361,6 +361,148 @@ TEST_CASE("LIR propagation stops at conflicting joins and unsupported evaluation
     CHECK(instructions[2].op == LirOpcode::Div);
 }
 
+TEST_CASE("LIR propagation ignores what a phi receives along an edge a known branch cannot take") {
+    // `false || rhs`: the short-circuit block still names itself as a predecessor of the join, yet the branch that
+    // selects it is already known not to. Only the value from the live edge counts, and only when it is a constant.
+    const auto build = [](const bool liveOperandIsConstant) {
+        LirFunc function;
+        function.name = liveOperandIsConstant ? "DeadEdgeConstant" : "DeadEdgeCopy";
+        function.blocks.resize(4);
+        function.blocks[0].label = "entry";
+        function.blocks[1].label = "short";
+        function.blocks[2].label = "rhs";
+        function.blocks[3].label = "merge";
+
+        LirInstr condition;
+        condition.dst = 0;
+        condition.op = LirOpcode::Const;
+        condition.type = TypeRef::MakeBool();
+        condition.strArg = "false";
+        function.blocks[0].instrs.push_back(std::move(condition));
+        function.blocks[0].term = BranchTo(0, 1, 2);
+
+        LirInstr shortValue;
+        shortValue.dst = 1;
+        shortValue.op = LirOpcode::Const;
+        shortValue.type = TypeRef::MakeBool();
+        shortValue.strArg = "true";
+        function.blocks[1].instrs.push_back(std::move(shortValue));
+        function.blocks[1].term = JumpTo(3);
+
+        if (liveOperandIsConstant) {
+            LirInstr rhsValue;
+            rhsValue.dst = 2;
+            rhsValue.op = LirOpcode::Const;
+            rhsValue.type = TypeRef::MakeBool();
+            rhsValue.strArg = "false";
+            function.blocks[2].instrs.push_back(std::move(rhsValue));
+        }
+        else {
+            function.params.push_back({2, TypeRef::MakeBool(), "rhs"});
+        }
+        function.blocks[2].term = JumpTo(3);
+
+        LirInstr phi;
+        phi.dst = 3;
+        phi.op = LirOpcode::Phi;
+        phi.type = TypeRef::MakeBool();
+        phi.phiPreds = {{1, 1}, {2, 2}};
+        function.blocks[3].instrs.push_back(std::move(phi));
+        function.blocks[3].term = ReturnValue(3, TypeRef::MakeBool());
+
+        LirModule module;
+        module.funcs.push_back(std::move(function));
+        LirPackage package;
+        package.modules.push_back(std::move(module));
+        return package;
+    };
+
+    SUBCASE("a constant on the live edge is the phi's value") {
+        auto package = build(true);
+        Optimization::LirPassPipeline propagation(BuildProfile::Release);
+        propagation.Add(std::make_unique<Optimization::LirConstantPropagation>());
+        const auto report = propagation.Run(package);
+
+        CHECK_FALSE(report.HasErrors());
+        CHECK(report.reachedFixedPoint);
+        const auto &merge = package.modules[0].funcs[0].blocks[3];
+        REQUIRE(merge.instrs.size() == 1);
+        CHECK(merge.instrs[0].op == LirOpcode::Const);
+        CHECK(merge.instrs[0].strArg == "false");
+    }
+
+    SUBCASE("a register on the live edge is not named before the dead predecessor is gone") {
+        auto package = build(false);
+        Optimization::LirPassPipeline propagation(BuildProfile::Release);
+        propagation.Add(std::make_unique<Optimization::LirConstantPropagation>());
+        const auto report = propagation.Run(package);
+
+        CHECK_FALSE(report.HasErrors());
+        CHECK(report.reachedFixedPoint);
+        const auto &merge = package.modules[0].funcs[0].blocks[3];
+        REQUIRE(merge.instrs.size() == 1);
+        CHECK(merge.instrs[0].op == LirOpcode::Phi);
+        CHECK(merge.instrs[0].phiPreds.size() == 2);
+    }
+
+    SUBCASE("the whole pipeline then folds the join in its first iteration") {
+        auto package = build(true);
+        auto pipeline = Optimization::OptimizationPipeline::ForProfile(BuildProfile::Release);
+        const auto report = pipeline.RunLir(package);
+
+        CHECK_FALSE(report.HasErrors());
+        CHECK(report.reachedFixedPoint);
+        const auto &blocks = package.modules[0].funcs[0].blocks;
+        REQUIRE(blocks.size() == 3);
+        CHECK(blocks[1].label == "rhs");
+        CHECK(blocks[2].label == "merge");
+        REQUIRE(blocks[0].term);
+        CHECK(blocks[0].term->kind == LirTermKind::Jump);
+    }
+}
+
+TEST_CASE("LIR optimization settles a long short-circuit chain over constants within the iteration limit") {
+    // Each `||` joins its operands in a phi. While propagation read every predecessor of a phi, each join waited one
+    // whole pipeline iteration for CFG cleanup to delete the edge from its short-circuit block, so seven comparisons
+    // exhausted the limit of eight. This is the shape of the syscall package tests, which check the errno constants
+    // seven at a time.
+    const std::string source = R"(
+        const A: int64 = 1;
+        const B: int64 = 2;
+        const C: int64 = 3;
+        const D: int64 = 4;
+        const E: int64 = 5;
+        const F: int64 = 6;
+        const G: int64 = 7;
+        const H: int64 = 8;
+        const I: int64 = 9;
+        const J: int64 = 10;
+        const K: int64 = 11;
+        const L: int64 = 12;
+
+        func Main() -> int {
+            if A != 1 || B != 2 || C != 3 || D != 4 || E != 5 || F != 6 || G != 7 || H != 8 || I != 9 || J != 10 ||
+                K != 11 || L != 12 {
+                return 26;
+            }
+            return 0;
+        }
+    )";
+
+    auto package = CompileToLir(source, BuildProfile::Release);
+    auto pipeline = Optimization::OptimizationPipeline::ForProfile(BuildProfile::Release);
+    const auto report = pipeline.RunLir(package);
+
+    CHECK_FALSE(report.HasErrors());
+    CHECK(report.reachedFixedPoint);
+    CHECK(report.iterations <= 3);
+    const auto &functions = package.modules[0].funcs;
+    const auto main = std::ranges::find(functions, "Main", &LirFunc::name);
+    REQUIRE(main != functions.end());
+    CHECK(std::ranges::none_of(
+        main->blocks, [](const LirBlock &block) { return block.term && block.term->kind == LirTermKind::Branch; }));
+}
+
 TEST_CASE("LIR dead code elimination removes pure results and dead local storage") {
     LirFunc function;
     function.name = "LocalCleanup";
