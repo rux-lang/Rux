@@ -85,6 +85,20 @@ const char *HandleSource = R"(
 } // namespace
 
 TEST_SUITE("DropGlueLowering") {
+    TEST_CASE("match expressions destroy owned payload bindings after computing the arm value") {
+        const LirPackage package = CompileToLir(std::string(HandleSource) + R"(
+            variant Option<T> { Some(T), None }
+            func Inspect(input: Option<Handle>) -> int32 {
+                return match <-input {
+                    .Some(held) => held.slot,
+                    .None => 0i32
+                };
+            }
+        )");
+        const LirFunc &inspect = RequireFunction(package, "Inspect");
+        CHECK_EQ(CallCount(inspect, GlueSymbol(package, "Handle")), 1);
+    }
+
     TEST_CASE("a type-named destructor is invoked by synthesized glue") {
         const LirPackage package = CompileToLir(std::string(HandleSource) + R"(
             func Main() -> int {

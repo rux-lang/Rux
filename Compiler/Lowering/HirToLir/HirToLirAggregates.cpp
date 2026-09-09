@@ -734,6 +734,7 @@ void HirToLirContext::StoreMatchInit(const HirMatchExpr &e, LirReg slot, const T
         SetBlock(bodyBlock);
         StoreExprIntoSlot(*arm.body, slot, type);
         if (!IsTerminated()) {
+            EmitCleanups(arm.cleanups);
             Jump(mergeBlock);
         }
         if (!isLast) {

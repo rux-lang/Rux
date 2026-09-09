@@ -1,5 +1,5 @@
 import Allocator::{ AllocError, Allocator, Layout, SystemAllocator };
-import Core::{ Result, Unit };
+import Core::{ Assert, Result, Unit };
 import Format::{ Render, WriteFormat };
 import Text::{ BufferWriter, Display, FormatError, FormatOk, FormatSpec, String, StringView, TextWriter, WriteAscii,
                WriteBytes };
@@ -21,21 +21,36 @@ import Text::{ BufferWriter, Display, FormatError, FormatOk, FormatSpec, String,
 // leak is invisible to a test that only reads the result, because the result is an error either way.
 
 // An allocator that forwards to the system one and counts what it hands out and takes back.
+struct AllocationCounts {
+    live: int;
+    allocations: int;
+    releases: int;
+    invalidReleases: int;
+}
+
 struct CountingAllocator {
     inner: Allocator;
-    live: int;
+    counts: *var AllocationCounts;
 }
 
 extend CountingAllocator : Allocator {
     func Allocate(self: &var CountingAllocator, layout: Layout, result: *var *var opaque) -> AllocError {
         let outcome = self.inner.Allocate(layout, result);
-        if outcome == AllocError::None { self.live = self.live + 1; }
+        if outcome == AllocError::None {
+            self.counts.live += 1;
+            self.counts.allocations += 1;
+        }
         return outcome;
     }
 
     func Deallocate(self: &var CountingAllocator, block: *var opaque, layout: Layout) -> AllocError {
         let outcome = self.inner.Deallocate(block, layout);
-        if outcome == AllocError::None { self.live = self.live - 1; }
+        if outcome == AllocError::None {
+            self.counts.live -= 1;
+            self.counts.releases += 1;
+        } else {
+            self.counts.invalidReleases += 1;
+        }
         return outcome;
     }
 
@@ -120,9 +135,78 @@ func MismatchOf(outcome: Result<String, FormatError>, expected: uint, supplied: 
     };
 }
 
+// A renderer that emits a prefix, then returns a positioned failure of its own.
+struct RefusingValue {
+    calls: *var int;
+}
+
+extend RefusingValue : Display {
+    func WriteDisplay(self: &RefusingValue, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+        *self.calls += 1;
+        WriteBytes(writer, "partial")?;
+        return Result::Error<Unit, FormatError>(FormatError::InvalidSpecification(73u));
+    }
+}
+
+func InvalidUtf8(outcome: Result<String, FormatError>) -> bool {
+    return match <-outcome {
+        .Success(_) => false,
+        .Error(reason) => match reason {
+            .TextFailure(kind) => match kind { .InvalidUtf8 => true, else => false },
+            else => false
+        }
+    };
+}
+
+func PropagationCases(allocator: Allocator) {
+    var counts = AllocationCounts { live: 0, allocations: 0, releases: 0, invalidReleases: 0 };
+    var counting = CountingAllocator { inner: allocator, counts: @counts };
+    let counted: Allocator = counting;
+    Assert(InvalidAt(Render(counted, "é 😀 {} {:>>>}", 1, 2), 15u), "embedded specification positions count UTF-8 bytes");
+    Assert(InvalidAt(Render(counted, "é 😀 {} {bad}", 1, 2), 12u), "a malformed later placeholder retains its absolute byte offset");
+    Assert(InvalidAt(Render(counted, "é {} tail {", 1), 11u), "an unterminated later placeholder points at its opening byte");
+    Assert(MismatchOf(Render(counted, "é {} {} {}", 1), 3u, 1u), "both words of argument-count failures survive Render");
+    Assert(counts.live == 0 && counts.allocations == 4 && counts.releases == 4 && counts.invalidReleases == 0,
+           "each validation failure releases its reserved builder once");
+
+    var calls = 0;
+    let refusing = RefusingValue { calls: @calls };
+    Assert(InvalidAt(Render(counted, "head {} tail", refusing), 73u), "a renderer failure propagates through WriteFormat and Render");
+    Assert(calls == 1 && counts.live == 0 && counts.allocations == 5 && counts.releases == 5,
+           "a partial rendering is discarded with exactly one release");
+    Assert(counts.invalidReleases == 0, "propagation does not attempt a second builder release");
+
+    var room: char8[64];
+    var writer = BufferWriter((@room[0])[..64]);
+    let sink: &var TextWriter = writer;
+    let failed = WriteFormat(sink, "head {} tail", refusing);
+    Assert(failed.IsError() && calls == 2 && writer.Length() == 12u, "writer failure stops after the accepted prefix");
+    let written = StringView::FromValidated(writer.Written());
+    let wanted = StringView::FromValidated("head partial");
+    Assert(written.Equals(wanted), "direct writing retains the exact bytes accepted before the refusal");
+    Assert(counts.allocations == 5 && counts.releases == 5, "WriteFormat does not allocate intermediate text");
+
+    writer.Clear();
+    let checked: &var TextWriter = writer;
+    Assert(WriteFormat(checked, "prefix {} {:>>>}", refusing, 2).IsError(), "the whole pattern is validated first");
+    Assert(calls == 2 && writer.Length() == 0u, "late validation failure invokes no renderer and writes no prefix");
+    Assert(Matches(Render(counted, "é 😀 {{}} {}", 12), "é 😀 {} 12"), "successful Unicode rendering preserves its output");
+    Assert(counts.live == 0 && counts.allocations == 6 && counts.releases == 6 && counts.invalidReleases == 0,
+           "a successful returned string releases its transferred allocation once");
+    let malformed: char8[4] = [c8'o', c8'k', 0xC3u8 as char8, c8'('];
+    Assert(InvalidUtf8(Render(counted, malformed)), "malformed literal bytes preserve the nested text failure");
+    Assert(counts.live == 0 && counts.allocations == 7 && counts.releases == 7 && counts.invalidReleases == 0,
+           "a malformed UTF-8 suffix releases its partially filled builder once");
+    let truncated: char8[2] = [c8'x', 0xF0u8 as char8];
+    Assert(InvalidUtf8(Render(counted, truncated)), "a truncated supplementary character is rejected");
+    Assert(counts.live == 0 && counts.allocations == 8 && counts.releases == 8 && counts.invalidReleases == 0,
+           "truncated UTF-8 also follows ordinary cleanup");
+}
+
 func Main() -> int {
     var system = SystemAllocator();
     let allocator: Allocator = system;
+    PropagationCases(allocator);
 
     // Text outside a placeholder is copied through, and a pattern with nothing to substitute is copied entire.
     if !Matches(Render(allocator, ""), "") { return 10; }
@@ -215,14 +299,15 @@ func Main() -> int {
 
     // A failed render gives its block back. Counted, because a leak leaves the same error behind as a clean
     // failure and is invisible to a check that only reads the result.
-    var counting = CountingAllocator { inner: allocator, live: 0 };
+    var counts = AllocationCounts { live: 0, allocations: 0, releases: 0, invalidReleases: 0 };
+    var counting = CountingAllocator { inner: allocator, counts: @counts };
     let counted: Allocator = counting;
     if !Matches(Render(counted, "{} ok", 1), "1 ok") { return 100; }
-    if counting.live != 0 { return 101; }
+    if counts.live != 0 { return 101; }
     if !InvalidAt(Render(counted, "abcdefghijklmnop {", 1), 17u) { return 102; }
-    if counting.live != 0 { return 103; }
+    if counts.live != 0 { return 103; }
     if !MismatchOf(Render(counted, "abcdefghijklmnop {}", 1, 2), 1u, 2u) { return 104; }
-    if counting.live != 0 { return 105; }
+    if counts.live != 0 { return 105; }
 
     return 0;
 }

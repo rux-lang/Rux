@@ -417,6 +417,8 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 
 ### Fixed
 
+- **Positioned parser failures use ordinary propagation** — Time calendar readers and Format placeholder readers return `Result` values and propagate complete offsets with `?`, removing error output slots and manual builder-release paths. Match expressions now emit the recorded cleanup for owned arm bindings, so matched returned strings release their storage. Format writes literal Unicode as complete UTF-8 characters while rejecting malformed sequences, and allocation tests observe shared counters across interface copies.
+
 - **Payload-preserving failure propagation** — `?` restores instantiated error layouts before extracting and rewrapping a failure, keeping nested payloads and complete multiword values. Both active payload cases use their move operations; named move-only outcomes require an explicit transfer. Propagation exits capture their failure before deferred statements and ordinary ownership cleanup.
 
 - **Return values captured before deferred cleanup** — return expressions now evaluate once before registered defers run, preserving scalar and aggregate values and accepted copy or move operations. Deferred statements retain their LIFO order before ownership cleanup, and generic function instantiation keeps each function's defers separate.

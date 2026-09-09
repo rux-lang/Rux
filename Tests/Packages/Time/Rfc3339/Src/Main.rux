@@ -1,4 +1,4 @@
-import Core::{ Assert, Option };
+import Core::{ Assert, Option, Result };
 import Text::{ BufferWriter, Display, FormatSpec, TextWriter };
 import Time::{ Date, DateTime, OffsetDateTime, ParseDate, ParseDateTime, ParseRfc3339, ParseTimeOfDay,
                TimeOfDay, TimeParseError, UtcOffset };
@@ -69,7 +69,41 @@ func Rendered(moment: OffsetDateTime, expected: char8[..]) -> bool {
     return Same(writer.Written(), expected);
 }
 
+// Check a positioned failure independently of the public parser's success type.
+func HasFailure<T>(outcome: Result<T, TimeParseError>, code: int, at: uint) -> bool {
+    return match outcome {
+        .Success(_) => false,
+        .Error(reason) => CodeOf(reason) == code && reason.Offset() == at
+    };
+}
+
+func PropagationCases() {
+    let complete = "2024-02-29T12:34:56Z";
+    var length = 0u;
+    while length < complete.length {
+        Assert(FailsAt(complete.data[..length], 1, length) == 0,
+               "every truncated prefix preserves the failing reader's end offset");
+        length += 1u;
+    }
+    Assert(FailsAt("2024-02-29T12:34:56+05:", 1, 23u) == 0, "offset minutes propagate through digit and offset readers");
+    Assert(FailsAt("2024-02-29T12:34:56+05:3", 1, 24u) == 0, "a partial final field retains its nonzero end offset");
+    Assert(FailsAt("2024-02-29T12:34:56+05:30extra", 1, 25u) == 0, "the end check reports the first trailing byte");
+    Assert(FailsAt("2024-02-29T12:34:éZ", 1, 17u) == 0, "a multibyte character fails at its first UTF-8 byte");
+    Assert(FailsAt("2024-02-29T12:34:56.123456789😀", 1, 29u) == 0, "a supplementary character is not an offset marker");
+    Assert(FailsAt("2024-02-29T12:34:56Zé", 1, 20u) == 0, "trailing Unicode keeps the byte position after Z");
+    Assert(HasFailure<Date>(ParseDate("2024-13-01"), 2, 5u), "date-only invalid months retain their category and offset");
+    Assert(HasFailure<Date>(ParseDate("2023-02-29"), 3, 8u), "date-only invalid days survive rewrapping");
+    Assert(HasFailure<Date>(ParseDate("2024-é-29"), 1, 5u), "date-only Unicode is rejected at its first byte");
+    Assert(HasFailure<TimeOfDay>(ParseTimeOfDay("12:60:00"), 4, 3u), "time-only validation reports the local minute offset");
+    Assert(HasFailure<TimeOfDay>(ParseTimeOfDay("12:34:56.1234567890"), 5, 18u), "time-only excessive fraction offset survives");
+    Assert(HasFailure<TimeOfDay>(ParseTimeOfDay("12:34:56Z"), 1, 8u), "time-only end check rejects an offset suffix");
+    Assert(HasFailure<DateTime>(ParseDateTime("2024-02-29T12:60:00"), 4, 14u), "embedded time uses its position in the full text");
+    Assert(HasFailure<DateTime>(ParseDateTime("2024-02-29T12:34:56Z"), 1, 19u), "local date-time rejects an offset without discarding it");
+}
+
 func Main() -> int {
+    PropagationCases();
+
     // The shapes that parse, and what they parse to.
     let plain = ParseRfc3339("2024-02-29T12:30:45Z");
     Assert(plain.IsSuccess(), "the plain shape parses");

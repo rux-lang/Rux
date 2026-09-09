@@ -11,6 +11,8 @@ Nanosecond durations, monotonic and wall clocks, Gregorian calendar values, and 
 - **Presentation** — `Date`, `TimeOfDay`, `UtcOffset`, `DateTime`, `OffsetDateTime`, `Duration` and `Timestamp` implement `Display` and `Debug`. A `DateTime` writes no offset, because it holds none: `Z` would claim UTC and the machine's offset would claim a place. `OffsetDateTime` is the pairing that carries one and therefore the type that produces RFC 3339. A precision names 0 to 9 fractional digits and truncates; without one the fraction is written to the digits it has, trailing zeros trimmed.
 - **One default per value** — a `Timestamp` is a moment on the calendar and a count of seconds at once, and only the first is what a bare placeholder writes: `{}` is RFC 3339 in UTC, and `{:unix}` is the signed second count. A moment outside years 0000 through 9999 has no RFC 3339 text and is refused with `ValueOutOfRange` before anything is written, which the second count still spells. `Instant` implements `Debug` alone, showing `Instant(nanoseconds: N)`: a monotonic reading counts from an origin the system chose at boot and has no text for a reader, only a difference from another reading.
 
+Calendar readers return their parsed values and positioned failures through `Result` and `?`. They allocate no storage; an embedded date or time keeps its byte offset within the complete input.
+
 All public value receivers borrow with `&T`. The remaining raw pointers are writable scalar/aggregate output slots and platform FFI addresses, never ownership handles. The package's value types are structurally `Copy`; descriptive and fallible factories retain names such as `Now`, `FromSeconds`, and `New`.
 
 ## Waiting, and what is not here

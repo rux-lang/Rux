@@ -3,9 +3,6 @@
 // The failure is in the type, so a caller cannot reach the value without deciding what to do about the
 // error. `?` propagates one, and `Result<Unit, E>` is the shape for an operation whose success carries
 // nothing back.
-//
-// A payload-carrying error propagated through `?` is subject to a known compiler defect recorded in
-// Docs/CompilerDefects.md; the safe pattern for a new failure type is written down there.
 
 /// A value produced by an operation that can fail, or the error that explains why it did not.
 ///

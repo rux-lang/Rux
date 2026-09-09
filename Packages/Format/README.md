@@ -8,6 +8,8 @@ String conversion and formatting: turning values into text, and text back into v
 rux add Rux/Format
 ```
 
+Placeholder readers preserve their positioned failures through `Result` and `?`, including nested specification offsets. `Render` releases its builder on a propagated failure and transfers the allocation to the returned string on success. Literal pattern text is written as complete UTF-8 characters; malformed or truncated sequences report `TextFailure(InvalidUtf8)`.
+
 ## What it provides
 
 - **Placeholder rendering** — `WriteFormat` fills each `{}` from the next argument into a destination the caller supplies, and `Render` is the allocating entry point that answers with a `String` of its own. Used by [`Rux/Io`](../Io) to implement `Print` and `PrintLine`.
