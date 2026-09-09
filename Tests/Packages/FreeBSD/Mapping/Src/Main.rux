@@ -6,8 +6,8 @@
 // sign gets a working mapping reported as a failure. The three packages answer that with one window — `-4095`
 // through `-1` and nothing else — and this file asserts both edges of it.
 //
-// Nothing here has ever been executed: the host that wrote it runs Windows, so this file exists to be run by
-// the FreeBSD jobs in CI and its value is entirely in what those jobs report.
+// The host that wrote this runs Windows, so the file exists to be run by the FreeBSD jobs in CI, and every
+// FreeBSD-specific claim below was settled by what those jobs reported.
 //
 // An errno is asserted only where POSIX names it and all three supported systems agree. `Mmap` and `Mprotect`
 // disagree about which number an unmapped or oversized request earns, so those cases assert the refusal alone.
@@ -112,9 +112,17 @@ when #target.os == OperatingSystem::FreeBSD {
         let empty = Mmap(null, 0, ProtectionRead, MapPrivate | MapAnonymous, -1, 0);
         Assert(IsError(empty) && Errno(empty) == EINVAL, "a zero-length mapping is EINVAL");
 
-        // An address that is not page-aligned cannot name a mapping.
-        let unaligned = Munmap((mapping + 1) as *opaque, MappingUnit);
-        Assert(IsError(unaligned) && Errno(unaligned) == EINVAL, "unmapping an unaligned address is EINVAL");
+        // An address that is not page-aligned cannot name a mapping, and Linux and macOS refuse one with EINVAL.
+        // FreeBSD does not: it rounds the address down to its page and stretches the length to cover the same bytes,
+        // so a release from one byte in takes the page the byte lies in, and a length short by one page takes
+        // exactly the mapping and nothing past it. That is what a caller has to know, so it is what is asserted,
+        // on a mapping of its own so that the one above stays whole for the release cases below.
+        let rounded = Mmap(null, MappingUnit, ProtectionRead | ProtectionWrite, MapPrivate | MapAnonymous, -1, 0);
+        Assert(!IsError(rounded), "a mapping to release from an unaligned address succeeds");
+        Assert(Munmap((rounded + 1) as *opaque, MappingUnit - (pageSize as uint)) == 0,
+               "unmapping from an unaligned address is accepted, rounded down to the page it lies in");
+        Assert(IsError(Mprotect(rounded as *opaque, MappingUnit, ProtectionRead)),
+               "and the whole mapping it lay in is gone");
 
         // A file mapping needs a descriptor, and this is not one. The number differs between systems, so only the
         // refusal is asserted.
