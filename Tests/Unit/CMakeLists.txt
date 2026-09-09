@@ -107,6 +107,7 @@ set(RUX_TEST_SOURCES
     ParserDumpTests.cpp
     PeLinkerTests.cpp
     PlatformAsmTests.cpp
+    PlatformBindingContractTests.cpp
     ProcessTests.cpp
     PropagationLoweringTests.cpp
     PublicationValidationTests.cpp

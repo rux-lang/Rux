@@ -66,12 +66,7 @@ extend Timestamp {
         }
         else {
             var time = Timespec { seconds: 0, nanoseconds: 0 };
-            when #target.os == .macOS {
-                ClockGetTime(ClockRealtime, time);
-            }
-            else {
-                ClockGetTime(ClockRealtime, @time);
-            }
+            ClockGetTime(ClockRealtime, @time);
             return Timestamp { seconds: time.seconds, nanoseconds: time.nanoseconds as uint32 };
         }
     }

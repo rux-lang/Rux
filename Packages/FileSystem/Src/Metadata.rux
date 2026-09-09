@@ -18,7 +18,7 @@ import Time::Timestamp;
 
 when #target.os {
     .FreeBSD => import FreeBSD::{ AtFdCwd, FchmodAt, Fstat, FstatAt, SymlinkNoFollow, UtimensAt },
-    .Linux => import Linux::{ AtFdCwd, FchmodAt, Fstat, NewFstatAt, SymlinkNoFollow, UtimensAt },
+    .Linux => import Linux::{ AtFdCwd, FchmodAt, Fstat, FstatAt, SymlinkNoFollow, UtimensAt },
     .macOS => import macOS::{ AtFdCwd, FchmodAt, Fstat, FstatAt, SymlinkNoFollow, UtimensAt },
     .Windows => import Windows::{
         CreateFileW,
@@ -413,13 +413,7 @@ pub func MetadataOf(allocator: Allocator, path: Path, followLinks: bool, error: 
     }
     else {
         let flags = followLinks ? 0i32 : SymlinkNoFollow;
-        var outcome: int64 = 0;
-        when #target.os == .Linux {
-            outcome = NewFstatAt(AtFdCwd, native as *char8, @buffer[0] as *var opaque, flags);
-        }
-        else {
-            outcome = FstatAt(AtFdCwd, native as *char8, @buffer[0] as *var opaque, flags);
-        }
+        let outcome = FstatAt(AtFdCwd, native as *char8, @buffer[0] as *var opaque, flags);
         if outcome < 0 {
             *error = TranslateNative((0i64 - outcome) as int32);
         }

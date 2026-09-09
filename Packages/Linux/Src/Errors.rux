@@ -92,6 +92,13 @@ pub const EBUSY: int64 = 16;
 #Allow("naming.const")
 pub const EEXIST: int64 = 17;
 
+/// `EXDEV`: the two paths are on different file systems.
+///
+///
+/// @see https://rux-lang.dev/docs/api/linux/exdev
+#Allow("naming.const")
+pub const EXDEV: int64 = 18;
+
 /// `ENOTDIR`: a path component that had to be a directory is not one.
 ///
 /// https://rux-lang.dev/docs/api/linux/enotdir

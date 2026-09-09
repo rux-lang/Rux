@@ -3,10 +3,9 @@
 // The one part of the FreeBSD interface that is not a system call: resolution, relocation and reference counting all
 // belong to the run-time linker, whose entry points live in libc.
 
-/// The library the run-time linker's entry points live in.
-///
-/// https://rux-lang.dev/docs/api/freebsd/loader-lib
-pub const LoaderLib = "libc.so.7";
+// The library the run-time linker's entry points live in. Private, as Linux's is: which library a binding links is
+// this package's business and not a value a caller has any use for.
+const LoaderLib = "libc.so.7";
 
 /// `RTLD_LAZY`: resolve a function symbol the first time it is called rather than at load.
 ///

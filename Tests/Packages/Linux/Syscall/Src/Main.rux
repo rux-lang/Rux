@@ -1,5 +1,5 @@
 import Core::{ OperatingSystem, #target };
-import Linux::{ ClockGetTime, ClockMonotonic, Errno, GetPid, IsError, MapAnonymous, MapPrivate, Mmap, Munmap, ProtectionRead, ProtectionWrite, Read, Syscall0, Syscall6, SysGetPid, SysMmap, Timespec, Write };
+import Linux::{ AtFdCwd, ClockGetResolution, ClockGetTime, ClockMonotonic, EACCES, EAGAIN, EBADF, EBUSY, EEXIST, EFAULT, EINTR, EINVAL, EIO, EISDIR, ELOOP, EMFILE, ENAMETOOLONG, ENOENT, ENOMEM, ENOSPC, ENOSYS, ENOTDIR, ENXIO, EOVERFLOW, EPERM, EPIPE, EROFS, Errno, ESPIPE, ESRCH, ETIMEDOUT, EXDEV, FstatAt, GetPid, IsError, MapAnonymous, MapPrivate, Mmap, Munmap, Nanosleep, ProtectionRead, ProtectionWrite, Read, Syscall0, Syscall6, SysGetPid, SysMmap, Timespec, Write };
 
 when #target.os == OperatingSystem::Linux {
 func Main() -> int {
@@ -60,6 +60,70 @@ func Main() -> int {
     }
     if Munmap(rawMapping as *opaque, PageSize) != 0 {
         return 11;
+    }
+
+    // --- The shared POSIX contract ------------------------------------------------------------------------
+    //
+    // Everything below is spelled identically in the Linux, macOS and FreeBSD copies of this test. That is
+    // the contract task 38 aligned: one wrapper name, one parameter shape, one call site. The numbers differ
+    // per system and are asserted per system, which is the part that must not be shared.
+
+    // A clock resolution is a positive granularity, and is read through the same address-passing shape as the
+    // clock itself.
+    var resolution: Timespec;
+    if ClockGetResolution(ClockMonotonic, @resolution) != 0 {
+        return 20;
+    }
+    if resolution.seconds < 0 || resolution.nanoseconds < 0 ||
+        (resolution.seconds == 0 && resolution.nanoseconds == 0) {
+        return 21;
+    }
+
+    // Nanosleep takes both records by address on every system. A hundred microseconds is long enough to be a
+    // real wait and short enough not to slow the suite.
+    var request = Timespec { seconds: 0, nanoseconds: 100000 };
+    var remaining = Timespec { seconds: 0, nanoseconds: 0 };
+    if Nanosleep(@request, @remaining) != 0 {
+        return 22;
+    }
+
+    // A nanosecond count of a second or more is what every one of the three refuses, with EINVAL.
+    var invalid = Timespec { seconds: 0, nanoseconds: 1000000000 };
+    let refused = Nanosleep(@invalid, null);
+    if !IsError(refused) || Errno(refused) != EINVAL {
+        return 23;
+    }
+
+    // FstatAt is one name on all three systems now; Linux spelled it NewFstatAt until task 38.
+    var status: char8[256];
+    if FstatAt(AtFdCwd, "/".data, @status[0] as *var opaque, 0) != 0 {
+        return 24;
+    }
+    let absent = FstatAt(AtFdCwd, "/no-such-file-8f2c1e".data, @status[0] as *var opaque, 0);
+    if !IsError(absent) || Errno(absent) != ENOENT {
+        return 25;
+    }
+
+    // The errno names shared by all three are declared by all three. The numbers are this system's own and are
+    // checked here, because a name that agrees while its value quietly does not is the hazard alignment
+    // introduces.
+    if EPERM != 1 || ENOENT != 2 || ESRCH != 3 || EINTR != 4 || EIO != 5 || ENXIO != 6 || EBADF != 9 {
+        return 26;
+    }
+    if ENOMEM != 12 || EACCES != 13 || EFAULT != 14 || EBUSY != 16 || EEXIST != 17 || EXDEV != 18 {
+        return 27;
+    }
+    if ENOTDIR != 20 || EISDIR != 21 || EINVAL != 22 || EMFILE != 24 || ENOSPC != 28 || ESPIPE != 29 {
+        return 28;
+    }
+    if EROFS != 30 || EPIPE != 32 {
+        return 29;
+    }
+    if EAGAIN != 11 || ELOOP != 40 || ENAMETOOLONG != 36 {
+        return 30;
+    }
+    if ENOSYS != 38 || EOVERFLOW != 75 || ETIMEDOUT != 110 {
+        return 31;
     }
 
     return 0;

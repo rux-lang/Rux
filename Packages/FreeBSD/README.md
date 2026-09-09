@@ -12,10 +12,10 @@ rux add Rux/FreeBSD
 
 | Module    | Covers                                                                                  |
 | --------- | --------------------------------------------------------------------------------------- |
-| `Types`   | the kernel ABI's own types: `ProcessId`, `FileDescriptor`, `FileOffset`, `Timespec`      |
+| `Types`   | the kernel ABI's own types: `ProcessId`, `FileDescriptor`, `FileOffset`, `FileMode`, `UserId`, `Timespec` |
 | `Errors`  | the errno numbers, and `IsError` / `Errno` for reading a raw result                      |
 | `Syscall` | `Syscall0` through `Syscall6` as inline assembly, the call numbers, and `SignExtendFd`   |
-| `File`    | `Read`, `Write`, `Close`, `OpenAt`, `Lseek`, `Fsync`, `Ftruncate`, `UnlinkAt`, `MkdirAt`, `RenameAt`, `Fstat`, `Dup2`, `Pipe2`, the open flags, and the three standard descriptors |
+| `File`    | `Read`, `Write`, `Close`, `OpenAt`, `Lseek`, `Fsync`, `Ftruncate`, `UnlinkAt`, `MkdirAt`, `RenameAt`, `Fstat`, `FstatAt`, `Dup2`, `Pipe2`, the open flags, and the three standard descriptors |
 | `Memory`  | `Mmap`, `Munmap`, `Brk`, `Mprotect`, `Madvise`, and the protection, mapping and advice flags |
 | `Clock`   | `ClockGetTime`, `ClockGetResolution`, `Nanosleep`, and the clock identifiers              |
 | `Entropy` | `GetRandom`, the only source here fit for a key or a token                                |
@@ -27,6 +27,12 @@ The module names describe where each declaration comes from; they are not part o
 FreeBSD reports an error by setting the carry flag and leaving a *positive* errno in the result register, so a raw instruction result cannot be tested for sign. The assembly wrappers normalize that to a small negative number, which is Linux's convention, so everything above them reads the same on both systems and `IsError` and `Errno` are the same two functions.
 
 Nothing here is interchangeable with `Rux/Linux`, and the resemblance is the hazard. The clock identifiers differ — monotonic is 4 here and 1 there — the open flags are the BSD ones, `MADV_DONTNEED` does not discard where Linux's does, and only the errno numbers below thirty-five agree. A value taken from one package and passed to the other compiles and means something else.
+
+## The shared POSIX contract
+
+Nothing here is interchangeable with the other POSIX packages, but the three are *spelled* the same, which is a different claim and a deliberate one. An equivalent call has the same wrapper name, the same parameter names and the same parameter shapes on all three systems, so a consumer such as [`Rux/FileSystem`](../FileSystem) or [`Rux/Time`](../Time) writes one call site instead of a `when #target.os` ladder around three names for one idea. `Tests/Unit/PlatformBindingContractTests.cpp` compares the three packages' parsed sources and fails when they drift apart.
+
+The values are the opposite: every constant is this system's own, and the same file asserts that the ones a reader might carry across really do differ.
 
 ## Values and pointers
 

@@ -12,10 +12,10 @@ rux add Rux/Linux
 
 | Module    | Covers                                                                                  |
 | --------- | --------------------------------------------------------------------------------------- |
-| `Types`   | the kernel ABI's own types: `ProcessId`, `FileDescriptor`, `FileOffset`, `Timespec`      |
+| `Types`   | the kernel ABI's own types: `ProcessId`, `FileDescriptor`, `FileOffset`, `FileMode`, `UserId`, `Timespec` |
 | `Errors`  | the errno numbers, and `IsError` / `Errno` for reading a raw result                      |
 | `Syscall` | `Syscall0` through `Syscall6` as inline assembly, the call numbers, and `SignExtendFd`   |
-| `File`    | `Read`, `Write`, `Close`, `OpenAt`, `Lseek`, `Fsync`, `Ftruncate`, `UnlinkAt`, `MkdirAt`, `RenameAt`, `Fstat`, `Dup3`, `Pipe2`, the open flags, and the three standard descriptors |
+| `File`    | `Read`, `Write`, `Close`, `OpenAt`, `Lseek`, `Fsync`, `Ftruncate`, `UnlinkAt`, `MkdirAt`, `RenameAt`, `Fstat`, `FstatAt`, `Dup3`, `Pipe2`, the open flags, and the three standard descriptors |
 | `Memory`  | `Mmap`, `Munmap`, `Brk`, `Mprotect`, `Madvise`, and the protection, mapping and advice flags |
 | `Clock`   | `ClockGetTime`, `ClockGetResolution`, `Nanosleep`, `ClockNanosleep`, and the clock identifiers |
 | `Process` | `Exit` and `GetPid`                                                                      |
@@ -29,6 +29,12 @@ There is no `errno` here. The kernel returns the error in the result register as
 Only calls both architectures have are wrapped. AArch64 came after the directory-relative interface and never got `open`, `stat`, `unlink`, `mkdir`, `rename`, `dup2` or `pipe`, so this package offers the `*at` forms alone and `AtFdCwd` is what makes an ordinary path work through them. One wrapper is then right on both.
 
 The errno numbers and the `RTLD_*` flags keep the kernel's own spelling, because `EINVAL` is what a man page names and what a reader porting code will look for. The rest of the constants use Rux names, which is what they were published under.
+
+## The shared POSIX contract
+
+Nothing here is interchangeable with the other POSIX packages, but the three are *spelled* the same, which is a different claim and a deliberate one. An equivalent call has the same wrapper name, the same parameter names and the same parameter shapes on all three systems, so a consumer such as [`Rux/FileSystem`](../FileSystem) or [`Rux/Time`](../Time) writes one call site instead of a `when #target.os` ladder around three names for one idea. `Tests/Unit/PlatformBindingContractTests.cpp` compares the three packages' parsed sources and fails when they drift apart.
+
+The values are the opposite: every constant is this system's own, and the same file asserts that the ones a reader might carry across really do differ.
 
 ## Values and pointers
 

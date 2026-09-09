@@ -20,6 +20,13 @@ pub const EPERM: int64 = 1;
 #Allow("naming.const")
 pub const ENOENT: int64 = 2;
 
+/// `ESRCH`: no process has that identifier.
+///
+///
+/// @see https://rux-lang.dev/docs/api/macos/esrch
+#Allow("naming.const")
+pub const ESRCH: int64 = 3;
+
 /// `EINTR`: the call was interrupted by a signal before it did anything.
 ///
 /// https://rux-lang.dev/docs/api/macos/eintr
@@ -31,6 +38,13 @@ pub const EINTR: int64 = 4;
 /// https://rux-lang.dev/docs/api/macos/eio
 #Allow("naming.const")
 pub const EIO: int64 = 5;
+
+/// `ENXIO`: no such device or address.
+///
+///
+/// @see https://rux-lang.dev/docs/api/macos/enxio
+#Allow("naming.const")
+pub const ENXIO: int64 = 6;
 
 /// `EBADF`: the file descriptor is not open, or is not open for what was asked.
 ///
@@ -55,6 +69,13 @@ pub const EACCES: int64 = 13;
 /// https://rux-lang.dev/docs/api/macos/efault
 #Allow("naming.const")
 pub const EFAULT: int64 = 14;
+
+/// `EBUSY`: the resource is in use by something else.
+///
+///
+/// @see https://rux-lang.dev/docs/api/macos/ebusy
+#Allow("naming.const")
+pub const EBUSY: int64 = 16;
 
 /// `EEXIST`: the file already exists.
 ///

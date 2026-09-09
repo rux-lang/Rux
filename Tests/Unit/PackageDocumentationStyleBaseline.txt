@@ -954,7 +954,6 @@ missing-param|FreeBSD/Src/File.rux|func|Fstat|b0fa8a654e1e5562
 missing-param|FreeBSD/Src/File.rux|func|Fsync|5f3c29454633cdf1
 missing-param|FreeBSD/Src/File.rux|func|Ftruncate|9c22d914a7795347
 missing-param|FreeBSD/Src/File.rux|func|Getcwd|00cee8fb5f241310
-missing-param|FreeBSD/Src/File.rux|func|Getdirentries|0de450e7847d3887
 missing-param|FreeBSD/Src/File.rux|func|LinkAt|cb86b294d3d3fb23
 missing-param|FreeBSD/Src/File.rux|func|Lseek|d0c7e02b48473a9f
 missing-param|FreeBSD/Src/File.rux|func|MkdirAt|ada85a674d427d37
@@ -1102,7 +1101,6 @@ missing-param|Linux/Src/File.rux|func|Getdents64|8721dc9b543bc556
 missing-param|Linux/Src/File.rux|func|LinkAt|3b4e61e55fda685c
 missing-param|Linux/Src/File.rux|func|Lseek|0bfc0e52ae0444a7
 missing-param|Linux/Src/File.rux|func|MkdirAt|1f02acffa61ab5f5
-missing-param|Linux/Src/File.rux|func|NewFstatAt|7bfe5bc874713353
 missing-param|Linux/Src/File.rux|func|OpenAt|f65568e6a19f8c43
 missing-param|Linux/Src/File.rux|func|Pipe2|1f32d3cdc7f23f81
 missing-param|Linux/Src/File.rux|func|ReadlinkAt|f1452ebd8e065517
@@ -1350,9 +1348,6 @@ missing-param|Uuid/Src/Uuid.rux|func|Equals|a172f5d635c20439
 missing-param|Uuid/Src/Uuid.rux|func|FromBytes|21762124f7ec8a9f
 missing-param|Windows/Src/Clock.rux|func|FileTimeTicks|75368ebb9c7e8cc6
 missing-param|Windows/Src/Entropy.rux|func|GetRandom|de1165258b32cf5d
-missing-param|macOS/Src/Clock.rux|func|ClockGetTime|82eef06c03554c13
-missing-param|macOS/Src/Clock.rux|func|GetTimeOfDay|e3343d1c97fcab4a
-missing-param|macOS/Src/Clock.rux|func|Nanosleep|3e285daf1f126fb2
 missing-param|macOS/Src/Entropy.rux|func|GetRandom|e3798e7da5d8d0b5
 missing-param|macOS/Src/Errors.rux|func|Errno|b42622cf31b0c5ef
 missing-param|macOS/Src/Errors.rux|func|IsError|c67bf51d71a23008
@@ -1985,7 +1980,6 @@ missing-returns|FreeBSD/Src/File.rux|func|Fstat|b0fa8a654e1e5562
 missing-returns|FreeBSD/Src/File.rux|func|Fsync|5f3c29454633cdf1
 missing-returns|FreeBSD/Src/File.rux|func|Ftruncate|9c22d914a7795347
 missing-returns|FreeBSD/Src/File.rux|func|Getcwd|00cee8fb5f241310
-missing-returns|FreeBSD/Src/File.rux|func|Getdirentries|0de450e7847d3887
 missing-returns|FreeBSD/Src/File.rux|func|LinkAt|cb86b294d3d3fb23
 missing-returns|FreeBSD/Src/File.rux|func|Lseek|d0c7e02b48473a9f
 missing-returns|FreeBSD/Src/File.rux|func|MkdirAt|ada85a674d427d37
@@ -2169,7 +2163,6 @@ missing-returns|Linux/Src/File.rux|func|Getdents64|8721dc9b543bc556
 missing-returns|Linux/Src/File.rux|func|LinkAt|3b4e61e55fda685c
 missing-returns|Linux/Src/File.rux|func|Lseek|0bfc0e52ae0444a7
 missing-returns|Linux/Src/File.rux|func|MkdirAt|1f02acffa61ab5f5
-missing-returns|Linux/Src/File.rux|func|NewFstatAt|7bfe5bc874713353
 missing-returns|Linux/Src/File.rux|func|OpenAt|f65568e6a19f8c43
 missing-returns|Linux/Src/File.rux|func|Pipe2|1f32d3cdc7f23f81
 missing-returns|Linux/Src/File.rux|func|ReadlinkAt|f1452ebd8e065517
@@ -2499,9 +2492,6 @@ missing-returns|Uuid/Src/Uuid.rux|func|Variant|03bbf0bfbae63be1
 missing-returns|Uuid/Src/Uuid.rux|func|Version|838cd3d9b8dd9bab
 missing-returns|Windows/Src/Clock.rux|func|FileTimeTicks|75368ebb9c7e8cc6
 missing-returns|Windows/Src/Entropy.rux|func|GetRandom|de1165258b32cf5d
-missing-returns|macOS/Src/Clock.rux|func|ClockGetTime|82eef06c03554c13
-missing-returns|macOS/Src/Clock.rux|func|GetTimeOfDay|e3343d1c97fcab4a
-missing-returns|macOS/Src/Clock.rux|func|Nanosleep|3e285daf1f126fb2
 missing-returns|macOS/Src/Errors.rux|func|CurrentErrno|25dca00c26f965b6
 missing-returns|macOS/Src/Errors.rux|func|Errno|b42622cf31b0c5ef
 missing-returns|macOS/Src/Errors.rux|func|IsError|c67bf51d71a23008
@@ -3532,7 +3522,6 @@ missing-see|FreeBSD/Src/Clock.rux|const|ClockRealtime|771cc41abc606fd6
 missing-see|FreeBSD/Src/Clock.rux|func|ClockGetResolution|add3923ccba7056c
 missing-see|FreeBSD/Src/Clock.rux|func|ClockGetTime|30609c5d6f054035
 missing-see|FreeBSD/Src/Clock.rux|func|Nanosleep|7c9633384dfc22bc
-missing-see|FreeBSD/Src/Dynamic.rux|const|LoaderLib|234986dffeeb743a
 missing-see|FreeBSD/Src/Dynamic.rux|const|RTLD_GLOBAL|9e2125de4f77f560
 missing-see|FreeBSD/Src/Dynamic.rux|const|RTLD_LAZY|342df6cc877025be
 missing-see|FreeBSD/Src/Dynamic.rux|const|RTLD_LOCAL|ac6bc302c85706b8
@@ -3598,7 +3587,6 @@ missing-see|FreeBSD/Src/File.rux|func|Fstat|b0fa8a654e1e5562
 missing-see|FreeBSD/Src/File.rux|func|Fsync|5f3c29454633cdf1
 missing-see|FreeBSD/Src/File.rux|func|Ftruncate|9c22d914a7795347
 missing-see|FreeBSD/Src/File.rux|func|Getcwd|00cee8fb5f241310
-missing-see|FreeBSD/Src/File.rux|func|Getdirentries|0de450e7847d3887
 missing-see|FreeBSD/Src/File.rux|func|LinkAt|cb86b294d3d3fb23
 missing-see|FreeBSD/Src/File.rux|func|Lseek|d0c7e02b48473a9f
 missing-see|FreeBSD/Src/File.rux|func|MkdirAt|ada85a674d427d37
@@ -3639,7 +3627,6 @@ missing-see|FreeBSD/Src/Syscall.rux|const|SysMmap|761d7946a68bedce
 missing-see|FreeBSD/Src/Syscall.rux|func|SignExtendFd|503264c3edaad46c
 missing-see|FreeBSD/Src/Types.rux|struct|Timespec|6e44dd9122813217
 missing-see|FreeBSD/Src/Types.rux|type|FileDescriptor|6cb6a37f4485a505
-missing-see|FreeBSD/Src/Types.rux|type|FileMode|79bee153e85d6a50
 missing-see|FreeBSD/Src/Types.rux|type|FileOffset|3710ee2c8506c3ca
 missing-see|FreeBSD/Src/Types.rux|type|ProcessId|e305e189294495d7
 missing-see|Hash/Src/Crc.rux|const|Crc32Initial|ca59dba18e6e4f99
@@ -3943,7 +3930,6 @@ missing-see|Linux/Src/File.rux|func|Getdents64|8721dc9b543bc556
 missing-see|Linux/Src/File.rux|func|LinkAt|3b4e61e55fda685c
 missing-see|Linux/Src/File.rux|func|Lseek|0bfc0e52ae0444a7
 missing-see|Linux/Src/File.rux|func|MkdirAt|1f02acffa61ab5f5
-missing-see|Linux/Src/File.rux|func|NewFstatAt|7bfe5bc874713353
 missing-see|Linux/Src/File.rux|func|OpenAt|f65568e6a19f8c43
 missing-see|Linux/Src/File.rux|func|Pipe2|1f32d3cdc7f23f81
 missing-see|Linux/Src/File.rux|func|ReadlinkAt|f1452ebd8e065517
@@ -4482,9 +4468,6 @@ missing-see|Windows/Src/Types.rux|type|WideChar|a97772e1bf8e5d1a
 missing-see|macOS/Src/Clock.rux|const|ClockMonotonicRaw|db2cbad43e01e3b1
 missing-see|macOS/Src/Clock.rux|const|ClockMonotonic|887a8d75b0a271d3
 missing-see|macOS/Src/Clock.rux|const|ClockRealtime|6ff88cef32ca60e0
-missing-see|macOS/Src/Clock.rux|func|ClockGetTime|82eef06c03554c13
-missing-see|macOS/Src/Clock.rux|func|GetTimeOfDay|e3343d1c97fcab4a
-missing-see|macOS/Src/Clock.rux|func|Nanosleep|3e285daf1f126fb2
 missing-see|macOS/Src/Dynamic.rux|const|RTLD_GLOBAL|56ef0cb362056276
 missing-see|macOS/Src/Dynamic.rux|const|RTLD_LAZY|09683a7e83358818
 missing-see|macOS/Src/Dynamic.rux|const|RTLD_LOCAL|e7c78d413556bb17
@@ -4582,7 +4565,6 @@ missing-see|macOS/Src/Process.rux|func|GetPid|a9ccb2537cdf9648
 missing-see|macOS/Src/Types.rux|struct|Timespec|b41fc0b2e337dfef
 missing-see|macOS/Src/Types.rux|struct|Timeval|ca4711849f8bab69
 missing-see|macOS/Src/Types.rux|type|FileDescriptor|634ffc142f4dc43b
-missing-see|macOS/Src/Types.rux|type|FileMode|c87ae4743877a052
 missing-see|macOS/Src/Types.rux|type|FileOffset|0407e87444b79508
 missing-see|macOS/Src/Types.rux|type|ProcessId|d3b400fd2a910c6e
 missing-typeparam|Algorithms/Src/Find.rux|func|AllOf|1a2a1252963dddf6

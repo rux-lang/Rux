@@ -4,7 +4,7 @@
 // here: it is the call that works on every release this package could run on. Its microsecond resolution is the
 // price.
 
-import macOS::{ Normalize, Timespec, Timeval, clock_gettime, gettimeofday, nanosleep };
+import macOS::{ Normalize, Timespec, Timeval, clock_getres, clock_gettime, gettimeofday, nanosleep };
 
 /// `CLOCK_REALTIME`: wall-clock time, which can jump when the system clock is set.
 ///
@@ -26,38 +26,69 @@ pub const ClockMonotonicRaw: int32 = 4;
 
 /// Reads `clockId` into `time`.
 ///
-/// `time` is borrowed and written, so callers pass the value directly. Returns zero, or a negative error number.
+/// Callers pass an explicit address, as they do on Linux and FreeBSD: `ClockGetTime(ClockMonotonic, @time)`.
 ///
 /// The call itself needs macOS 10.12 or later; an older release has no such symbol and the program will not launch.
 ///
-/// https://rux-lang.dev/docs/api/macos/clock-get-time
-pub func ClockGetTime(clockId: int32, time: &var Timespec) -> int64 {
+/// # Safety
+///
+/// `time` must be non-null and writable for a whole `Timespec`.
+///
+/// @param clockId which clock to read, one of the identifiers above
+/// @param time receives the reading
+/// @returns zero, or a negative error number
+/// @see https://rux-lang.dev/docs/api/macos/clock-get-time
+pub func ClockGetTime(clockId: int32, time: *var Timespec) -> int64 {
     return Normalize(clock_gettime(clockId, time) as int64);
+}
+
+/// Reads the resolution of `clockId` into `resolution`.
+///
+/// The resolution is the granularity the clock advances by, not the cost of reading it and not a promise about
+/// accuracy. Like `ClockGetTime`, it needs macOS 10.12 or later.
+///
+/// # Safety
+///
+/// `resolution` must be non-null and writable for a whole `Timespec`.
+///
+/// @param clockId which clock to describe, one of the identifiers above
+/// @param resolution receives the granularity
+/// @returns zero, or a negative error number
+/// @see https://rux-lang.dev/docs/api/macos/clock-get-resolution
+pub func ClockGetResolution(clockId: int32, resolution: *var Timespec) -> int64 {
+    return Normalize(clock_getres(clockId, resolution) as int64);
 }
 
 /// Reads the wall clock into `time`, to microsecond resolution.
 ///
-/// `time` is borrowed and written, so callers pass the value directly. Returns zero, or a negative error number. The
-/// second argument of the underlying call is an obsolete time-zone output that this passes as null.
+/// The second argument of the underlying call is an obsolete time-zone output that this passes as null.
 ///
 /// `Timeval` has Darwin's layout: an eight-byte second count and a four-byte microsecond count, not two 64-bit
 /// fields.
 ///
-/// https://rux-lang.dev/docs/api/macos/get-time-of-day
-pub func GetTimeOfDay(time: &var Timeval) -> int64 {
+/// # Safety
+///
+/// `time` must be non-null and writable for a whole `Timeval`.
+///
+/// @param time receives the reading
+/// @returns zero, or a negative error number
+/// @see https://rux-lang.dev/docs/api/macos/get-time-of-day
+pub func GetTimeOfDay(time: *var Timeval) -> int64 {
     return Normalize(gettimeofday(time, null) as int64);
 }
 
 /// Suspends the caller for the requested duration.
 ///
-/// `remaining` is written when a signal cut the wait short, and may be null. Returns zero, or a negative error
-/// number; `EINTR` with the unslept time in `remaining` is how a signal is reported.
+/// `EINTR` with the unslept time left in `remaining` is how a signal cutting the wait short is reported.
 ///
 /// # Safety
 ///
 /// `request` must be non-null, and its nanoseconds must be under one second.
 ///
-/// https://rux-lang.dev/docs/api/macos/nanosleep
-pub func Nanosleep(request: &Timespec, remaining: *var Timespec) -> int64 {
+/// @param request how long to wait
+/// @param remaining receives the unslept time when a signal cut the wait short, and may be null
+/// @returns zero, or a negative error number
+/// @see https://rux-lang.dev/docs/api/macos/nanosleep
+pub func Nanosleep(request: *Timespec, remaining: *var Timespec) -> int64 {
     return Normalize(nanosleep(request, remaining) as int64);
 }

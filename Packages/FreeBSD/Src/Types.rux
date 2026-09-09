@@ -20,8 +20,23 @@ pub type FileOffset = int64;
 
 /// A file's type and permission bits.
 ///
-/// https://rux-lang.dev/docs/api/freebsd/file-mode
+/// Sixteen bits here, where Linux's `mode_t` is thirty-two. The bit meanings agree; the width does not.
+///
+///
+/// @see https://rux-lang.dev/docs/api/freebsd/file-mode
 pub type FileMode = uint16;
+
+/// A user identifier.
+///
+///
+/// @see https://rux-lang.dev/docs/api/freebsd/user-id
+pub type UserId = uint32;
+
+/// A group identifier.
+///
+///
+/// @see https://rux-lang.dev/docs/api/freebsd/group-id
+pub type GroupId = uint32;
 
 /// A duration or an instant, as seconds and nanoseconds.
 ///

@@ -120,6 +120,22 @@ One rule applies to all four platform packages: declare `Core` when the sources 
 
 All four agree with their sources at the current commit. Do not add a `Windows` to `Core` edge for symmetry. `SourceLibrary` packages conditionally import these four according to the compilation target.
 
+## POSIX Binding Contract
+
+`Linux`, `macOS` and `FreeBSD` bind the same interface to three kernels. Their **values** are each system's own and must never be unified: `AtFdCwd` is `-2` on Darwin and `-100` elsewhere, monotonic is clock 1, 6 and 4 respectively, `EAGAIN` is 11 on Linux and 35 on both BSDs, and `RTLD_LOCAL` is 0, 4 and 0. Their **vocabulary** is shared and must not diverge: an equivalent call carries the same wrapper name, the same parameter names and the same parameter shapes in all three packages, so a consumer writes one call site rather than a `when #target.os` ladder around three spellings of one idea.
+
+The rule applies to what the three actually have in common. `Brk` is absent on Darwin, `Dup2` on Linux and `Pipe2` on Darwin, and those absences are real; an emulating wrapper that papers over one would be a worse answer than the branch it saved.
+
+| Aspect                     | Rule                                                                                                      |
+| -------------------------- | --------------------------------------------------------------------------------------------------------- |
+| Wrapper names              | Identical for an equivalent call. Linux's `FstatAt` keeps the kernel's `newfstatat` numbering under `SysNewFstatAt`, but the wrapper is spelled as the BSDs spell theirs. |
+| Parameter names and shapes | Identical, including the pointer qualifiers. Kernel records pass by address on all three, never by reference. |
+| ABI type names             | `ProcessId`, `FileDescriptor`, `FileOffset`, `FileMode`, `UserId`, `GroupId` and `Timespec` are declared by all three; each width is that system's own. |
+| Errno names                | The shared POSIX set is declared by all three, in the kernel's own spelling. Each number is that system's own. |
+| Constants and flags        | Never shared. A value carried between two of these packages compiles and means something else.               |
+
+`Tests/Unit/PlatformBindingContractTests.cpp` enforces every row of that table over the parsed sources, and also asserts that the values a reader might carry across really do differ. The executable tests under `Tests/Packages/{Linux,macOS,FreeBSD}/Syscall` carry a block that is byte-identical across the three, which is the same claim made from the other direction: if the contract diverges, only one of the three still compiles.
+
 ## Publication Readiness
 
 No first-party package is published, and none is marked publishable. A package becomes publishable only when every documentation check, archive check and applicable review gate is complete; the rule was applied, and the answer today is that one criterion blocks all of them.

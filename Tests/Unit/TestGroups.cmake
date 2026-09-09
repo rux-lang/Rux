@@ -2,10 +2,11 @@
 # including skipped cases, so a renamed file or a wildcard overlap cannot silently lose or duplicate coverage.
 set(rux_unit_groups Numeric Frontend Lowering Backends Driver Cli Optimization)
 foreach (source IN LISTS RUX_TEST_SOURCES)
-    # Named before the prefix rules below. Both suites read the source tree rather than compiling a fixture string,
-    # so they belong with the other filesystem-touching cases under the RuxUnitArtifacts lock, and neither
+    # Named before the prefix rules below. All three suites read the source tree rather than compiling a fixture
+    # string, so they belong with the other filesystem-touching cases under the RuxUnitArtifacts lock, and no
     # assignment may depend on a prefix rule that happens to catch it today.
-    if (source STREQUAL "PackageDocumentationStyleTests.cpp" OR source STREQUAL "LanguageTestMatrixTests.cpp")
+    if (source STREQUAL "PackageDocumentationStyleTests.cpp" OR source STREQUAL "LanguageTestMatrixTests.cpp"
+        OR source STREQUAL "PlatformBindingContractTests.cpp")
         set(group Driver)
     elseif (source MATCHES "^(SoftwareFloat|WideInteger|FloatFormat|AllocationMath|PrimitiveCatalog|Utf|Checksum|Json|AArch64Encoder)Tests\\.cpp$")
         set(group Numeric)
