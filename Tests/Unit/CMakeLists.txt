@@ -99,6 +99,7 @@ set(RUX_TEST_SOURCES
     OsTests.cpp
     PackageCacheTests.cpp
     PackageDocumentationStyleTests.cpp
+    PackageExampleTests.cpp
     PackageIdentityTests.cpp
     PackageResolutionTests.cpp
     PackageScaffoldTests.cpp
