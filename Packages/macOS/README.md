@@ -33,6 +33,12 @@ Nothing here is interchangeable with the other platform packages. `AT_FDCWD` is 
 
 There is no `Brk`: Darwin's `brk` and `sbrk` have been unavailable to 64-bit code from the start. There is no `Pipe2`: Darwin has only `pipe`, so close-on-exec must be set afterwards. And `Fsync` is weaker here than elsewhere — it does not wait for the device to commit, which `F_FULLFSYNC` through `fcntl` is what does.
 
+## What is tested
+
+`Tests/Packages/macOS/Descriptors` covers descriptor numbering, short reads and writes, end of file, size boundaries and the native error for each way of misusing a descriptor or a name. `Tests/Packages/macOS/Mapping` covers anonymous mappings, protection changes, advice, the requests the kernel refuses, and both edges of the reserved error-result window. `Tests/Packages/macOS/Syscall` covers the wrapper surface and the shared POSIX contract.
+
+All of it compiles for both architectures, and none of it has ever run on a host that is not macOS. Until it does, the syscall numbers, flag values and errno constants here rest on published documentation rather than on a passing test.
+
 ## The shared POSIX contract
 
 Nothing here is interchangeable with `Rux/Linux` or `Rux/FreeBSD`, but the three are *spelled* the same, which is a different claim and a deliberate one. An equivalent call has the same wrapper name, the same parameter names and the same parameter shapes on all three systems, so a consumer such as [`Rux/FileSystem`](../FileSystem) or [`Rux/Time`](../Time) writes one call site instead of a `when #target.os` ladder around three names for one idea. `Tests/Unit/PlatformBindingContractTests.cpp` compares the three packages' parsed sources and fails when they drift apart.

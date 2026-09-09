@@ -1,0 +1,164 @@
+// What a descriptor does at its edges: where the numbers come from, what a short read means, and which errno the
+// kernel picks for each way of getting it wrong.
+//
+// Everything above this layer — `Rux/Io`, `Rux/FileSystem` — translates these results into its own vocabulary, and
+// a translation can only be as right as what it translates. Nothing here has ever been executed: the host that
+// wrote it runs Windows, so this file exists to be run by the macOS jobs in CI and its value is entirely in what
+// those jobs report.
+//
+// The scratch files live under Bin/, which is ignored and rewritten, and every one of them is removed before the
+// test returns.
+//
+// A specific errno is asserted only where POSIX names it and all three supported systems agree: EBADF for a closed
+// descriptor, ENOENT for a name that is not there, EEXIST for an exclusive create, EINVAL for a negative seek.
+// Everywhere else the assertion is that the call failed, because a number this test guessed would be a number
+// nobody checked.
+
+import Core::{ Assert, OperatingSystem, #target };
+
+when #target.os == OperatingSystem::macOS {
+    import macOS::{ AtFdCwd, Close, EBADF, EEXIST, EINVAL, ENOENT, Errno, FileMode, Fsync, Ftruncate, IsError, Lseek, MkdirAt,
+                    OpenAppend, OpenAt, OpenCreate, OpenExclusive, OpenReadOnly, OpenReadWrite, OpenTruncate,
+                    OpenWriteOnly, Read, RemoveDirectory, RenameAt, SeekCurrent, SeekEnd, SeekSet, StdErr, StdIn,
+                    StdOut, UnlinkAt, Write };
+
+    const ScratchPath = "Bin/macOSDescriptors.tmp";
+    const RenamedPath = "Bin/macOSDescriptorsRenamed.tmp";
+    const MissingPath = "Bin/macOSDescriptorsNoSuchFile.tmp";
+    const ScratchDirectory = "Bin/macOSDescriptorsDir.tmp";
+
+    /// Permission bits for a scratch file: owner read and write, nothing for anyone else. `FileMode` is
+    /// thirty-two bits here and sixteen on the two BSDs, which is why the constant names the alias.
+    const ScratchMode: FileMode = 0o600;
+
+    func Main() -> int {
+        // Leftovers from a run that died partway through would make the exclusive-create case pass for the wrong
+        // reason, so the names are cleared first and the results deliberately ignored.
+        UnlinkAt(AtFdCwd, ScratchPath.data, 0);
+        UnlinkAt(AtFdCwd, RenamedPath.data, 0);
+        UnlinkAt(AtFdCwd, ScratchDirectory.data, RemoveDirectory);
+
+        // --- Where descriptor numbers come from ---------------------------------------------------------------
+
+        let created = OpenAt(AtFdCwd, ScratchPath.data, OpenReadWrite | OpenCreate | OpenTruncate, ScratchMode);
+        Assert(!IsError(created), "creating a scratch file succeeds");
+
+        // The kernel hands out the lowest unused number, and zero, one and two are already spoken for. A test that
+        // accepted any non-negative result would accept a descriptor that had collided with standard error.
+        Assert(created > StdErr as int64, "a new descriptor is above the three standard ones");
+        Assert(StdIn == 0 && StdOut == 1 && StdErr == 2, "the standard descriptors are the numbers POSIX fixes");
+
+        let fd = created as int32;
+
+        // A second open of the same file is a second descriptor, not the same one.
+        let alias = OpenAt(AtFdCwd, ScratchPath.data, OpenReadOnly, 0);
+        Assert(!IsError(alias), "opening the file again succeeds");
+        Assert(alias != created, "two opens of one file are two descriptors");
+        Assert(Close(alias as int32) == 0, "closing the second descriptor succeeds");
+
+        // --- Short input and output ---------------------------------------------------------------------------
+
+        // A write reports how many bytes it took. For a regular file that is always the whole request, which is
+        // what makes the count worth asserting exactly here and worth looping over on a pipe or a socket.
+        var payload: char8[8] = [c8'b', c8'o', c8'u', c8'n', c8'd', c8'a', c8'r', c8'y'];
+        Assert(Write(fd, @payload[0] as *opaque, 8) == 8, "a regular-file write takes the whole request");
+
+        // A zero-length write is not an error and moves nothing.
+        Assert(Write(fd, @payload[0] as *opaque, 0) == 0, "a zero-length write reports zero");
+        Assert(Lseek(fd, 0, SeekCurrent) == 8, "a zero-length write leaves the offset alone");
+
+        Assert(Lseek(fd, 0, SeekSet) == 0, "seeking to the start reports the start");
+
+        // Asking for more than the file holds is the short read, and it is a success, not an error. The count says
+        // how much arrived; only zero means end of file.
+        var buffer: char8[32];
+        let shortRead = Read(fd, @buffer[0] as *var opaque, 32);
+        Assert(shortRead == 8, "a read past the end returns what is there, not an error");
+        Assert(buffer[0] == c8'b' && buffer[7] == c8'y', "the bytes read back are the bytes written");
+
+        // At the end, a further read reports zero rather than failing. This is the one result a caller's loop must
+        // tell apart from a short count, and the two look alike until you check for it.
+        Assert(Read(fd, @buffer[0] as *var opaque, 32) == 0, "a read at the end reports zero, not a failure");
+        Assert(!IsError(0), "and zero is not an error");
+
+        // --- Size boundaries ------------------------------------------------------------------------------------
+
+        Assert(Lseek(fd, 0, SeekEnd) == 8, "seeking to the end reports the size");
+        Assert(Ftruncate(fd, 4) == 0, "shrinking succeeds");
+        Assert(Lseek(fd, 0, SeekEnd) == 4, "the file is the size it was truncated to");
+
+        // Extending fills with zeros rather than with whatever the disk held.
+        Assert(Ftruncate(fd, 12) == 0, "extending succeeds");
+        Assert(Lseek(fd, 0, SeekSet) == 0, "seeking back to the start succeeds");
+        Assert(Read(fd, @buffer[0] as *var opaque, 32) == 12, "the extended file reads its whole new length");
+        Assert(buffer[4] == 0 as char8 && buffer[11] == 0 as char8, "the extension reads as zeros");
+
+        // A negative offset is refused, and this is one of the few errno numbers POSIX pins down.
+        let backwards = Lseek(fd, -1, SeekSet);
+        Assert(IsError(backwards) && Errno(backwards) == EINVAL, "seeking before the start is EINVAL");
+
+        Assert(Fsync(fd) == 0, "flushing a real descriptor succeeds");
+
+        // --- Native errors --------------------------------------------------------------------------------------
+
+        Assert(Close(fd) == 0, "closing succeeds");
+
+        // Every operation on a number that is no longer a descriptor reports the same thing, which is what makes a
+        // use-after-close diagnosable rather than merely wrong.
+        let readClosed = Read(fd, @buffer[0] as *var opaque, 1);
+        Assert(IsError(readClosed) && Errno(readClosed) == EBADF, "reading a closed descriptor is EBADF");
+        let writeClosed = Write(fd, @payload[0] as *opaque, 1);
+        Assert(IsError(writeClosed) && Errno(writeClosed) == EBADF, "writing a closed descriptor is EBADF");
+        let seekClosed = Lseek(fd, 0, SeekSet);
+        Assert(IsError(seekClosed) && Errno(seekClosed) == EBADF, "seeking a closed descriptor is EBADF");
+        let syncClosed = Fsync(fd);
+        Assert(IsError(syncClosed) && Errno(syncClosed) == EBADF, "flushing a closed descriptor is EBADF");
+        let closedTwice = Close(fd);
+        Assert(IsError(closedTwice) && Errno(closedTwice) == EBADF, "closing twice is EBADF");
+
+        // A negative descriptor is not merely unusual; it can never have been handed out.
+        let negative = Read(-1, @buffer[0] as *var opaque, 1);
+        Assert(IsError(negative) && Errno(negative) == EBADF, "a negative descriptor is EBADF");
+
+        // A name that is not there, on the two calls that take one.
+        let missing = OpenAt(AtFdCwd, MissingPath.data, OpenReadOnly, 0);
+        Assert(IsError(missing) && Errno(missing) == ENOENT, "opening a missing name is ENOENT");
+        let unlinkMissing = UnlinkAt(AtFdCwd, MissingPath.data, 0);
+        Assert(IsError(unlinkMissing) && Errno(unlinkMissing) == ENOENT, "unlinking a missing name is ENOENT");
+
+        // An exclusive create is the one way to find out whether a name was free without a window in between.
+        let exclusive = OpenAt(AtFdCwd, ScratchPath.data, OpenWriteOnly | OpenCreate | OpenExclusive, ScratchMode);
+        Assert(IsError(exclusive) && Errno(exclusive) == EEXIST, "an exclusive create over an existing name is EEXIST");
+
+        // A directory is not writable through this interface. The number differs enough between systems that only
+        // the refusal is asserted.
+        Assert(MkdirAt(AtFdCwd, ScratchDirectory.data, 0o700) == 0, "creating a directory succeeds");
+        let twice = MkdirAt(AtFdCwd, ScratchDirectory.data, 0o700);
+        Assert(IsError(twice) && Errno(twice) == EEXIST, "creating a directory that exists is EEXIST");
+        let writeDirectory = OpenAt(AtFdCwd, ScratchDirectory.data, OpenWriteOnly, 0);
+        Assert(IsError(writeDirectory), "opening a directory for writing is refused");
+        Assert(UnlinkAt(AtFdCwd, ScratchDirectory.data, RemoveDirectory) == 0, "removing the directory succeeds");
+
+        // --- Appending, renaming and cleanup --------------------------------------------------------------------
+
+        // An append-mode write goes to the end whatever the offset says, which is the whole point of the flag.
+        let appending = OpenAt(AtFdCwd, ScratchPath.data, OpenWriteOnly | OpenAppend, 0);
+        Assert(!IsError(appending), "opening for append succeeds");
+        let appendFd = appending as int32;
+        Assert(Lseek(appendFd, 0, SeekSet) == 0, "the offset can still be moved to the start");
+        Assert(Write(appendFd, @payload[0] as *opaque, 8) == 8, "the append write takes the whole request");
+        Assert(Lseek(appendFd, 0, SeekEnd) == 20, "the bytes landed at the end, not at the offset");
+        Assert(Close(appendFd) == 0, "closing the appending descriptor succeeds");
+
+        Assert(RenameAt(AtFdCwd, ScratchPath.data, AtFdCwd, RenamedPath.data) == 0, "renaming succeeds");
+        let gone = OpenAt(AtFdCwd, ScratchPath.data, OpenReadOnly, 0);
+        Assert(IsError(gone) && Errno(gone) == ENOENT, "the old name is gone after a rename");
+        Assert(UnlinkAt(AtFdCwd, RenamedPath.data, 0) == 0, "removing the renamed file succeeds");
+
+        return 0;
+    }
+} else {
+    func Main() -> int {
+        return 0;
+    }
+}

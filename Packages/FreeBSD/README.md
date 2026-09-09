@@ -34,6 +34,12 @@ Nothing here is interchangeable with the other POSIX packages, but the three are
 
 The values are the opposite: every constant is this system's own, and the same file asserts that the ones a reader might carry across really do differ.
 
+## What is tested
+
+`Tests/Packages/FreeBSD/Descriptors` covers descriptor numbering, short reads and writes, end of file, size boundaries and the native error for each way of misusing a descriptor or a name. `Tests/Packages/FreeBSD/Mapping` covers anonymous mappings, protection changes, advice, the requests the kernel refuses, and both edges of the reserved error-result window. `Tests/Packages/FreeBSD/Syscall` covers the wrapper surface and the shared POSIX contract.
+
+All of it compiles for both architectures, and none of it has ever run on a host that is not FreeBSD. Until it does, the syscall numbers, flag values and errno constants here rest on published documentation rather than on a passing test.
+
 ## Values and pointers
 
 Kernel records such as `Timespec` are structural values and copy by value. Syscall wrappers deliberately retain raw pointers because the kernel consumes untyped integer addresses, buffers carry separate lengths, and optional outputs may be null. Pass addresses explicitly, for example `ClockGetTime(ClockMonotonic, @time)`, and uphold each function's safety contract. The package does not own raw addresses or descriptors; release them explicitly or use the higher-level `Rux/Memory` and `Rux/Io` packages.

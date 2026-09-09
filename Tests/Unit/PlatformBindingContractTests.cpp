@@ -391,6 +391,22 @@ TEST_CASE("Shared errno numbers are each system's own where the systems differ")
     CHECK(freebsd.at("ETIMEDOUT") == 60);
 }
 
+TEST_CASE("All three platform packages reserve the same error-result window") {
+    // `IsError` answers "is this negative number an errno rather than an address", and the window it tests is what
+    // keeps a legitimate mapping address with its top bit set from reading as a failure. The three packages must
+    // agree on it, because `Rux/Memory` reads all three through the same call. The window's behaviour is asserted
+    // where it runs, in Tests/Packages/{Linux,macOS,FreeBSD}/Mapping; its bound is asserted here, where it can be
+    // checked on any host.
+    for (const auto &package : PosixPackages()) {
+        const auto &constants = Surface(package).constants;
+        REQUIRE_MESSAGE(constants.contains("MaximumErrno"), "Packages/", package, " does not declare MaximumErrno");
+        CHECK_MESSAGE(constants.at("MaximumErrno") == 4095, "Packages/", package, " reserves errno numbers up to ",
+                      constants.at("MaximumErrno"),
+                      ", where the other POSIX packages reserve 4095. A narrower window reports a real error as a "
+                      "success; a wider one reports a mapping address as an error.");
+    }
+}
+
 TEST_CASE("Constants a consumer would carry between platform packages actually differ") {
     // Each of these is a value that compiles when passed to the wrong package and means something else there. The
     // READMEs warn about them in prose; this is the same warning where a change would trip over it.

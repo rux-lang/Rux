@@ -1,0 +1,15 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Descriptors"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for macOS: descriptor numbering, short input and output, and native errors"
+
+[Dependencies]
+Core = { Path = "../../../../Packages/Core" }
+macOS = { Path = "../../../../Packages/macOS" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/macOS"

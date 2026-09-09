@@ -36,6 +36,12 @@ Nothing here is interchangeable with the other POSIX packages, but the three are
 
 The values are the opposite: every constant is this system's own, and the same file asserts that the ones a reader might carry across really do differ.
 
+## What is tested
+
+`Tests/Packages/Linux/Descriptors` covers descriptor numbering, short reads and writes, end of file, size boundaries and the native error for each way of misusing a descriptor or a name. `Tests/Packages/Linux/Mapping` covers anonymous mappings, protection changes, advice, the requests the kernel refuses, and both edges of the reserved error-result window. `Tests/Packages/Linux/Syscall` covers the wrapper surface and the shared POSIX contract.
+
+All of it compiles for both architectures, and none of it has ever run on a host that is not Linux. Until it does, the syscall numbers, flag values and errno constants here rest on published documentation rather than on a passing test.
+
 ## Values and pointers
 
 Kernel records such as `Timespec` are structural values and copy by value. Syscall wrappers deliberately retain raw pointers: the kernel receives untyped integer addresses, buffers carry separate byte counts, and optional outputs may be null. Callers must therefore pass explicit addresses such as `ClockGetTime(ClockMonotonic, @time)` and uphold each function's safety contract. No wrapper owns an address or descriptor; release mappings and close descriptors explicitly, or prefer the higher-level `Rux/Memory` and `Rux/Io` packages.

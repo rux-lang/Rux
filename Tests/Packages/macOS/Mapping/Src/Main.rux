@@ -1,0 +1,126 @@
+// What a mapping does at its edges: which requests the kernel refuses, what protection actually stops, and which
+// results are errors at all.
+//
+// The last of those is the one that is easy to get wrong. A mapping address is a pointer returned in the same
+// register an error number comes back in, and a valid address may have its top bit set, so a caller that tests the
+// sign gets a working mapping reported as a failure. The three packages answer that with one window — `-4095`
+// through `-1` and nothing else — and this file asserts both edges of it.
+//
+// Nothing here has ever been executed: the host that wrote it runs Windows, so this file exists to be run by
+// the macOS jobs in CI and its value is entirely in what those jobs report.
+//
+// An errno is asserted only where POSIX names it and all three supported systems agree. `Mmap` and `Mprotect`
+// disagree about which number an unmapped or oversized request earns, so those cases assert the refusal alone.
+
+import Core::{ Assert, OperatingSystem, #target };
+
+when #target.os == OperatingSystem::macOS {
+    import macOS::{ AdviseDontNeed, AdviseWillNeed, EINVAL, Errno, IsError, Madvise, MapAnonymous, MapPrivate,
+                    MaximumErrno, Mmap, Mprotect, Munmap, ProtectionNone, ProtectionRead, ProtectionWrite };
+
+    /// One mapping unit. Sixteen kibibytes is a whole number of pages on every supported cell: x86-64 pages are
+    /// 4 KiB and Apple Silicon's are 16 KiB, and a length that is a multiple of both is page-aligned on all of
+    /// them. Nothing here asks the system what its page size is, because nothing here needs to know — task 41 owns
+    /// that question, and a test that guessed 4096 would be exactly the fixed-size assumption task 41 removes.
+    const MappingUnit: uint = 16384;
+
+    func Main() -> int {
+        // --- What counts as an error ------------------------------------------------------------------------
+
+        // Both edges of the reserved window, and the two values just outside it. `-4096` is not an error number,
+        // which is what leaves the whole rest of the negative range free for an address.
+        Assert(IsError(-1), "minus one is an error");
+        Assert(IsError(0 - MaximumErrno), "the largest errno is an error");
+        Assert(!IsError(0 - MaximumErrno - 1), "one past the largest errno is not an error");
+        Assert(!IsError(0), "zero is not an error");
+        Assert(!IsError(1), "a positive result is not an error");
+
+        // An address with its top bit set is a perfectly ordinary mapping address and must not read as a failure.
+        // This is the case the window exists for.
+        Assert(!IsError(-140737488355328), "a high mapping address is not an error");
+
+        // Errno reports the number positively, and reports nothing at all for a success.
+        Assert(Errno(0 - EINVAL) == EINVAL, "an error result carries its number");
+        Assert(Errno(0) == 0, "a successful result carries no number");
+        Assert(Errno(4096) == 0, "a non-error value carries no number");
+
+        // --- A mapping that works ---------------------------------------------------------------------------
+
+        let mapping = Mmap(null, MappingUnit, ProtectionRead | ProtectionWrite, MapPrivate | MapAnonymous, -1, 0);
+        Assert(!IsError(mapping), "an anonymous private mapping succeeds");
+
+        // Anonymous memory arrives zeroed. A caller that assumed otherwise would be reading someone else's bytes.
+        let bytes = mapping as *var char8;
+        Assert(bytes[0] == 0 as char8 && bytes[MappingUnit - 1] == 0 as char8, "a fresh mapping reads as zeros");
+
+        // The whole unit is writable, not merely its first page.
+        bytes[0] = c8'a';
+        bytes[MappingUnit - 1] = c8'z';
+        Assert(bytes[0] == c8'a' && bytes[MappingUnit - 1] == c8'z', "the first and last bytes hold what was written");
+
+        // Advice is a hint and reports whether it was understood, not whether it did anything.
+        Assert(Madvise(mapping as *opaque, MappingUnit, AdviseWillNeed) == 0, "advising future use succeeds");
+        Assert(Madvise(mapping as *opaque, MappingUnit, AdviseDontNeed) == 0, "advising disuse succeeds");
+
+        // --- Protection --------------------------------------------------------------------------------------
+
+        // A mapping can be made unreachable and reachable again without moving.
+        Assert(Mprotect(mapping as *opaque, MappingUnit, ProtectionNone) == 0, "removing all access succeeds");
+        Assert(Mprotect(mapping as *opaque, MappingUnit, ProtectionRead) == 0, "granting read access succeeds");
+        Assert(bytes[0] == c8'a', "the bytes survived the protection changes");
+        Assert(Mprotect(mapping as *opaque, MappingUnit, ProtectionRead | ProtectionWrite) == 0,
+               "granting write access back succeeds");
+        bytes[0] = c8'b';
+        Assert(bytes[0] == c8'b', "the mapping is writable again");
+
+        // A mapping created with no access at all is legal, and becomes usable through Mprotect alone.
+        let reserved = Mmap(null, MappingUnit, ProtectionNone, MapPrivate | MapAnonymous, -1, 0);
+        Assert(!IsError(reserved), "reserving address space with no access succeeds");
+        Assert(Mprotect(reserved as *opaque, MappingUnit, ProtectionRead | ProtectionWrite) == 0,
+               "the reservation can be given access");
+        let reservedBytes = reserved as *var char8;
+        reservedBytes[0] = c8'r';
+        Assert(reservedBytes[0] == c8'r', "the reservation is usable once it has access");
+        Assert(Munmap(reserved as *opaque, MappingUnit) == 0, "releasing the reservation succeeds");
+
+        // --- Requests the kernel refuses ----------------------------------------------------------------------
+
+        // A zero-length mapping is one of the few refusals POSIX names.
+        let empty = Mmap(null, 0, ProtectionRead, MapPrivate | MapAnonymous, -1, 0);
+        Assert(IsError(empty) && Errno(empty) == EINVAL, "a zero-length mapping is EINVAL");
+
+        // An address that is not page-aligned cannot name a mapping.
+        let unaligned = Munmap((mapping + 1) as *opaque, MappingUnit);
+        Assert(IsError(unaligned) && Errno(unaligned) == EINVAL, "unmapping an unaligned address is EINVAL");
+
+        // A file mapping needs a descriptor, and this is not one. The number differs between systems, so only the
+        // refusal is asserted.
+        let noDescriptor = Mmap(null, MappingUnit, ProtectionRead, MapPrivate, -1, 0);
+        Assert(IsError(noDescriptor), "a file mapping without a descriptor is refused");
+
+        // More address space than the machine has. Which number comes back depends on the system and on how much
+        // it is willing to promise, so only the refusal is asserted.
+        let enormous = Mmap(null, 0x7FFFFFFFFFFF, ProtectionRead | ProtectionWrite, MapPrivate | MapAnonymous, -1, 0);
+        Assert(IsError(enormous), "a mapping larger than the address space is refused");
+
+        // --- Releasing --------------------------------------------------------------------------------------
+
+        Assert(Munmap(mapping as *opaque, MappingUnit) == 0, "unmapping succeeds");
+
+        // Unmapping a range that holds no mapping is a success, not an error: `munmap` removes whatever is there,
+        // and nothing being there is a legitimate outcome. A caller that treated a second release as a failure
+        // would be wrong on every system, which is why this is asserted rather than assumed.
+        Assert(Munmap(mapping as *opaque, MappingUnit) == 0, "unmapping an already-released range succeeds");
+
+        // Changing the protection of a range that holds no mapping is not. The two calls differ here, which is the
+        // asymmetry worth knowing.
+        Assert(IsError(Mprotect(mapping as *opaque, MappingUnit, ProtectionRead)),
+               "protecting a released range is refused");
+
+        return 0;
+    }
+} else {
+    func Main() -> int {
+        return 0;
+    }
+}

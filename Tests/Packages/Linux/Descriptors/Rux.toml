@@ -1,0 +1,15 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Descriptors"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Linux: descriptor numbering, short input and output, and native errors"
+
+[Dependencies]
+Core = { Path = "../../../../Packages/Core" }
+Linux = { Path = "../../../../Packages/Linux" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Linux"

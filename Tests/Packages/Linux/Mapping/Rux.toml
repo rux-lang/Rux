@@ -1,0 +1,15 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Mapping"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Package test for Linux: mapping, protection and the error-result window"
+
+[Dependencies]
+Core = { Path = "../../../../Packages/Core" }
+Linux = { Path = "../../../../Packages/Linux" }
+
+[Build]
+Output = "../../../../Bin/Tests/Packages/Linux"
