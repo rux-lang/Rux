@@ -1,3 +1,9 @@
+// The real cube root.
+//
+// Defined for every real argument, unlike the square root, because a negative number has a real cube root; the
+// sign is carried through rather than being a special case. A bit-pattern estimate seeds two Newton steps.
+// Error at most one ulp.
+
 /**
     Computes the real cube root of `x`. The error is at most one ulp. Negative inputs produce negative roots, a signed
     zero or infinity returns itself, and a NaN remains a NaN.

@@ -1,3 +1,9 @@
+// The sine of an angle in radians.
+//
+// Argument reduction against Pi carried in enough parts to be exact, then the shared kernel in `Trig.rux`. The
+// reduction is the whole difficulty: a naive one loses a bit of the answer for every bit the argument grows,
+// so a large angle would be meaningless. Error at most one ulp for every finite argument; an infinity is a NaN.
+
 import Core::float64;
 
 /**

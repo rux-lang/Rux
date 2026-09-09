@@ -43,12 +43,12 @@ when #target.os {
 /// is made. Combining write and execute is refused outright by some systems and by policy on others, so a caller
 /// that needs both should write through one protection and execute through another.
 ///
-/// https://rux-lang.dev/docs/api/memory/page-none
+/// @see https://rux-lang.dev/docs/api/memory/page-none
 pub const PageNone: uint32 = 0;
 
 /// The page may be read.
 ///
-/// https://rux-lang.dev/docs/api/memory/page-read
+/// @see https://rux-lang.dev/docs/api/memory/page-read
 pub const PageRead: uint32 = 1;
 
 /// The page may be written.
@@ -56,12 +56,12 @@ pub const PageRead: uint32 = 1;
 /// Implies readability on every supported system: none of them can make a page write-only, whatever their flags
 /// suggest.
 ///
-/// https://rux-lang.dev/docs/api/memory/page-write
+/// @see https://rux-lang.dev/docs/api/memory/page-write
 pub const PageWrite: uint32 = 2;
 
 /// The page may be executed.
 ///
-/// https://rux-lang.dev/docs/api/memory/page-execute
+/// @see https://rux-lang.dev/docs/api/memory/page-execute
 pub const PageExecute: uint32 = 4;
 
 /// Why a page operation did not do what was asked. `Copy`.
@@ -70,7 +70,7 @@ pub const PageExecute: uint32 = 4;
 /// and a sentinel address. A reason the mapping does not cover arrives as `Failed`, which is not a promise that
 /// nothing went wrong — only that this module could not name it.
 ///
-/// https://rux-lang.dev/docs/api/memory/page-error
+/// @see https://rux-lang.dev/docs/api/memory/page-error
 pub enum PageError: uint8 {
     /// Nothing went wrong. This is what a successful call reports, so it is not an error case.
     None = 0,
@@ -168,7 +168,11 @@ pub func PageSize(result: *var uint) -> PageError {
 /// The pages are the caller's until `PageRelease` takes exactly this length back. Releasing a different length, or
 /// an address this did not return, is undefined on Windows and silently partial elsewhere.
 ///
-/// https://rux-lang.dev/docs/api/memory/page-allocate
+/// @param length how many bytes of address space to take, rounded up to whole pages by the system
+/// @param protection what may be done with the pages, as `Page*` flags
+/// @param result receives the base address when this reports `None`
+/// @returns `None` when the address space was taken
+/// @see https://rux-lang.dev/docs/api/memory/page-allocate
 pub func PageAllocate(length: uint, protection: uint32, result: *var *var opaque) -> PageError {
     if length == 0 { return PageError::InvalidLength; }
     when #target.os {
@@ -201,7 +205,10 @@ pub func PageAllocate(length: uint, protection: uint32, result: *var *var opaque
 /// Windows requires the exact base address and ignores the length entirely; the other systems accept a sub-range and
 /// release only that, so a wrong length there silently releases the wrong amount.
 ///
-/// https://rux-lang.dev/docs/api/memory/page-release
+/// @param address a base address `PageAllocate` returned
+/// @param length the length it was given
+/// @returns `None` when the system accepted the release
+/// @see https://rux-lang.dev/docs/api/memory/page-release
 pub func PageRelease(address: *var opaque, length: uint) -> PageError {
     if address == null { return PageError::InvalidAddress; }
     if length == 0 { return PageError::InvalidLength; }
@@ -232,7 +239,11 @@ pub func PageRelease(address: *var opaque, length: uint) -> PageError {
 /// Nothing here checks that the range was ever allocated. Asking for write and execute together is refused on Apple
 /// Silicon without an entitlement and by policy on hardened systems elsewhere, which arrives as `PermissionDenied`.
 ///
-/// https://rux-lang.dev/docs/api/memory/page-protect
+/// @param address a page-aligned address
+/// @param length how many bytes, rounded up to whole pages
+/// @param protection what may be done with the pages afterwards
+/// @returns `None` when the system accepted the change
+/// @see https://rux-lang.dev/docs/api/memory/page-protect
 pub func PageProtect(address: *var opaque, length: uint, protection: uint32) -> PageError {
     if address == null { return PageError::InvalidAddress; }
     if length == 0 { return PageError::InvalidLength; }

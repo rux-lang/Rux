@@ -1,3 +1,10 @@
+// Rounding toward positive infinity.
+//
+// By exponent inspection rather than by adding and subtracting a large constant, so it is exact for every
+// argument including those too large to have a fractional part at all. A value strictly between negative one
+// and zero becomes `-0.0` rather than `+0.0`, which is what IEEE 754 requires and what a caller dividing by
+// the result will notice.
+
 /**
     Rounds `x` toward positive infinity to an integral value. A negative value between zero and negative one becomes
     `-0.0`. A NaN or infinity passes through unchanged.

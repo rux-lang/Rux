@@ -1,3 +1,14 @@
+// Taking storage from the operating system, at whatever granularity it hands it out in.
+//
+// The one allocation primitive under `Rux/Allocator`, and deliberately the smallest possible: it takes bytes
+// and gives back an address, with no size class, no free list and no header of its own beyond what the
+// platform needs to release the block again. Everything shaped like an allocator is built on this rather
+// than inside it.
+//
+// A zero size returns null rather than an address, which is the one place this differs from the page layer
+// above it: `Rux/Allocator` gives a zero-sized request a shared non-null address so that no caller has to
+// branch, and does that itself.
+
 import Core::{ #target, #Error };
 
 when #target.os {
@@ -28,7 +39,9 @@ when #target.os {
 /// The bytes are uninitialized. Reading any byte before writing it, accessing beyond `size`, or using the address
 /// after it is released is invalid.
 ///
-/// https://rux-lang.dev/docs/api/memory/alloc
+/// @param size how many bytes to take; zero returns null
+/// @returns the address of the allocation, or null when the system refused
+/// @see https://rux-lang.dev/docs/api/memory/alloc
 pub func Alloc(size: uint) -> *var opaque {
     when #target.os {
         .FreeBSD, .Linux, .macOS => {

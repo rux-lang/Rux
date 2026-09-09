@@ -1,3 +1,9 @@
+// The cotangent of an angle in radians.
+//
+// The reciprocal is computed inside the kernel rather than as `1 / Tan(x)`, which would round twice and lose
+// the answer near a pole. A signed zero maps to an infinity of the same sign; an infinite argument is a NaN,
+// since the cotangent has no limit there.
+
 import Core::float64;
 
 /**

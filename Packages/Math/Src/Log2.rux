@@ -1,3 +1,9 @@
+// The base-two logarithm.
+//
+// The exponent field already holds the integer part, so an exact power of two in range gives its exponent
+// exactly and without arithmetic; the mantissa supplies the fraction. That exactness is why a caller sizing a
+// power-of-two allocation should reach for this rather than for a scaled natural logarithm.
+
 import Core::float64;
 
 /**

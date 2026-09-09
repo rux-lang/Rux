@@ -1,3 +1,10 @@
+// The inverse tangent of a single value.
+//
+// The argument is folded into a small interval around zero using the addition formula, and a polynomial does
+// the rest; the fold is what makes a large argument no less accurate than a small one. The result is in
+// `[-Pi/2, Pi/2]`, which is half a turn — `ArcTan2` is the one that gives the whole turn and needs two
+// arguments to do it.
+
 /**
     Computes the inverse tangent of `x` in radians. The result lies in `[-Pi / 2, Pi / 2]`. A signed zero returns
     itself, infinities approach the matching endpoint, and a NaN remains a NaN.

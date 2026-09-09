@@ -1,3 +1,9 @@
+// The smaller of two floating-point values, under IEEE 754's rule rather than the comparison's.
+//
+// `a < b ? a : b` is not this: it answers a NaN whenever the NaN is on the wrong side, and it cannot tell the
+// two zeros apart. Here a NaN argument is ignored in favour of the other one — two NaNs give a NaN — and
+// `-0.0` is less than `+0.0`, which a comparison says is false.
+
 /**
     Selects the smaller of `a` and `b`. A NaN loses to a number, so one NaN returns the other argument and two NaNs
     return a NaN. When both arguments are zeros, a negative zero wins.

@@ -1,8 +1,11 @@
+// The bit-level primitives the rest of the package is built on.
+//
+// Nothing here is meant to be called from outside it. Both directions are one register-to-register move of a
+// bit pattern, but which registers those are is the calling convention's business, so each architecture writes
+// its own pair.
+
 import Core::{ #target, #Error };
 
-// The bit-level primitives the rest of the package is built on. Nothing here is meant to be called from outside it.
-// Both directions are one register-to-register move of a bit pattern, but which registers those are is the calling
-// convention's business, so each architecture writes its own pair.
 when #target.arch {
     .X86_64 => {
         // Reading the bits of a float is portable: both the Win64 and System V ABIs pass the first float argument in

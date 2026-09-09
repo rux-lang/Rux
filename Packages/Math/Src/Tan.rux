@@ -1,3 +1,9 @@
+// The tangent of an angle in radians.
+//
+// Argument reduction against Pi carried in enough parts to be exact, then the shared kernel in `Trig.rux`. The
+// reduction matters more here than for sine or cosine: near an odd multiple of `Pi/2` the tangent is enormous
+// and its value is decided entirely by the low bits of the reduced argument. An infinite argument is a NaN.
+
 import Core::float64;
 
 /**

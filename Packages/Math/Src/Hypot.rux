@@ -1,3 +1,9 @@
+// The length of the hypotenuse, without overflowing on the way.
+//
+// `Sqrt(x*x + y*y)` is the definition and not the implementation: either square overflows for arguments whose
+// answer is perfectly representable, and underflows to zero for arguments whose answer is not zero. Scaling by
+// the larger operand first removes both, at the cost of one extra rounding.
+
 /**
     Computes the Euclidean length `Sqrt(x * x + y * y)` without intermediate overflow or underflow. The error is at most
     one ulp. An infinity in either argument returns positive infinity even when the other is a NaN; otherwise a NaN

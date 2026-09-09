@@ -1,3 +1,10 @@
+// The logarithm of one plus the argument, without the cancellation that addition invites.
+//
+// `Log(1 + x)` loses everything for a small `x`: the addition rounds away the bits that were the answer before
+// the logarithm sees them. This reduces around one directly, so the relative error stays at one ulp as the
+// argument approaches zero. It is the inverse of `Expm1` and the reason the inverse hyperbolic functions can
+// be accurate near zero at all.
+
 import Core::float64;
 
 /*

@@ -1,3 +1,9 @@
+// The inverse cosine, over the closed interval its argument is defined on.
+//
+// Built from `ArcSin`'s kernel rather than computed separately, which is what keeps the two consistent with
+// each other near the endpoints, where a small disagreement between them is most visible. The result is in
+// `[0, Pi]`, and an argument outside `[-1, 1]` is a NaN rather than a clamped answer.
+
 import Core::float64;
 
 /**

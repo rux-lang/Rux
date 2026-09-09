@@ -1,15 +1,13 @@
-/*
-    Integer arithmetic with a mathematical flavour: magnitude, ordering, and the number-theory pair.
-    Everything here is generic over the integer type in the same way `Core`'s checked arithmetic is, and for the same
-    reason: an integer's zero, its signedness and its two limits all follow from one operand, so `int8` and `uint512`
-    run the same code and no width can be forgotten. Nothing here is written per width.
-    The operations that can fail say so by returning `true`, matching `AddChecked` and its family exactly. That
-    convention reads backwards the first time - `true` means the answer is not the true one - but a family that
-    disagrees with itself about which way the flag points is far worse than one that is uniformly surprising.
-    Where an operation can fail, it is because the two's-complement range is not symmetric: the most negative value of
-    every signed width has no positive counterpart, so its magnitude, its negation and its greatest common divisor with
-    zero are all unrepresentable. That one asymmetry is behind nearly every edge case below.
-*/
+// Integer arithmetic with a mathematical flavour: magnitude, ordering, and the number-theory pair.
+// Everything here is generic over the integer type in the same way `Core`'s checked arithmetic is, and for the same
+// reason: an integer's zero, its signedness and its two limits all follow from one operand, so `int8` and `uint512`
+// run the same code and no width can be forgotten. Nothing here is written per width.
+// The operations that can fail say so by returning `true`, matching `AddChecked` and its family exactly. That
+// convention reads backwards the first time - `true` means the answer is not the true one - but a family that
+// disagrees with itself about which way the flag points is far worse than one that is uniformly surprising.
+// Where an operation can fail, it is because the two's-complement range is not symmetric: the most negative value of
+// every signed width has no positive counterpart, so its magnitude, its negation and its greatest common divisor with
+// zero are all unrepresentable. That one asymmetry is behind nearly every edge case below.
 
 import Core::{ MaximumOf, MinimumOf, MulChecked };
 

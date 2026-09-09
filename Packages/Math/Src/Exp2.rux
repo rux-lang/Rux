@@ -1,3 +1,9 @@
+// Two raised to a power.
+//
+// Reduces to the same form `Exp` uses and shares its scaled kernel, but reaches it by splitting the argument
+// at the binary point instead of dividing by the logarithm of two — which is why an integer exponent in range
+// is exact here and only nearly exact through `Exp`. Error at most one ulp.
+
 /**
     Computes two raised to `x`. The error is at most one ulp, and an in-range integer exponent is exact. Positive
     infinity returns positive infinity, negative infinity returns zero, and a NaN remains a NaN.

@@ -1,3 +1,10 @@
+// Resizing an allocation, preserving the bytes that still fit.
+//
+// Three degenerate cases, each answered rather than refused: a null pointer allocates, a zero size releases
+// and returns null, and a failure returns null while leaving the original allocation valid and still the
+// caller's. That last one is the one callers get wrong — assigning the result over the original pointer
+// loses the allocation on every failure — and is why the failure is documented on every path here.
+
 import Core::{ #target, #Error };
 
 when #target.os == .Windows {
@@ -15,7 +22,10 @@ when #target.os == .Windows {
 /// A non-null `ptr` must be the live base address returned by `Alloc` or an earlier `Realloc`. Interior, released,
 /// or foreign addresses are invalid. Bytes added beyond the old size are uninitialized.
 ///
-/// https://rux-lang.dev/docs/api/memory/realloc
+/// @param ptr the allocation to resize, or null to allocate
+/// @param size the wanted size; zero releases and returns null
+/// @returns the address of the resized allocation, or null on failure
+/// @see https://rux-lang.dev/docs/api/memory/realloc
 pub func Realloc(ptr: *opaque, size: uint) -> *var opaque {
     when #target.os {
         .FreeBSD, .Linux, .macOS => {

@@ -1,3 +1,9 @@
+// The hyperbolic sine.
+//
+// Near zero it goes through `Expm1`, because the closed form subtracts two nearly equal exponentials and loses
+// everything there; further out the subtraction is harmless and only the growing term survives at the top. Odd,
+// so a signed zero returns itself and each infinity returns itself.
+
 /**
     Computes the hyperbolic sine of `x`. A signed zero or infinity returns itself, and a NaN remains a NaN.
     @param x Hyperbolic angle.

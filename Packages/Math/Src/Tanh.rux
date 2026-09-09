@@ -1,3 +1,9 @@
+// The hyperbolic tangent.
+//
+// Three ranges: through `Expm1` near zero, where the closed form cancels; the ordinary expression in the
+// middle; and `±1` at the top, where the true value is within an ulp of it. Odd and bounded, so a signed zero
+// returns itself and the infinities return `-1` and `1` exactly.
+
 /**
     Computes the hyperbolic tangent of `x`. The result lies in `[-1, 1]`. A signed zero returns itself, infinities map
     to the matching endpoint, and a NaN remains a NaN.

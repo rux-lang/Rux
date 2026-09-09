@@ -1,3 +1,9 @@
+// The hyperbolic cotangent.
+//
+// The reciprocal of `Tanh`, computed through the same expression rather than as a division of it, so the
+// approach to `±1` at large arguments does not cost a rounding. A signed zero maps to an infinity of the same
+// sign, and the infinities map to `-1` and `1`.
+
 /**
     Computes the hyperbolic cotangent of `x`. A signed zero maps to an infinity with the same sign, infinities map to
     `-1` or `1`, and a NaN remains a NaN.

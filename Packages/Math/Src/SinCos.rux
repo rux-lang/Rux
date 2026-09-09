@@ -1,3 +1,9 @@
+// The sine and the cosine of one angle, from one argument reduction.
+//
+// The reduction is the expensive part and both functions need the same one, so asking for both here costs
+// little more than asking for either separately — which is what a rotation, a polar conversion or a Fourier
+// term actually wants. The two results are identical to what `Sin` and `Cos` return for the same argument.
+
 import Core::float64;
 
 /*

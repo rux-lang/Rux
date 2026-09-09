@@ -1,3 +1,9 @@
+// The hyperbolic cosine.
+//
+// Three ranges: near zero the exponential is written so the leading one survives, in the middle it is the
+// average of `Exp(x)` and its reciprocal, and at the top only the growing term is left and the other has
+// underflowed. The result is at least one, and both infinities give positive infinity.
+
 /**
     Computes the hyperbolic cosine of `x`. The result is at least one. Either infinity returns positive infinity, and a
     NaN remains a NaN.

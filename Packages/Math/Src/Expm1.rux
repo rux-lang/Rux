@@ -1,3 +1,10 @@
+// The exponential, minus one, without the cancellation that subtraction invites.
+//
+// `Exp(x) - 1` loses everything for a small `x`: the exponential rounds to a number near one, and subtracting
+// one throws away all the bits that were the answer. This computes the difference directly, so the relative
+// error stays at one ulp as the argument approaches zero. That is the whole reason the function exists, and
+// it is what `Log1p` is the inverse of.
+
 /**
     Computes `Exp(x) - 1` without losing precision near zero. The error is at most one ulp and remains small relative to
     the result as `x` approaches zero. A signed zero returns itself, positive infinity returns positive infinity,

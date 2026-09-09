@@ -1,3 +1,12 @@
+// A power with a floating-point exponent.
+//
+// A logarithm and an exponential, with the special cases decided first because there are more of them here
+// than anywhere else in the package: every combination of zero, one, the infinities and a NaN has an answer
+// IEEE 754 names, and several of them are surprising — `Pow(1.0, NaN)` is one, and `Pow(NaN, 0.0)` is one.
+//
+// A whole-number exponent should go to `PowInteger`, which is exact wherever an exact answer is representable
+// and does not return 999.9999999999999 for the cube of ten.
+
 import Core::float64;
 
 // log2 of the argument, as an unevaluated sum hi + lo of two doubles.

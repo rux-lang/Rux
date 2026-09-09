@@ -1,3 +1,9 @@
+// Converting between degrees and radians.
+//
+// Each direction scales by the nearest representable value of its constant rather than dividing by the other
+// one, so `DegToRad(180.0)` is exactly `Pi` and the round trip does not drift. Signed zeros and infinities
+// keep their signs, and a NaN stays a NaN.
+
 /**
     Converts an angle from degrees to radians. The conversion scales by the nearest `float64` to `Pi / 180`, making
     `DegToRad(180.0)` exactly `Pi`. A signed zero keeps its sign, infinities keep their sign, and a NaN remains a NaN.

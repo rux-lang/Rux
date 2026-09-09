@@ -1,3 +1,9 @@
+// The inverse cotangent, over the whole real line.
+//
+// Written against `ArcTan` and the reciprocal rather than as `Pi/2 - ArcTan(x)`, so the answer near zero — where
+// the cotangent is large and the subtraction would cancel — keeps its precision. The result is in `[0, Pi]`,
+// with the infinities mapping to the endpoints.
+
 /**
     Computes the inverse cotangent of `x` in radians. The result lies in `[0, Pi]`: positive infinity maps to zero,
     either signed zero maps to `Pi / 2`, and negative infinity maps to `Pi`. A NaN remains a NaN.

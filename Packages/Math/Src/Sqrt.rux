@@ -1,13 +1,13 @@
+// The square root, computed by the hardware instruction.
+//
+// Correctly rounded — error at most half an ulp — which is not a claim about this code but about the
+// instruction: IEEE 754 requires it to return the nearest representable value to the true root at every
+// argument, and every architecture here has one that does, with the special cases already right. The argument
+// arrives in the register the result is returned in under every convention involved, so the whole body is the
+// instruction and no ABI override is needed.
+
 import Core::{ #target, #Error };
 
-/*
-    Square root, computed by the hardware instruction. Accuracy: correctly rounded, error at most 0.5 ulp. Not a claim
-    about this code but about the instruction, which IEEE 754 requires to return the nearest representable value to the
-    true root at every argument. Every architecture here has one that is correctly rounded and already produces the
-    IEEE-754 results for the special cases: Sqrt(NaN) = NaN, Sqrt(+Inf) = +Inf, Sqrt(-0.0) = -0.0, Sqrt(x < 0) = NaN.
-    The argument arrives in the register the result is returned in under every convention involved, so no #Abi override
-    is needed and the whole body is the instruction itself.
-*/
 when #target.arch {
     .X86_64 => {
         // Both the Win64 and System V ABIs pass the first float argument in xmm0 and return the result there.

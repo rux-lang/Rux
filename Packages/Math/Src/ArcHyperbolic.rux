@@ -1,12 +1,10 @@
-/*
-    The inverse hyperbolic functions, each written to avoid the cancellation its closed form invites. Every one of them
-    is a logarithm of something built from a square root, and every one of those expressions loses the answer somewhere:
-    `log(x + sqrt(x*x + 1))` cancels for a negative argument and overflows the square root long before the answer would
-    overflow, `log(x + sqrt(x*x - 1))` cancels as the argument approaches one from above, and
-    `0.5 * log((1 + x) / (1 - x))` cancels as the argument approaches zero. So each is split into ranges, with `Log1p`
-    doing the work near zero, where its whole reason for existing applies. Accuracy: error at most 2 ulps in each - one
-    from the logarithm and one from what is fed to it.
-*/
+// The inverse hyperbolic functions, each written to avoid the cancellation its closed form invites. Every one of them
+// is a logarithm of something built from a square root, and every one of those expressions loses the answer somewhere:
+// `log(x + sqrt(x*x + 1))` cancels for a negative argument and overflows the square root long before the answer would
+// overflow, `log(x + sqrt(x*x - 1))` cancels as the argument approaches one from above, and
+// `0.5 * log((1 + x) / (1 - x))` cancels as the argument approaches zero. So each is split into ranges, with `Log1p`
+// doing the work near zero, where its whole reason for existing applies. Accuracy: error at most 2 ulps in each - one
+// from the logarithm and one from what is fed to it.
 
 /**
     The inverse hyperbolic sine: the value whose hyperbolic sine is `x`. Defined for every real argument, odd, and

@@ -1,10 +1,9 @@
-/*
-    exp(hi - lo) * 2^k, for a reduced argument |hi - lo| <= 0.5*ln2 whose leading part is hi. Keeping hi and lo apart
-    rather than passing their sum is what carries the last bits: the sum has already rounded, and near the ends of the
-    reduction that rounding is the whole error.
+// exp(hi - lo) * 2^k, for a reduced argument |hi - lo| <= 0.5*ln2 whose leading part is hi. Keeping hi and lo apart
+// rather than passing their sum is what carries the last bits: the sum has already rounded, and near the ends of the
+// reduction that rounding is the whole error.
+//
+// Exp2 reaches the same reduced form by a different route and shares this.
 
-    Exp2 reaches the same reduced form by a different route and shares this.
-*/
 func ExpScaled(hi: float64, lo: float64, k: int64) -> float64 {
     let p1 = 1.66666666666666019037e-01;
     let p2 = -2.77777777770155933842e-03;

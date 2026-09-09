@@ -1,3 +1,9 @@
+// The base-ten logarithm.
+//
+// Scaled from the natural logarithm with the constant carried in two parts, so the multiplication does not
+// cost a bit. An exact power of ten in range gives its exponent exactly, which is what a caller counting
+// digits depends on.
+
 import Core::float64;
 
 /**

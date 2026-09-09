@@ -1,3 +1,9 @@
+// Rounding toward zero: the integral part, with the fraction discarded.
+//
+// By exponent inspection rather than through a conversion to an integer, so it is exact for every argument
+// including those larger than any integer type could hold. The sign is kept, so a value strictly between
+// negative one and zero becomes `-0.0`.
+
 /**
     Rounds `x` toward zero to an integral value. The sign of zero is preserved, so `Trunc(-0.4)` is `-0.0`. A NaN or
     infinity passes through unchanged.

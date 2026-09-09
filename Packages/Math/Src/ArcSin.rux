@@ -1,3 +1,9 @@
+// The inverse sine, over the closed interval its argument is defined on.
+//
+// A rational approximation on the lower half of the range and a square-root identity on the upper half, which
+// is what avoids the derivative going to infinity at the endpoints. The result is in `[-Pi/2, Pi/2]`, and an
+// argument outside `[-1, 1]` is a NaN rather than a clamped answer.
+
 import Core::float64;
 
 /**

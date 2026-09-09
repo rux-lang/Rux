@@ -1,3 +1,10 @@
+// The magnitude of a floating-point value, by clearing the sign bit.
+//
+// Not a comparison against zero, which is the obvious implementation and the wrong one: it has to decide what
+// to do about the two zeros and about a NaN, and every answer it can give is a special case. Clearing the bit
+// has no special cases at all — both zeros become `+0.0`, both infinities become positive, and a NaN keeps
+// being a NaN with its payload intact — and it is exact for every argument.
+
 /**
     Computes the absolute value of `x`. This clears the sign bit rather than comparing with zero. Either signed zero
     therefore becomes `+0.0`, either infinity becomes positive infinity, and a NaN remains a NaN.

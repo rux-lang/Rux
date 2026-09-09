@@ -1,3 +1,9 @@
+// Rounding to the nearest integral value, with halfway cases going away from zero.
+//
+// The rule a person means by "round", and not the rule the hardware uses: IEEE 754 arithmetic rounds halfway
+// cases to even, which `RoundTiesToEven` in `Rounding.rux` provides. Both return a float rather than an
+// integer, because the answer is not always representable as one.
+
 /**
     Rounds `x` to the nearest integral value, with halfway cases away from zero. Thus `Round(2.5)` is `3.0` and
     `Round(-2.5)` is `-3.0`. The sign of zero is preserved, and a NaN or infinity passes through unchanged. The

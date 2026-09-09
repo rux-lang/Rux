@@ -1,3 +1,15 @@
+// What a floating-point value is, before any arithmetic is done to it.
+//
+// IEEE 754 sorts every bit pattern into five kinds, and most of the bugs in floating-point code come from
+// treating one as another: a NaN mistaken for a number because a comparison against it was false, a signed
+// zero whose sign a comparison threw away, a subnormal treated as zero because it printed as one. So the
+// questions here are answered by bit pattern wherever a comparison would lie, and the sign of a zero is
+// preserved rather than normalized away.
+//
+// The neighbourhood operations — `NextAfter`, `NextUp`, `NextDown`, `UlpDistance` — are here for the same
+// reason: they are about the representation rather than about the value, and they are how a test says two
+// results are within an ulp of each other.
+
 import Core::{ float32, float64, int64, uint64 };
 
 /*
