@@ -9,15 +9,17 @@
 // The host that wrote this runs Windows, so the file exists to be run by the FreeBSD jobs in CI, and every
 // FreeBSD-specific claim below was settled by what those jobs reported.
 //
-// An errno is asserted only where POSIX names it and all three supported systems agree. `Mmap` and `Mprotect`
-// disagree about which number an unmapped or oversized request earns, so those cases assert the refusal alone.
+// An errno is asserted only where POSIX names it and all three supported systems agree. Which number an oversized
+// `Mmap` earns differs between them, so that case asserts the refusal alone. Where FreeBSD accepts what the other
+// two refuse — a release from an unaligned address, a protection change over a hole — the file asserts FreeBSD's
+// answer, since that is what a caller on FreeBSD has to know.
 
 import Core::{ Assert, OperatingSystem, #target };
 
 when #target.os == OperatingSystem::FreeBSD {
-    import FreeBSD::{ AdviseDontNeed, AdviseWillNeed, EINVAL, Errno, IsError, Madvise, MapAnonymous, MapPrivate,
-                    MaximumErrno, Mmap, Mprotect, Munmap, ProtectionNone, ProtectionRead, ProtectionWrite,
-                    QueryPageSize };
+    import FreeBSD::{ AdviseDontNeed, AdviseWillNeed, EINVAL, Errno, IsError, Madvise, MapAnonymous, MapExclusive,
+                    MapFixed, MapPrivate, MaximumErrno, Mmap, Mprotect, Munmap, ProtectionNone, ProtectionRead,
+                    ProtectionWrite, QueryPageSize };
 
     /// One mapping unit. Thirty-two kibibytes is a whole number of pages on every supported cell, and more than one
     /// of them: x86-64 pages are 4 KiB and Apple Silicon's are 16 KiB, so the unit is at least two pages everywhere,
@@ -117,12 +119,19 @@ when #target.os == OperatingSystem::FreeBSD {
         // so a release from one byte in takes the page the byte lies in, and a length short by one page takes
         // exactly the mapping and nothing past it. That is what a caller has to know, so it is what is asserted,
         // on a mapping of its own so that the one above stays whole for the release cases below.
+        //
+        // Whether the range is free afterwards is asked with `MapExclusive`, which refuses a fixed mapping over
+        // anything already there. `Mprotect` cannot tell: it skips the holes in a range rather than refusing them.
         let rounded = Mmap(null, MappingUnit, ProtectionRead | ProtectionWrite, MapPrivate | MapAnonymous, -1, 0);
         Assert(!IsError(rounded), "a mapping to release from an unaligned address succeeds");
+        let exclusive = MapPrivate | MapAnonymous | MapFixed | MapExclusive;
+        Assert(IsError(Mmap(rounded as *opaque, MappingUnit, ProtectionRead, exclusive, -1, 0)),
+               "an exclusive fixed mapping over a live one is refused");
         Assert(Munmap((rounded + 1) as *opaque, MappingUnit - (pageSize as uint)) == 0,
                "unmapping from an unaligned address is accepted, rounded down to the page it lies in");
-        Assert(IsError(Mprotect(rounded as *opaque, MappingUnit, ProtectionRead)),
-               "and the whole mapping it lay in is gone");
+        let reclaimed = Mmap(rounded as *opaque, MappingUnit, ProtectionRead, exclusive, -1, 0);
+        Assert(reclaimed == rounded, "and the whole mapping it lay in is gone, so the range can be taken exclusively");
+        Assert(Munmap(reclaimed as *opaque, MappingUnit) == 0, "which is released again");
 
         // A file mapping needs a descriptor, and this is not one. The number differs between systems, so only the
         // refusal is asserted.
@@ -145,10 +154,12 @@ when #target.os == OperatingSystem::FreeBSD {
         // would be wrong on every system, which is why this is asserted rather than assumed.
         Assert(Munmap(mapping as *opaque, MappingUnit) == 0, "unmapping an already-released range succeeds");
 
-        // Changing the protection of a range that holds no mapping is not. The two calls differ here, which is the
-        // asymmetry worth knowing.
-        Assert(IsError(Mprotect(mapping as *opaque, MappingUnit, ProtectionRead)),
-               "protecting a released range is refused");
+        // Changing the protection of a range that holds no mapping is accepted too. FreeBSD applies the change to
+        // whatever lies in the range and skips the holes, so a released range reports success where Linux and
+        // macOS refuse it — the asymmetry a portable caller has to know, and why the exclusive mapping above is
+        // the probe for a release rather than this call.
+        Assert(Mprotect(mapping as *opaque, MappingUnit, ProtectionRead) == 0,
+               "protecting a released range is accepted, its holes skipped");
 
         return 0;
     }

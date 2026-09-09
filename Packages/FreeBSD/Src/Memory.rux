@@ -41,6 +41,15 @@ pub const MapPrivate: int32 = 0x0002;
 /// @see https://rux-lang.dev/docs/api/freebsd/map-fixed
 pub const MapFixed: int32 = 0x0010;
 
+/// `MAP_EXCL`: with `MapFixed`, refuse the address rather than replace what occupies it.
+///
+/// The one way to ask whether a range is free: a fixed, exclusive request over anything already mapped fails with
+/// `ENOMEM`, and one over a hole takes it. `Mprotect` cannot answer that question, since it skips the holes in a
+/// range rather than refusing them.
+///
+/// @see https://rux-lang.dev/docs/api/freebsd/map-exclusive
+pub const MapExclusive: int32 = 0x4000;
+
 /// `MAP_ANON`: the mapping is backed by zeroed pages rather than by a file.
 ///
 /// FreeBSD numbers this differently from Linux, which is one of the reasons the two packages are separate.
@@ -55,7 +64,8 @@ pub const MapAnonymous: int32 = 0x1000;
 ///
 /// # Safety
 ///
-/// `MapFixed` replaces whatever occupies the address, including a mapping this program depends on.
+/// `MapFixed` replaces whatever occupies the address, including a mapping this program depends on, unless
+/// `MapExclusive` is set with it.
 ///
 /// @param address a hint for where to map, or null to let the kernel choose
 /// @param length how many bytes, rounded up to whole pages
