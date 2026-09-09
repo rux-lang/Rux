@@ -1,0 +1,14 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "PropagationPayload"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Propagation preserves complete payloads, instantiated layouts, and ownership."
+
+[Dependencies]
+Core = { Path = "../../../Packages/Core" }
+
+[Build]
+Output = "../../../Bin/Tests/Language"

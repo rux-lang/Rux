@@ -417,6 +417,8 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 
 ### Fixed
 
+- **Payload-preserving failure propagation** — `?` restores instantiated error layouts before extracting and rewrapping a failure, keeping nested payloads and complete multiword values. Both active payload cases use their move operations; named move-only outcomes require an explicit transfer. Propagation exits capture their failure before deferred statements and ordinary ownership cleanup.
+
 - **Return values captured before deferred cleanup** — return expressions now evaluate once before registered defers run, preserving scalar and aggregate values and accepted copy or move operations. Deferred statements retain their LIFO order before ownership cleanup, and generic function instantiation keeps each function's defers separate.
 
 - **Same-named packages and executable entries** — a root named `Text` can coexist with transitive `Rux/Text` and `Other/Text` through aliases, generic instantiations, and emitted functions. Only the root's top-level `Main` supplies an executable entry; private dependency and nested-module functions retain distinct symbols. Conflicting manifest aliases report both source declarations, and the UUID formatting test again uses the package name `Text`.

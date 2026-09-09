@@ -283,3 +283,53 @@ TEST_CASE("a propagated payload keeps its own type in a chained expression") {
     REQUIRE_EQ(diagnostics.size(), 1);
     CHECK_EQ(diagnostics[0].message, "cannot assign 'int32' to 'bool8'");
 }
+
+TEST_CASE("propagation requires explicit transfer of a named move-only outcome") {
+    const auto diagnostics = AnalyzeSource(R"(
+        struct Token { value: int32; }
+        extend Token { func =(self: &var Token, other: &Token); }
+        variant Result<T, E> { Success(T), Error(E) }
+        func Forward(input: Result<int32, Token>) -> Result<int32, Token> {
+            let value = input?;
+            return Result::Success<int32, Token>(value);
+        }
+    )");
+    const auto &error =
+        RequireDiagnostic(diagnostics, "move-only value 'input' requires an explicit '<-' in propagation operand");
+    CHECK_EQ(error.help, "prefix the outcome with '<-', as in '(<-input)?'");
+}
+
+TEST_CASE("propagation records an explicit operand transfer for later reads") {
+    const auto diagnostics = AnalyzeSource(R"(
+        struct Token { value: int32; }
+        extend Token { func =(self: &var Token, other: &Token); }
+        variant Option<T> { Some(T), None }
+        func Forward(input: Option<Token>) -> Option<Token> {
+            let value = (<-input)?;
+            let again = (<-input)?;
+            return Option::Some<Token>(<-value);
+        }
+    )");
+    RequireDiagnostic(diagnostics, "value 'input' is used after it was moved");
+}
+
+TEST_CASE("propagation validates hidden payload transfers at generic instantiation") {
+    const auto diagnostics = AnalyzeSource(R"(
+        variant Option<T> { Some(T), None }
+        func Forward<T>(input: Option<T>) -> Option<T> {
+            let value = (<-input)?;
+            return Option::Some<T>(<-value);
+        }
+        struct Pinned { value: int32; }
+        extend Pinned {
+            func =(self: &var Pinned, other: &Pinned);
+            func <-(self: &var Pinned, other: Pinned);
+        }
+        func Read(value: &int32) {
+            Forward<&int32>(Option::Some<&int32>(value));
+            Forward<Pinned>(Option::None<Pinned>());
+        }
+    )");
+    RequireDiagnostic(diagnostics, "'?' cannot extract reference payload type '&int32' from an outcome");
+    RequireDiagnostic(diagnostics, "'?' cannot extract payload type 'Pinned' because moving it is prohibited");
+}

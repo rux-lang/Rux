@@ -62,8 +62,8 @@ HirExprPtr AstToHirContext::LowerTryExpr(const TryExpr &expression) {
         std::abort();
     }
 
-    // Every type is read back already substituted: the operand's and the expression's own from the recorded facts, and
-    // the failure's from the type the enclosing function returns, which names the same error type by construction.
+    // Expression facts and propagation facts both need the current substitutions and concrete variant layout.
+    // A named error without its layout marker otherwise travels as one word, dropping any nested payload.
     const TypeRef operandType = ResolvedExpressionType(*expression.operand);
     const TypeRef payloadType = ResolvedExpressionType(expression);
     const TypeRef returnType = currentReturnType;
@@ -79,15 +79,29 @@ HirExprPtr AstToHirContext::LowerTryExpr(const TryExpr &expression) {
         return value;
     };
 
+    const auto transferredValue = [&](const std::string &name, const TypeRef &type) -> HirExprPtr {
+        HirExprPtr value = namedValue(name, type);
+        HirMovePlan plan = BuildMovePlan(type);
+        if (plan.kind != HirMovePlan::Kind::Trivial) {
+            auto moved = std::make_unique<HirMoveExpr>();
+            moved->location = expression.location;
+            moved->type = type;
+            moved->plan = std::move(plan);
+            moved->value = std::move(value);
+            return moved;
+        }
+        return value;
+    };
+
     HirMatchArm success;
     success.location = expression.location;
     success.pattern = LowerOutcomeVariantPattern(expression.location, fact->variantName, fact->successVariant,
                                                  operandType, payloadName, payloadType, true);
-    success.body = namedValue(payloadName, payloadType);
+    success.body = transferredValue(payloadName, payloadType);
 
     // The failure travels out unchanged: the same payload, re-wrapped in the failure variant of what this function
     // returns. Building it as an ordinary return is what gives it the destruction of every live local for free.
-    const TypeRef failureType = fact->failureType.value_or(TypeRef::MakeUnknown());
+    const TypeRef failureType = SubstituteCurrentType(fact->failureType.value_or(TypeRef::MakeUnknown()));
     auto failureValue = std::make_unique<HirEnumConstructExpr>();
     failureValue->location = expression.location;
     failureValue->form = CaseTypeForm::Variant;
@@ -95,13 +109,10 @@ HirExprPtr AstToHirContext::LowerTryExpr(const TryExpr &expression) {
     failureValue->discriminant =
         LookupEnumVariantDiscriminant(fact->returnVariantName, fact->failureVariant).value_or("0");
     if (fact->failureType) {
-        failureValue->payloads.push_back(namedValue(failureName, failureType));
+        failureValue->payloads.push_back(transferredValue(failureName, failureType));
     }
 
-    auto earlyReturn = std::make_unique<HirReturnStmt>();
-    earlyReturn->location = expression.location;
-    earlyReturn->value = std::move(failureValue);
-    earlyReturn->cleanups = FunctionCleanups();
+    auto earlyReturn = LowerFunctionReturn(std::move(failureValue), expression.location);
 
     auto failureBody = std::make_unique<HirBlockExpr>();
     failureBody->location = expression.location;

@@ -203,6 +203,20 @@ std::optional<TypeRef> AnalysisContext::CheckTryExpression(const TryExpr &expres
         return operand->payload;
     }
 
+    const auto validatePayload = [&](const TypeRef &payload) {
+        if (MentionsTypeParameter(payload) && currentFunctionDecl) {
+            deferredOutcomeChecks[currentFunctionDecl].push_back({payload, expression.location, true});
+        }
+        else {
+            static_cast<void>(ValidateOutcomePayload(payload, expression.location, true));
+        }
+    };
+    validatePayload(operand->payload);
+    if (operand->failure)
+        validatePayload(*operand->failure);
+    ConsumeValue(*expression.operand, operandType, ValueConsumptionKind::PropagationOperand,
+                 expression.operand->location);
+
     ResolvedPropagation propagation;
     propagation.isResult = operand->kind == PropagationShape::Kind::Result;
     propagation.variantName = operand->declaration->name;
@@ -216,28 +230,28 @@ std::optional<TypeRef> AnalysisContext::CheckTryExpression(const TryExpr &expres
     return operand->payload;
 }
 
-bool AnalysisContext::ValidateCoalescingPayload(const TypeRef &payload, const SourceLocation location) {
+bool AnalysisContext::ValidateOutcomePayload(const TypeRef &payload, const SourceLocation location,
+                                             const bool propagation) {
+    const std::string_view operation = propagation ? "?"
+                                                   : "?"
+                                                     "?";
     if (payload.IsUnknown() || (!ClassifyTypeProperties(payload).IsResolved() && MentionsTypeParameter(payload))) {
         return true;
     }
     if (payload.kind == TypeRef::Kind::Reference) {
         EmitError(location,
-                  std::format("'{}' cannot extract reference payload type '{}' from an Option",
-                              "?"
-                              "?",
-                              payload.ToString()),
-                  {"the hidden Some payload has no source place whose borrow provenance can be preserved"},
-                  "handle the Option with an explicit match, or store a raw pointer when an address must escape");
+                  std::format("'{}' cannot extract reference payload type '{}' from {}", operation, payload.ToString(),
+                              propagation ? "an outcome" : "an Option"),
+                  {"the hidden payload has no source place whose borrow provenance can be preserved"},
+                  "handle the outcome with an explicit match, or store a raw pointer when an address must escape");
         return false;
     }
     const TypeProperties properties = ClassifyTypeProperties(payload);
     if (properties.IsResolved() && !properties.IsMovable()) {
         EmitError(location,
-                  std::format("'{}' cannot extract payload type '{}' because moving it is prohibited",
-                              "?"
-                              "?",
+                  std::format("'{}' cannot extract payload type '{}' because moving it is prohibited", operation,
                               payload.ToString()),
-                  {"coalescing transfers the Some payload into the result"},
+                  {"extracting an outcome transfers its active payload into the result"},
                   "use an explicit match and copy the payload, or permit the canonical move operation");
         return false;
     }
@@ -279,10 +293,10 @@ TypeRef AnalysisContext::CheckCoalesceExpression(const BinaryExpr &expression) {
 
     bool payloadValid = true;
     if (MentionsTypeParameter(shape->payload) && currentFunctionDecl) {
-        deferredCoalescingChecks[currentFunctionDecl].push_back({shape->payload, expression.location});
+        deferredOutcomeChecks[currentFunctionDecl].push_back({shape->payload, expression.location});
     }
     else {
-        payloadValid = ValidateCoalescingPayload(shape->payload, expression.location);
+        payloadValid = ValidateOutcomePayload(shape->payload, expression.location);
     }
 
     ConsumeValue(*expression.left, leftType, ValueConsumptionKind::CoalescingOperand, expression.left->location);

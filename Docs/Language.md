@@ -324,6 +324,14 @@ let contextual: uint8[16] = [0; 16];
 
 The element type must be copyable. Construct move-only elements explicitly or initialize mutable array storage in a loop instead. A zero count still evaluates the value once and destroys the temporary when its type requires cleanup. Repeated arrays use the same fixed-array-to-`T[..]` coercion as ordinary array literals.
 
+## Failure Propagation
+
+`outcome?` evaluates its operand once, extracts its success payload, or returns its failure from the enclosing function. It recognizes ordinary variants with exactly `Success(T)` and `Error(E)` cases, or `Some(T)` and payload-less `None` cases. The enclosing return type must use the same protocol and error type; its success type and case order may differ. Rewrapping preserves the complete active payload, including nested and generic variants and zero-sized values.
+
+Propagation consumes its evaluated outcome. A named copyable outcome is copied and remains usable; a named move-only outcome requires `(<-outcome)?`. The hidden payload is transferred using its move operation. Reference payloads cannot preserve hidden borrow provenance, and payloads that prohibit moving are rejected, including when instantiated in a generic. Use an explicit match when the payload needs to be borrowed or copied instead.
+
+A propagated failure follows ordinary return behavior: it captures the failure before running registered defers in LIFO order and then performs ownership cleanup. The returned payload belongs to the caller; live locals and completed components of interrupted aggregate construction retain their normal cleanup.
+
 ## Option Coalescing
 
 `option ?? fallback` extracts the value carried by an Option or evaluates `fallback` when the Option is `None`:

@@ -26,6 +26,8 @@ std::string ExplicitMoveHelp(const ValueConsumptionKind kind, const std::string 
         return "write the elements explicitly or initialize move-only elements in a loop";
     case ValueConsumptionKind::ConditionalArm:
         return std::format("prefix the selected value with '<-', as in 'condition ? <-{} : fallback'", place);
+    case ValueConsumptionKind::PropagationOperand:
+        return std::format("prefix the outcome with '<-', as in '(<-{})?'", place);
     case ValueConsumptionKind::CoalescingOperand:
         return std::format("prefix the option with '<-', as in '(<-{}) ?? fallback'", place);
     case ValueConsumptionKind::CoalescingFallback:

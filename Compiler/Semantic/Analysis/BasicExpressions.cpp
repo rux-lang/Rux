@@ -423,10 +423,10 @@ void AnalysisContext::ValidateDeferredBasicExpressionChecks(
                       SubstituteTypeParameters(check.target, substitutions), check.location);
         }
     }
-    if (const auto it = deferredCoalescingChecks.find(&declaration); it != deferredCoalescingChecks.end()) {
-        for (const DeferredCoalescingCheck &check : it->second) {
-            static_cast<void>(
-                ValidateCoalescingPayload(SubstituteTypeParameters(check.payload, substitutions), check.location));
+    if (const auto it = deferredOutcomeChecks.find(&declaration); it != deferredOutcomeChecks.end()) {
+        for (const DeferredOutcomeCheck &check : it->second) {
+            static_cast<void>(ValidateOutcomePayload(SubstituteTypeParameters(check.payload, substitutions),
+                                                     check.location, check.propagation));
         }
     }
     if (const auto it = deferredConsumptions.find(&declaration); it != deferredConsumptions.end()) {

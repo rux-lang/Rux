@@ -3,9 +3,11 @@
 
 #include "Lexer/Lexer.h"
 #include "Lowering/AstToHir/AstToHir.h"
+#include "Lowering/HirToLir/HirToLir.h"
 #include "Semantic/SemanticAnalyzer.h"
 #include "Syntax/Parser/Parser.h"
 
+#include <algorithm>
 #include <doctest.h>
 #include <stdexcept>
 #include <string>
@@ -253,4 +255,117 @@ TEST_CASE("two propagations in one expression bind their payloads separately") {
         return bound->name;
     };
     CHECK_NE(boundName(*added->left), boundName(*added->right));
+}
+
+TEST_CASE("propagation restores the storage layout of nested variant errors") {
+    const HirPackage package = LowerSource(R"(
+        struct Unit {}
+        variant Reason { First(uint64), Second(uint64) }
+        variant Result<T, E> { Success(T), Error(E) }
+        func Forward(input: Result<Unit, Reason>) -> Result<int32, Reason> {
+            let value = input?;
+            return Result::Success<int32, Reason>(1i32);
+        }
+    )");
+    const HirMatchExpr &match = RequirePropagation(RequireFunction(package, "Forward"), 0);
+    const auto *failure = dynamic_cast<const HirEnumPattern *>(match.arms[1].pattern.get());
+    REQUIRE(failure != nullptr);
+    REQUIRE_EQ(failure->payloadTypes.size(), 1);
+    CHECK_EQ(failure->payloadTypes.front().SizeInBytes(), 16);
+    const auto *bound = dynamic_cast<const HirBindingPattern *>(failure->args.front().get());
+    REQUIRE(bound != nullptr);
+    CHECK_EQ(bound->type.SizeInBytes(), 16);
+    const HirReturnStmt &returned = RequireEarlyReturn(match);
+    const auto *constructed = dynamic_cast<const HirEnumConstructExpr *>(returned.value->get());
+    REQUIRE(constructed != nullptr);
+    REQUIRE_EQ(constructed->payloads.size(), 1);
+    CHECK_EQ(constructed->payloads.front()->type.SizeInBytes(), 16);
+}
+
+TEST_CASE("propagation captures its failure before deferred statements and ownership cleanup") {
+    const HirPackage package = LowerSource(kPropagationPrelude + R"(
+        struct Guard { count: *var int32; }
+        extend Guard {
+            func =(self: &var Guard, other: &Guard);
+            func ~Guard(self: &var Guard) { *self.count += 1i32; }
+        }
+        func Guarded(count: *var int32) -> Result<int32, ParseError> {
+            let guard = Guard { count: count };
+            defer *count += 10i32;
+            let value = Read(false)?;
+            return Result::Success<int32, ParseError>(value);
+        }
+    )");
+    const HirMatchExpr &match = RequirePropagation(RequireFunction(package, "Guarded"), 1);
+    const auto *body = dynamic_cast<const HirBlockExpr *>(match.arms[1].body.get());
+    REQUIRE(body != nullptr);
+    REQUIRE_EQ(body->block.stmts.size(), 1);
+    const auto *exit = dynamic_cast<const HirScopeStmt *>(body->block.stmts.front().get());
+    REQUIRE(exit != nullptr);
+    REQUIRE_EQ(exit->block.stmts.size(), 3);
+    const auto *capture = dynamic_cast<const HirLetStmt *>(exit->block.stmts.front().get());
+    REQUIRE(capture != nullptr);
+    CHECK(dynamic_cast<const HirEnumConstructExpr *>(capture->init.get()) != nullptr);
+    CHECK(dynamic_cast<const HirExprStmt *>(exit->block.stmts[1].get()) != nullptr);
+    const auto *returned = dynamic_cast<const HirReturnStmt *>(exit->block.stmts.back().get());
+    REQUIRE(returned != nullptr);
+    const auto *preserved = dynamic_cast<const HirVarExpr *>(returned->value->get());
+    REQUIRE(preserved != nullptr);
+    CHECK_EQ(preserved->name, capture->name);
+    REQUIRE_EQ(returned->cleanups.size(), 1);
+    CHECK_EQ(returned->cleanups.front().name, "guard");
+}
+
+TEST_CASE("propagation invokes custom moves for both active payload cases") {
+    const HirPackage package = LowerSource(R"(
+        variant Result<T, E> { Success(T), Error(E) }
+        struct Handle { value: int32; }
+        extend Handle {
+            func =(self: &var Handle, other: &Handle);
+            func <-(self: &var Handle, other: Handle) { self.value = other.value; }
+            func ~Handle(self: &var Handle) {}
+        }
+        func Forward(input: Result<Handle, Handle>) -> Result<Handle, Handle> {
+            let value = (<-input)?;
+            return Result::Success<Handle, Handle>(<-value);
+        }
+    )");
+    const HirMatchExpr &match = RequirePropagation(RequireFunction(package, "Forward"), 0);
+    const auto *success = dynamic_cast<const HirMoveExpr *>(match.arms[0].body.get());
+    REQUIRE(success != nullptr);
+    CHECK_EQ(success->plan.kind, HirMovePlan::Kind::Custom);
+    const HirReturnStmt &returned = RequireEarlyReturn(match);
+    const auto *constructed = dynamic_cast<const HirEnumConstructExpr *>(returned.value->get());
+    REQUIRE(constructed != nullptr);
+    REQUIRE_EQ(constructed->payloads.size(), 1);
+    const auto *failure = dynamic_cast<const HirMoveExpr *>(constructed->payloads.front().get());
+    REQUIRE(failure != nullptr);
+    CHECK_EQ(failure->plan.kind, HirMovePlan::Kind::Custom);
+}
+
+TEST_CASE("generic propagation emits only concrete function instantiations") {
+    HirPackage hir = LowerSource(R"(
+        struct Unit {}
+        variant Result<T, E> { Success(T), Error(E) }
+        variant Reason { At(uint64), Empty }
+        func Forward<T, E>(input: Result<T, E>) -> Result<Unit, E> {
+            input?;
+            return Result::Success<Unit, E>(Unit {});
+        }
+        func Main() -> int32 {
+            Forward<uint64, Reason>(Result::Error<uint64, Reason>(Reason::At(99u64)));
+            return 0i32;
+        }
+    )");
+    const HirFunc &declaration = RequireFunction(hir, "Forward");
+    CHECK_FALSE(declaration.typeParams.empty());
+    HirToLirLowering lowering(std::move(hir), CompileTimeContext{}.target);
+    const LirPackage lir = lowering.Generate();
+    CHECK(lowering.Diagnostics().empty());
+    REQUIRE_EQ(lir.modules.size(), 1);
+    const auto &functions = lir.modules.front().funcs;
+    CHECK(std::ranges::none_of(functions, [](const LirFunc &function) { return function.name == "Forward"; }));
+    CHECK(std::ranges::any_of(functions, [](const LirFunc &function) {
+        return function.name.starts_with("Forward") && function.name != "Forward";
+    }));
 }

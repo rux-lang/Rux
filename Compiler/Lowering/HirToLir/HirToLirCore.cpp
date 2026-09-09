@@ -622,7 +622,10 @@ LirModule HirToLirContext::LowerModule(const HirModule &mod) {
         lm.funcs.push_back(std::move(lf));
     }
     for (const auto &f : mod.funcs) {
-        lm.funcs.push_back(LowerFunc(f));
+        // Generic declarations remain useful in HIR inspection, but have no runtime layout until instantiated.
+        // Emitting their symbolic bodies can manufacture scalar casts for aggregate or zero-sized payloads.
+        if (f.typeParams.empty())
+            lm.funcs.push_back(LowerFunc(f));
     }
     for (const auto &impl : mod.impls) {
         if (impl.methods.size() != impl.methodLinkerNames.size()) {
