@@ -279,13 +279,13 @@ constexpr std::array Fragments{
 /// for the target it is about rather than the one the test happens to run on.
 std::string_view TargetFor(const std::string_view package) {
     if (package == "Linux") {
-        return "linux-x86-64";
+        return "linux-x86_64";
     }
     if (package == "macOS") {
-        return "macos-x86-64";
+        return "macos-x86_64";
     }
     if (package == "FreeBSD") {
-        return "freebsd-x86-64";
+        return "freebsd-x86_64";
     }
     return {};
 }

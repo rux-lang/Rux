@@ -52,6 +52,7 @@ For anything beyond the quick start, see the detailed guides:
 | [Package Builds](Docs/Builds.md)                  | Profiles, targets, artifact paths, and the 16-cell build matrix |
 | [Rux.toml Manifest](Docs/Manifest.md)             | Versioned package, workspace and dependency contract            |
 | [First-Party Packages](Docs/Packages.md)          | Package status, layout, dependencies, and centralized tests     |
+| [Package Acceptance](Docs/PackageAcceptance.md)   | What is on record for the packages, and what is still missing   |
 | [Known Compiler Defects](Docs/CompilerDefects.md) | Defects that shape how the first-party packages are written     |
 | [Narrow Float Conversion](Docs/NarrowFloat.md)    | The algorithm, workspace bound, precision and reference vectors  |
 | [Cryptographic Review](Docs/CryptoReview.md)      | What an independent reviewer of `Rux/Crypto` needs first        |
