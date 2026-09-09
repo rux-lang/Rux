@@ -100,6 +100,7 @@ protected:
     std::unordered_map<const FuncDecl *, const ImplDecl *> methodImpl;
     std::vector<std::unordered_map<std::string, std::uint64_t>> constIntegerScopes{{}};
     std::vector<std::vector<const DeferStmt *>> deferStack;
+    std::size_t returnOrdinal = 0;
     CleanupPlanner cleanupPlanner;
     std::string declModulePath;
     std::vector<Diagnostic> &diagnostics;
@@ -126,6 +127,7 @@ protected:
 
     [[nodiscard]] HirBlock LowerBlock(const Block &block);
     [[nodiscard]] HirStmtPtr LowerStmt(const Stmt &stmt);
+    [[nodiscard]] HirStmtPtr LowerFunctionReturn(HirExprPtr value, SourceLocation location);
     [[nodiscard]] HirPatternPtr LowerLetPattern(const Pattern &pattern, const TypeRef &type, bool isMutable);
 
     /// Whether a binding a pattern makes owns what it binds, and so is destroyed when its scope ends.

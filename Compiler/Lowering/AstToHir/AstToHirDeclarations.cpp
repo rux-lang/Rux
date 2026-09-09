@@ -324,6 +324,7 @@ HirFunc AstToHirContext::LowerFunc(const FuncDecl &d, bool isMethod,
     else {
         currentFunctionName = declModulePath.empty() ? d.name : declModulePath + "::" + d.name;
     }
+    auto savedDefers = std::exchange(deferStack, {});
     PushScope();
     const CleanupPlanner::FunctionToken cleanupFunction = cleanupPlanner.BeginFunction();
     if (substitutions.empty()) {
@@ -378,6 +379,7 @@ HirFunc AstToHirContext::LowerFunc(const FuncDecl &d, bool isMethod,
 
     cleanupPlanner.EndFunction(cleanupFunction);
     PopScope();
+    deferStack = std::move(savedDefers);
     currentSelfType = savedSelfType;
     currentReturnType = savedRet;
     currentTypeParams = savedTypeParams;

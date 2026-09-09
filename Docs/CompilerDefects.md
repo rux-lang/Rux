@@ -59,29 +59,6 @@ Narrowed by probe to exactly that difference: three functions doing the same wri
 
 Found while writing `Tests/Packages/Text/Presentation`, whose helper called `value.WriteDisplay(writer, spec)` directly. It is written with the bound reference now, and says why. Existing first-party callers were unaffected because they already hold a `&var TextWriter` parameter rather than a concrete writer, so the coercion has happened before the interface call.
 
-### A `return` expression is evaluated after the function's `defer` statements run
-
-*Silent, and it changes the value a function returns.* `return expr;` should read `expr` and then run the deferred statements on the way out. It does the opposite: the defers run first and `expr` is evaluated afterwards, so a `defer` that mutates a local is visible in the value the caller receives.
-
-```rux
-func Doubled() -> int {
-    var a = 1;
-    defer a += 10;
-    return a * 2;   // 22, where 2 is correct
-}
-```
-
-Narrowed by probe. `return a;` gives 11 rather than 1, and `return a * 2;` gives 22 rather than 2 — the multiplication is applied to the mutated value, so this is the expression being evaluated late rather than only the return slot aliasing the variable. Two defers compound the same way, in the correct LIFO order: `defer a += 100;` then `defer a *= 3;` over `var a = 1` returns 103. Copying first is a complete workaround, because the copy is a separate binding no defer touches:
-
-```rux
-let snapshot = a;
-return snapshot;    // 1, correct
-```
-
-A `return` of a literal, or of anything no deferred statement mutates, is unaffected, which is why this has gone unnoticed: the existing `Tests/Language/Defer` case asserts the returned value is 11 and reads as though that were intended.
-
-`Tests/Language/Defer` now pins the symptom deliberately, next to a comment naming this entry, so that fixing the defect fails that case and points at itself rather than at a mystery. Nothing in the release is affected: `defer` appears in no first-party package at all, so the blast radius today is language tests and whatever a user writes.
-
 ### A borrowed scalar cannot be read back out, so a primitive's interface implementation must take a raw pointer
 
 *Loud, and it forces a raw pointer into an otherwise safe surface.* A `&T` over a scalar supports nothing but being passed on: `self as int64`, `self < 0i64` and `let copied: int32 = self;` are each rejected, because a reference is dereferenced automatically for member and index access and for nothing else. There is no deref operator for a reference — `*self` is raw-pointer syntax — so a borrowed `int32` cannot become an `int32` again.

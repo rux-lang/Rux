@@ -12,6 +12,12 @@ Generic function calls may omit type arguments when the argument types determine
 
 Struct literals can appear inside parenthesized expressions and call arguments within conditions. An ordinary unparenthesized condition still leaves its following brace to the statement body.
 
+## Return and Deferred Cleanup
+
+A `return expr;` evaluates and preserves `expr` exactly once before running deferred statements. The accepted copy or move into the return value happens during this evaluation. Later changes to source locals do not change the captured value, including fields of an aggregate; a returned pointer still points to its original storage.
+
+On return, registered defers run in reverse registration order, from the innermost active scope outward, followed by the existing ownership cleanup. A transferred value is destroyed by its eventual owner, and a copied source remains subject to normal cleanup. A void return runs the same deferred statements without capturing a value. Each function has its own defer stack, including instantiated generic functions.
+
 ## Package Visibility
 
 Every source declaration is package-private unless it starts with `pub`. Package-private means that every file and module in the defining package can use it; it does not mean file-private or module-private. A dependent package can import or name only effectively public API:

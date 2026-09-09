@@ -37,20 +37,11 @@ HirBlock AstToHirContext::LowerBlock(const Block &block) {
             }
             continue;
         }
-        if (const auto *returnStatement = dynamic_cast<const ReturnStmt *>(statement.get())) {
-            (void)returnStatement;
-            for (auto scopeIt = deferStack.rbegin(); scopeIt != deferStack.rend(); ++scopeIt) {
-                for (auto defIt = scopeIt->rbegin(); defIt != scopeIt->rend(); ++defIt) {
-                    if ((*defIt)->deferredStmt) {
-                        loweredBlock.stmts.push_back(LowerStmt(*(*defIt)->deferredStmt));
-                    }
-                }
-            }
-        }
         loweredBlock.stmts.push_back(LowerStmt(*statement));
     }
     if (!deferStack.empty()) {
-        for (auto defIt = deferStack.back().rbegin(); defIt != deferStack.back().rend(); ++defIt) {
+        const auto deferred = deferStack.back();
+        for (auto defIt = deferred.rbegin(); defIt != deferred.rend(); ++defIt) {
             if ((*defIt)->deferredStmt) {
                 loweredBlock.stmts.push_back(LowerStmt(*(*defIt)->deferredStmt));
             }
@@ -59,6 +50,49 @@ HirBlock AstToHirContext::LowerBlock(const Block &block) {
     AppendCurrentScopeCleanups(loweredBlock);
     PopScope();
     return loweredBlock;
+}
+
+HirStmtPtr AstToHirContext::LowerFunctionReturn(HirExprPtr value, const SourceLocation location) {
+    auto returned = std::make_unique<HirReturnStmt>();
+    returned->location = location;
+    if (value)
+        returned->value = std::move(value);
+
+    // Lowering a deferred conditional or a generic call may push scopes. Snapshot the registered statements before
+    // visiting them, and keep return capture separate from the cleanup flags of source-owned bindings.
+    std::vector<const Stmt *> deferred;
+    for (auto scope = deferStack.rbegin(); scope != deferStack.rend(); ++scope) {
+        for (auto statement = scope->rbegin(); statement != scope->rend(); ++statement) {
+            if ((*statement)->deferredStmt)
+                deferred.push_back((*statement)->deferredStmt.get());
+        }
+    }
+    if (deferred.empty()) {
+        returned->cleanups = FunctionCleanups();
+        return returned;
+    }
+
+    auto exit = std::make_unique<HirScopeStmt>();
+    exit->location = location;
+    exit->block.location = location;
+    if (returned->value) {
+        auto capture = std::make_unique<HirLetStmt>();
+        capture->location = location;
+        capture->name = std::format("$return.{}", returnOrdinal++);
+        capture->type = (*returned->value)->type;
+        capture->init = std::move(*returned->value);
+        auto preserved = std::make_unique<HirVarExpr>();
+        preserved->location = location;
+        preserved->name = capture->name;
+        preserved->type = capture->type;
+        returned->value = std::move(preserved);
+        exit->block.stmts.push_back(std::move(capture));
+    }
+    for (const Stmt *statement : deferred)
+        exit->block.stmts.push_back(LowerStmt(*statement));
+    returned->cleanups = FunctionCleanups();
+    exit->block.stmts.push_back(std::move(returned));
+    return exit;
 }
 
 HirStmtPtr AstToHirContext::LowerStmt(const Stmt &stmt) {
@@ -243,13 +277,8 @@ HirStmtPtr AstToHirContext::LowerStmt(const Stmt &stmt) {
     }
 
     if (const auto *statement = dynamic_cast<const ReturnStmt *>(&stmt)) {
-        auto lowered = std::make_unique<HirReturnStmt>();
-        lowered->location = statement->location;
-        if (statement->value) {
-            lowered->value = LowerExprAs(**statement->value, currentReturnType);
-        }
-        lowered->cleanups = FunctionCleanups();
-        return lowered;
+        return LowerFunctionReturn(statement->value ? LowerExprAs(**statement->value, currentReturnType) : nullptr,
+                                   statement->location);
     }
 
     if (const auto *statement = dynamic_cast<const BreakStmt *>(&stmt)) {

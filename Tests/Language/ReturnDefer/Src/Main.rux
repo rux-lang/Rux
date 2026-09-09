@@ -1,0 +1,235 @@
+import Core::Assert;
+
+struct Triple {
+    first: int;
+    second: int;
+    third: int;
+}
+
+func Scalar(log: *var int) -> int {
+    var value = 7;
+    defer value = 99;
+    defer *log = *log * 10 + 1;
+    return value;
+}
+
+func SideEffect(value: *var int, calls: *var int) -> int {
+    *calls += 1;
+    *value += 3;
+    return *value * 2;
+}
+
+func Expression(log: *var int, calls: *var int) -> int {
+    var value = 7;
+    defer *log = value;
+    defer value += 100;
+    return SideEffect(@value, calls);
+}
+
+func Aggregate(log: *var int) -> Triple {
+    var value = Triple { first: 11, second: 22, third: 33 };
+    defer value.third = 99;
+    defer *log += 1;
+    return value;
+}
+
+func AggregateExpression(log: *var int) -> Triple {
+    var value = 5;
+    defer value += 100;
+    defer *log += 1;
+    return Triple { first: value, second: value * 2, third: value * 3 };
+}
+
+func TupleReturn(log: *var int) -> (int, int) {
+    var value = 9;
+    defer value = 0;
+    defer *log += 1;
+    return (value, value + 1);
+}
+
+func Nested(log: *var int, early: bool) -> int {
+    var value = 3;
+    defer *log = *log * 10 + 1;
+    defer value += 100;
+    if early {
+        defer *log = *log * 10 + 2;
+        defer value *= 7;
+        return value + 1;
+    }
+    defer *log = *log * 10 + 3;
+    return value + 2;
+}
+
+func DeferredBranch(log: *var int) -> int {
+    defer if *log == 0 {
+        *log = 1;
+    }
+    defer *log *= 10;
+    return 8;
+}
+
+func Identity<T>(value: T) -> T {
+    return value;
+}
+
+func GenericReturn(log: *var int) -> int {
+    defer *log += 1;
+    return Identity<int>(12);
+}
+
+struct Token {
+    value: int;
+    drops: *var int;
+    log: *var int;
+}
+
+extend Token {
+    func =(self: &var Token, other: &Token);
+
+    func ~Token(self: &var Token) {
+        *self.drops += 1;
+        *self.log = *self.log * 10 + 2;
+    }
+}
+
+func Produce(drops: *var int, log: *var int) -> Token {
+    let token = Token { value: 17, drops: drops, log: log };
+    defer *log = *log * 10 + 1;
+    return <-token;
+}
+
+func Forward(token: Token, log: *var int) -> Token {
+    defer *log = *log * 10 + 3;
+    return <-token;
+}
+
+func OwnReturnedToken(drops: *var int, log: *var int) {
+    let token = Forward(Produce(drops, log), log);
+    Assert(token.value == 17, "move-only return payload survives deferred statements");
+    Assert(*drops == 0, "the returned owner is still alive in the caller");
+    Assert(*log == 13, "each returning function ran its own defer exactly once");
+}
+
+struct CopyValue {
+    value: int;
+    copies: *var int;
+    drops: *var int;
+    log: *var int;
+}
+
+extend CopyValue {
+    func =(self: &var CopyValue, other: &CopyValue) {
+        self.value = other.value;
+        self.copies = other.copies;
+        self.drops = other.drops;
+        self.log = other.log;
+        *self.copies += 1;
+        *self.log = *self.log * 10 + 1;
+    }
+
+    func <-(self: &var CopyValue, other: CopyValue);
+
+    func ~CopyValue(self: &var CopyValue) {
+        *self.drops += 1;
+        *self.log = *self.log * 10 + 3;
+    }
+}
+
+func CopiedReturn(copies: *var int, drops: *var int, log: *var int) -> CopyValue {
+    var value = CopyValue { value: 41, copies: copies, drops: drops, log: log };
+    defer *log = *log * 10 + 2;
+    defer value.value = 99;
+    return value;
+}
+
+func OwnReturnedCopy(copies: *var int, drops: *var int, log: *var int) {
+    let value = CopiedReturn(copies, drops, log);
+    Assert(value.value == 41, "the custom copy happens before the deferred mutation");
+    Assert(*copies == 1, "capturing the result does not invoke another user copy");
+    Assert(*drops == 1, "the callee destroyed only its original value");
+    Assert(*log == 123, "return copy precedes defer and original destruction");
+}
+
+func WideReturn() -> uint128 {
+    var value: uint128 = (1u128 << 100) + 17u128;
+    defer value = 0u128;
+    return value;
+}
+
+func FloatingReturn() -> float64 {
+    var value: float64 = 1.5;
+    defer value = 8.0;
+    return value + 0.25;
+}
+
+func PointerReturn(value: *var int) -> *var int {
+    var pointer = value;
+    defer pointer = null;
+    return pointer;
+}
+
+func EmptyReturn(log: *var int) {
+    defer *log = *log * 10 + 1;
+    defer *log = *log * 10 + 2;
+    return;
+}
+
+func NestedDeferredBlock(log: *var int) -> int {
+    defer if *log == 0 {
+        defer *log = *log * 10 + 2;
+        *log = 1;
+    }
+    return 9;
+}
+
+func Main() -> int {
+    var log = 0;
+    Assert(Scalar(@log) == 7, "the scalar return reads the original value");
+    Assert(log == 1, "the scalar exit runs its defer once");
+
+    log = 0;
+    var calls = 0;
+    Assert(Expression(@log, @calls) == 20, "side effects in the return expression happen first");
+    Assert(calls == 1 && log == 110, "the expression runs once and defers observe its side effects");
+
+    log = 0;
+    let aggregate = Aggregate(@log);
+    Assert(aggregate.first == 11 && aggregate.second == 22 && aggregate.third == 33,
+           "the returned aggregate owns a snapshot of every field");
+    let constructed = AggregateExpression(@log);
+    Assert(constructed.first == 5 && constructed.second == 10 && constructed.third == 15,
+           "aggregate construction completes before cleanup");
+    let (first, second) = TupleReturn(@log);
+    Assert(first == 9 && second == 10 && log == 3, "tuple components survive deferred mutation");
+
+    log = 0;
+    Assert(Nested(@log, true) == 4 && log == 21, "nested early return preserves its value and LIFO order");
+    log = 0;
+    Assert(Nested(@log, false) == 5 && log == 31, "the later exit runs only registered defers");
+    log = 0;
+    Assert(DeferredBranch(@log) == 8 && log == 1, "a deferred statement may lower its own nested block");
+    log = 0;
+    Assert(GenericReturn(@log) == 12 && log == 1, "generic instantiations do not inherit the caller's defers");
+
+    log = 0;
+    var drops = 0;
+    OwnReturnedToken(@drops, @log);
+    Assert(drops == 1 && log == 132, "the caller destroys the transferred owner exactly once");
+
+    log = 0;
+    drops = 0;
+    var copies = 0;
+    OwnReturnedCopy(@copies, @drops, @log);
+    Assert(copies == 1 && drops == 2 && log == 1233, "the returned copy is destroyed once in its caller");
+    Assert(WideReturn() == (1u128 << 100) + 17u128, "every word of a wide scalar is captured");
+    Assert(FloatingReturn() == 1.75, "floating return expressions retain their type and value");
+    var pointee = 42;
+    let pointer = PointerReturn(@pointee);
+    Assert(pointer == @pointee && *pointer == 42, "a returned pointer is captured before its local is overwritten");
+    log = 0;
+    EmptyReturn(@log);
+    Assert(log == 21, "a void return runs each defer once in reverse order");
+    log = 0;
+    Assert(NestedDeferredBlock(@log) == 9 && log == 12, "nested deferred scopes retain their own cleanup order");
+    return 0;
+}

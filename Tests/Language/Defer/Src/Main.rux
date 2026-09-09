@@ -5,12 +5,6 @@
 // never taken, a defer in a loop body, several defers interleaved with early exits, or a defer that mutates the
 // very value being returned.
 //
-// That last one is a known compiler defect and is pinned here deliberately. `return expr;` should read `expr` and
-// then run the deferred statements, and it does the opposite: the defers run first and `expr` is evaluated after,
-// so a mutation leaks into the returned value. See "A return expression is evaluated after the function's defer
-// statements run" in Docs/CompilerDefects.md. The assertions below record what the compiler does today, so fixing
-// it fails this file and points straight at the entry rather than at something unrelated.
-
 import Core::Assert;
 
 func LastInFirstOut(log: *var int) {
@@ -53,25 +47,17 @@ func PerIteration(counter: *var int) {
     }
 }
 
-// The defect: the returned expression is evaluated after the deferred mutation.
-func ReturnsMutatedVariable() -> int {
+// A return reads its value before deferred statements mutate the source.
+func ReturnsOriginalVariable() -> int {
     var value = 1;
     defer value += 10;
     return value;
 }
 
-func ReturnsMutatedExpression() -> int {
+func ReturnsOriginalExpression() -> int {
     var value = 1;
     defer value += 10;
     return value * 2;
-}
-
-// Copying first is the workaround, because a copy is a binding no defer touches.
-func ReturnsSnapshot() -> int {
-    var value = 1;
-    defer value += 10;
-    let snapshot = value;
-    return snapshot;
 }
 
 func ReturnsLiteral() -> int {
@@ -118,11 +104,8 @@ func Main() -> int {
     PerIteration(@iterations);
     Assert(iterations == 33, "three iterations each added ten then one");
 
-    // The defect, pinned as it currently behaves. The correct answers are 1, 2, 1 and 7.
-    Assert(ReturnsMutatedVariable() == 11, "DEFECT: the deferred mutation leaks into the returned variable");
-    Assert(ReturnsMutatedExpression() == 22,
-           "DEFECT: the return expression is evaluated after the defer, so the mutation is doubled too");
-    Assert(ReturnsSnapshot() == 1, "copying into another binding first avoids the defect");
-    Assert(ReturnsLiteral() == 7, "and a returned literal is unaffected");
+    Assert(ReturnsOriginalVariable() == 1, "the return reads the variable before its defer");
+    Assert(ReturnsOriginalExpression() == 2, "the return expression is evaluated before deferred mutation");
+    Assert(ReturnsLiteral() == 7, "a returned literal is preserved");
     return 0;
 }
