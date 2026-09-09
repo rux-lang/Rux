@@ -1,13 +1,28 @@
+// `uint64`: an unsigned integer in 64 bits.
+//
+// Wrapping is defined at this width and `Min` is zero, so a subtraction that would go below it wraps rather than
+// trapping. Core's checked arithmetic is what reports instead of wrapping.
+
 /// The compiler representation of uint64.
+///
+/// @see https://rux-lang.dev/docs/api/core/uint64
 pub intrinsic type uint64;
 
 extend uint64 {
     /// The number of bits in the representation.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/uint64/bits
     pub const Bits: uint = 64u;
     /// The number of bytes in the representation.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/uint64/bytes
     pub const Bytes: uint = 8u;
     /// The smallest representable value.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/uint64/min
     pub const Min: uint64 = 0u64;
     /// The largest representable value.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/uint64/max
     pub const Max: uint64 = 18446744073709551615u64;
 }

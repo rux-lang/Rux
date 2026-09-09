@@ -1,13 +1,28 @@
+// `uint128`: an unsigned integer in 128 bits.
+//
+// Wrapping is defined at this width and `Min` is zero, so a subtraction that would go below it wraps rather than
+// trapping. Core's checked arithmetic is what reports instead of wrapping.
+
 /// The compiler representation of uint128.
+///
+/// @see https://rux-lang.dev/docs/api/core/uint128
 pub intrinsic type uint128;
 
 extend uint128 {
     /// The number of bits in the representation.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/uint128/bits
     pub const Bits: uint = 128u;
     /// The number of bytes in the representation.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/uint128/bytes
     pub const Bytes: uint = 16u;
     /// The smallest representable value.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/uint128/min
     pub const Min: uint128 = 0u128;
     /// The largest representable value.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/uint128/max
     pub const Max: uint128 = 340282366920938463463374607431768211455u128;
 }

@@ -21,7 +21,9 @@
 ///
 /// Runs in constant time and allocates nothing.
 ///
-/// https://rux-lang.dev/docs/api/core/assert
+/// @param condition what must hold
+/// @param message what to report when it does not
+/// @see https://rux-lang.dev/docs/api/core/assert
 pub intrinsic func Assert(condition: bool, message: char8[..]);
 
 /// Terminates the program unless `condition` holds, in builds that keep debug assertions.
@@ -34,7 +36,9 @@ pub intrinsic func Assert(condition: bool, message: char8[..]);
 ///
 /// Runs in constant time and allocates nothing.
 ///
-/// https://rux-lang.dev/docs/api/core/debug-assert
+/// @param condition what must hold
+/// @param message what to report when it does not
+/// @see https://rux-lang.dev/docs/api/core/debug-assert
 pub intrinsic func DebugAssert(condition: bool, message: char8[..]);
 
 /// Terminates the program, reporting `message`.
@@ -47,7 +51,8 @@ pub intrinsic func DebugAssert(condition: bool, message: char8[..]);
 ///
 /// Runs in constant time and allocates nothing.
 ///
-/// https://rux-lang.dev/docs/api/core/panic
+/// @param message what to report before terminating
+/// @see https://rux-lang.dev/docs/api/core/panic
 pub intrinsic func Panic(message: char8[..]);
 
 /// Rejects the build where it is written, reporting `message`.
@@ -57,7 +62,8 @@ pub intrinsic func Panic(message: char8[..]);
 ///
 /// Cannot fail at run time, because it does not reach run time. Costs nothing in the built program.
 ///
-/// https://rux-lang.dev/docs/api/core/error
+/// @param message the diagnostic to emit at the call site
+/// @see https://rux-lang.dev/docs/api/core/error
 pub intrinsic func #Error(message: char8[..]);
 
 /// Reports `message` as a compilation warning where it is written, without rejecting the build.
@@ -67,5 +73,6 @@ pub intrinsic func #Error(message: char8[..]);
 ///
 /// Cannot fail. Costs nothing in the built program.
 ///
-/// https://rux-lang.dev/docs/api/core/warn
+/// @param message the diagnostic to emit at the call site
+/// @see https://rux-lang.dev/docs/api/core/warn
 pub intrinsic func #Warn(message: char8[..]);

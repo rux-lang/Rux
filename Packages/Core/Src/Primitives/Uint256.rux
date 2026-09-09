@@ -1,13 +1,28 @@
+// `uint256`: an unsigned integer in 256 bits.
+//
+// Wrapping is defined at this width and `Min` is zero, so a subtraction that would go below it wraps rather than
+// trapping. Core's checked arithmetic is what reports instead of wrapping.
+
 /// The compiler representation of uint256.
+///
+/// @see https://rux-lang.dev/docs/api/core/uint256
 pub intrinsic type uint256;
 
 extend uint256 {
     /// The number of bits in the representation.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/uint256/bits
     pub const Bits: uint = 256u;
     /// The number of bytes in the representation.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/uint256/bytes
     pub const Bytes: uint = 32u;
     /// The smallest representable value.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/uint256/min
     pub const Min: uint256 = 0u256;
     /// The largest representable value.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/uint256/max
     pub const Max: uint256 = 115792089237316195423570985008687907853269984665640564039457584007913129639935u256;
 }

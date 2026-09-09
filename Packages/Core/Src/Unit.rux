@@ -1,10 +1,15 @@
+// The type with one value, for a type position that has nothing to say.
+//
+// `Result<Unit, E>` is what this exists for: an operation that either succeeded or failed and carries nothing back
+// from success. A separate success type would make every such caller name something it does not use.
+
 /// The single value an operation produces when it has nothing meaningful to return.
 ///
 /// `Unit` occupies no fields, so it exists to fill a type position rather than to carry information: a
 /// `Result<Unit, E>` says an operation either succeeded or failed and nothing more. It is a `Copy` value with no
 /// ownership of its own, so passing one neither consumes nor invalidates anything.
 ///
-/// https://rux-lang.dev/docs/api/core/unit
+/// @see https://rux-lang.dev/docs/api/core/unit
 pub struct Unit {}
 
 extend Unit {
@@ -14,7 +19,8 @@ extend Unit {
     ///
     /// Cannot fail. Runs in constant time, allocates nothing, and reads no storage.
     ///
-    /// https://rux-lang.dev/docs/api/core/unit
+    /// @returns the one value of the type
+    /// @see https://rux-lang.dev/docs/api/core/unit/new
     pub func Unit() -> Unit {
         return Unit {};
     }

@@ -1,13 +1,28 @@
+// `int`: a signed integer the width of a pointer on the target.
+//
+// Sixty-four bits on every currently supported target, and one of the two integer types whose width follows the target
+// rather than its name. A value that must keep its width across targets should name one that says it.
+
 /// A target pointer-sized signed integer.
+///
+/// @see https://rux-lang.dev/docs/api/core/int
 pub intrinsic type int;
 
 extend int {
     /// The target representation width in bits.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/int/bits
     pub const Bits: uint = sizeof(int) * 8u;
     /// The target representation size in bytes.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/int/bytes
     pub const Bytes: uint = sizeof(int);
     /// The smallest representable value.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/int/min
     pub const Min: int = -(((~0u) >> 1u) as int) - 1;
     /// The largest representable value.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/int/max
     pub const Max: int = ((~0u) >> 1u) as int;
 }

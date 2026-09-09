@@ -1,13 +1,28 @@
+// `int256`: a signed integer in 256 bits, two's complement.
+//
+// The range is asymmetric, as it is at every signed width: the most negative value has no positive counterpart, which
+// is behind nearly every edge case in checked arithmetic.
+
 /// The compiler representation of int256.
+///
+/// @see https://rux-lang.dev/docs/api/core/int256
 pub intrinsic type int256;
 
 extend int256 {
     /// The number of bits in the representation.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/int256/bits
     pub const Bits: uint = 256u;
     /// The number of bytes in the representation.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/int256/bytes
     pub const Bytes: uint = 32u;
     /// The smallest representable value.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/int256/min
     pub const Min: int256 = -57896044618658097711785492504343953926634992332820282019728792003956564819968i256;
     /// The largest representable value.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/int256/max
     pub const Max: int256 = 57896044618658097711785492504343953926634992332820282019728792003956564819967i256;
 }

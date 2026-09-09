@@ -1,21 +1,43 @@
+// `float64`: IEEE 754 binary64.
+//
+// Fifty-three bits of significand, so about seventeen decimal digits round-trip. This is the width `float` names.
+
 /// The compiler representation of float64.
+///
+/// @see https://rux-lang.dev/docs/api/core/float64
 pub intrinsic type float64;
 
 extend float64 {
     /// The number of bits in the representation.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/float64/bits
     pub const Bits: uint = 64u;
     /// The number of bytes in the representation.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/float64/bytes
     pub const Bytes: uint = 8u;
     /// The lowest finite value.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/float64/lowest
     pub const Lowest: float64 = -1.7976931348623157e+308f64;
     /// The highest finite value.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/float64/max
     pub const Max: float64 = 1.7976931348623157e+308f64;
     /// The smallest positive normal value.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/float64/min-positive
     pub const MinPositive: float64 = 2.2250738585072014e-308f64;
     /// The difference between one and the next representable value.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/float64/epsilon
     pub const Epsilon: float64 = 2.2204460492503131e-16f64;
     /// Positive infinity.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/float64/infinity
     pub intrinsic const Infinity: float64;
     /// A quiet not-a-number value.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/float64/na-n
     pub intrinsic const NaN: float64;
 }

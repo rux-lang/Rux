@@ -1,3 +1,9 @@
+// Ordering: which of two values of one type comes first.
+//
+// One method, returning a three-way `Ordering` rather than a boolean, because two booleans cannot express
+// equality without being asked twice. A type that can be ordered can be sorted, searched and bounded by
+// everything in `Rux/Algorithms` without any of it knowing what the type is.
+
 /// Ordering: which of two values of one type comes first.
 ///
 /// The bound a generic writes when it needs to sort, search a sorted sequence, or find an extreme. `Self` in the
@@ -12,7 +18,7 @@
 /// A type implementing both this and `Equatable` must keep them agreeable: `Compare` reports `Equal` exactly when
 /// `Equals` reports true.
 ///
-/// https://rux-lang.dev/docs/api/core/comparable
+/// @see https://rux-lang.dev/docs/api/core/comparable
 pub interface Comparable {
     /// Compares this value against `other`.
     ///
@@ -21,6 +27,8 @@ pub interface Comparable {
     /// Returns `Less` when this value comes first, `Greater` when `other` does, and `Equal` when neither does. Cannot
     /// fail: a total order places every pair.
     ///
-    /// https://rux-lang.dev/docs/api/core/comparable/compare
+    /// @param other the value to compare against
+    /// @returns how this value orders against `other`
+    /// @see https://rux-lang.dev/docs/api/core/comparable/compare
     func Compare(other: &Self) -> Ordering;
 }

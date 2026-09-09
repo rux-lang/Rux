@@ -1,3 +1,13 @@
+// A value that may be absent, as a type rather than as a sentinel.
+//
+// The alternative is a value that means nothing — a null pointer, a -1 index, an empty string — which every
+// caller must remember to check and the compiler cannot make them. An `Option` cannot be read without
+// saying what happens when it is empty.
+//
+// `??` coalesces one lazily, `match` binds its payload by borrow, and `ValueOr` and `TryIntoValue` consume
+// it. Its structural shape is shared with propagation, so a custom Option-shaped variant works without
+// naming this one.
+
 /// A value that may be absent.
 ///
 /// `Option<T>` is what an operation returns when having nothing to give is an ordinary outcome rather than a failure:
@@ -13,9 +23,12 @@
 ///
 /// An `Option<T>` is as wide as its tag plus `T`, and never allocates on its own.
 ///
-/// https://rux-lang.dev/docs/api/core/option
+/// @typeParam T the type the option holds one of
+/// @see https://rux-lang.dev/docs/api/core/option
 pub variant Option<T> {
+    /// A value is present, and this case carries it.
     Some(T),
+    /// No value is present.
     None
 }
 
@@ -27,7 +40,8 @@ extend Option<T> {
     ///
     /// Cannot fail. Runs in constant time and allocates nothing: it reads the tag and nothing else.
     ///
-    /// https://rux-lang.dev/docs/api/core/option/is-some
+    /// @returns whether the option holds a value
+    /// @see https://rux-lang.dev/docs/api/core/option/is-some
     pub func IsSome(self: &Option<T>) -> bool {
         return match self {
             .Some(_) => true,
@@ -41,7 +55,8 @@ extend Option<T> {
     ///
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
-    /// https://rux-lang.dev/docs/api/core/option/is-none
+    /// @returns whether the option holds nothing
+    /// @see https://rux-lang.dev/docs/api/core/option/is-none
     pub func IsNone(self: &Option<T>) -> bool {
         return !self.IsSome();
     }
@@ -56,7 +71,9 @@ extend Option<T> {
     /// Cannot fail: absence is answered with `fallback` rather than reported. Runs in constant time and allocates
     /// nothing.
     ///
-    /// https://rux-lang.dev/docs/api/core/option/value-or
+    /// @param fallback the value to use when there is none
+    /// @returns the held value, or `fallback` when there is none
+    /// @see https://rux-lang.dev/docs/api/core/option/value-or
     pub func ValueOr(self: Option<T>, fallback: T) -> T {
         return match <-self {
             .Some(value) => <-value,
@@ -76,7 +93,9 @@ extend Option<T> {
     ///
     /// Runs in constant time and allocates nothing.
     ///
-    /// https://rux-lang.dev/docs/api/core/option/try-into-value
+    /// @param value the value to act on
+    /// @returns whether there was a value to take
+    /// @see https://rux-lang.dev/docs/api/core/option/try-into-value
     pub func TryIntoValue(self: Option<T>, value: *var T) -> bool {
         if value == null { return false; }
 

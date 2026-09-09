@@ -12,7 +12,7 @@
 /// A profile is a name, and more than one profile may share a mode; this is the part a package can branch on without
 /// knowing which profiles a project defined.
 ///
-/// https://rux-lang.dev/docs/api/core/build-mode
+/// @see https://rux-lang.dev/docs/api/core/build-mode
 pub enum BuildMode: uint8 {
     /// Unoptimized, with debug assertions and debug information on by default.
     Debug = 0,
@@ -22,7 +22,7 @@ pub enum BuildMode: uint8 {
 
 /// What the active build asked the optimizer to favor.
 ///
-/// https://rux-lang.dev/docs/api/core/optimization-mode
+/// @see https://rux-lang.dev/docs/api/core/optimization-mode
 pub enum OptimizationMode: uint8 {
     /// No optimization: the output follows the source as closely as it can.
     None = 0,
@@ -34,7 +34,7 @@ pub enum OptimizationMode: uint8 {
 
 /// The kind of artifact the active build produces.
 ///
-/// https://rux-lang.dev/docs/api/core/output-kind
+/// @see https://rux-lang.dev/docs/api/core/output-kind
 pub enum OutputKind: uint8 {
     /// A program with an entry point.
     Executable = 0,
@@ -51,7 +51,7 @@ pub enum OutputKind: uint8 {
 /// Every field is fixed when compiling begins and is the same everywhere in one build. Reading one produces no
 /// runtime code, so a branch on a field is decided while compiling and the untaken side is not emitted.
 ///
-/// https://rux-lang.dev/docs/api/core/build
+/// @see https://rux-lang.dev/docs/api/core/build
 pub struct Build {
     /// The profile's name as the project spelled it, which may be a project-defined profile rather than one of the
     /// two standard ones.
@@ -82,5 +82,5 @@ pub struct Build {
 /// Reading a field produces no runtime code. A `when` on one keeps only the branch that applies, so the untaken side
 /// is never resolved or type-checked and may name things this build does not have.
 ///
-/// https://rux-lang.dev/docs/api/core/build
+/// @see https://rux-lang.dev/docs/api/core/build
 pub intrinsic #build: Build;

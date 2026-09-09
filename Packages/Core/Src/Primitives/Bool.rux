@@ -1,2 +1,9 @@
+// `bool`: the canonical boolean width.
+//
+// An alias for `bool8`, with identical representation, ABI, constants, conversions and overload identity. It exists so
+// ordinary code can say the short name and mean exactly the canonical one.
+
 /// The default alias of bool8.
+///
+/// @see https://rux-lang.dev/docs/api/core/bool
 pub type bool = bool8;

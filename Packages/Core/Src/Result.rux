@@ -1,3 +1,12 @@
+// A value produced by an operation that can fail, or the error that explains why it did not.
+//
+// The failure is in the type, so a caller cannot reach the value without deciding what to do about the
+// error. `?` propagates one, and `Result<Unit, E>` is the shape for an operation whose success carries
+// nothing back.
+//
+// A payload-carrying error propagated through `?` is subject to a known compiler defect recorded in
+// Docs/CompilerDefects.md; the safe pattern for a new failure type is written down there.
+
 /// A value produced by an operation that can fail, or the error that explains why it did not.
 ///
 /// `Result<T, E>` is what an operation returns when a caller should be told why something did not work. An outcome
@@ -11,9 +20,13 @@
 ///
 /// A `Result<T, E>` is as wide as its tag plus the larger of `T` and `E`, and never allocates on its own.
 ///
-/// https://rux-lang.dev/docs/api/core/result
+/// @typeParam T the type a success holds
+/// @typeParam E the type a failure holds
+/// @see https://rux-lang.dev/docs/api/core/result
 pub variant Result<T, E> {
+    /// The operation produced a value, and this case carries it.
     Success(T),
+    /// The operation failed, and this case carries the reason.
     Error(E)
 }
 
@@ -25,7 +38,8 @@ extend Result<T, E> {
     ///
     /// Cannot fail. Runs in constant time and allocates nothing: it reads the tag and nothing else.
     ///
-    /// https://rux-lang.dev/docs/api/core/result/is-success
+    /// @returns whether the result holds a value
+    /// @see https://rux-lang.dev/docs/api/core/result/is-success
     pub func IsSuccess(self: &Result<T, E>) -> bool {
         return match self {
             .Success(_) => true,
@@ -39,7 +53,8 @@ extend Result<T, E> {
     ///
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
-    /// https://rux-lang.dev/docs/api/core/result/is-error
+    /// @returns whether the result holds an error
+    /// @see https://rux-lang.dev/docs/api/core/result/is-error
     pub func IsError(self: &Result<T, E>) -> bool {
         return !self.IsSuccess();
     }
@@ -53,7 +68,9 @@ extend Result<T, E> {
     /// Cannot fail: an error is answered with `fallback` rather than reported. Runs in constant time and allocates
     /// nothing.
     ///
-    /// https://rux-lang.dev/docs/api/core/result/value-or
+    /// @param fallback the value to use when there is none
+    /// @returns the held value, or `fallback` when there is none
+    /// @see https://rux-lang.dev/docs/api/core/result/value-or
     pub func ValueOr(self: Result<T, E>, fallback: T) -> T {
         return match <-self {
             .Success(value) => <-value,
@@ -73,7 +90,9 @@ extend Result<T, E> {
     ///
     /// Runs in constant time and allocates nothing.
     ///
-    /// https://rux-lang.dev/docs/api/core/result/try-into-value
+    /// @param value the value to act on
+    /// @returns whether there was a value to take
+    /// @see https://rux-lang.dev/docs/api/core/result/try-into-value
     pub func TryIntoValue(self: Result<T, E>, value: *var T) -> bool {
         if value == null { return false; }
 
@@ -99,7 +118,9 @@ extend Result<T, E> {
     ///
     /// Runs in constant time and allocates nothing.
     ///
-    /// https://rux-lang.dev/docs/api/core/result/try-into-error
+    /// @param error receives the error when there is one
+    /// @returns whether there was an error to take
+    /// @see https://rux-lang.dev/docs/api/core/result/try-into-error
     pub func TryIntoError(self: Result<T, E>, error: *var E) -> bool {
         if error == null { return false; }
 

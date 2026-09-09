@@ -1,13 +1,29 @@
+// `char8`: one UTF-8 code unit.
+//
+// A code unit, not a character: every value that fits is valid, and a scalar value above U+007F takes more than one of
+// these. It does not widen implicitly to `char16` or `char32`, because a UTF-8 byte above 0x7F is not the unit of the
+// same number in either encoding.
+
 /// The compiler representation of char8.
+///
+/// @see https://rux-lang.dev/docs/api/core/char8
 pub intrinsic type char8;
 
 extend char8 {
     /// The number of bits in the representation.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/char8/bits
     pub const Bits: uint = 8u;
     /// The number of bytes in the representation.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/char8/bytes
     pub const Bytes: uint = 1u;
     /// The first code unit or Unicode scalar value.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/char8/min
     pub const Min: char8 = 0u32 as char8;
     /// The last code unit or Unicode scalar value.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/char8/max
     pub const Max: char8 = 255u32 as char8;
 }

@@ -1,9 +1,20 @@
+// `bool8`: one of two values, stored in 8 bits.
+//
+// Every boolean width holds exactly zero or one whatever its size, so a cast into one asks whether the whole source
+// value is non-zero rather than truncating to the width first.
+
 /// The compiler representation of bool8.
+///
+/// @see https://rux-lang.dev/docs/api/core/bool8
 pub intrinsic type bool8;
 
 extend bool8 {
     /// The number of bits in the representation.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/bool8/bits
     pub const Bits: uint = 8u;
     /// The number of bytes in the representation.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/bool8/bytes
     pub const Bytes: uint = 1u;
 }

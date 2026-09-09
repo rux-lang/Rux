@@ -1,13 +1,28 @@
+// `uint32`: an unsigned integer in 32 bits.
+//
+// Wrapping is defined at this width and `Min` is zero, so a subtraction that would go below it wraps rather than
+// trapping. Core's checked arithmetic is what reports instead of wrapping.
+
 /// The compiler representation of uint32.
+///
+/// @see https://rux-lang.dev/docs/api/core/uint32
 pub intrinsic type uint32;
 
 extend uint32 {
     /// The number of bits in the representation.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/uint32/bits
     pub const Bits: uint = 32u;
     /// The number of bytes in the representation.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/uint32/bytes
     pub const Bytes: uint = 4u;
     /// The smallest representable value.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/uint32/min
     pub const Min: uint32 = 0u32;
     /// The largest representable value.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/uint32/max
     pub const Max: uint32 = 4294967295u32;
 }

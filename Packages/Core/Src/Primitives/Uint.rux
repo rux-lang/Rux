@@ -1,13 +1,27 @@
+// `uint`: an unsigned integer the width of a pointer on the target.
+//
+// Sixty-four bits on every currently supported target. This is the type a length, an index and a size are spelled in.
+
 /// A target pointer-sized unsigned integer.
+///
+/// @see https://rux-lang.dev/docs/api/core/uint
 pub intrinsic type uint;
 
 extend uint {
     /// The target representation width in bits.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/uint/bits
     pub const Bits: uint = sizeof(uint) * 8u;
     /// The target representation size in bytes.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/uint/bytes
     pub const Bytes: uint = sizeof(uint);
     /// The smallest representable value.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/uint/min
     pub const Min: uint = 0u;
     /// The largest representable value.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/uint/max
     pub const Max: uint = ~0u;
 }

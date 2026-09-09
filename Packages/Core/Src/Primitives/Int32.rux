@@ -1,13 +1,28 @@
+// `int32`: a signed integer in 32 bits, two's complement.
+//
+// The range is asymmetric, as it is at every signed width: the most negative value has no positive counterpart, which
+// is behind nearly every edge case in checked arithmetic.
+
 /// The compiler representation of int32.
+///
+/// @see https://rux-lang.dev/docs/api/core/int32
 pub intrinsic type int32;
 
 extend int32 {
     /// The number of bits in the representation.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/int32/bits
     pub const Bits: uint = 32u;
     /// The number of bytes in the representation.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/int32/bytes
     pub const Bytes: uint = 4u;
     /// The smallest representable value.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/int32/min
     pub const Min: int32 = -2147483648i32;
     /// The largest representable value.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/int32/max
     pub const Max: int32 = 2147483647i32;
 }

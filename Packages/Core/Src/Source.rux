@@ -9,7 +9,7 @@
 /// Every field is fixed while compiling, from the read's own position. A field read produces no runtime code beyond
 /// the constant it folds to; the text fields borrow the compiler's own storage, which outlives the program.
 ///
-/// https://rux-lang.dev/docs/api/core/source
+/// @see https://rux-lang.dev/docs/api/core/source
 pub struct Source {
     /// The one-based line of the reading expression.
     pub line: uint;
@@ -29,5 +29,5 @@ pub struct Source {
 
 /// The reading expression's own location, as a compile-time value.
 ///
-/// https://rux-lang.dev/docs/api/core/source
+/// @see https://rux-lang.dev/docs/api/core/source
 pub intrinsic #source: Source;

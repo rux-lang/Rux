@@ -1,21 +1,44 @@
+// `float32`: IEEE 754 binary32.
+//
+// Twenty-four bits of significand, so about seven decimal digits round-trip. Rux/Format is what converts one to and
+// from decimal text exactly.
+
 /// The compiler representation of float32.
+///
+/// @see https://rux-lang.dev/docs/api/core/float32
 pub intrinsic type float32;
 
 extend float32 {
     /// The number of bits in the representation.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/float32/bits
     pub const Bits: uint = 32u;
     /// The number of bytes in the representation.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/float32/bytes
     pub const Bytes: uint = 4u;
     /// The lowest finite value.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/float32/lowest
     pub const Lowest: float32 = -3.4028234663852886e+38f32;
     /// The highest finite value.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/float32/max
     pub const Max: float32 = 3.4028234663852886e+38f32;
     /// The smallest positive normal value.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/float32/min-positive
     pub const MinPositive: float32 = 1.1754943508222875e-38f32;
     /// The difference between one and the next representable value.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/float32/epsilon
     pub const Epsilon: float32 = 1.1920928955078125e-7f32;
     /// Positive infinity.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/float32/infinity
     pub intrinsic const Infinity: float32;
     /// A quiet not-a-number value.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/float32/na-n
     pub intrinsic const NaN: float32;
 }

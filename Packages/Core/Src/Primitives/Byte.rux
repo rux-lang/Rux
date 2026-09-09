@@ -1,2 +1,9 @@
+// `byte`: the raw-storage spelling of an eight-bit unsigned integer.
+//
+// An alias for `uint8`, with identical representation, ABI, constants, conversions and overload identity. It exists so
+// ordinary code can say the short name and mean exactly the canonical one.
+
 /// The default alias of uint8.
+///
+/// @see https://rux-lang.dev/docs/api/core/byte
 pub type byte = uint8;

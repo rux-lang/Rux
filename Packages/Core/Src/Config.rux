@@ -12,7 +12,7 @@
 /// Carries no fields: the values live in the build rather than in the value, and are reached through the two queries
 /// below. `#config` is the only instance.
 ///
-/// https://rux-lang.dev/docs/api/core/config
+/// @see https://rux-lang.dev/docs/api/core/config
 pub struct Config {}
 
 extend Config {
@@ -25,7 +25,9 @@ extend Config {
     ///
     /// Cannot fail. Costs nothing in the built program.
     ///
-    /// https://rux-lang.dev/docs/api/core/config/get
+    /// @param name the build value's name
+    /// @returns its value, or an empty slice when the build defines none
+    /// @see https://rux-lang.dev/docs/api/core/config/get
     pub intrinsic func Get(self: &Config, name: char8[..]) -> char8[..];
 
     /// Whether `name` was defined at all, whatever its value.
@@ -34,11 +36,13 @@ extend Config {
     ///
     /// Cannot fail. Costs nothing in the built program.
     ///
-    /// https://rux-lang.dev/docs/api/core/config/has
+    /// @param name the build value's name
+    /// @returns whether the build defines it
+    /// @see https://rux-lang.dev/docs/api/core/config/has
     pub intrinsic func Has(self: &Config, name: char8[..]) -> bool;
 }
 
 /// The build's user-defined values, as a compile-time value.
 ///
-/// https://rux-lang.dev/docs/api/core/config
+/// @see https://rux-lang.dev/docs/api/core/config
 pub intrinsic #config: Config;

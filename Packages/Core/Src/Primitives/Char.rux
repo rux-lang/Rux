@@ -1,2 +1,9 @@
+// `char`: the canonical character width, which holds a Unicode scalar value.
+//
+// An alias for `char32`, with identical representation, ABI, constants, conversions and overload identity. It exists so
+// ordinary code can say the short name and mean exactly the canonical one.
+
 /// The default alias of char32.
+///
+/// @see https://rux-lang.dev/docs/api/core/char
 pub type char = char32;

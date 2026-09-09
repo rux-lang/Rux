@@ -1,13 +1,28 @@
+// `char16`: one UTF-16 code unit.
+//
+// A code unit, not a character: every value that fits is valid, including a surrogate, which is exactly what a code
+// unit is. A scalar value outside the basic plane takes two of these.
+
 /// The compiler representation of char16.
+///
+/// @see https://rux-lang.dev/docs/api/core/char16
 pub intrinsic type char16;
 
 extend char16 {
     /// The number of bits in the representation.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/char16/bits
     pub const Bits: uint = 16u;
     /// The number of bytes in the representation.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/char16/bytes
     pub const Bytes: uint = 2u;
     /// The first code unit or Unicode scalar value.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/char16/min
     pub const Min: char16 = 0u32 as char16;
     /// The last code unit or Unicode scalar value.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/char16/max
     pub const Max: char16 = 65535u32 as char16;
 }

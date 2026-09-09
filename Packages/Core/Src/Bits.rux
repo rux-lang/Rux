@@ -18,7 +18,10 @@
 ///
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
-/// https://rux-lang.dev/docs/api/core/bit-width-of
+/// @typeParam T the integer or floating-point type, deduced from the arguments
+/// @param sample any value of the type, read only to deduce it
+/// @returns how many bits the type occupies
+/// @see https://rux-lang.dev/docs/api/core/bit-width-of
 pub func BitWidthOf<T>(sample: T) -> uint64 {
     return sizeof(T) * 8u64;
 }
@@ -31,7 +34,11 @@ pub func BitWidthOf<T>(sample: T) -> uint64 {
 ///
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
-/// https://rux-lang.dev/docs/api/core/shift-right-logical
+/// @typeParam T the integer or floating-point type, deduced from the arguments
+/// @param value the value to act on
+/// @param amount how many bits
+/// @returns the value shifted right with zero bits shifted in, whatever its signedness
+/// @see https://rux-lang.dev/docs/api/core/shift-right-logical
 pub func ShiftRightLogical<T>(value: T, amount: uint64) -> T {
     let zero = value - value;
     if amount == 0u64 { return value; }
@@ -50,7 +57,11 @@ pub func ShiftRightLogical<T>(value: T, amount: uint64) -> T {
 ///
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
-/// https://rux-lang.dev/docs/api/core/bit-at
+/// @typeParam T the integer or floating-point type, deduced from the arguments
+/// @param value the value to act on
+/// @param index which bit, counting from the least significant
+/// @returns whether the bit at `index` is set
+/// @see https://rux-lang.dev/docs/api/core/bit-at
 pub func BitAt<T>(value: T, index: uint64) -> bool {
     let zero = value - value;
     if index >= sizeof(T) * 8u64 { return false; }
@@ -64,7 +75,10 @@ pub func BitAt<T>(value: T, index: uint64) -> bool {
 ///
 /// Cannot fail. Runs in time linear in the type's width and allocates nothing.
 ///
-/// https://rux-lang.dev/docs/api/core/count-ones
+/// @typeParam T the integer or floating-point type, deduced from the arguments
+/// @param value the value to act on
+/// @returns how many bits are set
+/// @see https://rux-lang.dev/docs/api/core/count-ones
 pub func CountOnes<T>(value: T) -> uint32 {
     let bits = sizeof(T) * 8u64;
     var count = 0u32;
@@ -84,7 +98,10 @@ pub func CountOnes<T>(value: T) -> uint32 {
 ///
 /// Cannot fail. Runs in time linear in the type's width and allocates nothing.
 ///
-/// https://rux-lang.dev/docs/api/core/count-zeros
+/// @typeParam T the integer or floating-point type, deduced from the arguments
+/// @param value the value to act on
+/// @returns how many bits are clear
+/// @see https://rux-lang.dev/docs/api/core/count-zeros
 pub func CountZeros<T>(value: T) -> uint32 {
     return (sizeof(T) * 8u64) as uint32 - CountOnes<T>(value);
 }
@@ -95,7 +112,10 @@ pub func CountZeros<T>(value: T) -> uint32 {
 ///
 /// Cannot fail. Runs in time linear in the type's width and allocates nothing.
 ///
-/// https://rux-lang.dev/docs/api/core/leading-zeros
+/// @typeParam T the integer or floating-point type, deduced from the arguments
+/// @param value the value to act on
+/// @returns how many clear bits precede the most significant set one
+/// @see https://rux-lang.dev/docs/api/core/leading-zeros
 pub func LeadingZeros<T>(value: T) -> uint32 {
     var count = 0u32;
     var index = sizeof(T) * 8u64;
@@ -113,7 +133,10 @@ pub func LeadingZeros<T>(value: T) -> uint32 {
 ///
 /// Cannot fail. Runs in time linear in the type's width and allocates nothing.
 ///
-/// https://rux-lang.dev/docs/api/core/trailing-zeros
+/// @typeParam T the integer or floating-point type, deduced from the arguments
+/// @param value the value to act on
+/// @returns how many clear bits follow the least significant set one
+/// @see https://rux-lang.dev/docs/api/core/trailing-zeros
 pub func TrailingZeros<T>(value: T) -> uint32 {
     let bits = sizeof(T) * 8u64;
     var index = 0u64;
@@ -130,7 +153,10 @@ pub func TrailingZeros<T>(value: T) -> uint32 {
 ///
 /// Cannot fail. Runs in time linear in the type's width and allocates nothing.
 ///
-/// https://rux-lang.dev/docs/api/core/leading-ones
+/// @typeParam T the integer or floating-point type, deduced from the arguments
+/// @param value the value to act on
+/// @returns how many set bits precede the most significant clear one
+/// @see https://rux-lang.dev/docs/api/core/leading-ones
 pub func LeadingOnes<T>(value: T) -> uint32 {
     var count = 0u32;
     var index = sizeof(T) * 8u64;
@@ -148,7 +174,10 @@ pub func LeadingOnes<T>(value: T) -> uint32 {
 ///
 /// Cannot fail. Runs in time linear in the type's width and allocates nothing.
 ///
-/// https://rux-lang.dev/docs/api/core/trailing-ones
+/// @typeParam T the integer or floating-point type, deduced from the arguments
+/// @param value the value to act on
+/// @returns how many set bits follow the least significant clear one
+/// @see https://rux-lang.dev/docs/api/core/trailing-ones
 pub func TrailingOnes<T>(value: T) -> uint32 {
     let bits = sizeof(T) * 8u64;
     var index = 0u64;
@@ -166,7 +195,11 @@ pub func TrailingOnes<T>(value: T) -> uint32 {
 ///
 /// Cannot fail: no bit is lost, unlike a shift. Runs in constant time and allocates nothing.
 ///
-/// https://rux-lang.dev/docs/api/core/rotate-left
+/// @typeParam T the integer or floating-point type, deduced from the arguments
+/// @param value the value to act on
+/// @param amount how many bits
+/// @returns the value rotated left, with the bits that leave the top re-entering at the bottom
+/// @see https://rux-lang.dev/docs/api/core/rotate-left
 pub func RotateLeft<T>(value: T, amount: uint64) -> T {
     let bits = sizeof(T) * 8u64;
     let shift = amount % bits;
@@ -181,7 +214,11 @@ pub func RotateLeft<T>(value: T, amount: uint64) -> T {
 ///
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
-/// https://rux-lang.dev/docs/api/core/rotate-right
+/// @typeParam T the integer or floating-point type, deduced from the arguments
+/// @param value the value to act on
+/// @param amount how many bits
+/// @returns the value rotated right, with the bits that leave the bottom re-entering at the top
+/// @see https://rux-lang.dev/docs/api/core/rotate-right
 pub func RotateRight<T>(value: T, amount: uint64) -> T {
     let bits = sizeof(T) * 8u64;
     let shift = amount % bits;
@@ -195,7 +232,10 @@ pub func RotateRight<T>(value: T, amount: uint64) -> T {
 ///
 /// Cannot fail. Runs in time linear in the type's width and allocates nothing.
 ///
-/// https://rux-lang.dev/docs/api/core/reverse-bits
+/// @typeParam T the integer or floating-point type, deduced from the arguments
+/// @param value the value to act on
+/// @returns the value with its bit order reversed
+/// @see https://rux-lang.dev/docs/api/core/reverse-bits
 pub func ReverseBits<T>(value: T) -> T {
     let zero = value - value;
     let one = zero + 1;
@@ -218,7 +258,10 @@ pub func ReverseBits<T>(value: T) -> T {
 ///
 /// Cannot fail. Runs in time linear in the type's width and allocates nothing.
 ///
-/// https://rux-lang.dev/docs/api/core/reverse-bytes
+/// @typeParam T the integer or floating-point type, deduced from the arguments
+/// @param value the value to act on
+/// @returns the value with its byte order reversed
+/// @see https://rux-lang.dev/docs/api/core/reverse-bytes
 pub func ReverseBytes<T>(value: T) -> T {
     let zero = value - value;
     let bytes = sizeof(T);
@@ -242,7 +285,10 @@ pub func ReverseBytes<T>(value: T) -> T {
 ///
 /// Cannot fail. Runs in time linear in the type's width and allocates nothing.
 ///
-/// https://rux-lang.dev/docs/api/core/is-power-of-two
+/// @typeParam T the integer or floating-point type, deduced from the arguments
+/// @param value the value to act on
+/// @returns whether exactly one bit is set; false for zero
+/// @see https://rux-lang.dev/docs/api/core/is-power-of-two
 pub func IsPowerOfTwo<T>(value: T) -> bool {
     return CountOnes<T>(value) == 1u32;
 }

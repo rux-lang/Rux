@@ -1,3 +1,8 @@
+// The answer a three-way comparison gives: which side is smaller, or that neither is.
+//
+// Three cases rather than two booleans, so one comparison answers every question a caller can ask and a
+// type implementing `Comparable` is asked once rather than twice.
+
 /// The answer a three-way comparison gives: which side is smaller, or that neither is.
 ///
 /// The discriminants are `-1`, `0` and `1` stored in an `int8`, so an ordering costs one byte and its sign is the
@@ -6,10 +11,13 @@
 ///
 /// `Ordering` is a `Copy` value, so reading one never consumes it.
 ///
-/// https://rux-lang.dev/docs/api/core/ordering
+/// @see https://rux-lang.dev/docs/api/core/ordering
 pub enum Ordering: int8 {
+    /// The left value comes before the right one.
     Less = -1,
+    /// Neither comes first; the two order the same.
     Equal = 0,
+    /// The left value comes after the right one.
     Greater = 1
 }
 
@@ -20,7 +28,8 @@ extend Ordering {
     ///
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
-    /// https://rux-lang.dev/docs/api/core/ordering/is-less
+    /// @returns whether this ordering is `Less`
+    /// @see https://rux-lang.dev/docs/api/core/ordering/is-less
     pub func IsLess(self: &Ordering) -> bool {
         return match self {
             .Less => true,
@@ -34,7 +43,8 @@ extend Ordering {
     ///
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
-    /// https://rux-lang.dev/docs/api/core/ordering/is-equal
+    /// @returns whether this ordering is `Equal`
+    /// @see https://rux-lang.dev/docs/api/core/ordering/is-equal
     pub func IsEqual(self: &Ordering) -> bool {
         return match self {
             .Equal => true,
@@ -48,7 +58,8 @@ extend Ordering {
     ///
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
-    /// https://rux-lang.dev/docs/api/core/ordering/is-greater
+    /// @returns whether this ordering is `Greater`
+    /// @see https://rux-lang.dev/docs/api/core/ordering/is-greater
     pub func IsGreater(self: &Ordering) -> bool {
         return match self {
             .Greater => true,
@@ -63,7 +74,8 @@ extend Ordering {
     ///
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
-    /// https://rux-lang.dev/docs/api/core/ordering/is-less-or-equal
+    /// @returns whether this ordering is `Less` or `Equal`
+    /// @see https://rux-lang.dev/docs/api/core/ordering/is-less-or-equal
     pub func IsLessOrEqual(self: &Ordering) -> bool {
         return match self {
             .Greater => false,
@@ -77,7 +89,8 @@ extend Ordering {
     ///
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
-    /// https://rux-lang.dev/docs/api/core/ordering/is-greater-or-equal
+    /// @returns whether this ordering is `Greater` or `Equal`
+    /// @see https://rux-lang.dev/docs/api/core/ordering/is-greater-or-equal
     pub func IsGreaterOrEqual(self: &Ordering) -> bool {
         return match self {
             .Less => false,
@@ -92,7 +105,8 @@ extend Ordering {
     ///
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
-    /// https://rux-lang.dev/docs/api/core/ordering/reverse
+    /// @returns the opposite ordering, with `Equal` unchanged
+    /// @see https://rux-lang.dev/docs/api/core/ordering/reverse
     pub func Reverse(self: Ordering) -> Ordering {
         return match self {
             .Less => Ordering::Greater,

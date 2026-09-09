@@ -1,3 +1,12 @@
+// Clearing storage so that it stays cleared.
+//
+// Erasing a secret is a write nothing reads back, which is exactly the write dead-store elimination is
+// entitled to delete, and ordinary source cannot say "and mean it". So this is a compiler intrinsic: the
+// guarantee is the compiler's rather than a library's, and there is no way to write it otherwise.
+//
+// It clears the storage it is given and nothing else. A copy made earlier, a value the compiler spilled, or
+// bytes a reallocation left behind are all still there.
+
 /// Overwrites a byte range with zeros, and is never removed however unread those bytes are afterwards.
 ///
 /// `memory` is borrowed for the call and must address at least `length` writable bytes; passing fewer, or a null
@@ -10,5 +19,7 @@
 /// Runs in time proportional to `length` and allocates nothing. It clears the storage it is given and nothing else --
 /// a value copied elsewhere beforehand, or spilled to a register or the stack by the caller, is not reached.
 ///
-/// https://rux-lang.dev/docs/api/core/zeroize
+/// @param memory the bytes to clear
+/// @param length how many bytes
+/// @see https://rux-lang.dev/docs/api/core/zeroize
 pub intrinsic func Zeroize(memory: *var uint8, length: uint64);

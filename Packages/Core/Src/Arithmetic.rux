@@ -24,7 +24,10 @@
 ///
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
-/// https://rux-lang.dev/docs/api/core/maximum-of
+/// @typeParam T the integer or floating-point type, deduced from the arguments
+/// @param sample any value of the type, read only to deduce it
+/// @returns the largest value the type can hold
+/// @see https://rux-lang.dev/docs/api/core/maximum-of
 pub func MaximumOf<T>(sample: T) -> T {
     let zero = sample - sample;
     let allOnes = zero - 1;
@@ -41,7 +44,10 @@ pub func MaximumOf<T>(sample: T) -> T {
 ///
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
-/// https://rux-lang.dev/docs/api/core/minimum-of
+/// @typeParam T the integer or floating-point type, deduced from the arguments
+/// @param sample any value of the type, read only to deduce it
+/// @returns the smallest value the type can hold
+/// @see https://rux-lang.dev/docs/api/core/minimum-of
 pub func MinimumOf<T>(sample: T) -> T {
     let zero = sample - sample;
     let allOnes = zero - 1;
@@ -60,7 +66,12 @@ pub func MinimumOf<T>(sample: T) -> T {
 ///
 /// Runs in constant time and allocates nothing.
 ///
-/// https://rux-lang.dev/docs/api/core/add-checked
+/// @typeParam T the integer or floating-point type, deduced from the arguments
+/// @param left the left operand
+/// @param right the right operand
+/// @param result receives the answer when this reports success
+/// @returns true when the sum does not fit, leaving `result` unwritten
+/// @see https://rux-lang.dev/docs/api/core/add-checked
 pub func AddChecked<T>(left: T, right: T, result: *var T) -> bool {
     let sum = left + right;
     *result = sum;
@@ -82,7 +93,12 @@ pub func AddChecked<T>(left: T, right: T, result: *var T) -> bool {
 ///
 /// Runs in constant time and allocates nothing.
 ///
-/// https://rux-lang.dev/docs/api/core/sub-checked
+/// @typeParam T the integer or floating-point type, deduced from the arguments
+/// @param left the left operand
+/// @param right the right operand
+/// @param result receives the answer when this reports success
+/// @returns true when the difference does not fit, leaving `result` unwritten
+/// @see https://rux-lang.dev/docs/api/core/sub-checked
 pub func SubChecked<T>(left: T, right: T, result: *var T) -> bool {
     let difference = left - right;
     *result = difference;
@@ -107,7 +123,12 @@ pub func SubChecked<T>(left: T, right: T, result: *var T) -> bool {
 ///
 /// Runs in constant time and allocates nothing.
 ///
-/// https://rux-lang.dev/docs/api/core/mul-checked
+/// @typeParam T the integer or floating-point type, deduced from the arguments
+/// @param left the left operand
+/// @param right the right operand
+/// @param result receives the answer when this reports success
+/// @returns true when the product does not fit, leaving `result` unwritten
+/// @see https://rux-lang.dev/docs/api/core/mul-checked
 pub func MulChecked<T>(left: T, right: T, result: *var T) -> bool {
     let product = left * right;
     *result = product;
@@ -135,7 +156,11 @@ pub func MulChecked<T>(left: T, right: T, result: *var T) -> bool {
 ///
 /// Cannot fail: every pair of operands has a wrapped sum. Runs in constant time and allocates nothing.
 ///
-/// https://rux-lang.dev/docs/api/core/add-wrapping
+/// @typeParam T the integer or floating-point type, deduced from the arguments
+/// @param left the left operand
+/// @param right the right operand
+/// @returns the sum, wrapped into the type's range
+/// @see https://rux-lang.dev/docs/api/core/add-wrapping
 pub func AddWrapping<T>(left: T, right: T) -> T {
     return left + right;
 }
@@ -146,7 +171,11 @@ pub func AddWrapping<T>(left: T, right: T) -> T {
 ///
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
-/// https://rux-lang.dev/docs/api/core/sub-wrapping
+/// @typeParam T the integer or floating-point type, deduced from the arguments
+/// @param left the left operand
+/// @param right the right operand
+/// @returns the difference, wrapped into the type's range
+/// @see https://rux-lang.dev/docs/api/core/sub-wrapping
 pub func SubWrapping<T>(left: T, right: T) -> T {
     return left - right;
 }
@@ -157,7 +186,11 @@ pub func SubWrapping<T>(left: T, right: T) -> T {
 ///
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
-/// https://rux-lang.dev/docs/api/core/mul-wrapping
+/// @typeParam T the integer or floating-point type, deduced from the arguments
+/// @param left the left operand
+/// @param right the right operand
+/// @returns the product, wrapped into the type's range
+/// @see https://rux-lang.dev/docs/api/core/mul-wrapping
 pub func MulWrapping<T>(left: T, right: T) -> T {
     return left * right;
 }
@@ -170,7 +203,11 @@ pub func MulWrapping<T>(left: T, right: T) -> T {
 /// Cannot fail: the answer is always the nearest representable value to the true sum. Runs in constant time and
 /// allocates nothing.
 ///
-/// https://rux-lang.dev/docs/api/core/add-saturating
+/// @typeParam T the integer or floating-point type, deduced from the arguments
+/// @param left the left operand
+/// @param right the right operand
+/// @returns the sum, clamped to the type's range rather than wrapped
+/// @see https://rux-lang.dev/docs/api/core/add-saturating
 pub func AddSaturating<T>(left: T, right: T) -> T {
     var sum = left - left;
     if !AddChecked<T>(left, right, @sum) { return sum; }
@@ -189,7 +226,11 @@ pub func AddSaturating<T>(left: T, right: T) -> T {
 ///
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
-/// https://rux-lang.dev/docs/api/core/sub-saturating
+/// @typeParam T the integer or floating-point type, deduced from the arguments
+/// @param left the left operand
+/// @param right the right operand
+/// @returns the difference, clamped to the type's range rather than wrapped
+/// @see https://rux-lang.dev/docs/api/core/sub-saturating
 pub func SubSaturating<T>(left: T, right: T) -> T {
     var difference = left - left;
     if !SubChecked<T>(left, right, @difference) { return difference; }
@@ -208,7 +249,11 @@ pub func SubSaturating<T>(left: T, right: T) -> T {
 ///
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
-/// https://rux-lang.dev/docs/api/core/mul-saturating
+/// @typeParam T the integer or floating-point type, deduced from the arguments
+/// @param left the left operand
+/// @param right the right operand
+/// @returns the product, clamped to the type's range rather than wrapped
+/// @see https://rux-lang.dev/docs/api/core/mul-saturating
 pub func MulSaturating<T>(left: T, right: T) -> T {
     var product = left - left;
     if !MulChecked<T>(left, right, @product) { return product; }

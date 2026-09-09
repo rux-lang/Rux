@@ -1,13 +1,28 @@
+// `uint16`: an unsigned integer in 16 bits.
+//
+// Wrapping is defined at this width and `Min` is zero, so a subtraction that would go below it wraps rather than
+// trapping. Core's checked arithmetic is what reports instead of wrapping.
+
 /// The compiler representation of uint16.
+///
+/// @see https://rux-lang.dev/docs/api/core/uint16
 pub intrinsic type uint16;
 
 extend uint16 {
     /// The number of bits in the representation.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/uint16/bits
     pub const Bits: uint = 16u;
     /// The number of bytes in the representation.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/uint16/bytes
     pub const Bytes: uint = 2u;
     /// The smallest representable value.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/uint16/min
     pub const Min: uint16 = 0u16;
     /// The largest representable value.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/uint16/max
     pub const Max: uint16 = 65535u16;
 }

@@ -20,7 +20,10 @@
 ///
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
-/// https://rux-lang.dev/docs/api/core/is-nan
+/// @typeParam T the integer or floating-point type, deduced from the arguments
+/// @param value the value to act on
+/// @returns whether the value is a NaN, which no comparison can tell you
+/// @see https://rux-lang.dev/docs/api/core/is-nan
 pub func IsNaN<T>(value: T) -> bool {
     return value != value;
 }
@@ -32,7 +35,10 @@ pub func IsNaN<T>(value: T) -> bool {
 ///
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
-/// https://rux-lang.dev/docs/api/core/is-zero
+/// @typeParam T the integer or floating-point type, deduced from the arguments
+/// @param value the value to act on
+/// @returns whether the value is either signed zero
+/// @see https://rux-lang.dev/docs/api/core/is-zero
 pub func IsZero<T>(value: T) -> bool {
     return value == value - value;
 }
@@ -43,7 +49,10 @@ pub func IsZero<T>(value: T) -> bool {
 ///
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
-/// https://rux-lang.dev/docs/api/core/is-infinite
+/// @typeParam T the integer or floating-point type, deduced from the arguments
+/// @param value the value to act on
+/// @returns whether the value is either infinity
+/// @see https://rux-lang.dev/docs/api/core/is-infinite
 pub func IsInfinite<T>(value: T) -> bool {
     return !IsZero<T>(value) && value == value + value;
 }
@@ -54,7 +63,10 @@ pub func IsInfinite<T>(value: T) -> bool {
 ///
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
-/// https://rux-lang.dev/docs/api/core/is-finite
+/// @typeParam T the integer or floating-point type, deduced from the arguments
+/// @param value the value to act on
+/// @returns whether the value is neither infinite nor a NaN
+/// @see https://rux-lang.dev/docs/api/core/is-finite
 pub func IsFinite<T>(value: T) -> bool {
     return !IsNaN<T>(value) && !IsInfinite<T>(value);
 }
@@ -70,7 +82,10 @@ pub func IsFinite<T>(value: T) -> bool {
 ///
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
-/// https://rux-lang.dev/docs/api/core/is-negative-zero
+/// @typeParam T the integer or floating-point type, deduced from the arguments
+/// @param value the value to act on
+/// @returns whether the value is negative zero specifically, which `== 0.0` cannot distinguish
+/// @see https://rux-lang.dev/docs/api/core/is-negative-zero
 pub func IsNegativeZero<T>(value: T) -> bool {
     return IsZero<T>(value) && (1 as T) / value < (0 as T);
 }
@@ -83,7 +98,10 @@ pub func IsNegativeZero<T>(value: T) -> bool {
 ///
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
-/// https://rux-lang.dev/docs/api/core/is-sign-negative
+/// @typeParam T the integer or floating-point type, deduced from the arguments
+/// @param value the value to act on
+/// @returns whether the sign bit is set, which it is for negative zero and for a negative NaN
+/// @see https://rux-lang.dev/docs/api/core/is-sign-negative
 pub func IsSignNegative<T>(value: T) -> bool {
     return value < (0 as T) || IsNegativeZero<T>(value);
 }
@@ -95,7 +113,10 @@ pub func IsSignNegative<T>(value: T) -> bool {
 ///
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
-/// https://rux-lang.dev/docs/api/core/is-sign-positive
+/// @typeParam T the integer or floating-point type, deduced from the arguments
+/// @param value the value to act on
+/// @returns whether the sign bit is clear
+/// @see https://rux-lang.dev/docs/api/core/is-sign-positive
 pub func IsSignPositive<T>(value: T) -> bool {
     return value > (0 as T) || (IsZero<T>(value) && !IsNegativeZero<T>(value));
 }
@@ -107,7 +128,10 @@ pub func IsSignPositive<T>(value: T) -> bool {
 ///
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
-/// https://rux-lang.dev/docs/api/core/sign-of
+/// @typeParam T the integer or floating-point type, deduced from the arguments
+/// @param value the value to act on
+/// @returns -1, 0 or 1 as the value is negative, either zero, or positive
+/// @see https://rux-lang.dev/docs/api/core/sign-of
 pub func SignOf<T>(value: T) -> T {
     if IsNaN<T>(value) || IsZero<T>(value) { return value; }
     return value < (0 as T) ? (0 as T) - (1 as T) : 1 as T;

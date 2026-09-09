@@ -1,13 +1,28 @@
+// `uint8`: an unsigned integer in 8 bits.
+//
+// Wrapping is defined at this width and `Min` is zero, so a subtraction that would go below it wraps rather than
+// trapping. Core's checked arithmetic is what reports instead of wrapping.
+
 /// The compiler representation of uint8.
+///
+/// @see https://rux-lang.dev/docs/api/core/uint8
 pub intrinsic type uint8;
 
 extend uint8 {
     /// The number of bits in the representation.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/uint8/bits
     pub const Bits: uint = 8u;
     /// The number of bytes in the representation.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/uint8/bytes
     pub const Bytes: uint = 1u;
     /// The smallest representable value.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/uint8/min
     pub const Min: uint8 = 0u8;
     /// The largest representable value.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/uint8/max
     pub const Max: uint8 = 255u8;
 }

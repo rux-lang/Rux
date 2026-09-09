@@ -1,13 +1,28 @@
+// `int8`: a signed integer in 8 bits, two's complement.
+//
+// The range is asymmetric, as it is at every signed width: the most negative value has no positive counterpart, which
+// is behind nearly every edge case in checked arithmetic.
+
 /// The compiler representation of int8.
+///
+/// @see https://rux-lang.dev/docs/api/core/int8
 pub intrinsic type int8;
 
 extend int8 {
     /// The number of bits in the representation.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/int8/bits
     pub const Bits: uint = 8u;
     /// The number of bytes in the representation.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/int8/bytes
     pub const Bytes: uint = 1u;
     /// The smallest representable value.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/int8/min
     pub const Min: int8 = -128i8;
     /// The largest representable value.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/int8/max
     pub const Max: int8 = 127i8;
 }

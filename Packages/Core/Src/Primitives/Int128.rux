@@ -1,13 +1,28 @@
+// `int128`: a signed integer in 128 bits, two's complement.
+//
+// The range is asymmetric, as it is at every signed width: the most negative value has no positive counterpart, which
+// is behind nearly every edge case in checked arithmetic.
+
 /// The compiler representation of int128.
+///
+/// @see https://rux-lang.dev/docs/api/core/int128
 pub intrinsic type int128;
 
 extend int128 {
     /// The number of bits in the representation.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/int128/bits
     pub const Bits: uint = 128u;
     /// The number of bytes in the representation.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/int128/bytes
     pub const Bytes: uint = 16u;
     /// The smallest representable value.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/int128/min
     pub const Min: int128 = -170141183460469231731687303715884105728i128;
     /// The largest representable value.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/int128/max
     pub const Max: int128 = 170141183460469231731687303715884105727i128;
 }

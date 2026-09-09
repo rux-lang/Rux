@@ -1,13 +1,28 @@
+// `int512`: a signed integer in 512 bits, two's complement.
+//
+// The range is asymmetric, as it is at every signed width: the most negative value has no positive counterpart, which
+// is behind nearly every edge case in checked arithmetic.
+
 /// The compiler representation of int512.
+///
+/// @see https://rux-lang.dev/docs/api/core/int512
 pub intrinsic type int512;
 
 extend int512 {
     /// The number of bits in the representation.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/int512/bits
     pub const Bits: uint = 512u;
     /// The number of bytes in the representation.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/int512/bytes
     pub const Bytes: uint = 64u;
     /// The smallest representable value.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/int512/min
     pub const Min: int512 = -6703903964971298549787012499102923063739682910296196688861780721860882015036773488400937149083451713845015929093243025426876941405973284973216824503042048i512;
     /// The largest representable value.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/int512/max
     pub const Max: int512 = 6703903964971298549787012499102923063739682910296196688861780721860882015036773488400937149083451713845015929093243025426876941405973284973216824503042047i512;
 }

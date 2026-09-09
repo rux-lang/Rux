@@ -1,13 +1,28 @@
+// `char32`: one Unicode scalar value.
+//
+// A scalar value rather than a code unit, so it stops at U+10FFFF and rejects the surrogate range whatever room the
+// width has beyond it. This is the width `char` names.
+
 /// The compiler representation of char32.
+///
+/// @see https://rux-lang.dev/docs/api/core/char32
 pub intrinsic type char32;
 
 extend char32 {
     /// The number of bits in the representation.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/char32/bits
     pub const Bits: uint = 32u;
     /// The number of bytes in the representation.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/char32/bytes
     pub const Bytes: uint = 4u;
     /// The first code unit or Unicode scalar value.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/char32/min
     pub const Min: char32 = 0u32 as char32;
     /// The last code unit or Unicode scalar value.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/char32/max
     pub const Max: char32 = 1114111u32 as char32;
 }

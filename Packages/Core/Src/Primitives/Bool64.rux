@@ -1,9 +1,20 @@
+// `bool64`: one of two values, stored in 64 bits.
+//
+// Every boolean width holds exactly zero or one whatever its size, so a cast into one asks whether the whole source
+// value is non-zero rather than truncating to the width first.
+
 /// The compiler representation of bool64.
+///
+/// @see https://rux-lang.dev/docs/api/core/bool64
 pub intrinsic type bool64;
 
 extend bool64 {
     /// The number of bits in the representation.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/bool64/bits
     pub const Bits: uint = 64u;
     /// The number of bytes in the representation.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/bool64/bytes
     pub const Bytes: uint = 8u;
 }

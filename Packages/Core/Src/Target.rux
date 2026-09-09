@@ -11,25 +11,31 @@
 ///
 /// Named per system rather than per family, so a package can tell FreeBSD from Linux where their interfaces differ.
 ///
-/// https://rux-lang.dev/docs/api/core/operating-system
+/// @see https://rux-lang.dev/docs/api/core/operating-system
 #Allow("naming.type")
 pub enum OperatingSystem: uint8 {
     /// A target the compiler has no name for, which no supported build produces.
     Unknown = 0,
+    /// FreeBSD. Told apart from the other BSDs, which this enumeration also names.
     FreeBSD = 1,
+    /// Linux, any distribution.
     Linux = 2,
+    /// Apple macOS.
     macOS = 3,
+    /// Microsoft Windows.
     Windows = 4
 }
 
 /// A processor architecture a build can target.
 ///
-/// https://rux-lang.dev/docs/api/core/architecture
+/// @see https://rux-lang.dev/docs/api/core/architecture
 #Allow("naming.type")
 pub enum Architecture: uint8 {
     /// An architecture the compiler has no name for, which no supported build produces.
     Unknown = 0,
+    /// The 64-bit Arm architecture.
     AArch64 = 1,
+    /// The 64-bit x86 architecture.
     X86_64 = 2
 }
 
@@ -38,7 +44,7 @@ pub enum Architecture: uint8 {
 /// This is what decides how arguments are passed and how aggregates are laid out, so a declaration that has to match
 /// a foreign interface branches on it rather than on the operating system.
 ///
-/// https://rux-lang.dev/docs/api/core/application-binary-interface
+/// @see https://rux-lang.dev/docs/api/core/application-binary-interface
 pub enum ApplicationBinaryInterface: uint8 {
     /// An ABI the compiler has no name for, which no supported build produces.
     Unknown = 0,
@@ -55,23 +61,33 @@ pub enum ApplicationBinaryInterface: uint8 {
 /// Presence is asked about with `Target::HasFeature` rather than read as a field, because a build enables a set
 /// rather than a single one.
 ///
-/// https://rux-lang.dev/docs/api/core/target-feature
+/// @see https://rux-lang.dev/docs/api/core/target-feature
 pub enum TargetFeature: uint8 {
+    /// x86 Advanced Vector Extensions.
     AVX = 0,
+    /// x86 Advanced Vector Extensions 2.
     AVX2 = 1,
+    /// x86 Advanced Vector Extensions 512.
     AVX512 = 2,
+    /// Arm Advanced SIMD.
     NEON = 3,
+    /// x86 Streaming SIMD Extensions 2.
     SSE2 = 4,
+    /// x86 Streaming SIMD Extensions 3.
     SSE3 = 5,
+    /// x86 Streaming SIMD Extensions 4.1.
     SSE41 = 6,
+    /// x86 Streaming SIMD Extensions 4.2.
     SSE42 = 7,
+    /// x86 Supplemental Streaming SIMD Extensions 3.
     SSSE3 = 8,
+    /// Arm Scalable Vector Extension.
     SVE = 9
 }
 
 /// The order a target stores a multi-byte value's bytes in.
 ///
-/// https://rux-lang.dev/docs/api/core/endianness
+/// @see https://rux-lang.dev/docs/api/core/endianness
 pub enum Endianness: uint8 {
     /// Most significant byte first, which is network byte order.
     Big = 0,
@@ -83,7 +99,7 @@ pub enum Endianness: uint8 {
 ///
 /// This is what a raw C declaration needs to get `long` right, since the two models disagree about it.
 ///
-/// https://rux-lang.dev/docs/api/core/data-model
+/// @see https://rux-lang.dev/docs/api/core/data-model
 pub enum DataModel: uint8 {
     /// A model the compiler has no name for, which no supported build produces.
     Unknown = 0,
@@ -95,7 +111,7 @@ pub enum DataModel: uint8 {
 
 /// The object-file format a target's compiled code is emitted in.
 ///
-/// https://rux-lang.dev/docs/api/core/object-format
+/// @see https://rux-lang.dev/docs/api/core/object-format
 pub enum ObjectFormat: uint8 {
     /// A format the compiler has no name for, which no supported build produces.
     Unknown = 0,
@@ -112,7 +128,7 @@ pub enum ObjectFormat: uint8 {
 /// Every field is fixed when compiling begins. Reading one produces no runtime code, so a branch on a field is
 /// decided while compiling and the untaken side is not emitted.
 ///
-/// https://rux-lang.dev/docs/api/core/target
+/// @see https://rux-lang.dev/docs/api/core/target
 pub struct Target {
     /// The operating system.
     pub os: OperatingSystem;
@@ -141,7 +157,9 @@ extend Target {
     /// Cannot fail: a feature the target does not have is absent rather than an error. Costs nothing in the built
     /// program.
     ///
-    /// https://rux-lang.dev/docs/api/core/target/has-feature
+    /// @param feature the target feature to ask about
+    /// @returns whether the target being built for has it
+    /// @see https://rux-lang.dev/docs/api/core/target/has-feature
     pub intrinsic func HasFeature(self: &Target, feature: TargetFeature) -> bool;
 }
 
@@ -150,5 +168,5 @@ extend Target {
 /// Reading a field produces no runtime code. A `when` on one keeps only the branch that applies, so the untaken side
 /// is never resolved or type-checked and may name declarations this target does not have.
 ///
-/// https://rux-lang.dev/docs/api/core/target
+/// @see https://rux-lang.dev/docs/api/core/target
 pub intrinsic #target: Target;

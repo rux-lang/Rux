@@ -23,7 +23,10 @@
 ///
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
-/// https://rux-lang.dev/docs/api/core/is-signed-type
+/// @typeParam T the integer or floating-point type, deduced from the arguments
+/// @param sample any value of the type, read only to deduce it
+/// @returns whether the type can hold a negative value
+/// @see https://rux-lang.dev/docs/api/core/is-signed-type
 pub func IsSignedType<T>(sample: T) -> bool {
     let zero = sample - sample;
     return (zero - 1) < zero;
@@ -46,7 +49,12 @@ pub func IsSignedType<T>(sample: T) -> bool {
 ///
 /// `result` must be non-null. This is not checked.
 ///
-/// https://rux-lang.dev/docs/api/core/convert-checked
+/// @typeParam From the source type
+/// @typeParam To the destination type
+/// @param value the value to act on
+/// @param result receives the answer when this reports success
+/// @returns true when the value does not fit the destination, leaving `result` unwritten
+/// @see https://rux-lang.dev/docs/api/core/convert-checked
 pub func ConvertChecked<From, To>(value: From, result: *var To) -> bool {
     *result = value as To;
     // Converting back lands on the value it started from exactly when nothing was lost on the way out — with one
@@ -69,7 +77,11 @@ pub func ConvertChecked<From, To>(value: From, result: *var To) -> bool {
 ///
 /// `result` must be non-null. This is not checked.
 ///
-/// https://rux-lang.dev/docs/api/core/convert-wrapping
+/// @typeParam From the source type
+/// @typeParam To the destination type
+/// @param value the value to act on
+/// @param result receives the answer when this reports success
+/// @see https://rux-lang.dev/docs/api/core/convert-wrapping
 pub func ConvertWrapping<From, To>(value: From, result: *var To) {
     *result = value as To;
 }
@@ -89,7 +101,11 @@ pub func ConvertWrapping<From, To>(value: From, result: *var To) {
 ///
 /// `result` must be non-null. This is not checked.
 ///
-/// https://rux-lang.dev/docs/api/core/convert-saturating
+/// @typeParam From the source type
+/// @typeParam To the destination type
+/// @param value the value to act on
+/// @param result receives the answer when this reports success
+/// @see https://rux-lang.dev/docs/api/core/convert-saturating
 pub func ConvertSaturating<From, To>(value: From, result: *var To) {
     if !ConvertChecked<From, To>(value, result) { return; }
     // A NaN is not above or below the range; it is outside the ordering entirely, so neither limit is nearer.

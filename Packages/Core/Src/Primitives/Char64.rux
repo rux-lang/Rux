@@ -1,13 +1,28 @@
+// `char64`: one Unicode scalar value, in eight bytes.
+//
+// The same repertoire `char32` holds, in twice the storage: the range stops at U+10FFFF and the surrogates are
+// rejected, because a scalar value is what this carries. There is no `c64` literal prefix.
+
 /// The compiler representation of char64.
+///
+/// @see https://rux-lang.dev/docs/api/core/char64
 pub intrinsic type char64;
 
 extend char64 {
     /// The number of bits in the representation.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/char64/bits
     pub const Bits: uint = 64u;
     /// The number of bytes in the representation.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/char64/bytes
     pub const Bytes: uint = 8u;
     /// The first code unit or Unicode scalar value.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/char64/min
     pub const Min: char64 = 0u32 as char64;
     /// The last code unit or Unicode scalar value.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/char64/max
     pub const Max: char64 = 1114111u32 as char64;
 }

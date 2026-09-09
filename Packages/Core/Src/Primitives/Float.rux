@@ -1,2 +1,9 @@
+// `float`: the canonical floating-point width.
+//
+// An alias for `float64`, with identical representation, ABI, constants, conversions and overload identity. It exists
+// so ordinary code can say the short name and mean exactly the canonical one.
+
 /// The default alias of float64.
+///
+/// @see https://rux-lang.dev/docs/api/core/float
 pub type float = float64;

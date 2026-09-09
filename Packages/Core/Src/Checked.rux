@@ -1,3 +1,11 @@
+// The three arithmetic operations that report overflow instead of producing it.
+//
+// Compiler intrinsics rather than Rux source, because the answer and the overflow flag come out of one
+// machine instruction and no expression in the language can name both. Each reports `true` for failure,
+// which reads backwards the first time and is the convention the whole checked family agrees on.
+//
+// These take `uint64`. `Core::Arithmetic` is the generic layer above them, and is what ordinary code calls.
+
 /// Adds two unsigned 64-bit values and reports whether the true sum is representable.
 ///
 /// `left` and `right` are read by value. `result` receives the sum the machine produced, which is the true sum when
@@ -9,7 +17,11 @@
 /// Runs in constant time and allocates nothing. The compiler emits the arithmetic and the check where the call is
 /// written rather than calling out to a helper.
 ///
-/// https://rux-lang.dev/docs/api/core/checked-add
+/// @param left the left operand
+/// @param right the right operand
+/// @param result receives the answer when this reports success
+/// @returns true when the sum does not fit, leaving `result` unwritten
+/// @see https://rux-lang.dev/docs/api/core/checked-add
 pub intrinsic func CheckedAdd(left: uint64, right: uint64, result: *var uint64) -> bool;
 
 /// Subtracts one unsigned 64-bit value from another and reports whether the true difference is representable.
@@ -22,7 +34,11 @@ pub intrinsic func CheckedAdd(left: uint64, right: uint64, result: *var uint64) 
 /// Runs in constant time and allocates nothing. The compiler emits the arithmetic and the check where the call is
 /// written rather than calling out to a helper.
 ///
-/// https://rux-lang.dev/docs/api/core/checked-sub
+/// @param left the left operand
+/// @param right the right operand
+/// @param result receives the answer when this reports success
+/// @returns true when the difference does not fit, leaving `result` unwritten
+/// @see https://rux-lang.dev/docs/api/core/checked-sub
 pub intrinsic func CheckedSub(left: uint64, right: uint64, result: *var uint64) -> bool;
 
 /// Multiplies two unsigned 64-bit values and reports whether the true product is representable.
@@ -37,5 +53,9 @@ pub intrinsic func CheckedSub(left: uint64, right: uint64, result: *var uint64) 
 /// Runs in constant time and allocates nothing. The compiler emits the arithmetic and the check where the call is
 /// written rather than calling out to a helper.
 ///
-/// https://rux-lang.dev/docs/api/core/checked-mul
+/// @param left the left operand
+/// @param right the right operand
+/// @param result receives the answer when this reports success
+/// @returns true when the product does not fit, leaving `result` unwritten
+/// @see https://rux-lang.dev/docs/api/core/checked-mul
 pub intrinsic func CheckedMul(left: uint64, right: uint64, result: *var uint64) -> bool;

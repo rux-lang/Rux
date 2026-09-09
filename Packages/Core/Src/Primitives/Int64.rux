@@ -1,13 +1,28 @@
+// `int64`: a signed integer in 64 bits, two's complement.
+//
+// The range is asymmetric, as it is at every signed width: the most negative value has no positive counterpart, which
+// is behind nearly every edge case in checked arithmetic.
+
 /// The compiler representation of int64.
+///
+/// @see https://rux-lang.dev/docs/api/core/int64
 pub intrinsic type int64;
 
 extend int64 {
     /// The number of bits in the representation.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/int64/bits
     pub const Bits: uint = 64u;
     /// The number of bytes in the representation.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/int64/bytes
     pub const Bytes: uint = 8u;
     /// The smallest representable value.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/int64/min
     pub const Min: int64 = -9223372036854775808i64;
     /// The largest representable value.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/int64/max
     pub const Max: int64 = 9223372036854775807i64;
 }

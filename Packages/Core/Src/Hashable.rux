@@ -1,3 +1,11 @@
+// Hashing: the 64-bit summary a table uses to find a value quickly.
+//
+// A hash is not an identity. Equal values must hash equally — a table is wrong otherwise — but unequal
+// values may collide, and a type that implements this must implement `Equatable` consistently with it.
+//
+// The hasher is supplied by the caller rather than fixed here, so the same type can be hashed by a fast
+// non-cryptographic function in one table and by a keyed one in another; `Rux/Hash` provides both.
+
 /// Hashing: the 64-bit summary a table uses to find a value quickly.
 ///
 /// The bound a generic writes when it keys a hash table or a set on its element type.
@@ -11,7 +19,7 @@
 /// across targets, and nothing that outlives the process should be keyed on one. `Rux/Hash` supplies the named,
 /// documented algorithms for that, and `Rux/Crypto` the ones that must resist an adversary.
 ///
-/// https://rux-lang.dev/docs/api/core/hashable
+/// @see https://rux-lang.dev/docs/api/core/hashable
 pub interface Hashable {
     /// The hash of this value.
     ///
@@ -19,6 +27,7 @@ pub interface Hashable {
     ///
     /// Cannot fail. Every value of the type has a hash, and the same value always gives the same one within a run.
     ///
-    /// https://rux-lang.dev/docs/api/core/hashable/hash
+    /// @returns this value's hash
+    /// @see https://rux-lang.dev/docs/api/core/hashable/hash
     func Hash() -> uint64;
 }

@@ -1,13 +1,28 @@
+// `uint512`: an unsigned integer in 512 bits.
+//
+// Wrapping is defined at this width and `Min` is zero, so a subtraction that would go below it wraps rather than
+// trapping. Core's checked arithmetic is what reports instead of wrapping.
+
 /// The compiler representation of uint512.
+///
+/// @see https://rux-lang.dev/docs/api/core/uint512
 pub intrinsic type uint512;
 
 extend uint512 {
     /// The number of bits in the representation.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/uint512/bits
     pub const Bits: uint = 512u;
     /// The number of bytes in the representation.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/uint512/bytes
     pub const Bytes: uint = 64u;
     /// The smallest representable value.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/uint512/min
     pub const Min: uint512 = 0u512;
     /// The largest representable value.
+    ///
+    /// @see https://rux-lang.dev/docs/api/core/uint512/max
     pub const Max: uint512 = 13407807929942597099574024998205846127479365820592393377723561443721764030073546976801874298166903427690031858186486050853753882811946569946433649006084095u512;
 }

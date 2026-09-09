@@ -1,3 +1,8 @@
+// Equality: whether two values of one type stand for the same thing.
+//
+// Deliberately not derived from `Comparable`: a type can be equatable without being orderable, and forcing
+// an order on one that has none produces an arbitrary answer that later reads as meaningful.
+
 /// Equality: whether two values of one type stand for the same thing.
 ///
 /// The bound a generic writes when it needs to compare its element type — a search, a deduplication, a hash table's
@@ -11,7 +16,7 @@
 ///
 /// A type that also implements `Hashable` must keep the two agreeable: equal values hash the same.
 ///
-/// https://rux-lang.dev/docs/api/core/equatable
+/// @see https://rux-lang.dev/docs/api/core/equatable
 pub interface Equatable {
     /// Reports whether this value and `other` are equal.
     ///
@@ -20,6 +25,8 @@ pub interface Equatable {
     ///
     /// Cannot fail: every pair of values of the type is either equal or not.
     ///
-    /// https://rux-lang.dev/docs/api/core/equatable/equals
+    /// @param other the value to compare against
+    /// @returns whether the two are equal
+    /// @see https://rux-lang.dev/docs/api/core/equatable/equals
     func Equals(other: &Self) -> bool;
 }

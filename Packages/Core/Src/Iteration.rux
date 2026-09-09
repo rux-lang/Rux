@@ -1,3 +1,9 @@
+// A cursor that yields a sequence of items one at a time.
+//
+// The protocol `for` is written against. Nothing here owns a sequence or promises one can be traversed
+// twice: a cursor is consumed as it goes, and what happens if the sequence changes underneath it is the
+// sequence's business to document.
+
 /// A cursor that yields a sequence of items one at a time.
 ///
 /// The compiler drives iteration by shape rather than through this interface: a `for` loop accepts any type with a
@@ -19,7 +25,7 @@
 /// a vector, rehashing a map, freeing the storage — leaves the iterator pointing at storage that has moved or gone,
 /// and reading it afterwards is undefined. Finish with the iterator before touching the container.
 ///
-/// https://rux-lang.dev/docs/api/core/iterator
+/// @see https://rux-lang.dev/docs/api/core/iterator
 pub interface Iterator {}
 
 /// A value that can hand out an `Iterator` over its contents.
@@ -36,5 +42,5 @@ pub interface Iterator {}
 /// The iterator handed out borrows the container, so the container must outlive it and must not be modified while it
 /// is alive. See `Iterator`.
 ///
-/// https://rux-lang.dev/docs/api/core/iterable
+/// @see https://rux-lang.dev/docs/api/core/iterable
 pub interface Iterable {}
