@@ -1,0 +1,4 @@
+9:19: error: cannot resolve type arguments for method 'Width'
+10:19: error: cannot resolve type arguments for method 'Width'
+11:17: error: type argument 'int32' does not satisfy interface bound 'Scored' on type parameter 'T'
+11:25: error: argument 1 to 'Read' has type 'int32', but parameter 'value' requires '&int32'

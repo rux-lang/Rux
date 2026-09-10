@@ -1,0 +1,14 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "GenericMethods"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Associated and instance generic methods resolve explicit and inferred arguments"
+
+[Dependencies]
+GenericMethodProvider = { Path = "../../Fixtures/GenericMethods" }
+
+[Build]
+Output = "../../../Bin/Tests/Language"

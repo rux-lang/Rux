@@ -1,0 +1,7 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "GenericMethodProvider"
+Version = "0.1.0"
+Type = "SourceLibrary"

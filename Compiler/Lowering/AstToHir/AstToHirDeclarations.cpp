@@ -481,6 +481,9 @@ HirImplBlock AstToHirContext::LowerImpl(const ImplDecl &d) {
     hib.interfaceName = d.interfaceName;
     hib.location = d.location;
     for (const auto &m : d.methods) {
+        if (!m->typeParams.empty()) {
+            continue;
+        }
         // A bodyless implementation method is a capability declaration (for example, a prohibited copy operation),
         // not an emitted function. Sending it through LIR would create an entry block with no terminator.
         if (!m->body && !m->isAsm) {

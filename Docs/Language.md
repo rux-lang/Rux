@@ -307,6 +307,13 @@ A custom `=` writes a new state into compiler-provided scratch storage and canno
 
 ## Construction and Initialization
 
+An associated or instance method may declare its own type parameters, including on a non-generic type. For example,
+`Layout::ForValue<int32>()` selects a method type argument; a method with a value parameter can infer it from the
+argument. Instance calls such as `holder.Convert<int64>(value)` take receiver parameters from `holder` independently.
+For associated calls on a generic type, write the receiver arguments first and then the method arguments, as in
+`Holder::OtherWidth<int32, int64>()`. Method bounds are checked at the call and concrete instantiations retain their
+own parameter, result, and symbol identities.
+
 Inside `extend T`, a receiverless function named `T` that returns exactly `T` is a constructor candidate:
 
 ```rux

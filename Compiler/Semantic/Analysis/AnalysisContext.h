@@ -640,12 +640,20 @@ private:
                                                const std::vector<TypeRef> &argumentTypes = {},
                                                bool requireAccessible = true);
     [[nodiscard]] std::unordered_map<std::string, TypeRef> MethodTypeSubstitutions(const TypeRef &receiverType) const;
+    [[nodiscard]] const FuncDecl *LookupMethodCall(const TypeRef &receiverType, const std::string &methodName,
+                                                   const CallExpr &call, const std::vector<TypeRef> &argumentTypes,
+                                                   std::size_t typeArgumentOffset,
+                                                   std::unordered_map<std::string, TypeRef> &substitutions);
     [[nodiscard]] const std::vector<TypeParameter> *AggregateTypeParams(const std::string &name) const;
     [[nodiscard]] TypeRef InstantiateAssociatedReceiver(TypeRef receiverType,
                                                         const std::vector<TypeExprPtr> &typeArguments);
     [[nodiscard]] TypeRef AssociatedFunctionType(const TypeRef &receiverType, const FuncDecl &method);
-    [[nodiscard]] TypeRef ResolveMethodReturnType(const TypeRef &receiverType, const FuncDecl &method);
-    [[nodiscard]] std::vector<TypeRef> ResolveMethodParamTypes(const TypeRef &receiverType, const FuncDecl &method);
+    [[nodiscard]] TypeRef
+    ResolveMethodReturnType(const TypeRef &receiverType, const FuncDecl &method,
+                            const std::unordered_map<std::string, TypeRef> &methodSubstitutions = {});
+    [[nodiscard]] std::vector<TypeRef>
+    ResolveMethodParamTypes(const TypeRef &receiverType, const FuncDecl &method,
+                            const std::unordered_map<std::string, TypeRef> &methodSubstitutions = {});
     [[nodiscard]] const FuncDecl *LookupInterfaceMethod(const TypeRef &receiverType,
                                                         const std::string &methodName) const;
 

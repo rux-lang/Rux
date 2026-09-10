@@ -378,6 +378,60 @@ TEST_CASE("AST-to-HIR instantiates symbolic method bindings for each generic rec
     CHECK_EQ(callee->name, "Box::Read_int64");
 }
 
+TEST_CASE("generic methods retain concrete callable types and emit each specialization once") {
+    Lexer lexer(R"(
+        struct Factory {}
+        extend Factory {
+            func Echo<T>(value: T) -> T { return value; }
+            func Forward<T>(value: T) -> T { return Factory::Echo(value); }
+        }
+        func Main() {
+            let narrow = Factory::Forward(7i32);
+            let wide = Factory::Forward<int64>(9i64);
+            let repeated = Factory::Forward(11i32);
+        }
+    )",
+                "generic_methods.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+    Parser parser(std::move(lexed.tokens), "generic_methods.rux");
+    auto parsed = parser.Parse();
+    REQUIRE_FALSE(parsed.HasErrors());
+    const SemanticModel model = SemanticAnalyzer({&parsed.module}, {}, "methods", "Windows").Analyze();
+    REQUIRE_FALSE(model.HasErrors());
+    const auto *main = dynamic_cast<const FuncDecl *>(parsed.module.items.back().get());
+    REQUIRE(main != nullptr);
+    REQUIRE(main->body != nullptr);
+    for (std::size_t i = 0; i < 3; ++i) {
+        const auto *statement = dynamic_cast<const LetStmt *>(main->body->stmts[i].get());
+        REQUIRE(statement != nullptr);
+        const auto *call = dynamic_cast<const CallExpr *>(statement->init.get());
+        REQUIRE(call != nullptr);
+        const auto *binding = model.TryGetCallableBinding(*call);
+        REQUIRE(binding != nullptr);
+        const TypeRef expected = i == 1 ? TypeRef::MakeInt64() : TypeRef::MakeInt32();
+        CHECK(binding->substitutions.at("T") == expected);
+        CHECK(binding->linkerName == "Factory::Forward_" + expected.ToString());
+    }
+    const HirPackage package = AstToHirLowering(model).Generate();
+    REQUIRE_EQ(package.modules.size(), 1);
+    const auto &functions = package.modules.front().funcs;
+    for (const std::string name : {"Echo", "Forward"}) {
+        for (const TypeRef &expected : {TypeRef::MakeInt32(), TypeRef::MakeInt64()}) {
+            const std::string symbol = "Factory::" + name + "_" + expected.ToString();
+            CHECK_EQ(std::ranges::count_if(functions, [&](const HirFunc &function) { return function.name == symbol; }),
+                     1);
+            const auto function =
+                std::ranges::find_if(functions, [&](const HirFunc &item) { return item.name == symbol; });
+            REQUIRE(function != functions.end());
+            CHECK(function->returnType == expected);
+        }
+        CHECK(std::ranges::none_of(functions, [&](const HirFunc &function) {
+            return function.name == "Factory::" + name || function.name == "Factory::" + name + "_T";
+        }));
+    }
+}
+
 TEST_CASE("callable instantiation preserves writable slots in pointer identities and symbols") {
     for (const bool writable : {false, true}) {
         TypeRef parameter = TypeRef::MakeTypeParam("T");

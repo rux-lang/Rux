@@ -101,7 +101,7 @@ void AstToHirContext::ResolveDropGlue(HirPackage &package) {
     // A plan for a type that still names a type parameter describes nothing that can exist: there is no value of
     // `Box<T>` until `T` is chosen, and every choice has a plan of its own. Instantiating one would lower the generic
     // body with the parameter substituted for itself, which is how a `sizeof(T)` inside it ends up with no width.
-    std::erase_if(package.dropGlues, [this](const DropGluePlan &plan) { return !DropGlueTypeIsConcrete(plan.type); });
+    std::erase_if(package.dropGlues, [this](const DropGluePlan &plan) { return !TypeIsConcrete(plan.type); });
     for (DropGluePlan &plan : package.dropGlues) {
         ResolveDropGlueSteps(plan.steps);
     }
@@ -126,7 +126,7 @@ void AstToHirContext::ResolveDropGlueSteps(std::vector<DropGlueStep> &steps) {
     }
 }
 
-/// Whether a destruction plan's type names a real type rather than a shape still waiting for its arguments.
+/// Whether a type names a real type rather than a shape still waiting for its arguments.
 ///
 /// A type parameter is not concrete, and neither is an instantiation one of whose arguments is a parameter. Both a
 /// parameter and a declared type arrive here as a bare name, so what tells them apart is whether anything declares
@@ -138,12 +138,12 @@ void AstToHirContext::ResolveDropGlueSteps(std::vector<DropGlueStep> &steps) {
 /// own parameter down, so `Tree<T, Unit>` inside `TreeSet<T>` was judged concrete because `T` is not one of `Tree`'s
 /// parameters, and lowering then built a destructor for a type that cannot exist -- which asks for the size of a
 /// node whose element type is still a parameter, and stops the compiler where there is nothing left to ask.
-bool AstToHirContext::DropGlueTypeIsConcrete(const TypeRef &type) {
-    if (type.kind == TypeRef::Kind::TypeParam) {
+bool AstToHirContext::TypeIsConcrete(const TypeRef &type) {
+    if (type.IsUnknown() || type.kind == TypeRef::Kind::TypeParam) {
         return false;
     }
     for (const TypeRef &inner : type.inner) {
-        if (!DropGlueTypeIsConcrete(inner)) {
+        if (!TypeIsConcrete(inner)) {
             return false;
         }
     }
@@ -155,10 +155,11 @@ bool AstToHirContext::DropGlueTypeIsConcrete(const TypeRef &type) {
         // as a named type -- they are recognized while the name is parsed -- so a name is either declared or a
         // parameter, with nothing in between.
         const HirSymbol *declared = globalScope.Lookup(type.name);
-        return declared != nullptr && declared->kind == HirSymbol::Kind::Type;
+        return declared != nullptr &&
+               (declared->kind == HirSymbol::Kind::Type || declared->kind == HirSymbol::Kind::Interface);
     }
     for (const TypeRef &argument : ParseTypeArgsFromTypeName(type.name)) {
-        if (!DropGlueTypeIsConcrete(argument)) {
+        if (!TypeIsConcrete(argument)) {
             return false;
         }
     }

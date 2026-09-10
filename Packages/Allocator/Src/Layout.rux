@@ -8,9 +8,7 @@
 // A `Layout` that exists is valid. `New` is the only way to build one and refuses what it cannot represent, so
 // nothing downstream has to check again.
 //
-// The two layouts that take a type are free functions rather than methods. A method carrying its own type parameter
-// on a type that has none does not resolve at the call site in this compiler, so `LayoutOf` and `LayoutOfArray` sit
-// beside `Layout` rather than inside it.
+// `ForValue<T>` and `ForArray<T>` describe storage without constructing a value and use the type's actual alignment.
 
 import Core::uint;
 import Core::{ Option, #target };
@@ -32,6 +30,32 @@ pub struct Layout {
 }
 
 extend Layout {
+    /// A layout for one value of `T`, using its actual size and alignment.
+    ///
+    /// No value is copied or consumed. Cannot fail, runs in constant time, and allocates nothing.
+    ///
+    /// @typeParam T the type to describe
+    /// @returns `T`'s own size and alignment
+    /// @see https://rux-lang.dev/docs/api/allocator/layout/for-value
+    pub func ForValue<T>() -> Layout {
+        return Layout { size: sizeof(T), alignment: alignof(T) };
+    }
+
+    /// A layout for `count` consecutive values of `T`, or `None` when the size would overflow.
+    ///
+    /// No value is copied or consumed. A zero count describes empty storage at `T`'s alignment.
+    /// Runs in constant time and allocates nothing.
+    ///
+    /// @typeParam T the element type
+    /// @param count how many elements
+    /// @returns the array layout, or `None` if its size cannot be represented
+    /// @see https://rux-lang.dev/docs/api/allocator/layout/for-array
+    pub func ForArray<T>(count: uint) -> Option<Layout> {
+        let stride = sizeof(T);
+        if stride != 0 && count > uint::Max / stride { return Option::None<Layout>(); }
+        return Layout::New(stride * count, alignof(T));
+    }
+
     /// A layout for `size` bytes at `alignment`, or nothing when the pair cannot be one.
     ///
     /// `size` and `alignment` are read by value; the layout is returned by copy. Reports `None` when `alignment` is
@@ -139,39 +163,4 @@ pub func NaturalAlignment(size: uint) -> uint {
         alignment = alignment * 2;
     }
     return alignment > size ? alignment / 2 : alignment;
-}
-
-/// A layout for one value of `T`.
-///
-/// `T` is named explicitly, so no value is copied or consumed merely to describe its storage. Cannot fail: a type's
-/// own size and alignment are always a valid pair.
-///
-/// The alignment is the type's size rounded down to a power of two, capped at a machine word — which is what every
-/// supported target's ABI requires, and which `alignof` will replace when it can be named for a type parameter.
-///
-/// Runs in constant time and allocates nothing.
-///
-/// @typeParam T the type to describe
-/// @returns `T`'s own size and alignment
-/// @see https://rux-lang.dev/docs/api/allocator/layout-of
-pub func LayoutOf<T>() -> Layout {
-    return Layout { size: sizeof(T), alignment: NaturalAlignment(sizeof(T)) };
-}
-
-/// A layout for `count` values of `T` laid out one after another, or nothing when that many do not fit.
-///
-/// `T` is named explicitly, so no value is copied or consumed merely to describe its storage. Reports `None` when
-/// `count` values would not fit in the address space, which is the multiplication an array allocation has to check
-/// and most callers forget — a wrapped product is an allocation far smaller than the caller asked for.
-///
-/// Runs in constant time and allocates nothing.
-///
-/// @typeParam T the element type
-/// @param count how many elements
-/// @returns the layout of `count` of them, or `None` when the size would overflow
-/// @see https://rux-lang.dev/docs/api/allocator/layout-of-array
-pub func LayoutOfArray<T>(count: uint) -> Option<Layout> {
-    let stride = sizeof(T);
-    if stride != 0 && count > uint::Max / stride { return Option::None<Layout>(); }
-    return Layout::New(stride * count, NaturalAlignment(stride));
 }

@@ -23,7 +23,7 @@ rux add Rux/Allocator
 
 The module names describe where each declaration comes from; they are not part of an import path.
 
-A `Layout` that exists is valid. `Layout::New` refuses an alignment that is not a power of two, or a size whose rounding would pass the end of the address space — so nothing downstream checks again. That second case is the one worth naming: it is how a request for a huge array becomes an allocation far smaller than the caller asked for. Use `LayoutOf<T>()` or `LayoutOfArray<T>(count)` when storage follows a type; neither requires a sample value, so describing a move-only type consumes nothing.
+A `Layout` that exists is valid. `Layout::New` refuses an alignment that is not a power of two, or a size whose rounding would pass the end of the address space — so nothing downstream checks again. That second case is the one worth naming: it is how a request for a huge array becomes an allocation far smaller than the caller asked for. Use `Layout::ForValue<T>()` or `Layout::ForArray<T>(count)` when storage follows a type; neither requires a sample value, so describing a move-only type consumes nothing.
 
 Four promises hold for every allocator here:
 

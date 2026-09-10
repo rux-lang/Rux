@@ -1,0 +1,13 @@
+interface Scored { func Score() -> int; }
+struct Factory {}
+extend Factory {
+    func Width<T>() -> uint { return sizeof(T); }
+    func Read<T: Scored>(self: &Factory, value: &T) -> int { return value.Score(); }
+}
+func Main() -> int {
+    let factory = Factory {};
+    Factory::Width();
+    Factory::Width<int32, int64>();
+    factory.Read<int32>(1i32);
+    return 0;
+}

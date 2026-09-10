@@ -214,8 +214,11 @@ private:
     [[nodiscard]] const std::vector<TypeParameter> *AggregateTypeParams(const std::string &name) const;
     [[nodiscard]] bool ReceiverIsByValue(const FuncDecl &method) const;
     [[nodiscard]] HirExprPtr LowerReceiverFor(const FuncDecl &method, HirExprPtr receiver);
-    [[nodiscard]] TypeRef MethodType(const TypeRef &receiverType, const FuncDecl &method);
-    [[nodiscard]] TypeRef AssociatedFunctionType(const TypeRef &receiverType, const FuncDecl &method);
+    [[nodiscard]] TypeRef MethodType(const TypeRef &receiverType, const FuncDecl &method,
+                                     const std::unordered_map<std::string, TypeRef> &methodSubstitutions = {});
+    [[nodiscard]] TypeRef
+    AssociatedFunctionType(const TypeRef &receiverType, const FuncDecl &method,
+                           const std::unordered_map<std::string, TypeRef> &methodSubstitutions = {});
     [[nodiscard]] const FuncDecl *LookupMethod(const TypeRef &receiverType, const std::string &methodName,
                                                const std::vector<TypeRef> &argumentTypes = {});
     [[nodiscard]] std::string CalleeName(const std::string &typeName, const std::string &methodName,
@@ -312,7 +315,7 @@ private:
     [[nodiscard]] HirMovePlan BuildMovePlan(const TypeRef &type, const FuncDecl *customOperation = nullptr);
     [[nodiscard]] TypeRef EnumBaseType(const EnumDecl &decl);
     void ResolveDropGlue(HirPackage &package);
-    [[nodiscard]] bool DropGlueTypeIsConcrete(const TypeRef &type);
+    [[nodiscard]] bool TypeIsConcrete(const TypeRef &type);
     void ResolveDropGlueSteps(std::vector<DropGlueStep> &steps);
     [[nodiscard]] std::string DestructorSymbol(const TypeRef &type);
 

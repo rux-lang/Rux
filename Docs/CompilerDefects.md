@@ -8,10 +8,6 @@ Return to the [main README](../README.md) for the complete documentation index.
 
 ## Open
 
-### A method with its own type parameter on a non-generic type does not resolve at the call site
-
-*Loud.* Found in `Rux/Memory`; `Layout::ForValue<T>` had to become the free function `LayoutOf<T>`.
-
 ### Equality on a multiword struct or tuple compares only its leading doubleword
 
 *Silent.* `==` between two aggregate values wider than one register still loads the first eight bytes of each side and compares those unless the frontend supplies a structural operation. The AArch64 backend refuses a tuple comparison rather than quietly answering from its first element, while x86-64 silently does the latter. Variants already use case-aware structural equality.

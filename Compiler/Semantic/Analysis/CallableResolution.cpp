@@ -51,7 +51,7 @@ TypeRef AnalysisContext::InstantiateAssociatedReceiver(TypeRef receiverType, con
     }
 
     std::string name = typeName + "<";
-    for (std::size_t i = 0; i < typeArgs.size(); ++i) {
+    for (std::size_t i = 0; i < std::min(typeArgs.size(), typeParams->size()); ++i) {
         if (i) {
             name += ", ";
         }
@@ -61,19 +61,34 @@ TypeRef AnalysisContext::InstantiateAssociatedReceiver(TypeRef receiverType, con
     return TypeRef::MakeNamed(std::move(name));
 }
 
-TypeRef AnalysisContext::ResolveMethodReturnType(const TypeRef &receiverType, const FuncDecl &method) {
+TypeRef AnalysisContext::ResolveMethodReturnType(const TypeRef &receiverType, const FuncDecl &method,
+                                                 const std::unordered_map<std::string, TypeRef> &methodSubstitutions) {
+    const auto savedTypeParams = currentTypeParams;
+    AppendTypeParameterNames(currentTypeParams, method.typeParams);
     TypeRef savedSelfType = currentSelfType;
     currentSelfType = receiverType.kind == TypeRef::Kind::Pointer || receiverType.kind == TypeRef::Kind::Reference
                         ? receiverType
                         : TypeRef::MakePointer(receiverType);
-    const auto substitutions = MethodTypeSubstitutions(receiverType);
+    auto substitutions = MethodTypeSubstitutions(receiverType);
+    for (const auto &[name, type] : methodSubstitutions) {
+        substitutions.insert_or_assign(name, type);
+    }
     TypeRef ret = method.returnType ? ResolveTypeWithSubstitution(*method.returnType->get(), substitutions)
                                     : TypeRef::MakeOpaque();
     currentSelfType = savedSelfType;
+    currentTypeParams = savedTypeParams;
     return ret;
 }
 
-std::vector<TypeRef> AnalysisContext::ResolveMethodParamTypes(const TypeRef &receiverType, const FuncDecl &method) {
+std::vector<TypeRef>
+AnalysisContext::ResolveMethodParamTypes(const TypeRef &receiverType, const FuncDecl &method,
+                                         const std::unordered_map<std::string, TypeRef> &methodSubstitutions) {
+    const auto savedTypeParams = currentTypeParams;
+    AppendTypeParameterNames(currentTypeParams, method.typeParams);
+    auto substitutions = MethodTypeSubstitutions(receiverType);
+    for (const auto &[name, type] : methodSubstitutions) {
+        substitutions.insert_or_assign(name, type);
+    }
     TypeRef savedSelfType = currentSelfType;
     currentSelfType = receiverType.kind == TypeRef::Kind::Pointer || receiverType.kind == TypeRef::Kind::Reference
                         ? receiverType
@@ -83,10 +98,71 @@ std::vector<TypeRef> AnalysisContext::ResolveMethodParamTypes(const TypeRef &rec
         if (param.isVariadic || param.name == "self") {
             continue;
         }
-        params.push_back(ResolveTypeWithSubstitution(*param.type, MethodTypeSubstitutions(receiverType)));
+        params.push_back(ResolveTypeWithSubstitution(*param.type, substitutions));
     }
     currentSelfType = savedSelfType;
+    currentTypeParams = savedTypeParams;
     return params;
+}
+
+const FuncDecl *AnalysisContext::LookupMethodCall(const TypeRef &receiverType, const std::string &methodName,
+                                                  const CallExpr &call, const std::vector<TypeRef> &argumentTypes,
+                                                  const std::size_t typeArgumentOffset,
+                                                  std::unordered_map<std::string, TypeRef> &substitutions) {
+    const auto candidates = AccessibleMethodCandidates(receiverType, methodName);
+    const std::size_t writtenCount = call.typeArgs.size() - typeArgumentOffset;
+    if (writtenCount == 0 &&
+        std::ranges::none_of(candidates, [](const FuncDecl *method) { return !method->typeParams.empty(); })) {
+        substitutions = MethodTypeSubstitutions(receiverType);
+        return LookupMethod(receiverType, methodName, argumentTypes);
+    }
+    for (const FuncDecl *method : candidates) {
+        if (writtenCount != 0 && writtenCount != method->typeParams.size()) {
+            continue;
+        }
+        auto resolved = MethodTypeSubstitutions(receiverType);
+        std::unordered_set<std::string> parameters;
+        for (std::size_t i = 0; i < method->typeParams.size(); ++i) {
+            parameters.insert(method->typeParams[i].name);
+            if (i < writtenCount) {
+                resolved.insert_or_assign(method->typeParams[i].name,
+                                          ResolveType(*call.typeArgs[typeArgumentOffset + i]));
+            }
+        }
+        auto parameterTypes = ResolveMethodParamTypes(receiverType, *method, resolved);
+        if (parameterTypes.size() != argumentTypes.size()) {
+            continue;
+        }
+        if (writtenCount == 0) {
+            for (std::size_t i = 0; i < argumentTypes.size(); ++i) {
+                DeduceTypeArgument(parameterTypes[i], argumentTypes[i], parameters, resolved);
+            }
+        }
+        if (std::ranges::any_of(method->typeParams,
+                                [&](const TypeParameter &parameter) { return !resolved.contains(parameter.name); })) {
+            continue;
+        }
+        parameterTypes = ResolveMethodParamTypes(receiverType, *method, resolved);
+        bool matches = true;
+        for (std::size_t i = 0; i < argumentTypes.size(); ++i) {
+            const auto &argument = argumentTypes[i];
+            const auto &parameter = parameterTypes[i];
+            if (!argument.IsUnknown() && !parameter.IsUnknown() && !argument.IsAssignableTo(parameter) &&
+                !argument.CanImplicitlyBorrowTo(parameter) && !argument.CanReadScalarTo(parameter) &&
+                !CanConvertToInterface(argument, parameter) && !(argument.IsInteger() && parameter.IsInteger())) {
+                matches = false;
+                break;
+            }
+        }
+        if (matches) {
+            substitutions = std::move(resolved);
+            return method;
+        }
+    }
+    if (!candidates.empty()) {
+        EmitError(call.location, std::format("cannot resolve type arguments for method '{}'", methodName));
+    }
+    return nullptr;
 }
 
 const FuncDecl *AnalysisContext::LookupOperatorMethod(const TypeRef &receiverType, const std::string &operatorName,

@@ -738,8 +738,12 @@ std::unordered_map<std::string, TypeRef> AstToHirContext::MethodTypeSubstitution
     return substitutions;
 }
 
-TypeRef AstToHirContext::MethodType(const TypeRef &receiverType, const FuncDecl &method) {
-    const auto substitutions = MethodTypeSubstitutions(receiverType);
+TypeRef AstToHirContext::MethodType(const TypeRef &receiverType, const FuncDecl &method,
+                                    const std::unordered_map<std::string, TypeRef> &methodSubstitutions) {
+    auto substitutions = MethodTypeSubstitutions(receiverType);
+    for (const auto &[name, type] : methodSubstitutions) {
+        substitutions.insert_or_assign(name, type);
+    }
     std::vector<TypeRef> params;
     params.push_back(receiverType);
     for (const auto &param : method.params) {
@@ -753,12 +757,16 @@ TypeRef AstToHirContext::MethodType(const TypeRef &receiverType, const FuncDecl 
     return TypeRef::MakeFunc(std::move(params), std::move(ret));
 }
 
-TypeRef AstToHirContext::AssociatedFunctionType(const TypeRef &receiverType, const FuncDecl &method) {
+TypeRef AstToHirContext::AssociatedFunctionType(const TypeRef &receiverType, const FuncDecl &method,
+                                                const std::unordered_map<std::string, TypeRef> &methodSubstitutions) {
     TypeRef savedSelfType = currentSelfType;
     currentSelfType = receiverType.kind == TypeRef::Kind::Pointer || receiverType.kind == TypeRef::Kind::Reference
                         ? receiverType
                         : TypeRef::MakePointer(receiverType);
-    const auto substitutions = MethodTypeSubstitutions(receiverType);
+    auto substitutions = MethodTypeSubstitutions(receiverType);
+    for (const auto &[name, type] : methodSubstitutions) {
+        substitutions.insert_or_assign(name, type);
+    }
     std::vector<TypeRef> params;
     for (const auto &param : method.params) {
         if (param.isVariadic) {

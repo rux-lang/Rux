@@ -193,7 +193,11 @@ void AstToHirContext::EnsureBoundFunctionInstance(const FuncDecl &declaration, c
 }
 
 void AstToHirContext::EnsureBoundMethodInstance(const FuncDecl &method, const ResolvedCallableBinding &binding) {
-    if (binding.substitutions.empty() || MethodIsFromConcreteImpl(method)) {
+    if (binding.substitutions.empty() || (method.typeParams.empty() && MethodIsFromConcreteImpl(method))) {
+        return;
+    }
+    if (std::ranges::any_of(binding.substitutions,
+                            [this](const auto &argument) { return !TypeIsConcrete(argument.second); })) {
         return;
     }
     assert(binding.receiverType && !binding.linkerName.empty() &&
@@ -262,7 +266,7 @@ HirExprPtr AstToHirContext::LowerBoundMethodCall(const CallExpr &call, const Res
 
     if (const auto *field = dynamic_cast<const FieldExpr *>(call.callee.get())) {
         HirExprPtr self = LowerReceiverFor(method, LowerExpr(*field->object));
-        callee->type = MethodType(self->type, method);
+        callee->type = MethodType(self->type, method, binding.substitutions);
         lowered->args.push_back(std::move(self));
         std::vector<HirExprPtr> arguments = LowerBoundArguments(call, method, binding, callee->type, true);
         for (auto &argument : arguments) {
@@ -272,7 +276,7 @@ HirExprPtr AstToHirContext::LowerBoundMethodCall(const CallExpr &call, const Res
     else {
         assert(dynamic_cast<const PathExpr *>(call.callee.get()) != nullptr &&
                "method binding has neither a receiver nor an associated path");
-        callee->type = AssociatedFunctionType(*binding.receiverType, method);
+        callee->type = AssociatedFunctionType(*binding.receiverType, method, binding.substitutions);
         lowered->args = LowerBoundArguments(call, method, binding, callee->type, false);
     }
     lowered->type = callee->type.inner.back();

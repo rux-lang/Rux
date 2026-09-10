@@ -1,11 +1,14 @@
 import Core::uint;
-import Allocator::{ AllocError, Allocator, EmptyBlockAddress, IsEmptyBlock, Layout, LayoutOf, LayoutOfArray, NaturalAlignment, SystemAllocator };
+import Allocator::{ AllocError, Allocator, EmptyBlockAddress, IsEmptyBlock, Layout, NaturalAlignment, SystemAllocator };
 import Core::Assert;
 import Memory::{ IsPointerAligned, Set };
 
 // What an allocator gets wrong quietly: handing back an address that does not satisfy the alignment, accepting a
 // release that does not match its allocation, and losing the original block when a reallocation fails. Each is
 // checked rather than assumed.
+
+struct ByteRun { bytes: uint8[9]; }
+struct Empty {}
 
 func Main() -> int {
     // A layout that exists is valid, so the refusals happen at construction.
@@ -27,10 +30,18 @@ func Main() -> int {
     Assert(layout != odd, "and two asking different things are not");
 
     // An array layout has to check the multiplication, which is where a huge count turns into a small allocation.
-    Assert(LayoutOfArray<uint64>(8).IsSome(), "an ordinary array layout");
-    Assert(LayoutOfArray<uint64>(uint::Max).IsNone(), "a count that cannot fit is refused");
-    let single = LayoutOf<uint64>();
+    Assert(Layout::ForArray<uint64>(8).IsSome(), "an ordinary array layout");
+    Assert(Layout::ForArray<uint64>(uint::Max).IsNone(), "a count that cannot fit is refused");
+    let single = Layout::ForValue<uint64>();
     Assert(single.size == 8 && single.alignment == 8, "a value's layout is its own size and alignment");
+    let byteLayout = Layout::ForValue<ByteRun>();
+    Assert(byteLayout.size == 9 && byteLayout.alignment == 1, "alignment follows the type rather than a size heuristic");
+    let manyBytes = Layout::ForArray<ByteRun>(3).ValueOr(odd);
+    Assert(manyBytes.size == 27 && manyBytes.alignment == 1, "array storage keeps the element's alignment");
+    let noBytes = Layout::ForArray<ByteRun>(0).ValueOr(odd);
+    Assert(noBytes.size == 0 && noBytes.alignment == 1, "a zero count retains the element's alignment");
+    let noValues = Layout::ForArray<Empty>(uint::Max).ValueOr(odd);
+    Assert(noValues.size == 0 && noValues.alignment == alignof(Empty), "zero-sized elements cannot overflow");
     Assert(NaturalAlignment(0) == 1 && NaturalAlignment(1) == 1, "a byte wants no alignment");
     Assert(NaturalAlignment(4) == 4 && NaturalAlignment(8) == 8, "a word wants its own width");
 

@@ -28,7 +28,8 @@ void AnalysisContext::QueueGenericInstantiation(const FuncDecl &decl,
     // A generic function carries its own parameters; a method of a generic type carries none of its own and is
     // instantiated by what the receiver's type arguments say. Both are instantiations with a body to re-check,
     // so the concreteness test reads the substitution map rather than the declaration.
-    if (!decl.typeParams.empty() && substitutions.size() != decl.typeParams.size()) {
+    if (std::ranges::any_of(decl.typeParams,
+                            [&](const TypeParameter &parameter) { return !substitutions.contains(parameter.name); })) {
         return;
     }
 

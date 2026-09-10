@@ -1,0 +1,28 @@
+import GenericMethodProvider::{ Factory, Holder, Scored };
+
+struct Number { value: int; }
+extend Number : Scored { func Score(self: &Number) -> int { return self.value; } }
+
+func Forward<T>(value: T) -> T {
+    let factory = Factory { bias: 0 };
+    return factory.Read(Factory::Forward(value));
+}
+
+func Main() -> int {
+    if Factory::Width<int32>() != 4u || Factory::Width<int64>() != 8u { return 1; }
+    if Factory::Echo(42i32) != 42i32 || Factory::Echo<int64>(1234567890123i64) != 1234567890123i64 { return 2; }
+    if Factory::Echo<int32>(17i32, true) != 17i32 { return 3; }
+    let factory = Factory { bias: 5 };
+    if factory.Read<bool>(true) != true || factory.Read(99i64) != 99i64 { return 4; }
+    if Forward<int32>(31i32) != 31i32 || Forward<int64>(71i64) != 71i64 { return 5; }
+    let number = Number { value: 37 };
+    if factory.Score(number) != 42 { return 6; }
+    let holder = Holder<int32> { value: 12 };
+    let pair = holder.Pair<int64>(34i64);
+    if pair.0 != 12 || pair.1 != 34i64 { return 7; }
+    let inferred = holder.Pair(true);
+    if !inferred.1 { return 8; }
+    if Holder::OtherWidth<int32, int64>() != 12u { return 9; }
+    if Factory::Width<int32>() != 4u { return 10; }
+    return 0;
+}

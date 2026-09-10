@@ -471,7 +471,9 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
             return ResolveInterfaceMethodReturnType(operation, receiverBase);
         }
 
-        if (const FuncDecl *method = LookupMethod(receiverType, field->field, argTypes)) {
+        std::unordered_map<std::string, TypeRef> methodSubstitutions;
+        if (const FuncDecl *method =
+                LookupMethodCall(receiverType, field->field, *e, argTypes, 0, methodSubstitutions)) {
             bool callAccepted = true;
             if (!method->warnMessage.empty()) {
                 EmitWarning(e->location, method->warnMessage);
@@ -479,12 +481,14 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
             if (!method->errorMessage.empty()) {
                 EmitError(e->location, method->errorMessage);
             }
-            std::vector<TypeRef> paramTypes = ResolveMethodParamTypes(receiverType, *method);
+            std::vector<TypeRef> paramTypes = ResolveMethodParamTypes(receiverType, *method, methodSubstitutions);
             // A method of a generic type is an instantiation like any other: its body was checked with the type's
             // parameters standing for nothing in particular, and the questions that could not be answered then --
             // above all whether handing a `T` over consumes it -- are answered here, where the receiver says what
             // the parameters stand for.
-            QueueGenericInstantiation(*method, MethodTypeSubstitutions(receiverType));
+            CheckTypeArgumentConstraints(method->typeParams, methodSubstitutions, e->location,
+                                         std::format("method '{}'", method->name));
+            QueueGenericInstantiation(*method, methodSubstitutions);
 
             if (argTypes.size() != paramTypes.size()) {
                 callAccepted = false;
@@ -509,9 +513,9 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
                 ConsumeMethodReceiver(*e, *field->object, receiverType, *method);
                 ConsumeCallArguments(*e, argTypes, &paramTypes);
             }
-            RecordFunctionBinding(*e, *method, ResolvedCallableBinding::DispatchKind::Method,
-                                  MethodTypeSubstitutions(receiverType), receiverType);
-            return ResolveMethodReturnType(receiverType, *method);
+            RecordFunctionBinding(*e, *method, ResolvedCallableBinding::DispatchKind::Method, methodSubstitutions,
+                                  receiverType);
+            return ResolveMethodReturnType(receiverType, *method, methodSubstitutions);
         }
 
         const std::string receiverName = NamedBaseTypeName(receiverType);
@@ -697,27 +701,35 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
                     }
                 }
                 TypeRef receiverType = first->type.IsUnknown() ? TypeRef::MakeNamed(first->name) : first->type;
-                if (const auto structIt = structDecls.find(path->segments[0]);
-                    structIt != structDecls.end() && !structIt->second->typeParams.empty() &&
-                    e->typeArgs.size() != structIt->second->typeParams.size()) {
+                const auto *receiverParameters = AggregateTypeParams(path->segments[0]);
+                const std::size_t receiverArgumentCount = receiverParameters ? receiverParameters->size() : 0;
+                if (e->typeArgs.size() < receiverArgumentCount) {
                     EmitError(
                         e->location,
                         std::format("associated function on '{}' requires {}, but {} provided", path->segments[0],
-                                    Counted(structIt->second->typeParams.size(), "type argument"),
+                                    Counted(receiverArgumentCount, "type argument"),
                                     e->typeArgs.size() == 1 ? "1 was" : std::format("{} were", e->typeArgs.size())));
-                }
-                else if (const auto generic = structDecls.find(path->segments[0]); generic != structDecls.end()) {
-                    CheckWrittenTypeArgumentConstraints(generic->second->typeParams, e->typeArgs, e->location,
-                                                        std::format("struct '{}'", path->segments[0]));
+                    return TypeRef::MakeUnknown();
                 }
                 receiverType = InstantiateAssociatedReceiver(std::move(receiverType), e->typeArgs);
+                if (receiverParameters) {
+                    CheckTypeArgumentConstraints(
+                        *receiverParameters, MethodTypeSubstitutions(receiverType), e->location,
+                        std::format("{} '{}'", structDecls.contains(path->segments[0]) ? "struct" : "variant",
+                                    path->segments[0]));
+                }
                 const std::string &methodName = path->segments[1];
                 const std::vector<TypeRef> argTypes = CheckCallArgumentValues(*e);
-                if (const FuncDecl *method = LookupMethod(receiverType, methodName, argTypes)) {
-                    std::vector<TypeRef> paramTypes = ResolveMethodParamTypes(receiverType, *method);
+                std::unordered_map<std::string, TypeRef> methodSubstitutions;
+                if (const FuncDecl *method = LookupMethodCall(receiverType, methodName, *e, argTypes,
+                                                              receiverArgumentCount, methodSubstitutions)) {
+                    std::vector<TypeRef> paramTypes =
+                        ResolveMethodParamTypes(receiverType, *method, methodSubstitutions);
                     // An associated function on a generic type is instantiated by the type arguments written at the
                     // call, exactly as a method is by its receiver's.
-                    QueueGenericInstantiation(*method, MethodTypeSubstitutions(receiverType));
+                    CheckTypeArgumentConstraints(method->typeParams, methodSubstitutions, e->location,
+                                                 std::format("method '{}'", method->name));
+                    QueueGenericInstantiation(*method, methodSubstitutions);
                     bool callAccepted = argTypes.size() == paramTypes.size();
                     if (argTypes.size() != paramTypes.size()) {
                         emitArityError(std::format("{}::{}", path->segments[0], methodName), paramTypes.size(),
@@ -740,8 +752,8 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
                         ConsumeCallArguments(*e, argTypes, &paramTypes);
                     }
                     RecordFunctionBinding(*e, *method, ResolvedCallableBinding::DispatchKind::Method,
-                                          MethodTypeSubstitutions(receiverType), receiverType);
-                    return ResolveMethodReturnType(receiverType, *method);
+                                          methodSubstitutions, receiverType);
+                    return ResolveMethodReturnType(receiverType, *method, methodSubstitutions);
                 }
 
                 const std::string receiverName = NamedBaseTypeName(receiverType);

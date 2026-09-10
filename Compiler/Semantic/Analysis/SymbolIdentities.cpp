@@ -103,14 +103,18 @@ std::string AnalysisContext::MethodLinkerName(const FuncDecl &method, const Type
     }
 
     const auto implementation = methodImpls.find(&method);
-    if (implementation == methodImpls.end() || ImplTypeParams(*implementation->second).empty()) {
-        return name;
-    }
-    if (const std::vector<TypeParameter> *typeParams = AggregateTypeParams(typeName)) {
-        for (const auto &parameter : *typeParams) {
-            if (const auto substitution = substitutions.find(parameter.name); substitution != substitutions.end()) {
-                name += "_" + MangleTypeName(substitution->second);
+    if (implementation != methodImpls.end() && !ImplTypeParams(*implementation->second).empty()) {
+        if (const std::vector<TypeParameter> *typeParams = AggregateTypeParams(typeName)) {
+            for (const auto &parameter : *typeParams) {
+                if (const auto substitution = substitutions.find(parameter.name); substitution != substitutions.end()) {
+                    name += "_" + MangleTypeName(substitution->second);
+                }
             }
+        }
+    }
+    for (const auto &parameter : method.typeParams) {
+        if (const auto substitution = substitutions.find(parameter.name); substitution != substitutions.end()) {
+            name += "_" + MangleTypeName(substitution->second);
         }
     }
     return name;
@@ -130,12 +134,12 @@ void AnalysisContext::RecordMethodIdentityRecipe(ResolvedCallableBinding &bindin
     }
 
     const auto implementation = methodImpls.find(&method);
-    if (implementation == methodImpls.end() || ImplTypeParams(*implementation->second).empty()) {
-        return;
+    if (implementation != methodImpls.end() && !ImplTypeParams(*implementation->second).empty()) {
+        if (const std::vector<TypeParameter> *typeParams = AggregateTypeParams(typeName)) {
+            binding.linkerSpecializationParameters = TypeParameterNames(*typeParams);
+        }
     }
-    if (const std::vector<TypeParameter> *typeParams = AggregateTypeParams(typeName)) {
-        binding.linkerSpecializationParameters = TypeParameterNames(*typeParams);
-    }
+    AppendTypeParameterNames(binding.linkerSpecializationParameters, method.typeParams);
 }
 
 void AnalysisContext::BuildFinalSymbolIdentities() {

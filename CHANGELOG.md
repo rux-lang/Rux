@@ -421,6 +421,8 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 
 ### Fixed
 
+- **Generic methods on non-generic types** — associated and instance methods resolve their own explicit or inferred type arguments independently of receiver parameters, validate bounds, and retain concrete signatures through lowering. Allocator replaces `LayoutOf<T>()` and `LayoutOfArray<T>(count)` with `Layout::ForValue<T>()` and `Layout::ForArray<T>(count)`; both now use `alignof(T)`.
+
 - **Writable pointer generic layouts** — callable substitution preserves pointee mutability in variant arguments, receiver types, and specialization symbols. Generic iterators can return `Option<*var T>` alongside read-only pointer instantiations without losing their layout markers.
 
 - **Declaration-owned constants in generics** — imported typed and inferred constants retain their owning scope and identity through generic instantiation, regardless of import placement or caller constants with the same name. Random's normal distribution uses `Math::Tau` directly.
