@@ -398,6 +398,7 @@ private:
     std::unordered_set<const Expr *> &borrowedScalarReads;
     std::unordered_map<const TypeExpr *, const Decl *> &intrinsicTypeBindings;
     std::unordered_map<const Expr *, const ConstDecl *> &associatedConstants;
+    std::unordered_map<const Expr *, const ConstDecl *> &constantReferences;
     std::unordered_map<const ConstDecl *, EvaluatedAssociatedConstant> &evaluatedAssociatedConstants;
     std::unordered_set<const ConstDecl *> checkingAssociatedConstants;
     [[nodiscard]] const ConstDecl *LookupAssociatedConstant(const Symbol &type, const std::string &name) const;
@@ -482,6 +483,8 @@ private:
     const std::unordered_map<const Decl *, SemanticProgramIndex::DeclarationInfo> &declarationInfos;
     std::unordered_set<const TypeExpr *> reportedPrivateApiTypes;
     std::unordered_set<const Decl *> reportedPrivateApiDeclarations;
+    std::unordered_map<const ConstDecl *, TypeRef> checkedConstantTypes;
+    std::unordered_set<const ConstDecl *> checkingConstants;
     Scope *currentScope;
     MoveStateTracker moveStates;
     std::vector<MoveStateTracker> savedMoveStates;
@@ -917,6 +920,7 @@ private:
     bool IsConstArrayElement(const Expr &e) const;
 
     void CheckConstDecl(const ConstDecl &d);
+    [[nodiscard]] TypeRef CheckNamedConstant(const ConstDecl &declaration);
 
     static std::string JoinPathSegments(const std::vector<std::string> &path, std::size_t first,
                                         std::size_t lastExclusive);

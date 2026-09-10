@@ -5,7 +5,7 @@
 // can be catastrophically wrong in floating point at the edge of its input range, because the generator will
 // eventually produce the edge.
 
-import Math::{ Cos, Log, Sin, Sqrt };
+import Math::{ Cos, Log, Sin, Sqrt, Tau };
 
 /// A coin that comes up `true` with probability `probability`.
 ///
@@ -55,11 +55,6 @@ pub func ExponentialWithRate<G: RandomGenerator>(generator: &var G, rate: float6
     return Exponential<G>(generator) / rate;
 }
 
-// A full turn in radians. Written here with an explicit type rather than taken from `Math::Tau`: an untyped
-// constant imported from another package fails to resolve when a generic function referring to it is
-// instantiated from a third package, which is recorded in the backlog as a compiler defect.
-const FullTurn: float64 = 6.283185307179586;
-
 /// A pair of independent standard normal values.
 ///
 /// The Box-Muller transform, which produces two at a time from two uniform draws — so this returns both rather
@@ -77,7 +72,7 @@ const FullTurn: float64 = 6.283185307179586;
 /// @see https://rux-lang.dev/docs/api/random/normal-pair
 pub func NormalPair<G: RandomGenerator>(generator: &var G, first: *var float64, second: *var float64) {
     let radius = Sqrt(-2.0 * Log(1.0 - NextFloat64<G>(generator)));
-    let angle = FullTurn * NextFloat64<G>(generator);
+    let angle = Tau * NextFloat64<G>(generator);
     *first = radius * Cos(angle);
     *second = radius * Sin(angle);
 }

@@ -1,0 +1,7 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Provider"
+Version = "0.1.0"
+Type = "SourceLibrary"

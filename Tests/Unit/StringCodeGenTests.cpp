@@ -128,11 +128,11 @@ TEST_CASE("a string constant publishes a transcoded body and a length in code un
                                            Mixed);
 
     for (const RcuFile &object : {EmitX86_64(source), EmitAArch64(source)}) {
-        CHECK_EQ(RodataOf(object, "TEXT$elements"), Utf16Bytes);
+        CHECK_EQ(RodataOf(object, "test::TEXT$elements"), Utf16Bytes);
 
         // The header is a null data pointer the linker fills in, and a length that is already there. Five UTF-16
         // code units, not the ten bytes the same text takes in UTF-8.
-        const auto header = RodataOf(object, "TEXT");
+        const auto header = RodataOf(object, "test::TEXT");
         REQUIRE_EQ(header.size(), 16);
         for (std::size_t index = 0; index < 8; ++index) {
             CHECK_EQ(header[index], 0);

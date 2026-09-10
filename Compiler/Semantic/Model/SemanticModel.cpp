@@ -20,6 +20,11 @@ const ConstDecl *SemanticModel::TryGetAssociatedConstant(const Expr &expression)
     return found == facts.associatedConstants.end() ? nullptr : found->second;
 }
 
+const ConstDecl *SemanticModel::TryGetConstantReference(const Expr &expression) const noexcept {
+    const auto found = facts.constantReferences.find(&expression);
+    return found == facts.constantReferences.end() ? nullptr : found->second;
+}
+
 const EvaluatedAssociatedConstant *SemanticModel::TryGetConstantValue(const ConstDecl &declaration) const noexcept {
     const auto found = facts.evaluatedAssociatedConstants.find(&declaration);
     return found == facts.evaluatedAssociatedConstants.end() ? nullptr : &found->second;

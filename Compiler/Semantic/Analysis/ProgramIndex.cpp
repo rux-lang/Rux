@@ -228,8 +228,8 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
     const bool isGlobal = &scope == &globalScope;
     const std::string ownerPackage = packageName ? *packageName : std::string{};
     const bool isEffectivelyPublic = containingModulesPublic && declaration.isPublic;
-    declarationInfos.insert_or_assign(&declaration,
-                                      DeclarationInfo{ownerPackage, modulePath, sourceName, isEffectivelyPublic});
+    declarationInfos.insert_or_assign(
+        &declaration, DeclarationInfo{ownerPackage, modulePath, sourceName, isEffectivelyPublic, &scope});
     auto defineSimple = [&](Symbol::Kind kind, const std::string &name, SemanticSymbol::Kind publicKind,
                             std::string resolvedType = {}, bool isMut = false) {
         Symbol symbol;
@@ -321,6 +321,7 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
         symbol.ownerPackage = ownerPackage;
         symbol.modulePath = modulePath;
         symbol.intrinsicName = constant->intrinsicName;
+        symbol.declaration = constant;
         if (constant->type) {
             // Index representation before imports; CheckConstDecl validates the annotation in its owning file.
             const auto provisional = ProvisionalRepresentation(**constant->type);

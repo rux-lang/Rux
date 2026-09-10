@@ -136,6 +136,16 @@ void AnalysisContext::RecordMethodIdentityRecipe(ResolvedCallableBinding &bindin
 }
 
 void AnalysisContext::BuildFinalSymbolIdentities() {
+    for (const auto &[declaration, type] : checkedConstantTypes) {
+        const auto &owner = declarationInfos.at(declaration);
+        // Qualify even unique constants so an inlined initializer cannot collide with a caller's local binding.
+        std::string identity = owner.ownerPackage + "::";
+        if (!owner.modulePath.empty()) {
+            identity += owner.modulePath + "::";
+        }
+        identity += declaration->name;
+        symbolIdentities.emplace(declaration, ResolvedSymbolIdentity{std::move(identity)});
+    }
     std::unordered_map<std::string, std::unordered_set<std::string>> owners;
     for (const auto &[name, declarations] : functionsByName) {
         (void)name;

@@ -1,0 +1,10 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "Generic"
+Version = "0.1.0"
+Type = "SourceLibrary"
+
+[Dependencies]
+Provider = { Path = "../Provider" }

@@ -456,6 +456,40 @@ bool AnalysisContext::IsConstArrayElement(const Expr &e) const {
     return false;
 }
 
+TypeRef AnalysisContext::CheckNamedConstant(const ConstDecl &declaration) {
+    if (const auto checked = checkedConstantTypes.find(&declaration); checked != checkedConstantTypes.end()) {
+        return checked->second;
+    }
+    if (!checkingConstants.insert(&declaration).second) {
+        EmitError(declaration.location, std::format("constant '{}' has a cyclic initializer", declaration.name));
+        return TypeRef::MakeUnknown();
+    }
+
+    // Imports copy the indexed symbol before inference. Read its declaration, not that provisional copy, and
+    // resolve the initializer in its owning scope even when a caller reaches it before its declaration is checked.
+    Scope *savedScope = currentScope;
+    const std::string savedFile = currentFile;
+    const std::string savedPackage = currentPackage;
+    const auto savedTypeParams = currentTypeParams;
+    const FuncDecl *savedFunction = currentFunctionDecl;
+    const auto &owner = declarationInfos.at(&declaration);
+    currentFile = owner.sourceName;
+    currentPackage = owner.ownerPackage;
+    currentScope = owner.scope;
+    currentTypeParams.clear();
+    currentFunctionDecl = nullptr;
+    CheckConstDecl(declaration);
+    const TypeRef type = currentScope->LookupLocal(declaration.name)->type;
+    checkedConstantTypes.emplace(&declaration, type);
+    checkingConstants.erase(&declaration);
+    currentFunctionDecl = savedFunction;
+    currentTypeParams = savedTypeParams;
+    currentPackage = savedPackage;
+    currentFile = savedFile;
+    currentScope = savedScope;
+    return type;
+}
+
 void AnalysisContext::CheckConstDecl(const ConstDecl &d) {
     if (!d.intrinsicName.empty()) {
         if (!d.type) {

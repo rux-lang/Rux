@@ -69,6 +69,7 @@ public:
         std::string modulePath;
         std::string sourceName;
         bool isEffectivelyPublic = false;
+        Scope *scope = nullptr;
     };
 
     using PackageScopes = std::unordered_map<std::string, std::unordered_map<std::string, Scope *>>;

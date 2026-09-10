@@ -277,6 +277,7 @@ struct EvaluatedAssociatedConstant {
 struct SemanticFacts {
     std::unordered_map<const TypeExpr *, const Decl *> intrinsicTypeBindings;
     std::unordered_map<const Expr *, const ConstDecl *> associatedConstants;
+    std::unordered_map<const Expr *, const ConstDecl *> constantReferences;
     std::unordered_map<const ConstDecl *, EvaluatedAssociatedConstant> evaluatedAssociatedConstants;
     std::unordered_map<const Expr *, TypeRef> expressionTypes;
     /// Accepted implicit loads of Copy primitive scalars. The expression's type still describes its reference.
@@ -318,6 +319,7 @@ struct SemanticFacts {
 struct SemanticModel {
     [[nodiscard]] const Decl *TryGetIntrinsicTypeBinding(const TypeExpr &type) const noexcept;
     [[nodiscard]] const ConstDecl *TryGetAssociatedConstant(const Expr &expression) const noexcept;
+    [[nodiscard]] const ConstDecl *TryGetConstantReference(const Expr &expression) const noexcept;
     [[nodiscard]] const EvaluatedAssociatedConstant *TryGetConstantValue(const ConstDecl &declaration) const noexcept;
     std::vector<SemanticDiagnostic> diagnostics;
     std::vector<SemanticSymbol> symbols;

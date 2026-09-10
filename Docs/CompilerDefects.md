@@ -8,10 +8,6 @@ Return to the [main README](../README.md) for the complete documentation index.
 
 ## Open
 
-### An untyped `const` imported from another package fails inside a generic that a third package instantiates
-
-*Loud, but only from a distance.* `Math::Tau` used in a generic function of `Rux/Random` reports "cannot determine the type of this expression" at the constant — but only when a test package instantiates that generic, so `rux check` passes and `rux test` fails. Narrowed by probe: a local untyped const works, an imported one works, a nested generic call works, and the generic living in a dependency package rather than the root is what breaks it, so the instantiation appears not to carry the imported-constant scope. Worked around in `Rux/Random` by declaring a typed constant inside the package. Annotating the `let` does not help, since the constant itself is what fails to resolve.
-
 ### A generic iterator reporting `Option<*var T>` does not survive lowering
 
 *Loud.* The instantiation is named one way where its layout is recorded and another where it is looked up, the two disagreeing over whether the pointee's `var` belongs in the name, and lowering fails with "variant type `Option<*int32>` reached lowering without a layout marker". It rules out the obvious writable iterator, so `Rux/Collections` has none.
@@ -29,3 +25,15 @@ The non-generic form works since `19beafa`, which fixed the two layers above thi
 ### System V x86-64 loses the tail of a 9–15-byte aggregate
 
 *Silent.* A by-value named struct whose runtime size is 9–15 bytes travels as a single register on System V x86-64. Caller and callee agree on that classification, but the tail beyond the first eight bytes is lost. Field padding makes these sizes uncommon; it does not make dropping their data correct. Argument placement, callee spills, affected returns, and textual assembly must preserve the complete value, including when argument registers are exhausted.
+
+### A user-defined operator with a reference operand can crash
+
+*Reported silent failure; reproduction pending.* A struct operator such as `func ==(self: &Money, other: &Money) -> bool` type-checks but crashes when called; the corresponding by-value operand works. The report also covers `<`. Verify both direct and already borrowed operands, with an ordinary named method as a control, before changing operator dispatch.
+
+### A root nominal type can collide with a dependency's same-named type
+
+*Reported failure; reproduction pending.* Declaring `ParseError` in the root package breaks a dependency's own `ParseError`, including Format's transitive parsing type. Renaming the root declaration avoids the failure. Package import and function identity repairs do not establish declaration ownership for nominal type lookup, extensions, generic substitutions, or layouts.
+
+### An inline text ternary passed as a call argument can lose its slice
+
+*Reported silent failure; reproduction pending.* Passing a conditional text expression directly to a call can produce an empty slice, and repeated inline arguments or calls can crash. Binding the selected text to a local works. The report includes variadic `Io::PrintLine`; direct, interface, nested, empty, and non-text slice cases still need verification.

@@ -268,6 +268,52 @@ TEST_CASE("same-named packages preserve generic declarations and the executable 
     }
 }
 
+TEST_CASE("imported constants keep declaration types across generic callers and import orders") {
+    GraphFixture fixture;
+    const auto source = std::filesystem::path(RUX_TESTS_DIR) / "Fixtures" / "ImportedConstants";
+    CompileOptions options;
+    for (const std::string directory : {"App", "Generic", "Provider"}) {
+        const auto loaded = Manifest::Load(source / directory / (directory == "App" ? "Fixture.toml" : "Rux.toml"));
+        REQUIRE(loaded.Ok());
+        auto manifest = *loaded.manifest;
+        manifest.build.output = "Bin";
+        fixture.Save(directory, manifest);
+        WriteTextFile(fixture.root / directory / "Src" / "Main.rux",
+                      ReadTextFile(source / directory / "Src" / "Main.rux"));
+        if (directory == "App")
+            options.manifest = std::move(manifest);
+    }
+    options.manifestPath = fixture.root / "App" / "Rux.toml";
+    const auto genericPath = fixture.root / "Generic" / "Src" / "Main.rux";
+    const auto original = ReadTextFile(genericPath);
+    for (const bool importFirst : {false, true}) {
+        const auto importOffset = original.find("import Provider");
+        WriteTextFile(genericPath,
+                      importFirst ? original.substr(importOffset) + original.substr(0, importOffset) : original);
+        for (const bool reverse : {false, true}) {
+            auto app = ReadTextFile(source / "App" / "Src" / "Main.rux");
+            if (reverse) {
+                const auto main = app.find("func Main() -> int {");
+                app.insert(main + std::string_view("func Main() -> int {").size(),
+                           "\n    if (Nested<int64>() != 25.75 || Read<int32>() != 18.75) { return 6; }\n");
+            }
+            WriteTextFile(fixture.root / "App" / "Src" / "Main.rux", app);
+            for (const auto profile : {BuildProfile::Debug, BuildProfile::Release}) {
+                options.profile = profile;
+                const auto compiled = CompilerDriver(options).Compile();
+                for (const auto &diagnostic : compiled.diagnostics)
+                    INFO(diagnostic.message);
+                REQUIRE(compiled.ok);
+                CHECK(compiled.stats.dependencyFiles == 2);
+                const auto executed =
+                    System::RunCaptured(compiled.primaryArtifactPath, std::vector<std::string_view>{});
+                REQUIRE(executed);
+                CHECK(executed->exitCode == 0);
+            }
+        }
+    }
+}
+
 TEST_CASE("a dependency or nested module Main cannot supply a missing executable entry") {
     GraphFixture fixture;
     auto options = fixture.StageOptions();

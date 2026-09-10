@@ -200,11 +200,11 @@ TEST_CASE("AArch64 RCU emitter writes a constant array into read-only data") {
     const auto &object = objects.front();
 
     const std::vector<std::uint8_t> expected = {1, 0, 0, 0, 2, 0, 0, 0, 3, 0, 0, 0, 0xFF, 0xFF, 0xFF, 0xFF};
-    CHECK_EQ(RodataOf(object, "WORDS"), expected);
+    CHECK_EQ(RodataOf(object, "test::WORDS"), expected);
 
     // Reaching it is the same ADRP/ADD pair a string takes, against the
     // constant's own symbol rather than an interned one.
-    const auto address = RelocsFor(object, RCU_TEXT_IDX, "WORDS");
+    const auto address = RelocsFor(object, RCU_TEXT_IDX, "test::WORDS");
     REQUIRE_EQ(address.size(), 2);
     CHECK_EQ(address[0].type, RcuRelType::AArch64AdrPrelPgHi21);
     CHECK_EQ(address[1].type, RcuRelType::AArch64AddAbsLo12Nc);
@@ -225,22 +225,22 @@ const TEXT: char8[..] = "abc";
     const auto objects = AArch64RcuEmitter(package, "test").Generate();
     const auto &object = objects.front();
 
-    CHECK_EQ(RodataOf(object, "TEXT$elements"), std::vector<std::uint8_t>{'a', 'b', 'c', 0});
+    CHECK_EQ(RodataOf(object, "test::TEXT$elements"), std::vector<std::uint8_t>{'a', 'b', 'c', 0});
 
     // The header is a null data pointer the linker fills in and a length that
     // is already there, so a program reading the length never depends on the
     // relocation having been applied.
-    const auto header = RodataOf(object, "TEXT");
+    const auto header = RodataOf(object, "test::TEXT");
     REQUIRE_EQ(header.size(), 16);
     for (std::size_t i = 0; i < 8; ++i) {
         CHECK_EQ(header[i], 0);
     }
     CHECK_EQ(header[8], 3);
 
-    const auto elements = RelocsFor(object, RCU_RODATA_IDX, "TEXT$elements");
+    const auto elements = RelocsFor(object, RCU_RODATA_IDX, "test::TEXT$elements");
     REQUIRE_EQ(elements.size(), 1);
     CHECK_EQ(elements[0].type, RcuRelType::Abs64);
-    CHECK_EQ(elements[0].sectionOffset, FindSymbol(object, "TEXT")->value);
+    CHECK_EQ(elements[0].sectionOffset, FindSymbol(object, "test::TEXT")->value);
 }
 
 TEST_CASE("AArch64 RCU emitter gives a scalar constant a symbol in the data section") {
@@ -255,7 +255,7 @@ TEST_CASE("AArch64 RCU emitter gives a scalar constant a symbol in the data sect
     const auto objects = AArch64RcuEmitter(package, "test").Generate();
     const auto &object = objects.front();
 
-    const RcuSymbol *limit = FindSymbol(object, "LIMIT");
+    const RcuSymbol *limit = FindSymbol(object, "test::LIMIT");
     REQUIRE(limit != nullptr);
     CHECK_EQ(limit->sectionIdx, RCU_DATA_IDX);
     CHECK_EQ(limit->size, 8);

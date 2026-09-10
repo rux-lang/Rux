@@ -1,0 +1,8 @@
+pub const Untyped = Base + 0.25;
+const Base = 6.0;
+pub const Typed: float64 = 1.5;
+pub const Units = 7;
+
+pub module Numbers {
+    pub const Offset = 3;
+}

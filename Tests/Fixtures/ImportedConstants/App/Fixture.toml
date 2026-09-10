@@ -1,0 +1,13 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "ConstantScope"
+Version = "0.1.0"
+Type = "Executable"
+
+[Dependencies]
+Generic = { Path = "../Generic" }
+
+[Build]
+Output = "../../../../Bin/Tests/Fixtures/ImportedConstants"

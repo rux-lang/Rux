@@ -1,0 +1,16 @@
+import Generic::{ Read, Nested };
+
+const Untyped = 100.0;
+const Typed: float64 = 200.0;
+const Units = 300;
+
+func Main() -> int {
+    let Offset = 900;
+    if Read<int32>() != 18.75 { return 1; }
+    if Nested<int64>() != 25.75 { return 2; }
+    if Nested<int32>() != 21.75 { return 3; }
+    if Read<int64>() != 22.75 { return 4; }
+    if Untyped != 100.0 || Typed != 200.0 || Units != 300 { return 5; }
+    if Offset != 900 { return 7; }
+    return 0;
+}

@@ -151,6 +151,14 @@ const std::string &AstToHirContext::FunctionReferenceName(const IdentExpr &ident
 }
 
 HirExprPtr AstToHirContext::LowerBasicExpr(const Expr &expression) {
+    if (const ConstDecl *constant = model.TryGetConstantReference(expression);
+        constant && constant->intrinsicName.empty()) {
+        auto lowered = std::make_unique<HirVarExpr>();
+        lowered->location = expression.location;
+        lowered->type = ResolvedExpressionType(expression);
+        lowered->name = model.TryGetSymbolIdentity(*constant)->linkerName;
+        return lowered;
+    }
     if (const auto *move = dynamic_cast<const MoveExpr *>(&expression)) {
         return LowerExpr(*move->operand);
     }

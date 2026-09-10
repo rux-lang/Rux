@@ -29,6 +29,9 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
     if (auto *e = dynamic_cast<const IdentExpr *>(&expr)) {
         Symbol *sym = currentScope->Lookup(e->name);
         if (sym) {
+            if (sym->kind == Symbol::Kind::Const && sym->declaration) {
+                constantReferences[e] = static_cast<const ConstDecl *>(sym->declaration);
+            }
             return ReadTrackedSymbol(*sym, e->location);
         }
         EmitUndefinedName(e->location, e->name);
@@ -133,7 +136,10 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
             }
             current = item;
         }
-        return current->type;
+        if (current->kind == Symbol::Kind::Const && current->declaration) {
+            constantReferences[e] = static_cast<const ConstDecl *>(current->declaration);
+        }
+        return ReadTrackedSymbol(*current, e->location);
     }
 
     if (auto *e = dynamic_cast<const TypeQueryExpr *>(&expr)) {

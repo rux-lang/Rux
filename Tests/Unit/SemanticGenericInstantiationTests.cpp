@@ -30,6 +30,29 @@ std::vector<SemanticDiagnostic> AnalyzeSource(const std::string &source) {
 }
 } // namespace
 
+TEST_CASE("named constants infer once in declaration scope before and after generic uses") {
+    const auto diagnostics = AnalyzeSource(R"(
+        func Read<T>() -> float64 { return Later; }
+        const Later = First + 1.5;
+        const First = 6.25;
+        func Main() -> int {
+            let First = false;
+            return Read<int32>() == 7.75 && Read<int64>() == 7.75 ? 0 : 1;
+        }
+    )");
+    CHECK(diagnostics.empty());
+}
+
+TEST_CASE("named constant cycles report a diagnostic without recursively checking forever") {
+    const auto diagnostics = AnalyzeSource(R"(
+        const First = Second;
+        const Second = First;
+        func Main() -> int { return First; }
+    )");
+    REQUIRE_FALSE(diagnostics.empty());
+    CHECK(diagnostics.front().message.contains("cyclic initializer"));
+}
+
 TEST_CASE("a field reached through a pointer to a generic instantiation substitutes its arguments") {
     // The arguments are spelled in the name of the type that carries them, and a pointer has no name of its own.
     // Reading them off the pointer found none, so the fields were still spelled in the type parameters -- which

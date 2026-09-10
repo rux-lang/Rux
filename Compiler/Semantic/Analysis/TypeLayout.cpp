@@ -404,7 +404,7 @@ void AnalysisContext::CheckDecl(const Decl &decl) {
         CheckModuleDecl(*modDecl);
     }
     else if (auto *constDecl = dynamic_cast<const ConstDecl *>(&decl)) {
-        CheckConstDecl(*constDecl);
+        (void)CheckNamedConstant(*constDecl);
     }
     else if (auto *aliasDecl = dynamic_cast<const TypeAliasDecl *>(&decl)) {
         if (!aliasDecl->intrinsicName.empty()) {

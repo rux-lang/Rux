@@ -336,6 +336,9 @@ TypeRef AnalysisContext::CheckMatchExpression(const MatchExpr &expression) {
 }
 
 TypeRef AnalysisContext::ReadTrackedSymbol(const Symbol &symbol, const SourceLocation location) {
+    if (symbol.kind == Symbol::Kind::Const && symbol.declaration) {
+        return CheckNamedConstant(*static_cast<const ConstDecl *>(symbol.declaration));
+    }
     if (symbol.kind == Symbol::Kind::Var && !checkingPlainAssignmentTarget) {
         CheckTrackedRead(symbol, location);
         ExpireBorrowAtLastUse(symbol, location);

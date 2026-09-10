@@ -419,6 +419,8 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 
 ### Fixed
 
+- **Declaration-owned constants in generics** — imported typed and inferred constants retain their owning scope and identity through generic instantiation, regardless of import placement or caller constants with the same name. Random's normal distribution uses `Math::Tau` directly.
+
 - **Borrowed primitive formatting** — all primitive Display and Debug implementations use borrowed receivers and scalar value reads. Direct, constrained, and interface calls preserve numeric boundaries, character validation, and format specifications without a raw-pointer receiver workaround.
 
 - **Primitive values through references** — Copy numeric, boolean, and character values can be read through immutable or mutable references in value contexts. Semantic facts distinguish the scalar load from reference passing, and generic instantiations reject aggregate or pointer referents.

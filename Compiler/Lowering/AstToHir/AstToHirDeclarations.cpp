@@ -511,6 +511,9 @@ HirImplBlock AstToHirContext::LowerImpl(const ImplDecl &d) {
 HirConst AstToHirContext::LowerConst(const ConstDecl &d) {
     HirConst hc;
     hc.name = d.name;
+    if (const auto *identity = model.TryGetSymbolIdentity(d)) {
+        hc.name = identity->linkerName;
+    }
     hc.isPublic = model.IsEffectivelyPublic(d);
     const std::optional<TypeRef> explicitType =
         d.type ? std::optional<TypeRef>(ResolveType(*d.type->get())) : std::nullopt;
