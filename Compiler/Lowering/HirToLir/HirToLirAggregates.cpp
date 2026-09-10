@@ -662,6 +662,13 @@ LirReg HirToLirContext::LowerMove(const HirMoveExpr &expression) {
 }
 
 LirReg HirToLirContext::LowerTernary(const HirTernaryExpr &e) {
+    // Slice arms can produce either a descriptor address (literals/ranges) or its value (locals/calls). Build the
+    // selected descriptor in one slot before loading a value, so a phi never merges addresses as sixteen-byte data.
+    if (IsViewType(e.type)) {
+        const LirReg slot = EmitAlloca(e.type);
+        StoreTernaryInit(e, slot, e.type);
+        return EmitLoad(slot, e.type);
+    }
     LirReg cond = LowerExpr(*e.condition);
     const std::uint32_t thenBlock = NewBlock("ternary.then");
     const std::uint32_t elseBlock = NewBlock("ternary.else");
@@ -753,9 +760,10 @@ void HirToLirContext::StoreCoerceToInterface(const HirCoerceToInterfaceExpr &e, 
         concreteSlot = e.value->type.kind == TypeRef::Kind::Reference ? LowerExpr(*e.value) : LowerLValue(*e.value);
     }
     else {
-        LirReg val = LowerExpr(*e.value);
         concreteSlot = EmitAlloca(e.value->type);
-        EmitStore(val, concreteSlot, e.value->type);
+        // Use the same materialization as a local binding: aggregate expressions may produce storage addresses,
+        // and the interface must own a complete concrete value for the duration of the call.
+        StoreExprIntoSlot(*e.value, concreteSlot, e.value->type);
     }
 
     const TypeRef ptrType = TypeRef::MakePointer(TypeRef::MakeOpaque());

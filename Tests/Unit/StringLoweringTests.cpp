@@ -12,6 +12,7 @@
 #include <doctest.h>
 #include <stdexcept>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -215,6 +216,47 @@ TEST_CASE("equivalent character spellings diagnose duplicate match patterns") {
         REQUIRE(model.HasErrors());
         CHECK(std::any_of(model.diagnostics.begin(), model.diagnostics.end(), [](const Diagnostic &diagnostic) {
             return diagnostic.message.find("duplicate pattern in match") != std::string::npos;
+        }));
+    }
+}
+
+TEST_CASE("slice conditionals never merge descriptor addresses as slice values") {
+    const LirPackage package = CompileToLir(R"(
+        interface Sized { func Size() -> uint; }
+        extend char8[..] : Sized { func Size(self: &char8[..]) -> uint { return self.length; } }
+        func Consume(value: Sized) -> uint { return value.Size(); }
+        func Selected(flag: bool) -> char8[..] { return flag ? "abc" : ""; }
+        func Converted(flag: bool) -> uint { return Consume(flag ? "abc" : "q"); }
+        func Mixed(flag: bool, other: char8[..]) -> char8[..] { return flag ? "abc" : other; }
+    )");
+    for (const std::string name : {"Selected", "Converted", "Mixed"}) {
+        CAPTURE(name);
+        const LirFunc &function = RequireFunction(package, name);
+        std::unordered_map<LirReg, TypeRef> types;
+        for (const auto &block : function.blocks) {
+            for (const auto &instruction : block.instrs) {
+                if (instruction.dst != LirNoReg) {
+                    types[instruction.dst] =
+                        instruction.op == LirOpcode::Alloca ? TypeRef::MakePointer(instruction.type) : instruction.type;
+                }
+            }
+        }
+        for (const auto &block : function.blocks) {
+            for (const auto &instruction : block.instrs) {
+                if (instruction.op == LirOpcode::Phi && instruction.type.IsSlice()) {
+                    for (const auto &[value, predecessor] : instruction.phiPreds) {
+                        (void)predecessor;
+                        CHECK_EQ(types.at(value), instruction.type);
+                    }
+                }
+                if (instruction.op == LirOpcode::Store && instruction.type.IsSlice()) {
+                    REQUIRE_FALSE(instruction.srcs.empty());
+                    CHECK_EQ(types.at(instruction.srcs.front()), instruction.type);
+                }
+            }
+        }
+        CHECK(std::ranges::any_of(function.blocks, [](const LirBlock &block) {
+            return block.term && block.term->kind == LirTermKind::Branch;
         }));
     }
 }

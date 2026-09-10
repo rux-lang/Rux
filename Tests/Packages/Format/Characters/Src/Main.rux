@@ -17,9 +17,7 @@ import Text::{ BufferWriter, Debug, FormatError, FormatSpec, String, StringView,
 // has to stay readable on both sides of the damage, which is what advancing a single unit after a replacement
 // buys.
 //
-// `Display` is reached through `Render`, whose variadic argument coerces; `Debug` has no variadic entry point, so
-// each value is bound to the interface first. The binding is required rather than stylistic: a concrete value does
-// not coerce to a non-variadic interface parameter.
+// `Display` is reached through `Render`'s variadic arguments; explicit `Debug` bindings exercise interface dispatch.
 
 // A value that is not a scalar, made at run time.
 //

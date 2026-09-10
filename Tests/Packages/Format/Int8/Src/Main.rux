@@ -3,18 +3,14 @@
 import Text::{ Display, FormatSpec, TextWriter };
 import Format::{ ByteCursor };
 
-// Std is deliberately absent from the dependencies: it exports conversions of the same name, and the compiler pools
-// the overloads of two same-named symbols, so Std's would win over this package's and the code under test would
-// never run. That rules out Std::Assert, so a failed check reports itself through the exit code instead: each one
-// below is numbered, and `rux test` prints the number of the first that fails.
+// A failed check returns its numbered exit code for `rux test`.
 //
 // Rendering goes into a buffer on the stack rather than into a string, which is what the writer-based contract
 // buys: this test needs no allocator at all.
 func Check(value: int8, expected: char8[..], code: int) -> int {
     var storage: char8[64];
     var cursor = ByteCursor((@storage[0])[..64]);
-    let sink: &var TextWriter = cursor;
-    let writer: &var TextWriter = sink;
+    let writer: &var TextWriter = cursor;
     let shown: Display = value;
     if shown.WriteDisplay(writer, FormatSpec::Plain()).IsError() {
         return code;

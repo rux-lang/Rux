@@ -5,13 +5,11 @@ import Format::{ ByteCursor, ParseError, ParseInt64 };
 import Core::Result;
 
 
-// Std stays out of the dependencies, and a failed check reports itself through
-// the exit code. See the Int8 test for why.
+// A failed check returns its numbered exit code for `rux test`.
 func Check(value: int64, expected: char8[..], code: int) -> int {
     var storage: char8[64];
     var cursor = ByteCursor((@storage[0])[..64]);
-    let sink: &var TextWriter = cursor;
-    let writer: &var TextWriter = sink;
+    let writer: &var TextWriter = cursor;
     let shown: Display = value;
     if shown.WriteDisplay(writer, FormatSpec::Plain()).IsError() {
         return code;

@@ -2,8 +2,7 @@
 import Text::{ Display, FormatSpec, TextWriter };
 import Format::{ ByteCursor };
 
-// Std stays out of the dependencies, and a failed check reports itself through the exit code. See the Int8 test for
-// why.
+// A failed check returns its numbered exit code for `rux test`.
 //
 // The characters are checked byte by byte rather than against a literal, so that what is under test is the UTF-8
 // the package encodes and not the encoding this file happens to be saved in.
@@ -13,8 +12,7 @@ import Format::{ ByteCursor };
 func Check(value: char32, length: uint, bytes: uint64, code: int) -> int {
     var storage: char8[8];
     var cursor = ByteCursor((@storage[0])[..8]);
-    let sink: &var TextWriter = cursor;
-    let writer: &var TextWriter = sink;
+    let writer: &var TextWriter = cursor;
     let shown: Display = value;
     if shown.WriteDisplay(writer, FormatSpec::Plain()).IsError() {
         return code;

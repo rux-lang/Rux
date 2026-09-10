@@ -1,0 +1,97 @@
+interface SliceValue { func Hash() -> int; }
+interface TextConsumer { func Read(text: char8[..]) -> int; }
+struct Consumer {}
+func TextHash(text: char8[..]) -> int {
+    var result = text.length as int;
+    for unit in text { result += unit as int; }
+    return result;
+}
+extend char8[..] : SliceValue {
+    func Hash(self: &char8[..]) -> int { return TextHash(self.data[..self.length]); }
+}
+extend int[..] : SliceValue {
+    func Hash(self: &int[..]) -> int {
+        var result = self.length as int;
+        for value in self { result += value; }
+        return result;
+    }
+}
+extend Consumer : TextConsumer {
+    func Read(self: &Consumer, text: char8[..]) -> int { return TextHash(text); }
+}
+func ThroughInterface(value: SliceValue) -> int { return value.Hash(); }
+func ThroughBorrow(value: &SliceValue) -> int { return value.Hash(); }
+func ThroughVariadic(values: SliceValue...) -> int {
+    var result = 0;
+    for value in values { result += value.Hash(); }
+    return result;
+}
+func Pair(left: char8[..], right: char8[..]) -> int { return TextHash(left) * 1000 + TextHash(right); }
+func Select(flag: bool) -> char8[..] { return flag ? "alpha" : "B"; }
+func Echo<T>(value: T) -> T { return value; }
+func Condition(calls: *var int, result: bool) -> bool { *calls += 1; return result; }
+func Selected(visits: *var int, digit: int, value: char8[..]) -> char8[..] {
+    *visits = *visits * 10 + digit;
+    return value;
+}
+func Same(left: char8[..], right: char8[..]) -> bool {
+    if left.length != right.length { return false; }
+    var index = 0u;
+    while index < left.length {
+        if left[index] != right[index] { return false; }
+        index += 1u;
+    }
+    return true;
+}
+func Check(flag: bool) -> int {
+    let bound = flag ? "alpha" : "B";
+    let expected = TextHash(bound);
+    if TextHash(flag ? "alpha" : "B") != expected { return 1; }
+    if ThroughInterface(flag ? "alpha" : "B") != expected { return 2; }
+    if ThroughBorrow(bound) != expected { return 3; }
+    if ThroughInterface("alpha") != TextHash("alpha") { return 4; }
+    if ThroughInterface(flag ? "" : "B") != TextHash(flag ? "" : "B") { return 5; }
+    if ThroughInterface(flag ? "alpha" : "") != TextHash(flag ? "alpha" : "") { return 6; }
+    if !Same(Select(flag), bound) || !Same(Echo(flag ? "alpha" : "B"), bound) { return 7; }
+    if ThroughInterface(Select(flag)) != expected { return 8; }
+    if ThroughVariadic(flag ? "alpha" : "B", flag ? "alpha" : "B", "", bound) != expected * 3 { return 9; }
+    let reverse = flag ? "B" : "alpha";
+    if Pair(flag ? "alpha" : "B", flag ? "B" : "alpha") != expected * 1000 + TextHash(reverse) { return 10; }
+    let consumer: TextConsumer = Consumer {};
+    if consumer.Read(flag ? "alpha" : "B") != expected { return 11; }
+    let nested = flag ? (flag ? "alpha" : "wrong") : (flag ? "wrong" : "B");
+    if ThroughInterface(flag ? (flag ? "alpha" : "wrong") : (flag ? "wrong" : "B")) != TextHash(nested) { return 12; }
+
+    var calls = 0;
+    var visits = 0;
+    let chosen = ThroughInterface(Condition(@calls, flag) ? Selected(@visits, 1, "alpha") : Selected(@visits, 2, "B"));
+    if chosen != expected || calls != 1 || visits != (flag ? 1 : 2) { return 13; }
+    calls = 0;
+    visits = 0;
+    let repeated = ThroughVariadic(
+        Condition(@calls, flag) ? Selected(@visits, 1, "alpha") : Selected(@visits, 2, "B"),
+        Condition(@calls, !flag) ? Selected(@visits, 3, "B") : Selected(@visits, 4, "alpha"));
+    if repeated != expected * 2 || calls != 2 || visits != (flag ? 14 : 23) { return 14; }
+
+    var first: int[3] = [11, 17, 23];
+    var second: int[2] = [31, 37];
+    let firstView: int[..] = (@first[0])[..3];
+    let secondView: int[..] = (@second[0])[..2];
+    if ThroughInterface(firstView) != 54 || ThroughInterface(secondView) != 70 { return 19; }
+    if ThroughInterface(flag ? firstView : secondView) != (flag ? 54 : 70) { return 15; }
+    if ThroughInterface(flag ? firstView[1..3] : secondView[0..1]) != (flag ? 42 : 32) { return 16; }
+    let empty = firstView[0..0];
+    if ThroughVariadic(flag ? firstView : empty, flag ? empty : secondView) != (flag ? 54 : 70) { return 17; }
+    first[2] = 29;
+    if ThroughInterface(flag ? firstView : secondView) != (flag ? 60 : 70) { return 18; }
+    return 0;
+}
+func Main() -> int {
+    var iteration = 0;
+    while iteration < 64 {
+        let result = Check(iteration % 2 == 0);
+        if result != 0 { return result; }
+        iteration += 1;
+    }
+    return 0;
+}

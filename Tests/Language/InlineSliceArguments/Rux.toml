@@ -1,0 +1,11 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "InlineSliceArguments"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Selected slice descriptors through direct, interface, and variadic arguments."
+
+[Build]
+Output = "../../../Bin/Tests/Language"

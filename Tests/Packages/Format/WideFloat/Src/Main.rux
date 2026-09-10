@@ -40,8 +40,7 @@ func Render(bits: uint512, layout: &FloatLayout, spec: FormatSpec, storage: var 
     var system = SystemAllocator();
     let allocator: Allocator = system;
     var cursor = ByteCursor(storage);
-    let sink: &var TextWriter = cursor;
-    let writer: &var TextWriter = sink;
+    let writer: &var TextWriter = cursor;
     Assert(WriteWideFloat(allocator, writer, spec, bits, layout).IsSuccess(), "rendering succeeds");
     return cursor.Written();
 }
@@ -217,8 +216,7 @@ func Main() -> int {
     var system = SystemAllocator();
     let allocator: Allocator = system;
     var cursor = ByteCursor(room);
-    let sink: &var TextWriter = cursor;
-    let writer: &var TextWriter = sink;
+    let writer: &var TextWriter = cursor;
     let one = Float128::FromBits(0x3FFF0000000000000000000000000000u128);
     Assert(one.FormatWith(allocator, writer, plain).IsSuccess(), "the explicit entry point renders");
     Assert(Same(cursor.Written(), "1.0"), "to the same text it always did");

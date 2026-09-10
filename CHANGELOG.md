@@ -421,6 +421,8 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 
 ### Fixed
 
+- **Inline slice arguments** — conditional slices retain both their data pointer and length through interface conversion, variadic calls, and returns. Empty, nested, and repeated choices evaluate only their selected arms; borrowed slice consumers also execute their element loops. The final package audit removes obsolete interface-conversion, overload-collision, and signed-literal workarounds.
+
 - **Declaration-owned nominal types** — same-named types in different packages or modules retain their own fields, variant cases, layouts, extensions, constructors, destructors, and interface witnesses. Generic substitutions and aliases resolve annotations in their declaring scope, so a root `ParseError` no longer changes Format's transitive parsing type.
 
 - **Partial-word System V aggregates** — x86-64 calls and returns preserve both words of 9–15-byte values, including exhausted argument registers, indirect calls, and partial tails returned through pointers. Temporary slots reserve whole ABI words, and assembly output uses the same placement.

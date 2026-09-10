@@ -5,7 +5,7 @@ import Format::{ Render };
 import Text::{ FormatError, String, StringBuilder, StringView, TextError };
 
 // Text rendering itself: a string and a view write their bytes straight through, and Debug adds the quotes that
-// make an empty one visible. Std stays out of the dependencies and a failed check reports through the exit code.
+// make an empty one visible. A failed check reports through the exit code.
 
 func Matches(actual: StringView, expected: char8[..]) -> bool {
     let wanted = StringView::FromValidated(expected);

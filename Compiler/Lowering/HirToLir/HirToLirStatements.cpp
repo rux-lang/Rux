@@ -358,9 +358,14 @@ void HirToLirContext::LowerFor(const HirForStmt &s) {
         return;
     }
 
-    if (IsSliceType(s.iterable->type) || IsArrayType(s.iterable->type)) {
+    const bool borrowedSlice = s.iterable->type.kind == TypeRef::Kind::Reference && !s.iterable->type.inner.empty() &&
+                               IsSliceType(s.iterable->type.inner.front());
+    const TypeRef &sequenceType = borrowedSlice ? s.iterable->type.inner.front() : s.iterable->type;
+    if (IsSliceType(sequenceType) || IsArrayType(sequenceType)) {
         const TypeRef dataType = TypeRef::MakePointer(elemType);
-        LirReg iterSlot = LowerLValue(*s.iterable);
+        // A borrowed slice parameter already points to the descriptor. Reading its local slot would add another
+        // level of indirection; treating the reference as a non-sequence used to omit the loop altogether.
+        LirReg iterSlot = borrowedSlice ? LowerExpr(*s.iterable) : LowerLValue(*s.iterable);
 
         // The iterable has been lowered in the enclosing scope; now bind the
         // loop variable name to its induction slot for the loop body.
@@ -368,14 +373,14 @@ void HirToLirContext::LowerFor(const HirForStmt &s) {
 
         LirReg dataPtr = iterSlot;
         LirReg length = LirNoReg;
-        if (IsSliceType(s.iterable->type)) {
+        if (IsSliceType(sequenceType)) {
             LirReg dataFieldPtr = EmitFieldPtr(iterSlot, "data", dataType);
             dataPtr = EmitLoad(dataFieldPtr, dataType);
             LirReg lenFieldPtr = EmitFieldPtr(iterSlot, "length", TypeRef::MakeUInt64());
             length = EmitLoad(lenFieldPtr, TypeRef::MakeUInt64());
         }
         else {
-            length = EmitConst(std::to_string(s.iterable->type.arrayLength.value_or(0)), TypeRef::MakeUInt64());
+            length = EmitConst(std::to_string(sequenceType.arrayLength.value_or(0)), TypeRef::MakeUInt64());
         }
 
         LirReg idxSlot = EmitAlloca(TypeRef::MakeUInt64());

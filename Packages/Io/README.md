@@ -28,20 +28,17 @@ rux add Rux/Io
 `Display` writes into a `TextWriter` and a stream takes bytes, so something has to stand between them. `ConsoleWriter` is that adapter over standard output and `StreamWriter` is it over any `Writer` — a file, a buffered writer, a pipe — which is what lets a value describe itself anywhere other than standard output or memory:
 
 ```rux
-import Io::{ IoError, StandardOut, StreamWriter, Writer, WriteValueLine };
+import Io::{ IoError, StandardOut, StreamWriter, WriteValueLine };
 import Text::TextWriter;
 
 func Main() -> int {
     var out = StandardOut::Acquire();
-    // `StreamWriter` takes a `Writer` by value, and a concrete stream does not coerce to an interface parameter
-    // on its own, so the binding is written out.
-    let sink: Writer = out;
     let measurement: int32 = 42;
 
     // The adapter turns a stream into a text writer. It cannot return an I/O error through the text protocol, so
     // it keeps the first one it saw in `failure` — which is why that is checked afterwards rather than at the call.
     var failure = IoError::Ok();
-    var adapter = StreamWriter(sink, @failure);
+    var adapter = StreamWriter(out, @failure);
     let text: &var TextWriter = adapter;
 
     // The type argument is required: the function is generic over the value so that it can borrow it rather than

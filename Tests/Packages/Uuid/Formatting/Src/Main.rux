@@ -79,9 +79,7 @@ func Untouched(room: char8[..]) -> bool {
     return true;
 }
 
-// Whether `Display` writes exactly `expected` under `spec`. The interface binding is deliberate: passing a concrete
-// value as an interface argument of an interface method call is a live compiler defect, so the value is bound to
-// its interface type first.
+// Whether the value writes exactly `expected` through its Display interface.
 func Shown(value: Uuid, spec: FormatSpec, expected: char8[..]) -> bool {
     var storage: char8[64];
     var writer = BufferWriter((@storage[0])[..64]);
