@@ -102,7 +102,7 @@ std::vector<std::string> AstToHirContext::ImplTypeParams(const ImplDecl &decl) c
     if (!target) {
         return params;
     }
-    const std::vector<TypeParameter> *typeParams = AggregateTypeParams(target->name);
+    const std::vector<TypeParameter> *typeParams = AggregateTypeParams(BaseTypeNameImpl(ResolvedType(*target).name));
     if (!typeParams) {
         return params;
     }
@@ -533,30 +533,10 @@ std::string AstToHirContext::NamedBaseTypeName(const TypeRef &type) {
     if (named->kind == TypeRef::Kind::Named) {
         return BaseTypeNameImpl(named->name);
     }
-    switch (named->kind) {
-    case TypeRef::Kind::Bool8:
-    case TypeRef::Kind::Bool16:
-    case TypeRef::Kind::Bool32:
-    case TypeRef::Kind::Char8:
-    case TypeRef::Kind::Char16:
-    case TypeRef::Kind::Char32:
-    case TypeRef::Kind::Int8:
-    case TypeRef::Kind::Int16:
-    case TypeRef::Kind::Int32:
-    case TypeRef::Kind::Int64:
-    case TypeRef::Kind::UInt8:
-
-    case TypeRef::Kind::UInt16:
-    case TypeRef::Kind::UInt32:
-    case TypeRef::Kind::UInt64:
-    case TypeRef::Kind::Int:
-    case TypeRef::Kind::UInt:
-    case TypeRef::Kind::Float32:
-    case TypeRef::Kind::Float64:
+    if (named->IsPrimitive()) {
         return named->ToString();
-    default:
-        return {};
     }
+    return {};
 }
 
 std::unordered_map<std::string, TypeRef>
@@ -608,7 +588,8 @@ TypeRef AstToHirContext::ResolveTypeWithSubstitution(const TypeExpr &expr,
             if (auto it = substitutions.find(t->name); it != substitutions.end()) {
                 return RestoreEnumLayoutMarkers(it->second);
             }
-            if (const auto enumIt = enumDecls.find(t->name); enumIt != enumDecls.end()) {
+            if (const auto enumIt = enumDecls.find(BaseTypeNameImpl(ResolvedType(expr).name));
+                enumIt != enumDecls.end()) {
                 return EnumType(*enumIt->second);
             }
             return ResolvedType(expr);
@@ -624,11 +605,12 @@ TypeRef AstToHirContext::ResolveTypeWithSubstitution(const TypeExpr &expr,
         // carries the same layout marker as one resolved directly. Spelling the name out here instead dropped that
         // marker, and lowering then read one enum two ways: an aggregate where a variant was built, a tag and payload
         // packed into a single word where the value was matched.
-        if (const auto enumIt = enumDecls.find(t->name); enumIt != enumDecls.end()) {
+        if (const auto enumIt = enumDecls.find(BaseTypeNameImpl(ResolvedType(expr).name)); enumIt != enumDecls.end()) {
             return EnumType(*enumIt->second, resolvedArgs);
         }
 
-        TypeRef named = TypeRef::MakeNamed(TypeRef::InstantiationName(t->name, resolvedArgs));
+        TypeRef named =
+            TypeRef::MakeNamed(TypeRef::InstantiationName(BaseTypeNameImpl(ResolvedType(expr).name), resolvedArgs));
         NoteStructInstantiation(named);
         return named;
     }
@@ -1121,7 +1103,7 @@ TypeRef AstToHirContext::EnumBaseType(const EnumDecl &decl) {
 }
 
 TypeRef AstToHirContext::EnumType(const EnumDecl &decl, const std::vector<TypeRef> &typeArgs) {
-    TypeRef type = TypeRef::MakeNamed(TypeRef::InstantiationName(decl.name, typeArgs));
+    TypeRef type = TypeRef::MakeNamed(TypeRef::InstantiationName(NominalName(decl), typeArgs));
     if (decl.typeParams.empty()) {
         // Same rule as SemanticAnalyzer::EnumType, the other builder of this type: an enum that is only a
         // discriminant is the size of that discriminant, and one carrying a payload is wider than its tag, so the

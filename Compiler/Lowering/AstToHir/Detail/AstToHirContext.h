@@ -162,6 +162,7 @@ protected:
     [[nodiscard]] std::string LogicalCurrentFilePath() const;
 
 private:
+    [[nodiscard]] std::string NominalName(const Decl &declaration) const;
     void RegisterBuiltins();
     void CollectModule(const Module &module);
     [[nodiscard]] HirModule LowerModule(const Module &module);
@@ -185,7 +186,7 @@ private:
     [[nodiscard]] std::uint64_t ResolvedTypeQuery(const TypeQueryExpr &expression);
     [[nodiscard]] std::string GenericStructInitName(const StructInitExpr &expression);
     [[nodiscard]] std::pair<const EnumDecl *, const EnumDecl::Variant *>
-    LookupEnumVariantInitializer(const std::string &typeName) const;
+    LookupEnumVariantInitializer(const StructInitExpr &expression) const;
     [[nodiscard]] HirExprPtr LowerCompilerParamField(const std::string &root, const std::string &field,
                                                      SourceLocation location);
     [[nodiscard]] HirExprPtr LowerCompilerParamObject(const std::string &root, const TypeRef &type,

@@ -91,6 +91,8 @@ AnalysisContext::LayoutOfTypeRef(const TypeRef &inputType,
         }
 
         // Interface values are fat pointers: {data, vtable}.
+        if (interfaceDecls.contains(baseName))
+            return finish(ResolvedTypeLayout{16, 8});
         if (Symbol *sym = currentScope->Lookup(baseName); sym) {
             if (sym->kind == Symbol::Kind::Interface) {
                 return finish(ResolvedTypeLayout{16, 8});
@@ -247,7 +249,7 @@ TypeRef AnalysisContext::EnumBaseType(const EnumDecl &decl) {
 }
 
 TypeRef AnalysisContext::EnumType(const EnumDecl &decl, const std::vector<TypeRef> &typeArgs) {
-    TypeRef type = TypeRef::MakeNamed(TypeRef::InstantiationName(decl.name, typeArgs));
+    TypeRef type = TypeRef::MakeNamed(TypeRef::InstantiationName(programIndex.NominalName(decl), typeArgs));
     if (decl.typeParams.empty()) {
         // `inner` carries how large the value is, and nothing reads it as the tag -- the tag's own type is kept
         // beside the declaration. An enum that is only a discriminant is the size of that discriminant, so its

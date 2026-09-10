@@ -425,7 +425,13 @@ HirPatternPtr AstToHirContext::LowerPattern(const Pattern &pattern, const TypeRe
         std::unordered_map<std::string, TypeRef> substitutions;
         std::string enumName;
         std::string variantName;
-        if (enumPattern->path.size() == 1 && subjectType.kind == TypeRef::Kind::Named) {
+        if (const auto *binding = model.TryGetCasePattern(*enumPattern)) {
+            enumName = NominalName(*binding->declaration);
+            variantName = binding->selectedCase->name;
+            lowered->path = {enumName, variantName};
+            lowered->resolvedType = subjectType;
+        }
+        else if (enumPattern->path.size() == 1 && subjectType.kind == TypeRef::Kind::Named) {
             enumName = BaseTypeName(subjectType.name);
             variantName = enumPattern->path[0];
             lowered->path = {enumName, variantName};
@@ -512,10 +518,8 @@ HirPatternPtr AstToHirContext::LowerPattern(const Pattern &pattern, const TypeRe
     if (const auto *structPattern = dynamic_cast<const StructPattern *>(&pattern)) {
         auto lowered = std::make_unique<HirStructPattern>();
         lowered->location = structPattern->location;
-        lowered->typeName = structPattern->typeName;
-        if (HirSymbol *symbol = currentScope->Lookup(structPattern->typeName)) {
-            lowered->resolvedType = symbol->type;
-        }
+        lowered->typeName = NamedBaseTypeName(subjectType);
+        lowered->resolvedType = subjectType;
         for (const auto &field : structPattern->fields) {
             HirStructPatternField loweredField;
             loweredField.name = field.name;

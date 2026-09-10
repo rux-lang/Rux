@@ -21,6 +21,7 @@ AnalysisContext::ResolveTypeParameterBounds(const TypeParameter &parameter, cons
     std::vector<ResolvedTypeBound> resolved;
     std::unordered_set<std::string> seen;
     for (const TypeExprPtr &bound : parameter.bounds) {
+        const ScopedTypeOwner owner(*this, *bound);
         const NamedTypeExpr *named = BoundName(*bound);
         if (!named) {
             if (report) {
@@ -51,8 +52,9 @@ AnalysisContext::ResolveTypeParameterBounds(const TypeParameter &parameter, cons
         // with a conformance it was promised and cannot find. So a use site reads the program's interfaces directly,
         // and only the declaration itself is held to what is in scope where it was written.
         if (!report) {
-            const auto known = interfaceDecls.find(named->name);
-            resolved.push_back({named->name, known == interfaceDecls.end() ? nullptr : known->second, named->location});
+            const auto known = interfaceDecls.find(NominalTypeName(named->name));
+            resolved.push_back({NominalTypeName(named->name), known == interfaceDecls.end() ? nullptr : known->second,
+                                named->location});
             continue;
         }
 
@@ -74,9 +76,9 @@ AnalysisContext::ResolveTypeParameterBounds(const TypeParameter &parameter, cons
             resolved.push_back({named->name, nullptr, named->location});
             continue;
         }
-        const auto declaration = interfaceDecls.find(named->name);
-        resolved.push_back(
-            {named->name, declaration == interfaceDecls.end() ? nullptr : declaration->second, named->location});
+        const auto declaration = interfaceDecls.find(NominalTypeName(named->name));
+        resolved.push_back({NominalTypeName(named->name),
+                            declaration == interfaceDecls.end() ? nullptr : declaration->second, named->location});
     }
     return resolved;
 }
@@ -143,7 +145,7 @@ bool AnalysisContext::TypeSatisfiesBound(const TypeRef &argument, const Interfac
     // interface names has exactly one method to call. Naming that method here is also what makes the bound usable --
     // lowering calls it directly per instantiation, so a conformance with no callable method would satisfy nothing.
     ResolvedConstraintWitness witness;
-    witness.interfaceName = interface.name;
+    witness.interfaceName = programIndex.NominalName(interface);
     witness.typeName = typeName;
     for (const auto &required : interface.methods) {
         const FuncDecl *operation = SelectBoundOperation(typeName, *required);
@@ -154,7 +156,8 @@ bool AnalysisContext::TypeSatisfiesBound(const TypeRef &argument, const Interfac
         }
         witness.operations.push_back(operation);
     }
-    constraintWitnesses.insert_or_assign(ConstraintWitnessKey(interface.name, argument), std::move(witness));
+    constraintWitnesses.insert_or_assign(ConstraintWitnessKey(programIndex.NominalName(interface), argument),
+                                         std::move(witness));
     return true;
 }
 

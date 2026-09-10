@@ -165,9 +165,10 @@ TEST_CASE("semantic program index preserves enum and variant forms by source") {
 
     CAPTURE(diagnostics.size());
     REQUIRE(diagnostics.empty());
-    const EnumDecl *scalarStatus = index.EnumIn("scalar.rux", "Status");
-    const EnumDecl *taggedStatus = index.EnumIn("tagged.rux", "Status");
-    const EnumDecl *signal = index.EnumIn("tagged.rux", "Signal");
+    index.FinalizeNominalIdentities();
+    const EnumDecl *scalarStatus = index.Enums().at("scalar-package::Status");
+    const EnumDecl *taggedStatus = index.Enums().at("tagged-package::Status");
+    const EnumDecl *signal = index.Enums().at("Signal");
     REQUIRE(scalarStatus != nullptr);
     REQUIRE(taggedStatus != nullptr);
     REQUIRE(signal != nullptr);
@@ -179,19 +180,12 @@ TEST_CASE("semantic program index preserves enum and variant forms by source") {
     CHECK(signal->form == EnumDecl::Form::Variant);
     CHECK(signal->IsVariant());
 
-    REQUIRE(index.TypeParamsIn("scalar.rux", "Status") != nullptr);
-    CHECK(index.TypeParamsIn("scalar.rux", "Status")->empty());
-    REQUIRE(index.TypeParamsIn("tagged.rux", "Status") != nullptr);
-    REQUIRE_EQ(index.TypeParamsIn("tagged.rux", "Status")->size(), 1);
-    CHECK_EQ(index.TypeParamsIn("tagged.rux", "Status")->front().name, "Value");
-
-    // The compatibility bare-name map still has last-declaration-wins behavior, but the pointer carries the source
-    // form and the source-specific map keeps same-named declarations distinct.
-    REQUIRE(index.Enums().contains("Status"));
-    CHECK(index.Enums().at("Status") == taggedStatus);
-    CHECK(index.Enums().at("Status")->IsVariant());
-    CHECK(index.EnumIn("missing.rux", "Status") == nullptr);
-    CHECK(index.EnumIn("tagged.rux", "Missing") == nullptr);
+    CHECK(scalarStatus->typeParams.empty());
+    REQUIRE_EQ(taggedStatus->typeParams.size(), 1);
+    CHECK_EQ(taggedStatus->typeParams.front().name, "Value");
+    CHECK_FALSE(index.Enums().contains("Status"));
+    CHECK_EQ(scalarRoot.LookupLocal("Status")->type.name, "scalar-package::Status");
+    CHECK_EQ(taggedRoot.LookupLocal("Status")->type.name, "tagged-package::Status");
 }
 
 TEST_CASE("same-scope enum and variant names collide as one nominal type namespace") {
@@ -215,7 +209,8 @@ TEST_CASE("same-scope enum and variant names collide as one nominal type namespa
     REQUIRE(resolved != nullptr);
     CHECK(resolved->kind == SemanticDetail::Symbol::Kind::Type);
 
-    const EnumDecl *lastIndexed = index.EnumIn("collision.rux", "Choice");
+    index.FinalizeNominalIdentities();
+    const EnumDecl *lastIndexed = index.Enums().at("Choice");
     REQUIRE(lastIndexed != nullptr);
     CHECK(lastIndexed->IsVariant());
     REQUIRE_EQ(lastIndexed->typeParams.size(), 1);

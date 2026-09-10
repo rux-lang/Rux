@@ -421,6 +421,8 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 
 ### Fixed
 
+- **Declaration-owned nominal types** — same-named types in different packages or modules retain their own fields, variant cases, layouts, extensions, constructors, destructors, and interface witnesses. Generic substitutions and aliases resolve annotations in their declaring scope, so a root `ParseError` no longer changes Format's transitive parsing type.
+
 - **Partial-word System V aggregates** — x86-64 calls and returns preserve both words of 9–15-byte values, including exhausted argument registers, indirect calls, and partial tails returned through pointers. Temporary slots reserve whole ABI words, and assembly output uses the same placement.
 
 - **Structural struct equality and borrowed operators** — structs compare all eligible fields in declaration order, skip padding, and preserve declared operators. Operator reference arguments now borrow values without adding indirection to existing borrows. Concrete layout facts keep multiword variant payloads intact through construction, matching, equality, copying, moving, and reverse-order destruction.

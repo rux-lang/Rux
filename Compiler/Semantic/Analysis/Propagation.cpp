@@ -219,10 +219,10 @@ std::optional<TypeRef> AnalysisContext::CheckTryExpression(const TryExpr &expres
 
     ResolvedPropagation propagation;
     propagation.isResult = operand->kind == PropagationShape::Kind::Result;
-    propagation.variantName = operand->declaration->name;
+    propagation.variantName = programIndex.NominalName(*operand->declaration);
     propagation.successVariant = propagation.isResult ? std::string(kResultSuccess) : std::string(kOptionSome);
     propagation.failureVariant = propagation.isResult ? std::string(kResultError) : std::string(kOptionNone);
-    propagation.returnVariantName = enclosing->declaration->name;
+    propagation.returnVariantName = programIndex.NominalName(*enclosing->declaration);
     propagation.payloadType = operand->payload;
     propagation.failureType = operand->failure;
     propagation.returnType = currentReturnType;
@@ -320,8 +320,9 @@ TypeRef AnalysisContext::CheckCoalesceExpression(const BinaryExpr &expression) {
     MergeTrackedFlows({someExit, noneExit});
 
     if (payloadValid && fallbackValid && !shape->payload.IsUnknown()) {
-        coalescings.insert_or_assign(&expression, ResolvedCoalescing{shape->declaration->name, std::string(kOptionSome),
-                                                                     std::string(kOptionNone), shape->payload});
+        coalescings.insert_or_assign(&expression, ResolvedCoalescing{programIndex.NominalName(*shape->declaration),
+                                                                     std::string(kOptionSome), std::string(kOptionNone),
+                                                                     shape->payload});
     }
     return shape->payload;
 }

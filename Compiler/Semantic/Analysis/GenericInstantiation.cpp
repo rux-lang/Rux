@@ -4,6 +4,7 @@
 #include "Semantic/Conditional/ConditionalCompilation.h"
 #include "Target/Layout.h"
 #include "Target/Target.h"
+#include "Types/NominalName.h"
 #include "Types/Type.h"
 
 #include <algorithm>
@@ -50,7 +51,7 @@ void AnalysisContext::QueueDropMethodInstantiations() {
         if (type.IsUnknown() || MentionsTypeParameter(type) || !ClassifyTypeProperties(type).IsDroppable()) {
             return;
         }
-        const std::string destructorName = "~" + NamedBaseTypeName(type);
+        const std::string destructorName = "~" + UnqualifiedNominalName(NamedBaseTypeName(type));
         const FuncDecl *destructor = LookupMethod(type, destructorName, {}, false);
         if (destructor == nullptr) {
             return;

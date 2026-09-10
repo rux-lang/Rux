@@ -1,5 +1,7 @@
 #include "Semantic/Analysis/TypePropertyClassifier.h"
 
+#include "Types/NominalName.h"
+
 #include <algorithm>
 #include <utility>
 
@@ -176,7 +178,7 @@ bool TypePropertyClassifier::DeclaresDestructor(const TypeRef &type, const std::
     if (typeMethods == methodsByType.end()) {
         return false;
     }
-    const auto destructors = typeMethods->second.find("~" + baseName);
+    const auto destructors = typeMethods->second.find("~" + UnqualifiedNominalName(baseName));
     if (destructors == typeMethods->second.end()) {
         return false;
     }

@@ -86,8 +86,10 @@ void AnalysisContext::ResolveDeclSignature(const Decl &declaration) {
         const TypeRef receiver =
             extension->extendedType && canResolve ? ResolveType(*extension->extendedType) : TypeRef::MakeUnknown();
         currentTypeParams = savedParameters;
-        if (receiver.IsSlice() && receiverParameters.empty()) {
-            programIndex.BindImplementationMethods(*extension, receiver.ToString());
+        if (!receiver.IsUnknown()) {
+            programIndex.BindImplementationMethods(*extension, NamedBaseTypeName(receiver),
+                                                   extension->interfaceName ? NominalTypeName(*extension->interfaceName)
+                                                                            : std::string{});
         }
         for (const auto &method : extension->methods) {
             auto parameters = receiverParameters;
@@ -150,8 +152,10 @@ void AnalysisContext::ResolveDeclSignatureInScope(const Decl &declaration, Scope
         const TypeRef receiver =
             extension->extendedType && canResolve ? ResolveType(*extension->extendedType) : TypeRef::MakeUnknown();
         currentTypeParams = savedParameters;
-        if (receiver.IsSlice() && receiverParameters.empty()) {
-            programIndex.BindImplementationMethods(*extension, receiver.ToString());
+        if (!receiver.IsUnknown()) {
+            programIndex.BindImplementationMethods(*extension, NamedBaseTypeName(receiver),
+                                                   extension->interfaceName ? NominalTypeName(*extension->interfaceName)
+                                                                            : std::string{});
         }
         for (const auto &method : extension->methods) {
             auto parameters = receiverParameters;

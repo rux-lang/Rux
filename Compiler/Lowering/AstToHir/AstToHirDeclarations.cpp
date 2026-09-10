@@ -328,7 +328,7 @@ HirStruct AstToHirContext::LowerStruct(const StructDecl &d) {
         Define(sym);
     }
     HirStruct hs;
-    hs.name = d.name;
+    hs.name = NominalName(d);
     hs.isPublic = model.IsEffectivelyPublic(d);
     hs.typeParams = TypeParameterNames(d.typeParams);
     hs.location = d.location;
@@ -398,7 +398,7 @@ HirEnum AstToHirContext::LowerEnum(const EnumDecl &d) {
     AppendTypeParameterNames(currentTypeParams, d.typeParams);
     HirEnum he;
     he.form = d.IsVariant() ? CaseTypeForm::Variant : CaseTypeForm::Enumeration;
-    he.name = d.name;
+    he.name = NominalName(d);
     he.isPublic = model.IsEffectivelyPublic(d);
     he.typeParams = TypeParameterNames(d.typeParams);
     he.baseType = EnumBaseType(d);
@@ -429,7 +429,7 @@ HirEnum AstToHirContext::LowerEnum(const EnumDecl &d) {
 
 HirUnion AstToHirContext::LowerUnion(const UnionDecl &d) {
     HirUnion hu;
-    hu.name = d.name;
+    hu.name = NominalName(d);
     hu.isPublic = model.IsEffectivelyPublic(d);
     hu.location = d.location;
     for (const auto &f : d.fields) {
@@ -443,7 +443,7 @@ HirUnion AstToHirContext::LowerUnion(const UnionDecl &d) {
 
 HirInterface AstToHirContext::LowerInterface(const InterfaceDecl &d) {
     HirInterface hi;
-    hi.name = d.name;
+    hi.name = NominalName(d);
     hi.isPublic = model.IsEffectivelyPublic(d);
     hi.location = d.location;
     for (const auto &m : d.methods) {
@@ -476,8 +476,7 @@ HirImplBlock AstToHirContext::LowerImpl(const ImplDecl &d) {
     }
 
     HirImplBlock hib;
-    hib.typeName =
-        extendedType.IsSlice() && ImplTypeParams(d).empty() ? extendedType.ToString() : BaseTypeName(d.typeName);
+    hib.typeName = extendedType.IsUnknown() ? BaseTypeName(d.typeName) : NamedBaseTypeName(extendedType);
     hib.interfaceName = d.interfaceName;
     hib.location = d.location;
     for (const auto &m : d.methods) {
@@ -502,6 +501,7 @@ HirImplBlock AstToHirContext::LowerImpl(const ImplDecl &d) {
         hib.methods.push_back(std::move(hf));
     }
     if (const auto *identity = model.TryGetVtableIdentity(d)) {
+        hib.interfaceName = identity->interfaceName;
         hib.vtableLabel = identity->linkerName;
         hib.vtableEntries = identity->entries;
     }

@@ -28,7 +28,7 @@ std::string AnalysisContext::GenericTypeName(const NamedTypeExpr &type) {
     for (const auto &typeArg : type.typeArgs) {
         typeArgs.push_back(ResolveType(*typeArg));
     }
-    return TypeRef::InstantiationName(type.name, typeArgs);
+    return TypeRef::InstantiationName(NominalTypeName(type.name), typeArgs);
 }
 
 std::string AnalysisContext::BaseTypeName(const std::string &name) const {
@@ -36,20 +36,12 @@ std::string AnalysisContext::BaseTypeName(const std::string &name) const {
     return pos == std::string::npos ? name : name.substr(0, pos);
 }
 
-/// The type parameters `name` declares, as seen from the file being checked.
-///
-/// The file comes first because the struct AnalysisContext::and enum indexes are keyed by bare name across every
-/// package: a program declaring its own `Option` displaces `Core`'s, AnalysisContext::and `Core`'s own `extend
-/// Option<T>` would then read the wrong arity AnalysisContext::and reject its own parameter. An `extend` block is
-/// written beside the type it extends, so the declaration in the same file is the one it means.
+/// Find parameters through the bound nominal identity, including when another package uses the same spelling.
 const std::vector<TypeParameter> *AnalysisContext::AggregateTypeParams(const std::string &name) const {
-    if (const std::vector<TypeParameter> *local = programIndex.TypeParamsIn(currentFile, name)) {
-        return local;
-    }
-    if (const auto structure = structDecls.find(name); structure != structDecls.end()) {
+    if (const auto structure = structDecls.find(NominalTypeName(name)); structure != structDecls.end()) {
         return &structure->second->typeParams;
     }
-    if (const auto enumeration = enumDecls.find(name); enumeration != enumDecls.end()) {
+    if (const auto enumeration = enumDecls.find(NominalTypeName(name)); enumeration != enumDecls.end()) {
         return &enumeration->second->typeParams;
     }
     return nullptr;
@@ -61,7 +53,12 @@ std::vector<std::string> AnalysisContext::ImplTypeParams(const ImplDecl &decl) c
     if (!target) {
         return params;
     }
-    const std::vector<TypeParameter> *typeParams = AggregateTypeParams(target->name);
+    const auto *owner = programIndex.InfoFor(decl);
+    const Symbol *symbol = owner && owner->scope ? owner->scope->Lookup(target->name) : nullptr;
+    const std::string name = symbol && programIndex.NominalNames().contains(symbol->declaration)
+                               ? programIndex.NominalName(*symbol->declaration)
+                               : target->name;
+    const std::vector<TypeParameter> *typeParams = AggregateTypeParams(name);
     if (!typeParams) {
         return params;
     }
@@ -279,7 +276,25 @@ TypeRef AnalysisContext::ResolveTypeImpl(const TypeExpr &expr) {
             return TypeRef::MakeUnknown();
         }
 
-        if (const EnumDecl *enumeration = EnumNamed(t->name)) {
+        if (Symbol *symbol = currentScope->Lookup(t->name); symbol && symbol->declaration) {
+            if (const auto *alias = dynamic_cast<const TypeAliasDecl *>(symbol->declaration);
+                alias && alias->intrinsicName.empty()) {
+                if (!resolvedArgs.empty()) {
+                    EmitGenericArityError(expr, std::format("type alias '{}'", t->name), 0, resolvedArgs.size());
+                    return TypeRef::MakeUnknown();
+                }
+                if (!checkingTypeAliases.insert(alias).second) {
+                    EmitError(expr.location, std::format("type alias '{}' has a cyclic definition", alias->name));
+                    return TypeRef::MakeUnknown();
+                }
+                TypeRef type = ResolveType(*alias->type);
+                checkingTypeAliases.erase(alias);
+                symbol->type = type;
+                return type;
+            }
+        }
+
+        if (const EnumDecl *enumeration = EnumNamed(NominalTypeName(t->name))) {
             const auto &decl = *enumeration;
             if (resolvedArgs.size() != decl.typeParams.size()) {
                 EmitGenericArityError(expr, std::format("variant type '{}'", t->name), decl.typeParams.size(),
@@ -290,7 +305,7 @@ TypeRef AnalysisContext::ResolveTypeImpl(const TypeExpr &expr) {
             return EnumType(decl, resolvedArgs);
         }
 
-        if (auto structType = ResolveStructTypeReference(expr, t->name, resolvedArgs)) {
+        if (auto structType = ResolveStructTypeReference(expr, NominalTypeName(t->name), resolvedArgs)) {
             return *structType;
         }
 
@@ -340,7 +355,18 @@ TypeRef AnalysisContext::ResolveTypeImpl(const TypeExpr &expr) {
         for (size_t i = 1; i < t->segments.size(); ++i) {
             fullPath += "::" + t->segments[i];
         }
-        return TypeRef::MakeNamed(fullPath);
+        const std::string name = NominalTypeName(fullPath);
+        if (const auto enumeration = enumDecls.find(name); enumeration != enumDecls.end()) {
+            if (!IsAccessible(*enumeration->second))
+                EmitPrivacyError(expr.location, *enumeration->second, "type", fullPath);
+            return EnumType(*enumeration->second);
+        }
+        if (const auto structure = structDecls.find(name); structure != structDecls.end()) {
+            if (!IsAccessible(*structure->second))
+                EmitPrivacyError(expr.location, *structure->second, "type", fullPath);
+            return *ResolveStructTypeReference(expr, name, {});
+        }
+        return TypeRef::MakeNamed(name);
     }
 
     if (const auto *t = dynamic_cast<const PointerTypeExpr *>(&expr)) {
@@ -424,6 +450,7 @@ TypeRef AnalysisContext::ResolveTypeImpl(const TypeExpr &expr) {
 
 TypeRef AnalysisContext::ResolveTypeWithSubstitution(const TypeExpr &expr,
                                                      const std::unordered_map<std::string, TypeRef> &substitutions) {
+    const ScopedTypeOwner owner(*this, expr);
     if (const auto accepted = typeNodeTypes.find(&expr);
         accepted != typeNodeTypes.end() && (accepted->second.IsSlice() || accepted->second.IsRange())) {
         return SubstituteTypeParameters(accepted->second, substitutions);
@@ -443,9 +470,9 @@ TypeRef AnalysisContext::ResolveTypeWithSubstitution(const TypeExpr &expr,
         }
         // An enum instantiation is composed in one place, so that a type reached through a substitution -- a
         // return type resolved while a signature is built -- carries the layout marker one resolved directly has.
-        const EnumDecl *enumeration = EnumNamed(t->name);
+        const EnumDecl *enumeration = EnumNamed(NominalTypeName(t->name));
         return enumeration ? EnumType(*enumeration, resolvedArgs)
-                           : TypeRef::MakeNamed(TypeRef::InstantiationName(t->name, resolvedArgs));
+                           : TypeRef::MakeNamed(TypeRef::InstantiationName(NominalTypeName(t->name), resolvedArgs));
     }
     if (auto *t = dynamic_cast<const PointerTypeExpr *>(&expr)) {
         TypeRef pointeeType = ResolveTypeWithSubstitution(*t->pointee, substitutions);

@@ -1,0 +1,12 @@
+import Core::Result;
+import Format::ParseBool;
+variant ParseError { Local(uint64) }
+func Main() -> int {
+    let local = ParseError::Local(1234567890123u64);
+    let parsed = ParseBool("true");
+    let valid = match parsed { .Success(value) => value, .Error(error) => false };
+    if !valid || !ParseBool("").IsError() || !ParseBool("false!").IsError() { return 1; }
+    let payload = match local { .Local(value) => value };
+    if payload != 1234567890123u64 { return 2; }
+    return 0;
+}

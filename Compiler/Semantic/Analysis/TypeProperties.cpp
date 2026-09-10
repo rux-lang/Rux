@@ -1,5 +1,6 @@
 #include "Semantic/Analysis/AnalysisContext.h"
 #include "Semantic/Analysis/TypePropertyClassifier.h"
+#include "Types/NominalName.h"
 
 #include <algorithm>
 #include <iterator>
@@ -15,7 +16,7 @@ bool AnalysisContext::IsDestructorName(const std::string_view name) {
 
 void AnalysisContext::ValidateConstructor(const FuncDecl &method, const TypeRef &extendedType) {
     const std::string typeName = NamedBaseTypeName(extendedType);
-    if (typeName.empty() || method.name != typeName) {
+    if (typeName.empty() || method.name != UnqualifiedNominalName(typeName)) {
         return;
     }
     if (method.Receiver()) {
@@ -37,8 +38,9 @@ void AnalysisContext::ValidateConstructor(const FuncDecl &method, const TypeRef 
 
 bool AnalysisContext::IsConstructorCandidate(const FuncDecl &method, const TypeRef &type) {
     const std::string typeName = NamedBaseTypeName(type);
-    return !typeName.empty() && method.name == typeName && !method.Receiver() && method.typeParams.empty() &&
-           method.body && method.returnType && ResolveMethodReturnType(type, method) == type;
+    return !typeName.empty() && method.name == UnqualifiedNominalName(typeName) && !method.Receiver() &&
+           method.typeParams.empty() && method.body && method.returnType &&
+           ResolveMethodReturnType(type, method) == type;
 }
 
 std::vector<const FuncDecl *> AnalysisContext::ConstructorCandidates(const TypeRef &type) {
@@ -47,7 +49,7 @@ std::vector<const FuncDecl *> AnalysisContext::ConstructorCandidates(const TypeR
     if (methods == methodsByType.end()) {
         return {};
     }
-    const auto named = methods->second.find(typeName);
+    const auto named = methods->second.find(std::string(UnqualifiedNominalName(typeName)));
     if (named == methods->second.end()) {
         return {};
     }
@@ -134,7 +136,7 @@ void AnalysisContext::ValidateDestructor(const FuncDecl &method, const TypeRef &
     }
 
     const std::string typeName = NamedBaseTypeName(extendedType);
-    const std::string expectedName = "~" + typeName;
+    const std::string expectedName = "~" + UnqualifiedNominalName(typeName);
     if (method.name != expectedName) {
         EmitError(method.location,
                   std::format("destructor '{}' must be named '{}' for type '{}'", method.name, expectedName, typeName));

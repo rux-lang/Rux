@@ -397,8 +397,8 @@ void AnalysisContext::CheckImplDecl(const ImplDecl &d) {
         currentSelfType = TypeRef::MakePointer(selfBase);
     }
     for (const auto &m : d.methods) {
-        if (const auto typeIt = methodsByType.find(
-                extendedType.IsSlice() && currentTypeParams.empty() ? extendedType.ToString() : typeName);
+        if (const auto typeIt =
+                methodsByType.find(extendedType.IsUnknown() ? typeName : NamedBaseTypeName(extendedType));
             typeIt != methodsByType.end()) {
             if (const auto methodIt = typeIt->second.find(m->name); methodIt != typeIt->second.end()) {
                 ValidateFunctionSignature(*m, methodIt->second, /*isMethod=*/true);

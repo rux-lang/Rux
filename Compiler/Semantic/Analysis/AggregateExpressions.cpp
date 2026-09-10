@@ -208,7 +208,7 @@ std::optional<TypeRef> AnalysisContext::IndexElementType(const TypeRef &type) {
 }
 
 std::string AnalysisContext::GenericStructInitName(const StructInitExpr &expression) {
-    std::string name = expression.typeName;
+    std::string name = NominalTypeName(expression.typeName);
     if (!expression.typeArgs.empty()) {
         name += "<";
         for (std::size_t i = 0; i < expression.typeArgs.size(); ++i) {
@@ -298,9 +298,10 @@ TypeRef AnalysisContext::StructFieldType(const TypeRef &objectType, const std::s
 }
 
 void AnalysisContext::CheckStructInitExpression(const StructInitExpr &expression) {
-    const auto structure = structDecls.find(expression.typeName);
+    const auto structure = structDecls.find(NominalTypeName(expression.typeName));
     if (structure == structDecls.end()) {
-        if (const auto unionType = unionDecls.find(expression.typeName); unionType != unionDecls.end()) {
+        if (const auto unionType = unionDecls.find(NominalTypeName(expression.typeName));
+            unionType != unionDecls.end()) {
             if (!expression.typeArgs.empty()) {
                 EmitError(expression.location, std::format("union initializer for '{}' does not accept type arguments",
                                                            expression.typeName));

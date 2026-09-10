@@ -401,6 +401,7 @@ private:
     std::unordered_map<const Expr *, const ConstDecl *> &constantReferences;
     std::unordered_map<const ConstDecl *, EvaluatedAssociatedConstant> &evaluatedAssociatedConstants;
     std::unordered_set<const ConstDecl *> checkingAssociatedConstants;
+    std::unordered_set<const TypeAliasDecl *> checkingTypeAliases;
     [[nodiscard]] const ConstDecl *LookupAssociatedConstant(const Symbol &type, const std::string &name) const;
     [[nodiscard]] TypeRef CheckAssociatedConstant(const ConstDecl &declaration);
     void CheckIntrinsicType(const Decl &declaration);
@@ -520,6 +521,20 @@ private:
     /// against the wrong shape. A declaration in the file doing the asking is the one that file means.
     ///
     /// @return nullptr when no enum of that name is in scope
+    [[nodiscard]] std::string NominalTypeName(const std::string &name) const;
+
+    class ScopedTypeOwner {
+    public:
+        ScopedTypeOwner(AnalysisContext &context, const TypeExpr &type);
+        ~ScopedTypeOwner();
+
+    private:
+        AnalysisContext &context;
+        Scope *scope;
+        std::string file;
+        std::string package;
+    };
+
     [[nodiscard]] const EnumDecl *EnumNamed(const std::string &name) const;
 
     struct CaseTypeDeclaration {

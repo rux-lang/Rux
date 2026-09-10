@@ -398,7 +398,8 @@ HirExprPtr AstToHirContext::LowerBoundEnumCall(const CallExpr &call, const Resol
             completed.push_back(std::move(*cleanup));
         }
     }
-    lowered->discriminant = LookupEnumVariantDiscriminant(declaration->name, binding.selectedVariant->name).value();
+    lowered->discriminant =
+        LookupEnumVariantDiscriminant(NominalName(*declaration), binding.selectedVariant->name).value();
     return lowered;
 }
 

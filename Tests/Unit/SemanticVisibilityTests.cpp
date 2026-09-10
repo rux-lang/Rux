@@ -501,3 +501,69 @@ TEST_CASE("lowering receives effective rather than lexical visibility") {
     CHECK_FALSE(capped->isPublic);
     CHECK(exported->isPublic);
 }
+
+TEST_CASE("nominal ownership survives file order generic layouts and extension lookup") {
+    const std::vector<Source> library = {{"library-types.rux", R"(
+            pub struct Record { pub first: int64; pub second: int64; }
+            pub variant ParseError { Bad(Record), Empty }
+            pub struct Holder<T, U> { pub value: T; pub marker: U; }
+            pub type Exported = Record;
+        )"},
+                                         {"library-methods.rux", R"(
+            extend Record { pub func Read(self: &Record) -> int64 { return self.second; } }
+            pub func Make() -> Exported { return Record { first: 17i64, second: 25i64 }; }
+            pub func Wrap<T>(value: T) -> Holder<T, Record> {
+                return Holder<T, Record> { value: value, marker: Make() };
+            }
+            pub func Error() -> ParseError { return ParseError::Bad(Make()); }
+        )"}};
+    const std::vector<Source> application = {{"application-types.rux", R"(
+            struct Record { value: int32; }
+            variant ParseError { Bad, Other }
+            struct Holder<T> { value: T; }
+        )"},
+                                             {"application-methods.rux", R"(
+            import Library::{ Error, Exported, Make, Wrap };
+            extend Record { func Read(self: &Record) -> int32 { return self.value; } }
+            func Main() -> int {
+                let local = Record { value: 7i32 };
+                let imported: Exported = Make();
+                let wrapped = Wrap(local);
+                let error = Error();
+                return local.Read() as int + imported.Read() as int + wrapped.marker.Read() as int;
+            }
+        )"}};
+    for (bool reverse : {false, true}) {
+        auto orderedLibrary = library;
+        auto orderedApplication = application;
+        if (reverse) {
+            std::ranges::reverse(orderedLibrary);
+            std::ranges::reverse(orderedApplication);
+        }
+        const auto diagnostics = AnalyzePackages(orderedApplication, orderedLibrary);
+        CHECK_MESSAGE(diagnostics.empty(), Messages(diagnostics));
+    }
+}
+
+TEST_CASE("same-spelled nominal types remain incompatible across packages") {
+    const auto diagnostics = AnalyzePackages({{"application.rux", R"(
+        import Library::Take;
+        struct Record { pub value: int; }
+        func Main() { Take(Record { value: 7 }); }
+    )"}},
+                                             {{"library.rux", R"(
+        pub struct Record { pub value: int; }
+        pub func Take(value: Record) {}
+    )"}});
+    CHECK_MESSAGE(HasMessage(diagnostics, "Application::Record"), Messages(diagnostics));
+    CHECK_MESSAGE(HasMessage(diagnostics, "Library::Record"), Messages(diagnostics));
+}
+
+TEST_CASE("a root nominal declaration cannot expose a private dependency declaration") {
+    const auto diagnostics = AnalyzePackages({{"application.rux", R"(
+        import Library::Secret;
+        pub struct Secret { pub visible: int; }
+    )"}},
+                                             {{"library.rux", "struct Secret { hidden: int; }"}});
+    CHECK_MESSAGE(HasMessage(diagnostics, "Secret' is private to package 'Library'"), Messages(diagnostics));
+}

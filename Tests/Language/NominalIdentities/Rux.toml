@@ -1,0 +1,14 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "NominalIdentities"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Declaration-owned nominal types across package and generic boundaries"
+
+[Dependencies]
+NominalProvider = { Path = "../../Fixtures/NominalIdentity/Provider" }
+
+[Build]
+Output = "../../../Bin/Tests/Language"

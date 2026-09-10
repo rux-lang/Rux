@@ -1,0 +1,8 @@
+pub struct Record { first: int64; second: int64; }
+pub variant ParseError { Bad(Record), Empty, Named { record: Record; } }
+pub struct Holder<T, U> { value: T; marker: U; record: Record; }
+pub enum Mode: uint32 { Ready = 37 }
+pub union Bits { value: uint64 }
+pub type ExportedRecord = Record;
+pub struct Tracked { counter: *var int; tail: int64; }
+pub interface Reader { func Read() -> int64; func Forward(value: Record) -> Record; }

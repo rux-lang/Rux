@@ -217,15 +217,55 @@ TypeRef AnalysisContext::SubstituteTypeParameters(TypeRef type,
     return type;
 }
 
+std::string AnalysisContext::NominalTypeName(const std::string &name) const {
+    const Symbol *symbol = currentScope ? currentScope->Lookup(name) : nullptr;
+    if (!symbol && currentScope && name.contains("::")) {
+        Scope *scope = currentScope;
+        std::size_t start = 0;
+        while (scope) {
+            const auto end = name.find("::", start);
+            symbol = scope->Lookup(name.substr(start, end - start));
+            if (end == std::string::npos || !symbol)
+                break;
+            scope = symbol->kind == Symbol::Kind::Module ? symbol->moduleScope : nullptr;
+            symbol = nullptr;
+            start = end + 2;
+        }
+    }
+    if (symbol && symbol->declaration) {
+        const auto identity = programIndex.NominalNames().find(symbol->declaration);
+        if (identity != programIndex.NominalNames().end())
+            return identity->second;
+    }
+    if (symbol && symbol->type.kind == TypeRef::Kind::Named)
+        return BaseTypeName(symbol->type.name);
+    return name;
+}
+
+AnalysisContext::ScopedTypeOwner::ScopedTypeOwner(AnalysisContext &context, const TypeExpr &type)
+    : context(context)
+    , scope(context.currentScope)
+    , file(context.currentFile)
+    , package(context.currentPackage) {
+    if (const auto *owner = context.programIndex.TypeOwner(type); owner && owner->scope) {
+        context.currentScope = owner->scope;
+        context.currentFile = owner->sourceName;
+        context.currentPackage = owner->ownerPackage;
+    }
+}
+
+AnalysisContext::ScopedTypeOwner::~ScopedTypeOwner() {
+    context.currentScope = scope;
+    context.currentFile = std::move(file);
+    context.currentPackage = std::move(package);
+}
+
 const EnumDecl *AnalysisContext::EnumNamed(const std::string &name) const {
     return CaseTypeNamed(name).declaration;
 }
 
 AnalysisContext::CaseTypeDeclaration AnalysisContext::CaseTypeNamed(const std::string &name) const {
-    if (const EnumDecl *local = programIndex.EnumIn(currentFile, name)) {
-        return {local, local->form};
-    }
-    const auto enumeration = enumDecls.find(name);
+    const auto enumeration = enumDecls.find(NominalTypeName(name));
     if (enumeration == enumDecls.end()) {
         return {};
     }
@@ -293,7 +333,7 @@ std::optional<TypeRef> AnalysisContext::ResolveStructTypeReference(const TypeExp
     const Symbol *symbol = currentScope ? currentScope->Lookup(name) : nullptr;
     const auto *declaration = symbol ? dynamic_cast<const StructDecl *>(symbol->declaration) : nullptr;
     if (!declaration) {
-        const auto indexed = structDecls.find(name);
+        const auto indexed = structDecls.find(NominalTypeName(name));
         if (indexed == structDecls.end()) {
             return std::nullopt;
         }
@@ -305,7 +345,7 @@ std::optional<TypeRef> AnalysisContext::ResolveStructTypeReference(const TypeExp
         return TypeRef::MakeUnknown();
     }
     CheckTypeReferenceConstraints(expression, declaration->typeParams, typeArguments, std::format("struct '{}'", name));
-    std::string instantiatedName = name;
+    std::string instantiatedName = programIndex.NominalName(*declaration);
     for (std::size_t index = 0; index < typeArguments.size(); ++index) {
         instantiatedName += index == 0 ? "<" : ", ";
         instantiatedName += typeArguments[index].ToString();
@@ -368,6 +408,7 @@ void AnalysisContext::IndexDeclarations() {
     for (const Module *module : modules) {
         CollectModule(*module);
     }
+    programIndex.FinalizeNominalIdentities();
     programIndex.FinalizeVisibility();
 }
 

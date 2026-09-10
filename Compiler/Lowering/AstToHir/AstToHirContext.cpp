@@ -4,6 +4,7 @@
 
 #include "Lowering/AstToHir/Detail/AstToHirContext.h"
 
+#include "Types/NominalName.h"
 #include "Types/PrimitiveCatalog.h"
 
 #include <algorithm>
@@ -157,6 +158,9 @@ bool AstToHirContext::TypeIsConcrete(const TypeRef &type) {
         // A bare name that nothing declares is a parameter. Primitives and the builtin aggregates never reach here
         // as a named type -- they are recognized while the name is parsed -- so a name is either declared or a
         // parameter, with nothing in between.
+        if (structDecls.contains(type.name) || enumDecls.contains(type.name) || unionDecls.contains(type.name) ||
+            interfaceDecls.contains(type.name))
+            return true;
         const HirSymbol *declared = globalScope.Lookup(type.name);
         return declared != nullptr &&
                (declared->kind == HirSymbol::Kind::Type || declared->kind == HirSymbol::Kind::Interface);
@@ -175,7 +179,7 @@ std::string AstToHirContext::DestructorSymbol(const TypeRef &type) {
     if (byType == methodsByType.end()) {
         return {};
     }
-    const auto destructor = byType->second.find("~" + typeName);
+    const auto destructor = byType->second.find("~" + UnqualifiedNominalName(typeName));
     return destructor == byType->second.end() || destructor->second.empty()
              ? std::string{}
              : ConcreteMethodCalleeName(typeName, type, *destructor->second.front());
@@ -319,6 +323,10 @@ TypeRef AstToHirContext::MakeFuncType(const std::vector<Param> &params, const st
     return TypeRef::MakeFunc(std::move(paramTypes), std::move(resultType));
 }
 
+std::string AstToHirContext::NominalName(const Decl &declaration) const {
+    return model.TryGetSymbolIdentity(declaration)->linkerName;
+}
+
 void AstToHirContext::CollectDecl(const Decl &decl) {
     const auto simple = [this](HirSymbol::Kind kind, const std::string &name, TypeRef type = {}) {
         HirSymbol symbol;
@@ -338,20 +346,20 @@ void AstToHirContext::CollectDecl(const Decl &decl) {
         globalScope.Define(std::move(symbol));
     }
     else if (const auto *structDecl = dynamic_cast<const StructDecl *>(&decl)) {
-        structDecls[structDecl->name] = structDecl;
-        simple(HirSymbol::Kind::Type, structDecl->name, TypeRef::MakeNamed(structDecl->name));
+        structDecls[NominalName(*structDecl)] = structDecl;
+        simple(HirSymbol::Kind::Type, structDecl->name, TypeRef::MakeNamed(NominalName(*structDecl)));
     }
     else if (const auto *enumDecl = dynamic_cast<const EnumDecl *>(&decl)) {
-        enumDecls[enumDecl->name] = enumDecl;
+        enumDecls[NominalName(*enumDecl)] = enumDecl;
         simple(HirSymbol::Kind::Type, enumDecl->name, EnumType(*enumDecl));
     }
     else if (const auto *unionDecl = dynamic_cast<const UnionDecl *>(&decl)) {
-        unionDecls[unionDecl->name] = unionDecl;
-        simple(HirSymbol::Kind::Type, unionDecl->name, TypeRef::MakeNamed(unionDecl->name));
+        unionDecls[NominalName(*unionDecl)] = unionDecl;
+        simple(HirSymbol::Kind::Type, unionDecl->name, TypeRef::MakeNamed(NominalName(*unionDecl)));
     }
     else if (const auto *interfaceDecl = dynamic_cast<const InterfaceDecl *>(&decl)) {
-        simple(HirSymbol::Kind::Interface, interfaceDecl->name, TypeRef::MakeNamed(interfaceDecl->name));
-        interfaceDecls[interfaceDecl->name] = interfaceDecl;
+        simple(HirSymbol::Kind::Interface, interfaceDecl->name, TypeRef::MakeNamed(NominalName(*interfaceDecl)));
+        interfaceDecls[NominalName(*interfaceDecl)] = interfaceDecl;
     }
     else if (const auto *constDecl = dynamic_cast<const ConstDecl *>(&decl)) {
         HirSymbol symbol;
@@ -391,16 +399,14 @@ void AstToHirContext::CollectDecl(const Decl &decl) {
     }
     else if (const auto *implDecl = dynamic_cast<const ImplDecl *>(&decl)) {
         const TypeRef *receiver = implDecl->extendedType ? model.TryGetType(*implDecl->extendedType) : nullptr;
-        const std::string typeName = receiver && receiver->IsSlice() && ImplTypeParams(*implDecl).empty()
-                                       ? receiver->ToString()
-                                       : BaseTypeName(implDecl->typeName);
+        const std::string typeName = receiver ? NamedBaseTypeName(*receiver) : BaseTypeName(implDecl->typeName);
         for (const auto &method : implDecl->methods) {
             methodsByType[typeName][method->name].push_back(method.get());
             methodImpl[method.get()] = implDecl;
         }
         if (implDecl->interfaceName) {
             if (const auto *identity = model.TryGetVtableIdentity(*implDecl)) {
-                typeInterfaceVtables[typeName][*implDecl->interfaceName] = identity->linkerName;
+                typeInterfaceVtables[typeName][identity->interfaceName] = identity->linkerName;
             }
         }
     }

@@ -1,0 +1,49 @@
+variant ParseError { Bad, Missing(int32) }
+struct Record { value: int32; }
+struct Holder<T> { value: T; }
+enum Mode: uint8 { Ready = 3 }
+union Bits { value: uint32 }
+extend Record { func Record(value: int32) -> Record { return Record { value: value }; } func Sum(self: &Record) -> int32 { return self.value; } }
+extend Holder<T> { func Value(self: &Holder<T>) -> T { return self.value; } }
+
+import NominalProvider::{ CheckProvider, DropInProvider, Echo, ExportedRecord, MakeRecord, ReadBound, ReadProvider, RoundTrip };
+
+struct Tracked { counter: *var int; }
+extend Tracked { func ~Tracked(self: &var Tracked) { *self.counter += 10; } }
+module Left {
+    pub struct Record { pub value: uint8; }
+    pub func Make() -> Record { return Record { value: 71u8 }; }
+}
+module Right {
+    pub struct Record { pub value: int32; }
+    pub func Make() -> Record { return Record { value: 73i32 }; }
+}
+interface Reader { func Read() -> int32; }
+extend Record : Reader { func Read(self: &Record) -> int32 { return self.value; } }
+func ReadLocal(value: &Reader) -> int32 { return value.Read(); }
+
+func Main() -> int {
+    let left: Left::Record = Left::Make();
+    let right: Right::Record = Right::Make();
+    if left.value != 71u8 || right.value != 73i32 { return 7; }
+    var drops = 0;
+    if true {
+        let owned = Tracked { counter: @drops };
+        DropInProvider(@drops);
+    }
+    if drops != 11 { return 6; }
+    let record = Record(7i32);
+    let imported: ExportedRecord = MakeRecord();
+    let error = Echo(ParseError::Missing(19i32));
+    let holder = Holder<int32> { value: 53i32 };
+    let returned = RoundTrip(record);
+    let bits = Bits { value: 47u32 };
+    if !CheckProvider() { return 1; }
+    if record.Sum() != 7i32 || imported.Sum() != 42i64 || returned.Sum() != 42i64 { return 2; }
+    if ReadProvider(imported) != 42i64 || ReadBound(imported) != 42i64 || ReadLocal(record) != 7i32 { return 8; }
+    if holder.Value() != 53i32 || Echo(record) != record { return 3; }
+    if sizeof(Record) != 4u || sizeof(Mode) != 1u || Mode::Ready as uint8 != 3u8 || bits.value != 47u32 { return 4; }
+    let code = match error { ParseError::Missing(value) => value, ParseError::Bad => 0i32 };
+    if code != 19i32 { return 5; }
+    return 0;
+}

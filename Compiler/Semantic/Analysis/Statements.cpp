@@ -651,7 +651,7 @@ void AnalysisContext::CheckPattern(const Pattern &pattern, const TypeRef &subjec
         }
     }
     else if (const auto *structPattern = dynamic_cast<const StructPattern *>(&pattern)) {
-        const auto declaration = structDecls.find(structPattern->typeName);
+        const auto declaration = structDecls.find(NominalTypeName(structPattern->typeName));
         if (!currentScope->Lookup(structPattern->typeName) || declaration == structDecls.end()) {
             EmitError(structPattern->location,
                       std::format("unknown type '{}' in struct pattern", structPattern->typeName));
@@ -725,7 +725,7 @@ void AnalysisContext::CheckPattern(const Pattern &pattern, const TypeRef &subjec
                           : std::format("enum '{}' has no enumerator '{}'", enumName, variantName));
         }
         if (enumDeclaration && subjectType.kind == TypeRef::Kind::Named &&
-            BaseTypeName(subjectType.name) != enumDeclaration->name) {
+            BaseTypeName(subjectType.name) != programIndex.NominalName(*enumDeclaration)) {
             EmitError(enumPattern->location, std::format("{} pattern '{}::{}' cannot match value of type '{}'",
                                                          enumDeclaration->IsVariant() ? "variant" : "enum", enumName,
                                                          variantName, subjectType.ToString()));

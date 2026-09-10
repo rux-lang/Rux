@@ -14,7 +14,7 @@ namespace Rux::SemanticDetail {
 namespace {
 /// Join a module prefix to a name, skipping the separator at the root so a top-level module is not spelled `::Name`.
 std::string JoinModulePath(const std::string &prefix, const std::string &name) {
-    return prefix.empty() ? name : prefix + "::" + name;
+    return prefix.empty() ? name : name.empty() ? prefix : prefix + "::" + name;
 }
 
 /// A generic type's name without its argument list, so `List<int32>` and `List<char8>` resolve to the same declaration.
@@ -203,8 +203,13 @@ Scope &SemanticProgramIndex::ModuleScopeFor(const std::string &name, Scope &pare
     return parent;
 }
 
-void SemanticProgramIndex::BindImplementationMethods(const ImplDecl &declaration, const std::string &receiverName) {
+void SemanticProgramIndex::BindImplementationMethods(const ImplDecl &declaration, const std::string &receiverName,
+                                                     const std::string &interfaceName) {
     const std::string base = BaseTypeName(declaration.typeName);
+    if (declaration.interfaceName && !interfaceName.empty()) {
+        implementedInterfaces[base].erase(*declaration.interfaceName);
+        implementedInterfaces[receiverName].insert(interfaceName);
+    }
     if (receiverName == base)
         return;
     for (const auto &method : declaration.methods) {
@@ -230,6 +235,65 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
     const bool isEffectivelyPublic = containingModulesPublic && declaration.isPublic;
     declarationInfos.insert_or_assign(
         &declaration, DeclarationInfo{ownerPackage, modulePath, sourceName, isEffectivelyPublic, &scope});
+    const auto ownType = [&](const TypeExpr *type) {
+        if (type)
+            typeOwners.emplace(type, &declaration);
+    };
+    const auto ownFunctionTypes = [&](const FuncDecl &function, const Decl *owner = nullptr) {
+        if (!owner)
+            owner = &function;
+        for (const auto &parameter : function.typeParams) {
+            for (const auto &bound : parameter.bounds)
+                typeOwners.emplace(bound.get(), owner);
+        }
+        for (const auto &parameter : function.params) {
+            if (parameter.type)
+                typeOwners.emplace(parameter.type.get(), owner);
+        }
+        if (function.returnType)
+            typeOwners.emplace(function.returnType->get(), owner);
+    };
+    if (const auto *structure = dynamic_cast<const StructDecl *>(&declaration)) {
+        for (const auto &field : structure->fields)
+            ownType(field.type.get());
+        for (const auto &parameter : structure->typeParams) {
+            for (const auto &bound : parameter.bounds)
+                ownType(bound.get());
+        }
+    }
+    else if (const auto *enumeration = dynamic_cast<const EnumDecl *>(&declaration)) {
+        ownType(enumeration->baseType.get());
+        for (const auto &parameter : enumeration->typeParams) {
+            for (const auto &bound : parameter.bounds)
+                ownType(bound.get());
+        }
+        for (const auto &variant : enumeration->variants) {
+            for (const auto &field : variant.fields)
+                ownType(field.get());
+            for (const auto &field : variant.namedFields)
+                ownType(field.type.get());
+        }
+    }
+    else if (const auto *unionType = dynamic_cast<const UnionDecl *>(&declaration)) {
+        for (const auto &field : unionType->fields)
+            ownType(field.type.get());
+    }
+    else if (const auto *function = dynamic_cast<const FuncDecl *>(&declaration)) {
+        ownFunctionTypes(*function);
+    }
+    else if (const auto *implementation = dynamic_cast<const ImplDecl *>(&declaration)) {
+        ownType(implementation->extendedType.get());
+        for (const auto &method : implementation->methods)
+            ownFunctionTypes(*method);
+    }
+    else if (const auto *interface = dynamic_cast<const InterfaceDecl *>(&declaration)) {
+        for (const auto &method : interface->methods) {
+            ownFunctionTypes(*method, interface);
+        }
+    }
+    else if (const auto *alias = dynamic_cast<const TypeAliasDecl *>(&declaration)) {
+        ownType(alias->type.get());
+    }
     auto defineSimple = [&](Symbol::Kind kind, const std::string &name, SemanticSymbol::Kind publicKind,
                             std::string resolvedType = {}, bool isMut = false) {
         Symbol symbol;
@@ -280,24 +344,27 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
     }
     else if (const auto *structure = dynamic_cast<const StructDecl *>(&declaration)) {
         structs[structure->name] = structure;
-        structsBySource[sourceName][structure->name] = structure;
+        nominalDeclarations.emplace_back(structure->name, structure);
         defineSimple(Symbol::Kind::Type, structure->name, SemanticSymbol::Kind::Type, "struct");
     }
     else if (const auto *enumeration = dynamic_cast<const EnumDecl *>(&declaration)) {
         enums[enumeration->name] = enumeration;
-        enumsBySource[sourceName][enumeration->name] = enumeration;
+        nominalDeclarations.emplace_back(enumeration->name, enumeration);
         defineSimple(Symbol::Kind::Type, enumeration->name, SemanticSymbol::Kind::Type,
                      enumeration->IsVariant() ? "variant" : "enum");
     }
     else if (const auto *unionType = dynamic_cast<const UnionDecl *>(&declaration)) {
         unions[unionType->name] = unionType;
+        nominalDeclarations.emplace_back(unionType->name, unionType);
         defineSimple(Symbol::Kind::Type, unionType->name, SemanticSymbol::Kind::Type, "union");
     }
     else if (const auto *interface = dynamic_cast<const InterfaceDecl *>(&declaration)) {
         interfaces[interface->name] = interface;
+        nominalDeclarations.emplace_back(interface->name, interface);
         Symbol symbol;
         symbol.kind = Symbol::Kind::Interface;
         symbol.name = interface->name;
+        symbol.declaration = interface;
         symbol.location = interface->location;
         symbol.isPublic = interface->isPublic;
         symbol.isEffectivelyPublic = isEffectivelyPublic;
@@ -431,8 +498,9 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
             functionModulePaths[method.get()] =
                 packageName && !packageName->empty() ? JoinModulePath(*packageName, modulePath) : modulePath;
             declarationInfos.insert_or_assign(
-                method.get(), DeclarationInfo{ownerPackage, modulePath, sourceName,
-                                              containingModulesPublic && extendedTypePublic && method->isPublic});
+                method.get(),
+                DeclarationInfo{ownerPackage, modulePath, sourceName,
+                                containingModulesPublic && extendedTypePublic && method->isPublic, &scope});
         }
         if (implementation->interfaceName) {
             implementedInterfaces[typeName].insert(*implementation->interfaceName);
@@ -443,6 +511,53 @@ void SemanticProgramIndex::CollectDeclaration(const Decl &declaration, Scope &sc
 const SemanticProgramIndex::DeclarationInfo *SemanticProgramIndex::InfoFor(const Decl &declaration) const {
     const auto found = declarationInfos.find(&declaration);
     return found == declarationInfos.end() ? nullptr : &found->second;
+}
+
+const SemanticProgramIndex::DeclarationInfo *SemanticProgramIndex::TypeOwner(const TypeExpr &type) const {
+    const auto owner = typeOwners.find(&type);
+    return owner == typeOwners.end() ? nullptr : InfoFor(*owner->second);
+}
+
+const std::string &SemanticProgramIndex::NominalName(const Decl &declaration) const {
+    if (const auto identity = nominalNames.find(&declaration); identity != nominalNames.end())
+        return identity->second;
+    if (const auto *structure = dynamic_cast<const StructDecl *>(&declaration))
+        return structure->name;
+    if (const auto *enumeration = dynamic_cast<const EnumDecl *>(&declaration))
+        return enumeration->name;
+    if (const auto *unionType = dynamic_cast<const UnionDecl *>(&declaration))
+        return unionType->name;
+    return static_cast<const InterfaceDecl &>(declaration).name;
+}
+
+void SemanticProgramIndex::FinalizeNominalIdentities() {
+    std::unordered_map<std::string, std::unordered_set<std::string>> owners;
+    for (const auto &[name, declaration] : nominalDeclarations) {
+        const auto &info = declarationInfos.at(declaration);
+        owners[name].insert(JoinModulePath(info.ownerPackage, info.modulePath));
+    }
+    structs.clear();
+    enums.clear();
+    unions.clear();
+    interfaces.clear();
+    for (const auto &[name, declaration] : nominalDeclarations) {
+        const auto &info = declarationInfos.at(declaration);
+        // As with functions, unique spellings stay readable; collisions retain the declaring package/module ID.
+        const std::string identity =
+            owners[name].size() > 1 ? JoinModulePath(JoinModulePath(info.ownerPackage, info.modulePath), name) : name;
+        nominalNames.emplace(declaration, identity);
+        if (const auto *structure = dynamic_cast<const StructDecl *>(declaration))
+            structs[identity] = structure;
+        else if (const auto *enumeration = dynamic_cast<const EnumDecl *>(declaration))
+            enums[identity] = enumeration;
+        else if (const auto *unionType = dynamic_cast<const UnionDecl *>(declaration))
+            unions[identity] = unionType;
+        else if (const auto *interface = dynamic_cast<const InterfaceDecl *>(declaration))
+            interfaces[identity] = interface;
+        if (Symbol *symbol = info.scope->LookupLocal(name); symbol && declaration->intrinsicName.empty()) {
+            symbol->type = TypeRef::MakeNamed(identity);
+        }
+    }
 }
 
 void SemanticProgramIndex::FinalizeVisibility() {
@@ -513,36 +628,4 @@ void SemanticProgramIndex::FinalizeVisibility() {
     }
 }
 
-namespace {
-/// Look `name` up in the per-source index `bySource`.
-template <typename Map>
-[[nodiscard]] auto DeclaredIn(const Map &bySource, const std::string &sourceName, const std::string &name) {
-    using Declaration = typename Map::mapped_type::mapped_type;
-    const auto source = bySource.find(sourceName);
-    if (source == bySource.end()) {
-        return Declaration{nullptr};
-    }
-    const auto declared = source->second.find(name);
-    return declared == source->second.end() ? Declaration{nullptr} : declared->second;
-}
-} // namespace
-
-const StructDecl *SemanticProgramIndex::StructIn(const std::string &sourceName, const std::string &name) const {
-    return DeclaredIn(structsBySource, sourceName, name);
-}
-
-const EnumDecl *SemanticProgramIndex::EnumIn(const std::string &sourceName, const std::string &name) const {
-    return DeclaredIn(enumsBySource, sourceName, name);
-}
-
-const std::vector<TypeParameter> *SemanticProgramIndex::TypeParamsIn(const std::string &sourceName,
-                                                                     const std::string &name) const {
-    if (const StructDecl *structure = StructIn(sourceName, name)) {
-        return &structure->typeParams;
-    }
-    if (const EnumDecl *enumeration = EnumIn(sourceName, name)) {
-        return &enumeration->typeParams;
-    }
-    return nullptr;
-}
 } // namespace Rux::SemanticDetail

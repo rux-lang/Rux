@@ -8,10 +8,6 @@ Return to the [main README](../README.md) for the complete documentation index.
 
 ## Open
 
-### A root nominal type can collide with a dependency's same-named type
-
-*Reported failure; reproduction pending.* Declaring `ParseError` in the root package breaks a dependency's own `ParseError`, including Format's transitive parsing type. Renaming the root declaration avoids the failure. Package import and function identity repairs do not establish declaration ownership for nominal type lookup, extensions, generic substitutions, or layouts.
-
 ### An inline text ternary passed as a call argument can lose its slice
 
 *Reported silent failure; reproduction pending.* Passing a conditional text expression directly to a call can produce an empty slice, and repeated inline arguments or calls can crash. Binding the selected text to a local works. The report includes variadic `Io::PrintLine`; direct, interface, nested, empty, and non-text slice cases still need verification.

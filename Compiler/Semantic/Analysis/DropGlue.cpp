@@ -1,4 +1,5 @@
 #include "Semantic/Analysis/AnalysisContext.h"
+#include "Types/NominalName.h"
 
 #include <algorithm>
 #include <cctype>
@@ -35,7 +36,7 @@ bool AnalysisContext::TypeHasDirectDestructor(const std::string &baseName) const
     if (methods == methodsByType.end()) {
         return false;
     }
-    const auto destructors = methods->second.find("~" + baseName);
+    const auto destructors = methods->second.find("~" + UnqualifiedNominalName(baseName));
     return destructors != methods->second.end() &&
            std::ranges::any_of(destructors->second, [](const FuncDecl *method) { return method->body != nullptr; });
 }

@@ -235,6 +235,7 @@ struct ResolvedSymbolIdentity {
 
 /// Final identity and slot targets of an emitted interface vtable.
 struct ResolvedVtableIdentity {
+    std::string interfaceName;
     std::string linkerName;
     std::vector<std::string> entries;
 };

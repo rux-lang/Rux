@@ -165,7 +165,7 @@ void AnalysisContext::RecordIteration(const ForStmt &statement, const IterationS
     iteration.entry = shape.entry;
     iteration.reportedType = shape.reportedType;
     if (shape.reportedDeclaration) {
-        iteration.optionVariantName = shape.reportedDeclaration->name;
+        iteration.optionVariantName = programIndex.NominalName(*shape.reportedDeclaration);
         iteration.someVariant = std::string(kOptionSomeVariant);
         iteration.noneVariant = std::string(kOptionNoneVariant);
     }

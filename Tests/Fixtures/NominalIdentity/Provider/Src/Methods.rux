@@ -1,0 +1,39 @@
+extend Record {
+    pub func Record(first: int64, second: int64) -> Record { return Record { first: first, second: second }; }
+    pub func Sum(self: &Record) -> int64 { return self.first + self.second; }
+}
+extend Holder<T, U> {
+    pub func Sum(self: &Holder<T, U>) -> int64 { return self.record.Sum(); }
+}
+pub func MakeRecord() -> ExportedRecord { return Record(17i64, 25i64); }
+pub func RoundTrip<T>(value: T) -> Holder<T, Record> {
+    return Holder<T, Record> { value: value, marker: MakeRecord(), record: MakeRecord() };
+}
+pub func Echo<T>(value: T) -> T { return value; }
+pub func CheckProvider() -> bool {
+    let record = MakeRecord();
+    let error = ParseError::Bad(record);
+    let copied = Echo(error);
+    let named = ParseError::Named { record: record };
+    let namedSum = match named {
+        .Named(payload) => payload.Sum(),
+        .Bad(payload) => 0i64,
+        .Empty => 0i64
+    };
+    let holder = RoundTrip(11i32);
+    let bits = Bits { value: 1234567890123u64 };
+    let matched = match copied {
+        ParseError::Bad(payload) => payload.Sum(),
+        ParseError::Empty => 0i64,
+        ParseError::Named(payload) => payload.Sum()
+    };
+    return namedSum == 42i64 && matched == 42i64 && holder.Sum() == 42i64 && error == copied && bits.value == 1234567890123u64 &&
+        sizeof(Record) == 16u && sizeof(Mode) == 4u && Mode::Ready as uint32 == 37u32;
+}
+extend Tracked {
+    func ~Tracked(self: &var Tracked) { *self.counter += self.tail as int; }
+}
+pub func DropInProvider(counter: *var int) { let owned = Tracked { counter: counter, tail: 1i64 }; }
+extend Record : Reader { pub func Forward(self: &Record, value: Record) -> Record { return value; } pub func Read(self: &Record) -> int64 { return self.first + self.second; } }
+pub func ReadProvider(value: &Reader) -> int64 { return value.Read() + value.Forward(MakeRecord()).Sum() - 42i64; }
+pub func ReadBound<T: Reader>(value: &T) -> int64 { return value.Read() + value.Forward(MakeRecord()).Sum() - 42i64; }

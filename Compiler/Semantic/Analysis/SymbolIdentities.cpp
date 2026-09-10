@@ -143,6 +143,9 @@ void AnalysisContext::RecordMethodIdentityRecipe(ResolvedCallableBinding &bindin
 }
 
 void AnalysisContext::BuildFinalSymbolIdentities() {
+    for (const auto &[declaration, name] : programIndex.NominalNames()) {
+        symbolIdentities.emplace(declaration, ResolvedSymbolIdentity{name});
+    }
     for (const auto &[declaration, type] : checkedConstantTypes) {
         const auto &owner = declarationInfos.at(declaration);
         // Qualify even unique constants so an inlined initializer cannot collide with a caller's local binding.
@@ -209,7 +212,12 @@ void AnalysisContext::BuildFinalSymbolIdentities() {
         if (!implementation->interfaceName) {
             continue;
         }
-        const auto interface = interfaceDecls.find(*implementation->interfaceName);
+        const auto *owner = programIndex.InfoFor(*implementation);
+        const Symbol *symbol = owner && owner->scope ? owner->scope->Lookup(*implementation->interfaceName) : nullptr;
+        const std::string interfaceName = symbol && programIndex.NominalNames().contains(symbol->declaration)
+                                            ? programIndex.NominalName(*symbol->declaration)
+                                            : *implementation->interfaceName;
+        const auto interface = interfaceDecls.find(interfaceName);
         if (interface == interfaceDecls.end() || interface->second->methods.empty()) {
             continue;
         }
@@ -218,7 +226,8 @@ void AnalysisContext::BuildFinalSymbolIdentities() {
         // exists.
         const std::string receiverName = NamedBaseTypeName(receiverType);
         ResolvedVtableIdentity identity;
-        identity.linkerName = "__vtable__" + receiverName + "__" + *implementation->interfaceName;
+        identity.interfaceName = interfaceName;
+        identity.linkerName = "__vtable__" + receiverName + "__" + interfaceName;
         for (const auto &method : interface->second->methods) {
             identity.entries.push_back(receiverName + "::" + method->name);
         }

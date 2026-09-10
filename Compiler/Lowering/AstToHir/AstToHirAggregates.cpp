@@ -123,7 +123,7 @@ std::uint64_t AstToHirContext::ResolvedTypeQuery(const TypeQueryExpr &expression
 }
 
 std::string AstToHirContext::GenericStructInitName(const StructInitExpr &expression) {
-    std::string name = expression.typeName;
+    std::string name = BaseTypeNameImpl(ResolvedExpressionType(expression).name);
     if (!expression.typeArgs.empty()) {
         name += "<";
         for (std::size_t i = 0; i < expression.typeArgs.size(); ++i) {
@@ -138,13 +138,14 @@ std::string AstToHirContext::GenericStructInitName(const StructInitExpr &express
 }
 
 std::pair<const EnumDecl *, const EnumDecl::Variant *>
-AstToHirContext::LookupEnumVariantInitializer(const std::string &typeName) const {
-    const std::size_t separator = typeName.find("::");
-    if (separator == std::string::npos || typeName.find("::", separator + 2) != std::string::npos) {
+AstToHirContext::LookupEnumVariantInitializer(const StructInitExpr &expression) const {
+    const std::string &typeName = expression.typeName;
+    const std::size_t separator = typeName.rfind("::");
+    if (separator == std::string::npos) {
         return {nullptr, nullptr};
     }
 
-    const auto declaration = enumDecls.find(typeName.substr(0, separator));
+    const auto declaration = enumDecls.find(NamedBaseTypeName(ResolvedExpressionType(expression)));
     if (declaration == enumDecls.end()) {
         return {nullptr, nullptr};
     }
@@ -438,16 +439,17 @@ HirExprPtr AstToHirContext::LowerIntrinsicExpr(const IntrinsicExpr &expression) 
 }
 
 TypeRef AstToHirContext::StructInitFieldType(const StructInitExpr &expression, const std::string &fieldName) {
-    const auto structure = structDecls.find(expression.typeName);
+    const auto structure = structDecls.find(NamedBaseTypeName(ResolvedExpressionType(expression)));
     if (structure == structDecls.end()) {
-        if (const auto unionType = unionDecls.find(expression.typeName); unionType != unionDecls.end()) {
+        if (const auto unionType = unionDecls.find(NamedBaseTypeName(ResolvedExpressionType(expression)));
+            unionType != unionDecls.end()) {
             for (const auto &field : unionType->second->fields) {
                 if (field.name == fieldName) {
                     return ResolveType(*field.type);
                 }
             }
         }
-        if (const auto [enumDecl, variant] = LookupEnumVariantInitializer(expression.typeName); enumDecl && variant) {
+        if (const auto [enumDecl, variant] = LookupEnumVariantInitializer(expression); enumDecl && variant) {
             for (const auto &field : variant->namedFields) {
                 if (field.name == fieldName) {
                     return ResolveType(*field.type);
@@ -639,8 +641,7 @@ HirExprPtr AstToHirContext::LowerExprAs(const Expr &expression, const TypeRef &t
         expressionValueType.isMut = false;
         referentValueType.isMut = false;
         if (referent.kind == TypeRef::Kind::Named) {
-            if (HirSymbol *symbol = currentScope->Lookup(referent.name);
-                symbol && symbol->kind == HirSymbol::Kind::Interface && expressionValueType != referentValueType) {
+            if (interfaceDecls.contains(referent.name) && expressionValueType != referentValueType) {
                 std::optional<TypeRef> implementationType = InterfaceImplementationType(lowered->type, targetType);
                 if (!implementationType) {
                     implementationType = lowered->type.kind == TypeRef::Kind::Reference && !lowered->type.inner.empty()
@@ -680,8 +681,7 @@ HirExprPtr AstToHirContext::LowerExprAs(const Expr &expression, const TypeRef &t
         lowered->type = targetType;
     }
     else if (targetType.kind == TypeRef::Kind::Named) {
-        if (HirSymbol *symbol = currentScope->Lookup(targetType.name);
-            symbol && symbol->kind == HirSymbol::Kind::Interface && lowered->type != targetType) {
+        if (interfaceDecls.contains(targetType.name) && lowered->type != targetType) {
             std::optional<TypeRef> implementationType = InterfaceImplementationType(lowered->type, targetType);
             if (!implementationType) {
                 implementationType = lowered->type;
@@ -749,16 +749,13 @@ HirExprPtr AstToHirContext::LowerAggregateExpr(const Expr &expression) {
         return LowerIntrinsicExpr(*intrinsic);
     }
     if (const auto *initializer = dynamic_cast<const StructInitExpr *>(&expression)) {
-        if (const auto [enumDecl, variant] = LookupEnumVariantInitializer(initializer->typeName); enumDecl && variant) {
+        if (const auto [enumDecl, variant] = LookupEnumVariantInitializer(*initializer); enumDecl && variant) {
             if (!variant->namedFields.empty()) {
                 auto lowered = std::make_unique<HirEnumConstructExpr>();
                 lowered->location = initializer->location;
                 lowered->form = enumDecl->IsVariant() ? CaseTypeForm::Variant : CaseTypeForm::Enumeration;
                 lowered->type = EnumType(*enumDecl);
-                const std::size_t separator = initializer->typeName.find("::");
-                lowered->discriminant = LookupEnumVariantDiscriminant(initializer->typeName.substr(0, separator),
-                                                                      initializer->typeName.substr(separator + 2))
-                                            .value_or("0");
+                lowered->discriminant = LookupEnumVariantDiscriminant(NominalName(*enumDecl), variant->name).value();
                 std::vector<HirPartialDropAction> completed;
                 for (std::size_t index = 0; index < variant->namedFields.size(); ++index) {
                     const auto &field = variant->namedFields[index];
@@ -776,7 +773,8 @@ HirExprPtr AstToHirContext::LowerAggregateExpr(const Expr &expression) {
                 }
                 return lowered;
             }
-            const std::string discriminant = LookupEnumVariantDiscriminant(enumDecl->name, variant->name).value_or("0");
+            const std::string discriminant =
+                LookupEnumVariantDiscriminant(NominalName(*enumDecl), variant->name).value_or("0");
             if (!enumDecl->IsVariant()) {
                 return CompilerLiteral(initializer->location, EnumType(*enumDecl), discriminant);
             }
@@ -821,19 +819,23 @@ HirExprPtr AstToHirContext::LowerAggregateExpr(const Expr &expression) {
             return nullptr;
         }
         if (path->segments.size() == 2) {
+            TypeRef pathType = ResolvedExpressionType(expression);
+            if (pathType.kind == TypeRef::Kind::Func && !pathType.inner.empty())
+                pathType = pathType.inner.back();
+            const std::string enumName = BaseTypeNameImpl(pathType.name);
             if (HirSymbol *first = currentScope->Lookup(path->segments[0]);
                 first && (first->kind == HirSymbol::Kind::Type || first->kind == HirSymbol::Kind::Interface)) {
                 if (first->kind == HirSymbol::Kind::Type) {
-                    if (const auto discriminant = LookupEnumVariantDiscriminant(path->segments[0], path->segments[1])) {
-                        const auto *variant = LookupEnumVariant(path->segments[0], path->segments[1]);
+                    if (const auto discriminant = LookupEnumVariantDiscriminant(enumName, path->segments[1])) {
+                        const auto *variant = LookupEnumVariant(enumName, path->segments[1]);
                         if (variant && (!variant->fields.empty() || !variant->namedFields.empty())) {
                             auto lowered = std::make_unique<HirPathExpr>();
                             lowered->location = path->location;
                             lowered->segments = path->segments;
-                            lowered->type = EnumVariantConstructorType(*enumDecls.at(path->segments[0]), *variant);
+                            lowered->type = EnumVariantConstructorType(*enumDecls.at(enumName), *variant);
                             return lowered;
                         }
-                        const EnumDecl &declaration = *enumDecls.at(path->segments[0]);
+                        const EnumDecl &declaration = *enumDecls.at(enumName);
                         if (!declaration.IsVariant()) {
                             return CompilerLiteral(path->location, EnumType(declaration), *discriminant);
                         }

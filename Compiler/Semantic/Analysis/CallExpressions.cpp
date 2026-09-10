@@ -3,6 +3,7 @@
 
 #include "Semantic/Analysis/AnalysisContext.h"
 #include "Syntax/Parser/Detail/AstDumpWriter.h"
+#include "Types/NominalName.h"
 
 #include <algorithm>
 #include <format>
@@ -326,7 +327,7 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
             if (candidates.empty()) {
                 const std::string typeName = NamedBaseTypeName(constructedType);
                 if (const auto methods = methodsByType.find(typeName); methods != methodsByType.end()) {
-                    if (const auto constructors = methods->second.find(typeName);
+                    if (const auto constructors = methods->second.find(std::string(UnqualifiedNominalName(typeName)));
                         constructors != methods->second.end()) {
                         const auto privateConstructor = std::ranges::find_if(
                             constructors->second, [this, &constructedType](const FuncDecl *candidate) {
