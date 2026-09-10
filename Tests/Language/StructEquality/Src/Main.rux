@@ -1,0 +1,129 @@
+struct Pair { head: int64; tail: int64; }
+struct Empty {}
+struct Padded { byte: uint8; value: int64; }
+struct Box<T> { value: T; }
+struct Nested { tuples: (Pair, Pair); values: Pair[2]; }
+variant Payload { Pairs(Pair, Pair), Empty }
+
+struct Money { cents: int64; }
+extend Money {
+    func Equal(self: &Money, other: &Money) -> bool { return self.cents % 100 == other.cents % 100; }
+    func ==(self: &Money, other: &Money) -> bool { return self.Equal(other); }
+    func <(self: &Money, other: &Money) -> bool { return self.cents < other.cents; }
+}
+struct Wide { value: int64; tail: int64; trace: *var int32; }
+extend Wide {
+    func ==(self: &Wide, other: &Wide) -> bool {
+        *self.trace = *self.trace * 10 + self.value as int32;
+        return self.value == other.value && self.tail == other.tail;
+    }
+    func <(self: &Wide, other: &Wide) -> bool { return self.tail < other.tail; }
+}
+struct OrderedFields { first: Wide; second: Wide; }
+struct CustomView { view: char8[..]; code: int32; }
+extend CustomView { func ==(self: &CustomView, other: &CustomView) -> bool { return self.code == other.code; } }
+
+func Equal<T>(left: T, right: T) -> bool { return left == right; }
+func Make(calls: *var int32, tail: int64) -> Pair { *calls = *calls + 1; return Pair { head: 1, tail: tail }; }
+func Forward(value: Payload) -> Payload { return value; }
+func Sum(value: Payload) -> int64 {
+    return match value { .Pairs(left, right) => left.head + left.tail + right.head + right.tail, .Empty => 0i64 };
+}
+func FloatBits(bits: uint64) -> float64 { return *(@bits as *float64); }
+struct Floating { leading: int64; value: float64; }
+
+struct Tracked { value: int64; drops: *var int32; }
+extend Tracked {
+    func =(self: &var Tracked, other: &Tracked);
+    func ~Tracked(self: &var Tracked) { *self.drops = *self.drops * 10 + self.value as int32; }
+}
+variant Owners { Both(Tracked, Tracked) }
+func DropPayloads(drops: *var int32) {
+    let value = Owners::Both(Tracked { value: 1, drops: drops }, Tracked { value: 2, drops: drops });
+    let moved <- value;
+}
+
+struct Copied { value: int64; copies: *var int32; moves: *var int32; }
+extend Copied {
+    func =(self: &var Copied, other: &Copied) {
+        self.value = other.value;
+        self.copies = other.copies;
+        self.moves = other.moves;
+        *self.copies = *self.copies * 10 + self.value as int32;
+    }
+    func <-(self: &var Copied, other: Copied) {
+        self.value = other.value;
+        self.copies = other.copies;
+        self.moves = other.moves;
+        *self.moves = *self.moves * 10 + self.value as int32;
+    }
+}
+variant Transfers { Both(Copied, Copied) }
+func TransferPayloads(copies: *var int32, moves: *var int32) -> bool {
+    let value = Transfers::Both(Copied { value: 1, copies: copies, moves: moves },
+                               Copied { value: 2, copies: copies, moves: moves });
+    *copies = 0;
+    let copied = value;
+    if *copies != 12 { return false; }
+    *moves = 0;
+    let moved <- copied;
+    if *moves != 12 { return false; }
+    return match moved { .Both(first, second) => first.value == 1 && second.value == 2 };
+}
+
+func Main() -> int {
+    let a = Pair { head: 1, tail: 2 };
+    let b = Pair { head: 1, tail: 3 };
+    if a == b || !(a != b) { return 1; }
+    if (a != Pair { head: 1, tail: 2 } || !(a == a)) { return 2; }
+    if (Empty {} != Empty {}) { return 3; }
+    var paddedA = Padded { byte: 1, value: 42 };
+    var paddedB = Padded { byte: 1, value: 42 };
+    *((@paddedA as *var uint8) + 1) = 17u8;
+    *((@paddedB as *var uint8) + 1) = 93u8;
+    if paddedA != paddedB { return 4; }
+    if (Box<Pair> { value: a } == Box<Pair> { value: b }) { return 5; }
+    let nestedA = Nested { tuples: (a, a), values: [a, a] };
+    let nestedB = Nested { tuples: (a, a), values: [a, b] };
+    if nestedA == nestedB || nestedA != nestedA { return 6; }
+    let payload = Payload::Pairs(a, b);
+    if Sum(Forward(payload)) != 7 || payload != Forward(payload) { return 7; }
+    if (payload == Payload::Pairs(a, a) || Box<Payload> { value: payload } == Box<Payload> { value: Payload::Empty }) { return 8; }
+    if !Equal<Pair>(a, a) || Equal<Pair>(a, b) || !Equal<int32>(3i32, 3i32) { return 9; }
+    if (!Equal<Box<bool>>(Box<bool> { value: true }, Box<bool> { value: true })) { return 10; }
+    var calls: int32 = 0;
+    if Make(@calls, 2) == Make(@calls, 3) || calls != 2 { return 11; }
+    let moneyA = Money { cents: 101 };
+    let moneyB = Money { cents: 201 };
+    let moneyC = Money { cents: 202 };
+    let borrowedA: &Money = moneyA;
+    let borrowedB: &Money = moneyB;
+    if !moneyA.Equal(moneyB) || !(moneyA == moneyB) || moneyA != moneyB || moneyA == moneyC { return 12; }
+    if !(borrowedA == borrowedB) || !(moneyA == borrowedB) || !(borrowedA == moneyB) { return 13; }
+    if !(moneyA < moneyB) || !(borrowedA < borrowedB) || !(moneyB > moneyA) { return 14; }
+    if (!Equal<Money>(moneyA, moneyB) || Box<Money> { value: moneyA } != Box<Money> { value: moneyB }) { return 15; }
+    var trace: int32 = 0;
+    let first = Wide { value: 1, tail: 10, trace: @trace };
+    let second = Wide { value: 2, tail: 20, trace: @trace };
+    let changed = Wide { value: 2, tail: 30, trace: @trace };
+    if !(first == first) || !(second < changed) || trace != 1 { return 16; }
+    trace = 0;
+    let ordered = OrderedFields { first: first, second: second };
+    if ordered != ordered || trace != 12 { return 17; }
+    trace = 0;
+    if (ordered == OrderedFields { first: second, second: second } || trace != 1) { return 18; }
+    let viewA = CustomView { view: "a", code: 7 };
+    let viewB = CustomView { view: "different", code: 7 };
+    if (Box<CustomView> { value: viewA } != Box<CustomView> { value: viewB }) { return 19; }
+    let nan = FloatBits(0x7FF8000000000000u64);
+    let floating = Floating { leading: 1, value: nan };
+    if floating == floating || !(floating != floating) { return 20; }
+    if (Floating { leading: 1, value: 0.0f64 } != Floating { leading: 1, value: -0.0f64 }) { return 21; }
+    var drops: int32 = 0;
+    DropPayloads(@drops);
+    if drops != 21 { return 22; }
+    var copies: int32 = 0;
+    var moves: int32 = 0;
+    if !TransferPayloads(@copies, @moves) { return 23; }
+    return 0;
+}

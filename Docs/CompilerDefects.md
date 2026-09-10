@@ -8,17 +8,9 @@ Return to the [main README](../README.md) for the complete documentation index.
 
 ## Open
 
-### Structural struct equality remains unavailable
-
-Structs without declared equality operators still lack field-wise comparison. Tuple and variant equality now use structural operations; struct equality must preserve declared operators, compare all eligible fields, and exclude padding.
-
 ### System V x86-64 loses the tail of a 9–15-byte aggregate
 
 *Silent.* A by-value named struct whose runtime size is 9–15 bytes travels as a single register on System V x86-64. Caller and callee agree on that classification, but the tail beyond the first eight bytes is lost. Field padding makes these sizes uncommon; it does not make dropping their data correct. Argument placement, callee spills, affected returns, and textual assembly must preserve the complete value, including when argument registers are exhausted.
-
-### A user-defined operator with a reference operand can crash
-
-*Reported silent failure; reproduction pending.* A struct operator such as `func ==(self: &Money, other: &Money) -> bool` type-checks but crashes when called; the corresponding by-value operand works. The report also covers `<`. Verify both direct and already borrowed operands, with an ordinary named method as a control, before changing operator dispatch.
 
 ### A root nominal type can collide with a dependency's same-named type
 

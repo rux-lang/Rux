@@ -184,27 +184,8 @@ StructLayout ComputeStructLayout(const LirStructDecl &s, const LayoutMap &known,
     int offset = 0;
     int maxAlign = 1;
     for (const auto &f : s.fields) {
-        int sz = SizeOf(f.type);
-        int al = AlignOf(f.type);
-        if (f.type.kind == TypeRef::Kind::Named) {
-            const auto baseName = BaseTypeName(f.type.name);
-            // A generic struct is declared once but laid out once per instantiation, so the instantiation's own entry
-            // answers ahead of the declaration's: `Box<int64>` is not the size of `Box<T>`.
-            auto it = known.find(f.type.name);
-            if (it == known.end()) {
-                it = known.find(baseName);
-            }
-            if (interfaceNames.contains(baseName)) {
-                // An interface value is a data pointer and a vtable pointer, under a name that is a declaration
-                // rather than a type with a size of its own.
-                sz = 16;
-                al = 8;
-            }
-            else if (it != known.end()) {
-                sz = it->second.totalSize;
-                al = it->second.alignment;
-            }
-        }
+        const int sz = RuntimeSizeOf(f.type, known, interfaceNames);
+        const int al = RuntimeAlignmentOf(f.type, known, interfaceNames);
         if (al > 1) {
             offset = AlignUp(offset, al);
         }

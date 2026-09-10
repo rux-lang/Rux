@@ -144,7 +144,7 @@ TEST_CASE("variant equality accepts structurally comparable payloads") {
 
 TEST_CASE("variant equality diagnoses the first non-comparable active payload type") {
     const auto diagnostics = AnalyzeSource(R"(
-        struct Opaque { value: int; }
+        union Opaque { value: int }
         variant Invalid {
             Empty,
             Stored(Opaque),
@@ -169,7 +169,7 @@ TEST_CASE("generic variant equality requirements are checked per concrete instan
         extend Comparable {
             func ==(self: &Comparable, other: Comparable) -> bool { return self.value == other.value; }
         }
-        struct Opaque { value: int; }
+        union Opaque { value: int }
         variant Maybe<T> { None, Some(T) }
 
         func Same<T>(left: Maybe<T>, right: Maybe<T>) -> bool {

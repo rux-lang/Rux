@@ -58,8 +58,7 @@ void HirToLirContext::StoreEnumConstructIntoSlot(const HirEnumConstructExpr &e, 
     std::uint64_t offset = tagType.SizeInBytes().value_or(8);
     for (std::size_t index = 0; index < e.payloads.size(); ++index) {
         const auto &payloadExpr = e.payloads[index];
-        const std::uint64_t size = payloadExpr->type.SizeInBytes().value_or(8);
-        const std::uint64_t align = size > 0 ? std::min<std::uint64_t>(size, 8) : 1;
+        const auto [size, align] = TypeLayoutOf(payloadExpr->type);
         offset = (offset + align - 1) / align * align;
         const LirReg offsetReg = EmitConst(std::to_string(offset), TypeRef::MakeUInt64());
         const LirReg payloadSlot = EmitIndexPtr(slot, offsetReg, TypeRef::MakeChar8());
@@ -243,13 +242,11 @@ LirReg HirToLirContext::LowerPattern(const HirPattern &pat, LirReg subjectVal, c
                 std::uint64_t offset = tagType.SizeInBytes().value_or(8);
                 for (std::size_t fieldIndex = 0; fieldIndex < payloadIndex && fieldIndex < p->payloadTypes.size();
                      ++fieldIndex) {
-                    const std::uint64_t fieldSize = p->payloadTypes[fieldIndex].SizeInBytes().value_or(8);
-                    const std::uint64_t fieldAlign = fieldSize > 0 ? std::min<std::uint64_t>(fieldSize, 8) : 1;
+                    const auto [fieldSize, fieldAlign] = TypeLayoutOf(p->payloadTypes[fieldIndex]);
                     offset = (offset + fieldAlign - 1) / fieldAlign * fieldAlign;
                     offset += fieldSize;
                 }
-                const std::uint64_t payloadSize = payloadType.SizeInBytes().value_or(8);
-                const std::uint64_t payloadAlign = payloadSize > 0 ? std::min<std::uint64_t>(payloadSize, 8) : 1;
+                const std::uint64_t payloadAlign = TypeLayoutOf(payloadType).alignment;
                 offset = (offset + payloadAlign - 1) / payloadAlign * payloadAlign;
                 const LirReg offsetReg = EmitConst(std::to_string(offset), TypeRef::MakeUInt64());
                 payloadSlot = EmitIndexPtr(subjectSlot, offsetReg, TypeRef::MakeChar8());
@@ -530,8 +527,7 @@ void HirToLirContext::EmitCopyPlan(const HirCopyPlan &plan, const LirReg source,
             const std::size_t payloadCount = std::min(payloadTypes.size(), payloadPlans.size());
             for (std::size_t payloadIndex = 0; payloadIndex < payloadCount; ++payloadIndex) {
                 const TypeRef &payloadType = payloadTypes[payloadIndex];
-                const std::uint64_t size = payloadType.SizeInBytes().value_or(8);
-                const std::uint64_t alignment = size > 0 ? std::min<std::uint64_t>(size, 8) : 1;
+                const auto [size, alignment] = TypeLayoutOf(payloadType);
                 offset = (offset + alignment - 1) / alignment * alignment;
                 const HirCopyPlan &component = payloadPlans[payloadIndex];
                 if (component.kind != HirCopyPlan::Kind::Trivial) {
@@ -629,8 +625,7 @@ void HirToLirContext::EmitMovePlan(const HirMovePlan &plan, const LirReg source,
             const std::size_t payloadCount = std::min(payloadTypes.size(), payloadPlans.size());
             for (std::size_t payloadIndex = 0; payloadIndex < payloadCount; ++payloadIndex) {
                 const TypeRef &payloadType = payloadTypes[payloadIndex];
-                const std::uint64_t size = payloadType.SizeInBytes().value_or(8);
-                const std::uint64_t alignment = size > 0 ? std::min<std::uint64_t>(size, 8) : 1;
+                const auto [size, alignment] = TypeLayoutOf(payloadType);
                 offset = (offset + alignment - 1) / alignment * alignment;
                 const HirMovePlan &component = payloadPlans[payloadIndex];
                 if (component.kind != HirMovePlan::Kind::Trivial) {

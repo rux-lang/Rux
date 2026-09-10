@@ -292,11 +292,12 @@ LirReg HirToLirContext::EmitVariantPayloadEquality(const HirVariantEqualityPaylo
         return EmitVariantEquality(payload.type, payload.variantCases, left, right);
     }
 
-    if (payload.operation == Operation::Tuple) {
+    if (payload.operation == Operation::Tuple || payload.operation == Operation::Structure) {
         return EmitEqualitySequence(payload.elements.size(), [&](const std::size_t index) {
             const HirVariantEqualityPayload &element = payload.elements[index];
-            const LirReg leftElement = EmitFieldPtr(left, std::to_string(index), element.type);
-            const LirReg rightElement = EmitFieldPtr(right, std::to_string(index), element.type);
+            const std::string field = payload.operation == Operation::Tuple ? std::to_string(index) : element.fieldName;
+            const LirReg leftElement = EmitFieldPtr(left, field, element.type);
+            const LirReg rightElement = EmitFieldPtr(right, field, element.type);
             return EmitVariantPayloadEquality(element, leftElement, rightElement);
         });
     }
@@ -318,8 +319,7 @@ LirReg HirToLirContext::EmitVariantPayloadsEquality(const std::vector<HirVariant
     std::uint64_t offset = tagType.SizeInBytes().value_or(8);
     return EmitEqualitySequence(payloads.size(), [&](const std::size_t index) {
         const HirVariantEqualityPayload &payload = payloads[index];
-        const std::uint64_t size = payload.type.SizeInBytes().value_or(8);
-        const std::uint64_t alignment = size > 0 ? std::min<std::uint64_t>(size, 8) : 1;
+        const auto [size, alignment] = TypeLayoutOf(payload.type);
         offset = (offset + alignment - 1) / alignment * alignment;
         const LirReg byteOffset = EmitConst(std::to_string(offset), TypeRef::MakeUInt64());
         const LirReg leftBytes = EmitIndexPtr(left, byteOffset, TypeRef::MakeChar8());

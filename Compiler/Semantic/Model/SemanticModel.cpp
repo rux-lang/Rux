@@ -196,6 +196,10 @@ const VariantEqualityPlan *SemanticModel::TryGetVariantEqualityPlan(const TypeRe
     return plan == facts.variantEqualityPlans.end() ? nullptr : &plan->second;
 }
 
+const std::unordered_map<std::string, ResolvedTypeLayout> &SemanticModel::TypeLayouts() const noexcept {
+    return facts.typeLayouts;
+}
+
 const bool *SemanticModel::TryGetAggregateEquality(const BinaryExpr &expression) const noexcept {
     const auto fact = facts.aggregateEqualities.find(&expression);
     return fact == facts.aggregateEqualities.end() ? nullptr : &fact->second;

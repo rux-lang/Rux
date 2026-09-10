@@ -83,6 +83,14 @@ TEST_CASE("tuple projections preserve concrete aggregate widths and alignments")
     CHECK_EQ(FieldOffsetOf(unalignedPointer, "1", layouts, {}), 1);
     CHECK_EQ(FieldOffsetOf(unalignedPointer, "2", layouts, {}), 16);
     CHECK_EQ(RuntimeSizeOf(unaligned, layouts, {}), 56);
+    LirStructDecl holder;
+    holder.name = "Holder";
+    holder.fields = {{"tuple", tuple}, {"array", TypeRef::MakeArray(wide, 2)}, {"tail", TypeRef::MakeInt64()}};
+    const StructLayout held = ComputeStructLayout(holder, layouts, {});
+    REQUIRE_EQ(held.fields.size(), 3);
+    CHECK_EQ(held.fields[1].offset, 40);
+    CHECK_EQ(held.fields[2].offset, 72);
+    CHECK_EQ(held.totalSize, 80);
 }
 
 TEST_CASE("an interface-typed field occupies a fat pointer rather than one word") {

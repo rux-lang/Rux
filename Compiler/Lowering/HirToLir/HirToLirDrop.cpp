@@ -147,27 +147,30 @@ void HirToLirContext::EmitDropGlueEnumVariant(const DropGlueStep &step, const Li
     // Offsets are recomputed from the payload types the plan carries, by the same rule construction uses, because a
     // payload's home depends on the sizes of the payloads written before it -- including the ones nothing destroys.
     std::uint64_t offset = tagType.SizeInBytes().value_or(8);
+    std::vector<std::uint64_t> offsets;
+    offsets.reserve(step.payloadTypes.size());
     for (std::size_t index = 0; index < step.payloadTypes.size(); ++index) {
-        const std::uint64_t size = step.payloadTypes[index].SizeInBytes().value_or(8);
-        const std::uint64_t alignment = size > 0 ? std::min<std::uint64_t>(size, 8) : 1;
+        const auto [size, alignment] = TypeLayoutOf(step.payloadTypes[index]);
         offset = (offset + alignment - 1) / alignment * alignment;
-        for (const DropGlueStep &child : step.children) {
-            if (child.ordinal != index || IsTerminated()) {
-                continue;
-            }
-            const LirReg byteOffset = EmitConst(std::to_string(offset), TypeRef::MakeUInt64());
-            const LirReg bytes = EmitIndexPtr(base, byteOffset, TypeRef::MakeChar8());
-            // Counted in bytes to reach the payload, then said to be a pointer to what is actually there. The byte
-            // pointer alone is enough to destroy a payload that is one droppable value, and wrong for a payload
-            // that is an aggregate: a step reaching a field of it asks the back end for that field's offset, the
-            // back end reads it from the type the register holds, and a pointer to bytes has no fields -- so every
-            // field was destroyed at the front of the payload. A payload whose droppable field happened to sit
-            // first was destroyed correctly, which is why this survived until an entry with a key before its value.
-            const LirReg payload = EmitCast(bytes, TypeRef::MakePointer(TypeRef::MakeChar8()),
-                                            TypeRef::MakePointer(step.payloadTypes[index]));
-            EmitDropGlueSteps(child.children, payload);
-        }
+        offsets.push_back(offset);
         offset += size;
+    }
+    // The semantic recipe already orders destruction in reverse declaration order. Computing offsets must not
+    // reorder those effects by walking the physical payloads from front to back.
+    for (const DropGlueStep &child : step.children) {
+        if (IsTerminated()) {
+            break;
+        }
+        if (child.ordinal >= offsets.size()) {
+            BuilderFailure("variant destruction refers to an unavailable payload");
+            continue;
+        }
+        const LirReg byteOffset = EmitConst(std::to_string(offsets[child.ordinal]), TypeRef::MakeUInt64());
+        const LirReg bytes = EmitIndexPtr(base, byteOffset, TypeRef::MakeChar8());
+        // Preserve the pointee's type so nested field cleanup uses the declaration's offsets.
+        const LirReg payload = EmitCast(bytes, TypeRef::MakePointer(TypeRef::MakeChar8()),
+                                        TypeRef::MakePointer(step.payloadTypes[child.ordinal]));
+        EmitDropGlueSteps(child.children, payload);
     }
     if (!IsTerminated()) {
         Jump(afterBlock);

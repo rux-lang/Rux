@@ -1,0 +1,11 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "StructEquality"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Structural struct equality and borrowed operator arguments"
+
+[Build]
+Output = "../../../Bin/Tests/Language"

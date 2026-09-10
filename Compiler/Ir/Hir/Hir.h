@@ -14,6 +14,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace Rux {
@@ -190,12 +191,14 @@ struct HirVariantEqualityPayload {
         Custom,
         Variant,
         Tuple,
+        Structure,
         Array,
     };
 
     TypeRef type;
     Operation operation = Operation::Builtin;
     std::string customCallee;
+    std::string fieldName;
     TypeRef customReceiverType;
     TypeRef customArgumentType;
     std::vector<HirVariantEqualityPayload> elements;
@@ -706,9 +709,15 @@ struct HirModule {
     std::vector<HirTypeAlias> typeAliases;
 };
 
+struct HirTypeLayout {
+    std::uint64_t size = 0;
+    std::uint64_t alignment = 1;
+};
+
 struct HirPackage {
     std::vector<HirModule> modules;
     std::vector<DropGluePlan> dropGlues;
+    std::unordered_map<std::string, HirTypeLayout> typeLayouts;
 };
 
 inline HirGuardedPattern::~HirGuardedPattern() = default;

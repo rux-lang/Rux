@@ -421,6 +421,8 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 
 ### Fixed
 
+- **Structural struct equality and borrowed operators** — structs compare all eligible fields in declaration order, skip padding, and preserve declared operators. Operator reference arguments now borrow values without adding indirection to existing borrows. Concrete layout facts keep multiword variant payloads intact through construction, matching, equality, copying, moving, and reverse-order destruction.
+
 - **Structural tuple equality** — tuple comparisons evaluate operands once and compare every element in order, including nested tuples, variants, arrays, and custom equality. Comparisons short-circuit, preserve floating-point semantics, and diagnose unsupported elements; `!=` negates the same traversal on both backends.
 
 - **Generic methods on non-generic types** — associated and instance methods resolve their own explicit or inferred type arguments independently of receiver parameters, validate bounds, and retain concrete signatures through lowering. Allocator replaces `LayoutOf<T>()` and `LayoutOfArray<T>(count)` with `Layout::ForValue<T>()` and `Layout::ForArray<T>(count)`; both now use `alignof(T)`.

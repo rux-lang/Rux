@@ -107,6 +107,7 @@ struct VariantEqualityPayload {
         Custom,
         Variant,
         Tuple,
+        Structure,
         Array,
         Deferred,
     };
@@ -396,6 +397,7 @@ struct SemanticModel {
     /// Type-expression queries first use the resolved type fact for that AST node.
     [[nodiscard]] const ResolvedTypeLayout *TryGetLayout(const TypeRef &type) const noexcept;
     [[nodiscard]] const ResolvedTypeLayout *TryGetLayout(const TypeExpr &typeNode) const noexcept;
+    [[nodiscard]] const std::unordered_map<std::string, ResolvedTypeLayout> &TypeLayouts() const noexcept;
 
     /// Returns null only when analysis never encountered the type. Unresolved generic declarations retain an explicit
     /// property record whose mobility is Unresolved.

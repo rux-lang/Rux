@@ -803,8 +803,19 @@ TypeRef AnalysisContext::CheckBinary(const TokenKind op, const TypeRef &leftType
                 return TypeRef::MakeBool();
             }
 
-            // `==` and `<` are the operators everything else derives from, so they can only be declared. Anything
-            // else reached here because what it derives from is missing too.
+            if (sameNamedType && (operation == TK::Equal || operation == TK::BangEqual)) {
+                VariantEqualityPayload plan;
+                plan.type = left;
+                std::unordered_set<std::string> activeTypes;
+                if (BuildVariantEqualityPayload(plan, location, left.ToString(), {}, {}, activeTypes) &&
+                    binaryExpression) {
+                    aggregateEqualities.insert_or_assign(binaryExpression, operation == TK::BangEqual);
+                    aggregateEqualityPlans.insert_or_assign(left.ToString(), std::move(plan));
+                }
+                return TypeRef::MakeBool();
+            }
+
+            // Ordering requires declared operators; structural equality alone does not define an order.
             std::string help = std::format("declare '{}' on '{}'", operatorName, left.ToString());
             if (operation == TK::BangEqual) {
                 help += ", or the '==' it is derived from";
@@ -961,6 +972,28 @@ bool AnalysisContext::BuildVariantEqualityPayload(VariantEqualityPayload &payloa
         if (const FuncDecl *method = LookupOperatorMethod(type, "==", {type})) {
             payload.operation = VariantEqualityPayload::Operation::Custom;
             payload.customEquality = method;
+            return true;
+        }
+        if (const auto structure = structDecls.find(BaseTypeName(type.name)); structure != structDecls.end()) {
+            const std::string key = type.ToString();
+            if (!activeTypes.insert(key).second) {
+                EmitError(useLocation, std::format("structural equality for '{}' requires a finite value layout", key));
+                return false;
+            }
+            payload.operation = VariantEqualityPayload::Operation::Structure;
+            const auto substitutions = MethodTypeSubstitutions(type);
+            for (const auto &field : structure->second->fields) {
+                VariantEqualityPayload element;
+                element.name = field.name;
+                element.type = ResolveTypeWithSubstitution(*field.type, substitutions);
+                if (!BuildVariantEqualityPayload(element, useLocation, variantTypeName, declarationName, caseName,
+                                                 activeTypes)) {
+                    activeTypes.erase(key);
+                    return false;
+                }
+                payload.elements.push_back(std::move(element));
+            }
+            activeTypes.erase(key);
             return true;
         }
     }

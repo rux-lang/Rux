@@ -34,6 +34,7 @@ HirToLirContext::HirToLirContext(const TargetContext &target, std::vector<Diagno
 }
 
 LirPackage HirToLirContext::Run(const HirPackage &hir) {
+    typeLayouts = &hir.typeLayouts;
     globalConsts.clear();
     for (const auto &mod : hir.modules) {
         for (const auto &iface : mod.interfaces) {
@@ -280,6 +281,17 @@ LirReg HirToLirContext::EmitAlloca(TypeRef type, std::uint64_t count) {
     i.strArg = std::to_string(count);
     Emit(std::move(i));
     return r;
+}
+
+HirTypeLayout HirToLirContext::TypeLayoutOf(const TypeRef &type) const {
+    if (typeLayouts) {
+        if (const auto layout = typeLayouts->find(type.ToString()); layout != typeLayouts->end()) {
+            return layout->second;
+        }
+    }
+    // Manually constructed HIR may omit semantic facts. Primitive-only recipes retain their self-contained layout.
+    const auto size = type.SizeInBytes().value_or(8);
+    return {size, PrimitiveAlign(type.kind, 8).value_or(size > 0 ? std::min<std::uint64_t>(size, 8) : 1)};
 }
 
 LirReg HirToLirContext::EmitLoad(LirReg ptr, TypeRef type) {

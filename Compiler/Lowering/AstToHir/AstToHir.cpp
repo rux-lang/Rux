@@ -313,7 +313,20 @@ HirExprPtr AstToHirContext::LowerOperatorMethodCall(HirExprPtr receiver, std::ve
         OperatorArgument &argument = arguments[index];
         if (call->callee->type.inner.size() > index + 2 && argument.source) {
             const TypeRef &expectedType = call->callee->type.inner[index + 1];
-            if (UnsuffixedIntegerLiteralFits(*argument.source, expectedType)) {
+            if (argument.value->type.CanImplicitlyBorrowTo(expectedType)) {
+                if (argument.value->type.kind == TypeRef::Kind::Reference) {
+                    argument.value->type = expectedType;
+                }
+                else {
+                    auto address = std::make_unique<HirUnaryExpr>();
+                    address->location = argument.value->location;
+                    address->op = TokenKind::At;
+                    address->type = expectedType;
+                    address->operand = std::move(argument.value);
+                    argument.value = std::move(address);
+                }
+            }
+            else if (UnsuffixedIntegerLiteralFits(*argument.source, expectedType)) {
                 argument.value->type = expectedType;
             }
             else if (IsNullLiteral(*argument.source) && expectedType.kind == TypeRef::Kind::Pointer) {
@@ -351,6 +364,7 @@ HirExprPtr AstToHirContext::LowerIndexAssignment(const AssignExpr &assignment, c
 HirVariantEqualityPayload AstToHirContext::LowerVariantEqualityPayload(const VariantEqualityPayload &payload) {
     HirVariantEqualityPayload lowered;
     lowered.type = SubstituteCurrentType(payload.type);
+    lowered.fieldName = payload.name;
     using SemanticOperation = VariantEqualityPayload::Operation;
     using HirOperation = HirVariantEqualityPayload::Operation;
     switch (payload.operation) {
@@ -394,6 +408,9 @@ HirVariantEqualityPayload AstToHirContext::LowerVariantEqualityPayload(const Var
         break;
     case SemanticOperation::Tuple:
         lowered.operation = HirOperation::Tuple;
+        break;
+    case SemanticOperation::Structure:
+        lowered.operation = HirOperation::Structure;
         break;
     case SemanticOperation::Array:
         lowered.operation = HirOperation::Array;

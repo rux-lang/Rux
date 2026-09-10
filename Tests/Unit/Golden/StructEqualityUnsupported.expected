@@ -1,0 +1,3 @@
+7:7: error: structural equality for 'View' is unavailable because element type 'char8[..]' has no '==' operator
+8:28: error: structural equality for 'Box<View>' is unavailable because element type 'char8[..]' has no '==' operator
+9:24: error: operator '<' is not defined for 'Plain'

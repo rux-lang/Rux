@@ -1,0 +1,11 @@
+struct View { data: char8[..]; }
+struct Box<T> { value: T; }
+struct Plain { value: int64; }
+func Main() -> int {
+    let a = View { data: "a" };
+    let b = View { data: "b" };
+    a == b;
+    Box<View> { value: a } != Box<View> { value: b };
+    Plain { value: 1 } < Plain { value: 2 };
+    return 0;
+}

@@ -46,6 +46,38 @@ TEST_CASE("tuple equality retains a concrete element recipe for every generic in
     CHECK(model.TryGetAggregateEqualityPlan(TypeRef::MakeTuple({TypeRef::MakeBool()})) == nullptr);
 }
 
+TEST_CASE("struct equality records fields in declaration order and preserves custom field operators") {
+    Lexer lexer(R"(
+        struct Pair { first: int64; second: int64; }
+        struct Money { cents: int64; }
+        extend Money { func ==(self: &Money, other: &Money) -> bool { return self.cents == other.cents; } }
+        struct Container { pair: Pair; money: Money; }
+        func Equal(left: Container, right: Container) -> bool { return left == right; }
+    )",
+                "struct_equality.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+    Parser parser(std::move(lexed.tokens), "struct_equality.rux");
+    auto parsed = parser.Parse();
+    REQUIRE_FALSE(parsed.HasErrors());
+    const SemanticModel model = SemanticAnalyzer({&parsed.module}, {}, "structs", "Windows").Analyze();
+    REQUIRE_FALSE(model.HasErrors());
+    const auto *plan = model.TryGetAggregateEqualityPlan(TypeRef::MakeNamed("Container"));
+    REQUIRE(plan != nullptr);
+    CHECK(plan->operation == VariantEqualityPayload::Operation::Structure);
+    REQUIRE_EQ(plan->elements.size(), 2);
+    CHECK(plan->elements[0].name == "pair");
+    REQUIRE_EQ(plan->elements[0].elements.size(), 2);
+    CHECK(plan->elements[0].elements[1].name == "second");
+    CHECK(plan->elements[1].name == "money");
+    CHECK(plan->elements[1].operation == VariantEqualityPayload::Operation::Custom);
+    CHECK(plan->elements[1].customEquality != nullptr);
+    const HirPackage hir = AstToHirLowering(model).Generate();
+    CHECK_EQ(hir.typeLayouts.at("Pair").size, 16);
+    CHECK_EQ(hir.typeLayouts.at("Container").size, 24);
+    CHECK_EQ(hir.typeLayouts.at("Container").alignment, 8);
+}
+
 TEST_CASE("semantic analyzer context preserves dependency and diagnostic ordering") {
     Lexer dependencyLexer("func Dependency() { missingDependency; }", "dependency.rux");
     auto dependencyTokens = dependencyLexer.Tokenize();

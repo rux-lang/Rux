@@ -41,6 +41,7 @@ private:
     };
 
     std::unordered_map<std::string, const HirInterface *> interfacesByName;
+    const std::unordered_map<std::string, HirTypeLayout> *typeLayouts = nullptr;
     std::unordered_map<std::string, TypeRef> enumTagTypes;
     /// Type parameters of every generic enum whose variants carry payloads, keyed by both the plain and the
     /// module-qualified declaration name. An instantiation of one of these is what the layout marker describes.
@@ -72,6 +73,7 @@ private:
     void SetCVariadicCallMetadata(LirInstr &call, const std::string &name, const HirCallExpr &expr);
 
     [[nodiscard]] LirReg NewReg();
+    [[nodiscard]] HirTypeLayout TypeLayoutOf(const TypeRef &type) const;
     void BuilderFailure(std::string detail) const;
     [[nodiscard]] LirOpcode RequireOpcode(std::optional<LirOpcode> opcode);
     [[nodiscard]] std::uint32_t NewBlock(std::string label = "") const;

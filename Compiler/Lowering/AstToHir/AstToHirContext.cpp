@@ -72,6 +72,9 @@ HirPackage AstToHirContext::Run() {
     }
     std::ranges::sort(package.dropGlues, {}, [](const DropGluePlan &plan) { return plan.type.ToString(); });
     ResolveDropGlue(package);
+    for (const auto &[name, layout] : model.TypeLayouts()) {
+        package.typeLayouts.emplace(name, HirTypeLayout{layout.size, layout.alignment});
+    }
     return package;
 }
 
