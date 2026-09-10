@@ -419,6 +419,8 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 
 ### Fixed
 
+- **Writable pointer generic layouts** — callable substitution preserves pointee mutability in variant arguments, receiver types, and specialization symbols. Generic iterators can return `Option<*var T>` alongside read-only pointer instantiations without losing their layout markers.
+
 - **Declaration-owned constants in generics** — imported typed and inferred constants retain their owning scope and identity through generic instantiation, regardless of import placement or caller constants with the same name. Random's normal distribution uses `Math::Tau` directly.
 
 - **Borrowed primitive formatting** — all primitive Display and Debug implementations use borrowed receivers and scalar value reads. Direct, constrained, and interface calls preserve numeric boundaries, character validation, and format specifications without a raw-pointer receiver workaround.

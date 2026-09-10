@@ -8,11 +8,9 @@ Return to the [main README](../README.md) for the complete documentation index.
 
 ## Open
 
-### A generic iterator reporting `Option<*var T>` does not survive lowering
+### Collections has no mutable reference iterator
 
-*Loud.* The instantiation is named one way where its layout is recorded and another where it is looked up, the two disagreeing over whether the pointee's `var` belongs in the name, and lowering fails with "variant type `Option<*int32>` reached lowering without a layout marker". It rules out the obvious writable iterator, so `Rux/Collections` has none.
-
-The non-generic form works since `19beafa`, which fixed the two layers above this one: a type read back from its name lost the `var` entirely, and substituting a type argument dropped the mark `*var T` puts on its `T` slot. What remains is the instantiation name itself. `alignof(T)` on a type parameter returning the size was a third defect in the same area, fixed in `4a83949`.
+`Rux/Collections` still lacks an iterator yielding writable pointers, so callers must index a writable slice to modify elements. The compiler now preserves `Option<*var T>` through generic callable substitution; adding the collection API and removing its index-loop workarounds remains pending.
 
 ### A method with its own type parameter on a non-generic type does not resolve at the call site
 

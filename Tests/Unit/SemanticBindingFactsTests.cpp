@@ -378,6 +378,33 @@ TEST_CASE("AST-to-HIR instantiates symbolic method bindings for each generic rec
     CHECK_EQ(callee->name, "Box::Read_int64");
 }
 
+TEST_CASE("callable instantiation preserves writable slots in pointer identities and symbols") {
+    for (const bool writable : {false, true}) {
+        TypeRef parameter = TypeRef::MakeTypeParam("T");
+        parameter.isMut = writable;
+        const TypeRef pointer = TypeRef::MakePointer(parameter);
+        ResolvedCallableBinding binding;
+        binding.substitutions.emplace("P", pointer);
+        binding.substitutions.emplace("Nested", TypeRef::MakeNamed(TypeRef::InstantiationName("Option", {pointer})));
+        binding.receiverType = TypeRef::MakeReference(parameter);
+        binding.linkerNameBase = "Read";
+        binding.linkerSpecializationParameters = {"P"};
+        binding.linkerOverloadTypes = {pointer};
+        const auto concrete = binding.Instantiate({{"T", TypeRef::MakeInt32()}});
+        const std::string pointerName = writable ? "*var int32" : "*int32";
+        CHECK(concrete.substitutions.at("P").ToString() == pointerName);
+        CHECK(concrete.substitutions.at("Nested").name == "Option<" + pointerName + ">");
+        REQUIRE(concrete.receiverType.has_value());
+        CHECK(concrete.receiverType->ToString() == (writable ? "&var int32" : "&int32"));
+        CHECK(concrete.linkerName == (writable ? "Read__var_int32" : "Read__int32"));
+        CHECK(binding.substitutions.at("P").inner.front().kind == TypeRef::Kind::TypeParam);
+        CHECK(binding.substitutions.at("P").inner.front().isMut == writable);
+        binding.linkerNameHasOverloadSignature = true;
+        binding.linkerSpecializationParameters.clear();
+        CHECK(binding.LinkerNameFor({{"T", TypeRef::MakeInt32()}}) == (writable ? "Read___var_int32" : "Read___int32"));
+    }
+}
+
 TEST_CASE("AST-to-HIR uses the recorded binding for an imported function") {
     Lexer dependencyLexer(R"(
         pub module Foo {

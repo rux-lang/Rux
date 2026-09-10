@@ -24,7 +24,10 @@ TypeRef AnalysisContext::SubstituteIdentityType(TypeRef type,
                                                 const std::unordered_map<std::string, TypeRef> &substitutions) const {
     if (type.kind == TypeRef::Kind::TypeParam) {
         if (const auto substitution = substitutions.find(type.name); substitution != substitutions.end()) {
-            return substitution->second;
+            TypeRef substituted = substitution->second;
+            // Preserve the same pointee/referent identity used by layout substitution and callable instantiation.
+            substituted.isMut = type.isMut;
+            return substituted;
         }
     }
     for (auto &inner : type.inner) {

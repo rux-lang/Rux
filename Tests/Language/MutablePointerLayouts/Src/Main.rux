@@ -1,0 +1,80 @@
+variant Option<T> { Some(T), None }
+variant Envelope<T> { Present(Option<T>), Empty }
+
+struct Cursor<T> {
+    data: *var T;
+    length: uint;
+    position: uint;
+}
+
+extend Cursor<T> {
+    func Next(self: &var Cursor<T>) -> Option<*var T> {
+        if self.position >= self.length { return Option::None<*var T>(); }
+        let pointer = @self.data[self.position];
+        self.position = self.position + 1;
+        return Option::Some<*var T>(pointer);
+    }
+
+    func Read(self: &Cursor<T>) -> Option<*T> {
+        return self.length == 0 ? Option::None<*T>() : Option::Some<*T>(self.data);
+    }
+}
+
+func Forward<T>(value: T) -> T { return value; }
+func Wrap<T>(value: T) -> Envelope<T> { return Envelope::Present<T>(Option::Some<T>(value)); }
+
+func Change<T>(pointer: *var T, value: T) {
+    let wrapped = Forward<Envelope<*var T>>(Wrap<*var T>(pointer));
+    match wrapped {
+        .Present(option) => {
+            match option {
+                .Some(element) => { *element = value; },
+                .None => {}
+            }
+        },
+        .Empty => {}
+    }
+}
+
+func Inspect<T>(pointer: *T) -> T {
+    let wrapped = Forward<Envelope<*T>>(Wrap<*T>(pointer));
+    match wrapped {
+        .Present(option) => {
+            match option {
+                .Some(element) => { return *element; },
+                .None => {}
+            }
+        },
+        .Empty => {}
+    }
+    return *pointer;
+}
+
+func Main() -> int {
+    var values: int32[3] = [1, 2, 3];
+    var cursor = Cursor<int32> { data: @values[0], length: 3, position: 0 };
+    let first = cursor.Read();
+    match first { .Some(pointer) => { if *pointer != 1 { return 1; } }, .None => { return 2; } }
+    for pointer in cursor { Change<int32>(pointer, Inspect<int32>(pointer) + 10); }
+    if values[0] != 11 || values[1] != 12 || values[2] != 13 { return 3; }
+    // The for loop owns a copy of its cursor. Exhaust the original with direct calls as well.
+    var sum = 0;
+    loop {
+        match cursor.Next() { .Some(pointer) => { sum = sum + *pointer; }, .None => { break; } }
+    }
+    if sum != 36 { return 11; }
+    match cursor.Next() { .Some(_) => { return 4; }, .None => {} }
+    match cursor.Next() { .Some(_) => { return 5; }, .None => {} }
+
+    var wide = 99i64;
+    Change<int64>(@wide, 1234567890123i64);
+    if Inspect<int64>(@wide) != 1234567890123i64 { return 6; }
+    var empty = Cursor<int64> { data: @wide, length: 0, position: 0 };
+    match empty.Next() { .Some(_) => { return 7; }, .None => {} }
+    match empty.Read() { .Some(_) => { return 8; }, .None => {} }
+    let writable = Wrap<*var int64>(@wide);
+    let readable = Wrap<*int64>(@wide);
+    match writable { .Present(_) => {}, .Empty => { return 9; } }
+    match readable { .Present(_) => {}, .Empty => { return 10; } }
+    return 0;
+}

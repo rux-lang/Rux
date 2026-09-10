@@ -1,0 +1,11 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "MutablePointerLayouts"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Generic writable and read-only pointer identities retain their variant layouts"
+
+[Build]
+Output = "../../../Bin/Tests/Language"

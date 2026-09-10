@@ -62,7 +62,10 @@ std::string SubstituteIdentityName(std::string name, const std::unordered_map<st
 TypeRef SubstituteIdentityType(TypeRef type, const std::unordered_map<std::string, TypeRef> &substitutions) {
     if (type.kind == TypeRef::Kind::TypeParam || type.kind == TypeRef::Kind::Named) {
         if (const auto substitution = substitutions.find(type.name); substitution != substitutions.end()) {
-            return substitution->second;
+            TypeRef substituted = substitution->second;
+            // Writability belongs to the parameter slot in *var T, not to the caller's plain T argument.
+            substituted.isMut = type.isMut;
+            return substituted;
         }
         if (type.kind == TypeRef::Kind::Named) {
             type.name = SubstituteIdentityName(std::move(type.name), substitutions);
