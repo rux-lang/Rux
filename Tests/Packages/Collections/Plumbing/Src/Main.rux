@@ -1,6 +1,6 @@
 import Core::{ uint };
 import Allocator::AllocError;
-import Collections::{ CollectionError, FromAllocError, ReferenceIterator, ValueIterator };
+import Collections::{ CollectionError, FromAllocError, MutableReferenceIterator, ReferenceIterator, ValueIterator };
 import Core::Assert;
 
 // The plumbing every container shares: what an error means, and what the iterators yield. None of it is
@@ -33,10 +33,10 @@ func Main() -> int {
            "and so does a block the allocator did not hand out, which is the same thing from here");
 
     // The iterators, over a run the test owns.
-    var values: int32[5];
+    var values: int32[5] = [0, 0, 0, 0, 0];
     var index: uint = 0;
-    while index < 5 {
-        values[index] = (index * 10) as int32;
+    for element in MutableReferenceIterator<int32>((@values[0])[..5]) {
+        *element = (index * 10) as int32;
         index++;
     }
     let items = (@values[0])[..5];

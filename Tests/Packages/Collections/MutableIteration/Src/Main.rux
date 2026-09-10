@@ -1,0 +1,94 @@
+import Allocator::{ Allocator, SystemAllocator };
+import Collections::{ Array, CollectionError, MutableReferenceIterator, ReferenceIterator, Vector };
+import Core::Assert;
+
+struct Tracked {
+    destroyed: *var int32;
+    value: int64;
+    tail: int64;
+}
+
+extend Tracked {
+    func =(self: &var Tracked, other: &Tracked);
+    func ~Tracked(self: &var Tracked) { *self.destroyed = *self.destroyed + 1; }
+}
+
+func ModifyOwners(allocator: Allocator, destroyed: *var int32) {
+    var vector = Vector<Tracked>(allocator);
+    Assert(vector.Push(Tracked { destroyed: destroyed, value: 10, tail: 100 }) == CollectionError::None,
+           "the first move-only element is stored");
+    Assert(vector.Push(Tracked { destroyed: destroyed, value: 20, tail: 200 }) == CollectionError::None,
+           "the second move-only element is stored");
+    for element in vector.MutableReferences() {
+        element.value = element.value + 7;
+    }
+    Assert(*destroyed == 0, "mutable iteration destroys no move-only elements");
+    var total = 0i64;
+    var tails = 0i64;
+    for element in vector.References() {
+        total = total + element.value;
+        tails = tails + element.tail;
+    }
+    Assert(total == 44 && tails == 300, "only the selected fields changed in the vector");
+
+    var error = CollectionError::None;
+    var array = (<-vector).IntoArray(@error);
+    Assert(error == CollectionError::None, "the array receives move-only elements without copies");
+    for element in array.MutableReferences() {
+        element.value = element.value * 2;
+    }
+    total = 0;
+    for element in array.References() { total = total + element.value; }
+    Assert(total == 88, "array iteration also modifies move-only elements in place");
+    Assert(*destroyed == 0, "iterator and storage transfers have not destroyed an element");
+}
+
+func Main() -> int {
+    var values: int32[3] = [1, 2, 3];
+    let view = (@values[0])[..3];
+    var iterator = MutableReferenceIterator<int32>(view);
+    var pointer: *var int32 = null;
+    var seen = 0;
+    while iterator.Next().TryIntoValue(@pointer) {
+        Assert(pointer == @values[seen], "pointers visit original storage in order");
+        *pointer = *pointer + 10;
+        seen = seen + 1;
+    }
+    Assert(seen == 3 && values[0] == 11 && values[1] == 12 && values[2] == 13, "all elements changed once");
+    Assert(iterator.Next().IsNone() && iterator.Next().IsNone(), "exhaustion is stable across repeated calls");
+    var empty = MutableReferenceIterator<int32>((@values[0])[..0]);
+    Assert(empty.Next().IsNone() && empty.Next().IsNone(), "empty iteration never yields an address");
+
+    // Construct and instantiate both pointer kinds together.
+    var readOnly = ReferenceIterator<int32>(view);
+    var readable: *int32 = null;
+    Assert(readOnly.Next().TryIntoValue(@readable) && *readable == 11, "read-only iteration sees the same storage");
+    var copied = MutableReferenceIterator<int32>(view);
+    for element in copied { *element = *element * 2; }
+    Assert(copied.Next().IsSome(), "for walks a cursor copy");
+    Assert(values[0] == 22 && values[1] == 24 && values[2] == 26, "the copied cursor still borrows original elements");
+
+    var system = SystemAllocator();
+    let allocator: Allocator = system;
+    var error = CollectionError::None;
+    var array = Array::Filled<int32>(allocator, 3, 5, @error);
+    Assert(error == CollectionError::None, "the array is allocated");
+    for element in array.MutableReferences() { *element = *element + 1; }
+    Assert(array.Get(0).ValueOr(0) == 6 && array.Get(2).ValueOr(0) == 6, "array elements are updated");
+    var emptyArray = Array::Filled<int32>(allocator, 0, 0, @error);
+    var arrayCursor = emptyArray.MutableReferences();
+    Assert(arrayCursor.Next().IsNone(), "an empty array yields nothing");
+    var vector = Vector<int32>(allocator);
+    var vectorCursor = vector.MutableReferences();
+    Assert(vectorCursor.Next().IsNone(), "an empty vector yields nothing");
+    Assert(vector.Reserve(20) == CollectionError::None, "reserve supplies spare storage");
+    Assert(vector.Push(7) == CollectionError::None, "one element is initialized");
+    seen = 0;
+    for element in vector.MutableReferences() { *element = 42; seen = seen + 1; }
+    Assert(seen == 1 && vector.Get(0).ValueOr(0) == 42, "iteration excludes uninitialized spare capacity");
+
+    var destroyed: int32 = 0;
+    ModifyOwners(allocator, @destroyed);
+    Assert(destroyed == 2, "the array destroys each element exactly once after iteration");
+    return 0;
+}

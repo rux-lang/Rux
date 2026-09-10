@@ -8,10 +8,6 @@ Return to the [main README](../README.md) for the complete documentation index.
 
 ## Open
 
-### Collections has no mutable reference iterator
-
-`Rux/Collections` still lacks an iterator yielding writable pointers, so callers must index a writable slice to modify elements. The compiler now preserves `Option<*var T>` through generic callable substitution; adding the collection API and removing its index-loop workarounds remains pending.
-
 ### A method with its own type parameter on a non-generic type does not resolve at the call site
 
 *Loud.* Found in `Rux/Memory`; `Layout::ForValue<T>` had to become the free function `LayoutOf<T>`.

@@ -105,15 +105,17 @@ Whether handing a value to a generic container consumes it depends on what its e
 
 ## Iterating
 
-`ValueIterator` yields elements by copy and `ReferenceIterator` yields a pointer to each, and both are driven by the compiler's `for` loop, which matches an iterator by shape rather than through an interface. Copy is what reading a sequence of numbers wants; a pointer is how an element that owns something is read without being moved, since copying one would give two owners to a value that promises one.
+`ValueIterator` yields elements by copy, `ReferenceIterator` yields read-only pointers, and `MutableReferenceIterator` yields writable pointers. The compiler's `for` loop drives all three. Use pointer iteration for move-only elements: it leaves each element in its storage and copies no element.
 
-Both borrow. Neither owns what it walks, and neither may outlive the container it came from or survive that container growing, rehashing or being freed.
+All three borrow their storage. The storage must outlive the iterator and every pointer it yields. Array and Vector provide `References()` and `MutableReferences()`; the writable form borrows the container mutably when the cursor is created and visits only initialized elements.
 
 `IntoIterator` is the owning alternative for vectors, maps, and sets. Invoke it on a named owner as `(<-values).IntoIterator()`; whatever is not yielded is destroyed with the consuming iterator. Borrowed iterators retain raw storage addresses because references cannot be stored in fields or returned.
 
 A `for` loop over an iterator _value_ walks a copy of it, so the iterator the caller holds is left where it was. A loop is not a way to advance an iterator someone else is also reading.
 
-There is no iterator yielding a writable pointer yet, though the shape is obvious and the use is real: a generic iterator reporting `Option<*var T>` does not survive lowering today. Until it does, changing elements while walking means asking the container for a `var T[..]` and indexing it, which is what `Rux/Algorithms` does throughout.
+For example, `for element in numbers.MutableReferences() { *element = *element * 2; }` doubles the stored numbers.
+
+Construct `MutableReferenceIterator<T>(items)` directly to walk a `var T[..]`. Repeated `Next()` calls return `Option<*var T>` and keep returning `None` after exhaustion. These cursors store raw pointers: callers must coordinate aliases and avoid moving or destroying the owner, or growing, shrinking, or reallocating its storage while an iterator or yielded pointer is in use. Iteration itself does not allocate or destroy elements.
 
 ## Hashing
 

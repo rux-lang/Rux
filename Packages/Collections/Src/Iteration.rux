@@ -9,13 +9,9 @@
 // `ReferenceIterator` yields a pointer to each element, which works for any element type at all and is how a
 // move-only one is read without being moved.
 //
-// There is no iterator yielding a writable pointer, though the shape is obvious and the use is real. A generic
-// iterator whose `Next` reports `Option<*var T>` does not survive lowering: the instantiation is named one way where
-// its layout is recorded and another where it is looked up, and the two disagree over whether the pointee's `var`
-// is part of the name. Until that is fixed, changing elements while walking is done by asking the container for a
-// `var T[..]` and indexing it, which is what `Rux/Algorithms` does throughout. See Docs/CompilerDefects.md.
+// `MutableReferenceIterator` yields a writable pointer to each element, allowing in-place changes without copying.
 //
-// Both borrow. Neither owns the storage it walks, and neither may outlive the container it came from or survive that
+// All three borrow. None owns the storage it walks, and none may outlive the container it came from or survive that
 // container growing, rehashing or being freed — which is the one thing about iteration in this package worth
 // remembering.
 //
@@ -128,3 +124,52 @@ extend ReferenceIterator<T> {
 }
 
 extend ReferenceIterator<T> : Iterator {}
+
+/// An iterator that yields a writable pointer to each element of a run.
+///
+/// Elements remain in their storage, so move-only elements can be modified without copying or moving them.
+///
+/// @typeParam T the element type
+/// @see https://rux-lang.dev/docs/api/collections/mutable-reference-iterator
+pub struct MutableReferenceIterator<T> {
+    /// The run being walked. Borrowed, never owned.
+    data: *var T;
+    /// How many elements it holds.
+    length: uint;
+    /// How many have been yielded.
+    position: uint;
+}
+
+extend MutableReferenceIterator<T> {
+    /// An iterator over `items`, positioned before the first element.
+    ///
+    /// Cannot fail. Runs in constant time and allocates nothing.
+    ///
+    /// # Safety
+    ///
+    /// The storage must outlive the iterator and every pointer it yields. Do not grow, shrink, free, or move the
+    /// storage while any of them is in use. Coordinate access through aliases to the same elements.
+    ///
+    /// @param items the elements to borrow for writing
+    /// @returns a cursor yielding writable addresses
+    /// @see https://rux-lang.dev/docs/api/collections/mutable-reference-iterator/new
+    pub func MutableReferenceIterator(items: var T[..]) -> MutableReferenceIterator<T> {
+        return MutableReferenceIterator<T> { data: items.data, length: items.length, position: 0 };
+    }
+
+    /// The next writable element pointer, or `None` once exhausted.
+    ///
+    /// Advances the cursor without copying, moving, or destroying an element. An exhausted cursor stays exhausted.
+    /// Cannot fail. Runs in constant time and allocates nothing.
+    ///
+    /// @returns the next element's address, or `None` at the end
+    /// @see https://rux-lang.dev/docs/api/collections/mutable-reference-iterator/next
+    pub func Next(self: &var MutableReferenceIterator<T>) -> Option<*var T> {
+        if self.position >= self.length { return Option::None<*var T>(); }
+        let element = @self.data[self.position];
+        self.position = self.position + 1;
+        return Option::Some<*var T>(element);
+    }
+}
+
+extend MutableReferenceIterator<T> : Iterator {}

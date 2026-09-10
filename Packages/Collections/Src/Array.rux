@@ -243,6 +243,19 @@ extend Array<T> {
     pub func References(self: &Array<T>) -> ReferenceIterator<T> {
         return ReferenceIterator<T>(self.AsSlice());
     }
+
+    /// An iterator over writable pointers to the elements, without copying them.
+    ///
+    /// # Safety
+    ///
+    /// The array's storage must outlive the iterator and every yielded pointer. Do not destroy or move the array
+    /// while any of them is in use, and coordinate aliases that access the same elements.
+    ///
+    /// @returns a cursor yielding writable element addresses
+    /// @see https://rux-lang.dev/docs/api/collections/array/mutable-references
+    pub func MutableReferences(self: &var Array<T>) -> MutableReferenceIterator<T> {
+        return MutableReferenceIterator<T>(self.AsMutableSlice());
+    }
 }
 
 extend Array<T> {

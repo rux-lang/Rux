@@ -448,6 +448,19 @@ extend Vector<T> {
     pub func References(self: &Vector<T>) -> ReferenceIterator<T> {
         return ReferenceIterator<T>(self.AsSlice());
     }
+
+    /// An iterator over writable pointers to initialized elements, without copying them.
+    ///
+    /// # Safety
+    ///
+    /// The vector's storage must outlive the iterator and every yielded pointer. Do not grow, shrink, destroy, or
+    /// move the vector while any of them is in use, and coordinate aliases that access the same elements.
+    ///
+    /// @returns a cursor yielding writable element addresses
+    /// @see https://rux-lang.dev/docs/api/collections/vector/mutable-references
+    pub func MutableReferences(self: &var Vector<T>) -> MutableReferenceIterator<T> {
+        return MutableReferenceIterator<T>(self.AsMutableSlice());
+    }
 }
 
 extend Vector<T> {
