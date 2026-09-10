@@ -91,7 +91,7 @@ private:
             if (step.kind == PhiMoveStep::Kind::SaveDestination) {
                 const int size = instructionPrinter.SizeOfRuntime(step.type);
                 instructionPrinter.LoadA(step.dst, step.type);
-                if (size == 16) {
+                if (size > 8 && size <= 16) {
                     TI(std::format("{:<8}qword [rbp - {}], rax", "mov", temporaryOffset));
                     TI(std::format("{:<8}qword [rbp - {}], rdx", "mov", temporaryOffset - 8));
                 }
@@ -105,7 +105,7 @@ private:
             }
             else if (step.sourceIsTemporary) {
                 const int size = instructionPrinter.SizeOfRuntime(step.type);
-                if (size == 16) {
+                if (size > 8 && size <= 16) {
                     TI(std::format("{:<8}rax, qword [rbp - {}]", "mov", temporaryOffset));
                     TI(std::format("{:<8}rdx, qword [rbp - {}]", "mov", temporaryOffset - 8));
                 }
@@ -244,10 +244,15 @@ private:
         }
     }
 
+    struct StackArgument {
+        LirReg reg;
+        int byteOffset = -1;
+    };
+
     void EmitCall(const std::string &callee, const std::vector<LirReg> &arguments, const LirReg destination,
                   const TypeRef &returnType, const CallingConvention convention,
                   AssemblyInstructionPrinter &instructionPrinter) {
-        const std::vector<LirReg> stackArguments = EmitCallArguments(arguments, convention, instructionPrinter);
+        const std::vector<StackArgument> stackArguments = EmitCallArguments(arguments, convention, instructionPrinter);
         const bool win64 = instructionPrinter.IsWin64Convention(convention);
         const int stackBytes = win64 ? 32 + AlignUp(static_cast<int>(stackArguments.size()) * 8, 16)
                                      : AlignUp(static_cast<int>(stackArguments.size()) * 8, 16);
@@ -271,7 +276,7 @@ private:
         }
         const LirReg callee = sources[0];
         const std::vector<LirReg> arguments(sources.begin() + 1, sources.end());
-        const std::vector<LirReg> stackArguments = EmitCallArguments(arguments, convention, instructionPrinter);
+        const std::vector<StackArgument> stackArguments = EmitCallArguments(arguments, convention, instructionPrinter);
         const bool win64 = instructionPrinter.IsWin64Convention(convention);
         const int stackBytes = win64 ? 32 + AlignUp(static_cast<int>(stackArguments.size()) * 8, 16)
                                      : AlignUp(static_cast<int>(stackArguments.size()) * 8, 16);
@@ -289,30 +294,36 @@ private:
         }
     }
 
-    void StoreStackArguments(const std::vector<LirReg> &arguments, const bool win64,
+    void StoreStackArguments(const std::vector<StackArgument> &arguments, const bool win64,
                              AssemblyInstructionPrinter &instructionPrinter) {
         for (std::size_t index = 0; index < arguments.size(); ++index) {
             const auto &registerTypes = instructionPrinter.FramePlan().RegisterTypes();
-            const TypeRef type =
-                registerTypes.contains(arguments[index]) ? registerTypes.at(arguments[index]) : TypeRef::MakeInt64();
-            // A float reaches its slot as raw bits, for the same reason it does in the emitted object: loading it as a
-            // float would go through xmm0, which already holds the first argument.
-            const bool rawFloat = IsFloat(type) && (SizeOf(type) == 4 || SizeOf(type) == 8);
-            instructionPrinter.LoadA(arguments[index],
-                                     rawFloat ? (SizeOf(type) == 4 ? TypeRef::MakeUInt32() : TypeRef::MakeUInt64())
-                                              : type);
+            const TypeRef type = registerTypes.contains(arguments[index].reg) ? registerTypes.at(arguments[index].reg)
+                                                                              : TypeRef::MakeInt64();
+            if (arguments[index].byteOffset >= 0) {
+                // Copy one padded home word without disturbing an argument already placed in rdx or xmm0.
+                TI(std::format("mov     rax, qword [rbp - {}]",
+                               instructionPrinter.FramePlan().SlotOffsets().at(arguments[index].reg) -
+                                   arguments[index].byteOffset));
+            }
+            else {
+                const bool rawFloat = IsFloat(type) && (SizeOf(type) == 4 || SizeOf(type) == 8);
+                instructionPrinter.LoadA(arguments[index].reg,
+                                         rawFloat ? (SizeOf(type) == 4 ? TypeRef::MakeUInt32() : TypeRef::MakeUInt64())
+                                                  : type);
+            }
             const std::size_t offset = win64 ? 32 + index * 8 : index * 8;
             TI(std::format("{:<8}qword [rsp + {}], rax", "mov", offset));
         }
     }
 
-    [[nodiscard]] std::vector<LirReg> EmitCallArguments(const std::vector<LirReg> &arguments,
-                                                        const CallingConvention convention,
-                                                        AssemblyInstructionPrinter &instructionPrinter) {
+    [[nodiscard]] std::vector<StackArgument> EmitCallArguments(const std::vector<LirReg> &arguments,
+                                                               const CallingConvention convention,
+                                                               AssemblyInstructionPrinter &instructionPrinter) {
         const bool win64 = instructionPrinter.IsWin64Convention(convention);
         const auto *integerRegisters = win64 ? kWin64IntArgRegs : kIntArgRegs;
         const int maximumIntegerRegisters = win64 ? 4 : 6;
-        std::vector<LirReg> stackArguments;
+        std::vector<StackArgument> stackArguments;
         if (win64) {
             for (int index = 0; index < static_cast<int>(arguments.size()); ++index) {
                 const LirReg argument = arguments[index];
@@ -332,7 +343,7 @@ private:
                     }
                 }
                 else {
-                    stackArguments.push_back(argument);
+                    stackArguments.push_back({argument});
                 }
             }
         }
@@ -352,7 +363,21 @@ private:
                         ++floatIndex;
                     }
                     else {
-                        stackArguments.push_back(argument);
+                        stackArguments.push_back({argument});
+                    }
+                }
+                else if (instructionPrinter.IsAggregate(type) && instructionPrinter.SizeOfRuntime(type) > 8) {
+                    const int words = AlignUp(instructionPrinter.SizeOfRuntime(type), 8) / 8;
+                    if (words == 2 && integerIndex <= 4) {
+                        for (int word = 0; word < words; ++word) {
+                            TI(std::format("mov     {}, qword [rbp - {}]", integerRegisters[integerIndex++],
+                                           instructionPrinter.FramePlan().SlotOffsets().at(argument) - word * 8));
+                        }
+                    }
+                    else {
+                        for (int word = 0; word < words; ++word) {
+                            stackArguments.push_back({argument, word * 8});
+                        }
                     }
                 }
                 else if (integerIndex < maximumIntegerRegisters) {
@@ -361,7 +386,7 @@ private:
                     ++integerIndex;
                 }
                 else {
-                    stackArguments.push_back(argument);
+                    stackArguments.push_back({argument});
                 }
             }
         }

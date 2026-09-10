@@ -61,7 +61,7 @@ int X86_64CallEmitter::CallFrameSize(const std::vector<LirReg> &arguments, const
         else if (IsSysVMemoryAggregate(type)) {
             stackArguments += static_cast<std::size_t>(AlignUp(hooks.SizeOfRuntime(type), 8) / 8);
         }
-        else if (hooks.IsAggregate(type) && hooks.SizeOfRuntime(type) == 16) {
+        else if (hooks.IsAggregate(type) && (hooks.SizeOfRuntime(type) > 8 && hooks.SizeOfRuntime(type) <= 16)) {
             if (integerIndex <= 4) {
                 integerIndex += 2;
             }
@@ -90,7 +90,7 @@ void X86_64CallEmitter::StoreSysVStackArguments(const std::vector<LirReg> &argum
             }
             continue;
         }
-        if (hooks.IsAggregate(type) && hooks.SizeOfRuntime(type) == 16) {
+        if (hooks.IsAggregate(type) && (hooks.SizeOfRuntime(type) > 8 && hooks.SizeOfRuntime(type) <= 16)) {
             if (integerIndex <= 4) {
                 integerIndex += 2;
             }
@@ -196,7 +196,7 @@ void X86_64CallEmitter::EmitArguments(const std::vector<LirReg> &arguments, cons
             // a scalar here handed a byte of the aggregate to a register and shifted every later argument one
             // register over from where the callee looks for it.
         }
-        else if (hooks.IsAggregate(type) && hooks.SizeOfRuntime(type) == 16) {
+        else if (hooks.IsAggregate(type) && (hooks.SizeOfRuntime(type) > 8 && hooks.SizeOfRuntime(type) <= 16)) {
             if (integerIndex <= 4) {
                 encoder.MovRaxLoad(displacement);
                 encoder.MovArgRax(integerIndex++);
@@ -215,7 +215,7 @@ void X86_64CallEmitter::EmitArguments(const std::vector<LirReg> &arguments, cons
 }
 
 void X86_64CallEmitter::StoreReturnValue(const LirReg destination, const TypeRef &type) const {
-    if (hooks.SizeOfRuntime(type) == 16) {
+    if (hooks.SizeOfRuntime(type) > 8 && hooks.SizeOfRuntime(type) <= 16) {
         encoder.MovRaxStore(Disp(destination));
         encoder.Byte(0x48);
         encoder.Byte(0x89);
@@ -395,7 +395,7 @@ void X86_64TerminatorEmitter::EmitPhiMoves(const std::uint32_t fromBlock, const 
         }
         if (step.kind == PhiMoveStep::Kind::SaveDestination) {
             hooks.LoadA(step.dst, step.type);
-            if (size == 16) {
+            if (size > 8 && size <= 16) {
                 encoder.MovRaxStore(temporary);
                 encoder.Byte(0x48);
                 encoder.Byte(0x89);
@@ -425,7 +425,7 @@ void X86_64TerminatorEmitter::EmitPhiMoves(const std::uint32_t fromBlock, const 
             hooks.StoreA(step.dst, step.type);
             continue;
         }
-        if (size == 16) {
+        if (size > 8 && size <= 16) {
             encoder.MovRaxLoad(temporary);
             encoder.MovR10Load(temporary + 8);
             encoder.Byte(0x4C);
@@ -465,7 +465,8 @@ void X86_64TerminatorEmitter::EmitPhiMoves(const std::uint32_t fromBlock, const 
 
 void X86_64TerminatorEmitter::LoadReturnValue(const LirReg reg, const TypeRef &type) const {
     const int size = hooks.SizeOfRuntime(type);
-    if (hooks.IsRegPointerTo(reg, type) && (size == 1 || size == 2 || size == 4 || size == 8 || size == 16)) {
+    if (hooks.IsRegPointerTo(reg, type) &&
+        (size == 1 || size == 2 || size == 4 || size == 8 || (size > 8 && size <= 16))) {
         if (const auto physical = framePlan.PhysicalRegisters().find(reg);
             physical != framePlan.PhysicalRegisters().end()) {
             encoder.MovR10PhysReg(physical->second);
@@ -473,14 +474,38 @@ void X86_64TerminatorEmitter::LoadReturnValue(const LirReg reg, const TypeRef &t
         else {
             encoder.MovR10Load(Disp(reg));
         }
-        if (size == 16) {
+        if (size > 8 && size <= 16) {
+            // Frame homes are padded, but a returned pointee can end at the last byte of an allocation.
+            // Pack only the live tail bytes before loading the first full word.
+            if (size < 16) {
+                encoder.MovEaxImm32(0);
+                for (int offset = size - 1; offset >= 8; --offset) {
+                    encoder.Byte(0x48);
+                    encoder.Byte(0xC1);
+                    encoder.Byte(0xE0);
+                    encoder.Byte(8); // shl rax, 8
+                    encoder.Byte(0x41);
+                    encoder.Byte(0x0F);
+                    encoder.Byte(0xB6);
+                    encoder.Byte(0x52);
+                    encoder.Byte(static_cast<std::uint8_t>(offset)); // movzx edx, byte [r10 + offset]
+                    encoder.Byte(0x48);
+                    encoder.Byte(0x09);
+                    encoder.Byte(0xD0); // or rax, rdx
+                }
+                encoder.Byte(0x48);
+                encoder.Byte(0x89);
+                encoder.Byte(0xC2); // mov rdx, rax
+            }
+            else {
+                encoder.Byte(0x49);
+                encoder.Byte(0x8B);
+                encoder.Byte(0x52);
+                encoder.Byte(0x08); // mov rdx, [r10 + 8]
+            }
             encoder.Byte(0x49);
             encoder.Byte(0x8B);
-            encoder.Byte(0x02);
-            encoder.Byte(0x49);
-            encoder.Byte(0x8B);
-            encoder.Byte(0x52);
-            encoder.Byte(0x08);
+            encoder.Byte(0x02); // mov rax, [r10]
         }
         else if (size == 8) {
             encoder.Byte(0x49);
@@ -510,7 +535,7 @@ void X86_64TerminatorEmitter::LoadReturnValue(const LirReg reg, const TypeRef &t
         }
         return;
     }
-    if (size == 16) {
+    if (size > 8 && size <= 16) {
         encoder.MovRaxLoad(Disp(reg));
         encoder.MovR10Load(Disp(reg) + 8);
         encoder.Byte(0x4C);

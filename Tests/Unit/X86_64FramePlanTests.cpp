@@ -237,3 +237,34 @@ TEST_CASE("x86-64 frame plan pads an aggregate parameter home to a whole word") 
     CHECK_LE(plan.FrameSize(), 32);
     CHECK_EQ(plan.FrameSize() % 16, 0);
 }
+
+TEST_CASE("x86-64 partial-word aggregate phi scratch and homes contain complete ABI words") {
+    for (int size = 9; size <= 15; ++size) {
+        CAPTURE(size);
+        const TypeRef type = TypeRef::MakeNamed("Packet");
+        const LayoutMap layouts{{"Packet", StructLayout{.fields = {}, .totalSize = size, .alignment = 1}}};
+        LirFunc function;
+        function.name = "RotatePackets";
+        function.callConv = CallingConvention::SysV;
+        function.returnType = type;
+        function.params = {{0, type, "a"}, {1, type, "b"}};
+        LirBlock entry;
+        entry.term = JumpTo(1);
+        LirInstr first = Define(2, type);
+        first.op = LirOpcode::Phi;
+        first.phiPreds = {{0, 0}, {3, 1}};
+        LirInstr second = first;
+        second.dst = 3;
+        second.phiPreds = {{1, 0}, {2, 1}};
+        LirBlock loop;
+        loop.instrs = {first, second};
+        loop.term = JumpTo(1);
+        function.blocks = {entry, loop};
+        const auto plan = PlanX86_64Frame(function, layouts, {}, Target::OS::Linux);
+        CHECK_EQ(plan.HiddenReturnOffset(), 0);
+        CHECK_EQ(plan.SlotOffsets().at(0), 16);
+        CHECK_EQ(plan.SlotOffsets().at(1), 32);
+        CHECK_EQ(plan.PhiTemporarySize(), 16);
+        CHECK_LE(plan.PhiTemporaryOffset(), plan.FrameSize());
+    }
+}

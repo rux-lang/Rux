@@ -13,8 +13,8 @@ namespace Rux {
 using namespace Layout;
 
 namespace {
-/// The accumulator register's name at a given width — `al`, `ax`, `eax`, `rax` — since x86-64 spells the same register
-/// differently depending on the operand size.
+/// The accumulator register's name at a given width — `al`, `ax`, `eax`, `rax` — since x86-64 spells the same
+/// register differently depending on the operand size.
 std::string_view GprA(const int bytes) {
     switch (bytes) {
     case 1:
@@ -166,7 +166,7 @@ void AssemblyInstructionPrinter::LoadA(const LirReg reg, const TypeRef &type) {
 
     const int size = SizeOfRuntime(type);
     const int offset = framePlan.SlotOffsets().at(reg);
-    if (size == 16) {
+    if (size > 8 && size <= 16) {
         modulePrinter.TextInstruction(std::format("{:<8}rax, qword [rbp - {}]", "mov", offset));
         modulePrinter.TextInstruction(std::format("{:<8}rdx, qword [rbp - {}]", "mov", offset - 8));
     }
@@ -254,7 +254,7 @@ void AssemblyInstructionPrinter::StoreA(const LirReg reg, const TypeRef &type) {
 
     const int size = SizeOfRuntime(type);
     const int offset = framePlan.SlotOffsets().at(reg);
-    if (size == 16) {
+    if (size > 8 && size <= 16) {
         modulePrinter.TextInstruction(std::format("{:<8}qword [rbp - {}], rax", "mov", offset));
         modulePrinter.TextInstruction(std::format("{:<8}qword [rbp - {}], rdx", "mov", offset - 8));
     }
@@ -305,7 +305,7 @@ void AssemblyInstructionPrinter::CopyAggregateFromSlotToR11(const std::int32_t s
 
 void AssemblyInstructionPrinter::LoadReturnValue(const LirReg reg, const TypeRef &type) {
     const int size = SizeOfRuntime(type);
-    if (IsRegPointerTo(reg, type) && (size == 1 || size == 2 || size == 4 || size == 8 || size == 16)) {
+    if (IsRegPointerTo(reg, type) && (size == 1 || size == 2 || size == 4 || size == 8 || (size > 8 && size <= 16))) {
         const auto physical = framePlan.PhysicalRegisters().find(reg);
         if (physical != framePlan.PhysicalRegisters().end()) {
             modulePrinter.TextInstruction(std::format("{:<8}r10, {}", "mov", PhysicalRegisterName(physical->second)));
@@ -314,9 +314,19 @@ void AssemblyInstructionPrinter::LoadReturnValue(const LirReg reg, const TypeRef
             modulePrinter.TextInstruction(
                 std::format("{:<8}r10, qword [rbp - {}]", "mov", framePlan.SlotOffsets().at(reg)));
         }
-        if (size == 16) {
+        if (size > 8 && size <= 16) {
             modulePrinter.TextInstruction(std::format("{:<8}rax, qword [r10]", "mov"));
-            modulePrinter.TextInstruction(std::format("{:<8}rdx, qword [r10 + 8]", "mov"));
+            if (size == 16) {
+                modulePrinter.TextInstruction("mov     rdx, qword [r10 + 8]");
+            }
+            else {
+                modulePrinter.TextInstruction("xor     edx, edx");
+                for (int offset = size - 1; offset >= 8; --offset) {
+                    modulePrinter.TextInstruction("shl     rdx, 8");
+                    modulePrinter.TextInstruction(std::format("movzx   ecx, byte [r10 + {}]", offset));
+                    modulePrinter.TextInstruction("or      rdx, rcx");
+                }
+            }
         }
         else if (size == 8) {
             modulePrinter.TextInstruction(std::format("{:<8}rax, qword [r10]", "mov"));
@@ -347,7 +357,7 @@ void AssemblyInstructionPrinter::EmitFunctionSetup(const LirFunc &function) {
         modulePrinter.TextInstruction(std::format("sub     rsp, {}", remainingFrame));
     }
 
-    if (IsWin64Convention(CallingConvention::Default)) {
+    if (IsWin64Convention(function.callConv)) {
         int argumentIndex = 0;
         for (const auto &parameter : function.params) {
             const int size = SizeOf(parameter.type);
@@ -391,22 +401,33 @@ void AssemblyInstructionPrinter::EmitFunctionSetup(const LirFunc &function) {
         }
     }
     else {
-        int integerArgumentIndex = 0;
+        int integerArgumentIndex = framePlan.HiddenReturnOffset() != 0 ? 1 : 0;
         int floatArgumentIndex = 0;
+        int stackOffset = 16;
+        if (framePlan.HiddenReturnOffset() != 0) {
+            modulePrinter.TextInstruction(std::format("mov     qword [rbp - {}], rdi", framePlan.HiddenReturnOffset()));
+        }
         for (const auto &parameter : function.params) {
-            const int size = SizeOf(parameter.type);
+            const int size = SizeOfRuntime(parameter.type);
             const int offset = framePlan.SlotOffsets().at(parameter.reg);
-            if (IsFloat(parameter.type)) {
-                if (floatArgumentIndex < 8) {
-                    modulePrinter.TextInstruction(std::format("{:<8}{} [rbp - {}], {}", size == 4 ? "movss" : "movsd",
-                                                              PtrSize(size), offset, kFltArgRegs[floatArgumentIndex]));
-                    ++floatArgumentIndex;
+            const bool aggregate = IsAggregate(parameter.type);
+            const int words = aggregate ? std::max(1, AlignUp(size, 8) / 8) : 1;
+            if (IsFloat(parameter.type) && floatArgumentIndex < 8) {
+                modulePrinter.TextInstruction(std::format("{:<8}{} [rbp - {}], {}", size == 4 ? "movss" : "movsd",
+                                                          PtrSize(size), offset, kFltArgRegs[floatArgumentIndex++]));
+            }
+            else if (!IsFloat(parameter.type) && words <= 2 && integerArgumentIndex + words <= 6) {
+                for (int word = 0; word < words; ++word) {
+                    modulePrinter.TextInstruction(std::format("mov     qword [rbp - {}], {}", offset - word * 8,
+                                                              kIntArgRegs[integerArgumentIndex++]));
                 }
             }
-            else if (integerArgumentIndex < 6) {
-                modulePrinter.TextInstruction(std::format("{:<8}{} [rbp - {}], {}", "mov", PtrSize(std::max(size, 1)),
-                                                          offset, kIntArgRegs[integerArgumentIndex]));
-                ++integerArgumentIndex;
+            else {
+                for (int word = 0; word < words; ++word) {
+                    modulePrinter.TextInstruction(std::format("mov     rax, qword [rbp + {}]", stackOffset));
+                    modulePrinter.TextInstruction(std::format("mov     qword [rbp - {}], rax", offset - word * 8));
+                    stackOffset += 8;
+                }
             }
         }
     }

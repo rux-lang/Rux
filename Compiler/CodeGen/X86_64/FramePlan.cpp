@@ -252,7 +252,8 @@ private:
                     // Reserve what the value actually occupies. Clamping to sixteen would under-reserve any wider
                     // aggregate carried through a phi, which is the same overrun that undersized array allocas
                     // produced. AArch64 already sizes this the same way.
-                    plan.phiTemporarySize = std::max(plan.phiTemporarySize, std::max(8, RuntimeSize(step.type)));
+                    plan.phiTemporarySize =
+                        std::max(plan.phiTemporarySize, std::max(8, AlignUp(RuntimeSize(step.type), 8)));
                 }
             }
         }

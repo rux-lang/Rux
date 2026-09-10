@@ -209,7 +209,7 @@ void X86_64ModuleEmitter::GenFunc(const LirFunc &func) {
             // for a named struct it has no layout for, and a callee classifying by that spilled one register of
             // a two-register aggregate — the second half of every by-value 16-byte struct arrived as garbage on
             // System V targets.
-            else if (IsAggregate(p.type) && SizeOfRuntime(p.type) == 16) {
+            else if (IsAggregate(p.type) && (SizeOfRuntime(p.type) > 8 && SizeOfRuntime(p.type) <= 16)) {
                 if (intIdx <= 4) {
                     enc.MovArgStore(intIdx++, d);
                     enc.MovArgStore(intIdx++, d + 8);

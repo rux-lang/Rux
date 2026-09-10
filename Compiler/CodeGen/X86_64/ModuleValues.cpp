@@ -38,7 +38,7 @@ void X86_64ModuleEmitter::LoadA(const LirReg reg, const TypeRef &t) const {
         enc.MovRaxLoad(d);
         return;
     }
-    if (runtimeSz == 16) {
+    if (runtimeSz > 8 && runtimeSz <= 16) {
         enc.MovRaxLoad(d);
         enc.MovR10Load(d + 8);
         enc.Byte(0x4C);
@@ -152,7 +152,7 @@ void X86_64ModuleEmitter::StoreStack(LirReg dst, const TypeRef &t) const {
     int sz = SizeOfRuntime(t);
     int runtimeSz = SizeOfRuntime(t);
     int32_t d = Disp(dst);
-    if (runtimeSz == 16) {
+    if (runtimeSz > 8 && runtimeSz <= 16) {
         enc.MovRaxStore(d);
         enc.Byte(0x48);
         enc.Byte(0x89);

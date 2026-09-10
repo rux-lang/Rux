@@ -1,7 +1,9 @@
 #include "CodeGen/X86_64/AssemblyControlFlowPrinter.h"
 #include "CodeGen/X86_64/AssemblyModulePrinter.h"
+#include "CodeGen/X86_64/FramePlan.h"
 
 #include <doctest.h>
+#include <format>
 #include <string>
 #include <unordered_set>
 #include <utility>
@@ -206,4 +208,69 @@ TEST_CASE("a Win64 float argument on the stack is placed without disturbing the 
     // The fifth argument reaches its slot as raw bits instead.
     CHECK(placement.find("mov     eax, dword") != std::string::npos);
     CHECK(placement.find("mov     qword [rsp + 32], rax") != std::string::npos);
+}
+
+TEST_CASE("System V partial-word aggregates use both words in direct and indirect assembly calls") {
+    for (int size = 9; size <= 15; ++size) {
+        for (int leading = 0; leading <= 6; ++leading) {
+            CAPTURE(size);
+            CAPTURE(leading);
+            const TypeRef packet = TypeRef::MakeNamed("Packet");
+            const TypeRef scalar = TypeRef::MakeInt64();
+            const Layout::LayoutMap layouts{{"Packet", {.fields = {}, .totalSize = size, .alignment = 1}}};
+            LirFunc function;
+            function.name = "ForwardPacket";
+            function.callConv = CallingConvention::SysV;
+            function.returnType = packet;
+            std::vector<LirReg> arguments;
+            for (int index = 0; index < leading; ++index) {
+                function.params.push_back({static_cast<LirReg>(index), scalar, "lead"});
+                arguments.push_back(static_cast<LirReg>(index));
+            }
+            function.params.push_back({10, packet, "packet"});
+            function.params.push_back({11, scalar, "tail"});
+            function.params.push_back({12, TypeRef::MakePointer(scalar), "callee"});
+            arguments.insert(arguments.end(), {10, 11});
+            auto direct = Instruction(LirOpcode::Call, 13, packet, arguments);
+            direct.strArg = "TakePacket";
+            direct.callConv = CallingConvention::SysV;
+            arguments.insert(arguments.begin(), 12);
+            auto indirect = Instruction(LirOpcode::CallIndirect, 14, packet, arguments);
+            indirect.callConv = CallingConvention::SysV;
+            LirBlock block;
+            block.instrs = {direct, indirect};
+            block.term = Return(14, packet);
+            function.blocks.push_back(block);
+            const auto plan = PlanX86_64Frame(function, layouts, {}, Target::OS::Windows);
+            AssemblyModulePrinter modulePrinter(Target::OS::Windows);
+            const std::unordered_set<std::string> interfaces;
+            AssemblyControlFlowPrinter printer(modulePrinter, layouts, interfaces, Target::OS::Windows);
+            printer.EmitFunction(function);
+            const std::string output = modulePrinter.Finalize();
+            const int home = plan.SlotOffsets().at(10);
+            if (leading <= 4) {
+                CHECK(output.contains(
+                    std::format("mov     qword [rbp - {}], {}", home - 8, Layout::kIntArgRegs[leading + 1])));
+                CHECK(output.contains(
+                    std::format("mov     {}, qword [rbp - {}]", Layout::kIntArgRegs[leading + 1], home - 8)));
+            }
+            else {
+                CHECK(output.contains("mov     rax, qword [rbp + 24]"));
+                CHECK(output.contains(std::format("mov     qword [rbp - {}], rax", home - 8)));
+                CHECK(output.contains(std::format("mov     rax, qword [rbp - {}]", home - 8)));
+                CHECK(output.contains("mov     qword [rsp + 8], rax"));
+                if (leading == 5) {
+                    CHECK(output.contains(std::format("mov     qword [rbp - {}], r9", plan.SlotOffsets().at(11))));
+                    CHECK(output.contains("mov     r9, rax"));
+                }
+                else {
+                    CHECK(output.contains("mov     qword [rsp + 16], rax"));
+                }
+            }
+            CHECK(output.contains(std::format("mov     qword [rbp - {}], rdx", plan.SlotOffsets().at(13) - 8)));
+            CHECK(output.contains(std::format("mov     rdx, qword [rbp - {}]", plan.SlotOffsets().at(14) - 8)));
+            CHECK(output.contains("call    TakePacket"));
+            CHECK(output.contains("call    r10"));
+        }
+    }
 }

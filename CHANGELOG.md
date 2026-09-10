@@ -421,6 +421,8 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 
 ### Fixed
 
+- **Partial-word System V aggregates** — x86-64 calls and returns preserve both words of 9–15-byte values, including exhausted argument registers, indirect calls, and partial tails returned through pointers. Temporary slots reserve whole ABI words, and assembly output uses the same placement.
+
 - **Structural struct equality and borrowed operators** — structs compare all eligible fields in declaration order, skip padding, and preserve declared operators. Operator reference arguments now borrow values without adding indirection to existing borrows. Concrete layout facts keep multiword variant payloads intact through construction, matching, equality, copying, moving, and reverse-order destruction.
 
 - **Structural tuple equality** — tuple comparisons evaluate operands once and compare every element in order, including nested tuples, variants, arrays, and custom equality. Comparisons short-circuit, preserve floating-point semantics, and diagnose unsupported elements; `!=` negates the same traversal on both backends.

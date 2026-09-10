@@ -1,0 +1,119 @@
+import Core::{ #target };
+
+struct Bytes9 { bytes: uint8[9]; }
+struct Bytes10 { bytes: uint8[10]; }
+struct Bytes11 { bytes: uint8[11]; }
+struct Bytes12 { bytes: uint8[12]; }
+struct Bytes13 { bytes: uint8[13]; }
+struct Bytes14 { bytes: uint8[14]; }
+struct Bytes15 { bytes: uint8[15]; }
+
+func Echo<T>(value: T) -> T { return value; }
+func Spill<T>(a: int, b: int, c: int, d: int, e: int, value: T, tail: int, last: int) -> bool {
+    return a == 1 && b == 2 && c == 3 && d == 4 && e == 5 && tail == 6 && last == 7 && Echo(value) == value;
+}
+
+when #target.arch {
+    .X86_64 => {
+        #Abi(.SysV)
+        func SysVEcho<T>(value: T) -> T { return value; }
+
+        #Abi(.SysV)
+        func SysVSpill<T>(a: int, b: int, c: int, d: int, e: int, value: T, tail: int, last: int) -> bool {
+            return a == 1 && b == 2 && c == 3 && d == 4 && e == 5 && tail == 6 && last == 7 &&
+                SysVEcho(value) == value;
+        }
+
+        #Abi(.SysV)
+        func SysVPairs<T>(a: T, b: T, c: T, d: T, tail: int) -> bool {
+            return a == b && b == c && c == d && tail == 41;
+        }
+
+        func CheckSysV<T>(value: T) -> bool {
+            return SysVEcho(value) == value && SysVSpill(1, 2, 3, 4, 5, value, 6, 7) &&
+                SysVPairs(value, value, value, value, 41);
+        }
+    },
+    .AArch64 => { func CheckSysV<T>(value: T) -> bool { return true; } }
+}
+
+func Return9(value: Bytes9) -> Bytes9 { return value; }
+func Check9() -> bool {
+    let value = Bytes9 { bytes: [1u8, 2u8, 3u8, 4u8, 5u8, 6u8, 7u8, 8u8, 9u8] };
+    let callback = Return9;
+    let direct = Echo(value);
+    let indirect = callback(value);
+    let spilled = Spill(1, 2, 3, 4, 5, value, 6, 7);
+    return direct == value && indirect == value && spilled && CheckSysV(value);
+}
+
+func Return10(value: Bytes10) -> Bytes10 { return value; }
+func Check10() -> bool {
+    let value = Bytes10 { bytes: [1u8, 2u8, 3u8, 4u8, 5u8, 6u8, 7u8, 8u8, 9u8, 10u8] };
+    let callback = Return10;
+    let direct = Echo(value);
+    let indirect = callback(value);
+    let spilled = Spill(1, 2, 3, 4, 5, value, 6, 7);
+    return direct == value && indirect == value && spilled && CheckSysV(value);
+}
+
+func Return11(value: Bytes11) -> Bytes11 { return value; }
+func Check11() -> bool {
+    let value = Bytes11 { bytes: [1u8, 2u8, 3u8, 4u8, 5u8, 6u8, 7u8, 8u8, 9u8, 10u8, 11u8] };
+    let callback = Return11;
+    let direct = Echo(value);
+    let indirect = callback(value);
+    let spilled = Spill(1, 2, 3, 4, 5, value, 6, 7);
+    return direct == value && indirect == value && spilled && CheckSysV(value);
+}
+
+func Return12(value: Bytes12) -> Bytes12 { return value; }
+func Check12() -> bool {
+    let value = Bytes12 { bytes: [1u8, 2u8, 3u8, 4u8, 5u8, 6u8, 7u8, 8u8, 9u8, 10u8, 11u8, 12u8] };
+    let callback = Return12;
+    let direct = Echo(value);
+    let indirect = callback(value);
+    let spilled = Spill(1, 2, 3, 4, 5, value, 6, 7);
+    return direct == value && indirect == value && spilled && CheckSysV(value);
+}
+
+func Return13(value: Bytes13) -> Bytes13 { return value; }
+func Check13() -> bool {
+    let value = Bytes13 { bytes: [1u8, 2u8, 3u8, 4u8, 5u8, 6u8, 7u8, 8u8, 9u8, 10u8, 11u8, 12u8, 13u8] };
+    let callback = Return13;
+    let direct = Echo(value);
+    let indirect = callback(value);
+    let spilled = Spill(1, 2, 3, 4, 5, value, 6, 7);
+    return direct == value && indirect == value && spilled && CheckSysV(value);
+}
+
+func Return14(value: Bytes14) -> Bytes14 { return value; }
+func Check14() -> bool {
+    let value = Bytes14 { bytes: [1u8, 2u8, 3u8, 4u8, 5u8, 6u8, 7u8, 8u8, 9u8, 10u8, 11u8, 12u8, 13u8, 14u8] };
+    let callback = Return14;
+    let direct = Echo(value);
+    let indirect = callback(value);
+    let spilled = Spill(1, 2, 3, 4, 5, value, 6, 7);
+    return direct == value && indirect == value && spilled && CheckSysV(value);
+}
+
+func Return15(value: Bytes15) -> Bytes15 { return value; }
+func Check15() -> bool {
+    let value = Bytes15 { bytes: [1u8, 2u8, 3u8, 4u8, 5u8, 6u8, 7u8, 8u8, 9u8, 10u8, 11u8, 12u8, 13u8, 14u8, 15u8] };
+    let callback = Return15;
+    let direct = Echo(value);
+    let indirect = callback(value);
+    let spilled = Spill(1, 2, 3, 4, 5, value, 6, 7);
+    return direct == value && indirect == value && spilled && CheckSysV(value);
+}
+
+func Main() -> int {
+    if !Check9() { return 9; }
+    if !Check10() { return 10; }
+    if !Check11() { return 11; }
+    if !Check12() { return 12; }
+    if !Check13() { return 13; }
+    if !Check14() { return 14; }
+    if !Check15() { return 15; }
+    return 0;
+}
