@@ -225,6 +225,19 @@ HirExprPtr AstToHirContext::LowerBasicExpr(const Expr &expression) {
         };
         HirExprPtr left = lowerOperand(*binary->left, *binary->right);
         HirExprPtr right = lowerOperand(*binary->right, *binary->left);
+        if (const bool *negated = model.TryGetAggregateEquality(*binary)) {
+            // A generic comparison may also be instantiated with scalar or custom-comparable arguments.
+            if (const VariantEqualityPayload *plan = model.TryGetAggregateEqualityPlan(left->type)) {
+                auto lowered = std::make_unique<HirAggregateEqualityExpr>();
+                lowered->location = binary->location;
+                lowered->type = TypeRef::MakeBool();
+                lowered->plan = LowerVariantEqualityPayload(*plan);
+                lowered->left = std::move(left);
+                lowered->right = std::move(right);
+                lowered->negated = *negated;
+                return lowered;
+            }
+        }
         if (const ResolvedVariantEquality *equality = model.TryGetVariantEquality(*binary)) {
             return LowerVariantEquality(*binary, std::move(left), std::move(right), *equality);
         }

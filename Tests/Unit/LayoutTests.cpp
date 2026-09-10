@@ -65,6 +65,26 @@ TEST_CASE("an instantiation's size reaches the struct and the array holding it")
     CHECK_EQ(RuntimeSizeOf(TypeRef::MakeArray(TypeRef::MakeNamed("Box<Wide>"), 3), layouts, {}), 48);
 }
 
+TEST_CASE("tuple projections preserve concrete aggregate widths and alignments") {
+    LayoutMap layouts = BoxLayouts();
+    const TypeRef wide = TypeRef::MakeNamed("Box<Wide>");
+    const TypeRef tuple = TypeRef::MakeTuple({wide, wide, TypeRef::MakeInt32()});
+    const TypeRef pointer = TypeRef::MakePointer(tuple);
+    CHECK_EQ(RuntimeSizeOf(tuple, layouts, {}), 40);
+    CHECK_EQ(FieldOffsetOf(pointer, "0", layouts, {}), 0);
+    CHECK_EQ(FieldOffsetOf(pointer, "1", layouts, {}), 16);
+    CHECK_EQ(FieldOffsetOf(pointer, "2", layouts, {}), 32);
+    LirStructDecl bytes;
+    bytes.name = "Bytes";
+    bytes.fields = {{"data", TypeRef::MakeArray(TypeRef::MakeChar8(), 9)}};
+    layouts[bytes.name] = ComputeStructLayout(bytes, layouts, {});
+    const TypeRef unaligned = TypeRef::MakeTuple({TypeRef::MakeChar8(), TypeRef::MakeNamed("Bytes"), tuple});
+    const TypeRef unalignedPointer = TypeRef::MakePointer(unaligned);
+    CHECK_EQ(FieldOffsetOf(unalignedPointer, "1", layouts, {}), 1);
+    CHECK_EQ(FieldOffsetOf(unalignedPointer, "2", layouts, {}), 16);
+    CHECK_EQ(RuntimeSizeOf(unaligned, layouts, {}), 56);
+}
+
 TEST_CASE("an interface-typed field occupies a fat pointer rather than one word") {
     // An interface value is a data pointer and a vtable pointer under a name the declaration gives no size for.
     // Sized as an ordinary named type it took eight bytes, and the vtable word landed on whatever followed it --

@@ -287,6 +287,9 @@ struct SemanticFacts {
     std::unordered_map<const EnumPattern *, ResolvedCasePattern> casePatterns;
     std::unordered_map<const BinaryExpr *, ResolvedVariantEquality> variantEqualities;
     std::unordered_map<std::string, VariantEqualityPlan> variantEqualityPlans;
+    // An expression records only whether to negate; each concrete instantiation owns its element recipe.
+    std::unordered_map<const BinaryExpr *, bool> aggregateEqualities;
+    std::unordered_map<std::string, VariantEqualityPayload> aggregateEqualityPlans;
     std::unordered_map<const Expr *, ValueConsumption> valueConsumptions;
     std::unordered_map<const Expr *, ValueCopy> valueCopies;
     std::unordered_map<const CallExpr *, ResolvedCallableBinding> callableBindings;
@@ -344,6 +347,8 @@ struct SemanticModel {
 
     [[nodiscard]] const ResolvedVariantEquality *TryGetVariantEquality(const BinaryExpr &expression) const noexcept;
     [[nodiscard]] const VariantEqualityPlan *TryGetVariantEqualityPlan(const TypeRef &type) const noexcept;
+    [[nodiscard]] const bool *TryGetAggregateEquality(const BinaryExpr &expression) const noexcept;
+    [[nodiscard]] const VariantEqualityPayload *TryGetAggregateEqualityPlan(const TypeRef &type) const noexcept;
 
     /// Returns null for Copy expressions and expressions that are only borrowed or observed.
     [[nodiscard]] const ValueConsumption *TryGetConsumption(const Expr &expression) const noexcept;

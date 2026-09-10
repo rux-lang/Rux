@@ -341,30 +341,26 @@ TEST_CASE("Windows AArch64 probes a large outgoing copy and restores it without 
           caller.end());
 }
 
-// A struct and two values of it, which is the one construct a source program
-// reaches that this back end still refuses: comparing two values that are not a
-// bit pattern in one register is a run of comparisons the x86-64 back end emits
-// and this one does not.
-constexpr std::string_view kAggregateCompare = R"(
-        struct Point {
-            x: int;
-            y: int;
-        }
-)";
+// Source tuple equality now lowers to element comparisons. Inject a raw aggregate comparison to retain coverage of
+// the backend's defensive diagnostic when an earlier compiler stage supplies an unsupported instruction.
+static LirPackage RawAggregateComparisons(const std::size_t count) {
+    auto package = CompileToAArch64Lir("func Main() -> int { return 0; }");
+    LirFunc &function = package.modules.front().funcs.front();
+    const TypeRef tuple = TypeRef::MakeTuple({TypeRef::MakeInt(), TypeRef::MakeInt()});
+    function.params = {{1, tuple, "a"}, {2, tuple, "b"}};
+    for (std::size_t index = 0; index < count; ++index) {
+        LirInstr compare;
+        compare.dst = static_cast<LirReg>(3 + index);
+        compare.type = TypeRef::MakeBool();
+        compare.op = LirOpcode::CmpEq;
+        compare.srcs = {1, 2};
+        function.blocks.front().instrs.push_back(std::move(compare));
+    }
+    return package;
+}
 
 TEST_CASE("AArch64 RCU emitter reports an unimplemented opcode by name") {
-    const auto package = CompileToAArch64Lir(std::format(R"(
-        {}
-        func Main() -> int {{
-            let a = (1, 2);
-            let b = (1, 2);
-            if a == b {{
-                return 1;
-            }}
-            return 0;
-        }}
-    )",
-                                                         kAggregateCompare));
+    const auto package = RawAggregateComparisons(1);
 
     AArch64RcuEmitter emitter(package, "test");
     const auto objects = emitter.Generate();
@@ -383,18 +379,7 @@ TEST_CASE("AArch64 RCU emitter names each unimplemented construct once") {
     // Three comparisons, which are three instructions of the one opcode this
     // back end does not lower yet: what a report names is the construct, so
     // reaching it again says nothing new.
-    const auto package = CompileToAArch64Lir(std::format(R"(
-        {}
-        func Main() -> int {{
-            let a = (1, 2);
-            let b = (1, 2);
-            let first = a == b;
-            let second = a == b;
-            let third = a == b;
-            return 0;
-        }}
-    )",
-                                                         kAggregateCompare));
+    const auto package = RawAggregateComparisons(3);
 
     AArch64RcuEmitter emitter(package, "test");
     const auto objects = emitter.Generate();

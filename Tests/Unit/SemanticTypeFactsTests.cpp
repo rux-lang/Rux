@@ -3,6 +3,49 @@
 using namespace Rux;
 using namespace Rux::Testing::SemanticTestSupport;
 
+TEST_CASE("tuple equality retains a concrete element recipe for every generic instantiation") {
+    Lexer lexer(R"(
+        func Different<T>(left: (int64, T), right: (int64, T)) -> bool { return left != right; }
+        func Main() {
+            Different<int32>((1i64, 2i32), (1i64, 3i32));
+            Different<int64>((1i64, 2i64), (1i64, 3i64));
+            Different<bool>((1i64, true), (1i64, false));
+        }
+    )",
+                "tuple_equality.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+    Parser parser(std::move(lexed.tokens), "tuple_equality.rux");
+    auto parsed = parser.Parse();
+    REQUIRE_FALSE(parsed.HasErrors());
+    const SemanticModel model = SemanticAnalyzer({&parsed.module}, {}, "tuples", "Windows").Analyze();
+    REQUIRE_FALSE(model.HasErrors());
+    const auto *function = dynamic_cast<const FuncDecl *>(parsed.module.items[0].get());
+    REQUIRE(function != nullptr);
+    REQUIRE(function->body != nullptr);
+    const auto *returned = dynamic_cast<const ReturnStmt *>(function->body->stmts[0].get());
+    REQUIRE(returned != nullptr);
+    REQUIRE(returned->value.has_value());
+    const auto *comparison = dynamic_cast<const BinaryExpr *>(returned->value->get());
+    REQUIRE(comparison != nullptr);
+    const bool *negated = model.TryGetAggregateEquality(*comparison);
+    REQUIRE(negated != nullptr);
+    CHECK(*negated);
+    for (const TypeRef &element : {TypeRef::MakeInt32(), TypeRef::MakeInt64(), TypeRef::MakeBool()}) {
+        const TypeRef type = TypeRef::MakeTuple({TypeRef::MakeInt64(), element});
+        const auto *plan = model.TryGetAggregateEqualityPlan(type);
+        REQUIRE(plan != nullptr);
+        CHECK(plan->type == type);
+        CHECK(plan->operation == VariantEqualityPayload::Operation::Tuple);
+        REQUIRE_EQ(plan->elements.size(), 2);
+        CHECK(plan->elements[1].type == element);
+        CHECK(plan->elements[1].operation == VariantEqualityPayload::Operation::Builtin);
+    }
+    BinaryExpr outside;
+    CHECK(model.TryGetAggregateEquality(outside) == nullptr);
+    CHECK(model.TryGetAggregateEqualityPlan(TypeRef::MakeTuple({TypeRef::MakeBool()})) == nullptr);
+}
+
 TEST_CASE("semantic analyzer context preserves dependency and diagnostic ordering") {
     Lexer dependencyLexer("func Dependency() { missingDependency; }", "dependency.rux");
     auto dependencyTokens = dependencyLexer.Tokenize();

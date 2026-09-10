@@ -1,0 +1,59 @@
+variant Choice { Empty, Pair((int64, int64)) }
+variant CountedChoice { Items((Counted, Counted)) }
+
+struct Counted { value: int64; visits: *var int32; }
+extend Counted {
+    func ==(self: &Counted, other: Counted) -> bool {
+        *self.visits = *self.visits + 1;
+        return self.value % 10 == other.value % 10;
+    }
+}
+
+func Make(visits: *var int32, tail: int64) -> (int64, int64) {
+    *visits = *visits + 1;
+    return (7i64, tail);
+}
+
+func Same<T>(left: (int64, T), right: (int64, T)) -> bool { return left == right; }
+func EqualValues<T>(left: T, right: T) -> bool { return left == right; }
+func FloatBits(bits: uint64) -> float64 { return *(@bits as *float64); }
+
+func Main() -> int {
+    let left = (7i64, 11i64);
+    let right = (7i64, 13i64);
+    if left == right { return 1; }
+    if !(left != right) { return 2; }
+    if left != (7i64, 11i64) || !(left == (7i64, 11i64)) { return 3; }
+    if ((1i64, 2i64), (3i64, 4i64)) == ((1i64, 2i64), (3i64, 5i64)) { return 4; }
+    if (Choice::Pair(left), 1i64) == (Choice::Pair(right), 1i64) { return 5; }
+    if (Choice::Empty, 1i64) != (Choice::Empty, 1i64) { return 6; }
+    if (Choice::Empty, 1i64) == (Choice::Pair(left), 1i64) { return 7; }
+    if (0.0f64, -0.0f64) != (-0.0f64, 0.0f64) { return 8; }
+    let nan = FloatBits(0x7FF8000000000000u64);
+    if (1.0f64, nan) == (1.0f64, nan) || !((nan, 1.0f64) != (nan, 1.0f64)) { return 9; }
+    let empty = [0i32; 0];
+    if (empty, 1i64) == (empty, 2i64) || (empty, 1i64) != (empty, 1i64) { return 10; }
+    if ([1i64, 2i64], 3i64) == ([1i64, 4i64], 3i64) { return 11; }
+    var evaluations: int32 = 0;
+    if Make(@evaluations, 11) == Make(@evaluations, 12) || evaluations != 2 { return 12; }
+    if !Same<int32>((1i64, 2i32), (1i64, 2i32)) || Same<int64>(left, right) { return 13; }
+    if !Same<bool>((1i64, true), (1i64, true)) || Same<int32>((1i64, 2i32), (1i64, 3i32)) { return 14; }
+    var visits: int32 = 0;
+    let a = Counted { value: 11, visits: @visits };
+    let b = Counted { value: 21, visits: @visits };
+    let c = Counted { value: 32, visits: @visits };
+    if (a, b) != (b, a) || visits != 2 { return 15; }
+    visits = 0;
+    if (a, a) == (c, b) || visits != 1 { return 16; }
+    visits = 0;
+    if !((a, a) != (c, b)) || visits != 1 { return 17; }
+    visits = 0;
+    if ([a, a], 1i64) == ([c, b], 1i64) || visits != 1 { return 18; }
+    visits = 0;
+    if (CountedChoice::Items((a, a)), 1i64) == (CountedChoice::Items((c, b)), 1i64) || visits != 1 { return 19; }
+    visits = 0;
+    if (CountedChoice::Items((a, a)), 1i64) != (CountedChoice::Items((b, b)), 1i64) || visits != 2 { return 20; }
+    if !EqualValues<int64>(1i64, 1i64) || EqualValues<(int64, int64)>(left, right) { return 21; }
+    if !EqualValues<Counted>(a, b) || EqualValues<int32>(1i32, 2i32) { return 22; }
+    return 0;
+}

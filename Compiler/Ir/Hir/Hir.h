@@ -217,6 +217,14 @@ struct HirVariantEqualityExpr : HirExpr {
     bool negated = false;
 };
 
+/// Element-wise equality uses the same recursive operations as variant payloads, without an active-case tag.
+struct HirAggregateEqualityExpr : HirExpr {
+    HirExprPtr left;
+    HirExprPtr right;
+    HirVariantEqualityPayload plan;
+    bool negated = false;
+};
+
 /// Recursive recipe for constructing an independent value from a named source place. Trivial leaves are copied as
 /// bits; custom leaves call the selected `=` operation; aggregate nodes visit their components in declaration order.
 struct HirCopyPlan {

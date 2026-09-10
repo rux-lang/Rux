@@ -421,6 +421,8 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 
 ### Fixed
 
+- **Structural tuple equality** — tuple comparisons evaluate operands once and compare every element in order, including nested tuples, variants, arrays, and custom equality. Comparisons short-circuit, preserve floating-point semantics, and diagnose unsupported elements; `!=` negates the same traversal on both backends.
+
 - **Generic methods on non-generic types** — associated and instance methods resolve their own explicit or inferred type arguments independently of receiver parameters, validate bounds, and retain concrete signatures through lowering. Allocator replaces `LayoutOf<T>()` and `LayoutOfArray<T>(count)` with `Layout::ForValue<T>()` and `Layout::ForArray<T>(count)`; both now use `alignof(T)`.
 
 - **Writable pointer generic layouts** — callable substitution preserves pointee mutability in variant arguments, receiver types, and specialization symbols. Generic iterators can return `Option<*var T>` alongside read-only pointer instantiations without losing their layout markers.

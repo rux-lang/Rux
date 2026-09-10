@@ -80,6 +80,9 @@ LirReg HirToLirContext::LowerExprValue(const HirExpr &expr) {
     if (auto *e = dynamic_cast<const HirVariantEqualityExpr *>(&expr)) {
         return LowerVariantEquality(*e);
     }
+    if (auto *e = dynamic_cast<const HirAggregateEqualityExpr *>(&expr)) {
+        return LowerAggregateEquality(*e);
+    }
     if (auto *e = dynamic_cast<const HirCopyExpr *>(&expr)) {
         return LowerCopy(*e);
     }
@@ -233,6 +236,35 @@ LirReg HirToLirContext::LowerUnary(const HirUnaryExpr &e) {
     }
 }
 
+LirReg HirToLirContext::EmitEqualitySequence(const std::size_t count,
+                                             const std::function<LirReg(std::size_t)> &compare) {
+    const LirReg equal = EmitConst("true", TypeRef::MakeBool());
+    if (count == 0) {
+        return equal;
+    }
+    const std::uint32_t differentBlock = NewBlock("aggregate.eq.different");
+    const std::uint32_t mergeBlock = NewBlock("aggregate.eq.merge");
+    for (std::size_t index = 0; index < count; ++index) {
+        const std::uint32_t nextBlock = NewBlock("aggregate.eq.next");
+        Branch(compare(index), nextBlock, differentBlock);
+        SetBlock(nextBlock);
+    }
+    const auto equalBlock = builder->CurrentBlock();
+    Jump(mergeBlock);
+    SetBlock(differentBlock);
+    const LirReg different = EmitConst("false", TypeRef::MakeBool());
+    Jump(mergeBlock);
+    SetBlock(mergeBlock);
+    LirInstr phi;
+    phi.dst = NewReg();
+    phi.op = LirOpcode::Phi;
+    phi.type = TypeRef::MakeBool();
+    phi.phiPreds = {{equal, equalBlock}, {different, differentBlock}};
+    const LirReg result = phi.dst;
+    Emit(std::move(phi));
+    return result;
+}
+
 LirReg HirToLirContext::EmitVariantPayloadEquality(const HirVariantEqualityPayload &payload, const LirReg left,
                                                    const LirReg right) {
     using Operation = HirVariantEqualityPayload::Operation;
@@ -260,35 +292,32 @@ LirReg HirToLirContext::EmitVariantPayloadEquality(const HirVariantEqualityPaylo
         return EmitVariantEquality(payload.type, payload.variantCases, left, right);
     }
 
-    LirReg equal = EmitConst("true", TypeRef::MakeBool());
     if (payload.operation == Operation::Tuple) {
-        for (std::size_t index = 0; index < payload.elements.size(); ++index) {
+        return EmitEqualitySequence(payload.elements.size(), [&](const std::size_t index) {
             const HirVariantEqualityPayload &element = payload.elements[index];
             const LirReg leftElement = EmitFieldPtr(left, std::to_string(index), element.type);
             const LirReg rightElement = EmitFieldPtr(right, std::to_string(index), element.type);
-            equal = EmitBinary(LirOpcode::And, equal, EmitVariantPayloadEquality(element, leftElement, rightElement),
-                               TypeRef::MakeBool());
-        }
-        return equal;
+            return EmitVariantPayloadEquality(element, leftElement, rightElement);
+        });
     }
     if (payload.operation == Operation::Array && !payload.elements.empty()) {
         const HirVariantEqualityPayload &element = payload.elements.front();
-        for (std::uint64_t index = 0; index < payload.type.arrayLength.value_or(0); ++index) {
+        return EmitEqualitySequence(payload.type.arrayLength.value_or(0), [&](const std::size_t index) {
             const LirReg offset = EmitConst(std::to_string(index), TypeRef::MakeUInt64());
             const LirReg leftElement = EmitIndexPtr(left, offset, element.type);
             const LirReg rightElement = EmitIndexPtr(right, offset, element.type);
-            equal = EmitBinary(LirOpcode::And, equal, EmitVariantPayloadEquality(element, leftElement, rightElement),
-                               TypeRef::MakeBool());
-        }
+            return EmitVariantPayloadEquality(element, leftElement, rightElement);
+        });
     }
-    return equal;
+    BuilderFailure("structural equality plan has no supported operation");
+    return LirNoReg;
 }
 
 LirReg HirToLirContext::EmitVariantPayloadsEquality(const std::vector<HirVariantEqualityPayload> &payloads,
                                                     const LirReg left, const LirReg right, const TypeRef &tagType) {
-    LirReg equal = EmitConst("true", TypeRef::MakeBool());
     std::uint64_t offset = tagType.SizeInBytes().value_or(8);
-    for (const HirVariantEqualityPayload &payload : payloads) {
+    return EmitEqualitySequence(payloads.size(), [&](const std::size_t index) {
+        const HirVariantEqualityPayload &payload = payloads[index];
         const std::uint64_t size = payload.type.SizeInBytes().value_or(8);
         const std::uint64_t alignment = size > 0 ? std::min<std::uint64_t>(size, 8) : 1;
         offset = (offset + alignment - 1) / alignment * alignment;
@@ -298,11 +327,9 @@ LirReg HirToLirContext::EmitVariantPayloadsEquality(const std::vector<HirVariant
         const TypeRef payloadPointer = TypeRef::MakePointer(payload.type);
         const LirReg leftPayload = EmitCast(leftBytes, TypeRef::MakePointer(TypeRef::MakeChar8()), payloadPointer);
         const LirReg rightPayload = EmitCast(rightBytes, TypeRef::MakePointer(TypeRef::MakeChar8()), payloadPointer);
-        equal = EmitBinary(LirOpcode::And, equal, EmitVariantPayloadEquality(payload, leftPayload, rightPayload),
-                           TypeRef::MakeBool());
         offset += size;
-    }
-    return equal;
+        return EmitVariantPayloadEquality(payload, leftPayload, rightPayload);
+    });
 }
 
 LirReg HirToLirContext::EmitVariantEquality(const TypeRef &type, const std::vector<HirVariantEqualityCase> &cases,
@@ -348,22 +375,30 @@ LirReg HirToLirContext::EmitVariantEquality(const TypeRef &type, const std::vect
     return result;
 }
 
+LirReg HirToLirContext::EqualityOperandStorage(const HirExpr &operand, const TypeRef &type) {
+    const auto *unary = dynamic_cast<const HirUnaryExpr *>(&operand);
+    const bool addressable = dynamic_cast<const HirVarExpr *>(&operand) ||
+                             dynamic_cast<const HirSelfExpr *>(&operand) ||
+                             dynamic_cast<const HirFieldExpr *>(&operand) ||
+                             dynamic_cast<const HirIndexExpr *>(&operand) || (unary && unary->op == TokenKind::Star);
+    if (addressable) {
+        return LowerLValue(operand);
+    }
+    const LirReg slot = EmitAlloca(type);
+    StoreExprIntoSlot(operand, slot, type);
+    return slot;
+}
+
+LirReg HirToLirContext::LowerAggregateEquality(const HirAggregateEqualityExpr &e) {
+    const LirReg left = EqualityOperandStorage(*e.left, e.plan.type);
+    const LirReg right = EqualityOperandStorage(*e.right, e.plan.type);
+    const LirReg equal = EmitVariantPayloadEquality(e.plan, left, right);
+    return e.negated ? EmitUnary(LirOpcode::Not, equal, TypeRef::MakeBool()) : equal;
+}
+
 LirReg HirToLirContext::LowerVariantEquality(const HirVariantEqualityExpr &e) {
-    const auto stableStorage = [&](const HirExpr &operand) {
-        const auto *unary = dynamic_cast<const HirUnaryExpr *>(&operand);
-        const bool addressable =
-            dynamic_cast<const HirVarExpr *>(&operand) || dynamic_cast<const HirSelfExpr *>(&operand) ||
-            dynamic_cast<const HirFieldExpr *>(&operand) || dynamic_cast<const HirIndexExpr *>(&operand) ||
-            (unary && unary->op == TokenKind::Star);
-        if (addressable) {
-            return LowerLValue(operand);
-        }
-        const LirReg slot = EmitAlloca(e.variantType);
-        StoreExprIntoSlot(operand, slot, e.variantType);
-        return slot;
-    };
-    const LirReg left = stableStorage(*e.left);
-    const LirReg right = stableStorage(*e.right);
+    const LirReg left = EqualityOperandStorage(*e.left, e.variantType);
+    const LirReg right = EqualityOperandStorage(*e.right, e.variantType);
     const LirReg equal = EmitVariantEquality(e.variantType, e.cases, left, right);
     return e.negated ? EmitUnary(LirOpcode::Not, equal, TypeRef::MakeBool()) : equal;
 }

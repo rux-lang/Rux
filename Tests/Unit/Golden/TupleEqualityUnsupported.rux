@@ -1,0 +1,11 @@
+func Compare(left: (int64, char8[..]), right: (int64, char8[..])) -> bool {
+    return left == right;
+}
+func Ordered(left: (int64, int64), right: (int64, int64)) -> bool {
+    return left < right;
+}
+func Generic<T>(left: (int64, T), right: (int64, T)) -> bool { return left != right; }
+func Main() -> int {
+    Generic<char8[..]>((1i64, "a"), (1i64, "b"));
+    return 0;
+}

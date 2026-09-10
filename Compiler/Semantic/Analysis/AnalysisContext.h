@@ -412,6 +412,8 @@ private:
     std::unordered_map<const EnumPattern *, ResolvedCasePattern> &casePatterns;
     std::unordered_map<const BinaryExpr *, ResolvedVariantEquality> &variantEqualities;
     std::unordered_map<std::string, VariantEqualityPlan> &variantEqualityPlans;
+    std::unordered_map<const BinaryExpr *, bool> &aggregateEqualities;
+    std::unordered_map<std::string, VariantEqualityPayload> &aggregateEqualityPlans;
     std::unordered_map<const Expr *, ValueConsumption> &valueConsumptions;
     std::unordered_map<const Expr *, ValueCopy> &valueCopies;
     std::unordered_map<const CallExpr *, ResolvedCallableBinding> &callableBindings;

@@ -113,6 +113,8 @@ func Area(shape: Shape) -> float64 {
 
 Variant equality is structural. Values with different active cases are unequal without inspecting inactive storage. Values with the same case compare each active payload in declaration order, recursively using that payload type's equality; a variant is not equality-comparable when one of its reachable payloads is not. This applies to wide, nested, generic, tuple, and named payloads and does not compare padding or stale bytes.
 
+Tuples also have structural equality. Both operands are evaluated once, and matching tuple types compare elements from left to right until a mismatch. Element comparisons preserve floating-point equality and declared equality operators; nested tuples, variants, and fixed arrays compare recursively. Every element must support equality, even when an earlier element could differ. `!=` negates the same comparison, and tuples have no built-in ordering.
+
 Copy, move, and destruction are also case-aware. A variant is copyable or movable only when every reachable payload supports the operation. Moving transfers the active payload and invalidates the source. Destruction reads the tag once and destroys only the active payload, in reverse field order, exactly once; partially constructed cases roll back only the payloads already initialized.
 
 The runtime representation is a private tag followed by storage aligned for the widest case. Calls and returns use the aggregate ABI selected for that complete layout; a variant is never passed as only its tag. The compiler keeps the tag width, payload offsets, construction, matching, equality, moves, and drop glue on one layout contract for every target. This representation is compiler-managed, not a substitute for a C ABI declaration.

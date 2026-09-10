@@ -1,0 +1,3 @@
+2:17: error: structural equality for '(int64, char8[..])' is unavailable because element type 'char8[..]' has no '==' operator
+5:17: error: operator '<' is not defined for tuple '(int64, int64)'
+7:76: error: structural equality for '(int64, char8[..])' is unavailable because element type 'char8[..]' has no '==' operator

@@ -1,0 +1,11 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "TupleEquality"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Tuple equality compares each element"
+
+[Build]
+Output = "../../../Bin/Tests/Language"

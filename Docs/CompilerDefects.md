@@ -8,9 +8,9 @@ Return to the [main README](../README.md) for the complete documentation index.
 
 ## Open
 
-### Equality on a multiword struct or tuple compares only its leading doubleword
+### Structural struct equality remains unavailable
 
-*Silent.* `==` between two aggregate values wider than one register still loads the first eight bytes of each side and compares those unless the frontend supplies a structural operation. The AArch64 backend refuses a tuple comparison rather than quietly answering from its first element, while x86-64 silently does the latter. Variants already use case-aware structural equality.
+Structs without declared equality operators still lack field-wise comparison. Tuple and variant equality now use structural operations; struct equality must preserve declared operators, compare all eligible fields, and exclude padding.
 
 ### System V x86-64 loses the tail of a 9–15-byte aggregate
 

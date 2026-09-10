@@ -196,6 +196,16 @@ const VariantEqualityPlan *SemanticModel::TryGetVariantEqualityPlan(const TypeRe
     return plan == facts.variantEqualityPlans.end() ? nullptr : &plan->second;
 }
 
+const bool *SemanticModel::TryGetAggregateEquality(const BinaryExpr &expression) const noexcept {
+    const auto fact = facts.aggregateEqualities.find(&expression);
+    return fact == facts.aggregateEqualities.end() ? nullptr : &fact->second;
+}
+
+const VariantEqualityPayload *SemanticModel::TryGetAggregateEqualityPlan(const TypeRef &type) const noexcept {
+    const auto plan = facts.aggregateEqualityPlans.find(type.ToString());
+    return plan == facts.aggregateEqualityPlans.end() ? nullptr : &plan->second;
+}
+
 const ValueConsumption *SemanticModel::TryGetConsumption(const Expr &expression) const noexcept {
     const auto consumption = facts.valueConsumptions.find(&expression);
     return consumption == facts.valueConsumptions.end() ? nullptr : &consumption->second;

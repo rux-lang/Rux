@@ -7,17 +7,44 @@
 
 namespace Rux::Layout {
 namespace {
-/// Offset of tuple element `index`, laid out exactly the way SizeOf lays a tuple out: each element aligned to its own
-/// size, capped at a doubleword.
-[[nodiscard]] int TupleElementOffset(const TypeRef &tuple, const std::size_t index) {
+[[nodiscard]] int RuntimeAlignmentOf(const TypeRef &type, const LayoutMap &layouts,
+                                     const std::unordered_set<std::string> &interfaceNames) {
+    if (type.kind == TypeRef::Kind::Array) {
+        return type.inner.empty() ? 1 : RuntimeAlignmentOf(type.inner.front(), layouts, interfaceNames);
+    }
+    if (type.kind == TypeRef::Kind::Tuple) {
+        int alignment = 1;
+        for (const TypeRef &element : type.inner) {
+            alignment = std::max(alignment, RuntimeAlignmentOf(element, layouts, interfaceNames));
+        }
+        return alignment;
+    }
+    if (type.kind == TypeRef::Kind::Named) {
+        const std::string base = BaseTypeName(type.name);
+        if (interfaceNames.contains(base)) {
+            return 8;
+        }
+        auto layout = layouts.find(type.name);
+        if (layout == layouts.end()) {
+            layout = layouts.find(base);
+        }
+        if (layout != layouts.end()) {
+            return layout->second.alignment;
+        }
+    }
+    return AlignOf(type);
+}
+
+/// Tuple projections and stack allocation must use the same concrete element layouts, including named types.
+[[nodiscard]] int TupleElementOffset(const TypeRef &tuple, const std::size_t index, const LayoutMap &layouts,
+                                     const std::unordered_set<std::string> &interfaceNames) {
     int offset = 0;
     for (std::size_t i = 0; i < index; ++i) {
-        const int size = SizeOf(tuple.inner[i]);
-        offset = AlignUp(offset, size > 0 ? std::min(size, 8) : 1);
+        const int size = RuntimeSizeOf(tuple.inner[i], layouts, interfaceNames);
+        offset = AlignUp(offset, RuntimeAlignmentOf(tuple.inner[i], layouts, interfaceNames));
         offset += size > 0 ? size : 8;
     }
-    const int size = SizeOf(tuple.inner[index]);
-    return AlignUp(offset, size > 0 ? std::min(size, 8) : 1);
+    return AlignUp(offset, RuntimeAlignmentOf(tuple.inner[index], layouts, interfaceNames));
 }
 } // namespace
 
@@ -240,7 +267,7 @@ int RuntimeSizeOf(const TypeRef &t, const LayoutMap &layouts, const std::unorder
         int maxAlign = 1;
         for (const auto &element : t.inner) {
             const int size = RuntimeSizeOf(element, layouts, interfaceNames);
-            const int alignment = size > 0 ? std::min(size, 8) : 1;
+            const int alignment = RuntimeAlignmentOf(element, layouts, interfaceNames);
             if (alignment > 1) {
                 offset = AlignUp(offset, alignment);
             }
@@ -297,7 +324,7 @@ int FieldOffsetOf(const TypeRef &pointerType, const std::string_view fieldName, 
         if (ec != std::errc{} || stopped != last || index >= pointee.inner.size()) {
             return 0;
         }
-        return TupleElementOffset(pointee, index);
+        return TupleElementOffset(pointee, index, layouts, interfaceNames);
     }
 
     // A slice is a {data, length} pair, a pointer and a word beside it, in a shape the runtime and the calling

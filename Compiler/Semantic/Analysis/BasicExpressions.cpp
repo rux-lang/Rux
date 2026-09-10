@@ -749,6 +749,22 @@ TypeRef AnalysisContext::CheckBinary(const TokenKind op, const TypeRef &leftType
     case TK::LessEqual:
     case TK::Greater:
     case TK::GreaterEqual: {
+        if (left.kind == TypeRef::Kind::Tuple && left == right) {
+            if (operation != TK::Equal && operation != TK::BangEqual) {
+                EmitError(location,
+                          std::format("operator '{}' is not defined for tuple '{}'", operatorName, left.ToString()),
+                          {"tuples have structural equality but no built-in ordering"});
+                return TypeRef::MakeBool();
+            }
+            VariantEqualityPayload plan;
+            plan.type = left;
+            std::unordered_set<std::string> activeTypes;
+            if (BuildVariantEqualityPayload(plan, location, left.ToString(), {}, {}, activeTypes) && binaryExpression) {
+                aggregateEqualities.insert_or_assign(binaryExpression, operation == TK::BangEqual);
+                aggregateEqualityPlans.insert_or_assign(left.ToString(), std::move(plan));
+            }
+            return TypeRef::MakeBool();
+        }
         const bool sameNamedType =
             left.kind == TypeRef::Kind::Named && right.kind == TypeRef::Kind::Named && left.name == right.name;
         const CaseTypeDeclaration caseType =
@@ -949,6 +965,14 @@ bool AnalysisContext::BuildVariantEqualityPayload(VariantEqualityPayload &payloa
         }
     }
 
+    if (declarationName.empty()) {
+        EmitError(
+            useLocation,
+            std::format("structural equality for '{}' is unavailable because element type '{}' has no '==' operator",
+                        variantTypeName, type.ToString()),
+            {}, std::format("declare '==' on '{}' or compare the supported elements explicitly", type.ToString()));
+        return false;
+    }
     EmitError(useLocation,
               std::format("variant equality for '{}' is unavailable because payload type '{}' in case '{}::{}' has no "
                           "'==' operator",

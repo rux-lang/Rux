@@ -6,6 +6,7 @@
 #include "Lowering/HirToLir/CheckedLirBuilder.h"
 #include "Target/Target.h"
 
+#include <functional>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -160,6 +161,9 @@ private:
     LirReg LowerUnary(const HirUnaryExpr &expression);
     LirReg LowerBinary(const HirBinaryExpr &expression);
     LirReg LowerVariantEquality(const HirVariantEqualityExpr &expression);
+    LirReg LowerAggregateEquality(const HirAggregateEqualityExpr &expression);
+    LirReg EqualityOperandStorage(const HirExpr &operand, const TypeRef &type);
+    LirReg EmitEqualitySequence(std::size_t count, const std::function<LirReg(std::size_t)> &compare);
     LirReg EmitVariantEquality(const TypeRef &type, const std::vector<HirVariantEqualityCase> &cases, LirReg left,
                                LirReg right);
     LirReg EmitVariantPayloadEquality(const HirVariantEqualityPayload &payload, LirReg left, LirReg right);
