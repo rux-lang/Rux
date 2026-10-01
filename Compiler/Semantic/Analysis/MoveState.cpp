@@ -307,7 +307,9 @@ TypeRef AnalysisContext::CheckMatchExpression(const MatchExpr &expression) {
         RestoreTrackedFlow(matchEntry);
         PushScope();
         CheckPattern(*arm.pattern, subjectType);
-        const TypeRef armType = CheckExpr(*arm.body);
+        // A diverging arm, such as `return` or a call to `Panic`, leaves the match and never decides its type.
+        const TypeRef checkedArm = CheckExpr(*arm.body);
+        const TypeRef armType = IsDivergingExpression(*arm.body) ? TypeRef::MakeUnknown() : checkedArm;
         ConsumeValue(*arm.body, armType, ValueConsumptionKind::ConditionalArm, arm.location);
         PopScope();
         patterns.push_back(arm.pattern.get());

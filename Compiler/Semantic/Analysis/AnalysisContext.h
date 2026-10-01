@@ -870,6 +870,18 @@ private:
     /// Whether a native constructor builds a value of `targetType`, checking its operand against the channel it
     /// selects.
     bool CanConstructNative(const NativeConstructExpr &construct, const TypeRef &targetType);
+    /// Whether a function returning `returnType` may complete without a written value: a unit result, or a fallible
+    /// whose success is the unit.
+    [[nodiscard]] static bool CompletesWithoutValue(const TypeRef &returnType) noexcept;
+    /// The checks a `return`, with or without `value`, makes against the enclosing function.
+    void CheckReturn(const Expr *value, SourceLocation location);
+    /// The checks a `fail value` makes: an enclosing fallible function and an operand that fits its error channel.
+    void CheckFail(const Expr *value, SourceLocation location);
+    /// The checks a `break` or `continue`, with its optional label, makes against the enclosing loops.
+    void CheckLoopExit(bool isContinue, const std::string &label, SourceLocation location);
+    /// Whether evaluating `expression` never produces a value: a diverging form, or a call to `Panic` or a
+    /// no-return function. Such an expression never decides the type of the expression it stands in.
+    [[nodiscard]] bool IsDivergingExpression(const Expr &expression) const;
 
     bool IsIntegerLiteralOutOfRangeFor(const Expr &expr, const TypeRef &targetType) const;
 

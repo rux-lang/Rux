@@ -24,7 +24,7 @@ func Read() -> int32 {
     return 1;
 }
 
-func Handling() -> int32 {
+func Handling() -> int32 ! NotFound {
     let recovered = Read() catch { else => 0 };
     let mapped = Read()? else (e => NotFound {});
     let present = .Some(1i32);

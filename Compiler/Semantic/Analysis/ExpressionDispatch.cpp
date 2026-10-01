@@ -34,10 +34,6 @@ std::optional<std::string> PendingNativeExpressionForm(const Expr &expr) {
     if (dynamic_cast<const NoneExpr *>(&expr)) {
         return "'none' is";
     }
-    if (const auto *diverge = dynamic_cast<const DivergeExpr *>(&expr)) {
-        static constexpr std::string_view kKeywords[] = {"return", "fail", "break", "continue"};
-        return std::format("'{}' as an expression is", kKeywords[static_cast<int>(diverge->kind)]);
-    }
     return std::nullopt;
 }
 } // namespace
@@ -213,6 +209,23 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
             return TypeRef::MakeUnknown();
         }
         return TypeRef::MakeText(TypeRef::Kind::Char8);
+    }
+
+    // A diverging body is checked exactly as the statement it spells, and produces no value of its own.
+    if (const auto *diverge = dynamic_cast<const DivergeExpr *>(&expr)) {
+        switch (diverge->kind) {
+        case DivergeExpr::Kind::Return:
+            CheckReturn(diverge->value.get(), diverge->location);
+            break;
+        case DivergeExpr::Kind::Fail:
+            CheckFail(diverge->value.get(), diverge->location);
+            break;
+        case DivergeExpr::Kind::Break:
+        case DivergeExpr::Kind::Continue:
+            CheckLoopExit(diverge->kind == DivergeExpr::Kind::Continue, diverge->label, diverge->location);
+            break;
+        }
+        return TypeRef::MakeUnknown();
     }
 
     // A native constructor names the level it builds. `.Some(v)` infers its payload from a typed operand; the channel

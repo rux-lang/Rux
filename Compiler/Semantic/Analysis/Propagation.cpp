@@ -302,7 +302,8 @@ TypeRef AnalysisContext::CheckCoalesceExpression(const BinaryExpr &expression) {
     ConsumeValue(*expression.left, leftType, ValueConsumptionKind::CoalescingOperand, expression.left->location);
     const TrackedFlow someExit = SaveTrackedFlow();
 
-    const TypeRef rightType = CheckExpr(*expression.right);
+    const TypeRef checkedFallback = CheckExpr(*expression.right);
+    const TypeRef rightType = IsDivergingExpression(*expression.right) ? TypeRef::MakeUnknown() : checkedFallback;
     bool fallbackValid = rightType.IsUnknown() || shape->payload.IsUnknown() ||
                          CanAssignExprTo(*expression.right, rightType, shape->payload);
     if (!fallbackValid) {

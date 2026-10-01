@@ -5,6 +5,7 @@
 12:56: error: native type '! ParseError' is not supported in compiled code yet
 14:21: error: native type '(Defaults | Options)?' is not supported in compiled code yet
 14:52: error: native type 'int32?' is not supported in compiled code yet
+27:20: error: native type 'int32 ! NotFound' is not supported in compiled code yet
 28:28: error: 'catch' is not supported yet
 28:5: warning: cannot infer type of 'recovered'
 29:24: error: '? else' error mapping is not supported yet
@@ -12,8 +13,6 @@
 31:18: error: 'none' is not supported yet
 31:5: error: cannot infer the type of 'absent' from 'none'
 31:5: warning: cannot infer type of 'absent'
-33:14: error: 'return' as an expression is not supported yet
-36:5: error: 'fail' is not supported yet
 41:9: error: typed patterns are not supported yet
 42:9: error: presence patterns are not supported yet
 43:9: error: 'none' patterns are not supported yet

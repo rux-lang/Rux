@@ -149,7 +149,8 @@ void AnalysisContext::CheckBlock(const Block &block) {
 
 void AnalysisContext::CheckFunctionBody(const Block &block, const FuncDecl &function, const TypeRef &returnType) {
     CheckBlock(block);
-    if (!returnType.IsUnknown() && !returnType.IsOpaque() && !function.isNoReturn && !BlockDefinitelyReturns(block)) {
+    if (!returnType.IsUnknown() && !returnType.IsOpaque() && !CompletesWithoutValue(returnType) &&
+        !function.isNoReturn && !BlockDefinitelyReturns(block)) {
         EmitError(function.location,
                   std::format("function '{}' must return a value of type '{}' on every control-flow path",
                               function.name, returnType.ToString()));
@@ -485,71 +486,17 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
         }
         MergeTrackedFlows(exits);
     }
-    else if (dynamic_cast<const FailStmt *>(&statement)) {
-        // `fail` parses ahead of fallible semantics, so it is rejected before its operand is checked.
-        EmitError(statement.location, "'fail' is not supported yet");
+    else if (const auto *failStatement = dynamic_cast<const FailStmt *>(&statement)) {
+        CheckFail(failStatement->value.get(), failStatement->location);
     }
     else if (const auto *returnStatement = dynamic_cast<const ReturnStmt *>(&statement)) {
-        if (currentFunctionNoReturn) {
-            EmitError(returnStatement->location, "return is not allowed in a '#NoReturn' function");
-        }
-        bool returnAccepted = false;
-        if (returnStatement->value) {
-            TypeRef valueType = CheckExpr(**returnStatement->value);
-            if (valueType.kind == TypeRef::Kind::Reference && !valueType.CanReadScalarTo(currentReturnType)) {
-                EmitError(returnStatement->location,
-                          std::format("reference value '{}' cannot escape through a return", valueType.ToString()),
-                          {"references are restricted to parameters, receivers, and local aliases"},
-                          "return an owned value instead");
-            }
-            if (currentReturnType.IsOpaque()) {
-                EmitError(returnStatement->location, "'return' cannot have a value in a function with no return type");
-            }
-            else if (!valueType.IsUnknown() && !currentReturnType.IsUnknown() && !currentReturnType.IsOpaque() &&
-                     !CanAssignExprTo(**returnStatement->value, valueType, currentReturnType)) {
-                EmitError(returnStatement->location,
-                          AssignmentErrorMessage(**returnStatement->value, currentReturnType,
-                                                 std::format("'return' value must have type '{}', but found '{}'",
-                                                             currentReturnType.ToString(), valueType.ToString())));
-            }
-            else if (!valueType.IsUnknown() && !currentReturnType.IsUnknown()) {
-                returnAccepted = true;
-            }
-        }
-        else if (!currentReturnType.IsOpaque() && !currentReturnType.IsUnknown()) {
-            EmitError(returnStatement->location,
-                      std::format("'return' requires a value of type '{}'", currentReturnType.ToString()));
-        }
-        if (returnAccepted) {
-            ConsumeRecordedValue(**returnStatement->value, ValueConsumptionKind::Return, returnStatement->location);
-        }
-        trackedFlowReachable = false;
+        CheckReturn(returnStatement->value ? returnStatement->value->get() : nullptr, returnStatement->location);
     }
     else if (const auto *breakStatement = dynamic_cast<const BreakStmt *>(&statement)) {
-        if (loopDepth == 0) {
-            EmitError(statement.location, "'break' can only be used inside 'while', 'for', or 'loop'");
-        }
-        else if (!breakStatement->label.empty() && !activeLabels.contains(breakStatement->label)) {
-            EmitError(statement.location,
-                      std::format("'break' refers to unknown loop label '{}'", breakStatement->label));
-        }
-        else {
-            RecordTrackedLoopExit(breakStatement->label, false);
-            trackedFlowReachable = false;
-        }
+        CheckLoopExit(false, breakStatement->label, statement.location);
     }
     else if (const auto *continueStatement = dynamic_cast<const ContinueStmt *>(&statement)) {
-        if (loopDepth == 0) {
-            EmitError(statement.location, "'continue' can only be used inside 'while', 'for', or 'loop'");
-        }
-        else if (!continueStatement->label.empty() && !activeLabels.contains(continueStatement->label)) {
-            EmitError(statement.location,
-                      std::format("'continue' refers to unknown loop label '{}'", continueStatement->label));
-        }
-        else {
-            RecordTrackedLoopExit(continueStatement->label, true);
-            trackedFlowReachable = false;
-        }
+        CheckLoopExit(true, continueStatement->label, statement.location);
     }
     else if (const auto *declarationStatement = dynamic_cast<const DeclStmt *>(&statement)) {
         programIndex.CollectDeclaration(
@@ -562,6 +509,102 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
             CheckStatement(*deferStatement->deferredStmt);
         }
     }
+}
+
+bool AnalysisContext::CompletesWithoutValue(const TypeRef &returnType) noexcept {
+    return returnType.IsUnit() || (returnType.IsFallible() && returnType.FallibleSuccess().IsUnit());
+}
+
+void AnalysisContext::CheckReturn(const Expr *value, const SourceLocation location) {
+    if (currentFunctionNoReturn) {
+        EmitError(location, "return is not allowed in a '#NoReturn' function");
+    }
+    bool returnAccepted = false;
+    if (value) {
+        TypeRef valueType = CheckExpr(*value);
+        if (valueType.kind == TypeRef::Kind::Reference && !valueType.CanReadScalarTo(currentReturnType)) {
+            EmitError(location,
+                      std::format("reference value '{}' cannot escape through a return", valueType.ToString()),
+                      {"references are restricted to parameters, receivers, and local aliases"},
+                      "return an owned value instead");
+        }
+        if (currentReturnType.IsOpaque()) {
+            EmitError(location, "'return' cannot have a value in a function with no return type");
+        }
+        else if (!valueType.IsUnknown() && !currentReturnType.IsUnknown() && !currentReturnType.IsOpaque() &&
+                 !CanAssignExprTo(*value, valueType, currentReturnType)) {
+            EmitError(location,
+                      AssignmentErrorMessage(*value, currentReturnType,
+                                             std::format("'return' value must have type '{}', but found '{}'",
+                                                         currentReturnType.ToString(), valueType.ToString())));
+        }
+        else if (!valueType.IsUnknown() && !currentReturnType.IsUnknown()) {
+            returnAccepted = true;
+        }
+    }
+    // A unit result, or a fallible whose success carries the unit, completes without a written value: `return;` is
+    // `return ();`, or its success.
+    else if (!currentReturnType.IsOpaque() && !currentReturnType.IsUnknown() &&
+             !CompletesWithoutValue(currentReturnType)) {
+        EmitError(location, std::format("'return' requires a value of type '{}'", currentReturnType.ToString()));
+    }
+    if (returnAccepted) {
+        ConsumeRecordedValue(*value, ValueConsumptionKind::Return, location);
+    }
+    trackedFlowReachable = false;
+}
+
+void AnalysisContext::CheckFail(const Expr *value, const SourceLocation location) {
+    const TypeRef valueType = value ? CheckExpr(*value) : TypeRef::MakeUnknown();
+    if (!currentReturnType.IsFallible()) {
+        if (!currentReturnType.IsUnknown()) {
+            EmitError(location,
+                      std::format("'fail' needs an enclosing fallible function, but this function {}",
+                                  currentReturnType.IsOpaque()
+                                      ? std::string("returns no value")
+                                      : std::format("returns '{}'", currentReturnType.ToString())),
+                      {}, "declare the function's error channel, as in '-> T ! E' or '-> ! E'");
+        }
+    }
+    else if (value && !valueType.IsUnknown()) {
+        // `fail` selects the outer failure channel itself, so only its operand converts, to that channel's payload.
+        const TypeRef &error = currentReturnType.FallibleError();
+        if (CanAssignExprTo(*value, valueType, error)) {
+            ConsumeRecordedValue(*value, ValueConsumptionKind::Return, location);
+        }
+        else {
+            EmitError(location, AssignmentErrorMessage(*value, error,
+                                                       std::format("'fail' value must have type '{}', but found '{}'",
+                                                                   error.ToString(), valueType.ToString())));
+        }
+    }
+    trackedFlowReachable = false;
+}
+
+void AnalysisContext::CheckLoopExit(const bool isContinue, const std::string &label, const SourceLocation location) {
+    const std::string_view keyword = isContinue ? "continue" : "break";
+    if (loopDepth == 0) {
+        EmitError(location, std::format("'{}' can only be used inside 'while', 'for', or 'loop'", keyword));
+    }
+    else if (!label.empty() && !activeLabels.contains(label)) {
+        EmitError(location, std::format("'{}' refers to unknown loop label '{}'", keyword, label));
+    }
+    else {
+        RecordTrackedLoopExit(label, isContinue);
+        trackedFlowReachable = false;
+    }
+}
+
+bool AnalysisContext::IsDivergingExpression(const Expr &expression) const {
+    if (dynamic_cast<const DivergeExpr *>(&expression)) {
+        return true;
+    }
+    const auto *call = dynamic_cast<const CallExpr *>(&expression);
+    const auto *callee = call ? dynamic_cast<const IdentExpr *>(call->callee.get()) : nullptr;
+    const Symbol *symbol = callee ? currentScope->Lookup(callee->name) : nullptr;
+    return symbol &&
+           (symbol->intrinsicName == "Panic" ||
+            std::ranges::any_of(symbol->funcOverloads, [](const FuncDecl *function) { return function->isNoReturn; }));
 }
 
 void AnalysisContext::CheckLetPattern(const Pattern &pattern, const TypeRef &type, const bool isMutable) {
