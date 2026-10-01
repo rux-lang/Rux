@@ -3,6 +3,8 @@
 #include "Target/Layout.h"
 #include "Types/PrimitiveCatalog.h"
 
+#include <algorithm>
+
 namespace Rux {
 namespace {
 /// The size a type of unknown target has. `TypeRef` is target-agnostic, so a pointer-sized primitive answers for the
@@ -18,7 +20,54 @@ std::optional<PrimitiveCategory> CategoryOf(const TypeRef::Kind kind) noexcept {
 bool IsCategory(const TypeRef::Kind kind, const PrimitiveCategory category) noexcept {
     return CategoryOf(kind) == category;
 }
+
+/// Wrap `spelling` in parentheses when `grouped` says the surrounding operator would otherwise read it differently.
+std::string Grouped(std::string spelling, const bool grouped) {
+    return grouped ? "(" + spelling + ")" : spelling;
+}
+
+/// Whether `type` is one of the native composite forms whose operator binds more loosely than a postfix suffix, so it
+/// is grouped wherever a suffix or a prefix would otherwise claim part of it.
+bool IsLooseNativeForm(const TypeRef &type) noexcept {
+    return type.IsSum() || type.IsFallible();
+}
 } // namespace
+
+TypeRef TypeRef::MakeSum(std::vector<TypeRef> members) {
+    std::vector<TypeRef> flattened;
+    for (TypeRef &member : members) {
+        if (member.IsUnknown()) {
+            return MakeUnknown();
+        }
+        if (member.IsSum()) {
+            for (TypeRef &nested : member.inner) {
+                flattened.push_back(std::move(nested));
+            }
+        }
+        else {
+            flattened.push_back(std::move(member));
+        }
+    }
+    // Order by spelling first so the member kept for a duplicate, and therefore the canonical spelling, never depends
+    // on the order the source wrote.
+    std::ranges::stable_sort(flattened, {}, [](const TypeRef &member) { return member.ToString(); });
+    std::vector<TypeRef> unique;
+    for (TypeRef &member : flattened) {
+        if (std::ranges::find(unique, member) == unique.end()) {
+            unique.push_back(std::move(member));
+        }
+    }
+    if (unique.empty()) {
+        return MakeUnknown();
+    }
+    if (unique.size() == 1) {
+        return std::move(unique.front());
+    }
+    TypeRef sum;
+    sum.kind = Kind::Sum;
+    sum.inner = std::move(unique);
+    return sum;
+}
 
 // TypeRef implementation
 bool TypeRef::IsBool() const noexcept {
@@ -247,6 +296,11 @@ std::optional<std::uint64_t> TypeRef::SizeInBytes() const noexcept {
     }
     case Kind::Slice:
         return 16;
+    case Kind::Sum:
+    case Kind::Optional:
+    case Kind::Fallible:
+        // A native tagged layout is published by the shared layout facts, not guessed from the members here.
+        return std::nullopt;
     case Kind::Named:
         if (!inner.empty()) {
             return inner[0].SizeInBytes();
@@ -313,7 +367,8 @@ std::string TypeRef::ToString() const {
             return "*?";
         }
         std::string pointee = inner[0].ToString();
-        if (inner[0].kind == Kind::Array || inner[0].kind == Kind::Slice) {
+        if (inner[0].kind == Kind::Array || inner[0].kind == Kind::Slice || inner[0].IsOptional() ||
+            IsLooseNativeForm(inner[0])) {
             pointee = "(" + pointee + ")";
         }
         return (inner[0].isMut ? "*var " : "*") + pointee;
@@ -323,14 +378,16 @@ std::string TypeRef::ToString() const {
             return "&?";
         }
         std::string referent = inner[0].ToString();
-        if (inner[0].kind == Kind::Array || inner[0].kind == Kind::Slice) {
+        if (inner[0].kind == Kind::Array || inner[0].kind == Kind::Slice || inner[0].IsOptional() ||
+            IsLooseNativeForm(inner[0])) {
             referent = "(" + referent + ")";
         }
         return (inner[0].isMut ? "&var " : "&") + referent;
     }
     case Kind::Array: {
         std::string element = inner.empty() ? "?" : inner[0].ToString();
-        if (!inner.empty() && (inner[0].kind == Kind::Pointer || inner[0].kind == Kind::Reference)) {
+        if (!inner.empty() &&
+            (inner[0].kind == Kind::Pointer || inner[0].kind == Kind::Reference || IsLooseNativeForm(inner[0]))) {
             element = "(" + element + ")";
         }
         return element + (arrayLength ? "[" + std::to_string(*arrayLength) + "]" : "[]");
@@ -339,8 +396,8 @@ std::string TypeRef::ToString() const {
         // The bracket binds tighter than a pointer, reference or range operator, so an element of one of those
         // shapes is parenthesized to keep the bracket on the outside when the spelling is read back.
         std::string element = inner.empty() ? "?" : inner[0].ToString();
-        if (!inner.empty() &&
-            (inner[0].kind == Kind::Pointer || inner[0].kind == Kind::Reference || inner[0].IsRange())) {
+        if (!inner.empty() && (inner[0].kind == Kind::Pointer || inner[0].kind == Kind::Reference ||
+                               inner[0].IsRange() || IsLooseNativeForm(inner[0]))) {
             element = "(" + element + ")";
         }
         return (IsWritableSlice() ? "var " : "") + element + "[..]";
@@ -355,10 +412,51 @@ std::string TypeRef::ToString() const {
         // operator would otherwise be read as part of it.
         std::string element = inner.empty() ? "?" : inner[0].ToString();
         if (!inner.empty() && (inner[0].kind == Kind::Pointer || inner[0].kind == Kind::Reference ||
-                               inner[0].kind == Kind::Func || inner[0].IsRange())) {
+                               inner[0].kind == Kind::Func || inner[0].IsRange() || IsLooseNativeForm(inner[0]))) {
             element = "(" + element + ")";
         }
         return (RangeHasStart() ? element : "") + (IsInclusiveRange() ? "..=" : "..") + (RangeHasEnd() ? element : "");
+    }
+    case Kind::Sum: {
+        // `|` binds more tightly than `!` and more loosely than a suffix, so a fallible, optional, function, or range
+        // member is grouped; a written `A | B?` is rejected as ambiguous, so its canonical spelling is `A | (B?)`.
+        std::string s;
+        for (std::size_t i = 0; i < inner.size(); ++i) {
+            if (i) {
+                s += " | ";
+            }
+            const TypeRef &member = inner[i];
+            s += Grouped(member.ToString(),
+                         member.IsFallible() || member.IsOptional() || member.kind == Kind::Func || member.IsRange());
+        }
+        return s;
+    }
+    case Kind::Optional: {
+        if (inner.empty()) {
+            return "??";
+        }
+        // The suffix binds to the type immediately before it, so a payload whose own operator is looser, or whose
+        // prefix would otherwise swallow the suffix, is grouped: `(A | B)?`, `(*T)?`, `(var T[..])?`.
+        const TypeRef &payload = inner[0];
+        return Grouped(payload.ToString(), IsLooseNativeForm(payload) || payload.kind == Kind::Pointer ||
+                                               payload.kind == Kind::Reference || payload.kind == Kind::Func ||
+                                               payload.IsRange() || payload.IsWritableSlice()) +
+               "?";
+    }
+    case Kind::Fallible: {
+        if (inner.size() != 2) {
+            return "? ! ?";
+        }
+        const TypeRef &success = inner[0];
+        const TypeRef &error = inner[1];
+        // One unparenthesized `!` per type: a nested fallible on either side is grouped, as is a function type, whose
+        // return would otherwise extend over the `!`. A directly written optional error is grouped too, `T ! (E?)`.
+        const std::string errorSpelling =
+            Grouped(error.ToString(), error.IsFallible() || error.IsOptional() || error.kind == Kind::Func);
+        if (success.IsUnit()) {
+            return "! " + errorSpelling;
+        }
+        return Grouped(success.ToString(), success.IsFallible() || success.kind == Kind::Func) + " ! " + errorSpelling;
     }
     case Kind::Tuple: {
         std::string s = "(";

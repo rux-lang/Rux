@@ -68,6 +68,14 @@ struct TypeRef {
         // pointee. Its 16-byte {data, length} shape and by-address passing are fixed by the runtime and the calling
         // conventions rather than by any declaration, which is why no declaration can provide or change it.
         Slice,
+        // A sum `A | B`: inner = the members, normalized by `MakeSum` into canonical order with nested sums flattened,
+        // aliases already resolved, and duplicates removed, so two spellings of one set are one identity.
+        Sum,
+        // An optional `T?`: inner[0] = the payload. Optionals never collapse, so `T??` keeps both presence levels.
+        Optional,
+        // A fallible `T ! E`: inner[0] = the success payload, inner[1] = the error payload. The channels stay distinct
+        // even when they hold the same type, and `! E` is the unit success `() ! E`.
+        Fallible,
 
         // Aliases — must come after all concrete values so they don't shift
         // the counter
@@ -329,6 +337,38 @@ struct TypeRef {
         return t;
     }
 
+    /// The built-in unit: the empty tuple `()`, whose only value is `()`. It is a type of its own and never the
+    /// ordinary `Core::Unit` struct, which a package may still declare under that name.
+    static TypeRef MakeUnit() {
+        return MakeTuple({});
+    }
+
+    /// A sum of `members` in its one canonical form: nested sums are flattened into their members, duplicates are
+    /// removed, and the remainder is ordered by canonical spelling, so `A | B`, `B | A`, and `A | A | B` are one type.
+    /// A single remaining member is that member itself rather than a sum of one.
+    ///
+    /// Aliases must already be resolved; an alias name is display-only and never a member of its own.
+    ///
+    /// @return the canonical sum, the sole member when only one remains, or Unknown when `members` is empty
+    static TypeRef MakeSum(std::vector<TypeRef> members);
+
+    /// An optional of `payload`. Optionals do not collapse: an optional payload stays a separate presence level.
+    static TypeRef MakeOptional(TypeRef payload) {
+        TypeRef t;
+        t.kind = Kind::Optional;
+        t.inner.push_back(std::move(payload));
+        return t;
+    }
+
+    /// A fallible with distinct `success` and `error` channels. A unit success is the type written `! E`.
+    static TypeRef MakeFallible(TypeRef success, TypeRef error) {
+        TypeRef t;
+        t.kind = Kind::Fallible;
+        t.inner.push_back(std::move(success));
+        t.inner.push_back(std::move(error));
+        return t;
+    }
+
     // Predicates
     [[nodiscard]] bool IsUnknown() const noexcept {
         return kind == Kind::Unknown;
@@ -373,6 +413,33 @@ struct TypeRef {
     /// Whether this is a slice whose elements may be written through it.
     [[nodiscard]] bool IsWritableSlice() const noexcept {
         return kind == Kind::Slice && !inner.empty() && inner[0].isMut;
+    }
+
+    /// Whether this is the built-in unit, the empty tuple `()`.
+    [[nodiscard]] bool IsUnit() const noexcept {
+        return kind == Kind::Tuple && inner.empty();
+    }
+
+    [[nodiscard]] bool IsSum() const noexcept {
+        return kind == Kind::Sum;
+    }
+
+    [[nodiscard]] bool IsOptional() const noexcept {
+        return kind == Kind::Optional;
+    }
+
+    [[nodiscard]] bool IsFallible() const noexcept {
+        return kind == Kind::Fallible;
+    }
+
+    /// The success payload of a fallible, the type a `T ! E` produces when it succeeds.
+    [[nodiscard]] const TypeRef &FallibleSuccess() const noexcept {
+        return inner[0];
+    }
+
+    /// The error payload of a fallible, the type a `T ! E` carries when it fails.
+    [[nodiscard]] const TypeRef &FallibleError() const noexcept {
+        return inner[1];
     }
 
     [[nodiscard]] bool IsFloat() const noexcept;
