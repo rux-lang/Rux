@@ -360,6 +360,12 @@ struct TypeRef {
         return type.kind == Kind::Sum ? MakeSum(std::move(type.inner)) : type;
     }
 
+    /// The type of contextual `none` before its context gives it one: an optional with no payload type. It is never a
+    /// declared type; the native conversion rules turn it into the absence of the optional the context expects.
+    static TypeRef MakeNoneValue() {
+        return MakeOptional(MakeOpaque());
+    }
+
     /// An optional of `payload`. Optionals do not collapse: an optional payload stays a separate presence level.
     static TypeRef MakeOptional(TypeRef payload) {
         TypeRef t;
@@ -434,6 +440,11 @@ struct TypeRef {
 
     [[nodiscard]] bool IsOptional() const noexcept {
         return kind == Kind::Optional;
+    }
+
+    /// Whether this is the type of contextual `none`, which only its expected type can complete.
+    [[nodiscard]] bool IsNoneValue() const noexcept {
+        return kind == Kind::Optional && inner.size() == 1 && inner[0].kind == Kind::Opaque;
     }
 
     [[nodiscard]] bool IsFallible() const noexcept {

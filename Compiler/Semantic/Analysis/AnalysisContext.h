@@ -396,6 +396,7 @@ private:
     const PackageImportBindings &imports;
     std::unordered_map<const Expr *, TypeRef> &expressionTypes;
     std::unordered_set<const Expr *> &borrowedScalarReads;
+    std::unordered_map<const Expr *, std::vector<NativeConversionStep>> &nativeConversions;
     std::unordered_map<const TypeExpr *, const Decl *> &intrinsicTypeBindings;
     std::unordered_map<const Expr *, const ConstDecl *> &associatedConstants;
     std::unordered_map<const Expr *, const ConstDecl *> &constantReferences;
@@ -861,6 +862,9 @@ private:
     static bool IsNullLiteral(const Expr &expr);
 
     static bool IsUnsuffixedIntegerLiteral(const Expr &expr);
+    /// Whether `expr` converts to `targetType` under the native conversion rules, recording the accepted route. An
+    /// unsuffixed numeric literal targets a sum by its literal kind: exactly one integer (or floating-point) member.
+    bool CanConvertToNativeType(const Expr &expr, const TypeRef &exprType, const TypeRef &targetType);
 
     bool IsIntegerLiteralOutOfRangeFor(const Expr &expr, const TypeRef &targetType) const;
 

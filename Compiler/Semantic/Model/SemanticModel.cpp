@@ -168,6 +168,11 @@ bool SemanticModel::HasBorrowedScalarRead(const Expr &expression) const noexcept
     return facts.borrowedScalarReads.contains(&expression);
 }
 
+const std::vector<NativeConversionStep> *SemanticModel::TryGetNativeConversion(const Expr &expression) const noexcept {
+    const auto found = facts.nativeConversions.find(&expression);
+    return found == facts.nativeConversions.end() ? nullptr : &found->second;
+}
+
 const TypeRef *SemanticModel::TryGetType(const TypeExpr &typeNode) const noexcept {
     const auto type = facts.typeNodeTypes.find(&typeNode);
     return type == facts.typeNodeTypes.end() ? nullptr : &type->second;

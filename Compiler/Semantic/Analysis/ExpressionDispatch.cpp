@@ -222,7 +222,8 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
     // its operands are left unchecked, so no program that spells one reaches lowering before its analysis exists.
     if (const std::optional<std::string> pending = PendingNativeExpressionForm(expr)) {
         EmitError(expr.location, std::format("{} not supported yet", *pending));
-        return TypeRef::MakeUnknown();
+        // `none` still takes the type its context completes, so its conversion is checked like any other value's.
+        return dynamic_cast<const NoneExpr *>(&expr) ? TypeRef::MakeNoneValue() : TypeRef::MakeUnknown();
     }
 
     if (const auto *e = dynamic_cast<const EnumShorthandExpr *>(&expr)) {

@@ -4,6 +4,7 @@
 #include "Semantic/Model/CompileTimeContext.h"
 #include "Syntax/Ast/Ast.h"
 #include "Types/DropGlue.h"
+#include "Types/NativeConversion.h"
 #include "Types/Type.h"
 #include "Types/TypeProperties.h"
 
@@ -284,6 +285,9 @@ struct SemanticFacts {
     std::unordered_map<const Expr *, TypeRef> expressionTypes;
     /// Accepted implicit loads of Copy primitive scalars. The expression's type still describes its reference.
     std::unordered_set<const Expr *> borrowedScalarReads;
+    /// The one accepted route of each implicit conversion into a native type, outermost level first, keyed by the
+    /// converted expression. Lowering builds the destination value from it instead of choosing a route again.
+    std::unordered_map<const Expr *, std::vector<NativeConversionStep>> nativeConversions;
     std::unordered_map<const TypeExpr *, TypeRef> typeNodeTypes;
     std::unordered_map<const Pattern *, TypeRef> patternTypes;
     std::unordered_map<const EnumPattern *, ResolvedCasePattern> casePatterns;
@@ -341,6 +345,9 @@ struct SemanticModel {
     /// lifetime of this model.
     [[nodiscard]] const TypeRef *TryGetType(const Expr &expression) const noexcept;
     [[nodiscard]] bool HasBorrowedScalarRead(const Expr &expression) const noexcept;
+    /// Returns null when `expression` reaches its destination without a native conversion.
+    [[nodiscard]] const std::vector<NativeConversionStep> *
+    TryGetNativeConversion(const Expr &expression) const noexcept;
     [[nodiscard]] const TypeRef *TryGetType(const TypeExpr &typeNode) const noexcept;
     [[nodiscard]] const TypeRef *TryGetType(const Pattern &pattern) const noexcept;
 

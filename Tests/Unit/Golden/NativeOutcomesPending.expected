@@ -12,6 +12,7 @@
 30:19: error: native constructors are not supported yet
 30:5: warning: cannot infer type of 'present'
 31:18: error: 'none' is not supported yet
+31:5: error: cannot infer the type of 'absent' from 'none'
 31:5: warning: cannot infer type of 'absent'
 33:14: error: 'return' as an expression is not supported yet
 36:5: error: 'fail' is not supported yet

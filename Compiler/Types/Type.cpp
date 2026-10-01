@@ -1,6 +1,7 @@
 #include "Types/Type.h"
 
 #include "Target/Layout.h"
+#include "Types/NativeConversion.h"
 #include "Types/PrimitiveCatalog.h"
 
 #include <algorithm>
@@ -103,6 +104,11 @@ bool TypeRef::IsPrimitive() const noexcept {
 bool TypeRef::IsAssignableTo(const TypeRef &other) const noexcept {
     if (IsUnknown() || other.IsUnknown()) {
         return true;
+    }
+    // A native sum, optional, or fallible on either side follows the native conversion rules: identity, injection,
+    // subset widening, and the presence and success routes, accepted only when exactly one route applies.
+    if (MentionsNativeType(*this) || MentionsNativeType(other)) {
+        return ClassifyNativeConversion(*this, other).Accepted();
     }
     // A read-only pointer (*T) cannot be coerced into a writable one (*var T):
     // that would silently grant write access. The reverse (*var T -> *T) is a

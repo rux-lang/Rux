@@ -185,6 +185,13 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
         }
         TypeRef initializerType = letStatement->init ? CheckExpr(*letStatement->init) : TypeRef::MakeUnknown();
         TypeRef declarationType = letStatement->type ? ResolveType(**letStatement->type) : initializerType;
+        // `none` names no optional type of its own, so a binding cannot take its type from it.
+        if (!letStatement->type && initializerType.IsNoneValue()) {
+            EmitError(letStatement->location,
+                      std::format("cannot infer the type of '{}' from 'none'", letStatement->name), {},
+                      "annotate the optional type, as in 'let value: int32? = none;'");
+            declarationType = TypeRef::MakeUnknown();
+        }
         const FuncDecl *defaultConstructor = nullptr;
         if (!letStatement->init && letStatement->isMut && !declarationType.IsUnknown()) {
             std::vector<const FuncDecl *> eligible;

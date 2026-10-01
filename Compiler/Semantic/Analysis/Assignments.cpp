@@ -149,6 +149,10 @@ bool AnalysisContext::CanAssignExprTo(const Expr &expr, const TypeRef &exprType,
         }
     }
 
+    if (MentionsNativeType(targetType) || MentionsNativeType(exprType)) {
+        return CanConvertToNativeType(expr, exprType, targetType);
+    }
+
     if (exprType.CanReadScalarTo(targetType)) {
         static_cast<void>(ReadBorrowedScalar(expr, exprType));
         return true;
@@ -156,6 +160,60 @@ bool AnalysisContext::CanAssignExprTo(const Expr &expr, const TypeRef &exprType,
 
     return exprType.IsAssignableTo(targetType) || (IsNullLiteral(expr) && targetType.kind == TypeRef::Kind::Pointer) ||
            UnsuffixedIntegerLiteralFits(expr, targetType) || TypeImplementsInterface(exprType, targetType);
+}
+
+bool AnalysisContext::CanConvertToNativeType(const Expr &expr, const TypeRef &exprType, const TypeRef &targetType) {
+    std::vector<NativeConversionStep> route;
+    const auto record = [&](const bool accepted) {
+        // A conversion is recorded only when it is the accepted one; a speculative overload check that later loses, or
+        // an identity, leaves no stale route behind.
+        if (accepted && !(route.size() == 1 && route.front().kind == NativeConversionStep::Kind::Identity) &&
+            !route.empty()) {
+            nativeConversions.insert_or_assign(&expr, route);
+        }
+        else {
+            nativeConversions.erase(&expr);
+        }
+        return accepted;
+    };
+
+    // An unsuffixed literal has no width of its own yet. It descends through presence and success levels, which it can
+    // only enter as a present or successful value, and then targets a sum by its literal kind, never by its value.
+    const auto *literal = dynamic_cast<const LiteralExpr *>(&expr);
+    const bool floatLiteral =
+        literal && literal->token.kind == TokenKind::FloatLiteral && NumericLiteralSuffix(literal->token.text).empty();
+    if (IsUnsuffixedIntegerLiteral(expr) || floatLiteral) {
+        TypeRef level = targetType;
+        while (level.IsOptional() || level.IsFallible()) {
+            route.push_back(NativeConversionStep{level.IsOptional() ? NativeConversionStep::Kind::Presence
+                                                                    : NativeConversionStep::Kind::Success});
+            TypeRef payload = level.inner.front();
+            level = std::move(payload);
+        }
+        if (!level.IsSum()) {
+            route.push_back(NativeConversionStep{NativeConversionStep::Kind::Identity});
+            return record(!MentionsNativeType(level) && CanAssignExprTo(expr, exprType, level));
+        }
+        std::optional<std::size_t> member;
+        for (std::size_t index = 0; index < level.inner.size(); ++index) {
+            const TypeRef &candidate = level.inner[index];
+            if (floatLiteral ? candidate.IsFloat() : candidate.IsInteger()) {
+                if (member) {
+                    return record(false);
+                }
+                member = index;
+            }
+        }
+        if (!member) {
+            return record(false);
+        }
+        route.push_back(NativeConversionStep{NativeConversionStep::Kind::Inject, *member});
+        return record(floatLiteral || UnsuffixedIntegerLiteralFits(expr, level.inner[*member]));
+    }
+
+    NativeConversion conversion = ClassifyNativeConversion(exprType, targetType);
+    route = std::move(conversion.route);
+    return record(conversion.Accepted());
 }
 
 std::optional<std::uint64_t> AnalysisContext::EvalArrayLength(const Expr &expr) const {

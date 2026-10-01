@@ -396,6 +396,24 @@ std::string AnalysisContext::AssignmentErrorMessage(const Expr &expr, const Type
     if (const std::string hint = ImmutableAddressOfHint(expr, targetType); !hint.empty()) {
         return fallback + hint;
     }
+    if (dynamic_cast<const NoneExpr *>(&expr)) {
+        return std::format("'none' needs an expected optional type, but found '{}'", targetType.ToString());
+    }
+    // Several native routes with different meanings are refused as ambiguous rather than as a plain mismatch, so the
+    // message names the choice the source has to make.
+    if (const auto sourceType = expressionTypes.find(&expr); sourceType != expressionTypes.end()) {
+        if (ClassifyNativeConversion(sourceType->second, targetType).outcome == NativeConversion::Outcome::Ambiguous) {
+            return std::format("conversion from '{}' to '{}' is ambiguous; write '.Success(...)', '.Some(...)', or '?' "
+                               "to choose one, or annotate an intermediate type",
+                               sourceType->second.ToString(), targetType.ToString());
+        }
+        if (IsUnsuffixedIntegerLiteral(expr) && targetType.IsSum() &&
+            std::ranges::count_if(targetType.inner, [](const TypeRef &member) { return member.IsInteger(); }) > 1) {
+            return std::format("integer literal is ambiguous for '{}', which has several integer members; add a "
+                               "suffix or a cast",
+                               targetType.ToString());
+        }
+    }
     return fallback;
 }
 
