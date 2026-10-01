@@ -45,6 +45,11 @@ TypeProperties TypePropertyClassifier::Classify(const TypeRef &type) {
     case TypeRef::Kind::RangeTo:
     case TypeRef::Kind::RangeToInclusive:
         return type.inner.empty() ? TypeProperties::Unresolved() : Classify(type.inner.front());
+    // A native sum, optional, or fallible stores one of its payloads, so it supports an operation only when every
+    // payload it can hold does, exactly as a tuple does over its elements.
+    case TypeRef::Kind::Sum:
+    case TypeRef::Kind::Optional:
+    case TypeRef::Kind::Fallible:
     case TypeRef::Kind::Tuple: {
         TypeProperties result = TypeProperties::Copy();
         for (const TypeRef &element : type.inner) {

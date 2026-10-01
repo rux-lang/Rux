@@ -418,6 +418,10 @@ HirVariantEqualityPayload AstToHirContext::LowerVariantEqualityPayload(const Var
     case SemanticOperation::Deferred:
         assert(false && "deferred variant equality reached concrete lowering");
         break;
+    case SemanticOperation::Native:
+        // Native values are rejected before lowering until their comparisons are lowered.
+        assert(false && "native equality reached lowering before native comparisons are lowered");
+        break;
     }
     lowered.elements.reserve(payload.elements.size());
     for (const VariantEqualityPayload &element : payload.elements) {

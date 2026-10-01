@@ -3,6 +3,7 @@
 
 #include "Numeric/IntegerLiteral.h"
 #include "Semantic/Analysis/AnalysisContext.h"
+#include "Types/NativeLayout.h"
 #include "Types/PrimitiveCatalog.h"
 
 #include <format>
@@ -749,6 +750,50 @@ TypeRef AnalysisContext::CheckBinary(const TokenKind op, const TypeRef &leftType
     case TK::LessEqual:
     case TK::Greater:
     case TK::GreaterEqual: {
+        // Both operands of a native comparison have one normalized type. Only an operand with no type of its own --
+        // `none`, a native constructor, or an unsuffixed literal -- takes the other operand's type; an operand that
+        // already has a type is never injected, widened, or wrapped by a comparison.
+        if (MentionsNativeType(left) || MentionsNativeType(right)) {
+            const auto completes = [&](const Expr &expression, const TypeRef &type, const TypeRef &other) {
+                const bool untyped = type.IsIncompleteNative() || IsUnsuffixedIntegerLiteral(expression);
+                return untyped && !other.IsIncompleteNative() && CanAssignExprTo(expression, type, other);
+            };
+            TypeRef compared = left;
+            if (left != right) {
+                if (completes(rightExpression, right, left)) {
+                    compared = left;
+                }
+                else if (completes(leftExpression, left, right)) {
+                    compared = right;
+                }
+                else {
+                    EmitError(location,
+                              std::format("operator '{}' cannot compare '{}' with '{}'", operatorName,
+                                          left.IsIncompleteNative() ? std::string("none") : left.ToString(),
+                                          right.IsIncompleteNative() ? std::string("none") : right.ToString()),
+                              {"both operands of a native comparison have the same type; a comparison never injects, "
+                               "widens, or wraps an operand"},
+                              "write '.Some(...)' or another constructor, bind the member with a typed pattern, or "
+                              "match the value");
+                    return TypeRef::MakeBool();
+                }
+            }
+            if (operation != TK::Equal && operation != TK::BangEqual) {
+                EmitError(location,
+                          std::format("operator '{}' is not defined for '{}'", operatorName, compared.ToString()),
+                          {"native values have structural equality but no built-in ordering"});
+                return TypeRef::MakeBool();
+            }
+            VariantEqualityPayload plan;
+            plan.type = compared;
+            std::unordered_set<std::string> activeTypes;
+            if (BuildVariantEqualityPayload(plan, location, compared.ToString(), {}, {}, activeTypes) &&
+                binaryExpression) {
+                aggregateEqualities.insert_or_assign(binaryExpression, operation == TK::BangEqual);
+                aggregateEqualityPlans.insert_or_assign(compared.ToString(), std::move(plan));
+            }
+            return TypeRef::MakeBool();
+        }
         if (left.kind == TypeRef::Kind::Tuple && left == right) {
             if (operation != TK::Equal && operation != TK::BangEqual) {
                 EmitError(location,
@@ -931,6 +976,26 @@ bool AnalysisContext::BuildVariantEqualityPayload(VariantEqualityPayload &payloa
     }
     if (type.IsNumeric() || type.IsBool() || type.IsChar() || type.kind == TypeRef::Kind::Pointer) {
         payload.operation = VariantEqualityPayload::Operation::Builtin;
+        return true;
+    }
+    // A native value compares its tags first and then only the active payload, so every payload it can hold must
+    // support equality, as a variant's every case does.
+    if (const auto layout = ComputeNativeLayout(
+            type, [](const TypeRef &) -> std::optional<SizeAndAlignment> { return SizeAndAlignment{}; })) {
+        payload.operation = VariantEqualityPayload::Operation::Native;
+        for (const NativeLayout::Case &nativeCase : layout->cases) {
+            if (!nativeCase.payload) {
+                continue;
+            }
+            VariantEqualityPayload element;
+            element.index = static_cast<std::size_t>(nativeCase.tag);
+            element.type = *nativeCase.payload;
+            if (!BuildVariantEqualityPayload(element, useLocation, variantTypeName, declarationName, caseName,
+                                             activeTypes)) {
+                return false;
+            }
+            payload.elements.push_back(std::move(element));
+        }
         return true;
     }
     if (type.kind == TypeRef::Kind::Tuple) {

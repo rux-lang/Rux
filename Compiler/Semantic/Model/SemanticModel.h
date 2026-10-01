@@ -108,6 +108,9 @@ struct VariantEqualityPayload {
         Custom,
         Variant,
         Tuple,
+        /// A native sum, optional, or fallible: the tags first, then the active case's payload. Each element is one
+        /// case's payload plan, with its case tag in `index`; an optional's absent case has no payload and no element.
+        Native,
         Structure,
         Array,
         Deferred,
