@@ -140,7 +140,8 @@ TEST_CASE("none, fail, and catch are reserved keywords") {
     CHECK(KeywordKind("none") == TokenKind::NoneKeyword);
     CHECK(KeywordKind("fail") == TokenKind::FailKeyword);
     CHECK(KeywordKind("catch") == TokenKind::CatchKeyword);
-    CHECK_FALSE(ParsesCleanly("func F() { let none = 1; }"));
+    CHECK(Reports("func F() { let none = 1; }", "'none' is a reserved keyword and cannot name a binding"));
+    CHECK(Reports("func F() { var none = 1; }", "'none' is a reserved keyword and cannot name a binding"));
     CHECK_FALSE(ParsesCleanly("func F() { let fail = 1; }"));
     CHECK_FALSE(ParsesCleanly("func F() { let catch = 1; }"));
     // A string spelling is untouched.

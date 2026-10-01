@@ -15,3 +15,6 @@
 31:5: warning: cannot infer type of 'absent'
 33:14: error: 'return' as an expression is not supported yet
 36:5: error: 'fail' is not supported yet
+41:9: error: typed patterns are not supported yet
+42:9: error: presence patterns are not supported yet
+43:9: error: 'none' patterns are not supported yet

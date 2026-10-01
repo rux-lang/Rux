@@ -205,6 +205,21 @@ struct TuplePattern : Pattern {
     std::vector<PatternPtr> elements;
 };
 
+/// `value: Type` or `_: Type`: selects a sum member or subset, or one presence level of an optional, by its type. An
+/// empty `name` is the wildcard form, which selects without binding.
+struct TypedPattern : Pattern {
+    std::string name;
+    TypeExprPtr type;
+};
+
+/// `pattern?`: exact shorthand for `.Some(pattern)`, matching one present optional level.
+struct PresencePattern : Pattern {
+    PatternPtr inner;
+};
+
+/// `none`: the outer absence of an optional.
+struct NonePattern : Pattern {};
+
 // pattern if guard
 struct GuardedPattern : Pattern {
     ~GuardedPattern() override;

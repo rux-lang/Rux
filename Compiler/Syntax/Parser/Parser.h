@@ -221,6 +221,8 @@ private:
     PatternPtr ParseRequiredPattern(std::string_view context = {});
     PatternPtr ParsePrimaryPattern();
     PatternPtr ParseMatchArmPattern();
+    /// Wrap `inner` in one presence pattern per `?` that follows it; `??` is two.
+    PatternPtr ParsePresenceSuffix(PatternPtr inner);
 
     // Expression argument list
     std::vector<ExprPtr> ParseArgList(); ///< ( expr, ... )

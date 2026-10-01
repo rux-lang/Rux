@@ -187,6 +187,16 @@ void AppendPatternNames(const Pattern &pattern, std::vector<std::string> &names)
             names.push_back(identifier->name);
         }
     }
+    else if (const auto *typed = dynamic_cast<const TypedPattern *>(&pattern)) {
+        if (!typed->name.empty()) {
+            names.push_back(typed->name);
+        }
+    }
+    else if (const auto *presence = dynamic_cast<const PresencePattern *>(&pattern)) {
+        if (presence->inner) {
+            AppendPatternNames(*presence->inner, names);
+        }
+    }
     else if (const auto *range = dynamic_cast<const RangePattern *>(&pattern)) {
         if (range->lo) {
             AppendPatternNames(*range->lo, names);
@@ -724,6 +734,17 @@ private:
             if (!idPat->name.empty() && !IsCamelCase(idPat->name)) {
                 WarnNaming(idPat->location, "pattern binding name", idPat->name, NamingConvention::CamelCase,
                            scopeNames);
+            }
+        }
+        else if (const auto *typedPat = dynamic_cast<const TypedPattern *>(&pattern)) {
+            if (!typedPat->name.empty() && !IsCamelCase(typedPat->name)) {
+                WarnNaming(typedPat->location, "pattern binding name", typedPat->name, NamingConvention::CamelCase,
+                           scopeNames);
+            }
+        }
+        else if (const auto *presencePat = dynamic_cast<const PresencePattern *>(&pattern)) {
+            if (presencePat->inner) {
+                VisitPattern(*presencePat->inner, scopeNames);
             }
         }
         else if (const auto *rangePat = dynamic_cast<const RangePattern *>(&pattern)) {

@@ -166,6 +166,14 @@ std::unique_ptr<LetStmt> Parser::ParseLetStmt() {
     if (Check(TokenKind::Ident) && !Peek(1).Is(TokenKind::LeftBrace) && !Peek(1).Is(TokenKind::ColonColon)) {
         s->name = Advance().text;
     }
+    else if (Check(TokenKind::NoneKeyword)) {
+        // `none` is the absence pattern, which could never bind; a binding spelled that way is a rename to make.
+        EmitError(CurrentLocation(), "'none' is a reserved keyword and cannot name a binding",
+                  "choose another name, such as 'absent'");
+        auto recovered = std::make_unique<WildcardPattern>();
+        recovered->location = Advance().location;
+        s->pattern = std::move(recovered);
+    }
     else {
         s->pattern = ParseRequiredPattern("after the binding keyword");
         if (!s->pattern) {

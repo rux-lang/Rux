@@ -599,6 +599,33 @@ void AnalysisContext::CheckLetPattern(const Pattern &pattern, const TypeRef &typ
 }
 
 void AnalysisContext::CheckPattern(const Pattern &pattern, const TypeRef &subjectType) {
+    // The native patterns parse ahead of their semantics. Each is rejected once, and a typed binding is still defined,
+    // with an unknown type, so its uses in the arm do not cascade into unknown-name errors.
+    if (const auto *typedPattern = dynamic_cast<const TypedPattern *>(&pattern)) {
+        EmitError(typedPattern->location, "typed patterns are not supported yet");
+        if (!typedPattern->name.empty()) {
+            Symbol symbol;
+            symbol.kind = Symbol::Kind::Var;
+            symbol.name = typedPattern->name;
+            symbol.location = typedPattern->location;
+            symbol.type = TypeRef::MakeUnknown();
+            DefineTrackedLocal(std::move(symbol), true);
+        }
+        return;
+    }
+    if (const auto *presencePattern = dynamic_cast<const PresencePattern *>(&pattern)) {
+        EmitError(presencePattern->location, "presence patterns are not supported yet");
+        const Pattern *inner = presencePattern->inner.get();
+        while (const auto *nested = dynamic_cast<const PresencePattern *>(inner)) {
+            inner = nested->inner.get();
+        }
+        CheckPattern(*inner, TypeRef::MakeUnknown());
+        return;
+    }
+    if (dynamic_cast<const NonePattern *>(&pattern)) {
+        EmitError(pattern.location, "'none' patterns are not supported yet");
+        return;
+    }
     if (!subjectType.IsUnknown()) {
         patternTypes.insert_or_assign(&pattern, subjectType);
     }

@@ -324,6 +324,24 @@ void StatementPrinter::PrintPattern(const Pattern &pattern) {
         }
         --indent;
     }
+    else if (const auto *typed = dynamic_cast<const TypedPattern *>(&pattern)) {
+        Pad();
+        out << "TypedPattern '" << (typed->name.empty() ? "_" : typed->name)
+            << "' : " << DeclarationPrinter::TypeString(typed->type.get()) << "\n";
+    }
+    else if (const auto *presence = dynamic_cast<const PresencePattern *>(&pattern)) {
+        Pad();
+        out << "PresencePattern\n";
+        ++indent;
+        if (presence->inner) {
+            PrintPattern(*presence->inner);
+        }
+        --indent;
+    }
+    else if (dynamic_cast<const NonePattern *>(&pattern)) {
+        Pad();
+        out << "NonePattern\n";
+    }
     else if (const auto *guarded = dynamic_cast<const GuardedPattern *>(&pattern)) {
         Pad();
         out << "GuardedPattern\n";

@@ -1111,11 +1111,35 @@ PatternPtr Parser::ParseRequiredPattern(const std::string_view context) {
     return pattern;
 }
 
+PatternPtr Parser::ParsePresenceSuffix(PatternPtr inner) {
+    while (Check(TokenKind::Question) || Check(TokenKind::QuestionQuestion)) {
+        // Pattern position has no conditional operator, so a separated `?` is still meant as the suffix; it is read as
+        // one and reported, so the rest of the arm parses normally.
+        if (Peek().precededBySpace) {
+            EmitError(CurrentLocation(), "a presence suffix must touch its pattern", "remove the space before '?'");
+        }
+        if (dynamic_cast<const TypedPattern *>(inner.get())) {
+            EmitError(CurrentLocation(), "a presence suffix cannot follow a typed pattern",
+                      "write '.Some(v: A)' to match a present member by type");
+        }
+        const int levels = Advance().kind == TokenKind::QuestionQuestion ? 2 : 1;
+        for (int level = 0; level < levels; ++level) {
+            auto presence = std::make_unique<PresencePattern>();
+            presence->location = inner->location;
+            presence->inner = std::move(inner);
+            inner = std::move(presence);
+        }
+    }
+    return inner;
+}
+
 PatternPtr Parser::ParsePatternImpl() {
     auto inner = ParsePrimaryPattern();
     if (!inner) {
         return nullptr;
     }
+    // Presence suffix: `value?` is `.Some(value)`, and `value??` peels two levels.
+    inner = ParsePresenceSuffix(std::move(inner));
 
     // Guard: pattern if condition
     if (Match(TokenKind::IfKeyword)) {
@@ -1132,10 +1156,18 @@ PatternPtr Parser::ParsePatternImpl() {
     if (Check(TokenKind::DotDot) || Check(TokenKind::DotDotDot) || Check(TokenKind::DotDotEqual)) {
         const bool incl = Peek().kind == TokenKind::DotDotDot || Peek().kind == TokenKind::DotDotEqual;
         const auto loc = CurrentLocation();
+        constexpr std::string_view rangeSuffixHelp = "write '.Some(lo..hi)' to match a present value in a range";
+        if (dynamic_cast<const PresencePattern *>(inner.get())) {
+            EmitError(inner->location, "a range bound cannot take a presence suffix", std::string(rangeSuffixHelp));
+        }
         const std::string operatorText = Advance().text;
         auto hi = ParsePrimaryPattern();
         if (!hi) {
             EmitExpected(CurrentLocation(), std::format("a range pattern end after '{}'", operatorText));
+        }
+        else if (Check(TokenKind::Question) || Check(TokenKind::QuestionQuestion)) {
+            EmitError(CurrentLocation(), "a range bound cannot take a presence suffix", std::string(rangeSuffixHelp));
+            Advance();
         }
         auto p = std::make_unique<RangePattern>();
         p->location = loc;
@@ -1214,10 +1246,31 @@ PatternPtr Parser::ParsePrimaryPattern() {
         return pattern;
     };
 
+    // A typed pattern `name: Type` or `_: Type`. Its annotation is a complete type, so `v: A | B` needs no grouping
+    // and a tight `?` belongs to the type: `v: T?` is never a presence suffix.
+    const auto parseTypedPattern = [this, loc](std::string name) -> PatternPtr {
+        Advance(); // consume ':'
+        auto p = std::make_unique<TypedPattern>();
+        p->location = loc;
+        p->name = std::move(name);
+        p->type = ParseType("add the type after ':' in the typed pattern");
+        return p;
+    };
+
     // Wildcard: _
     if (Check(TokenKind::Ident) && Peek().text == "_") {
         Advance();
+        if (Check(TokenKind::Colon)) {
+            return parseTypedPattern("");
+        }
         auto p = std::make_unique<WildcardPattern>();
+        p->location = loc;
+        return p;
+    }
+
+    // none: the absence of an optional
+    if (Match(TokenKind::NoneKeyword)) {
+        auto p = std::make_unique<NonePattern>();
         p->location = loc;
         return p;
     }
@@ -1330,6 +1383,10 @@ PatternPtr Parser::ParsePrimaryPattern() {
             }
             ExpectBefore(TokenKind::RightBrace, "'}' to close the structure pattern");
             return p;
+        }
+
+        if (Check(TokenKind::Colon)) {
+            return parseTypedPattern(name);
         }
 
         // Simple identifier binding
