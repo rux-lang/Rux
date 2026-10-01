@@ -66,7 +66,7 @@ TypeRef SubstituteType(TypeRef type, const std::unordered_map<std::string, TypeR
     for (TypeRef &inner : type.inner) {
         inner = SubstituteType(std::move(inner), substitutions);
     }
-    return type;
+    return TypeRef::Renormalize(std::move(type));
 }
 
 } // namespace

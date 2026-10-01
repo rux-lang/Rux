@@ -352,6 +352,14 @@ struct TypeRef {
     /// @return the canonical sum, the sole member when only one remains, or Unknown when `members` is empty
     static TypeRef MakeSum(std::vector<TypeRef> members);
 
+    /// `type` in canonical form again after its members may have changed, as they do when generic substitution
+    /// replaces a type parameter: a sum is normalized again, so `T | U` with equal arguments becomes the shared member,
+    /// and every other type is returned as it is. Only the outermost level is renormalized; a substitution renormalizes
+    /// each level as it rebuilds it.
+    static TypeRef Renormalize(TypeRef type) {
+        return type.kind == Kind::Sum ? MakeSum(std::move(type.inner)) : type;
+    }
+
     /// An optional of `payload`. Optionals do not collapse: an optional payload stays a separate presence level.
     static TypeRef MakeOptional(TypeRef payload) {
         TypeRef t;

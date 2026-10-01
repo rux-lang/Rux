@@ -74,7 +74,7 @@ TypeRef SubstituteIdentityType(TypeRef type, const std::unordered_map<std::strin
     for (auto &inner : type.inner) {
         inner = SubstituteIdentityType(std::move(inner), substitutions);
     }
-    return type;
+    return TypeRef::Renormalize(std::move(type));
 }
 
 /// Encode a type into the form a linker name embeds, so two instantiations differing only by argument get distinct

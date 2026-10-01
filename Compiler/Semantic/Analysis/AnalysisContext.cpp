@@ -214,7 +214,7 @@ TypeRef AnalysisContext::SubstituteTypeParameters(TypeRef type,
     for (TypeRef &inner : type.inner) {
         inner = SubstituteTypeParameters(std::move(inner), substitutions);
     }
-    return type;
+    return TypeRef::Renormalize(std::move(type));
 }
 
 std::string AnalysisContext::NominalTypeName(const std::string &name) const {
@@ -554,6 +554,25 @@ bool AnalysisContext::DeduceTypeArgument(const TypeRef &paramType, const TypeRef
             }
         }
         return true;
+    }
+
+    // An optional parameter deduces its payload from an optional argument level by level, and from a plain argument,
+    // which would become its present value.
+    if (paramType.IsOptional()) {
+        if (paramType.inner.empty()) {
+            return false;
+        }
+        const TypeRef &payload = argType.IsOptional() && !argType.inner.empty() ? argType.inner[0] : argType;
+        return DeduceTypeArgument(paramType.inner[0], payload, typeParamNames, substitutions);
+    }
+
+    // A fallible parameter deduces each channel from the matching channel of a fallible argument.
+    if (paramType.IsFallible()) {
+        if (!argType.IsFallible() || paramType.inner.size() != 2 || argType.inner.size() != 2) {
+            return false;
+        }
+        return DeduceTypeArgument(paramType.inner[0], argType.inner[0], typeParamNames, substitutions) &&
+               DeduceTypeArgument(paramType.inner[1], argType.inner[1], typeParamNames, substitutions);
     }
 
     // A slice parameter deduces its element from a slice argument, or from the fixed array that coerces to one.

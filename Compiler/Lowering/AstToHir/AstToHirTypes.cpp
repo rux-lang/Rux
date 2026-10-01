@@ -658,6 +658,22 @@ TypeRef AstToHirContext::ResolveTypeWithSubstitution(const TypeExpr &expr,
         functionType.isVariadic = t->isVariadic;
         return functionType;
     }
+    // A native form is rebuilt from its substituted children, so a sum normalizes again under this instantiation.
+    if (IsNativeTypeExpr(expr)) {
+        std::vector<TypeRef> children;
+        for (const TypeExpr *child : NativeTypeChildren(expr)) {
+            children.push_back(ResolveTypeWithSubstitution(*child, substitutions));
+        }
+        if (dynamic_cast<const SumTypeExpr *>(&expr)) {
+            return TypeRef::MakeSum(std::move(children));
+        }
+        if (dynamic_cast<const OptionalTypeExpr *>(&expr)) {
+            return TypeRef::MakeOptional(std::move(children.front()));
+        }
+        const bool hasSuccess = static_cast<const FallibleTypeExpr &>(expr).success != nullptr;
+        TypeRef error = std::move(children.back());
+        return TypeRef::MakeFallible(hasSuccess ? std::move(children.front()) : TypeRef::MakeUnit(), std::move(error));
+    }
     return ResolvedType(expr);
 }
 

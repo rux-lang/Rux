@@ -33,7 +33,7 @@ TypeRef AnalysisContext::SubstituteIdentityType(TypeRef type,
     for (auto &inner : type.inner) {
         inner = SubstituteIdentityType(std::move(inner), substitutions);
     }
-    return type;
+    return TypeRef::Renormalize(std::move(type));
 }
 
 TypeRef AnalysisContext::IdentityParameterType(const Param &parameter,

@@ -488,7 +488,10 @@ TypeRef AnalysisContext::ResolveTypeWithSubstitution(const TypeExpr &expr,
                                                      const std::unordered_map<std::string, TypeRef> &substitutions) {
     const ScopedTypeOwner owner(*this, expr);
     if (const auto accepted = typeNodeTypes.find(&expr);
-        accepted != typeNodeTypes.end() && (accepted->second.IsSlice() || accepted->second.IsRange())) {
+        accepted != typeNodeTypes.end() &&
+        (accepted->second.IsSlice() || accepted->second.IsRange() || accepted->second.IsSum() ||
+         accepted->second.IsOptional() || accepted->second.IsFallible())) {
+        // Substitution renormalizes a sum, so `T | U` under equal arguments becomes their shared member.
         return SubstituteTypeParameters(accepted->second, substitutions);
     }
     if (auto *t = dynamic_cast<const NamedTypeExpr *>(&expr)) {
@@ -552,6 +555,12 @@ TypeRef AnalysisContext::ResolveTypeWithSubstitution(const TypeExpr &expr,
         TypeRef functionType = TypeRef::MakeFunc(std::move(paramTypes), std::move(returnType));
         functionType.isVariadic = t->isVariadic;
         return functionType;
+    }
+    // A native form not yet recorded is resolved first, which reports it once, and then substituted like a recorded
+    // one.
+    if (IsNativeTypeExpr(expr)) {
+        const TypeRef resolved = ResolveType(expr);
+        return resolved.IsUnknown() ? resolved : SubstituteTypeParameters(resolved, substitutions);
     }
     return ResolveType(expr);
 }
