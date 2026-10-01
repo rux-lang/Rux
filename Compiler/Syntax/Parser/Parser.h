@@ -176,6 +176,9 @@ private:
     std::unique_ptr<ForStmt> ParseForStmt();
     std::unique_ptr<MatchStmt> ParseMatchStmt();
     std::unique_ptr<ReturnStmt> ParseReturnStmt();
+    std::unique_ptr<FailStmt> ParseFailStmt();
+    /// Report a `catch`, `?`, or `??` written directly after a match statement, which takes no postfix operator.
+    void RejectPostfixAfterMatchStatement();
     std::unique_ptr<DeferStmt> ParseDeferStmt();
 
     // Expressions (Pratt / precedence-climbing)
@@ -201,6 +204,16 @@ private:
     ExprPtr ParseUnary();
     ExprPtr ParsePostfix();
     ExprPtr ParsePrimary();
+    /// Whether the current token begins `fail`, `return`, `break`, or `continue`.
+    [[nodiscard]] bool CheckDivergingKeyword() const noexcept;
+    /// One of the diverging forms in a position that accepts it: a whole arm, mapping, or `??` fallback body.
+    ExprPtr ParseDivergingExpr();
+    /// A match or catch arm body: a block, a diverging form, or an expression.
+    ExprPtr ParseArmBody(std::string_view construct);
+    /// The comma-separated arms of a match or catch expression after its opening brace, through the closing brace.
+    void ParseArmList(std::vector<MatchExpr::Arm> &arms, std::string_view construct);
+    /// The `else (binding => body)` mapping after a tight `?`, which wraps `operand` in a mapped propagation.
+    ExprPtr ParseErrorMapper(SourceLocation location, ExprPtr operand);
 
     // Patterns
     PatternPtr ParsePattern();

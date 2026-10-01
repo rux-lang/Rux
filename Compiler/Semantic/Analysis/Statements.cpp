@@ -473,6 +473,10 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
         }
         MergeTrackedFlows(exits);
     }
+    else if (dynamic_cast<const FailStmt *>(&statement)) {
+        // `fail` parses ahead of fallible semantics, so it is rejected before its operand is checked.
+        EmitError(statement.location, "'fail' is not supported yet");
+    }
     else if (const auto *returnStatement = dynamic_cast<const ReturnStmt *>(&statement)) {
         if (currentFunctionNoReturn) {
             EmitError(returnStatement->location, "return is not allowed in a '#NoReturn' function");
@@ -962,7 +966,8 @@ bool AnalysisContext::BlockDefinitelyReturns(const Block &block) const {
         return false;
     };
     statementReturns = [&](const Stmt &statement) {
-        if (dynamic_cast<const ReturnStmt *>(&statement)) {
+        // `fail` leaves the function through its failure channel, so no path continues past it.
+        if (dynamic_cast<const ReturnStmt *>(&statement) || dynamic_cast<const FailStmt *>(&statement)) {
             return true;
         }
         if (const auto *expression = dynamic_cast<const ExprStmt *>(&statement)) {

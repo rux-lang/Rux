@@ -171,7 +171,8 @@ ExprPtr Parser::ParseCoalesce() {
 
     const auto loc = CurrentLocation();
     const Token opToken = Advance();
-    auto right = ParseCoalesce();
+    // The fallback may leave instead of producing a value: `candidate ?? fail NotFound {}`.
+    auto right = CheckDivergingKeyword() ? ParseDivergingExpr() : ParseCoalesce();
     if (!right) {
         EmitMissingExpression(std::format("after '{}'", opToken.text));
     }
@@ -655,9 +656,29 @@ ExprPtr Parser::ParsePostfix() {
         // its own parse below at its own precedence.
         if (Check(TokenKind::Question) && !Peek().precededBySpace) {
             Advance();
+            // `value? else (e => mapped)` converts the error before failing with it.
+            if (Check(TokenKind::ElseKeyword) && Peek(1).Is(TokenKind::LeftParen)) {
+                left = ParseErrorMapper(loc, std::move(left));
+                continue;
+            }
             auto e = std::make_unique<TryExpr>();
             e->location = loc;
             e->operand = std::move(left);
+            left = std::move(e);
+            continue;
+        }
+        // Postfix recovery: expr catch { pattern => body, ... }. It is part of the postfix chain like `?`, so it
+        // attaches to the nearest postfix expression and the chain may continue after its closing brace.
+        if (Match(TokenKind::CatchKeyword)) {
+            auto e = std::make_unique<CatchExpr>();
+            e->location = loc;
+            e->subject = std::move(left);
+            if (Match(TokenKind::LeftBrace)) {
+                ParseArmList(e->arms, "catch");
+            }
+            else {
+                EmitExpected(CurrentLocation(), "'{' to start the catch arms");
+            }
             left = std::move(e);
             continue;
         }
@@ -690,43 +711,7 @@ ExprPtr Parser::ParsePrimary() {
             EmitExpected(CurrentLocation(), "'{' to start the match expression arms");
             return e;
         }
-        while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
-            MatchExpr::Arm arm;
-            arm.location = CurrentLocation();
-            arm.pattern = ParseMatchArmPattern();
-            if (!arm.pattern) {
-                while (!CheckAny({TokenKind::FatArrow, TokenKind::Comma, TokenKind::RightBrace}) && !IsAtEnd()) {
-                    Advance();
-                }
-            }
-            ExpectBefore(TokenKind::FatArrow, "'=>' after the match arm pattern");
-
-            if (Check(TokenKind::LeftBrace)) {
-                auto bexpr = std::make_unique<BlockExpr>();
-                bexpr->location = CurrentLocation();
-                bexpr->block = ParseBlock("the match arm body");
-                arm.body = std::move(bexpr);
-            }
-            else {
-                arm.body = ParseRequiredExpr("after '=>' in the match arm");
-            }
-
-            e->arms.push_back(std::move(arm));
-            if (Match(TokenKind::Comma)) {
-                if (Check(TokenKind::RightBrace)) {
-                    EmitError(Previous().location, "trailing comma is not allowed in match blocks");
-                }
-                continue;
-            }
-            if (!Check(TokenKind::RightBrace)) {
-                EmitExpected(CurrentLocation(), "',' between match arms");
-                while (!CheckAny({TokenKind::Comma, TokenKind::RightBrace}) && !IsAtEnd()) {
-                    Advance();
-                }
-                Match(TokenKind::Comma);
-            }
-        }
-        ExpectBefore(TokenKind::RightBrace, "'}' to close the match expression");
+        ParseArmList(e->arms, "match");
         return e;
     }
 
@@ -737,6 +722,19 @@ ExprPtr Parser::ParsePrimary() {
         e->location = loc;
         e->token = Advance();
         return e;
+    }
+    // none: the absence of an optional
+    if (Match(TokenKind::NoneKeyword)) {
+        auto e = std::make_unique<NoneExpr>();
+        e->location = loc;
+        return e;
+    }
+    // A diverging form in a position that needs a value. It is parsed anyway so the rest of the expression recovers.
+    if (CheckDivergingKeyword()) {
+        EmitError(loc, std::format("'{}' cannot be used as a value here", Peek().text),
+                  "write it as a whole match or catch arm, an error mapping body, or the right side of ?? , or put "
+                  "it in a block");
+        return ParseDivergingExpr();
     }
     // null literal
     if (Match(TokenKind::NullKeyword)) {
@@ -770,6 +768,33 @@ ExprPtr Parser::ParsePrimary() {
         auto e = std::make_unique<IdentExpr>();
         e->location = loc;
         e->name = "#" + Advance().text;
+        return e;
+    }
+    // Native constructors: .Success(value), .Failure(error), .Some(value). Every other `.Name`, including `.None`,
+    // stays the enum shorthand below.
+    if (Check(TokenKind::Dot) && Peek(1).Is(TokenKind::Ident) && Peek(2).Is(TokenKind::LeftParen) &&
+        (Peek(1).text == "Success" || Peek(1).text == "Failure" || Peek(1).text == "Some")) {
+        Advance(); // consume '.'
+        const std::string name = Advance().text;
+        auto e = std::make_unique<NativeConstructExpr>();
+        e->location = loc;
+        e->kind = name == "Success" ? NativeConstructExpr::Kind::Success
+                : name == "Failure" ? NativeConstructExpr::Kind::Failure
+                                    : NativeConstructExpr::Kind::Some;
+        auto args = ParseArgList();
+        if (args.size() != 1) {
+            std::optional<std::string> help;
+            if (name == "Some" && args.empty()) {
+                help = "write 'none' for an absent optional";
+            }
+            else if (name == "Success" && args.empty()) {
+                help = "write '.Success(())' for a unit success";
+            }
+            EmitError(loc, std::format("'.{}' takes exactly one value", name), std::move(help));
+        }
+        if (!args.empty()) {
+            e->operand = std::move(args.front());
+        }
         return e;
     }
     // Enum variant without its type: .Windows
@@ -912,6 +937,105 @@ ExprPtr Parser::ParsePrimary() {
         return e;
     }
     return nullptr;
+}
+
+bool Parser::CheckDivergingKeyword() const noexcept {
+    return CheckAny(
+        {TokenKind::FailKeyword, TokenKind::ReturnKeyword, TokenKind::BreakKeyword, TokenKind::ContinueKeyword});
+}
+
+ExprPtr Parser::ParseDivergingExpr() {
+    auto e = std::make_unique<DivergeExpr>();
+    e->location = CurrentLocation();
+    const Token keyword = Advance();
+    switch (keyword.kind) {
+    case TokenKind::FailKeyword:
+        // `fail` always names the failure; a unit error is written `fail ()`.
+        e->kind = DivergeExpr::Kind::Fail;
+        e->value = ParseRequiredExpr("after 'fail'");
+        break;
+    case TokenKind::ReturnKeyword:
+        e->kind = DivergeExpr::Kind::Return;
+        if (!CheckAny({TokenKind::Semicolon, TokenKind::Comma, TokenKind::RightParen, TokenKind::RightBrace})) {
+            e->value = ParseRequiredExpr("after 'return'");
+        }
+        break;
+    default:
+        e->kind = keyword.kind == TokenKind::BreakKeyword ? DivergeExpr::Kind::Break : DivergeExpr::Kind::Continue;
+        if (Check(TokenKind::Ident)) {
+            e->label = Advance().text;
+        }
+        break;
+    }
+    return e;
+}
+
+ExprPtr Parser::ParseArmBody(const std::string_view construct) {
+    if (Check(TokenKind::LeftBrace)) {
+        auto block = std::make_unique<BlockExpr>();
+        block->location = CurrentLocation();
+        block->block = ParseBlock(std::format("the {} arm body", construct));
+        return block;
+    }
+    if (CheckDivergingKeyword()) {
+        return ParseDivergingExpr();
+    }
+    return ParseRequiredExpr(std::format("after '=>' in the {} arm", construct));
+}
+
+void Parser::ParseArmList(std::vector<MatchExpr::Arm> &arms, const std::string_view construct) {
+    while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
+        MatchExpr::Arm arm;
+        arm.location = CurrentLocation();
+        arm.pattern = ParseMatchArmPattern();
+        if (!arm.pattern) {
+            while (!CheckAny({TokenKind::FatArrow, TokenKind::Comma, TokenKind::RightBrace}) && !IsAtEnd()) {
+                Advance();
+            }
+        }
+        ExpectBefore(TokenKind::FatArrow, std::format("'=>' after the {} arm pattern", construct));
+        arm.body = ParseArmBody(construct);
+        arms.push_back(std::move(arm));
+        if (Match(TokenKind::Comma)) {
+            if (Check(TokenKind::RightBrace)) {
+                EmitError(Previous().location, std::format("trailing comma is not allowed in {} blocks", construct));
+            }
+            continue;
+        }
+        if (!Check(TokenKind::RightBrace)) {
+            EmitExpected(CurrentLocation(), std::format("',' between {} arms", construct));
+            while (!CheckAny({TokenKind::Comma, TokenKind::RightBrace}) && !IsAtEnd()) {
+                Advance();
+            }
+            Match(TokenKind::Comma);
+        }
+    }
+    ExpectBefore(TokenKind::RightBrace, std::format("'}}' to close the {} expression", construct));
+}
+
+ExprPtr Parser::ParseErrorMapper(const SourceLocation location, ExprPtr operand) {
+    Advance(); // consume 'else'
+    Advance(); // consume '('
+    auto e = std::make_unique<MappedTryExpr>();
+    e->location = location;
+    e->operand = std::move(operand);
+    e->bindingLocation = CurrentLocation();
+    e->binding = ExpectBefore(TokenKind::Ident, "a name for the error before '=>' in the error mapping").text;
+    ExpectBefore(TokenKind::FatArrow, "'=>' after the error binding");
+    // The parentheses make a parenthesized context, so a struct literal is allowed even inside a condition.
+    const bool savedStructInitAllowed = structInitAllowed;
+    structInitAllowed = true;
+    e->mapper = CheckDivergingKeyword() ? ParseDivergingExpr() : ParseRequiredExpr("after '=>' in the error mapping");
+    if (Check(TokenKind::Comma)) {
+        EmitError(CurrentLocation(), "an error mapping has one body",
+                  "remove the ','; write '(e => (a, b))' to map the error to a tuple");
+        while (!CheckAny({TokenKind::RightParen, TokenKind::Semicolon, TokenKind::RightBrace}) && !IsAtEnd()) {
+            Advance();
+        }
+    }
+    structInitAllowed = savedStructInitAllowed;
+    ExpectBefore(TokenKind::RightParen, "')' to close the error mapping");
+    return e;
 }
 
 std::vector<ExprPtr> Parser::ParseArgList() {

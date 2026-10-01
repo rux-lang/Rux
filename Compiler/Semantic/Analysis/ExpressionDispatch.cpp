@@ -21,6 +21,30 @@
 namespace Rux::SemanticDetail {
 using Layout::AlignUp;
 
+namespace {
+/// The subject of the pending diagnostic for a native handling expression that has no semantics yet, or nullopt for
+/// every other expression.
+std::optional<std::string> PendingNativeExpressionForm(const Expr &expr) {
+    if (dynamic_cast<const CatchExpr *>(&expr)) {
+        return "'catch' is";
+    }
+    if (dynamic_cast<const MappedTryExpr *>(&expr)) {
+        return "'? else' error mapping is";
+    }
+    if (dynamic_cast<const NativeConstructExpr *>(&expr)) {
+        return "native constructors are";
+    }
+    if (dynamic_cast<const NoneExpr *>(&expr)) {
+        return "'none' is";
+    }
+    if (const auto *diverge = dynamic_cast<const DivergeExpr *>(&expr)) {
+        static constexpr std::string_view kKeywords[] = {"return", "fail", "break", "continue"};
+        return std::format("'{}' as an expression is", kKeywords[static_cast<int>(diverge->kind)]);
+    }
+    return std::nullopt;
+}
+} // namespace
+
 TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
     if (const std::optional<TypeRef> basicType = CheckBasicExpression(expr)) {
         return *basicType;
@@ -192,6 +216,13 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
             return TypeRef::MakeUnknown();
         }
         return TypeRef::MakeText(TypeRef::Kind::Char8);
+    }
+
+    // The native handling forms parse ahead of their semantics. Each is rejected here with one stable diagnostic, and
+    // its operands are left unchecked, so no program that spells one reaches lowering before its analysis exists.
+    if (const std::optional<std::string> pending = PendingNativeExpressionForm(expr)) {
+        EmitError(expr.location, std::format("{} not supported yet", *pending));
+        return TypeRef::MakeUnknown();
     }
 
     if (const auto *e = dynamic_cast<const EnumShorthandExpr *>(&expr)) {

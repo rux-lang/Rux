@@ -400,6 +400,70 @@ void ExpressionPrinter::Print(const Expr &expression) {
         }
         --indent;
     }
+    else if (const auto *recovery = dynamic_cast<const CatchExpr *>(&expression)) {
+        Pad();
+        out << "CatchExpr\n";
+        ++indent;
+        if (recovery->subject) {
+            Print(*recovery->subject);
+        }
+        for (const auto &arm : recovery->arms) {
+            Pad();
+            out << "Arm\n";
+            ++indent;
+            if (arm.pattern) {
+                printPattern(*arm.pattern);
+            }
+            if (arm.body) {
+                Print(*arm.body);
+            }
+            --indent;
+        }
+        --indent;
+    }
+    else if (const auto *mapped = dynamic_cast<const MappedTryExpr *>(&expression)) {
+        Pad();
+        out << "MappedTryExpr '" << mapped->binding << "'\n";
+        ++indent;
+        if (mapped->operand) {
+            Print(*mapped->operand);
+        }
+        if (mapped->mapper) {
+            Print(*mapped->mapper);
+        }
+        --indent;
+    }
+    else if (const auto *construct = dynamic_cast<const NativeConstructExpr *>(&expression)) {
+        Pad();
+        out << "NativeConstructExpr '."
+            << (construct->kind == NativeConstructExpr::Kind::Success   ? "Success"
+                : construct->kind == NativeConstructExpr::Kind::Failure ? "Failure"
+                                                                        : "Some")
+            << "'\n";
+        ++indent;
+        if (construct->operand) {
+            Print(*construct->operand);
+        }
+        --indent;
+    }
+    else if (dynamic_cast<const NoneExpr *>(&expression)) {
+        Pad();
+        out << "NoneExpr\n";
+    }
+    else if (const auto *diverge = dynamic_cast<const DivergeExpr *>(&expression)) {
+        Pad();
+        static constexpr const char *kKeywords[] = {"return", "fail", "break", "continue"};
+        out << "DivergeExpr '" << kKeywords[static_cast<int>(diverge->kind)] << "'";
+        if (!diverge->label.empty()) {
+            out << " " << diverge->label;
+        }
+        out << "\n";
+        ++indent;
+        if (diverge->value) {
+            Print(*diverge->value);
+        }
+        --indent;
+    }
 }
 
 void ExpressionPrinter::PrintLiteralExpr(const LiteralExpr &expression) const {

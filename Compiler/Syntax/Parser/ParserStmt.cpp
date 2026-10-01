@@ -77,10 +77,15 @@ StmtPtr Parser::ParseStmt() {
         return s;
     }
     if (Check(TokenKind::MatchKeyword)) {
-        return ParseMatchStmt();
+        auto s = ParseMatchStmt();
+        RejectPostfixAfterMatchStatement();
+        return s;
     }
     if (Check(TokenKind::ReturnKeyword)) {
         return ParseReturnStmt();
+    }
+    if (Check(TokenKind::FailKeyword)) {
+        return ParseFailStmt();
     }
     if (Check(TokenKind::DeferKeyword)) {
         return ParseDeferStmt();
@@ -221,7 +226,7 @@ std::unique_ptr<IfStmt> Parser::ParseIfStmt() {
             return CheckAny({TokenKind::ReturnKeyword, TokenKind::LetKeyword, TokenKind::VarKeyword,
                              TokenKind::IfKeyword, TokenKind::WhileKeyword, TokenKind::ForKeyword,
                              TokenKind::LoopKeyword, TokenKind::BreakKeyword, TokenKind::ContinueKeyword,
-                             TokenKind::WhenKeyword});
+                             TokenKind::WhenKeyword, TokenKind::FailKeyword});
         };
         auto parseArmBody = [&]() -> std::unique_ptr<Block> {
             if (Check(TokenKind::LeftBrace)) {
@@ -397,16 +402,7 @@ std::unique_ptr<MatchStmt> Parser::ParseMatchStmt() {
         }
         ExpectBefore(TokenKind::FatArrow, "'=>' after the match arm pattern");
 
-        if (Check(TokenKind::LeftBrace)) {
-            // Block body
-            auto bexpr = std::make_unique<BlockExpr>();
-            bexpr->location = CurrentLocation();
-            bexpr->block = ParseBlock("the match arm body");
-            arm.body = std::move(bexpr);
-        }
-        else {
-            arm.body = ParseRequiredExpr("after '=>' in the match arm");
-        }
+        arm.body = ParseArmBody("match");
 
         s->arms.push_back(std::move(arm));
         if (Match(TokenKind::Comma)) {
@@ -440,6 +436,39 @@ std::unique_ptr<ReturnStmt> Parser::ParseReturnStmt() {
 
     ExpectBefore(TokenKind::Semicolon, "';' after the 'return' statement");
     return s;
+}
+
+std::unique_ptr<FailStmt> Parser::ParseFailStmt() {
+    auto s = std::make_unique<FailStmt>();
+    s->location = CurrentLocation();
+    Expect(TokenKind::FailKeyword, "expected 'fail'");
+    s->value = ParseRequiredExpr("after 'fail'");
+    ExpectBefore(TokenKind::Semicolon, "';' after the 'fail' statement");
+    return s;
+}
+
+void Parser::RejectPostfixAfterMatchStatement() {
+    const bool tightQuestion = Check(TokenKind::Question) && !Peek().precededBySpace;
+    if (!Check(TokenKind::CatchKeyword) && !tightQuestion && !Check(TokenKind::QuestionQuestion)) {
+        return;
+    }
+    // A match that begins a statement ends at its closing brace and yields no value, so nothing postfix applies to it.
+    EmitError(CurrentLocation(), std::format("'{}' cannot follow a match statement", Peek().text),
+              "write 'let value = match ... { ... } catch { ... };' or '(match ... { ... }) catch { ... };' to use "
+              "the match's result");
+    if (Match(TokenKind::CatchKeyword)) {
+        if (Match(TokenKind::LeftBrace)) {
+            std::vector<MatchExpr::Arm> discarded;
+            ParseArmList(discarded, "catch");
+        }
+    }
+    else if (Match(TokenKind::QuestionQuestion)) {
+        ParseExpr();
+    }
+    else {
+        Advance();
+    }
+    Match(TokenKind::Semicolon);
 }
 
 std::unique_ptr<DeferStmt> Parser::ParseDeferStmt() {

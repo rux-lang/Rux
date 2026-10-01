@@ -24,6 +24,7 @@ enum class TokenKind : std::uint8_t {
     // Keywords, alphabetized by source spelling
     AsKeyword,        // as
     BreakKeyword,     // break
+    CatchKeyword,     // catch
     ConstKeyword,     // const
     ContinueKeyword,  // continue
     DeferKeyword,     // defer
@@ -32,6 +33,7 @@ enum class TokenKind : std::uint8_t {
     EnumKeyword,      // enum
     ExtendKeyword,    // extend
     ExternKeyword,    // extern
+    FailKeyword,      // fail
     ForKeyword,       // for
     FuncKeyword,      // func
     IfKeyword,        // if
@@ -44,6 +46,7 @@ enum class TokenKind : std::uint8_t {
     LoopKeyword,      // loop
     MatchKeyword,     // match
     ModuleKeyword,    // module
+    NoneKeyword,      // none
     NullKeyword,      // null
     PubKeyword,       // pub
     ReturnKeyword,    // return

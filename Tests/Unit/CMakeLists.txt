@@ -76,6 +76,7 @@ set(RUX_TEST_SOURCES
     LayoutTests.cpp
     LexerTests.cpp
     LinearScanTests.cpp
+    NativeHandlingSyntaxTests.cpp
     NativeTypeIdentityTests.cpp
     NativeTypeSyntaxTests.cpp
     PrimitiveCatalogTests.cpp

@@ -1,0 +1,12 @@
+// `fail` is a reserved keyword. `fail error;` leaves a fallible function through its outer failure channel, and
+// `fail value` may also be the whole body of a match or catch arm, an error mapping, or the fallback of `??`.
+//
+// This directory exists so LanguageTestMatrixTests can name an owning language test for the keyword from the commit
+// that reserves it. A program that spells `fail` cannot be that test yet: the compiler parses it and then reports
+// that it is not supported. That refusal is asserted in Tests/Unit/Golden/NativeOutcomesPending.rux, where an
+// expected compile failure is the whole point. Once failure exits are lowered, replace this placeholder with the
+// executable case rather than adding a directory.
+
+func Main() -> int {
+    return 0;
+}

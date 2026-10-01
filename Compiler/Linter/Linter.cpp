@@ -693,6 +693,11 @@ private:
                 }
             }
         }
+        else if (const auto *failStmt = dynamic_cast<const FailStmt *>(&stmt)) {
+            if (failStmt->value) {
+                VisitExpr(*failStmt->value);
+            }
+        }
         else if (const auto *retStmt = dynamic_cast<const ReturnStmt *>(&stmt)) {
             if (retStmt->value && *retStmt->value) {
                 VisitExpr(**retStmt->value);
@@ -896,6 +901,39 @@ private:
                 if (arm.body) {
                     VisitExpr(*arm.body);
                 }
+            }
+        }
+        else if (const auto *catchExpr = dynamic_cast<const CatchExpr *>(&expr)) {
+            if (catchExpr->subject) {
+                VisitExpr(*catchExpr->subject);
+            }
+            for (const auto &arm : catchExpr->arms) {
+                if (arm.pattern) {
+                    std::vector<std::string> names;
+                    AppendPatternNames(*arm.pattern, names);
+                    VisitPattern(*arm.pattern, names);
+                }
+                if (arm.body) {
+                    VisitExpr(*arm.body);
+                }
+            }
+        }
+        else if (const auto *mapped = dynamic_cast<const MappedTryExpr *>(&expr)) {
+            if (mapped->operand) {
+                VisitExpr(*mapped->operand);
+            }
+            if (mapped->mapper) {
+                VisitExpr(*mapped->mapper);
+            }
+        }
+        else if (const auto *construct = dynamic_cast<const NativeConstructExpr *>(&expr)) {
+            if (construct->operand) {
+                VisitExpr(*construct->operand);
+            }
+        }
+        else if (const auto *diverge = dynamic_cast<const DivergeExpr *>(&expr)) {
+            if (diverge->value) {
+                VisitExpr(*diverge->value);
             }
         }
     }

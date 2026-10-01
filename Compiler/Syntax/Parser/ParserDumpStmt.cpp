@@ -50,6 +50,15 @@ void StatementPrinter::Print(const Stmt &statement) {
     else if (const auto *returnStatement = dynamic_cast<const ReturnStmt *>(&statement)) {
         PrintReturnStmt(*returnStatement);
     }
+    else if (const auto *failStatement = dynamic_cast<const FailStmt *>(&statement)) {
+        Pad();
+        out << "FailStmt\n";
+        if (failStatement->value) {
+            ++indent;
+            printExpression(*failStatement->value);
+            --indent;
+        }
+    }
     else if (const auto *deferStatement = dynamic_cast<const DeferStmt *>(&statement)) {
         PrintDeferStmt(*deferStatement);
     }

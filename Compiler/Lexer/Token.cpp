@@ -12,6 +12,7 @@ namespace {
 const std::unordered_map<std::string_view, TokenKind> kKeywords = {
     {"as", TokenKind::AsKeyword},
     {"break", TokenKind::BreakKeyword},
+    {"catch", TokenKind::CatchKeyword},
     {"const", TokenKind::ConstKeyword},
     {"continue", TokenKind::ContinueKeyword},
     {"defer", TokenKind::DeferKeyword},
@@ -20,6 +21,7 @@ const std::unordered_map<std::string_view, TokenKind> kKeywords = {
     {"enum", TokenKind::EnumKeyword},
     {"extend", TokenKind::ExtendKeyword},
     {"extern", TokenKind::ExternKeyword},
+    {"fail", TokenKind::FailKeyword},
     {"false", TokenKind::BoolLiteral},
     {"for", TokenKind::ForKeyword},
     {"func", TokenKind::FuncKeyword},
@@ -33,6 +35,7 @@ const std::unordered_map<std::string_view, TokenKind> kKeywords = {
     {"loop", TokenKind::LoopKeyword},
     {"match", TokenKind::MatchKeyword},
     {"module", TokenKind::ModuleKeyword},
+    {"none", TokenKind::NoneKeyword},
     {"null", TokenKind::NullKeyword},
     {"pub", TokenKind::PubKeyword},
     {"return", TokenKind::ReturnKeyword},
@@ -97,6 +100,12 @@ std::string_view TokenKindName(const TokenKind kind) noexcept {
         return "InKeyword";
     case TokenKind::BreakKeyword:
         return "BreakKeyword";
+    case TokenKind::CatchKeyword:
+        return "CatchKeyword";
+    case TokenKind::FailKeyword:
+        return "FailKeyword";
+    case TokenKind::NoneKeyword:
+        return "NoneKeyword";
     case TokenKind::ContinueKeyword:
         return "ContinueKeyword";
     case TokenKind::ReturnKeyword:

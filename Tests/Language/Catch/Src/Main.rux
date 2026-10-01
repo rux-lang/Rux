@@ -1,0 +1,12 @@
+// `catch` is a reserved keyword. `value catch { pattern => body, ... }` recovers from the outer failure of its
+// subject, and it binds as tightly as postfix `?`, so it attaches to the nearest postfix expression.
+//
+// This directory exists so LanguageTestMatrixTests can name an owning language test for the keyword from the commit
+// that reserves it. A program that spells `catch` cannot be that test yet: the compiler parses it and then reports
+// that it is not supported. That refusal is asserted in Tests/Unit/Golden/NativeOutcomesPending.rux, where an
+// expected compile failure is the whole point. Once postfix recovery is lowered, replace this placeholder with the
+// executable case rather than adding a directory.
+
+func Main() -> int {
+    return 0;
+}

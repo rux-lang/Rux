@@ -433,6 +433,51 @@ struct MatchExpr : Expr {
     std::vector<Arm> arms;
 };
 
+/// `subject catch { pattern => body, ... }`: postfix recovery over the subject's outer fallible level. Its arms match
+/// the error payload and use the same arm grammar as a match.
+struct CatchExpr : Expr {
+    ExprPtr subject;
+    std::vector<MatchExpr::Arm> arms;
+};
+
+/// `operand? else (binding => mapper)`: propagation that converts the complete error with `mapper` before failing.
+struct MappedTryExpr : Expr {
+    ExprPtr operand;
+    std::string binding;
+    SourceLocation bindingLocation;
+    ExprPtr mapper;
+};
+
+/// A native value constructor: `.Success(value)`, `.Failure(error)`, or `.Some(value)`.
+struct NativeConstructExpr : Expr {
+    enum class Kind {
+        Success,
+        Failure,
+        Some
+    };
+
+    Kind kind = Kind::Success;
+    ExprPtr operand;
+};
+
+/// `none`: the outer absence of the optional type its context expects.
+struct NoneExpr : Expr {};
+
+/// `fail value`, `return [value]`, `break [label]`, or `continue [label]` written where a value is expected: as a whole
+/// match or catch arm body, a mapping body, or the right operand of `??`. It never produces a value.
+struct DivergeExpr : Expr {
+    enum class Kind {
+        Return,
+        Fail,
+        Break,
+        Continue
+    };
+
+    Kind kind = Kind::Return;
+    ExprPtr value; // the returned or failed value; null for a bare return, break, or continue
+    std::string label;
+};
+
 // Statements
 
 struct Stmt {
@@ -531,6 +576,11 @@ struct DeferStmt : Stmt {
 };
 
 // return [expr];
+/// `fail error;`: exit the enclosing fallible function through its outer failure channel.
+struct FailStmt : Stmt {
+    ExprPtr value;
+};
+
 struct ReturnStmt : Stmt {
     std::optional<ExprPtr> value;
 };
