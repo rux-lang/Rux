@@ -11,8 +11,8 @@ func Main() -> int {
 
     // An explicit empty view has no backing storage.
     var storage: int32[6] = [10, 20, 30, 40, 50, 60];
-    let none: var int32[..] = [];
-    if none.length != 0 || none.data != null { return 12; }
+    let emptyView: var int32[..] = [];
+    if emptyView.length != 0 || emptyView.data != null { return 12; }
 
     // Range indexing borrows the caller's storage without copying it.
     let view = storage[..];

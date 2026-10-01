@@ -113,10 +113,10 @@ func Main() -> int {
     Assert((afterReset as uint) == (first as uint), "starting from the front of the buffer once more");
 
     // An allocator over no storage is a usable allocator that refuses everything.
-    var none = FixedBuffer(null, 4096);
-    Assert(none.BytesRemaining() == 0, "an allocator over nothing has nothing to give");
-    var noneHandle = none.Handle();
-    let empties: Allocator = noneHandle;
+    var unbacked = FixedBuffer(null, 4096);
+    Assert(unbacked.BytesRemaining() == 0, "an allocator over nothing has nothing to give");
+    var unbackedHandle = unbacked.Handle();
+    let empties: Allocator = unbackedHandle;
     var refused: *var opaque = null;
     Assert(empties.Allocate(small, @refused) == AllocError::OutOfMemory, "and refuses every request");
     Assert(empties.Allocate(zero, @refused) == AllocError::None, "except a zero-sized one");

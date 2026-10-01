@@ -141,8 +141,8 @@ func CheckUnitCases() {
 }
 
 func CheckGenericCases() {
-    let none = Maybe::None<int32>();
-    Assert(ReadMaybe(none) == -1i32, "a generic unit case is constructed with explicit type arguments");
+    let missing = Maybe::None<int32>();
+    Assert(ReadMaybe(missing) == -1i32, "a generic unit case is constructed with explicit type arguments");
 
     let some = MakeSome(42i32);
     Assert(ReadMaybe(some) == 42i32, "a generic tuple case carries its substituted payload");

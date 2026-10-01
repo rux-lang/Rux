@@ -107,9 +107,9 @@ func Main() -> int {
     if RemoveWhere<int32>(Ints(@mixed[0], 8), IsEven) != 4 { return 50; }
     if mixed[0] != 1 || mixed[1] != 3 || mixed[2] != 5 || mixed[3] != 7 { return 51; }
 
-    var none: int32[3] = [1, 3, 5];
-    if RemoveWhere<int32>(Ints(@none[0], 3), IsEven) != 3 { return 52; }
-    if none[0] != 1 || none[2] != 5 { return 53; }
+    var odds: int32[3] = [1, 3, 5];
+    if RemoveWhere<int32>(Ints(@odds[0], 3), IsEven) != 3 { return 52; }
+    if odds[0] != 1 || odds[2] != 5 { return 53; }
 
     var every: int32[3] = [2, 4, 6];
     if RemoveWhere<int32>(Ints(@every[0], 3), IsEven) != 0 { return 54; }

@@ -71,8 +71,8 @@ func Main() -> int {
     }
 
     // Wiping nothing is legal and does nothing.
-    let none = (@secret[0])[..0];
-    Wipe(none);
+    let emptySecret = (@secret[0])[..0];
+    Wipe(emptySecret);
     Assert(secret[0] == (0xABu8 as char8), "wiping an empty slice changes nothing");
 
     // The wipe survives being the last thing to touch a buffer, which is the case an optimizer would remove.

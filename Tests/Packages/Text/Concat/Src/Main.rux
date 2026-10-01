@@ -44,8 +44,8 @@ func Main() -> int {
     let abab = View("ababab");
     let thriceView = thrice.View();
     Assert(thriceView.Equals(abab), "in order, however many times");
-    let none = Repeat(allocator, View("ab"), 0, @error);
-    Assert(error == TextError::None && none.IsEmpty(), "zero times is empty text");
+    let zeroTimes = Repeat(allocator, View("ab"), 0, @error);
+    Assert(error == TextError::None && zeroTimes.IsEmpty(), "zero times is empty text");
     let emptyRepeated = Repeat(allocator, View(""), 1000, @error);
     Assert(error == TextError::None && emptyRepeated.IsEmpty(), "and so is the empty view any number of times");
 

@@ -175,7 +175,7 @@ TEST_CASE("a literal is never a writable view") {
 TEST_CASE("an empty literal is a view of either flavor") {
     const auto messages = Messages(R"(
         func Main() {
-            let none: int[..] = [];
+            let readOnly: int[..] = [];
             let writable: var int[..] = [];
         }
     )");

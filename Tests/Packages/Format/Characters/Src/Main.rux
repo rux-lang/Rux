@@ -193,9 +193,9 @@ func Main() -> int {
     Assert(Inspected(reversedDebug, "\"\\u{de00}\\u{d83d}\""), "each kept as itself");
 
     // An empty slice of either width renders as nothing, and as empty quotes.
-    var none: char32[1];
-    none[0] = c32'x';
-    let emptyWide: char32[..] = (@none[0])[..0];
+    var wideCell: char32[1];
+    wideCell[0] = c32'x';
+    let emptyWide: char32[..] = (@wideCell[0])[..0];
     let emptyDebug: Debug = emptyWide;
     Assert(Same(Render(allocator, "{}", emptyWide), ""), "an empty UTF-32 slice is nothing");
     Assert(Inspected(emptyDebug, "\"\""), "and inspects as empty quotes");

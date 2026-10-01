@@ -113,9 +113,9 @@ func Main() -> int {
     // An option names its case and shows its payload the way the payload shows itself — quoted, here, because that
     // is what a string's Debug is.
     var some = Option::Some<StringView>(hello);
-    var none = Option::None<StringView>();
+    var absent = Option::None<StringView>();
     Assert(ShownOption(some, plain, "Some(\"hello\")"), "a full option names its case around its payload");
-    Assert(ShownOption(none, plain, "None"), "and an empty one is the case alone");
+    Assert(ShownOption(absent, plain, "None"), "and an empty one is the case alone");
 
     // The empty payload is where a wrapper that wrote nothing would be indistinguishable from one that worked.
     var empty = Option::Some<StringView>(StringView::FromValidated(""));

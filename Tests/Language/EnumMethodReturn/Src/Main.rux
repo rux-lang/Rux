@@ -83,8 +83,8 @@ func Main() -> int {
     var pairs = Pairs { index: 0i32 };
     let zero = match pairs.Next() { .Some(value) => value, .None => -1i64 };
     let hundred = match pairs.Next() { .Some(value) => value, .None => -1i64 };
-    let none = match pairs.Next() { .Some(value) => value, .None => -1i64 };
-    Assert(zero == 0i64 && hundred == 100i64 && none == -1i64,
+    let drained = match pairs.Next() { .Some(value) => value, .None => -1i64 };
+    Assert(zero == 0i64 && hundred == 100i64 && drained == -1i64,
            "Expected an int64 payload to survive being returned and matched");
 
     return 0;

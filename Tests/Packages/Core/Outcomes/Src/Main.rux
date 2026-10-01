@@ -20,9 +20,9 @@ func Main() -> int {
     let copiedSome = some;
     Assert(copiedSome.IsSome() && (<-some).ValueOr(9i32) == 7i32, "Some copy and consuming extraction");
 
-    let none = Option::None<int32>();
-    Assert(none.IsNone() && !none.IsSome(), "None tag inspection");
-    Assert((<-none).ValueOr(9i32) == 9i32, "None fallback extraction");
+    let absent = Option::None<int32>();
+    Assert(absent.IsNone() && !absent.IsSome(), "None tag inspection");
+    Assert((<-absent).ValueOr(9i32) == 9i32, "None fallback extraction");
 
     var extracted = 0i32;
     Assert(Option::Some<int32>(11i32).TryIntoValue(@extracted), "Option output extraction");
