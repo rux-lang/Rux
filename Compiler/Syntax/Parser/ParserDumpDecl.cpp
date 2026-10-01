@@ -50,6 +50,14 @@ std::string DeclarationPrinter::TypeString(const TypeExpr *type) {
     if (!type) {
         return "<null>";
     }
+    // Source grouping is printed where the source wrote it, so a dump reads back as the type that was parsed.
+    if (type->parenthesized) {
+        return "(" + UngroupedTypeString(type) + ")";
+    }
+    return UngroupedTypeString(type);
+}
+
+std::string DeclarationPrinter::UngroupedTypeString(const TypeExpr *type) {
     if (const auto *named = dynamic_cast<const NamedTypeExpr *>(type)) {
         std::string result = named->name;
         if (!named->typeArgs.empty()) {
@@ -77,8 +85,9 @@ std::string DeclarationPrinter::TypeString(const TypeExpr *type) {
     // An element that is itself a pointer, reference or range is parenthesized so the bracket reads as the outer type.
     const auto bracketElement = [&](const TypeExpr *element) {
         std::string text = TypeString(element);
-        if (dynamic_cast<const PointerTypeExpr *>(element) || dynamic_cast<const ReferenceTypeExpr *>(element) ||
-            dynamic_cast<const RangeTypeExpr *>(element)) {
+        if (element && !element->parenthesized &&
+            (dynamic_cast<const PointerTypeExpr *>(element) || dynamic_cast<const ReferenceTypeExpr *>(element) ||
+             dynamic_cast<const RangeTypeExpr *>(element))) {
             text = "(" + text + ")";
         }
         return text;
@@ -99,16 +108,18 @@ std::string DeclarationPrinter::TypeString(const TypeExpr *type) {
     }
     if (const auto *pointer = dynamic_cast<const PointerTypeExpr *>(type)) {
         std::string pointee = TypeString(pointer->pointee.get());
-        if (dynamic_cast<const ArrayTypeExpr *>(pointer->pointee.get()) ||
-            dynamic_cast<const SliceTypeExpr *>(pointer->pointee.get())) {
+        if (pointer->pointee && !pointer->pointee->parenthesized &&
+            (dynamic_cast<const ArrayTypeExpr *>(pointer->pointee.get()) ||
+             dynamic_cast<const SliceTypeExpr *>(pointer->pointee.get()))) {
             pointee = "(" + pointee + ")";
         }
         return (pointer->pointeeMut ? "*var " : "*") + pointee;
     }
     if (const auto *reference = dynamic_cast<const ReferenceTypeExpr *>(type)) {
         std::string pointee = TypeString(reference->pointee.get());
-        if (dynamic_cast<const ArrayTypeExpr *>(reference->pointee.get()) ||
-            dynamic_cast<const SliceTypeExpr *>(reference->pointee.get())) {
+        if (reference->pointee && !reference->pointee->parenthesized &&
+            (dynamic_cast<const ArrayTypeExpr *>(reference->pointee.get()) ||
+             dynamic_cast<const SliceTypeExpr *>(reference->pointee.get()))) {
             pointee = "(" + pointee + ")";
         }
         return (reference->pointeeMut ? "&var " : "&") + pointee;
@@ -128,6 +139,23 @@ std::string DeclarationPrinter::TypeString(const TypeExpr *type) {
     }
     if (dynamic_cast<const SelfTypeExpr *>(type)) {
         return "self";
+    }
+    if (const auto *sum = dynamic_cast<const SumTypeExpr *>(type)) {
+        std::string result;
+        for (std::size_t index = 0; index < sum->members.size(); ++index) {
+            if (index) {
+                result += " | ";
+            }
+            result += TypeString(sum->members[index].get());
+        }
+        return result;
+    }
+    if (const auto *optional = dynamic_cast<const OptionalTypeExpr *>(type)) {
+        return TypeString(optional->payload.get()) + "?";
+    }
+    if (const auto *fallible = dynamic_cast<const FallibleTypeExpr *>(type)) {
+        return (fallible->success ? TypeString(fallible->success.get()) + " ! " : "! ") +
+               TypeString(fallible->error.get());
     }
     return "<type>";
 }

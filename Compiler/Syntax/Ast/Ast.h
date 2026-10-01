@@ -29,6 +29,9 @@ using DeclPtr = std::unique_ptr<Decl>;
 
 struct TypeExpr {
     SourceLocation location;
+    /// Whether the source wrapped this type in its own parentheses. Grouping never changes a type, but the grammar
+    /// requires it in some positions, such as an optional sum member `A | (B?)`, so the parser keeps the fact.
+    bool parenthesized = false;
     virtual ~TypeExpr() = default;
 };
 
@@ -95,6 +98,46 @@ struct FunctionTypeExpr : TypeExpr {
     std::optional<TypeExprPtr> returnType; // nullopt => no return value (opaque)
     bool isVariadic = false;               // trailing C-style ...
 };
+
+/// A sum type `A | B | C`. The members are kept in source order; semantic analysis normalizes the set.
+struct SumTypeExpr : TypeExpr {
+    std::vector<TypeExprPtr> members;
+};
+
+/// An optional type `T?`. `T??` is two of these, one per presence level.
+struct OptionalTypeExpr : TypeExpr {
+    TypeExprPtr payload;
+};
+
+/// A fallible type `T ! E`, or `! E` with a unit success, in which case `success` is null.
+struct FallibleTypeExpr : TypeExpr {
+    TypeExprPtr success;
+    TypeExprPtr error;
+};
+
+/// The types written inside a sum, optional, or fallible type, in source order, so a walker that only needs to visit
+/// them does not repeat each form's layout. Empty for every other node; an absent child is skipped.
+[[nodiscard]] inline std::vector<const TypeExpr *> NativeTypeChildren(const TypeExpr &type) {
+    std::vector<const TypeExpr *> children;
+    const auto add = [&children](const TypeExprPtr &child) {
+        if (child) {
+            children.push_back(child.get());
+        }
+    };
+    if (const auto *sum = dynamic_cast<const SumTypeExpr *>(&type)) {
+        for (const TypeExprPtr &member : sum->members) {
+            add(member);
+        }
+    }
+    else if (const auto *optional = dynamic_cast<const OptionalTypeExpr *>(&type)) {
+        add(optional->payload);
+    }
+    else if (const auto *fallible = dynamic_cast<const FallibleTypeExpr *>(&type)) {
+        add(fallible->success);
+        add(fallible->error);
+    }
+    return children;
+}
 
 // Block
 

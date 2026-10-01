@@ -1,0 +1,7 @@
+8:17: error: sum types are not supported yet
+10:22: error: optional types are not supported yet
+10:38: error: optional types are not supported yet
+12:22: error: fallible types are not supported yet
+12:56: error: fallible types are not supported yet
+14:21: error: optional types are not supported yet
+14:52: error: optional types are not supported yet

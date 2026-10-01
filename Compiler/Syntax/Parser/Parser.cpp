@@ -382,6 +382,21 @@ bool Parser::IsTypeArgListAhead() const noexcept {
         // A slice or range argument: `Option<int[..]>`, `Box<int..int>`.
         case TokenKind::DotDot:
         case TokenKind::DotDotEqual:
+        // A sum, fallible, reference, or function argument: `Box<A | B>`, `Box<T ! E>`, `Box<! E>`, `Box<&T>`, and
+        // `Box<(func() -> A) | B>`.
+        case TokenKind::Pipe:
+        case TokenKind::Bang:
+        case TokenKind::Amp:
+        case TokenKind::FuncKeyword:
+        case TokenKind::Arrow:
+            continue;
+        // An optional argument, `Box<T?>` or `Box<T??>`, touches its type; a separated `?` is a conditional, so
+        // `x as T < y ? a : b` keeps comparing.
+        case TokenKind::Question:
+        case TokenKind::QuestionQuestion:
+            if (Peek(ahead).precededBySpace) {
+                return false;
+            }
             continue;
         default:
             return false;

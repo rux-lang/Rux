@@ -9,7 +9,17 @@
 
 namespace Rux {
 namespace {
+std::string UngroupedTypeText(const TypeExpr *type);
+
+/// Spell a type with the grouping its source wrote, so a dump reads back as the type that was parsed.
 std::string TypeText(const TypeExpr *type) {
+    if (type && type->parenthesized) {
+        return "(" + UngroupedTypeText(type) + ")";
+    }
+    return UngroupedTypeText(type);
+}
+
+std::string UngroupedTypeText(const TypeExpr *type) {
     if (!type) {
         return "?";
     }
@@ -65,6 +75,23 @@ std::string TypeText(const TypeExpr *type) {
     }
     if (dynamic_cast<const SelfTypeExpr *>(type)) {
         return "self";
+    }
+    if (const auto *sum = dynamic_cast<const SumTypeExpr *>(type)) {
+        std::string text;
+        for (std::size_t index = 0; index < sum->members.size(); ++index) {
+            if (index != 0) {
+                text += " | ";
+            }
+            text += TypeText(sum->members[index].get());
+        }
+        return text;
+    }
+    if (const auto *optional = dynamic_cast<const OptionalTypeExpr *>(type)) {
+        return TypeText(optional->payload.get()) + "?";
+    }
+    if (const auto *fallible = dynamic_cast<const FallibleTypeExpr *>(type)) {
+        return (fallible->success ? TypeText(fallible->success.get()) + " ! " : std::string("! ")) +
+               TypeText(fallible->error.get());
     }
     return "?";
 }

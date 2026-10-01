@@ -313,9 +313,18 @@ std::string RenderDocumentation(const Syntax::Documentation &documentation, Find
     return output.str();
 }
 
+std::string UngroupedTypeText(const TypeExpr *type);
+
 /// Spell a type the way it was written in source, since documentation should show the reader the syntax they would type
-/// rather than an internal normal form.
+/// rather than an internal normal form. That includes its grouping, which some positions require.
 std::string TypeText(const TypeExpr *type) {
+    if (type && type->parenthesized) {
+        return "(" + UngroupedTypeText(type) + ")";
+    }
+    return UngroupedTypeText(type);
+}
+
+std::string UngroupedTypeText(const TypeExpr *type) {
     if (!type)
         return "?";
     if (const auto *named = dynamic_cast<const NamedTypeExpr *>(type)) {
@@ -378,6 +387,23 @@ std::string TypeText(const TypeExpr *type) {
         if (function->returnType)
             text += " -> " + TypeText(function->returnType->get());
         return text;
+    }
+    if (const auto *sum = dynamic_cast<const SumTypeExpr *>(type)) {
+        std::string text;
+        for (std::size_t index = 0; index < sum->members.size(); ++index) {
+            if (index != 0) {
+                text += " | ";
+            }
+            text += TypeText(sum->members[index].get());
+        }
+        return text;
+    }
+    if (const auto *optional = dynamic_cast<const OptionalTypeExpr *>(type)) {
+        return TypeText(optional->payload.get()) + "?";
+    }
+    if (const auto *fallible = dynamic_cast<const FallibleTypeExpr *>(type)) {
+        return (fallible->success ? TypeText(fallible->success.get()) + " ! " : std::string("! ")) +
+               TypeText(fallible->error.get());
     }
     return "?";
 }

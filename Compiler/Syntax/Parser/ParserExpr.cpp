@@ -349,11 +349,24 @@ ExprPtr Parser::ParseCast() {
     if (!left) {
         return nullptr;
     }
+    // A cast or test target is a postfix type, so it ends before `..`, `|`, and `!`; a sum or fallible target is
+    // grouped, `value is (A | B)`. No expression continues with `!`, so one there is always an ungrouped fallible
+    // target.
+    const auto rejectUngroupedFallible = [this](const std::string_view keyword) {
+        if (!Check(TokenKind::Bang)) {
+            return;
+        }
+        EmitError(CurrentLocation(), std::format("a fallible type after '{}' must be grouped", keyword),
+                  std::format("write 'value {} (T ! E)'", keyword));
+        Advance();
+        ParseSumType();
+    };
     while (CheckAny({TokenKind::AsKeyword, TokenKind::IsKeyword})) {
         const auto loc = CurrentLocation();
         if (Match(TokenKind::AsKeyword)) {
             // A cast target ends before a range operator, so `value as int..limit` is still a range of casts.
             auto type = ParsePostfixType();
+            rejectUngroupedFallible("as");
             auto e = std::make_unique<CastExpr>();
             e->location = loc;
             e->operand = std::move(left);
@@ -363,6 +376,7 @@ ExprPtr Parser::ParseCast() {
         else {
             Match(TokenKind::IsKeyword);
             auto type = ParsePostfixType();
+            rejectUngroupedFallible("is");
             auto e = std::make_unique<IsExpr>();
             e->location = loc;
             e->operand = std::move(left);
@@ -805,6 +819,12 @@ ExprPtr Parser::ParsePrimary() {
     }
     // Grouped expression or tuple: (expr)  or  (expr, expr, ...)
     if (Match(TokenKind::LeftParen)) {
+        // Empty parentheses are the unit value, the one value of the empty tuple type `()`.
+        if (Match(TokenKind::RightParen)) {
+            auto unit = std::make_unique<TupleExpr>();
+            unit->location = loc;
+            return unit;
+        }
         const bool savedStructInitAllowed = structInitAllowed;
         structInitAllowed = true;
         auto first = ParseRequiredExpr("after '('");

@@ -318,6 +318,11 @@ void AnalysisContext::ImportSignatureDependencies(const Symbol &sym,
                 self(**fn->returnType);
             }
         }
+        else {
+            for (const TypeExpr *child : NativeTypeChildren(type)) {
+                self(*child);
+            }
+        }
     };
 
     for (const auto *overload : sym.funcOverloads) {

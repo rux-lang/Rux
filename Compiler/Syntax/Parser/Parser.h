@@ -157,7 +157,9 @@ private:
     std::vector<TypeExprPtr> ParseTypeArgs();     ///< <int32, T[], ...>
 
     // Type expressions
-    TypeExprPtr ParseType(std::optional<std::string> help = {});        ///< any type, including var T[..] and T..T
+    TypeExprPtr ParseType(std::optional<std::string> help = {});        ///< any type, including T ! E and A | B
+    TypeExprPtr ParseSumType(std::optional<std::string> help = {});     ///< a type that stops before an ungrouped '!'
+    TypeExprPtr ParseRangeType(std::optional<std::string> help = {});   ///< var T[..] and T..T; stops before '|' or '!'
     TypeExprPtr ParsePostfixType(std::optional<std::string> help = {}); ///< a type without a range operator after it
     TypeExprPtr ParseBaseType(std::optional<std::string> help = {});    ///< named, path, pointer, tuple, self
     TypeExprPtr ParseFunctionType();                                    ///< func(params) -> T

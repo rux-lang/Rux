@@ -300,7 +300,8 @@ namespace {
     if (const auto *tuple = dynamic_cast<const TupleTypeExpr *>(&expression)) {
         return std::ranges::any_of(tuple->elements, [](const TypeExprPtr &element) { return MentionsSelf(*element); });
     }
-    return false;
+    return std::ranges::any_of(NativeTypeChildren(expression),
+                               [](const TypeExpr *child) { return MentionsSelf(*child); });
 }
 } // namespace
 

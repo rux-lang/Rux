@@ -58,6 +58,8 @@ public:
 
     void Print(const Decl &decl);
     [[nodiscard]] static std::string TypeString(const TypeExpr *type);
+    /// The type without the parentheses its source may have wrapped around it.
+    [[nodiscard]] static std::string UngroupedTypeString(const TypeExpr *type);
 
 private:
     AstDumpWriter &writer;

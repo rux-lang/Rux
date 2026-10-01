@@ -485,6 +485,8 @@ private:
     const std::unordered_map<const FuncDecl *, std::string> &functionDeclFiles;
     const std::unordered_map<const Decl *, SemanticProgramIndex::DeclarationInfo> &declarationInfos;
     std::unordered_set<const TypeExpr *> reportedPrivateApiTypes;
+    /// Native type nodes already reported as unsupported; a signature is resolved more than once.
+    std::unordered_set<const TypeExpr *> reportedPendingNativeTypes;
     std::unordered_set<const Decl *> reportedPrivateApiDeclarations;
     std::unordered_map<const ConstDecl *, TypeRef> checkedConstantTypes;
     std::unordered_set<const ConstDecl *> checkingConstants;

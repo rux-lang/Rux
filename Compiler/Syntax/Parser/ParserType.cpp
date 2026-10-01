@@ -11,14 +11,77 @@ namespace Rux {
 
 bool Parser::CanStartType() const noexcept {
     return CheckAny({TokenKind::Ident, TokenKind::Star, TokenKind::Amp, TokenKind::LeftParen, TokenKind::FuncKeyword,
-                     TokenKind::SelfKeyword, TokenKind::VarKeyword});
+                     TokenKind::SelfKeyword, TokenKind::VarKeyword, TokenKind::Bang});
 }
 
-/// A type, with the two spellings that reach past a postfix type: `var T[..]`, which qualifies a slice's elements, and
+/// A complete type: a sum, optionally followed by one `!` and the error sum, or a leading `!` and the error sum for a
+/// unit success. `|` binds more tightly than `!`, so `A | B ! E | F` is `(A | B) ! (E | F)`, and a second
+/// unparenthesized `!` is reported rather than read as a nested fallible.
+TypeExprPtr Parser::ParseType(std::optional<std::string> help) {
+    const auto loc = CurrentLocation();
+    TypeExprPtr success;
+    if (!Check(TokenKind::Bang)) {
+        success = ParseSumType(std::move(help));
+        if (!success || !Check(TokenKind::Bang)) {
+            return success;
+        }
+    }
+    Advance(); // consume '!'
+    auto fallible = std::make_unique<FallibleTypeExpr>();
+    fallible->location = loc;
+    fallible->success = std::move(success);
+    fallible->error = ParseSumType("add the error type after '!'");
+    if (const auto *optional = dynamic_cast<const OptionalTypeExpr *>(fallible->error.get());
+        optional && !optional->parenthesized) {
+        EmitError(optional->location, "an optional error type must be grouped",
+                  "write 'T ! (E?)' for an optional error, or '(T ! E)?' for an optional result");
+    }
+    if (Check(TokenKind::Bang)) {
+        EmitError(CurrentLocation(), "a type contains at most one unparenthesized '!'",
+                  "group the nested fallible, as in '(T ! E) ! F' or 'T ! (E ! F)'");
+        Advance();
+        ParseSumType();
+    }
+    return fallible;
+}
+
+/// A sum of range-level types joined by `|`. A member that is an optional, or a function type after the first member,
+/// must be grouped: `A | B?` reads as either `A | (B?)` or `(A | B)?`, and a function's return type would otherwise
+/// extend over the members that follow it.
+TypeExprPtr Parser::ParseSumType(std::optional<std::string> help) {
+    const auto loc = CurrentLocation();
+    TypeExprPtr first = ParseRangeType(std::move(help));
+    if (!first || !Check(TokenKind::Pipe)) {
+        return first;
+    }
+    auto sum = std::make_unique<SumTypeExpr>();
+    sum->location = loc;
+    sum->members.push_back(std::move(first));
+    while (Match(TokenKind::Pipe)) {
+        sum->members.push_back(ParseRangeType("add a member type after '|'"));
+    }
+    for (std::size_t index = 0; index < sum->members.size(); ++index) {
+        const TypeExpr *member = sum->members[index].get();
+        if (!member || member->parenthesized) {
+            continue;
+        }
+        if (dynamic_cast<const OptionalTypeExpr *>(member)) {
+            EmitError(member->location, "an optional sum member must be grouped",
+                      "write 'A | (B?)' for an optional member, or '(A | B)?' for an optional sum");
+        }
+        else if (index > 0 && dynamic_cast<const FunctionTypeExpr *>(member)) {
+            EmitError(member->location, "a function type in a sum must be grouped",
+                      "write '(func() -> T) | U' so the return type ends before the next member");
+        }
+    }
+    return sum;
+}
+
+/// A type with the two spellings that reach past a postfix type: `var T[..]`, which qualifies a slice's elements, and
 /// the range spellings `T..T`, `T..=T`, `T..`, `..T`, `..=T` and `..`, whose bounds hold the element type. A range
 /// does not chain, so `int..int..int` is reported at the second operator, and a range whose element is itself a range
-/// is written in parentheses.
-TypeExprPtr Parser::ParseType(std::optional<std::string> help) {
+/// is written in parentheses. It stops before `|` and `!`, which belong to the sum and fallible levels above it.
+TypeExprPtr Parser::ParseRangeType(std::optional<std::string> help) {
     const auto loc = CurrentLocation();
 
     // A range with no lower bound: `..T`, `..=T` and the full range `..`.
@@ -39,6 +102,11 @@ TypeExprPtr Parser::ParseType(std::optional<std::string> help) {
         auto element = ParsePostfixType("add the slice type after 'var'");
         if (auto *slice = dynamic_cast<SliceTypeExpr *>(element.get())) {
             slice->elementMut = true;
+        }
+        else if (const auto *optional = dynamic_cast<const OptionalTypeExpr *>(element.get());
+                 optional && dynamic_cast<const SliceTypeExpr *>(optional->payload.get())) {
+            EmitError(loc, "'var' in a type qualifies only a slice's elements",
+                      "write '(var T[..])?' for an optional writable slice");
         }
         else if (element) {
             EmitError(loc, "'var' in a type qualifies only a slice's elements",
@@ -78,7 +146,7 @@ TypeExprPtr Parser::ParsePostfixType(std::optional<std::string> help) {
         auto p = std::make_unique<PointerTypeExpr>();
         p->location = loc;
         p->pointeeMut = pointeeMut;
-        p->pointee = ParseType("add the pointee type after '*'");
+        p->pointee = ParseRangeType("add the pointee type after '*'");
         base = std::move(p);
     }
     // Reference: &T  or  &var T
@@ -87,7 +155,7 @@ TypeExprPtr Parser::ParsePostfixType(std::optional<std::string> help) {
         auto reference = std::make_unique<ReferenceTypeExpr>();
         reference->location = loc;
         reference->pointeeMut = pointeeMut;
-        reference->pointee = ParseType("add the referent type after '&'");
+        reference->pointee = ParseRangeType("add the referent type after '&'");
         base = std::move(reference);
     }
     // Grouped type or tuple: (T) or (T, U, ...)
@@ -114,6 +182,9 @@ TypeExprPtr Parser::ParsePostfixType(std::optional<std::string> help) {
             }
             else {
                 base = std::move(first);
+                if (base) {
+                    base->parenthesized = true;
+                }
             }
         }
         ExpectBefore(TokenKind::RightParen, "')' to close the tuple type");
@@ -125,9 +196,25 @@ TypeExprPtr Parser::ParsePostfixType(std::optional<std::string> help) {
         return nullptr;
     }
 
-    // Postfix bracket suffix: T[] (flexible tail), T[N] (fixed array) or T[..] (slice). A size is a full expression,
-    // and `..` is one too, so the slice spelling is settled by the one token after '[' before any expression is read.
-    while (Check(TokenKind::LeftBracket)) {
+    // Postfix suffixes apply left to right, so `int32?[..]` is a slice of optionals and `int32[..]?` an optional slice.
+    // A bracket suffix is T[] (flexible tail), T[N] (fixed array) or T[..] (slice); a size is a full expression, and
+    // `..` is one too, so the slice spelling is settled by the one token after '[' before any expression is read. An
+    // optional suffix `?` must touch the type, as postfix propagation does, so `flag as bool ? a : b` stays a
+    // conditional; the lexer's `??` is two optional suffixes here.
+    while (true) {
+        if ((Check(TokenKind::Question) || Check(TokenKind::QuestionQuestion)) && !Peek().precededBySpace) {
+            const int levels = Advance().kind == TokenKind::QuestionQuestion ? 2 : 1;
+            for (int level = 0; level < levels; ++level) {
+                auto optional = std::make_unique<OptionalTypeExpr>();
+                optional->location = loc;
+                optional->payload = std::move(base);
+                base = std::move(optional);
+            }
+            continue;
+        }
+        if (!Check(TokenKind::LeftBracket)) {
+            break;
+        }
         Advance();
         if (Check(TokenKind::DotDot) && Peek(1).kind == TokenKind::RightBracket) {
             Advance();

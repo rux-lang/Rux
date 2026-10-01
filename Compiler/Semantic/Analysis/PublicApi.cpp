@@ -57,6 +57,11 @@ void AnalysisContext::ValidatePublicType(const TypeExpr &type, const std::string
             ValidatePublicType(**function->returnType, subject, typeParameters);
         }
     }
+    else {
+        for (const TypeExpr *child : NativeTypeChildren(type)) {
+            ValidatePublicType(*child, subject, typeParameters);
+        }
+    }
 }
 
 void AnalysisContext::ValidatePublicResolvedType(const TypeRef &type, const Decl &declaration,

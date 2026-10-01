@@ -445,6 +445,24 @@ TypeRef AnalysisContext::ResolveTypeImpl(const TypeExpr &expr) {
         return funcType;
     }
 
+    // The native forms parse ahead of their semantics. Each is rejected here, with one stable diagnostic per form,
+    // so no program that spells one reaches lowering before the analysis that gives it meaning exists.
+    const auto rejectPending = [&](const std::string_view form) {
+        if (reportedPendingNativeTypes.insert(&expr).second) {
+            EmitError(expr.location, std::format("{} types are not supported yet", form));
+        }
+        return TypeRef::MakeUnknown();
+    };
+    if (dynamic_cast<const SumTypeExpr *>(&expr)) {
+        return rejectPending("sum");
+    }
+    if (dynamic_cast<const OptionalTypeExpr *>(&expr)) {
+        return rejectPending("optional");
+    }
+    if (dynamic_cast<const FallibleTypeExpr *>(&expr)) {
+        return rejectPending("fallible");
+    }
+
     return TypeRef::MakeUnknown();
 }
 

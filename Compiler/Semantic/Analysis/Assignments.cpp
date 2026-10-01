@@ -227,6 +227,10 @@ void AnalysisContext::ValidateArrayType(const TypeExpr &type, bool allowFlexible
         for (const auto &arg : named->typeArgs) {
             ValidateArrayType(*arg);
         }
+        return;
+    }
+    for (const TypeExpr *child : NativeTypeChildren(type)) {
+        ValidateArrayType(*child);
     }
 }
 
