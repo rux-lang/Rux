@@ -93,6 +93,19 @@ TypeRef AnalysisContext::ParseTypeRefFromString(std::string str) const {
         return *primitive;
     }
 
+    // A fallible or a sum is split at its operator before anything else, since `!` and `|` bind more loosely than a
+    // range, a prefix, or a suffix; nested native forms are grouped in the spelling and so are not split here.
+    if (const auto native = TypeRef::SplitNativeSpelling(str)) {
+        std::vector<TypeRef> parts;
+        for (const std::string &part : native->parts) {
+            parts.push_back(part.empty() ? TypeRef::MakeUnit() : ParseTypeRefFromString(part));
+        }
+        if (native->form == TypeRef::NativeSpelling::Form::Fallible) {
+            return TypeRef::MakeFallible(std::move(parts[0]), std::move(parts[1]));
+        }
+        return TypeRef::MakeSum(std::move(parts));
+    }
+
     // A range operator outside every bracket splits the spelling into its bounds. It is looked for first because it
     // binds loosest: `int[..]..int[..]` is a range of slices, and the `..` inside a bracket is not an operator.
     if (const auto range = TypeRef::SplitRangeSpelling(str)) {
@@ -133,6 +146,10 @@ TypeRef AnalysisContext::ParseTypeRefFromString(std::string str) const {
         }
         return slice;
     }
+    // An optional suffix applies to the whole spelling before it, so `int32??` is read one level at a time.
+    if (str.back() == '?') {
+        return TypeRef::MakeOptional(ParseTypeRefFromString(str.substr(0, str.size() - 1)));
+    }
     if (str.ends_with("[..]")) {
         return TypeRef::MakeSlice(ParseTypeRefFromString(str.substr(0, str.size() - 4)));
     }
@@ -144,6 +161,10 @@ TypeRef AnalysisContext::ParseTypeRefFromString(std::string str) const {
     if (str[0] == '(' && str.back() == ')') {
         std::vector<TypeRef> elems;
         std::string content = str.substr(1, str.size() - 2);
+        // Empty parentheses are the built-in unit, the empty tuple.
+        if (content.find_first_not_of(" 	") == std::string::npos) {
+            return TypeRef::MakeUnit();
+        }
         std::size_t start = 0;
         int depth = 0;
         bool grouped = true;

@@ -80,10 +80,7 @@ TypeRef SubstituteIdentityType(TypeRef type, const std::unordered_map<std::strin
 /// Encode a type into the form a linker name embeds, so two instantiations differing only by argument get distinct
 /// symbols.
 std::string MangleIdentityType(const TypeRef &type) {
-    std::string name;
-    for (const char character : type.ToString()) {
-        name += IdentityCharacter(character) ? character : '_';
-    }
+    const std::string name = type.MangledSpelling();
     return name.empty() ? "_" : name;
 }
 

@@ -4,6 +4,7 @@
 #include "Types/PrimitiveCatalog.h"
 
 #include <algorithm>
+#include <cctype>
 
 namespace Rux {
 namespace {
@@ -347,6 +348,81 @@ std::optional<TypeRef::RangeSpelling> TypeRef::SplitRangeSpelling(const std::str
         }
     }
     return std::nullopt;
+}
+
+namespace {
+/// Visit `text` with the bracket depth of each character, treating the `>` of a function's `->` as no bracket.
+template <typename Visitor>
+void ForEachTopLevelCharacter(const std::string_view text, Visitor &&visit) {
+    int depth = 0;
+    for (std::size_t index = 0; index < text.size(); ++index) {
+        const char character = text[index];
+        if (character == '<' || character == '(' || character == '[') {
+            ++depth;
+        }
+        else if ((character == '>' && (index == 0 || text[index - 1] != '-')) || character == ')' || character == ']') {
+            --depth;
+        }
+        else if (depth == 0) {
+            visit(index);
+        }
+    }
+}
+} // namespace
+
+std::optional<TypeRef::NativeSpelling> TypeRef::SplitNativeSpelling(const std::string_view text) {
+    if (text.starts_with("! ")) {
+        return NativeSpelling{NativeSpelling::Form::Fallible, {"", std::string(text.substr(2))}};
+    }
+    std::optional<std::size_t> bang;
+    std::vector<std::size_t> pipes;
+    ForEachTopLevelCharacter(text, [&](const std::size_t index) {
+        if (index + 2 < text.size() && text[index] == ' ' && text[index + 2] == ' ') {
+            if (text[index + 1] == '!' && !bang) {
+                bang = index;
+            }
+            else if (text[index + 1] == '|') {
+                pipes.push_back(index);
+            }
+        }
+    });
+    if (bang) {
+        return NativeSpelling{NativeSpelling::Form::Fallible,
+                              {std::string(text.substr(0, *bang)), std::string(text.substr(*bang + 3))}};
+    }
+    if (pipes.empty()) {
+        return std::nullopt;
+    }
+    NativeSpelling sum{NativeSpelling::Form::Sum, {}};
+    std::size_t start = 0;
+    for (const std::size_t pipe : pipes) {
+        sum.parts.emplace_back(text.substr(start, pipe - start));
+        start = pipe + 3;
+    }
+    sum.parts.emplace_back(text.substr(start));
+    return sum;
+}
+
+std::string TypeRef::MangledSpelling() const {
+    std::string mangled;
+    for (const char character : ToString()) {
+        if (std::isalnum(static_cast<unsigned char>(character)) || character == '_') {
+            mangled += character;
+        }
+        else if (character == '?') {
+            mangled += "_O";
+        }
+        else if (character == '|') {
+            mangled += "_S";
+        }
+        else if (character == '!') {
+            mangled += "_F";
+        }
+        else {
+            mangled += '_';
+        }
+    }
+    return mangled;
 }
 
 std::string TypeRef::ToString() const {

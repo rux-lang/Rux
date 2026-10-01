@@ -488,6 +488,27 @@ struct TypeRef {
     /// @return nullopt when `text` has no range operator outside its brackets
     [[nodiscard]] static std::optional<RangeSpelling> SplitRangeSpelling(std::string_view text);
 
+    /// The parts of a spelling around its loosest native operator outside every bracket, the inverse of the spelling
+    /// `ToString` gives a fallible or a sum. A fallible splits at its one ` ! ` into the success and error spellings,
+    /// with an empty success for `! E`; otherwise a sum splits at every ` | ` into its members.
+    struct NativeSpelling {
+        enum class Form {
+            Fallible,
+            Sum
+        };
+
+        Form form = Form::Sum;
+        std::vector<std::string> parts;
+    };
+
+    /// @return nullopt when `text` has neither operator outside its brackets
+    [[nodiscard]] static std::optional<NativeSpelling> SplitNativeSpelling(std::string_view text);
+
+    /// The spelling a linker name embeds: alphanumerics and underscores as written, the native operators `?`, `|`,
+    /// and `!` as distinct escapes, and every other character as `_`. Two native forms over the same members, such
+    /// as `A | B` and `A ! B`, therefore never share a symbol.
+    [[nodiscard]] std::string MangledSpelling() const;
+
     bool operator==(const TypeRef &other) const noexcept;
 
     bool operator!=(const TypeRef &other) const noexcept {

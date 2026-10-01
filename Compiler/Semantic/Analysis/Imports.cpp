@@ -417,15 +417,7 @@ void AnalysisContext::CheckUseDecl(const UseDecl &d) {
 }
 
 std::string AnalysisContext::MangleTypeName(const TypeRef &type) {
-    std::string out;
-    for (const char c : type.ToString()) {
-        if (std::isalnum(static_cast<unsigned char>(c)) || c == '_') {
-            out += c;
-        }
-        else {
-            out += '_';
-        }
-    }
+    const std::string out = type.MangledSpelling();
     return out.empty() ? "_" : out;
 }
 } // namespace Rux::SemanticDetail
