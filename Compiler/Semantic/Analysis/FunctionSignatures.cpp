@@ -81,8 +81,10 @@ void AnalysisContext::ResolveDeclSignature(const Decl &declaration) {
         const auto savedParameters = currentTypeParams;
         currentTypeParams = receiverParameters;
         const Symbol *symbol = currentScope->Lookup(BaseTypeName(extension->typeName));
-        const bool canResolve = (symbol && symbol->kind == Symbol::Kind::Type) ||
-                                !dynamic_cast<const NamedTypeExpr *>(extension->extendedType.get());
+        // A native target is rejected where the extension is checked, so it binds no methods here.
+        const bool canResolve = extension->extendedType && !IsNativeTypeExpr(*extension->extendedType) &&
+                                ((symbol && symbol->kind == Symbol::Kind::Type) ||
+                                 !dynamic_cast<const NamedTypeExpr *>(extension->extendedType.get()));
         const TypeRef receiver =
             extension->extendedType && canResolve ? ResolveType(*extension->extendedType) : TypeRef::MakeUnknown();
         currentTypeParams = savedParameters;
@@ -147,8 +149,10 @@ void AnalysisContext::ResolveDeclSignatureInScope(const Decl &declaration, Scope
         const auto savedParameters = currentTypeParams;
         currentTypeParams = receiverParameters;
         const Symbol *symbol = currentScope->Lookup(BaseTypeName(extension->typeName));
-        const bool canResolve = (symbol && symbol->kind == Symbol::Kind::Type) ||
-                                !dynamic_cast<const NamedTypeExpr *>(extension->extendedType.get());
+        // A native target is rejected where the extension is checked, so it binds no methods here.
+        const bool canResolve = extension->extendedType && !IsNativeTypeExpr(*extension->extendedType) &&
+                                ((symbol && symbol->kind == Symbol::Kind::Type) ||
+                                 !dynamic_cast<const NamedTypeExpr *>(extension->extendedType.get()));
         const TypeRef receiver =
             extension->extendedType && canResolve ? ResolveType(*extension->extendedType) : TypeRef::MakeUnknown();
         currentTypeParams = savedParameters;

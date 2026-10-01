@@ -487,6 +487,8 @@ private:
     std::unordered_set<const TypeExpr *> reportedPrivateApiTypes;
     /// Native type nodes already reported as unsupported; a signature is resolved more than once.
     std::unordered_set<const TypeExpr *> reportedPendingNativeTypes;
+    /// How many native type forms enclose the type being resolved; only the outermost one reports as pending.
+    int nativeTypeResolutionDepth = 0;
     std::unordered_set<const Decl *> reportedPrivateApiDeclarations;
     std::unordered_map<const ConstDecl *, TypeRef> checkedConstantTypes;
     std::unordered_set<const ConstDecl *> checkingConstants;

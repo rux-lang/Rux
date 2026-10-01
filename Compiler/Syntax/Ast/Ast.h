@@ -115,6 +115,12 @@ struct FallibleTypeExpr : TypeExpr {
     TypeExprPtr error;
 };
 
+/// Whether `type` is a native sum, optional, or fallible type form.
+[[nodiscard]] inline bool IsNativeTypeExpr(const TypeExpr &type) {
+    return dynamic_cast<const SumTypeExpr *>(&type) || dynamic_cast<const OptionalTypeExpr *>(&type) ||
+           dynamic_cast<const FallibleTypeExpr *>(&type);
+}
+
 /// The types written inside a sum, optional, or fallible type, in source order, so a walker that only needs to visit
 /// them does not repeat each form's layout. Empty for every other node; an absent child is skipped.
 [[nodiscard]] inline std::vector<const TypeExpr *> NativeTypeChildren(const TypeExpr &type) {

@@ -528,6 +528,27 @@ std::string ImplTypeName(const TypeExpr &type) {
         }
         return result;
     }
+    // The native forms and the unit are never extension targets, but they are named so that rejection reads well.
+    const auto grouped = [](const TypeExpr *child) {
+        return child->parenthesized ? "(" + ImplTypeName(*child) + ")" : ImplTypeName(*child);
+    };
+    if (const auto *sum = dynamic_cast<const SumTypeExpr *>(&type)) {
+        std::string result;
+        for (std::size_t index = 0; index < sum->members.size(); ++index) {
+            result += (index != 0 ? " | " : "") + grouped(sum->members[index].get());
+        }
+        return result;
+    }
+    if (const auto *optional = dynamic_cast<const OptionalTypeExpr *>(&type)) {
+        return grouped(optional->payload.get()) + "?";
+    }
+    if (const auto *fallible = dynamic_cast<const FallibleTypeExpr *>(&type)) {
+        return (fallible->success ? grouped(fallible->success.get()) + " ! " : std::string("! ")) +
+               grouped(fallible->error.get());
+    }
+    if (const auto *tuple = dynamic_cast<const TupleTypeExpr *>(&type); tuple && tuple->elements.empty()) {
+        return "()";
+    }
     return "?";
 }
 } // namespace Rux

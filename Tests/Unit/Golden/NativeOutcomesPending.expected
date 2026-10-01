@@ -1,10 +1,10 @@
-8:17: error: sum types are not supported yet
-10:22: error: optional types are not supported yet
-10:38: error: optional types are not supported yet
-12:22: error: fallible types are not supported yet
-12:56: error: fallible types are not supported yet
-14:21: error: optional types are not supported yet
-14:52: error: optional types are not supported yet
+8:17: error: native type 'Defaults | Options' is not supported in compiled code yet
+10:22: error: native type 'int32?' is not supported in compiled code yet
+10:38: error: native type 'int32??' is not supported in compiled code yet
+12:22: error: native type 'Options ! ParseError' is not supported in compiled code yet
+12:56: error: native type '! ParseError' is not supported in compiled code yet
+14:21: error: native type '(Defaults | Options)?' is not supported in compiled code yet
+14:52: error: native type 'int32?' is not supported in compiled code yet
 28:28: error: 'catch' is not supported yet
 28:5: warning: cannot infer type of 'recovered'
 29:24: error: '? else' error mapping is not supported yet

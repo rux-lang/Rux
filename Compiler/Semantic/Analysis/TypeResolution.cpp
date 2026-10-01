@@ -445,22 +445,40 @@ TypeRef AnalysisContext::ResolveTypeImpl(const TypeExpr &expr) {
         return funcType;
     }
 
-    // The native forms parse ahead of their semantics. Each is rejected here, with one stable diagnostic per form,
-    // so no program that spells one reaches lowering before the analysis that gives it meaning exists.
-    const auto rejectPending = [&](const std::string_view form) {
-        if (reportedPendingNativeTypes.insert(&expr).second) {
-            EmitError(expr.location, std::format("{} types are not supported yet", form));
+    // A native form resolves its children, and normalizes a sum, through the same `ResolveType` that records each
+    // child's fact. Lowering cannot represent these types yet, so the outermost native form of each written type is
+    // rejected once after it resolves; a child that fails to resolve has already been reported and adds nothing more.
+    if (IsNativeTypeExpr(expr)) {
+        ++nativeTypeResolutionDepth;
+        std::vector<TypeRef> resolved;
+        bool unknown = false;
+        for (const TypeExpr *child : NativeTypeChildren(expr)) {
+            resolved.push_back(ResolveType(*child));
+            unknown = unknown || resolved.back().IsUnknown();
         }
-        return TypeRef::MakeUnknown();
-    };
-    if (dynamic_cast<const SumTypeExpr *>(&expr)) {
-        return rejectPending("sum");
-    }
-    if (dynamic_cast<const OptionalTypeExpr *>(&expr)) {
-        return rejectPending("optional");
-    }
-    if (dynamic_cast<const FallibleTypeExpr *>(&expr)) {
-        return rejectPending("fallible");
+        --nativeTypeResolutionDepth;
+        if (unknown || resolved.empty()) {
+            return TypeRef::MakeUnknown();
+        }
+        TypeRef type;
+        if (dynamic_cast<const SumTypeExpr *>(&expr)) {
+            type = TypeRef::MakeSum(std::move(resolved));
+        }
+        else if (dynamic_cast<const OptionalTypeExpr *>(&expr)) {
+            type = TypeRef::MakeOptional(std::move(resolved.front()));
+        }
+        else {
+            // `! E` writes no success type; its success is the built-in unit.
+            const bool hasSuccess = static_cast<const FallibleTypeExpr &>(expr).success != nullptr;
+            TypeRef error = std::move(resolved.back());
+            TypeRef success = hasSuccess ? std::move(resolved.front()) : TypeRef::MakeUnit();
+            type = TypeRef::MakeFallible(std::move(success), std::move(error));
+        }
+        if (nativeTypeResolutionDepth == 0 && reportedPendingNativeTypes.insert(&expr).second) {
+            EmitError(expr.location,
+                      std::format("native type '{}' is not supported in compiled code yet", type.ToString()));
+        }
+        return type;
     }
 
     return TypeRef::MakeUnknown();

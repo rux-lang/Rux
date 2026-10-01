@@ -801,7 +801,10 @@ bool AnalysisContext::TypeStoresReference(const TypeRef &type) {
     if (type.kind == TypeRef::Kind::Reference) {
         return true;
     }
-    if (type.kind == TypeRef::Kind::Array || type.kind == TypeRef::Kind::Tuple) {
+    // A native sum, optional, or fallible stores its payloads the way a tuple stores its elements, so one holding a
+    // reference anywhere is reference-storing as a whole.
+    if (type.kind == TypeRef::Kind::Array || type.kind == TypeRef::Kind::Tuple || type.IsSum() || type.IsOptional() ||
+        type.IsFallible()) {
         return std::ranges::any_of(type.inner, [&](const TypeRef &element) { return TypeStoresReference(element); });
     }
     if (type.kind != TypeRef::Kind::Named) {

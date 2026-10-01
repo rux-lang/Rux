@@ -328,6 +328,17 @@ void AnalysisContext::CheckImplDecl(const ImplDecl &d) {
         currentTypeParams = savedTypeParams;
         return;
     }
+    // A native form or the unit has no declaring package to own a method set or an interface implementation.
+    if (const TypeExpr *target = d.extendedType.get();
+        target && (IsNativeTypeExpr(*target) || (dynamic_cast<const TupleTypeExpr *>(target) &&
+                                                 static_cast<const TupleTypeExpr *>(target)->elements.empty()))) {
+        EmitError(d.location, std::format("cannot extend native type '{}'", d.typeName),
+                  {"a sum, optional, fallible, or unit type has no declaring package to own methods or interface "
+                   "implementations"},
+                  "write a generic function that takes the native type as a parameter");
+        currentTypeParams = savedTypeParams;
+        return;
+    }
     const bool receiverMayResolve =
         extendedSymbol != nullptr || !dynamic_cast<const NamedTypeExpr *>(d.extendedType.get());
     TypeRef extendedType = d.extendedType && receiverMayResolve ? ResolveType(*d.extendedType) : TypeRef::MakeUnknown();
