@@ -9,6 +9,9 @@ namespace Rux::Layout {
 namespace {
 [[nodiscard]] int RuntimeAlignmentOf(const TypeRef &type, const LayoutMap &layouts,
                                      const std::unordered_set<std::string> &interfaceNames) {
+    if (const auto native = RuntimeNativeLayout(type, layouts, interfaceNames)) {
+        return static_cast<int>(native->alignment);
+    }
     if (type.kind == TypeRef::Kind::Array) {
         return type.inner.empty() ? 1 : RuntimeAlignmentOf(type.inner.front(), layouts, interfaceNames);
     }
@@ -42,7 +45,7 @@ namespace {
     for (std::size_t i = 0; i < index; ++i) {
         const int size = RuntimeSizeOf(tuple.inner[i], layouts, interfaceNames);
         offset = AlignUp(offset, RuntimeAlignmentOf(tuple.inner[i], layouts, interfaceNames));
-        offset += size > 0 ? size : 8;
+        offset += size;
     }
     return AlignUp(offset, RuntimeAlignmentOf(tuple.inner[index], layouts, interfaceNames));
 }
@@ -79,6 +82,12 @@ int SizeOf(const TypeRef &t) {
     if (const auto primitive = PrimitiveSize(t.kind, 8)) {
         return static_cast<int>(*primitive);
     }
+    if (const auto native = ComputeNativeLayout(t, [](const TypeRef &member) -> std::optional<SizeAndAlignment> {
+            return SizeAndAlignment{static_cast<std::uint64_t>(SizeOf(member)),
+                                    static_cast<std::uint64_t>(AlignOf(member))};
+        })) {
+        return static_cast<int>(native->size);
+    }
     switch (t.kind) {
     case TypeRef::Kind::Opaque:
         return 0;
@@ -91,7 +100,7 @@ int SizeOf(const TypeRef &t) {
             if (al > 1) {
                 offset = AlignUp(offset, al);
             }
-            offset += sz > 0 ? sz : 8;
+            offset += sz;
             maxAlign = std::max(maxAlign, al);
         }
         return AlignUp(offset, maxAlign);
@@ -127,6 +136,12 @@ int SizeOf(const TypeRef &t) {
 }
 
 int AlignOf(const TypeRef &t) {
+    if (const auto native = ComputeNativeLayout(t, [](const TypeRef &member) -> std::optional<SizeAndAlignment> {
+            return SizeAndAlignment{static_cast<std::uint64_t>(SizeOf(member)),
+                                    static_cast<std::uint64_t>(AlignOf(member))};
+        })) {
+        return static_cast<int>(native->alignment);
+    }
     if (t.kind == TypeRef::Kind::Array) {
         return t.inner.empty() ? 1 : AlignOf(t.inner[0]);
     }
@@ -233,7 +248,21 @@ void BuildStructLayouts(const std::vector<LirStructDecl> &structs, LayoutMap &la
     }
 }
 
+std::optional<NativeLayout> RuntimeNativeLayout(const TypeRef &t, const LayoutMap &layouts,
+                                                const std::unordered_set<std::string> &interfaceNames) {
+    if (!t.IsSum() && !t.IsOptional() && !t.IsFallible()) {
+        return std::nullopt;
+    }
+    return ComputeNativeLayout(t, [&](const TypeRef &member) -> std::optional<SizeAndAlignment> {
+        return SizeAndAlignment{static_cast<std::uint64_t>(RuntimeSizeOf(member, layouts, interfaceNames)),
+                                static_cast<std::uint64_t>(RuntimeAlignmentOf(member, layouts, interfaceNames))};
+    });
+}
+
 int RuntimeSizeOf(const TypeRef &t, const LayoutMap &layouts, const std::unordered_set<std::string> &interfaceNames) {
+    if (const auto native = RuntimeNativeLayout(t, layouts, interfaceNames)) {
+        return static_cast<int>(native->size);
+    }
     // A composite's size follows from its elements', and an element may be a struct that only the layout map can size.
     // Recurse here rather than falling through to SizeOf, which has no layout map and charges eight bytes for every
     // struct it cannot measure: an array would then reserve less stack than it occupies and overrun its own frame.
@@ -252,7 +281,7 @@ int RuntimeSizeOf(const TypeRef &t, const LayoutMap &layouts, const std::unorder
             if (alignment > 1) {
                 offset = AlignUp(offset, alignment);
             }
-            offset += size > 0 ? size : 8;
+            offset += size;
             maxAlign = std::max(maxAlign, alignment);
         }
         return AlignUp(offset, maxAlign);

@@ -5,6 +5,7 @@
 
 #include "Ir/Lir/Lir.h"
 #include "Target/Layout.h"
+#include "Types/NativeLayout.h"
 #include "Types/Type.h"
 
 #include <string>
@@ -74,6 +75,11 @@ using LayoutMap = std::unordered_map<std::string, StructLayout>;
 /// same file or a later one -- is sized by its declaration rather than by the one-word fallback.
 void BuildStructLayouts(const std::vector<LirStructDecl> &structs, LayoutMap &layouts,
                         const std::unordered_set<std::string> &interfaceNames);
+
+/// The shared native layout of a sum, optional, or fallible, with each member sized by the runtime layout rules, or
+/// nullopt for any other type. Every stage that stores, matches, copies, or passes a native value reads this record.
+[[nodiscard]] std::optional<NativeLayout> RuntimeNativeLayout(const TypeRef &t, const LayoutMap &layouts,
+                                                              const std::unordered_set<std::string> &interfaceNames);
 
 /// Size of a LIR type as the running program lays it out, which is what a stack slot and a copy are measured in. SizeOf
 /// alone cannot answer for a named type: an interface value is a fat pointer whether or not the module declaring it is

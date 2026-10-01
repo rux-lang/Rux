@@ -414,8 +414,9 @@ TEST_CASE("generic zero-sized and pointer payloads keep distinct valid layouts")
     )",
                                         {"Maybe<Marker>", "Maybe<*Marker>"});
 
+    // A zero-sized payload reserves no bytes, so the variant is its tag alone.
     CHECK_EQ(layouts.at("Maybe<Marker>").alignment, 8);
-    CHECK_EQ(layouts.at("Maybe<Marker>").size, 16);
+    CHECK_EQ(layouts.at("Maybe<Marker>").size, 8);
     CHECK_EQ(layouts.at("Maybe<*Marker>").alignment, 8);
     CHECK_EQ(layouts.at("Maybe<*Marker>").size, 16);
     CHECK_EQ(layouts.at("Maybe<Marker>").size % layouts.at("Maybe<Marker>").alignment, 0);

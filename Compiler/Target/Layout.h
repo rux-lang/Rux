@@ -40,7 +40,7 @@ template <typename Range, typename SizeFn>
         if (align > 1) {
             offset = AlignUp(offset, align);
         }
-        offset += *fieldSize > 0 ? *fieldSize : 8;
+        offset += *fieldSize;
         maxAlign = std::max(maxAlign, align);
     }
     return std::pair{AlignUp(offset, maxAlign), maxAlign};

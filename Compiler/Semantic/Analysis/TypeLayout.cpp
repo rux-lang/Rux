@@ -4,6 +4,7 @@
 #include "Semantic/Conditional/ConditionalCompilation.h"
 #include "Target/Layout.h"
 #include "Target/Target.h"
+#include "Types/NativeLayout.h"
 #include "Types/Type.h"
 
 #include <algorithm>
@@ -130,7 +131,8 @@ AnalysisContext::LayoutOfTypeRef(const TypeRef &inputType,
                 return finish(std::nullopt);
             }
             offset = *alignedOffset;
-            const auto end = checkedAdd(offset, elementLayout->size > 0 ? elementLayout->size : 8);
+            // A zero-sized element, such as the unit, reserves no bytes, as it reserves none in a struct.
+            const auto end = checkedAdd(offset, elementLayout->size);
             if (!end) {
                 return finish(std::nullopt);
             }
@@ -170,6 +172,17 @@ AnalysisContext::LayoutOfTypeRef(const TypeRef &inputType,
         return finish(size ? std::optional(ResolvedTypeLayout{*size, elementLayout->alignment}) : std::nullopt);
     }
 
+    // A native sum, optional, or fallible takes the shared native layout, laid out from its members' own layouts.
+    if (inputType.IsSum() || inputType.IsOptional() || inputType.IsFallible()) {
+        const auto native =
+            ComputeNativeLayout(inputType, [&](const TypeRef &member) -> std::optional<SizeAndAlignment> {
+                const auto memberLayout = LayoutOfTypeRef(member, substitutions);
+                return memberLayout ? std::optional(SizeAndAlignment{memberLayout->size, memberLayout->alignment})
+                                    : std::nullopt;
+            });
+        return finish(native ? std::optional(ResolvedTypeLayout{native->size, native->alignment}) : std::nullopt);
+    }
+
     const auto size = inputType.SizeInBytes();
     return finish(size ? std::optional(ResolvedTypeLayout{*size, Layout::FieldAlign(*size)}) : std::nullopt);
 }
@@ -192,7 +205,7 @@ AnalysisContext::LayoutOfFields(const std::vector<TypeRef> &fields,
         if (fieldLayout->size > std::numeric_limits<std::uint64_t>::max() - offset) {
             return std::nullopt;
         }
-        offset += fieldLayout->size > 0 ? fieldLayout->size : 8;
+        offset += fieldLayout->size;
         alignment = std::max(alignment, fieldLayout->alignment);
     }
     const auto size = CheckedAlignUp(offset, alignment);
