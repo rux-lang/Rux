@@ -296,6 +296,13 @@ TypeRef AnalysisContext::CheckExpr(const Expr &expr) {
             callableBindings.erase(call);
         }
     }
+    // Lowering cannot represent native values yet. A program that produces one without writing any native type, as
+    // `let value = .Some(1i32);` does, is rejected once here so it never reaches lowering.
+    if (!nativeValueGateReported && reportedPendingNativeTypes.empty() && MentionsNativeType(type)) {
+        nativeValueGateReported = true;
+        EmitError(expr.location, std::format("native value of type '{}' is not supported in compiled code yet",
+                                             type.IsIncompleteNative() ? std::string("?") : type.ToString()));
+    }
     RecordCheckedExpression(expr, type);
     return type;
 }

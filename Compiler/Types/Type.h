@@ -447,6 +447,34 @@ struct TypeRef {
         return kind == Kind::Optional && inner.size() == 1 && inner[0].kind == Kind::Opaque;
     }
 
+    /// Whether this is the provisional type of a native value its context has not completed yet: `none`, or a
+    /// constructor such as `.Success(v)` whose other channel is still unknown, at any native level. Such a type is
+    /// never declared; the value's expected type supplies the missing part.
+    [[nodiscard]] bool IsIncompleteNative() const noexcept {
+        if (kind != Kind::Optional && kind != Kind::Fallible) {
+            return false;
+        }
+        for (const TypeRef &child : inner) {
+            if (child.kind == Kind::Opaque || child.IsIncompleteNative()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// Whether this type is, or holds at any level, the provisional type of an incomplete native value.
+    [[nodiscard]] bool MentionsIncompleteNative() const noexcept {
+        if (IsIncompleteNative()) {
+            return true;
+        }
+        for (const TypeRef &child : inner) {
+            if (child.MentionsIncompleteNative()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     [[nodiscard]] bool IsFallible() const noexcept {
         return kind == Kind::Fallible;
     }

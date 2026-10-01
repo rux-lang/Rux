@@ -185,11 +185,16 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
         }
         TypeRef initializerType = letStatement->init ? CheckExpr(*letStatement->init) : TypeRef::MakeUnknown();
         TypeRef declarationType = letStatement->type ? ResolveType(**letStatement->type) : initializerType;
-        // `none` names no optional type of its own, so a binding cannot take its type from it.
-        if (!letStatement->type && initializerType.IsNoneValue()) {
+        // `none`, `.Success(v)`, and `.Failure(e)` leave a part of their type to the context, so a binding cannot take
+        // its whole type from one of them.
+        if (!letStatement->type && initializerType.MentionsIncompleteNative()) {
+            const bool isNone = initializerType.IsNoneValue();
             EmitError(letStatement->location,
-                      std::format("cannot infer the type of '{}' from 'none'", letStatement->name), {},
-                      "annotate the optional type, as in 'let value: int32? = none;'");
+                      std::format("cannot infer the type of '{}' from {}", letStatement->name,
+                                  isNone ? "'none'" : "a native constructor with an unknown channel"),
+                      {},
+                      isNone ? "annotate the optional type, as in 'let value: int32? = none;'"
+                             : "annotate the fallible type, as in 'let value: int32 ! ParseError = .Success(1i32);'");
             declarationType = TypeRef::MakeUnknown();
         }
         const FuncDecl *defaultConstructor = nullptr;

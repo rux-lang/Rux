@@ -126,6 +126,14 @@ NativeConversion ClassifyNativeConversion(const TypeRef &source, const TypeRef &
     if (source == destination) {
         return {NativeConversion::Outcome::Identity, {}};
     }
+    // A constructor whose other channel only its context can supply has no complete type to compare; its expression
+    // is checked against the destination where the constructor itself is known, so a native destination accepts it
+    // here.
+    if (source.IsIncompleteNative()) {
+        return {MentionsNativeType(destination) ? NativeConversion::Outcome::Identity
+                                                : NativeConversion::Outcome::Incompatible,
+                {}};
+    }
     std::vector<Route> routes;
     CollectRoutes(source, destination, routes);
     // Routes are compared by the steps they take, so two spellings of one meaning count once.

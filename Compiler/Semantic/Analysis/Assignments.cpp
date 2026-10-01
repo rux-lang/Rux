@@ -37,6 +37,9 @@ TypeRef AnalysisContext::ReadBorrowedScalar(const Expr &expression, const TypeRe
 }
 
 bool AnalysisContext::CanAssignExprTo(const Expr &expr, const TypeRef &exprType, const TypeRef &targetType) {
+    if (const auto *construct = dynamic_cast<const NativeConstructExpr *>(&expr)) {
+        return CanConstructNative(*construct, targetType);
+    }
     if (targetType.kind == TypeRef::Kind::Reference) {
         TypeRef targetReferent = targetType.inner.front();
         TypeRef sourceReferent =
@@ -160,6 +163,45 @@ bool AnalysisContext::CanAssignExprTo(const Expr &expr, const TypeRef &exprType,
 
     return exprType.IsAssignableTo(targetType) || (IsNullLiteral(expr) && targetType.kind == TypeRef::Kind::Pointer) ||
            UnsuffixedIntegerLiteralFits(expr, targetType) || TypeImplementsInterface(exprType, targetType);
+}
+
+bool AnalysisContext::CanConstructNative(const NativeConstructExpr &construct, const TypeRef &targetType) {
+    // The constructor selects the outermost level of its own form. A `.Some` may still sit inside the success of an
+    // expected fallible, and a `.Success` or `.Failure` inside the presence of an expected optional, each a wrapper
+    // the context constructs around it; any other expected form is diagnosed.
+    const bool optionalForm = construct.kind == NativeConstructExpr::Kind::Some;
+    std::vector<NativeConversionStep> route;
+    TypeRef level = targetType;
+    while (optionalForm ? level.IsFallible() : level.IsOptional()) {
+        route.push_back(NativeConversionStep{optionalForm ? NativeConversionStep::Kind::Success
+                                                          : NativeConversionStep::Kind::Presence});
+        TypeRef payload = level.inner.front();
+        level = std::move(payload);
+    }
+    if (level.IsUnknown() || targetType.IsUnknown()) {
+        return true;
+    }
+    if (optionalForm ? !level.IsOptional() || level.IsNoneValue() : !level.IsFallible() || level.IsIncompleteNative()) {
+        nativeConversions.erase(&construct);
+        return false;
+    }
+    if (!construct.operand) {
+        return true;
+    }
+    const TypeRef &channel = construct.kind == NativeConstructExpr::Kind::Failure ? level.inner[1] : level.inner[0];
+    const auto checked = expressionTypes.find(construct.operand.get());
+    const TypeRef operandType = checked != expressionTypes.end() ? checked->second : CheckExpr(*construct.operand);
+    if (!CanAssignExprTo(*construct.operand, operandType, channel)) {
+        nativeConversions.erase(&construct);
+        return false;
+    }
+    if (route.empty()) {
+        nativeConversions.erase(&construct);
+    }
+    else {
+        nativeConversions.insert_or_assign(&construct, std::move(route));
+    }
+    return true;
 }
 
 bool AnalysisContext::CanConvertToNativeType(const Expr &expr, const TypeRef &exprType, const TypeRef &targetType) {

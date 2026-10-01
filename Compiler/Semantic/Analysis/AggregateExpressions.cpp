@@ -805,7 +805,10 @@ std::optional<TypeRef> AnalysisContext::CheckAggregateExpression(const Expr &exp
                 inferredFrom = index;
                 inferredExpression = element.get();
             }
-            else if (!type.IsUnknown() && !CanAssignExprTo(*element, type, elementType)) {
+            // An element whose native type only its context completes, such as `.Failure(e)`, is checked against the
+            // expected element type by the array's destination, not against its neighbors' provisional types.
+            else if (!type.IsUnknown() && !type.IsIncompleteNative() && !elementType.IsIncompleteNative() &&
+                     !CanAssignExprTo(*element, type, elementType)) {
                 if (inferredExpression && CanAssignExprTo(*inferredExpression, elementType, type)) {
                     elementType = type;
                     inferredFrom = index;

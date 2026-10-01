@@ -399,6 +399,32 @@ std::string AnalysisContext::AssignmentErrorMessage(const Expr &expr, const Type
     if (dynamic_cast<const NoneExpr *>(&expr)) {
         return std::format("'none' needs an expected optional type, but found '{}'", targetType.ToString());
     }
+    if (const auto *construct = dynamic_cast<const NativeConstructExpr *>(&expr)) {
+        const std::string_view name = construct->kind == NativeConstructExpr::Kind::Some    ? "Some"
+                                    : construct->kind == NativeConstructExpr::Kind::Success ? "Success"
+                                                                                            : "Failure";
+        const std::string_view form = construct->kind == NativeConstructExpr::Kind::Some ? "optional" : "fallible";
+        // A nominal variant with the same case name is constructed by its own name, never by the native constructor.
+        if (targetType.kind == TypeRef::Kind::Named) {
+            const std::string variantName = BaseTypeName(targetType.name);
+            if (const auto declaration = enumDecls.find(NominalTypeName(variantName));
+                declaration != enumDecls.end() && declaration->second->IsVariant() &&
+                std::ranges::any_of(declaration->second->variants,
+                                    [&](const EnumDecl::Variant &variant) { return variant.name == name; })) {
+                return std::format("'.{}(...)' constructs a native {}; write '{}::{}(...)' for variant '{}'", name,
+                                   form, variantName, name, variantName);
+            }
+        }
+        TypeRef level = targetType;
+        while (construct->kind == NativeConstructExpr::Kind::Some ? level.IsFallible() : level.IsOptional()) {
+            TypeRef payload = level.inner.front();
+            level = std::move(payload);
+        }
+        if (construct->kind == NativeConstructExpr::Kind::Some ? !level.IsOptional() : !level.IsFallible()) {
+            return std::format("'.{}(...)' constructs a native {}, but the expected type is '{}'", name, form,
+                               targetType.ToString());
+        }
+    }
     // Several native routes with different meanings are refused as ambiguous rather than as a plain mismatch, so the
     // message names the choice the source has to make.
     if (const auto sourceType = expressionTypes.find(&expr); sourceType != expressionTypes.end()) {

@@ -31,9 +31,6 @@ std::optional<std::string> PendingNativeExpressionForm(const Expr &expr) {
     if (dynamic_cast<const MappedTryExpr *>(&expr)) {
         return "'? else' error mapping is";
     }
-    if (dynamic_cast<const NativeConstructExpr *>(&expr)) {
-        return "native constructors are";
-    }
     if (dynamic_cast<const NoneExpr *>(&expr)) {
         return "'none' is";
     }
@@ -216,6 +213,23 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
             return TypeRef::MakeUnknown();
         }
         return TypeRef::MakeText(TypeRef::Kind::Char8);
+    }
+
+    // A native constructor names the level it builds. `.Some(v)` infers its payload from a typed operand; the channel
+    // `.Success` or `.Failure` leaves open is supplied by the expected type, so its type stays incomplete until then.
+    if (const auto *construct = dynamic_cast<const NativeConstructExpr *>(&expr)) {
+        const TypeRef operand = construct->operand ? CheckExpr(*construct->operand) : TypeRef::MakeUnknown();
+        if (operand.IsUnknown()) {
+            return operand;
+        }
+        switch (construct->kind) {
+        case NativeConstructExpr::Kind::Some:
+            return TypeRef::MakeOptional(operand);
+        case NativeConstructExpr::Kind::Success:
+            return TypeRef::MakeFallible(operand, TypeRef::MakeOpaque());
+        case NativeConstructExpr::Kind::Failure:
+            return TypeRef::MakeFallible(TypeRef::MakeOpaque(), operand);
+        }
     }
 
     // The native handling forms parse ahead of their semantics. Each is rejected here with one stable diagnostic, and

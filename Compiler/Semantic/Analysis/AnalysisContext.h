@@ -490,6 +490,8 @@ private:
     std::unordered_set<const TypeExpr *> reportedPendingNativeTypes;
     /// How many native type forms enclose the type being resolved; only the outermost one reports as pending.
     int nativeTypeResolutionDepth = 0;
+    /// Whether a native value has been rejected as not yet compilable; one report keeps the program from lowering.
+    bool nativeValueGateReported = false;
     std::unordered_set<const Decl *> reportedPrivateApiDeclarations;
     std::unordered_map<const ConstDecl *, TypeRef> checkedConstantTypes;
     std::unordered_set<const ConstDecl *> checkingConstants;
@@ -865,6 +867,9 @@ private:
     /// Whether `expr` converts to `targetType` under the native conversion rules, recording the accepted route. An
     /// unsuffixed numeric literal targets a sum by its literal kind: exactly one integer (or floating-point) member.
     bool CanConvertToNativeType(const Expr &expr, const TypeRef &exprType, const TypeRef &targetType);
+    /// Whether a native constructor builds a value of `targetType`, checking its operand against the channel it
+    /// selects.
+    bool CanConstructNative(const NativeConstructExpr &construct, const TypeRef &targetType);
 
     bool IsIntegerLiteralOutOfRangeFor(const Expr &expr, const TypeRef &targetType) const;
 
