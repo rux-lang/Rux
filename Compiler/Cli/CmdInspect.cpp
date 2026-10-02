@@ -465,6 +465,7 @@ int Cli::RunInfo(std::span<const std::string_view> args, const GlobalOptions &op
     if (jsonOutput) {
         std::print("{}\n", "{");
         std::print("  \"success\": true,\n");
+        std::print("  \"manifestVersion\": {},\n", manifest->header.schemaVersion);
         if (manifest->package.ns) {
             std::print("  \"namespace\": \"{}\",\n", EscapeJson(manifest->package.ns->Text()));
         }
