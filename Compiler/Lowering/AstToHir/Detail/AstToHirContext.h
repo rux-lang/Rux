@@ -206,6 +206,8 @@ protected:
     [[nodiscard]] HirExprPtr LowerDiverge(const DivergeExpr &expression);
     /// `?` on a native fallible: a match whose failure arm returns the error as the enclosing outer failure.
     [[nodiscard]] HirExprPtr LowerNativeTry(const TryExpr &expression);
+    /// `?` on a native optional: the payload continues, and absence returns the enclosing absence.
+    [[nodiscard]] HirExprPtr LowerNativeOptionalTry(const TryExpr &expression, const TypeRef &operandType);
     /// `outcome catch { arms }`: a match whose success arm passes the payload through and whose other arms are the
     /// recovery arms, each matching inside the failure channel.
     [[nodiscard]] HirExprPtr LowerCatch(const CatchExpr &expression);

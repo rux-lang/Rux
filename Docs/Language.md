@@ -409,6 +409,12 @@ The arms use ordinary match-arm grammar, including guards and an `else` arm, and
 
 ## Option Coalescing
 
+### Optional propagation
+
+On a native optional `T?`, `value?` removes exactly one presence level: a present value continues as its payload, which may itself be an optional or a fallible, and absence returns from the enclosing function. The enclosing function returns either an optional `U?`, which then returns `none`, or a fallible whose success is an optional, `U? ! F`, which then succeeds with `none`. Absence never becomes an invented error, and no deeper level is a target. As with fallible propagation, the operand is consumed, a move-only operand is transferred as `(<-value)?`, and a borrowed optional is never an operand. A legacy Option operand and a native optional destination, or the reverse, are rejected with a help naming the explicit rewrap.
+
+### Legacy coalescing
+
 `option ?? fallback` extracts the value carried by an Option or evaluates `fallback` when the Option is `None`:
 
 ```rux

@@ -200,7 +200,7 @@ TEST_CASE("'?' consumes its operand and moves both payloads") {
             return outcome?;
         }
     )");
-    CHECK(AnyContains(borrowed, "'?' cannot consume the borrowed fallible '&(int32 ! ParseError)'"));
+    CHECK(AnyContains(borrowed, "'?' cannot consume the borrowed value '&(int32 ! ParseError)'"));
 }
 
 TEST_CASE("a payload that prohibits moving cannot be propagated, even through a generic") {
@@ -222,4 +222,61 @@ TEST_CASE("a payload that prohibits moving cannot be propagated, even through a 
         }
     )");
     CHECK(AnyContains(generic, "'?' cannot extract payload type 'Pinned' because moving it is prohibited"));
+}
+
+TEST_CASE("'?' on an optional removes one presence level") {
+    CHECK(ErrorsIn(R"(
+        func Nested(found: int32??) -> int32? {
+            let inner: int32? = found?;
+            return inner;
+        }
+        func Payload(outcome: (int32 ! ParseError)?) -> int32? {
+            let inner: int32 ! ParseError = outcome?;
+            return 1i32;
+        }
+        func SuccessfulAbsence(count: int32?) -> int32? ! IoError {
+            let value = count?;
+            return value;
+        }
+        func First<T>(value: T?) -> T? {
+            let present = value?;
+            return .Some(present);
+        }
+        func Use(nested: int32??) {
+            let first = First<int32?>(nested);
+        }
+        func Transfer(owned: Owned?) -> int32? {
+            let value = (<-owned)?;
+            return value.handle;
+        }
+    )")
+              .empty());
+}
+
+TEST_CASE("absence never becomes an error or reaches a deeper level") {
+    const auto errors = ErrorsIn(R"(
+        variant Option<T> {
+            Some(T),
+            None
+        }
+        func Invented(count: int32?) -> int32 ! IoError {
+            return count?;
+        }
+        func Legacy(count: int32?) -> Option<int32> {
+            let value = count?;
+            return Option::Some<int32>(value);
+        }
+        func Deeper(count: int32?) -> (int32? ! ParseError) ! IoError {
+            let value = count?;
+            return .Success(.Success(value));
+        }
+        func Borrowed(count: &int32?) -> int32? {
+            return count?;
+        }
+    )");
+    CHECK(AnyContains(errors, "'?' propagates the absence of 'int32?', but the enclosing function returns "
+                              "'int32 ! IoError'"));
+    CHECK(AnyContains(errors, "but the enclosing function returns 'Option<int32>'"));
+    CHECK(AnyContains(errors, "but the enclosing function returns '(int32? ! ParseError) ! IoError'"));
+    CHECK(AnyContains(errors, "'?' cannot consume the borrowed value"));
 }

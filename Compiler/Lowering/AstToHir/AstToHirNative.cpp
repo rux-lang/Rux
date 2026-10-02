@@ -594,6 +594,9 @@ HirExprPtr AstToHirContext::LowerNativeMembership(const IsExpr &expression) {
 HirExprPtr AstToHirContext::LowerNativeTry(const TryExpr &expression) {
     const SourceLocation location = expression.location;
     const TypeRef operandType = ResolvedExpressionType(*expression.operand);
+    if (operandType.IsOptional()) {
+        return LowerNativeOptionalTry(expression, operandType);
+    }
     const TypeRef success = operandType.FallibleSuccess();
     const TypeRef error = operandType.FallibleError();
     const TypeRef returnType = currentReturnType;
@@ -757,6 +760,39 @@ HirExprPtr AstToHirContext::LowerCatch(const CatchExpr &expression) {
         PopScope();
         lowered->arms.push_back(std::move(recovery));
     }
+    return lowered;
+}
+
+HirExprPtr AstToHirContext::LowerNativeOptionalTry(const TryExpr &expression, const TypeRef &operandType) {
+    const SourceLocation location = expression.location;
+    const TypeRef payload = operandType.inner.front();
+    const std::string payloadName = std::format("$try.value.{}", propagationOrdinal++);
+    auto bound = std::make_unique<HirBindingPattern>();
+    bound->location = location;
+    bound->name = payloadName;
+    bound->type = payload;
+    HirMatchArm present;
+    present.location = location;
+    present.pattern = NativeCasePattern(operandType, NativePresentTag, payload, std::move(bound), location);
+    present.body = TransferredBinding(payloadName, payload, location);
+
+    // Absence leaves as the enclosing optional's absence, or as successful absence, by an ordinary return.
+    auto exit = std::make_unique<HirBlockExpr>();
+    exit->location = location;
+    exit->type = payload;
+    exit->block.location = location;
+    exit->block.stmts.push_back(LowerFunctionReturn(LowerNoneAs(currentReturnType, location), location));
+    HirMatchArm absent;
+    absent.location = location;
+    absent.pattern = NativeCasePattern(operandType, NativeAbsentTag, std::nullopt, nullptr, location);
+    absent.body = std::move(exit);
+
+    auto lowered = std::make_unique<HirMatchExpr>();
+    lowered->location = location;
+    lowered->type = payload;
+    lowered->subject = LowerExpr(*expression.operand);
+    lowered->arms.push_back(std::move(present));
+    lowered->arms.push_back(std::move(absent));
     return lowered;
 }
 

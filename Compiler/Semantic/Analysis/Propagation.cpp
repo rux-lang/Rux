@@ -210,6 +210,46 @@ TypeRef AnalysisContext::CheckNativeTry(const TryExpr &expression, const TypeRef
     return success;
 }
 
+TypeRef AnalysisContext::CheckNativeOptionalTry(const TryExpr &expression, const TypeRef &operandType) {
+    const TypeRef &payload = operandType.inner.front();
+    // Absence leaves as the enclosing optional's absence, or as the successful absence of `U? ! F`; nothing deeper is
+    // a target, and no error is ever invented for it.
+    const bool optionalTarget = currentReturnType.IsOptional();
+    const bool successfulAbsence = currentReturnType.IsFallible() && currentReturnType.FallibleSuccess().IsOptional();
+    if (!optionalTarget && !successfulAbsence) {
+        const bool legacy = PropagationShapeOf(currentReturnType).has_value();
+        const std::string returned =
+            currentReturnType.IsOpaque() ? "nothing" : std::format("'{}'", currentReturnType.ToString());
+        EmitError(expression.location,
+                  std::format("'?' propagates the absence of '{}', but the enclosing function returns {}",
+                              operandType.ToString(), returned),
+                  {"absence leaves as an optional's 'none', or as the successful 'none' of 'U? ! F'; '?' never "
+                   "invents an error for it"},
+                  legacy ? std::optional<std::string>("native and legacy outcomes do not convert; match the value and "
+                                                      "return 'Option::Some(...)' or 'Option::None' explicitly")
+                         : std::optional<std::string>("declare an optional result, as in '-> T?', or supply a "
+                                                      "fallback with '?"
+                                                      "?'"));
+        return payload;
+    }
+    if (MentionsTypeParameter(payload) && currentFunctionDecl) {
+        deferredOutcomeChecks[currentFunctionDecl].push_back({payload, expression.location, true});
+    }
+    else {
+        static_cast<void>(ValidateOutcomePayload(payload, expression.location, true));
+    }
+    ConsumeValue(*expression.operand, operandType, ValueConsumptionKind::PropagationOperand,
+                 expression.operand->location);
+
+    ResolvedPropagation propagation;
+    propagation.native = true;
+    propagation.isResult = false;
+    propagation.payloadType = payload;
+    propagation.returnType = currentReturnType;
+    propagations.insert_or_assign(&expression, std::move(propagation));
+    return payload;
+}
+
 std::optional<TypeRef> AnalysisContext::CheckTryExpression(const TryExpr &expression) {
     const TypeRef operandType = CheckExpr(*expression.operand);
     if (operandType.IsUnknown()) {
@@ -217,15 +257,18 @@ std::optional<TypeRef> AnalysisContext::CheckTryExpression(const TryExpr &expres
     }
     // A borrowed outcome cannot hand its payload to the continuing expression or its error to the caller.
     if (operandType.kind == TypeRef::Kind::Reference && !operandType.inner.empty() &&
-        operandType.inner.front().IsFallible()) {
+        (operandType.inner.front().IsFallible() || operandType.inner.front().IsOptional())) {
         EmitError(expression.location,
-                  std::format("'?' cannot consume the borrowed fallible '{}'", operandType.ToString()),
+                  std::format("'?' cannot consume the borrowed value '{}'", operandType.ToString()),
                   {"'?' moves the success onward or the error out of the function, and a reference owns neither"},
                   "match the borrowed value to inspect it, or propagate an owned value");
         return TypeRef::MakeUnknown();
     }
     if (operandType.IsFallible()) {
         return CheckNativeTry(expression, operandType);
+    }
+    if (operandType.IsOptional()) {
+        return CheckNativeOptionalTry(expression, operandType);
     }
 
     const auto operand = PropagationShapeOf(operandType);
