@@ -80,18 +80,20 @@ extend CString {
             *error = TextError::LengthOverflow;
             return Option::None<CString>();
         }
-        let layout = Layout::New(bytes.length + 1, 1);
-        if layout.IsNone() {
-            *error = TextError::LengthOverflow;
-            return Option::None<CString>();
-        }
-        var block: *var opaque = null;
+        let layout = match Layout::New(bytes.length + 1, 1) {
+            value? => value,
+            none => {
+                *error = TextError::LengthOverflow;
+                return Option::None<CString>();
+            }
+        };
         var borrowed = allocator;
-        let allocated = borrowed.Allocate(layout.ValueOr(Layout { size: bytes.length + 1, alignment: 1 }), @block);
-        if allocated != AllocError::None {
-            *error = FromAllocError(allocated);
-            return Option::None<CString>();
-        }
+        let block = borrowed.Allocate(layout) catch {
+            allocated => {
+                *error = FromAllocError(allocated);
+                return Option::None<CString>();
+            }
+        };
 
         let data = block as *var char8;
         if bytes.length > 0 {
@@ -190,7 +192,7 @@ extend CString {
             let layout = Layout::New(self.length + 1, 1);
             var borrowed = self.allocator;
             borrowed.Deallocate(self.data as *var opaque,
-                                layout.ValueOr(Layout { size: self.length + 1, alignment: 1 }));
+                                (layout ?? Layout { size: self.length + 1, alignment: 1 })) catch { else => {} };
         }
         self.data = null;
         self.length = 0;

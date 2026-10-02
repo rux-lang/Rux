@@ -182,12 +182,13 @@ pub func CopyFile(allocator: Allocator, from: Path, to: Path) -> IoError {
 
         let layout = Layout { size: 65536, alignment: 8 };
         var borrowed = allocator;
-        var block: *var opaque = null;
-        if borrowed.Allocate(layout, @block) != AllocError::None {
-            source.Close();
-            destination.Close();
-            return IoError::Of(IoErrorKind::Other);
-        }
+        let block = borrowed.Allocate(layout) catch {
+            else => {
+                    source.Close();
+                    destination.Close();
+                    return IoError::Of(IoErrorKind::Other);
+            }
+        };
         let buffer = (block as *var char8)[..65536];
 
         var outcome = IoError::Ok();
@@ -214,7 +215,7 @@ pub func CopyFile(allocator: Allocator, from: Path, to: Path) -> IoError {
             }
         }
 
-        borrowed.Deallocate(block, layout);
+        borrowed.Deallocate(block, layout) catch { else => {} };
         let closedSource = source.Close();
         let closedDestination = destination.Close();
         if outcome.IsOk() && closedSource.IsError() {

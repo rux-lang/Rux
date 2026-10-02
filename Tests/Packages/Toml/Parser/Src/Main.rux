@@ -90,21 +90,20 @@ struct CountingAllocator {
 }
 
 extend CountingAllocator : Allocator {
-    func Allocate(self: &var CountingAllocator, layout: Layout, result: *var *var opaque) -> AllocError {
-        let outcome = self.state.inner.Allocate(layout, result);
-        if outcome == AllocError::None { self.state.live = self.state.live + 1i32; }
-        return outcome;
+    func Allocate(self: &var CountingAllocator, layout: Layout) -> (*var opaque) ! AllocError {
+        let block = self.state.inner.Allocate(layout)?;
+        self.state.live = self.state.live + 1i32;
+        return block;
     }
 
-    func Deallocate(self: &var CountingAllocator, block: *var opaque, layout: Layout) -> AllocError {
-        let outcome = self.state.inner.Deallocate(block, layout);
-        if outcome == AllocError::None { self.state.live = self.state.live - 1i32; }
-        return outcome;
+    func Deallocate(self: &var CountingAllocator, block: *var opaque, layout: Layout) -> ! AllocError {
+        self.state.inner.Deallocate(block, layout)?;
+        self.state.live = self.state.live - 1i32;
     }
 
-    func Reallocate(self: &var CountingAllocator, block: *var opaque, oldLayout: Layout, newLayout: Layout,
-                    result: *var *var opaque) -> AllocError {
-        return self.state.inner.Reallocate(block, oldLayout, newLayout, result);
+    func Reallocate(self: &var CountingAllocator, block: *var opaque, oldLayout: Layout, newLayout: Layout)
+        -> (*var opaque) ! AllocError {
+        return self.state.inner.Reallocate(block, oldLayout, newLayout);
     }
 }
 

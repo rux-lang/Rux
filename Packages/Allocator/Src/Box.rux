@@ -44,24 +44,17 @@ extend Box<T> {
     /// Puts `value` on the heap and hands back the box that owns it.
     ///
     /// `allocator` is borrowed for the call and kept in the box. `value` is consumed: on success the box owns it,
-    /// and on failure it is destroyed rather than leaked. `error` receives the reason and must not be null; it is
-    /// set to `None` on success.
-    ///
-    /// A failed call returns an empty box, which owns nothing and releases nothing when it goes — so a caller that
-    /// ignores the error leaks nothing, it merely has a box with no value in it.
+    /// and on failure it is destroyed rather than leaked.
     ///
     /// Runs in whatever time the allocator takes, and allocates exactly one block.
     ///
     /// @param allocator where the storage comes from
     /// @param value the value to move into it
-    /// @param error receives why the allocation failed, or `None`
-    /// @returns the box, empty when the allocator refused
+    /// @returns the box, or why the allocator refused
     /// @see https://rux-lang.dev/docs/api/allocator/box/create
-    pub func Create(allocator: Allocator, value: T, error: *var AllocError) -> Box<T> {
+    pub func Create(allocator: Allocator, value: T) -> Box<T> ! AllocError {
         let layout = Layout::ForValue<T>();
-        var block: *var opaque = null;
-        *error = allocator.Allocate(layout, @block);
-        if *error != AllocError::None { return Box<T> { pointer: null, allocator: allocator }; }
+        let block = allocator.Allocate(layout)?;
         let typed = block as *var T;
         *typed <- value;
         return Box<T> { pointer: typed, allocator: allocator };
@@ -115,7 +108,9 @@ extend Box<T> {
         let held = self.pointer;
         *destination <- *held;
         let layout = Layout::ForValue<T>();
-        self.allocator.Deallocate(held as *var opaque, layout);
+        // The storage came from this allocator with this layout, so a refusal would be the allocator's own bug; the
+        // value is already out, and nothing the caller holds depends on the release.
+        self.allocator.Deallocate(held as *var opaque, layout) catch { else => {} };
         self.pointer = null;
         return true;
     }
@@ -133,7 +128,7 @@ extend Box<T> {
             let held = self.pointer;
             self.pointer = null;
             DestroyBoxValue<T>(held);
-            self.allocator.Deallocate(held as *var opaque, Layout::ForValue<T>());
+            self.allocator.Deallocate(held as *var opaque, Layout::ForValue<T>()) catch { else => {} };
         }
     }
 }

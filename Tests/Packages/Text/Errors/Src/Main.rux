@@ -150,10 +150,6 @@ func Main() -> int {
 
     // AllocError, presented here because the protocols live here and Allocator does not depend on this package.
     // The allocator's own distinctions survive: a layout it can never serve is not a shortage.
-    let allocNone: Display = AllocError::None;
-    Assert(Shown(allocNone, "no error"), "an allocation that happened");
-    let allocNoneDebug: Debug = AllocError::None;
-    Assert(Inspected(allocNoneDebug, "AllocError::None"), "named");
     let allocUnsupported: Display = AllocError::Unsupported;
     Assert(Shown(allocUnsupported, "layout this allocator cannot serve"), "a request retrying will never satisfy");
     let allocUnsupportedDebug: Debug = AllocError::Unsupported;

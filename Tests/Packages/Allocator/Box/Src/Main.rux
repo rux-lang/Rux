@@ -21,32 +21,28 @@ extend Tracked {
     }
 }
 
-func BoxAndDestroy(allocator: Allocator, destroyed: *var int32) {
-    var error = AllocError::None;
-    var boxed = Box::Create<Tracked>(allocator, Tracked { destroyed: destroyed, value: 91i32 }, @error);
-    Assert(error == AllocError::None, "a box accepts a move-only value");
-    Assert(boxed.Get().value == 91i32, "and owns that value");
+func BoxAndDestroy(allocator: Allocator, destroyed: *var int32) -> ! AllocError {
+    // A box accepts a move-only value.
+    var boxed = Box::Create<Tracked>(allocator, Tracked { destroyed: destroyed, value: 91i32 })?;
+    Assert(boxed.Get().value == 91i32, "the box owns its value");
     Assert(*destroyed == 0i32, "without destroying it during construction");
 }
 
-func BoxAndTake(allocator: Allocator, destroyed: *var int32) {
-    var error = AllocError::None;
-    var boxed = Box::Create<Tracked>(allocator, Tracked { destroyed: destroyed, value: 27i32 }, @error);
+func BoxAndTake(allocator: Allocator, destroyed: *var int32) -> ! AllocError {
+    var boxed = Box::Create<Tracked>(allocator, Tracked { destroyed: destroyed, value: 27i32 })?;
     var taken = Tracked { destroyed: null, value: 0i32 };
     Assert(boxed.TryTake(@taken), "a move-only value can be taken from a box");
     Assert(boxed.IsEmpty(), "taking leaves its box empty");
     Assert(taken.value == 27i32 && *destroyed == 0i32, "and transfers rather than destroys the value");
 }
 
-func Main() -> int {
+func Main() -> ! AllocError {
     var system = SystemAllocator();
     let allocator: Allocator = system;
-    var error = AllocError::None;
 
     // An ordinary box holds its value and hands back a pointer into its own storage.
-    var boxed = Box::Create<int64>(allocator, 42, @error);
-    Assert(error == AllocError::None, "the box is created");
-    Assert(!boxed.IsEmpty(), "and holds a value");
+    var boxed = Box::Create<int64>(allocator, 42)?;
+    Assert(!boxed.IsEmpty(), "the box holds a value");
     Assert(*boxed.Get() == 42, "which is the one it was given");
     *boxed.Get() = 43;
     Assert(*boxed.Get() == 43, "and the value is writable through the box");
@@ -60,23 +56,20 @@ func Main() -> int {
     Assert(!boxed.TryTake(@taken), "and taking again reports that there is nothing");
 
     // A box of a value wider than a machine word, to exercise a layout that is not the default.
-    var wide = Box::Create<uint64>(allocator, 0xFEDCBA9876543210u64, @error);
-    Assert(error == AllocError::None, "a wide box is created");
-    Assert(*wide.Get() == 0xFEDCBA9876543210u64, "and keeps every bit of its value");
+    var wide = Box::Create<uint64>(allocator, 0xFEDCBA9876543210u64)?;
+    Assert(*wide.Get() == 0xFEDCBA9876543210u64, "a wide box keeps every bit of its value");
 
     // Many boxes in sequence, each released as its scope ends. A leak here would exhaust the address space long
     // before the loop finished, since the system allocator is page-granular.
     var index: int32 = 0;
     while index < 512 {
-        var scoped = Box::Create<int64>(allocator, index as int64, @error);
-        Assert(error == AllocError::None, "a scoped box is created");
-        Assert(*scoped.Get() == index as int64, "and holds what it was given");
+        var scoped = Box::Create<int64>(allocator, index as int64)?;
+        Assert(*scoped.Get() == index as int64, "a scoped box holds what it was given");
         index = index + 1;
     }
 
     // Moving a box transfers it: the source is moved-out, so the storage is released once, by the destination.
-    var source = Box::Create<int64>(allocator, 7, @error);
-    Assert(error == AllocError::None, "a box to move");
+    var source = Box::Create<int64>(allocator, 7)?;
     var destination <- source;
     Assert(*destination.Get() == 7, "the destination holds the value");
 
@@ -84,11 +77,10 @@ func Main() -> int {
     Assert(destination.TryTake(@emptied) && emptied == 7, "and it is still takeable from there");
 
     var destroyed: int32 = 0;
-    BoxAndDestroy(allocator, @destroyed);
+    BoxAndDestroy(allocator, @destroyed)?;
     Assert(destroyed == 1i32, "destroying a box destroys its move-only value exactly once");
 
     destroyed = 0;
-    BoxAndTake(allocator, @destroyed);
+    BoxAndTake(allocator, @destroyed)?;
     Assert(destroyed == 1i32, "a value taken from a box is destroyed by its new owner exactly once");
-    return 0;
 }

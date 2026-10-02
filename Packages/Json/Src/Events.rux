@@ -111,12 +111,13 @@ extend JsonEventReader {
             stop: JsonStop::None, lexical: JsonLexError::None, expectingValue: true
         };
         var borrowed = allocator;
-        var block: *var opaque = null;
         let chunk = Layout { size: JsonStreamChunk, alignment: 1 };
-        if borrowed.Allocate(chunk, @block) != AllocError::None {
-            *error = IoError::Of(IoErrorKind::Other);
-            return <-reader;
-        }
+        let block = borrowed.Allocate(chunk) catch {
+            else => {
+                *error = IoError::Of(IoErrorKind::Other);
+                return <-reader;
+            }
+        };
         reader.data = block as *var char8;
         reader.capacity = JsonStreamChunk;
         return <-reader;
@@ -179,12 +180,13 @@ extend JsonEventReader {
                 return false;
             }
             var borrowed = self.allocator;
-            var block: *var opaque = null;
             let bigger = Layout { size: wanted, alignment: 1 };
-            if borrowed.Allocate(bigger, @block) != AllocError::None {
-                self.stop = JsonStop::OutOfMemory;
-                return false;
-            }
+            let block = borrowed.Allocate(bigger) catch {
+                else => {
+                    self.stop = JsonStop::OutOfMemory;
+                    return false;
+                }
+            };
             let grown = block as *var char8;
             var copied: uint = 0;
             while copied < self.filled {
@@ -192,7 +194,7 @@ extend JsonEventReader {
                 copied = copied + 1u;
             }
             let previous = Layout { size: self.capacity, alignment: 1 };
-            borrowed.Deallocate(self.data as *var opaque, previous);
+            borrowed.Deallocate(self.data as *var opaque, previous) catch { else => {} };
             self.data = grown;
             self.capacity = wanted;
         }
@@ -219,7 +221,7 @@ extend JsonEventReader {
         if self.data != null {
             var borrowed = self.allocator;
             let held = Layout { size: self.capacity, alignment: 1 };
-            borrowed.Deallocate(self.data as *var opaque, held);
+            borrowed.Deallocate(self.data as *var opaque, held) catch { else => {} };
             self.data = null;
             self.capacity = 0;
         }

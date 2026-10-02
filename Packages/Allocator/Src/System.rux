@@ -84,31 +84,29 @@ extend SystemAllocator : Allocator {
     /// The storage is the caller's until `Deallocate` takes it back with an equal layout.
     ///
     /// @param layout the size and alignment wanted
-    /// @param result receives the address when this reports `None`
-    /// @returns `None` when the storage was taken
+    /// @returns the address of the storage, or why none was taken
     /// @see https://rux-lang.dev/docs/api/allocator/system-allocator/allocate
-    pub func Allocate(self: &var SystemAllocator, layout: Layout, result: *var *var opaque) -> AllocError {
+    pub func Allocate(self: &var SystemAllocator, layout: Layout) -> (*var opaque) ! AllocError {
         if layout.size == 0 {
-            *result = EmptyBlockAddress();
-            return AllocError::None;
+            return EmptyBlockAddress();
         }
 
         // The header sits immediately before the caller's address, and the caller's address has to satisfy the
         // layout, so the space reserved before it is the header rounded up to the alignment.
         let headerSize = sizeof(SystemBlockHeader);
         let prefix = AlignUp(headerSize, layout.alignment);
-        if prefix < headerSize { return AllocError::Unsupported; }
+        if prefix < headerSize { fail AllocError::Unsupported; }
         var total: uint = 0;
-        if AlignUpChecked(layout.size, layout.alignment, @total) { return AllocError::Unsupported; }
-        if total > uint::Max - prefix { return AllocError::Unsupported; }
+        if AlignUpChecked(layout.size, layout.alignment, @total) { fail AllocError::Unsupported; }
+        if total > uint::Max - prefix { fail AllocError::Unsupported; }
         total = total + prefix;
 
         let length = PageAlign(total);
-        if length < total { return AllocError::Unsupported; }
+        if length < total { fail AllocError::Unsupported; }
 
         let base = PageAllocate(length, PageRead | PageWrite) catch {
-            .OutOfMemory => return AllocError::OutOfMemory,
-            else => return AllocError::Unsupported
+            .OutOfMemory => fail AllocError::OutOfMemory,
+            else => fail AllocError::Unsupported
         };
 
         let address = (base as uint) + prefix;
@@ -117,8 +115,7 @@ extend SystemAllocator : Allocator {
         header.base = base as uint;
         header.length = length;
         header.size = layout.size;
-        *result = address as *var opaque;
-        return AllocError::None;
+        return address as *var opaque;
     }
 
     /// Gives the storage behind `block` back to the operating system.
@@ -133,20 +130,17 @@ extend SystemAllocator : Allocator {
     ///
     /// @param block an address this allocator returned
     /// @param layout the layout it was allocated with
-    /// @returns `None` when the release was accepted
+    /// @returns nothing when the release was accepted, or why it was refused
     /// @see https://rux-lang.dev/docs/api/allocator/system-allocator/deallocate
-    pub func Deallocate(self: &var SystemAllocator, block: *var opaque, layout: Layout) -> AllocError {
-        if layout.size == 0 { return IsEmptyBlock(block) ? AllocError::None : AllocError::InvalidBlock; }
-        if block == null || IsEmptyBlock(block) { return AllocError::InvalidBlock; }
+    pub func Deallocate(self: &var SystemAllocator, block: *var opaque, layout: Layout) -> ! AllocError {
+        if layout.size == 0 { if !IsEmptyBlock(block) { fail AllocError::InvalidBlock; } return; }
+        if block == null || IsEmptyBlock(block) { fail AllocError::InvalidBlock; }
 
         let headerSize = sizeof(SystemBlockHeader);
         let header = ((block as uint) - headerSize) as *var SystemBlockHeader;
-        if header.magic != SystemBlockMagic || header.size != layout.size { return AllocError::InvalidBlock; }
+        if header.magic != SystemBlockMagic || header.size != layout.size { fail AllocError::InvalidBlock; }
         header.magic = 0;
-        return match PageRelease(header.base as *var opaque, header.length) {
-            .Success(_) => AllocError::None,
-            .Failure(_) => AllocError::InvalidBlock
-        };
+        PageRelease(header.base as *var opaque, header.length) catch { else => fail AllocError::InvalidBlock };
     }
 
     /// Changes the size of a block by taking a new one and copying what fits.
@@ -165,33 +159,24 @@ extend SystemAllocator : Allocator {
     /// @param block the existing allocation's address
     /// @param oldLayout the layout `block` was allocated with
     /// @param newLayout the layout wanted, which must have the same alignment
-    /// @param result receives the address the block is at afterwards
-    /// @returns `None` when the block was resized
+    /// @returns the address the block is at afterwards, or why it was not resized
     /// @see https://rux-lang.dev/docs/api/allocator/system-allocator/reallocate
-    pub func Reallocate(self: &var SystemAllocator, block: *var opaque, oldLayout: Layout, newLayout: Layout,
-                    result: *var *var opaque) -> AllocError {
-        if oldLayout.alignment != newLayout.alignment { return AllocError::Unsupported; }
+    pub func Reallocate(self: &var SystemAllocator, block: *var opaque, oldLayout: Layout, newLayout: Layout)
+        -> (*var opaque) ! AllocError {
+        if oldLayout.alignment != newLayout.alignment { fail AllocError::Unsupported; }
         if oldLayout.size == newLayout.size {
-            *result = block;
-            return AllocError::None;
+            return block;
         }
 
-        var fresh: *var opaque = null;
-        let error = self.Allocate(newLayout, @fresh);
-        if error != AllocError::None { return error; }
+        let fresh = self.Allocate(newLayout)?;
         let keep = oldLayout.size < newLayout.size ? oldLayout.size : newLayout.size;
         CopyBlock(fresh, block, keep);
 
-        let released = self.Deallocate(block, oldLayout);
-        if released != AllocError::None {
-            // The new block is good and the old one could not be released. Reporting the release failure would
-            // leave the caller holding an address it was never told about, so the allocation stands and the leak is
-            // the lesser outcome.
-            *result = fresh;
-            return AllocError::None;
-        }
-        *result = fresh;
-        return AllocError::None;
+        // When the old block cannot be released, the new block is still good. Reporting the release failure would leave
+        // the caller holding an address it was never told about, so the allocation stands and the leak is the lesser
+        // outcome.
+        self.Deallocate(block, oldLayout) catch { else => {} };
+        return fresh;
     }
 }
 

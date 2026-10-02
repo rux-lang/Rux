@@ -4,16 +4,13 @@
 // request that was too large from one the system refused from one the allocator was never able to serve. These are
 // the four answers, and every allocator in this package gives one of them.
 //
-// `None` is the success case. It is in the same enum rather than in a separate result type because an allocation
-// reports through an out-parameter and a status, which keeps the whole surface free of generic machinery and lets a
-// caller write `if error != AllocError::None` without unwrapping anything.
+// Every case is a failure. An allocator returns its address or completion through a native fallible, `T ! AllocError`,
+// so success is the other channel rather than a member of this enum, and a result nobody handles is diagnosed.
 
 /// Why an allocation, reallocation or release did not do what was asked.
 ///
 /// @see https://rux-lang.dev/docs/api/allocator/alloc-error
 pub enum AllocError: uint8 {
-    /// Nothing went wrong. A successful call reports this, so it is not an error case.
-    None = 0,
     /// The layout cannot be served by this allocator at all: an alignment stricter than it can give, or a size it
     /// could never hold. A different allocator might succeed; retrying with this one will not.
     Unsupported = 1,
@@ -25,27 +22,6 @@ pub enum AllocError: uint8 {
 }
 
 extend AllocError {
-    /// Whether this is the success case.
-    ///
-    /// `self` is borrowed. Reads better at a call site than comparing against `None`, and says which way the test
-    /// runs without the reader having to remember that zero means success here.
-    ///
-    /// @returns whether this is `None`, meaning nothing went wrong
-    /// @see https://rux-lang.dev/docs/api/allocator/alloc-error/is-ok
-    pub func IsOk(self: AllocError) -> bool {
-        return self == AllocError::None;
-    }
-
-    /// Whether this is any of the failure cases.
-    ///
-    /// `self` is borrowed.
-    ///
-    /// @returns whether this is anything but `None`
-    /// @see https://rux-lang.dev/docs/api/allocator/alloc-error/is-error
-    pub func IsError(self: AllocError) -> bool {
-        return self != AllocError::None;
-    }
-
     /// Whether a later attempt could plausibly succeed.
     ///
     /// `self` is borrowed. True only for `OutOfMemory`, which is a shortage rather than a mistake: `Unsupported` and

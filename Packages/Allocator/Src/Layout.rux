@@ -11,7 +11,6 @@
 // `ForValue<T>` and `ForArray<T>` describe storage without constructing a value and use the type's actual alignment.
 
 import Core::uint;
-import Core::{ Option, #target };
 import Memory::AlignUpChecked;
 
 /// A validated allocation request: a size, and the alignment its address must satisfy.
@@ -41,24 +40,24 @@ extend Layout {
         return Layout { size: sizeof(T), alignment: alignof(T) };
     }
 
-    /// A layout for `count` consecutive values of `T`, or `None` when the size would overflow.
+    /// A layout for `count` consecutive values of `T`, or absent when the size would overflow.
     ///
     /// No value is copied or consumed. A zero count describes empty storage at `T`'s alignment.
     /// Runs in constant time and allocates nothing.
     ///
     /// @typeParam T the element type
     /// @param count how many elements
-    /// @returns the array layout, or `None` if its size cannot be represented
+    /// @returns the array layout, or `none` if its size cannot be represented
     /// @see https://rux-lang.dev/docs/api/allocator/layout/for-array
-    pub func ForArray<T>(count: uint) -> Option<Layout> {
+    pub func ForArray<T>(count: uint) -> Layout? {
         let stride = sizeof(T);
-        if stride != 0 && count > uint::Max / stride { return Option::None<Layout>(); }
+        if stride != 0 && count > uint::Max / stride { return none; }
         return Layout::New(stride * count, alignof(T));
     }
 
     /// A layout for `size` bytes at `alignment`, or nothing when the pair cannot be one.
     ///
-    /// `size` and `alignment` are read by value; the layout is returned by copy. Reports `None` when `alignment` is
+    /// `size` and `alignment` are read by value; the layout is returned by copy. Reports `none` when `alignment` is
     /// zero or not a power of two, and when rounding `size` up to `alignment` would pass the end of the address
     /// space — which is the case that turns into an allocation far smaller than the caller asked for if it is not
     /// caught here.
@@ -67,18 +66,18 @@ extend Layout {
     ///
     /// @param size how many bytes are wanted
     /// @param alignment the boundary the address must be a multiple of
-    /// @returns the layout, or `None` when `alignment` is not a usable power of two
+    /// @returns the layout, or `none` when `alignment` is not a usable power of two
     /// @see https://rux-lang.dev/docs/api/allocator/layout/new
-    pub func New(size: uint, alignment: uint) -> Option<Layout> {
-        if alignment == 0 || (alignment & (alignment - 1)) != 0 { return Option::None<Layout>(); }
+    pub func New(size: uint, alignment: uint) -> Layout? {
+        if alignment == 0 || (alignment & (alignment - 1)) != 0 { return none; }
         var rounded: uint = 0;
-        if AlignUpChecked(size, alignment, @rounded) { return Option::None<Layout>(); }
-        return Option::Some<Layout>(Layout { size: size, alignment: alignment });
+        if AlignUpChecked(size, alignment, @rounded) { return none; }
+        return Layout { size: size, alignment: alignment };
     }
 
     /// A layout for `size` bytes at the alignment a machine word wants.
     ///
-    /// `size` is read by value. Reports `None` only when rounding `size` up would pass the end of the address space,
+    /// `size` is read by value. Reports `none` only when rounding `size` up would pass the end of the address space,
     /// since the alignment is known good.
     ///
     /// This is the layout for storage whose contents are bytes rather than a typed value: an allocation aligned to a
@@ -87,9 +86,9 @@ extend Layout {
     /// Runs in constant time and allocates nothing.
     ///
     /// @param size how many bytes are wanted
-    /// @returns a layout of that size at its natural alignment, or `None` when there is none
+    /// @returns a layout of that size at its natural alignment, or `none` when there is none
     /// @see https://rux-lang.dev/docs/api/allocator/layout/for-bytes
-    pub func ForBytes(size: uint) -> Option<Layout> {
+    pub func ForBytes(size: uint) -> Layout? {
         return Layout::New(size, sizeof(uint));
     }
 

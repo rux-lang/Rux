@@ -26,7 +26,6 @@ func Main() -> int {
     Assert(!CollectionError::None.IsTransient(), "success is not a thing to retry");
 
     // The mapping from the allocator's answers to this package's.
-    Assert(FromAllocError(AllocError::None) == CollectionError::None, "success maps to success");
     Assert(FromAllocError(AllocError::OutOfMemory) == CollectionError::OutOfMemory, "a shortage maps to a shortage");
     Assert(FromAllocError(AllocError::Unsupported) == CollectionError::Unsupported, "a refusal maps to a refusal");
     Assert(FromAllocError(AllocError::InvalidBlock) == CollectionError::Unsupported,

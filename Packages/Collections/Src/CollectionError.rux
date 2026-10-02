@@ -84,17 +84,16 @@ extend CollectionError {
 
 /// The collection error that corresponds to an allocator's.
 ///
-/// `error` is read by value. `None` stays `None`; `OutOfMemory` stays itself; and `Unsupported` and `InvalidBlock`
+/// `error` is read by value. `OutOfMemory` stays itself, and `Unsupported` and `InvalidBlock`
 /// both become `Unsupported`, because from a collection's side they are the same thing — the allocator will not
 /// serve this, and asking again will not change that.
 ///
 /// Cannot fail. Runs in constant time and allocates nothing.
 ///
-/// @param error receives why the operation failed, or `None`
-/// @returns the same outcome as a collection error
+/// @param error why the allocator refused
+/// @returns the same failure as a collection error
 /// @see https://rux-lang.dev/docs/api/collections/from-alloc-error
 pub func FromAllocError(error: AllocError) -> CollectionError {
-    if error == AllocError::None { return CollectionError::None; }
     if error == AllocError::OutOfMemory { return CollectionError::OutOfMemory; }
     return CollectionError::Unsupported;
 }

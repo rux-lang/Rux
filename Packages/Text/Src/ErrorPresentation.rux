@@ -291,7 +291,6 @@ extend AllocError : Display {
     pub func WriteDisplay(self: &AllocError, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
         AcceptsErrorSpec(spec)?;
         return match self {
-            .None => WriteBytes(writer, "no error"),
             .Unsupported => WriteBytes(writer, "layout this allocator cannot serve"),
             .OutOfMemory => WriteBytes(writer, "out of memory"),
             .InvalidBlock => WriteBytes(writer, "block this allocator did not hand out")
@@ -312,7 +311,6 @@ extend AllocError : Debug {
     pub func WriteDebug(self: &AllocError, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
         AcceptsErrorSpec(spec)?;
         return match self {
-            .None => WriteBytes(writer, "AllocError::None"),
             .Unsupported => WriteBytes(writer, "AllocError::Unsupported"),
             .OutOfMemory => WriteBytes(writer, "AllocError::OutOfMemory"),
             .InvalidBlock => WriteBytes(writer, "AllocError::InvalidBlock")

@@ -123,12 +123,9 @@ extend OsString {
         self.allocator = other.allocator;
         if other.length == 0 { return; }
         let bytes = other.length * (sizeof(OsUnit) as uint);
-        let layout = Layout::New(bytes, alignof(OsUnit) as uint).ValueOr(Layout { size: bytes, alignment: 1 });
-        var block: *var opaque = null;
+        let layout = Layout::New(bytes, alignof(OsUnit) as uint) ?? (Layout { size: bytes, alignment: 1 });
         var allocator = other.allocator;
-        if allocator.Allocate(layout, @block) != AllocError::None {
-            Panic("copying an OsString requires an allocation");
-        }
+        let block = allocator.Allocate(layout) catch { else => Panic("copying an OsString requires an allocation") };
         Copy(block, other.data as *opaque, bytes);
         self.data = block as *var OsUnit;
     }
@@ -157,18 +154,20 @@ extend OsString {
         let units = view.Units();
         if units.length == 0 { return OsString(allocator); }
         let bytes = units.length * (sizeof(OsUnit) as uint);
-        let layout = Layout::New(bytes, alignof(OsUnit) as uint);
-        if layout.IsNone() {
-            *error = TextError::LengthOverflow;
-            return OsString(allocator);
-        }
-        var block: *var opaque = null;
+        let layout = match Layout::New(bytes, alignof(OsUnit) as uint) {
+            value? => value,
+            none => {
+                *error = TextError::LengthOverflow;
+                return OsString(allocator);
+            }
+        };
         var borrowed = allocator;
-        let allocated = borrowed.Allocate(layout.ValueOr(Layout { size: bytes, alignment: 1 }), @block);
-        if allocated != AllocError::None {
-            *error = FromAllocError(allocated);
-            return OsString(allocator);
-        }
+        let block = borrowed.Allocate(layout) catch {
+            allocated => {
+                *error = FromAllocError(allocated);
+                return OsString(allocator);
+            }
+        };
         Copy(block, units.data as *opaque, bytes);
         return OsString { data: block as *var OsUnit, length: units.length, allocator: allocator };
     }
@@ -205,7 +204,7 @@ extend OsString {
             let bytes = self.length * (sizeof(OsUnit) as uint);
             let layout = Layout::New(bytes, alignof(OsUnit) as uint);
             var borrowed = self.allocator;
-            borrowed.Deallocate(self.data as *var opaque, layout.ValueOr(Layout { size: bytes, alignment: 1 }));
+            borrowed.Deallocate(self.data as *var opaque, (layout ?? Layout { size: bytes, alignment: 1 })) catch { else => {} };
         }
         self.data = null;
         self.length = 0;
@@ -258,13 +257,13 @@ extend OsString {
             if needed == 0 { return OsString(allocator); }
             let bytes = needed * 2u;
             let layout = Layout::New(bytes, 2);
-            var block: *var opaque = null;
             var borrowed = allocator;
-            let allocated = borrowed.Allocate(layout.ValueOr(Layout { size: bytes, alignment: 2 }), @block);
-            if allocated != AllocError::None {
-                *error = FromAllocError(allocated);
-                return OsString(allocator);
-            }
+            let block = borrowed.Allocate((layout ?? Layout { size: bytes, alignment: 2 })) catch {
+                allocated => {
+                    *error = FromAllocError(allocated);
+                    return OsString(allocator);
+                }
+            };
             let units = block as *var uint16;
             var at: uint = 0;
             index = 0;

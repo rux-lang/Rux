@@ -1,5 +1,5 @@
 import Allocator::{ AllocError, Allocator, Arena, Box, IsEmptyBlock, Layout, Pool, SystemAllocator };
-import Core::Assert;
+import Core::{ Assert, Panic };
 
 // The phase gate for allocation: every site that can ask for storage is made to fail, and what happens next is
 // checked rather than assumed. Allocation failure is the path that never runs in testing and always runs in
@@ -25,35 +25,34 @@ struct FailingAllocator {
 }
 
 extend FailingAllocator : Allocator {
-    func Allocate(self: &var FailingAllocator, layout: Layout, result: *var *var opaque) -> AllocError {
+    func Allocate(self: &var FailingAllocator, layout: Layout) -> (*var opaque) ! AllocError {
         self.state.attempts = self.state.attempts + 1;
         if self.state.allowed == 0 {
-            return AllocError::OutOfMemory;
+            fail AllocError::OutOfMemory;
         }
         self.state.allowed = self.state.allowed - 1;
-        let error = self.state.backing.Allocate(layout, result);
-        if error == AllocError::None && layout.size != 0 {
+        let block = self.state.backing.Allocate(layout)?;
+        if layout.size != 0 {
             self.state.live = self.state.live + 1;
         }
-        return error;
+        return block;
     }
 
-    func Deallocate(self: &var FailingAllocator, block: *var opaque, layout: Layout) -> AllocError {
-        let error = self.state.backing.Deallocate(block, layout);
-        if error == AllocError::None && layout.size != 0 && !IsEmptyBlock(block) {
+    func Deallocate(self: &var FailingAllocator, block: *var opaque, layout: Layout) -> ! AllocError {
+        self.state.backing.Deallocate(block, layout)?;
+        if layout.size != 0 && !IsEmptyBlock(block) {
             self.state.live = self.state.live - 1;
         }
-        return error;
     }
 
-    func Reallocate(self: &var FailingAllocator, block: *var opaque, oldLayout: Layout, newLayout: Layout,
-                    result: *var *var opaque) -> AllocError {
+    func Reallocate(self: &var FailingAllocator, block: *var opaque, oldLayout: Layout, newLayout: Layout)
+        -> (*var opaque) ! AllocError {
         self.state.attempts = self.state.attempts + 1;
         if self.state.allowed == 0 {
-            return AllocError::OutOfMemory;
+            fail AllocError::OutOfMemory;
         }
         self.state.allowed = self.state.allowed - 1;
-        return self.state.backing.Reallocate(block, oldLayout, newLayout, result);
+        return self.state.backing.Reallocate(block, oldLayout, newLayout);
     }
 }
 
@@ -61,42 +60,36 @@ func Failing(state: *var FailureState) -> FailingAllocator {
     return FailingAllocator { state: state };
 }
 
-func Main() -> int {
+func Main() -> ! AllocError {
     var system = SystemAllocator();
     let real: Allocator = system;
-    let small = Layout::New(64, 8).ValueOr(Layout { size: 64, alignment: 8 });
+    let small = Layout::New(64, 8) ?? Layout { size: 64, alignment: 8 };
 
     // The harness itself: it must refuse when told to and count what it hands out.
     var state = FailureState { backing: real, allowed: 0, attempts: 0, live: 0 };
     var failing = Failing(@state);
     let starved: Allocator = failing;
-    var block: *var opaque = null;
-    Assert(starved.Allocate(small, @block) == AllocError::OutOfMemory, "the harness refuses when it has no budget");
+    Assert(Refusal(starved.Allocate(small)) == AllocError::OutOfMemory, "the harness refuses when it has no budget");
     Assert(state.attempts == 1, "having counted the attempt");
     Assert(state.live == 0, "and handed out nothing");
 
     state.allowed = 1;
-    Assert(starved.Allocate(small, @block) == AllocError::None, "and succeeds when it has budget");
+    let block = starved.Allocate(small)?;
     Assert(state.live == 1, "counting the block as out");
-    Assert(starved.Deallocate(block, small) == AllocError::None, "which comes back");
+    starved.Deallocate(block, small)?;
     Assert(state.live == 0, "leaving nothing out");
 
-    // A box that cannot be created is empty, owns nothing, and leaks nothing.
+    // A box that cannot be created reports why, and leaks nothing.
     state.allowed = 0;
     state.attempts = 0;
-    var boxError = AllocError::None;
-    var boxed = Box::Create<int64>(starved, 7, @boxError);
-    Assert(boxError == AllocError::OutOfMemory, "a box refused by the allocator reports why");
-    Assert(boxed.IsEmpty(), "and is empty");
+    Assert(Refusal(Box::Create<int64>(starved, 7)) == AllocError::OutOfMemory, "a box refused by the allocator reports why");
     Assert(state.attempts == 1, "having asked exactly once");
     Assert(state.live == 0, "and left nothing allocated");
 
     // The same box succeeds with a budget, and gives its storage back when its life ends.
     state.allowed = 1;
-    var keptError = AllocError::None;
-    var kept = Box::Create<int64>(starved, 9, @keptError);
-    Assert(keptError == AllocError::None, "a box with budget is created");
-    Assert(!kept.IsEmpty(), "and is not empty");
+    var kept = Box::Create<int64>(starved, 9)?;
+    Assert(!kept.IsEmpty(), "a box with budget is not empty");
     Assert(state.live == 1, "holding one block");
     var taken: int64 = 0;
     Assert(kept.TryTake(@taken), "taking the value out succeeds");
@@ -110,22 +103,20 @@ func Main() -> int {
     var handle = arena.Handle();
     let arenaAllocator: Allocator = handle;
     var fromArena: *var opaque = null;
-    Assert(arenaAllocator.Allocate(small, @fromArena) == AllocError::OutOfMemory,
+    Assert(Refusal(arenaAllocator.Allocate(small)) == AllocError::OutOfMemory,
            "an arena with no block and no budget refuses");
     Assert(arena.BlockCount() == 0, "having taken no block");
     Assert(state.attempts == 1, "and asked exactly once");
 
     // With one block's worth of budget it serves what fits and refuses what does not.
     state.allowed = 1;
-    Assert(arenaAllocator.Allocate(small, @fromArena) == AllocError::None, "an arena with budget serves a request");
+    fromArena = arenaAllocator.Allocate(small)?;
     Assert(arena.BlockCount() == 1, "having taken one block");
-    let large = Layout::New(4096, 8).ValueOr(small);
-    var tooBig: *var opaque = null;
-    Assert(arenaAllocator.Allocate(large, @tooBig) == AllocError::OutOfMemory,
+    let large = Layout::New(4096, 8) ?? small;
+    Assert(Refusal(arenaAllocator.Allocate(large)) == AllocError::OutOfMemory,
            "and refuses one that needs another block it cannot take");
     Assert(arena.BlockCount() == 1, "still holding just the one");
-    Assert(arenaAllocator.Allocate(small, @fromArena) == AllocError::None,
-           "while the block it already has still serves what fits");
+    fromArena = arenaAllocator.Allocate(small)?;
 
     // A pool that cannot take a chunk refuses, and takes nothing.
     state.allowed = 0;
@@ -134,22 +125,20 @@ func Main() -> int {
     var poolHandle = pool.Handle();
     let poolAllocator: Allocator = poolHandle;
     var fromPool: *var opaque = null;
-    Assert(poolAllocator.Allocate(small, @fromPool) == AllocError::OutOfMemory, "a pool with no budget refuses");
+    Assert(Refusal(poolAllocator.Allocate(small)) == AllocError::OutOfMemory, "a pool with no budget refuses");
     Assert(pool.ChunkCount() == 0, "having taken no chunk");
     Assert(pool.LiveBlocks() == 0, "and handed out nothing");
     Assert(state.attempts == 1, "asking exactly once");
 
     // With one chunk's budget it serves that class and refuses another.
     state.allowed = 1;
-    Assert(poolAllocator.Allocate(small, @fromPool) == AllocError::None, "a pool with budget serves its class");
+    fromPool = poolAllocator.Allocate(small)?;
     Assert(pool.ChunkCount() == 1, "having taken one chunk");
-    let otherClass = Layout::New(16, 8).ValueOr(small);
-    var fromOther: *var opaque = null;
-    Assert(poolAllocator.Allocate(otherClass, @fromOther) == AllocError::OutOfMemory,
+    let otherClass = Layout::New(16, 8) ?? small;
+    Assert(Refusal(poolAllocator.Allocate(otherClass)) == AllocError::OutOfMemory,
            "and refuses a class whose chunk it cannot take");
     Assert(pool.ChunkCount() == 1, "still holding just the one");
-    Assert(poolAllocator.Allocate(small, @fromPool) == AllocError::None,
-           "while the class it already carved still serves");
+    fromPool = poolAllocator.Allocate(small)?;
 
     // A refused release is not a refusal to release: the pool gives its chunks back whatever the budget is.
     state.allowed = 0;
@@ -157,5 +146,13 @@ func Main() -> int {
     Assert(pool.LiveBlocks() == 0, "a reset works with no budget at all");
     Assert(pool.ChunkCount() == 1, "keeping the chunk it has");
 
-    return 0;
+}
+
+/// Why an operation the test expects to be refused was refused. One that succeeds instead panics, so an expected
+/// refusal cannot pass by accident.
+func Refusal<T>(outcome: T ! AllocError) -> AllocError {
+    return match <-outcome {
+        .Failure(error) => error,
+        .Success(_) => Panic("the allocator was expected to refuse")
+    };
 }

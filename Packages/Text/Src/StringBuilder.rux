@@ -148,20 +148,12 @@ func ReserveBuilderStorage(data: *var *var char8, length: uint, capacity: *var u
             wanted = MinimumBuilderCapacity;
         }
 
-        let layout = Layout::New(wanted, 1);
-        if layout.IsNone() { return TextError::LengthOverflow; }
-        let want = layout.ValueOr(Layout { size: wanted, alignment: 1 });
+        let layout = Layout::New(wanted, 1) ?? return TextError::LengthOverflow;
+        let want = layout;
         var borrowed = allocator;
-        var block: *var opaque = null;
-        if *data == null {
-            let allocated = borrowed.Allocate(want, @block);
-            if allocated != AllocError::None { return FromAllocError(allocated); }
-        }
-        else {
-            let have = Layout::New(*capacity, 1).ValueOr(Layout { size: *capacity, alignment: 1 });
-            let moved = borrowed.Reallocate(*data as *var opaque, have, want, @block);
-            if moved != AllocError::None { return FromAllocError(moved); }
-        }
+        let have = Layout::New(*capacity, 1) ?? Layout { size: *capacity, alignment: 1 };
+        let placed = *data == null ? borrowed.Allocate(want) : borrowed.Reallocate(*data as *var opaque, have, want);
+        let block = placed catch { error => return FromAllocError(error) };
         *data = block as *var char8;
         *capacity = wanted;
         return TextError::None;
@@ -265,7 +257,7 @@ extend StringBuilder {
             let layout = Layout::New(self.capacity, 1);
             var borrowed = self.allocator;
             borrowed.Deallocate(self.data as *var opaque,
-                                layout.ValueOr(Layout { size: self.capacity, alignment: 1 }));
+                                (layout ?? Layout { size: self.capacity, alignment: 1 })) catch { else => {} };
         }
         self.data = null;
         self.length = 0;

@@ -167,11 +167,12 @@ pub func ReadDirectory(allocator: Allocator, path: Path, error: *var IoError) ->
     let wanted = DirectoryBufferSize();
     let layout = Layout { size: wanted, alignment: 8 };
     var borrowed = allocator;
-    var block: *var opaque = null;
-    if borrowed.Allocate(layout, @block) != AllocError::None {
-        *error = IoError::Of(IoErrorKind::Other);
-        return <-iterator;
-    }
+    let block = borrowed.Allocate(layout) catch {
+        else => {
+                *error = IoError::Of(IoErrorKind::Other);
+                return <-iterator;
+        }
+    };
     iterator.data = block as *var char8;
     iterator.capacity = wanted;
 
@@ -179,18 +180,19 @@ pub func ReadDirectory(allocator: Allocator, path: Path, error: *var IoError) ->
         // The search takes a pattern, so the path gets a separator and a star appended.
         let units = path.name.units;
         let patternLayout = Layout { size: (units.length + 3) * 2, alignment: 2 };
-        var raw: *var opaque = null;
-        if borrowed.Allocate(patternLayout, @raw) != AllocError::None {
-            iterator.Release();
-            *error = IoError::Of(IoErrorKind::Other);
-            return <-iterator;
-        }
+        let raw = borrowed.Allocate(patternLayout) catch {
+            else => {
+                    iterator.Release();
+                    *error = IoError::Of(IoErrorKind::Other);
+                    return <-iterator;
+            }
+        };
         let pattern = raw as *var uint16;
         var index: uint = 0;
         var length: uint = 0;
         while index < units.length {
             if (units.data[index] as uint32) == 0u32 {
-                borrowed.Deallocate(raw, patternLayout);
+                borrowed.Deallocate(raw, patternLayout) catch { else => {} };
                 iterator.Release();
                 *error = IoError::Of(IoErrorKind::InvalidInput);
                 return <-iterator;
@@ -206,7 +208,7 @@ pub func ReadDirectory(allocator: Allocator, path: Path, error: *var IoError) ->
         pattern[length] = 0x2Au16;
         pattern[length + 1] = 0;
         let found = FindFirstFileW(pattern as *char16, iterator.data as *var opaque);
-        borrowed.Deallocate(raw, patternLayout);
+        borrowed.Deallocate(raw, patternLayout) catch { else => {} };
         if (found as uint64) == InvalidHandleValue {
             let raw = GetLastError() as int32;
             iterator.Release();
@@ -372,7 +374,7 @@ extend DirectoryIterator {
         }
         if self.data != null {
             var borrowed = self.allocator;
-            borrowed.Deallocate(self.data as *var opaque, Layout { size: self.capacity, alignment: 8 });
+            borrowed.Deallocate(self.data as *var opaque, Layout { size: self.capacity, alignment: 8 }) catch { else => {} };
             self.data = null;
             self.capacity = 0;
         }

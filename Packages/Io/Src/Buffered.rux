@@ -67,16 +67,16 @@ extend BufferedReader {
             allocator: allocator
         };
         let wanted = capacity == 0u ? DefaultBufferCapacity : capacity;
-        let layout = Layout::New(wanted, 1);
-        let fallback = Layout { size: wanted, alignment: 1 };
-        var block: *var opaque = null;
+        let layout = Layout::New(wanted, 1) ?? Layout { size: wanted, alignment: 1 };
         var borrowed = allocator;
-        if borrowed.Allocate(layout.ValueOr(fallback), @block) == AllocError::None {
-            reader.data = block as *var char8;
-            reader.capacity = wanted;
-        }
-        else {
-            *error = IoError::Of(IoErrorKind::Other);
+        match borrowed.Allocate(layout) {
+            .Success(block) => {
+                reader.data = block as *var char8;
+                reader.capacity = wanted;
+            },
+            .Failure(_) => {
+                *error = IoError::Of(IoErrorKind::Other);
+            }
         }
         return <-reader;
     }
@@ -168,7 +168,7 @@ extend BufferedReader {
         if self.data != null {
             let layout = Layout::New(self.capacity, 1);
             var borrowed = self.allocator;
-            borrowed.Deallocate(self.data as *var opaque, layout.ValueOr(Layout { size: self.capacity, alignment: 1 }));
+            borrowed.Deallocate(self.data as *var opaque, (layout ?? Layout { size: self.capacity, alignment: 1 })) catch { else => {} };
         }
         self.data = null;
         self.capacity = 0;
@@ -224,16 +224,16 @@ extend BufferedWriter {
         *error = IoError::Ok();
         var writer = BufferedWriter { sink: sink, data: null, capacity: 0, length: 0, allocator: allocator };
         let wanted = capacity == 0u ? DefaultBufferCapacity : capacity;
-        let layout = Layout::New(wanted, 1);
-        let fallback = Layout { size: wanted, alignment: 1 };
-        var block: *var opaque = null;
+        let layout = Layout::New(wanted, 1) ?? Layout { size: wanted, alignment: 1 };
         var borrowed = allocator;
-        if borrowed.Allocate(layout.ValueOr(fallback), @block) == AllocError::None {
-            writer.data = block as *var char8;
-            writer.capacity = wanted;
-        }
-        else {
-            *error = IoError::Of(IoErrorKind::Other);
+        match borrowed.Allocate(layout) {
+            .Success(block) => {
+                writer.data = block as *var char8;
+                writer.capacity = wanted;
+            },
+            .Failure(_) => {
+                *error = IoError::Of(IoErrorKind::Other);
+            }
         }
         return <-writer;
     }
@@ -304,7 +304,7 @@ extend BufferedWriter {
             let layout = Layout::New(self.capacity, 1);
             let fallback = Layout { size: self.capacity, alignment: 1 };
             var borrowed = self.allocator;
-            borrowed.Deallocate(self.data as *var opaque, layout.ValueOr(fallback));
+            borrowed.Deallocate(self.data as *var opaque, (layout ?? fallback)) catch { else => {} };
         }
         self.data = null;
         self.capacity = 0;

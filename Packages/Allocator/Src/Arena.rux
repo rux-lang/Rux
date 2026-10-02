@@ -128,9 +128,8 @@ extend Arena {
         while block != null {
             let earlier = block.previous;
             let total = sizeof(ArenaBlock) + block.capacity;
-            let layout = Layout::New(total, ArenaBlockAlignment)
-                             .ValueOr(Layout { size: total, alignment: ArenaBlockAlignment });
-            self.backing.Deallocate(block as *var opaque, layout);
+            let layout = Layout::New(total, ArenaBlockAlignment) ?? Layout { size: total, alignment: ArenaBlockAlignment };
+            self.backing.Deallocate(block as *var opaque, layout) catch { else => {} };
             block = earlier;
         }
         self.current.previous = null;
@@ -163,28 +162,23 @@ extend Arena {
     // Gives one block back to the backing allocator, with the layout it was taken under.
     func ReleaseBlock(self: *var Arena, block: *var ArenaBlock) {
         let total = sizeof(ArenaBlock) + block.capacity;
-        let layout = Layout::New(total, ArenaBlockAlignment)
-                         .ValueOr(Layout { size: total, alignment: ArenaBlockAlignment });
-        self.backing.Deallocate(block as *var opaque, layout);
+        let layout = Layout::New(total, ArenaBlockAlignment) ?? Layout { size: total, alignment: ArenaBlockAlignment };
+        // The block came from the backing allocator with this layout, and the arena is giving it up either way.
+        self.backing.Deallocate(block as *var opaque, layout) catch { else => {} };
     }
 
     // Takes a block able to hold `payload` bytes, chains it in front of the current one, and makes it current.
-    func TakeBlock(self: *var Arena, payload: uint) -> AllocError {
+    func TakeBlock(self: *var Arena, payload: uint) -> ! AllocError {
         var capacity = self.nextBlockSize;
         if capacity < payload {
             capacity = payload;
         }
         let header = sizeof(ArenaBlock);
-        if capacity > uint::Max - header { return AllocError::Unsupported; }
+        if capacity > uint::Max - header { fail AllocError::Unsupported; }
         let total = header + capacity;
-        var layout = Layout { size: total, alignment: ArenaBlockAlignment };
-        let checked = Layout::New(total, ArenaBlockAlignment);
-        if checked.IsNone() { return AllocError::Unsupported; }
-        layout = checked.ValueOr(layout);
+        let layout = Layout::New(total, ArenaBlockAlignment) ?? fail AllocError::Unsupported;
 
-        var storage: *var opaque = null;
-        let error = self.backing.Allocate(layout, @storage);
-        if error != AllocError::None { return error; }
+        let storage = self.backing.Allocate(layout)?;
         let block = storage as *var ArenaBlock;
         block.previous = self.current;
         block.capacity = capacity;
@@ -193,7 +187,6 @@ extend Arena {
         self.blocks = self.blocks + 1;
         // The next block doubles, up to whatever does not overflow, so a growing arena stops asking the system.
         self.nextBlockSize = capacity > uint::Max / 2 ? capacity : capacity * 2;
-        return AllocError::None;
     }
 
     // The bump allocation itself: align within the current block, take the space, and remember where it went.
@@ -224,9 +217,8 @@ extend Arena {
         while block != null {
             let earlier = block.previous;
             let total = sizeof(ArenaBlock) + block.capacity;
-            let layout = Layout::New(total, ArenaBlockAlignment)
-                             .ValueOr(Layout { size: total, alignment: ArenaBlockAlignment });
-            self.backing.Deallocate(block as *var opaque, layout);
+            let layout = Layout::New(total, ArenaBlockAlignment) ?? Layout { size: total, alignment: ArenaBlockAlignment };
+            self.backing.Deallocate(block as *var opaque, layout) catch { else => {} };
             block = earlier;
         }
         self.current = null;
@@ -258,25 +250,21 @@ extend ArenaHandle : Allocator {
     /// The storage lives until the arena is reset or destroyed, whichever comes first, and not one moment longer.
     ///
     /// @param layout the size and alignment wanted
-    /// @param result receives the address when this reports `None`
-    /// @returns `None` when the storage was taken
+    /// @returns the address of the storage, or why none was taken
     /// @see https://rux-lang.dev/docs/api/allocator/arena-handle/allocate
-    pub func Allocate(self: &var ArenaHandle, layout: Layout, result: *var *var opaque) -> AllocError {
+    pub func Allocate(self: &var ArenaHandle, layout: Layout) -> (*var opaque) ! AllocError {
         if layout.size == 0 {
-            *result = EmptyBlockAddress();
-            return AllocError::None;
+            return EmptyBlockAddress();
         }
-        if layout.alignment > ArenaBlockAlignment { return AllocError::Unsupported; }
+        if layout.alignment > ArenaBlockAlignment { fail AllocError::Unsupported; }
 
         var address = self.arena.Bump(layout);
         if address == 0 {
-            let error = self.arena.TakeBlock(layout.size + layout.alignment);
-            if error != AllocError::None { return error; }
+            self.arena.TakeBlock(layout.size + layout.alignment)?;
             address = self.arena.Bump(layout);
-            if address == 0 { return AllocError::OutOfMemory; }
+            if address == 0 { fail AllocError::OutOfMemory; }
         }
-        *result = address as *var opaque;
-        return AllocError::None;
+        return address as *var opaque;
     }
 
     /// Accepts a release and reclaims only what it can.
@@ -290,11 +278,11 @@ extend ArenaHandle : Allocator {
     ///
     /// @param block an address this allocator returned
     /// @param layout the layout it was allocated with
-    /// @returns `None` when the release was accepted
+    /// @returns nothing when the release was accepted, or why it was refused
     /// @see https://rux-lang.dev/docs/api/allocator/arena-handle/deallocate
-    pub func Deallocate(self: &var ArenaHandle, block: *var opaque, layout: Layout) -> AllocError {
-        if layout.size == 0 { return IsEmptyBlock(block) ? AllocError::None : AllocError::InvalidBlock; }
-        if block == null { return AllocError::InvalidBlock; }
+    pub func Deallocate(self: &var ArenaHandle, block: *var opaque, layout: Layout) -> ! AllocError {
+        if layout.size == 0 { if !IsEmptyBlock(block) { fail AllocError::InvalidBlock; } return; }
+        if block == null { fail AllocError::InvalidBlock; }
         let address = block as uint;
         if address == self.arena.lastAllocation && self.arena.current != null {
             let payloadStart = (self.arena.current as uint) + sizeof(ArenaBlock);
@@ -304,7 +292,6 @@ extend ArenaHandle : Allocator {
                 self.arena.lastAllocation = 0;
             }
         }
-        return AllocError::None;
     }
 
     /// Grows or shrinks a block, extending the most recent allocation in place where it can.
@@ -320,25 +307,21 @@ extend ArenaHandle : Allocator {
     /// @param block the existing allocation's address
     /// @param oldLayout the layout `block` was allocated with
     /// @param newLayout the layout wanted, which must have the same alignment
-    /// @param result receives the address the block is at afterwards
-    /// @returns `None` when the block was resized
+    /// @returns the address the block is at afterwards, or why it was not resized
     /// @see https://rux-lang.dev/docs/api/allocator/arena-handle/reallocate
-    pub func Reallocate(self: &var ArenaHandle, block: *var opaque, oldLayout: Layout, newLayout: Layout,
-                    result: *var *var opaque) -> AllocError {
-        if oldLayout.alignment != newLayout.alignment { return AllocError::Unsupported; }
+    pub func Reallocate(self: &var ArenaHandle, block: *var opaque, oldLayout: Layout, newLayout: Layout)
+        -> (*var opaque) ! AllocError {
+        if oldLayout.alignment != newLayout.alignment { fail AllocError::Unsupported; }
         if oldLayout.size == newLayout.size {
-            *result = block;
-            return AllocError::None;
+            return block;
         }
         // Shrinking to nothing has to give the shared empty address, not the address it is rewinding off of. Every
         // allocator here answers a zero-sized layout with `EmptyBlockAddress`, and `Deallocate` refuses a
         // zero-sized release that arrives with anything else — so returning the real address would hand the caller
         // a block it cannot release. Releasing the old block first is what rewinds the bump pointer.
         if newLayout.size == 0 {
-            let released = self.Deallocate(block, oldLayout);
-            if released != AllocError::None { return released; }
-            *result = EmptyBlockAddress();
-            return AllocError::None;
+            self.Deallocate(block, oldLayout)?;
+            return EmptyBlockAddress();
         }
 
         let address = block as uint;
@@ -348,21 +331,17 @@ extend ArenaHandle : Allocator {
             if offset + oldLayout.size == self.arena.current.used {
                 if newLayout.size <= oldLayout.size {
                     self.arena.current.used = offset + newLayout.size;
-                    *result = block;
-                    return AllocError::None;
+                    return block;
                 }
                 let extra = newLayout.size - oldLayout.size;
                 if extra <= self.arena.current.capacity - self.arena.current.used {
                     self.arena.current.used = self.arena.current.used + extra;
-                    *result = block;
-                    return AllocError::None;
+                    return block;
                 }
             }
         }
 
-        var fresh: *var opaque = null;
-        let error = self.Allocate(newLayout, @fresh);
-        if error != AllocError::None { return error; }
+        let fresh = self.Allocate(newLayout)?;
         let keep = oldLayout.size < newLayout.size ? oldLayout.size : newLayout.size;
         var offset: uint = 0;
         let target = fresh as *var byte;
@@ -371,7 +350,6 @@ extend ArenaHandle : Allocator {
             *(target + offset) = *(origin + offset);
             offset++;
         }
-        *result = fresh;
-        return AllocError::None;
+        return fresh;
     }
 }

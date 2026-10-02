@@ -89,17 +89,14 @@ extend PathBuffer {
             wanted = 16;
         }
         let unitSize = sizeof(OsUnit) as uint;
-        let layout = Layout::New(wanted * unitSize, alignof(OsUnit) as uint);
-        if layout.IsNone() { return TextError::LengthOverflow; }
-        var block: *var opaque = null;
+        let layout = Layout::New(wanted * unitSize, alignof(OsUnit) as uint) ?? return TextError::LengthOverflow;
         var borrowed = self.allocator;
-        let allocated = borrowed.Allocate(layout.ValueOr(Layout { size: wanted * unitSize, alignment: 1 }), @block);
-        if allocated != AllocError::None { return FromAllocError(allocated); }
+        let block = borrowed.Allocate(layout) catch { allocated => return FromAllocError(allocated) };
         if self.data != null {
             Copy(block, self.data as *opaque, self.length * unitSize);
             let old = Layout::New(self.capacity * unitSize, alignof(OsUnit) as uint);
             borrowed.Deallocate(self.data as *var opaque,
-                                old.ValueOr(Layout { size: self.capacity * unitSize, alignment: 1 }));
+                                (old ?? Layout { size: self.capacity * unitSize, alignment: 1 })) catch { else => {} };
         }
         self.data = block as *var OsUnit;
         self.capacity = wanted;
@@ -153,7 +150,7 @@ extend PathBuffer {
             let layout = Layout::New(self.capacity * unitSize, alignof(OsUnit) as uint);
             var borrowed = self.allocator;
             borrowed.Deallocate(self.data as *var opaque,
-                                layout.ValueOr(Layout { size: self.capacity * unitSize, alignment: 1 }));
+                                (layout ?? Layout { size: self.capacity * unitSize, alignment: 1 })) catch { else => {} };
         }
         self.data = null;
         self.length = 0;

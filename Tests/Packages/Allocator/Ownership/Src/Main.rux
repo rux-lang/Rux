@@ -17,7 +17,7 @@
 
 import Allocator::{ AllocError, Allocator, Arena, EmptyBlockAddress, FixedBuffer, IsEmptyBlock, Layout, Pool,
                     SystemAllocator };
-import Core::Assert;
+import Core::{ Assert, Panic };
 
 /// A recognizable byte for position `index`, chosen so that a block filled with these cannot be mistaken for
 /// zeroed storage, for a run of one repeated value, or for a shifted copy of itself.
@@ -45,7 +45,7 @@ func Holds(block: *var opaque, size: uint) -> bool {
 }
 
 func LayoutOr(size: uint, alignment: uint) -> Layout {
-    return Layout::New(size, alignment).ValueOr(Layout { size: size, alignment: alignment });
+    return Layout::New(size, alignment) ?? Layout { size: size, alignment: alignment };
 }
 
 /// The first promise: an address handed back satisfies the layout it was asked for.
@@ -53,22 +53,21 @@ func LayoutOr(size: uint, alignment: uint) -> Layout {
 /// Asked of every alignment a caller might reasonably want, and asked of whichever allocator is passed. An
 /// allocator that cannot serve an alignment must refuse it — what it may not do is serve it misaligned, which is
 /// the failure a caller has no way to notice until something faults much later.
-func CheckAlignment(allocator: Allocator, name: char8[..]) {
+func CheckAlignment(allocator: Allocator, name: char8[..]) -> ! AllocError {
     var alignment: uint = 1;
     while alignment <= 256 {
         let layout = LayoutOr(64, alignment);
-        var block: *var opaque = null;
-        let error = allocator.Allocate(layout, @block);
-        if error == AllocError::None {
-            Assert(block != null, "a successful allocation reports an address");
-            Assert(layout.IsSatisfiedBy(block as uint), "a served allocation is aligned to what was asked for");
-            // The whole block is writable, not merely its aligned first byte.
-            Fill(block, 64);
-            Assert(Holds(block, 64), "and the whole block holds what was written to it");
-            Assert(allocator.Deallocate(block, layout) == AllocError::None, "and comes back");
-        }
-        else {
-            Assert(block == null, "a refused allocation leaves the result unwritten");
+        // A refused allocation is allowed; a misaligned one is not.
+        match allocator.Allocate(layout) {
+            .Success(block) => {
+                Assert(block != null, "a successful allocation reports an address");
+                Assert(layout.IsSatisfiedBy(block as uint), "a served allocation is aligned to what was asked for");
+                // The whole block is writable, not merely its aligned first byte.
+                Fill(block, 64);
+                Assert(Holds(block, 64), "and the whole block holds what was written to it");
+                allocator.Deallocate(block, layout)?;
+            },
+            .Failure(_) => {}
         }
         alignment = alignment * 2;
     }
@@ -76,38 +75,39 @@ func CheckAlignment(allocator: Allocator, name: char8[..]) {
 }
 
 /// The fourth promise: a zero-sized layout is legal, gives the shared empty address, and must still be released.
-func CheckZeroSize(allocator: Allocator) {
+func CheckZeroSize(allocator: Allocator) -> ! AllocError {
     let zero = LayoutOr(0, 8);
-    var block: *var opaque = null;
-    Assert(allocator.Allocate(zero, @block) == AllocError::None, "a zero-sized allocation succeeds");
+    let block = allocator.Allocate(zero)?;
     Assert(block != null, "and is not null, so no caller has to branch on it");
     Assert(IsEmptyBlock(block), "and is the shared empty address");
     Assert(block == EmptyBlockAddress(), "which is the same address on every allocator");
     Assert(LayoutOr(0, 256).IsSatisfiedBy(block as uint), "aligned to anything, so it satisfies every layout");
-    Assert(allocator.Deallocate(block, zero) == AllocError::None, "and releasing it succeeds");
+    allocator.Deallocate(block, zero)?;
 
     // Releasing it twice is still a success, because nothing was ever taken: there is no storage to lose track of.
-    Assert(allocator.Deallocate(block, zero) == AllocError::None, "releasing it again is still a success");
+    allocator.Deallocate(block, zero)?;
 
     // Growing out of nothing is an ordinary allocation, and shrinking back to nothing gives the empty address.
     let real = LayoutOr(32, 8);
-    var grown: *var opaque = null;
-    let growth = allocator.Reallocate(block, zero, real, @grown);
-    if growth == AllocError::None {
-        Assert(!IsEmptyBlock(grown), "growing out of nothing gives real storage");
-        Fill(grown, 32);
-        var shrunk: *var opaque = null;
-        if allocator.Reallocate(grown, real, zero, @shrunk) == AllocError::None {
-            Assert(IsEmptyBlock(shrunk), "and shrinking back to nothing gives the empty address again");
-            // The address is only half of it. A zero-sized release must arrive with the empty block, so an
-            // allocator that handed back the address it rewound off of would leave the caller holding something
-            // `Deallocate` refuses — which is exactly what Arena and FixedBuffer did until this test was written.
-            Assert(allocator.Deallocate(shrunk, zero) == AllocError::None,
-                   "and what a shrink to nothing gives back is releasable with the layout it was asked for");
-        }
-        else {
-            Assert(allocator.Deallocate(grown, real) == AllocError::None, "or the real block is still releasable");
-        }
+    match allocator.Reallocate(block, zero, real) {
+        .Success(grown) => {
+            Assert(!IsEmptyBlock(grown), "growing out of nothing gives real storage");
+            Fill(grown, 32);
+            match allocator.Reallocate(grown, real, zero) {
+                .Success(shrunk) => {
+                    Assert(IsEmptyBlock(shrunk), "and shrinking back to nothing gives the empty address again");
+                    // The address is only half of it. A zero-sized release must arrive with the empty block, so an
+                    // allocator that handed back the address it rewound off of would leave the caller holding
+                    // something `Deallocate` refuses — which is exactly what Arena and FixedBuffer did until this
+                    // test was written.
+                    allocator.Deallocate(shrunk, zero)?;
+                },
+                .Failure(_) => {
+                    allocator.Deallocate(grown, real)?;
+                }
+            }
+        },
+        .Failure(_) => {}
     }
 }
 
@@ -117,19 +117,16 @@ func CheckZeroSize(allocator: Allocator) {
 /// An alignment change is the failure every allocator here reports the same way, and it is a real one rather than a
 /// contrived one: `Unsupported` exists precisely so that no allocator silently moves a block to a different
 /// alignment.
-func CheckFailedReallocation(allocator: Allocator) {
+func CheckFailedReallocation(allocator: Allocator) -> ! AllocError {
     let original = LayoutOr(96, 8);
-    var block: *var opaque = null;
-    Assert(allocator.Allocate(original, @block) == AllocError::None, "the block to be reallocated is allocated");
+    let block = allocator.Allocate(original)?;
     Fill(block, 96);
     let before = block;
 
     // Changing the alignment is refused rather than served by moving the block.
     let realigned = LayoutOr(96, 32);
-    var moved: *var opaque = null;
-    Assert(allocator.Reallocate(block, original, realigned, @moved) == AllocError::Unsupported,
+    Assert(Refusal(allocator.Reallocate(block, original, realigned)) == AllocError::Unsupported,
            "changing the alignment is refused");
-    Assert(moved == null, "and the result is left unwritten");
     Assert(block == before, "the original address is unchanged");
     Assert(Holds(block, 96), "and the original contents survived the refusal");
 
@@ -137,92 +134,94 @@ func CheckFailedReallocation(allocator: Allocator) {
     // holds, which a mere 2^47 is not: FreeBSD gives an AArch64 process 256 TiB and promises any amount of anonymous
     // memory by default, so it served that request and the assertion below failed.
     let enormous = LayoutOr(0x1000000000000000, 8);
-    var stretched: *var opaque = null;
-    let stretch = allocator.Reallocate(block, original, enormous, @stretched);
-    Assert(stretch != AllocError::None, "growing past what any allocator can serve is refused");
+    let refused = match allocator.Reallocate(block, original, enormous) {
+        .Success(_) => false,
+        .Failure(_) => true
+    };
+    Assert(refused, "growing past what any allocator can serve is refused");
     Assert(Holds(block, 96), "and that refusal also left the original contents alone");
 
     // Still the caller's, which is the half of the promise a return value cannot express.
-    Assert(allocator.Deallocate(block, original) == AllocError::None,
-           "and the block a failed reallocation left behind is still releasable");
+    allocator.Deallocate(block, original)?;
 }
 
 /// A successful reallocation preserves the first `min(old, new)` bytes, whether it moved the block or not.
-func CheckSuccessfulReallocation(allocator: Allocator) {
+func CheckSuccessfulReallocation(allocator: Allocator) -> ! AllocError {
     let small = LayoutOr(64, 8);
     let large = LayoutOr(256, 8);
-    var block: *var opaque = null;
-    Assert(allocator.Allocate(small, @block) == AllocError::None, "a block is allocated");
+    let block = allocator.Allocate(small)?;
     Fill(block, 64);
 
-    var grown: *var opaque = null;
-    if allocator.Reallocate(block, small, large, @grown) == AllocError::None {
-        Assert(grown != null, "a successful growth reports where the block is now");
-        Assert(Holds(grown, 64), "and the bytes that fit both layouts came across");
+    match allocator.Reallocate(block, small, large) {
+        .Success(grown) => {
+            Assert(grown != null, "a successful growth reports where the block is now");
+            Assert(Holds(grown, 64), "and the bytes that fit both layouts came across");
 
-        // Shrinking keeps the prefix and nothing is promised about the rest.
-        Fill(grown, 256);
-        var shrunk: *var opaque = null;
-        if allocator.Reallocate(grown, large, small, @shrunk) == AllocError::None {
-            Assert(Holds(shrunk, 64), "and shrinking keeps the prefix that still fits");
-            Assert(allocator.Deallocate(shrunk, small) == AllocError::None, "the shrunk block is releasable");
+            // Shrinking keeps the prefix and nothing is promised about the rest.
+            Fill(grown, 256);
+            match allocator.Reallocate(grown, large, small) {
+                .Success(shrunk) => {
+                    Assert(Holds(shrunk, 64), "and shrinking keeps the prefix that still fits");
+                    allocator.Deallocate(shrunk, small)?;
+                },
+                .Failure(_) => {
+                    allocator.Deallocate(grown, large)?;
+                }
+            }
+        },
+        .Failure(_) => {
+            Assert(Holds(block, 64), "a refused growth left the original alone");
+            allocator.Deallocate(block, small)?;
         }
-        else {
-            Assert(allocator.Deallocate(grown, large) == AllocError::None, "or the grown block is");
-        }
-    }
-    else {
-        Assert(Holds(block, 64), "a refused growth left the original alone");
-        Assert(allocator.Deallocate(block, small) == AllocError::None, "and it is still releasable");
     }
 
     // Reallocating to the same layout is a no-op that reports the same address, which is what lets a caller call it
     // unconditionally rather than comparing sizes first.
     var same: *var opaque = null;
     var steady: *var opaque = null;
-    Assert(allocator.Allocate(small, @same) == AllocError::None, "another block is allocated");
+    same = allocator.Allocate(small)?;
     Fill(same, 64);
-    Assert(allocator.Reallocate(same, small, small, @steady) == AllocError::None, "reallocating to the same size works");
+    steady = allocator.Reallocate(same, small, small)?;
     Assert(steady == same, "reporting the same address");
     Assert(Holds(steady, 64), "with its contents untouched");
-    Assert(allocator.Deallocate(steady, small) == AllocError::None, "and it releases");
+    allocator.Deallocate(steady, small)?;
 }
 
-func Main() -> int {
+func Main() -> ! AllocError {
     var system = SystemAllocator();
     let real: Allocator = system;
 
     // --- The contract, asked of each allocator ------------------------------------------------------------------
 
-    CheckAlignment(real, "SystemAllocator");
-    CheckZeroSize(real);
-    CheckFailedReallocation(real);
-    CheckSuccessfulReallocation(real);
+    CheckAlignment(real, "SystemAllocator")?;
+    CheckZeroSize(real)?;
+    CheckFailedReallocation(real)?;
+    CheckSuccessfulReallocation(real)?;
 
     var arena = Arena(real, 65536);
     var arenaHandle = arena.Handle();
     let arenaAllocator: Allocator = arenaHandle;
-    CheckAlignment(arenaAllocator, "Arena");
-    CheckZeroSize(arenaAllocator);
-    CheckFailedReallocation(arenaAllocator);
-    CheckSuccessfulReallocation(arenaAllocator);
+    CheckAlignment(arenaAllocator, "Arena")?;
+    CheckZeroSize(arenaAllocator)?;
+    CheckFailedReallocation(arenaAllocator)?;
+    CheckSuccessfulReallocation(arenaAllocator)?;
 
     var pool = Pool(real, 16);
     var poolHandle = pool.Handle();
     let poolAllocator: Allocator = poolHandle;
-    CheckAlignment(poolAllocator, "Pool");
-    CheckZeroSize(poolAllocator);
-    CheckFailedReallocation(poolAllocator);
-    CheckSuccessfulReallocation(poolAllocator);
+    CheckAlignment(poolAllocator, "Pool")?;
+    CheckZeroSize(poolAllocator)?;
+    CheckFailedReallocation(poolAllocator)?;
+    CheckSuccessfulReallocation(poolAllocator)?;
 
     var storage: byte[65536];
     var buffer = FixedBuffer(@storage[0] as *var opaque, 65536);
     var bufferHandle = buffer.Handle();
     let bufferAllocator: Allocator = bufferHandle;
-    CheckAlignment(bufferAllocator, "FixedBuffer");
-    CheckZeroSize(bufferAllocator);
-    CheckFailedReallocation(bufferAllocator);
-    CheckSuccessfulReallocation(bufferAllocator);
+    CheckAlignment(bufferAllocator, "FixedBuffer")?;
+    CheckZeroSize(bufferAllocator)?;
+    CheckFailedReallocation(bufferAllocator)?;
+    CheckSuccessfulReallocation(bufferAllocator)?;
 
     // --- Adapters share their owner's state ---------------------------------------------------------------------
 
@@ -235,13 +234,11 @@ func Main() -> int {
     let secondAllocator: Allocator = second;
 
     let unit = LayoutOr(128, 8);
-    var throughFirst: *var opaque = null;
-    Assert(firstAllocator.Allocate(unit, @throughFirst) == AllocError::None, "the first handle serves a request");
+    let throughFirst = firstAllocator.Allocate(unit)?;
     let afterFirst = counted.BytesUsed();
     Assert(afterFirst >= 128, "which the arena itself accounts for");
 
-    var throughSecond: *var opaque = null;
-    Assert(secondAllocator.Allocate(unit, @throughSecond) == AllocError::None, "the second handle serves one too");
+    let throughSecond = secondAllocator.Allocate(unit)?;
     Assert(counted.BytesUsed() > afterFirst, "advancing the same arena rather than a copy of it");
     Assert(throughSecond != throughFirst, "and handing out a different address");
     Assert(counted.BlockCount() == 1, "both came out of the one block the arena took");
@@ -255,9 +252,7 @@ func Main() -> int {
     Assert(counted.BytesUsed() == 0, "a reset rewinds the arena completely");
     Assert(counted.BlockCount() == 1, "keeping the block it already had");
 
-    var afterReset: *var opaque = null;
-    Assert(firstAllocator.Allocate(unit, @afterReset) == AllocError::None,
-           "a handle taken before the reset still serves, because it points at the arena rather than at its state");
+    let afterReset = firstAllocator.Allocate(unit)?;
     Assert(afterReset == throughFirst, "and hands back the address the reset reclaimed, which is what invalidated it");
     Assert(counted.BytesUsed() == afterFirst, "with the accounting where it was after the first request");
 
@@ -272,8 +267,7 @@ func Main() -> int {
 
     var afterMove = relocated.Handle();
     let movedAllocator: Allocator = afterMove;
-    var fromMoved: *var opaque = null;
-    Assert(movedAllocator.Allocate(unit, @fromMoved) == AllocError::None, "a handle taken after the move serves");
+    let fromMoved = movedAllocator.Allocate(unit)?;
     Assert(relocated.BytesUsed() > afterFirst, "advancing the arena at its new home");
     Assert(fromMoved != afterReset, "with an address distinct from the one still outstanding");
 
@@ -282,19 +276,25 @@ func Main() -> int {
     var moving = FixedBuffer(@storage[0] as *var opaque, 65536);
     var beforeMoveHandle = moving.Handle();
     let beforeMoveAllocator: Allocator = beforeMoveHandle;
-    var early: *var opaque = null;
-    Assert(beforeMoveAllocator.Allocate(unit, @early) == AllocError::None, "the buffer serves before moving");
+    let early = beforeMoveAllocator.Allocate(unit)?;
     let earlyUsed = moving.BytesUsed();
 
     var carried <- moving;
     Assert(carried.BytesUsed() == earlyUsed, "a moved fixed buffer carries its accounting");
     var lateHandle = carried.Handle();
     let lateAllocator: Allocator = lateHandle;
-    var late: *var opaque = null;
-    Assert(lateAllocator.Allocate(unit, @late) == AllocError::None, "and serves through a handle taken afterwards");
+    let late = lateAllocator.Allocate(unit)?;
     Assert(late != early, "handing out storage it had not already given away");
     Assert((late as uint) >= (@storage[0] as uint), "out of the caller's own bytes, which never moved");
     Assert((late as uint) < (@storage[0] as uint) + 65536, "and stays inside them");
 
-    return 0;
+}
+
+/// Why an operation the test expects to be refused was refused. One that succeeds instead panics, so an expected
+/// refusal cannot pass by accident.
+func Refusal<T>(outcome: T ! AllocError) -> AllocError {
+    return match <-outcome {
+        .Failure(error) => error,
+        .Success(_) => Panic("the allocator was expected to refuse")
+    };
 }

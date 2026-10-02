@@ -32,11 +32,13 @@ Four promises hold for every allocator here:
 - **A release must match its allocation** — the same pointer, and an equal layout. The allocator needs the size to know what it is taking back.
 - **A failure leaves everything alone.** A failed reallocation leaves the original block valid and still the caller's.
 
+Every operation returns a native fallible: `Allocate` and `Reallocate` give `(*var opaque) ! AllocError`, and `Deallocate` gives `! AllocError`. Every `AllocError` case is a failure, so a caller propagates with `?`, recovers with `catch`, and a result left unhandled is diagnosed as discarded. A release on a cleanup path that has nobody to report to says so explicitly with `allocator.Deallocate(block, layout) catch { else => {} };`.
+
 A zero-sized layout is legal and gives a non-null aligned address that nothing may be read from or written to, and which must still be released. That is cheaper than a null case every caller has to branch on, and it keeps an empty collection from being a special shape.
 
-`Arena`, `Pool`, `FixedBuffer`, and `Box<T>` prohibit copying. The first two and the box use canonical destructors; the fixed buffer owns no storage but still cannot be copied because duplicate bump state could hand out overlapping blocks. Move an owner explicitly, for example `let destination <- source`. Destroying a non-empty box destroys its value before returning the allocation, while `TryTake` moves the value to the caller and leaves the box empty.
+`Arena`, `Pool`, `FixedBuffer`, and `Box<T>` prohibit copying. The first two and the box use canonical destructors; the fixed buffer owns no storage but still cannot be copied because duplicate bump state could hand out overlapping blocks. Move an owner explicitly, for example `let destination <- source`. `Box::Create` returns `Box<T> ! AllocError`, destroying the value it was given when the allocator refuses. Destroying a box destroys its value before returning the allocation, while `TryTake` moves the value to the caller and leaves the box empty.
 
-Canonical construction is `SystemAllocator()`, `Arena(backing, blockSize)`, `Pool(backing, blocksPerChunk)`, and `FixedBuffer(storage, capacity)`. `Layout::New` retains its name because it validates and returns `Option<Layout>`.
+Canonical construction is `SystemAllocator()`, `Arena(backing, blockSize)`, `Pool(backing, blocksPerChunk)`, and `FixedBuffer(storage, capacity)`. `Layout::New` retains its name because it validates and returns `Layout?`, so `Layout::New(size, alignment) ?? fail AllocError::Unsupported` turns an unrepresentable layout into a failure.
 
 An `Arena` hands out storage by advancing a pointer and takes it all back at once, which is the right shape whenever a program builds many small things whose lives end together. Blocks come from a backing allocator and each is twice the size of the last, so a long-lived arena stops going back to the system. `Reset` rewinds every allocation while keeping the largest block, so a second round of the same work asks the system for nothing.
 

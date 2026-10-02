@@ -227,22 +227,18 @@ extend Pool {
     }
 
     // Takes one chunk from the backing allocator and carves it into blocks of `classIndex`.
-    func TakeChunk(self: *var Pool, classIndex: uint) -> AllocError {
+    func TakeChunk(self: *var Pool, classIndex: uint) -> ! AllocError {
         let blockSize = PoolSmallestClass << classIndex;
         let blocks = self.blocksPerChunk;
-        if blocks > uint::Max / blockSize { return AllocError::Unsupported; }
+        if blocks > uint::Max / blockSize { fail AllocError::Unsupported; }
         let payload = blocks * blockSize;
         let header = Pool::ChunkHeaderSize();
-        if payload > uint::Max - header { return AllocError::Unsupported; }
+        if payload > uint::Max - header { fail AllocError::Unsupported; }
         let total = header + payload;
 
-        let checked = Layout::New(total, PoolAlignment);
-        if checked.IsNone() { return AllocError::Unsupported; }
-        let layout = checked.ValueOr(Layout { size: total, alignment: PoolAlignment });
+        let layout = Layout::New(total, PoolAlignment) ?? fail AllocError::Unsupported;
 
-        var storage: *var opaque = null;
-        let error = self.backing.Allocate(layout, @storage);
-        if error != AllocError::None { return error; }
+        let storage = self.backing.Allocate(layout)?;
 
         let chunk = storage as *var PoolChunk;
         chunk.previous = self.chunks;
@@ -252,7 +248,6 @@ extend Pool {
         self.chunks = chunk;
         self.chunkCount = self.chunkCount + 1;
         self.CarveChunk(chunk);
-        return AllocError::None;
     }
 }
 
@@ -267,9 +262,8 @@ extend Pool {
         var chunk = self.chunks;
         while chunk != null {
             let earlier = chunk.previous;
-            let layout = Layout::New(chunk.total, PoolAlignment)
-                             .ValueOr(Layout { size: chunk.total, alignment: PoolAlignment });
-            self.backing.Deallocate(chunk as *var opaque, layout);
+            let layout = Layout::New(chunk.total, PoolAlignment) ?? Layout { size: chunk.total, alignment: PoolAlignment };
+            self.backing.Deallocate(chunk as *var opaque, layout) catch { else => {} };
             chunk = earlier;
         }
         self.chunks = null;
@@ -308,28 +302,24 @@ extend PoolHandle : Allocator {
     /// The block lives until it is released, the pool is reset, or the pool is destroyed.
     ///
     /// @param layout the size and alignment wanted
-    /// @param result receives the address when this reports `None`
-    /// @returns `None` when the storage was taken
+    /// @returns the address of the storage, or why none was taken
     /// @see https://rux-lang.dev/docs/api/allocator/pool-handle/allocate
-    pub func Allocate(self: &var PoolHandle, layout: Layout, result: *var *var opaque) -> AllocError {
+    pub func Allocate(self: &var PoolHandle, layout: Layout) -> (*var opaque) ! AllocError {
         if layout.size == 0 {
-            *result = EmptyBlockAddress();
-            return AllocError::None;
+            return EmptyBlockAddress();
         }
 
         let classIndex = ClassIndexFor(layout);
-        if classIndex >= PoolClassCount { return self.pool.backing.Allocate(layout, result); }
+        if classIndex >= PoolClassCount { return self.pool.backing.Allocate(layout); }
 
         if self.pool.free[classIndex] == 0 {
-            let error = self.pool.TakeChunk(classIndex);
-            if error != AllocError::None { return error; }
+            self.pool.TakeChunk(classIndex)?;
         }
 
         let address = self.pool.free[classIndex];
         self.pool.free[classIndex] = *(address as *uint);
         self.pool.live = self.pool.live + 1;
-        *result = address as *var opaque;
-        return AllocError::None;
+        return address as *var opaque;
     }
 
     /// Puts a block back on the free list of the class its layout names.
@@ -345,11 +335,11 @@ extend PoolHandle : Allocator {
     ///
     /// @param block an address this allocator returned
     /// @param layout the layout it was allocated with
-    /// @returns `None` when the release was accepted
+    /// @returns nothing when the release was accepted, or why it was refused
     /// @see https://rux-lang.dev/docs/api/allocator/pool-handle/deallocate
-    pub func Deallocate(self: &var PoolHandle, block: *var opaque, layout: Layout) -> AllocError {
-        if layout.size == 0 { return IsEmptyBlock(block) ? AllocError::None : AllocError::InvalidBlock; }
-        if block == null { return AllocError::InvalidBlock; }
+    pub func Deallocate(self: &var PoolHandle, block: *var opaque, layout: Layout) -> ! AllocError {
+        if layout.size == 0 { if !IsEmptyBlock(block) { fail AllocError::InvalidBlock; } return; }
+        if block == null { fail AllocError::InvalidBlock; }
 
         let classIndex = ClassIndexFor(layout);
         if classIndex >= PoolClassCount { return self.pool.backing.Deallocate(block, layout); }
@@ -360,7 +350,6 @@ extend PoolHandle : Allocator {
         if self.pool.live > 0 {
             self.pool.live = self.pool.live - 1;
         }
-        return AllocError::None;
     }
 
     /// Changes the size of a block, which costs nothing when both sizes land in the same class.
@@ -372,35 +361,31 @@ extend PoolHandle : Allocator {
     /// @param block the existing allocation's address
     /// @param oldLayout the layout `block` was allocated with
     /// @param newLayout the layout wanted, which must have the same alignment
-    /// @param result receives the address the block is at afterwards
-    /// @returns `None` when the block was resized
+    /// @returns the address the block is at afterwards, or why it was not resized
     /// @see https://rux-lang.dev/docs/api/allocator/pool-handle/reallocate
-    pub func Reallocate(self: &var PoolHandle, block: *var opaque, oldLayout: Layout, newLayout: Layout,
-                    result: *var *var opaque) -> AllocError {
-        if oldLayout.alignment != newLayout.alignment { return AllocError::Unsupported; }
+    pub func Reallocate(self: &var PoolHandle, block: *var opaque, oldLayout: Layout, newLayout: Layout)
+        -> (*var opaque) ! AllocError {
+        if oldLayout.alignment != newLayout.alignment { fail AllocError::Unsupported; }
         if oldLayout.size == newLayout.size {
-            *result = block;
-            return AllocError::None;
+            return block;
         }
 
         let oldClass = ClassIndexFor(oldLayout);
         let newClass = ClassIndexFor(newLayout);
         if oldClass >= PoolClassCount && newClass >= PoolClassCount {
-            return self.pool.backing.Reallocate(block, oldLayout, newLayout, result);
+            return self.pool.backing.Reallocate(block, oldLayout, newLayout);
         }
         if oldClass == newClass && oldLayout.size != 0 && newLayout.size != 0 {
-            *result = block;
-            return AllocError::None;
+            return block;
         }
 
-        var fresh: *var opaque = null;
-        let error = self.Allocate(newLayout, @fresh);
-        if error != AllocError::None { return error; }
+        let fresh = self.Allocate(newLayout)?;
         let keep = oldLayout.size < newLayout.size ? oldLayout.size : newLayout.size;
         Copy(fresh, block as *opaque, keep);
-        self.Deallocate(block, oldLayout);
-        *result = fresh;
-        return AllocError::None;
+        // The old block is this pool's or its backing allocator's with this layout, and the new one already holds
+        // its contents, so a refused release could only leak it.
+        self.Deallocate(block, oldLayout) catch { else => {} };
+        return fresh;
     }
 }
 

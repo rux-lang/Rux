@@ -6,7 +6,7 @@ import Memory::IsPointerAligned;
 // asked for, that a request too large for the current block gets a new one, that a reset makes the space available
 // again without going back to the system, and that the blocks are all given back at the end.
 
-func Main() -> int {
+func Main() -> ! AllocError {
     var system = SystemAllocator();
     let backing: Allocator = system;
 
@@ -19,31 +19,27 @@ func Main() -> int {
     let allocator: Allocator = handle;
 
     // A zero-sized layout costs the arena nothing.
-    let zero = Layout::New(0, 8).ValueOr(Layout { size: 0, alignment: 1 });
-    var empty: *var opaque = null;
-    Assert(allocator.Allocate(zero, @empty) == AllocError::None, "a zero-sized allocation succeeds");
+    let zero = Layout::New(0, 8) ?? Layout { size: 0, alignment: 1 };
+    let empty = allocator.Allocate(zero)?;
     Assert(IsEmptyBlock(empty), "and gives the shared empty block");
     Assert(arena.BlockCount() == 0, "without taking a block");
 
     // The first real request takes the first block.
-    let small = Layout::New(32, 8).ValueOr(zero);
-    var first: *var opaque = null;
-    Assert(allocator.Allocate(small, @first) == AllocError::None, "the first allocation succeeds");
+    let small = Layout::New(32, 8) ?? zero;
+    let first = allocator.Allocate(small)?;
     Assert(first != null, "and reports an address");
     Assert(arena.BlockCount() == 1, "which took one block");
     Assert(arena.BytesUsed() == 32, "and consumed exactly what was asked for");
 
     // The next request comes out of the same block, at the next aligned address.
-    var second: *var opaque = null;
-    Assert(allocator.Allocate(small, @second) == AllocError::None, "the second allocation succeeds");
+    let second = allocator.Allocate(small)?;
     Assert(arena.BlockCount() == 1, "out of the same block");
     Assert(arena.BytesUsed() == 64, "advancing the pointer again");
     Assert((second as uint) == (first as uint) + 32, "and landing immediately after the first");
 
     // Alignment is honoured, with the padding counted as used.
-    let aligned = Layout::New(8, 16).ValueOr(zero);
-    var third: *var opaque = null;
-    Assert(allocator.Allocate(aligned, @third) == AllocError::None, "an aligned allocation succeeds");
+    let aligned = Layout::New(8, 16) ?? zero;
+    let third = allocator.Allocate(aligned)?;
     Assert(IsPointerAligned(third as *opaque, 16), "and satisfies its alignment");
 
     // Writing through every address must not disturb the others.
@@ -59,17 +55,17 @@ func Main() -> int {
     var filler: *var opaque = null;
     var taken: uint = 0;
     while arena.BlockCount() == blocksBefore {
-        Assert(allocator.Allocate(small, @filler) == AllocError::None, "filling the block succeeds");
+        filler = allocator.Allocate(small)?;
         taken = taken + 1;
         Assert(taken < 64, "and the block is exhausted in a bounded number of requests");
     }
     Assert(arena.BlockCount() == blocksBefore + 1, "which takes exactly one more block");
 
     // A request larger than a whole block gets a block of its own rather than failing.
-    let huge = Layout::New(8192, 8).ValueOr(zero);
+    let huge = Layout::New(8192, 8) ?? zero;
     var large: *var opaque = null;
     let blocksBeforeHuge = arena.BlockCount();
-    Assert(allocator.Allocate(huge, @large) == AllocError::None, "an oversized allocation succeeds");
+    large = allocator.Allocate(huge)?;
     Assert(arena.BlockCount() > blocksBeforeHuge, "by taking a block for itself");
     let largeBytes = large as *var byte;
     *largeBytes = 0x7F as byte;
@@ -77,19 +73,16 @@ func Main() -> int {
     Assert(*largeBytes == 0x7F as byte && *(largeBytes + 8191) == 0x7E as byte, "and the whole of it is usable");
 
     // Releasing the most recent allocation rewinds it; releasing anything else is accepted and does nothing.
-    var recent: *var opaque = null;
-    Assert(allocator.Allocate(small, @recent) == AllocError::None, "an allocation to release");
+    let recent = allocator.Allocate(small)?;
     let usedWithRecent = arena.BytesUsed();
-    Assert(allocator.Deallocate(recent, small) == AllocError::None, "releasing the most recent succeeds");
+    allocator.Deallocate(recent, small)?;
     Assert(arena.BytesUsed() == usedWithRecent - 32, "and rewinds the pointer");
-    Assert(allocator.Deallocate(first, small) == AllocError::None, "releasing an older one is accepted");
+    allocator.Deallocate(first, small)?;
 
     // Growing the most recent allocation extends it in place rather than copying.
-    var growing: *var opaque = null;
-    Assert(allocator.Allocate(small, @growing) == AllocError::None, "an allocation to grow");
-    let larger = Layout::New(64, 8).ValueOr(zero);
-    var grown: *var opaque = null;
-    Assert(allocator.Reallocate(growing, small, larger, @grown) == AllocError::None, "growing succeeds");
+    let growing = allocator.Allocate(small)?;
+    let larger = Layout::New(64, 8) ?? zero;
+    let grown = allocator.Reallocate(growing, small, larger)?;
     Assert(grown == growing, "and the most recent allocation grows where it stands");
 
     // Reset rewinds everything and keeps one block, so the next round asks the system for nothing.
@@ -97,8 +90,7 @@ func Main() -> int {
     Assert(arena.BlockCount() == 1, "a reset keeps one block");
     Assert(arena.BytesUsed() == 0, "and rewinds it completely");
 
-    var afterReset: *var opaque = null;
-    Assert(allocator.Allocate(small, @afterReset) == AllocError::None, "allocating after a reset succeeds");
+    let afterReset = allocator.Allocate(small)?;
     Assert(arena.BlockCount() == 1, "without taking another block");
 
     // A second reset on an arena that has only its kept block is idempotent.
@@ -109,5 +101,4 @@ func Main() -> int {
     // An arena that is never used costs nothing and still destroys cleanly.
     var unused = Arena(backing, 0);
     Assert(unused.BlockCount() == 0, "an unused arena takes no block");
-    return 0;
 }

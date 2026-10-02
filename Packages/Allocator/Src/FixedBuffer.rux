@@ -136,28 +136,25 @@ extend FixedBufferHandle : Allocator {
     /// The storage lives until the allocator is reset, and no longer.
     ///
     /// @param layout the size and alignment wanted
-    /// @param result receives the address when this reports `None`
-    /// @returns `None` when the storage was taken
+    /// @returns the address of the storage, or why none was taken
     /// @see https://rux-lang.dev/docs/api/allocator/fixed-buffer-handle/allocate
-    pub func Allocate(self: &var FixedBufferHandle, layout: Layout, result: *var *var opaque) -> AllocError {
+    pub func Allocate(self: &var FixedBufferHandle, layout: Layout) -> (*var opaque) ! AllocError {
         if layout.size == 0 {
-            *result = EmptyBlockAddress();
-            return AllocError::None;
+            return EmptyBlockAddress();
         }
-        if self.buffer.start == 0 { return AllocError::OutOfMemory; }
+        if self.buffer.start == 0 { fail AllocError::OutOfMemory; }
 
         let unaligned = self.buffer.start + self.buffer.used;
         let aligned = AlignUp(unaligned, layout.alignment);
-        if aligned < unaligned { return AllocError::OutOfMemory; }
+        if aligned < unaligned { fail AllocError::OutOfMemory; }
         let padding = aligned - unaligned;
-        if padding > self.buffer.capacity - self.buffer.used { return AllocError::OutOfMemory; }
+        if padding > self.buffer.capacity - self.buffer.used { fail AllocError::OutOfMemory; }
         let remaining = self.buffer.capacity - self.buffer.used - padding;
-        if layout.size > remaining { return AllocError::OutOfMemory; }
+        if layout.size > remaining { fail AllocError::OutOfMemory; }
 
         self.buffer.used = self.buffer.used + padding + layout.size;
         self.buffer.lastAllocation = aligned;
-        *result = aligned as *var opaque;
-        return AllocError::None;
+        return aligned as *var opaque;
     }
 
     /// Accepts a release and rewinds only the most recent allocation.
@@ -168,11 +165,11 @@ extend FixedBufferHandle : Allocator {
     ///
     /// @param block an address this allocator returned
     /// @param layout the layout it was allocated with
-    /// @returns `None` when the release was accepted
+    /// @returns nothing when the release was accepted, or why it was refused
     /// @see https://rux-lang.dev/docs/api/allocator/fixed-buffer-handle/deallocate
-    pub func Deallocate(self: &var FixedBufferHandle, block: *var opaque, layout: Layout) -> AllocError {
-        if layout.size == 0 { return IsEmptyBlock(block) ? AllocError::None : AllocError::InvalidBlock; }
-        if block == null { return AllocError::InvalidBlock; }
+    pub func Deallocate(self: &var FixedBufferHandle, block: *var opaque, layout: Layout) -> ! AllocError {
+        if layout.size == 0 { if !IsEmptyBlock(block) { fail AllocError::InvalidBlock; } return; }
+        if block == null { fail AllocError::InvalidBlock; }
         let address = block as uint;
         if address == self.buffer.lastAllocation {
             let offset = address - self.buffer.start;
@@ -181,7 +178,6 @@ extend FixedBufferHandle : Allocator {
                 self.buffer.lastAllocation = 0;
             }
         }
-        return AllocError::None;
     }
 
     /// Grows or shrinks a block, extending the most recent allocation in place where the buffer has room.
@@ -196,25 +192,21 @@ extend FixedBufferHandle : Allocator {
     /// @param block the existing allocation's address
     /// @param oldLayout the layout `block` was allocated with
     /// @param newLayout the layout wanted, which must have the same alignment
-    /// @param result receives the address the block is at afterwards
-    /// @returns `None` when the block was resized
+    /// @returns the address the block is at afterwards, or why it was not resized
     /// @see https://rux-lang.dev/docs/api/allocator/fixed-buffer-handle/reallocate
-    pub func Reallocate(self: &var FixedBufferHandle, block: *var opaque, oldLayout: Layout, newLayout: Layout,
-                    result: *var *var opaque) -> AllocError {
-        if oldLayout.alignment != newLayout.alignment { return AllocError::Unsupported; }
+    pub func Reallocate(self: &var FixedBufferHandle, block: *var opaque, oldLayout: Layout, newLayout: Layout)
+        -> (*var opaque) ! AllocError {
+        if oldLayout.alignment != newLayout.alignment { fail AllocError::Unsupported; }
         if oldLayout.size == newLayout.size {
-            *result = block;
-            return AllocError::None;
+            return block;
         }
         // Shrinking to nothing has to give the shared empty address, not the address it is rewinding off of. Every
         // allocator here answers a zero-sized layout with `EmptyBlockAddress`, and `Deallocate` refuses a
         // zero-sized release that arrives with anything else — so returning the real address would hand the caller
         // a block it cannot release. Releasing the old block first is what rewinds the bump pointer.
         if newLayout.size == 0 {
-            let released = self.Deallocate(block, oldLayout);
-            if released != AllocError::None { return released; }
-            *result = EmptyBlockAddress();
-            return AllocError::None;
+            self.Deallocate(block, oldLayout)?;
+            return EmptyBlockAddress();
         }
 
         let address = block as uint;
@@ -223,24 +215,19 @@ extend FixedBufferHandle : Allocator {
             if offset + oldLayout.size == self.buffer.used {
                 if newLayout.size <= oldLayout.size {
                     self.buffer.used = offset + newLayout.size;
-                    *result = block;
-                    return AllocError::None;
+                    return block;
                 }
                 let extra = newLayout.size - oldLayout.size;
                 if extra <= self.buffer.capacity - self.buffer.used {
                     self.buffer.used = self.buffer.used + extra;
-                    *result = block;
-                    return AllocError::None;
+                    return block;
                 }
             }
         }
 
-        var fresh: *var opaque = null;
-        let error = self.Allocate(newLayout, @fresh);
-        if error != AllocError::None { return error; }
+        let fresh = self.Allocate(newLayout)?;
         let keep = oldLayout.size < newLayout.size ? oldLayout.size : newLayout.size;
         Copy(fresh, block as *opaque, keep);
-        *result = fresh;
-        return AllocError::None;
+        return fresh;
     }
 }

@@ -82,10 +82,9 @@ func WriteWidePrecision(allocator: Allocator, writer: &var TextWriter, spec: For
     let digitRoom = integerRoom + fraction + 4u;
     let textRoom = digitRoom + fraction + 8u;
     let empty = Layout { size: 0, alignment: 1 };
-    let blockLayout = Layout::New(digitRoom + textRoom, 1u).ValueOr(empty);
+    let blockLayout = Layout::New(digitRoom + textRoom, 1u) ?? (empty);
     if blockLayout.size == 0u { return Result::Error<Unit, FormatError>(FormatError::TextFailure(TextFailureKind::LengthOverflow)); }
-    var block: *var opaque = null;
-    if allocator.Allocate(blockLayout, @block) != AllocError::None { return Result::Error<Unit, FormatError>(FormatError::TextFailure(TextFailureKind::OutOfMemory)); }
+    let block = allocator.Allocate(blockLayout) catch { else => return Result::Error<Unit, FormatError>(FormatError::TextFailure(TextFailureKind::OutOfMemory)) };
     let digits = block as *var char8;
     let text = digits + digitRoom;
     var count: uint = 0;
@@ -142,6 +141,6 @@ func WriteWidePrecision(allocator: Allocator, writer: &var TextWriter, spec: For
             failure = WriteAligned(writer, spec, rendered, true);
         }
     }
-    allocator.Deallocate(block, blockLayout);
+    allocator.Deallocate(block, blockLayout) catch { else => {} };
     return failure;
 }

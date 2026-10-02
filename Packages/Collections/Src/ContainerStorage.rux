@@ -18,7 +18,7 @@
 // is visible through one — a zero-sized element, a growth the allocator refuses, and the destruction of everything
 // held all show up at that surface, which is where Tests/Packages/Collections/ContainerStorage checks them.
 
-import Allocator::{ AllocError, Allocator, Layout };
+import Allocator::{ Allocator, Layout };
 
 // The layout of `count` elements of `T`, or the arithmetic failure that says there is no such layout.
 func ElementLayout<T>(count: uint, layout: *var Layout) -> CollectionError {
@@ -32,13 +32,9 @@ func ElementLayout<T>(count: uint, layout: *var Layout) -> CollectionError {
     if sizing.IsError() { return sizing; }
 
     let alignment = alignof(T) == 0 ? 1u : alignof(T);
-    let checked = Layout::New(bytes, alignment);
-    if checked.IsNone() {
-        // A layout the allocator's own rules reject: the rounded size passes the end of the address space. The
-        // element's alignment is whatever the compiler gave it, so it is a power of two by construction.
-        return CollectionError::CapacityOverflow;
-    }
-    *layout = checked.ValueOr(Layout { size: bytes, alignment: alignment });
+    // A layout the allocator's own rules reject has a rounded size past the end of the address space. The element's
+    // alignment is whatever the compiler gave it, so it is a power of two by construction.
+    *layout = Layout::New(bytes, alignment) ?? return CollectionError::CapacityOverflow;
     return CollectionError::None;
 }
 
@@ -48,9 +44,7 @@ func AllocateBlock<T>(allocator: Allocator, count: uint, result: *var *var T) ->
     let sizing = ElementLayout<T>(count, @layout);
     if sizing.IsError() { return sizing; }
 
-    var block: *var opaque = null;
-    let error = allocator.Allocate(layout, @block);
-    if error != AllocError::None { return FromAllocError(error); }
+    let block = allocator.Allocate(layout) catch { error => return FromAllocError(error) };
     *result = block as *var T;
     return CollectionError::None;
 }
@@ -67,9 +61,9 @@ func ReallocateBlock<T>(allocator: Allocator, block: *var T, oldCount: uint, new
     let newSizing = ElementLayout<T>(newCount, @newLayout);
     if newSizing.IsError() { return newSizing; }
 
-    var moved: *var opaque = null;
-    let error = allocator.Reallocate(block as *var opaque, oldLayout, newLayout, @moved);
-    if error != AllocError::None { return FromAllocError(error); }
+    let moved = allocator.Reallocate(block as *var opaque, oldLayout, newLayout) catch {
+        error => return FromAllocError(error)
+    };
     *result = moved as *var T;
     return CollectionError::None;
 }
@@ -84,5 +78,6 @@ func ReleaseBlock<T>(allocator: Allocator, block: *var T, count: uint) {
         // block whose size cannot be named, and nothing to report it to.
         return;
     }
-    allocator.Deallocate(block as *var opaque, layout);
+    // The block came from this allocator with this layout, and there is no caller to report a refusal to.
+    allocator.Deallocate(block as *var opaque, layout) catch { else => {} };
 }
