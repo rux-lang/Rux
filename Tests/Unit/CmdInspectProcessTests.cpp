@@ -129,13 +129,13 @@ Missing = { Namespace = "Acme", Version = "2.0.0" }
 
     const auto infoJson = Run(std::array<std::string_view, 4>{"info", "Rux/Json@1.2.0", "--json", "--color=never"});
     REQUIRE(infoJson.exitCode == 0);
-    CHECK(infoJson.output.contains("\\"minRux\\": \\"0.4.0\\""));
-    CHECK(infoJson.output.contains("\\"readmeFile\\": \\"README.md\\""));
+    CHECK(infoJson.output.contains("\"minRux\": \"0.4.0\""));
+    CHECK(infoJson.output.contains("\"readmeFile\": \"README.md\""));
 
     const auto projectJson = Run(std::array<std::string_view, 4>{"--manifest", manifest, "info", "--json"});
     REQUIRE(projectJson.exitCode == 0);
-    CHECK_FALSE(projectJson.output.contains("\\"minRux\\""));
-    CHECK_FALSE(projectJson.output.contains("\\"readmeFile\\""));
+    CHECK_FALSE(projectJson.output.contains("\"minRux\""));
+    CHECK_FALSE(projectJson.output.contains("\"readmeFile\""));
 
     const auto quiet = Run(std::array<std::string_view, 4>{"--quiet", "--manifest", manifest, "list"});
     CHECK(quiet.exitCode == 0);
