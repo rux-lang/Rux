@@ -597,8 +597,8 @@ HirExprPtr AstToHirContext::LowerNativeTry(const TryExpr &expression) {
     if (operandType.IsOptional()) {
         return LowerNativeOptionalTry(expression, operandType);
     }
-    const TypeRef success = operandType.FallibleSuccess();
-    const TypeRef error = operandType.FallibleError();
+    const TypeRef &success = operandType.FallibleSuccess();
+    const TypeRef &error = operandType.FallibleError();
     const TypeRef returnType = currentReturnType;
     const std::size_t ordinal = propagationOrdinal++;
     const std::string payloadName = std::format("$try.value.{}", ordinal);
@@ -644,8 +644,8 @@ HirExprPtr AstToHirContext::LowerNativeTry(const TryExpr &expression) {
 HirExprPtr AstToHirContext::LowerMappedTry(const MappedTryExpr &expression) {
     const SourceLocation location = expression.location;
     const TypeRef operandType = ResolvedExpressionType(*expression.operand);
-    const TypeRef success = operandType.FallibleSuccess();
-    const TypeRef error = operandType.FallibleError();
+    const TypeRef &success = operandType.FallibleSuccess();
+    const TypeRef &error = operandType.FallibleError();
     const TypeRef returnType = currentReturnType;
     const std::string payloadName = std::format("$try.value.{}", propagationOrdinal++);
 
@@ -717,8 +717,8 @@ HirExprPtr AstToHirContext::LowerCatch(const CatchExpr &expression) {
     lowered->type = ResolvedExpressionType(expression);
     lowered->subject = LowerMatchSubject(*expression.subject);
     const TypeRef subjectType = lowered->subject->type;
-    const TypeRef success = subjectType.FallibleSuccess();
-    const TypeRef error = subjectType.FallibleError();
+    const TypeRef &success = subjectType.FallibleSuccess();
+    const TypeRef &error = subjectType.FallibleError();
 
     // The success passes through untouched, moved out of the consumed subject.
     const std::string payloadName = std::format("$catch.value.{}", propagationOrdinal++);

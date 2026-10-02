@@ -50,8 +50,8 @@ TypeRef AnalysisContext::CheckMappedTry(const MappedTryExpr &expression) {
         checkMapperAlone();
         return TypeRef::MakeUnknown();
     }
-    const TypeRef success = operandType.FallibleSuccess();
-    const TypeRef error = operandType.FallibleError();
+    const TypeRef &success = operandType.FallibleSuccess();
+    const TypeRef &error = operandType.FallibleError();
     if (!currentReturnType.IsFallible()) {
         EmitError(expression.location,
                   std::format("'? else' fails the enclosing function, but it returns {}",
@@ -149,8 +149,8 @@ TypeRef AnalysisContext::CheckCatchExpression(const CatchExpr &expression) {
         return TypeRef::MakeUnknown();
     }
 
-    const TypeRef success = subjectType.FallibleSuccess();
-    const TypeRef error = subjectType.FallibleError();
+    const TypeRef &success = subjectType.FallibleSuccess();
+    const TypeRef &error = subjectType.FallibleError();
     // The subject is evaluated and handed over once; the success passes through it and every arm takes the error.
     ConsumeValue(*expression.subject, subjectType, ValueConsumptionKind::CatchSubject, expression.subject->location);
 
