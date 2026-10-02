@@ -85,8 +85,8 @@ void WriteCachedPackage(const std::string_view packageNamespace, const std::stri
     REQUIRE(name.has_value());
     REQUIRE(semanticVersion.has_value());
     WriteTextFile(Packages::RegistryPackageDir(*ns, *name, *semanticVersion) / "Rux.toml",
-                  "[Manifest]\nVersion = 1\n\n[Package]\nNamespace = \"Rux\"\nName = \"Json\"\nVersion = \"1.2.0\"\n"
-                  "Type = \"SourceLibrary\"\n");
+                  "[Manifest]\nVersion = 1\nMinRux = \"0.4.0\"\n\n[Package]\nNamespace = \"Rux\"\nName = \"Json\"\nVersion = \"1.2.0\"\n"
+                  "Type = \"SourceLibrary\"\nReadmeFile = \"README.md\"\n");
 }
 } // namespace
 
@@ -126,6 +126,16 @@ Missing = { Namespace = "Acme", Version = "2.0.0" }
     CHECK(info.output.contains("Package dependencies (3 dependencies):"));
     CHECK(info.output.contains("Resolved Rux/Json @ ^1.0.0 to 1.2.0"));
     CHECK(info.output.contains("Missing Acme/Missing @ 2.0.0"));
+
+    const auto infoJson = Run(std::array<std::string_view, 4>{"info", "Rux/Json@1.2.0", "--json", "--color=never"});
+    REQUIRE(infoJson.exitCode == 0);
+    CHECK(infoJson.output.contains("\\"minRux\\": \\"0.4.0\\""));
+    CHECK(infoJson.output.contains("\\"readmeFile\\": \\"README.md\\""));
+
+    const auto projectJson = Run(std::array<std::string_view, 4>{"--manifest", manifest, "info", "--json"});
+    REQUIRE(projectJson.exitCode == 0);
+    CHECK_FALSE(projectJson.output.contains("\\"minRux\\""));
+    CHECK_FALSE(projectJson.output.contains("\\"readmeFile\\""));
 
     const auto quiet = Run(std::array<std::string_view, 4>{"--quiet", "--manifest", manifest, "list"});
     CHECK(quiet.exitCode == 0);
