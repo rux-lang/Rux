@@ -163,3 +163,17 @@ TEST_CASE("CLI help JSON preserves its exact field sets") {
         CHECK(options->Elements().front().Members()[i].first == optionKeys[i]);
     }
 }
+
+TEST_CASE("CLI contract offers the legacy protocol audit on check and test") {
+    for (const std::string_view name : {"check", "test"}) {
+        const auto *command = FindCommand(name);
+        REQUIRE(command != nullptr);
+        const auto *audit = FindOption(*command, "--deny-legacy-protocols");
+        REQUIRE(audit != nullptr);
+        CHECK_FALSE(OptionTakesValue(*audit));
+        CHECK(CliHelp::RenderCommand(*command, 120, false).contains("--deny-legacy-protocols"));
+        CHECK(CliHelp::RenderJson("test-version", name)
+                  .contains("\"flags\":\"--deny-legacy-protocols\",\"description\":\"Report each use of the legacy "
+                            "Result and Option protocols as an error\""));
+    }
+}

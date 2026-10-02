@@ -284,6 +284,14 @@ std::optional<TypeRef> AnalysisContext::CheckTryExpression(const TryExpr &expres
         return TypeRef::MakeUnknown();
     }
 
+    const bool resultProtocol = operand->kind == PropagationShape::Kind::Result;
+    ReportLegacyProtocol(expression.location,
+                         std::format("'?' uses the legacy {} protocol on '{}'; migrate to a native {}",
+                                     resultProtocol ? "Result" : "Option", operandType.ToString(),
+                                     resultProtocol ? "fallible" : "optional"),
+                         resultProtocol ? "return 'T ! E' and propagate a native fallible"
+                                        : "return 'T?' and propagate a native optional");
+
     const std::string_view operandKind = PropagationKindPhrase(operand->kind);
     const auto enclosing = PropagationShapeOf(currentReturnType);
     if (!enclosing) {
@@ -474,6 +482,13 @@ TypeRef AnalysisContext::CheckCoalesceExpression(const BinaryExpr &expression) {
                   "handle Error explicitly with 'match', or convert the Result to an Option first");
         return TypeRef::MakeUnknown();
     }
+
+    ReportLegacyProtocol(expression.location,
+                         std::format("'{}' uses the legacy Option protocol on '{}'; migrate to a native optional",
+                                     "?"
+                                     "?",
+                                     leftType.ToString()),
+                         "coalesce a native optional 'T?'");
 
     bool payloadValid = true;
     if (MentionsTypeParameter(shape->payload) && currentFunctionDecl) {

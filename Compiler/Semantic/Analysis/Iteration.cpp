@@ -171,6 +171,12 @@ void AnalysisContext::RecordIteration(const ForStmt &statement, const IterationS
     iteration.reportedType = shape.reportedType;
     iteration.native = shape.reportedType.IsOptional();
     if (shape.reportedDeclaration) {
+        ReportLegacyProtocol(
+            statement.location,
+            std::format("'for' uses the legacy Option protocol of '{}'; migrate its 'Next' to return a "
+                        "native optional",
+                        shape.reportedType.ToString()),
+            "declare 'func Next(self: &var Iterator) -> Item?'");
         iteration.optionVariantName = programIndex.NominalName(*shape.reportedDeclaration);
         iteration.someVariant = std::string(kOptionSomeVariant);
         iteration.noneVariant = std::string(kOptionNoneVariant);
@@ -218,6 +224,13 @@ void AnalysisContext::ValidateIteratorConvention(const FuncDecl &declaration, co
                           {std::move(*issue)}, "return a variant with exactly 'Some(T)' and payload-less 'None' cases");
             }
             return;
+        }
+        if (!returned.IsOptional()) {
+            ReportLegacyProtocol(declaration.location,
+                                 std::format("iterator method 'Next' on '{}' uses the legacy Option protocol; migrate "
+                                             "it to return a native optional",
+                                             currentExtendedType.ToString()),
+                                 std::format("return '{}?'", reported->payload.ToString()));
         }
         if (WrittenParameterCount(declaration) != 0) {
             EmitError(declaration.location,

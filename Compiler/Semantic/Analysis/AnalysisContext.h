@@ -9,8 +9,11 @@
 #include <cstdint>
 #include <functional>
 #include <optional>
+#include <set>
 #include <span>
+#include <string>
 #include <string_view>
+#include <tuple>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -31,6 +34,7 @@ struct AnalysisInputs {
     std::vector<SemanticSymbol> &symbols;
     const CompileTimeContext &context;
     const PackageImportBindings &imports;
+    const SemanticOptions &options;
 };
 
 /// Whether a pattern binds anything a value can be taken out into: a looked-at value is not taken apart.
@@ -52,6 +56,9 @@ private:
                    std::optional<std::string> help = {}) const;
     void EmitWarning(SourceLocation location, std::string message) const;
     void EmitUndefinedName(SourceLocation location, const std::string &name) const;
+    /// Reports a use of the legacy Result or Option protocol when the audit asks for it and the code being analyzed
+    /// belongs to the analyzed package.
+    void ReportLegacyProtocol(SourceLocation location, std::string message, std::string help);
     [[nodiscard]] bool IsAccessible(const Symbol &symbol) const;
     [[nodiscard]] bool IsAccessible(const Decl &declaration) const;
     [[nodiscard]] bool IsMemberAccessible(const Decl &owner, bool memberIsPublic) const;
@@ -480,6 +487,9 @@ private:
     std::vector<SemanticDiagnostic> &diags;
     const CompileTimeContext &context;
     const PackageImportBindings &imports;
+    const SemanticOptions &options;
+    /// Legacy protocol sites already reported, so a generic body checked once per instantiation reports each once.
+    std::set<std::tuple<std::string, std::uint32_t, std::uint32_t>> reportedLegacyProtocolSites;
     std::unordered_map<const Expr *, TypeRef> &expressionTypes;
     std::unordered_set<const Expr *> &borrowedScalarReads;
     std::unordered_map<const Expr *, std::vector<NativeConversionStep>> &nativeConversions;
