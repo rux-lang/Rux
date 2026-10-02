@@ -1,3 +1,4 @@
+import Core::Failed;
 
 
 import Text::{ Display, FormatSpec, TextWriter };
@@ -12,7 +13,7 @@ func Check(value: bool16, expected: char8[..], code: int) -> int {
     var cursor = ByteCursor((@storage[0])[..64]);
     let writer: &var TextWriter = cursor;
     let shown: Display = value;
-    if shown.WriteDisplay(writer, FormatSpec::Plain()).IsError() {
+    if Failed(shown.WriteDisplay(writer, FormatSpec::Plain())) {
         return code;
     }
     let actual = cursor.Written();

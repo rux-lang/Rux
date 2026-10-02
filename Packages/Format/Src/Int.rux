@@ -6,7 +6,6 @@
 // `int` is a type of its own rather than a name for `int64`, so it needs its own implementation even where
 // the two happen to be the same width. Widening to `int64` first is what makes that implementation one line.
 
-import Core::{ Result, Unit };
 import Text::{ Debug, Display, FormatError, FormatSpec, TextWriter };
 
 extend int : Display {
@@ -21,7 +20,7 @@ extend int : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/int/write-display
-    pub func WriteDisplay(self: &int, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+    pub func WriteDisplay(self: &int, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         let wide = self as int64;
         // The magnitude is taken in uint64 rather than by negating in int64, because the most negative value has
         // no positive counterpart there.
@@ -41,7 +40,7 @@ extend int : Debug {
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/int/write-debug
-    pub func WriteDebug(self: &int, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+    pub func WriteDebug(self: &int, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         return self.WriteDisplay(writer, spec);
     }
 }

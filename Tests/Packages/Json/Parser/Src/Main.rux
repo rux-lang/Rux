@@ -11,7 +11,7 @@
 // that said nothing from one that was not a document.
 
 import Allocator::{ AllocError, Allocator, Layout, SystemAllocator };
-import Core::{ Assert, Result };
+import Core::{ Assert, Result, Succeeded };
 import Json::{ DuplicateKeyPolicy, JsonKind, JsonLexError, JsonLimits, JsonParseError, JsonParser, JsonValue, Parse,
                ParseWith };
 import Text::{ BufferWriter, FormatSpec, StringView, TextError, TextWriter };
@@ -35,7 +35,7 @@ func Same(actual: char8[..], expected: char8[..]) -> bool {
 func Rendered(reason: &JsonParseError, into: var char8[..]) -> uint {
     var writer = BufferWriter(into);
     let sink: &var TextWriter = writer;
-    Assert(reason.WriteDebug(sink, FormatSpec::Plain()).IsSuccess(), "a failure renders");
+    Assert(Succeeded(reason.WriteDebug(sink, FormatSpec::Plain())), "a failure renders");
     return writer.Length();
 }
 

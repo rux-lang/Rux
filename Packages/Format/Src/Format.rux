@@ -20,8 +20,7 @@
 // a string on the way, which is what keeps the allocation count at what the result itself needs.
 
 import Allocator::Allocator;
-import Core::{ Result, Unit };
-import Text::{ DecodeAt, Display, FormatError, FormatOk, FormatSpec, ParseFormatSpec, String, StringBuilder,
+import Text::{ DecodeAt, Display, FormatError, FormatSpec, ParseFormatSpec, String, StringBuilder,
                TextFailureKind, TextFailureOf, TextWriter, Utf8Error, WriteAscii, WriteBytes };
 
 // Where a placeholder's specification begins and ends inside the pattern, and where the placeholder itself does.
@@ -35,7 +34,7 @@ struct Placeholder {
 }
 
 // Reads the placeholder opening at `at`, where `format[at]` is a `{` that is not part of a `{{`.
-func ReadPlaceholder(format: char8[..], at: uint) -> Result<Placeholder, FormatError> {
+func ReadPlaceholder(format: char8[..], at: uint) -> Placeholder ! FormatError {
     var close = at + 1;
     while close < format.length && format[close] != c8'}' {
         close = close + 1;
@@ -43,18 +42,18 @@ func ReadPlaceholder(format: char8[..], at: uint) -> Result<Placeholder, FormatE
     if close >= format.length {
         // An opening brace with no closing one. The offset is the brace, which is where the pattern went wrong,
         // not where the scan gave up.
-        return Result::Error<Placeholder, FormatError>(FormatError::InvalidSpecification(at));
+        fail FormatError::InvalidSpecification(at);
     }
     if close == at + 1 {
-        return Result::Success<Placeholder, FormatError>(Placeholder { bodyStart: close, bodyEnd: close, after: close + 1 });
+        return Placeholder { bodyStart: close, bodyEnd: close, after: close + 1 };
     }
     if format[at + 1] != c8':' {
         // Anything between the braces has to open with a colon. Positional and named arguments are not part of
         // this grammar, so `{0}` and `{name}` are mistakes rather than requests, and the offset is the first
         // character that is not one.
-        return Result::Error<Placeholder, FormatError>(FormatError::InvalidSpecification(at + 1));
+        fail FormatError::InvalidSpecification(at + 1);
     }
-    return Result::Success<Placeholder, FormatError>(Placeholder { bodyStart: at + 2, bodyEnd: close, after: close + 1 });
+    return Placeholder { bodyStart: at + 2, bodyEnd: close, after: close + 1 };
 }
 
 // Parses the specification a placeholder carries, translating the parser's offset into an offset into the pattern.
@@ -62,23 +61,23 @@ func ReadPlaceholder(format: char8[..], at: uint) -> Result<Placeholder, FormatE
 // The parser reports where it stopped inside the body it was given; a caller reading the failure is looking at the
 // whole pattern, so the body's own start is added. That is the composition rule `ParseFailure` states, applied at
 // the one place in this package that embeds another parser.
-func ReadSpecification(format: char8[..], found: Placeholder) -> Result<FormatSpec, FormatError> {
+func ReadSpecification(format: char8[..], found: Placeholder) -> FormatSpec ! FormatError {
     if found.bodyEnd == found.bodyStart {
-        return Result::Success<FormatSpec, FormatError>(FormatSpec::Plain());
+        return FormatSpec::Plain();
     }
     let body = (@format.data[found.bodyStart])[..found.bodyEnd - found.bodyStart];
     return match ParseFormatSpec(body) {
-        .Success(value) => Result::Success<FormatSpec, FormatError>(value),
-        .Error(reason) => Result::Error<FormatSpec, FormatError>(match reason {
+        .Success(value) => value,
+        .Error(reason) => fail match reason {
             .InvalidSpecification(offset) => FormatError::InvalidSpecification(found.bodyStart + offset),
             else => reason
-        })
+        }
     };
 }
 
 // Walks the pattern without writing, counting its placeholders and rejecting every brace the grammar does not
 // allow. This is what lets a failed pattern leave the destination untouched.
-func ValidatePattern(format: char8[..]) -> Result<uint, FormatError> {
+func ValidatePattern(format: char8[..]) -> uint ! FormatError {
     var placeholders: uint = 0;
     var index: uint = 0;
     while index < format.length {
@@ -95,7 +94,7 @@ func ValidatePattern(format: char8[..]) -> Result<uint, FormatError> {
             }
             // A closing brace that no placeholder opened. It is written `}}` when it is meant, so one on its own is
             // as much a mistake as an unterminated `{`.
-            return Result::Error<uint, FormatError>(FormatError::InvalidSpecification(index));
+            fail FormatError::InvalidSpecification(index);
         }
         if ch == c8'{' {
             let found = ReadPlaceholder(format, index)?;
@@ -106,7 +105,7 @@ func ValidatePattern(format: char8[..]) -> Result<uint, FormatError> {
         }
         index = index + 1;
     }
-    return Result::Success<uint, FormatError>(placeholders);
+    return placeholders;
 }
 
 /// Writes `format` into `writer`, with each `{}` replaced by the next argument.
@@ -129,10 +128,10 @@ func ValidatePattern(format: char8[..]) -> Result<uint, FormatError> {
 /// @param format the pattern to write
 /// @returns success when the whole pattern and every argument were accepted
 /// @see https://rux-lang.dev/docs/api/format/write-format
-pub func WriteFormat(writer: &var TextWriter, format: char8[..], args: Display...) -> Result<Unit, FormatError> {
+pub func WriteFormat(writer: &var TextWriter, format: char8[..], args: Display...) -> ! FormatError {
     let expected = ValidatePattern(format)?;
     if expected != args.length {
-        return Result::Error<Unit, FormatError>(FormatError::ArgumentCountMismatch(expected, args.length));
+        fail FormatError::ArgumentCountMismatch(expected, args.length);
     }
 
     // The argument the next placeholder takes. Placeholders are filled in the order they are written, so this only
@@ -171,13 +170,13 @@ pub func WriteFormat(writer: &var TextWriter, format: char8[..], args: Display..
             var scalar: char32 = c32'\0';
             var width = 0u;
             if DecodeAt(format, index, @scalar, @width) != Utf8Error::None {
-                return Result::Error<Unit, FormatError>(FormatError::TextFailure(TextFailureKind::InvalidUtf8));
+                fail FormatError::TextFailure(TextFailureKind::InvalidUtf8);
             }
             WriteBytes(writer, (@format.data[index])[..width])?;
             index += width;
         }
     }
-    return FormatOk();
+    return;
 }
 
 /// The text `format` becomes with its placeholders filled, as a string of its own.
@@ -198,13 +197,13 @@ pub func WriteFormat(writer: &var TextWriter, format: char8[..], args: Display..
 /// @param format the pattern to render
 /// @returns the rendered string, or why it could not be produced
 /// @see https://rux-lang.dev/docs/api/format/render
-pub func Render(allocator: Allocator, format: char8[..], args: Display...) -> Result<String, FormatError> {
+pub func Render(allocator: Allocator, format: char8[..], args: Display...) -> String ! FormatError {
     var builder = StringBuilder(allocator);
     let reserved = builder.Reserve(format.length + args.length * 8);
     if reserved.IsError() {
-        return Result::Error<String, FormatError>(FormatError::TextFailure(TextFailureOf(reserved)));
+        fail FormatError::TextFailure(TextFailureOf(reserved));
     }
     let sink: &var TextWriter = builder;
     WriteFormat(sink, format, args...)?;
-    return Result::Success<String, FormatError>(builder.IntoString());
+    return builder.IntoString();
 }

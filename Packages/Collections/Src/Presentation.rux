@@ -35,14 +35,14 @@
 // `Display` is the description a reader is shown and `Debug` names the case, exactly as for the errors Text
 // presents. The descriptions are stable and are not a parsing contract: a program branches on the case.
 
-import Core::{ Result, Unit };
+import Core::Unit;
 import Text::{ Debug, Display, FormatError, FormatSpec, RejectStyle, TextWriter, WriteAscii, WriteBytes,
                WriteSliceDebug };
 
 // One run of elements written into an open sequence, with `written` saying how many are already there so that the
 // separator lands between elements and never before the first.
 func WriteRun<T: Debug>(writer: &var TextWriter, items: T[..], spec: FormatSpec,
-                        written: uint) -> Result<Unit, FormatError> {
+                        written: uint) -> ! FormatError {
     var index: uint = 0;
     while index < items.length {
         if written + index != 0 {
@@ -51,7 +51,7 @@ func WriteRun<T: Debug>(writer: &var TextWriter, items: T[..], spec: FormatSpec,
         items.data[index].WriteDebug(writer, spec)?;
         index = index + 1;
     }
-    return Result::Success<Unit, FormatError>(Unit {});
+    return;
 }
 
 /// Writes a borrowed vector as `[first, second, third]`.
@@ -73,7 +73,7 @@ func WriteRun<T: Debug>(writer: &var TextWriter, items: T[..], spec: FormatSpec,
 /// @returns success when the whole rendering was accepted
 /// @see https://rux-lang.dev/docs/api/collections/write-vector-debug
 pub func WriteVectorDebug<T: Debug>(writer: &var TextWriter, value: &Vector<T>,
-                                    spec: FormatSpec) -> Result<Unit, FormatError> {
+                                    spec: FormatSpec) -> ! FormatError {
     return WriteSliceDebug<T>(writer, value.AsSlice(), spec);
 }
 
@@ -94,7 +94,7 @@ pub func WriteVectorDebug<T: Debug>(writer: &var TextWriter, value: &Vector<T>,
 /// @returns success when the whole rendering was accepted
 /// @see https://rux-lang.dev/docs/api/collections/write-array-debug
 pub func WriteArrayDebug<T: Debug>(writer: &var TextWriter, value: &Array<T>,
-                                   spec: FormatSpec) -> Result<Unit, FormatError> {
+                                   spec: FormatSpec) -> ! FormatError {
     return WriteSliceDebug<T>(writer, value.AsSlice(), spec);
 }
 
@@ -119,7 +119,7 @@ pub func WriteArrayDebug<T: Debug>(writer: &var TextWriter, value: &Array<T>,
 /// @returns success when the whole rendering was accepted
 /// @see https://rux-lang.dev/docs/api/collections/write-deque-debug
 pub func WriteDequeDebug<T: Debug>(writer: &var TextWriter, value: &Deque<T>,
-                                   spec: FormatSpec) -> Result<Unit, FormatError> {
+                                   spec: FormatSpec) -> ! FormatError {
     var front: T[..];
     var back: T[..];
     value.AsSlices(@front, @back);
@@ -154,7 +154,7 @@ pub func WriteDequeDebug<T: Debug>(writer: &var TextWriter, value: &Deque<T>,
 /// @returns success when the whole rendering was accepted
 /// @see https://rux-lang.dev/docs/api/collections/write-hash-map-debug
 pub func WriteHashMapDebug<K: Debug, V: Debug>(writer: &var TextWriter, value: &HashMap<K, V>,
-                                               spec: FormatSpec) -> Result<Unit, FormatError> {
+                                               spec: FormatSpec) -> ! FormatError {
     WriteAscii(writer, c8'{')?;
     var index: uint = 0;
     var written: uint = 0;
@@ -191,7 +191,7 @@ pub func WriteHashMapDebug<K: Debug, V: Debug>(writer: &var TextWriter, value: &
 /// @returns success when the whole rendering was accepted
 /// @see https://rux-lang.dev/docs/api/collections/write-hash-set-debug
 pub func WriteHashSetDebug<T: Debug>(writer: &var TextWriter, value: &HashSet<T>,
-                                     spec: FormatSpec) -> Result<Unit, FormatError> {
+                                     spec: FormatSpec) -> ! FormatError {
     WriteAscii(writer, c8'{')?;
     var index: uint = 0;
     var written: uint = 0;
@@ -228,7 +228,7 @@ pub func WriteHashSetDebug<T: Debug>(writer: &var TextWriter, value: &HashSet<T>
 /// @returns success when the whole rendering was accepted
 /// @see https://rux-lang.dev/docs/api/collections/write-tree-map-debug
 pub func WriteTreeMapDebug<K: Debug, V: Debug>(writer: &var TextWriter, value: &TreeMap<K, V>,
-                                               spec: FormatSpec) -> Result<Unit, FormatError> {
+                                               spec: FormatSpec) -> ! FormatError {
     WriteAscii(writer, c8'{')?;
     var node = Tree::Minimum<K, V>(value.tree.root);
     var written: uint = 0;
@@ -262,7 +262,7 @@ pub func WriteTreeMapDebug<K: Debug, V: Debug>(writer: &var TextWriter, value: &
 /// @returns success when the whole rendering was accepted
 /// @see https://rux-lang.dev/docs/api/collections/write-tree-set-debug
 pub func WriteTreeSetDebug<T: Debug>(writer: &var TextWriter, value: &TreeSet<T>,
-                                     spec: FormatSpec) -> Result<Unit, FormatError> {
+                                     spec: FormatSpec) -> ! FormatError {
     WriteAscii(writer, c8'{')?;
     var node = Tree::Minimum<T, Unit>(value.tree.root);
     var written: uint = 0;
@@ -279,10 +279,10 @@ pub func WriteTreeSetDebug<T: Debug>(writer: &var TextWriter, value: &TreeSet<T>
 
 // Whether the specification is one an error description can answer. Neither a style nor a precision is: a
 // description has one form, and truncating it produces a sentence that says something else.
-func AcceptsErrorSpec(spec: FormatSpec) -> Result<Unit, FormatError> {
+func AcceptsErrorSpec(spec: FormatSpec) -> ! FormatError {
     RejectStyle(spec)?;
-    if spec.HasPrecision() { return Result::Error<Unit, FormatError>(FormatError::UnsupportedRequest); }
-    return Result::Success<Unit, FormatError>(Unit {});
+    if spec.HasPrecision() { return .Failure(FormatError::UnsupportedRequest); }
+    return;
 }
 
 extend CollectionError : Display {
@@ -302,7 +302,7 @@ extend CollectionError : Display {
     /// @returns success when the whole description was accepted
     /// @see https://rux-lang.dev/docs/api/collections/collection-error/write-display
     pub func WriteDisplay(self: &CollectionError, writer: &var TextWriter,
-                          spec: FormatSpec) -> Result<Unit, FormatError> {
+                          spec: FormatSpec) -> ! FormatError {
         AcceptsErrorSpec(spec)?;
         return match self {
             .None => WriteBytes(writer, "no error"),
@@ -325,7 +325,7 @@ extend CollectionError : Debug {
     /// @returns success when the whole name was accepted
     /// @see https://rux-lang.dev/docs/api/collections/collection-error/write-debug
     pub func WriteDebug(self: &CollectionError, writer: &var TextWriter,
-                        spec: FormatSpec) -> Result<Unit, FormatError> {
+                        spec: FormatSpec) -> ! FormatError {
         AcceptsErrorSpec(spec)?;
         WriteBytes(writer, "CollectionError::")?;
         return match self {

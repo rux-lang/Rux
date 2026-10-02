@@ -26,8 +26,8 @@
 // and no way to learn it. Every writer here checks the room it needs before it writes a byte, so a refusal leaves
 // the destination exactly as it was and a success is always the complete form.
 
-import Core::{ Result, Unit };
-import Text::{ Debug, Display, FormatError, FormatOk, FormatSpec, ParseFailure, StringView, TextWriter, WriteBytes };
+import Core::Result;
+import Text::{ Debug, Display, FormatError, FormatSpec, ParseFailure, StringView, TextWriter, WriteBytes };
 
 /// How long the canonical text form is: thirty-two digits and four hyphens.
 ///
@@ -219,10 +219,10 @@ func WriteCanonicalInto(value: &Uuid, into: var char8[..]) {
 /// @param into the destination, at least `UuidTextLength` bytes
 /// @returns success when the whole form was written
 /// @see https://rux-lang.dev/docs/api/uuid/format
-pub func Format(value: &Uuid, into: var char8[..]) -> Result<Unit, FormatError> {
-    if into.length < UuidTextLength { return Result::Error<Unit, FormatError>(FormatError::InsufficientCapacity); }
+pub func Format(value: &Uuid, into: var char8[..]) -> ! FormatError {
+    if into.length < UuidTextLength { return .Failure(FormatError::InsufficientCapacity); }
     WriteCanonicalInto(value, into);
-    return FormatOk();
+    return;
 }
 
 /// Writes the canonical text form into `into`, in upper case.
@@ -236,8 +236,8 @@ pub func Format(value: &Uuid, into: var char8[..]) -> Result<Unit, FormatError> 
 /// @param into the destination, at least `UuidTextLength` bytes
 /// @returns success when the whole form was written
 /// @see https://rux-lang.dev/docs/api/uuid/format-upper
-pub func FormatUpper(value: &Uuid, into: var char8[..]) -> Result<Unit, FormatError> {
-    if into.length < UuidTextLength { return Result::Error<Unit, FormatError>(FormatError::InsufficientCapacity); }
+pub func FormatUpper(value: &Uuid, into: var char8[..]) -> ! FormatError {
+    if into.length < UuidTextLength { return .Failure(FormatError::InsufficientCapacity); }
     WriteCanonicalInto(value, into);
     var index: uint = 0;
     while index < UuidTextLength {
@@ -247,7 +247,7 @@ pub func FormatUpper(value: &Uuid, into: var char8[..]) -> Result<Unit, FormatEr
         }
         index = index + 1;
     }
-    return FormatOk();
+    return;
 }
 
 /// Writes the URN form into `into`: the canonical form after `urn:uuid:`.
@@ -260,8 +260,8 @@ pub func FormatUpper(value: &Uuid, into: var char8[..]) -> Result<Unit, FormatEr
 /// @param into the destination, at least `UuidUrnLength` bytes
 /// @returns success when the whole form was written
 /// @see https://rux-lang.dev/docs/api/uuid/format-urn
-pub func FormatUrn(value: &Uuid, into: var char8[..]) -> Result<Unit, FormatError> {
-    if into.length < UuidUrnLength { return Result::Error<Unit, FormatError>(FormatError::InsufficientCapacity); }
+pub func FormatUrn(value: &Uuid, into: var char8[..]) -> ! FormatError {
+    if into.length < UuidUrnLength { return .Failure(FormatError::InsufficientCapacity); }
     let prefix = "urn:uuid:";
     var index: uint = 0;
     while index < 9u {
@@ -270,15 +270,15 @@ pub func FormatUrn(value: &Uuid, into: var char8[..]) -> Result<Unit, FormatErro
     }
     let rest = (@into.data[9])[..UuidTextLength];
     WriteCanonicalInto(value, rest);
-    return FormatOk();
+    return;
 }
 
 // The empty style is the canonical form and `hyphenated` names it; `urn` selects the URN form. Nothing else is
 // understood, and a precision has nothing to apply itself to on a value of exactly one length.
-func AcceptsUuidSpec(spec: FormatSpec) -> Result<Unit, FormatError> {
-    if spec.HasPrecision() { return Result::Error<Unit, FormatError>(FormatError::UnsupportedRequest); }
-    if !spec.HasStyle() || spec.StyleIs("hyphenated") || spec.StyleIs("urn") { return FormatOk(); }
-    return Result::Error<Unit, FormatError>(FormatError::UnsupportedRequest);
+func AcceptsUuidSpec(spec: FormatSpec) -> ! FormatError {
+    if spec.HasPrecision() { return .Failure(FormatError::UnsupportedRequest); }
+    if !spec.HasStyle() || spec.StyleIs("hyphenated") || spec.StyleIs("urn") { return .Success(()); }
+    fail FormatError::UnsupportedRequest;
 }
 
 extend Uuid : Display {
@@ -297,7 +297,7 @@ extend Uuid : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole form was accepted
     /// @see https://rux-lang.dev/docs/api/uuid/uuid/write-display
-    pub func WriteDisplay(self: &Uuid, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+    pub func WriteDisplay(self: &Uuid, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         AcceptsUuidSpec(spec)?;
         if spec.StyleIs("urn") { WriteBytes(writer, "urn:uuid:")?; }
         var text: char8[36];
@@ -316,7 +316,7 @@ extend Uuid : Debug {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole form was accepted
     /// @see https://rux-lang.dev/docs/api/uuid/uuid/write-debug
-    pub func WriteDebug(self: &Uuid, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+    pub func WriteDebug(self: &Uuid, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         return self.WriteDisplay(writer, spec);
     }
 }

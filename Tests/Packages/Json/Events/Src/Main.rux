@@ -2,7 +2,7 @@
 // document far larger than the buffer must stream through it without the buffer growing.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, Option };
+import Core::{ Assert, Failed, Option };
 import Io::{ IoError, IoErrorKind, Reader };
 import Json::{ JsonEvent, JsonEventReader, JsonLimits, JsonParseError };
 import Text::{ BufferWriter, FormatSpec, TextWriter };
@@ -56,7 +56,7 @@ func StoppedAt(failure: Option<JsonParseError>, expected: char8[..]) -> bool {
     var storage: char8[96];
     var writer = BufferWriter((@storage[0])[..96]);
     let sink: &var TextWriter = writer;
-    if reason.WriteDebug(sink, FormatSpec::Plain()).IsError() { return false; }
+    if Failed(reason.WriteDebug(sink, FormatSpec::Plain())) { return false; }
     let shown = writer.Written();
     if shown.length < expected.length { return false; }
     var index: uint = 0;

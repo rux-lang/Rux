@@ -1,4 +1,4 @@
-import Core::{ Assert, Result, Unit };
+import Core::{ Assert, Failed, Succeeded };
 import Format::WriteFormat;
 import Io::{ ConsoleWriter, FromIoError, IoError, IoErrorKind, StreamWriter, ToIoError, WriteFormatLine,
              WriteValueLine, Writer };
@@ -77,7 +77,7 @@ extend Owned {
 }
 
 extend Owned : Display {
-    func WriteDisplay(self: &Owned, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+    func WriteDisplay(self: &Owned, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         WriteBytes(writer, "owned-")?;
         let tag: Display = self.tag;
         return tag.WriteDisplay(writer, spec);
@@ -90,8 +90,8 @@ struct Refuses {
 }
 
 extend Refuses : Display {
-    func WriteDisplay(self: &Refuses, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
-        return Result::Error<Unit, FormatError>(FormatError::UnsupportedRequest);
+    func WriteDisplay(self: &Refuses, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
+        fail FormatError::UnsupportedRequest;
     }
 }
 
@@ -105,23 +105,23 @@ func Same(actual: char8[..], expected: char8[..]) -> bool {
     return true;
 }
 
-func IsWriterFailure(outcome: Result<Unit, FormatError>) -> bool {
+func IsWriterFailure(outcome: ! FormatError) -> bool {
     return match outcome {
         .Success(_) => false,
-        .Error(reason) => reason.IsWriterFailure()
+        .Failure(reason) => reason.IsWriterFailure()
     };
 }
 
-func IsUnsupported(outcome: Result<Unit, FormatError>) -> bool {
+func IsUnsupported(outcome: ! FormatError) -> bool {
     return match outcome {
         .Success(_) => false,
-        .Error(reason) => match reason { .UnsupportedRequest => true, else => false }
+        .Failure(reason) => match reason { .UnsupportedRequest => true, else => false }
     };
 }
 
 func Main() -> int {
     // Going out: success is the formatter's success value, and every failure is the one case the protocol has.
-    Assert(FromIoError(IoError::Ok()).IsSuccess(), "a stream that took the bytes reports success");
+    Assert(Succeeded(FromIoError(IoError::Ok())), "a stream that took the bytes reports success");
     Assert(IsWriterFailure(FromIoError(IoError::Of(IoErrorKind::StorageFull))), "a full disk is a writer failure");
     Assert(IsWriterFailure(FromIoError(IoError::Of(IoErrorKind::PermissionDenied))), "and so is a refusal");
     Assert(IsWriterFailure(FromIoError(IoError::Of(IoErrorKind::EndOfStream))),
@@ -186,14 +186,14 @@ func Main() -> int {
 
     var destroyed: int32 = 0;
     var value = Owned { counter: @destroyed, tag: 7i32 };
-    Assert(WriteValueLine(out, value).IsSuccess(), "a value writes itself into a stream");
+    Assert(Succeeded(WriteValueLine(out, value)), "a value writes itself into a stream");
     Assert(Same((@second.written[0])[..second.length], "owned-7\n"), "with its newline after it");
     Assert(healthy.IsOk(), "and nothing recorded against the stream");
 
     // The value was borrowed, not taken. This is what the bound buys over an interface parameter: binding a
     // move-only value to a `Display` transfers ownership of it, so the value would have been gone after one line.
     Assert(destroyed == 0i32, "writing a value destroys nothing");
-    Assert(WriteValueLine(out, value).IsSuccess(), "so the same value goes out again");
+    Assert(Succeeded(WriteValueLine(out, value)), "so the same value goes out again");
     Assert(destroyed == 0i32, "still destroying nothing");
     Assert(Same((@second.written[0])[..second.length], "owned-7\nowned-7\n"), "identically");
 
@@ -213,13 +213,13 @@ func Main() -> int {
     Assert(third_failure.IsOk(), "the destination being blameless");
 
     // The same rule for a pattern. Each of the two ways a pattern can be wrong leaves no terminator behind.
-    Assert(WriteFormatLine(third_out, "abc{").IsError(), "a pattern that does not parse is refused");
+    Assert(Failed(WriteFormatLine(third_out, "abc{")), "a pattern that does not parse is refused");
     Assert(third.length == 0u, "with no newline after it");
-    Assert(WriteFormatLine(third_out, "a {} b {}", 1i32).IsError(), "and so is one short of arguments");
+    Assert(Failed(WriteFormatLine(third_out, "a {} b {}", 1i32)), "and so is one short of arguments");
     Assert(third.length == 0u, "also leaving nothing");
 
     // And a pattern that is right does write its line, so the rule is not simply never writing one.
-    Assert(WriteFormatLine(third_out, "n={}", 42i32).IsSuccess(), "a pattern that is right writes its line");
+    Assert(Succeeded(WriteFormatLine(third_out, "n={}", 42i32)), "a pattern that is right writes its line");
     Assert(Same((@third.written[0])[..third.length], "n=42\n"), "terminator and all");
 
     // The line rule against a destination that fails partway: the value goes out, the newline does not, and the

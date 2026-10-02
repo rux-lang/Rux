@@ -1,4 +1,3 @@
-import Core::{ Result, Unit };
 import Allocator::{ Allocator, SystemAllocator };
 import Format::Render;
 import Text::{ FormatError, String, StringView };
@@ -74,8 +73,6 @@ func Main() -> int {
 
 // The rendered text, or an empty string when rendering failed. Every check above compares against text it expects
 // to be non-empty, so a failure cannot pass as a success.
-func Rendered(allocator: Allocator, outcome: Result<String, FormatError>) -> String {
-    var text = String(allocator);
-    outcome.TryIntoValue(@text);
-    return <-text;
+func Rendered(allocator: Allocator, outcome: String ! FormatError) -> String {
+    return (<-outcome) catch { else => String(allocator) };
 }

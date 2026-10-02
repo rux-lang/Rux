@@ -26,9 +26,8 @@
 // caller who needs to know which formatting failure it was builds a `ConsoleWriter` — or any other `TextWriter` —
 // and calls `Text::WriteValue` themselves, which hands back the `FormatError` whole.
 
-import Core::{ Result, Unit };
 import Format::WriteFormat;
-import Text::{ Display, FormatError, FormatOk, FormatSpec, TextFailureKind, TextWriter };
+import Text::{ Display, FormatError, FormatSpec, TextFailureKind, TextWriter };
 
 /// Turns what a stream reported into what a formatter understands.
 ///
@@ -42,9 +41,9 @@ import Text::{ Display, FormatError, FormatOk, FormatSpec, TextFailureKind, Text
 /// @param error what the stream reported
 /// @returns success for `IsOk`, and `WriterFailure` otherwise
 /// @see https://rux-lang.dev/docs/api/io/from-io-error
-pub func FromIoError(error: IoError) -> Result<Unit, FormatError> {
-    if error.IsOk() { return FormatOk(); }
-    return Result::Error<Unit, FormatError>(FormatError::WriterFailure);
+pub func FromIoError(error: IoError) -> ! FormatError {
+    if error.IsOk() { return .Success(()); }
+    fail FormatError::WriterFailure;
 }
 
 /// Turns a formatting failure into something a stream's caller can act on.
@@ -125,9 +124,9 @@ extend ConsoleWriter : TextWriter {
     /// @param bytes the UTF-8 run to write
     /// @returns success when the stream accepted the whole run
     /// @see https://rux-lang.dev/docs/api/io/console-writer/write
-    pub func Write(self: &var ConsoleWriter, bytes: char8[..]) -> Result<Unit, FormatError> {
+    pub func Write(self: &var ConsoleWriter, bytes: char8[..]) -> ! FormatError {
         if (*self.failure).IsError() {
-            return Result::Error<Unit, FormatError>(FormatError::WriterFailure);
+            fail FormatError::WriterFailure;
         }
         let outcome = PrintBytes(bytes);
         if outcome.IsError() {
@@ -184,9 +183,9 @@ extend StreamWriter : TextWriter {
     /// @param bytes the UTF-8 run to write
     /// @returns success when the stream accepted the whole run
     /// @see https://rux-lang.dev/docs/api/io/stream-writer/write
-    pub func Write(self: &var StreamWriter, bytes: char8[..]) -> Result<Unit, FormatError> {
+    pub func Write(self: &var StreamWriter, bytes: char8[..]) -> ! FormatError {
         if (*self.failure).IsError() {
-            return Result::Error<Unit, FormatError>(FormatError::WriterFailure);
+            fail FormatError::WriterFailure;
         }
         let outcome = WriteAll(self.sink, bytes);
         if outcome.IsError() {
@@ -218,7 +217,7 @@ extend StreamWriter : TextWriter {
 /// @param value the value to write, borrowed for the call
 /// @returns success when both the value and the newline were accepted
 /// @see https://rux-lang.dev/docs/api/io/write-value-line
-pub func WriteValueLine<T: Display>(writer: &var TextWriter, value: &T) -> Result<Unit, FormatError> {
+pub func WriteValueLine<T: Display>(writer: &var TextWriter, value: &T) -> ! FormatError {
     value.WriteDisplay(writer, FormatSpec::Plain())?;
     return writer.Write("\n");
 }
@@ -239,7 +238,7 @@ pub func WriteValueLine<T: Display>(writer: &var TextWriter, value: &T) -> Resul
 /// @returns success when the whole line was accepted
 /// @see https://rux-lang.dev/docs/api/io/write-format-line
 pub func WriteFormatLine(writer: &var TextWriter, format: char8[..],
-                         args: Display...) -> Result<Unit, FormatError> {
+                         args: Display...) -> ! FormatError {
     WriteFormat(writer, format, args...)?;
     return writer.Write("\n");
 }

@@ -1,6 +1,6 @@
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, Result, Unit };
-import Text::{ BufferWriter, FormatError, FormatOk, String, StringBuilder, TextFailureKind, TextWriter, WriteAscii,
+import Core::Assert;
+import Text::{ BufferWriter, FormatError, String, StringBuilder, TextFailureKind, TextWriter, WriteAscii,
                WriteBytes, WriteScalar };
 
 // What a `TextWriter` promises, checked at the promises rather than at one happy path.
@@ -18,10 +18,10 @@ import Text::{ BufferWriter, FormatError, FormatOk, String, StringBuilder, TextF
 // Which failure a result carries, as a small code, so a check names the reason it expects rather than only that
 // something failed: 0 success, 1 InsufficientCapacity, 2 TextFailure(InvalidUtf8), 3 some other TextFailure,
 // 4 WriterFailure, 5 a category no writer may produce.
-func FailureCode(outcome: Result<Unit, FormatError>) -> int {
+func FailureCode(outcome: ! FormatError) -> int {
     return match outcome {
         .Success(_) => 0,
-        .Error(reason) => match reason {
+        .Failure(reason) => match reason {
             .InsufficientCapacity => 1,
             .TextFailure(kind) => match kind {
                 .InvalidUtf8 => 2,

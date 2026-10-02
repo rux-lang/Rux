@@ -8,8 +8,7 @@
 // text to exist anywhere as one run. That matters: a number goes out as sign, then prefix, then zeros, then digits,
 // each straight to the writer, so the widest integer costs no more storage than its own digit buffer.
 
-import Core::{ Result, Unit };
-import Text::{ Encode, FormatAlign, FormatBase, FormatError, FormatOk, FormatSpec, PaddingAround, RejectNonBaseStyle,
+import Text::{ Encode, FormatAlign, FormatBase, FormatError, FormatSpec, PaddingAround, RejectNonBaseStyle,
                RejectStyle, TextFailureKind,
                TextWriter, WriteAligned, WriteAscii, WriteFill };
 
@@ -30,7 +29,7 @@ import Text::{ Encode, FormatAlign, FormatBase, FormatError, FormatOk, FormatSpe
 /// @returns success when the complete rendering was accepted
 /// @see https://rux-lang.dev/docs/api/format/write-integer-digits
 pub func WriteIntegerDigits(writer: &var TextWriter, spec: FormatSpec, digits: char8[..], count: uint,
-                            negative: bool) -> Result<Unit, FormatError> {
+                            negative: bool) -> ! FormatError {
     // Every integer width, narrow and wide, reaches the writer through here, so this is where an integer says
     // which styles it has meaning for: the four bases, and nothing else.
     RejectNonBaseStyle(spec)?;
@@ -89,7 +88,7 @@ pub func WriteIntegerDigits(writer: &var TextWriter, spec: FormatSpec, digits: c
 /// @returns success when the complete rendering was accepted
 /// @see https://rux-lang.dev/docs/api/format/write-integer-spec
 pub func WriteIntegerSpec(writer: &var TextWriter, spec: FormatSpec, magnitude: uint64,
-                          negative: bool) -> Result<Unit, FormatError> {
+                          negative: bool) -> ! FormatError {
     var digits: char8[64];
     var count: uint = 0;
     var radix: uint64 = 10;
@@ -128,13 +127,13 @@ pub func WriteIntegerSpec(writer: &var TextWriter, spec: FormatSpec, magnitude: 
 /// @param scalar the Unicode scalar value to render
 /// @returns success when the padded character was accepted
 /// @see https://rux-lang.dev/docs/api/format/format-scalar
-pub func FormatScalar(writer: &var TextWriter, spec: FormatSpec, scalar: char32) -> Result<Unit, FormatError> {
+pub func FormatScalar(writer: &var TextWriter, spec: FormatSpec, scalar: char32) -> ! FormatError {
     RejectStyle(spec)?;
     var encoded: char8[4];
     var written: uint = 0;
     let sink = (@encoded[0])[..4];
     if Encode(scalar, sink, @written).IsError() {
-        return Result::Error<Unit, FormatError>(FormatError::TextFailure(TextFailureKind::InvalidUtf8));
+        fail FormatError::TextFailure(TextFailureKind::InvalidUtf8);
     }
     return WriteAligned(writer, spec, (@encoded[0])[..written], false);
 }

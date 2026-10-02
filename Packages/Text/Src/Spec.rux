@@ -11,7 +11,7 @@
 // reachable by anything in Format, and moving it here would otherwise have handed the same reach to every package
 // that renders a value. Reading is what implementations need; writing belongs to the parser alone.
 
-import Core::{ Result, Unit, uint };
+import Core::{ Result, uint };
 
 /// Where the padding goes when the rendering is narrower than the width.
 ///
@@ -431,9 +431,9 @@ func BaseOfStyle(style: char8[..]) -> FormatBase {
 /// @param spec the specification to check
 /// @returns success when no style was named
 /// @see https://rux-lang.dev/docs/api/text/reject-style
-pub func RejectStyle(spec: FormatSpec) -> Result<Unit, FormatError> {
-    if spec.HasStyle() { return Result::Error<Unit, FormatError>(FormatError::UnsupportedRequest); }
-    return FormatOk();
+pub func RejectStyle(spec: FormatSpec) -> ! FormatError {
+    if spec.HasStyle() { return .Failure(FormatError::UnsupportedRequest); }
+    return;
 }
 
 /// Refuses a specification whose style is not one of the integer bases.
@@ -448,9 +448,9 @@ pub func RejectStyle(spec: FormatSpec) -> Result<Unit, FormatError> {
 /// @param spec the specification to check
 /// @returns success when no style was named, or the style named a base
 /// @see https://rux-lang.dev/docs/api/text/reject-non-base-style
-pub func RejectNonBaseStyle(spec: FormatSpec) -> Result<Unit, FormatError> {
+pub func RejectNonBaseStyle(spec: FormatSpec) -> ! FormatError {
     if spec.HasStyle() && spec.Base() == FormatBase::Decimal {
-        return Result::Error<Unit, FormatError>(FormatError::UnsupportedRequest);
+        fail FormatError::UnsupportedRequest;
     }
-    return FormatOk();
+    return;
 }

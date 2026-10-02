@@ -12,7 +12,6 @@
 // output is diagnostic and promises no round trip, which is exactly the right promise for a number whose meaning
 // ends with the process that produced it.
 
-import Core::{ Result, Unit };
 import Text::{ Debug, FormatError, FormatSpec, RejectStyle, TextWriter, WriteAscii, WriteBytes };
 
 extend Instant : Debug {
@@ -30,9 +29,9 @@ extend Instant : Debug {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole reading was accepted
     /// @see https://rux-lang.dev/docs/api/time/instant/write-debug
-    pub func WriteDebug(self: &Instant, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+    pub func WriteDebug(self: &Instant, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         RejectStyle(spec)?;
-        if spec.HasPrecision() { return Result::Error<Unit, FormatError>(FormatError::UnsupportedRequest); }
+        if spec.HasPrecision() { return .Failure(FormatError::UnsupportedRequest); }
         WriteBytes(writer, "Instant(nanoseconds: ")?;
         WriteUnsigned(writer, self.ticks)?;
         return WriteAscii(writer, c8')');

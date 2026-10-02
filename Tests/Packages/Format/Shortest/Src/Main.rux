@@ -1,5 +1,5 @@
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, Result };
+import Core::Assert;
 import Format::{ BitsOfFloat32, BitsOfFloat64, ParseFloat32, ParseFloat64, Render };
 import Text::{ FormatError, String, StringView };
 
@@ -28,11 +28,11 @@ import Text::{ FormatError, String, StringView };
 // asserted as *not* closing with the gap named. Those assertions are inverted here, which is what an exact reader
 // arriving looks like from the outside.
 
-func Same(outcome: Result<String, FormatError>, expected: char8[..]) -> bool {
+func Same(outcome: String ! FormatError, expected: char8[..]) -> bool {
     let wanted = StringView::FromValidated(expected);
     return match <-outcome {
         .Success(text) => text.View().Equals(wanted),
-        .Error(_) => false
+        .Failure(_) => false
     };
 }
 
@@ -47,7 +47,7 @@ func RoundTrips64(allocator: Allocator, value: float64) -> bool {
                 .Error(_) => { ok = false; }
             }
         },
-        .Error(_) => {
+        .Failure(_) => {
             ok = false;
         }
     }
@@ -63,7 +63,7 @@ func RoundTrips32(allocator: Allocator, value: float32) -> bool {
                 .Error(_) => { ok = false; }
             }
         },
-        .Error(_) => {
+        .Failure(_) => {
             ok = false;
         }
     }
@@ -80,10 +80,10 @@ func RenderDiffers64(allocator: Allocator, left: float64, right: float64) -> boo
                     let other = second.View();
                     same = first.View().Equals(other);
                 },
-                .Error(_) => { same = true; }
+                .Failure(_) => { same = true; }
             }
         },
-        .Error(_) => {
+        .Failure(_) => {
             same = true;
         }
     }

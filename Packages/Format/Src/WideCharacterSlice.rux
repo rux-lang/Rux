@@ -15,8 +15,7 @@
 // bound, so the width a placeholder asks for is measured in one pass over the units and the padding is written
 // around the transcoding instead.
 
-import Core::{ Result, Unit };
-import Text::{ Debug, Display, FormatError, FormatOk, FormatSpec, RejectStyle, TextWriter, WriteAscii, WriteFill,
+import Text::{ Debug, Display, FormatError, FormatSpec, RejectStyle, TextWriter, WriteAscii, WriteFill,
                WriteScalar };
 
 // One scalar out of the UTF-16 units at `index`: a unit outside the surrogate range, or a high-low pair.
@@ -66,7 +65,7 @@ extend char16[..] : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/wide-character-slice/write-display-16
-    pub func WriteDisplay(self: &char16[..], writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+    pub func WriteDisplay(self: &char16[..], writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         RejectStyle(spec)?;
         let units = (self.data)[..self.length];
         var before: uint = 0;
@@ -103,7 +102,7 @@ extend char16[..] : Debug {
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/wide-character-slice/write-debug-16
-    pub func WriteDebug(self: &char16[..], writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+    pub func WriteDebug(self: &char16[..], writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         RejectStyle(spec)?;
         let units = (self.data)[..self.length];
         WriteAscii(writer, c8'"')?;
@@ -136,7 +135,7 @@ extend char32[..] : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/wide-character-slice/write-display-32
-    pub func WriteDisplay(self: &char32[..], writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+    pub func WriteDisplay(self: &char32[..], writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         RejectStyle(spec)?;
         let units = (self.data)[..self.length];
         var before: uint = 0;
@@ -168,7 +167,7 @@ extend char32[..] : Debug {
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/wide-character-slice/write-debug-32
-    pub func WriteDebug(self: &char32[..], writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+    pub func WriteDebug(self: &char32[..], writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         RejectStyle(spec)?;
         let units = (self.data)[..self.length];
         WriteAscii(writer, c8'"')?;

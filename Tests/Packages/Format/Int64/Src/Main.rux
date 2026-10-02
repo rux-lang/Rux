@@ -2,7 +2,7 @@ import Text::{ Display, FormatSpec, TextWriter };
 import Core::{ int64 };
 import Text::StringView;
 import Format::{ ByteCursor, ParseError, ParseInt64 };
-import Core::Result;
+import Core::{ Failed, Result };
 
 
 // A failed check returns its numbered exit code for `rux test`.
@@ -11,7 +11,7 @@ func Check(value: int64, expected: char8[..], code: int) -> int {
     var cursor = ByteCursor((@storage[0])[..64]);
     let writer: &var TextWriter = cursor;
     let shown: Display = value;
-    if shown.WriteDisplay(writer, FormatSpec::Plain()).IsError() {
+    if Failed(shown.WriteDisplay(writer, FormatSpec::Plain())) {
         return code;
     }
     let actual = cursor.Written();

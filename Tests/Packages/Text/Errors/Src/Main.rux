@@ -1,5 +1,5 @@
 import Allocator::AllocError;
-import Core::Assert;
+import Core::{ Assert, Failed };
 import Memory::PageError;
 import Text::{ BufferWriter, Debug, Display, FormatError, FormatSpec, ParseFormatSpec, TextError, TextFailureKind,
                TextWriter, Utf8Error };
@@ -36,14 +36,14 @@ func Spec(text: char8[..]) -> FormatSpec {
 func Shown(value: Display, expected: char8[..]) -> bool {
     var storage: char8[128];
     var writer = BufferWriter((@storage[0])[..128]);
-    if value.WriteDisplay(writer, FormatSpec::Plain()).IsError() { return false; }
+    if Failed(value.WriteDisplay(writer, FormatSpec::Plain())) { return false; }
     return Same(writer.Written(), expected);
 }
 
 func Inspected(value: Debug, expected: char8[..]) -> bool {
     var storage: char8[128];
     var writer = BufferWriter((@storage[0])[..128]);
-    if value.WriteDebug(writer, FormatSpec::Plain()).IsError() { return false; }
+    if Failed(value.WriteDebug(writer, FormatSpec::Plain())) { return false; }
     return Same(writer.Written(), expected);
 }
 
@@ -51,10 +51,10 @@ func Inspected(value: Debug, expected: char8[..]) -> bool {
 func Refused(shown: Display, inspected: Debug, spec: FormatSpec) -> bool {
     var storage: char8[128];
     var writer = BufferWriter((@storage[0])[..128]);
-    if !shown.WriteDisplay(writer, spec).IsError() { return false; }
+    if !Failed(shown.WriteDisplay(writer, spec)) { return false; }
     var second = BufferWriter((@storage[0])[..128]);
     let other: &var TextWriter = second;
-    return inspected.WriteDebug(other, spec).IsError();
+    return Failed(inspected.WriteDebug(other, spec));
 }
 
 func Main() -> int {

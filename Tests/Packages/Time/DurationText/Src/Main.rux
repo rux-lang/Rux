@@ -1,4 +1,4 @@
-import Core::{ Assert, Option };
+import Core::{ Assert, Failed };
 import Text::{ BufferWriter, Display, FormatSpec, ParseFormatSpec };
 import Time::{ Duration, ParseDuration, TimeParseError };
 
@@ -33,7 +33,7 @@ func Shown(value: Duration, spec: FormatSpec, expected: char8[..]) -> bool {
     var storage: char8[64];
     var writer = BufferWriter((@storage[0])[..64]);
     let shown: Display = value;
-    if shown.WriteDisplay(writer, spec).IsError() { return false; }
+    if Failed(shown.WriteDisplay(writer, spec)) { return false; }
     return Same(writer.Written(), expected);
 }
 
@@ -41,7 +41,7 @@ func Refused(value: Duration, spec: FormatSpec) -> bool {
     var storage: char8[64];
     var writer = BufferWriter((@storage[0])[..64]);
     let shown: Display = value;
-    return shown.WriteDisplay(writer, spec).IsError();
+    return Failed(shown.WriteDisplay(writer, spec));
 }
 
 // A span built from whole seconds and a nanosecond fraction added on, which is how a caller makes a fractional one.

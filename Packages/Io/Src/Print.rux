@@ -5,9 +5,8 @@
 // while one whose output feeds a closed pipe finally has something to look at. The bytes go through the standard
 // output handle, so the console-versus-redirection encoding is decided where it always is, not re-decided here.
 
-import Core::{ Result, Unit };
 import Format::WriteFormat;
-import Text::{ Display, FormatError, FormatOk, FormatSpec, String, StringView, TextWriter };
+import Text::{ Display, FormatError, FormatSpec, String, StringView, TextWriter };
 
 // The one write under everything here.
 func PrintBytes(bytes: char8[..]) -> IoError {
@@ -21,11 +20,11 @@ func PrintBytes(bytes: char8[..]) -> IoError {
 // and can say nothing about what a broken pipe was, while the slot holds the failure itself. Only once the stream
 // is known to be healthy is the formatter's own failure worth translating, and by then it can only be a fault of
 // the request or of the value.
-func Reported(failure: IoError, formatted: Result<Unit, FormatError>) -> IoError {
+func Reported(failure: IoError, formatted: ! FormatError) -> IoError {
     if failure.IsError() { return failure; }
     return match formatted {
         .Success(_) => IoError::Ok(),
-        .Error(reason) => ToIoError(reason)
+        .Failure(reason) => ToIoError(reason)
     };
 }
 

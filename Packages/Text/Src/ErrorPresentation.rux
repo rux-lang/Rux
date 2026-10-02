@@ -19,22 +19,21 @@
 // wraps it in a diagnostic type of its own.
 
 import Allocator::AllocError;
-import Core::{ Result, Unit };
 import Memory::PageError;
 
 // Whether the specification is one an error description can answer. Neither a style nor a precision is: a
 // description has one form, and truncating it produces a sentence that says something else.
-func AcceptsErrorSpec(spec: FormatSpec) -> Result<Unit, FormatError> {
+func AcceptsErrorSpec(spec: FormatSpec) -> ! FormatError {
     RejectStyle(spec)?;
-    if spec.HasPrecision() { return Result::Error<Unit, FormatError>(FormatError::UnsupportedRequest); }
-    return FormatOk();
+    if spec.HasPrecision() { return .Failure(FormatError::UnsupportedRequest); }
+    return;
 }
 
 // Writes an unsigned value in as many decimal digits as it needs.
 //
 // Written here rather than borrowed from Format, which converts numbers for a living: Text does not depend on
 // Format and must not, so the two payload cases below carry their own twenty lines.
-func WriteCount(writer: &var TextWriter, value: uint) -> Result<Unit, FormatError> {
+func WriteCount(writer: &var TextWriter, value: uint) -> ! FormatError {
     var digits: char8[20];
     var count: uint = 0;
     var rest = value;
@@ -52,12 +51,12 @@ func WriteCount(writer: &var TextWriter, value: uint) -> Result<Unit, FormatErro
         index = index - 1;
         WriteAscii(writer, digits[index])?;
     }
-    return FormatOk();
+    return;
 }
 
 // The description of one text-handling failure, shared by `TextError` and `TextFailureKind`, which name the same
 // four things and must not describe them differently.
-func WriteTextFailureDescription(writer: &var TextWriter, kind: &TextFailureKind) -> Result<Unit, FormatError> {
+func WriteTextFailureDescription(writer: &var TextWriter, kind: &TextFailureKind) -> ! FormatError {
     return match kind {
         .OutOfMemory => WriteBytes(writer, "out of memory"),
         .LengthOverflow => WriteBytes(writer, "length overflow"),
@@ -66,7 +65,7 @@ func WriteTextFailureDescription(writer: &var TextWriter, kind: &TextFailureKind
     };
 }
 
-func WriteTextFailureName(writer: &var TextWriter, kind: &TextFailureKind) -> Result<Unit, FormatError> {
+func WriteTextFailureName(writer: &var TextWriter, kind: &TextFailureKind) -> ! FormatError {
     return match kind {
         .OutOfMemory => WriteBytes(writer, "TextFailureKind::OutOfMemory"),
         .LengthOverflow => WriteBytes(writer, "TextFailureKind::LengthOverflow"),
@@ -88,7 +87,7 @@ extend TextError : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole description was accepted
     /// @see https://rux-lang.dev/docs/api/text/text-error/write-display
-    pub func WriteDisplay(self: &TextError, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+    pub func WriteDisplay(self: &TextError, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         AcceptsErrorSpec(spec)?;
         return match self {
             .None => WriteBytes(writer, "no error"),
@@ -110,7 +109,7 @@ extend TextError : Debug {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole name was accepted
     /// @see https://rux-lang.dev/docs/api/text/text-error/write-debug
-    pub func WriteDebug(self: &TextError, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+    pub func WriteDebug(self: &TextError, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         AcceptsErrorSpec(spec)?;
         return match self {
             .None => WriteBytes(writer, "TextError::None"),
@@ -133,7 +132,7 @@ extend TextFailureKind : Display {
     /// @returns success when the whole description was accepted
     /// @see https://rux-lang.dev/docs/api/text/text-failure-kind/write-display
     pub func WriteDisplay(self: &TextFailureKind, writer: &var TextWriter,
-                          spec: FormatSpec) -> Result<Unit, FormatError> {
+                          spec: FormatSpec) -> ! FormatError {
         AcceptsErrorSpec(spec)?;
         return WriteTextFailureDescription(writer, self);
     }
@@ -150,7 +149,7 @@ extend TextFailureKind : Debug {
     /// @returns success when the whole name was accepted
     /// @see https://rux-lang.dev/docs/api/text/text-failure-kind/write-debug
     pub func WriteDebug(self: &TextFailureKind, writer: &var TextWriter,
-                        spec: FormatSpec) -> Result<Unit, FormatError> {
+                        spec: FormatSpec) -> ! FormatError {
         AcceptsErrorSpec(spec)?;
         return WriteTextFailureName(writer, self);
     }
@@ -170,7 +169,7 @@ extend FormatError : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole description was accepted
     /// @see https://rux-lang.dev/docs/api/text/format-error/write-display
-    pub func WriteDisplay(self: &FormatError, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+    pub func WriteDisplay(self: &FormatError, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         AcceptsErrorSpec(spec)?;
         return match self {
             .InvalidSpecification(_) => WriteBytes(writer, "malformed format specification"),
@@ -197,7 +196,7 @@ extend FormatError : Debug {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole rendering was accepted
     /// @see https://rux-lang.dev/docs/api/text/format-error/write-debug
-    pub func WriteDebug(self: &FormatError, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+    pub func WriteDebug(self: &FormatError, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         AcceptsErrorSpec(spec)?;
         return match self {
             .InvalidSpecification(at) => WriteSpecificationFailure(writer, at),
@@ -212,13 +211,13 @@ extend FormatError : Debug {
 }
 
 // The three payload-carrying cases, written out so that the match above stays one expression per case.
-func WriteSpecificationFailure(writer: &var TextWriter, at: uint) -> Result<Unit, FormatError> {
+func WriteSpecificationFailure(writer: &var TextWriter, at: uint) -> ! FormatError {
     WriteBytes(writer, "FormatError::InvalidSpecification(")?;
     WriteCount(writer, at)?;
     return WriteAscii(writer, c8')');
 }
 
-func WriteCountMismatch(writer: &var TextWriter, expected: uint, supplied: uint) -> Result<Unit, FormatError> {
+func WriteCountMismatch(writer: &var TextWriter, expected: uint, supplied: uint) -> ! FormatError {
     WriteBytes(writer, "FormatError::ArgumentCountMismatch(")?;
     WriteCount(writer, expected)?;
     WriteBytes(writer, ", ")?;
@@ -226,7 +225,7 @@ func WriteCountMismatch(writer: &var TextWriter, expected: uint, supplied: uint)
     return WriteAscii(writer, c8')');
 }
 
-func WriteTextFailure(writer: &var TextWriter, kind: &TextFailureKind) -> Result<Unit, FormatError> {
+func WriteTextFailure(writer: &var TextWriter, kind: &TextFailureKind) -> ! FormatError {
     WriteBytes(writer, "FormatError::TextFailure(")?;
     WriteTextFailureName(writer, kind)?;
     return WriteAscii(writer, c8')');
@@ -242,7 +241,7 @@ extend Utf8Error : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole description was accepted
     /// @see https://rux-lang.dev/docs/api/text/utf8-error/write-display
-    pub func WriteDisplay(self: &Utf8Error, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+    pub func WriteDisplay(self: &Utf8Error, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         AcceptsErrorSpec(spec)?;
         return match self {
             .None => WriteBytes(writer, "well-formed UTF-8"),
@@ -263,7 +262,7 @@ extend Utf8Error : Debug {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole name was accepted
     /// @see https://rux-lang.dev/docs/api/text/utf8-error/write-debug
-    pub func WriteDebug(self: &Utf8Error, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+    pub func WriteDebug(self: &Utf8Error, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         AcceptsErrorSpec(spec)?;
         return match self {
             .None => WriteBytes(writer, "Utf8Error::None"),
@@ -288,7 +287,7 @@ extend AllocError : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole description was accepted
     /// @see https://rux-lang.dev/docs/api/text/alloc-error/write-display
-    pub func WriteDisplay(self: &AllocError, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+    pub func WriteDisplay(self: &AllocError, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         AcceptsErrorSpec(spec)?;
         return match self {
             .Unsupported => WriteBytes(writer, "layout this allocator cannot serve"),
@@ -308,7 +307,7 @@ extend AllocError : Debug {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole name was accepted
     /// @see https://rux-lang.dev/docs/api/text/alloc-error/write-debug
-    pub func WriteDebug(self: &AllocError, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+    pub func WriteDebug(self: &AllocError, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         AcceptsErrorSpec(spec)?;
         return match self {
             .Unsupported => WriteBytes(writer, "AllocError::Unsupported"),
@@ -331,7 +330,7 @@ extend PageError : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole description was accepted
     /// @see https://rux-lang.dev/docs/api/text/page-error/write-display
-    pub func WriteDisplay(self: &PageError, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+    pub func WriteDisplay(self: &PageError, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         AcceptsErrorSpec(spec)?;
         return match self {
             .InvalidLength => WriteBytes(writer, "invalid length"),
@@ -354,7 +353,7 @@ extend PageError : Debug {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole name was accepted
     /// @see https://rux-lang.dev/docs/api/text/page-error/write-debug
-    pub func WriteDebug(self: &PageError, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+    pub func WriteDebug(self: &PageError, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         AcceptsErrorSpec(spec)?;
         return match self {
             .InvalidLength => WriteBytes(writer, "PageError::InvalidLength"),

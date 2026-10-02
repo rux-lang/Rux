@@ -1,5 +1,5 @@
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, Result };
+import Core::{ Assert, Failed };
 import Format::Render;
 import Text::{ BufferWriter, Debug, FormatError, FormatSpec, String, StringView, TextWriter, WriteDebugValue };
 
@@ -44,11 +44,11 @@ func SameBytes(actual: char8[..], expected: char8[..]) -> bool {
 }
 
 // Whether the outcome is exactly `expected`. Consuming the result is what forces a failure to be visible.
-func Same(outcome: Result<String, FormatError>, expected: char8[..]) -> bool {
+func Same(outcome: String ! FormatError, expected: char8[..]) -> bool {
     let wanted = StringView::FromValidated(expected);
     return match <-outcome {
         .Success(text) => text.View().Equals(wanted),
-        .Error(_) => false
+        .Failure(_) => false
     };
 }
 
@@ -57,7 +57,7 @@ func Inspected(value: Debug, expected: char8[..]) -> bool {
     var storage: char8[128];
     var writer = BufferWriter((@storage[0])[..128]);
     let sink: &var TextWriter = writer;
-    if WriteDebugValue(sink, value, FormatSpec::Plain()).IsError() { return false; }
+    if Failed(WriteDebugValue(sink, value, FormatSpec::Plain())) { return false; }
     return SameBytes(writer.Written(), expected);
 }
 
@@ -76,7 +76,7 @@ func Main() -> int {
     let wideTrue: Debug = true as bool64;
     Assert(Inspected(wideTrue, "true"), "whose Debug is the same word");
     Assert(Same(Render(allocator, "{:>7}", true as bool64), "   true"), "and which pads like the others");
-    Assert(Render(allocator, "{:x}", true as bool64).IsError(), "a boolean has no base, and refuses one");
+    Assert(Failed(Render(allocator, "{:x}", true as bool64)), "a boolean has no base, and refuses one");
 
     // char8: a byte below 0x80 is a whole character, and one above it is a piece of one.
     Assert(Same(Render(allocator, "{}", c8'A'), "A"), "an ASCII byte is itself");
@@ -201,8 +201,8 @@ func Main() -> int {
     Assert(Inspected(emptyDebug, "\"\""), "and inspects as empty quotes");
 
     // Neither slice answers to a style, since neither has a second form.
-    Assert(Render(allocator, "{:x}", wideView).IsError(), "a UTF-32 slice refuses a base");
-    Assert(Render(allocator, "{:q}", unitView).IsError(), "and a UTF-16 slice refuses an invented style");
+    Assert(Failed(Render(allocator, "{:x}", wideView)), "a UTF-32 slice refuses a base");
+    Assert(Failed(Render(allocator, "{:q}", unitView)), "and a UTF-16 slice refuses an invented style");
 
     return 0;
 }

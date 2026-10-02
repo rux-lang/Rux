@@ -6,7 +6,7 @@
 
 import Text::{ FormatSpec, ParseFormatSpec, TextWriter };
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, Result };
+import Core::{ Assert, Failed, Succeeded };
 import Format::{ ByteCursor, Float128, Float256, Float512, Float80, FloatLayout, ParseError, ParseFloat128, ParseFloat256, ParseFloat512, ParseFloat80, ParseWideFloat, UnpackWide, WideClass, WriteWideFloat };
 
 // The bytes a string spans, which is how a text overload reaches the slice one.
@@ -41,7 +41,7 @@ func Render(bits: uint512, layout: &FloatLayout, spec: FormatSpec, storage: var 
     let allocator: Allocator = system;
     var cursor = ByteCursor(storage);
     let writer: &var TextWriter = cursor;
-    Assert(WriteWideFloat(allocator, writer, spec, bits, layout).IsSuccess(), "rendering succeeds");
+    Assert(Succeeded(WriteWideFloat(allocator, writer, spec, bits, layout)), "rendering succeeds");
     return cursor.Written();
 }
 
@@ -218,7 +218,7 @@ func Main() -> int {
     var cursor = ByteCursor(room);
     let writer: &var TextWriter = cursor;
     let one = Float128::FromBits(0x3FFF0000000000000000000000000000u128);
-    Assert(one.FormatWith(allocator, writer, plain).IsSuccess(), "the explicit entry point renders");
+    Assert(Succeeded(one.FormatWith(allocator, writer, plain)), "the explicit entry point renders");
     Assert(Same(cursor.Written(), "1.0"), "to the same text it always did");
 
     // A style is refused by the value, which the removed Display wrapper used to do on its way past.
@@ -226,7 +226,7 @@ func Main() -> int {
     Assert(ParseFormatSpec("x").TryIntoValue(@styled), "a base spec parses");
     var second = ByteCursor(room);
     let other: &var TextWriter = second;
-    Assert(one.FormatWith(allocator, other, styled).IsError(), "and a style is still refused");
+    Assert(Failed(one.FormatWith(allocator, other, styled)), "and a style is still refused");
     let typed = ParseFloat256(allocator, "2.5");
     var failure = ParseError::Empty;
     Assert(!typed.TryIntoError(@failure), "the typed entry point reads");

@@ -1,5 +1,5 @@
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, Result, Unit, int32, int64, uint8 };
+import Core::{ Assert, Failed, Succeeded, int32, int64, uint8 };
 import Format::{ Render, WriteFormat };
 import Text::{ BufferWriter, Debug, Display, FormatError, FormatSpec, ParseFormatSpec, String, StringView,
                TextWriter, WriteDebugValue, WriteValue };
@@ -36,7 +36,7 @@ func Spec(text: char8[..]) -> FormatSpec {
 
 // A helper in this package taking Text's interface and Text's writer, so the borrowed forms cross a package
 // boundary in both directions: the value came from Core, the interface from Text, the implementation from Format.
-func Render(value: Display, spec: FormatSpec, into: &var TextWriter) -> Result<Unit, FormatError> {
+func Render(value: Display, spec: FormatSpec, into: &var TextWriter) -> ! FormatError {
     return value.WriteDisplay(into, spec);
 }
 
@@ -49,7 +49,7 @@ func Main() -> int {
     // Core's, and none of the three names the other two in one place.
     let value: int32 = -42i32;
     let sink: &var TextWriter = writer;
-    Assert(value.WriteDisplay(sink, plain).IsSuccess(), "a direct call on the concrete type renders");
+    Assert(Succeeded(value.WriteDisplay(sink, plain)), "a direct call on the concrete type renders");
     Assert(Same(writer.Written(), "-42"), "and writes the value's text");
 
     // Through an interface value, which is where the conformance has to be found dynamically rather than resolved
@@ -57,7 +57,7 @@ func Main() -> int {
     writer.Clear();
     let shown: Display = value;
     let viaInterface: &var TextWriter = writer;
-    Assert(shown.WriteDisplay(viaInterface, plain).IsSuccess(), "a call through an interface value renders");
+    Assert(Succeeded(shown.WriteDisplay(viaInterface, plain)), "a call through an interface value renders");
     Assert(Same(writer.Written(), "-42"), "to the same text");
 
     // Through Text's own named entry point, which takes the interface and the writer and belongs to neither the
@@ -65,46 +65,46 @@ func Main() -> int {
     writer.Clear();
     let viaText: &var TextWriter = writer;
     let asDisplay: Display = value;
-    Assert(WriteValue(viaText, asDisplay, plain).IsSuccess(), "Text's WriteValue reaches Format's implementation");
+    Assert(Succeeded(WriteValue(viaText, asDisplay, plain)), "Text's WriteValue reaches Format's implementation");
     Assert(Same(writer.Written(), "-42"), "with the same result");
 
     // Through a helper in this package, so the interface and the writer are both passed on across another boundary.
     writer.Clear();
     let viaHelper: &var TextWriter = writer;
-    Assert(Render(asDisplay, plain, viaHelper).IsSuccess(), "a borrowed pass-through renders");
+    Assert(Succeeded(Render(asDisplay, plain, viaHelper)), "a borrowed pass-through renders");
     Assert(Same(writer.Written(), "-42"), "and still writes the same text");
 
     // Debug is a second interface over the same type, and resolves independently of Display.
     writer.Clear();
     let inspected: Debug = value;
     let viaDebug: &var TextWriter = writer;
-    Assert(WriteDebugValue(viaDebug, inspected, plain).IsSuccess(), "the Debug conformance resolves too");
+    Assert(Succeeded(WriteDebugValue(viaDebug, inspected, plain)), "the Debug conformance resolves too");
     Assert(Same(writer.Written(), "-42"), "and for an integer says the same thing");
 
     // A specification travels the same route and is applied by the implementation rather than by the caller.
     writer.Clear();
     let padded: &var TextWriter = writer;
-    Assert(Render(asDisplay, Spec("<8"), padded).IsSuccess(), "a spec crosses the boundary with the value");
+    Assert(Succeeded(Render(asDisplay, Spec("<8"), padded)), "a spec crosses the boundary with the value");
     Assert(Same(writer.Written(), "-42     "), "and the implementation applies it");
 
     writer.Clear();
     let based: &var TextWriter = writer;
     let byte: uint8 = 255u8;
     let byteShown: Display = byte;
-    Assert(Render(byteShown, Spec("#x"), based).IsSuccess(), "a style crosses it too");
+    Assert(Succeeded(Render(byteShown, Spec("#x"), based)), "a style crosses it too");
     Assert(Same(writer.Written(), "0xff"), "and reaches the implementation that understands it");
 
     // A style the implementation does not understand is refused across the boundary rather than lost on the way.
     writer.Clear();
     let styled: &var TextWriter = writer;
-    Assert(Render(asDisplay, Spec("iso8601"), styled).IsError(), "an unsupported style is refused");
+    Assert(Failed(Render(asDisplay, Spec("iso8601"), styled)), "an unsupported style is refused");
     Assert(writer.Length() == 0u, "and nothing was written first");
 
     // Variadically, which erases the type entirely: what arrives is a list of interface values, and every one of
     // them has to find its implementation with nothing left of where it came from.
     writer.Clear();
     let variadic: &var TextWriter = writer;
-    Assert(WriteFormat(variadic, "{} {} {} {}", -42i32, 255u8, true, c8'A').IsSuccess(),
+    Assert(Succeeded(WriteFormat(variadic, "{} {} {} {}", -42i32, 255u8, true, c8'A')),
            "four Core types of different widths render variadically");
     Assert(Same(writer.Written(), "-42 255 true A"), "each through its own implementation");
 
@@ -113,7 +113,7 @@ func Main() -> int {
     writer.Clear();
     let mixed: &var TextWriter = writer;
     let text = StringView::FromValidated("count");
-    Assert(WriteFormat(mixed, "{}={}", text, 7i64).IsSuccess(), "a Text value and a Core value in one call");
+    Assert(Succeeded(WriteFormat(mixed, "{}={}", text, 7i64)), "a Text value and a Core value in one call");
     Assert(Same(writer.Written(), "count=7"), "each rendered by its own package's implementation");
 
     // And through the allocating entry point, which is the same route ending in a String rather than a buffer.
@@ -121,7 +121,7 @@ func Main() -> int {
     let allocator: Allocator = system;
     let rendered = match <-Render(allocator, "{:>6}", -42i32) {
         .Success(built) => Same(built.View().Bytes(), "   -42"),
-        .Error(_) => false
+        .Failure(_) => false
     };
     Assert(rendered, "the allocating entry point reaches the same implementation");
     return 0;

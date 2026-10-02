@@ -6,7 +6,7 @@
 // same way, to survive it.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, Result };
+import Core::{ Assert, Failed, Result, Succeeded };
 import Format::{ TextWriter };
 import Io::{ IoError, IoErrorKind, Reader };
 import Json::{ DuplicateKeyPolicy, JsonEvent, JsonEventReader, JsonKind, JsonLimits, JsonParseError, JsonStyle,
@@ -215,7 +215,7 @@ func CheckRoundTrip(allocator: Allocator, text: char8[..], wrote: *var bool) {
 
     var builder = StringBuilder(allocator);
     let sink: &var TextWriter = builder;
-    *wrote = WriteValue(sink, value, JsonStyle::Compact()).IsSuccess();
+    *wrote = Succeeded(WriteValue(sink, value, JsonStyle::Compact()));
     Assert(*wrote, "and writes");
     var once = builder.IntoString();
 
@@ -224,7 +224,7 @@ func CheckRoundTrip(allocator: Allocator, text: char8[..], wrote: *var bool) {
     Assert((<-second).TryIntoValue(@again), "and the written form parses");
     var secondBuilder = StringBuilder(allocator);
     let secondSink: &var TextWriter = secondBuilder;
-    *wrote = WriteValue(secondSink, again, JsonStyle::Compact()).IsSuccess();
+    *wrote = Succeeded(WriteValue(secondSink, again, JsonStyle::Compact()));
     var twice = secondBuilder.IntoString();
     let twiceView = twice.View();
     Assert(once.View().Equals(twiceView), "to the same text, so the round trip is settled after one pass");
@@ -264,7 +264,7 @@ func RefusedWith(outcome: &Result<JsonValue, JsonParseError>, expected: char8[..
             var storage: char8[96];
             var writer = BufferWriter((@storage[0])[..96]);
             let sink: &var TextWriter = writer;
-            if reason.WriteDebug(sink, FormatSpec::Plain()).IsError() { return false; }
+            if Failed(reason.WriteDebug(sink, FormatSpec::Plain())) { return false; }
             let shown = writer.Written();
             if shown.length != expected.length { return false; }
             var index: uint = 0;

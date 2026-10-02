@@ -11,8 +11,8 @@
 // computed in `uint64` so that the most negative duration — whose magnitude has no positive counterpart in
 // `int64` — comes out right rather than wrapping to itself.
 
-import Core::{ Option, Result };
-import Text::{ Debug, Display, FormatError, FormatOk, FormatSpec, TextWriter, WriteAscii, WriteBytes };
+import Core::Result;
+import Text::{ Debug, Display, FormatError, FormatSpec, TextWriter, WriteAscii, WriteBytes };
 
 // The magnitude of `value` as whole seconds and a fraction, both non-negative, with the sign reported separately.
 //
@@ -39,7 +39,7 @@ func Magnitude(value: &Duration, whole: *var uint64, fraction: *var uint32) -> b
 }
 
 // Writes an unsigned value in as many digits as it needs.
-func WriteUnsigned(writer: &var TextWriter, value: uint64) -> Result<Unit, FormatError> {
+func WriteUnsigned(writer: &var TextWriter, value: uint64) -> ! FormatError {
     var digits: char8[20];
     var count: uint = 0;
     var rest = value;
@@ -57,12 +57,12 @@ func WriteUnsigned(writer: &var TextWriter, value: uint64) -> Result<Unit, Forma
         index = index - 1;
         WriteAscii(writer, digits[index])?;
     }
-    return FormatOk();
+    return;
 }
 
 // Writes the fractional second under `spec`, by the same rules a time of day uses: a precision names exactly that
 // many digits and truncates; without one the fraction is trimmed of trailing zeros and omitted when it is zero.
-func WriteSecondsFraction(writer: &var TextWriter, fraction: uint32, spec: FormatSpec) -> Result<Unit, FormatError> {
+func WriteSecondsFraction(writer: &var TextWriter, fraction: uint32, spec: FormatSpec) -> ! FormatError {
     var digits: char8[9];
     var index: uint = 9;
     var rest = fraction;
@@ -74,25 +74,25 @@ func WriteSecondsFraction(writer: &var TextWriter, fraction: uint32, spec: Forma
     var kept: uint = 9;
     if spec.HasPrecision() {
         kept = spec.Precision();
-        if kept > 9u { return Result::Error<Unit, FormatError>(FormatError::UnsupportedRequest); }
-        if kept == 0u { return FormatOk(); }
+        if kept > 9u { return .Failure(FormatError::UnsupportedRequest); }
+        if kept == 0u { return .Success(()); }
     }
     else {
         while kept > 0 && digits[kept - 1] == c8'0' {
             kept = kept - 1;
         }
-        if kept == 0u { return FormatOk(); }
+        if kept == 0u { return .Success(()); }
     }
     WriteAscii(writer, c8'.')?;
     return WriteBytes(writer, (@digits[0])[..kept]);
 }
 
 // The empty style is the default rendering and `seconds` names it explicitly. Nothing else is understood.
-func RejectDurationStyle(spec: FormatSpec) -> Result<Unit, FormatError> {
+func RejectDurationStyle(spec: FormatSpec) -> ! FormatError {
     if spec.HasStyle() && !spec.StyleIs("seconds") {
-        return Result::Error<Unit, FormatError>(FormatError::UnsupportedRequest);
+        fail FormatError::UnsupportedRequest;
     }
-    return FormatOk();
+    return;
 }
 
 extend Duration : Display {
@@ -114,7 +114,7 @@ extend Duration : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole rendering was accepted
     /// @see https://rux-lang.dev/docs/api/time/duration/write-display
-    pub func WriteDisplay(self: &Duration, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+    pub func WriteDisplay(self: &Duration, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         RejectDurationStyle(spec)?;
         var whole: uint64 = 0;
         var fraction: uint32 = 0;
@@ -136,7 +136,7 @@ extend Duration : Debug {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole rendering was accepted
     /// @see https://rux-lang.dev/docs/api/time/duration/write-debug
-    pub func WriteDebug(self: &Duration, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+    pub func WriteDebug(self: &Duration, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         return self.WriteDisplay(writer, spec);
     }
 }

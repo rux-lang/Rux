@@ -1,4 +1,4 @@
-import Core::Assert;
+import Core::{ Assert, Succeeded };
 import Format::WriteFormat;
 import Io::PrintLine;
 import Text::{ BufferWriter, FormatSpec, WriteValue };
@@ -15,11 +15,11 @@ func Same(left: char8[..], right: char8[..]) -> bool {
 func Check(flag: bool) {
     var storage: char8[128];
     var writer = BufferWriter((@storage[0])[..128]);
-    Assert(WriteFormat(writer, "{}/{}/{}", flag ? "alpha" : "B", flag ? "" : "alpha", flag ? "B" : "").IsSuccess(), "inline variadic formatting succeeds");
+    Assert(Succeeded(WriteFormat(writer, "{}/{}/{}", flag ? "alpha" : "B", flag ? "" : "alpha", flag ? "B" : "")), "inline variadic formatting succeeds");
     Assert(Same(writer.Written(), flag ? "alpha//B" : "B/alpha/"), "all selected slice bytes survive");
     var plainStorage: char8[32];
     var plainWriter = BufferWriter((@plainStorage[0])[..32]);
-    Assert(WriteValue(plainWriter, flag ? "alpha" : "B", FormatSpec::Plain()).IsSuccess(), "an ordinary interface argument succeeds");
+    Assert(Succeeded(WriteValue(plainWriter, flag ? "alpha" : "B", FormatSpec::Plain())), "an ordinary interface argument succeeds");
     Assert(Same(plainWriter.Written(), flag ? "alpha" : "B"), "ordinary interface conversion preserves the text");
     Assert(PrintLine("{}/{}/{}", flag ? "alpha" : "B", flag ? "" : "alpha", flag ? "B" : "").IsOk(), "inline PrintLine succeeds");
     Assert(PrintLine("{} {}", flag ? "alpha" : "B", flag ? "alpha" : "B").IsOk(), "repeated PrintLine arguments succeed");

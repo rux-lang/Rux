@@ -14,7 +14,6 @@
 // scripts unreadable in exactly the place a reader is trying to read it, and it is text — the fact that it survives
 // a round trip through a terminal is the whole point of it being UTF-8.
 
-import Core::{ Result, Unit };
 
 extend String : Display {
     /// Writes this string's bytes.
@@ -26,7 +25,7 @@ extend String : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the string's text was accepted
     /// @see https://rux-lang.dev/docs/api/text/string/write-display
-    pub func WriteDisplay(self: &String, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+    pub func WriteDisplay(self: &String, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         let view = self.View();
         return view.WriteDisplay(writer, spec);
     }
@@ -42,7 +41,7 @@ extend String : Debug {
     /// @param spec what the placeholder asked for
     /// @returns success when the quoted string was accepted
     /// @see https://rux-lang.dev/docs/api/text/string/write-debug
-    pub func WriteDebug(self: &String, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+    pub func WriteDebug(self: &String, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         let view = self.View();
         return view.WriteDebug(writer, spec);
     }
@@ -61,7 +60,7 @@ extend StringView : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the view's text was accepted
     /// @see https://rux-lang.dev/docs/api/text/string-view/write-display
-    pub func WriteDisplay(self: &StringView, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+    pub func WriteDisplay(self: &StringView, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         RejectStyle(spec)?;
         return WriteAligned(writer, spec, Truncated(self, spec), false);
     }
@@ -82,7 +81,7 @@ extend StringView : Debug {
     /// @param spec what the placeholder asked for
     /// @returns success when the quoted view was accepted
     /// @see https://rux-lang.dev/docs/api/text/string-view/write-debug
-    pub func WriteDebug(self: &StringView, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+    pub func WriteDebug(self: &StringView, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         RejectStyle(spec)?;
         WriteAscii(writer, c8'"')?;
         WriteEscaped(writer, Truncated(self, spec))?;
@@ -107,7 +106,7 @@ extend StringView : Debug {
 /// @param text the UTF-8 text to escape and write
 /// @returns success when the escaped text was accepted
 /// @see https://rux-lang.dev/docs/api/text/write-escaped
-pub func WriteEscaped(writer: &var TextWriter, text: char8[..]) -> Result<Unit, FormatError> {
+pub func WriteEscaped(writer: &var TextWriter, text: char8[..]) -> ! FormatError {
     var index: uint = 0;
     var runStart: uint = 0;
     while index < text.length {
@@ -133,12 +132,12 @@ pub func WriteEscaped(writer: &var TextWriter, text: char8[..]) -> Result<Unit, 
     if index > runStart {
         return WriteBytes(writer, (@text.data[runStart])[..index - runStart]);
     }
-    return FormatOk();
+    return;
 }
 
 // The escape for one character. `byte` is the ASCII byte for everything but a C1 control, whose `scalar` is what is
 // spelled instead.
-func WriteEscapeFor(writer: &var TextWriter, byte: char8, scalar: uint32) -> Result<Unit, FormatError> {
+func WriteEscapeFor(writer: &var TextWriter, byte: char8, scalar: uint32) -> ! FormatError {
     if byte == c8'"' { return WriteBytes(writer, "\\\""); }
     if byte == c8'\\' { return WriteBytes(writer, "\\\\"); }
     if scalar == 0x0Au32 { return WriteBytes(writer, "\\n"); }
@@ -151,7 +150,7 @@ func WriteEscapeFor(writer: &var TextWriter, byte: char8, scalar: uint32) -> Res
 }
 
 // The shortest lower-case hexadecimal spelling of `value`, which for an escaped control is two digits at most.
-func WriteHex(writer: &var TextWriter, value: uint32) -> Result<Unit, FormatError> {
+func WriteHex(writer: &var TextWriter, value: uint32) -> ! FormatError {
     var digits: char8[8];
     var count: uint = 0;
     var rest = value;
@@ -170,7 +169,7 @@ func WriteHex(writer: &var TextWriter, value: uint32) -> Result<Unit, FormatErro
         index = index - 1;
         WriteAscii(writer, digits[index])?;
     }
-    return FormatOk();
+    return;
 }
 
 // The front of `view` holding at most the spec's precision in characters, or all of it. A cut lands on a character

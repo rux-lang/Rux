@@ -4,7 +4,7 @@
 // writer to work out which of the three they had broken.
 
 import Allocator::{ AllocError, Allocator, Layout, SystemAllocator };
-import Core::{ Assert, Option, Result };
+import Core::{ Assert, Result, Succeeded };
 import Text::{ BufferWriter, Display, FormatSpec, String, StringView, TextError, TextWriter, WriteAscii };
 import Toml::{ TomlKind, TomlParse, TomlParseError, TomlParseFailure, TomlScalarError, TomlValue };
 
@@ -27,7 +27,7 @@ func Refusal(outcome: &Result<TomlValue, TomlParseFailure>, into: var char8[..])
         .Error(failure) => {
             var writer = BufferWriter(into);
             let sink: &var TextWriter = writer;
-            Assert(failure.WriteDebug(sink, FormatSpec::Plain()).IsSuccess(), "a failure renders");
+            Assert(Succeeded(failure.WriteDebug(sink, FormatSpec::Plain())), "a failure renders");
             return writer.Length();
         }
     };

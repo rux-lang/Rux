@@ -1,7 +1,7 @@
 import Allocator::{ AllocError, Allocator, Layout, SystemAllocator };
-import Core::{ Assert, Result, Unit };
+import Core::{ Assert, Failed, Succeeded };
 import Format::{ Render, WriteFormat };
-import Text::{ BufferWriter, Display, FormatError, FormatOk, FormatSpec, String, StringView, TextWriter, WriteAscii,
+import Text::{ BufferWriter, Display, FormatError, FormatSpec, String, StringView, TextWriter, WriteAscii,
                WriteBytes };
 
 // Placeholder filling, and what it refuses.
@@ -65,7 +65,7 @@ struct Point {
 }
 
 extend Point : Display {
-    func WriteDisplay(self: &Point, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+    func WriteDisplay(self: &Point, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         WriteAscii(writer, c8'(')?;
         let first: Display = self.x;
         first.WriteDisplay(writer, FormatSpec::Plain())?;
@@ -82,40 +82,40 @@ struct Filler {
 }
 
 extend Filler : Display {
-    func WriteDisplay(self: &Filler, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+    func WriteDisplay(self: &Filler, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         var remaining = self.count;
         while remaining > 0 {
             WriteBytes(writer, "0123456789abcdef")?;
             remaining = remaining - 1;
         }
-        return FormatOk();
+        return;
     }
 }
 
 // Consumes the outcome and reports whether it succeeded with exactly `expected`. An error is never a match, so a
 // check cannot pass by accident on a failed render.
-func Matches(outcome: Result<String, FormatError>, expected: char8[..]) -> bool {
+func Matches(outcome: String ! FormatError, expected: char8[..]) -> bool {
     let wanted = StringView::FromValidated(expected);
     return match <-outcome {
         .Success(text) => text.View().Equals(wanted),
-        .Error(_) => false
+        .Failure(_) => false
     };
 }
 
 // Consumes the outcome and reports the rendered length, or a length no check expects when it failed.
-func RenderedLength(outcome: Result<String, FormatError>) -> uint {
+func RenderedLength(outcome: String ! FormatError) -> uint {
     return match <-outcome {
         .Success(text) => text.Length(),
-        .Error(_) => 0u
+        .Failure(_) => 0u
     };
 }
 
 // Consumes the outcome and reports whether it failed with `InvalidSpecification` at exactly `at`. Both halves
 // matter: the reason says what kind of mistake it was, and the offset says which character to point at.
-func InvalidAt(outcome: Result<String, FormatError>, at: uint) -> bool {
+func InvalidAt(outcome: String ! FormatError, at: uint) -> bool {
     return match <-outcome {
         .Success(_) => false,
-        .Error(reason) => match reason {
+        .Failure(reason) => match reason {
             .InvalidSpecification(offset) => offset == at,
             else => false
         }
@@ -123,10 +123,10 @@ func InvalidAt(outcome: Result<String, FormatError>, at: uint) -> bool {
 }
 
 // Consumes the outcome and reports whether it failed with `ArgumentCountMismatch(expected, supplied)`.
-func MismatchOf(outcome: Result<String, FormatError>, expected: uint, supplied: uint) -> bool {
+func MismatchOf(outcome: String ! FormatError, expected: uint, supplied: uint) -> bool {
     return match <-outcome {
         .Success(_) => false,
-        .Error(reason) => match reason {
+        .Failure(reason) => match reason {
             .ArgumentCountMismatch(wanted, given) => wanted == expected && given == supplied,
             else => false
         }
@@ -139,17 +139,17 @@ struct RefusingValue {
 }
 
 extend RefusingValue : Display {
-    func WriteDisplay(self: &RefusingValue, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+    func WriteDisplay(self: &RefusingValue, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         *self.calls += 1;
         WriteBytes(writer, "partial")?;
-        return Result::Error<Unit, FormatError>(FormatError::InvalidSpecification(73u));
+        fail FormatError::InvalidSpecification(73u);
     }
 }
 
-func InvalidUtf8(outcome: Result<String, FormatError>) -> bool {
+func InvalidUtf8(outcome: String ! FormatError) -> bool {
     return match <-outcome {
         .Success(_) => false,
-        .Error(reason) => match reason {
+        .Failure(reason) => match reason {
             .TextFailure(kind) => match kind { .InvalidUtf8 => true, else => false },
             else => false
         }
@@ -178,7 +178,7 @@ func PropagationCases(allocator: Allocator) {
     var writer = BufferWriter((@room[0])[..64]);
     let sink: &var TextWriter = writer;
     let failed = WriteFormat(sink, "head {} tail", refusing);
-    Assert(failed.IsError() && calls == 2 && writer.Length() == 12u, "writer failure stops after the accepted prefix");
+    Assert(Failed(failed) && calls == 2 && writer.Length() == 12u, "writer failure stops after the accepted prefix");
     let written = StringView::FromValidated(writer.Written());
     let wanted = StringView::FromValidated("head partial");
     Assert(written.Equals(wanted), "direct writing retains the exact bytes accepted before the refusal");
@@ -186,7 +186,7 @@ func PropagationCases(allocator: Allocator) {
 
     writer.Clear();
     let checked: &var TextWriter = writer;
-    Assert(WriteFormat(checked, "prefix {} {:>>>}", refusing, 2).IsError(), "the whole pattern is validated first");
+    Assert(Failed(WriteFormat(checked, "prefix {} {:>>>}", refusing, 2)), "the whole pattern is validated first");
     Assert(calls == 2 && writer.Length() == 0u, "late validation failure invokes no renderer and writes no prefix");
     Assert(Matches(Render(counted, "é 😀 {{}} {}", 12), "é 😀 {} 12"), "successful Unicode rendering preserves its output");
     Assert(counts.live == 0 && counts.allocations == 6 && counts.releases == 6 && counts.invalidReleases == 0,
@@ -252,7 +252,7 @@ func Main() -> int {
     // down by the value, and it is reported as unsupported rather than as a malformed pattern.
     let refusedStyle = match <-Render(allocator, "{:q}", 1) {
         .Success(_) => false,
-        .Error(reason) => match reason { .UnsupportedRequest => true, else => false }
+        .Failure(reason) => match reason { .UnsupportedRequest => true, else => false }
     };
     if !refusedStyle { return 63; }
 
@@ -278,7 +278,7 @@ func Main() -> int {
     let overflowed = WriteFormat(sink, "12345{}<end>", Filler { count: 1 });
     let capacity = match overflowed {
         .Success(_) => false,
-        .Error(reason) => match reason { .InsufficientCapacity => true, else => false }
+        .Failure(reason) => match reason { .InsufficientCapacity => true, else => false }
     };
     if !capacity { return 90; }
     // The literal before the placeholder went in; the sixteen bytes the value wanted did not fit and so landed not
@@ -288,11 +288,11 @@ func Main() -> int {
     // A pattern that is wrong writes nothing at all, because it is checked before the first byte goes out.
     var second = BufferWriter((@room[0])[..8]);
     let other: &var TextWriter = second;
-    if WriteFormat(other, "abc{", 1).IsSuccess() { return 92; }
+    if Succeeded(WriteFormat(other, "abc{", 1)) { return 92; }
     if second.Length() != 0u { return 93; }
     var third = BufferWriter((@room[0])[..8]);
     let last: &var TextWriter = third;
-    if WriteFormat(last, "abc{}", 1, 2).IsSuccess() { return 94; }
+    if Succeeded(WriteFormat(last, "abc{}", 1, 2)) { return 94; }
     if third.Length() != 0u { return 95; }
 
     // A failed render gives its block back. Counted, because a leak leaves the same error behind as a clean

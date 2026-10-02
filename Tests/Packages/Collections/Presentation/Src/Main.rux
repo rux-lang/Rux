@@ -1,6 +1,6 @@
 import Allocator::{ Allocator, SystemAllocator };
 import Collections::{ Array, CollectionError, Deque, Vector, WriteArrayDebug, WriteDequeDebug, WriteVectorDebug };
-import Core::{ Assert, Result, Unit };
+import Core::{ Assert, Failed, Succeeded };
 import Format::WriteFormat;
 import Text::{ BufferWriter, Debug, FormatError, FormatSpec, ParseFormatSpec, TextWriter, WriteAscii, WriteBytes };
 
@@ -41,7 +41,7 @@ extend Tracked {
 }
 
 extend Tracked : Debug {
-    func WriteDebug(self: &Tracked, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+    func WriteDebug(self: &Tracked, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         WriteBytes(writer, "T(")?;
         let tag: Debug = self.tag;
         tag.WriteDebug(writer, spec)?;
@@ -69,7 +69,7 @@ func ShownVector(value: &Vector<int32>, spec: FormatSpec, expected: char8[..]) -
     var storage: char8[128];
     var writer = BufferWriter((@storage[0])[..128]);
     let sink: &var TextWriter = writer;
-    if WriteVectorDebug<int32>(sink, value, spec).IsError() { return false; }
+    if Failed(WriteVectorDebug<int32>(sink, value, spec)) { return false; }
     return Same(writer.Written(), expected);
 }
 
@@ -77,7 +77,7 @@ func ShownArray(value: &Array<int32>, spec: FormatSpec, expected: char8[..]) -> 
     var storage: char8[128];
     var writer = BufferWriter((@storage[0])[..128]);
     let sink: &var TextWriter = writer;
-    if WriteArrayDebug<int32>(sink, value, spec).IsError() { return false; }
+    if Failed(WriteArrayDebug<int32>(sink, value, spec)) { return false; }
     return Same(writer.Written(), expected);
 }
 
@@ -85,7 +85,7 @@ func ShownDeque(value: &Deque<int32>, spec: FormatSpec, expected: char8[..]) -> 
     var storage: char8[128];
     var writer = BufferWriter((@storage[0])[..128]);
     let sink: &var TextWriter = writer;
-    if WriteDequeDebug<int32>(sink, value, spec).IsError() { return false; }
+    if Failed(WriteDequeDebug<int32>(sink, value, spec)) { return false; }
     return Same(writer.Written(), expected);
 }
 
@@ -158,9 +158,9 @@ func Main() -> int {
     var storage: char8[128];
     var writer = BufferWriter((@storage[0])[..128]);
     let sink: &var TextWriter = writer;
-    Assert(WriteVectorDebug<Tracked>(sink, owned, plain).IsSuccess(), "a move-only vector is shown");
+    Assert(Succeeded(WriteVectorDebug<Tracked>(sink, owned, plain)), "a move-only vector is shown");
     Assert(destroyed == 0i32, "and nothing was destroyed to show it");
-    Assert(WriteVectorDebug<Tracked>(sink, owned, plain).IsSuccess(), "so it can be shown again");
+    Assert(Succeeded(WriteVectorDebug<Tracked>(sink, owned, plain)), "so it can be shown again");
     Assert(destroyed == 0i32, "still destroying nothing");
     Assert(Same(writer.Written(), "[T(0), T(1), T(2)][T(0), T(1), T(2)]"), "twice, identically");
     Assert(owned.Length() == 3u, "and the vector still holds every element");
@@ -176,7 +176,7 @@ func Main() -> int {
     var ringStorage: char8[128];
     var ringWriter = BufferWriter((@ringStorage[0])[..128]);
     let ringSink: &var TextWriter = ringWriter;
-    Assert(WriteDequeDebug<Tracked>(ringSink, ring, plain).IsSuccess(), "a wrapped move-only deque is shown");
+    Assert(Succeeded(WriteDequeDebug<Tracked>(ringSink, ring, plain)), "a wrapped move-only deque is shown");
     Assert(Same(ringWriter.Written(), "[T(0), T(1), T(2)]"), "front to back across the split");
     Assert(destroyed == 0i32, "and destroyed none of them");
 
@@ -187,7 +187,7 @@ func Main() -> int {
     let refused = WriteVectorDebug<Tracked>(tightSink, owned, plain);
     let overflowed = match refused {
         .Success(_) => false,
-        .Error(reason) => match reason { .InsufficientCapacity => true, else => false }
+        .Failure(reason) => match reason { .InsufficientCapacity => true, else => false }
     };
     Assert(overflowed, "a destination without room reports it");
     Assert(tight.Length() <= 6u, "having written no more than it had");

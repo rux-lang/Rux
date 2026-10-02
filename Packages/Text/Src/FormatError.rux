@@ -15,7 +15,6 @@
 // too small. A writer failure is the destination itself failing, and its details stay in the adapter that knows
 // them: this package has no vocabulary for a broken pipe and does not pretend to.
 
-import Core::{ Result, Unit };
 
 /// The ways text handling fails, with no case for success.
 ///
@@ -39,9 +38,9 @@ pub variant TextFailureKind {
 
 /// Why a formatting operation did not produce the text it was asked for.
 ///
-/// Failure-only: every case is a failure, and success is `Result::Success` rather than a case here. Which case
-/// arises says who must fix it, so the categories are not interchangeable and a writer may not invent the ones that
-/// belong to the parser or the value.
+/// Failure-only: every case is a failure, and success is the other channel of the `! FormatError` or
+/// `T ! FormatError` that reports it rather than a case here. Which case arises says who must fix it, so the
+/// categories are not interchangeable and a writer may not invent the ones that belong to the parser or the value.
 ///
 /// Copy, and cheap to return: the widest payload is a pair of counts.
 ///
@@ -86,23 +85,10 @@ extend FormatError {
     }
 }
 
-/// The success value a formatting operation with nothing to return produces.
-///
-/// Spelled once here because it is written at the end of nearly every writer, and `Result::Success<Unit,
-/// FormatError>(Unit())` is a great deal of syntax for "that worked".
-///
-/// Takes nothing. Cannot fail; runs in constant time and allocates nothing.
-///
-/// @returns a successful result carrying `Unit`
-/// @see https://rux-lang.dev/docs/api/text/format-ok
-pub func FormatOk() -> Result<Unit, FormatError> {
-    return Result::Success<Unit, FormatError>(Unit());
-}
-
 /// The failure-only kind corresponding to `error`, or `InvalidUtf8` when it reports success.
 ///
 /// The fallback exists because the two types deliberately disagree about whether success is expressible. A caller
-/// that might hold `TextError::None` must ask `FromTextError` instead, which answers with a `Result` and so has
+/// that might hold `TextError::None` must ask `FromTextError` instead, which answers with a native fallible and so has
 /// somewhere to put success.
 ///
 /// @param error the text status to narrow, which must be a failure
@@ -117,15 +103,15 @@ pub func TextFailureOf(error: TextError) -> TextFailureKind {
 
 /// `error` translated across the boundary between this package's status convention and the formatting protocol.
 ///
-/// This is the only sanctioned crossing. `TextError::None` becomes `Result::Success`, and every other case becomes
+/// This is the only sanctioned crossing. `TextError::None` becomes success, and every other case becomes
 /// a `TextFailure` carrying the reason, so a status never becomes an error payload that means success.
 ///
 /// @param error the text status a storage or validation operation returned
 /// @returns success for `None`, and a `TextFailure` carrying the reason otherwise
 /// @see https://rux-lang.dev/docs/api/text/from-text-error
-pub func FromTextError(error: TextError) -> Result<Unit, FormatError> {
-    if error == TextError::None { return FormatOk(); }
-    return Result::Error<Unit, FormatError>(FormatError::TextFailure(TextFailureOf(error)));
+pub func FromTextError(error: TextError) -> ! FormatError {
+    if error == TextError::None { return .Success(()); }
+    fail FormatError::TextFailure(TextFailureOf(error));
 }
 
 /// A parsing failure that can say where it happened.

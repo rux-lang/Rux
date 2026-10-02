@@ -1,5 +1,5 @@
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ #target, Assert, Result };
+import Core::{ #target, Assert, Failed };
 import Format::Render;
 import Text::{ FormatError, String, StringView };
 
@@ -25,18 +25,18 @@ import Text::{ FormatError, String, StringView };
 
 // Whether the outcome is exactly `expected`. Consuming the result is what forces a failure to be visible rather
 // than read past: an error is never a match.
-func Same(outcome: Result<String, FormatError>, expected: char8[..]) -> bool {
+func Same(outcome: String ! FormatError, expected: char8[..]) -> bool {
     let wanted = StringView::FromValidated(expected);
     return match <-outcome {
         .Success(text) => text.View().Equals(wanted),
-        .Error(_) => false
+        .Failure(_) => false
     };
 }
 
 // Whether the outcome is a run of exactly `count` copies of `digit`, optionally opening with a minus sign. This is
 // how an all-ones binary rendering is checked at the wide widths: the shape says what a five-hundred-and-twelve
 // character literal would say, and says it in a line a reader can check.
-func RunOf(outcome: Result<String, FormatError>, signed: bool, digit: char8, count: uint) -> bool {
+func RunOf(outcome: String ! FormatError, signed: bool, digit: char8, count: uint) -> bool {
     var ok = false;
     match <-outcome {
         .Success(text) => {
@@ -52,7 +52,7 @@ func RunOf(outcome: Result<String, FormatError>, signed: bool, digit: char8, cou
                 }
             }
         },
-        .Error(_) => {
+        .Failure(_) => {
             ok = false;
         }
     }
@@ -62,7 +62,7 @@ func RunOf(outcome: Result<String, FormatError>, signed: bool, digit: char8, cou
 // Whether the outcome is the hexadecimal spelling of a signed minimum: a minus sign, an eight, and `zeros` zeros
 // after it. That is what one set bit at the top of the width looks like, and it is the shape a renderer that
 // negated instead of taking the magnitude would get wrong.
-func TopBitHex(outcome: Result<String, FormatError>, zeros: uint) -> bool {
+func TopBitHex(outcome: String ! FormatError, zeros: uint) -> bool {
     var ok = false;
     match <-outcome {
         .Success(text) => {
@@ -76,7 +76,7 @@ func TopBitHex(outcome: Result<String, FormatError>, zeros: uint) -> bool {
                 }
             }
         },
-        .Error(_) => {
+        .Failure(_) => {
             ok = false;
         }
     }
@@ -223,9 +223,9 @@ func Main() -> int {
     Assert(Same(Render(allocator, "{:>8x}", 255u32), "      ff"), "alignment pads outside the digits");
 
     // A style that is not one of the four bases is refused by the value rather than ignored, at every width.
-    Assert(Render(allocator, "{:q}", 1i8).IsError(), "int8 refuses a style it does not have");
-    Assert(Render(allocator, "{:q}", 1u64).IsError(), "and so does uint64");
-    Assert(Render(allocator, "{:q}", 1i512).IsError(), "and so does the widest signed width");
+    Assert(Failed(Render(allocator, "{:q}", 1i8)), "int8 refuses a style it does not have");
+    Assert(Failed(Render(allocator, "{:q}", 1u64)), "and so does uint64");
+    Assert(Failed(Render(allocator, "{:q}", 1i512)), "and so does the widest signed width");
 
     return 0;
 }

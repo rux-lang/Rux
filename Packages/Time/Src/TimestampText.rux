@@ -16,8 +16,7 @@
 // text at all. It is refused with `ValueOutOfRange` before anything is written, because a destination that has
 // already received "+2724" and then learns the value cannot be spelled is a destination holding a lie.
 
-import Core::{ Result, Unit };
-import Text::{ Debug, Display, FormatError, FormatOk, FormatSpec, TextWriter, WriteAscii };
+import Text::{ Debug, Display, FormatError, FormatSpec, TextWriter, WriteAscii };
 
 // The first second the four-digit calendar can spell: 0000-01-01T00:00:00Z, which is epoch day -719468.
 const CalendarFloorSecond: int64 = -62167219200;
@@ -43,11 +42,11 @@ extend Timestamp {
 
 // The empty style is the calendar form, `rfc3339` and `iso8601` name it explicitly, and `unix` selects the second
 // count. Nothing else is understood, which is what keeps `{:q}` a reported mistake rather than a printed one.
-func RejectTimestampStyle(spec: FormatSpec) -> Result<Unit, FormatError> {
+func RejectTimestampStyle(spec: FormatSpec) -> ! FormatError {
     if !spec.HasStyle() || spec.StyleIs("rfc3339") || spec.StyleIs("iso8601") || spec.StyleIs("unix") {
-        return FormatOk();
+        return;
     }
-    return Result::Error<Unit, FormatError>(FormatError::UnsupportedRequest);
+    fail FormatError::UnsupportedRequest;
 }
 
 // Writes the signed second count, with the magnitude recomputed rather than read off the fields.
@@ -56,7 +55,7 @@ func RejectTimestampStyle(spec: FormatSpec) -> Result<Unit, FormatError> {
 // — so half a second before the epoch is seconds = -1 with a fraction of 5e8, and printing the fields as they sit
 // would say "-1.5". `Magnitude` is the same recomputation the duration renderer needs, in uint64 for the same
 // reason: the magnitude of the most negative second count has no positive counterpart in int64.
-func WriteUnixSeconds(writer: &var TextWriter, value: &Timestamp, spec: FormatSpec) -> Result<Unit, FormatError> {
+func WriteUnixSeconds(writer: &var TextWriter, value: &Timestamp, spec: FormatSpec) -> ! FormatError {
     let span = Duration { seconds: value.seconds, nanoseconds: value.nanoseconds };
     var whole: uint64 = 0;
     var fraction: uint32 = 0;
@@ -70,8 +69,8 @@ func WriteUnixSeconds(writer: &var TextWriter, value: &Timestamp, spec: FormatSp
 //
 // The offset is UTC and is written as `Z`, because a timestamp is UTC: there is no local offset here to lose, and
 // attaching the machine's would claim a place the value never held.
-func WriteCalendarForm(writer: &var TextWriter, value: &Timestamp, spec: FormatSpec) -> Result<Unit, FormatError> {
-    if !value.IsInCalendarRange() { return Result::Error<Unit, FormatError>(FormatError::ValueOutOfRange); }
+func WriteCalendarForm(writer: &var TextWriter, value: &Timestamp, spec: FormatSpec) -> ! FormatError {
+    if !value.IsInCalendarRange() { return .Failure(FormatError::ValueOutOfRange); }
     let moment = Timestamp { seconds: value.seconds, nanoseconds: value.nanoseconds };
     let shown = OffsetDateTime(DateTime::FromTimestamp(moment, UtcOffset::Utc()), UtcOffset::Utc());
     return shown.WriteDisplay(writer, spec);
@@ -97,7 +96,7 @@ extend Timestamp : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole moment was accepted
     /// @see https://rux-lang.dev/docs/api/time/timestamp/write-display
-    pub func WriteDisplay(self: &Timestamp, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+    pub func WriteDisplay(self: &Timestamp, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         RejectTimestampStyle(spec)?;
         if spec.StyleIs("unix") { return WriteUnixSeconds(writer, self, spec); }
         return WriteCalendarForm(writer, self, spec);
@@ -114,7 +113,7 @@ extend Timestamp : Debug {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole moment was accepted
     /// @see https://rux-lang.dev/docs/api/time/timestamp/write-debug
-    pub func WriteDebug(self: &Timestamp, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+    pub func WriteDebug(self: &Timestamp, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         return self.WriteDisplay(writer, spec);
     }
 }

@@ -10,8 +10,7 @@
 //
 // When the primitives arrive, `extend float128 : Display` is one delegation to `Float128::FromBits`.
 
-import Core::{ Result, Unit };
-import Text::{ Debug, Display, FormatError, FormatOk, FormatSpec, TextFailureKind, TextWriter, WriteAligned };
+import Text::{ Debug, Display, FormatError, FormatSpec, TextFailureKind, TextWriter, WriteAligned };
 
 /// The shape of one binary interchange format: where its fields are and what they mean.
 ///

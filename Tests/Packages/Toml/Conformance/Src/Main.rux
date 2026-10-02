@@ -8,7 +8,7 @@
 // same way, to survive that.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, Result };
+import Core::{ Assert, Result, Succeeded };
 import Format::{ ByteCursor, TextWriter };
 import Toml::{ TomlEvent, TomlEventReader, TomlKind, TomlParse, TomlParseError, TomlParseFailure, TomlValue,
                TomlWriteDocument };
@@ -967,7 +967,7 @@ func Render(value: &TomlValue, storage: var char8[..]) -> char8[..] {
     var cursor = ByteCursor(storage);
     let writer: &var TextWriter = cursor;
     let failure = TomlWriteDocument(writer, value);
-    Assert(failure.IsSuccess(), "every accepted document can be written back out");
+    Assert(Succeeded(failure), "every accepted document can be written back out");
     return cursor.Written();
 }
 

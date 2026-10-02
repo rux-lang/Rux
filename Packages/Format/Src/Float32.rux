@@ -5,7 +5,6 @@
 // fixed notation instead, and is honoured exactly when the value has that many digits to give.
 
 
-import Core::{ Result, Unit };
 import Text::{ Debug, Display, FormatError, FormatSpec, RejectStyle, TextWriter };
 
 // The largest finite float32, held here as the float64 it widens to exactly.
@@ -60,7 +59,7 @@ extend float32 : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/float32/write-display
-    pub func WriteDisplay(self: &float32, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+    pub func WriteDisplay(self: &float32, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         RejectStyle(spec)?;
         // Two bytes of head room in front, so that a requested sign can be put where the rendering starts
         // without moving it.
@@ -93,7 +92,7 @@ extend float32 : Debug {
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/float32/write-debug
-    pub func WriteDebug(self: &float32, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+    pub func WriteDebug(self: &float32, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         return self.WriteDisplay(writer, spec);
     }
 }

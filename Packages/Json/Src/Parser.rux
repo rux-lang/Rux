@@ -13,7 +13,7 @@
 import Allocator::Allocator;
 import Collections::CollectionError;
 
-import Core::{ Option, Result, Unit };
+import Core::{ Option, Result };
 import Text::{ Debug, Display, FormatError, FormatSpec, ParseFailure, RejectStyle, String, StringBuilder,
                StringView, TextError, TextWriter, WriteAscii, WriteBytes };
 
@@ -85,7 +85,7 @@ extend JsonParseError : ParseFailure {
 }
 
 // The description of a lexical refusal, which a parse failure quotes rather than restates.
-func WriteLexicalDescription(writer: &var TextWriter, reason: &JsonLexError) -> Result<Unit, FormatError> {
+func WriteLexicalDescription(writer: &var TextWriter, reason: &JsonLexError) -> ! FormatError {
     return match reason {
         .None => WriteBytes(writer, "no error"),
         .UnexpectedByte => WriteBytes(writer, "byte that begins no token"),
@@ -116,9 +116,9 @@ extend JsonParseError : Display {
     /// @returns success when the whole description was accepted
     /// @see https://rux-lang.dev/docs/api/json/parse-error/write-display
     pub func WriteDisplay(self: &JsonParseError, writer: &var TextWriter,
-                          spec: FormatSpec) -> Result<Unit, FormatError> {
+                          spec: FormatSpec) -> ! FormatError {
         RejectStyle(spec)?;
-        if spec.HasPrecision() { return Result::Error<Unit, FormatError>(FormatError::UnsupportedRequest); }
+        if spec.HasPrecision() { return .Failure(FormatError::UnsupportedRequest); }
         return match self {
             .Lexical(reason, _) => WriteLexicalDescription(writer, reason),
             .Unexpected(_) => WriteBytes(writer, "token that cannot appear here"),
@@ -134,7 +134,7 @@ extend JsonParseError : Display {
 }
 
 // The name of a lexical refusal, for the debug rendering that quotes it.
-func WriteLexicalName(writer: &var TextWriter, reason: &JsonLexError) -> Result<Unit, FormatError> {
+func WriteLexicalName(writer: &var TextWriter, reason: &JsonLexError) -> ! FormatError {
     return match reason {
         .None => WriteBytes(writer, "None"),
         .UnexpectedByte => WriteBytes(writer, "UnexpectedByte"),
@@ -152,7 +152,7 @@ func WriteLexicalName(writer: &var TextWriter, reason: &JsonLexError) -> Result<
 }
 
 // The case name, and the offset in parentheses after it.
-func WriteCase(writer: &var TextWriter, name: char8[..], at: uint) -> Result<Unit, FormatError> {
+func WriteCase(writer: &var TextWriter, name: char8[..], at: uint) -> ! FormatError {
     WriteBytes(writer, "JsonParseError::")?;
     WriteBytes(writer, name)?;
     WriteAscii(writer, c8'(')?;
@@ -175,9 +175,9 @@ extend JsonParseError : Debug {
     /// @returns success when the whole name was accepted
     /// @see https://rux-lang.dev/docs/api/json/parse-error/write-debug
     pub func WriteDebug(self: &JsonParseError, writer: &var TextWriter,
-                        spec: FormatSpec) -> Result<Unit, FormatError> {
+                        spec: FormatSpec) -> ! FormatError {
         RejectStyle(spec)?;
-        if spec.HasPrecision() { return Result::Error<Unit, FormatError>(FormatError::UnsupportedRequest); }
+        if spec.HasPrecision() { return .Failure(FormatError::UnsupportedRequest); }
         return match self {
             .Lexical(reason, at) => WriteLexicalCase(writer, reason, at),
             .Unexpected(at) => WriteCase(writer, "Unexpected", at),
@@ -193,7 +193,7 @@ extend JsonParseError : Debug {
 }
 
 // The lexical case, which carries two things rather than one.
-func WriteLexicalCase(writer: &var TextWriter, reason: &JsonLexError, at: uint) -> Result<Unit, FormatError> {
+func WriteLexicalCase(writer: &var TextWriter, reason: &JsonLexError, at: uint) -> ! FormatError {
     WriteBytes(writer, "JsonParseError::Lexical(")?;
     WriteLexicalName(writer, reason)?;
     WriteBytes(writer, ", ")?;

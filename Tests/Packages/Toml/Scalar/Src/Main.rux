@@ -11,7 +11,7 @@
 // base does not have is the sixth character and the fourth digit, and the case below would report four if the
 // mapping from stripped text back to written text were dropped.
 
-import Core::{ Assert, Result };
+import Core::{ Assert, Succeeded };
 import Text::{ BufferWriter, FormatSpec, TextWriter };
 import Time::{ Date, TimeOfDay, UtcOffset };
 import Toml::{ TomlDateTime, TomlDateTimeShape, TomlParseDateTime, TomlParseFloat, TomlParseInteger,
@@ -36,7 +36,7 @@ func Same(actual: char8[..], expected: char8[..]) -> bool {
 func Rendered(reason: &TomlScalarError, into: var char8[..]) -> uint {
     var writer = BufferWriter(into);
     let sink: &var TextWriter = writer;
-    Assert(reason.WriteDebug(sink, FormatSpec::Plain()).IsSuccess(), "a failure renders");
+    Assert(Succeeded(reason.WriteDebug(sink, FormatSpec::Plain())), "a failure renders");
     return writer.Length();
 }
 

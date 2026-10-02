@@ -1,5 +1,5 @@
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, Result };
+import Core::{ Assert, Succeeded };
 import Format::{ MaximumPrecision, Render };
 import Text::{ FormatError, String, StringView };
 
@@ -19,18 +19,18 @@ import Text::{ FormatError, String, StringView };
 // it is 0.1000000000000000055511151231257827..., and asking for twenty places is asking for that, which is what
 // makes the case worth having.
 
-func Same(outcome: Result<String, FormatError>, expected: char8[..]) -> bool {
+func Same(outcome: String ! FormatError, expected: char8[..]) -> bool {
     let wanted = StringView::FromValidated(expected);
     return match <-outcome {
         .Success(text) => text.View().Equals(wanted),
-        .Error(_) => false
+        .Failure(_) => false
     };
 }
 
-func Refused(outcome: Result<String, FormatError>) -> bool {
+func Refused(outcome: String ! FormatError) -> bool {
     return match <-outcome {
         .Success(_) => false,
-        .Error(reason) => match reason {
+        .Failure(reason) => match reason {
             .UnsupportedRequest => true,
             else => false
         }
@@ -107,14 +107,14 @@ func Main() -> int {
     // The bound, and the absence of a fallback. The old engine answered a precision it could not reach with the
     // shortest form instead, which is the behaviour these two cases exist to keep out.
     Assert(MaximumPrecision == 1100u, "the supported precision is eleven hundred digits");
-    Assert(Render(allocator, "{:.1100}", 1.0).IsSuccess(), "the bound itself is supported");
+    Assert(Succeeded(Render(allocator, "{:.1100}", 1.0)), "the bound itself is supported");
     Assert(Refused(Render(allocator, "{:.1101}", 1.0)), "one past it is refused");
     Assert(Refused(Render(allocator, "{:.2000}", 3.14159)), "and so is a request well past it");
     Assert(Refused(Render(allocator, "{:.1101}", 1.0f32)), "at the narrow width too");
 
     // A supported precision that the value cannot fill is still supported: the digits are there, they are zeros.
-    Assert(Render(allocator, "{:.1000}", 1.0).IsSuccess(), "a thousand digits of one is a thousand zeros");
-    Assert(Render(allocator, "{:.1074}", 5.0e-324).IsSuccess(),
+    Assert(Succeeded(Render(allocator, "{:.1000}", 1.0)), "a thousand digits of one is a thousand zeros");
+    Assert(Succeeded(Render(allocator, "{:.1074}", 5.0e-324)),
            "and the smallest subnormal's exact expansion fits inside the bound");
 
     return 0;

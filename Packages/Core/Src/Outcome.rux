@@ -1,0 +1,43 @@
+// Which channel a native fallible holds, asked without unwrapping it.
+//
+// A native fallible `T ! E` is a compiler-owned form with no methods of its own, so the questions every caller asks of
+// one live here as ordinary generic functions. Each takes the outcome by value, which is what lets a call's result be
+// asked directly; a named outcome whose payloads cannot be copied is passed as `<-outcome`, and is then gone.
+//
+// Asking is not handling. A caller that needs the success or the failure matches `.Success(value)` and
+// `.Failure(error)`, propagates with `?`, or recovers with `catch`; these two are for a branch or an assertion that
+// needs only the answer.
+
+/// Whether `outcome` holds a success.
+///
+/// `outcome` is consumed; its payload is destroyed after the question is answered. Runs in constant time and
+/// allocates nothing.
+///
+/// @typeParam T the success type
+/// @typeParam E the error type
+/// @param outcome the fallible to ask
+/// @returns whether it holds a success
+/// @see https://rux-lang.dev/docs/api/core/succeeded
+pub func Succeeded<T, E>(outcome: T ! E) -> bool {
+    return match outcome {
+        .Success(_) => true,
+        .Failure(_) => false
+    };
+}
+
+/// Whether `outcome` holds a failure.
+///
+/// `outcome` is consumed; its payload is destroyed after the question is answered. Runs in constant time and
+/// allocates nothing.
+///
+/// @typeParam T the success type
+/// @typeParam E the error type
+/// @param outcome the fallible to ask
+/// @returns whether it holds a failure
+/// @see https://rux-lang.dev/docs/api/core/failed
+pub func Failed<T, E>(outcome: T ! E) -> bool {
+    return match outcome {
+        .Success(_) => false,
+        .Failure(_) => true
+    };
+}

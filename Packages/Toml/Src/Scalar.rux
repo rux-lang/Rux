@@ -72,9 +72,9 @@ extend TomlScalarError : Display {
     /// @returns success when the whole description was accepted
     /// @see https://rux-lang.dev/docs/api/toml/scalar-error/write-display
     pub func WriteDisplay(self: &TomlScalarError, writer: &var TextWriter,
-                          spec: FormatSpec) -> Result<Unit, FormatError> {
+                          spec: FormatSpec) -> ! FormatError {
         RejectStyle(spec)?;
-        if spec.HasPrecision() { return Result::Error<Unit, FormatError>(FormatError::UnsupportedRequest); }
+        if spec.HasPrecision() { return .Failure(FormatError::UnsupportedRequest); }
         return match self {
             .Malformed(_) => WriteBytes(writer, "not the shape TOML defines"),
             .OutOfRange(_) => WriteBytes(writer, "value outside what its type can hold"),
@@ -94,9 +94,9 @@ extend TomlScalarError : Debug {
     /// @returns success when the whole name was accepted
     /// @see https://rux-lang.dev/docs/api/toml/scalar-error/write-debug
     pub func WriteDebug(self: &TomlScalarError, writer: &var TextWriter,
-                        spec: FormatSpec) -> Result<Unit, FormatError> {
+                        spec: FormatSpec) -> ! FormatError {
         RejectStyle(spec)?;
-        if spec.HasPrecision() { return Result::Error<Unit, FormatError>(FormatError::UnsupportedRequest); }
+        if spec.HasPrecision() { return .Failure(FormatError::UnsupportedRequest); }
         WriteBytes(writer, "TomlScalarError::")?;
         match self {
             .Malformed(_) => WriteBytes(writer, "Malformed")?,

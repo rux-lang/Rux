@@ -1,5 +1,5 @@
 
-import Core::{ Result, Unit };
+import Core::Succeeded;
 import Allocator::{ Allocator, SystemAllocator };
 import Format::Render;
 import Text::{ FormatError, ParseFormatSpec, String, StringView };
@@ -38,7 +38,7 @@ func Matches(allocator: Allocator, format: char8[..], expected: char8[..]) -> bo
 func RefusedAt(allocator: Allocator, format: char8[..], offset: uint) -> bool {
     return match <-Render(allocator, format, 0) {
         .Success(_) => false,
-        .Error(reason) => match reason {
+        .Failure(reason) => match reason {
             .InvalidSpecification(found) => found == offset,
             else => false
         }
@@ -173,10 +173,10 @@ func Main() -> int {
     // `{:q}` is no longer among them. A style is an identifier in the grammar, so `q` parses; whether it means
     // anything is the value's question, and every value here answers no. The failure moved from the parser to the
     // value, which is where it belongs — the parser cannot know what an integer or a string supports.
-    if Render(allocator, "{:q}", 42).IsSuccess() { return 64; }
-    if Render(allocator, "{:q}", "text").IsSuccess() { return 65; }
-    if Render(allocator, "{:q}", true).IsSuccess() { return 66; }
-    if Render(allocator, "{:iso8601}", 42).IsSuccess() { return 67; }
+    if Succeeded(Render(allocator, "{:q}", 42)) { return 64; }
+    if Succeeded(Render(allocator, "{:q}", "text")) { return 65; }
+    if Succeeded(Render(allocator, "{:q}", true)) { return 66; }
+    if Succeeded(Render(allocator, "{:iso8601}", 42)) { return 67; }
 
     // What an integer does support is its four bases, checked above: those are styles too, and they parse by the
     // same rule as `iso8601` does, which is why `{:x}` still works and `{:q}` does not.
@@ -243,8 +243,6 @@ func Main() -> int {
 // The rendered text, or an empty string when rendering failed. Every check above compares against text it expects
 // to be non-empty, so a failure cannot pass as a success: an empty string matches none of them, and an empty one
 // handed to a parser is refused.
-func Rendered(allocator: Allocator, outcome: Result<String, FormatError>) -> String {
-    var text = String(allocator);
-    outcome.TryIntoValue(@text);
-    return <-text;
+func Rendered(allocator: Allocator, outcome: String ! FormatError) -> String {
+    return (<-outcome) catch { else => String(allocator) };
 }

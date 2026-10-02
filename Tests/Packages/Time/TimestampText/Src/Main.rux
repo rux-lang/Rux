@@ -1,4 +1,4 @@
-import Core::Assert;
+import Core::{ Assert, Failed };
 import Text::{ BufferWriter, Debug, Display, FormatError, FormatSpec, ParseFormatSpec };
 import Time::{ ParseRfc3339, Timestamp };
 
@@ -39,7 +39,7 @@ func Shown(value: Timestamp, spec: FormatSpec, expected: char8[..]) -> bool {
     var storage: char8[64];
     var writer = BufferWriter((@storage[0])[..64]);
     let shown: Display = value;
-    if shown.WriteDisplay(writer, spec).IsError() { return false; }
+    if Failed(shown.WriteDisplay(writer, spec)) { return false; }
     return Same(writer.Written(), expected);
 }
 
@@ -48,7 +48,7 @@ func Inspected(value: Timestamp, spec: FormatSpec, expected: char8[..]) -> bool 
     var storage: char8[64];
     var writer = BufferWriter((@storage[0])[..64]);
     let shown: Debug = value;
-    if shown.WriteDebug(writer, spec).IsError() { return false; }
+    if Failed(shown.WriteDebug(writer, spec)) { return false; }
     return Same(writer.Written(), expected);
 }
 
@@ -58,8 +58,10 @@ func RefusedWith(value: Timestamp, spec: FormatSpec, expected: FormatError, writ
     var storage: char8[64];
     var writer = BufferWriter((@storage[0])[..64]);
     let shown: Display = value;
-    var reported = FormatError::WriterFailure;
-    if !shown.WriteDisplay(writer, spec).TryIntoError(@reported) { return false; }
+    let reported = match shown.WriteDisplay(writer, spec) {
+        .Failure(error) => error,
+        .Success(_) => return false
+    };
     *written = writer.Length();
     return match reported {
         .UnsupportedRequest => match expected { .UnsupportedRequest => true, else => false },
@@ -82,7 +84,7 @@ func RoundTrips(value: Timestamp) -> bool {
     var storage: char8[64];
     var writer = BufferWriter((@storage[0])[..64]);
     let shown: Display = value;
-    if shown.WriteDisplay(writer, FormatSpec::Plain()).IsError() { return false; }
+    if Failed(shown.WriteDisplay(writer, FormatSpec::Plain())) { return false; }
     return match ParseRfc3339(writer.Written()) {
         .Success(parsed) => parsed.ToTimestamp().Equals(value),
         .Error(_) => false

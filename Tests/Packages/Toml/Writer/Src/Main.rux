@@ -4,7 +4,7 @@
 // and a document written, read and written again is the same the second time.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, Result, Unit };
+import Core::{ Assert, Succeeded };
 import Format::{ ByteCursor, TextWriter };
 import Text::{ BufferWriter, FormatError, StringView, TextError };
 import Time::UtcOffset;
@@ -19,7 +19,7 @@ func TextBytes(text: char8[..]) -> char8[..] {
 func Render(value: &TomlValue, storage: var char8[..]) -> char8[..] {
     var cursor = ByteCursor(storage);
     let writer: &var TextWriter = cursor;
-    Assert(TomlWriteDocument(writer, value).IsSuccess(), "writing succeeds");
+    Assert(Succeeded(TomlWriteDocument(writer, value)), "writing succeeds");
     return cursor.Written();
 }
 
@@ -54,10 +54,10 @@ func CaseOf(reason: &FormatError) -> int32 {
     };
 }
 
-func SameFailure(outcome: &Result<Unit, FormatError>, expected: &FormatError) -> bool {
+func SameFailure(outcome: &(! FormatError), expected: &FormatError) -> bool {
     return match outcome {
         .Success(_) => false,
-        .Error(reason) => CaseOf(reason) == CaseOf(expected)
+        .Failure(reason) => CaseOf(reason) == CaseOf(expected)
     };
 }
 
@@ -197,7 +197,7 @@ func Main() -> int {
     var enough: char8[128];
     var roomy = BufferWriter((@enough[0])[..128]);
     let roomySink: &var TextWriter = roomy;
-    Assert(TomlWriteDocument(roomySink, bounded).IsSuccess(),
+    Assert(Succeeded(TomlWriteDocument(roomySink, bounded)),
            "the same document writes whole into a destination that has room");
     Assert(roomy.Length() == 23u, "all twenty-three bytes of it");
 

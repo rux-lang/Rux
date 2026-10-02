@@ -17,8 +17,8 @@
 // produces a different path, and one that may well exist; a rendering that silently answers about another file is
 // worse than a rendering that refuses.
 
-import Core::{ #target, Result, Unit };
-import Text::{ Debug, DecodeAt, Display, Encode, FormatError, FormatOk, FormatSpec, RejectStyle, TextWriter,
+import Core::{ #target };
+import Text::{ Debug, DecodeAt, Display, Encode, FormatError, FormatSpec, RejectStyle, TextWriter,
                WriteAscii, WriteBytes, WriteEscaped, WriteScalar };
 
 // The character a unit that is not text is shown as by `Display`.
@@ -26,32 +26,32 @@ const ReplacementScalar: uint32 = 0xFFFD;
 
 // Whether the specification is one a native name can answer. Neither a style nor a precision is: a name has one
 // form, and a precision would cut it into a different name.
-func AcceptsNameSpec(spec: FormatSpec) -> Result<Unit, FormatError> {
+func AcceptsNameSpec(spec: FormatSpec) -> ! FormatError {
     RejectStyle(spec)?;
-    if spec.HasPrecision() { return Result::Error<Unit, FormatError>(FormatError::UnsupportedRequest); }
-    return FormatOk();
+    if spec.HasPrecision() { return .Failure(FormatError::UnsupportedRequest); }
+    return;
 }
 
 // Writes the low `count` hexadecimal digits of `value`, most significant first, in lower case.
-func WriteHexDigits(writer: &var TextWriter, value: uint32, count: uint) -> Result<Unit, FormatError> {
+func WriteHexDigits(writer: &var TextWriter, value: uint32, count: uint) -> ! FormatError {
     let digits = "0123456789abcdef";
     var shift = count * 4u;
     while shift > 0 {
         shift = shift - 4u;
         WriteAscii(writer, digits.data[((value >> (shift as uint32)) & 0xFu32) as uint])?;
     }
-    return FormatOk();
+    return;
 }
 
 // Writes one native byte as `\x{nn}`, the escape for a byte that is not part of any character.
-func WriteByteEscape(writer: &var TextWriter, value: uint32) -> Result<Unit, FormatError> {
+func WriteByteEscape(writer: &var TextWriter, value: uint32) -> ! FormatError {
     WriteBytes(writer, "\\x{")?;
     WriteHexDigits(writer, value, 2u)?;
     return WriteBytes(writer, "}");
 }
 
 // Writes one UTF-16 code unit as `\u{xxxx}`, the escape for a code unit with no partner.
-func WriteUnitEscape(writer: &var TextWriter, value: uint32) -> Result<Unit, FormatError> {
+func WriteUnitEscape(writer: &var TextWriter, value: uint32) -> ! FormatError {
     WriteBytes(writer, "\\u{")?;
     WriteHexDigits(writer, value, 4u)?;
     return WriteBytes(writer, "}");
@@ -63,7 +63,7 @@ when #target.os == .Windows {
     // A lone surrogate is one unit and becomes one replacement character; a well-formed pair is one scalar and is
     // written as itself. Advancing by a single unit after a replacement is what keeps a name with one bad unit in
     // the middle of it readable on both sides of the damage.
-    func WriteLossy(writer: &var TextWriter, units: OsUnit[..]) -> Result<Unit, FormatError> {
+    func WriteLossy(writer: &var TextWriter, units: OsUnit[..]) -> ! FormatError {
         var index: uint = 0;
         while index < units.length {
             var scalar: uint32 = 0;
@@ -77,7 +77,7 @@ when #target.os == .Windows {
                 index = index + 1;
             }
         }
-        return FormatOk();
+        return;
     }
 
     // Writes the units so that every one of them can be read back off the output.
@@ -86,7 +86,7 @@ when #target.os == .Windows {
     // `WriteEscaped`, so the quote, the backslash and the controls get the same treatment they get in a `String`.
     // A unit that is not part of a scalar is spelled `\u{xxxx}` with its own four digits, which no valid scalar
     // can collide with: the surrogate range is not a scalar range.
-    func WriteExact(writer: &var TextWriter, units: OsUnit[..]) -> Result<Unit, FormatError> {
+    func WriteExact(writer: &var TextWriter, units: OsUnit[..]) -> ! FormatError {
         var index: uint = 0;
         while index < units.length {
             var scalar: uint32 = 0;
@@ -96,7 +96,7 @@ when #target.os == .Windows {
                 var written: uint = 0;
                 let sink = (@encoded[0])[..4];
                 if Encode(scalar as char32, sink, @written).IsError() {
-                    return Result::Error<Unit, FormatError>(FormatError::UnsupportedRequest);
+                    fail FormatError::UnsupportedRequest;
                 }
                 WriteEscaped(writer, (@encoded[0])[..written])?;
                 index = index + width;
@@ -106,7 +106,7 @@ when #target.os == .Windows {
                 index = index + 1;
             }
         }
-        return FormatOk();
+        return;
     }
 
     // One scalar out of the UTF-16 units at `index`: a lone unit outside the surrogates, or a high-low pair.
@@ -134,7 +134,7 @@ else {
     // destination wants. A bad byte costs one replacement character and advances one byte: replacing a maximal
     // subpart instead would produce fewer replacements for a truncated sequence, but one replacement per byte is
     // the rule that never merges two damaged names into one rendering.
-    func WriteLossy(writer: &var TextWriter, units: OsUnit[..]) -> Result<Unit, FormatError> {
+    func WriteLossy(writer: &var TextWriter, units: OsUnit[..]) -> ! FormatError {
         var index: uint = 0;
         var runStart: uint = 0;
         while index < units.length {
@@ -155,7 +155,7 @@ else {
         if index > runStart {
             return WriteBytes(writer, (@units.data[runStart])[..index - runStart]);
         }
-        return FormatOk();
+        return;
     }
 
     // Writes the bytes so that every one of them can be read back off the output.
@@ -163,7 +163,7 @@ else {
     // A run of valid text goes through `WriteEscaped`, so the quote, the backslash and the controls get the same
     // treatment they get in a `String`. A byte that is not text is spelled `\x{nn}`, which is a distinct escape
     // from the `\u{...}` a scalar uses, because a stray byte is not a scalar and should not be shown as one.
-    func WriteExact(writer: &var TextWriter, units: OsUnit[..]) -> Result<Unit, FormatError> {
+    func WriteExact(writer: &var TextWriter, units: OsUnit[..]) -> ! FormatError {
         var index: uint = 0;
         var runStart: uint = 0;
         while index < units.length {
@@ -184,13 +184,13 @@ else {
         if index > runStart {
             return WriteEscaped(writer, (@units.data[runStart])[..index - runStart]);
         }
-        return FormatOk();
+        return;
     }
 }
 
 // The whole of a `Debug` rendering: the exact units, quoted, so that a name with a space or a trailing separator
 // has visible ends.
-func WriteQuoted(writer: &var TextWriter, units: OsUnit[..]) -> Result<Unit, FormatError> {
+func WriteQuoted(writer: &var TextWriter, units: OsUnit[..]) -> ! FormatError {
     WriteBytes(writer, "\"")?;
     WriteExact(writer, units)?;
     return WriteBytes(writer, "\"");
@@ -213,7 +213,7 @@ extend OsStringView : Display {
     /// @returns success when the whole name was accepted
     /// @see https://rux-lang.dev/docs/api/path/os-string-view/write-display
     pub func WriteDisplay(self: &OsStringView, writer: &var TextWriter,
-                          spec: FormatSpec) -> Result<Unit, FormatError> {
+                          spec: FormatSpec) -> ! FormatError {
         AcceptsNameSpec(spec)?;
         return WriteLossy(writer, self.units);
     }
@@ -234,7 +234,7 @@ extend OsStringView : Debug {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole name was accepted
     /// @see https://rux-lang.dev/docs/api/path/os-string-view/write-debug
-    pub func WriteDebug(self: &OsStringView, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+    pub func WriteDebug(self: &OsStringView, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         AcceptsNameSpec(spec)?;
         return WriteQuoted(writer, self.units);
     }
@@ -250,7 +250,7 @@ extend OsString : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole name was accepted
     /// @see https://rux-lang.dev/docs/api/path/os-string/write-display
-    pub func WriteDisplay(self: &OsString, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+    pub func WriteDisplay(self: &OsString, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         AcceptsNameSpec(spec)?;
         return WriteLossy(writer, self.View().Units());
     }
@@ -266,7 +266,7 @@ extend OsString : Debug {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole name was accepted
     /// @see https://rux-lang.dev/docs/api/path/os-string/write-debug
-    pub func WriteDebug(self: &OsString, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+    pub func WriteDebug(self: &OsString, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         AcceptsNameSpec(spec)?;
         return WriteQuoted(writer, self.View().Units());
     }
@@ -285,7 +285,7 @@ extend Path : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole path was accepted
     /// @see https://rux-lang.dev/docs/api/path/path/write-display
-    pub func WriteDisplay(self: &Path, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+    pub func WriteDisplay(self: &Path, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         AcceptsNameSpec(spec)?;
         return WriteLossy(writer, self.name.Units());
     }
@@ -301,7 +301,7 @@ extend Path : Debug {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole path was accepted
     /// @see https://rux-lang.dev/docs/api/path/path/write-debug
-    pub func WriteDebug(self: &Path, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+    pub func WriteDebug(self: &Path, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         AcceptsNameSpec(spec)?;
         return WriteQuoted(writer, self.name.Units());
     }
@@ -317,7 +317,7 @@ extend PathBuffer : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole path was accepted
     /// @see https://rux-lang.dev/docs/api/path/path-buffer/write-display
-    pub func WriteDisplay(self: &PathBuffer, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+    pub func WriteDisplay(self: &PathBuffer, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         AcceptsNameSpec(spec)?;
         return WriteLossy(writer, self.AsPath().AsView().Units());
     }
@@ -333,7 +333,7 @@ extend PathBuffer : Debug {
     /// @param spec what the placeholder asked for
     /// @returns success when the whole path was accepted
     /// @see https://rux-lang.dev/docs/api/path/path-buffer/write-debug
-    pub func WriteDebug(self: &PathBuffer, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+    pub func WriteDebug(self: &PathBuffer, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         AcceptsNameSpec(spec)?;
         return WriteQuoted(writer, self.AsPath().AsView().Units());
     }

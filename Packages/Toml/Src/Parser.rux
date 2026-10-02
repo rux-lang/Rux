@@ -17,7 +17,7 @@
 // else.
 
 import Allocator::Allocator;
-import Core::{ Option, Result, Unit };
+import Core::{ Option, Result };
 import Collections::{ CollectionError, Vector };
 import Text::{ Display, FormatError, FormatSpec, ParseFailure, RejectStyle, String, StringView,
                TextError, TextWriter, WriteAscii, WriteBytes };
@@ -94,7 +94,7 @@ extend TomlParseFailure : ParseFailure {
 }
 
 // The description of a lexical refusal, which a parse failure quotes rather than restates.
-func WriteLexicalDescription(writer: &var TextWriter, reason: &TomlLexError) -> Result<Unit, FormatError> {
+func WriteLexicalDescription(writer: &var TextWriter, reason: &TomlLexError) -> ! FormatError {
     return match reason {
         .None => WriteBytes(writer, "no error"),
         .UnexpectedByte => WriteBytes(writer, "byte that begins no token"),
@@ -122,9 +122,9 @@ extend TomlParseFailure : Display {
     /// @returns success when the whole description was accepted
     /// @see https://rux-lang.dev/docs/api/toml/parse-failure/write-display
     pub func WriteDisplay(self: &TomlParseFailure, writer: &var TextWriter,
-                          spec: FormatSpec) -> Result<Unit, FormatError> {
+                          spec: FormatSpec) -> ! FormatError {
         RejectStyle(spec)?;
-        if spec.HasPrecision() { return Result::Error<Unit, FormatError>(FormatError::UnsupportedRequest); }
+        if spec.HasPrecision() { return .Failure(FormatError::UnsupportedRequest); }
         return match self.reason {
             .Lexical(reason) => WriteLexicalDescription(writer, reason),
             .Unexpected => WriteBytes(writer, "token that cannot appear here"),
@@ -145,7 +145,7 @@ extend TomlParseFailure : Display {
 
 // The case name alone, which the debug rendering puts the position after.
 func WriteReasonName(writer: &var TextWriter, reason: &TomlParseError,
-                     spec: FormatSpec) -> Result<Unit, FormatError> {
+                     spec: FormatSpec) -> ! FormatError {
     return match reason {
         .Lexical(cause) => WriteNested(writer, "Lexical", cause),
         .Unexpected => WriteBytes(writer, "Unexpected"),
@@ -164,7 +164,7 @@ func WriteReasonName(writer: &var TextWriter, reason: &TomlParseError,
 }
 
 // `Lexical(BadEscape)`, whose payload is a scalar enum with a name of its own.
-func WriteNested(writer: &var TextWriter, name: char8[..], cause: &TomlLexError) -> Result<Unit, FormatError> {
+func WriteNested(writer: &var TextWriter, name: char8[..], cause: &TomlLexError) -> ! FormatError {
     WriteBytes(writer, name)?;
     WriteAscii(writer, c8'(')?;
     WriteLexicalName(writer, cause)?;
@@ -173,13 +173,13 @@ func WriteNested(writer: &var TextWriter, name: char8[..], cause: &TomlLexError)
 
 // `BadValue(TomlScalarError::Malformed(4))`, whose payload renders itself.
 func WriteScalarCase(writer: &var TextWriter, cause: &TomlScalarError,
-                     spec: FormatSpec) -> Result<Unit, FormatError> {
+                     spec: FormatSpec) -> ! FormatError {
     WriteBytes(writer, "BadValue(")?;
     cause.WriteDebug(writer, spec)?;
     return WriteAscii(writer, c8')');
 }
 
-func WriteLexicalName(writer: &var TextWriter, reason: &TomlLexError) -> Result<Unit, FormatError> {
+func WriteLexicalName(writer: &var TextWriter, reason: &TomlLexError) -> ! FormatError {
     return match reason {
         .None => WriteBytes(writer, "None"),
         .UnexpectedByte => WriteBytes(writer, "UnexpectedByte"),
@@ -207,9 +207,9 @@ extend TomlParseFailure : Debug {
     /// @returns success when the whole rendering was accepted
     /// @see https://rux-lang.dev/docs/api/toml/parse-failure/write-debug
     pub func WriteDebug(self: &TomlParseFailure, writer: &var TextWriter,
-                        spec: FormatSpec) -> Result<Unit, FormatError> {
+                        spec: FormatSpec) -> ! FormatError {
         RejectStyle(spec)?;
-        if spec.HasPrecision() { return Result::Error<Unit, FormatError>(FormatError::UnsupportedRequest); }
+        if spec.HasPrecision() { return .Failure(FormatError::UnsupportedRequest); }
         WriteBytes(writer, "TomlParseError::")?;
         WriteReasonName(writer, self.reason, FormatSpec::Plain())?;
         WriteBytes(writer, " at ")?;

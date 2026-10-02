@@ -1,5 +1,4 @@
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Result, Unit };
 import Format::{ IsNan, ParseFloat64, ParseInt64, ParseInt128, ParseUint64, ParseUint512, Render };
 import Text::{ FormatError, String };
 
@@ -102,8 +101,6 @@ func Main() -> int {
 // The rendered text, or an empty string when rendering failed. Every check above compares against text it expects
 // to be non-empty, so a failure cannot pass as a success: an empty string matches none of them, and an empty one
 // handed to a parser is refused.
-func Rendered(allocator: Allocator, outcome: Result<String, FormatError>) -> String {
-    var text = String(allocator);
-    outcome.TryIntoValue(@text);
-    return <-text;
+func Rendered(allocator: Allocator, outcome: String ! FormatError) -> String {
+    return (<-outcome) catch { else => String(allocator) };
 }

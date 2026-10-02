@@ -35,24 +35,24 @@ import Allocator::{ Allocator, SystemAllocator };
 import Format::{ Render, WriteFormat };
 import Text::{ BufferWriter, String, TextWriter };
 
-func Main() -> int {
+func Main() -> int ! FormatError {
     // Into a destination the caller owns, allocating nothing.
     var storage: char8[64];
     var buffer = BufferWriter((@storage[0])[..64]);
     let writer: &var TextWriter = buffer;
-    if WriteFormat(writer, "count={}", 42i64).IsError() { return 1; }
+    WriteFormat(writer, "count={}", 42i64)?;
 
     // Or into a string of its own, which is the one place rendering allocates.
     var system = SystemAllocator();
     let allocator: Allocator = system;
-    return match <-Render(allocator, "pi={:.2}", 3.14159f64) {
+    return match Render(allocator, "pi={:.2}", 3.14159f64) {
         .Success(_) => 0,
-        .Error(_) => 1
+        .Failure(_) => 1
     };
 }
 ```
 
-Both answer with a `Result`: `WriteFormat` with `Result<Unit, FormatError>` and `Render` with `Result<String, FormatError>`. There is no status to forget to read, and no string handed back beside an error that says it is not really there. `Render` releases its partial text when it fails, so a caller never receives half a rendering and the allocator gets its block back either way.
+Both answer with a native fallible: `WriteFormat` with `! FormatError` and `Render` with `String ! FormatError`. There is no status to forget to read — a result nobody handles is diagnosed as discarded — and no string handed back beside an error that says it is not really there. `Render` releases its partial text when it fails, so a caller never receives half a rendering and the allocator gets its block back either way.
 
 ## Documentation
 

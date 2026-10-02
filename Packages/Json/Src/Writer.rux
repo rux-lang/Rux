@@ -18,8 +18,7 @@
 // number is `ValueOutOfRange`, which is what that case is for: the value is perfectly good and the requested form
 // cannot hold it.
 
-import Core::{ Result, Unit };
-import Text::{ FormatError, FormatOk, TextWriter };
+import Text::{ FormatError, TextWriter };
 
 /// How deep a document may nest before the writer refuses.
 ///
@@ -75,7 +74,7 @@ const JsonHexDigits: char8[..] = "0123456789abcdef";
 /// @param text the UTF-8 bytes to escape and write
 /// @returns success when the whole quoted string was accepted
 /// @see https://rux-lang.dev/docs/api/json/write-escaped
-pub func WriteEscaped(writer: &var TextWriter, text: char8[..]) -> Result<Unit, FormatError> {
+pub func WriteEscaped(writer: &var TextWriter, text: char8[..]) -> ! FormatError {
     var sink = writer;
     var quote: char8[1];
     quote[0] = 0x22u8 as char8;
@@ -156,13 +155,13 @@ func IsFiniteNumberText(text: char8[..]) -> bool {
 
 // One run of bytes to the destination, reporting exactly what the destination said. Named apart from Text's
 // `WriteBytes` deliberately: a name that shadows an imported one is a name that will be reached for by accident.
-func WriteJsonBytes(writer: &var TextWriter, bytes: char8[..]) -> Result<Unit, FormatError> {
+func WriteJsonBytes(writer: &var TextWriter, bytes: char8[..]) -> ! FormatError {
     var sink = writer;
     return sink.Write(bytes);
 }
 
-func WriteNewlineAndIndent(writer: &var TextWriter, style: JsonStyle, level: uint) -> Result<Unit, FormatError> {
-    if style.indent == 0u { return FormatOk(); }
+func WriteNewlineAndIndent(writer: &var TextWriter, style: JsonStyle, level: uint) -> ! FormatError {
+    if style.indent == 0u { return .Success(()); }
     var newline: char8[1];
     newline[0] = 0x0Au8 as char8;
     WriteJsonBytes(writer, newline[0..1])?;
@@ -178,7 +177,7 @@ func WriteNewlineAndIndent(writer: &var TextWriter, style: JsonStyle, level: uin
         WriteJsonBytes(writer, spaces[0..step])?;
         remaining = remaining - step;
     }
-    return FormatOk();
+    return;
 }
 
 /// Writes `value` to `writer` in the given style.
@@ -198,15 +197,15 @@ func WriteNewlineAndIndent(writer: &var TextWriter, style: JsonStyle, level: uin
 /// @param style compact or pretty
 /// @returns success when the whole document was accepted
 /// @see https://rux-lang.dev/docs/api/json/write-value
-pub func WriteValue(writer: &var TextWriter, value: &JsonValue, style: JsonStyle) -> Result<Unit, FormatError> {
+pub func WriteValue(writer: &var TextWriter, value: &JsonValue, style: JsonStyle) -> ! FormatError {
     return WriteAtLevel(writer, value, style, 0u);
 }
 
 func WriteAtLevel(writer: &var TextWriter, value: &JsonValue, style: JsonStyle,
-                  level: uint) -> Result<Unit, FormatError> {
+                  level: uint) -> ! FormatError {
     // A document this deep cannot have been parsed — the parser's own limit is far shallower — so it was built in
     // memory, and refusing is better than descending until the stack runs out.
-    if level > MaximumWriteDepth { return Result::Error<Unit, FormatError>(FormatError::ValueOutOfRange); }
+    if level > MaximumWriteDepth { return .Failure(FormatError::ValueOutOfRange); }
     let kind = value.Kind();
     if kind == JsonKind::Null { return WriteJsonBytes(writer, "null"); }
     if kind == JsonKind::Boolean {
@@ -220,7 +219,7 @@ func WriteAtLevel(writer: &var TextWriter, value: &JsonValue, style: JsonStyle,
             // JSON has no way to spell a NaN or an infinity, so this refuses rather than emitting something
             // other parsers will reject. The value is not wrong; the form asked for cannot hold it, which is
             // exactly what `ValueOutOfRange` says.
-            return Result::Error<Unit, FormatError>(FormatError::ValueOutOfRange);
+            fail FormatError::ValueOutOfRange;
         }
         return WriteJsonBytes(writer, text);
     }

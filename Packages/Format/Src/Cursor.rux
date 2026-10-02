@@ -11,8 +11,7 @@
 
 
 
-import Core::{ Result, Unit };
-import Text::{ FormatError, FormatOk, TextWriter };
+import Text::{ FormatError, TextWriter };
 
 /// A fixed buffer being filled from the front.
 ///
@@ -92,9 +91,9 @@ extend ByteCursor : TextWriter {
     /// @param bytes the UTF-8 run to write
     /// @returns success when every byte fitted
     /// @see https://rux-lang.dev/docs/api/format/byte-cursor/write
-    pub func Write(self: &var ByteCursor, bytes: char8[..]) -> Result<Unit, FormatError> {
+    pub func Write(self: &var ByteCursor, bytes: char8[..]) -> ! FormatError {
         self.PushBytes(bytes);
-        if self.Overran() { return Result::Error<Unit, FormatError>(FormatError::InsufficientCapacity); }
-        return FormatOk();
+        if self.Overran() { return .Failure(FormatError::InsufficientCapacity); }
+        return;
     }
 }

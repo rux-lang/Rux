@@ -2,7 +2,7 @@
 // legal rather than conventional makes output differ from every other writer for no benefit.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, Result, Unit };
+import Core::{ Assert, Succeeded };
 import Format::{ TextWriter };
 import Json::{ JsonKind, JsonStyle, JsonValue, Parse, WriteValue };
 import Text::{ BufferWriter, FormatError, String, StringBuilder, StringView, TextError };
@@ -16,7 +16,7 @@ func View(bytes: char8[..]) -> StringView {
 func Written(allocator: Allocator, value: &JsonValue, style: JsonStyle, outcome: *var bool) -> String {
     var builder = StringBuilder(allocator);
     let sink: &var TextWriter = builder;
-    *outcome = WriteValue(sink, value, style).IsSuccess();
+    *outcome = Succeeded(WriteValue(sink, value, style));
     return builder.IntoString();
 }
 
@@ -30,10 +30,10 @@ func RefusedAs(allocator: Allocator, value: &JsonValue, style: JsonStyle, expect
     return SameFailure(outcome, expected);
 }
 
-func SameFailure(outcome: &Result<Unit, FormatError>, expected: &FormatError) -> bool {
+func SameFailure(outcome: &(! FormatError), expected: &FormatError) -> bool {
     return match outcome {
         .Success(_) => false,
-        .Error(reason) => CaseOf(reason) == CaseOf(expected)
+        .Failure(reason) => CaseOf(reason) == CaseOf(expected)
     };
 }
 
@@ -146,7 +146,7 @@ func Main() -> int {
     var enough: char8[64];
     var roomy = BufferWriter((@enough[0])[..64]);
     let roomySink: &var TextWriter = roomy;
-    Assert(WriteValue(roomySink, wholeDocument, JsonStyle::Compact()).IsSuccess(),
+    Assert(Succeeded(WriteValue(roomySink, wholeDocument, JsonStyle::Compact())),
            "the same document writes whole into a destination that has room");
     Assert(roomy.Length() == 26u, "all twenty-six bytes of it");
 

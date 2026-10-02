@@ -24,7 +24,7 @@
 // Sequential containers are in `Rux/Collections`, which borrows a run of elements out of a vector, an array or a
 // deque and calls `WriteSliceDebug` with it. Nothing here knows those types exist.
 
-import Core::{ Option, Result, Unit };
+import Core::{ Option, Result };
 
 /// Writes a borrowed option as `Some(value)` or `None`.
 ///
@@ -44,7 +44,7 @@ import Core::{ Option, Result, Unit };
 /// @returns success when the whole rendering was accepted
 /// @see https://rux-lang.dev/docs/api/text/write-option-debug
 pub func WriteOptionDebug<T: Debug>(writer: &var TextWriter, value: &Option<T>,
-                                    spec: FormatSpec) -> Result<Unit, FormatError> {
+                                    spec: FormatSpec) -> ! FormatError {
     match value {
         .Some(payload) => {
             WriteBytes(writer, "Some(")?;
@@ -75,7 +75,7 @@ pub func WriteOptionDebug<T: Debug>(writer: &var TextWriter, value: &Option<T>,
 /// @returns success when the whole rendering was accepted
 /// @see https://rux-lang.dev/docs/api/text/write-result-debug
 pub func WriteResultDebug<T: Debug, E: Debug>(writer: &var TextWriter, value: &Result<T, E>,
-                                              spec: FormatSpec) -> Result<Unit, FormatError> {
+                                              spec: FormatSpec) -> ! FormatError {
     match value {
         .Success(payload) => {
             WriteBytes(writer, "Success(")?;
@@ -113,7 +113,7 @@ pub func WriteResultDebug<T: Debug, E: Debug>(writer: &var TextWriter, value: &R
 /// @returns success when the whole rendering was accepted
 /// @see https://rux-lang.dev/docs/api/text/write-slice-debug
 pub func WriteSliceDebug<T: Debug>(writer: &var TextWriter, items: T[..],
-                                   spec: FormatSpec) -> Result<Unit, FormatError> {
+                                   spec: FormatSpec) -> ! FormatError {
     WriteAscii(writer, c8'[')?;
     var index: uint = 0;
     while index < items.length {

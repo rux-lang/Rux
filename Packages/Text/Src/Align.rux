@@ -9,7 +9,6 @@
 // `-7` at width four is `-007` rather than `00-7`. That is a fact about how a number is spelled, so the numeric
 // writer owns it.
 
-import Core::{ Result, Unit };
 
 /// How many fill characters go on each side of a rendering that occupies `occupied` scalars.
 ///
@@ -56,13 +55,13 @@ pub func PaddingAround(spec: FormatSpec, occupied: uint, numeric: bool, before: 
 /// @param count how many copies to write
 /// @returns success when every copy was accepted
 /// @see https://rux-lang.dev/docs/api/text/write-fill
-pub func WriteFill(writer: &var TextWriter, spec: FormatSpec, count: uint) -> Result<Unit, FormatError> {
+pub func WriteFill(writer: &var TextWriter, spec: FormatSpec, count: uint) -> ! FormatError {
     var written: uint = 0;
     while written < count {
         WriteAscii(writer, spec.Fill())?;
         written = written + 1;
     }
-    return FormatOk();
+    return;
 }
 
 /// Writes `rendered` into `writer` under `spec`'s width, fill and alignment.
@@ -81,7 +80,7 @@ pub func WriteFill(writer: &var TextWriter, spec: FormatSpec, count: uint) -> Re
 /// @returns success when the padded rendering was accepted in full
 /// @see https://rux-lang.dev/docs/api/text/write-aligned
 pub func WriteAligned(writer: &var TextWriter, spec: FormatSpec, rendered: char8[..],
-                      numeric: bool) -> Result<Unit, FormatError> {
+                      numeric: bool) -> ! FormatError {
     let occupied = CountScalars(rendered);
     if spec.Width() <= occupied { return WriteBytes(writer, rendered); }
 

@@ -1,7 +1,7 @@
 import Allocator::{ Allocator, SystemAllocator };
 import Collections::{ CollectionError, CompareInt32, EqualsInt32, HashInt32, HashMap, HashSet, TableSeed, TreeMap,
                       TreeSet, WriteHashMapDebug, WriteHashSetDebug, WriteTreeMapDebug, WriteTreeSetDebug };
-import Core::{ Assert, Result, Unit };
+import Core::{ Assert, Failed, Succeeded };
 import Format::WriteFormat;
 import Text::{ BufferWriter, Debug, Display, FormatError, FormatSpec, ParseFormatSpec, TextWriter, WriteAscii,
                WriteBytes };
@@ -45,7 +45,7 @@ extend Tracked {
 }
 
 extend Tracked : Debug {
-    func WriteDebug(self: &Tracked, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+    func WriteDebug(self: &Tracked, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         WriteBytes(writer, "T(")?;
         let tag: Debug = self.tag;
         tag.WriteDebug(writer, spec)?;
@@ -96,14 +96,14 @@ func Spec(text: char8[..]) -> FormatSpec {
 func RenderHashMap(map: &HashMap<int32, int32>, into: var char8[..]) -> uint {
     var writer = BufferWriter(into);
     let sink: &var TextWriter = writer;
-    Assert(WriteHashMapDebug<int32, int32>(sink, map, FormatSpec::Plain()).IsSuccess(), "the map is shown");
+    Assert(Succeeded(WriteHashMapDebug<int32, int32>(sink, map, FormatSpec::Plain())), "the map is shown");
     return writer.Length();
 }
 
 func RenderHashSet(set: &HashSet<int32>, into: var char8[..]) -> uint {
     var writer = BufferWriter(into);
     let sink: &var TextWriter = writer;
-    Assert(WriteHashSetDebug<int32>(sink, set, FormatSpec::Plain()).IsSuccess(), "the set is shown");
+    Assert(Succeeded(WriteHashSetDebug<int32>(sink, set, FormatSpec::Plain())), "the set is shown");
     return writer.Length();
 }
 
@@ -111,7 +111,7 @@ func ShownTreeMap(map: &TreeMap<int32, int32>, spec: FormatSpec, expected: char8
     var storage: char8[256];
     var writer = BufferWriter((@storage[0])[..256]);
     let sink: &var TextWriter = writer;
-    if WriteTreeMapDebug<int32, int32>(sink, map, spec).IsError() { return false; }
+    if Failed(WriteTreeMapDebug<int32, int32>(sink, map, spec)) { return false; }
     return Same(writer.Written(), expected);
 }
 
@@ -119,7 +119,7 @@ func ShownTreeSet(set: &TreeSet<int32>, spec: FormatSpec, expected: char8[..]) -
     var storage: char8[256];
     var writer = BufferWriter((@storage[0])[..256]);
     let sink: &var TextWriter = writer;
-    if WriteTreeSetDebug<int32>(sink, set, spec).IsError() { return false; }
+    if Failed(WriteTreeSetDebug<int32>(sink, set, spec)) { return false; }
     return Same(writer.Written(), expected);
 }
 
@@ -128,7 +128,7 @@ func ShownError(error: CollectionError, spec: FormatSpec, expected: char8[..]) -
     var writer = BufferWriter((@storage[0])[..128]);
     let sink: &var TextWriter = writer;
     let shown: Display = error;
-    if shown.WriteDisplay(sink, spec).IsError() { return false; }
+    if Failed(shown.WriteDisplay(sink, spec)) { return false; }
     return Same(writer.Written(), expected);
 }
 
@@ -137,7 +137,7 @@ func InspectedError(error: CollectionError, spec: FormatSpec, expected: char8[..
     var writer = BufferWriter((@storage[0])[..128]);
     let sink: &var TextWriter = writer;
     let shown: Debug = error;
-    if shown.WriteDebug(sink, spec).IsError() { return false; }
+    if Failed(shown.WriteDebug(sink, spec)) { return false; }
     return Same(writer.Written(), expected);
 }
 
@@ -259,9 +259,9 @@ func Main() -> int {
     var ownedStorage: char8[128];
     var ownedWriter = BufferWriter((@ownedStorage[0])[..128]);
     let ownedSink: &var TextWriter = ownedWriter;
-    Assert(WriteTreeMapDebug<int32, Tracked>(ownedSink, owning, plain).IsSuccess(), "a move-only map is shown");
+    Assert(Succeeded(WriteTreeMapDebug<int32, Tracked>(ownedSink, owning, plain)), "a move-only map is shown");
     Assert(destroyed == 0i32, "and nothing was destroyed to show it");
-    Assert(WriteTreeMapDebug<int32, Tracked>(ownedSink, owning, plain).IsSuccess(), "so it can be shown again");
+    Assert(Succeeded(WriteTreeMapDebug<int32, Tracked>(ownedSink, owning, plain)), "so it can be shown again");
     Assert(destroyed == 0i32, "still destroying nothing");
     Assert(Same(ownedWriter.Written(), "{1: T(1), 2: T(2)}{1: T(1), 2: T(2)}"), "twice, identically");
     Assert(owning.Length() == 2u, "and the map still holds both entries");
@@ -273,7 +273,7 @@ func Main() -> int {
     let refused = WriteTreeMapDebug<int32, int32>(tightSink, ordered, plain);
     let overflowed = match refused {
         .Success(_) => false,
-        .Error(reason) => match reason { .InsufficientCapacity => true, else => false }
+        .Failure(reason) => match reason { .InsufficientCapacity => true, else => false }
     };
     Assert(overflowed, "an ordered map reports a destination without room");
 
@@ -282,7 +282,7 @@ func Main() -> int {
     let alsoRefused = WriteHashMapDebug<int32, int32>(tighterSink, hashed, plain);
     let alsoOverflowed = match alsoRefused {
         .Success(_) => false,
-        .Error(reason) => match reason { .InsufficientCapacity => true, else => false }
+        .Failure(reason) => match reason { .InsufficientCapacity => true, else => false }
     };
     Assert(alsoOverflowed, "and so does a hash map");
     Assert(tighter.Length() <= 6u, "having written no more than it had");
@@ -313,7 +313,7 @@ func Main() -> int {
     let truncated = described.WriteDisplay(refusalSink, Spec(".3"));
     let unsupported = match truncated {
         .Success(_) => false,
-        .Error(reason) => match reason { .UnsupportedRequest => true, else => false }
+        .Failure(reason) => match reason { .UnsupportedRequest => true, else => false }
     };
     Assert(unsupported, "a precision is refused rather than applied");
     Assert(refusalWriter.Length() == 0u, "and nothing was written before refusing");

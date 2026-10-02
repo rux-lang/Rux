@@ -3,7 +3,7 @@
 // It cannot refuse a table defined twice — that needs the tree it is avoiding — and pretending otherwise would
 // be worse than saying so.
 
-import Core::{ Assert, Option };
+import Core::{ Assert, Succeeded };
 import Text::{ BufferWriter, FormatSpec, TextWriter };
 import Toml::{ TomlEvent, TomlEventReader, TomlParseError, TomlParseFailure };
 
@@ -36,7 +36,7 @@ func FailsWith(text: char8[..], into: var char8[..]) -> uint {
     if !reader.Failure().TryIntoValue(@failure) { return 0; }
     var writer = BufferWriter(into);
     let sink: &var TextWriter = writer;
-    Assert(failure.WriteDebug(sink, FormatSpec::Plain()).IsSuccess(), "a failure renders");
+    Assert(Succeeded(failure.WriteDebug(sink, FormatSpec::Plain())), "a failure renders");
     return writer.Length();
 }
 

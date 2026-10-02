@@ -17,7 +17,6 @@
 // of the rounding can run the whole length of the digits — 9.99 at one decimal is 10.0, not 9.10 — so it is
 // propagated rather than applied to the last digit alone.
 
-import Core::{ Result, Unit };
 
 /// The largest precision a narrow float renders at.
 ///
@@ -261,14 +260,14 @@ pub func WritePrecisionFloat(cursor: &var ByteCursor, parts: FloatParts, precisi
 /// @param parts the value taken apart
 /// @returns success when the whole rendering was accepted
 /// @see https://rux-lang.dev/docs/api/format/write-precision
-pub func WritePrecision(writer: &var TextWriter, spec: FormatSpec, parts: FloatParts) -> Result<Unit, FormatError> {
+pub func WritePrecision(writer: &var TextWriter, spec: FormatSpec, parts: FloatParts) -> ! FormatError {
     if spec.Precision() > MaximumPrecision {
-        return Result::Error<Unit, FormatError>(FormatError::UnsupportedRequest);
+        fail FormatError::UnsupportedRequest;
     }
     var storage: char8[1426];
     var cursor = ByteCursor((@storage[2])[..MaximumFixedLength]);
     if !WritePrecisionFloat(cursor, parts, spec.Precision()) {
-        return Result::Error<Unit, FormatError>(FormatError::UnsupportedRequest);
+        fail FormatError::UnsupportedRequest;
     }
     var rendered = cursor.Written();
     if spec.ShowsSign() && rendered.length > 0 && rendered.data[0] != c8'-' {

@@ -8,7 +8,6 @@
 // wants. `char16[..]` and `char32[..]` each need a transcoding printer and have one in `WideCharacterSlice.rux`,
 // where the decisions about units that are not characters live.
 
-import Core::{ Result, Unit };
 import Text::{ Debug, Display, FormatError, FormatSpec, RejectStyle, TextWriter };
 
 extend char8[..] : Display {
@@ -21,7 +20,7 @@ extend char8[..] : Display {
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/character-slice/write-display
-    pub func WriteDisplay(self: &char8[..], writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+    pub func WriteDisplay(self: &char8[..], writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         RejectStyle(spec)?;
         return WriteAligned(writer, spec, (self.data)[..self.length], false);
     }
@@ -40,7 +39,7 @@ extend char8[..] : Debug {
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/character-slice/write-debug
-    pub func WriteDebug(self: &char8[..], writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
+    pub func WriteDebug(self: &char8[..], writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         WriteAscii(writer, c8'"')?;
         self.WriteDisplay(writer, spec)?;
         return WriteAscii(writer, c8'"');
