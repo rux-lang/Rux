@@ -11,6 +11,7 @@ rux_add_component(RuxLowering
     AstToHir/AstToHirAllocationMath.cpp
     AstToHir/AstToHirZeroization.cpp
     AstToHir/AstToHirIteration.cpp
+    AstToHir/AstToHirNative.cpp
     AstToHir/AstToHirPropagation.cpp
     AstToHir/AstToHirStatements.cpp
     AstToHir/AstToHirTypes.cpp

@@ -288,6 +288,11 @@ HirFunc AstToHirContext::LowerFunc(const FuncDecl &d, bool isMethod,
     std::optional<HirBlock> body;
     if (d.body) {
         body = LowerBlock(*d.body);
+        // Falling off the end of a function that completes without a value returns its completion, with the same
+        // destruction of what the function still owns as any other return.
+        if (CompletesWithoutValue(retType)) {
+            body->stmts.push_back(LowerFunctionReturn(CompletionValue(retType, d.location), d.location));
+        }
         AppendCurrentScopeCleanups(*body);
     }
     HirFunc hf;

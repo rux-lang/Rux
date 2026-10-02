@@ -507,6 +507,12 @@ std::optional<TypeRef> AstToHirContext::InterfaceImplementationType(const TypeRe
 }
 
 HirExprPtr AstToHirContext::LowerExprAs(const Expr &expression, const TypeRef &targetType) {
+    // A native destination builds its levels explicitly, by the route analysis accepted.
+    if (IsNativeType(targetType) || dynamic_cast<const NativeConstructExpr *>(&expression) ||
+        dynamic_cast<const NoneExpr *>(&expression)) {
+        return LowerNativeAs(expression, targetType);
+    }
+
     // A signed literal is one contextual value. Lowering its positive magnitude at the default int width before
     // negating it loses high words, and cannot represent the magnitude of the target's most negative value.
     if (const auto *unary = dynamic_cast<const UnaryExpr *>(&expression);
@@ -951,7 +957,10 @@ HirExprPtr AstToHirContext::LowerAggregateExpr(const Expr &expression) {
             patternBindingsOwnPayload = armsOwnPayload;
             loweredArm.pattern = LowerPattern(*arm.pattern, lowered->subject->type);
             patternBindingsOwnPayload = savedOwnership;
-            loweredArm.body = LowerExpr(*arm.body);
+            // An arm converts to the match's type the way analysis accepted it; a diverging arm yields nothing.
+            loweredArm.body = IsNativeType(lowered->type) && !dynamic_cast<const DivergeExpr *>(arm.body.get())
+                                ? LowerExprAs(*arm.body, lowered->type)
+                                : LowerExpr(*arm.body);
             loweredArm.cleanups = CurrentScopeCleanups();
             PopScope();
             lowered->arms.push_back(std::move(loweredArm));

@@ -515,6 +515,12 @@ HirExprPtr AstToHirContext::LowerExpr(const Expr &expr) {
         he->block = LowerBlock(*e->block);
         return finish(std::move(he));
     }
+    if (dynamic_cast<const NativeConstructExpr *>(&expr) || dynamic_cast<const NoneExpr *>(&expr)) {
+        return finish(LowerPendingNative(expr));
+    }
+    if (const auto *e = dynamic_cast<const DivergeExpr *>(&expr)) {
+        return LowerDiverge(*e);
+    }
     if (auto *e = dynamic_cast<const SpreadExpr *>(&expr)) {
         return finish(LowerExpr(*e->operand));
     }

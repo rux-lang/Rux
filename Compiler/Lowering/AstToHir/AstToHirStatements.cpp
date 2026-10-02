@@ -277,8 +277,15 @@ HirStmtPtr AstToHirContext::LowerStmt(const Stmt &stmt) {
     }
 
     if (const auto *statement = dynamic_cast<const ReturnStmt *>(&stmt)) {
-        return LowerFunctionReturn(statement->value ? LowerExprAs(**statement->value, currentReturnType) : nullptr,
-                                   statement->location);
+        HirExprPtr value = statement->value ? LowerExprAs(**statement->value, currentReturnType) : nullptr;
+        if (!value && CompletesWithoutValue(currentReturnType)) {
+            value = CompletionValue(currentReturnType, statement->location);
+        }
+        return LowerFunctionReturn(std::move(value), statement->location);
+    }
+
+    if (const auto *statement = dynamic_cast<const FailStmt *>(&stmt)) {
+        return LowerFail(statement->value.get(), statement->location);
     }
 
     if (const auto *statement = dynamic_cast<const BreakStmt *>(&stmt)) {

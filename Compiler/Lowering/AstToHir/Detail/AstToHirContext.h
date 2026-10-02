@@ -2,10 +2,13 @@
 
 #include "Lowering/AstToHir/AstToHir.h"
 #include "Lowering/AstToHir/Detail/CleanupPlanner.h"
+#include "Types/NativeConversion.h"
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -145,6 +148,44 @@ protected:
     LowerOutcomeVariantPattern(SourceLocation location, const std::string &variantName, const std::string &caseName,
                                const TypeRef &operandType, const std::string &bindingName, const TypeRef &bindingType,
                                bool hasPayload);
+    // Native construction and conversion (AstToHirNative.cpp).
+    /// Distinguishes the hidden payload bindings native widening introduces.
+    std::size_t nativeOrdinal = 0;
+    /// The destination the native constructor or `none` being lowered is built as, set by its expected-type context.
+    std::optional<TypeRef> pendingNativeTarget;
+    [[nodiscard]] static bool IsNativeType(const TypeRef &type);
+    /// Whether `return;` and falling off the end produce a value: the unit, or a fallible whose success is the unit.
+    [[nodiscard]] static bool CompletesWithoutValue(const TypeRef &returnType);
+    [[nodiscard]] static HirExprPtr MakeUnitValue(SourceLocation location);
+    /// What `return;` returns from a function completing without a value: `()` or `.Success(())`.
+    [[nodiscard]] HirExprPtr CompletionValue(const TypeRef &returnType, SourceLocation location);
+    /// One native level built as case `tag`, carrying `payload` unless the case has none.
+    [[nodiscard]] HirExprPtr MakeNativeCase(const TypeRef &type, std::uint64_t tag, HirExprPtr payload,
+                                            SourceLocation location);
+    [[nodiscard]] std::unique_ptr<HirEnumPattern> NativeCasePattern(const TypeRef &type, std::uint64_t tag,
+                                                                    const std::optional<TypeRef> &payloadType,
+                                                                    HirPatternPtr payload, SourceLocation location);
+    /// A hidden binding read as the value it holds, moved out when its type needs a move plan.
+    [[nodiscard]] HirExprPtr TransferredBinding(const std::string &name, const TypeRef &type, SourceLocation location);
+    /// A match over `value` that rebuilds every alternative as `destination`, converting payloads that differ.
+    [[nodiscard]] HirExprPtr
+    RebuildNativeLevel(HirExprPtr value, const TypeRef &destination,
+                       const std::function<HirExprPtr(HirExprPtr, const TypeRef &, const TypeRef &)> &convertPayload,
+                       SourceLocation location);
+    /// `value` converted to `destination` by the one route the native conversion rules select.
+    [[nodiscard]] HirExprPtr ConvertNative(HirExprPtr value, const TypeRef &destination, SourceLocation location);
+    [[nodiscard]] HirExprPtr ApplyNativeRoute(HirExprPtr value, const TypeRef &destination,
+                                              std::span<const NativeConversionStep> route, SourceLocation location);
+    [[nodiscard]] HirExprPtr LowerNoneAs(const TypeRef &targetType, SourceLocation location);
+    [[nodiscard]] HirExprPtr LowerNativeConstruct(const NativeConstructExpr &construct, const TypeRef &targetType);
+    /// `expression` lowered as a value of the native type `targetType`.
+    [[nodiscard]] HirExprPtr LowerNativeAs(const Expr &expression, const TypeRef &targetType);
+    [[nodiscard]] HirExprPtr LowerPendingNative(const Expr &expression);
+    /// `fail value`: an ordinary return of the enclosing function's outer failure.
+    [[nodiscard]] HirStmtPtr LowerFail(const Expr *value, SourceLocation location);
+    /// A diverging arm, mapping, or fallback body: the statement it spells, in a block that yields no value.
+    [[nodiscard]] HirExprPtr LowerDiverge(const DivergeExpr &expression);
+
     [[nodiscard]] HirExprPtr LowerCheckedArithmeticCall(const std::string &intrinsicName, const CallExpr &call);
     [[nodiscard]] HirExprPtr LowerZeroizeCall(const CallExpr &call);
     [[nodiscard]] HirStmtPtr LowerIteratorFor(const ForStmt &statement, const ResolvedIteration &fact);
