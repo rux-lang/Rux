@@ -7,6 +7,7 @@
 #include "Types/PrimitiveCatalog.h"
 
 #include <format>
+#include <functional>
 
 namespace Rux::SemanticDetail {
 namespace {
@@ -765,10 +766,18 @@ TypeRef AnalysisContext::CheckBinary(const TokenKind op, const TypeRef &leftType
     case TK::GreaterEqual: {
         // Both operands of a native comparison have one normalized type. Only an operand with no type of its own --
         // `none`, a native constructor, or an unsuffixed literal -- takes the other operand's type; an operand that
-        // already has a type is never injected, widened, or wrapped by a comparison.
+        // already has a type is never injected, widened, or wrapped by a comparison. A constructor around an
+        // unsuffixed literal, as in `index == .Some(6)`, has no type of its own either.
         if (MentionsNativeType(left) || MentionsNativeType(right)) {
+            std::function<bool(const Expr &)> contextual = [&](const Expr &expression) {
+                if (IsUnsuffixedIntegerLiteral(expression)) {
+                    return true;
+                }
+                const auto *construct = dynamic_cast<const NativeConstructExpr *>(&expression);
+                return construct && construct->operand && contextual(*construct->operand);
+            };
             const auto completes = [&](const Expr &expression, const TypeRef &type, const TypeRef &other) {
-                const bool untyped = type.IsIncompleteNative() || IsUnsuffixedIntegerLiteral(expression);
+                const bool untyped = type.IsIncompleteNative() || contextual(expression);
                 return untyped && !other.IsIncompleteNative() && CanAssignExprTo(expression, type, other);
             };
             TypeRef compared = left;

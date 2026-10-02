@@ -8,6 +8,7 @@
 #include <cassert>
 #include <cctype>
 #include <cstdlib>
+#include <functional>
 #include <string_view>
 #include <utility>
 
@@ -232,13 +233,18 @@ HirExprPtr AstToHirContext::LowerBasicExpr(const Expr &expression) {
             const TypeRef leftType = leftFact ? SubstituteCurrentType(*leftFact) : TypeRef::MakeUnknown();
             const TypeRef rightType = rightFact ? SubstituteCurrentType(*rightFact) : TypeRef::MakeUnknown();
             if (leftFact && rightFact && (MentionsNativeType(leftType) || MentionsNativeType(rightType))) {
-                const auto untyped = [](const Expr &operand, const TypeRef &type) {
+                std::function<bool(const Expr &)> contextual = [&](const Expr &operand) {
+                    if (const auto *construct = dynamic_cast<const NativeConstructExpr *>(&operand)) {
+                        return construct->operand != nullptr && contextual(*construct->operand);
+                    }
                     const auto *literal = dynamic_cast<const LiteralExpr *>(&operand);
-                    const bool unsuffixed = literal &&
-                                            (literal->token.kind == TokenKind::IntLiteral ||
-                                             literal->token.kind == TokenKind::FloatLiteral) &&
-                                            NumericLiteralSuffix(literal->token.text).empty();
-                    return type.MentionsIncompleteNative() || unsuffixed;
+                    return literal &&
+                           (literal->token.kind == TokenKind::IntLiteral ||
+                            literal->token.kind == TokenKind::FloatLiteral) &&
+                           NumericLiteralSuffix(literal->token.text).empty();
+                };
+                const auto untyped = [&](const Expr &operand, const TypeRef &type) {
+                    return type.MentionsIncompleteNative() || contextual(operand);
                 };
                 const TypeRef compared =
                     leftType == rightType || !untyped(*binary->left, leftType) ? leftType : rightType;

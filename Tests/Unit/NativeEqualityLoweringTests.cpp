@@ -86,6 +86,9 @@ TEST_CASE("an untyped operand is built as the other operand's type") {
         func Literal(value: int64 | bool) -> bool {
             return 5 == value;
         }
+        func Wrapped(index: uint?) -> bool {
+            return index == .Some(6);
+        }
     )");
     const HirAggregateEqualityExpr &constructor = ReturnedEquality(package, "Constructor");
     const auto *built = dynamic_cast<const HirEnumConstructExpr *>(constructor.right.get());
@@ -100,4 +103,12 @@ TEST_CASE("an untyped operand is built as the other operand's type") {
     CHECK_EQ(member->discriminant, "1");
     REQUIRE_EQ(member->payloads.size(), 1);
     CHECK_EQ(member->payloads.front()->type, TypeRef::MakeInt64());
+
+    // A constructor around an unsuffixed literal has no type of its own either, so `.Some(6)` is a `uint?`.
+    const HirAggregateEqualityExpr &wrapped = ReturnedEquality(package, "Wrapped");
+    const auto *present = dynamic_cast<const HirEnumConstructExpr *>(wrapped.right.get());
+    REQUIRE(present != nullptr);
+    CHECK_EQ(present->type, wrapped.left->type);
+    REQUIRE_EQ(present->payloads.size(), 1);
+    CHECK_EQ(present->payloads.front()->type, wrapped.left->type.inner.front());
 }
