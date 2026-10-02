@@ -130,11 +130,7 @@ func Main() -> int {
     let wrappedMemory: Display = FormatError::TextFailure(TextFailureKind::OutOfMemory);
     Assert(Shown(wrappedMemory, "out of memory"), "which holds for every kind it can wrap");
 
-    // Utf8Error, whose success case is the well-formed one rather than an absence.
-    let wellFormed: Display = Utf8Error::None;
-    Assert(Shown(wellFormed, "well-formed UTF-8"), "the success case names what it found, not what it did not");
-    let wellFormedDebug: Debug = Utf8Error::None;
-    Assert(Inspected(wellFormedDebug, "Utf8Error::None"), "named");
+    // Utf8Error, every case of which names what was wrong with the bytes.
     let truncated: Display = Utf8Error::Truncated;
     Assert(Shown(truncated, "truncated UTF-8 sequence"), "a sequence the bytes ran out of");
     let truncatedDebug: Debug = Utf8Error::Truncated;

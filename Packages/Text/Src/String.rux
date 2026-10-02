@@ -131,10 +131,14 @@ extend String {
     /// @returns a string over those bytes, or an empty one when they are not valid UTF-8
     /// @see https://rux-lang.dev/docs/api/text/string/from-bytes
     pub func FromBytes(allocator: Allocator, bytes: char8[..], error: *var TextError) -> String {
-        var failureIndex: uint = 0;
-        if Validate(bytes, @failureIndex).IsError() {
-            *error = TextError::InvalidUtf8;
-            return String(allocator);
+        match Validate(bytes) {
+            .Success(_) => {
+            },
+            .Failure(problem) => {
+
+                *error = TextError::InvalidUtf8;
+                return String(allocator);
+            }
         }
         return String::FromValidated(allocator, bytes, error);
     }

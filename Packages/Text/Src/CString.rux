@@ -144,10 +144,14 @@ extend CString {
             length = length + 1;
         }
         let bytes = (raw)[..length];
-        var failureIndex: uint = 0;
-        if Validate(bytes, @failureIndex).IsError() {
-            *error = TextError::InvalidUtf8;
-            return Option::None<CString>();
+        match Validate(bytes) {
+            .Success(_) => {
+            },
+            .Failure(problem) => {
+
+                *error = TextError::InvalidUtf8;
+                return Option::None<CString>();
+            }
         }
         let checked = StringView::FromValidated(bytes);
         return CString::FromView(allocator, checked, error);

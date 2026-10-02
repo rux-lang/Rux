@@ -46,8 +46,7 @@ extend StringView {
     /// @returns a view over those bytes, or `None` when they are not valid UTF-8
     /// @see https://rux-lang.dev/docs/api/text/string-view/from-bytes
     pub func FromBytes(bytes: char8[..]) -> Option<StringView> {
-        var failureIndex: uint = 0;
-        if Validate(bytes, @failureIndex).IsError() { return Option::None<StringView>(); }
+        Validate(bytes) catch { else => return Option::None<StringView>() };
         return Option::Some<StringView>(StringView { bytes: bytes });
     }
 
@@ -139,8 +138,8 @@ extend StringView {
     /// @see https://rux-lang.dev/docs/api/text/string-view/scalar-at
     pub func ScalarAt(self: &StringView, index: uint) -> Option<char32> {
         var scalar = 0u32 as char32;
-        var width: uint = 0;
-        if DecodeAt(self.bytes, index, @scalar, @width).IsError() { return Option::None<char32>(); }
+        let decoded = DecodeAt(self.bytes, index) catch { else => return Option::None<char32>() };
+        scalar = decoded.scalar;
         return Option::Some<char32>(scalar);
     }
 
@@ -205,9 +204,15 @@ extend ScalarIterator {
     pub func Next(self: &var ScalarIterator) -> Option<char32> {
         var scalar = 0u32 as char32;
         var width: uint = 0;
-        if DecodeAt(self.bytes, self.cursor, @scalar, @width).IsError() {
-            self.cursor = self.bytes.length;
-            return Option::None<char32>();
+        match DecodeAt(self.bytes, self.cursor) {
+            .Success(decoded) => {
+                scalar = decoded.scalar;
+                width = decoded.width;
+            },
+            .Failure(_) => {
+                self.cursor = self.bytes.length;
+                return Option::None<char32>();
+            }
         }
         self.cursor = self.cursor + width;
         return Option::Some<char32>(scalar);

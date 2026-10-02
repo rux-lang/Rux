@@ -95,9 +95,7 @@ when #target.os == .Windows {
                 var encoded: char8[4];
                 var written: uint = 0;
                 let sink = (@encoded[0])[..4];
-                if Encode(scalar as char32, sink, @written).IsError() {
-                    fail FormatError::UnsupportedRequest;
-                }
+                written = Encode(scalar as char32, sink) catch { else => fail FormatError::UnsupportedRequest };
                 WriteEscaped(writer, (@encoded[0])[..written])?;
                 index = index + width;
             }
@@ -138,18 +136,21 @@ else {
         var index: uint = 0;
         var runStart: uint = 0;
         while index < units.length {
-            var scalar = 0u32 as char32;
             var width: uint = 0;
-            if DecodeAt(units, index, @scalar, @width).IsError() {
-                if index > runStart {
-                    WriteBytes(writer, (@units.data[runStart])[..index - runStart])?;
+            match DecodeAt(units, index) {
+                .Success(decoded) => {
+                    width = decoded.width;
+
+                    index = index + width;
+                },
+                .Failure(_) => {
+                    if index > runStart {
+                        WriteBytes(writer, (@units.data[runStart])[..index - runStart])?;
+                    }
+                    WriteScalar(writer, ReplacementScalar as char32)?;
+                    index = index + 1;
+                    runStart = index;
                 }
-                WriteScalar(writer, ReplacementScalar as char32)?;
-                index = index + 1;
-                runStart = index;
-            }
-            else {
-                index = index + width;
             }
         }
         if index > runStart {
@@ -167,18 +168,21 @@ else {
         var index: uint = 0;
         var runStart: uint = 0;
         while index < units.length {
-            var scalar = 0u32 as char32;
             var width: uint = 0;
-            if DecodeAt(units, index, @scalar, @width).IsError() {
-                if index > runStart {
-                    WriteEscaped(writer, (@units.data[runStart])[..index - runStart])?;
+            match DecodeAt(units, index) {
+                .Success(decoded) => {
+                    width = decoded.width;
+
+                    index = index + width;
+                },
+                .Failure(_) => {
+                    if index > runStart {
+                        WriteEscaped(writer, (@units.data[runStart])[..index - runStart])?;
+                    }
+                    WriteByteEscape(writer, units.data[index] as uint32)?;
+                    index = index + 1;
+                    runStart = index;
                 }
-                WriteByteEscape(writer, units.data[index] as uint32)?;
-                index = index + 1;
-                runStart = index;
-            }
-            else {
-                index = index + width;
             }
         }
         if index > runStart {

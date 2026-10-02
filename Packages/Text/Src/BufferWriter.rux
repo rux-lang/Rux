@@ -121,10 +121,7 @@ extend BufferWriter : TextWriter {
         if bytes.length > self.room.length - self.length {
             fail FormatError::InsufficientCapacity;
         }
-        var failure: uint = 0;
-        if Validate(bytes, @failure).IsError() {
-            fail FormatError::TextFailure(TextFailureKind::InvalidUtf8);
-        }
+        Validate(bytes) catch { else => fail FormatError::TextFailure(TextFailureKind::InvalidUtf8) };
         var index: uint = 0;
         while index < bytes.length {
             self.room[self.length + index] = bytes.data[index];

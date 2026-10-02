@@ -180,11 +180,9 @@ func Truncated(view: &StringView, spec: FormatSpec) -> char8[..] {
     var kept: uint = 0;
     var index: uint = 0;
     while index < bytes.length && kept < spec.Precision() {
-        var scalar = 0u32 as char32;
         var width: uint = 0;
-        if DecodeAt(bytes, index, @scalar, @width).IsError() {
-            return (bytes.data)[..index];
-        }
+        let decoded = DecodeAt(bytes, index) catch { else => return (bytes.data)[..index] };
+        width = decoded.width;
         index = index + width;
         kept = kept + 1;
     }

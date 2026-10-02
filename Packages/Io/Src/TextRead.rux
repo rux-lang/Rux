@@ -75,10 +75,19 @@ pub func ReadTextLine(reader: &var BufferedReader, builder: &var StringBuilder, 
                 joined[carryLength + extra] = held.data[extra];
                 extra = extra + 1;
             }
-            var scalar = 0u32 as char32;
             var width: uint = 0;
-            let verdict = DecodeAt(joined[0..carryLength + borrowed], 0, @scalar, @width);
-            if verdict == Utf8Error::Truncated && borrowed == held.length {
+            var decodedWhole = false;
+            var reason = Utf8Error::InvalidStart;
+            match DecodeAt(joined[0..carryLength + borrowed], 0) {
+                .Success(decoded) => {
+                    width = decoded.width;
+                    decodedWhole = true;
+                },
+                .Failure(problem) => {
+                    reason = problem;
+                }
+            }
+            if !decodedWhole && reason == Utf8Error::Truncated && borrowed == held.length {
                 // Still short — the source is trickling bytes. Take them into the carry and ask again.
                 var taken: uint = 0;
                 while taken < borrowed {
@@ -88,7 +97,7 @@ pub func ReadTextLine(reader: &var BufferedReader, builder: &var StringBuilder, 
                 }
                 reader.Consume(held.length);
             }
-            else if verdict != Utf8Error::None {
+            else if !decodedWhole {
                 failure = IoErrorKind::InvalidText;
                 carryLength = 0;
             }
@@ -157,10 +166,18 @@ pub func ReadTextLine(reader: &var BufferedReader, builder: &var StringBuilder, 
 
             if failure == IoErrorKind::None {
                 let piece = (held.data)[..content];
-                var probe: uint = 0;
-                let verdict = Validate(piece, @probe);
+                var probe = content;
+                var valid = true;
+                var reason = Utf8Error::InvalidStart;
+                Validate(piece) catch {
+                    problem => {
+                        probe = problem.index;
+                        reason = problem.reason;
+                        valid = false;
+                    }
+                };
                 var settled = content;
-                if verdict == Utf8Error::Truncated && !sawFeed && !heldBackCr {
+                if !valid && reason == Utf8Error::Truncated && !sawFeed && !heldBackCr {
                     // The chunk ends inside a sequence. The validated prefix is settled; the started
                     // sequence waits in the carry for the next refill to finish it.
                     settled = probe;
@@ -171,7 +188,7 @@ pub func ReadTextLine(reader: &var BufferedReader, builder: &var StringBuilder, 
                         stash = stash + 1;
                     }
                 }
-                else if verdict != Utf8Error::None {
+                else if !valid {
                     failure = IoErrorKind::InvalidText;
                 }
 

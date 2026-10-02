@@ -244,12 +244,17 @@ extend OsString {
             while index < text.length {
                 var scalar = 0u32 as char32;
                 var width: uint = 0;
-                if DecodeAt(text, index, @scalar, @width).IsError() {
-                    index = text.length;
-                }
-                else {
-                    needed = needed + ((scalar as uint32) >= 0x10000 ? 2u : 1u);
-                    index = index + width;
+                match DecodeAt(text, index) {
+                    .Success(decoded) => {
+                        scalar = decoded.scalar;
+                        width = decoded.width;
+
+                        needed = needed + ((scalar as uint32) >= 0x10000 ? 2u : 1u);
+                        index = index + width;
+                    },
+                    .Failure(_) => {
+                        index = text.length;
+                    }
                 }
             }
 
@@ -270,22 +275,27 @@ extend OsString {
             while index < text.length {
                 var scalar = 0u32 as char32;
                 var width: uint = 0;
-                if DecodeAt(text, index, @scalar, @width).IsError() {
-                    index = text.length;
-                }
-                else {
-                    let value = scalar as uint32;
-                    if value >= 0x10000 {
-                        let offset = value - 0x10000;
-                        units[at] = (0xD800 + (offset >> 10)) as uint16;
-                        units[at + 1] = (0xDC00 + (offset & 0x3FF)) as uint16;
-                        at = at + 2;
+                match DecodeAt(text, index) {
+                    .Success(decoded) => {
+                        scalar = decoded.scalar;
+                        width = decoded.width;
+
+                        let value = scalar as uint32;
+                        if value >= 0x10000 {
+                            let offset = value - 0x10000;
+                            units[at] = (0xD800 + (offset >> 10)) as uint16;
+                            units[at + 1] = (0xDC00 + (offset & 0x3FF)) as uint16;
+                            at = at + 2;
+                        }
+                        else {
+                            units[at] = value as uint16;
+                            at = at + 1;
+                        }
+                        index = index + width;
+                    },
+                    .Failure(_) => {
+                        index = text.length;
                     }
-                    else {
-                        units[at] = value as uint16;
-                        at = at + 1;
-                    }
-                    index = index + width;
                 }
             }
             return OsString { data: units, length: needed, allocator: allocator };

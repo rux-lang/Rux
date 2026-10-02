@@ -244,7 +244,6 @@ extend Utf8Error : Display {
     pub func WriteDisplay(self: &Utf8Error, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         AcceptsErrorSpec(spec)?;
         return match self {
-            .None => WriteBytes(writer, "well-formed UTF-8"),
             .Truncated => WriteBytes(writer, "truncated UTF-8 sequence"),
             .InvalidStart => WriteBytes(writer, "invalid UTF-8 start byte"),
             .InvalidContinuation => WriteBytes(writer, "invalid UTF-8 continuation byte")
@@ -265,7 +264,6 @@ extend Utf8Error : Debug {
     pub func WriteDebug(self: &Utf8Error, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         AcceptsErrorSpec(spec)?;
         return match self {
-            .None => WriteBytes(writer, "Utf8Error::None"),
             .Truncated => WriteBytes(writer, "Utf8Error::Truncated"),
             .InvalidStart => WriteBytes(writer, "Utf8Error::InvalidStart"),
             .InvalidContinuation => WriteBytes(writer, "Utf8Error::InvalidContinuation")

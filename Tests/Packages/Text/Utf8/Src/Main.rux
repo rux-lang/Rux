@@ -10,11 +10,13 @@ import Text::{ CountScalars, DecodeAt, Encode, EncodedLength, IsScalarValue, Utf
 
 // Whether a run of bytes is refused, and refused for the stated reason.
 func Refuses(bytes: char8[..], expected: Utf8Error) -> bool {
-    var failureIndex: uint = 0;
-    return Validate(bytes, @failureIndex) == expected;
+    return match Validate(bytes) {
+        .Success(_) => false,
+        .Failure(problem) => problem.reason == expected
+    };
 }
 
-func Main() -> int {
+func Main() -> ! Utf8Error {
     // The widths, at each boundary and one either side.
     Assert(EncodedLength(0u32 as char32) == 1, "U+0000 takes one byte");
     Assert(EncodedLength(0x7Fu32 as char32) == 1, "and so does the last one-byte value");
@@ -36,16 +38,14 @@ func Main() -> int {
     var index: uint = 0;
     while index < 9 {
         let value = samples[index];
-        var written: uint = 0;
         let room = (@storage[0])[..8];
-        Assert(Encode(value as char32, room, @written) == Utf8Error::None, "every scalar value encodes");
+        // Every scalar value encodes, and decodes again.
+        let written = Encode(value as char32, room)?;
         Assert(written == EncodedLength(value as char32), "in the width the table says");
 
-        var decoded = 0u32 as char32;
-        var width: uint = 0;
-        Assert(DecodeAt(storage[0..written], 0, @decoded, @width) == Utf8Error::None, "and decodes again");
-        Assert((decoded as uint32) == value, "to the value it started as");
-        Assert(width == written, "having read exactly what was written");
+        let decoded = DecodeAt(storage[0..written], 0)?;
+        Assert((decoded.scalar as uint32) == value, "to the value it started as");
+        Assert(decoded.width == written, "having read exactly what was written");
         Assert(CountScalars(storage[0..written]) == 1, "and counts as one scalar value");
         index = index + 1;
     }
@@ -91,5 +91,4 @@ func Main() -> int {
     storage[1] = 0x82u8 as char8;
     Assert(Refuses(storage[0..2], Utf8Error::Truncated), "and a sequence that runs out is truncated, not invalid");
 
-    return 0;
 }

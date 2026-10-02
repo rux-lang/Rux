@@ -18,8 +18,6 @@
 //
 // Every function here works on borrowed bytes and allocates nothing.
 
-import Core::{ Option };
-
 /// The largest Unicode scalar value.
 ///
 /// @see https://rux-lang.dev/docs/api/text/max-scalar-value
@@ -40,16 +38,15 @@ pub const LastSurrogate: uint32 = 0xDFFF;
 /// @see https://rux-lang.dev/docs/api/text/max-encoded-length
 pub const MaxEncodedLength: uint = 4;
 
-/// What was wrong with a byte sequence, or `None` when nothing was.
+/// What was wrong with a byte sequence.
 ///
 /// The cases are distinguished because they mean different things about where the bytes came from. `Truncated` is
 /// what a buffer boundary looks like and may just mean read more; the rest mean the bytes are not UTF-8 and no
-/// amount of reading will change that.
+/// amount of reading will change that. Every case is a failure: the functions here report success through the other
+/// channel of the native fallible they return.
 ///
 /// @see https://rux-lang.dev/docs/api/text/utf8-error
 pub enum Utf8Error: int32 {
-    /// The bytes are well-formed.
-    None = 0,
     /// A sequence starts but the bytes run out before it ends.
     Truncated = 1,
     /// A byte that cannot start a sequence: a continuation byte on its own, or one of the values UTF-8 never uses.
@@ -59,22 +56,24 @@ pub enum Utf8Error: int32 {
     InvalidContinuation = 3
 }
 
-extend Utf8Error {
-    /// Whether this reports well-formed bytes.
-    ///
-    /// @returns whether nothing went wrong
-    /// @see https://rux-lang.dev/docs/api/text/utf8-error/is-ok
-    pub func IsOk(self: Utf8Error) -> bool {
-        return self == Utf8Error::None;
-    }
+/// One scalar value decoded from UTF-8, with the number of bytes it occupied.
+///
+/// @see https://rux-lang.dev/docs/api/text/decoded-scalar
+pub struct DecodedScalar {
+    /// The Unicode scalar value.
+    pub scalar: char32;
+    /// How many bytes it occupied, one through four.
+    pub width: uint;
+}
 
-    /// Whether this reports a problem.
-    ///
-    /// @returns whether something did
-    /// @see https://rux-lang.dev/docs/api/text/utf8-error/is-error
-    pub func IsError(self: Utf8Error) -> bool {
-        return self != Utf8Error::None;
-    }
+/// Where and why a byte sequence stopped being well-formed UTF-8.
+///
+/// @see https://rux-lang.dev/docs/api/text/utf8-failure
+pub struct Utf8Failure {
+    /// What was wrong.
+    pub reason: Utf8Error;
+    /// The offset of the byte that starts the offending sequence.
+    pub index: uint;
 }
 
 /// Whether `value` is a Unicode scalar value: at most `MaxScalarValue`, and not a surrogate half.
@@ -113,25 +112,23 @@ pub func IsContinuation(byte: char8) -> bool {
     return ((byte as uint32) & 0xC0) == 0x80;
 }
 
-/// Writes `scalar` into `into` as UTF-8 and reports how many bytes it took through `written`.
+/// Writes `scalar` into `into` as UTF-8 and reports how many bytes it took.
 ///
-/// `into` is borrowed mutably and must have room for the encoding — at most `MaxEncodedLength` bytes. Reports
-/// `InvalidStart` for a value that is not a scalar value, and `Truncated` when there is not enough room; `written`
-/// is left at zero in both cases and nothing is written.
+/// `into` is borrowed mutably and must have room for the encoding — at most `MaxEncodedLength` bytes. Fails with
+/// `InvalidStart` for a value that is not a scalar value, and `Truncated` when there is not enough room; nothing is
+/// written in either case.
 ///
 /// Cannot allocate. Runs in constant time.
 ///
 /// @param scalar the Unicode scalar value
 /// @param into receives the bytes
-/// @param written receives how many bytes were written
-/// @returns `None` when the encoding was written
+/// @returns how many bytes were written, or why none were
 /// @see https://rux-lang.dev/docs/api/text/encode
-pub func Encode(scalar: char32, into: var char8[..], written: *var uint) -> Utf8Error {
-    *written = 0;
+pub func Encode(scalar: char32, into: var char8[..]) -> uint ! Utf8Error {
     let value = scalar as uint32;
     let width = EncodedLength(scalar);
-    if width == 0 { return Utf8Error::InvalidStart; }
-    if width > into.length { return Utf8Error::Truncated; }
+    if width == 0 { fail Utf8Error::InvalidStart; }
+    if width > into.length { fail Utf8Error::Truncated; }
 
     if width == 1 {
         into[0] = value as char8;
@@ -151,8 +148,7 @@ pub func Encode(scalar: char32, into: var char8[..], written: *var uint) -> Utf8
         into[2] = (0x80 | ((value >> 6) & 0x3F)) as char8;
         into[3] = (0x80 | (value & 0x3F)) as char8;
     }
-    *written = width;
-    return Utf8Error::None;
+    return width;
 }
 
 // The range of second bytes a leading byte admits, which is what forbids overlong forms, surrogate halves and
@@ -203,42 +199,36 @@ func SecondByteRange(leading: uint32, low: *var uint32, high: *var uint32) -> ui
     return 0;
 }
 
-/// Decodes the scalar value starting at `index`, reporting it through `scalar` and its width through `width`.
+/// Decodes the scalar value starting at `index`, reporting it and how many bytes it occupied.
 ///
-/// `bytes` is borrowed. On any error `scalar` is left at U+0000 and `width` at zero, and the caller decides what to
-/// do — a decoder replacing bad input with U+FFFD advances one byte and carries on, and one rejecting it stops.
+/// `bytes` is borrowed. On a failure the caller decides what to do — a decoder replacing bad input with U+FFFD
+/// advances one byte and carries on, and one rejecting it stops.
 ///
 /// Cannot allocate. Runs in constant time.
 ///
 /// @param bytes the bytes to act on
 /// @param index the byte offset
-/// @param scalar the Unicode scalar value
-/// @param width receives how many bytes the scalar occupied
-/// @returns `None` when a scalar was decoded
+/// @returns the scalar and its width, or why the bytes there are not one
 /// @see https://rux-lang.dev/docs/api/text/decode-at
-pub func DecodeAt(bytes: char8[..], index: uint, scalar: *var char32, width: *var uint) -> Utf8Error {
-    *scalar = 0u32 as char32;
-    *width = 0;
-    if index >= bytes.length { return Utf8Error::Truncated; }
+pub func DecodeAt(bytes: char8[..], index: uint) -> DecodedScalar ! Utf8Error {
+    if index >= bytes.length { fail Utf8Error::Truncated; }
 
     let leading = bytes.data[index] as uint32;
     if leading < 0x80 {
-        *scalar = leading as char32;
-        *width = 1;
-        return Utf8Error::None;
+        return DecodedScalar { scalar: leading as char32, width: 1 };
     }
 
     var low: uint32 = 0;
     var high: uint32 = 0;
     let expected = SecondByteRange(leading, @low, @high);
-    if expected == 0 { return Utf8Error::InvalidStart; }
-    if index + expected > bytes.length { return Utf8Error::Truncated; }
+    if expected == 0 { fail Utf8Error::InvalidStart; }
+    if index + expected > bytes.length { fail Utf8Error::Truncated; }
 
     let second = bytes.data[index + 1] as uint32;
-    if second < low || second > high { return Utf8Error::InvalidContinuation; }
+    if second < low || second > high { fail Utf8Error::InvalidContinuation; }
     var step: uint = 2;
     while step < expected {
-        if !IsContinuation(bytes.data[index + step]) { return Utf8Error::InvalidContinuation; }
+        if !IsContinuation(bytes.data[index + step]) { fail Utf8Error::InvalidContinuation; }
         step = step + 1;
     }
 
@@ -248,36 +238,24 @@ pub func DecodeAt(bytes: char8[..], index: uint, scalar: *var char32, width: *va
         value = (value << 6) | ((bytes.data[index + taken] as uint32) & 0x3F);
         taken = taken + 1;
     }
-    *scalar = value as char32;
-    *width = expected;
-    return Utf8Error::None;
+    return DecodedScalar { scalar: value as char32, width: expected };
 }
 
-/// Whether `bytes` is well-formed UTF-8 from end to end, reporting where it first is not through `failureIndex`.
+/// Whether `bytes` is well-formed UTF-8 from end to end, reporting where it first is not.
 ///
-/// `bytes` is borrowed. `failureIndex` receives the index of the byte that starts the offending sequence, or the
-/// length when there is none.
+/// `bytes` is borrowed. A failure carries the index of the byte that starts the offending sequence.
 ///
 /// Cannot allocate. Runs in time proportional to the length.
 ///
 /// @param bytes the bytes to act on
-/// @param failureIndex receives the offset of the first byte that is not valid
-/// @returns `None` when every byte is part of a valid sequence
+/// @returns nothing when every byte is part of a valid sequence, or where and why the first one is not
 /// @see https://rux-lang.dev/docs/api/text/validate
-pub func Validate(bytes: char8[..], failureIndex: *var uint) -> Utf8Error {
+pub func Validate(bytes: char8[..]) -> ! Utf8Failure {
     var index: uint = 0;
     while index < bytes.length {
-        var scalar = 0u32 as char32;
-        var width: uint = 0;
-        let error = DecodeAt(bytes, index, @scalar, @width);
-        if error.IsError() {
-            *failureIndex = index;
-            return error;
-        }
-        index = index + width;
+        let decoded = DecodeAt(bytes, index) catch { reason => fail Utf8Failure { reason: reason, index: index } };
+        index = index + decoded.width;
     }
-    *failureIndex = bytes.length;
-    return Utf8Error::None;
 }
 
 /// Whether `index` is where a scalar value starts, and so a place a string may be cut.
