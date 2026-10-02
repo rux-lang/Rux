@@ -109,6 +109,21 @@ TEST_CASE("diverging arms never decide the recovered type") {
             let fifth = Count() catch { e => { return 5i32; } };
             return first + second + third + fourth + fifth;
         }
+        func Looping() -> int32 {
+            var total = 0i32;
+            while total < 10i32 {
+                let first = Count() catch { e => break };
+                let second = Count() catch {
+                    e => {
+                        total = total + e.code;
+                        break;
+                    }
+                };
+                let third = Count() catch { else => { continue; } };
+                total = total + first + second + third;
+            }
+            return total;
+        }
     )")
               .empty());
 }

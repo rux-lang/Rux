@@ -10,6 +10,15 @@ namespace {
 bool IsBlockArm(const Expr &body) {
     return dynamic_cast<const BlockExpr *>(&body) != nullptr;
 }
+
+/// Whether a block arm ends by leaving the enclosing loop, which leaves the arm as surely as a return does.
+bool EndsWithLoopExit(const Block &block) {
+    if (block.stmts.empty()) {
+        return false;
+    }
+    const Stmt &last = *block.stmts.back();
+    return dynamic_cast<const BreakStmt *>(&last) != nullptr || dynamic_cast<const ContinueStmt *>(&last) != nullptr;
+}
 } // namespace
 
 void AnalysisContext::CheckRecoveryArmsWithoutSubject(const std::vector<MatchExpr::Arm> &arms) {
@@ -171,8 +180,9 @@ TypeRef AnalysisContext::CheckCatchExpression(const CatchExpr &expression) {
         }
         const TypeRef bodyType = CheckExpr(*arm.body);
         const bool blockArm = IsBlockArm(*arm.body);
+        const Block *armBlock = blockArm ? static_cast<const BlockExpr &>(*arm.body).block.get() : nullptr;
         const bool diverging = IsDivergingExpression(*arm.body) ||
-                               (blockArm && BlockDefinitelyReturns(*static_cast<const BlockExpr &>(*arm.body).block));
+                               (armBlock && (BlockDefinitelyReturns(*armBlock) || EndsWithLoopExit(*armBlock)));
         if (!diverging) {
             if (blockArm) {
                 // A normally completing block has type `()`, which only a unit success can take; a non-unit success
