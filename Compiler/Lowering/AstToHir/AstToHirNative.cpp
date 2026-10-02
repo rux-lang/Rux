@@ -10,6 +10,7 @@
 #include "Lowering/AstToHir/Detail/AstToHirContext.h"
 #include "Types/NativeConversion.h"
 #include "Types/NativeLayout.h"
+#include "Types/NativeSelection.h"
 
 #include <algorithm>
 #include <format>
@@ -92,6 +93,15 @@ std::unique_ptr<HirEnumPattern> AstToHirContext::NativeCasePattern(const TypeRef
                                                                    const SourceLocation location) {
     auto pattern = std::make_unique<HirEnumPattern>();
     pattern->location = location;
+    if (type.IsSum()) {
+        pattern->path = {payloadType ? payloadType->ToString() : std::to_string(tag)};
+    }
+    else if (type.IsOptional()) {
+        pattern->path = {tag == NativeAbsentTag ? "none" : ".Some"};
+    }
+    else {
+        pattern->path = {tag == NativeFailureTag ? ".Failure" : ".Success"};
+    }
     pattern->resolvedType = type;
     pattern->form = CaseTypeForm::Variant;
     pattern->discriminant = std::to_string(tag);
@@ -422,6 +432,159 @@ HirMovePlan AstToHirContext::BuildNativeMovePlan(const TypeRef &type) {
         plan.variantComponents.clear();
     }
     return plan;
+}
+
+HirPatternPtr AstToHirContext::LowerPatternBinding(const std::string &name, const TypeRef &type, const Pattern *source,
+                                                   const SourceLocation location) {
+    auto lowered = std::make_unique<HirBindingPattern>();
+    lowered->location = location;
+    lowered->name = name;
+    lowered->type = type;
+    HirSymbol symbol;
+    symbol.kind = HirSymbol::Kind::Var;
+    symbol.name = name;
+    symbol.type = type;
+    if (patternBindingsOwnPayload) {
+        symbol.bindingId = RegisterCleanupBinding(symbol.name, symbol.type, location);
+    }
+    lowered->bindingId = symbol.bindingId;
+    const PatternBindingMode *mode = source ? model.TryGetPatternBindingMode(*source) : nullptr;
+    lowered->alias = mode && *mode == PatternBindingMode::Alias;
+    Define(std::move(symbol));
+    return lowered;
+}
+
+HirPatternPtr AstToHirContext::LowerNativeSelection(const TypeRef &subjectType, const TypeRef &annotation,
+                                                    const std::string &name, const Pattern *source,
+                                                    const SourceLocation location) {
+    const auto binding = [&](const TypeRef &type) -> HirPatternPtr {
+        if (name.empty()) {
+            return nullptr;
+        }
+        return LowerPatternBinding(name, type, source, location);
+    };
+    const auto members = [&](const TypeRef &sum, const std::vector<std::size_t> &selected) -> HirPatternPtr {
+        if (selected.size() == 1) {
+            const TypeRef &member = sum.inner[selected.front()];
+            return NativeCasePattern(sum, selected.front(), member, binding(member), location);
+        }
+        auto subset = std::make_unique<HirNativeSubsetPattern>();
+        subset->location = location;
+        subset->subsetType = annotation.IsSum() ? annotation : sum;
+        for (std::size_t index = 0; index < selected.size(); ++index) {
+            subset->tags.emplace_back(std::to_string(selected[index]), std::to_string(index));
+        }
+        subset->binding = binding(subset->subsetType);
+        return subset;
+    };
+    const NativeSelection selection = ClassifyNativeSelection(subjectType, annotation);
+    switch (selection.kind) {
+    case NativeSelection::Kind::Whole:
+        if (HirPatternPtr whole = binding(subjectType)) {
+            return whole;
+        }
+        break;
+    case NativeSelection::Kind::Members:
+        return members(subjectType, selection.members);
+    case NativeSelection::Kind::Presence: {
+        const TypeRef &payload = subjectType.inner.front();
+        HirPatternPtr inner = selection.members.empty() ? binding(payload) : members(payload, selection.members);
+        return NativeCasePattern(subjectType, NativePresentTag, payload, std::move(inner), location);
+    }
+    case NativeSelection::Kind::Invalid:
+        diagnostics.push_back(
+            {Diagnostic::Severity::Error,
+             currentFile,
+             location,
+             std::format("cannot lower the selection of '{}' from '{}'", annotation.ToString(), subjectType.ToString()),
+             {"semantic analysis accepted a typed pattern that selects nothing after substitution"},
+             "please report this compiler limitation with a minimal source example",
+             {}});
+        break;
+    }
+    auto wildcard = std::make_unique<HirWildcardPattern>();
+    wildcard->location = location;
+    return wildcard;
+}
+
+HirPatternPtr AstToHirContext::LowerNativePattern(const Pattern &pattern, const TypeRef &subjectType) {
+    const SourceLocation location = pattern.location;
+    if (const auto *typed = dynamic_cast<const TypedPattern *>(&pattern)) {
+        const TypeRef *recorded = model.TryGetTypedPatternType(*typed);
+        const TypeRef annotation = recorded ? SubstituteCurrentType(*recorded) : subjectType;
+        return LowerNativeSelection(subjectType, annotation, typed->name, &pattern, location);
+    }
+    if (dynamic_cast<const NonePattern *>(&pattern)) {
+        return NativeCasePattern(subjectType, NativeAbsentTag, std::nullopt, nullptr, location);
+    }
+    if (const auto *presence = dynamic_cast<const PresencePattern *>(&pattern)) {
+        const TypeRef payload = subjectType.IsOptional() ? subjectType.inner.front() : TypeRef::MakeUnknown();
+        return NativeCasePattern(subjectType, NativePresentTag, payload, LowerPattern(*presence->inner, payload),
+                                 location);
+    }
+    if (const auto *enumeration = dynamic_cast<const EnumPattern *>(&pattern);
+        enumeration && enumeration->path.size() == 1 && enumeration->args.size() == 1 &&
+        (subjectType.IsOptional() || subjectType.IsFallible())) {
+        const std::string &name = enumeration->path.front();
+        std::uint64_t tag = NativePresentTag;
+        TypeRef channel = subjectType.inner.front();
+        if (subjectType.IsFallible()) {
+            const bool failure = name == "Failure";
+            tag = failure ? NativeFailureTag : NativeSuccessTag;
+            channel = failure ? subjectType.FallibleError() : subjectType.FallibleSuccess();
+        }
+        return NativeCasePattern(subjectType, tag, channel, LowerPattern(*enumeration->args.front(), channel),
+                                 location);
+    }
+    if (subjectType.IsSum()) {
+        if (const TypeRef *recorded = model.TryGetSumMember(pattern)) {
+            const TypeRef member = SubstituteCurrentType(*recorded);
+            if (const std::optional<std::uint64_t> tag = MemberTag(subjectType, member)) {
+                return NativeCasePattern(subjectType, *tag, member, LowerPattern(pattern, member), location);
+            }
+        }
+    }
+    return nullptr;
+}
+
+HirExprPtr AstToHirContext::LowerNativeMembership(const IsExpr &expression) {
+    TypeRef subjectType = ResolvedExpressionType(*expression.operand);
+    if (subjectType.kind == TypeRef::Kind::Reference && !subjectType.inner.empty()) {
+        subjectType = subjectType.inner.front();
+    }
+    if (!IsNativeType(subjectType)) {
+        return nullptr;
+    }
+    const TypeRef *tested = model.TryGetType(*expression.type);
+    const TypeRef testedType = tested ? SubstituteCurrentType(*tested) : ResolveType(*expression.type);
+    const auto literal = [&](const bool value) {
+        auto result = std::make_unique<HirLiteralExpr>();
+        result->location = expression.location;
+        result->type = TypeRef::MakeBool();
+        result->value = value ? "true" : "false";
+        return result;
+    };
+
+    // A test selects without binding, so the subject is inspected in place and never consumed.
+    auto match = std::make_unique<HirMatchExpr>();
+    match->location = expression.location;
+    match->type = TypeRef::MakeBool();
+    match->subject = LowerMatchSubject(*expression.operand);
+    match->subject->consumption.reset();
+    match->subject->consumedBindingId = 0;
+    HirMatchArm selected;
+    selected.location = expression.location;
+    selected.pattern = LowerNativeSelection(subjectType, testedType, {}, nullptr, expression.location);
+    selected.body = literal(true);
+    HirMatchArm otherwise;
+    otherwise.location = expression.location;
+    auto wildcard = std::make_unique<HirWildcardPattern>();
+    wildcard->location = expression.location;
+    otherwise.pattern = std::move(wildcard);
+    otherwise.body = literal(false);
+    match->arms.push_back(std::move(selected));
+    match->arms.push_back(std::move(otherwise));
+    return match;
 }
 
 HirExprPtr AstToHirContext::LowerPendingNative(const Expr &expression) {

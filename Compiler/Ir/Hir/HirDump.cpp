@@ -255,6 +255,9 @@ static std::string PrintPattern(const HirPattern &pat) {
     if (auto *p = dynamic_cast<const HirGuardedPattern *>(&pat)) {
         return PrintPattern(*p->inner) + " if " + PrintExpr(*p->guard);
     }
+    if (auto *p = dynamic_cast<const HirNativeSubsetPattern *>(&pat)) {
+        return (p->binding ? PrintPattern(*p->binding) : std::string("_")) + ": " + p->subsetType.ToString();
+    }
     return "_";
 }
 

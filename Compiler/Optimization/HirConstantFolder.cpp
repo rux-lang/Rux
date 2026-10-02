@@ -144,6 +144,11 @@ void HirConstantFolder::DeclarePatternBindings(const HirPattern &pattern) {
     else if (const auto *guarded = dynamic_cast<const HirGuardedPattern *>(&pattern)) {
         DeclarePatternBindings(*guarded->inner);
     }
+    else if (const auto *subset = dynamic_cast<const HirNativeSubsetPattern *>(&pattern)) {
+        if (subset->binding) {
+            DeclarePatternBindings(*subset->binding);
+        }
+    }
 }
 
 void HirConstantFolder::OptimizePattern(HirPattern &pattern) {

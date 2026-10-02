@@ -86,6 +86,9 @@ struct HirBindingPattern : HirPattern {
     TypeRef type;
     /// Nonzero only when this pattern owns a value whose destruction is scheduled at the enclosing scope exit.
     std::uint64_t bindingId = 0;
+    /// The binding names the matched storage in place instead of holding a copy of it: a payload of a borrowed native
+    /// subject, which an exclusive borrow can write through.
+    bool alias = false;
 };
 
 // lo..hi
@@ -718,6 +721,17 @@ struct HirPackage {
     std::vector<HirModule> modules;
     std::vector<DropGluePlan> dropGlues;
     std::unordered_map<std::string, HirTypeLayout> typeLayouts;
+};
+
+/// `v: A | B` selecting several members of a native sum. It matches when the active member is one of them, and binds
+/// a value of the subset sum built from the subject's bytes with the tag remapped; a member's payload sits at the same
+/// offset in every sum, so only the tag changes. `tags` pairs each selected member's tag in the subject with its tag
+/// in the subset, in canonical order.
+struct HirNativeSubsetPattern : HirPattern {
+    TypeRef subsetType;
+    std::vector<std::pair<std::string, std::string>> tags;
+    /// A binding of the subset type, or null when the pattern only selects.
+    HirPatternPtr binding;
 };
 
 inline HirGuardedPattern::~HirGuardedPattern() = default;

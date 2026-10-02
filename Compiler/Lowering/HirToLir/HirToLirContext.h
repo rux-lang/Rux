@@ -157,6 +157,10 @@ private:
 
     LirReg LowerPattern(const HirPattern &pattern, LirReg subjectValue, const TypeRef &subjectType,
                         const std::vector<LirReg> *enumPayload = nullptr, LirReg subjectSlot = LirNoReg);
+    /// The referenced storage of a native match subject read through a reference, or no register for any other
+    /// subject.
+    LirReg BorrowedNativeSubjectSlot(const HirExpr &subject);
+    LirReg LowerNativeSubsetPattern(const HirNativeSubsetPattern &pattern, LirReg subjectValue, LirReg subjectSlot);
     LirReg LowerExpr(const HirExpr &expression);
     LirReg LowerExprValue(const HirExpr &expression);
     LirReg LowerPostfix(const HirPostfixExpr &expression);

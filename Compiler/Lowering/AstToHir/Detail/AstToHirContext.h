@@ -185,6 +185,18 @@ protected:
     /// recursively, and nothing when every payload is trivial.
     [[nodiscard]] HirCopyPlan BuildNativeCopyPlan(const TypeRef &type);
     [[nodiscard]] HirMovePlan BuildNativeMovePlan(const TypeRef &type);
+    /// A native case, presence, `none`, typed, or sum-member pattern lowered against `subjectType`, or null for a
+    /// pattern the nominal lowering handles.
+    [[nodiscard]] HirPatternPtr LowerNativePattern(const Pattern &pattern, const TypeRef &subjectType);
+    /// What a typed pattern's annotation selects from `subjectType`, binding `name` unless it is empty.
+    [[nodiscard]] HirPatternPtr LowerNativeSelection(const TypeRef &subjectType, const TypeRef &annotation,
+                                                     const std::string &name, const Pattern *source,
+                                                     SourceLocation location);
+    /// A binding of `type` named `name`, defined in the current scope, owning its value only when the match does.
+    [[nodiscard]] HirPatternPtr LowerPatternBinding(const std::string &name, const TypeRef &type, const Pattern *source,
+                                                    SourceLocation location);
+    /// `value is T` on a native subject: a match testing the selection without binding or consuming anything.
+    [[nodiscard]] HirExprPtr LowerNativeMembership(const IsExpr &expression);
     /// `fail value`: an ordinary return of the enclosing function's outer failure.
     [[nodiscard]] HirStmtPtr LowerFail(const Expr *value, SourceLocation location);
     /// A diverging arm, mapping, or fallback body: the statement it spells, in a block that yields no value.

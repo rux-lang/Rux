@@ -77,8 +77,75 @@ void HirToLirContext::StoreEnumConstructIntoSlot(const HirEnumConstructExpr &e, 
     }
 }
 
+LirReg HirToLirContext::BorrowedNativeSubjectSlot(const HirExpr &subject) {
+    // A native subject read through a reference is matched where it lies, so a binding of one of its payloads names
+    // the referenced storage rather than a copy of it.
+    const auto *dereference = dynamic_cast<const HirUnaryExpr *>(&subject);
+    const TypeRef &type = subject.type;
+    if (!dereference || dereference->op != TokenKind::Star || !dereference->operand ||
+        dereference->operand->type.kind != TypeRef::Kind::Reference ||
+        !(type.IsSum() || type.IsOptional() || type.IsFallible())) {
+        return LirNoReg;
+    }
+    return LowerExpr(*dereference->operand);
+}
+
+LirReg HirToLirContext::LowerNativeSubsetPattern(const HirNativeSubsetPattern &pattern, const LirReg subjectVal,
+                                                 const LirReg subjectSlot) {
+    const TypeRef tagType = TypeRef::MakeInt64();
+    const LirReg tag = subjectSlot != LirNoReg ? EmitLoad(subjectSlot, tagType) : subjectVal;
+    LirReg matched = EmitConst("0", TypeRef::MakeBool());
+    // Selected members keep their canonical order in the subset, so a member's subset tag is how many selected
+    // members precede it in the subject.
+    LirReg narrowedTag = EmitConst("0", tagType);
+    for (const auto &[subjectTag, subsetTag] : pattern.tags) {
+        const LirReg member = EmitConst(subjectTag, tagType);
+        matched = EmitBinary(LirOpcode::Or, matched, EmitBinary(LirOpcode::CmpEq, tag, member, TypeRef::MakeBool()),
+                             TypeRef::MakeBool());
+        const LirReg above = EmitBinary(LirOpcode::CmpGt, tag, member, TypeRef::MakeBool());
+        narrowedTag = EmitBinary(LirOpcode::Add, narrowedTag, EmitCast(above, TypeRef::MakeBool(), tagType), tagType);
+    }
+    const auto *binding = dynamic_cast<const HirBindingPattern *>(pattern.binding.get());
+    if (!binding || subjectSlot == LirNoReg) {
+        return matched;
+    }
+
+    // Only a matching subject is narrowed: a binding becomes live only when its pattern holds.
+    const std::uint32_t bindBlock = NewBlock("native.subset.bind");
+    const std::uint32_t mismatchBlock = NewBlock("native.subset.mismatch");
+    const std::uint32_t mergeBlock = NewBlock("native.subset.merge");
+    Branch(matched, bindBlock, mismatchBlock);
+
+    SetBlock(bindBlock);
+    // A member's payload sits at the same offset in every sum that holds it, and the subset is no larger than the
+    // subject, so its bytes are read straight out of the subject and only the tag is rewritten.
+    const LirReg narrowed = EmitAlloca(pattern.subsetType);
+    EmitStore(EmitLoad(subjectSlot, pattern.subsetType), narrowed, pattern.subsetType);
+    EmitStore(narrowedTag, narrowed, tagType);
+    locals[binding->name] = narrowed;
+    MarkBindingLive(binding->bindingId, true);
+    const LirReg bound = EmitConst("1", TypeRef::MakeBool());
+    const std::uint32_t bindPred = builder->CurrentBlock();
+    Jump(mergeBlock);
+
+    SetBlock(mismatchBlock);
+    const LirReg mismatch = EmitConst("0", TypeRef::MakeBool());
+    const std::uint32_t mismatchPred = builder->CurrentBlock();
+    Jump(mergeBlock);
+
+    SetBlock(mergeBlock);
+    const LirReg result = NewReg();
+    LirInstr phi;
+    phi.dst = result;
+    phi.op = LirOpcode::Phi;
+    phi.type = TypeRef::MakeBool();
+    phi.phiPreds = {{bound, bindPred}, {mismatch, mismatchPred}};
+    Emit(std::move(phi));
+    return result;
+}
+
 void HirToLirContext::LowerMatch(const HirMatchStmt &s) {
-    LirReg subjectSlot = LirNoReg;
+    LirReg subjectSlot = BorrowedNativeSubjectSlot(*s.subject);
     const std::vector<LirReg> *subjectPayload = nullptr;
     if (auto *subjectVar = dynamic_cast<const HirVarExpr *>(s.subject.get())) {
         if (const auto localIt = locals.find(subjectVar->name); localIt != locals.end()) {
@@ -167,6 +234,11 @@ LirReg HirToLirContext::LowerPattern(const HirPattern &pat, LirReg subjectVal, c
         return EmitBinary(LirOpcode::CmpEq, subjectVal, lit, TypeRef::MakeBool());
     }
     if (auto *p = dynamic_cast<const HirBindingPattern *>(&pat)) {
+        // A borrowed native payload is named where it lies, so writing through the binding writes the subject.
+        if (p->alias && subjectSlot != LirNoReg) {
+            locals[p->name] = subjectSlot;
+            return EmitConst("1", TypeRef::MakeBool());
+        }
         LirReg bindSlot = EmitAlloca(p->type);
         locals[p->name] = bindSlot;
         EmitStore(subjectVal, bindSlot, p->type);
@@ -303,6 +375,10 @@ LirReg HirToLirContext::LowerPattern(const HirPattern &pat, LirReg subjectVal, c
             }
         }
         return EmitConst("1", TypeRef::MakeBool());
+    }
+
+    if (auto *p = dynamic_cast<const HirNativeSubsetPattern *>(&pat)) {
+        return LowerNativeSubsetPattern(*p, subjectVal, subjectSlot);
     }
 
     if (auto *p = dynamic_cast<const HirGuardedPattern *>(&pat)) {
@@ -705,7 +781,7 @@ LirReg HirToLirContext::LowerTernary(const HirTernaryExpr &e) {
 }
 
 void HirToLirContext::StoreMatchInit(const HirMatchExpr &e, LirReg slot, const TypeRef &type) {
-    LirReg subjectSlot = LirNoReg;
+    LirReg subjectSlot = BorrowedNativeSubjectSlot(*e.subject);
     const std::vector<LirReg> *subjectPayload = nullptr;
     if (auto *subjectVar = dynamic_cast<const HirVarExpr *>(e.subject.get())) {
         if (const auto localIt = locals.find(subjectVar->name); localIt != locals.end()) {

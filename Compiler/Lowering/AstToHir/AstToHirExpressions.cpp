@@ -323,6 +323,9 @@ HirExprPtr AstToHirContext::LowerBasicExpr(const Expr &expression) {
     }
 
     if (const auto *typeCheck = dynamic_cast<const IsExpr *>(&expression)) {
+        if (HirExprPtr membership = LowerNativeMembership(*typeCheck)) {
+            return membership;
+        }
         auto lowered = std::make_unique<HirLiteralExpr>();
         lowered->location = typeCheck->location;
         lowered->value = LowerExpr(*typeCheck->operand)->type == ResolveType(*typeCheck->type) ? "true" : "false";

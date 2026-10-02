@@ -380,6 +380,9 @@ HirPatternPtr AstToHirContext::LowerLetPattern(const Pattern &pattern, const Typ
 }
 
 HirPatternPtr AstToHirContext::LowerPattern(const Pattern &pattern, const TypeRef &subjectType) {
+    if (HirPatternPtr native = LowerNativePattern(pattern, subjectType)) {
+        return native;
+    }
     if (dynamic_cast<const WildcardPattern *>(&pattern)) {
         auto lowered = std::make_unique<HirWildcardPattern>();
         lowered->location = pattern.location;
@@ -413,6 +416,8 @@ HirPatternPtr AstToHirContext::LowerPattern(const Pattern &pattern, const TypeRe
             symbol.bindingId = RegisterCleanupBinding(symbol.name, symbol.type, identifier->location);
         }
         lowered->bindingId = symbol.bindingId;
+        const PatternBindingMode *mode = model.TryGetPatternBindingMode(pattern);
+        lowered->alias = mode && *mode == PatternBindingMode::Alias;
         Define(std::move(symbol));
         return lowered;
     }
