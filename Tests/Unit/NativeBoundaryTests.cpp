@@ -104,3 +104,24 @@ TEST_CASE("pointer and slice spellings keep their grouping") {
     REQUIRE_EQ(errors.size(), 1);
     CHECK(errors.front().contains("cannot assign"));
 }
+
+TEST_CASE("a declared copy operation receives only a value of its own type") {
+    const auto errors = Errors(AnalyzeSource(R"(
+        struct E {}
+        struct Text { length: int64; }
+        extend Text {
+            func =(self: &var Text, other: &Text) { self.length = other.length; }
+        }
+        struct Holder { text: Text; }
+        func Make() -> Text ! E { return Text { length: 3 }; }
+        func Use(holder: &var Holder, other: Text) {
+            holder.text = Make();
+            var local = other;
+            local = Make();
+            holder.text = other;
+        }
+    )"));
+    REQUIRE_EQ(errors.size(), 2);
+    CHECK(errors[0].contains("cannot assign 'Text ! E' to 'Text'"));
+    CHECK(errors[1].contains("cannot assign 'Text ! E' to 'Text'"));
+}

@@ -306,6 +306,17 @@ std::optional<TypeRef> AnalysisContext::CheckBasicExpression(const Expr &express
                 }
             }
             if (copyOperation) {
+                // A declared copy operation receives a value of the target's own type, or of a type another declared
+                // `=` takes; without this check a fallible or any other unrelated value reached the operation
+                // unconverted.
+                if (!target.IsUnknown() && !value.IsUnknown() && !CanAssignExprTo(*assignment->value, value, target) &&
+                    !LookupMethod(target, "=", {value})) {
+                    EmitError(assignment->location,
+                              AssignmentErrorMessage(
+                                  *assignment->value, target,
+                                  std::format("cannot assign '{}' to '{}'", value.ToString(), target.ToString())));
+                    return TypeRef::MakeOpaque();
+                }
                 if (!copyOperation->body) {
                     EmitError(assignment->location, std::format("copying type '{}' is prohibited", target.ToString()),
                               {"the type declares its canonical copy operation without a body"},
