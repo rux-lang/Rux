@@ -1,4 +1,4 @@
-import Core::{ uint };
+import Core::{ Panic, uint };
 import Allocator::{ Allocator, SystemAllocator };
 import Collections::CollectionError;
 import Collections::Deque;
@@ -27,15 +27,21 @@ import Collections::{ EqualsInt32, HashInt32 };
 //
 // See Tests/Packages/Collections/Array for the numbered exit-code convention.
 
+/// Why an operation the test expects to fail failed. One that succeeds instead panics, so an expected failure
+/// cannot pass by accident.
+func Refusal<T, E>(outcome: T ! E) -> E {
+    return match <-outcome {
+        .Failure(error) => error,
+        .Success(_) => Panic("the operation was expected to fail")
+    };
+}
+
 func Main() -> int {
     // The error cases are distinct values, so no two failures can be confused.
-    if CollectionError::None == CollectionError::OutOfMemory { return 10; }
-    if CollectionError::None == CollectionError::CapacityOverflow { return 11; }
-    if CollectionError::None == CollectionError::IndexOutOfRange { return 12; }
     if CollectionError::OutOfMemory == CollectionError::CapacityOverflow { return 13; }
     if CollectionError::OutOfMemory == CollectionError::IndexOutOfRange { return 14; }
     if CollectionError::CapacityOverflow == CollectionError::IndexOutOfRange { return 15; }
-    if !(CollectionError::None == CollectionError::None) { return 16; }
+    if !(CollectionError::OutOfMemory == CollectionError::OutOfMemory) { return 16; }
 
     // A count whose byte size cannot be addressed is rejected before anything is allocated. Array now takes an
     // allocator and is covered by its own test; what stays here is the Vector side.
@@ -43,22 +49,15 @@ func Main() -> int {
     var system = SystemAllocator();
     let allocator: Allocator = system;
 
-    var overflowError = CollectionError::None;
-    var vector = Vector::WithCapacity<int64>(allocator, uint::Max, @overflowError);
-    if !(overflowError == CollectionError::CapacityOverflow) { return 22; }
-    if !vector.IsEmpty() || vector.AsSlice().data != null || vector.Capacity() != 0 { return 23; }
-
-    var dequeError = CollectionError::None;
-    var deque = Deque::WithCapacity<int64>(allocator, uint::Max, @dequeError);
-    if !(dequeError == CollectionError::CapacityOverflow) { return 24; }
-    if !deque.IsEmpty() || deque.Capacity() != 0 { return 25; }
+    if Refusal(Vector::WithCapacity<int64>(allocator, uint::Max)) != CollectionError::CapacityOverflow { return 22; }
+    if Refusal(Deque::WithCapacity<int64>(allocator, uint::Max)) != CollectionError::CapacityOverflow { return 24; }
 
     // A populated Vector survives a rejected reservation untouched: the same
     // block, the same length, the same capacity, the same elements.
     var populated = Vector<int64>(allocator);
     var element: int64 = 0;
     while element < 8i64 {
-        if !(populated.Push(element) == CollectionError::None) { return 30; }
+        populated.Push(element) catch { else => return 30 };
         element++;
     }
 
@@ -67,19 +66,19 @@ func Main() -> int {
     let capacity = populated.Capacity();
 
     // The length plus the request wraps.
-    if !(populated.Reserve(uint::Max) == CollectionError::CapacityOverflow) { return 31; }
+    if Refusal(populated.Reserve(uint::Max)) != CollectionError::CapacityOverflow { return 31; }
     if populated.AsSlice().data != block || populated.Length() != length { return 32; }
     if populated.Capacity() != capacity { return 33; }
 
     // The sum fits but its byte size does not, which is the other way the same
     // request fails.
-    if !(populated.Reserve(uint::Max / 4) == CollectionError::CapacityOverflow) { return 34; }
+    if Refusal(populated.Reserve(uint::Max / 4)) != CollectionError::CapacityOverflow { return 34; }
     if populated.AsSlice().data != block || populated.Length() != length { return 35; }
     if populated.Capacity() != capacity { return 36; }
 
     element = 0;
     while element < 8i64 {
-        if populated.Get(element as uint).ValueOr(-1i64) != element { return 37; }
+        if populated.Get(element as uint) != .Some(element) { return 37; }
         element++;
     }
 
@@ -87,48 +86,48 @@ func Main() -> int {
     // nothing rather than part of its input.
     let borrowed = populated.AsSlice();
     let hostile = (borrowed.data)[..uint::Max];
-    if !(populated.PushSlice(hostile) == CollectionError::CapacityOverflow) { return 40; }
+    if Refusal(populated.PushSlice(hostile)) != CollectionError::CapacityOverflow { return 40; }
     if populated.AsSlice().data != block || populated.Length() != length { return 41; }
     if populated.Capacity() != capacity { return 42; }
 
     // A rejected index is reported as itself, not as an exhausted allocator, and the container is left alone.
-    if !(populated.Set(populated.Length(), 99i64) == CollectionError::IndexOutOfRange) { return 50; }
+    if Refusal(populated.Set(populated.Length(), 99i64)) != CollectionError::IndexOutOfRange { return 50; }
     if populated.Length() != length || populated.AsSlice().data != block { return 51; }
-    if populated.Get(0).ValueOr(-1i64) != 0i64 { return 52; }
+    if populated.Get(0) != .Some(0i64) { return 52; }
 
     // Reading past the end is an ordinary absence rather than a failure, and reads nothing.
-    if populated.Get(populated.Length()).IsSome() { return 53; }
-    if populated.Reference(populated.Length()).IsSome() { return 54; }
+    if populated.Get(populated.Length()) is int64 { return 53; }
+    if populated.Reference(populated.Length()) is *int64 { return 54; }
 
     // Insert, RemoveAt and SwapRemoveAt return with C04; the rejections they report are covered there.
 
     // A Deque rejects the same requests and stays usable afterwards.
     var ring = Deque<int64>(allocator);
-    if !(ring.PushBack(1i64) == CollectionError::None) { return 60; }
+    ring.PushBack(1i64) catch { else => return 60 };
     let ringCapacity = ring.Capacity();
-    if !(ring.Reserve(uint::Max) == CollectionError::CapacityOverflow) { return 61; }
+    if Refusal(ring.Reserve(uint::Max)) != CollectionError::CapacityOverflow { return 61; }
     if ring.Length() != 1 || ring.Capacity() != ringCapacity { return 62; }
-    if ring.Get(0).ValueOr(-1i64) != 1i64 { return 67; }
-    if !(ring.Reserve(uint::Max / 4) == CollectionError::CapacityOverflow) { return 63; }
+    if ring.Get(0) != .Some(1i64) { return 67; }
+    if Refusal(ring.Reserve(uint::Max / 4)) != CollectionError::CapacityOverflow { return 63; }
     if ring.Length() != 1 || ring.Capacity() != ringCapacity { return 64; }
-    if !(ring.PushFront(0i64) == CollectionError::None) { return 65; }
-    if ring.Get(0).ValueOr(-1i64) != 0i64 || ring.Get(1).ValueOr(-1i64) != 1i64 { return 66; }
+    ring.PushFront(0i64) catch { else => return 65 };
+    if ring.Get(0) != .Some(0i64) || ring.Get(1) != .Some(1i64) { return 66; }
 
     // A hash table rejects an unsizeable reservation and keeps every entry.
     var map = HashMap<int32, int32>(allocator, HashInt32, EqualsInt32);
-    if !(map.Insert(1, 10) == CollectionError::None) { return 70; }
-    if !(map.Insert(2, 20) == CollectionError::None) { return 71; }
+    map.Insert(1, 10) catch { else => return 70 };
+    map.Insert(2, 20) catch { else => return 71 };
     let mapCapacity = map.Capacity();
-    if !(map.Reserve(uint::Max) == CollectionError::CapacityOverflow) { return 72; }
+    if Refusal(map.Reserve(uint::Max)) != CollectionError::CapacityOverflow { return 72; }
     if map.Length() != 2 || map.Capacity() != mapCapacity { return 73; }
-    if map.Get(1).ValueOr(-1) != 10 { return 74; }
+    if map.Get(1) != .Some(10) { return 74; }
 
     // A set rejects it the same way.
     var set = HashSet<int32>(allocator, HashInt32, EqualsInt32);
-    var added = false;
-    if !(set.Insert(1, @added) == CollectionError::None) { return 80; }
+    let added = set.Insert(1) catch { else => return 80 };
+    if !added { return 80; }
     let setCapacity = set.Capacity();
-    if !(set.Reserve(uint::Max) == CollectionError::CapacityOverflow) { return 81; }
+    if Refusal(set.Reserve(uint::Max)) != CollectionError::CapacityOverflow { return 81; }
     if set.Length() != 1 || set.Capacity() != setCapacity { return 82; }
     if !set.Contains(1) { return 83; }
 

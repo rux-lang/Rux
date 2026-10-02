@@ -1,6 +1,6 @@
 import Allocator::{ Allocator, SystemAllocator };
-import Collections::{ CollectionError, CompareInt32, KeyValue, TreeMap };
-import Core::{ Assert, Option };
+import Collections::{ CompareInt32, KeyValue, TreeMap };
+import Core::{ Assert, Panic };
 
 // What a `TreeMap` has that a `HashMap` does not is order, so that is what this leans on: the walk comes out sorted
 // whatever order the keys arrived in, the nearest key above or below a bound is found without a scan, and a range
@@ -35,7 +35,8 @@ func InsertAndDrop(allocator: Allocator, counter: *var int32, count: int32, afte
     var map = TreeMap<int32, Tracked>(allocator, CompareInt32);
     var key: int32 = 0;
     while key < count {
-        map.Insert(key, Tracked { counter: counter, value: key });
+        map.Insert(key, Tracked { counter: counter, value: key })
+            catch { else => Panic("there is room for every value") };
         key = key + 1;
     }
     Assert(map.Length() == count as uint, "the map holds what was put into it");
@@ -48,7 +49,8 @@ func ConsumePartly(allocator: Allocator, counter: *var int32, count: int32, take
     var map = TreeMap<int32, Tracked>(allocator, CompareInt32);
     var key: int32 = 0;
     while key < count {
-        map.Insert(key, Tracked { counter: counter, value: key });
+        map.Insert(key, Tracked { counter: counter, value: key })
+            catch { else => Panic("there is room for every value") };
         key = key + 1;
     }
 
@@ -59,7 +61,7 @@ func ConsumePartly(allocator: Allocator, counter: *var int32, count: int32, take
             .Some(found) => {
                 Assert(found.key == taken, "the walk hands out the smallest key first");
             },
-            .None => {
+            none => {
                 Assert(false, "the walk has as many entries as went in");
             }
         }
@@ -84,7 +86,7 @@ func CountRange(map: &TreeMap<int32, int32>, start: int32, end: int32) -> uint {
                 previous = found.key;
                 seen = seen + 1;
             },
-            .None => {
+            none => {
                 walking = false;
             }
         }
@@ -102,7 +104,7 @@ func Main() -> int {
     var step: int32 = 0;
     while step < 50 {
         let key = (step * 23) % 50;
-        Assert(map.Insert(key, key * 3) == CollectionError::None, "there is room for every key");
+        map.Insert(key, key * 3) catch { else => Panic("there is room for every key") };
         step = step + 1;
     }
     Assert(map.Length() == 50, "the map holds every key");
@@ -111,50 +113,49 @@ func Main() -> int {
     var key: int32 = 0;
     while key < 50 {
         Assert(map.ContainsKey(key), "every key put in is there");
-        Assert(map.Get(key).ValueOr(-1) == key * 3, "with the value it went in with");
+        Assert(map.Get(key) == .Some(key * 3), "with the value it went in with");
         key = key + 1;
     }
-    Assert(map.Get(50).IsNone(), "a key that was never put in is not found");
-    Assert(map.Get(-1).IsNone(), "on either side of the range");
+    Assert(map.Get(50) == none, "a key that was never put in is not found");
+    Assert(map.Get(-1) == none, "on either side of the range");
 
     // A borrow stays good across insertions and removals of other keys, which is what the separate nodes buy.
     let borrowed = map.Reference(21);
-    Assert(borrowed.IsSome(), "a key in the map can be borrowed");
+    Assert(borrowed is *int32, "a key in the map can be borrowed");
     var writable: *var int32 = null;
     Assert(map.TryReferenceMutable(21, @writable), "and borrowed mutably");
     *writable = 999;
-    Assert(map.Get(21).ValueOr(-1) == 999, "a write through the borrow is what the map holds");
+    Assert(map.Get(21) == .Some(999), "a write through the borrow is what the map holds");
     Assert(!map.TryReferenceMutable(77, @writable), "a key that is not there cannot be borrowed");
     Assert(*writable == 999, "and leaves the pointer where it was");
 
     // Replacing hands back what it displaced; inserting over a key destroys it silently.
-    var error = CollectionError::None;
-    let displaced = map.Replace(21, 63, @error);
-    Assert(error == CollectionError::None && displaced.ValueOr(-1) == 999, "a replaced value comes back");
+    let displaced = map.Replace(21, 63) catch { else => Panic("replacing a key is accepted") };
+    Assert(displaced == .Some(999), "a replaced value comes back");
     Assert(map.Length() == 50, "and the map is no longer than it was");
-    Assert(map.Insert(21, 63) == CollectionError::None, "inserting over a key is accepted");
-    Assert(map.Get(21).ValueOr(-1) == 63, "and leaves the new value there");
+    map.Insert(21, 63) catch { else => Panic("inserting over a key is accepted") };
+    Assert(map.Get(21) == .Some(63), "and leaves the new value there");
 
     // The ordered questions, at the edges as well as in the middle.
-    Assert(map.First().ValueOr(missing).key == 0, "the first entry is the smallest key");
-    Assert(map.Last().ValueOr(missing).key == 49, "and the last is the largest");
-    Assert(map.Floor(30).ValueOr(missing).key == 30, "a floor lands on an exact key");
-    Assert(map.Ceiling(30).ValueOr(missing).key == 30, "and so does a ceiling");
-    Assert(map.Floor(100).ValueOr(missing).key == 49, "a floor above every key is the largest");
-    Assert(map.Ceiling(-5).ValueOr(missing).key == 0, "a ceiling below every key is the smallest");
-    Assert(map.Floor(-5).IsNone(), "there is no floor below every key");
-    Assert(map.Ceiling(100).IsNone(), "and no ceiling above every key");
+    Assert((map.First() ?? missing).key == 0, "the first entry is the smallest key");
+    Assert((map.Last() ?? missing).key == 49, "and the last is the largest");
+    Assert((map.Floor(30) ?? missing).key == 30, "a floor lands on an exact key");
+    Assert((map.Ceiling(30) ?? missing).key == 30, "and so does a ceiling");
+    Assert((map.Floor(100) ?? missing).key == 49, "a floor above every key is the largest");
+    Assert((map.Ceiling(-5) ?? missing).key == 0, "a ceiling below every key is the smallest");
+    Assert(!(map.Floor(-5) is KeyValue<int32, int32>), "there is no floor below every key");
+    Assert(!(map.Ceiling(100) is KeyValue<int32, int32>), "and no ceiling above every key");
 
     // With a key removed, the floor and ceiling step over the gap in opposite directions.
-    Assert(map.Remove(30).ValueOr(-1) == 90, "a removed key hands its value back");
-    Assert(map.Length() == 49 && map.Get(30).IsNone(), "and is gone");
-    Assert(map.Floor(30).ValueOr(missing).key == 29, "the floor of a missing key is the one below it");
-    Assert(map.Ceiling(30).ValueOr(missing).key == 31, "and its ceiling is the one above");
-    Assert(map.Remove(30).IsNone(), "removing it twice takes nothing the second time");
+    Assert(map.Remove(30) == .Some(90), "a removed key hands its value back");
+    Assert(map.Length() == 49 && map.Get(30) == none, "and is gone");
+    Assert((map.Floor(30) ?? missing).key == 29, "the floor of a missing key is the one below it");
+    Assert((map.Ceiling(30) ?? missing).key == 31, "and its ceiling is the one above");
+    Assert(map.Remove(30) == none, "removing it twice takes nothing the second time");
 
-    let entry = map.RemoveEntry(31);
-    Assert(entry.ValueOr(missing).key == 31 && entry.ValueOr(missing).value == 93, "an entry comes back whole");
-    Assert(map.RemoveEntry(31).IsNone(), "and only once");
+    let entry = map.RemoveEntry(31) ?? missing;
+    Assert(entry.key == 31 && entry.value == 93, "an entry comes back whole");
+    Assert(!(map.RemoveEntry(31) is KeyValue<int32, int32>), "and only once");
     Assert(map.Length() == 48, "the map is two shorter than it was");
 
     // The walk comes out sorted, whatever order the keys arrived in.
@@ -169,7 +170,7 @@ func Main() -> int {
                 previous = found.key;
                 seen = seen + 1;
             },
-            .None => {
+            none => {
                 walking = false;
             }
         }
@@ -189,12 +190,12 @@ func Main() -> int {
 
     // Cleared and used again. A tree keeps no capacity back, so an emptied map is exactly a fresh one.
     var reused = TreeMap<int32, int32>(allocator, CompareInt32);
-    reused.Insert(1, 10);
-    reused.Insert(2, 20);
+    reused.Insert(1, 10) catch { else => Panic("there is room for a first key") };
+    reused.Insert(2, 20) catch { else => Panic("and for a second") };
     reused.Clear();
-    Assert(reused.IsEmpty() && reused.Get(1).IsNone(), "clearing empties the map");
-    Assert(reused.Insert(3, 30) == CollectionError::None, "and it is usable again afterwards");
-    Assert(reused.Length() == 1 && reused.First().ValueOr(missing).key == 3, "holding only what came after");
+    Assert(reused.IsEmpty() && reused.Get(1) == none, "clearing empties the map");
+    reused.Insert(3, 30) catch { else => Panic("and it is usable again afterwards") };
+    Assert(reused.Length() == 1 && (reused.First() ?? missing).key == 3, "holding only what came after");
 
     // The consuming walk hands out ownership one entry at a time, in the same order.
     var consuming = (<-map).IntoIterator();
@@ -208,7 +209,7 @@ func Main() -> int {
                 last = found.key;
                 consumed = consumed + 1;
             },
-            .None => {
+            none => {
                 draining = false;
             }
         }

@@ -1,6 +1,6 @@
 import Allocator::{ Allocator, SystemAllocator };
-import Collections::{ CollectionError, Tree, TreeNode };
-import Core::{ Assert, Option, Ordering };
+import Collections::{ Tree, TreeNode };
+import Core::{ Assert, Ordering, Panic };
 
 // The red-black kernel, checked against its own rules rather than against its outputs.
 //
@@ -112,13 +112,11 @@ func Depth(node: *var TreeNode<int32, int32>) -> uint {
 // ended at. A stride coprime with the count reaches every key while arriving in an order the algorithm has no reason
 // to find convenient.
 func Fill(tree: &var Tree<int32, int32>, count: int32, stride: int32) -> uint {
-    var replaced = Option::None<int32>();
     var step: int32 = 0;
     while step < count {
         let key = (step * stride) % count;
-        Assert(tree.Attach(key, key * 3, CompareInt32, @replaced) == CollectionError::None,
-               "there is room for every key");
-        Assert(replaced.IsNone(), "and none of them was already there");
+        let replaced = tree.Attach(key, key * 3, CompareInt32) catch { else => Panic("there is room for every key") };
+        Assert(replaced == none, "and none of them was already there");
         Assert(Sound(tree), "the rules hold after every insertion");
         step = step + 1;
     }
@@ -167,10 +165,10 @@ extend Tracked {
 // what the counter read once everything was in, which is what separates the insertions from the destruction.
 func AttachAndDrop(allocator: Allocator, counter: *var int32, count: int32, afterAttaching: *var int32) {
     var tree = Tree<int32, Tracked>(allocator);
-    var replaced = Option::None<Tracked>();
     var key: int32 = 0;
     while key < count {
-        tree.Attach(key, Tracked { counter: counter, value: key }, CompareInt32, @replaced);
+        tree.Attach(key, Tracked { counter: counter, value: key }, CompareInt32)
+            catch { else => Panic("there is room for every tracked value") };
         key = key + 1;
     }
     Assert(tree.Length() == count as uint, "the tree holds what was put into it");
@@ -181,13 +179,13 @@ func AttachAndDrop(allocator: Allocator, counter: *var int32, count: int32, afte
 // has to be destroyed exactly once when the caller is done with it.
 func ReplaceAndDrop(allocator: Allocator, counter: *var int32, afterReplacing: *var int32) {
     var tree = Tree<int32, Tracked>(allocator);
-    var first = Option::None<Tracked>();
-    tree.Attach(7, Tracked { counter: counter, value: 1 }, CompareInt32, @first);
-    Assert(first.IsNone(), "nothing was displaced by a fresh key");
+    let first = tree.Attach(7, Tracked { counter: counter, value: 1 }, CompareInt32)
+        catch { else => Panic("there is room for a fresh key") };
+    Assert(!(first is Tracked), "nothing was displaced by a fresh key");
 
-    var second = Option::None<Tracked>();
-    tree.Attach(7, Tracked { counter: counter, value: 2 }, CompareInt32, @second);
-    Assert(second.IsSome(), "an equal key hands the old value back");
+    let second = tree.Attach(7, Tracked { counter: counter, value: 2 }, CompareInt32)
+        catch { else => Panic("an equal key needs no room") };
+    Assert(second is Tracked, "an equal key hands the old value back");
     Assert(tree.Length() == 1, "and does not make the tree longer");
     *afterReplacing = *counter;
 }
@@ -196,10 +194,10 @@ func ReplaceAndDrop(allocator: Allocator, counter: *var int32, afterReplacing: *
 // value it owns is counted on its own — away from anything a map built on it does.
 func DetachAndDrop(allocator: Allocator, counter: *var int32, count: int32, take: int32, afterTaking: *var int32) {
     var tree = Tree<int32, Tracked>(allocator);
-    var replaced = Option::None<Tracked>();
     var key: int32 = 0;
     while key < count {
-        tree.Attach(key, Tracked { counter: counter, value: key }, CompareInt32, @replaced);
+        tree.Attach(key, Tracked { counter: counter, value: key }, CompareInt32)
+            catch { else => Panic("there is room for every tracked value") };
         key = key + 1;
     }
 
@@ -229,11 +227,9 @@ func Main() -> int {
 
     // Descending insertion, the other degenerate order, taken through the mirrored half of the fix-up.
     var descending = Tree<int32, int32>(allocator);
-    var replaced = Option::None<int32>();
     var key: int32 = 63;
     while key >= 0 {
-        Assert(descending.Attach(key, key * 3, CompareInt32, @replaced) == CollectionError::None,
-               "there is room for every key");
+        descending.Attach(key, key * 3, CompareInt32) catch { else => Panic("there is room for every key") };
         Assert(Sound(descending), "the rules hold after every descending insertion");
         key = key - 1;
     }
@@ -260,9 +256,8 @@ func Main() -> int {
            "and nothing after the last");
 
     // A key already present is replaced rather than added, and hands back what it displaced.
-    var displaced = Option::None<int32>();
-    Assert(ascending.Attach(19, 1900, CompareInt32, @displaced) == CollectionError::None, "an equal key is accepted");
-    Assert(displaced.ValueOr(-1) == 57, "and gives back the value it displaced");
+    let displaced = ascending.Attach(19, 1900, CompareInt32) catch { else => Panic("an equal key is accepted") };
+    Assert(displaced == .Some(57), "and gives back the value it displaced");
     Assert(ascending.Length() == 64, "without making the tree longer");
     Assert(ascending.Find(19, CompareInt32).value == 1900, "the new value is what is there now");
     Assert(ascending.Find(64, CompareInt32) == null, "a key that was never put in is not found");

@@ -1,7 +1,7 @@
 import Core::uint;
 import Allocator::{ Allocator, SystemAllocator };
 import Collections::{ CollectionError, EqualsInt32, HashInt32, HashMap, KeyValue, TableSeed };
-import Core::Assert;
+import Core::{ Assert, Panic };
 
 // A hash table is mostly interesting where it is full and where things have been removed from it, so what is checked
 // is the state after churn: every key that should be there is, every key that should not is not, and the table has
@@ -27,7 +27,8 @@ func FillAndDrop(allocator: Allocator, counter: *var int32, count: int32, afterF
     var map = HashMap<int32, Tracked>(allocator, HashInt32, EqualsInt32);
     var key: int32 = 0;
     while key < count {
-        map.Insert(key, Tracked { counter: counter, value: key });
+        map.Insert(key, Tracked { counter: counter, value: key })
+            catch { else => Panic("every tracked insertion succeeds") };
         key = key + 1;
     }
     Assert(map.Length() == count as uint, "the map holds what was put into it");
@@ -40,7 +41,8 @@ func DrainFully(allocator: Allocator, counter: *var int32, count: int32) -> uint
     var map = HashMap<int32, Tracked>(allocator, HashInt32, EqualsInt32);
     var key: int32 = 0;
     while key < count {
-        map.Insert(key, Tracked { counter: counter, value: key });
+        map.Insert(key, Tracked { counter: counter, value: key })
+            catch { else => Panic("every tracked insertion succeeds") };
         key = key + 1;
     }
     var taken = (<-map).IntoIterator();
@@ -51,7 +53,7 @@ func DrainFully(allocator: Allocator, counter: *var int32, count: int32) -> uint
             .Some(entry) => {
                 yielded = yielded + 1;
             },
-            .None => {
+            none => {
                 draining = false;
             }
         }
@@ -64,7 +66,8 @@ func DrainPartly(allocator: Allocator, counter: *var int32, count: int32, stopAf
     var map = HashMap<int32, Tracked>(allocator, HashInt32, EqualsInt32);
     var key: int32 = 0;
     while key < count {
-        map.Insert(key, Tracked { counter: counter, value: key });
+        map.Insert(key, Tracked { counter: counter, value: key })
+            catch { else => Panic("every tracked insertion succeeds") };
         key = key + 1;
     }
     var taken = (<-map).IntoIterator();
@@ -75,11 +78,20 @@ func DrainPartly(allocator: Allocator, counter: *var int32, count: int32, stopAf
             .Some(entry) => {
                 yielded = yielded + 1;
             },
-            .None => {
+            none => {
                 draining = false;
             }
         }
     }
+}
+
+/// Why an operation the test expects to fail failed. One that succeeds instead panics, so an expected failure
+/// cannot pass by accident.
+func Refusal<T, E>(outcome: T ! E) -> E {
+    return match <-outcome {
+        .Failure(error) => error,
+        .Success(_) => Panic("the operation was expected to fail")
+    };
 }
 
 func Main() -> int {
@@ -91,31 +103,31 @@ func Main() -> int {
     Assert(map.IsEmpty(), "a new map is empty");
     Assert(map.Capacity() == 0, "and has no storage");
     Assert(!map.ContainsKey(1), "with nothing in it");
-    Assert(map.Get(1).IsNone(), "and nothing to read");
-    Assert(map.Remove(1).IsNone(), "and nothing to take out");
+    Assert(map.Get(1) == none, "and nothing to read");
+    Assert(map.Remove(1) == none, "and nothing to take out");
 
     // Insert and read back.
-    Assert(map.Insert(1, 10) == CollectionError::None, "the first insertion succeeds");
+    map.Insert(1, 10) catch { else => Panic("the first insertion succeeds") };
     Assert(map.Length() == 1, "and the map holds it");
     Assert(map.ContainsKey(1), "under the key it was given");
-    Assert(map.Get(1).ValueOr(-1) == 10, "with the value it was given");
+    Assert(map.Get(1) == .Some(10), "with the value it was given");
     Assert(!map.ContainsKey(2), "and nothing under a key that was never inserted");
 
     // Inserting an existing key replaces the value and does not grow the map.
-    Assert(map.Insert(1, 20) == CollectionError::None, "reinserting a key succeeds");
+    map.Insert(1, 20) catch { else => Panic("reinserting a key succeeds") };
     Assert(map.Length() == 1, "without adding an entry");
-    Assert(map.Get(1).ValueOr(-1) == 20, "and replaces the value");
+    Assert(map.Get(1) == .Some(20), "and replaces the value");
 
     // Enough entries to grow the table several times.
     var key: int32 = 0;
     while key < 200 {
-        Assert(map.Insert(key, key * 3) == CollectionError::None, "every insertion succeeds");
+        map.Insert(key, key * 3) catch { else => Panic("every insertion succeeds") };
         key = key + 1;
     }
     Assert(map.Length() == 200, "the map holds every distinct key");
     key = 0;
     while key < 200 {
-        Assert(map.Get(key).ValueOr(-1) == key * 3, "and every key reads back what it was given");
+        Assert(map.Get(key) == .Some(key * 3), "and every key reads back what it was given");
         key = key + 1;
     }
     Assert(!map.ContainsKey(200), "with nothing under a key that was never inserted");
@@ -126,7 +138,7 @@ func Main() -> int {
     key = 0;
     while key < 200 {
         if key % 3 == 0 {
-            Assert(map.Remove(key).ValueOr(-1) == key * 3, "removal hands back the value it held");
+            Assert(map.Remove(key) == .Some(key * 3), "removal hands back the value it held");
         }
         key = key + 1;
     }
@@ -134,10 +146,10 @@ func Main() -> int {
     while key < 200 {
         if key % 3 == 0 {
             Assert(!map.ContainsKey(key), "a removed key is gone");
-            Assert(map.Get(key).IsNone(), "and reads back nothing");
+            Assert(map.Get(key) == none, "and reads back nothing");
         }
         else {
-            Assert(map.Get(key).ValueOr(-1) == key * 3, "and every key left is still findable");
+            Assert(map.Get(key) == .Some(key * 3), "and every key left is still findable");
         }
         key = key + 1;
     }
@@ -147,8 +159,8 @@ func Main() -> int {
     let settled = map.Capacity();
     var round: int32 = 0;
     while round < 500 {
-        Assert(map.Insert(1000 + round, round) == CollectionError::None, "every churn insertion succeeds");
-        Assert(map.Remove(1000 + round).ValueOr(-1) == round, "and every churn removal hands its value back");
+        map.Insert(1000 + round, round) catch { else => Panic("every churn insertion succeeds") };
+        Assert(map.Remove(1000 + round) == .Some(round), "and every churn removal hands its value back");
         round = round + 1;
     }
     Assert(map.Capacity() == settled, "churning at a steady size never grows the table");
@@ -158,14 +170,14 @@ func Main() -> int {
     key = 0;
     while key < 200 {
         if key % 3 == 0 {
-            Assert(map.Insert(key, key * 3) == CollectionError::None, "reinserting a removed key succeeds");
+            map.Insert(key, key * 3) catch { else => Panic("reinserting a removed key succeeds") };
         }
         key = key + 1;
     }
     Assert(map.Length() == 200, "and the map holds all of them again");
     key = 0;
     while key < 200 {
-        Assert(map.Get(key).ValueOr(-1) == key * 3, "with every key readable");
+        Assert(map.Get(key) == .Some(key * 3), "with every key readable");
         key = key + 1;
     }
 
@@ -184,29 +196,29 @@ func Main() -> int {
     Assert(total == 19900, "each of them exactly once, since the keys sum to what they should");
 
     // A pointer to a value reads it where it sits, and the mutable form changes it in place.
-    var reading: *int32 = null;
-    Assert(map.Reference(7).TryIntoValue(@reading), "a present key has a value to point at");
+    let reading = map.Reference(7) ?? Panic("a present key has a value to point at");
     Assert(*reading == 21, "which reads what was stored");
     var writing: *var int32 = null;
     Assert(map.TryReferenceMutable(7, @writing), "and one that can be written through");
     *writing = 99;
-    Assert(map.Get(7).ValueOr(-1) == 99, "which changes the stored value");
+    Assert(map.Get(7) == .Some(99), "which changes the stored value");
     Assert(!map.TryReferenceMutable(1000, @writing), "an absent key has nothing to point at");
 
     // Capacity behaviour.
-    Assert(map.Reserve(1000) == CollectionError::None, "reserving succeeds");
+    map.Reserve(1000) catch { else => Panic("reserving succeeds") };
     Assert(map.Capacity() >= 1000, "taking the room asked for");
     Assert(map.Length() == 200, "without changing the count");
-    Assert(map.ShrinkToFit() == CollectionError::None, "shrinking succeeds");
+    map.ShrinkToFit() catch { else => Panic("shrinking succeeds") };
     Assert(map.Capacity() < 1000, "giving back what the entries do not need");
-    Assert(map.Get(11).ValueOr(-1) == 33, "and keeping every entry");
-    Assert(map.Reserve(uint::Max) == CollectionError::CapacityOverflow, "an impossible reservation is refused");
+    Assert(map.Get(11) == .Some(33), "and keeping every entry");
+    Assert(Refusal(map.Reserve(uint::Max)) == CollectionError::CapacityOverflow,
+           "an impossible reservation is refused");
     Assert(map.Length() == 200, "leaving the map as it was");
 
     map.Clear();
     Assert(map.IsEmpty(), "clearing empties the map");
     Assert(!map.ContainsKey(11), "with nothing left in it");
-    Assert(map.Insert(1, 1) == CollectionError::None, "and the map is usable afterwards");
+    map.Insert(1, 1) catch { else => Panic("and the map is usable afterwards") };
 
     // Two maps with different seeds hash the same keys differently, which is the whole point of seeding. What is
     // observable is the walk order, since that is the slot order and the slot order is the hash's.
@@ -214,8 +226,8 @@ func Main() -> int {
     var second = HashMap::WithSeed<int32, int32>(allocator, TableSeed::Of(99, 100), HashInt32, EqualsInt32);
     key = 0;
     while key < 32 {
-        first.Insert(key, key);
-        second.Insert(key, key);
+        first.Insert(key, key) catch { else => Panic("the first seeded insertion succeeds") };
+        second.Insert(key, key) catch { else => Panic("the second seeded insertion succeeds") };
         key = key + 1;
     }
     Assert(first.Length() == second.Length(), "two maps given the same keys hold the same number");
@@ -241,7 +253,7 @@ func Main() -> int {
     var same = HashMap::WithSeed<int32, int32>(allocator, TableSeed::Of(1, 2), HashInt32, EqualsInt32);
     key = 0;
     while key < 32 {
-        same.Insert(key, key);
+        same.Insert(key, key) catch { else => Panic("the same-seeded insertion succeeds") };
         key = key + 1;
     }
     firstCursor = 0;
@@ -268,9 +280,11 @@ func Main() -> int {
 
     destroyed = 0;
     var owning = HashMap<int32, Tracked>(allocator, HashInt32, EqualsInt32);
-    owning.Insert(1, Tracked { counter: @destroyed, value: 1 });
+    owning.Insert(1, Tracked { counter: @destroyed, value: 1 })
+        catch { else => Panic("inserting a tracked value succeeds") };
     Assert(destroyed == 0, "inserting destroys nothing");
-    owning.Insert(1, Tracked { counter: @destroyed, value: 2 });
+    owning.Insert(1, Tracked { counter: @destroyed, value: 2 })
+        catch { else => Panic("replacing a tracked value succeeds") };
     Assert(destroyed == 1, "but replacing a value destroys the one it replaced");
     owning.Clear();
     Assert(destroyed == 2, "and clearing destroys what is left");
@@ -279,38 +293,36 @@ func Main() -> int {
     var lookup = HashMap<int32, int32>(allocator, HashInt32, EqualsInt32);
     var existing: *var int32 = null;
     var inserted = false;
-    Assert(lookup.GetOrInsert(5, 50, @existing, @inserted) == CollectionError::None, "get-or-insert succeeds");
+    lookup.GetOrInsert(5, 50, @existing, @inserted) catch { else => Panic("get-or-insert succeeds") };
     Assert(inserted, "reporting that the map grew");
     Assert(*existing == 50, "and pointing at the value it put there");
     *existing = 55;
-    Assert(lookup.Get(5).ValueOr(-1) == 55, "which is the stored value, not a copy of it");
+    Assert(lookup.Get(5) == .Some(55), "which is the stored value, not a copy of it");
 
-    Assert(lookup.GetOrInsert(5, 999, @existing, @inserted) == CollectionError::None, "asking again succeeds");
+    lookup.GetOrInsert(5, 999, @existing, @inserted) catch { else => Panic("asking again succeeds") };
     Assert(!inserted, "reporting that the map did not grow");
     Assert(*existing == 55, "and pointing at what was already there rather than what was offered");
     Assert(lookup.Length() == 1, "with the map still holding one entry");
 
     // Replacement hands the old value back, where Insert throws it away.
-    var replaceError = CollectionError::None;
-    Assert(lookup.Replace(5, 60, @replaceError).ValueOr(-1) == 55, "replacing hands back what was there");
-    Assert(replaceError == CollectionError::None, "and reports no failure");
-    Assert(lookup.Get(5).ValueOr(-1) == 60, "having stored the new value");
-    Assert(lookup.Replace(6, 70, @replaceError).IsNone(), "replacing an absent key hands back nothing");
-    Assert(replaceError == CollectionError::None, "and is not a failure");
-    Assert(lookup.Get(6).ValueOr(-1) == 70, "having inserted it");
+    let replaced = lookup.Replace(5, 60) catch { else => Panic("replacing reports no failure") };
+    Assert(replaced == .Some(55), "replacing hands back what was there");
+    Assert(lookup.Get(5) == .Some(60), "having stored the new value");
+    let absent = lookup.Replace(6, 70) catch { else => Panic("replacing an absent key is not a failure") };
+    Assert(absent == none, "replacing an absent key hands back nothing");
+    Assert(lookup.Get(6) == .Some(70), "having inserted it");
 
     // Consuming removal hands back both halves.
-    var entry = KeyValue<int32, int32> { key: 0, value: 0 };
-    Assert(lookup.RemoveEntry(5).TryIntoValue(@entry), "removing an entry finds it");
+    let entry = lookup.RemoveEntry(5) ?? Panic("removing an entry finds it");
     Assert(entry.key == 5 && entry.value == 60, "and hands back the key as well as the value");
     Assert(!lookup.ContainsKey(5), "leaving the map without it");
-    Assert(lookup.RemoveEntry(5).IsNone(), "and a second removal finds nothing");
+    Assert(!(lookup.RemoveEntry(5) is KeyValue<int32, int32>), "and a second removal finds nothing");
 
     // Iterating with a `for` loop reaches every entry exactly once.
     var loops = HashMap<int32, int32>(allocator, HashInt32, EqualsInt32);
     key = 0;
     while key < 50 {
-        loops.Insert(key, key * 2);
+        loops.Insert(key, key * 2) catch { else => Panic("every loop insertion succeeds") };
         key = key + 1;
     }
     var iterated: uint = 0;
@@ -327,7 +339,7 @@ func Main() -> int {
     var drained = HashMap<int32, int32>(allocator, HashInt32, EqualsInt32);
     key = 0;
     while key < 20 {
-        drained.Insert(key, key + 100);
+        drained.Insert(key, key + 100) catch { else => Panic("every insertion before draining succeeds") };
         key = key + 1;
     }
     var moving = (<-drained).IntoIterator();
@@ -340,7 +352,7 @@ func Main() -> int {
                 movedSum = movedSum + (pair.value as int64);
                 moved = moved + 1;
             },
-            .None => {
+            none => {
                 draining = false;
             }
         }

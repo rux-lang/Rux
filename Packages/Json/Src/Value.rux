@@ -12,8 +12,8 @@
 // exact: a document read and written back keeps its numbers as they were written.
 
 import Allocator::Allocator;
-import Collections::{ CollectionError, Vector };
-import Core::Ordering;
+import Collections::Vector;
+import Core::{ Ordering, Succeeded };
 import Format::{ ParseFloat64, ParseInt64, ParseUint64 };
 import Text::{ String, StringView, TextError };
 
@@ -314,7 +314,7 @@ extend JsonValue {
     /// @see https://rux-lang.dev/docs/api/json/json-value/push
     pub func Push(self: &var JsonValue, value: JsonValue) -> bool {
         if self.kind != JsonKind::Array { return false; }
-        return self.elements.Push(<-value) == CollectionError::None;
+        return Succeeded(self.elements.Push(<-value));
     }
 
     /// Appends a member to an object, taking ownership of both name and value.
@@ -330,7 +330,7 @@ extend JsonValue {
     pub func Insert(self: &var JsonValue, name: String, value: JsonValue) -> bool {
         if self.kind != JsonKind::Object { return false; }
         var member = JsonMember { name: name, value: <-value };
-        return self.members.Push(<-member) == CollectionError::None;
+        return Succeeded(self.members.Push(<-member));
     }
 
     /// The element at `index`, borrowed, or null when there is none.
@@ -409,7 +409,7 @@ extend JsonValue {
         while self.members.Length() > target + 1u {
             var moved = JsonMember { name: String(self.allocator), value: JsonValue::Null(self.allocator) };
             if !self.members.TryPop(@moved) { break; }
-            tail.Push(<-moved);
+            tail.Push(<-moved) catch { else => {} };
         }
         var discarded = JsonMember { name: String(self.allocator), value: JsonValue::Null(self.allocator) };
         self.members.TryPop(@discarded);
@@ -417,7 +417,7 @@ extend JsonValue {
         while tail.Length() > 0u {
             var restored = JsonMember { name: String(self.allocator), value: JsonValue::Null(self.allocator) };
             if !tail.TryPop(@restored) { break; }
-            self.members.Push(<-restored);
+            self.members.Push(<-restored) catch { else => {} };
         }
         return true;
     }

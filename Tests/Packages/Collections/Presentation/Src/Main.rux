@@ -1,5 +1,5 @@
 import Allocator::{ Allocator, SystemAllocator };
-import Collections::{ Array, CollectionError, Deque, Vector, WriteArrayDebug, WriteDequeDebug, WriteVectorDebug };
+import Collections::{ Array, Deque, Vector, WriteArrayDebug, WriteDequeDebug, WriteVectorDebug };
 import Core::{ Assert, Failed, Panic, Succeeded };
 import Format::WriteFormat;
 import Text::{ BufferWriter, Debug, FormatError, FormatSpec, ParseFormatSpec, TextWriter, WriteAscii, WriteBytes };
@@ -100,13 +100,13 @@ func Main() -> int {
     Assert(ShownVector(numbers, plain, "[]"), "an empty vector shows as empty");
     var value: int32 = 1i32;
     while value <= 3i32 {
-        Assert(numbers.Push(value * 10i32) == CollectionError::None, "filled");
+        numbers.Push(value * 10i32) catch { else => Panic("filled") };
         value = value + 1i32;
     }
     Assert(ShownVector(numbers, plain, "[10, 20, 30]"), "and a full one as its elements in order");
 
     // Capacity is not part of what a vector holds, so reserving room changes nothing about what it shows.
-    Assert(numbers.Reserve(1000u) == CollectionError::None, "room is taken");
+    numbers.Reserve(1000u) catch { else => Panic("room is taken") };
     Assert(numbers.Capacity() >= 1003u, "and the vector is much larger than its length");
     Assert(ShownVector(numbers, plain, "[10, 20, 30]"), "but shows exactly what it holds");
 
@@ -115,35 +115,31 @@ func Main() -> int {
     Assert(ShownVector(numbers, Spec("04"), "[0010, 0020, 0030]"), "and so does zero padding");
 
     // An array is the same rendering over a fixed length.
-    var arrayError = CollectionError::None;
-    var fixed = Array::Filled<int32>(allocator, 3u, 7i32, @arrayError);
-    Assert(arrayError == CollectionError::None, "an array is built");
+    var fixed = Array::Filled<int32>(allocator, 3u, 7i32) catch { else => Panic("an array is built") };
     Assert(ShownArray(fixed, plain, "[7, 7, 7]"), "and shows its elements");
-    var emptyError = CollectionError::None;
-    var nothing = Array::Filled<int32>(allocator, 0u, 0i32, @emptyError);
-    Assert(emptyError == CollectionError::None, "an empty array is built");
+    var nothing = Array::Filled<int32>(allocator, 0u, 0i32) catch { else => Panic("an empty array is built") };
     Assert(ShownArray(nothing, plain, "[]"), "and shows as empty");
 
     // A deque shows front to back. This one has not wrapped.
     var queue = Deque<int32>(allocator);
     Assert(ShownDeque(queue, plain, "[]"), "an empty deque shows as empty");
-    Assert(queue.PushBack(1i32) == CollectionError::None, "a deque takes one at the back");
-    Assert(queue.PushBack(2i32) == CollectionError::None, "and another");
+    queue.PushBack(1i32) catch { else => Panic("a deque takes one at the back") };
+    queue.PushBack(2i32) catch { else => Panic("and another") };
     Assert(ShownDeque(queue, plain, "[1, 2]"), "and shows them in order");
 
     // Now the wrapped case, which is the one a writer that only walked the first run would fail. Pushing at the
     // front of a deque whose head is at the start of the block puts the element at the end of it, so the elements
     // are in two runs with the gap in the middle.
-    Assert(queue.PushFront(0i32) == CollectionError::None, "and one at the front, which wraps the ring");
+    queue.PushFront(0i32) catch { else => Panic("and one at the front, which wraps the ring") };
     Assert(!queue.IsContiguous(), "so its elements are in two runs");
     Assert(ShownDeque(queue, plain, "[0, 1, 2]"), "and it still shows them front to back, as one sequence");
     Assert(!queue.IsContiguous(), "having rearranged nothing to do it");
 
     // The order is the deque's own, which is what PopFront yields, and it survives the ring wrapping again.
-    Assert(queue.PushFront(-1i32) == CollectionError::None, "another at the front");
-    Assert(queue.PushBack(3i32) == CollectionError::None, "and another at the back");
+    queue.PushFront(-1i32) catch { else => Panic("another at the front") };
+    queue.PushBack(3i32) catch { else => Panic("and another at the back") };
     Assert(ShownDeque(queue, plain, "[-1, 0, 1, 2, 3]"), "the whole ring reads front to back");
-    Assert(queue.PopFront().ValueOr(99i32) == -1i32, "and the front is what the rendering said it was");
+    Assert(queue.PopFront() == .Some(-1i32), "and the front is what the rendering said it was");
 
     // Showing a container takes nothing out of it. Every element is reached through a borrow, so a vector of a
     // move-only element type can be shown as many times as wanted and still holds all of them.
@@ -151,7 +147,7 @@ func Main() -> int {
     var owned = Vector<Tracked>(allocator);
     var tag: int32 = 0;
     while tag < 3i32 {
-        Assert(owned.Push(Tracked { counter: @destroyed, tag: tag }) == CollectionError::None, "filled");
+        owned.Push(Tracked { counter: @destroyed, tag: tag }) catch { else => Panic("filled") };
         tag = tag + 1i32;
     }
 
@@ -168,9 +164,9 @@ func Main() -> int {
     // The same for a deque of them, including the wrapped case, since that is where a writer walking the wrong run
     // would read an element the deque does not hold.
     var ring = Deque<Tracked>(allocator);
-    Assert(ring.PushBack(Tracked { counter: @destroyed, tag: 1i32 }) == CollectionError::None, "back");
-    Assert(ring.PushBack(Tracked { counter: @destroyed, tag: 2i32 }) == CollectionError::None, "back again");
-    Assert(ring.PushFront(Tracked { counter: @destroyed, tag: 0i32 }) == CollectionError::None, "front, wrapping");
+    ring.PushBack(Tracked { counter: @destroyed, tag: 1i32 }) catch { else => Panic("back") };
+    ring.PushBack(Tracked { counter: @destroyed, tag: 2i32 }) catch { else => Panic("back again") };
+    ring.PushFront(Tracked { counter: @destroyed, tag: 0i32 }) catch { else => Panic("front, wrapping") };
     Assert(!ring.IsContiguous(), "so this one is in two runs too");
 
     var ringStorage: char8[128];

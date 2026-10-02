@@ -1,12 +1,12 @@
 // Why a collection operation could not be completed.
 //
-// `None` is success, so an operation that can fail for more than one reason reports one value rather than a bool the
-// caller has to disambiguate. The return type is what separates the two kinds of failure in this package: an
-// operation returning a `CollectionError` needed memory or capacity arithmetic, while an operation returning `bool`
-// never allocates and has exactly one way to fail. So an exhausted allocator can never be mistaken for a missing
-// key, and a rejected index can never be mistaken for either.
+// Every case is a failure: an operation that can fail returns its result, or nothing, through `T ! CollectionError`.
+// The return type is what separates the two kinds of failure in this package: an operation returning a native
+// fallible needed memory or capacity arithmetic, while an operation returning an optional or a `bool` never
+// allocates and has exactly one way to fail. So an exhausted allocator can never be mistaken for a missing key, and a
+// rejected index can never be mistaken for either.
 //
-// One rule holds everywhere: an error other than `None` means the receiver is unchanged. A container that could not
+// One rule holds everywhere: a failure means the receiver is unchanged. A container that could not
 // grow is the container it was, with the same elements at the same indices, and a caller may retry, give up, or
 // carry on using it. Nothing here leaves a collection half-modified.
 
@@ -14,12 +14,10 @@ import Allocator::AllocError;
 
 /// Why a collection operation could not be completed.
 ///
-/// `None` is success. Every other value means the operation did not happen and the collection is as it was.
+/// Every case means the operation did not happen and the collection is as it was.
 ///
 /// @see https://rux-lang.dev/docs/api/collections/collection-error
 pub enum CollectionError: uint8 {
-    /// The operation completed.
-    None = 0,
     /// The allocator had no storage to give.
     ///
     /// Transient in principle: the same request may succeed later, and a caller with something to release may make
@@ -41,31 +39,6 @@ pub enum CollectionError: uint8 {
 }
 
 extend CollectionError {
-    /// Whether this reports success.
-    ///
-    /// `self` is borrowed. True only for `None`.
-    ///
-    /// Cannot fail. Runs in constant time and allocates nothing.
-    ///
-    /// @returns whether nothing went wrong
-    /// @see https://rux-lang.dev/docs/api/collections/collection-error/is-ok
-    pub func IsOk(self: CollectionError) -> bool {
-        return self == CollectionError::None;
-    }
-
-    /// Whether this reports a failure.
-    ///
-    /// `self` is borrowed. The negation of `IsOk`, written out because `if error.IsError()` reads better than the
-    /// comparison it stands for.
-    ///
-    /// Cannot fail. Runs in constant time and allocates nothing.
-    ///
-    /// @returns whether something did
-    /// @see https://rux-lang.dev/docs/api/collections/collection-error/is-error
-    pub func IsError(self: CollectionError) -> bool {
-        return self != CollectionError::None;
-    }
-
     /// Whether the same operation might succeed later.
     ///
     /// `self` is borrowed. True only for `OutOfMemory`, which says the allocator had nothing to give rather than

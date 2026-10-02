@@ -1,7 +1,7 @@
 import Core::{ uint };
 import Allocator::{ Allocator, SystemAllocator };
 import Collections::{ Array, CollectionError };
-import Core::Assert;
+import Core::{ Assert, Panic };
 
 // An array owns its storage and its elements, so the questions worth asking are about ownership: does destroying one
 // destroy what it holds, exactly once, and does a failed construction leave anything behind. Counting destructions is
@@ -27,15 +27,19 @@ extend Tracked {
     }
 }
 
+/// Why an operation the test expects to fail failed. One that succeeds instead panics, so an expected failure
+/// cannot pass by accident.
+func Refusal<T, E>(outcome: T ! E) -> E {
+    return match <-outcome {
+        .Failure(error) => error,
+        .Success(_) => Panic("the operation was expected to fail")
+    };
+}
+
 // A scope for an array, so its destruction happens somewhere observable.
-func FillAndDrop(allocator: Allocator, counter: *var int32, length: uint) -> CollectionError {
-    var error = CollectionError::None;
-    var array = Array::Filled<Tracked>(allocator, length, Tracked { counter: counter, value: 5 }, @error);
-    if error.IsError() {
-        return error;
-    }
+func FillAndDrop(allocator: Allocator, counter: *var int32, length: uint) -> ! CollectionError {
+    var array = Array::Filled<Tracked>(allocator, length, Tracked { counter: counter, value: 5 })?;
     Assert(array.Length() == length, "the array is the length it was asked for");
-    return CollectionError::None;
 }
 
 func SumOf(allocator: Allocator) -> int32 {
@@ -44,9 +48,9 @@ func SumOf(allocator: Allocator) -> int32 {
     values[1] = 2;
     values[2] = 3;
     values[3] = 4;
-    var error = CollectionError::None;
-    var array = Array::FromSlice<int32>(allocator, (@values[0])[..4], @error);
-    Assert(error == CollectionError::None, "an array of numbers is made");
+    var array = Array::FromSlice<int32>(allocator, (@values[0])[..4]) catch {
+        else => Panic("an array of numbers is made")
+    };
 
     var total: int32 = 0;
     for value in array {
@@ -63,26 +67,23 @@ func Main() -> int {
     Assert(SumOf(allocator) == 10, "an array holds what was copied into it and iterates over it");
 
     // Filling with a value copies it into every position.
-    var error = CollectionError::None;
-    var filled = Array::Filled<int32>(allocator, 6, 7, @error);
-    Assert(error == CollectionError::None, "a filled array is made");
+    var filled = Array::Filled<int32>(allocator, 6, 7) catch { else => Panic("a filled array is made") };
     Assert(filled.Length() == 6, "with the length asked for");
     Assert(!filled.IsEmpty(), "and is not empty");
     var index: uint = 0;
-    var value: int32 = 0;
     while index < 6 {
-        Assert(filled.Get(index).TryIntoValue(@value), "every index has an element");
+        let value = filled.Get(index) ?? Panic("every index has an element");
         Assert(value == 7, "and every element is the value it was filled with");
         index++;
     }
-    Assert(filled.Get(6).IsNone(), "one past the end has no element");
-    Assert(filled.Reference(6).IsNone(), "and no pointer either");
+    Assert(filled.Get(6) == none, "one past the end has no element");
+    Assert(filled.Reference(6) == none, "and no pointer either");
 
     // Setting replaces an element and refuses an index the array does not have.
-    Assert(filled.Set(2, 99) == CollectionError::None, "setting an element in range succeeds");
-    Assert(filled.Get(2).TryIntoValue(@value) && value == 99, "and replaces what was there");
-    Assert(filled.Set(6, 1) == CollectionError::IndexOutOfRange, "setting past the end is refused");
-    Assert(filled.Get(5).TryIntoValue(@value) && value == 7, "changing nothing");
+    filled.Set(2, 99) catch { else => Panic("setting an element in range succeeds") };
+    Assert(filled.Get(2) == .Some(99), "and replaces what was there");
+    Assert(Refusal(filled.Set(6, 1)) == CollectionError::IndexOutOfRange, "setting past the end is refused");
+    Assert(filled.Get(5) == .Some(7), "changing nothing");
 
     // A borrowed view is what the algorithms take, and it sees the array's own storage.
     let view = filled.AsSlice();
@@ -90,16 +91,14 @@ func Main() -> int {
     Assert(view.data == filled.AsSlice().data, "over the array's own storage");
 
     // An empty array owns a block it still releases, and is not a special shape anywhere.
-    var empty = Array::Filled<int32>(allocator, 0, 0, @error);
-    Assert(error == CollectionError::None, "an empty array is made");
+    var empty = Array::Filled<int32>(allocator, 0, 0) catch { else => Panic("an empty array is made") };
     Assert(empty.IsEmpty(), "and is empty");
     Assert(empty.Length() == 0, "with no elements");
-    Assert(empty.Get(0).IsNone(), "and nothing at any index");
+    Assert(empty.Get(0) == none, "and nothing at any index");
 
-    // A length that cannot be sized is refused as arithmetic, and what comes back owns nothing.
-    var impossible = Array::Filled<int32>(allocator, uint::Max, 0, @error);
-    Assert(error == CollectionError::CapacityOverflow, "a length that cannot be sized is refused");
-    Assert(impossible.IsEmpty(), "and the array that comes back owns nothing");
+    // A length that cannot be sized is refused as arithmetic.
+    Assert(Refusal(Array::Filled<int32>(allocator, uint::Max, 0)) == CollectionError::CapacityOverflow,
+        "a length that cannot be sized is refused");
 
     // Destruction: every element of an array is destroyed exactly once when the array's life ends.
     //
@@ -108,21 +107,21 @@ func Main() -> int {
     // could not be filled this way at all — the copies would each claim what one of them owns — which is why the
     // element here owns nothing but a pointer to the counter.
     var destroyed: int32 = 0;
-    Assert(FillAndDrop(allocator, @destroyed, 5) == CollectionError::None, "an array of tracked elements is made");
+    FillAndDrop(allocator, @destroyed, 5) catch { else => Panic("an array of tracked elements is made") };
     Assert(destroyed == 6, "and destroys every element plus the source parameter exactly once");
 
     destroyed = 0;
-    Assert(FillAndDrop(allocator, @destroyed, 1) == CollectionError::None, "a single-element array is made");
+    FillAndDrop(allocator, @destroyed, 1) catch { else => Panic("a single-element array is made") };
     Assert(destroyed == 2, "and destroys its element and source parameter once");
 
     // One for a length of zero: the value was handed over and never copied anywhere, so `Filled` destroys its
     // parameter rather than leaving it to nobody.
     destroyed = 0;
-    Assert(FillAndDrop(allocator, @destroyed, 0) == CollectionError::None, "an empty array of them is made");
+    FillAndDrop(allocator, @destroyed, 0) catch { else => Panic("an empty array of them is made") };
     Assert(destroyed == 1, "and destroys the value it was given but never stored");
 
     destroyed = 0;
-    Assert(FillAndDrop(allocator, @destroyed, 32) == CollectionError::None, "a longer array is made");
+    FillAndDrop(allocator, @destroyed, 32) catch { else => Panic("a longer array is made") };
     Assert(destroyed == 33, "with one destruction per element plus the source parameter");
 
     return 0;

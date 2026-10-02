@@ -9,7 +9,7 @@
 // A set owns its elements, so it prohibits copying and is move-only.
 
 import Allocator::Allocator;
-import Core::{ Iterator, Option, Unit };
+import Core::{ Iterator, Unit };
 
 /// A hash table of distinct values.
 ///
@@ -57,19 +57,16 @@ extend HashSet<T> {
 
     /// An empty set with room for `capacity` elements already taken.
     ///
-    /// `error` is written with why the room could not be taken.
-    ///
     /// @param allocator where the storage comes from
     /// @param capacity how many elements to make room for
     /// @param hash how a key is hashed, taking the key and the two seed words
     /// @param equals whether two elements are the same
-    /// @param error receives why the room could not be taken, or `None`
     /// @returns an empty set with room for that many elements already taken
     /// @see https://rux-lang.dev/docs/api/collections/hash-set/with-capacity
     pub func WithCapacity(allocator: Allocator, capacity: uint, hash: func(T, uint64, uint64) -> uint64,
-                      equals: func(T, T) -> bool, error: *var CollectionError) -> HashSet<T> {
+                      equals: func(T, T) -> bool) -> HashSet<T> ! CollectionError {
         var set = HashSet<T>(allocator, hash, equals);
-        *error = set.Reserve(capacity);
+        set.Reserve(capacity)?;
         return <-set;
     }
 
@@ -107,70 +104,58 @@ extend HashSet<T> {
     /// @returns whether the value is present
     /// @see https://rux-lang.dev/docs/api/collections/hash-set/contains
     pub func Contains(self: &HashSet<T>, value: T) -> bool {
-        return self.table.Find(value, self.hash, self.equals).IsSome();
+        return self.table.Find(value, self.hash, self.equals) != none;
     }
 
     /// Adds `value` to the set, reporting whether it was not already there.
     ///
     /// `self` is borrowed mutably; `value` is moved in when it is added and destroyed when it was already present --
-    /// a set holds one of each, and the one it already had is the one it keeps. `added` receives whether the set
-    /// grew, and may be null.
+    /// a set holds one of each, and the one it already had is the one it keeps.
     ///
     /// A failure leaves the set exactly as it was.
     ///
     /// @param value the value to act on
-    /// @param added receives whether the value was new rather than already present
-    /// @returns `None` when the operation succeeded; `OutOfMemory` when the allocator refused
+    /// @returns whether the value was new rather than already present
     /// @see https://rux-lang.dev/docs/api/collections/hash-set/insert
-    pub func Insert(self: &var HashSet<T>, value: T, added: *var bool) -> CollectionError {
-        if self.table.Find(value, self.hash, self.equals).IsSome() {
-            if added != null {
-                *added = false;
-            }
-            return CollectionError::None;
-        }
+    pub func Insert(self: &var HashSet<T>, value: T) -> bool ! CollectionError {
+        if self.table.Find(value, self.hash, self.equals) != none { return false; }
 
-        let room = self.table.EnsureRoom(self.hash);
-        if room.IsError() { return room; }
+        self.table.EnsureRoom(self.hash)?;
         // Named first: a struct literal cannot appear inside an `if` condition, since its brace opens the body.
         let nothing = Unit {};
-        if self.table.Place(<-value, nothing, self.hash).IsNone() { return CollectionError::Unsupported; }
-        if added != null {
-            *added = true;
-        }
-        return CollectionError::None;
+        if self.table.Place(<-value, nothing, self.hash) == none { fail CollectionError::Unsupported; }
+        return true;
     }
 
     /// Takes `value` out of the set and hands it back.
     ///
     /// `self` is borrowed mutably. The element is moved out rather than destroyed, so one that owns something leaves
-    /// intact. Reports `None` when the set did not have it.
+    /// intact. Reports `none` when the set did not have it.
     ///
     /// @param value the value to act on
-    /// @returns the value that was stored, or `None` when it was absent
+    /// @returns the value that was stored, or `none` when it was absent
     /// @see https://rux-lang.dev/docs/api/collections/hash-set/remove
-    pub func Remove(self: &var HashSet<T>, value: T) -> Option<T> {
-        var slot: uint = 0;
-        if !self.table.Find(value, self.hash, self.equals).TryIntoValue(@slot) { return Option::None<T>(); }
+    pub func Remove(self: &var HashSet<T>, value: T) -> T? {
+        let slot = self.table.Find(value, self.hash, self.equals) ?? return none;
         let taken <- self.table.keys[slot];
         self.table.Vacate(slot);
-        return Option::Some<T>(<-taken);
+        return .Some(<-taken);
     }
 
     /// Makes room for `additional` more elements on top of those already present.
     ///
     /// @param additional how many more elements to make room for
-    /// @returns `None` when the operation succeeded; `OutOfMemory` when the allocator refused
+    /// @returns nothing when the operation succeeded, or why it did not
     /// @see https://rux-lang.dev/docs/api/collections/hash-set/reserve
-    pub func Reserve(self: &var HashSet<T>, additional: uint) -> CollectionError {
+    pub func Reserve(self: &var HashSet<T>, additional: uint) -> ! CollectionError {
         return self.table.Reserve(additional, self.hash);
     }
 
     /// Releases the capacity the element count does not need.
     ///
-    /// @returns `None` when the operation succeeded; `OutOfMemory` when the allocator refused
+    /// @returns nothing when the operation succeeded, or why it did not
     /// @see https://rux-lang.dev/docs/api/collections/hash-set/shrink-to-fit
-    pub func ShrinkToFit(self: &var HashSet<T>) -> CollectionError {
+    pub func ShrinkToFit(self: &var HashSet<T>) -> ! CollectionError {
         return self.table.ShrinkToFit(self.hash);
     }
 
@@ -223,24 +208,24 @@ pub struct HashSetIterator<T> {
 }
 
 extend HashSetIterator<T> {
-    /// The next element, or `None` once every slot has been looked at.
+    /// The next element, or `none` once every slot has been looked at.
     ///
     /// `self` is borrowed mutably and advanced. The element is a copy; a set of things that own something is walked
     /// with `TryNext` instead.
     ///
-    /// @returns the next element, or `None` at the end
+    /// @returns the next element, or `none` at the end
     /// @see https://rux-lang.dev/docs/api/collections/hash-set-iterator/next
-    pub func Next(self: &var HashSetIterator<T>) -> Option<T> {
+    pub func Next(self: &var HashSetIterator<T>) -> T? {
         var index = self.cursor;
         while index < self.capacity {
             if self.states[index] != SlotEmpty {
                 self.cursor = index + 1;
-                return Option::Some<T>(self.keys[index]);
+                return .Some(self.keys[index]);
             }
             index++;
         }
         self.cursor = index;
-        return Option::None<T>();
+        return none;
     }
 }
 
@@ -263,14 +248,14 @@ extend HashSetIntoIterator<T> {
     /// Copying a consuming iterator would give two owners of its table.
     func =(self: &var HashSetIntoIterator<T>, other: &HashSetIntoIterator<T>);
 
-    /// The next element, moved out, or `None` once every slot has been looked at.
+    /// The next element, moved out, or `none` once every slot has been looked at.
     ///
     /// `self` is borrowed mutably and advanced. The slot is emptied as the element leaves, so what remains for the
     /// destructor is exactly what nobody took.
     ///
-    /// @returns the next element, or `None` at the end
+    /// @returns the next element, or `none` at the end
     /// @see https://rux-lang.dev/docs/api/collections/hash-set-into-iterator/next
-    pub func Next(self: &var HashSetIntoIterator<T>) -> Option<T> {
+    pub func Next(self: &var HashSetIntoIterator<T>) -> T? {
         var index = self.cursor;
         while index < self.table.Capacity() {
             if self.table.IsOccupied(index) {
@@ -278,12 +263,12 @@ extend HashSetIntoIterator<T> {
                 self.table.states[index] = SlotEmpty;
                 self.table.length = self.table.length - 1;
                 self.cursor = index + 1;
-                return Option::Some<T>(<-taken);
+                return .Some(<-taken);
             }
             index++;
         }
         self.cursor = index;
-        return Option::None<T>();
+        return none;
     }
 }
 
@@ -360,10 +345,10 @@ extend HashSet<T> {
         var walking = true;
         while walking {
             match walker.Next() {
-                .Some(value) => {
+                value? => {
                     if !other.Contains(value) { return false; }
                 },
-                .None => {
+                none => {
                     walking = false;
                 }
             }
@@ -401,10 +386,10 @@ extend HashSet<T> {
         var walking = true;
         while walking {
             match walker.Next() {
-                .Some(value) => {
+                value? => {
                     if other.Contains(value) { return false; }
                 },
-                .None => {
+                none => {
                     walking = false;
                 }
             }
@@ -437,28 +422,25 @@ extend HashSet<T> {
     /// Runs in time proportional to `other`.
     ///
     /// @param other the collection to compare or combine with
-    /// @returns `None` when the operation succeeded; `OutOfMemory` when the allocator refused
+    /// @returns nothing when the operation succeeded, or why it did not
     /// @see https://rux-lang.dev/docs/api/collections/hash-set/union-with
-    pub func UnionWith(self: &var HashSet<T>, other: &HashSet<T>) -> CollectionError {
-        if other.Length() == 0 { return CollectionError::None; }
-        let room = self.Reserve(other.Length());
-        if room.IsError() { return room; }
+    pub func UnionWith(self: &var HashSet<T>, other: &HashSet<T>) -> ! CollectionError {
+        if other.Length() == 0 { return; }
+        self.Reserve(other.Length())?;
 
         var walker = other.Iterate();
         var walking = true;
-        var added = false;
         while walking {
             match walker.Next() {
-                .Some(value) => {
-                    let error = self.Insert(value, @added);
-                    if error.IsError() { return error; }
+                value? => {
+                    self.Insert(value)?;
                 },
-                .None => {
+                none => {
                     walking = false;
                 }
             }
         }
-        return CollectionError::None;
+        return;
     }
 
     /// Removes every element this set has that `other` does not.
@@ -531,70 +513,58 @@ extend HashSet<T> {
     /// leave a set that is neither operand nor the answer.
     ///
     /// @param other the collection to compare or combine with
-    /// @returns `None` when the operation succeeded; `OutOfMemory` when the allocator refused
+    /// @returns nothing when the operation succeeded, or why it did not
     /// @see https://rux-lang.dev/docs/api/collections/hash-set/symmetric-difference-with
-    pub func SymmetricDifferenceWith(self: &var HashSet<T>, other: &HashSet<T>) -> CollectionError {
-        if other.Length() == 0 { return CollectionError::None; }
-        let room = self.Reserve(other.Length());
-        if room.IsError() { return room; }
+    pub func SymmetricDifferenceWith(self: &var HashSet<T>, other: &HashSet<T>) -> ! CollectionError {
+        if other.Length() == 0 { return; }
+        self.Reserve(other.Length())?;
 
         var walker = other.Iterate();
         var walking = true;
-        var added = false;
         while walking {
             match walker.Next() {
-                .Some(value) => {
-                    var slot: uint = 0;
-                    if self.table.Find(value, self.hash, self.equals).TryIntoValue(@slot) {
-                        let taken <- self.table.keys[slot];
-                        self.table.Vacate(slot);
-                    }
-                    else {
-                        let error = self.Insert(value, @added);
-                        if error.IsError() { return error; }
+                value? => {
+                    match self.table.Find(value, self.hash, self.equals) {
+                        slot? => {
+                            let taken <- self.table.keys[slot];
+                            self.table.Vacate(slot);
+                        },
+                        none => {
+                            self.Insert(value)?;
+
+                        }
                     }
                 },
-                .None => {
+                none => {
                     walking = false;
                 }
             }
         }
-        return CollectionError::None;
+        return;
     }
 
     /// An independent set holding a copy of every element of this one.
     ///
-    /// `self` is borrowed and left alone; `error` is written with why the copy could not be made. The copy has its
-    /// own storage from the same allocator and the same seed, so the two lay their elements out alike.
+    /// `self` is borrowed and left alone. The copy has its own storage from the same allocator and the same seed, so
+    /// the two lay their elements out alike.
     ///
-    /// @param error receives why the operation failed, or `None`
-    /// @returns an independent copy, empty when the allocator refused
+    /// @returns an independent copy
     /// @see https://rux-lang.dev/docs/api/collections/hash-set/clone
-    pub func Clone(self: &HashSet<T>, error: *var CollectionError) -> HashSet<T> {
+    pub func Clone(self: &HashSet<T>) -> HashSet<T> ! CollectionError {
         var copy = HashSet::WithSeed<T>(self.table.allocator, self.table.seed, self.hash, self.equals);
-        let room = copy.Reserve(self.Length());
-        if room.IsError() {
-            *error = room;
-            return <-copy;
-        }
+        copy.Reserve(self.Length())?;
         var walker = self.Iterate();
         var walking = true;
-        var added = false;
         while walking {
             match walker.Next() {
-                .Some(value) => {
-                    let failure = copy.Insert(value, @added);
-                    if failure.IsError() {
-                        *error = failure;
-                        return <-copy;
-                    }
+                value? => {
+                    copy.Insert(value)?;
                 },
-                .None => {
+                none => {
                     walking = false;
                 }
             }
         }
-        *error = CollectionError::None;
         return <-copy;
     }
 }

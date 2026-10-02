@@ -2,19 +2,6 @@
 # Format: count|file   A README block is named as its README plus '#' and its position.
 # This file may only shrink; the package migration gate is passed when no entry remains.
 # Regenerate with: RUX_UPDATE_GOLDEN=1 rux-tests --source-file='*LegacyProtocolAuditTests.cpp'
-2|Packages/Collections/Src/HashMap.rux
-2|Packages/Collections/Src/HashSet.rux
-3|Packages/Collections/Src/Iteration.rux
-3|Packages/Collections/Src/TreeMap.rux
-3|Packages/Collections/Src/TreeSet.rux
-1|Packages/Collections/Src/Vector.rux
 2|Tests/Language/EnumMethodReturn/Src/Main.rux
 2|Tests/Language/MutablePointerLayouts/Src/Main.rux
-1|Tests/Packages/Collections/Array/Src/Main.rux
-1|Tests/Packages/Collections/ContainerStorage/Src/Main.rux
-1|Tests/Packages/Collections/HashMap/Src/Main.rux
-1|Tests/Packages/Collections/HashSet/Src/Main.rux
-7|Tests/Packages/Collections/MutableIteration/Src/Main.rux
-4|Tests/Packages/Collections/Plumbing/Src/Main.rux
-1|Tests/Packages/Collections/Vector/Src/Main.rux
 2|Tests/Packages/Core/Interfaces/Src/Main.rux

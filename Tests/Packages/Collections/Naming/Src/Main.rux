@@ -1,6 +1,6 @@
 import Allocator::{ Allocator, SystemAllocator };
-import Collections::{ CollectionError, EqualsInt32, HashSet, TableSeed };
-import Core::Assert;
+import Collections::{ EqualsInt32, HashSet, TableSeed };
+import Core::{ Assert, Panic };
 
 // A program declaring a name its dependency also declares.
 //
@@ -28,8 +28,7 @@ func Main() -> int {
     var set = HashSet::WithSeed<int32>(allocator, TableSeed::Of(1, 2), HashInt32, EqualsInt32);
     var value: int32 = 0;
     while value < 40 {
-        var added = false;
-        Assert(set.Insert(value, @added) == CollectionError::None, "there is room for every value");
+        let added = set.Insert(value) catch { else => Panic("there is room for every value") };
         Assert(added, "and every one of them is new");
         value = value + 1;
     }
@@ -47,7 +46,7 @@ func Main() -> int {
     value = 0;
     while value < 40 {
         if value % 3 == 0 {
-            Assert(set.Remove(value).IsSome(), "a value in the set is removed");
+            Assert(set.Remove(value) == .Some(value), "a value in the set is removed");
         }
         value = value + 1;
     }

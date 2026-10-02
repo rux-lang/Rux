@@ -1,7 +1,7 @@
 import Core::{ uint };
 import Allocator::AllocError;
 import Collections::{ CollectionError, FromAllocError, MutableReferenceIterator, ReferenceIterator, ValueIterator };
-import Core::Assert;
+import Core::{ Assert, Panic };
 
 // The plumbing every container shares: what an error means, and what the iterators yield. None of it is
 // interesting on its own, which is exactly why it is worth testing once here rather than discovering it through
@@ -13,17 +13,11 @@ import Core::Assert;
 // it exercises the surface a caller can actually reach.
 
 func Main() -> int {
-    // The error's own questions.
-    Assert(CollectionError::None.IsOk(), "None is the only value that reports success");
-    Assert(!CollectionError::None.IsError(), "and the only one that is not an error");
-    Assert(CollectionError::OutOfMemory.IsError(), "running out of memory is an error");
-    Assert(CollectionError::CapacityOverflow.IsError(), "and so is arithmetic that does not fit");
-    Assert(CollectionError::IndexOutOfRange.IsError(), "and an index the collection does not have");
+    // The error's own question. Every case is a failure, so the one left to ask is whether trying again could help.
     Assert(CollectionError::OutOfMemory.IsTransient(), "an allocator that ran short may not have next time");
     Assert(!CollectionError::CapacityOverflow.IsTransient(), "but a size that cannot be named will not start being");
     Assert(!CollectionError::IndexOutOfRange.IsTransient(), "and an absent index will not appear");
     Assert(!CollectionError::Unsupported.IsTransient(), "and a refused layout will be refused again");
-    Assert(!CollectionError::None.IsTransient(), "success is not a thing to retry");
 
     // The mapping from the allocator's answers to this package's.
     Assert(FromAllocError(AllocError::OutOfMemory) == CollectionError::OutOfMemory, "a shortage maps to a shortage");
@@ -52,13 +46,12 @@ func Main() -> int {
 
     // An iterator driven to its end keeps reporting nothing.
     var drained = ValueIterator<int32>(items);
-    var drawn: int32 = 0;
     seen = 0;
-    while drained.Next().TryIntoValue(@drawn) {
+    while drained.Next() is int32 {
         seen = seen + 1;
     }
     Assert(seen == 5, "driving an iterator by hand yields every element");
-    Assert(drained.Next().IsNone(), "and an exhausted iterator stays exhausted");
+    Assert(drained.Next() == none, "and an exhausted iterator stays exhausted");
 
     // A `for` loop over an iterator walks a copy of it, so the iterator the caller holds is where it was. Worth
     // knowing rather than discovering: a loop is not a way to advance an iterator someone else is also reading.
@@ -66,11 +59,11 @@ func Main() -> int {
     for value in untouched {
         seen = seen + 1;
     }
-    Assert(untouched.Next().IsSome(), "a loop over an iterator leaves the caller's own where it was");
+    Assert(untouched.Next() is int32, "a loop over an iterator leaves the caller's own where it was");
 
     // Nothing to walk yields nothing, rather than one of something.
     var nothing = ValueIterator<int32>([]);
-    Assert(nothing.Next().IsNone(), "an empty run yields nothing at once");
+    Assert(nothing.Next() == none, "an empty run yields nothing at once");
 
     // The reference iterator borrows each element where it sits.
     var byReference = ReferenceIterator<int32>(items);
@@ -86,13 +79,12 @@ func Main() -> int {
     // Both iterators walk the same run and agree about what is in it, which is the one thing they must.
     var counted = ValueIterator<int32>(items);
     var borrowed = ReferenceIterator<int32>(items);
-    var value: int32 = 0;
-    var element: *int32 = null;
-    while counted.Next().TryIntoValue(@value) {
-        Assert(borrowed.Next().TryIntoValue(@element), "the two iterators end together");
+    while true {
+        let value = counted.Next() ?? break;
+        let element = borrowed.Next() ?? Panic("the two iterators end together");
         Assert(*element == value, "and agree element for element");
     }
-    Assert(borrowed.Next().IsNone(), "and neither has anything left");
+    Assert(borrowed.Next() == none, "and neither has anything left");
 
     return 0;
 }

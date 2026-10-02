@@ -28,7 +28,6 @@
 
 import Core::uint;
 import Allocator::Allocator;
-import Core::Option;
 import Entropy::NextUint64;
 
 /// The state byte of a slot that has never held an entry, and does not now.
@@ -201,7 +200,7 @@ extend Table<K, V> {
         return (index + 1) & (self.capacity - 1);
     }
 
-    /// The slot holding `key`, or `None` when the table does not have it.
+    /// The slot holding `key`, or `none` when the table does not have it.
     ///
     /// `self` is borrowed; `key` is read by value; `hash` and `equals` decide identity and must be the same pair the
     /// table was filled with. The seed is handed to `hash`, so a table's hashes are its own.
@@ -217,31 +216,31 @@ extend Table<K, V> {
     /// @returns the slot the key belongs in, occupied or not
     /// @see https://rux-lang.dev/docs/api/collections/table/find
     pub func Find(self: &Table<K, V>, key: K, hash: func(K, uint64, uint64) -> uint64,
-              equals: func(K, K) -> bool) -> Option<uint> {
-        if self.capacity == 0 || self.length == 0 { return Option::None<uint>(); }
+              equals: func(K, K) -> bool) -> uint? {
+        if self.capacity == 0 || self.length == 0 { return none; }
 
         var index = self.HomeOf(hash(key, self.seed.low, self.seed.high));
         var distance: uint = 0;
         while distance < self.capacity {
             let state = self.states[index];
-            if state == SlotEmpty { return Option::None<uint>(); }
+            if state == SlotEmpty { return none; }
             let occupantDistance = (state as uint) - 1;
-            if occupantDistance < distance { return Option::None<uint>(); }
-            if equals(self.keys[index], key) { return Option::Some<uint>(index); }
+            if occupantDistance < distance { return none; }
+            if equals(self.keys[index], key) { return .Some(index); }
             index = self.NextOf(index);
             distance = distance + 1;
         }
-        return Option::None<uint>();
+        return none;
     }
 }
 
 extend Table<K, V> {
     // Puts an entry into a table with room for it, displacing whatever is closer to home along the way.
     //
-    // Returns the slot the entry ended up in, or `None` when the probe ran further than a distance byte can hold.
+    // Returns the slot the entry ended up in, or `none` when the probe ran further than a distance byte can hold.
     // The caller has already made room, so a refusal here means these keys collide badly enough that a larger table
     // would not help.
-    func Place(self: &var Table<K, V>, key: K, value: V, hash: func(K, uint64, uint64) -> uint64) -> Option<uint> {
+    func Place(self: &var Table<K, V>, key: K, value: V, hash: func(K, uint64, uint64) -> uint64) -> uint? {
         var index = self.HomeOf(hash(key, self.seed.low, self.seed.high));
         var distance: uint = 0;
         var carriedKey <- key;
@@ -255,7 +254,7 @@ extend Table<K, V> {
                 self.values[index] <- carriedValue;
                 self.states[index] = (distance + 1) as uint8;
                 self.length = self.length + 1;
-                return Option::Some<uint>(landed < self.capacity ? landed : index);
+                return .Some(landed < self.capacity ? landed : index);
             }
 
             let occupantDistance = (state as uint) - 1;
@@ -279,7 +278,7 @@ extend Table<K, V> {
             index = self.NextOf(index);
             distance = distance + 1;
         }
-        return Option::None<uint>();
+        return none;
     }
 
     // Takes the entry at `index` out and closes the gap behind it.
@@ -310,24 +309,22 @@ extend Table<K, V> {
 extend Table<K, V> {
     /// The smallest power-of-two capacity that holds `length` entries without passing the three-quarter load factor.
     ///
-    /// `length` is read by value; `capacity` receives the answer. Derived from the entry count rather than from the
-    /// current capacity, so one rule covers growing and settling alike.
+    /// `length` is read by value. Derived from the entry count rather than from the current capacity, so one rule
+    /// covers growing and settling alike.
     ///
     /// @param length how many elements
-    /// @param capacity receives the table size that holds that many entries
-    /// @returns `None` when the operation succeeded; `OutOfMemory` when the allocator refused
+    /// @returns the table size that holds that many entries, or `CapacityOverflow` when there is none
     /// @see https://rux-lang.dev/docs/api/collections/table/capacity-for
-    pub func CapacityFor(length: uint, capacity: *var uint) -> CollectionError {
+    pub func CapacityFor(length: uint) -> uint ! CollectionError {
         if length == 0 {
-            *capacity = MinimumTableCapacity;
-            return CollectionError::None;
+            return MinimumTableCapacity;
         }
         // ceil(length * 4 / 3) slots, guarded so neither the scaling nor the rounding term can wrap.
-        if length > (uint::Max - 2) / 4 { return CollectionError::CapacityOverflow; }
+        if length > (uint::Max - 2) / 4 { fail CollectionError::CapacityOverflow; }
         let required = (length * 4 + 2) / 3;
         // An element size of one: this sizes slots, and each parallel run has its own byte size checked where it is
         // allocated.
-        return PowerOfTwoCapacity(required, MinimumTableCapacity, 1, capacity);
+        return PowerOfTwoCapacity(required, MinimumTableCapacity, 1);
     }
 
     /// Rebuilds the table at `capacity` slots, reinserting every entry.
@@ -339,26 +336,24 @@ extend Table<K, V> {
     ///
     /// @param capacity how many elements to make room for
     /// @param hash how a key is hashed, taking the key and the two seed words
-    /// @returns `None` when the operation succeeded; `OutOfMemory` when the allocator refused
+    /// @returns nothing when the operation succeeded, or why it did not
     /// @see https://rux-lang.dev/docs/api/collections/table/rehash
     pub func Rehash(self: &var Table<K, V>, capacity: uint,
-                hash: func(K, uint64, uint64) -> uint64) -> CollectionError {
-        var keys: *var K = null;
-        let keyRoom = AllocateBlock<K>(self.allocator, capacity, @keys);
-        if keyRoom.IsError() { return keyRoom; }
-        var values: *var V = null;
-        let valueRoom = AllocateBlock<V>(self.allocator, capacity, @values);
-        if valueRoom.IsError() {
-            ReleaseBlock<K>(self.allocator, keys, capacity);
-            return valueRoom;
-        }
-        var states: *var uint8 = null;
-        let stateRoom = AllocateBlock<uint8>(self.allocator, capacity, @states);
-        if stateRoom.IsError() {
-            ReleaseBlock<K>(self.allocator, keys, capacity);
-            ReleaseBlock<V>(self.allocator, values, capacity);
-            return stateRoom;
-        }
+                hash: func(K, uint64, uint64) -> uint64) -> ! CollectionError {
+        var keys = AllocateBlock<K>(self.allocator, capacity)?;
+        var values = AllocateBlock<V>(self.allocator, capacity) catch {
+            error => {
+                ReleaseBlock<K>(self.allocator, keys, capacity);
+                fail error;
+            }
+        };
+        var states = AllocateBlock<uint8>(self.allocator, capacity) catch {
+            error => {
+                ReleaseBlock<K>(self.allocator, keys, capacity);
+                ReleaseBlock<V>(self.allocator, values, capacity);
+                fail error;
+            }
+        };
 
         var index: uint = 0;
         while index < capacity {
@@ -391,7 +386,7 @@ extend Table<K, V> {
             ReleaseBlock<V>(self.allocator, oldValues, oldCapacity);
             ReleaseBlock<uint8>(self.allocator, oldStates, oldCapacity);
         }
-        return CollectionError::None;
+        return;
     }
 }
 
@@ -401,16 +396,12 @@ extend Table<K, V> {
     /// `self` is borrowed mutably; `hash` must be the one the table was filled with.
     ///
     /// @param hash how a key is hashed, taking the key and the two seed words
-    /// @returns `None` when the operation succeeded; `OutOfMemory` when the allocator refused
+    /// @returns nothing when the operation succeeded, or why it did not
     /// @see https://rux-lang.dev/docs/api/collections/table/ensure-room
-    pub func EnsureRoom(self: &var Table<K, V>, hash: func(K, uint64, uint64) -> uint64) -> CollectionError {
-        var required: uint = 0;
-        let total = AddLength(self.length, 1, @required);
-        if total.IsError() { return total; }
-        var wanted: uint = 0;
-        let planned = Table::CapacityFor<K, V>(required, @wanted);
-        if planned.IsError() { return planned; }
-        if wanted <= self.capacity { return CollectionError::None; }
+    pub func EnsureRoom(self: &var Table<K, V>, hash: func(K, uint64, uint64) -> uint64) -> ! CollectionError {
+        var required = AddLength(self.length, 1)?;
+        var wanted = Table::CapacityFor<K, V>(required)?;
+        if wanted <= self.capacity { return; }
         return self.Rehash(wanted, hash);
     }
 
@@ -420,17 +411,13 @@ extend Table<K, V> {
     ///
     /// @param additional how many more elements to make room for
     /// @param hash how a key is hashed, taking the key and the two seed words
-    /// @returns `None` when the operation succeeded; `OutOfMemory` when the allocator refused
+    /// @returns nothing when the operation succeeded, or why it did not
     /// @see https://rux-lang.dev/docs/api/collections/table/reserve
     pub func Reserve(self: &var Table<K, V>, additional: uint,
-                 hash: func(K, uint64, uint64) -> uint64) -> CollectionError {
-        var required: uint = 0;
-        let total = AddLength(self.length, additional, @required);
-        if total.IsError() { return total; }
-        var wanted: uint = 0;
-        let planned = Table::CapacityFor<K, V>(required, @wanted);
-        if planned.IsError() { return planned; }
-        if wanted <= self.capacity { return CollectionError::None; }
+                 hash: func(K, uint64, uint64) -> uint64) -> ! CollectionError {
+        var required = AddLength(self.length, additional)?;
+        var wanted = Table::CapacityFor<K, V>(required)?;
+        if wanted <= self.capacity { return; }
         return self.Rehash(wanted, hash);
     }
 
@@ -440,17 +427,15 @@ extend Table<K, V> {
     /// at its current capacity, since failing to hand memory back is never a reason to stop working.
     ///
     /// @param hash how a key is hashed, taking the key and the two seed words
-    /// @returns `None` when the operation succeeded; `OutOfMemory` when the allocator refused
+    /// @returns nothing when the operation succeeded, or why it did not
     /// @see https://rux-lang.dev/docs/api/collections/table/shrink-to-fit
-    pub func ShrinkToFit(self: &var Table<K, V>, hash: func(K, uint64, uint64) -> uint64) -> CollectionError {
+    pub func ShrinkToFit(self: &var Table<K, V>, hash: func(K, uint64, uint64) -> uint64) -> ! CollectionError {
         if self.length == 0 {
             self.Release();
-            return CollectionError::None;
+            return;
         }
-        var wanted: uint = 0;
-        let planned = Table::CapacityFor<K, V>(self.length, @wanted);
-        if planned.IsError() { return planned; }
-        if wanted >= self.capacity { return CollectionError::None; }
+        var wanted = Table::CapacityFor<K, V>(self.length)?;
+        if wanted >= self.capacity { return; }
         return self.Rehash(wanted, hash);
     }
 

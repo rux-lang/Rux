@@ -1,6 +1,6 @@
 import Allocator::{ Allocator, SystemAllocator };
-import Collections::{ CollectionError, CompareInt32, TreeSet };
-import Core::Assert;
+import Collections::{ CompareInt32, TreeSet };
+import Core::{ Assert, Panic };
 
 // A set whose elements come back in order, and the algebra over it.
 //
@@ -31,7 +31,7 @@ func CountRange(set: &TreeSet<int32>, start: int32, end: int32) -> uint {
                 previous = found;
                 seen = seen + 1;
             },
-            .None => {
+            none => {
                 walking = false;
             }
         }
@@ -47,8 +47,7 @@ func Main() -> int {
     var set = TreeSet<int32>(allocator, CompareInt32);
     var step: int32 = 0;
     while step < 50 {
-        var added = false;
-        Assert(set.Insert((step * 23) % 50, @added) == CollectionError::None, "there is room for every element");
+        let added = set.Insert((step * 23) % 50) catch { else => Panic("there is room for every element") };
         Assert(added, "and every one of them is new");
         step = step + 1;
     }
@@ -63,26 +62,25 @@ func Main() -> int {
     Assert(!set.Contains(50), "an element that was never put in is not");
     Assert(!set.Contains(-1), "on either side of the range");
 
-    var again = false;
-    Assert(set.Insert(21, @again) == CollectionError::None, "an element already there is accepted");
+    let again = set.Insert(21) catch { else => Panic("an element already there is accepted") };
     Assert(!again, "and reports that it added nothing");
     Assert(set.Length() == 50, "leaving the set the length it was");
 
     // The ordered questions, at the edges as well as in the middle.
-    Assert(set.First().ValueOr(-1) == 0, "the first element is the smallest");
-    Assert(set.Last().ValueOr(-1) == 49, "and the last is the largest");
-    Assert(set.Floor(30).ValueOr(-1) == 30, "a floor lands on an exact element");
-    Assert(set.Ceiling(30).ValueOr(-1) == 30, "and so does a ceiling");
-    Assert(set.Floor(100).ValueOr(-1) == 49, "a floor above every element is the largest");
-    Assert(set.Ceiling(-5).ValueOr(-1) == 0, "a ceiling below every element is the smallest");
-    Assert(set.Floor(-5).IsNone(), "there is no floor below every element");
-    Assert(set.Ceiling(100).IsNone(), "and no ceiling above every element");
+    Assert(set.First() == .Some(0), "the first element is the smallest");
+    Assert(set.Last() == .Some(49), "and the last is the largest");
+    Assert(set.Floor(30) == .Some(30), "a floor lands on an exact element");
+    Assert(set.Ceiling(30) == .Some(30), "and so does a ceiling");
+    Assert(set.Floor(100) == .Some(49), "a floor above every element is the largest");
+    Assert(set.Ceiling(-5) == .Some(0), "a ceiling below every element is the smallest");
+    Assert(set.Floor(-5) == none, "there is no floor below every element");
+    Assert(set.Ceiling(100) == none, "and no ceiling above every element");
 
     Assert(set.Remove(30), "an element in the set is removed");
     Assert(set.Length() == 49 && !set.Contains(30), "and is gone");
     Assert(!set.Remove(30), "removing it twice takes nothing the second time");
-    Assert(set.Floor(30).ValueOr(-1) == 29, "the floor of a missing element is the one below it");
-    Assert(set.Ceiling(30).ValueOr(-1) == 31, "and its ceiling is the one above");
+    Assert(set.Floor(30) == .Some(29), "the floor of a missing element is the one below it");
+    Assert(set.Ceiling(30) == .Some(31), "and its ceiling is the one above");
 
     // The walk comes out sorted, whatever order the elements arrived in.
     var walker = set.Iterate();
@@ -96,7 +94,7 @@ func Main() -> int {
                 previous = found;
                 seen = seen + 1;
             },
-            .None => {
+            none => {
                 walking = false;
             }
         }
@@ -119,15 +117,14 @@ func Main() -> int {
     var small = TreeSet<int32>(allocator, CompareInt32);
     value = 0;
     while value < 20 {
-        var added = false;
         if value % 2 == 0 {
-            evens.Insert(value, @added);
+            evens.Insert(value) catch { else => Panic("there is room for every even number") };
         }
         else {
-            odds.Insert(value, @added);
+            odds.Insert(value) catch { else => Panic("there is room for every odd number") };
         }
         if value < 6 {
-            small.Insert(value, @added);
+            small.Insert(value) catch { else => Panic("there is room for every small number") };
         }
         value = value + 1;
     }
@@ -146,35 +143,33 @@ func Main() -> int {
     Assert(!evens.Equals(odds), "and not one of the same size holding different elements");
 
     // Intersection allocates nothing and can only make a set smaller.
-    var error = CollectionError::None;
-    var intersection = evens.Clone(@error);
-    Assert(error == CollectionError::None, "a set can be copied");
+    var intersection = evens.Clone() catch { else => Panic("a set can be copied") };
     Assert(intersection.Equals(evens), "and the copy holds what the original does");
     intersection.IntersectWith(small);
     Assert(intersection.Length() == 3, "the intersection is the even numbers below six");
     Assert(intersection.Contains(0) && intersection.Contains(2) && intersection.Contains(4), "which are 0, 2 and 4");
-    Assert(intersection.First().ValueOr(-1) == 0 && intersection.Last().ValueOr(-1) == 4, "and still in order");
+    Assert(intersection.First() == .Some(0) && intersection.Last() == .Some(4), "and still in order");
 
-    var difference = evens.Clone(@error);
+    var difference = evens.Clone() catch { else => Panic("a set can be copied for a difference") };
     difference.Subtract(small);
     Assert(difference.Length() == 7, "subtracting the small numbers leaves the evens from six up");
     Assert(!difference.Contains(4) && difference.Contains(6), "with six the smallest of them");
 
     // Union and symmetric difference can grow, so they report.
-    var joined = evens.Clone(@error);
-    Assert(joined.UnionWith(odds) == CollectionError::None, "a union of two sets that fit is made");
+    var joined = evens.Clone() catch { else => Panic("a set can be copied for a union") };
+    joined.UnionWith(odds) catch { else => Panic("a union of two sets that fit is made") };
     Assert(joined.Length() == 20, "and holds every element of both");
-    Assert(joined.First().ValueOr(-1) == 0 && joined.Last().ValueOr(-1) == 19, "in order across both");
+    Assert(joined.First() == .Some(0) && joined.Last() == .Some(19), "in order across both");
 
-    var symmetric = evens.Clone(@error);
-    Assert(symmetric.SymmetricDifferenceWith(small) == CollectionError::None, "a symmetric difference is made");
+    var symmetric = evens.Clone() catch { else => Panic("a set can be copied for a symmetric difference") };
+    symmetric.SymmetricDifferenceWith(small) catch { else => Panic("a symmetric difference is made") };
     Assert(symmetric.Length() == 10, "holding what is in exactly one of the two");
     Assert(!symmetric.Contains(0) && !symmetric.Contains(2) && !symmetric.Contains(4), "not what they share");
     Assert(symmetric.Contains(1) && symmetric.Contains(3) && symmetric.Contains(5), "the odd small numbers");
     Assert(symmetric.Contains(6) && symmetric.Contains(18), "and the evens above them");
 
-    var mirror = evens.Clone(@error);
-    Assert(mirror.SymmetricDifferenceWith(evens) == CollectionError::None, "a set against its own copy is made");
+    var mirror = evens.Clone() catch { else => Panic("a set can be copied to mirror") };
+    mirror.SymmetricDifferenceWith(evens) catch { else => Panic("a set against its own copy is made") };
     Assert(mirror.IsEmpty(), "and comes out empty");
 
     // The consuming walk hands out ownership one element at a time, in the same order, and a walk stopped
@@ -190,14 +185,14 @@ func Main() -> int {
                 last = found;
                 consumed = consumed + 1;
             },
-            .None => {
+            none => {
                 draining = false;
             }
         }
     }
     Assert(consumed == 20, "and hands out every element the set held");
 
-    var partial = odds.Clone(@error);
+    var partial = odds.Clone() catch { else => Panic("a set can be copied for a partial walk") };
     var walkedPartly = (<-partial).IntoIterator();
     var takenSoFar: int32 = 0;
     while takenSoFar < 4 {
@@ -205,7 +200,7 @@ func Main() -> int {
             .Some(found) => {
                 Assert(found == takenSoFar * 2 + 1, "a partial walk starts at the smallest element");
             },
-            .None => {
+            none => {
                 Assert(false, "the walk has as many elements as went in");
             }
         }

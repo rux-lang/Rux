@@ -18,7 +18,7 @@
 // A consuming iterator, which moves elements out of a container and leaves it empty, belongs to the container that
 // can be emptied rather than here.
 
-import Core::{ Iterator, Option };
+import Core::Iterator;
 
 /// An iterator that yields each element of a run by copy.
 ///
@@ -54,19 +54,19 @@ extend ValueIterator<T> {
         return ValueIterator<T> { data: items.data, length: items.length, position: 0 };
     }
 
-    /// The next element, or `None` once the run is exhausted.
+    /// The next element, or `none` once the run is exhausted.
     ///
-    /// `self` is borrowed mutably and advanced. An exhausted iterator keeps reporting `None`.
+    /// `self` is borrowed mutably and advanced. An exhausted iterator keeps reporting `none`.
     ///
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
-    /// @returns the next element, or `None` at the end
+    /// @returns the next element, or `none` at the end
     /// @see https://rux-lang.dev/docs/api/collections/value-iterator/next
-    pub func Next(self: &var ValueIterator<T>) -> Option<T> {
-        if self.position >= self.length { return Option::None<T>(); }
+    pub func Next(self: &var ValueIterator<T>) -> T? {
+        if self.position >= self.length { return none; }
         let value = self.data[self.position];
         self.position = self.position + 1;
-        return Option::Some<T>(value);
+        return .Some(value);
     }
 }
 
@@ -107,19 +107,19 @@ extend ReferenceIterator<T> {
         return ReferenceIterator<T> { data: items.data, length: items.length, position: 0 };
     }
 
-    /// A pointer to the next element, or `None` once the run is exhausted.
+    /// A pointer to the next element, or `none` once the run is exhausted.
     ///
     /// `self` is borrowed mutably and advanced. The pointer borrows the element and takes ownership of nothing.
     ///
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
-    /// @returns the next element, or `None` at the end
+    /// @returns the next element, or `none` at the end
     /// @see https://rux-lang.dev/docs/api/collections/reference-iterator/next
-    pub func Next(self: &var ReferenceIterator<T>) -> Option<*T> {
-        if self.position >= self.length { return Option::None<*T>(); }
+    pub func Next(self: &var ReferenceIterator<T>) -> (*T)? {
+        if self.position >= self.length { return none; }
         let element = @self.data[self.position];
         self.position = self.position + 1;
-        return Option::Some<*T>(element);
+        return .Some(element);
     }
 }
 
@@ -157,18 +157,18 @@ extend MutableReferenceIterator<T> {
         return MutableReferenceIterator<T> { data: items.data, length: items.length, position: 0 };
     }
 
-    /// The next writable element pointer, or `None` once exhausted.
+    /// The next writable element pointer, or `none` once exhausted.
     ///
     /// Advances the cursor without copying, moving, or destroying an element. An exhausted cursor stays exhausted.
     /// Cannot fail. Runs in constant time and allocates nothing.
     ///
-    /// @returns the next element's address, or `None` at the end
+    /// @returns the next element's address, or `none` at the end
     /// @see https://rux-lang.dev/docs/api/collections/mutable-reference-iterator/next
-    pub func Next(self: &var MutableReferenceIterator<T>) -> Option<*var T> {
-        if self.position >= self.length { return Option::None<*var T>(); }
+    pub func Next(self: &var MutableReferenceIterator<T>) -> (*var T)? {
+        if self.position >= self.length { return none; }
         let element = @self.data[self.position];
         self.position = self.position + 1;
-        return Option::Some<*var T>(element);
+        return .Some(element);
     }
 }
 

@@ -16,8 +16,9 @@
 // document, not the same file, and this package is not the one to reach for when the file belongs to someone
 // else.
 
+import Core::Failed;
 import Allocator::Allocator;
-import Collections::{ CollectionError, Vector };
+import Collections::Vector;
 import Text::{ Display, FormatError, FormatSpec, ParseFailure, RejectStyle, String, StringView,
                TextError, TextWriter, WriteAscii, WriteBytes };
 import Time::{ Date, TimeOfDay, UtcOffset };
@@ -609,7 +610,7 @@ extend TomlParser {
                 part.Clear();
                 return false;
             }
-            if parts.Push(part) != CollectionError::None {
+            if Failed(parts.Push(part)) {
                 self.Stop(TomlStop::OutOfMemory);
                 return false;
             }

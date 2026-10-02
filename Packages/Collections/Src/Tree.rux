@@ -22,7 +22,7 @@
 // Internal to this package: the kernel, not something a caller reaches for.
 
 import Allocator::Allocator;
-import Core::{ Option, Ordering };
+import Core::Ordering;
 
 /// One node of a red-black tree.
 ///
@@ -368,11 +368,10 @@ extend Tree<K, V> {
 
     /// Puts `key` and `value` into the tree, replacing the value already stored under an equal key.
     ///
-    /// Takes ownership of both. `replaced` receives the value an equal key already had, or `None` when the key is
-    /// new — so a caller learns whether anything was displaced without a lookup first, and gets the displaced value
-    /// rather than having it quietly destroyed. When the key is already present the new key is destroyed rather than
-    /// stored, since the one in the tree is equal to it and is what everything already hanging below it was ordered
-    /// against.
+    /// Takes ownership of both. Hands back the value an equal key already had, or `none` when the key is new — so a
+    /// caller learns whether anything was displaced without a lookup first, and gets the displaced value rather than
+    /// having it quietly destroyed. When the key is already present the new key is destroyed rather than stored, since
+    /// the one in the tree is equal to it and is what everything already hanging below it was ordered against.
     ///
     /// Reports `OutOfMemory` when the node cannot be allocated, having changed nothing — but `key` and `value` are
     /// destroyed rather than handed back, because there is nowhere left to put them.
@@ -383,13 +382,9 @@ extend Tree<K, V> {
     /// @param key the key to look up
     /// @param value the value to act on
     /// @param compare how two keys order against each other
-    /// @param replaced receives the entry an equal key already held, when there was one
-    /// @returns the node the key now occupies, or null when the allocator refused
+    /// @returns the value an equal key already held, or `none` when the key is new
     /// @see https://rux-lang.dev/docs/api/collections/tree/attach
-    pub func Attach(self: &var Tree<K, V>, key: K, value: V, compare: func(K, K) -> Ordering,
-                replaced: *var Option<V>) -> CollectionError {
-        *replaced = Option::None<V>();
-
+    pub func Attach(self: &var Tree<K, V>, key: K, value: V, compare: func(K, K) -> Ordering) -> V? ! CollectionError {
         var above: *var TreeNode<K, V> = null;
         var walk = self.root;
         var descendedLeft = false;
@@ -407,14 +402,11 @@ extend Tree<K, V> {
             else {
                 let displaced <- walk.value;
                 walk.value <- value;
-                *replaced <- Option::Some<V>(<-displaced);
-                return CollectionError::None;
+                return <-displaced;
             }
         }
 
-        var fresh: *var TreeNode<K, V> = null;
-        let error = AllocateBlock<TreeNode<K, V>>(self.allocator, 1, @fresh);
-        if error.IsError() { return error; }
+        var fresh = AllocateBlock<TreeNode<K, V>>(self.allocator, 1)?;
 
         // Red is what a fresh node is coloured, because red is the colour that cannot break the black-count rule.
         // Whether it breaks the no-red-child-of-red rule is exactly what the fix-up settles.
@@ -437,7 +429,7 @@ extend Tree<K, V> {
         }
         self.length = self.length + 1;
         self.InsertFixup(fresh);
-        return CollectionError::None;
+        return none;
     }
 
     // Puts `replacement` where `hollow` was. Only the link downward from the parent and the link upward from the

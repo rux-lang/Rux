@@ -42,13 +42,12 @@ Both read-only and writable slices support `values[i]` and `values[1..3]` direct
 
 ## Failure model
 
-Two return types, and which one an operation uses says what can go wrong.
+Two return shapes, and which one an operation uses says what can go wrong.
 
-An operation that has to **allocate** returns a `CollectionError`:
+An operation that has to **allocate** returns a native fallible, `T ! CollectionError` or `! CollectionError`, whose failure channel is:
 
 ```rux
 enum CollectionError: uint8 {
-    None = 0,
     OutOfMemory = 1,
     CapacityOverflow = 2,
     IndexOutOfRange = 3,
@@ -58,18 +57,16 @@ enum CollectionError: uint8 {
 
 The five are not interchangeable. `OutOfMemory` is the only one worth retrying — `IsTransient` says so — because the allocator having nothing to give is a state that changes. A capacity that cannot be represented will not start being representable, an index the collection does not have will not appear, and a layout the allocator refuses will be refused the same way next time. `FromAllocError` is what maps an allocator's own answer onto these.
 
-An operation that **cannot** allocate reports an ordinary miss with a `bool`, through the `Try*` prefix and an out-parameter. So an exhausted allocator is never confused with an empty container, a missing key, or a rejected index — the distinction is in the type, not in the documentation.
+An operation that **cannot** allocate reports an ordinary miss with an optional — `Get`, `Remove`, and `PopFront` return `T?` — or with a `bool`, through the `Try*` prefix and an out-parameter. So an exhausted allocator is never confused with an empty container, a missing key, or a rejected index — the distinction is in the type, not in the documentation. An operation that both allocates and can find nothing, such as a map's `Replace`, returns `V? ! CollectionError`.
 
 ```rux
 import Allocator::{ Allocator, SystemAllocator };
-import Collections::{ CollectionError, Vector };
+import Collections::Vector;
 
 var system = SystemAllocator();
 let allocator: Allocator = system;
 var numbers = Vector<int32>(allocator);
-if !(numbers.Push(1) == CollectionError::None) {
-    return;
-}
+numbers.Push(1) catch { else => return 1 };
 
 var last: int32 = 0;
 if numbers.TryPop(@last) {
@@ -115,7 +112,7 @@ A `for` loop over an iterator _value_ walks a copy of it, so the iterator the ca
 
 For example, `for element in numbers.MutableReferences() { *element = *element * 2; }` doubles the stored numbers.
 
-Construct `MutableReferenceIterator<T>(items)` directly to walk a `var T[..]`. Repeated `Next()` calls return `Option<*var T>` and keep returning `None` after exhaustion. These cursors store raw pointers: callers must coordinate aliases and avoid moving or destroying the owner, or growing, shrinking, or reallocating its storage while an iterator or yielded pointer is in use. Iteration itself does not allocate or destroy elements.
+Construct `MutableReferenceIterator<T>(items)` directly to walk a `var T[..]`. Repeated `Next()` calls return `(*var T)?` and keep returning `none` after exhaustion. These cursors store raw pointers: callers must coordinate aliases and avoid moving or destroying the owner, or growing, shrinking, or reallocating its storage while an iterator or yielded pointer is in use. Iteration itself does not allocate or destroy elements.
 
 ## Hashing
 
@@ -225,8 +222,8 @@ func Show() -> ! FormatError {
     var system = SystemAllocator();
     let allocator: Allocator = system;
     var numbers = Vector<int32>(allocator);
-    numbers.Push(1);
-    numbers.Push(2);
+    numbers.Push(1) catch { else => {} };
+    numbers.Push(2) catch { else => {} };
 
     var failure = IoError::Ok();
     var console = ConsoleWriter(@failure);

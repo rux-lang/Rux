@@ -18,7 +18,7 @@
 // moved in exactly once.
 
 import Allocator::Allocator;
-import Core::{ Option };
+import Core::Option;
 
 /// A fixed-length run of elements on storage this array owns.
 ///
@@ -41,69 +41,48 @@ extend Array<T> {
 
     /// An array of `length` elements, every one a copy of `value`.
     ///
-    /// `allocator` is borrowed for the call and kept; `value` is read by value and copied into every position;
-    /// `error` is written with why the array could not be made, or `None` when it could. A length of zero gives an
-    /// empty array that owns a zero-sized block and is released like any other.
+    /// `allocator` is borrowed for the call and kept; `value` is read by value and copied into every position. A
+    /// length of zero gives an empty array that owns a zero-sized block and is released like any other.
     ///
-    /// The array is returned rather than written through an out-parameter, because the compiler tracks a binding's
-    /// initialization and cannot see a write through a pointer as one — an array delivered that way would be owned
-    /// by a binding believed to own nothing. The error is what travels by pointer instead.
-    ///
-    /// On failure the returned array is empty and owns nothing, so destroying it is harmless.
+    /// A failure hands back no array at all, so there is nothing half-built to destroy.
     ///
     /// Runs in time proportional to `length`.
     ///
     /// @param allocator where the storage comes from
     /// @param length how many elements
     /// @param value the value to act on
-    /// @param error receives why the operation failed, or `None`
-    /// @returns an array of `length` copies of `value`, empty when the allocator refused
+    /// @returns an array of `length` copies of `value`
     /// @see https://rux-lang.dev/docs/api/collections/array/filled
-    pub func Filled(allocator: Allocator, length: uint, value: T, error: *var CollectionError) -> Array<T> {
-        var data: *var T = null;
-        let failure = AllocateBlock<T>(allocator, length, @data);
-        if failure.IsError() {
-            *error = failure;
-            return Array<T> { data: null, length: 0, allocator: allocator };
-        }
+    pub func Filled(allocator: Allocator, length: uint, value: T) -> Array<T> ! CollectionError {
+        var data = AllocateBlock<T>(allocator, length)?;
 
         var index: uint = 0;
         while index < length {
             data[index] = value;
             index++;
         }
-        *error = CollectionError::None;
         return Array<T> { data: data, length: length, allocator: allocator };
     }
 
     /// An array holding a copy of every element of `items`, in order.
     ///
-    /// `allocator` is borrowed for the call and kept; `items` is borrowed and read; `error` is written with why the
-    /// array could not be made. An empty slice gives an empty array.
-    ///
-    /// On failure the returned array is empty and owns nothing.
+    /// `allocator` is borrowed for the call and kept; `items` is borrowed and read. An empty slice gives an empty
+    /// array.
     ///
     /// Runs in time proportional to the slice's length.
     ///
     /// @param allocator where the storage comes from
     /// @param items the elements to take
-    /// @param error receives why the operation failed, or `None`
-    /// @returns an array holding a copy of those elements, empty when the allocator refused
+    /// @returns an array holding a copy of those elements
     /// @see https://rux-lang.dev/docs/api/collections/array/from-slice
-    pub func FromSlice(allocator: Allocator, items: T[..], error: *var CollectionError) -> Array<T> {
-        var data: *var T = null;
-        let failure = AllocateBlock<T>(allocator, items.length, @data);
-        if failure.IsError() {
-            *error = failure;
-            return Array<T> { data: null, length: 0, allocator: allocator };
-        }
+    pub func FromSlice(allocator: Allocator, items: T[..]) -> Array<T> ! CollectionError {
+        var data = AllocateBlock<T>(allocator, items.length)?;
 
         var index: uint = 0;
         while index < items.length {
             data[index] = items.data[index];
             index++;
         }
-        *error = CollectionError::None;
         return Array<T> { data: data, length: items.length, allocator: allocator };
     }
 }
@@ -111,19 +90,18 @@ extend Array<T> {
 extend Array<T> {
     /// An independent array holding a copy of every element of this one.
     ///
-    /// `self` is borrowed and left alone; `error` is written with why the copy could not be made. The copy has its
-    /// own storage from the same allocator, so both are released independently.
+    /// `self` is borrowed and left alone. The copy has its own storage from the same allocator, so both are released
+    /// independently.
     ///
     /// Copying elements is what this does, so an element that owns something ends up owned twice — which is why
     /// this is only usable where copying an element means what it says.
     ///
     /// Runs in time proportional to the length.
     ///
-    /// @param error receives why the operation failed, or `None`
-    /// @returns an independent copy, empty when the allocator refused
+    /// @returns an independent copy
     /// @see https://rux-lang.dev/docs/api/collections/array/clone
-    pub func Clone(self: &Array<T>, error: *var CollectionError) -> Array<T> {
-        return Array::FromSlice<T>(self.allocator, self.AsSlice(), error);
+    pub func Clone(self: &Array<T>) -> Array<T> ! CollectionError {
+        return Array::FromSlice<T>(self.allocator, self.AsSlice());
     }
 
     /// How many elements the array holds.
@@ -146,20 +124,20 @@ extend Array<T> {
         return self.length == 0;
     }
 
-    /// The element at `index`, or `None` when there is no such index.
+    /// The element at `index`, or `none` when there is no such index.
     ///
     /// `self` is borrowed; the element is returned by copy. Bounds-checked, which is what separates this from
     /// indexing the slice directly.
     ///
     /// @param index which one, counting from zero
-    /// @returns a copy of the element, or `None` when the index is out of range
+    /// @returns a copy of the element, or `none` when the index is out of range
     /// @see https://rux-lang.dev/docs/api/collections/array/get
-    pub func Get(self: &Array<T>, index: uint) -> Option<T> {
-        if index >= self.length { return Option::None<T>(); }
-        return Option::Some<T>(self.data[index]);
+    pub func Get(self: &Array<T>, index: uint) -> T? {
+        if index >= self.length { return none; }
+        return self.data[index];
     }
 
-    /// A pointer to the element at `index`, or `None` when there is no such index.
+    /// A pointer to the element at `index`, or `none` when there is no such index.
     ///
     /// `self` is borrowed; the pointer borrows the element where it sits. This is how an element that owns something
     /// is read without being copied.
@@ -169,11 +147,11 @@ extend Array<T> {
     /// The pointer is valid until the array is destroyed or moved.
     ///
     /// @param index which one, counting from zero
-    /// @returns the address of the element, or `None` when the index is out of range
+    /// @returns the address of the element, or `none` when the index is out of range
     /// @see https://rux-lang.dev/docs/api/collections/array/reference
-    pub func Reference(self: &Array<T>, index: uint) -> Option<*T> {
-        if index >= self.length { return Option::None<*T>(); }
-        return Option::Some<*T>(@self.data[index]);
+    pub func Reference(self: &Array<T>, index: uint) -> (*T)? {
+        if index >= self.length { return none; }
+        return @self.data[index];
     }
 
     /// Replaces the element at `index` with `value`.
@@ -187,12 +165,12 @@ extend Array<T> {
     ///
     /// @param index which one, counting from zero
     /// @param value the value to act on
-    /// @returns `None` when the element was written; `IndexOutOfRange` otherwise
+    /// @returns nothing when the element was written, or `IndexOutOfRange`
     /// @see https://rux-lang.dev/docs/api/collections/array/set
-    pub func Set(self: &var Array<T>, index: uint, value: T) -> CollectionError {
-        if index >= self.length { return CollectionError::IndexOutOfRange; }
+    pub func Set(self: &var Array<T>, index: uint, value: T) -> ! CollectionError {
+        if index >= self.length { fail CollectionError::IndexOutOfRange; }
         self.data[index] <- value;
-        return CollectionError::None;
+        return;
     }
 
     /// The whole array as a borrowed read-only view.

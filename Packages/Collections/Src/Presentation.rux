@@ -305,7 +305,6 @@ extend CollectionError : Display {
                           spec: FormatSpec) -> ! FormatError {
         AcceptsErrorSpec(spec)?;
         return match self {
-            .None => WriteBytes(writer, "no error"),
             .OutOfMemory => WriteBytes(writer, "out of memory"),
             .CapacityOverflow => WriteBytes(writer, "size that cannot be represented"),
             .IndexOutOfRange => WriteBytes(writer, "index the collection does not have"),
@@ -329,7 +328,6 @@ extend CollectionError : Debug {
         AcceptsErrorSpec(spec)?;
         WriteBytes(writer, "CollectionError::")?;
         return match self {
-            .None => WriteBytes(writer, "None"),
             .OutOfMemory => WriteBytes(writer, "OutOfMemory"),
             .CapacityOverflow => WriteBytes(writer, "CapacityOverflow"),
             .IndexOutOfRange => WriteBytes(writer, "IndexOutOfRange"),

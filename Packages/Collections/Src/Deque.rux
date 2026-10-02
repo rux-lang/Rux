@@ -18,7 +18,7 @@
 
 import Algorithms::Rotate;
 import Allocator::Allocator;
-import Core::{ Option };
+import Core::Option;
 import Memory::Copy;
 
 /// The capacity a deque takes when it first has to allocate.
@@ -66,78 +66,61 @@ extend Deque<T> {
 
     /// An empty deque with room for `capacity` elements already taken.
     ///
-    /// `allocator` is borrowed for the call and kept; `error` is written with why the room could not be taken. The
-    /// capacity actually taken is rounded up to a power of two, since that is what the ring's masking needs.
+    /// `allocator` is borrowed for the call and kept. The capacity actually taken is rounded up to a power of two,
+    /// since that is what the ring's masking needs.
     ///
     /// @param allocator where the storage comes from
     /// @param capacity how many elements to make room for
-    /// @param error receives why the operation failed, or `None`
     /// @returns an empty deque with room for that many elements already taken
     /// @see https://rux-lang.dev/docs/api/collections/deque/with-capacity
-    pub func WithCapacity(allocator: Allocator, capacity: uint, error: *var CollectionError) -> Deque<T> {
+    pub func WithCapacity(allocator: Allocator, capacity: uint) -> Deque<T> ! CollectionError {
         var deque = Deque<T>(allocator);
         if capacity == 0 {
-            *error = CollectionError::None;
             return <-deque;
         }
-        *error = deque.Grow(capacity);
+        deque.Grow(capacity)?;
         return <-deque;
     }
 
     /// A deque holding a copy of every element of `items`, front to back.
     ///
-    /// `allocator` is borrowed for the call and kept; `items` is borrowed and read; `error` is written with why the
-    /// deque could not be made. Copies its elements, so a move-only element type is built with `PushBack` instead.
+    /// `allocator` is borrowed for the call and kept; `items` is borrowed and read. Copies its elements, so a move-only
+    /// element type is built with `PushBack` instead.
     ///
     /// @param allocator where the storage comes from
     /// @param items the elements to take
-    /// @param error receives why the operation failed, or `None`
-    /// @returns a deque holding a copy of those elements, empty when the allocator refused
+    /// @returns a deque holding a copy of those elements
     /// @see https://rux-lang.dev/docs/api/collections/deque/from-slice
-    pub func FromSlice(allocator: Allocator, items: T[..], error: *var CollectionError) -> Deque<T> {
+    pub func FromSlice(allocator: Allocator, items: T[..]) -> Deque<T> ! CollectionError {
         var deque = Deque<T>(allocator);
         if items.length == 0 {
-            *error = CollectionError::None;
             return <-deque;
         }
 
-        let room = deque.Grow(items.length);
-        if room.IsError() {
-            *error = room;
-            return <-deque;
-        }
+        deque.Grow(items.length)?;
         var index: uint = 0;
         while index < items.length {
             deque.data[index] = items.data[index];
             index++;
         }
         deque.length = items.length;
-        *error = CollectionError::None;
         return <-deque;
     }
 
     /// An independent deque holding a copy of every element of this one, in order.
     ///
-    /// `self` is borrowed and left alone; `error` is written with why the copy could not be made. The copy starts
-    /// contiguous whatever this one's elements were doing.
+    /// `self` is borrowed and left alone. The copy starts contiguous whatever this one's elements were doing.
     ///
-    /// @param error receives why the operation failed, or `None`
-    /// @returns an independent copy, empty when the allocator refused
+    /// @returns an independent copy
     /// @see https://rux-lang.dev/docs/api/collections/deque/clone
-    pub func Clone(self: &Deque<T>, error: *var CollectionError) -> Deque<T> {
+    pub func Clone(self: &Deque<T>) -> Deque<T> ! CollectionError {
         var copy = Deque<T> { data: null, head: 0, length: 0, capacity: 0, allocator: self.allocator };
         if self.length == 0 {
-            *error = CollectionError::None;
             return <-copy;
         }
-        let room = copy.Grow(self.length);
-        if room.IsError() {
-            *error = room;
-            return <-copy;
-        }
+        copy.Grow(self.length)?;
         self.CopyInto(copy.data);
         copy.length = self.length;
-        *error = CollectionError::None;
         return <-copy;
     }
 }
@@ -200,19 +183,15 @@ extend Deque<T> {
     // Grows the ring to hold at least `required` elements, leaving one that is already large enough alone.
     //
     // Internal: `Reserve` is the public way to ask for room, because it counts from the current length.
-    func Grow(self: &var Deque<T>, required: uint) -> CollectionError {
-        if required <= self.capacity { return CollectionError::None; }
+    func Grow(self: &var Deque<T>, required: uint) -> ! CollectionError {
+        if required <= self.capacity { return; }
 
-        var capacity: uint = 0;
-        let planned = PowerOfTwoCapacity(required, MinimumDequeCapacity, sizeof(T), @capacity);
-        if planned.IsError() { return planned; }
+        var capacity = PowerOfTwoCapacity(required, MinimumDequeCapacity, sizeof(T))?;
 
         // A fresh block rather than a reallocation: the elements may wrap, and unwrapping them in place would need a
         // rotation the new block gets for free. Nothing is released until the relocation has happened, so a refused
         // allocation leaves the deque exactly as it was.
-        var block: *var T = null;
-        let taken = AllocateBlock<T>(self.allocator, capacity, @block);
-        if taken.IsError() { return taken; }
+        var block = AllocateBlock<T>(self.allocator, capacity)?;
 
         self.CopyInto(block);
         if self.data != null {
@@ -221,7 +200,7 @@ extend Deque<T> {
         self.data = block;
         self.head = 0;
         self.capacity = capacity;
-        return CollectionError::None;
+        return;
     }
 
     /// Makes room for `additional` more elements on top of those already present.
@@ -229,12 +208,10 @@ extend Deque<T> {
     /// `self` is borrowed mutably; the length does not change. A failure leaves the deque exactly as it was.
     ///
     /// @param additional how many more elements to make room for
-    /// @returns `None` when the operation succeeded; `OutOfMemory` when the allocator refused
+    /// @returns nothing when the operation succeeded, or why it did not
     /// @see https://rux-lang.dev/docs/api/collections/deque/reserve
-    pub func Reserve(self: &var Deque<T>, additional: uint) -> CollectionError {
-        var required: uint = 0;
-        let total = AddLength(self.length, additional, @required);
-        if total.IsError() { return total; }
+    pub func Reserve(self: &var Deque<T>, additional: uint) -> ! CollectionError {
+        var required = AddLength(self.length, additional)?;
         return self.Grow(required);
     }
 
@@ -246,9 +223,9 @@ extend Deque<T> {
     /// A failure leaves the deque usable at its current capacity: failing to hand memory back is never a reason to
     /// stop working.
     ///
-    /// @returns `None` when the operation succeeded; `OutOfMemory` when the allocator refused
+    /// @returns nothing when the operation succeeded, or why it did not
     /// @see https://rux-lang.dev/docs/api/collections/deque/shrink-to-fit
-    pub func ShrinkToFit(self: &var Deque<T>) -> CollectionError {
+    pub func ShrinkToFit(self: &var Deque<T>) -> ! CollectionError {
         if self.length == 0 {
             if self.data != null {
                 ReleaseBlock<T>(self.allocator, self.data, self.capacity);
@@ -256,24 +233,20 @@ extend Deque<T> {
                 self.capacity = 0;
                 self.head = 0;
             }
-            return CollectionError::None;
+            return;
         }
 
-        var capacity: uint = 0;
-        let planned = PowerOfTwoCapacity(self.length, MinimumDequeCapacity, sizeof(T), @capacity);
-        if planned.IsError() { return planned; }
-        if capacity == self.capacity { return CollectionError::None; }
+        var capacity = PowerOfTwoCapacity(self.length, MinimumDequeCapacity, sizeof(T))?;
+        if capacity == self.capacity { return; }
 
-        var block: *var T = null;
-        let taken = AllocateBlock<T>(self.allocator, capacity, @block);
-        if taken.IsError() { return taken; }
+        var block = AllocateBlock<T>(self.allocator, capacity)?;
 
         self.CopyInto(block);
         ReleaseBlock<T>(self.allocator, self.data, self.capacity);
         self.data = block;
         self.head = 0;
         self.capacity = capacity;
-        return CollectionError::None;
+        return;
     }
 
     /// Destroys every element, keeping the storage.
@@ -322,20 +295,17 @@ extend Deque<T> {
     /// Amortized constant time.
     ///
     /// @param value the value to act on
-    /// @returns `None` when the operation succeeded; `OutOfMemory` when the allocator refused
+    /// @returns nothing when the operation succeeded, or why it did not
     /// @see https://rux-lang.dev/docs/api/collections/deque/push-front
-    pub func PushFront(self: &var Deque<T>, value: T) -> CollectionError {
-        var required: uint = 0;
-        let total = AddLength(self.length, 1, @required);
-        if total.IsError() { return total; }
-        let room = self.Grow(required);
-        if room.IsError() { return room; }
+    pub func PushFront(self: &var Deque<T>, value: T) -> ! CollectionError {
+        var required = AddLength(self.length, 1)?;
+        self.Grow(required)?;
 
         // One step back around the ring, which for a head of zero is the last slot.
         self.head = (self.head + self.capacity - 1) & (self.capacity - 1);
         self.data[self.head] <- value;
         self.length = self.length + 1;
-        return CollectionError::None;
+        return;
     }
 
     /// Adds an element at the back, growing the ring when it is full.
@@ -345,51 +315,48 @@ extend Deque<T> {
     /// Amortized constant time.
     ///
     /// @param value the value to act on
-    /// @returns `None` when the operation succeeded; `OutOfMemory` when the allocator refused
+    /// @returns nothing when the operation succeeded, or why it did not
     /// @see https://rux-lang.dev/docs/api/collections/deque/push-back
-    pub func PushBack(self: &var Deque<T>, value: T) -> CollectionError {
-        var required: uint = 0;
-        let total = AddLength(self.length, 1, @required);
-        if total.IsError() { return total; }
-        let room = self.Grow(required);
-        if room.IsError() { return room; }
+    pub func PushBack(self: &var Deque<T>, value: T) -> ! CollectionError {
+        var required = AddLength(self.length, 1)?;
+        self.Grow(required)?;
 
         self.data[self.SlotOf(self.length)] <- value;
         self.length = self.length + 1;
-        return CollectionError::None;
+        return;
     }
 
     /// Takes the front element out.
     ///
     /// `self` is borrowed mutably. The element is moved out and handed to the caller rather than destroyed, so one
-    /// that owns something leaves intact. Reports `None` for an empty deque.
+    /// that owns something leaves intact. Reports `none` for an empty deque.
     ///
     /// The storage is kept, so a deque emptied this way costs nothing to refill.
     ///
-    /// @returns the element taken from the front, or `None` when empty
+    /// @returns the element taken from the front, or `none` when empty
     /// @see https://rux-lang.dev/docs/api/collections/deque/pop-front
-    pub func PopFront(self: &var Deque<T>) -> Option<T> {
-        if self.length == 0 { return Option::None<T>(); }
+    pub func PopFront(self: &var Deque<T>) -> T? {
+        if self.length == 0 { return none; }
         let taken <- self.data[self.head];
         self.head = (self.head + 1) & (self.capacity - 1);
         self.length = self.length - 1;
-        return Option::Some<T>(<-taken);
+        return <-taken;
     }
 
     /// Takes the back element out.
     ///
-    /// `self` is borrowed mutably. The element is moved out and handed to the caller. Reports `None` for an empty
+    /// `self` is borrowed mutably. The element is moved out and handed to the caller. Reports `none` for an empty
     /// deque.
     ///
-    /// @returns the element taken from the back, or `None` when empty
+    /// @returns the element taken from the back, or `none` when empty
     /// @see https://rux-lang.dev/docs/api/collections/deque/pop-back
-    pub func PopBack(self: &var Deque<T>) -> Option<T> {
-        if self.length == 0 { return Option::None<T>(); }
+    pub func PopBack(self: &var Deque<T>) -> T? {
+        if self.length == 0 { return none; }
         self.length = self.length - 1;
-        return Option::Some<T>(<-self.data[self.SlotOf(self.length)]);
+        return <-self.data[self.SlotOf(self.length)];
     }
 
-    /// A pointer to the front element, or `None` for an empty deque.
+    /// A pointer to the front element, or `none` for an empty deque.
     ///
     /// `self` is borrowed; the pointer borrows the element where it sits.
     ///
@@ -397,37 +364,37 @@ extend Deque<T> {
     ///
     /// The pointer is valid until the deque grows, shrinks, or is made contiguous.
     ///
-    /// @returns the address of the first element, or `None` when empty
+    /// @returns the address of the first element, or `none` when empty
     /// @see https://rux-lang.dev/docs/api/collections/deque/front
-    pub func Front(self: &Deque<T>) -> Option<*T> {
+    pub func Front(self: &Deque<T>) -> (*T)? {
         return self.Reference(0);
     }
 
-    /// A pointer to the back element, or `None` for an empty deque.
+    /// A pointer to the back element, or `none` for an empty deque.
     ///
     /// `self` is borrowed; the pointer borrows the element where it sits.
     ///
-    /// @returns the address of the last element, or `None` when empty
+    /// @returns the address of the last element, or `none` when empty
     /// @see https://rux-lang.dev/docs/api/collections/deque/back
-    pub func Back(self: &Deque<T>) -> Option<*T> {
-        if self.length == 0 { return Option::None<*T>(); }
+    pub func Back(self: &Deque<T>) -> (*T)? {
+        if self.length == 0 { return none; }
         return self.Reference(self.length - 1);
     }
 
-    /// The element at `index`, counting from the front, or `None` when there is no such index.
+    /// The element at `index`, counting from the front, or `none` when there is no such index.
     ///
     /// `self` is borrowed; the element is returned by copy. The index is logical: element zero is the front wherever
     /// it happens to sit physically.
     ///
     /// @param index which one, counting from zero
-    /// @returns a copy of the element, or `None` when the index is out of range
+    /// @returns a copy of the element, or `none` when the index is out of range
     /// @see https://rux-lang.dev/docs/api/collections/deque/get
-    pub func Get(self: &Deque<T>, index: uint) -> Option<T> {
-        if index >= self.length { return Option::None<T>(); }
-        return Option::Some<T>(self.data[self.SlotOf(index)]);
+    pub func Get(self: &Deque<T>, index: uint) -> T? {
+        if index >= self.length { return none; }
+        return self.data[self.SlotOf(index)];
     }
 
-    /// A pointer to the element at `index`, or `None` when there is no such index.
+    /// A pointer to the element at `index`, or `none` when there is no such index.
     ///
     /// `self` is borrowed; the pointer borrows the element where it sits.
     ///
@@ -436,11 +403,11 @@ extend Deque<T> {
     /// The pointer is valid until the deque grows, shrinks, or is made contiguous.
     ///
     /// @param index which one, counting from zero
-    /// @returns the address of the element, or `None` when the index is out of range
+    /// @returns the address of the element, or `none` when the index is out of range
     /// @see https://rux-lang.dev/docs/api/collections/deque/reference
-    pub func Reference(self: &Deque<T>, index: uint) -> Option<*T> {
-        if index >= self.length { return Option::None<*T>(); }
-        return Option::Some<*T>(@self.data[self.SlotOf(index)]);
+    pub func Reference(self: &Deque<T>, index: uint) -> (*T)? {
+        if index >= self.length { return none; }
+        return @self.data[self.SlotOf(index)];
     }
 
     /// Replaces the element at `index` with `value`.
@@ -453,12 +420,12 @@ extend Deque<T> {
     ///
     /// @param index which one, counting from zero
     /// @param value the value to act on
-    /// @returns `None` when the element was written; `IndexOutOfRange` otherwise
+    /// @returns nothing when the element was written, or `IndexOutOfRange`
     /// @see https://rux-lang.dev/docs/api/collections/deque/set
-    pub func Set(self: &var Deque<T>, index: uint, value: T) -> CollectionError {
-        if index >= self.length { return CollectionError::IndexOutOfRange; }
+    pub func Set(self: &var Deque<T>, index: uint, value: T) -> ! CollectionError {
+        if index >= self.length { fail CollectionError::IndexOutOfRange; }
         self.data[self.SlotOf(index)] <- value;
-        return CollectionError::None;
+        return;
     }
 }
 

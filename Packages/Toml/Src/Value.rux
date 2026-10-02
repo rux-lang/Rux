@@ -9,8 +9,9 @@
 // reasons. The flags below are what let the parser say which one happened instead of reporting a duplicate and
 // leaving the writer to work out why.
 
+import Core::Succeeded;
 import Allocator::Allocator;
-import Collections::{ CollectionError, Vector };
+import Collections::Vector;
 import Text::{ String, StringView, TextError };
 import Time::{ Date, TimeOfDay, UtcOffset };
 
@@ -377,7 +378,7 @@ extend TomlValue {
     /// @see https://rux-lang.dev/docs/api/toml/value/push
     pub func Push(self: &var TomlValue, value: TomlValue) -> bool {
         if self.kind != TomlKind::Array { return false; }
-        return self.elements.Push(<-value) == CollectionError::None;
+        return Succeeded(self.elements.Push(<-value));
     }
 
     /// Appends an entry to a table, copying the key and taking ownership of the value.
@@ -393,7 +394,7 @@ extend TomlValue {
     pub func Insert(self: &var TomlValue, key: String, value: TomlValue) -> bool {
         if self.kind != TomlKind::Table { return false; }
         var entry = TomlEntry { key: key, value: <-value };
-        return self.entries.Push(<-entry) == CollectionError::None;
+        return Succeeded(self.entries.Push(<-entry));
     }
 
     /// The element at `index`, borrowed, or null when there is none.
