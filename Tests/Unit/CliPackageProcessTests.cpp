@@ -152,6 +152,20 @@ TEST_CASE("list and info label the global cache and selected installed version")
 
     // The requested spelling normalizes to the spelling on disk, while the
     // explicit version still selects that exact cached manifest.
+    WriteTextFile(first / "Rux.toml", R"([Manifest]
+Version = 1
+
+[Package]
+Namespace = "rux"
+Name = "my-pkg"
+Version = "1.0.0"
+Type = "SourceLibrary"
+Description = "first release"
+
+[Dependencies]
+Io = { Namespace = "Rux", Package = "Io", Version = "*", TargetOS = ["Linux", "Windows"] }
+)");
+
     const auto json = Run(std::array<std::string_view, 3>{"info", "Rux/My_Pkg@1.0.0", "--json"});
     REQUIRE(json.exitCode == 0);
     CHECK(json.output.contains("\"success\": true"));
@@ -159,6 +173,7 @@ TEST_CASE("list and info label the global cache and selected installed version")
     CHECK(json.output.contains("\"name\": \"my-pkg\""));
     CHECK(json.output.contains("\"version\": \"1.0.0\""));
     CHECK(json.output.contains("\"description\": \"first release\""));
+    CHECK(json.output.contains("\"targetOS\": [\"Linux\", \"Windows\"]"));
     CHECK_FALSE(json.output.contains("second release"));
     CHECK_FALSE(json.output.contains("Installed package"));
     CHECK_FALSE(json.output.contains("Cache:"));
