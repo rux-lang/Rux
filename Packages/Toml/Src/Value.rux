@@ -135,13 +135,12 @@ extend TomlValue {
     ///
     /// @param allocator where the storage comes from
     /// @param value the value to act on
-    /// @param error receives why the operation failed, or `None`
     /// @returns that text as a string value, or an empty table when the allocator refused
     /// @see https://rux-lang.dev/docs/api/toml/value/text
-    pub func Text(allocator: Allocator, value: char8[..], error: *var TextError) -> TomlValue {
+    pub func Text(allocator: Allocator, value: char8[..]) -> TomlValue ! TextError {
         var held = TomlValue::Table(allocator);
         held.kind = TomlKind::Text;
-        held.text = String::FromBytes(allocator, value, error);
+        held.text = String::FromBytes(allocator, value)?;
         return <-held;
     }
 

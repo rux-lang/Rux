@@ -16,7 +16,7 @@
 // downstream may rely on that, which is what makes cutting and indexing cheap.
 
 import Allocator::{ AllocError, Allocator, Layout };
-import Core::{ Option, Ordering, Panic };
+import Core::{ Ordering, Panic };
 import Memory::Copy;
 
 /// Text that owns its bytes.
@@ -77,7 +77,7 @@ extend String {
     /// Skips the pass `FromBytes` makes, which is what to use when the bytes came from something that already
     /// guarantees it — another string, a view, this package's own output.
     ///
-    /// `error` receives `OutOfMemory` when the copy cannot be made, and `None` when the string was built.
+    /// Fails with `OutOfMemory` when the copy cannot be made.
     ///
     /// # Safety
     ///
@@ -86,28 +86,15 @@ extend String {
     ///
     /// @param allocator where the storage comes from
     /// @param bytes the bytes to act on
-    /// @param error receives why the operation failed, or `None`
     /// @returns a string over those bytes, taken as valid without checking
     /// @see https://rux-lang.dev/docs/api/text/string/from-validated
-    pub func FromValidated(allocator: Allocator, bytes: char8[..], error: *var TextError) -> String {
-        *error = TextError::None;
+    pub func FromValidated(allocator: Allocator, bytes: char8[..]) -> String ! TextError {
         if bytes.length == 0 { return String(allocator); }
 
-        let layout = match Layout::New(bytes.length, 1) {
-            value? => value,
-            none => {
-                *error = TextError::LengthOverflow;
-                return String(allocator);
-            }
-        };
+        let layout = Layout::New(bytes.length, 1) ?? fail TextError::LengthOverflow;
 
         var borrowed = allocator;
-        let block = borrowed.Allocate(layout) catch {
-            allocated => {
-                *error = FromAllocError(allocated);
-                return String(allocator);
-            }
-        };
+        let block = borrowed.Allocate(layout) catch { allocated => fail FromAllocError(allocated) };
 
         Copy(block, bytes.data as *opaque, bytes.length);
         return String {
@@ -118,29 +105,20 @@ extend String {
         };
     }
 
-    /// A copy of `bytes` as text, or text of no length when they are not UTF-8 or cannot be stored.
+    /// A copy of `bytes` as text, or why it could not be made.
     ///
-    /// `bytes` is borrowed and copied, so what it names stays the caller's. `error` receives `InvalidUtf8` when the
+    /// `bytes` is borrowed and copied, so what it names stays the caller's. It fails with `InvalidUtf8` when the
     /// bytes are not text and `OutOfMemory` when the copy cannot be made.
     ///
     /// Runs in time proportional to the length — one pass to check, one to copy — and allocates once.
     ///
     /// @param allocator where the storage comes from
     /// @param bytes the bytes to act on
-    /// @param error receives why the operation failed, or `None`
     /// @returns a string over those bytes, or an empty one when they are not valid UTF-8
     /// @see https://rux-lang.dev/docs/api/text/string/from-bytes
-    pub func FromBytes(allocator: Allocator, bytes: char8[..], error: *var TextError) -> String {
-        match Validate(bytes) {
-            .Success(_) => {
-            },
-            .Failure(problem) => {
-
-                *error = TextError::InvalidUtf8;
-                return String(allocator);
-            }
-        }
-        return String::FromValidated(allocator, bytes, error);
+    pub func FromBytes(allocator: Allocator, bytes: char8[..]) -> String ! TextError {
+        Validate(bytes) catch { else => fail TextError::InvalidUtf8 };
+        return String::FromValidated(allocator, bytes);
     }
 
     /// A copy of what `view` spans.
@@ -149,11 +127,10 @@ extend String {
     ///
     /// @param allocator where the storage comes from
     /// @param view the borrowed text to act on
-    /// @param error receives why the operation failed, or `None`
     /// @returns a copy of that text this string owns
     /// @see https://rux-lang.dev/docs/api/text/string/from-view
-    pub func FromView(allocator: Allocator, view: StringView, error: *var TextError) -> String {
-        return String::FromValidated(allocator, view.bytes, error);
+    pub func FromView(allocator: Allocator, view: StringView) -> String ! TextError {
+        return String::FromValidated(allocator, view.bytes);
     }
 }
 
@@ -211,45 +188,39 @@ extend String {
         return IsBoundary(self.Bytes(), index);
     }
 
-    /// A borrowed view of the part from `start` up to `end`, or `None` when either end is not a boundary.
+    /// A borrowed view of the part from `start` up to `end`, or `none` when either end is not a boundary.
     ///
     /// Borrows rather than copying, since a part of a string is bytes the string already owns. `Substring` is what
     /// makes an owning copy.
     ///
     /// @param start the first byte offset, inclusive
     /// @param end the byte offset one past the last, exclusive
-    /// @returns the text between the two offsets, or `None` when either is not a boundary
+    /// @returns the text between the two offsets, or `none` when either is not a boundary
     /// @see https://rux-lang.dev/docs/api/text/string/part
-    pub func Part(self: &String, start: uint, end: uint) -> Option<StringView> {
+    pub func Part(self: &String, start: uint, end: uint) -> StringView? {
         let whole = self.View();
         return whole.Part(start, end);
     }
 
     /// An owning copy of the part from `start` up to `end`.
     ///
-    /// `error` receives `NotABoundary` when either end would cut a character in half.
+    /// Fails with `NotABoundary` when either end would cut a character in half.
     ///
     /// @param start the first byte offset, inclusive
     /// @param end the byte offset one past the last, exclusive
-    /// @param error receives why the operation failed, or `None`
-    /// @returns an owned copy of that range, or an empty string when it is not a valid one
+    /// @returns an owned copy of that range, or why it could not be made
     /// @see https://rux-lang.dev/docs/api/text/string/substring
-    pub func Substring(self: &String, start: uint, end: uint, error: *var TextError) -> String {
-        let part = self.Part(start, end);
-        if part.IsNone() {
-            *error = TextError::NotABoundary;
-            return String(self.allocator);
-        }
-        return String::FromView(self.allocator, part.ValueOr(StringView()), error);
+    pub func Substring(self: &String, start: uint, end: uint) -> String ! TextError {
+        let part = self.Part(start, end) ?? fail TextError::NotABoundary;
+        return String::FromView(self.allocator, part);
     }
 
     /// An independent copy, with a block of its own from the same allocator.
     ///
-    /// @param error receives why the operation failed, or `None`
     /// @returns an independent copy
     /// @see https://rux-lang.dev/docs/api/text/string/clone
-    pub func Clone(self: &String, error: *var TextError) -> String {
-        return String::FromValidated(self.allocator, self.Bytes(), error);
+    pub func Clone(self: &String) -> String ! TextError {
+        return String::FromValidated(self.allocator, self.Bytes());
     }
 
     /// Whether two strings hold the same bytes.

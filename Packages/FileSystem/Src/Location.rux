@@ -16,7 +16,6 @@ import Core::{ #target };
 import Io::{ IoError, IoErrorKind };
 import Path::{ IsSeparator, OsString, OsStringView, OsUnit, Path, PathBuffer, PreferredSeparator };
 import Path::{ IsAbsolute, Normalize };
-import Text::TextError;
 
 when #target.os {
     .FreeBSD => import FreeBSD::{ AtFdCwd, Chdir, Getcwd, ReadlinkAt },
@@ -62,10 +61,14 @@ pub func CurrentDirectory(allocator: Allocator, error: *var IoError) -> OsString
             return OsString(allocator);
         }
         let view = OsStringView::FromUnits((@units[0])[..written as uint]);
-        var textError = TextError::None;
-        let held = OsString::FromView(allocator, view, @textError);
-        if textError != TextError::None {
-            *error = IoError::Of(IoErrorKind::Other);
+        var held = OsString(allocator);
+        match OsString::FromView(allocator, view) {
+            .Success(made) => {
+                held <- made;
+            },
+            .Failure(_) => {
+                *error = IoError::Of(IoErrorKind::Other);
+            }
         }
         return <-held;
     }
@@ -80,10 +83,14 @@ pub func CurrentDirectory(allocator: Allocator, error: *var IoError) -> OsString
             length = length + 1;
         }
         let view = OsStringView::FromUnits((@units[0])[..length]);
-        var textError = TextError::None;
-        let held = OsString::FromView(allocator, view, @textError);
-        if textError != TextError::None {
-            *error = IoError::Of(IoErrorKind::Other);
+        var held = OsString(allocator);
+        match OsString::FromView(allocator, view) {
+            .Success(made) => {
+                held <- made;
+            },
+            .Failure(_) => {
+                *error = IoError::Of(IoErrorKind::Other);
+            }
         }
         return <-held;
     }
@@ -131,27 +138,40 @@ pub func SetCurrentDirectory(allocator: Allocator, path: Path) -> IoError {
 /// @see https://rux-lang.dev/docs/api/filesystem/absolute
 pub func Absolute(allocator: Allocator, path: Path, error: *var IoError) -> PathBuffer {
     *error = IoError::Ok();
-    var textError = TextError::None;
     if IsAbsolute(path) {
-        var simplified = Normalize(allocator, path, @textError);
-        if textError != TextError::None {
-            *error = IoError::Of(IoErrorKind::Other);
+        var simplified = PathBuffer(allocator);
+        match Normalize(allocator, path) {
+            .Success(made) => {
+                simplified <- made;
+            },
+            .Failure(_) => {
+                *error = IoError::Of(IoErrorKind::Other);
+            }
         }
         return <-simplified;
     }
     var here = CurrentDirectory(allocator, error);
     if (*error).IsError() { return PathBuffer(allocator); }
-    var joined = PathBuffer::FromPath(allocator, Path::FromView(here.View()), @textError);
-    if textError == TextError::None {
-        textError = joined.Push(path.name);
-    }
-    if textError != TextError::None {
-        *error = IoError::Of(IoErrorKind::Other);
-        return <-joined;
-    }
-    var simplified = Normalize(allocator, joined.AsPath(), @textError);
-    if textError != TextError::None {
-        *error = IoError::Of(IoErrorKind::Other);
+    var joined = PathBuffer::FromPath(allocator, Path::FromView(here.View())) catch {
+        else => {
+            *error = IoError::Of(IoErrorKind::Other);
+            return PathBuffer(allocator);
+        }
+    };
+    joined.Push(path.name) catch {
+        else => {
+            *error = IoError::Of(IoErrorKind::Other);
+            return <-joined;
+        }
+    };
+    var simplified = PathBuffer(allocator);
+    match Normalize(allocator, joined.AsPath()) {
+        .Success(made) => {
+            simplified <- made;
+        },
+        .Failure(_) => {
+            *error = IoError::Of(IoErrorKind::Other);
+        }
     }
     joined.Release();
     return <-simplified;
@@ -183,9 +203,11 @@ when #target.os != .Windows {
             return IoError::Of(IoErrorKind::LimitExceeded);
         }
         let view = OsStringView::FromUnits((@units[0])[..written as uint]);
-        var textError = TextError::None;
-        *target = OsString::FromView(allocator, view, @textError);
-        if textError != TextError::None { return IoError::Of(IoErrorKind::Other); }
+        *target = OsString::FromView(allocator, view) catch {
+            else => {
+     return IoError::Of(IoErrorKind::Other);
+            }
+        };
         *linked = true;
         return IoError::Ok();
     }
@@ -226,14 +248,16 @@ when #target.os != .Windows {
     // follow count rather than by the nesting, since it is the link chain that can loop.
     func ResolveInto(allocator: Allocator, path: Path, resolved: &var PathBuffer,
                      followed: *var uint) -> IoError {
-        var textError = TextError::None;
         if IsAbsolute(path) {
             // An absolute path abandons whatever was resolved so far and starts again from the root.
             var root: OsUnit[1];
             root[0] = PreferredSeparator();
             resolved.length = 0;
-            textError = resolved.Push(OsStringView::FromUnits(root[0..1]));
-            if textError != TextError::None { return IoError::Of(IoErrorKind::Other); }
+            resolved.Push(OsStringView::FromUnits(root[0..1])) catch {
+                else => {
+     return IoError::Of(IoErrorKind::Other);
+                }
+            };
         }
         var walk = path.Components();
         var stepping = true;
@@ -253,8 +277,11 @@ when #target.os != .Windows {
                     PopSegment(resolved);
                 }
                 else {
-                    textError = resolved.Push(segment);
-                    if textError != TextError::None { return IoError::Of(IoErrorKind::Other); }
+                    resolved.Push(segment) catch {
+                        else => {
+     return IoError::Of(IoErrorKind::Other);
+                        }
+                    };
                     var target = OsString(allocator);
                     var linked = false;
                     let read = ReadLinkText(allocator, resolved.AsPath(), @target, @linked);
@@ -316,10 +343,14 @@ pub func Canonicalize(allocator: Allocator, path: Path, error: *var IoError) -> 
             return PathBuffer(allocator);
         }
         let view = OsStringView::FromUnits((@units[0])[..written as uint]);
-        var textError = TextError::None;
-        var resolved = PathBuffer::FromPath(allocator, Path::FromView(view), @textError);
-        if textError != TextError::None {
-            *error = IoError::Of(IoErrorKind::Other);
+        var resolved = PathBuffer(allocator);
+        match PathBuffer::FromPath(allocator, Path::FromView(view)) {
+            .Success(made) => {
+                resolved <- made;
+            },
+            .Failure(_) => {
+                *error = IoError::Of(IoErrorKind::Other);
+            }
         }
         return <-resolved;
     }

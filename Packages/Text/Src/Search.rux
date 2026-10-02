@@ -13,7 +13,7 @@
 // different bytes to a machine, and which pairs count is a Unicode question with a locale attached. `Transform` has
 // the ASCII-only answer, which is the one that is well defined without tables.
 
-import Core::{ Iterator, Option };
+import Core::Iterator;
 
 extend StringView {
     /// Whether this view begins with `prefix`.
@@ -51,7 +51,7 @@ extend StringView {
         return true;
     }
 
-    /// The byte index where `needle` first occurs, or `None`.
+    /// The byte index where `needle` first occurs, or `none`.
     ///
     /// The empty needle occurs at the start, which is what makes `IndexOf` agree with `StartsWith` for it.
     ///
@@ -59,11 +59,11 @@ extend StringView {
     /// is used with is the same as proportional to the text.
     ///
     /// @param needle the text to look for
-    /// @returns the byte offset of the first occurrence, or `None`
+    /// @returns the byte offset of the first occurrence, or `none`
     /// @see https://rux-lang.dev/docs/api/text/string-view/index-of
-    pub func IndexOf(self: &StringView, needle: StringView) -> Option<uint> {
-        if needle.bytes.length == 0 { return Option::Some<uint>(0); }
-        if needle.bytes.length > self.bytes.length { return Option::None<uint>(); }
+    pub func IndexOf(self: &StringView, needle: StringView) -> uint? {
+        if needle.bytes.length == 0 { return 0; }
+        if needle.bytes.length > self.bytes.length { return none; }
         let last = self.bytes.length - needle.bytes.length;
         var start: uint = 0;
         while start <= last {
@@ -78,20 +78,20 @@ extend StringView {
                     index = index + 1;
                 }
             }
-            if matched { return Option::Some<uint>(start); }
+            if matched { return start; }
             start = start + 1;
         }
-        return Option::None<uint>();
+        return none;
     }
 
-    /// The byte index where `needle` last occurs, or `None`.
+    /// The byte index where `needle` last occurs, or `none`.
     ///
     /// @param needle the text to look for
-    /// @returns the byte offset of the last occurrence, or `None`
+    /// @returns the byte offset of the last occurrence, or `none`
     /// @see https://rux-lang.dev/docs/api/text/string-view/last-index-of
-    pub func LastIndexOf(self: &StringView, needle: StringView) -> Option<uint> {
-        if needle.bytes.length == 0 { return Option::Some<uint>(self.bytes.length); }
-        if needle.bytes.length > self.bytes.length { return Option::None<uint>(); }
+    pub func LastIndexOf(self: &StringView, needle: StringView) -> uint? {
+        if needle.bytes.length == 0 { return self.bytes.length; }
+        if needle.bytes.length > self.bytes.length { return none; }
         var start = self.bytes.length - needle.bytes.length + 1;
         while start > 0 {
             start = start - 1;
@@ -106,9 +106,9 @@ extend StringView {
                     index = index + 1;
                 }
             }
-            if matched { return Option::Some<uint>(start); }
+            if matched { return start; }
         }
-        return Option::None<uint>();
+        return none;
     }
 
     /// Whether `needle` occurs anywhere in this view.
@@ -117,7 +117,7 @@ extend StringView {
     /// @returns whether `needle` occurs anywhere in the text
     /// @see https://rux-lang.dev/docs/api/text/string-view/contains
     pub func Contains(self: &StringView, needle: StringView) -> bool {
-        return self.IndexOf(needle).IsSome();
+        return self.IndexOf(needle) != none;
     }
 }
 
@@ -146,7 +146,7 @@ extend StringView {
         while start < self.bytes.length && IsAsciiSpace(self.bytes.data[start]) {
             start = start + 1;
         }
-        return self.Part(start, self.bytes.length).ValueOr(StringView());
+        return self.Part(start, self.bytes.length) ?? StringView();
     }
 
     /// This view without the ASCII whitespace at its end.
@@ -158,7 +158,7 @@ extend StringView {
         while end > 0 && IsAsciiSpace(self.bytes.data[end - 1]) {
             end = end - 1;
         }
-        return self.Part(0, end).ValueOr(StringView());
+        return self.Part(0, end) ?? StringView();
     }
 
     /// This view without the ASCII whitespace at either end.
@@ -187,31 +187,31 @@ pub struct SplitIterator {
 }
 
 extend SplitIterator {
-    /// The next part, or `None` when the walk is over.
+    /// The next part, or `none` when the walk is over.
     ///
     /// Two adjacent separators give an empty part between them, and a separator at either end gives an empty part
     /// there — so the parts always number one more than the separators, and joining them back with the separator
     /// gives what was split. An empty separator gives the whole view as one part, since anything else would be an
     /// endless walk.
     ///
-    /// @returns the next piece, or `None` at the end
+    /// @returns the next piece, or `none` at the end
     /// @see https://rux-lang.dev/docs/api/text/split-iterator/next
-    pub func Next(self: &var SplitIterator) -> Option<StringView> {
-        if self.finished { return Option::None<StringView>(); }
+    pub func Next(self: &var SplitIterator) -> StringView? {
+        if self.finished { return none; }
         if self.separator.bytes.length == 0 {
             self.finished = true;
-            return Option::Some<StringView>(self.rest);
+            return self.rest;
         }
         let found = self.rest.IndexOf(self.separator);
-        if found.IsNone() {
+        if found == none {
             self.finished = true;
-            return Option::Some<StringView>(self.rest);
+            return self.rest;
         }
-        let at = found.ValueOr(0);
-        let part = self.rest.Part(0, at).ValueOr(StringView());
+        let at = found ?? 0;
+        let part = self.rest.Part(0, at) ?? StringView();
         let after = at + self.separator.bytes.length;
-        self.rest = self.rest.Part(after, self.rest.bytes.length).ValueOr(StringView());
-        return Option::Some<StringView>(part);
+        self.rest = self.rest.Part(after, self.rest.bytes.length) ?? StringView();
+        return part;
     }
 }
 

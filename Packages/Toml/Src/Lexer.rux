@@ -521,15 +521,14 @@ extend TomlLexer {
 /// @param allocator where the storage comes from
 /// @param span the raw text the token covers
 /// @param form which quoting form the text was written in
-/// @param error receives why the operation failed, or `None`
 /// @param bad receives the offset of the first byte that could not be decoded
-/// @returns the decoded text, or an empty string when a byte could not be decoded
+/// @returns the decoded text, or why it could not be stored
 /// @see https://rux-lang.dev/docs/api/toml/decode-text
-pub func TomlDecodeText(allocator: Allocator, span: char8[..], form: TomlTextForm, error: *var TextError,
-                    bad: *var bool) -> String {
+pub func TomlDecodeText(allocator: Allocator, span: char8[..], form: TomlTextForm,
+                    bad: *var bool) -> String ! TextError {
     *bad = false;
     if form == TomlTextForm::Literal || form == TomlTextForm::MultiLineLiteral || form == TomlTextForm::Bare {
-        return String::FromBytes(allocator, span, error);
+        return String::FromBytes(allocator, span);
     }
     let multiline = form == TomlTextForm::MultiLineBasic;
     var builder = StringBuilder(allocator);
@@ -545,7 +544,7 @@ pub func TomlDecodeText(allocator: Allocator, span: char8[..], form: TomlTextFor
                 run = run + 1u;
             }
             let piece = (@span.data[index])[..run - index];
-            *error = builder.AppendBytes(piece);
+            builder.AppendBytes(piece)?;
             index = run;
             continue;
         }
@@ -576,28 +575,28 @@ pub func TomlDecodeText(allocator: Allocator, span: char8[..], form: TomlTextFor
                 *bad = true;
                 break;
             }
-            *error = builder.AppendScalar(scalar as char32);
+            builder.AppendScalar(scalar as char32)?;
         }
         else if kind == 0x62u8 {
-            *error = builder.AppendAscii(0x08u8 as char8);
+            builder.AppendAscii(0x08u8 as char8)?;
         }
         else if kind == 0x66u8 {
-            *error = builder.AppendAscii(0x0Cu8 as char8);
+            builder.AppendAscii(0x0Cu8 as char8)?;
         }
         else if kind == 0x6Eu8 {
-            *error = builder.AppendAscii(0x0Au8 as char8);
+            builder.AppendAscii(0x0Au8 as char8)?;
         }
         else if kind == 0x72u8 {
-            *error = builder.AppendAscii(0x0Du8 as char8);
+            builder.AppendAscii(0x0Du8 as char8)?;
         }
         else if kind == 0x74u8 {
-            *error = builder.AppendAscii(0x09u8 as char8);
+            builder.AppendAscii(0x09u8 as char8)?;
         }
         else if kind == 0x65u8 {
-            *error = builder.AppendAscii(0x1Bu8 as char8);
+            builder.AppendAscii(0x1Bu8 as char8)?;
         }
         else if kind == 0x22u8 || kind == 0x5Cu8 {
-            *error = builder.AppendAscii(kind as char8);
+            builder.AppendAscii(kind as char8)?;
         }
         else if multiline && (kind == 0x0Au8 || kind == 0x0Du8 || kind == 0x20u8 || kind == 0x09u8) {
             index = index - 1u;

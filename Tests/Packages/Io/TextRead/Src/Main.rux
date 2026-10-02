@@ -12,7 +12,7 @@ func TextBytes(text: char8[..]) -> char8[..] {
 }
 
 func View(bytes: char8[..]) -> StringView {
-    return StringView::FromBytes(bytes).ValueOr(StringView());
+    return StringView::FromBytes(bytes) ?? StringView();
 }
 
 // A source that serves a fixed byte string in pieces of at most `step` bytes, to force refills mid-line.

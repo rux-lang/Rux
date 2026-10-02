@@ -10,7 +10,6 @@
 
 import Allocator::Allocator;
 import Core::{ #target, Option };
-import Text::TextError;
 
 /// Whether `unit` separates path segments on this system.
 ///

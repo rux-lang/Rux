@@ -3,16 +3,13 @@
 // difference: the same relative name resolves under both, but only one of them requires the file to be there.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert };
+import Core::{ Assert, Panic };
 import Io::{ IoError, IoErrorKind };
 import Path::{ IsAbsolute, OsString, Path, PathBuffer };
 import FileSystem::{ Absolute, Canonicalize, CurrentDirectory, DeleteDirectory, DeleteFile, File, MakeDirectory, OpenOptions };
-import Text::TextError;
 
 func PathOf(allocator: Allocator, text: char8[..], holder: *var OsString) -> Path {
-    var textError = TextError::None;
-    *holder = OsString::FromText(allocator, text, @textError);
-    Assert(textError == TextError::None, "the name converts");
+    *holder = OsString::FromText(allocator, text) catch { else => Panic("the name converts") };
     return Path::FromView((*holder).View());
 }
 

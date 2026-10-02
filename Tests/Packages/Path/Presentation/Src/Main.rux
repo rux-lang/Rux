@@ -1,7 +1,7 @@
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ #target, Assert, Failed };
+import Core::{ #target, Assert, Failed, Panic };
 import Path::{ OsString, OsStringView, OsUnit, Path, PathBuffer };
-import Text::{ BufferWriter, Debug, Display, FormatSpec, ParseFormatSpec, TextError, TextWriter };
+import Text::{ BufferWriter, Debug, Display, FormatSpec, ParseFormatSpec, TextWriter };
 
 // Two renderings of one name, and the reason there have to be two.
 //
@@ -123,11 +123,9 @@ func Refused(view: OsStringView, spec: FormatSpec) -> bool {
 func Main() -> int {
     var system = SystemAllocator();
     let allocator: Allocator = system;
-    var error = TextError::None;
 
     // Ordinary text renders as itself in both forms; only the quoting differs.
-    let plain = OsString::FromText(allocator, "usr/local/bin", @error);
-    Assert(error == TextError::None, "ordinary text converts");
+    let plain = OsString::FromText(allocator, "usr/local/bin") catch { else => Panic("ordinary text converts") };
     let plainView = plain.View();
     Assert(Shown(plainView, FormatSpec::Plain(), "usr/local/bin"), "text renders as itself");
     Assert(Inspected(plainView, FormatSpec::Plain(), "\"usr/local/bin\""), "and Debug quotes it");
@@ -135,10 +133,10 @@ func Main() -> int {
     Assert(OwnedInspected(plain, "\"usr/local/bin\""), "in both forms");
 
     // Non-ASCII text is text: it passes through untouched, since nothing here is invalid.
-    let accented = OsString::FromText(allocator, "héllo/wörld", @error);
+    let accented = OsString::FromText(allocator, "héllo/wörld") catch { else => Panic("ordinary text converts") };
     Assert(Shown(accented.View(), FormatSpec::Plain(), "héllo/wörld"), "valid non-ASCII text is not replaced");
     Assert(Inspected(accented.View(), FormatSpec::Plain(), "\"héllo/wörld\""), "nor escaped");
-    let emoji = OsString::FromText(allocator, "😀", @error);
+    let emoji = OsString::FromText(allocator, "😀") catch { else => Panic("ordinary text converts") };
     Assert(Shown(emoji.View(), FormatSpec::Plain(), "😀"), "and neither is a supplementary character");
     Assert(Inspected(emoji.View(), FormatSpec::Plain(), "\"😀\""), "which is one scalar in either representation");
 
@@ -171,8 +169,7 @@ func Main() -> int {
     }
 
     // The owning native string renders its own units the same way.
-    let hostileOwned = OsString::FromView(allocator, hostileView, @error);
-    Assert(error == TextError::None, "the hostile units copy");
+    let hostileOwned = OsString::FromView(allocator, hostileView) catch { else => Panic("the hostile units copy") };
     when #target.os == .Windows {
         Assert(OwnedShown(hostileOwned, "a�bc"), "an owning native string renders lossily too");
         Assert(OwnedInspected(hostileOwned, "\"a\\u{d800}bc\""), "and exactly");
@@ -195,17 +192,16 @@ func Main() -> int {
         Assert(PathShown(hostilePath, "a��c"), "including the units that are not text");
     }
 
-    var buffer = PathBuffer::FromPath(allocator, path, @error);
-    Assert(error == TextError::None, "the buffer takes the path's units");
+    var buffer = PathBuffer::FromPath(allocator, path) catch { else => Panic("the buffer takes the path's units") };
     Assert(BufferShown(buffer, "usr/local/bin"), "and an owning path renders them");
     Assert(BufferInspected(buffer, "\"usr/local/bin\""), "in both forms");
 
     // Debug escapes what would otherwise be ambiguous inside the quotes.
-    let quoted = OsString::FromText(allocator, "a\"b", @error);
+    let quoted = OsString::FromText(allocator, "a\"b") catch { else => Panic("ordinary text converts") };
     Assert(Inspected(quoted.View(), FormatSpec::Plain(), "\"a\\\"b\""), "a quote inside the name is escaped");
-    let slashed = OsString::FromText(allocator, "a\\b", @error);
+    let slashed = OsString::FromText(allocator, "a\\b") catch { else => Panic("ordinary text converts") };
     Assert(Inspected(slashed.View(), FormatSpec::Plain(), "\"a\\\\b\""), "and so is a backslash");
-    let controlled = OsString::FromText(allocator, "a\nb", @error);
+    let controlled = OsString::FromText(allocator, "a\nb") catch { else => Panic("ordinary text converts") };
     Assert(Inspected(controlled.View(), FormatSpec::Plain(), "\"a\\nb\""),
            "and a newline, which would otherwise act on the terminal rather than be read");
     Assert(Shown(controlled.View(), FormatSpec::Plain(), "a\nb"), "while Display writes the name as it is");

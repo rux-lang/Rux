@@ -1,13 +1,9 @@
 // Why a value could not be turned into text.
 //
-// `TextError` next door answers a different question. It is this package's storage-and-validation status, it has a
-// `None` case, and callers test it with `IsOk`. That shape suits an operation whose answer is "did this work", but
-// it is the wrong shape for a protocol that returns `Result`: a `Result::Error` carrying `TextError::None` would be
-// a failure that says nothing failed, and nothing prevents one being constructed.
-//
-// So `FormatError` is failure-only. Every case denotes a failure, there is no `None`, `Ok` or `Success` case, and
-// success lives exclusively in `Result::Success`. The same rule applies one level down: `TextFailureKind` carries
-// the four ways text handling actually fails and cannot express the fifth thing `TextError` can say.
+// `TextError` next door answers a different question: why storing or validating text failed. Both are failure-only.
+// Every case denotes a failure, there is no `None`, `Ok` or `Success` case, and success lives exclusively in the
+// other channel of the native fallible an operation returns. `TextFailureKind` carries the ways text handling fails
+// when one of them surfaces through formatting.
 //
 // The categories are split by who is at fault, because that is what a caller can act on. A malformed specification
 // or an argument-count mismatch is the call site's mistake and carries where. An unsupported request or a value out
@@ -85,11 +81,7 @@ extend FormatError {
     }
 }
 
-/// The failure-only kind corresponding to `error`, or `InvalidUtf8` when it reports success.
-///
-/// The fallback exists because the two types deliberately disagree about whether success is expressible. A caller
-/// that might hold `TextError::None` must ask `FromTextError` instead, which answers with a native fallible and so has
-/// somewhere to put success.
+/// The failure-only kind corresponding to `error`.
 ///
 /// @param error the text status to narrow, which must be a failure
 /// @returns the matching failure kind
@@ -103,15 +95,15 @@ pub func TextFailureOf(error: TextError) -> TextFailureKind {
 
 /// `error` translated across the boundary between this package's status convention and the formatting protocol.
 ///
-/// This is the only sanctioned crossing. `TextError::None` becomes success, and every other case becomes
-/// a `TextFailure` carrying the reason, so a status never becomes an error payload that means success.
+/// This is the only sanctioned crossing: every text failure becomes a `TextFailure` carrying the reason. It is the
+/// mapper a formatting operation hands a text operation's failure to, as in `builder.Append(view)? else (e =>
+/// FromTextError(e))`.
 ///
-/// @param error the text status a storage or validation operation returned
-/// @returns success for `None`, and a `TextFailure` carrying the reason otherwise
+/// @param error why the storage or validation operation failed
+/// @returns the matching formatting failure
 /// @see https://rux-lang.dev/docs/api/text/from-text-error
-pub func FromTextError(error: TextError) -> ! FormatError {
-    if error == TextError::None { return .Success(()); }
-    fail FormatError::TextFailure(TextFailureOf(error));
+pub func FromTextError(error: TextError) -> FormatError {
+    return FormatError::TextFailure(TextFailureOf(error));
 }
 
 /// A parsing failure that can say where it happened.

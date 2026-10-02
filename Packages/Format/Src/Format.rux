@@ -21,7 +21,7 @@
 
 import Allocator::Allocator;
 import Text::{ DecodeAt, Display, FormatError, FormatSpec, ParseFormatSpec, String, StringBuilder,
-               TextFailureKind, TextFailureOf, TextWriter, Utf8Error, WriteAscii, WriteBytes };
+               TextFailureKind, FromTextError, TextWriter, Utf8Error, WriteAscii, WriteBytes };
 
 // Where a placeholder's specification begins and ends inside the pattern, and where the placeholder itself does.
 //
@@ -197,10 +197,7 @@ pub func WriteFormat(writer: &var TextWriter, format: char8[..], args: Display..
 /// @see https://rux-lang.dev/docs/api/format/render
 pub func Render(allocator: Allocator, format: char8[..], args: Display...) -> String ! FormatError {
     var builder = StringBuilder(allocator);
-    let reserved = builder.Reserve(format.length + args.length * 8);
-    if reserved.IsError() {
-        fail FormatError::TextFailure(TextFailureOf(reserved));
-    }
+    builder.Reserve(format.length + args.length * 8)? else (e => FromTextError(e));
     let sink: &var TextWriter = builder;
     WriteFormat(sink, format, args...)?;
     return builder.IntoString();

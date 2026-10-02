@@ -26,7 +26,6 @@ import Memory::PageError;
 func AcceptsErrorSpec(spec: FormatSpec) -> ! FormatError {
     RejectStyle(spec)?;
     if spec.HasPrecision() { return .Failure(FormatError::UnsupportedRequest); }
-    return;
 }
 
 // Writes an unsigned value in as many decimal digits as it needs.
@@ -51,7 +50,6 @@ func WriteCount(writer: &var TextWriter, value: uint) -> ! FormatError {
         index = index - 1;
         WriteAscii(writer, digits[index])?;
     }
-    return;
 }
 
 // The description of one text-handling failure, shared by `TextError` and `TextFailureKind`, which name the same
@@ -90,7 +88,6 @@ extend TextError : Display {
     pub func WriteDisplay(self: &TextError, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         AcceptsErrorSpec(spec)?;
         return match self {
-            .None => WriteBytes(writer, "no error"),
             .OutOfMemory => WriteBytes(writer, "out of memory"),
             .LengthOverflow => WriteBytes(writer, "length overflow"),
             .InvalidUtf8 => WriteBytes(writer, "invalid UTF-8"),
@@ -112,7 +109,6 @@ extend TextError : Debug {
     pub func WriteDebug(self: &TextError, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         AcceptsErrorSpec(spec)?;
         return match self {
-            .None => WriteBytes(writer, "TextError::None"),
             .OutOfMemory => WriteBytes(writer, "TextError::OutOfMemory"),
             .LengthOverflow => WriteBytes(writer, "TextError::LengthOverflow"),
             .InvalidUtf8 => WriteBytes(writer, "TextError::InvalidUtf8"),

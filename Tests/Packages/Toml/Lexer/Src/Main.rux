@@ -5,8 +5,8 @@
 // the classification of `1979` against `1979-05-27` is checked here rather than assumed.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert };
-import Text::{ String, TextError };
+import Core::{ Assert, Panic };
+import Text::{ String };
 import Toml::{ TomlDecodeText, TomlLexError, TomlLexer, TomlTextForm, TomlToken, TomlTokenKind };
 
 func FirstToken(text: char8[..]) -> TomlToken {
@@ -28,10 +28,9 @@ func FirstText(text: char8[..]) -> String {
     let allocator: Allocator = system;
     var lexer = TomlLexer(text);
     let token = lexer.Next();
-    var error = TextError::None;
     var bad = false;
     let span = lexer.TextOf(token);
-    return TomlDecodeText(allocator, span, token.form, @error, @bad);
+    return TomlDecodeText(allocator, span, token.form, @bad) catch { else => Panic("the text token decodes") };
 }
 
 func Same(value: &String, expected: char8[..]) -> bool {
@@ -179,11 +178,11 @@ func Main() -> int {
     let allocator: Allocator = system;
     var surrogateLexer = TomlLexer("\"\\uD800\"");
     let surrogate = surrogateLexer.Next();
-    var surrogateError = TextError::None;
     var surrogateBad = false;
     let surrogateSpan = surrogateLexer.TextOf(surrogate);
-    var surrogateText = TomlDecodeText(allocator, surrogateSpan, surrogate.form, @surrogateError,
-                                       @surrogateBad);
+    var surrogateText = TomlDecodeText(allocator, surrogateSpan, surrogate.form, @surrogateBad) catch {
+        else => Panic("an undecodable escape is reported through the flag, not as a storage failure")
+    };
     Assert(surrogateBad, "an escaped surrogate names no scalar value");
 
     // Spans and positions, because a configuration error that cannot point at itself costs more than the parse.

@@ -16,7 +16,6 @@ import Core::{ #target };
 import Entropy::NextUint64;
 import Io::{ IoError, IoErrorKind };
 import Path::{ OsString, OsStringView, OsUnit, Path, PathBuffer };
-import Text::TextError;
 
 when #target.os == .Windows {
     import Windows::{ GetLastError, GetTempPathW };
@@ -42,7 +41,6 @@ pub const TemporaryNameAttempts: uint = 4;
 /// @see https://rux-lang.dev/docs/api/filesystem/temporary-directory
 pub func TemporaryDirectory(allocator: Allocator, error: *var IoError) -> PathBuffer {
     *error = IoError::Ok();
-    var textError = TextError::None;
     when #target.os == .Windows {
         var units: OsUnit[512];
         let written = GetTempPathW(512, @units[0] as *var char16);
@@ -60,21 +58,32 @@ pub func TemporaryDirectory(allocator: Allocator, error: *var IoError) -> PathBu
             length = length - 1;
         }
         let view = OsStringView::FromUnits((@units[0])[..length]);
-        var held = PathBuffer::FromPath(allocator, Path::FromView(view), @textError);
-        if textError != TextError::None {
-            *error = IoError::Of(IoErrorKind::Other);
+        var held = PathBuffer(allocator);
+        match PathBuffer::FromPath(allocator, Path::FromView(view)) {
+            .Success(made) => {
+                held <- made;
+            },
+            .Failure(_) => {
+                *error = IoError::Of(IoErrorKind::Other);
+            }
         }
         return <-held;
     }
     else {
-        var name = OsString::FromText(allocator, "/tmp", @textError);
-        if textError != TextError::None {
-            *error = IoError::Of(IoErrorKind::Other);
-            return PathBuffer(allocator);
-        }
-        var held = PathBuffer::FromPath(allocator, Path::FromView(name.View()), @textError);
-        if textError != TextError::None {
-            *error = IoError::Of(IoErrorKind::Other);
+        var name = OsString::FromText(allocator, "/tmp") catch {
+            else => {
+                *error = IoError::Of(IoErrorKind::Other);
+                return PathBuffer(allocator);
+            }
+        };
+        var held = PathBuffer(allocator);
+        match PathBuffer::FromPath(allocator, Path::FromView(name.View())) {
+            .Success(made) => {
+                held <- made;
+            },
+            .Failure(_) => {
+                *error = IoError::Of(IoErrorKind::Other);
+            }
         }
         return <-held;
     }
@@ -103,10 +112,14 @@ func RandomName(allocator: Allocator, prefix: char8[..], error: *var IoError) ->
         length = length + 1;
         digit = digit + 1;
     }
-    var textError = TextError::None;
-    let name = OsString::FromText(allocator, text[0..length], @textError);
-    if textError != TextError::None {
-        *error = IoError::Of(IoErrorKind::Other);
+    var name = OsString(allocator);
+    match OsString::FromText(allocator, text[0..length]) {
+        .Success(made) => {
+            name <- made;
+        },
+        .Failure(_) => {
+            *error = IoError::Of(IoErrorKind::Other);
+        }
     }
     return <-name;
 }
@@ -157,24 +170,23 @@ extend TemporaryFile {
 
         var attempt: uint = 0;
         while attempt < TemporaryNameAttempts {
-            var textError = TextError::None;
-            var candidate = PathBuffer::FromPath(allocator, directory, @textError);
-            if textError != TextError::None {
-                *error = IoError::Of(IoErrorKind::Other);
-                candidate.Release();
-                return <-result;
-            }
+            var candidate = PathBuffer::FromPath(allocator, directory) catch {
+                else => {
+                    *error = IoError::Of(IoErrorKind::Other);
+                    return <-result;
+                }
+            };
             var name = RandomName(allocator, prefix, error);
             if (*error).IsError() {
                 candidate.Release();
                 return <-result;
             }
-            textError = candidate.Push(name.View());
-            if textError != TextError::None {
-                *error = IoError::Of(IoErrorKind::Other);
-                candidate.Release();
-                return <-result;
-            }
+            candidate.Push(name.View()) catch {
+                else => {
+                    *error = IoError::Of(IoErrorKind::Other);
+                    return <-result;
+                }
+            };
             var opened = File::Open(allocator, candidate.AsPath(), options, error);
             if (*error).IsOk() {
                 result.file <- opened;
@@ -263,24 +275,23 @@ extend TemporaryDirectoryHandle {
         var result = TemporaryDirectoryHandle { path: PathBuffer(allocator), owned: false };
         var attempt: uint = 0;
         while attempt < TemporaryNameAttempts {
-            var textError = TextError::None;
-            var candidate = PathBuffer::FromPath(allocator, directory, @textError);
-            if textError != TextError::None {
-                *error = IoError::Of(IoErrorKind::Other);
-                candidate.Release();
-                return <-result;
-            }
+            var candidate = PathBuffer::FromPath(allocator, directory) catch {
+                else => {
+                    *error = IoError::Of(IoErrorKind::Other);
+                    return <-result;
+                }
+            };
             var name = RandomName(allocator, prefix, error);
             if (*error).IsError() {
                 candidate.Release();
                 return <-result;
             }
-            textError = candidate.Push(name.View());
-            if textError != TextError::None {
-                *error = IoError::Of(IoErrorKind::Other);
-                candidate.Release();
-                return <-result;
-            }
+            candidate.Push(name.View()) catch {
+                else => {
+                    *error = IoError::Of(IoErrorKind::Other);
+                    return <-result;
+                }
+            };
             // MakeDirectory already refuses a name that is taken, which is the claim this needs.
             let made = MakeDirectory(allocator, candidate.AsPath());
             if made.IsOk() {

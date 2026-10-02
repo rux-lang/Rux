@@ -12,7 +12,7 @@
 // in scalar indices would make indexing linear without saying so; byte indices are constant, and a cut at one that
 // is not a boundary is rejected rather than splitting a character in half.
 
-import Core::{ Iterator, Option, Ordering };
+import Core::{ Iterator, Ordering };
 
 /// A borrowed run of bytes that has been checked to be UTF-8.
 ///
@@ -35,7 +35,7 @@ extend StringView {
         return StringView { bytes: [] };
     }
 
-    /// A view over `bytes` when they are UTF-8, and `None` when they are not.
+    /// A view over `bytes` when they are UTF-8, and `none` when they are not.
     ///
     /// `bytes` is borrowed and must outlive the view. This is the only way to make a view out of bytes whose
     /// provenance is unknown, and it costs one pass over them.
@@ -43,11 +43,11 @@ extend StringView {
     /// Runs in time proportional to the length and allocates nothing.
     ///
     /// @param bytes the bytes to act on
-    /// @returns a view over those bytes, or `None` when they are not valid UTF-8
+    /// @returns a view over those bytes, or `none` when they are not valid UTF-8
     /// @see https://rux-lang.dev/docs/api/text/string-view/from-bytes
-    pub func FromBytes(bytes: char8[..]) -> Option<StringView> {
-        Validate(bytes) catch { else => return Option::None<StringView>() };
-        return Option::Some<StringView>(StringView { bytes: bytes });
+    pub func FromBytes(bytes: char8[..]) -> StringView? {
+        Validate(bytes) catch { else => return none };
+        return StringView { bytes: bytes };
     }
 
     /// A view over bytes the caller vouches are UTF-8.
@@ -112,7 +112,7 @@ extend StringView {
     pub func IsBoundary(self: &StringView, index: uint) -> bool {
         return IsBoundary(self.bytes, index);
     }
-    /// The part of this view from `start` up to `end`, or `None` when either is not a boundary or they are the
+    /// The part of this view from `start` up to `end`, or `none` when either is not a boundary or they are the
     /// wrong way round.
     ///
     /// Half-open, so `Part(a, b)` and `Part(b, c)` together are `Part(a, c)`. Refusing a cut that is not on a
@@ -122,25 +122,25 @@ extend StringView {
     ///
     /// @param start the first byte offset, inclusive
     /// @param end the byte offset one past the last, exclusive
-    /// @returns the text between the two offsets, or `None` when either is not a boundary
+    /// @returns the text between the two offsets, or `none` when either is not a boundary
     /// @see https://rux-lang.dev/docs/api/text/string-view/part
-    pub func Part(self: &StringView, start: uint, end: uint) -> Option<StringView> {
-        if start > end || end > self.bytes.length { return Option::None<StringView>(); }
-        if !IsBoundary(self.bytes, start) || !IsBoundary(self.bytes, end) { return Option::None<StringView>(); }
+    pub func Part(self: &StringView, start: uint, end: uint) -> StringView? {
+        if start > end || end > self.bytes.length { return none; }
+        if !IsBoundary(self.bytes, start) || !IsBoundary(self.bytes, end) { return none; }
         let part = (@self.bytes.data[start])[..end - start];
-        return Option::Some<StringView>(StringView { bytes: part });
+        return StringView { bytes: part };
     }
 
-    /// The scalar value starting at `index`, or `None` when `index` is not a boundary inside the view.
+    /// The scalar value starting at `index`, or `none` when `index` is not a boundary inside the view.
     ///
     /// @param index the byte offset
-    /// @returns the scalar value beginning at `index`, or `None` when it is not a boundary
+    /// @returns the scalar value beginning at `index`, or `none` when it is not a boundary
     /// @see https://rux-lang.dev/docs/api/text/string-view/scalar-at
-    pub func ScalarAt(self: &StringView, index: uint) -> Option<char32> {
+    pub func ScalarAt(self: &StringView, index: uint) -> char32? {
         var scalar = 0u32 as char32;
-        let decoded = DecodeAt(self.bytes, index) catch { else => return Option::None<char32>() };
+        let decoded = DecodeAt(self.bytes, index) catch { else => return none };
         scalar = decoded.scalar;
-        return Option::Some<char32>(scalar);
+        return scalar;
     }
 
     /// Whether two views hold the same bytes.
@@ -194,14 +194,14 @@ pub struct ScalarIterator {
 }
 
 extend ScalarIterator {
-    /// The next scalar value, or `None` at the end.
+    /// The next scalar value, or `none` at the end.
     ///
     /// Bytes that are not well-formed end the walk rather than being reported: a view is validated when it is made,
     /// so reaching one means the bytes were vouched for and were not.
     ///
-    /// @returns the next scalar value, or `None` at the end
+    /// @returns the next scalar value, or `none` at the end
     /// @see https://rux-lang.dev/docs/api/text/scalar-iterator/next
-    pub func Next(self: &var ScalarIterator) -> Option<char32> {
+    pub func Next(self: &var ScalarIterator) -> char32? {
         var scalar = 0u32 as char32;
         var width: uint = 0;
         match DecodeAt(self.bytes, self.cursor) {
@@ -211,11 +211,11 @@ extend ScalarIterator {
             },
             .Failure(_) => {
                 self.cursor = self.bytes.length;
-                return Option::None<char32>();
+                return none;
             }
         }
         self.cursor = self.cursor + width;
-        return Option::Some<char32>(scalar);
+        return scalar;
     }
 }
 

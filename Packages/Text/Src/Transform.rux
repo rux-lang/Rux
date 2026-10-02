@@ -10,25 +10,22 @@
 // ASCII thing to text that was not ASCII would be wrong in a way nobody notices until the text is not English.
 
 import Allocator::Allocator;
-import Core::{ Option };
+import Core::Option;
 
 /// The text of `left` followed by the text of `right`.
 ///
-/// `error` receives what went wrong, and the string comes back empty.
+/// Fails with what went wrong; no partial text comes back.
 ///
 /// @param allocator where the storage comes from
 /// @param left the first piece
 /// @param right the second
-/// @param error receives why the operation failed, or `None`
-/// @returns the two joined, or an empty string when the allocator refused
+/// @returns the two joined, or why they could not be
 /// @see https://rux-lang.dev/docs/api/text/concat
-pub func Concat(allocator: Allocator, left: StringView, right: StringView, error: *var TextError) -> String {
+pub func Concat(allocator: Allocator, left: StringView, right: StringView) -> String ! TextError {
     var builder = StringBuilder(allocator);
-    *error = builder.Reserve(left.bytes.length + right.bytes.length);
-    if error.IsError() { return builder.IntoString(); }
-    *error = builder.Append(left);
-    if error.IsError() { return builder.IntoString(); }
-    *error = builder.Append(right);
+    builder.Reserve(left.bytes.length + right.bytes.length)?;
+    builder.Append(left)?;
+    builder.Append(right)?;
     return builder.IntoString();
 }
 
@@ -40,26 +37,21 @@ pub func Concat(allocator: Allocator, left: StringView, right: StringView, error
 /// @param allocator where the storage comes from
 /// @param view the borrowed text to act on
 /// @param count how many times
-/// @param error receives why the operation failed, or `None`
-/// @returns the text repeated that many times, or an empty string when the allocator refused
+/// @returns the text repeated that many times, or why it could not be
 /// @see https://rux-lang.dev/docs/api/text/repeat
-pub func Repeat(allocator: Allocator, view: StringView, count: uint, error: *var TextError) -> String {
+pub func Repeat(allocator: Allocator, view: StringView, count: uint) -> String ! TextError {
     var builder = StringBuilder(allocator);
     if count != 0 && view.bytes.length != 0 {
         if count > 0xFFFFFFFFFFFFFFFFu / view.bytes.length {
-            *error = TextError::LengthOverflow;
-            return builder.IntoString();
+            fail TextError::LengthOverflow;
         }
-        *error = builder.Reserve(view.bytes.length * count);
-        if error.IsError() { return builder.IntoString(); }
+        builder.Reserve(view.bytes.length * count)?;
     }
     var done: uint = 0;
     while done < count {
-        *error = builder.Append(view);
-        if error.IsError() { return builder.IntoString(); }
+        builder.Append(view)?;
         done = done + 1;
     }
-    *error = TextError::None;
     return builder.IntoString();
 }
 
@@ -73,14 +65,12 @@ pub func Repeat(allocator: Allocator, view: StringView, count: uint, error: *var
 /// @param view the borrowed text to act on
 /// @param needle the text to look for
 /// @param replacement the text to put in its place
-/// @param error receives why the operation failed, or `None`
-/// @returns the text with every occurrence replaced, or an empty string on failure
+/// @returns the text with every occurrence replaced, or why it could not be
 /// @see https://rux-lang.dev/docs/api/text/replace
-pub func Replace(allocator: Allocator, view: StringView, needle: StringView, replacement: StringView,
-             error: *var TextError) -> String {
+pub func Replace(allocator: Allocator, view: StringView, needle: StringView, replacement: StringView) -> String ! TextError {
     var builder = StringBuilder(allocator);
     if needle.bytes.length == 0 {
-        *error = builder.Append(view);
+        builder.Append(view)?;
         return builder.IntoString();
     }
 
@@ -89,19 +79,17 @@ pub func Replace(allocator: Allocator, view: StringView, needle: StringView, rep
     while walking {
         match rest.IndexOf(needle) {
             .Some(at) => {
-                let before = rest.Part(0, at).ValueOr(StringView());
-                *error = builder.Append(before);
-                if error.IsError() { return builder.IntoString(); }
-                *error = builder.Append(replacement);
-                if error.IsError() { return builder.IntoString(); }
-                rest = rest.Part(at + needle.bytes.length, rest.bytes.length).ValueOr(StringView());
+                let before = rest.Part(0, at) ?? StringView();
+                builder.Append(before)?;
+                builder.Append(replacement)?;
+                rest = rest.Part(at + needle.bytes.length, rest.bytes.length) ?? StringView();
             },
-            .None => {
+            none => {
                 walking = false;
             }
         }
     }
-    *error = builder.Append(rest);
+    builder.Append(rest)?;
     return builder.IntoString();
 }
 
@@ -122,45 +110,41 @@ pub func IsAsciiLetter(byte: char8) -> bool {
 ///
 /// @param allocator where the storage comes from
 /// @param view the borrowed text to act on
-/// @param error receives why the operation failed, or `None`
 /// @returns the text with its ASCII letters uppercased and everything else untouched
 /// @see https://rux-lang.dev/docs/api/text/to-ascii-upper
-pub func ToAsciiUpper(allocator: Allocator, view: StringView, error: *var TextError) -> String {
-    return MapAscii(allocator, view, 0x61, 0x7A, 0x20, error);
+pub func ToAsciiUpper(allocator: Allocator, view: StringView) -> String ! TextError {
+    return MapAscii(allocator, view, 0x61, 0x7A, 0x20);
 }
 
 /// The text of `view` with every ASCII upper-case letter lowered.
 ///
 /// @param allocator where the storage comes from
 /// @param view the borrowed text to act on
-/// @param error receives why the operation failed, or `None`
 /// @returns the text with its ASCII letters lowercased and everything else untouched
 /// @see https://rux-lang.dev/docs/api/text/to-ascii-lower
-pub func ToAsciiLower(allocator: Allocator, view: StringView, error: *var TextError) -> String {
-    return MapAscii(allocator, view, 0x41, 0x5A, 0x20, error);
+pub func ToAsciiLower(allocator: Allocator, view: StringView) -> String ! TextError {
+    return MapAscii(allocator, view, 0x41, 0x5A, 0x20);
 }
 
 // Copies `view`, shifting every byte in [low, high] by `delta`. The two case operations differ only in which range
 // moves and in which direction, so the copy loop is written once.
-func MapAscii(allocator: Allocator, view: StringView, low: uint32, high: uint32, delta: uint32,
-              error: *var TextError) -> String {
+func MapAscii(allocator: Allocator, view: StringView, low: uint32, high: uint32, delta: uint32) -> String ! TextError {
     var builder = StringBuilder(allocator);
-    *error = builder.Reserve(view.bytes.length);
-    if error.IsError() { return builder.IntoString(); }
+    builder.Reserve(view.bytes.length)?;
     var index: uint = 0;
     while index < view.bytes.length {
         let byte = view.bytes.data[index];
         let value = byte as uint32;
         let shifted = value >= low && value <= high ? (low == 0x61 ? value - delta : value + delta) : value;
-        *error = builder.AppendAscii(shifted as char8);
-        if error.IsError() {
-            // A byte above 0x7F is not ASCII and passes through as it stands, as part of whatever character it
-            // belongs to. `AppendAscii` refuses it, so it goes in as a byte of a sequence instead.
-            var one: char8[1];
-            one[0] = byte;
-            *error = builder.AppendValidated((@one[0])[..1]);
-            if error.IsError() { return builder.IntoString(); }
-        }
+        builder.AppendAscii(shifted as char8) catch {
+            else => {
+                // A byte above 0x7F is not ASCII and passes through as it stands, as part of whatever character it
+                // belongs to. `AppendAscii` refuses it, so it goes in as a byte of a sequence instead.
+                var one: char8[1];
+                one[0] = byte;
+                builder.AppendValidated((@one[0])[..1])?;
+            }
+        };
         index = index + 1;
     }
     return builder.IntoString();

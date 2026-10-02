@@ -1,16 +1,15 @@
 // Showing what is inside an outcome or a sequence, without taking it apart.
 //
-// `Option`, `Result` and a slice are the three shapes almost every diagnostic is written around, and none of them
-// can implement `Debug` on its own: what a `Option<T>` looks like depends entirely on what `T` looks like, and an
-// interface implementation has nowhere to say "when `T` can be shown". So these are handwritten functions with the
-// bound written out — `WriteOptionDebug<T: Debug>` — which is the shape the language does have. Each instantiation
+// An optional, a fallible and a slice are the three shapes almost every diagnostic is written around, and none of
+// them can implement `Debug` on its own: what a `T?` looks like depends entirely on what `T` looks like, and native
+// forms implement no interface at all. So these are handwritten functions with the bound written out —
+// `WriteOptionalDebug<T: Debug>` — which is the shape the language does have. Each instantiation
 // resolves its element's `WriteDebug` at compile time; nothing is dispatched at run time and nothing is reflected
 // over.
 //
-// The whole point is that they borrow. `Option::ValueOr` and `TryIntoValue` consume the option, because taking a
-// payload out is a transfer of ownership; there is no borrowing accessor, and there should not be one, since a
-// pointer into a variant's payload outlives nothing safely. But showing a value is not taking it: a `match` on a
-// borrowed option binds its payload by borrow, and that binding is what these hand to the element's `WriteDebug`.
+// The whole point is that they borrow. `??` and `?` consume the optional, because taking a payload out is a transfer
+// of ownership. But showing a value is not taking it: a `match` on a borrowed optional binds its payload where it
+// lies, and that binding is what these hand to the element's `WriteDebug`.
 // So an option holding a move-only value can be written twice and still hold it, which is the only behaviour worth
 // having — a diagnostic that consumed what it printed would be a diagnostic nobody could put in front of a value
 // they still needed.
@@ -24,12 +23,10 @@
 // Sequential containers are in `Rux/Collections`, which borrows a run of elements out of a vector, an array or a
 // deque and calls `WriteSliceDebug` with it. Nothing here knows those types exist.
 
-import Core::{ Option, Result };
-
-/// Writes a borrowed option as `Some(value)` or `None`.
+/// Writes a borrowed optional as `Some(value)` or `none`.
 ///
-/// The option is borrowed and its payload with it, so this can be called on an option holding a value that cannot
-/// be copied, as many times as wanted, and the option still holds it afterwards.
+/// The optional is borrowed and its payload with it, so this can be called on an optional holding a value that
+/// cannot be copied, as many times as wanted, and the optional still holds it afterwards.
 ///
 /// `spec` is handed to the payload's own `WriteDebug` and describes it rather than the wrapper.
 ///
@@ -39,11 +36,11 @@ import Core::{ Option, Result };
 ///
 /// @typeParam T the payload type, which must know how to show itself
 /// @param writer the destination
-/// @param value the option to show, borrowed for the call
+/// @param value the optional to show, borrowed for the call
 /// @param spec what to show the payload under
 /// @returns success when the whole rendering was accepted
-/// @see https://rux-lang.dev/docs/api/text/write-option-debug
-pub func WriteOptionDebug<T: Debug>(writer: &var TextWriter, value: &Option<T>,
+/// @see https://rux-lang.dev/docs/api/text/write-optional-debug
+pub func WriteOptionalDebug<T: Debug>(writer: &var TextWriter, value: &T?,
                                     spec: FormatSpec) -> ! FormatError {
     match value {
         .Some(payload) => {
@@ -51,16 +48,16 @@ pub func WriteOptionDebug<T: Debug>(writer: &var TextWriter, value: &Option<T>,
             payload.WriteDebug(writer, spec)?;
             return WriteAscii(writer, c8')');
         },
-        .None => {
-            return WriteBytes(writer, "None");
+        none => {
+            return WriteBytes(writer, "none");
         }
     }
 }
 
-/// Writes a borrowed result as `Success(value)` or `Error(reason)`.
+/// Writes a borrowed fallible as `Success(value)` or `Failure(reason)`.
 ///
-/// Both payloads are borrowed, so neither side of the result is consumed by being shown. The case names are the
-/// ones the type declares, so what is written names the case a reader would branch on.
+/// Both payloads are borrowed, so neither channel is consumed by being shown. The names are the native channel
+/// names, so what is written names the case a reader would branch on.
 ///
 /// `spec` is handed to whichever payload is present and describes it rather than the wrapper.
 ///
@@ -70,20 +67,20 @@ pub func WriteOptionDebug<T: Debug>(writer: &var TextWriter, value: &Option<T>,
 /// @typeParam T the success payload type, which must know how to show itself
 /// @typeParam E the failure payload type, which must know how to show itself
 /// @param writer the destination
-/// @param value the result to show, borrowed for the call
+/// @param value the fallible to show, borrowed for the call
 /// @param spec what to show the payload under
 /// @returns success when the whole rendering was accepted
-/// @see https://rux-lang.dev/docs/api/text/write-result-debug
-pub func WriteResultDebug<T: Debug, E: Debug>(writer: &var TextWriter, value: &Result<T, E>,
-                                              spec: FormatSpec) -> ! FormatError {
+/// @see https://rux-lang.dev/docs/api/text/write-fallible-debug
+pub func WriteFallibleDebug<T: Debug, E: Debug>(writer: &var TextWriter, value: &(T ! E),
+                                                spec: FormatSpec) -> ! FormatError {
     match value {
         .Success(payload) => {
             WriteBytes(writer, "Success(")?;
             payload.WriteDebug(writer, spec)?;
             return WriteAscii(writer, c8')');
         },
-        .Error(reason) => {
-            WriteBytes(writer, "Error(")?;
+        .Failure(reason) => {
+            WriteBytes(writer, "Failure(")?;
             reason.WriteDebug(writer, spec)?;
             return WriteAscii(writer, c8')');
         }

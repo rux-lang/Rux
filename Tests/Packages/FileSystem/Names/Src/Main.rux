@@ -8,17 +8,14 @@
 // UTF-8 and required to round-trip anyway.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert };
+import Core::{ Assert, Failed, Panic };
 import Io::{ IoError, IoErrorKind };
 import Core::{ #target };
 import Path::{ OsString, OsStringView, OsUnit, Path, PathBuffer };
 import FileSystem::{ DeleteDirectory, DeleteFile, File, MakeDirectory, MetadataOf, OpenOptions, ReadDirectory };
-import Text::TextError;
 
 func PathOf(allocator: Allocator, text: char8[..], holder: *var OsString) -> Path {
-    var textError = TextError::None;
-    *holder = OsString::FromText(allocator, text, @textError);
-    Assert(textError == TextError::None, "the name converts");
+    *holder = OsString::FromText(allocator, text) catch { else => Panic("the name converts") };
     return Path::FromView((*holder).View());
 }
 
@@ -26,10 +23,8 @@ func PathOf(allocator: Allocator, text: char8[..], holder: *var OsString) -> Pat
 // and deletes it. Anything lossy in that circle breaks one of the steps.
 func RoundTrip(allocator: Allocator, directory: Path, name: OsStringView, what: char8[..]) {
     var error = IoError::Ok();
-    var textError = TextError::None;
-    var full = PathBuffer::FromPath(allocator, directory, @textError);
-    Assert(textError == TextError::None, "the directory copies");
-    Assert(full.Push(name) == TextError::None, "and the name appends");
+    var full = PathBuffer::FromPath(allocator, directory) catch { else => Panic("the directory copies") };
+    full.Push(name) catch { else => Panic("and the name appends") };
 
     var made = File::Open(allocator, full.AsPath(), OpenOptions::Writing(), @error);
     Assert(made.IsOpen() && error.IsOk(), what);
@@ -45,8 +40,7 @@ func RoundTrip(allocator: Allocator, directory: Path, name: OsStringView, what: 
         let view = entry.View();
         if view.Equals(name) {
             found = true;
-            reported = OsString::FromView(allocator, view, @textError);
-            Assert(textError == TextError::None, "and the reported name copies");
+            reported = OsString::FromView(allocator, view) catch { else => Panic("and the reported name copies") };
         }
         entry.Clear();
     }
@@ -55,8 +49,8 @@ func RoundTrip(allocator: Allocator, directory: Path, name: OsStringView, what: 
     walk.Release();
 
     // Reopening under the reported name proves the round trip is usable, not merely equal.
-    var reopenPath = PathBuffer::FromPath(allocator, directory, @textError);
-    Assert(reopenPath.Push(reported.View()) == TextError::None, "the reported name appends");
+    var reopenPath = PathBuffer::FromPath(allocator, directory) catch { else => Panic("the directory copies again") };
+    reopenPath.Push(reported.View()) catch { else => Panic("the reported name appends") };
     var reopened = File::Open(allocator, reopenPath.AsPath(), OpenOptions::Reading(), @error);
     Assert(reopened.IsOpen() && error.IsOk(), "and opens the same file");
     Assert(reopened.Close().IsOk(), "which closes");
@@ -114,9 +108,7 @@ func Main() -> int {
         RoundTrip(allocator, dir, hostile, "a name that is not UTF-8 at all is created");
 
         // And its text conversion must fail rather than invent replacement characters.
-        var textError = TextError::None;
-        let asText = hostile.ToText(allocator, @textError);
-        Assert(asText.IsNone(), "and refuses to become text rather than being mangled into it");
+        Assert(Failed(hostile.ToText(allocator)), "and refuses to become text rather than being mangled into it");
     }
 
     Assert(DeleteDirectory(allocator, dir).IsOk(), "the scratch directory cleans up");

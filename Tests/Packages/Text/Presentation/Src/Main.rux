@@ -1,7 +1,6 @@
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, Failed };
-import Text::{ BufferWriter, Debug, Display, FormatError, FormatSpec, ParseFormatSpec, String, StringView, TextError,
-               TextWriter };
+import Core::{ Assert, Failed, Panic };
+import Text::{ BufferWriter, Debug, Display, FormatError, FormatSpec, ParseFormatSpec, String, StringView, TextWriter };
 
 // How text presents itself, checked through the protocols rather than through a format call, so a failure here is
 // about the value and not about the placeholder engine above it.
@@ -124,8 +123,7 @@ func Main() -> int {
     // A String presents as the view it spans, and is untouched by having been rendered.
     var system = SystemAllocator();
     let allocator: Allocator = system;
-    var error = TextError::None;
-    let owned = String::FromBytes(allocator, "owned", @error);
+    let owned = String::FromBytes(allocator, "owned") catch { else => Panic("the owned string is built") };
     Assert(Shown(owned.View(), plain, "owned"), "an owned string displays its text");
     Assert(Inspected(owned.View(), plain, "\"owned\""), "and inspects quoted");
     Assert(owned.Length() == 5u, "and is unchanged by either");

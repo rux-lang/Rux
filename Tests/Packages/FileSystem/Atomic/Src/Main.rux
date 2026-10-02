@@ -4,11 +4,10 @@
 // abandons a replacement and demands them still, then commits one and demands the new bytes exactly.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert };
+import Core::{ Assert, Panic };
 import Io::{ IoError, IoErrorKind, ReadExact, Reader, WriteAll, Writer };
 import Path::{ OsString, Path, PathBuffer };
 import FileSystem::{ AtomicWrite, DeleteDirectory, DeleteFile, DirectoryIterator, File, MakeDirectory, MetadataOf, OpenOptions, ReadDirectory, WriteAtomically };
-import Text::TextError;
 
 // The bytes a string spans, which is how a text overload reaches the slice one.
 func TextBytes(text: char8[..]) -> char8[..] {
@@ -16,9 +15,7 @@ func TextBytes(text: char8[..]) -> char8[..] {
 }
 
 func PathOf(allocator: Allocator, text: char8[..], holder: *var OsString) -> Path {
-    var textError = TextError::None;
-    *holder = OsString::FromText(allocator, text, @textError);
-    Assert(textError == TextError::None, "the name converts");
+    *holder = OsString::FromText(allocator, text) catch { else => Panic("the name converts") };
     return Path::FromView((*holder).View());
 }
 

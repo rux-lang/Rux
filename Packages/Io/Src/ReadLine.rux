@@ -30,7 +30,7 @@ pub func ReadLine(builder: &var StringBuilder) -> IoError {
             if outcome.IsTransient() { continue; }
             if outcome.IsEnd() {
                 if pendingCarriageReturn {
-                    builder.AppendAscii(c8'\r');
+                    builder.AppendAscii(c8'\r') catch { else => return IoError::Of(IoErrorKind::Other) };
                 }
                 return sawAnything ? IoError::Ok() : IoError::Of(IoErrorKind::EndOfStream);
             }
@@ -41,14 +41,14 @@ pub func ReadLine(builder: &var StringBuilder) -> IoError {
         let ch = byte[0];
         if ch == c8'\n' { return IoError::Ok(); }
         if pendingCarriageReturn {
-            builder.AppendAscii(c8'\r');
+            builder.AppendAscii(c8'\r') catch { else => return IoError::Of(IoErrorKind::Other) };
             pendingCarriageReturn = false;
         }
         if ch == c8'\r' {
             pendingCarriageReturn = true;
         }
         else {
-            builder.AppendAscii(ch);
+            builder.AppendAscii(ch) catch { else => return IoError::Of(IoErrorKind::Other) };
         }
     }
     return IoError::Ok();

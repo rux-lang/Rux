@@ -3,16 +3,13 @@
 // requests that contradict themselves. The scratch file lives under Bin/, which is ignored and rewritten.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert };
+import Core::{ Assert, Panic };
 import Io::{ IoError, IoErrorKind };
 import Path::{ OsString, Path };
 import FileSystem::{ File, NativeKind, OpenOptions, TranslateNative };
-import Text::TextError;
 
 func PathOf(allocator: Allocator, text: char8[..], holder: *var OsString) -> Path {
-    var textError = TextError::None;
-    *holder = OsString::FromText(allocator, text, @textError);
-    Assert(textError == TextError::None, "the name converts");
+    *holder = OsString::FromText(allocator, text) catch { else => Panic("the name converts") };
     return Path::FromView((*holder).View());
 }
 

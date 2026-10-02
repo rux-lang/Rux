@@ -1,61 +1,66 @@
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert };
-import Text::{ Replace, StringView, TextError, ToAsciiLower, ToAsciiUpper };
+import Core::{ Assert, Panic };
+import Text::{ Replace, StringView, ToAsciiLower, ToAsciiUpper };
 
 // Replacement and case conversion make new text out of old, so the questions are about edges: a needle at either
 // end, a replacement that contains the needle, and bytes that are not ASCII passing through case conversion whole.
 
 func View(bytes: char8[..]) -> StringView {
-    return StringView::FromBytes(bytes).ValueOr(StringView());
+    return StringView::FromBytes(bytes) ?? StringView();
 }
 
 func Main() -> int {
     var system = SystemAllocator();
     let allocator: Allocator = system;
-    var error = TextError::None;
 
     let text = View("one,two,,three");
-    let replaced = Replace(allocator, text, View(","), View(" - "), @error);
-    Assert(error == TextError::None, "a separator is replaced");
+    let replaced = Replace(allocator, text, View(","), View(" - ")) catch { else => Panic("a separator is replaced") };
     let spaced = View("one - two -  - three");
     let replacedView = replaced.View();
     Assert(replacedView.Equals(spaced), "everywhere it occurs, including twice in a row");
 
     // A replacement containing the needle is not searched again, which is what makes this terminate.
-    let grown = Replace(allocator, View("aaa"), View("a"), View("aa"), @error);
-    Assert(error == TextError::None && grown.Length() == 6, "replacing a with aa doubles and stops");
+    let grown = Replace(allocator, View("aaa"), View("a"), View("aa"))
+        catch { else => Panic("replacing a with aa doubles and stops") };
+    Assert(grown.Length() == 6, "replacing a with aa doubles and stops");
 
-    let removed = Replace(allocator, View("a-b-c"), View("-"), View(""), @error);
+    let removed = Replace(allocator, View("a-b-c"), View("-"), View(""))
+        catch { else => Panic("an empty replacement removes the needle") };
     let squeezed = View("abc");
     let removedView = removed.View();
-    Assert(error == TextError::None && removedView.Equals(squeezed), "an empty replacement removes the needle");
+    Assert(removedView.Equals(squeezed), "an empty replacement removes the needle");
 
-    let missing = Replace(allocator, View("abc"), View("x"), View("y"), @error);
+    let missing = Replace(allocator, View("abc"), View("x"), View("y"))
+        catch { else => Panic("a needle that is not there changes nothing") };
     let untouched = View("abc");
     let missingView = missing.View();
-    Assert(error == TextError::None && missingView.Equals(untouched), "a needle that is not there changes nothing");
+    Assert(missingView.Equals(untouched), "a needle that is not there changes nothing");
 
-    let degenerate = Replace(allocator, View("abc"), View(""), View("y"), @error);
+    let degenerate = Replace(allocator, View("abc"), View(""), View("y"))
+        catch { else => Panic("and the empty needle matches nothing") };
     let stillSame = View("abc");
     let degenerateView = degenerate.View();
-    Assert(error == TextError::None && degenerateView.Equals(stillSame), "and the empty needle matches nothing");
+    Assert(degenerateView.Equals(stillSame), "and the empty needle matches nothing");
 
     // Case, ASCII only: letters shift, and everything else — digits, punctuation, multi-byte characters — passes
     // through untouched, which is what keeps the result the same length and still text.
-    let upper = ToAsciiUpper(allocator, View("Hello, World 123 é!"), @error);
+    let upper = ToAsciiUpper(allocator, View("Hello, World 123 é!"))
+        catch { else => Panic("upper-casing raises the ASCII letters alone") };
     let allUpper = View("HELLO, WORLD 123 é!");
     let upperView = upper.View();
-    Assert(error == TextError::None && upperView.Equals(allUpper), "upper-casing raises the ASCII letters alone");
+    Assert(upperView.Equals(allUpper), "upper-casing raises the ASCII letters alone");
 
-    let lower = ToAsciiLower(allocator, View("Hello, World 123 É!"), @error);
+    let lower = ToAsciiLower(allocator, View("Hello, World 123 É!"))
+        catch { else => Panic("and lower-casing lowers them alone") };
     let allLower = View("hello, world 123 É!");
     let lowerView = lower.View();
-    Assert(error == TextError::None && lowerView.Equals(allLower), "and lower-casing lowers them alone");
+    Assert(lowerView.Equals(allLower), "and lower-casing lowers them alone");
 
-    let roundTrip = ToAsciiLower(allocator, ToAsciiUpper(allocator, View("MiXeD"), @error).View(), @error);
+    let raised = ToAsciiUpper(allocator, View("MiXeD")) catch { else => Panic("the round trip raises the case") };
+    let roundTrip = ToAsciiLower(allocator, raised.View()) catch { else => Panic("and lowers it again") };
     let flat = View("mixed");
     let roundView = roundTrip.View();
-    Assert(error == TextError::None && roundView.Equals(flat), "a round trip flattens case and changes nothing else");
+    Assert(roundView.Equals(flat), "a round trip flattens case and changes nothing else");
 
     return 0;
 }

@@ -71,7 +71,7 @@ func CheckParseErrors() -> int {
 }
 
 func CheckParseOverloads() -> int {
-    var text = StringView::FromBytes("-123").ValueOr(StringView());
+    var text = StringView::FromBytes("-123") ?? StringView();
     let parsed = ParseInt64(text);
     let code = match parsed {
         Result::Success(value) => value == -123i64 ? 0 : 120,
@@ -90,14 +90,14 @@ func CheckParseOverloads() -> int {
     if ParseInt64("invalid").IsSuccess() { return 123; }
     if value != 456i64 { return 124; }
 
-    text = StringView::FromBytes("-789").ValueOr(StringView());
+    text = StringView::FromBytes("-789") ?? StringView();
     match ParseInt64(text) {
         .Success(parsedView) => { value = parsedView; },
         .Error(_) => { return 126; }
     }
     if value != -789i64 { return 127; }
 
-    text = StringView::FromBytes("bad").ValueOr(StringView());
+    text = StringView::FromBytes("bad") ?? StringView();
     if ParseInt64(text).IsSuccess() { return 128; }
     if value != -789i64 { return 129; }
     return 0;

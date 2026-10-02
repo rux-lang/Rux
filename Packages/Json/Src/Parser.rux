@@ -313,9 +313,9 @@ extend JsonParser {
     }
 
     // Resolves a string token's span into an owned string, unescaping only when the token said it was needed.
-    func TakeText(self: &var JsonParser, token: JsonToken, error: *var TextError) -> String {
+    func TakeText(self: &var JsonParser, token: JsonToken) -> String ! TextError {
         let span = (@self.input.data[token.start])[..token.end - token.start];
-        if !token.escaped { return String::FromBytes(self.allocator, span, error); }
+        if !token.escaped { return String::FromBytes(self.allocator, span); }
         var builder = StringBuilder(self.allocator);
         var index: uint = 0;
         while index < span.length {
@@ -328,7 +328,7 @@ extend JsonParser {
                 while run < span.length && (span.data[run] as uint8) != 0x5Cu8 {
                     run = run + 1;
                 }
-                *error = builder.AppendBytes((@span.data[index])[..run - index]);
+                builder.AppendBytes((@span.data[index])[..run - index])?;
                 index = run;
                 continue;
             }
@@ -365,7 +365,7 @@ extend JsonParser {
                     self.Fail(JsonStop::BadSurrogate, token.start + escapeAt);
                     return builder.IntoString();
                 }
-                *error = builder.AppendScalar(scalar as char32);
+                builder.AppendScalar(scalar as char32)?;
             }
             else {
                 var replacement = 0u8;
@@ -388,7 +388,7 @@ extend JsonParser {
                     // The quote, backslash and solidus all stand for themselves.
                     replacement = kind;
                 }
-                *error = builder.AppendAscii(replacement as char8);
+                builder.AppendAscii(replacement as char8)?;
             }
         }
         return builder.IntoString();
@@ -425,32 +425,35 @@ extend JsonParser {
         if token.kind == JsonTokenKind::Null { return JsonValue::Null(self.allocator); }
         if token.kind == JsonTokenKind::True { return JsonValue::Boolean(self.allocator, true); }
         if token.kind == JsonTokenKind::False { return JsonValue::Boolean(self.allocator, false); }
-        if token.kind == JsonTokenKind::Number {
-            var textError = TextError::None;
-            let span = (@self.input.data[token.start])[..token.end - token.start];
-            var value = JsonValue::Number(self.allocator, span, @textError);
-            if textError != TextError::None { return self.Stop(JsonStop::OutOfMemory); }
-            return <-value;
-        }
-        if token.kind == JsonTokenKind::Text {
-            var textError = TextError::None;
-            var held = self.TakeText(token, @textError);
-            if self.stop != JsonStop::None {
-                held.Clear();
-                return JsonValue::Null(self.allocator);
-            }
-            if textError != TextError::None {
-                held.Clear();
-                return self.Stop(JsonStop::OutOfMemory);
-            }
-            var value = JsonValue::Null(self.allocator);
-            value.kind = JsonKind::Text;
-            value.text = held;
-            return <-value;
-        }
+        if token.kind == JsonTokenKind::Number { return self.ParseNumber(token); }
+        if token.kind == JsonTokenKind::Text { return self.ParseText(token); }
         if token.kind == JsonTokenKind::ArrayStart { return self.ParseArray(); }
         if token.kind == JsonTokenKind::ObjectStart { return self.ParseObject(); }
         return self.Stop(JsonStop::Unexpected);
+    }
+
+    // The scalar cases live in their own functions so that what they hold while building a value stays out of the
+    // frame `ParseValue` and `ParseArray` recurse through: every byte of that frame is paid once per nesting level.
+    func ParseNumber(self: &var JsonParser, token: JsonToken) -> JsonValue {
+        let span = (@self.input.data[token.start])[..token.end - token.start];
+        return JsonValue::Number(self.allocator, span) catch { else => self.Stop(JsonStop::OutOfMemory) };
+    }
+
+    func ParseText(self: &var JsonParser, token: JsonToken) -> JsonValue {
+        var held = self.TakeText(token) catch {
+            else => {
+                if self.stop != JsonStop::None { return JsonValue::Null(self.allocator); }
+                return self.Stop(JsonStop::OutOfMemory);
+            }
+        };
+        if self.stop != JsonStop::None {
+            held.Clear();
+            return JsonValue::Null(self.allocator);
+        }
+        var value = JsonValue::Null(self.allocator);
+        value.kind = JsonKind::Text;
+        value.text = held;
+        return <-value;
     }
 
     func ParseArray(self: &var JsonParser) -> JsonValue {
@@ -505,15 +508,15 @@ extend JsonParser {
                 return self.Stop(token.kind == JsonTokenKind::End ? JsonStop::Truncated
                                                                   : JsonStop::Unexpected);
             }
-            var textError = TextError::None;
-            var name = self.TakeText(token, @textError);
+            var name = self.TakeText(token) catch {
+                else => {
+                    if self.stop != JsonStop::None { return JsonValue::Null(self.allocator); }
+                    return self.Stop(JsonStop::OutOfMemory);
+                }
+            };
             if self.stop != JsonStop::None {
                 name.Clear();
                 return JsonValue::Null(self.allocator);
-            }
-            if textError != TextError::None {
-                name.Clear();
-                return self.Stop(JsonStop::OutOfMemory);
             }
 
             let colon = self.lexer.Next();

@@ -9,8 +9,6 @@
 3|Packages/Collections/Src/TreeSet.rux
 1|Packages/Collections/Src/Vector.rux
 1|Packages/Path/Src/Path.rux
-1|Packages/Text/Src/Search.rux
-1|Packages/Text/Src/StringView.rux
 26|Packages/Time/Src/CalendarParse.rux
 2|Tests/Language/EnumMethodReturn/Src/Main.rux
 2|Tests/Language/MutablePointerLayouts/Src/Main.rux

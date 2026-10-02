@@ -1,6 +1,6 @@
 import Allocator::{ Allocator, SystemAllocator };
-import Core::Assert;
-import Text::{ Concat, String, StringView, TextError };
+import Core::{ Assert, Panic };
+import Text::{ Concat, String, StringView };
 
 // Joining two owned strings through the package: the join borrows views of both, copies once into a fresh block,
 // and both inputs stay whole and are destroyed exactly once when the function ends.
@@ -8,17 +8,13 @@ import Text::{ Concat, String, StringView, TextError };
 func Main() -> int {
     var system = SystemAllocator();
     let allocator: Allocator = system;
-    var error = TextError::None;
 
-    let first = String::FromBytes(allocator, "One", @error);
-    Assert(error == TextError::None, "the first string is built");
-    let second = String::FromBytes(allocator, "Two", @error);
-    Assert(error == TextError::None, "and the second");
+    let first = String::FromBytes(allocator, "One") catch { else => Panic("the first string is built") };
+    let second = String::FromBytes(allocator, "Two") catch { else => Panic("and the second") };
 
-    let opening = Concat(allocator, first.View(), StringView::FromValidated(" join "), @error);
-    Assert(error == TextError::None, "the first join is made");
-    let joined = Concat(allocator, opening.View(), second.View(), @error);
-    Assert(error == TextError::None, "and the second");
+    let opening = Concat(allocator, first.View(), StringView::FromValidated(" join "))
+        catch { else => Panic("the first join is made") };
+    let joined = Concat(allocator, opening.View(), second.View()) catch { else => Panic("and the second") };
 
     let expected = StringView::FromValidated("One join Two");
     let joinedView = joined.View();

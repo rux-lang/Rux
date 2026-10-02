@@ -1,53 +1,53 @@
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert };
-import Text::{ Concat, Repeat, String, StringView, TextError };
+import Core::{ Assert, Panic };
+import Text::{ Concat, Repeat, String, StringView };
 
 // Joining and repeating are the operations that make new text, so what is worth checking is what they allocate and
 // what they leave behind: the inputs are borrowed views and stay whole, the result is an owning string with a block
 // of its own, and the empty cases cost nothing.
 
 func View(bytes: char8[..]) -> StringView {
-    return StringView::FromBytes(bytes).ValueOr(StringView());
+    return StringView::FromBytes(bytes) ?? StringView();
 }
 
 func Main() -> int {
     var system = SystemAllocator();
     let allocator: Allocator = system;
-    var error = TextError::None;
 
     let hello = View("Hello, ");
     let world = View("world!");
 
-    let joined = Concat(allocator, hello, world, @error);
-    Assert(error == TextError::None, "two views join");
+    let joined = Concat(allocator, hello, world) catch { else => Panic("two views join") };
     Assert(joined.Length() == 13, "into text spanning both");
     let expected = View("Hello, world!");
     let joinedView = joined.View();
     Assert(joinedView.Equals(expected), "in order, left then right");
 
     // The empty view is the identity, on either side.
-    let leftEmpty = Concat(allocator, View(""), world, @error);
-    Assert(error == TextError::None && leftEmpty.View().Equals(world), "the empty view joins as nothing, on the left");
-    let rightEmpty = Concat(allocator, world, View(""), @error);
-    Assert(error == TextError::None && rightEmpty.View().Equals(world), "and on the right");
-    let bothEmpty = Concat(allocator, View(""), View(""), @error);
-    Assert(error == TextError::None && bothEmpty.IsEmpty(), "and two of them join into nothing");
+    let leftEmpty = Concat(allocator, View(""), world)
+        catch { else => Panic("the empty view joins as nothing, on the left") };
+    Assert(leftEmpty.View().Equals(world), "the empty view joins as nothing, on the left");
+    let rightEmpty = Concat(allocator, world, View("")) catch { else => Panic("and on the right") };
+    Assert(rightEmpty.View().Equals(world), "and on the right");
+    let bothEmpty = Concat(allocator, View(""), View("")) catch { else => Panic("and two of them join into nothing") };
+    Assert(bothEmpty.IsEmpty(), "and two of them join into nothing");
 
     // Multi-byte characters cross the join whole.
-    let mixed = Concat(allocator, View("é"), View("€"), @error);
-    Assert(error == TextError::None && mixed.Length() == 5, "multi-byte characters join whole");
+    let mixed = Concat(allocator, View("é"), View("€")) catch { else => Panic("multi-byte characters join whole") };
+    Assert(mixed.Length() == 5, "multi-byte characters join whole");
     Assert(mixed.ScalarCount() == 2, "and stay two characters");
 
     // Repetition.
-    let thrice = Repeat(allocator, View("ab"), 3, @error);
-    Assert(error == TextError::None && thrice.Length() == 6, "a view is repeated");
+    let thrice = Repeat(allocator, View("ab"), 3) catch { else => Panic("a view is repeated") };
+    Assert(thrice.Length() == 6, "a view is repeated");
     let abab = View("ababab");
     let thriceView = thrice.View();
     Assert(thriceView.Equals(abab), "in order, however many times");
-    let zeroTimes = Repeat(allocator, View("ab"), 0, @error);
-    Assert(error == TextError::None && zeroTimes.IsEmpty(), "zero times is empty text");
-    let emptyRepeated = Repeat(allocator, View(""), 1000, @error);
-    Assert(error == TextError::None && emptyRepeated.IsEmpty(), "and so is the empty view any number of times");
+    let zeroTimes = Repeat(allocator, View("ab"), 0) catch { else => Panic("zero times is empty text") };
+    Assert(zeroTimes.IsEmpty(), "zero times is empty text");
+    let emptyRepeated = Repeat(allocator, View(""), 1000)
+        catch { else => Panic("and so is the empty view any number of times") };
+    Assert(emptyRepeated.IsEmpty(), "and so is the empty view any number of times");
 
     return 0;
 }

@@ -1,5 +1,5 @@
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert };
+import Core::{ Assert, Panic };
 import Text::{ String, StringView, TextError };
 
 // A string owns its bytes and gives them back when it dies, which is the whole of what changed: it used to hold a
@@ -10,18 +10,25 @@ import Text::{ String, StringView, TextError };
 // something usable, that the block a builder hands over is given back to the allocator it came from — and about
 // the invariant that makes the rest of the package cheap: what a string holds is UTF-8, checked once on the way in.
 
+/// Why an operation the test expects to fail failed. One that succeeds instead panics, so an expected failure
+/// cannot pass by accident.
+func Refusal<T, E>(outcome: T ! E) -> E {
+    return match <-outcome {
+        .Failure(error) => error,
+        .Success(_) => Panic("the operation was expected to fail")
+    };
+}
+
 func Main() -> int {
     var system = SystemAllocator();
     let allocator: Allocator = system;
-    var error = TextError::None;
 
     let empty = String(allocator);
     Assert(empty.IsEmpty() && empty.Length() == 0, "a new string holds nothing");
     Assert(empty.ScalarCount() == 0, "and no characters");
 
     // Eleven bytes, five characters: ASCII, two-byte, three-byte and four-byte.
-    let text = String::FromBytes(allocator, "hié€😀", @error);
-    Assert(error == TextError::None, "well-formed bytes make a string");
+    let text = String::FromBytes(allocator, "hié€😀") catch { else => Panic("well-formed bytes make a string") };
     Assert(text.Length() == 11, "which spans every byte");
     Assert(text.ScalarCount() == 5, "and holds five characters, which is not the same number");
 
@@ -39,13 +46,11 @@ func Main() -> int {
     broken[0] = 0xEDu8 as char8;
     broken[1] = 0xA0u8 as char8;
     broken[2] = 0x80u8 as char8;
-    let refused = String::FromBytes(allocator, broken[0..3], @error);
-    Assert(error == TextError::InvalidUtf8, "a surrogate half is refused");
-    Assert(refused.IsEmpty(), "and nothing is built from it");
+    Assert(Refusal(String::FromBytes(allocator, broken[0..3])) == TextError::InvalidUtf8,
+           "a surrogate half is refused, and nothing is built from it");
 
     // Fallible cloning offers the same independent value semantics when allocation failure must be handled.
-    var copy = text.Clone(@error);
-    Assert(error == TextError::None, "a string can be copied");
+    var copy = text.Clone() catch { else => Panic("a string can be copied") };
     Assert(copy.Equals(text), "and the copy holds what the original holds");
     Assert(copy.Bytes().data != text.Bytes().data, "in a block of its own");
     copy.Clear();
@@ -57,33 +62,32 @@ func Main() -> int {
     // Cutting is by byte and only on character boundaries.
     Assert(text.IsBoundary(0) && text.IsBoundary(2) && text.IsBoundary(11), "characters start where they start");
     Assert(!text.IsBoundary(3) && !text.IsBoundary(9), "and their continuation bytes do not");
-    Assert(text.Part(0, 2).IsSome(), "a cut on two boundaries is allowed");
-    Assert(text.Part(0, 3).IsNone(), "a cut through the middle of a character is refused");
+    Assert(text.Part(0, 2) is StringView, "a cut on two boundaries is allowed");
+    Assert(!(text.Part(0, 3) is StringView), "a cut through the middle of a character is refused");
 
-    let front = text.Substring(0, 4, @error);
-    Assert(error == TextError::None, "an owning cut is made");
+    let front = text.Substring(0, 4) catch { else => Panic("an owning cut is made") };
     Assert(front.Length() == 4 && front.ScalarCount() == 3, "spanning what lies between the bounds");
-    let refusedCut = text.Substring(0, 3, @error);
-    Assert(error == TextError::NotABoundary, "and a cut off a boundary is refused rather than rounded");
-    Assert(refusedCut.IsEmpty(), "giving back nothing");
+    Assert(Refusal(text.Substring(0, 3)) == TextError::NotABoundary,
+           "and a cut off a boundary is refused rather than rounded");
 
     // A view over a string copies nothing and sees the same bytes.
     let view = text.View();
     Assert(view.Length() == text.Length(), "a view spans the same bytes");
     Assert(view.Bytes().data == text.Bytes().data, "without copying any of them");
-    let rebuilt = String::FromView(allocator, view, @error);
-    Assert(error == TextError::None && rebuilt.Equals(text), "and a string built from it holds the same text");
+    let rebuilt = String::FromView(allocator, view)
+        catch { else => Panic("and a string built from it holds the same text") };
+    Assert(rebuilt.Equals(text), "and a string built from it holds the same text");
 
     // Text needs no checking on the way in, so a string built from text is built from the same overloads under
     // the same names.
-    let fromText = String::FromBytes(allocator, "hié€😀", @error);
-    Assert(error == TextError::None, "text makes a string");
+    let fromText = String::FromBytes(allocator, "hié€😀") catch { else => Panic("text makes a string") };
     Assert(fromText.Equals(text), "holding what the same bytes hold");
-    let vouched = String::FromValidated(allocator, "hié€😀", @error);
-    Assert(error == TextError::None && vouched.Equals(text), "and so does the unchecked spelling");
+    let vouched = String::FromValidated(allocator, "hié€😀")
+        catch { else => Panic("and so does the unchecked spelling") };
+    Assert(vouched.Equals(text), "and so does the unchecked spelling");
 
     // Comparison is by bytes, which for UTF-8 is also by code point.
-    let shorter = String::FromBytes(allocator, "hi", @error);
+    let shorter = String::FromBytes(allocator, "hi") catch { else => Panic("a shorter string is built") };
     Assert(!shorter.Equals(text), "different text is not equal");
     Assert(shorter.Compare(text).IsLess(), "a prefix orders before what extends it");
     Assert(text.Compare(shorter).IsGreater(), "and the other way round");

@@ -19,7 +19,7 @@ rux add Rux/Path
 
 `Path` and `OsStringView` are copyable borrowed values whose receivers use `&T`. Immutable `OsString` has deep-copy value semantics: a language copy allocates an independent native-unit block from the same allocator. `PathBuffer` prohibits copying, transfers with `<-`, and releases its block through `~PathBuffer`.
 
-Use `Path()`, `OsStringView()`, `OsString(allocator)`, and `PathBuffer(allocator)` for empty values. Descriptive and fallible factories such as `FromText`, `FromPath`, `Join`, and `Normalize` retain their names. Raw pointers remain only for native storage and scalar output slots, where nullable or stored addresses are required.
+Use `Path()`, `OsStringView()`, `OsString(allocator)`, and `PathBuffer(allocator)` for empty values. Descriptive and fallible factories such as `FromText`, `FromPath`, `Join`, and `Normalize` retain their names and return their value `! TextError`, as `OsStringView.ToText` returns `String ! TextError`. Raw pointers remain only for native storage and scalar output slots, where nullable or stored addresses are required.
 
 ## Documentation
 

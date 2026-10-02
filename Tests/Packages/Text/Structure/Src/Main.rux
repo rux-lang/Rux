@@ -1,14 +1,14 @@
-import Core::{ Assert, Failed, Option, Result, Succeeded };
+import Core::{ Assert, Failed, Succeeded };
 import Text::{ BufferWriter, Debug, FormatError, FormatSpec, ParseFormatSpec, StringView, TextWriter, WriteAscii,
-               WriteBytes, WriteOptionDebug, WriteResultDebug, WriteSliceDebug };
+               WriteBytes, WriteFallibleDebug, WriteOptionalDebug, WriteSliceDebug };
 
 // Showing an outcome or a run of elements without taking it apart.
 //
-// Three writers, and one property runs through all of them: they borrow. `Option::ValueOr` and `TryIntoValue`
-// consume the option because taking a payload out is a transfer of ownership, and there is no borrowing accessor
-// for one — so the question a test has to answer is whether showing a value is also taking it. The tracked element
-// below reports its own destruction, so the answer is counted rather than argued: an option holding a move-only
-// value is written twice, nothing is destroyed, and the option still holds it.
+// Three writers, and one property runs through all of them: they borrow. `??` and a match on a moved optional
+// consume it because taking a payload out is a transfer of ownership — so the question a test has to answer is
+// whether showing a value is also taking it. The tracked element below reports its own destruction, so the answer is
+// counted rather than argued: an optional holding a move-only value is written twice, nothing is destroyed, and the
+// optional still holds it.
 //
 // The other half is what the specification means. It reaches each element unchanged, because a sequence has no
 // numeric or textual form of its own for a width or a precision to apply to — so a precision truncates each element
@@ -85,17 +85,17 @@ func Spec(text: char8[..]) -> FormatSpec {
 }
 
 // Each shape rendered into a buffer of its own and compared, so one case cannot read another's output.
-func ShownOption(value: &Option<StringView>, spec: FormatSpec, expected: char8[..]) -> bool {
+func ShownOptional(value: &StringView?, spec: FormatSpec, expected: char8[..]) -> bool {
     var storage: char8[128];
     var writer = BufferWriter((@storage[0])[..128]);
-    if Failed(WriteOptionDebug<StringView>(writer, value, spec)) { return false; }
+    if Failed(WriteOptionalDebug<StringView>(writer, value, spec)) { return false; }
     return Same(writer.Written(), expected);
 }
 
-func ShownResult(value: &Result<StringView, StringView>, spec: FormatSpec, expected: char8[..]) -> bool {
+func ShownFallible(value: &(StringView ! StringView), spec: FormatSpec, expected: char8[..]) -> bool {
     var storage: char8[128];
     var writer = BufferWriter((@storage[0])[..128]);
-    if Failed(WriteResultDebug<StringView, StringView>(writer, value, spec)) { return false; }
+    if Failed(WriteFallibleDebug<StringView, StringView>(writer, value, spec)) { return false; }
     return Same(writer.Written(), expected);
 }
 
@@ -110,22 +110,22 @@ func Main() -> int {
     let plain = FormatSpec::Plain();
     let hello = StringView::FromValidated("hello");
 
-    // An option names its case and shows its payload the way the payload shows itself — quoted, here, because that
-    // is what a string's Debug is.
-    var some = Option::Some<StringView>(hello);
-    var absent = Option::None<StringView>();
-    Assert(ShownOption(some, plain, "Some(\"hello\")"), "a full option names its case around its payload");
-    Assert(ShownOption(absent, plain, "None"), "and an empty one is the case alone");
+    // An optional names its case and shows its payload the way the payload shows itself — quoted, here, because
+    // that is what a string's Debug is.
+    var some: StringView? = .Some(hello);
+    var absent: StringView? = none;
+    Assert(ShownOptional(some, plain, "Some(\"hello\")"), "a present optional names its case around its payload");
+    Assert(ShownOptional(absent, plain, "none"), "and an absent one is the absence alone");
 
     // The empty payload is where a wrapper that wrote nothing would be indistinguishable from one that worked.
-    var empty = Option::Some<StringView>(StringView::FromValidated(""));
-    Assert(ShownOption(empty, plain, "Some(\"\")"), "an empty payload is still visibly a payload");
+    var empty: StringView? = .Some(StringView::FromValidated(""));
+    Assert(ShownOptional(empty, plain, "Some(\"\")"), "an empty payload is still visibly a payload");
 
-    // A result names the case a reader would branch on, on both sides.
-    var success = Result::Success<StringView, StringView>(hello);
-    var failure = Result::Error<StringView, StringView>(StringView::FromValidated("nope"));
-    Assert(ShownResult(success, plain, "Success(\"hello\")"), "a result names its success case");
-    Assert(ShownResult(failure, plain, "Error(\"nope\")"), "and its failure case");
+    // A fallible names the channel a reader would branch on, on both sides.
+    var success: StringView ! StringView = .Success(hello);
+    var failure: StringView ! StringView = .Failure(StringView::FromValidated("nope"));
+    Assert(ShownFallible(success, plain, "Success(\"hello\")"), "a fallible names its success channel");
+    Assert(ShownFallible(failure, plain, "Failure(\"nope\")"), "and its failure channel");
 
     // A run of elements, including the two edges: none at all, and exactly one, which is where a separator written
     // one position out would show.
@@ -136,7 +136,7 @@ func Main() -> int {
 
     // The specification describes the elements. A precision counts characters of each element, not of the
     // rendering, so the brackets and the comma survive a precision that is shorter than either.
-    Assert(ShownOption(some, Spec(".2"), "Some(\"he\")"), "a precision truncates the payload");
+    Assert(ShownOptional(some, Spec(".2"), "Some(\"he\")"), "a precision truncates the payload");
     Assert(ShownSlice(three[..2], Spec(".1"), "[\"h\", \"a\"]"), "and each element of a run");
 
     // What reaches an element is the specification the caller passed, unchanged. The spy writes what it was handed,
@@ -151,14 +151,14 @@ func Main() -> int {
     // Showing a value does not take it. The tracked element is move-only and reports its own destruction, so this
     // is the property counted rather than assumed.
     var destroyed: int32 = 0;
-    var held = Option::Some<Tracked>(Tracked { counter: @destroyed, tag: 7u });
+    var held: Tracked? = .Some(Tracked { counter: @destroyed, tag: 7u });
     var storage: char8[128];
     var writer = BufferWriter((@storage[0])[..128]);
-    Assert(Succeeded(WriteOptionDebug<Tracked>(writer, held, plain)), "a move-only payload is shown");
+    Assert(Succeeded(WriteOptionalDebug<Tracked>(writer, held, plain)), "a move-only payload is shown");
     Assert(destroyed == 0i32, "and nothing was destroyed to show it");
-    Assert(Succeeded(WriteOptionDebug<Tracked>(writer, held, plain)), "so it can be shown again");
+    Assert(Succeeded(WriteOptionalDebug<Tracked>(writer, held, plain)), "so it can be shown again");
     Assert(destroyed == 0i32, "still destroying nothing");
-    Assert(held.IsSome(), "and the option still holds its value");
+    Assert(held is Tracked, "and the optional still holds its value");
     Assert(Same(writer.Written(), "Some(T(7))Some(T(7))"), "twice, identically");
 
     // The same for a run of them: every element is reached through a borrow.

@@ -3,11 +3,10 @@
 // and a symbolic link is a stored pointer — each proven by mutating one side and watching the other.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert };
+import Core::{ Assert, Panic };
 import Io::{ IoError, IoErrorKind, Reader, ReadExact, WriteAll, Writer };
 import Path::{ OsString, Path };
 import FileSystem::{ CopyFile, CreateHardLink, CreateSymbolicLink, DeleteDirectory, DeleteFile, File, MakeDirectory, OpenOptions, Rename };
-import Text::TextError;
 
 // The bytes a string spans, which is how a text overload reaches the slice one.
 func TextBytes(text: char8[..]) -> char8[..] {
@@ -15,9 +14,7 @@ func TextBytes(text: char8[..]) -> char8[..] {
 }
 
 func PathOf(allocator: Allocator, text: char8[..], holder: *var OsString) -> Path {
-    var textError = TextError::None;
-    *holder = OsString::FromText(allocator, text, @textError);
-    Assert(textError == TextError::None, "the name converts");
+    *holder = OsString::FromText(allocator, text) catch { else => Panic("the name converts") };
     return Path::FromView((*holder).View());
 }
 

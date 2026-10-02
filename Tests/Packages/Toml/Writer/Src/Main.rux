@@ -24,7 +24,7 @@ func Render(value: &TomlValue, storage: var char8[..]) -> char8[..] {
 }
 
 func View(bytes: char8[..]) -> StringView {
-    return StringView::FromBytes(bytes).ValueOr(StringView());
+    return StringView::FromBytes(bytes) ?? StringView();
 }
 
 func Same(left: char8[..], right: char8[..]) -> bool {

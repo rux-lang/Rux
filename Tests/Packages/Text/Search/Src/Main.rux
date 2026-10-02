@@ -1,6 +1,6 @@
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, Option };
-import Text::{ IsAsciiSpace, StringView, TextError };
+import Core::Assert;
+import Text::{ IsAsciiSpace, StringView };
 
 // Searching is over bytes, and works out to searching over characters for free: UTF-8 is self-synchronising, so no
 // character's encoding is a suffix of another's and no byte of a multi-byte character can be mistaken for the start
@@ -10,7 +10,7 @@ import Text::{ IsAsciiSpace, StringView, TextError };
 // Nothing here allocates: every answer is a position, a boolean, or a borrow of bytes that were already there.
 
 func View(bytes: char8[..]) -> StringView {
-    return StringView::FromBytes(bytes).ValueOr(StringView());
+    return StringView::FromBytes(bytes) ?? StringView();
 }
 
 func Main() -> int {
@@ -26,20 +26,20 @@ func Main() -> int {
     Assert(text.EndsWith(empty), "and with the empty view");
     Assert(!text.EndsWith(View("two")), "and not with something earlier");
 
-    Assert(text.IndexOf(View("two")).ValueOr(99) == 4, "a needle is found where it is");
-    Assert(text.IndexOf(comma).ValueOr(99) == 3, "the first occurrence is the one reported");
-    Assert(text.LastIndexOf(comma).ValueOr(99) == 8, "and the last one by the other search");
-    Assert(text.IndexOf(View("four")).IsNone(), "a needle that is not there is not found");
-    Assert(text.IndexOf(empty).ValueOr(99) == 0, "the empty needle is at the start");
+    Assert(text.IndexOf(View("two")) == .Some(4), "a needle is found where it is");
+    Assert(text.IndexOf(comma) == .Some(3), "the first occurrence is the one reported");
+    Assert(text.LastIndexOf(comma) == .Some(8), "and the last one by the other search");
+    Assert(text.IndexOf(View("four")) == none, "a needle that is not there is not found");
+    Assert(text.IndexOf(empty) == .Some(0), "the empty needle is at the start");
     Assert(text.Contains(View("three")) && !text.Contains(View("thirty")), "containment agrees with the search");
 
     // A multi-byte needle, where a byte search that did not respect characters could match a fragment.
     let mixed = View("aé€b😀");
-    Assert(mixed.IndexOf(View("é")).ValueOr(99) == 1, "a two-byte character is found at its first byte");
-    Assert(mixed.IndexOf(View("€")).ValueOr(99) == 3, "and a three-byte one");
-    Assert(mixed.IndexOf(View("😀")).ValueOr(99) == 7, "and a four-byte one");
-    Assert(mixed.Part(1, 3).IsSome(), "and every position found is a character boundary");
-    Assert(mixed.Part(3, 6).IsSome(), "for the three-byte one too");
+    Assert(mixed.IndexOf(View("é")) == .Some(1), "a two-byte character is found at its first byte");
+    Assert(mixed.IndexOf(View("€")) == .Some(3), "and a three-byte one");
+    Assert(mixed.IndexOf(View("😀")) == .Some(7), "and a four-byte one");
+    Assert(mixed.Part(1, 3) is StringView, "and every position found is a character boundary");
+    Assert(mixed.Part(3, 6) is StringView, "for the three-byte one too");
 
     // Trimming takes ASCII whitespace off either end and borrows what is left.
     Assert(IsAsciiSpace(c8' ') && IsAsciiSpace(c8'\t') && IsAsciiSpace(c8'\n'), "the usual whitespace counts");
@@ -52,33 +52,31 @@ func Main() -> int {
     Assert(View("hi").Trim().Length() == 2, "and text with none is unchanged");
 
     // Splitting: the parts always number one more than the separators.
-    // Splitting: the parts always number one more than the separators.
-    // Splitting: the parts always number one more than the separators.
     var walker = text.Split(comma);
     var parts: uint = 0;
     var totalBytes: uint = 0;
     var walking = true;
     while walking {
         match walker.Next() {
-            .Some(part) => {
+            part? => {
                 totalBytes = totalBytes + part.Length();
                 parts = parts + 1;
             },
-            .None => {
+            none => {
                 walking = false;
             }
         }
     }
-    return 0;
+    Assert(parts == 4, "three separators make four parts, counting the empty one between two of them");
     Assert(totalBytes == text.Length() - 3, "and the parts hold every byte that is not a separator");
 
     var single = View("nothing to split").Split(comma);
-    Assert(single.Next().ValueOr(empty).Length() == 16, "text without the separator is one whole part");
-    Assert(single.Next().IsNone(), "and there is nothing after it");
+    Assert((single.Next() ?? empty).Length() == 16, "text without the separator is one whole part");
+    Assert(!(single.Next() is StringView), "and there is nothing after it");
 
     var degenerate = View("abc").Split(empty);
-    Assert(degenerate.Next().ValueOr(empty).Length() == 3, "an empty separator gives the whole thing once");
-    Assert(degenerate.Next().IsNone(), "rather than an endless walk");
+    Assert((degenerate.Next() ?? empty).Length() == 3, "an empty separator gives the whole thing once");
+    Assert(!(degenerate.Next() is StringView), "rather than an endless walk");
 
     return 0;
 }

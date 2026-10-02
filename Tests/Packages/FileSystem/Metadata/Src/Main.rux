@@ -4,11 +4,10 @@
 // the running system cannot answer are checked to be reported as unanswerable rather than quietly zero.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert };
+import Core::{ Assert, Panic };
 import Io::{ IoError, IoErrorKind, WriteAll, Writer };
 import Path::{ OsString, Path };
 import FileSystem::{ CapabilitiesOfSystem, DeleteDirectory, DeleteFile, File, FileKind, MakeDirectory, Metadata, MetadataOf, OpenOptions, Permissions, SetPermissions, SetTimes };
-import Text::TextError;
 import Time::Timestamp;
 
 // The bytes a string spans, which is how a text overload reaches the slice one.
@@ -17,9 +16,7 @@ func TextBytes(text: char8[..]) -> char8[..] {
 }
 
 func PathOf(allocator: Allocator, text: char8[..], holder: *var OsString) -> Path {
-    var textError = TextError::None;
-    *holder = OsString::FromText(allocator, text, @textError);
-    Assert(textError == TextError::None, "the name converts");
+    *holder = OsString::FromText(allocator, text) catch { else => Panic("the name converts") };
     return Path::FromView((*holder).View());
 }
 

@@ -9,7 +9,6 @@ import Allocator::Allocator;
 import Core::{ #target };
 import Io::{ IoError, IoErrorKind };
 import Path::{ OsString, OsStringView, OsUnit, Path };
-import Text::TextError;
 
 when #target.os {
     .FreeBSD => import FreeBSD::{ AtFdCwd, Close, Getdirentries, MkdirAt, OpenAt, OpenDirectory, OpenReadOnly,
@@ -280,12 +279,12 @@ extend DirectoryIterator {
                 }
                 if !IsDotEntry16(start, length) {
                     let view = OsStringView::FromUnits((start)[..length]);
-                    var textError = TextError::None;
-                    *name = OsString::FromView(self.allocator, view, @textError);
-                    if textError != TextError::None {
-                        *failure = IoError::Of(IoErrorKind::Other);
-                        return false;
-                    }
+                    *name = OsString::FromView(self.allocator, view) catch {
+                        else => {
+                            *failure = IoError::Of(IoErrorKind::Other);
+                            return false;
+                        }
+                    };
                     return true;
                 }
             }
@@ -346,12 +345,12 @@ extend DirectoryIterator {
                 let start = (record as uint + nameStart) as *var char8;
                 if !IsDotEntry8(start, nameLength) {
                     let view = OsStringView::FromUnits((start)[..nameLength]);
-                    var textError = TextError::None;
-                    *name = OsString::FromView(self.allocator, view, @textError);
-                    if textError != TextError::None {
-                        *failure = IoError::Of(IoErrorKind::Other);
-                        return false;
-                    }
+                    *name = OsString::FromView(self.allocator, view) catch {
+                        else => {
+                            *failure = IoError::Of(IoErrorKind::Other);
+                            return false;
+                        }
+                    };
                     return true;
                 }
             }

@@ -15,7 +15,7 @@
 // appends is never visible through anything else, and a `String` never holds one.
 
 import Allocator::{ AllocError, Allocator, Layout };
-import Core::{ Option };
+import Core::Option;
 import Memory::Copy;
 
 /// Text carrying the terminator C expects, in storage of its own.
@@ -38,23 +38,22 @@ extend CString {
     /// Copying a C string would give two owners of one terminated block.
     func =(self: &var CString, other: &CString);
 
-    /// A terminated copy of `text`, or nothing when the text cannot cross the boundary.
+    /// A terminated copy of `text`, or why the text cannot cross the boundary.
     ///
     /// Refuses a zero byte for the reason `FromView` does: text that ends early on the C side of the boundary is
     /// how a checked name and a used name part company.
     ///
     /// @param allocator where the storage comes from
     /// @param text the text to act on
-    /// @param error receives why the operation failed, or `None`
-    /// @returns the terminated copy, or `None` when the text holds an interior zero byte
+    /// @returns the terminated copy, or a failure when the text holds an interior zero byte
     /// @see https://rux-lang.dev/docs/api/text/c-string/from-text
-    pub func FromText(allocator: Allocator, text: char8[..], error: *var TextError) -> Option<CString> {
-        return CString::FromView(allocator, StringView::FromValidated(text), error);
+    pub func FromText(allocator: Allocator, text: char8[..]) -> CString ! TextError {
+        return CString::FromView(allocator, StringView::FromValidated(text));
     }
 
-    /// A terminated copy of `view`, or nothing when the text cannot cross the boundary.
+    /// A terminated copy of `view`, or why the text cannot cross the boundary.
     ///
-    /// Reports `InvalidUtf8` through `error` when the text contains a zero byte — refused rather than truncated,
+    /// Fails with `InvalidUtf8` when the text contains a zero byte — refused rather than truncated,
     /// because text that ends early on the C side of the boundary is the classic way a checked name and a used name
     /// part company. Reports `OutOfMemory` when the copy cannot be made.
     ///
@@ -62,49 +61,34 @@ extend CString {
     ///
     /// @param allocator where the storage comes from
     /// @param view the borrowed text to act on
-    /// @param error receives why the operation failed, or `None`
-    /// @returns the terminated copy, or `None` when the text holds an interior zero byte
+    /// @returns the terminated copy, or a failure when the text holds an interior zero byte
     /// @see https://rux-lang.dev/docs/api/text/c-string/from-view
-    pub func FromView(allocator: Allocator, view: StringView, error: *var TextError) -> Option<CString> {
+    pub func FromView(allocator: Allocator, view: StringView) -> CString ! TextError {
         let bytes = view.Bytes();
         var index: uint = 0;
         while index < bytes.length {
             if (bytes.data[index] as uint32) == 0 {
-                *error = TextError::InvalidUtf8;
-                return Option::None<CString>();
+                fail TextError::InvalidUtf8;
             }
             index = index + 1;
         }
 
         if bytes.length >= 0xFFFFFFFFFFFFFFFFu {
-            *error = TextError::LengthOverflow;
-            return Option::None<CString>();
+            fail TextError::LengthOverflow;
         }
-        let layout = match Layout::New(bytes.length + 1, 1) {
-            value? => value,
-            none => {
-                *error = TextError::LengthOverflow;
-                return Option::None<CString>();
-            }
-        };
+        let layout = Layout::New(bytes.length + 1, 1) ?? fail TextError::LengthOverflow;
         var borrowed = allocator;
-        let block = borrowed.Allocate(layout) catch {
-            allocated => {
-                *error = FromAllocError(allocated);
-                return Option::None<CString>();
-            }
-        };
+        let block = borrowed.Allocate(layout) catch { allocated => fail FromAllocError(allocated) };
 
         let data = block as *var char8;
         if bytes.length > 0 {
             Copy(block, bytes.data as *opaque, bytes.length);
         }
         data[bytes.length] = 0u8 as char8;
-        *error = TextError::None;
-        return Option::Some<CString>(CString { data: data, length: bytes.length, allocator: allocator });
+        return CString { data: data, length: bytes.length, allocator: allocator };
     }
 
-    /// A copy of the C text at `raw`, read to its terminator, or nothing when it is not text.
+    /// A copy of the C text at `raw`, read to its terminator, or why it is not text.
     ///
     /// `raw` is borrowed for the call and its bytes are copied, so the C side keeps whatever it handed over.
     /// `limit` bounds the search for the terminator: C promises one exists, and this is what the promise costs when
@@ -114,13 +98,11 @@ extend CString {
     /// @param allocator where the storage comes from
     /// @param raw the null-terminated bytes to copy
     /// @param limit the most bytes to read before giving up on finding a terminator
-    /// @param error receives why the operation failed, or `None`
-    /// @returns the copy, or `None` when no terminator was found within `limit`
+    /// @returns the copy, or a failure when no terminator was found within `limit`
     /// @see https://rux-lang.dev/docs/api/text/c-string/from-raw
-    pub func FromRaw(allocator: Allocator, raw: *char8, limit: uint, error: *var TextError) -> Option<CString> {
+    pub func FromRaw(allocator: Allocator, raw: *char8, limit: uint) -> CString ! TextError {
         if raw == null {
-            *error = TextError::InvalidUtf8;
-            return Option::None<CString>();
+            fail TextError::InvalidUtf8;
         }
         var length: uint = 0;
         var terminated = false;
@@ -134,8 +116,7 @@ extend CString {
             }
         }
         if !terminated {
-            *error = TextError::InvalidUtf8;
-            return Option::None<CString>();
+            fail TextError::InvalidUtf8;
         }
 
         // Re-measure to the terminator now that one is known to exist within the limit.
@@ -144,17 +125,9 @@ extend CString {
             length = length + 1;
         }
         let bytes = (raw)[..length];
-        match Validate(bytes) {
-            .Success(_) => {
-            },
-            .Failure(problem) => {
-
-                *error = TextError::InvalidUtf8;
-                return Option::None<CString>();
-            }
-        }
+        Validate(bytes) catch { else => fail TextError::InvalidUtf8 };
         let checked = StringView::FromValidated(bytes);
-        return CString::FromView(allocator, checked, error);
+        return CString::FromView(allocator, checked);
     }
 
     /// How many bytes of text come before the terminator.

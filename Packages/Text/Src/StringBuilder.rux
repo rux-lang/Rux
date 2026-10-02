@@ -12,7 +12,7 @@
 // after it the builder owns nothing and is ready to be used again.
 
 import Allocator::{ AllocError, Allocator, Layout };
-import Core::{ MulChecked, Option };
+import Core::MulChecked;
 import Memory::Copy;
 
 /// The room a builder takes when it first needs any.
@@ -58,16 +58,15 @@ extend StringBuilder {
     /// A builder with room for `capacity` bytes already taken.
     ///
     /// Worth using when the size is known or can be guessed well: appends that stay within the room never
-    /// reallocate. `error` receives `OutOfMemory` when the room cannot be had, and the builder comes back empty.
+    /// reallocate. Fails with `OutOfMemory` when the room cannot be had.
     ///
     /// @param allocator where the storage comes from
     /// @param capacity how many bytes to reserve up front
-    /// @param error receives why the operation failed, or `None`
     /// @returns an empty builder with room for that many bytes already taken
     /// @see https://rux-lang.dev/docs/api/text/string-builder/with-capacity
-    pub func WithCapacity(allocator: Allocator, capacity: uint, error: *var TextError) -> StringBuilder {
+    pub func WithCapacity(allocator: Allocator, capacity: uint) -> StringBuilder ! TextError {
         var builder = StringBuilder(allocator);
-        *error = builder.Reserve(capacity);
+        builder.Reserve(capacity)?;
         return <-builder;
     }
 
@@ -120,9 +119,9 @@ extend StringBuilder {
     /// expressed, having in both cases changed nothing: a builder that fails to grow still holds what it held.
     ///
     /// @param additional how many more bytes to make room for
-    /// @returns `None` when the room is available
+    /// @returns nothing when the room is available, or why not
     /// @see https://rux-lang.dev/docs/api/text/string-builder/reserve
-    pub func Reserve(self: &var StringBuilder, additional: uint) -> TextError {
+    pub func Reserve(self: &var StringBuilder, additional: uint) -> ! TextError {
         return ReserveBuilderStorage(@self.data, self.length, @self.capacity, self.allocator, additional);
     }
 }
@@ -130,11 +129,11 @@ extend StringBuilder {
 // Shared by the safe receiver and the deliberately raw stored-writer adapter. Only field addresses cross this
 // boundary; the owning builder itself remains non-copyable and all public owner operations use references.
 func ReserveBuilderStorage(data: *var *var char8, length: uint, capacity: *var uint, allocator: Allocator,
-                           additional: uint) -> TextError {
-        if additional == 0 { return TextError::None; }
-        if additional > 0xFFFFFFFFFFFFFFFFu - length { return TextError::LengthOverflow; }
+                           additional: uint) -> ! TextError {
+        if additional == 0 { return; }
+        if additional > 0xFFFFFFFFFFFFFFFFu - length { fail TextError::LengthOverflow; }
         let required = length + additional;
-        if required <= *capacity { return TextError::None; }
+        if required <= *capacity { return; }
 
         // Doubling is what makes a run of appends linear rather than quadratic; asking for exactly what is needed
         // would reallocate on nearly every one. Where doubling is not enough, or would overflow, take the
@@ -148,15 +147,15 @@ func ReserveBuilderStorage(data: *var *var char8, length: uint, capacity: *var u
             wanted = MinimumBuilderCapacity;
         }
 
-        let layout = Layout::New(wanted, 1) ?? return TextError::LengthOverflow;
+        let layout = Layout::New(wanted, 1) ?? fail TextError::LengthOverflow;
         let want = layout;
         var borrowed = allocator;
         let have = Layout::New(*capacity, 1) ?? Layout { size: *capacity, alignment: 1 };
         let placed = *data == null ? borrowed.Allocate(want) : borrowed.Reallocate(*data as *var opaque, have, want);
-        let block = placed catch { error => return FromAllocError(error) };
+        let block = placed catch { error => fail FromAllocError(error) };
         *data = block as *var char8;
         *capacity = wanted;
-        return TextError::None;
+        return;
 }
 
 extend StringBuilder {
@@ -168,9 +167,9 @@ extend StringBuilder {
     /// that it holds text at every moment rests on this, and everything reading from it relies on that promise.
     ///
     /// @param bytes the bytes to act on
-    /// @returns `None` when the bytes were appended, taken as valid without checking
+    /// @returns nothing when the bytes were appended, taken as valid without checking, or why not
     /// @see https://rux-lang.dev/docs/api/text/string-builder/append-validated
-    pub func AppendValidated(self: &var StringBuilder, bytes: char8[..]) -> TextError {
+    pub func AppendValidated(self: &var StringBuilder, bytes: char8[..]) -> ! TextError {
         return AppendBuilderStorage(@self.data, @self.length, @self.capacity, self.allocator, bytes);
     }
 
@@ -179,9 +178,9 @@ extend StringBuilder {
     /// The view was checked when it was made, so nothing is checked again.
     ///
     /// @param view the borrowed text to act on
-    /// @returns `None` when the text was appended
+    /// @returns nothing when the text was appended, or why not
     /// @see https://rux-lang.dev/docs/api/text/string-builder/append
-    pub func Append(self: &var StringBuilder, view: StringView) -> TextError {
+    pub func Append(self: &var StringBuilder, view: StringView) -> ! TextError {
         return self.AppendValidated(view.bytes);
     }
 
@@ -190,9 +189,9 @@ extend StringBuilder {
     /// Text was checked before it existed, so nothing is checked again and nothing can fail but the storage.
     ///
     /// @param text the text to act on
-    /// @returns `None` when the text was appended
+    /// @returns nothing when the text was appended, or why not
     /// @see https://rux-lang.dev/docs/api/text/string-builder/append
-    pub func Append(self: &var StringBuilder, text: char8[..]) -> TextError {
+    pub func Append(self: &var StringBuilder, text: char8[..]) -> ! TextError {
         return self.AppendValidated((text.data)[..text.length]);
     }
 
@@ -201,10 +200,10 @@ extend StringBuilder {
     /// Costs a pass over the bytes. `Append` of a view costs none, which is the reason views exist.
     ///
     /// @param bytes the bytes to act on
-    /// @returns `None` when the bytes were appended, after checking they are valid UTF-8
+    /// @returns nothing when the bytes were appended, after checking they are valid UTF-8, or why not
     /// @see https://rux-lang.dev/docs/api/text/string-builder/append-bytes
-    pub func AppendBytes(self: &var StringBuilder, bytes: char8[..]) -> TextError {
-        Validate(bytes) catch { else => return TextError::InvalidUtf8 };
+    pub func AppendBytes(self: &var StringBuilder, bytes: char8[..]) -> ! TextError {
+        Validate(bytes) catch { else => fail TextError::InvalidUtf8 };
         return self.AppendValidated(bytes);
     }
 
@@ -214,13 +213,13 @@ extend StringBuilder {
     /// which is what keeps a builder from holding something that is not text.
     ///
     /// @param scalar the Unicode scalar value
-    /// @returns `None` when the scalar's encoding was appended
+    /// @returns nothing when the scalar's encoding was appended, or why not
     /// @see https://rux-lang.dev/docs/api/text/string-builder/append-scalar
-    pub func AppendScalar(self: &var StringBuilder, scalar: char32) -> TextError {
+    pub func AppendScalar(self: &var StringBuilder, scalar: char32) -> ! TextError {
         var encoded: char8[4];
         var written: uint = 0;
         let sink = (@encoded[0])[..4];
-        written = Encode(scalar, sink) catch { else => return TextError::InvalidUtf8 };
+        written = Encode(scalar, sink) catch { else => fail TextError::InvalidUtf8 };
         return self.AppendValidated((@encoded[0])[..written]);
     }
 
@@ -230,10 +229,10 @@ extend StringBuilder {
     /// `AppendScalar` is what appends one that takes more than a byte.
     ///
     /// @param byte the byte
-    /// @returns `None` when the byte was appended
+    /// @returns nothing when the byte was appended, or why not
     /// @see https://rux-lang.dev/docs/api/text/string-builder/append-ascii
-    pub func AppendAscii(self: &var StringBuilder, byte: char8) -> TextError {
-        if (byte as uint32) > 0x7F { return TextError::InvalidUtf8; }
+    pub func AppendAscii(self: &var StringBuilder, byte: char8) -> ! TextError {
+        if (byte as uint32) > 0x7F { fail TextError::InvalidUtf8; }
         var one: char8[1];
         one[0] = byte;
         return self.AppendValidated((@one[0])[..1]);
@@ -268,11 +267,10 @@ extend StringBuilder {
     /// The builder is untouched and may be appended to again. `IntoString` is what hands the block over instead of
     /// copying it, and is what to use when the builder is finished with.
     ///
-    /// @param error receives why the operation failed, or `None`
     /// @returns a copy of what has been appended, leaving the builder as it was
     /// @see https://rux-lang.dev/docs/api/text/string-builder/to-string
-    pub func ToString(self: &StringBuilder, error: *var TextError) -> String {
-        return String::FromValidated(self.allocator, self.Bytes(), error);
+    pub func ToString(self: &StringBuilder) -> String ! TextError {
+        return String::FromValidated(self.allocator, self.Bytes());
     }
 
     /// Hands the block over as a string, leaving the builder owning nothing.
@@ -300,13 +298,11 @@ extend StringBuilder {
 }
 
 func AppendBuilderStorage(data: *var *var char8, length: *var uint, capacity: *var uint, allocator: Allocator,
-                          bytes: char8[..]) -> TextError {
-    if bytes.length == 0 { return TextError::None; }
-    let room = ReserveBuilderStorage(data, *length, capacity, allocator, bytes.length);
-    if room.IsError() { return room; }
+                          bytes: char8[..]) -> ! TextError {
+    if bytes.length == 0 { return; }
+    ReserveBuilderStorage(data, *length, capacity, allocator, bytes.length)?;
     Copy(@(*data)[*length] as *var opaque, bytes.data as *opaque, bytes.length);
     *length = *length + bytes.length;
-    return TextError::None;
 }
 
 extend StringBuilder {

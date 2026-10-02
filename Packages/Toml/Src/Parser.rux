@@ -443,9 +443,8 @@ extend TomlParser {
         self.Advance();
         let span = self.lexer.TextOf(token);
         if token.kind == TomlTokenKind::Text {
-            var textError = TextError::None;
             var bad = false;
-            var decoded = TomlDecodeText(self.allocator, span, token.form, @textError, @bad);
+            var decoded = TomlDecodeText(self.allocator, span, token.form, @bad) catch { else => String(self.allocator) };
             if bad {
                 self.Stop(TomlStop::BadText);
             }
@@ -591,12 +590,11 @@ extend TomlParser {
         }
         self.Advance();
         let span = self.lexer.TextOf(token);
-        var textError = TextError::None;
         var bad = false;
         // A key made of digits — `1234 = "x"` — lexes as an integer and is a perfectly good bare key, so the
         // form for anything that is not a quoted string is the one that copies the bytes unchanged.
         let form = token.kind == TomlTokenKind::Text ? token.form : TomlTextForm::Bare;
-        into.ReplaceWith(TomlDecodeText(self.allocator, span, form, @textError, @bad));
+        into.ReplaceWith(TomlDecodeText(self.allocator, span, form, @bad) catch { else => String(self.allocator) });
         if bad {
             self.Stop(TomlStop::BadText);
             return false;
@@ -661,8 +659,7 @@ extend TomlParser {
             parts.Clear();
             return;
         }
-        var textError = TextError::None;
-        var owned = String::FromView(self.allocator, finalName, @textError);
+        var owned = String::FromView(self.allocator, finalName) catch { else => String(self.allocator) };
         if !(*target).Insert(owned, <-value) {
             self.Stop(TomlStop::OutOfMemory);
         }
@@ -676,8 +673,7 @@ extend TomlParser {
         if existing == null {
             var fresh = TomlValue::Table(self.allocator);
             fresh.dotted = true;
-            var textError = TextError::None;
-            var owned = String::FromView(self.allocator, copy, @textError);
+            var owned = String::FromView(self.allocator, copy) catch { else => String(self.allocator) };
             if !(*target).Insert(owned, <-fresh) {
                 self.Stop(TomlStop::OutOfMemory);
                 return null;
@@ -763,8 +759,7 @@ extend TomlParser {
         var existing = (*target).FindMutable(name);
         if existing == null {
             var fresh = TomlValue::Table(self.allocator);
-            var textError = TextError::None;
-            var owned = String::FromView(self.allocator, name, @textError);
+            var owned = String::FromView(self.allocator, name) catch { else => String(self.allocator) };
             if !(*target).Insert(owned, <-fresh) {
                 self.Stop(TomlStop::OutOfMemory);
                 return null;
@@ -801,8 +796,7 @@ extend TomlParser {
         if existing == null {
             var fresh = TomlValue::Table(self.allocator);
             fresh.defined = true;
-            var textError = TextError::None;
-            var owned = String::FromView(self.allocator, name, @textError);
+            var owned = String::FromView(self.allocator, name) catch { else => String(self.allocator) };
             if !(*target).Insert(owned, <-fresh) {
                 self.Stop(TomlStop::OutOfMemory);
                 return null;
@@ -837,8 +831,7 @@ extend TomlParser {
         if existing == null {
             var fresh = TomlValue::Array(self.allocator);
             fresh.tableArray = true;
-            var textError = TextError::None;
-            var owned = String::FromView(self.allocator, name, @textError);
+            var owned = String::FromView(self.allocator, name) catch { else => String(self.allocator) };
             if !(*target).Insert(owned, <-fresh) {
                 self.Stop(TomlStop::OutOfMemory);
                 return null;

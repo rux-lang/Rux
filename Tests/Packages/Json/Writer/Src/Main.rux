@@ -2,13 +2,13 @@
 // legal rather than conventional makes output differ from every other writer for no benefit.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, Succeeded };
+import Core::{ Assert, Panic, Succeeded };
 import Format::{ TextWriter };
 import Json::{ JsonKind, JsonStyle, JsonValue, Parse, WriteValue };
-import Text::{ BufferWriter, FormatError, String, StringBuilder, StringView, TextError };
+import Text::{ BufferWriter, FormatError, String, StringBuilder, StringView };
 
 func View(bytes: char8[..]) -> StringView {
-    return StringView::FromBytes(bytes).ValueOr(StringView());
+    return StringView::FromBytes(bytes) ?? StringView();
 }
 
 // Writes a value and returns the text. `outcome` receives whether it went out; which failure it was, when it did
@@ -116,14 +116,13 @@ func Main() -> int {
            "an empty container is not spread over three lines, since a line holding a bracket says nothing");
 
     // A non-finite number cannot be written, because JSON cannot spell one.
-    var textError = TextError::None;
     let outOfRange = FormatError::ValueOutOfRange;
-    var notANumber = JsonValue::Number(allocator, "NaN", @textError);
+    var notANumber = JsonValue::Number(allocator, "NaN") catch { else => Panic("a NaN is stored") };
     Assert(RefusedAs(allocator, notANumber, JsonStyle::Compact(), outOfRange),
            "a NaN is refused as a value the requested form cannot hold");
-    var infinite = JsonValue::Number(allocator, "Infinity", @textError);
+    var infinite = JsonValue::Number(allocator, "Infinity") catch { else => Panic("an infinity is stored") };
     Assert(RefusedAs(allocator, infinite, JsonStyle::Compact(), outOfRange), "and so is an infinity");
-    var ordinary = JsonValue::Number(allocator, "1e999", @textError);
+    var ordinary = JsonValue::Number(allocator, "1e999") catch { else => Panic("1e999 is stored") };
     var written999 = Written(allocator, ordinary, JsonStyle::Compact(), @wrote);
     Assert(wrote,
            "while an exponent past what a float holds is still a number JSON can spell, and is written");

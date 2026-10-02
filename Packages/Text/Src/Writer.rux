@@ -113,6 +113,6 @@ extend StringBuilder : TextWriter {
     /// @see https://rux-lang.dev/docs/api/text/string-builder/write
     pub func Write(self: &var StringBuilder, bytes: char8[..]) -> ! FormatError {
         Validate(bytes) catch { else => fail FormatError::TextFailure(TextFailureKind::InvalidUtf8) };
-        return FromTextError(self.AppendValidated(bytes));
+        self.AppendValidated(bytes)? else (e => FromTextError(e));
     }
 }

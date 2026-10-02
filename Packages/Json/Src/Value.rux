@@ -52,13 +52,12 @@ extend JsonNumber {
     ///
     /// @param allocator where the storage comes from
     /// @param text the text to act on
-    /// @param error receives why the operation failed, or `None`
     /// @returns the number, holding the text it was given
     /// @see https://rux-lang.dev/docs/api/json/json-number/new
-    pub func New(allocator: Allocator, text: char8[..], error: *var TextError) -> JsonNumber {
+    pub func New(allocator: Allocator, text: char8[..]) -> JsonNumber ! TextError {
         // The bytes of a number are always ASCII, so the validated constructor is sound here and cheaper than
         // re-checking them.
-        var held = String::FromBytes(allocator, text, error);
+        var held = String::FromBytes(allocator, text)?;
         return JsonNumber { text: held };
     }
 
@@ -182,7 +181,6 @@ extend JsonValue {
     /// @returns the null value
     /// @see https://rux-lang.dev/docs/api/json/json-value/null
     pub func Null(allocator: Allocator) -> JsonValue {
-        var textError = TextError::None;
         return JsonValue {
             kind: JsonKind::Null,
             boolean: false,
@@ -211,13 +209,12 @@ extend JsonValue {
     ///
     /// @param allocator where the storage comes from
     /// @param text the text to act on
-    /// @param error receives why the operation failed, or `None`
     /// @returns that text as a number value, or the null value when the allocator refused
     /// @see https://rux-lang.dev/docs/api/json/json-value/number
-    pub func Number(allocator: Allocator, text: char8[..], error: *var TextError) -> JsonValue {
+    pub func Number(allocator: Allocator, text: char8[..]) -> JsonValue ! TextError {
         var held = JsonValue::Null(allocator);
         held.kind = JsonKind::Number;
-        held.number = JsonNumber::New(allocator, text, error);
+        held.number = JsonNumber::New(allocator, text)?;
         return <-held;
     }
 
@@ -225,13 +222,12 @@ extend JsonValue {
     ///
     /// @param allocator where the storage comes from
     /// @param value the value to act on
-    /// @param error receives why the operation failed, or `None`
     /// @returns that text as a string value, or the null value when the allocator refused
     /// @see https://rux-lang.dev/docs/api/json/json-value/text
-    pub func Text(allocator: Allocator, value: char8[..], error: *var TextError) -> JsonValue {
+    pub func Text(allocator: Allocator, value: char8[..]) -> JsonValue ! TextError {
         var held = JsonValue::Null(allocator);
         held.kind = JsonKind::Text;
-        held.text = String::FromBytes(allocator, value, error);
+        held.text = String::FromBytes(allocator, value)?;
         return <-held;
     }
 

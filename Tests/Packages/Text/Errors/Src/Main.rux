@@ -58,12 +58,8 @@ func Refused(shown: Display, inspected: Debug, spec: FormatSpec) -> bool {
 }
 
 func Main() -> int {
-    // TextError: every case, in both registers. The success case renders as success rather than as nothing, since
-    // a value that says "no error" is more useful in a log than an empty space.
-    let successDisplay: Display = TextError::None;
-    Assert(Shown(successDisplay, "no error"), "the success case says so");
-    let successDebug: Debug = TextError::None;
-    Assert(Inspected(successDebug, "TextError::None"), "and names itself");
+    // TextError: every case, in both registers. Each case is a failure, since success travels in the other channel
+    // of the fallible an operation returns.
     let outOfMemory: Display = TextError::OutOfMemory;
     Assert(Shown(outOfMemory, "out of memory"), "an allocation failure");
     let outOfMemoryDebug: Debug = TextError::OutOfMemory;
@@ -83,7 +79,7 @@ func Main() -> int {
 
     // TextFailureKind describes the same four failures, and must describe them with the same words.
     let kindMemory: Display = TextFailureKind::OutOfMemory;
-    Assert(Shown(kindMemory, "out of memory"), "the failure-only kind agrees with the status enum");
+    Assert(Shown(kindMemory, "out of memory"), "the failure-only kind agrees with TextError");
     let kindUtf8: Display = TextFailureKind::InvalidUtf8;
     Assert(Shown(kindUtf8, "invalid UTF-8"), "on every case they share");
     let kindOverflow: Display = TextFailureKind::LengthOverflow;

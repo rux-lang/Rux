@@ -10,7 +10,7 @@
 // representation; UTF-8 out is fallible, since the system's names are under no obligation to be text at all.
 
 import Allocator::{ AllocError, Allocator, Layout };
-import Core::{ #target, Option, Panic };
+import Core::{ #target, Panic };
 import Memory::Copy;
 import Text::{ DecodeAt, FromAllocError, String, StringBuilder, TextError };
 
@@ -141,31 +141,27 @@ extend OsString {
 
     /// An owning copy of what `view` spans, exactly as it stands.
     ///
-    /// This is the lossless direction: whatever the system handed over survives, valid text or not. `error`
-    /// receives `OutOfMemory` when the copy cannot be made.
+    /// This is the lossless direction: whatever the system handed over survives, valid text or not. It fails with
+    /// `OutOfMemory` when the copy cannot be made.
     ///
     /// @param allocator where the storage comes from
     /// @param view the borrowed text to copy
-    /// @param error receives why the operation failed, or `None`
     /// @returns a copy of `view` this string owns, or an empty one when the allocator refused
     /// @see https://rux-lang.dev/docs/api/path/os-string/from-view
-    pub func FromView(allocator: Allocator, view: OsStringView, error: *var TextError) -> OsString {
-        *error = TextError::None;
+    pub func FromView(allocator: Allocator, view: OsStringView) -> OsString ! TextError {
         let units = view.Units();
         if units.length == 0 { return OsString(allocator); }
         let bytes = units.length * (sizeof(OsUnit) as uint);
         let layout = match Layout::New(bytes, alignof(OsUnit) as uint) {
             value? => value,
             none => {
-                *error = TextError::LengthOverflow;
-                return OsString(allocator);
+                fail TextError::LengthOverflow;
             }
         };
         var borrowed = allocator;
         let block = borrowed.Allocate(layout) catch {
             allocated => {
-                *error = FromAllocError(allocated);
-                return OsString(allocator);
+                fail FromAllocError(allocated);
             }
         };
         Copy(block, units.data as *opaque, bytes);
@@ -224,7 +220,7 @@ extend OsString {
     /// An owning native copy of UTF-8 text.
     ///
     /// The direction that always succeeds: valid text encodes into either representation, byte for byte on the
-    /// Unix systems and through UTF-16 on Windows. `error` reports only the allocation.
+    /// Unix systems and through UTF-16 on Windows. It fails only when the allocation does.
     ///
     /// # Safety
     ///
@@ -232,10 +228,9 @@ extend OsString {
     ///
     /// @param allocator where the storage comes from
     /// @param text the text to act on
-    /// @param error receives why the operation failed, or `None`
-    /// @returns the text converted to the platform's own units, or an empty string on failure
+    /// @returns the text converted to the platform's own units, or why it could not be
     /// @see https://rux-lang.dev/docs/api/path/os-string/from-text
-    pub func FromText(allocator: Allocator, text: char8[..], error: *var TextError) -> OsString {
+    pub func FromText(allocator: Allocator, text: char8[..]) -> OsString ! TextError {
         when #target.os == .Windows {
             // Two passes: count the units, then fill them. A scalar below U+10000 is one unit and anything above
             // is a surrogate pair, which is the whole of UTF-16.
@@ -258,15 +253,13 @@ extend OsString {
                 }
             }
 
-            *error = TextError::None;
             if needed == 0 { return OsString(allocator); }
             let bytes = needed * 2u;
             let layout = Layout::New(bytes, 2);
             var borrowed = allocator;
             let block = borrowed.Allocate((layout ?? Layout { size: bytes, alignment: 2 })) catch {
                 allocated => {
-                    *error = FromAllocError(allocated);
-                    return OsString(allocator);
+                    fail FromAllocError(allocated);
                 }
             };
             let units = block as *var uint16;
@@ -302,7 +295,7 @@ extend OsString {
         }
         else {
             // Bytes are bytes: the copy is the conversion.
-            return OsString::FromView(allocator, OsStringView { units: text }, error);
+            return OsString::FromView(allocator, OsStringView { units: text });
         }
     }
 }
@@ -311,15 +304,14 @@ extend OsStringView {
     /// This native text as UTF-8, or nothing where it is not text.
     ///
     /// The fallible direction, and fallible for a different reason per platform: Unix bytes may simply not be
-    /// UTF-8, and Windows units may hold an unpaired surrogate, which no UTF-8 sequence can spell. `error` says
+    /// UTF-8, and Windows units may hold an unpaired surrogate, which no UTF-8 sequence can spell. It fails with
     /// `InvalidUtf8` for both, because both mean the same thing to the caller — this name is not text, and a
     /// program that must show it anyway shows it lossily by its own policy, knowingly.
     ///
     /// @param allocator where the storage comes from
-    /// @param error receives why the operation failed, or `None`
-    /// @returns the units converted to text, or `None` when they are not valid in it
+    /// @returns the units converted to text, or a failure when they are not valid in it
     /// @see https://rux-lang.dev/docs/api/path/os-string-view/to-text
-    pub func ToText(self: &OsStringView, allocator: Allocator, error: *var TextError) -> Option<String> {
+    pub func ToText(self: &OsStringView, allocator: Allocator) -> String ! TextError {
         when #target.os == .Windows {
             // Two passes: measure the UTF-8, refusing unpaired surrogates on the way, then build through the
             // checked builder so the promise chain stays intact.
@@ -330,37 +322,28 @@ extend OsStringView {
                 var scalar: uint32 = 0;
                 var width: uint = 0;
                 if !DecodeUnit(units, index, @scalar, @width) {
-                    *error = TextError::InvalidUtf8;
-                    return Option::None<String>();
+                    fail TextError::InvalidUtf8;
                 }
                 needed = needed + Utf8Width(scalar);
                 index = index + width;
             }
 
-            var builder = StringBuilder::WithCapacity(allocator, needed, error);
-            if error.IsError() { return Option::None<String>(); }
+            var builder = StringBuilder::WithCapacity(allocator, needed)?;
             index = 0;
             while index < units.length {
                 var scalar: uint32 = 0;
                 var width: uint = 0;
                 if !DecodeUnit(units, index, @scalar, @width) {
-                    *error = TextError::InvalidUtf8;
-                    return Option::None<String>();
+                    fail TextError::InvalidUtf8;
                 }
-                let appended = builder.AppendScalar(scalar as char32);
-                if appended.IsError() {
-                    *error = appended;
-                    return Option::None<String>();
-                }
+                builder.AppendScalar(scalar as char32)?;
                 index = index + width;
             }
-            return Option::Some<String>(builder.IntoString());
+            return builder.IntoString();
         }
         else {
             // Bytes: the check is the conversion.
-            let made = String::FromBytes(allocator, self.units, error);
-            if error.IsError() { return Option::None<String>(); }
-            return Option::Some<String>(made);
+            return String::FromBytes(allocator, self.units);
         }
     }
 }

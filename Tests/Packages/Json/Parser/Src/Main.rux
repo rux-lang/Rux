@@ -17,7 +17,7 @@ import Json::{ DuplicateKeyPolicy, JsonKind, JsonLexError, JsonLimits, JsonParse
 import Text::{ BufferWriter, FormatSpec, StringView, TextError, TextWriter };
 
 func View(bytes: char8[..]) -> StringView {
-    return StringView::FromBytes(bytes).ValueOr(StringView());
+    return StringView::FromBytes(bytes) ?? StringView();
 }
 
 func Same(actual: char8[..], expected: char8[..]) -> bool {

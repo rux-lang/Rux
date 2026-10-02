@@ -20,7 +20,6 @@
 import Allocator::Allocator;
 import Io::{ IoError, IoErrorKind, WriteAll, Writer };
 import Path::{ OsStringView, OsUnit, Path, PathBuffer };
-import Text::TextError;
 
 // The `.` that names the working directory, in whatever unit the platform's paths are made of.
 func DotSegmentUnit() -> OsUnit {
@@ -59,7 +58,6 @@ extend AtomicWrite {
     /// @see https://rux-lang.dev/docs/api/filesystem/atomic-write/begin
     pub func Begin(allocator: Allocator, target: Path, error: *var IoError) -> AtomicWrite {
         *error = IoError::Ok();
-        var textError = TextError::None;
         var result = AtomicWrite {
             scratch: TemporaryFile {
                 file: File { handle: NoFile(), open: false },
@@ -72,29 +70,23 @@ extend AtomicWrite {
 
         // A target with no parent is a bare name in the working directory, whose parent is that directory.
         let parent = target.Parent();
-        var directory = PathBuffer(allocator);
-        if parent.IsSome() {
-            directory <- PathBuffer::FromPath(allocator, parent.ValueOr(Path()), @textError);
-        }
-        else {
-            var here: OsUnit[1];
-            here[0] = DotSegmentUnit();
-            directory <- PathBuffer::FromPath(allocator, Path::FromView(OsStringView::FromUnits(here[0..1])),
-                                              @textError);
-        }
-        if textError != TextError::None {
-            *error = IoError::Of(IoErrorKind::Other);
-            directory.Release();
-            return <-result;
-        }
+        var here: OsUnit[1];
+        here[0] = DotSegmentUnit();
+        let parentPath = parent.IsSome() ? parent.ValueOr(Path()) : Path::FromView(OsStringView::FromUnits(here[0..1]));
+        var directory = PathBuffer::FromPath(allocator, parentPath) catch {
+            else => {
+                *error = IoError::Of(IoErrorKind::Other);
+                return <-result;
+            }
+        };
 
-        var held = PathBuffer::FromPath(allocator, target, @textError);
-        if textError != TextError::None {
-            *error = IoError::Of(IoErrorKind::Other);
-            directory.Release();
-            held.Release();
-            return <-result;
-        }
+        var held = PathBuffer::FromPath(allocator, target) catch {
+            else => {
+                *error = IoError::Of(IoErrorKind::Other);
+                directory.Release();
+                return <-result;
+            }
+        };
         var scratch = TemporaryFile::Create(allocator, directory.AsPath(), ".rux-atomic-", error);
         directory.Release();
         if (*error).IsError() {

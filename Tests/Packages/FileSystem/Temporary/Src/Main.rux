@@ -3,11 +3,10 @@
 // handle is done with it — through Close, and through a scope ending without one.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert };
+import Core::{ Assert, Panic };
 import Io::{ IoError, IoErrorKind, ReadExact, Reader, SeekFrom, WriteAll, Writer };
 import Path::{ OsString, Path, PathBuffer };
 import FileSystem::{ DeleteFile, File, MetadataOf, OpenOptions, TemporaryDirectory, TemporaryDirectoryHandle, TemporaryFile };
-import Text::TextError;
 
 // The bytes a string spans, which is how a caller holding text reaches an entry point that takes bytes.
 func TextBytes(text: char8[..]) -> char8[..] {
@@ -42,9 +41,9 @@ func Abandon(allocator: Allocator, directory: Path) -> PathBuffer {
     var error = IoError::Ok();
     var scratch = TemporaryFile::Create(allocator, directory, "abandoned-", @error);
     Assert(error.IsOk(), "the abandoned file is created");
-    var textError = TextError::None;
-    var remembered = PathBuffer::FromPath(allocator, scratch.AsPath(), @textError);
-    Assert(textError == TextError::None, "and its name is remembered");
+    var remembered = PathBuffer::FromPath(allocator, scratch.AsPath()) catch {
+        else => Panic("and its name is remembered")
+    };
     Assert(Exists(allocator, scratch.AsPath()), "and it exists while it is held");
     return <-remembered;
 }
@@ -83,8 +82,9 @@ func Main() -> int {
 
     // Close deletes it and says so; the name is free afterwards.
     var firstPathHolder = PathBuffer(allocator);
-    var textError = TextError::None;
-    firstPathHolder <- PathBuffer::FromPath(allocator, first.AsPath(), @textError);
+    firstPathHolder <- PathBuffer::FromPath(allocator, first.AsPath()) catch {
+        else => Panic("the first name is remembered")
+    };
     Assert(first.Close(allocator).IsOk(), "closing reports success");
     Assert(!Exists(allocator, firstPathHolder.AsPath()), "and the file is gone");
 
@@ -95,14 +95,18 @@ func Main() -> int {
     // Keep gives up ownership: the file stays, and cleaning it up becomes the caller's business.
     var kept = TemporaryFile::Create(allocator, home.AsPath(), "kept-", @error);
     Assert(error.IsOk(), "a kept file is created");
-    var keptPath = PathBuffer::FromPath(allocator, kept.AsPath(), @textError);
+    var keptPath = PathBuffer::FromPath(allocator, kept.AsPath()) catch {
+        else => Panic("the kept name is remembered")
+    };
     Assert(kept.Keep().IsOk(), "keeping closes the file");
     Assert(Exists(allocator, keptPath.AsPath()), "and leaves it behind");
 
     Assert(second.Close(allocator).IsOk(), "the second file cleans up");
     Assert(DeleteFile(allocator, keptPath.AsPath()).IsOk(), "and so does the kept one, by hand");
 
-    var homePath = PathBuffer::FromPath(allocator, home.AsPath(), @textError);
+    var homePath = PathBuffer::FromPath(allocator, home.AsPath()) catch {
+        else => Panic("the directory name is remembered")
+    };
     Assert(home.Close(allocator).IsOk(), "the temporary directory is removed");
     Assert(!Exists(allocator, homePath.AsPath()), "and is gone");
 

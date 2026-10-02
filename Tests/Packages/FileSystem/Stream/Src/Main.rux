@@ -12,11 +12,11 @@
 // move the file, since it owns its handle and prohibits copying, and there would be nothing left to close.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert };
+import Core::{ Assert, Panic };
 import Io::{ BufferedReader, IoError, IoErrorKind, ReadExact, Reader, ReadTextLine, SeekFrom, Writer, WriteAll };
 import Path::{ OsString, Path };
 import FileSystem::{ File, OpenOptions };
-import Text::{ String, StringBuilder, StringView, TextError };
+import Text::{ String, StringBuilder, StringView };
 
 // The bytes a string spans, which is how a text overload reaches the slice one.
 func TextBytes(text: char8[..]) -> char8[..] {
@@ -24,15 +24,14 @@ func TextBytes(text: char8[..]) -> char8[..] {
 }
 
 func View(bytes: char8[..]) -> StringView {
-    return StringView::FromBytes(bytes).ValueOr(StringView());
+    return StringView::FromBytes(bytes) ?? StringView();
 }
 
 func Main() -> int {
     var system = SystemAllocator();
     let allocator: Allocator = system;
     var error = IoError::Ok();
-    var textError = TextError::None;
-    var holder = OsString::FromText(allocator, "Bin/FileSystemStream.tmp", @textError);
+    var holder = OsString::FromText(allocator, "Bin/FileSystemStream.tmp") catch { else => Panic("the name converts") };
     let scratch = Path::FromView(holder.View());
 
     // Write a known body and make it durable.

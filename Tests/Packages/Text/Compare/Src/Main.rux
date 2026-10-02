@@ -1,6 +1,6 @@
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, Ordering };
-import Text::{ String, StringView, TextError };
+import Core::{ Assert, Ordering, Panic };
+import Text::{ String, StringView };
 
 // Comparison is by bytes, and for UTF-8 that is also by code point: the encoding is built so that comparing the
 // bytes of two strings and comparing their characters give the same answer. That is worth checking with characters
@@ -11,13 +11,12 @@ import Text::{ String, StringView, TextError };
 // what a container keying on text wants.
 
 func View(bytes: char8[..]) -> StringView {
-    return StringView::FromBytes(bytes).ValueOr(StringView());
+    return StringView::FromBytes(bytes) ?? StringView();
 }
 
 func Main() -> int {
     var system = SystemAllocator();
     let allocator: Allocator = system;
-    var error = TextError::None;
 
     let empty = View("");
     let a = View("apple");
@@ -51,9 +50,8 @@ func Main() -> int {
     Assert(upper.Compare(lower) == Ordering::Less, "and upper case orders first, because its bytes are smaller");
 
     // A string compares as its view does, since that is what it is made of.
-    let owned = String::FromBytes(allocator, "apple", @error);
-    let other = String::FromBytes(allocator, "banana", @error);
-    Assert(error == TextError::None, "the strings are built");
+    let owned = String::FromBytes(allocator, "apple") catch { else => Panic("the strings are built") };
+    let other = String::FromBytes(allocator, "banana") catch { else => Panic("the strings are built") };
     Assert(owned.Compare(other) == Ordering::Less, "an owning string orders the same way");
     Assert(owned.Equals(owned), "and equals itself");
 

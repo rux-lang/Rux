@@ -2,7 +2,7 @@ import Core::Failed;
 import Text::{ Debug, Display, FormatSpec, TextWriter };
 import Allocator::{ Allocator, SystemAllocator };
 import Format::{ Render };
-import Text::{ FormatError, String, StringBuilder, StringView, TextError };
+import Text::{ FormatError, String, StringBuilder, StringView };
 
 // Text rendering itself: a string and a view write their bytes straight through, and Debug adds the quotes that
 // make an empty one visible. A failed check reports through the exit code.
@@ -16,9 +16,7 @@ func Main() -> int {
     var system = SystemAllocator();
     let allocator: Allocator = system;
 
-    var error = TextError::None;
-    let hello = String::FromBytes(allocator, "Hello World!", @error);
-    if error != TextError::None { return 1; }
+    let hello = String::FromBytes(allocator, "Hello World!") catch { else => return 1 };
 
     // Through a placeholder, which is the path an argument takes.
     let alone = Rendered(allocator, Render(allocator, "{}", hello.View()));
