@@ -54,33 +54,33 @@ func RefusesSpec(reading: Instant, text: char8[..]) -> bool {
 func Main() -> int {
     let first = Instant::Now();
     let second = Instant::Now();
-    Assert(second.Since(first).IsSome(), "a later reading is never earlier");
+    Assert((second.Since(first) is Duration), "a later reading is never earlier");
     var spin: uint = 0;
     while spin < 10000 {
         spin = spin + 1;
     }
     let third = Instant::Now();
     let gap = third.Since(first);
-    Assert(gap.IsSome(), "and later still after doing work");
-    Assert(!gap.ValueOr(Duration::FromSeconds(-1i64)).IsNegative(), "with a non-negative span between");
+    Assert((gap is Duration), "and later still after doing work");
+    Assert(!(gap ?? Duration::FromSeconds(-1i64)).IsNegative(), "with a non-negative span between");
 
     // The reversed pair refuses, unless the two readings tied at the clock's resolution.
-    if third.Since(first).ValueOr(Duration::Zero()).IsZero() == false {
-        Assert(first.Since(third).IsNone(), "the reversed subtraction refuses");
+    if (third.Since(first) ?? Duration::Zero()).IsZero() == false {
+        Assert(!(first.Since(third) is Duration), "the reversed subtraction refuses");
     }
 
     // A sleep takes at least what was asked. Fifty milliseconds is long enough that every supported clock can see
     // it, and short enough not to slow the suite. Chunking, interruption and refusal are exercised against an
     // injected wait in Tests/Packages/Time/Sleep; what is checked here is that a real one moves a real clock.
     let before = Instant::Now();
-    Assert(SleepFor(Duration::FromMilliseconds(50i64)) == TimeError::None, "a real sleep reports that it completed");
+    SleepFor(Duration::FromMilliseconds(50i64)) catch { else => Panic("a real sleep reports that it completed") };
     let slept = before.Elapsed();
     let floor = Duration::FromMilliseconds(50i64);
     Assert(!slept.Compare(floor).IsLess(), "a sleep takes at least the span asked for");
 
     // The degenerate spans return at once rather than sleeping forever or refusing.
-    Assert(SleepFor(Duration::Zero()) == TimeError::None, "a zero span succeeds");
-    Assert(SleepFor(Duration::FromMilliseconds(-100i64)) == TimeError::None, "and so does a negative one");
+    SleepFor(Duration::Zero()) catch { else => Panic("a zero span succeeds") };
+    SleepFor(Duration::FromMilliseconds(-100i64)) catch { else => Panic("and so does a negative one") };
     let after = before.Elapsed();
     Assert(after.Compare(Duration::FromSeconds(30i64)).IsLess(), "and the degenerate spans do not sleep");
 
@@ -93,9 +93,9 @@ func Main() -> int {
     Assert(lastTicks >= firstTicks, "and the number moves the way the clock does");
 
     // The number shown is the reading itself: the difference between two renderings is the span between them.
-    let measured = last.Since(first).ValueOr(Duration::FromSeconds(-1i64));
+    let measured = (last.Since(first) ?? Duration::FromSeconds(-1i64));
     Assert(!measured.IsNegative(), "the two readings are in order");
-    Assert(lastTicks - firstTicks == measured.TotalNanoseconds().ValueOr(-1i64) as uint64,
+    Assert(lastTicks - firstTicks == (measured.TotalNanoseconds() ?? -1i64) as uint64,
            "and the difference between the two renderings is the span between the readings");
 
     // A style and a precision are refused rather than ignored, since neither has anything to select here.

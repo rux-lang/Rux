@@ -46,7 +46,7 @@ func Refused(value: Duration, spec: FormatSpec) -> bool {
 
 // A span built from whole seconds and a nanosecond fraction added on, which is how a caller makes a fractional one.
 func Of(seconds: int64, nanoseconds: int64) -> Duration {
-    return Duration::FromSeconds(seconds).Plus(Duration::FromNanoseconds(nanoseconds)).ValueOr(Duration::Zero());
+    return (Duration::FromSeconds(seconds).Plus(Duration::FromNanoseconds(nanoseconds)) ?? Duration::Zero());
 }
 
 // Whether `text` parses back to exactly `expected`, comparing the normalized fields rather than the value.
@@ -54,7 +54,7 @@ func ReadsAs(text: char8[..], expected: Duration) -> bool {
     return match ParseDuration(text) {
         .Success(parsed) => parsed.WholeSeconds() == expected.WholeSeconds() &&
                             parsed.SubsecondNanoseconds() == expected.SubsecondNanoseconds(),
-        .Error(_) => false
+        .Failure(_) => false
     };
 }
 
@@ -116,13 +116,13 @@ func Main() -> int {
     Assert(ReadsAs("+1.5s", Of(1i64, 500000000i64)), "a leading plus is the same as none");
 
     // What parsing refuses.
-    Assert(ParseDuration("1.5").IsError(), "a missing unit is refused");
-    Assert(ParseDuration("s").IsError(), "so is a unit with no digits");
-    Assert(ParseDuration("1.s").IsError(), "and a point with no fraction");
-    Assert(ParseDuration("1.5s ").IsError(), "and text after the unit");
-    Assert(ParseDuration("1.5m").IsError(), "and a unit this form does not have");
-    Assert(ParseDuration("").IsError(), "and nothing at all");
-    Assert(ParseDuration("1.0000000005s").IsError(), "a tenth fraction digit does not fit a nanosecond");
-    Assert(ParseDuration("99999999999999999999s").IsError(), "nor does a magnitude past the range");
+    Assert(Failed(ParseDuration("1.5")), "a missing unit is refused");
+    Assert(Failed(ParseDuration("s")), "so is a unit with no digits");
+    Assert(Failed(ParseDuration("1.s")), "and a point with no fraction");
+    Assert(Failed(ParseDuration("1.5s ")), "and text after the unit");
+    Assert(Failed(ParseDuration("1.5m")), "and a unit this form does not have");
+    Assert(Failed(ParseDuration("")), "and nothing at all");
+    Assert(Failed(ParseDuration("1.0000000005s")), "a tenth fraction digit does not fit a nanosecond");
+    Assert(Failed(ParseDuration("99999999999999999999s")), "nor does a magnitude past the range");
     return 0;
 }

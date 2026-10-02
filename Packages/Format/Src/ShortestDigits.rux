@@ -18,7 +18,6 @@
 // boundary is acceptable depends on whether the significand is even, because that is what round-to-nearest-even
 // would do with it when read back.
 
-import Core::{ Result, Unit };
 
 /// The most digits a shortest rendering can need.
 ///

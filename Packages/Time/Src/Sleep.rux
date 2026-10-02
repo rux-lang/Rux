@@ -19,7 +19,7 @@
 // against an injected one. A test for a hundred-day sleep must not take a hundred days, and a test for an
 // interrupted sleep cannot arrange a signal.
 
-import Core::{ #target, #Error, Option };
+import Core::{ #target, #Error };
 import Time::Duration;
 
 when #target.os {
@@ -30,17 +30,13 @@ when #target.os {
     else => #Error("Unsupported operating system")
 }
 
-/// Why a wait did not complete. `Copy`.
+/// Why a wait did not happen. `Copy`.
 ///
-/// `Interrupted` is reported only by a caller-supplied `Waiter`; `SleepFor` retries an interruption itself and
-/// never reports it, because a caller that asked for a span asked for the whole span.
+/// Every case is a failure. An interruption is not one: a waiter that was cut short succeeds with the part of the span
+/// still to wait, and `SleepFor` goes back for it, because a caller that asked for a span asked for the whole span.
 ///
 /// @see https://rux-lang.dev/docs/api/time/time-error
 pub enum TimeError: uint8 {
-    /// The wait completed. This is what a successful call reports, so it is not an error case.
-    None = 0,
-    /// A signal cut the wait short. The remainder says how much is left.
-    Interrupted = 1,
     /// The system refused the request itself, rather than being unable to finish it.
     InvalidDuration = 2,
     /// The system reported a failure this module has no name for.
@@ -83,7 +79,7 @@ pub func WaitChunkMilliseconds(span: Duration) -> int64 {
     var whole = MaximumWaitMilliseconds;
     match total {
         .Some(value) => { whole = value; },
-        .None => { return MaximumWaitMilliseconds; }
+        none => { return MaximumWaitMilliseconds; }
     }
     if whole >= MaximumWaitMilliseconds { return MaximumWaitMilliseconds; }
 
@@ -96,26 +92,25 @@ pub func WaitChunkMilliseconds(span: Duration) -> int64 {
 /// One wait, however the caller reaches the system.
 ///
 /// An implementation waits for at most `span` and reports what is left of it. Reporting less than the whole span as
-/// remaining is how a wait says it did some of the work; reporting `Interrupted` is how it says a signal stopped it
-/// early. `SleepFor` drives whichever implementation it is given until nothing is left.
+/// remaining is how a wait says it did some of the work, including when a signal stopped it early; failing is how it
+/// says the system refused. `SleepFor` drives whichever implementation it is given until nothing is left.
 ///
 /// @see https://rux-lang.dev/docs/api/time/waiter
 pub interface Waiter {
-    /// Waits for at most `span`, and writes what remains of it.
+    /// Waits for at most `span`, and reports what remains of it.
     ///
-    /// `remaining` receives the unwaited part, which is zero when the whole span was waited for. It must not be
-    /// null and is written whether or not this reports `None`, so a caller can always see how far the wait got.
+    /// Succeeds with the unwaited part, which is zero when the whole span was waited for and more than zero when
+    /// something stopped the wait early with time still to go.
     ///
     /// # Failures
     ///
-    /// Reports `Interrupted` when something stopped the wait early with time still to go, and any other case when
-    /// the system refused. An implementation must not report `None` unless the span really elapsed.
+    /// Fails when the system refused the wait. An implementation must not succeed with zero unless the span really
+    /// elapsed.
     ///
     /// @param span how much time to wait for
-    /// @param remaining receives what is left of `span`
-    /// @returns `None` when the whole span elapsed
+    /// @returns what is left of `span`, or why the wait did not happen
     /// @see https://rux-lang.dev/docs/api/time/waiter/wait-for
-    func WaitFor(span: Duration, remaining: *var Duration) -> TimeError;
+    func WaitFor(span: Duration) -> Duration ! TimeError;
 }
 
 /// The wait every supported system actually provides. `Copy`.
@@ -143,22 +138,20 @@ extend SystemWaiter {
 }
 
 extend SystemWaiter : Waiter {
-    func WaitFor(self: &var SystemWaiter, span: Duration, remaining: *var Duration) -> TimeError {
-        *remaining = Duration::Zero();
+    func WaitFor(self: &var SystemWaiter, span: Duration) -> Duration ! TimeError {
         let chunk = WaitChunkMilliseconds(span);
-        if chunk == 0 { return TimeError::None; }
+        if chunk == 0 { return Duration::Zero(); }
 
         // What is left over once this chunk is waited for. A chunk shorter than the span means the span was longer
         // than one wait can express, and the loop above will come back for the rest.
         let asked = Duration::FromMilliseconds(chunk);
-        let rest = span.Minus(asked).ValueOr(Duration::Zero());
+        let rest = span.Minus(asked) ?? Duration::Zero();
         let leftover = rest.IsNegative() ? Duration::Zero() : rest;
 
         when #target.os == .Windows {
             // Rounded up above, so this waits at least as long as asked and never less.
             Sleep(chunk as uint32);
-            *remaining = leftover;
-            return TimeError::None;
+            return leftover;
         }
         else {
             var request = Timespec {
@@ -168,23 +161,19 @@ extend SystemWaiter : Waiter {
             var unslept = Timespec { seconds: 0, nanoseconds: 0 };
             let status = Nanosleep(@request, @unslept);
             if !IsError(status) {
-                *remaining = leftover;
-                return TimeError::None;
+                return leftover;
             }
             if Errno(status) != EINTR {
-                // The request itself was refused. Nothing was waited for, so the whole span is still outstanding —
-                // which the previous version could not tell from a completed sleep, since both leave the remainder
-                // at zero.
-                *remaining = span;
-                return TimeError::InvalidDuration;
+                // The request itself was refused and nothing was waited for — which the previous version could not
+                // tell from a completed sleep, since both left the remainder at zero.
+                fail TimeError::InvalidDuration;
             }
             // A signal stopped it with time to go. What the kernel left in `unslept` belongs to this chunk, so the
             // rest of the span is that plus whatever the chunking held back.
             let cutShort = Duration::FromSeconds(unslept.seconds);
             var short = cutShort;
             short.nanoseconds = unslept.nanoseconds as uint32;
-            *remaining = short.Plus(leftover).ValueOr(leftover);
-            return TimeError::Interrupted;
+            return short.Plus(leftover) ?? leftover;
         }
     }
 }
@@ -205,31 +194,29 @@ pub const MaximumWaitAttempts: uint = 4096;
 ///
 /// # Failures
 ///
-/// Reports whatever the waiter reported for anything other than an interruption, having stopped there rather than
-/// asking again. Reports `Failed` when the waiter neither advanced nor failed `MaximumWaitAttempts` times running,
-/// which no real wait does and which is what keeps a broken implementation from hanging a program.
+/// Fails with whatever the waiter failed with, having stopped there rather than asking again. Fails with `Failed`
+/// when the waiter neither advanced nor failed `MaximumWaitAttempts` times running, which no real wait does and which
+/// is what keeps a broken implementation from hanging a program.
 ///
 /// @typeParam W the waiter's type
 /// @param waiter how to reach the wait
 /// @param span how long to wait for
-/// @returns `None` when the whole span was waited out
+/// @returns nothing when the whole span was waited out, or why it was not
 /// @see https://rux-lang.dev/docs/api/time/sleep-using
-pub func SleepUsing<W: Waiter>(waiter: &var W, span: Duration) -> TimeError {
-    if span.IsNegative() || span.IsZero() { return TimeError::None; }
+pub func SleepUsing<W: Waiter>(waiter: &var W, span: Duration) -> ! TimeError {
+    if span.IsNegative() || span.IsZero() { return; }
 
     var left = span;
     var attempts: uint = 0;
     while attempts < MaximumWaitAttempts {
         attempts = attempts + 1;
-        var remaining = Duration::Zero();
-        let error = waiter.WaitFor(left, @remaining);
-        if error != TimeError::None && error != TimeError::Interrupted { return error; }
-        if remaining.IsZero() || remaining.IsNegative() { return TimeError::None; }
+        let remaining = waiter.WaitFor(left)?;
+        if remaining.IsZero() || remaining.IsNegative() { return; }
         // A waiter that hands back everything it was given, without failing, has not waited. Counting the attempt
         // rather than trusting it is what bounds the loop.
         left = remaining;
     }
-    return TimeError::Failed;
+    fail TimeError::Failed;
 }
 
 /// Stops the calling thread for at least `span`.
@@ -244,14 +231,14 @@ pub func SleepUsing<W: Waiter>(waiter: &var W, span: Duration) -> TimeError {
 ///
 /// # Failures
 ///
-/// Reports `InvalidDuration` when the system refused the request, which a normalized non-negative span should not
-/// produce, and `Failed` for anything else. A caller with nothing to do about a failed wait may ignore the result;
-/// the point is that it is no longer indistinguishable from success.
+/// Fails with `InvalidDuration` when the system refused the request, which a normalized non-negative span should not
+/// produce, and `Failed` for anything else. A caller with nothing to do about a failed wait says so with
+/// `SleepFor(span) catch { else => {} }`; the point is that it is no longer indistinguishable from success.
 ///
 /// @param span how long to wait for
-/// @returns `None` when the whole span was waited out
+/// @returns nothing when the whole span was waited out, or why it was not
 /// @see https://rux-lang.dev/docs/api/time/sleep
-pub func SleepFor(span: Duration) -> TimeError {
+pub func SleepFor(span: Duration) -> ! TimeError {
     var waiter = SystemWaiter();
     // A named value auto-borrows into the generic's `&var W`; taking its address would be a pointer.
     return SleepUsing<SystemWaiter>(waiter, span);

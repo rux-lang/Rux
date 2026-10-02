@@ -11,7 +11,6 @@
 // underneath it. That is the stored mantissa being zero, with the exception of the smallest normal, whose lower
 // neighbour is the largest subnormal and is a full gap away like any other.
 
-import Core::{ Result, Unit };
 
 /// A finite float taken apart: the value is `significand * 2^exponent`.
 ///

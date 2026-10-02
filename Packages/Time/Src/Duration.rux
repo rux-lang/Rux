@@ -9,7 +9,7 @@
 // so an overflow is a bug in the caller's arithmetic — and the answer to a bug is a report, not a wrap that turns
 // a timeout into a deadline in the past.
 
-import Core::{ AddChecked, MulChecked, Option, Ordering, SubChecked };
+import Core::{ AddChecked, MulChecked, Ordering, SubChecked };
 
 /// How many nanoseconds one second holds.
 ///
@@ -51,10 +51,10 @@ extend Duration {
     /// @param minutes how many minutes
     /// @returns that many minutes, or `None` when the count does not fit
     /// @see https://rux-lang.dev/docs/api/time/duration/from-minutes
-    pub func FromMinutes(minutes: int64) -> Option<Duration> {
+    pub func FromMinutes(minutes: int64) -> Duration? {
         var seconds: int64 = 0;
-        if MulChecked<int64>(minutes, 60i64, @seconds) { return Option::None<Duration>(); }
-        return Option::Some<Duration>(Duration::FromSeconds(seconds));
+        if MulChecked<int64>(minutes, 60i64, @seconds) { return none; }
+        return .Some(Duration::FromSeconds(seconds));
     }
 
     /// Exactly `hours` hours, or `None` past the range.
@@ -62,10 +62,10 @@ extend Duration {
     /// @param hours how many hours
     /// @returns that many hours, or `None` when the count does not fit
     /// @see https://rux-lang.dev/docs/api/time/duration/from-hours
-    pub func FromHours(hours: int64) -> Option<Duration> {
+    pub func FromHours(hours: int64) -> Duration? {
         var seconds: int64 = 0;
-        if MulChecked<int64>(hours, 3600i64, @seconds) { return Option::None<Duration>(); }
-        return Option::Some<Duration>(Duration::FromSeconds(seconds));
+        if MulChecked<int64>(hours, 3600i64, @seconds) { return none; }
+        return .Some(Duration::FromSeconds(seconds));
     }
 
     /// Exactly `milliseconds` milliseconds.
@@ -150,7 +150,7 @@ extend Duration {
     ///
     /// @returns the whole span in milliseconds, or `None` when it does not fit
     /// @see https://rux-lang.dev/docs/api/time/duration/total-milliseconds
-    pub func TotalMilliseconds(self: &Duration) -> Option<int64> {
+    pub func TotalMilliseconds(self: &Duration) -> int64? {
         return self.Total(1000000u32);
     }
 
@@ -158,7 +158,7 @@ extend Duration {
     ///
     /// @returns the whole span in microseconds, or `None` when it does not fit
     /// @see https://rux-lang.dev/docs/api/time/duration/total-microseconds
-    pub func TotalMicroseconds(self: &Duration) -> Option<int64> {
+    pub func TotalMicroseconds(self: &Duration) -> int64? {
         return self.Total(1000u32);
     }
 
@@ -166,18 +166,18 @@ extend Duration {
     ///
     /// @returns the whole span in nanoseconds, or `None` when it does not fit
     /// @see https://rux-lang.dev/docs/api/time/duration/total-nanoseconds
-    pub func TotalNanoseconds(self: &Duration) -> Option<int64> {
+    pub func TotalNanoseconds(self: &Duration) -> int64? {
         return self.Total(1u32);
     }
 
     // The count of `scale`-nanosecond units, truncated toward zero, checked.
-    func Total(self: &Duration, scale: uint32) -> Option<int64> {
+    func Total(self: &Duration, scale: uint32) -> int64? {
         let perSecond = (NanosecondsPerSecond / scale) as int64;
         var whole: int64 = 0;
-        if MulChecked<int64>(self.seconds, perSecond, @whole) { return Option::None<int64>(); }
+        if MulChecked<int64>(self.seconds, perSecond, @whole) { return none; }
         var sum: int64 = 0;
-        if AddChecked<int64>(whole, (self.nanoseconds / scale) as int64, @sum) { return Option::None<int64>(); }
-        return Option::Some<int64>(sum);
+        if AddChecked<int64>(whole, (self.nanoseconds / scale) as int64, @sum) { return none; }
+        return sum;
     }
 
     /// The sum of two spans, or `None` past the range.
@@ -185,15 +185,15 @@ extend Duration {
     /// @param other the value to compare against
     /// @returns the sum, or `None` when it does not fit
     /// @see https://rux-lang.dev/docs/api/time/duration/plus
-    pub func Plus(self: &Duration, other: Duration) -> Option<Duration> {
+    pub func Plus(self: &Duration, other: Duration) -> Duration? {
         var seconds: int64 = 0;
-        if AddChecked<int64>(self.seconds, other.seconds, @seconds) { return Option::None<Duration>(); }
+        if AddChecked<int64>(self.seconds, other.seconds, @seconds) { return none; }
         var nanoseconds = self.nanoseconds + other.nanoseconds;
         if nanoseconds >= NanosecondsPerSecond {
             nanoseconds = nanoseconds - NanosecondsPerSecond;
-            if AddChecked<int64>(seconds, 1i64, @seconds) { return Option::None<Duration>(); }
+            if AddChecked<int64>(seconds, 1i64, @seconds) { return none; }
         }
-        return Option::Some<Duration>(Duration { seconds: seconds, nanoseconds: nanoseconds });
+        return .Some(Duration { seconds: seconds, nanoseconds: nanoseconds });
     }
 
     /// The difference of two spans, or `None` past the range.
@@ -201,22 +201,22 @@ extend Duration {
     /// @param other the value to compare against
     /// @returns the difference, or `None` when it does not fit
     /// @see https://rux-lang.dev/docs/api/time/duration/minus
-    pub func Minus(self: &Duration, other: Duration) -> Option<Duration> {
+    pub func Minus(self: &Duration, other: Duration) -> Duration? {
         var seconds: int64 = 0;
-        if SubChecked<int64>(self.seconds, other.seconds, @seconds) { return Option::None<Duration>(); }
+        if SubChecked<int64>(self.seconds, other.seconds, @seconds) { return none; }
         var nanoseconds = self.nanoseconds;
         if nanoseconds < other.nanoseconds {
-            if SubChecked<int64>(seconds, 1i64, @seconds) { return Option::None<Duration>(); }
+            if SubChecked<int64>(seconds, 1i64, @seconds) { return none; }
             nanoseconds = nanoseconds + NanosecondsPerSecond;
         }
-        return Option::Some<Duration>(Duration { seconds: seconds, nanoseconds: nanoseconds - other.nanoseconds });
+        return .Some(Duration { seconds: seconds, nanoseconds: nanoseconds - other.nanoseconds });
     }
 
     /// This span negated, or `None` for the one value whose negation does not fit.
     ///
     /// @returns the span running the other way, or `None` when it does not fit
     /// @see https://rux-lang.dev/docs/api/time/duration/negated
-    pub func Negated(self: &Duration) -> Option<Duration> {
+    pub func Negated(self: &Duration) -> Duration? {
         let zero = Duration::Zero();
         return zero.Minus(Duration { seconds: self.seconds, nanoseconds: self.nanoseconds });
     }
@@ -226,17 +226,17 @@ extend Duration {
     /// @param factor what to multiply by
     /// @returns the product, or `None` when it does not fit
     /// @see https://rux-lang.dev/docs/api/time/duration/times
-    pub func Times(self: &Duration, factor: int64) -> Option<Duration> {
+    pub func Times(self: &Duration, factor: int64) -> Duration? {
         // The fraction times the factor is nanoseconds that may carry whole seconds; the carry rides along
         // checked, so the largest representable spans still refuse rather than wrap.
         var wholePart: int64 = 0;
-        if MulChecked<int64>(self.seconds, factor, @wholePart) { return Option::None<Duration>(); }
+        if MulChecked<int64>(self.seconds, factor, @wholePart) { return none; }
         var fractionTotal: int64 = 0;
-        if MulChecked<int64>(self.nanoseconds as int64, factor, @fractionTotal) { return Option::None<Duration>(); }
+        if MulChecked<int64>(self.nanoseconds as int64, factor, @fractionTotal) { return none; }
         let scaled = Duration::FromScaled(fractionTotal, 1u32);
         var seconds: int64 = 0;
-        if AddChecked<int64>(wholePart, scaled.seconds, @seconds) { return Option::None<Duration>(); }
-        return Option::Some<Duration>(Duration { seconds: seconds, nanoseconds: scaled.nanoseconds });
+        if AddChecked<int64>(wholePart, scaled.seconds, @seconds) { return none; }
+        return .Some(Duration { seconds: seconds, nanoseconds: scaled.nanoseconds });
     }
 
     /// Whether two spans are the same time.

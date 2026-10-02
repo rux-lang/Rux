@@ -496,13 +496,13 @@ func ReadDate(text: char8[..], at: uint, date: *var Date, stopped: *var uint) ->
         return false;
     }
     let made = Date::New(year as int32, month as uint8, day as uint8);
-    if made.IsNone() {
+    if !(made is Date) {
         // Four correct digit pairs that name no day. The month is where a reader has to look, since that is what
         // decides how many days there are.
         *stopped = at + 5u;
         return false;
     }
-    *date = made.ValueOr(Date { year: 1970, month: 1u8, day: 1u8 });
+    *date = (made ?? Date { year: 1970, month: 1u8, day: 1u8 });
     return true;
 }
 
@@ -560,11 +560,11 @@ func ReadTime(text: char8[..], at: uint, time: *var TimeOfDay, consumed: *var ui
         nanosecond = 999999999u32;
     }
     let made = TimeOfDay::New(hour as uint8, minute as uint8, second as uint8, nanosecond);
-    if made.IsNone() {
+    if !(made is TimeOfDay) {
         *stopped = at;
         return false;
     }
-    *time = made.ValueOr(TimeOfDay { hour: 0u8, minute: 0u8, second: 0u8, nanosecond: 0u32 });
+    *time = (made ?? TimeOfDay { hour: 0u8, minute: 0u8, second: 0u8, nanosecond: 0u32 });
     *consumed = index;
     return true;
 }
@@ -600,11 +600,11 @@ func ReadOffset(text: char8[..], at: uint, offset: *var UtcOffset, stopped: *var
         signedMinutes = -signedMinutes;
     }
     let made = UtcOffset::Of(signedHours, signedMinutes);
-    if made.IsNone() {
+    if !(made is UtcOffset) {
         *stopped = at + 1u;
         return false;
     }
-    *offset = made.ValueOr(UtcOffset::Utc());
+    *offset = (made ?? UtcOffset::Utc());
     return true;
 }
 

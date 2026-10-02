@@ -11,7 +11,6 @@
 // computed in `uint64` so that the most negative duration — whose magnitude has no positive counterpart in
 // `int64` — comes out right rather than wrapping to itself.
 
-import Core::Result;
 import Text::{ Debug, Display, FormatError, FormatSpec, TextWriter, WriteAscii, WriteBytes };
 
 // The magnitude of `value` as whole seconds and a fraction, both non-negative, with the sign reported separately.
@@ -154,7 +153,7 @@ extend Duration : Debug {
 /// @param text the text to read
 /// @returns the span, or why the text is not one
 /// @see https://rux-lang.dev/docs/api/time/parse-duration
-pub func ParseDuration(text: char8[..]) -> Result<Duration, TimeParseError> {
+pub func ParseDuration(text: char8[..]) -> Duration ! TimeParseError {
     var at: uint = 0;
     var negative = false;
     if at < text.length && (text.data[at] == c8'-' || text.data[at] == c8'+') {
@@ -169,14 +168,14 @@ pub func ParseDuration(text: char8[..]) -> Result<Duration, TimeParseError> {
         // The magnitude of the most negative duration is 2^63, so that is the ceiling the digits are read against;
         // whether the value actually fits is decided by the sign, below.
         if whole > (9223372036854775808u64 - digit) / 10u64 {
-            return Result::Error<Duration, TimeParseError>(TimeParseError::InvalidSyntax(at));
+            fail TimeParseError::InvalidSyntax(at);
         }
         whole = whole * 10u64 + digit;
         taken = taken + 1;
         at = at + 1;
     }
     if taken == 0u {
-        return Result::Error<Duration, TimeParseError>(TimeParseError::InvalidSyntax(at));
+        fail TimeParseError::InvalidSyntax(at);
     }
 
     var fraction: uint32 = 0;
@@ -187,7 +186,7 @@ pub func ParseDuration(text: char8[..]) -> Result<Duration, TimeParseError> {
         var digits: uint = 0;
         while at < text.length && text.data[at] >= c8'0' && text.data[at] <= c8'9' {
             if digits == 9u {
-                return Result::Error<Duration, TimeParseError>(TimeParseError::ExcessiveFraction(at));
+                fail TimeParseError::ExcessiveFraction(at);
             }
             fraction = fraction + (((text.data[at] as uint32) - 0x30u32) * scale);
             scale = scale / 10u32;
@@ -195,39 +194,38 @@ pub func ParseDuration(text: char8[..]) -> Result<Duration, TimeParseError> {
             at = at + 1;
         }
         if digits == 0u {
-            return Result::Error<Duration, TimeParseError>(TimeParseError::InvalidSyntax(firstDigit));
+            fail TimeParseError::InvalidSyntax(firstDigit);
         }
     }
 
     if at >= text.length || text.data[at] != c8's' {
-        return Result::Error<Duration, TimeParseError>(TimeParseError::InvalidSyntax(at));
+        fail TimeParseError::InvalidSyntax(at);
     }
     at = at + 1;
     if at != text.length {
-        return Result::Error<Duration, TimeParseError>(TimeParseError::InvalidSyntax(at));
+        fail TimeParseError::InvalidSyntax(at);
     }
 
     // Back to the normalized representation, which is the inverse of what Magnitude does.
     if !negative {
         if whole > 9223372036854775807u64 {
-            return Result::Error<Duration, TimeParseError>(TimeParseError::InvalidSyntax(0));
+            fail TimeParseError::InvalidSyntax(0);
         }
-        return Result::Success<Duration, TimeParseError>(
-            Duration::FromSeconds(whole as int64).Plus(Duration::FromNanoseconds(fraction as int64))
-                .ValueOr(Duration::Zero()));
+        return
+            (Duration::FromSeconds(whole as int64).Plus(Duration::FromNanoseconds(fraction as int64)) ?? Duration::Zero());
     }
     if fraction == 0u32 {
         if whole > 9223372036854775808u64 {
-            return Result::Error<Duration, TimeParseError>(TimeParseError::InvalidSyntax(0));
+            fail TimeParseError::InvalidSyntax(0);
         }
-        return Result::Success<Duration, TimeParseError>(
-            Duration { seconds: (~whole + 1u64) as int64, nanoseconds: 0u32 });
+        return
+            Duration { seconds: (~whole + 1u64) as int64, nanoseconds: 0u32 };
     }
     if whole > 9223372036854775807u64 {
-        return Result::Error<Duration, TimeParseError>(TimeParseError::InvalidSyntax(0));
+        fail TimeParseError::InvalidSyntax(0);
     }
     // -whole.fraction is stored as seconds = -(whole + 1), nanoseconds = 1e9 - fraction.
     let seconds = (~(whole + 1u64) + 1u64) as int64;
-    return Result::Success<Duration, TimeParseError>(
-        Duration { seconds: seconds, nanoseconds: 1000000000u32 - fraction });
+    return
+        Duration { seconds: seconds, nanoseconds: 1000000000u32 - fraction };
 }

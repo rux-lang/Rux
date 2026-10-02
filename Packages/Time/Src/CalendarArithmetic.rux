@@ -10,7 +10,7 @@
 // What is deliberately deferred: IANA time zones and discovering the machine's local zone. Both are a database
 // with a release cycle, not arithmetic, and pretending otherwise is how software is wrong twice a year.
 
-import Core::{ AddChecked, MulChecked, Option };
+import Core::{ AddChecked, MulChecked };
 
 extend Date {
     /// The date `days` later, negative for earlier, or `None` outside the years the calendar spells.
@@ -20,13 +20,13 @@ extend Date {
     /// @param days how many days
     /// @returns the date that many days later, or `None` when it leaves the range
     /// @see https://rux-lang.dev/docs/api/time/date/plus-days
-    pub func PlusDays(self: &Date, days: int64) -> Option<Date> {
+    pub func PlusDays(self: &Date, days: int64) -> Date? {
         var landed: int64 = 0;
-        if AddChecked<int64>(self.DaysFromEpoch(), days, @landed) { return Option::None<Date>(); }
+        if AddChecked<int64>(self.DaysFromEpoch(), days, @landed) { return none; }
         // The four-digit formatting range is the honest bound for the whole package; the arithmetic works further
         // but the answers would be dates nothing else here can speak.
-        if landed < -719468i64 || landed > 2932896i64 { return Option::None<Date>(); }
-        return Option::Some<Date>(Date::FromEpochDays(landed));
+        if landed < -719468i64 || landed > 2932896i64 { return none; }
+        return .Some(Date::FromEpochDays(landed));
     }
 
     /// The date `months` later, clamped to the month's end where the day is missing.
@@ -36,17 +36,17 @@ extend Date {
     /// @param months how many months
     /// @returns the date that many months later, clamped to the month's last day, or `None` when it leaves the range
     /// @see https://rux-lang.dev/docs/api/time/date/plus-months
-    pub func PlusMonths(self: &Date, months: int64) -> Option<Date> {
+    pub func PlusMonths(self: &Date, months: int64) -> Date? {
         // Months count in a flat sequence from year zero, so the shift is one add and a floor division back.
         var flat: int64 = (self.year as int64) * 12i64 + (self.month as int64) - 1i64;
-        if AddChecked<int64>(flat, months, @flat) { return Option::None<Date>(); }
+        if AddChecked<int64>(flat, months, @flat) { return none; }
         var year = flat / 12i64;
         var month = flat % 12i64;
         if month < 0i64 {
             year = year - 1i64;
             month = month + 12i64;
         }
-        if year < 0i64 || year > 9999i64 { return Option::None<Date>(); }
+        if year < 0i64 || year > 9999i64 { return none; }
         let cap = DaysInMonth(year as int32, (month + 1i64) as uint8);
         let day = self.day <= cap ? self.day : cap;
         return Date::New(year as int32, (month + 1i64) as uint8, day);
@@ -57,10 +57,10 @@ extend Date {
     /// @param years how many years
     /// @returns the date that many years later, clamped for 29 February, or `None` when it leaves the range
     /// @see https://rux-lang.dev/docs/api/time/date/plus-years
-    pub func PlusYears(self: &Date, years: int64) -> Option<Date> {
+    pub func PlusYears(self: &Date, years: int64) -> Date? {
         var target: int64 = 0;
-        if AddChecked<int64>(self.year as int64, years, @target) { return Option::None<Date>(); }
-        if target < 0i64 || target > 9999i64 { return Option::None<Date>(); }
+        if AddChecked<int64>(self.year as int64, years, @target) { return none; }
+        if target < 0i64 || target > 9999i64 { return none; }
         let cap = DaysInMonth(target as int32, self.month);
         let day = self.day <= cap ? self.day : cap;
         return Date::New(target as int32, self.month, day);

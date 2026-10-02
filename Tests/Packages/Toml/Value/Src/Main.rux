@@ -40,10 +40,9 @@ func Main() -> int {
     Assert(integer.AsText().Length() == 0u, "while a non-string reports an empty view rather than its bytes");
 
     // The four date-time kinds differ in which parts they have, and that is the whole point of having four.
-    let date = Date::New(1979, 5u8, 27u8).ValueOr(Date { year: 1970, month: 1u8, day: 1u8 });
-    let time = TimeOfDay::New(7u8, 32u8, 0u8, 0u32).ValueOr(
-        TimeOfDay { hour: 0u8, minute: 0u8, second: 0u8, nanosecond: 0u32 });
-    let offset = UtcOffset::Of(-8i32, 0i32).ValueOr(UtcOffset::Utc());
+    let date = (Date::New(1979, 5u8, 27u8) ?? Date { year: 1970, month: 1u8, day: 1u8 });
+    let time = TimeOfDay::New(7u8, 32u8, 0u8, 0u32) ?? TimeOfDay { hour: 0u8, minute: 0u8, second: 0u8, nanosecond: 0u32 };
+    let offset = (UtcOffset::Of(-8i32, 0i32) ?? UtcOffset::Utc());
 
     var moment = TomlValue::OffsetDateTime(allocator, date, time, offset);
     var readOffset = UtcOffset::Utc();

@@ -16,7 +16,6 @@
 // The four entry points share their machinery rather than reimplementing it, so `ParseRfc3339` cannot disagree
 // with `ParseDate` about what a date is.
 
-import Core::{ Option, Result, Unit };
 import Text::ParseFailure;
 
 /// Why text could not be read as a calendar value.
@@ -77,87 +76,87 @@ func IsDigit(byte: char8) -> bool {
 }
 
 // Reads exactly `count` digits, or reports where the run stopped being digits.
-func Digits(reader: &var Reader, count: uint) -> Result<uint32, TimeParseError> {
+func Digits(reader: &var Reader, count: uint) -> uint32 ! TimeParseError {
     var total: uint32 = 0;
     var taken: uint = 0;
     while taken < count {
         if reader.at >= reader.text.length {
-            return Result::Error<uint32, TimeParseError>(TimeParseError::InvalidSyntax(reader.text.length));
+            fail TimeParseError::InvalidSyntax(reader.text.length);
         }
         let byte = reader.text.data[reader.at];
         if !IsDigit(byte) {
-            return Result::Error<uint32, TimeParseError>(TimeParseError::InvalidSyntax(reader.at));
+            fail TimeParseError::InvalidSyntax(reader.at);
         }
         total = total * 10u32 + ((byte as uint32) - 0x30u32);
         reader.at = reader.at + 1;
         taken = taken + 1;
     }
-    return Result::Success<uint32, TimeParseError>(total);
+    return total;
 }
 
 // Consumes exactly `byte`, or reports where something else was.
-func Literal(reader: &var Reader, byte: char8) -> Result<Unit, TimeParseError> {
+func Literal(reader: &var Reader, byte: char8) -> ! TimeParseError {
     if reader.at >= reader.text.length {
-        return Result::Error<Unit, TimeParseError>(TimeParseError::InvalidSyntax(reader.text.length));
+        fail TimeParseError::InvalidSyntax(reader.text.length);
     }
     if reader.text.data[reader.at] != byte {
-        return Result::Error<Unit, TimeParseError>(TimeParseError::InvalidSyntax(reader.at));
+        fail TimeParseError::InvalidSyntax(reader.at);
     }
     reader.at = reader.at + 1;
-    return Result::Success<Unit, TimeParseError>(Unit {});
+    return;
 }
 
 // The date-time separator, which RFC 3339 allows as `T`, `t` or a space.
-func ReadSeparator(reader: &var Reader) -> Result<Unit, TimeParseError> {
+func ReadSeparator(reader: &var Reader) -> ! TimeParseError {
     if reader.at >= reader.text.length {
-        return Result::Error<Unit, TimeParseError>(TimeParseError::InvalidSyntax(reader.text.length));
+        fail TimeParseError::InvalidSyntax(reader.text.length);
     }
     let byte = reader.text.data[reader.at];
     if byte != c8'T' && byte != c8't' && byte != c8' ' {
-        return Result::Error<Unit, TimeParseError>(TimeParseError::InvalidSyntax(reader.at));
+        fail TimeParseError::InvalidSyntax(reader.at);
     }
     reader.at = reader.at + 1;
-    return Result::Success<Unit, TimeParseError>(Unit {});
+    return;
 }
 
 // Reads `YYYY-MM-DD` and validates it against the calendar.
-func ReadDate(reader: &var Reader) -> Result<Date, TimeParseError> {
+func ReadDate(reader: &var Reader) -> Date ! TimeParseError {
     let year = Digits(reader, 4u)?;
     Literal(reader, c8'-')?;
     let monthAt = reader.at;
     let month = Digits(reader, 2u)?;
     if month < 1u32 || month > 12u32 {
-        return Result::Error<Date, TimeParseError>(TimeParseError::InvalidMonth(monthAt));
+        fail TimeParseError::InvalidMonth(monthAt);
     }
     Literal(reader, c8'-')?;
     let dayAt = reader.at;
     let day = Digits(reader, 2u)?;
     let made = Date::New(year as int32, month as uint8, day as uint8);
-    if made.IsNone() {
+    if made == none {
         // The month was already checked, so what is left is a day the month does not have.
-        return Result::Error<Date, TimeParseError>(TimeParseError::NonexistentDay(dayAt));
+        fail TimeParseError::NonexistentDay(dayAt);
     }
-    return Result::Success<Date, TimeParseError>(made.ValueOr(Date::FromEpochDays(0i64)));
+    return (made ?? Date::FromEpochDays(0i64));
 }
 
 // Reads `HH:MM:SS` with an optional fraction, folding second 60 as the package policy requires.
-func ReadTime(reader: &var Reader) -> Result<TimeOfDay, TimeParseError> {
+func ReadTime(reader: &var Reader) -> TimeOfDay ! TimeParseError {
     let hourAt = reader.at;
     let hour = Digits(reader, 2u)?;
     if hour > 23u32 {
-        return Result::Error<TimeOfDay, TimeParseError>(TimeParseError::InvalidTime(hourAt));
+        fail TimeParseError::InvalidTime(hourAt);
     }
     Literal(reader, c8':')?;
     let minuteAt = reader.at;
     let minute = Digits(reader, 2u)?;
     if minute > 59u32 {
-        return Result::Error<TimeOfDay, TimeParseError>(TimeParseError::InvalidTime(minuteAt));
+        fail TimeParseError::InvalidTime(minuteAt);
     }
     Literal(reader, c8':')?;
     let secondAt = reader.at;
     var second = Digits(reader, 2u)?;
     if second > 60u32 {
-        return Result::Error<TimeOfDay, TimeParseError>(TimeParseError::InvalidTime(secondAt));
+        fail TimeParseError::InvalidTime(secondAt);
     }
 
     var nanosecond: uint32 = 0;
@@ -168,7 +167,7 @@ func ReadTime(reader: &var Reader) -> Result<TimeOfDay, TimeParseError> {
         var taken: uint = 0;
         while reader.at < reader.text.length && IsDigit(reader.text.data[reader.at]) {
             if taken == 9u {
-                return Result::Error<TimeOfDay, TimeParseError>(TimeParseError::ExcessiveFraction(reader.at));
+                fail TimeParseError::ExcessiveFraction(reader.at);
             }
             nanosecond = nanosecond + ((reader.text.data[reader.at] as uint32) - 0x30u32) * scale;
             scale = scale / 10u32;
@@ -176,7 +175,7 @@ func ReadTime(reader: &var Reader) -> Result<TimeOfDay, TimeParseError> {
             reader.at = reader.at + 1;
         }
         if taken == 0u {
-            return Result::Error<TimeOfDay, TimeParseError>(TimeParseError::InvalidSyntax(firstDigit));
+            fail TimeParseError::InvalidSyntax(firstDigit);
         }
     }
 
@@ -188,25 +187,25 @@ func ReadTime(reader: &var Reader) -> Result<TimeOfDay, TimeParseError> {
         nanosecond = 999999999u32;
     }
     let made = TimeOfDay::New(hour as uint8, minute as uint8, second as uint8, nanosecond);
-    if made.IsNone() {
-        return Result::Error<TimeOfDay, TimeParseError>(TimeParseError::InvalidTime(hourAt));
+    if made == none {
+        fail TimeParseError::InvalidTime(hourAt);
     }
-    return Result::Success<TimeOfDay, TimeParseError>(made.ValueOr(TimeOfDay::Midnight()));
+    return (made ?? TimeOfDay::Midnight());
 }
 
 // Reads `Z`, `z`, `+HH:MM` or `-HH:MM`.
-func ReadOffset(reader: &var Reader) -> Result<UtcOffset, TimeParseError> {
+func ReadOffset(reader: &var Reader) -> UtcOffset ! TimeParseError {
     if reader.at >= reader.text.length {
-        return Result::Error<UtcOffset, TimeParseError>(TimeParseError::InvalidSyntax(reader.text.length));
+        fail TimeParseError::InvalidSyntax(reader.text.length);
     }
     let signAt = reader.at;
     let mark = reader.text.data[reader.at];
     if mark == c8'Z' || mark == c8'z' {
         reader.at = reader.at + 1;
-        return Result::Success<UtcOffset, TimeParseError>(UtcOffset::Utc());
+        return UtcOffset::Utc();
     }
     if mark != c8'+' && mark != c8'-' {
-        return Result::Error<UtcOffset, TimeParseError>(TimeParseError::InvalidSyntax(reader.at));
+        fail TimeParseError::InvalidSyntax(reader.at);
     }
     reader.at = reader.at + 1;
     let hours = Digits(reader, 2u)?;
@@ -219,18 +218,18 @@ func ReadOffset(reader: &var Reader) -> Result<UtcOffset, TimeParseError> {
         signedMinutes = 0i32 - signedMinutes;
     }
     let made = UtcOffset::Of(signedHours, signedMinutes);
-    if made.IsNone() {
-        return Result::Error<UtcOffset, TimeParseError>(TimeParseError::InvalidOffset(signAt));
+    if made == none {
+        fail TimeParseError::InvalidOffset(signAt);
     }
-    return Result::Success<UtcOffset, TimeParseError>(made.ValueOr(UtcOffset::Utc()));
+    return (made ?? UtcOffset::Utc());
 }
 
 // Reports text left over after a complete value, which is a syntax failure at the first unread byte.
-func AtEnd(reader: &Reader) -> Result<Unit, TimeParseError> {
+func AtEnd(reader: &Reader) -> ! TimeParseError {
     if reader.at != reader.text.length {
-        return Result::Error<Unit, TimeParseError>(TimeParseError::InvalidSyntax(reader.at));
+        fail TimeParseError::InvalidSyntax(reader.at);
     }
-    return Result::Success<Unit, TimeParseError>(Unit {});
+    return;
 }
 
 /// Reads `YYYY-MM-DD`.
@@ -244,11 +243,11 @@ func AtEnd(reader: &Reader) -> Result<Unit, TimeParseError> {
 /// @param text the text to read
 /// @returns the date, or why the text is not one
 /// @see https://rux-lang.dev/docs/api/time/parse-date
-pub func ParseDate(text: char8[..]) -> Result<Date, TimeParseError> {
+pub func ParseDate(text: char8[..]) -> Date ! TimeParseError {
     var reader = Reader { text: text, at: 0 };
     let date = ReadDate(reader)?;
     AtEnd(reader)?;
-    return Result::Success<Date, TimeParseError>(date);
+    return date;
 }
 
 /// Reads `HH:MM:SS` with an optional fractional second.
@@ -260,11 +259,11 @@ pub func ParseDate(text: char8[..]) -> Result<Date, TimeParseError> {
 /// @param text the text to read
 /// @returns the time of day, or why the text is not one
 /// @see https://rux-lang.dev/docs/api/time/parse-time-of-day
-pub func ParseTimeOfDay(text: char8[..]) -> Result<TimeOfDay, TimeParseError> {
+pub func ParseTimeOfDay(text: char8[..]) -> TimeOfDay ! TimeParseError {
     var reader = Reader { text: text, at: 0 };
     let time = ReadTime(reader)?;
     AtEnd(reader)?;
-    return Result::Success<TimeOfDay, TimeParseError>(time);
+    return time;
 }
 
 /// Reads `YYYY-MM-DDTHH:MM:SS[.fraction]`, with no offset.
@@ -279,13 +278,13 @@ pub func ParseTimeOfDay(text: char8[..]) -> Result<TimeOfDay, TimeParseError> {
 /// @param text the text to read
 /// @returns the local date and time, or why the text is not one
 /// @see https://rux-lang.dev/docs/api/time/parse-date-time
-pub func ParseDateTime(text: char8[..]) -> Result<DateTime, TimeParseError> {
+pub func ParseDateTime(text: char8[..]) -> DateTime ! TimeParseError {
     var reader = Reader { text: text, at: 0 };
     let date = ReadDate(reader)?;
     ReadSeparator(reader)?;
     let time = ReadTime(reader)?;
     AtEnd(reader)?;
-    return Result::Success<DateTime, TimeParseError>(DateTime { date: date, time: time });
+    return DateTime { date: date, time: time };
 }
 
 /// Reads `YYYY-MM-DDTHH:MM:SS[.fraction](Z|+HH:MM|-HH:MM)`.
@@ -302,13 +301,13 @@ pub func ParseDateTime(text: char8[..]) -> Result<DateTime, TimeParseError> {
 /// @param text the text to read
 /// @returns the moment with the offset it was stated in, or why the text is not one
 /// @see https://rux-lang.dev/docs/api/time/parse-rfc3339
-pub func ParseRfc3339(text: char8[..]) -> Result<OffsetDateTime, TimeParseError> {
+pub func ParseRfc3339(text: char8[..]) -> OffsetDateTime ! TimeParseError {
     var reader = Reader { text: text, at: 0 };
     let date = ReadDate(reader)?;
     ReadSeparator(reader)?;
     let time = ReadTime(reader)?;
     let offset = ReadOffset(reader)?;
     AtEnd(reader)?;
-    return Result::Success<OffsetDateTime, TimeParseError>(
-        OffsetDateTime(DateTime { date: date, time: time }, offset));
+    return
+        OffsetDateTime(DateTime { date: date, time: time }, offset);
 }

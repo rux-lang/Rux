@@ -87,7 +87,7 @@ func RoundTrips(value: Timestamp) -> bool {
     if Failed(shown.WriteDisplay(writer, FormatSpec::Plain())) { return false; }
     return match ParseRfc3339(writer.Written()) {
         .Success(parsed) => parsed.ToTimestamp().Equals(value),
-        .Error(_) => false
+        .Failure(_) => false
     };
 }
 

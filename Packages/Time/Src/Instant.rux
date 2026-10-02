@@ -8,7 +8,7 @@
 // Sleeping used to live here, because it is the same clock's other direction. It moved to `Sleep.rux` when it
 // grew a failure to report and a chunking loop to drive, which is more than a clock reading needs next to it.
 
-import Core::{ #target, #Error, Option };
+import Core::{ #target, #Error };
 
 when #target.os {
     .FreeBSD => import FreeBSD::{ ClockGetTime, ClockMonotonic, Timespec },
@@ -65,12 +65,12 @@ extend Instant {
     /// @param earlier the earlier reading
     /// @returns the time between the two readings, or `None` when `earlier` is not earlier
     /// @see https://rux-lang.dev/docs/api/time/instant/since
-    pub func Since(self: &Instant, earlier: Instant) -> Option<Duration> {
-        if self.ticks < earlier.ticks { return Option::None<Duration>(); }
+    pub func Since(self: &Instant, earlier: Instant) -> Duration? {
+        if self.ticks < earlier.ticks { return none; }
         let gap = self.ticks - earlier.ticks;
         var result = Duration::FromSeconds((gap / 1000000000u64) as int64);
         result.nanoseconds = (gap % 1000000000u64) as uint32;
-        return Option::Some<Duration>(result);
+        return result;
     }
 
     /// The time from this reading to now.
@@ -79,6 +79,6 @@ extend Instant {
     /// @see https://rux-lang.dev/docs/api/time/instant/elapsed
     pub func Elapsed(self: &Instant) -> Duration {
         let now = Instant::Now();
-        return now.Since(Instant { ticks: self.ticks }).ValueOr(Duration::Zero());
+        return now.Since(Instant { ticks: self.ticks }) ?? Duration::Zero();
     }
 }

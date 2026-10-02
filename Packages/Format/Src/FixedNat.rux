@@ -25,7 +25,6 @@
 // workspace at its capacity does the work in a local copy and commits it on success. The copy happens on the path
 // that is about to report a defect anyway.
 
-import Core::{ Result, Unit };
 
 /// How many sixty-four-bit limbs a `FixedNat` holds.
 ///

@@ -18,7 +18,6 @@
 // strictly between two midpoints, which rounds one way with no tie to resolve. Below that bound the retained
 // digits are the value exactly and a tie really is a tie.
 
-import Core::{ Result, Unit };
 
 /// How many significant digits a narrow float reader keeps before the rest becomes a sticky bit.
 ///

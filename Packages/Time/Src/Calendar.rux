@@ -8,7 +8,7 @@
 // Leap seconds are deliberately absent from `TimeOfDay`: a second is 0 to 59, and what to do about 23:59:60 is a
 // parsing policy decided where text comes in, not a representation question.
 
-import Core::{ AddChecked, MulChecked, Option, Ordering };
+import Core::{ AddChecked, MulChecked, Ordering };
 
 /// A calendar date that exists.
 ///
@@ -58,9 +58,9 @@ extend Date {
     /// @param day the day of the month, counting from one
     /// @returns the date, or `None` when the components do not name one
     /// @see https://rux-lang.dev/docs/api/time/date/new
-    pub func New(year: int32, month: uint8, day: uint8) -> Option<Date> {
-        if day < 1u8 || day > DaysInMonth(year, month) { return Option::None<Date>(); }
-        return Option::Some<Date>(Date { year: year, month: month, day: day });
+    pub func New(year: int32, month: uint8, day: uint8) -> Date? {
+        if day < 1u8 || day > DaysInMonth(year, month) { return none; }
+        return .Some(Date { year: year, month: month, day: day });
     }
 
     /// Days since 1970-01-01, negative before it.
@@ -173,11 +173,11 @@ extend TimeOfDay {
     /// @param nanosecond the nanosecond within the second
     /// @returns the time, or `None` when the components do not name one
     /// @see https://rux-lang.dev/docs/api/time/time-of-day/new
-    pub func New(hour: uint8, minute: uint8, second: uint8, nanosecond: uint32) -> Option<TimeOfDay> {
+    pub func New(hour: uint8, minute: uint8, second: uint8, nanosecond: uint32) -> TimeOfDay? {
         if hour > 23u8 || minute > 59u8 || second > 59u8 || nanosecond > 999999999u32 {
-            return Option::None<TimeOfDay>();
+            return none;
         }
-        return Option::Some<TimeOfDay>(TimeOfDay {
+        return .Some(TimeOfDay {
             hour: hour,
             minute: minute,
             second: second,
@@ -232,11 +232,11 @@ extend UtcOffset {
     /// @param minutes how many minutes
     /// @returns the offset, or `None` when it is outside the range UTC offsets take
     /// @see https://rux-lang.dev/docs/api/time/utc-offset/of
-    pub func Of(hours: int32, minutes: int32) -> Option<UtcOffset> {
-        if hours > 23i32 || hours < -23i32 || minutes > 59i32 || minutes < -59i32 { return Option::None<UtcOffset>(); }
-        if hours > 0i32 && minutes < 0i32 { return Option::None<UtcOffset>(); }
-        if hours < 0i32 && minutes > 0i32 { return Option::None<UtcOffset>(); }
-        return Option::Some<UtcOffset>(UtcOffset { seconds: hours * 3600i32 + minutes * 60i32 });
+    pub func Of(hours: int32, minutes: int32) -> UtcOffset? {
+        if hours > 23i32 || hours < -23i32 || minutes > 59i32 || minutes < -59i32 { return none; }
+        if hours > 0i32 && minutes < 0i32 { return none; }
+        if hours < 0i32 && minutes > 0i32 { return none; }
+        return .Some(UtcOffset { seconds: hours * 3600i32 + minutes * 60i32 });
     }
 
     /// The whole seconds east of UTC, negative west.

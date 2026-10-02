@@ -40,15 +40,15 @@ func Refused(value: Display, spec: FormatSpec) -> bool {
 }
 
 func DateOf(year: int32, month: uint8, day: uint8) -> Date {
-    return Date::New(year, month, day).ValueOr(Date::FromEpochDays(0i64));
+    return (Date::New(year, month, day) ?? Date::FromEpochDays(0i64));
 }
 
 func TimeOf(hour: uint8, minute: uint8, second: uint8, nanosecond: uint32) -> TimeOfDay {
-    return TimeOfDay::New(hour, minute, second, nanosecond).ValueOr(TimeOfDay::Midnight());
+    return (TimeOfDay::New(hour, minute, second, nanosecond) ?? TimeOfDay::Midnight());
 }
 
 func OffsetOf(hours: int32, minutes: int32) -> UtcOffset {
-    return UtcOffset::Of(hours, minutes).ValueOr(UtcOffset::Utc());
+    return (UtcOffset::Of(hours, minutes) ?? UtcOffset::Utc());
 }
 
 func Main() -> int {
