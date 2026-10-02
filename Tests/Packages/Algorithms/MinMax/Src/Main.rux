@@ -1,5 +1,5 @@
 import Algorithms::{ Clamp, ClampBy, Max, MaxIndex, MaxIndexBy, Min, MinIndex, MinIndexBy, MinMaxIndex, MinMaxIndexBy };
-import Core::{ Assert, Ordering };
+import Core::{ Assert, Ordering, Panic };
 
 // The smallest and largest of a sequence. Two things are worth pinning down beyond the obvious: an empty slice has
 // no answer at all rather than a sentinel one, and a tie goes to the earliest index — which is only observable if
@@ -40,16 +40,16 @@ func Main() -> int {
     let single = (@storage[0])[..1];
 
     var at: uint = 0;
-    Assert(MinIndex<int32>(items).TryIntoValue(@at) && at == 1, "the smallest element is found");
-    Assert(MaxIndex<int32>(items).TryIntoValue(@at) && at == 2, "and the largest");
-    Assert(MinIndex<int32>(single).TryIntoValue(@at) && at == 0, "a single element is both");
-    Assert(MaxIndex<int32>(single).TryIntoValue(@at) && at == 0, "smallest and largest");
-    Assert(MinIndex<int32>(empty).IsNone(), "an empty slice has no smallest element");
-    Assert(MaxIndex<int32>(empty).IsNone(), "and no largest");
+    Assert(MinIndex<int32>(items) == .Some(1), "the smallest element is found");
+    Assert(MaxIndex<int32>(items) == .Some(2), "and the largest");
+    Assert(MinIndex<int32>(single) == .Some(0), "a single element is both");
+    Assert(MaxIndex<int32>(single) == .Some(0), "smallest and largest");
+    Assert(MinIndex<int32>(empty) == none, "an empty slice has no smallest element");
+    Assert(MaxIndex<int32>(empty) == none, "and no largest");
 
     // Ties go to the earliest, which the repeated 2 and 9 above are there to show.
-    Assert(MinIndex<int32>(items).TryIntoValue(@at) && at == 1, "the earliest of equal smallest elements wins");
-    Assert(MaxIndex<int32>(items).TryIntoValue(@at) && at == 2, "and the earliest of equal largest ones");
+    Assert(MinIndex<int32>(items) == .Some(1), "the earliest of equal smallest elements wins");
+    Assert(MaxIndex<int32>(items) == .Some(2), "and the earliest of equal largest ones");
 
     // One pass gives both, and agrees with the two separate searches.
     var low: uint = 0;
@@ -71,18 +71,22 @@ func Main() -> int {
     ranked[4] = Ranked { key: 8, origin: 104 };
     let records = (@ranked[0])[..5];
 
-    Assert(MinIndex<Ranked>(records).TryIntoValue(@at) && at == 1, "the type's own ordering finds the smallest");
+    at = MinIndex<Ranked>(records) ?? Panic("the type's own ordering finds the smallest");
+    Assert(at == 1, "the type's own ordering finds the smallest");
     Assert(ranked[at].origin == 101, "and takes the earliest of the tie");
-    Assert(MaxIndex<Ranked>(records).TryIntoValue(@at) && at == 2, "and the largest");
+    at = MaxIndex<Ranked>(records) ?? Panic("and the largest");
+    Assert(at == 2, "and the largest");
     Assert(ranked[at].origin == 102, "also the earliest of its tie");
 
-    Assert(MinIndexBy<Ranked>(records, ByKeyDescending).TryIntoValue(@at) && at == 2,
+    at = MinIndexBy<Ranked>(records, ByKeyDescending) ?? Panic("a reversed comparator makes the largest key the smallest element");
+    Assert(at == 2,
            "a reversed comparator makes the largest key the smallest element");
     Assert(ranked[at].origin == 102, "still taking the earliest of the tie");
-    Assert(MaxIndexBy<Ranked>(records, ByKeyDescending).TryIntoValue(@at) && at == 1,
+    at = MaxIndexBy<Ranked>(records, ByKeyDescending) ?? Panic("and the smallest key the largest element");
+    Assert(at == 1,
            "and the smallest key the largest element");
     let noRanks: Ranked[..] = [];
-    Assert(MinIndexBy<Ranked>(noRanks, ByKeyDescending).IsNone(),
+    Assert(MinIndexBy<Ranked>(noRanks, ByKeyDescending) == none,
            "an empty slice has no answer under any comparator");
 
     Assert(MinMaxIndexBy<Ranked>(records, ByKeyDescending, @low, @high), "one pass under a comparator reports both");

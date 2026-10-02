@@ -1,5 +1,5 @@
 import Algorithms::{ AllOf, AnyOf, Compare, CompareBy, Contains, Count, CountWhere, IndexOf, IndexWhere, LastIndexOf, LastIndexWhere, Mismatch, NoneOf, SequenceEqual };
-import Core::{ Assert, Ordering };
+import Core::{ Assert, Ordering, Panic };
 
 // The linear queries. What is worth checking is not that a search finds a match — it is the boundaries: an empty
 // slice, a match at the first position, a match at the last, no match at all, and the difference between the first
@@ -69,21 +69,21 @@ func Main() -> int {
 
     // First and last are genuinely different answers when a value repeats.
     var at: uint = 0;
-    Assert(IndexOf<int32>(items, 4).TryIntoValue(@at), "a present value has an index");
+    at = IndexOf<int32>(items, 4) ?? Panic("a present value has an index");
     Assert(at == 0, "which is the first occurrence");
-    Assert(LastIndexOf<int32>(items, 4).TryIntoValue(@at), "and a last one");
+    at = LastIndexOf<int32>(items, 4) ?? Panic("and a last one");
     Assert(at == 5, "which is the last occurrence");
-    Assert(IndexOf<int32>(items, 1).TryIntoValue(@at) && at == 6, "a match at the very end is found");
-    Assert(LastIndexOf<int32>(items, 7).TryIntoValue(@at) && at == 1, "and a single match is both first and last");
-    Assert(IndexOf<int32>(items, 5).IsNone(), "an absent value has no index");
-    Assert(LastIndexOf<int32>(items, 5).IsNone(), "from either end");
-    Assert(IndexOf<int32>(empty, 4).IsNone(), "and an empty slice never matches");
+    Assert(IndexOf<int32>(items, 1) == .Some(6), "a match at the very end is found");
+    Assert(LastIndexOf<int32>(items, 7) == .Some(1), "and a single match is both first and last");
+    Assert(IndexOf<int32>(items, 5) == none, "an absent value has no index");
+    Assert(LastIndexOf<int32>(items, 5) == none, "from either end");
+    Assert(IndexOf<int32>(empty, 4) == none, "and an empty slice never matches");
 
     // Predicates answer the same questions without an equality.
-    Assert(IndexWhere<int32>(items, IsEven).TryIntoValue(@at) && at == 0, "the first accepted element");
-    Assert(LastIndexWhere<int32>(items, IsEven).TryIntoValue(@at) && at == 5, "and the last");
-    Assert(IndexWhere<int32>(items, IsNegative).IsNone(), "a predicate nothing satisfies finds nothing");
-    Assert(LastIndexWhere<int32>(items, IsNegative).IsNone(), "from either end");
+    Assert(IndexWhere<int32>(items, IsEven) == .Some(0), "the first accepted element");
+    Assert(LastIndexWhere<int32>(items, IsEven) == .Some(5), "and the last");
+    Assert(IndexWhere<int32>(items, IsNegative) == none, "a predicate nothing satisfies finds nothing");
+    Assert(LastIndexWhere<int32>(items, IsNegative) == none, "from either end");
     Assert(CountWhere<int32>(items, IsEven) == 4, "and counts what it accepts");
     Assert(CountWhere<int32>(empty, IsEven) == 0, "an empty slice satisfies no predicate anywhere");
 
@@ -104,17 +104,17 @@ func Main() -> int {
         other[index] = storage[index];
         index++;
     }
-    Assert(Mismatch<int32>(items, Ints(@other[0], 7)).IsNone(), "identical slices never differ");
+    Assert(Mismatch<int32>(items, Ints(@other[0], 7)) == none, "identical slices never differ");
     Assert(SequenceEqual<int32>(items, Ints(@other[0], 7)), "and are equal");
     other[3] = 100;
-    Assert(Mismatch<int32>(items, Ints(@other[0], 7)).TryIntoValue(@at) && at == 3, "the first difference is reported");
+    Assert(Mismatch<int32>(items, Ints(@other[0], 7)) == .Some(3), "the first difference is reported");
     Assert(!SequenceEqual<int32>(items, Ints(@other[0], 7)), "and makes them unequal");
     other[3] = storage[3];
-    Assert(Mismatch<int32>(items, Ints(@other[0], 4)).TryIntoValue(@at) && at == 4,
+    Assert(Mismatch<int32>(items, Ints(@other[0], 4)) == .Some(4),
            "a prefix differs where the shorter one ends");
     Assert(!SequenceEqual<int32>(items, Ints(@other[0], 4)), "and a prefix is not equal to the whole");
     Assert(SequenceEqual<int32>(empty, Ints(null, 0)), "two empty slices are equal");
-    Assert(Mismatch<int32>(empty, Ints(null, 0)).IsNone(), "and never differ");
+    Assert(Mismatch<int32>(empty, Ints(null, 0)) == none, "and never differ");
 
     // Lexicographic ordering: the first difference decides, and length breaks a tie.
     Assert(Compare<int32>(items, Ints(@other[0], 7)).IsEqual(), "identical slices compare equal");

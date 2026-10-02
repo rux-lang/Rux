@@ -1,5 +1,5 @@
 import Algorithms::{ Fold, FoldRight, IsHeap, IsHeapBy, IsHeapUntil, IsSorted, MakeHeap, MakeHeapBy, MaxIndex, PopHeap, Product, PushHeap, PushHeapBy, SortHeap, SortHeapBy, Sum, Transform };
-import Core::{ Assert, Ordering };
+import Core::{ Assert, Ordering, Panic };
 
 // A heap is an arrangement rather than an order, so what is checked is the arrangement itself — every element at
 // least as large as its children — rather than any particular layout. That way the test does not depend on which of
@@ -88,8 +88,7 @@ func Main() -> int {
         PushHeap<int32>(Ints(@pushed[0], count));
         Assert(IsHeap<int32>(ReadInts(@pushed[0], count)), "the heap property survives every push");
         var largest: uint = 0;
-        Assert(MaxIndex<int32>(ReadInts(@pushed[0], count)).TryIntoValue(@largest),
-               "and a non-empty heap has a largest element");
+        largest = MaxIndex<int32>(ReadInts(@pushed[0], count)) ?? Panic("and a non-empty heap has a largest element");
         Assert(largest == 0 || pushed[0] == pushed[largest], "which is at the front");
         index++;
     }

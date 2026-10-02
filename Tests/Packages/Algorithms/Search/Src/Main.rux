@@ -1,6 +1,6 @@
 
 import Algorithms::{ BinarySearch, BinarySearchBy, EqualRange, EqualRangeBy, IsSorted, IsSortedBy, IsSortedUntil, IsSortedUntilBy, LowerBound, LowerBoundBy, UpperBound, UpperBoundBy };
-import Core::{ Assert, Ordering };
+import Core::{ Assert, Ordering, Panic };
 
 // The ordered searches. A binary search is easy to write in a way that works on the cases anyone thinks to try and
 // fails on the ones nobody does, so what is checked here is the boundaries: a value before everything, after
@@ -73,13 +73,13 @@ func CheckBounds(items: int32[..], value: int32, wantLower: uint, wantUpper: uin
 
     var at: uint = 0;
     if wantLower == wantUpper {
-        Assert(BinarySearch<int32>(items, value).IsNone(), "an empty range means the value is absent");
-        Assert(BinarySearchBy<int32>(items, value, LessInt32).IsNone(), "under a comparator too");
+        Assert(BinarySearch<int32>(items, value) == none, "an empty range means the value is absent");
+        Assert(BinarySearchBy<int32>(items, value, LessInt32) == none, "under a comparator too");
     }
     else {
-        Assert(BinarySearch<int32>(items, value).TryIntoValue(@at), "a non-empty range means the value is present");
+        at = BinarySearch<int32>(items, value) ?? Panic("a non-empty range means the value is present");
         Assert(at == wantLower, "and the first of the equal elements is the one reported");
-        Assert(BinarySearchBy<int32>(items, value, LessInt32).TryIntoValue(@at) && at == wantLower,
+        Assert(BinarySearchBy<int32>(items, value, LessInt32) == .Some(wantLower),
                "which a comparator agrees with");
     }
 }
@@ -154,17 +154,18 @@ func Main() -> int {
     Assert(LowerBoundBy<Ranked>(records, probe, ByKey) == 1, "the lower bound of an equivalent key");
     Assert(UpperBoundBy<Ranked>(records, probe, ByKey) == 3, "and its upper bound");
     var at: uint = 0;
-    Assert(BinarySearchBy<Ranked>(records, probe, ByKey).TryIntoValue(@at), "an equivalent key is found");
+    at = BinarySearchBy<Ranked>(records, probe, ByKey) ?? Panic("an equivalent key is found");
     Assert(at == 1, "as the first of the equals");
     Assert(ranked[at].origin == 101, "which is the element the sequence puts first, not whichever was landed on");
 
     let missing = Ranked { key: 3, origin: 0 };
-    Assert(BinarySearchBy<Ranked>(records, missing, ByKey).IsNone(), "a key nothing matches is not found");
+    Assert(BinarySearchBy<Ranked>(records, missing, ByKey) == none, "a key nothing matches is not found");
     let gap = EqualRangeBy<Ranked>(records, missing, ByKey);
     Assert(gap.start == 3 && gap.end == 3, "and its range is empty where it would be inserted");
 
     // Equality here is the ordering's rather than the type's: these records differ in a field it never reads.
-    Assert(BinarySearch<Ranked>(records, probe).TryIntoValue(@at) && at == 1,
+    at = BinarySearch<Ranked>(records, probe) ?? Panic("the type's own ordering finds it in the same place");
+    Assert(at == 1,
            "the type's own ordering finds it in the same place");
 
     // A large sorted slice, so the search really divides rather than scanning.
@@ -180,9 +181,9 @@ func Main() -> int {
     while index < 64 {
         let present = (index * 2) as int32;
         var found: uint = 0;
-        Assert(BinarySearch<int32>(wide, present).TryIntoValue(@found), "every present value is found");
+        found = BinarySearch<int32>(wide, present) ?? Panic("every present value is found");
         Assert(found == index, "at its own index");
-        Assert(BinarySearch<int32>(wide, present + 1).IsNone(), "and every absent one is not");
+        Assert(BinarySearch<int32>(wide, present + 1) == none, "and every absent one is not");
         Assert(LowerBound<int32>(wide, present + 1) == index + 1, "with the gap's bound just past it");
         index++;
     }

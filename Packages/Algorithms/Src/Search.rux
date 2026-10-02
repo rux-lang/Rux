@@ -16,7 +16,7 @@
 //
 // Nothing here allocates or writes.
 
-import Core::{ Option, Ordering };
+import Core::Ordering;
 
 /// Whether `items` is in non-decreasing order.
 ///
@@ -121,7 +121,7 @@ pub func UpperBound<T>(items: T[..], value: T) -> uint {
 
 /// The index of an element of `items` equal to `value`.
 ///
-/// `items` is borrowed and read; `value` is read by value. Reports `None` when no element is equal. When several
+/// `items` is borrowed and read; `value` is read by value. Reports `none` when no element is equal. When several
 /// are, the one reported is the first of them, which makes the answer depend on the sequence rather than on how the
 /// search happened to divide it.
 ///
@@ -134,12 +134,12 @@ pub func UpperBound<T>(items: T[..], value: T) -> uint {
 /// @typeParam T the element type
 /// @param items the sequence to work on
 /// @param value the value to look for
-/// @returns the index of a matching element, or `None`; which one is unspecified when several match
+/// @returns the index of a matching element, or `none`; which one is unspecified when several match
 /// @see https://rux-lang.dev/docs/api/algorithms/binary-search
-pub func BinarySearch<T>(items: T[..], value: T) -> Option<uint> {
+pub func BinarySearch<T>(items: T[..], value: T) -> uint? {
     let at = LowerBound<T>(items, value);
-    if at < items.length && !(value < items.data[at]) { return Option::Some<uint>(at); }
-    return Option::None<uint>();
+    if at < items.length && !(value < items.data[at]) { return at; }
+    return none;
 }
 
 /// The range of positions in `items` holding elements equal to `value`.
@@ -257,7 +257,7 @@ pub func UpperBoundBy<T>(items: T[..], value: T, compare: func(T, T) -> Ordering
 
 /// The index of an element of `items` that `compare` calls equal to `value`.
 ///
-/// `items` is borrowed and read; `value` is read by value. Reports `None` when no element is equal, and the first of
+/// `items` is borrowed and read; `value` is read by value. Reports `none` when no element is equal, and the first of
 /// them when several are. `compare` must be the order `items` was sorted by.
 ///
 /// Cannot fail. Runs in time proportional to the logarithm of the length and allocates nothing beyond whatever
@@ -267,12 +267,12 @@ pub func UpperBoundBy<T>(items: T[..], value: T, compare: func(T, T) -> Ordering
 /// @param items the sequence to work on
 /// @param value the value to look for
 /// @param compare how two elements order against each other
-/// @returns the index of a matching element under `compare`, or `None`
+/// @returns the index of a matching element under `compare`, or `none`
 /// @see https://rux-lang.dev/docs/api/algorithms/binary-search-by
-pub func BinarySearchBy<T>(items: T[..], value: T, compare: func(T, T) -> Ordering) -> Option<uint> {
+pub func BinarySearchBy<T>(items: T[..], value: T, compare: func(T, T) -> Ordering) -> uint? {
     let at = LowerBoundBy<T>(items, value, compare);
-    if at < items.length && !compare(value, items.data[at]).IsLess() { return Option::Some<uint>(at); }
-    return Option::None<uint>();
+    if at < items.length && !compare(value, items.data[at]).IsLess() { return at; }
+    return none;
 }
 
 /// The range of positions in `items` holding elements `compare` calls equal to `value`.

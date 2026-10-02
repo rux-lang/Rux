@@ -1,7 +1,7 @@
 // The smallest and largest elements of a sequence, and clamping a value into a range.
 //
 // Every search here answers with an index rather than a value, because the index is the more useful answer and the
-// value is one dereference away. An empty slice has no smallest element, so the answer is `None` rather than a
+// value is one dereference away. An empty slice has no smallest element, so the answer is `none` rather than a
 // sentinel index or a default-constructed value that was never in the sequence.
 //
 // Ties go to the first: `MinIndex` reports the earliest of several equal smallest elements, and `MaxIndex` the
@@ -11,11 +11,11 @@
 // The plain forms need `<` on the element type. The `By` forms take a three-way comparison instead, which is what to
 // use when the element has no ordering of its own, or when the wanted order is not its own.
 
-import Core::{ Option, Ordering };
+import Core::Ordering;
 
 /// The index of the smallest element of `items`.
 ///
-/// `items` is borrowed and read. Reports `None` for an empty slice, and the earliest index when several elements
+/// `items` is borrowed and read. Reports `none` for an empty slice, and the earliest index when several elements
 /// tie.
 ///
 /// Requires `<` on the element type.
@@ -24,10 +24,10 @@ import Core::{ Option, Ordering };
 ///
 /// @typeParam T the element type
 /// @param items the sequence to work on
-/// @returns the index of the smallest element, the first when several tie, or `None` when empty
+/// @returns the index of the smallest element, the first when several tie, or `none` when empty
 /// @see https://rux-lang.dev/docs/api/algorithms/min-index
-pub func MinIndex<T>(items: T[..]) -> Option<uint> {
-    if items.length == 0 { return Option::None<uint>(); }
+pub func MinIndex<T>(items: T[..]) -> uint? {
+    if items.length == 0 { return none; }
     var best: uint = 0;
     var index: uint = 1;
     while index < items.length {
@@ -36,12 +36,12 @@ pub func MinIndex<T>(items: T[..]) -> Option<uint> {
         }
         index++;
     }
-    return Option::Some<uint>(best);
+    return best;
 }
 
 /// The index of the largest element of `items`.
 ///
-/// `items` is borrowed and read. Reports `None` for an empty slice, and the earliest index when several elements
+/// `items` is borrowed and read. Reports `none` for an empty slice, and the earliest index when several elements
 /// tie.
 ///
 /// Requires `<` on the element type.
@@ -50,10 +50,10 @@ pub func MinIndex<T>(items: T[..]) -> Option<uint> {
 ///
 /// @typeParam T the element type
 /// @param items the sequence to work on
-/// @returns the index of the largest element, the first when several tie, or `None` when empty
+/// @returns the index of the largest element, the first when several tie, or `none` when empty
 /// @see https://rux-lang.dev/docs/api/algorithms/max-index
-pub func MaxIndex<T>(items: T[..]) -> Option<uint> {
-    if items.length == 0 { return Option::None<uint>(); }
+pub func MaxIndex<T>(items: T[..]) -> uint? {
+    if items.length == 0 { return none; }
     var best: uint = 0;
     var index: uint = 1;
     while index < items.length {
@@ -62,12 +62,12 @@ pub func MaxIndex<T>(items: T[..]) -> Option<uint> {
         }
         index++;
     }
-    return Option::Some<uint>(best);
+    return best;
 }
 
 /// The index of the smallest element of `items`, with `compare` deciding.
 ///
-/// `items` is borrowed and read; `compare` is called once per element after the first. Reports `None` for an empty
+/// `items` is borrowed and read; `compare` is called once per element after the first. Reports `none` for an empty
 /// slice, and the earliest index when several elements tie.
 ///
 /// Cannot fail. Runs in time proportional to the length and allocates nothing beyond whatever `compare` does.
@@ -75,10 +75,10 @@ pub func MaxIndex<T>(items: T[..]) -> Option<uint> {
 /// @typeParam T the element type
 /// @param items the sequence to work on
 /// @param compare how two elements order against each other
-/// @returns the index of the smallest element under `compare`, or `None` when empty
+/// @returns the index of the smallest element under `compare`, or `none` when empty
 /// @see https://rux-lang.dev/docs/api/algorithms/min-index-by
-pub func MinIndexBy<T>(items: T[..], compare: func(T, T) -> Ordering) -> Option<uint> {
-    if items.length == 0 { return Option::None<uint>(); }
+pub func MinIndexBy<T>(items: T[..], compare: func(T, T) -> Ordering) -> uint? {
+    if items.length == 0 { return none; }
     var best: uint = 0;
     var index: uint = 1;
     while index < items.length {
@@ -87,12 +87,12 @@ pub func MinIndexBy<T>(items: T[..], compare: func(T, T) -> Ordering) -> Option<
         }
         index++;
     }
-    return Option::Some<uint>(best);
+    return best;
 }
 
 /// The index of the largest element of `items`, with `compare` deciding.
 ///
-/// `items` is borrowed and read; `compare` is called once per element after the first. Reports `None` for an empty
+/// `items` is borrowed and read; `compare` is called once per element after the first. Reports `none` for an empty
 /// slice, and the earliest index when several elements tie.
 ///
 /// Cannot fail. Runs in time proportional to the length and allocates nothing beyond whatever `compare` does.
@@ -100,10 +100,10 @@ pub func MinIndexBy<T>(items: T[..], compare: func(T, T) -> Ordering) -> Option<
 /// @typeParam T the element type
 /// @param items the sequence to work on
 /// @param compare how two elements order against each other
-/// @returns the index of the largest element under `compare`, or `None` when empty
+/// @returns the index of the largest element under `compare`, or `none` when empty
 /// @see https://rux-lang.dev/docs/api/algorithms/max-index-by
-pub func MaxIndexBy<T>(items: T[..], compare: func(T, T) -> Ordering) -> Option<uint> {
-    if items.length == 0 { return Option::None<uint>(); }
+pub func MaxIndexBy<T>(items: T[..], compare: func(T, T) -> Ordering) -> uint? {
+    if items.length == 0 { return none; }
     var best: uint = 0;
     var index: uint = 1;
     while index < items.length {
@@ -112,7 +112,7 @@ pub func MaxIndexBy<T>(items: T[..], compare: func(T, T) -> Ordering) -> Option<
         }
         index++;
     }
-    return Option::Some<uint>(best);
+    return best;
 }
 
 /// The indices of the smallest and largest elements of `items`, in one pass.

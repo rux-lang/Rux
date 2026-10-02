@@ -1,5 +1,5 @@
 import Algorithms::{ CopyTo, Fill, MoveTo, Partition, PartitionPoint, RemoveValue, RemoveWhere, Reverse, Rotate, SequenceEqual, Swap, Unique };
-import Core::{ Assert };
+import Core::Assert;
 
 // Rearranging in place. Two things run through all of it: nothing resizes anything, and a removal reports how many
 // elements are left rather than shortening the storage it does not own. What lies past that count is unspecified, so

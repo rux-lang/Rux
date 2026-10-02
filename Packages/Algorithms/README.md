@@ -31,10 +31,10 @@ A **predicate-taking** function asks nothing of `T` at all — the caller's func
 
 ## What a search answers with
 
-A search that found something answers with the index it found, wrapped in an `Option`:
+A search that found something answers with the index it found, as an optional `uint?` that is `none` when nothing was found:
 
 ```rux
-func IndexOf<T>(items: T[..], value: T) -> Option<uint>
+func IndexOf<T>(items: T[..], value: T) -> uint?
 ```
 
 Not found is an ordinary outcome, not a failure, and a sentinel index is a bug waiting for the one sequence long enough to reach it. An empty slice is not a special case anywhere: it contains nothing, matches no search, satisfies every universal claim and no existential one.

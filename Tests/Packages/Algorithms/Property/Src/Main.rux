@@ -1,5 +1,5 @@
 import Algorithms::{ BinarySearch, IsHeap, IsSorted, LowerBound, MakeHeap, MaxIndex, MinIndex, Partition, RemoveValue, Reverse, Rotate, SequenceEqual, SortHeap, Sort, StableSort, Sum, Unique, UpperBound };
-import Core::{ Assert };
+import Core::{ Assert, Panic };
 
 // The phase gate for algorithms: every operation checked against a naive implementation of the same thing, over
 // pseudorandom sequences, at many lengths. A hand-written case checks what its author thought of; this checks what
@@ -147,10 +147,10 @@ func Main() -> int {
             Assert(UpperBound<int32>(sorted, probe) == high, "and the upper bound too");
             var found: uint = 0;
             if low == high {
-                Assert(BinarySearch<int32>(sorted, probe).IsNone(), "a value with an empty range is not found");
+                Assert(BinarySearch<int32>(sorted, probe) == none, "a value with an empty range is not found");
             }
             else {
-                Assert(BinarySearch<int32>(sorted, probe).TryIntoValue(@found), "a value in range is found");
+                found = BinarySearch<int32>(sorted, probe) ?? Panic("a value in range is found");
                 Assert(found == low, "at the first of its equals");
             }
             probe = probe + 1;
@@ -161,12 +161,12 @@ func Main() -> int {
         var largest: uint = 0;
         let unsorted = ReadInts(@values[0], length);
         if length == 0 {
-            Assert(MinIndex<int32>(unsorted).IsNone(), "an empty sequence has no smallest element");
-            Assert(MaxIndex<int32>(unsorted).IsNone(), "and no largest");
+            Assert(MinIndex<int32>(unsorted) == none, "an empty sequence has no smallest element");
+            Assert(MaxIndex<int32>(unsorted) == none, "and no largest");
         }
         else {
-            Assert(MinIndex<int32>(unsorted).TryIntoValue(@least), "a non-empty sequence has a smallest element");
-            Assert(MaxIndex<int32>(unsorted).TryIntoValue(@largest), "and a largest");
+            least = MinIndex<int32>(unsorted) ?? Panic("a non-empty sequence has a smallest element");
+            largest = MaxIndex<int32>(unsorted) ?? Panic("and a largest");
             Assert(values[least] == expected[0], "which is the first of the sorted sequence");
             Assert(values[largest] == expected[length - 1], "and the last");
         }
@@ -252,7 +252,7 @@ func Main() -> int {
         }
         index = 0;
         while index < length {
-            Assert(BinarySearch<int32>(ReadInts(@distinct[0], kept), working[index]).IsSome(),
+            Assert(BinarySearch<int32>(ReadInts(@distinct[0], kept), working[index]) != none,
                    "and every original value is still among them");
             index++;
         }
