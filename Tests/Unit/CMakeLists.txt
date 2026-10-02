@@ -14,6 +14,7 @@ set(RUX_TEST_SOURCES
     AArch64CallLayoutTests.cpp
     AArch64EncoderTests.cpp
     AArch64FramePlanTests.cpp
+    AArch64NativeCallTests.cpp
     AArch64ObjectTests.cpp
     AArch64RelocationTests.cpp
     AArch64RcuAbiTests.cpp
