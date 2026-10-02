@@ -159,14 +159,26 @@ func Generic<T, E>(value: T) -> T ! E {
 
 func HoldSuccess(counter: *var Counter) {
     let held: Tracked ! IoError = .Success(Make(counter, 1i32));
+    match held {
+        .Success(_) => {},
+        .Failure(_) => {}
+    }
 }
 
 func HoldFailure(counter: *var Counter) {
     let held: int32 ! Tracked = .Failure(Make(counter, 1i32));
+    match held {
+        .Success(_) => {},
+        .Failure(_) => {}
+    }
 }
 
 func HoldNested(counter: *var Counter) {
     let held: (Tracked ! IoError) ! IoError = .Success(.Success(Make(counter, 1i32)));
+    match held {
+        .Success(_) => {},
+        .Failure(_) => {}
+    }
 }
 
 func Discard(counter: *var Counter) {
@@ -193,7 +205,11 @@ func FailWith(counter: *var Counter) -> int32 ! Tracked {
 }
 
 func RunFail(counter: *var Counter) {
-    let failed = FailWith(counter);
+    // A two-channel match discards a fallible on purpose; its payload is still destroyed.
+    match FailWith(counter) {
+        .Success(_) => {},
+        .Failure(_) => {}
+    }
 }
 
 func Destroyed(run: func(*var Counter)) -> int32 {

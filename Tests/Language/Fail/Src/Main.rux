@@ -172,10 +172,16 @@ func Main() -> int ! ParseError {
     Assert(log == 21i32, "skipping the rest of the body");
 
     var counter = Counter { count: 0i32 };
-    let interrupted = Interrupted(@counter, -1i32);
-    Assert(counter.count == 1i32, "a completed field of an interrupted aggregate is destroyed");
-    let failed = Owned(@counter, -1i32);
-    Assert(counter.count == 2i32, "a local is destroyed when 'fail' leaves");
+    let interrupted = match Interrupted(@counter, -1i32) {
+        .Success(_) => false,
+        .Failure(_) => true
+    };
+    Assert(interrupted && counter.count == 1i32, "a completed field of an interrupted aggregate is destroyed");
+    let failed = match Owned(@counter, -1i32) {
+        .Success(_) => false,
+        .Failure(_) => true
+    };
+    Assert(failed && counter.count == 2i32, "a local is destroyed when 'fail' leaves");
 
     // A propagated success at the top level; a failure here would exit with status 1.
     let checked = Parse(0i32)?;

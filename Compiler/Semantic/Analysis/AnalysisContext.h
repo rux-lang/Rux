@@ -503,6 +503,20 @@ private:
     std::unordered_map<const Pattern *, PatternBindingMode> &patternBindingModes;
 
     PatternBorrow currentPatternBorrow = PatternBorrow::Owned;
+
+    /// A `let` holding a native fallible, checked for a read when its scope ends.
+    struct FallibleLocal {
+        const Symbol *symbol = nullptr;
+        const Scope *scope = nullptr;
+    };
+
+    std::vector<FallibleLocal> fallibleLocals;
+    /// Locals read as values; an assignment target is not a read.
+    std::unordered_set<const Symbol *> readSymbols;
+    /// Reports a native fallible result that an expression statement or a bare match-statement arm discards.
+    void CheckFallibleDiscard(const TypeRef &type, SourceLocation location);
+    /// Reports the fallible locals of the scope being closed that were never read.
+    void CheckUnreadFallibleLocals();
     /// Native constructors whose operand has already been handed over, so checking one twice never moves twice.
     std::unordered_set<const NativeConstructExpr *> consumedConstructorOperands;
     /// Whether each native match, keyed by its first arm's pattern, covers its subject, so control flow can ask after

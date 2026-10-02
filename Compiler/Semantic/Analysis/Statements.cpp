@@ -114,8 +114,45 @@ void AnalysisContext::PushScope() {
     moveStates.BeginScope();
 }
 
+void AnalysisContext::CheckFallibleDiscard(const TypeRef &type, const SourceLocation location) {
+    if (!type.IsFallible()) {
+        return;
+    }
+    // A constructor whose other channel no context completed has no type worth spelling.
+    EmitError(location,
+              type.IsIncompleteNative() ? std::string("constructed fallible value is discarded")
+                                        : std::format("fallible result of type '{}' is discarded", type.ToString()),
+              {"a failure that nothing handles is lost"},
+              "propagate it with '?', recover with 'catch', or match both '.Success' and '.Failure'");
+}
+
+void AnalysisContext::CheckUnreadFallibleLocals() {
+    std::erase_if(fallibleLocals, [&](const FallibleLocal &local) {
+        if (local.scope != currentScope) {
+            return false;
+        }
+        if (!readSymbols.contains(local.symbol)) {
+            // Binding a fallible to `_` discards it as surely as an expression statement does; a named local that is
+            // never read is a likely mistake rather than a certain one.
+            if (local.symbol->name == "_") {
+                EmitError(local.symbol->location,
+                          std::format("fallible result of type '{}' is discarded", local.symbol->type.ToString()),
+                          {"binding a fallible to '_' does not handle its failure"},
+                          "propagate it with '?', recover with 'catch', or match both '.Success' and '.Failure'");
+            }
+            else {
+                EmitWarning(
+                    local.symbol->location,
+                    std::format("fallible local '{}' is never read; its failure is never handled", local.symbol->name));
+            }
+        }
+        return true;
+    });
+}
+
 void AnalysisContext::PopScope() {
     assert(currentScope->Parent() != nullptr && "cannot pop global scope");
+    CheckUnreadFallibleLocals();
     EndBorrowScope(*currentScope);
     moveStates.EndScope();
     currentScope = currentScope->Parent();
@@ -167,7 +204,7 @@ void AnalysisContext::CheckBooleanCondition(const TypeRef &type, const SourceLoc
 
 void AnalysisContext::CheckStatement(const Stmt &statement) {
     if (const auto *expressionStatement = dynamic_cast<const ExprStmt *>(&statement)) {
-        CheckExpr(*expressionStatement->expr);
+        CheckFallibleDiscard(CheckExpr(*expressionStatement->expr), expressionStatement->location);
         if (const auto *call = dynamic_cast<const CallExpr *>(expressionStatement->expr.get())) {
             const auto binding = callableBindings.find(call);
             const auto *function = binding == callableBindings.end()
@@ -281,6 +318,9 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
         symbol.type = declarationType;
         symbol.isMut = letStatement->isMut;
         Symbol *defined = DefineTrackedLocal(std::move(symbol), letStatement->init != nullptr || defaultConstructor);
+        if (defined && defined->type.IsFallible()) {
+            fallibleLocals.push_back({defined, currentScope});
+        }
         if (defined && initializerAccepted && declarationType.kind == TypeRef::Kind::Reference) {
             RegisterReferenceBinding(*defined, *letStatement->init, declarationType);
         }
@@ -482,7 +522,11 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
             const PatternBorrow savedBorrow = std::exchange(currentPatternBorrow, armBorrow);
             CheckPattern(*arm.pattern, subjectType);
             currentPatternBorrow = savedBorrow;
-            CheckExpr(*arm.body);
+            // A bare-expression arm of a match statement is an expression statement: its value is discarded.
+            const TypeRef armType = CheckExpr(*arm.body);
+            if (!dynamic_cast<const BlockExpr *>(arm.body.get()) && !IsDivergingExpression(*arm.body)) {
+                CheckFallibleDiscard(armType, arm.body->location);
+            }
             PopScope();
             if (!coveredAll) {
                 exits.push_back(SaveTrackedFlow());

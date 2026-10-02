@@ -362,6 +362,7 @@ TypeRef AnalysisContext::ReadTrackedSymbol(const Symbol &symbol, const SourceLoc
         return CheckNamedConstant(*static_cast<const ConstDecl *>(symbol.declaration));
     }
     if (symbol.kind == Symbol::Kind::Var && !checkingPlainAssignmentTarget) {
+        readSymbols.insert(&symbol);
         CheckTrackedRead(symbol, location);
         ExpireBorrowAtLastUse(symbol, location);
     }

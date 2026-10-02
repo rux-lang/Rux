@@ -1,0 +1,71 @@
+// A native fallible that is dropped on the floor loses its failure. An expression statement producing one, a bare
+// expression arm of a match statement, and a local nothing reads are reported. These are practical checks rather than
+// a proof of handling: reading, passing, or storing a fallible counts as a use, and nothing is tracked through fields,
+// containers, or later writes.
+
+struct IoError {}
+struct ParseError {}
+
+struct Holder {
+    outcome: ! IoError;
+}
+
+func Save() -> ! IoError {}
+
+func Layer() -> (! ParseError) ! IoError {
+    return .Success(.Success(()));
+}
+
+func Read() -> int32 ! IoError {
+    return 1i32;
+}
+
+func Store(outcome: ! IoError) {}
+
+func Ignored() -> ! IoError {
+    Save();
+    .Failure(IoError {});
+    let _ = Save();
+    let unread = Save();
+    // `?` removes one level; the inner fallible that remains is discarded.
+    Layer()?;
+    Layer() catch { else => .Success(()) };
+}
+
+func Arms(flag: bool) {
+    match flag {
+        true => Save(),
+        false => {}
+    }
+}
+
+func Handled(flag: bool) -> ! IoError {
+    // Two-channel matches discard on purpose, block arms are statements, and match-expression arms are values.
+    match Save() {
+        .Success(_) => {},
+        .Failure(_) => {}
+    }
+    match flag {
+        true => {
+            Save()?;
+        },
+        false => {}
+    }
+    let chosen = match flag {
+        true => Save(),
+        false => Save()
+    };
+    Store(chosen);
+    Save()?;
+    Save() catch { else => {} };
+}
+
+func Limits() -> int32 {
+    // Reading, passing, storing, and overwriting are uses; nothing follows the value further.
+    var outcome = Save();
+    outcome = Save();
+    Store(outcome);
+    let held = Holder { outcome: Save() };
+    let values = [Read(), Read()];
+    return values.length as int32;
+}
