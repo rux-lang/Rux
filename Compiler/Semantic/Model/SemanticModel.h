@@ -237,6 +237,8 @@ struct ResolvedIteration {
     std::string optionVariantName;
     std::string someVariant;
     std::string noneVariant;
+    /// `Next` reports a native optional: presence continues the loop and outer absence ends it.
+    bool native = false;
 };
 
 /// The key analysis and lowering both use to name one proven bound. A pointer receiver and a generic instantiation

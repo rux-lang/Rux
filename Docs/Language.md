@@ -437,6 +437,10 @@ let value = (<-ownedOption) ?? <-ownedFallback;
 
 The fallback transfer is conditional, so `ownedFallback` is possibly moved after this expression. `??` associates to the right. Logical `||` binds more tightly and `?:` binds less tightly, so `first ?? second ?? fallback` means `first ?? (second ?? fallback)`. The operator is compiler-owned control flow: it cannot be declared in an `extend` block or overloaded, and there is no `??=` form. Because `??` is now a single maximal-munch token, two adjacent postfix propagations must be written `(nested?)?` instead of `nested??`.
 
+## Iteration
+
+`for item in subject` iterates an array, a slice, or a range directly. Any other subject is driven by the iterator convention: an iterator declares `func Next(self: &var Iterator) -> Item?`, and a container declares a parameterless `Iterate` returning such an iterator, so two loops over one container advance independent iterators. Each iteration calls `Next` once; a present result continues the loop with its payload, and only the outer absence ends it. An item may itself be an optional, a fallible, a sum, or the unit: an absent or failed item is an ordinary value of the loop, and no error channel is added to iteration. During the migration from the legacy protocol, `Next` may instead return an Option-shaped variant with exactly `Some(Item)` and payload-less `None` cases.
+
 ## Indexing
 
 A type indexes itself by declaring the indexing operators in an `extend` block, the same way it declares `==` or `<`. `[]` reads one element and `[]=` writes one:

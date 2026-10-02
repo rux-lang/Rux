@@ -87,6 +87,7 @@ set(RUX_TEST_SOURCES
     NativeErrorMappingTests.cpp
     NativeGenericSubstitutionTests.cpp
     NativeHandlingSyntaxTests.cpp
+    NativeIterationTests.cpp
     NativeLayoutTests.cpp
     NativeMatchingLoweringTests.cpp
     NativePatternOwnershipTests.cpp

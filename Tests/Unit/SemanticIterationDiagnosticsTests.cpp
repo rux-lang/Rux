@@ -243,9 +243,9 @@ TEST_CASE("an Iterate that does not return an iterator is rejected at its declar
     REQUIRE_EQ(diagnostics.size(), 1);
     CHECK_EQ(diagnostics[0].message, "iterator method 'Iterate' on 'Span' must return an iterator");
     REQUIRE_EQ(diagnostics[0].notes.size(), 1);
-    CHECK_EQ(diagnostics[0].notes[0], "type 'int32' has no 'Next' returning an 'Option'");
+    CHECK_EQ(diagnostics[0].notes[0], "type 'int32' has no 'Next' returning an optional");
     REQUIRE(diagnostics[0].help.has_value());
-    CHECK_EQ(*diagnostics[0].help, "give the returned type 'func Next(self: &var T) -> Option<Item>'");
+    CHECK_EQ(*diagnostics[0].help, "give the returned type 'func Next(self: &var T) -> Item?'");
 }
 
 TEST_CASE("a subject that is not iterable reports what iteration accepts") {
@@ -280,8 +280,8 @@ TEST_CASE("a subject that almost satisfies the convention says which part is wro
     CHECK_EQ(diagnostics[0].message, "cannot iterate over 'Cursor'");
     REQUIRE_EQ(diagnostics[0].notes.size(), 1);
     CHECK_EQ(diagnostics[0].notes[0],
-             "type 'Cursor' declares 'Next', but not as 'func Next(self: &var Cursor) -> Option<T>' returning an "
-             "Option-shaped variant");
+             "type 'Cursor' declares 'Next', but not as 'func Next(self: &var Cursor) -> T?' returning an "
+             "optional or an Option-shaped variant");
 }
 
 TEST_CASE("arrays and ranges keep their own iteration") {

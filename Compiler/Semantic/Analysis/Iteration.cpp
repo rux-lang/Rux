@@ -69,6 +69,11 @@ std::optional<AnalysisContext::ReportedItem> AnalysisContext::ReportedItemOf(con
         return std::nullopt;
     }
     const TypeRef returned = ResolveMethodReturnType(iteratorType, advance);
+    // A native optional reports an item by its presence and the end by its outer absence; an item may itself be
+    // absent or failed without ending anything.
+    if (returned.IsOptional() && !returned.IsIncompleteNative()) {
+        return ReportedItem{returned.inner.front(), returned, nullptr};
+    }
     const auto reported = PropagationShapeOf(returned);
     if (!reported || reported->kind != PropagationShape::Kind::Option) {
         return std::nullopt;
@@ -164,6 +169,11 @@ void AnalysisContext::RecordIteration(const ForStmt &statement, const IterationS
     iteration.advance = shape.advance;
     iteration.entry = shape.entry;
     iteration.reportedType = shape.reportedType;
+    iteration.native = shape.reportedType.IsOptional();
+    if (iteration.native) {
+        // Checked ahead of its lowering: a loop driven by a native optional stops here until it can be compiled.
+        EmitError(statement.location, "iteration over a native optional 'Next' is not supported yet");
+    }
     if (shape.reportedDeclaration) {
         iteration.optionVariantName = programIndex.NominalName(*shape.reportedDeclaration);
         iteration.someVariant = std::string(kOptionSomeVariant);
@@ -180,8 +190,8 @@ void AnalysisContext::EmitNotIterable(const SourceLocation location, const TypeR
     if (const auto methods = methodsByType.find(typeName); methods != methodsByType.end()) {
         if (methods->second.contains(std::string(kNextMethod))) {
             notes.push_back(
-                std::format("type '{}' declares 'Next', but not as 'func Next(self: &var {}) -> Option<T>' returning "
-                            "an Option-shaped variant",
+                std::format("type '{}' declares 'Next', but not as 'func Next(self: &var {}) -> T?' returning an "
+                            "optional or an Option-shaped variant",
                             subject.ToString(), typeName));
         }
         else if (methods->second.contains(std::string(kIterateMethod))) {
@@ -204,7 +214,7 @@ void AnalysisContext::ValidateIteratorConvention(const FuncDecl &declaration, co
         const TypeRef returned =
             declaration.returnType ? ResolveType(*declaration.returnType->get()) : TypeRef::MakeOpaque();
         const auto reported = PropagationShapeOf(returned);
-        if (!reported || reported->kind != PropagationShape::Kind::Option) {
+        if (!returned.IsOptional() && (!reported || reported->kind != PropagationShape::Kind::Option)) {
             if (auto issue = PropagationShapeIssue(returned, PropagationShape::Kind::Option)) {
                 EmitError(declaration.location,
                           std::format("iterator method 'Next' on '{}' must return an Option-shaped variant",
@@ -244,8 +254,8 @@ void AnalysisContext::ValidateIteratorConvention(const FuncDecl &declaration, co
         EmitError(
             declaration.location,
             std::format("iterator method 'Iterate' on '{}' must return an iterator", currentExtendedType.ToString()),
-            {std::format("type '{}' has no 'Next' returning an 'Option'", iteratorType.ToString())},
-            "give the returned type 'func Next(self: &var T) -> Option<Item>'");
+            {std::format("type '{}' has no 'Next' returning an optional", iteratorType.ToString())},
+            "give the returned type 'func Next(self: &var T) -> Item?'");
     }
 }
 } // namespace Rux::SemanticDetail
