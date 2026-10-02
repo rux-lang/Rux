@@ -25,9 +25,6 @@ namespace {
 /// The subject of the pending diagnostic for a native handling expression that has no semantics yet, or nullopt for
 /// every other expression.
 std::optional<std::string> PendingNativeExpressionForm(const Expr &expr) {
-    if (dynamic_cast<const MappedTryExpr *>(&expr)) {
-        return "'? else' error mapping is";
-    }
     if (dynamic_cast<const NoneExpr *>(&expr)) {
         return "'none' is";
     }
@@ -247,6 +244,12 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
         }
     }
 
+    if (const auto *mapped = dynamic_cast<const MappedTryExpr *>(&expr)) {
+        const TypeRef continued = CheckMappedTry(*mapped);
+        // Checked ahead of its lowering: a program that maps an error stops here until it can be compiled.
+        EmitError(expr.location, "'? else' error mapping is not supported yet");
+        return continued;
+    }
     if (const auto *recovery = dynamic_cast<const CatchExpr *>(&expr)) {
         return CheckCatchExpression(*recovery);
     }

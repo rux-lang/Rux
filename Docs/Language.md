@@ -375,6 +375,21 @@ Propagation consumes its evaluated outcome. A named copyable outcome is copied a
 
 A propagated failure follows ordinary return behavior: it captures the failure before running registered defers in LIFO order and then performs ownership cleanup. The returned payload belongs to the caller; live locals and completed components of interrupted aggregate construction retain their normal cleanup.
 
+## Contextual Error Mapping
+
+`value? else (e => mapper)` propagates like `value?` but converts the error first. It applies only to a native fallible in a fallible function. On success the mapper never runs and the success continues unchanged. On failure `e` owns the complete error payload, including every member of an error sum, and the mapper runs once; its value must convert to the enclosing function's error channel, and the operation then fails with it:
+
+```rux
+func LoadConfig(path: char8[..]) -> Options ! ConfigError {
+    let value = ReadAt(path)? else (e => ToConfigError(e, path));
+    return value;
+}
+```
+
+The parentheses delimit one binder and one expression. The binder may be `_` only when the error is copyable; a move-only error is bound and transferred, as in `(e => Wrap(<-e))`. The body is a single expression: a `match` maps different members differently, and `fail`, `return`, or a call to `Panic` leaves directly. A mapped value is never propagated implicitly, so a mapper that returns a fallible is a type error rather than a second propagation, and the mapper's own `fail` or `?` leaves the function without being mapped again.
+
+The mapper is not a closure: it reads and moves surrounding locals under the ordinary rules, on a path that always leaves through the failure exit. A local moved only inside the mapper therefore stays owned on the continuing path; the move only keeps that local from being destroyed again on the exit the mapper takes.
+
 ## Postfix Recovery
 
 `outcome catch { arms }` recovers from the failure of exactly one outer fallible level. The subject is evaluated once; a success passes through unchanged, inner levels and all, and a failure is matched by the arms, whose patterns see only the error payload:

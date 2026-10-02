@@ -269,6 +269,8 @@ private:
     [[nodiscard]] TypeRef CheckMatchExpression(const MatchExpr &expression);
     /// `outcome catch { arms }`: the success passes through, and the arms recover from the error or leave.
     [[nodiscard]] TypeRef CheckCatchExpression(const CatchExpr &expression);
+    /// `value? else (e => mapper)`: the success continues, and on failure the mapper's value fails the function.
+    [[nodiscard]] TypeRef CheckMappedTry(const MappedTryExpr &expression);
     /// Checks recovery arms whose subject was rejected, so their bindings and bodies report nothing spurious.
     void CheckRecoveryArmsWithoutSubject(const std::vector<MatchExpr::Arm> &arms);
 
@@ -524,6 +526,7 @@ private:
     std::unordered_map<std::string, ResolvedConstraintWitness> &constraintWitnesses;
     /// One entry per accepted `expr?`, so lowering builds its early return without recognizing Result or Option again.
     std::unordered_map<const TryExpr *, ResolvedPropagation> &propagations;
+    std::unordered_map<const MappedTryExpr *, ResolvedPropagation> &mappedPropagations;
     /// One entry per accepted `??`, so lowering does not repeat structural Option recognition.
     std::unordered_map<const BinaryExpr *, ResolvedCoalescing> &coalescings;
     /// One entry per accepted index expression that resolved to a declared `[]`, so lowering calls the operator

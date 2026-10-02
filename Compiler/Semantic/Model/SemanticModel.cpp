@@ -203,6 +203,11 @@ const PatternBindingMode *SemanticModel::TryGetPatternBindingMode(const Pattern 
     return mode == facts.patternBindingModes.end() ? nullptr : &mode->second;
 }
 
+const ResolvedPropagation *SemanticModel::TryGetPropagation(const MappedTryExpr &expression) const noexcept {
+    const auto fact = facts.mappedPropagations.find(&expression);
+    return fact == facts.mappedPropagations.end() ? nullptr : &fact->second;
+}
+
 const ResolvedVariantEquality *SemanticModel::TryGetVariantEquality(const BinaryExpr &expression) const noexcept {
     const auto fact = facts.variantEqualities.find(&expression);
     return fact == facts.variantEqualities.end() ? nullptr : &fact->second;

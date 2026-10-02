@@ -84,6 +84,7 @@ set(RUX_TEST_SOURCES
     NativeCleanupLoweringTests.cpp
     NativeConversionTests.cpp
     NativeEqualityLoweringTests.cpp
+    NativeErrorMappingTests.cpp
     NativeGenericSubstitutionTests.cpp
     NativeHandlingSyntaxTests.cpp
     NativeLayoutTests.cpp

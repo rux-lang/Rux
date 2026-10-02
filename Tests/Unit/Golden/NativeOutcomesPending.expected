@@ -1,5 +1,4 @@
 12:24: error: '? else' error mapping is not supported yet
-12:5: warning: cannot infer type of 'mapped'
 14:18: error: 'none' is not supported yet
 14:5: error: cannot infer the type of 'absent' from 'none'
 14:5: warning: cannot infer type of 'absent'

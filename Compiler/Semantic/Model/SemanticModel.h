@@ -326,6 +326,7 @@ struct SemanticFacts {
     std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> vtableIdentities;
     std::unordered_map<std::string, ResolvedConstraintWitness> constraintWitnesses;
     std::unordered_map<const TryExpr *, ResolvedPropagation> propagations;
+    std::unordered_map<const MappedTryExpr *, ResolvedPropagation> mappedPropagations;
     std::unordered_map<const BinaryExpr *, ResolvedCoalescing> coalescings;
     std::unordered_map<const IndexExpr *, ResolvedIndexOperator> indexOperators;
     std::unordered_map<const IndexExpr *, ResolvedIndexAssignment> indexAssignments;
@@ -415,6 +416,8 @@ struct SemanticModel {
 
     /// Returns null for a rejected `?`, which has no early return to build.
     [[nodiscard]] const ResolvedPropagation *TryGetPropagation(const TryExpr &expression) const noexcept;
+    /// Returns null for a rejected `? else`, which has no early return to build.
+    [[nodiscard]] const ResolvedPropagation *TryGetPropagation(const MappedTryExpr &expression) const noexcept;
 
     /// Returns null for a rejected `??` and for every ordinary binary expression.
     [[nodiscard]] const ResolvedCoalescing *TryGetCoalescing(const BinaryExpr &expression) const noexcept;

@@ -21,6 +21,109 @@ void AnalysisContext::CheckRecoveryArmsWithoutSubject(const std::vector<MatchExp
     }
 }
 
+TypeRef AnalysisContext::CheckMappedTry(const MappedTryExpr &expression) {
+    const TypeRef operandType = CheckExpr(*expression.operand);
+    const auto checkMapperAlone = [&] {
+        const TrackedFlow continuing = SaveTrackedFlow();
+        PushScope();
+        if (expression.binding != "_") {
+            Symbol symbol;
+            symbol.kind = Symbol::Kind::Var;
+            symbol.name = expression.binding;
+            symbol.location = expression.bindingLocation;
+            symbol.type = TypeRef::MakeUnknown();
+            DefineTrackedLocal(std::move(symbol), true);
+        }
+        static_cast<void>(CheckExpr(*expression.mapper));
+        PopScope();
+        RestoreTrackedFlow(continuing);
+    };
+    if (operandType.IsUnknown()) {
+        checkMapperAlone();
+        return TypeRef::MakeUnknown();
+    }
+    if (!operandType.IsFallible()) {
+        EmitError(expression.location,
+                  std::format("'? else' maps the error of a native fallible, but the operand has type '{}'",
+                              operandType.ToString()),
+                  {}, "map the error of a value of type 'T ! E'; an optional or a legacy variant has no error to map");
+        checkMapperAlone();
+        return TypeRef::MakeUnknown();
+    }
+    const TypeRef success = operandType.FallibleSuccess();
+    const TypeRef error = operandType.FallibleError();
+    if (!currentReturnType.IsFallible()) {
+        EmitError(expression.location,
+                  std::format("'? else' fails the enclosing function, but it returns {}",
+                              currentReturnType.IsOpaque() ? std::string("nothing")
+                                                           : std::format("'{}'", currentReturnType.ToString())),
+                  {}, "declare the function's error channel, as in '-> T ! E', or handle the failure with 'catch'");
+        checkMapperAlone();
+        return success;
+    }
+    const TypeRef channel = currentReturnType.FallibleError();
+    const auto validatePayload = [&](const TypeRef &payload) {
+        if (MentionsTypeParameter(payload) && currentFunctionDecl) {
+            deferredOutcomeChecks[currentFunctionDecl].push_back({payload, expression.location, true});
+        }
+        else {
+            static_cast<void>(ValidateOutcomePayload(payload, expression.location, true));
+        }
+    };
+    validatePayload(success);
+    validatePayload(error);
+    ConsumeValue(*expression.operand, operandType, ValueConsumptionKind::PropagationOperand,
+                 expression.operand->location);
+
+    // The mapper runs only on the failure path, and that path always leaves: what it moves stays owned on the
+    // continuing path, which resumes from the state before the mapper.
+    const TrackedFlow continuing = SaveTrackedFlow();
+    PushScope();
+    if (expression.binding == "_") {
+        const TypeProperties properties = ClassifyTypeProperties(error);
+        if (properties.IsResolved() && !properties.IsCopy()) {
+            EmitError(
+                expression.bindingLocation,
+                std::format("the error '{}' cannot be discarded with '_' because it is move-only", error.ToString()),
+                {"the mapper owns the error, and a move-only value is never dropped silently"},
+                "bind the error and transfer it, as in '? else (e => Wrap(<-e))'");
+        }
+    }
+    else {
+        CheckFreeBindingName(expression.binding, expression.bindingLocation, TypeRef::MakeUnknown());
+        Symbol symbol;
+        symbol.kind = Symbol::Kind::Var;
+        symbol.name = expression.binding;
+        symbol.location = expression.bindingLocation;
+        symbol.type = error;
+        DefineTrackedLocal(std::move(symbol), true);
+    }
+    const TypeRef mapped = CheckExpr(*expression.mapper);
+    if (!IsDivergingExpression(*expression.mapper) && !mapped.IsUnknown() && !channel.IsUnknown()) {
+        if (CanAssignExprTo(*expression.mapper, mapped, channel)) {
+            ConsumeValue(*expression.mapper, mapped, ValueConsumptionKind::Return, expression.mapper->location);
+        }
+        else {
+            EmitError(expression.mapper->location,
+                      AssignmentErrorMessage(*expression.mapper, channel,
+                                             std::format("the mapped error has type '{}', but the enclosing function "
+                                                         "fails with '{}'",
+                                                         mapped.ToString(), channel.ToString())));
+        }
+    }
+    PopScope();
+    RestoreTrackedFlow(continuing);
+
+    ResolvedPropagation propagation;
+    propagation.native = true;
+    propagation.isResult = true;
+    propagation.payloadType = success;
+    propagation.failureType = error;
+    propagation.returnType = currentReturnType;
+    mappedPropagations.insert_or_assign(&expression, std::move(propagation));
+    return success;
+}
+
 TypeRef AnalysisContext::CheckCatchExpression(const CatchExpr &expression) {
     const TypeRef subjectType = CheckExpr(*expression.subject);
     if (subjectType.IsUnknown()) {
