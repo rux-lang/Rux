@@ -418,10 +418,22 @@ HirVariantEqualityPayload AstToHirContext::LowerVariantEqualityPayload(const Var
     case SemanticOperation::Deferred:
         assert(false && "deferred variant equality reached concrete lowering");
         break;
-    case SemanticOperation::Native:
-        // Native values are rejected before lowering until their comparisons are lowered.
-        assert(false && "native equality reached lowering before native comparisons are lowered");
-        break;
+    case SemanticOperation::Native: {
+        // A native level compares as a variant with one case per native tag: equal tags first, then only the active
+        // payload. An alternative without a payload, an optional's absence, is equal on its tag alone.
+        lowered.operation = HirOperation::Variant;
+        for (const auto &[tag, payloadType] : NativeCaseList(lowered.type)) {
+            HirVariantEqualityCase loweredCase;
+            loweredCase.discriminant = std::to_string(tag);
+            const auto element =
+                std::ranges::find(payload.elements, static_cast<std::size_t>(tag), &VariantEqualityPayload::index);
+            if (payloadType && element != payload.elements.end()) {
+                loweredCase.payloads.push_back(LowerVariantEqualityPayload(*element));
+            }
+            lowered.variantCases.push_back(std::move(loweredCase));
+        }
+        return lowered;
+    }
     }
     lowered.elements.reserve(payload.elements.size());
     for (const VariantEqualityPayload &element : payload.elements) {

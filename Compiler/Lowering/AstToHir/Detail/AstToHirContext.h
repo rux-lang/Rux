@@ -154,6 +154,9 @@ protected:
     /// The destination the native constructor or `none` being lowered is built as, set by its expected-type context.
     std::optional<TypeRef> pendingNativeTarget;
     [[nodiscard]] static bool IsNativeType(const TypeRef &type);
+    /// The alternatives of one native level in tag order, each with the payload it carries.
+    [[nodiscard]] static std::vector<std::pair<std::uint64_t, std::optional<TypeRef>>>
+    NativeCaseList(const TypeRef &type);
     /// Whether `return;` and falling off the end produce a value: the unit, or a fallible whose success is the unit.
     [[nodiscard]] static bool CompletesWithoutValue(const TypeRef &returnType);
     [[nodiscard]] static HirExprPtr MakeUnitValue(SourceLocation location);

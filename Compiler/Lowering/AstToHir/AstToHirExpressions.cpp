@@ -2,6 +2,7 @@
 // the type substitution a generic body needs while they are lowered.
 
 #include "Lowering/AstToHir/Detail/AstToHirContext.h"
+#include "Types/NativeConversion.h"
 
 #include <algorithm>
 #include <cassert>
@@ -223,6 +224,38 @@ HirExprPtr AstToHirContext::LowerBasicExpr(const Expr &expression) {
             }
             return LowerExpr(operand);
         };
+        // A native comparison has one type. An operand with no type of its own -- `none`, a native constructor, or an
+        // unsuffixed literal -- is built as the other operand's type, the way analysis accepted it.
+        if (binary->op == TokenKind::Equal || binary->op == TokenKind::BangEqual) {
+            const TypeRef *leftFact = model.TryGetType(*binary->left);
+            const TypeRef *rightFact = model.TryGetType(*binary->right);
+            const TypeRef leftType = leftFact ? SubstituteCurrentType(*leftFact) : TypeRef::MakeUnknown();
+            const TypeRef rightType = rightFact ? SubstituteCurrentType(*rightFact) : TypeRef::MakeUnknown();
+            if (leftFact && rightFact && (MentionsNativeType(leftType) || MentionsNativeType(rightType))) {
+                const auto untyped = [](const Expr &operand, const TypeRef &type) {
+                    const auto *literal = dynamic_cast<const LiteralExpr *>(&operand);
+                    const bool unsuffixed = literal &&
+                                            (literal->token.kind == TokenKind::IntLiteral ||
+                                             literal->token.kind == TokenKind::FloatLiteral) &&
+                                            NumericLiteralSuffix(literal->token.text).empty();
+                    return type.MentionsIncompleteNative() || unsuffixed;
+                };
+                const TypeRef compared =
+                    leftType == rightType || !untyped(*binary->left, leftType) ? leftType : rightType;
+                if (const bool *negated = model.TryGetAggregateEquality(*binary)) {
+                    if (const VariantEqualityPayload *plan = model.TryGetAggregateEqualityPlan(compared)) {
+                        auto lowered = std::make_unique<HirAggregateEqualityExpr>();
+                        lowered->location = binary->location;
+                        lowered->type = TypeRef::MakeBool();
+                        lowered->plan = LowerVariantEqualityPayload(*plan);
+                        lowered->left = LowerExprAs(*binary->left, compared);
+                        lowered->right = LowerExprAs(*binary->right, compared);
+                        lowered->negated = *negated;
+                        return lowered;
+                    }
+                }
+            }
+        }
         HirExprPtr left = lowerOperand(*binary->left, *binary->right);
         HirExprPtr right = lowerOperand(*binary->right, *binary->left);
         if (const bool *negated = model.TryGetAggregateEquality(*binary)) {

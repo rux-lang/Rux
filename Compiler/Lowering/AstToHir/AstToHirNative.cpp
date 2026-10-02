@@ -51,6 +51,10 @@ namespace {
 }
 } // namespace
 
+std::vector<std::pair<std::uint64_t, std::optional<TypeRef>>> AstToHirContext::NativeCaseList(const TypeRef &type) {
+    return NativeCases(type);
+}
+
 bool AstToHirContext::IsNativeType(const TypeRef &type) {
     return type.IsSum() || type.IsOptional() || type.IsFallible();
 }

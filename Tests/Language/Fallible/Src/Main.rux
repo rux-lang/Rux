@@ -36,6 +36,17 @@ struct IoError {
     code: int32;
 }
 
+struct Loose {
+    value: int32;
+    noise: int32;
+}
+
+extend Loose {
+    func ==(self: &Loose, other: &Loose) -> bool {
+        return self.value == other.value;
+    }
+}
+
 struct Big {
     a: int64;
     b: int64;
@@ -240,6 +251,20 @@ func Main() -> int {
         .Failure(_) => false
     };
     Assert(unitSucceeded, "a generic success over the unit");
+
+    // Equality compares the channel, then only the active payload, by the payload's own equality.
+    let five: int32 ! int32 = .Success(5i32);
+    let failedFive: int32 ! int32 = .Failure(5i32);
+    Assert(five == .Success(5i32), "equal successes, a constructor taking the other operand's type");
+    Assert(five != failedFive, "the same payload on opposite channels differs");
+    let innerFailure = Layered(1i32);
+    Assert(innerFailure != Layered(2i32), "an inner failure is not an outer failure");
+    Assert(innerFailure == .Success(.Failure(ParseError { position: 2i32 })), "nested channels compare structurally");
+    let detail: int32 ! (ParseError?) = .Failure(.Some(ParseError { position: 3i32 }));
+    Assert(detail == .Failure(.Some(ParseError { position: 3i32 })), "an optional error payload");
+    let loose: Loose ! IoError = .Success(Loose { value: 1i32, noise: 2i32 });
+    Assert(loose == .Success(Loose { value: 1i32, noise: 9i32 }), "a payload's declared equality is used");
+    Assert(Save(true, false) == .Success(()), "unit successes are equal");
 
     Assert(Destroyed(HoldSuccess) == 1, "an active success is destroyed once");
     Assert(Destroyed(HoldFailure) == 1, "an active failure is destroyed once");

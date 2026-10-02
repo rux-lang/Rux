@@ -118,6 +118,10 @@ func Choose<T, U>(useLeft: bool, left: T, right: U) -> T | U {
     return right;
 }
 
+func Widened(value: int8 | int64) -> int8 | int64 | bool {
+    return value;
+}
+
 func Hold(counter: *var Counter) {
     let held: Tracked | int32 = Make(counter, 1i32);
 }
@@ -203,6 +207,16 @@ func Main() -> int {
     Assert(Pick<int32, int32>(3i32) == 1i32, "equal parameters collapse to one type");
     let collapsed: int32 = Choose<int32, int32>(false, 1i32, 2i32);
     Assert(collapsed == 2i32, "a collapsed sum is its member");
+
+    // Equality compares the active member, then only its payload; inactive bytes never take part.
+    let direct: int8 | int64 | bool = 7i8;
+    Assert(direct == Widened(7i8), "the same member and payload, built by different routes");
+    Assert(direct != Widened(8i8), "a different payload");
+    let other: int8 | int64 | bool = 7i64;
+    Assert(direct != other, "a different member with an equal value");
+    let number: int32 | bool = 5i32;
+    Assert(number == 5, "an unsuffixed literal takes the sum's integer member");
+    Assert(() == (), "the unit equals itself");
 
     Assert(Destroyed(Hold) == 1, "an active payload is destroyed once");
     Assert(Destroyed(HoldInactive) == 0, "an inactive member owns nothing");
