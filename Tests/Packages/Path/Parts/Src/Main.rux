@@ -46,53 +46,53 @@ func Main() -> int {
     let deepPath = PathOf(deep);
 
     // Parents, down to the fixed ends.
-    let parent = deepPath.Parent().ValueOr(Path());
+    let parent = (deepPath.Parent() ?? Path());
     Assert(Spells(parent, "/a/b"), "the parent drops the last component");
-    let grand = parent.Parent().ValueOr(Path());
+    let grand = (parent.Parent() ?? Path());
     Assert(Spells(grand, "/a"), "and again");
-    let top = grand.Parent().ValueOr(Path());
+    let top = (grand.Parent() ?? Path());
     Assert(Spells(top, "/"), "the parent of /a is the root");
-    Assert(top.Parent().IsNone(), "and the root is inside nothing");
+    Assert(!(top.Parent() is Path), "and the root is inside nothing");
     let bare = Native(allocator, "name");
     let barePath = PathOf(bare);
-    Assert(barePath.Parent().ValueOr(deepPath).IsEmpty(), "a bare segment's parent is the empty path");
-    Assert(Path().Parent().IsNone(), "which itself has none");
+    Assert((barePath.Parent() ?? deepPath).IsEmpty(), "a bare segment's parent is the empty path");
+    Assert(!(Path().Parent() is Path), "which itself has none");
     let trailing = Native(allocator, "/a/b/");
     let trailingPath = PathOf(trailing);
-    Assert(Spells(trailingPath.Parent().ValueOr(Path()), "/a"), "trailing separators say nothing");
+    Assert(Spells((trailingPath.Parent() ?? Path()), "/a"), "trailing separators say nothing");
 
     // Names, stems and extensions.
     let nameOwned = Native(allocator, "c.tar.gz");
     var wanted = nameOwned.View();
-    var got = deepPath.FileName().ValueOr(OsStringView());
+    var got = (deepPath.FileName() ?? OsStringView());
     Assert(got.Equals(wanted), "the file name is the last component");
-    got = trailingPath.FileName().ValueOr(OsStringView());
+    got = (trailingPath.FileName() ?? OsStringView());
     let bOwned = Native(allocator, "b");
     wanted = bOwned.View();
     Assert(got.Equals(wanted), "through trailing separators");
     let rootOwned = Native(allocator, "/");
     let rootPath = PathOf(rootOwned);
-    Assert(rootPath.FileName().IsNone(), "the root has no file name");
+    Assert(!(rootPath.FileName() is OsStringView), "the root has no file name");
 
     let stemOwned = Native(allocator, "c.tar");
     wanted = stemOwned.View();
-    got = deepPath.Stem().ValueOr(OsStringView());
+    got = (deepPath.Stem() ?? OsStringView());
     Assert(got.Equals(wanted), "one extension comes off the stem");
     let extOwned = Native(allocator, "gz");
     wanted = extOwned.View();
-    got = deepPath.Extension().ValueOr(OsStringView());
+    got = (deepPath.Extension() ?? OsStringView());
     Assert(got.Equals(wanted), "and it is the last one, without its dot");
 
     let hidden = Native(allocator, "/home/.bashrc");
     let hiddenPath = PathOf(hidden);
     let hiddenName = Native(allocator, ".bashrc");
     wanted = hiddenName.View();
-    got = hiddenPath.Stem().ValueOr(OsStringView());
+    got = (hiddenPath.Stem() ?? OsStringView());
     Assert(got.Equals(wanted), "a leading dot is a name, not a marker");
-    Assert(hiddenPath.Extension().IsNone(), "so a dotfile has no extension");
+    Assert(!(hiddenPath.Extension() is OsStringView), "so a dotfile has no extension");
     let plainName = Native(allocator, "Makefile");
     let plainPath = PathOf(plainName);
-    Assert(plainPath.Extension().IsNone(), "and neither does a name with no dot");
+    Assert(!(plainPath.Extension() is OsStringView), "and neither does a name with no dot");
 
     // Joining.
     let baseOwned = Native(allocator, "/a/b");

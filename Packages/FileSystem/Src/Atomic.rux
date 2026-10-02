@@ -72,7 +72,7 @@ extend AtomicWrite {
         let parent = target.Parent();
         var here: OsUnit[1];
         here[0] = DotSegmentUnit();
-        let parentPath = parent.IsSome() ? parent.ValueOr(Path()) : Path::FromView(OsStringView::FromUnits(here[0..1]));
+        let parentPath = (parent is Path) ? (parent ?? Path()) : Path::FromView(OsStringView::FromUnits(here[0..1]));
         var directory = PathBuffer::FromPath(allocator, parentPath) catch {
             else => {
                 *error = IoError::Of(IoErrorKind::Other);

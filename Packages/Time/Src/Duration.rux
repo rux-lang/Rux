@@ -54,7 +54,7 @@ extend Duration {
     pub func FromMinutes(minutes: int64) -> Duration? {
         var seconds: int64 = 0;
         if MulChecked<int64>(minutes, 60i64, @seconds) { return none; }
-        return .Some(Duration::FromSeconds(seconds));
+        return Duration::FromSeconds(seconds);
     }
 
     /// Exactly `hours` hours, or `None` past the range.
@@ -65,7 +65,7 @@ extend Duration {
     pub func FromHours(hours: int64) -> Duration? {
         var seconds: int64 = 0;
         if MulChecked<int64>(hours, 3600i64, @seconds) { return none; }
-        return .Some(Duration::FromSeconds(seconds));
+        return Duration::FromSeconds(seconds);
     }
 
     /// Exactly `milliseconds` milliseconds.
@@ -193,7 +193,7 @@ extend Duration {
             nanoseconds = nanoseconds - NanosecondsPerSecond;
             if AddChecked<int64>(seconds, 1i64, @seconds) { return none; }
         }
-        return .Some(Duration { seconds: seconds, nanoseconds: nanoseconds });
+        return Duration { seconds: seconds, nanoseconds: nanoseconds };
     }
 
     /// The difference of two spans, or `None` past the range.
@@ -209,7 +209,7 @@ extend Duration {
             if SubChecked<int64>(seconds, 1i64, @seconds) { return none; }
             nanoseconds = nanoseconds + NanosecondsPerSecond;
         }
-        return .Some(Duration { seconds: seconds, nanoseconds: nanoseconds - other.nanoseconds });
+        return Duration { seconds: seconds, nanoseconds: nanoseconds - other.nanoseconds };
     }
 
     /// This span negated, or `None` for the one value whose negation does not fit.
@@ -236,7 +236,7 @@ extend Duration {
         let scaled = Duration::FromScaled(fractionTotal, 1u32);
         var seconds: int64 = 0;
         if AddChecked<int64>(wholePart, scaled.seconds, @seconds) { return none; }
-        return .Some(Duration { seconds: seconds, nanoseconds: scaled.nanoseconds });
+        return Duration { seconds: seconds, nanoseconds: scaled.nanoseconds };
     }
 
     /// Whether two spans are the same time.

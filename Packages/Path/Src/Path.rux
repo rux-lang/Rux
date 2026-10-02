@@ -9,7 +9,7 @@
 // facts is the whole platform difference at this layer, and it is confined to two functions.
 
 import Allocator::Allocator;
-import Core::{ #target, Option };
+import Core::{ #target };
 
 /// Whether `unit` separates path segments on this system.
 ///
@@ -129,26 +129,26 @@ pub struct ComponentIterator {
 }
 
 extend ComponentIterator {
-    /// The next component, or `None` when the walk is done.
+    /// The next component, or `none` when the walk is done.
     ///
-    /// @returns the next component, or `None` at the end
+    /// @returns the next component, or `none` at the end
     /// @see https://rux-lang.dev/docs/api/path/component-iterator/next
-    pub func Next(self: &var ComponentIterator) -> Option<OsStringView> {
+    pub func Next(self: &var ComponentIterator) -> OsStringView? {
         // The root: a separator at the very start yields the empty component once, then the walk continues past
         // every separator that follows it.
         if self.cursor == 0 && self.units.length > 0 && IsSeparator(self.units.data[0]) {
             self.cursor = 1;
-            return Option::Some<OsStringView>(OsStringView());
+            return OsStringView();
         }
         while self.cursor < self.units.length && IsSeparator(self.units.data[self.cursor]) {
             self.cursor = self.cursor + 1;
         }
-        if self.cursor >= self.units.length { return Option::None<OsStringView>(); }
+        if self.cursor >= self.units.length { return none; }
         let start = self.cursor;
         while self.cursor < self.units.length && !IsSeparator(self.units.data[self.cursor]) {
             self.cursor = self.cursor + 1;
         }
         let segment = (@self.units.data[start])[..self.cursor - start];
-        return Option::Some<OsStringView>(OsStringView::FromUnits(segment));
+        return OsStringView::FromUnits(segment);
     }
 }

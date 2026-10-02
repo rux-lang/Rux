@@ -26,7 +26,7 @@ extend Date {
         // The four-digit formatting range is the honest bound for the whole package; the arithmetic works further
         // but the answers would be dates nothing else here can speak.
         if landed < -719468i64 || landed > 2932896i64 { return none; }
-        return .Some(Date::FromEpochDays(landed));
+        return Date::FromEpochDays(landed);
     }
 
     /// The date `months` later, clamped to the month's end where the day is missing.

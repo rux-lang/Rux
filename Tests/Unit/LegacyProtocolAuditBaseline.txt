@@ -8,7 +8,6 @@
 3|Packages/Collections/Src/TreeMap.rux
 3|Packages/Collections/Src/TreeSet.rux
 1|Packages/Collections/Src/Vector.rux
-1|Packages/Path/Src/Path.rux
 2|Tests/Language/EnumMethodReturn/Src/Main.rux
 2|Tests/Language/MutablePointerLayouts/Src/Main.rux
 1|Tests/Packages/Collections/Array/Src/Main.rux

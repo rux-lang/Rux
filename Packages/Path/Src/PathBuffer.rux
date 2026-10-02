@@ -5,7 +5,6 @@
 // it; the buffer is where segments accumulate on the way to a system call.
 
 import Allocator::{ AllocError, Allocator, Layout };
-import Core::{ Option };
 import Memory::Copy;
 import Text::{ FromAllocError, TextError };
 
@@ -237,7 +236,7 @@ pub func Normalize(allocator: Allocator, path: Path) -> PathBuffer ! TextError {
                     buffer.Push(piece)?;
                 }
             },
-            .None => {
+            none => {
                 walking = false;
             }
         }

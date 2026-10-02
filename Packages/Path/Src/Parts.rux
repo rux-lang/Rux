@@ -6,25 +6,24 @@
 // points elsewhere. The lie is documented, deliberate, and cheap; the truth costs a filesystem and arrives with
 // canonicalization in the S tasks.
 
-import Core::{ Option };
 
 extend Path {
-    /// This path without its last component, or `None` where nothing is left to remove.
+    /// This path without its last component, or `none` where nothing is left to remove.
     ///
-    /// The parent of `/a` is `/`, and the root's parent is `None`: the root is not inside anything. The parent of
+    /// The parent of `/a` is `/`, and the root's parent is `none`: the root is not inside anything. The parent of
     /// a bare segment is the empty path, which is what lets a loop walk parents to a fixed end.
     ///
-    /// @returns the path without its last component, or `None` when there is none to remove
+    /// @returns the path without its last component, or `none` when there is none to remove
     /// @see https://rux-lang.dev/docs/api/path/path/parent
-    pub func Parent(self: &Path) -> Option<Path> {
+    pub func Parent(self: &Path) -> Path? {
         let units = self.name.Units();
         var end = units.length;
         // Trailing separators say nothing about parenthood.
         while end > 1 && IsSeparator(units.data[end - 1]) {
             end = end - 1;
         }
-        if end == 0 { return Option::None<Path>(); }
-        if end == 1 && IsSeparator(units.data[0]) { return Option::None<Path>(); }
+        if end == 0 { return none; }
+        if end == 1 && IsSeparator(units.data[0]) { return none; }
         // Walk back over the last segment, then over the separators before it — keeping the one that is the root.
         while end > 0 && !IsSeparator(units.data[end - 1]) {
             end = end - 1;
@@ -33,64 +32,62 @@ extend Path {
             end = end - 1;
         }
         let kept = (units.data)[..end];
-        return Option::Some<Path>(Path::FromView(OsStringView::FromUnits(kept)));
+        return Path::FromView(OsStringView::FromUnits(kept));
     }
 
-    /// The last component's name, or `None` for the empty path and the root.
+    /// The last component's name, or `none` for the empty path and the root.
     ///
     /// Trailing separators are ignored: `a/b/` names `b`, because that is what everything from shells to
     /// libraries has always meant by it.
     ///
-    /// @returns the last component, or `None` for a root or a path ending in a separator
+    /// @returns the last component, or `none` for a root or a path ending in a separator
     /// @see https://rux-lang.dev/docs/api/path/path/file-name
-    pub func FileName(self: &Path) -> Option<OsStringView> {
+    pub func FileName(self: &Path) -> OsStringView? {
         let units = self.name.Units();
         var end = units.length;
         while end > 0 && IsSeparator(units.data[end - 1]) {
             end = end - 1;
         }
-        if end == 0 { return Option::None<OsStringView>(); }
+        if end == 0 { return none; }
         var start = end;
         while start > 0 && !IsSeparator(units.data[start - 1]) {
             start = start - 1;
         }
         let name = (@units.data[start])[..end - start];
-        return Option::Some<OsStringView>(OsStringView::FromUnits(name));
+        return OsStringView::FromUnits(name);
     }
 
-    /// The file name before its extension, or `None` where there is no file name.
+    /// The file name before its extension, or `none` where there is no file name.
     ///
     /// A leading dot is part of the name, not an extension marker: the stem of `.bashrc` is `.bashrc`. Of
     /// `a.tar.gz` it is `a.tar` — one extension comes off, the last.
     ///
-    /// @returns the file name without its extension, or `None` when there is no file name
+    /// @returns the file name without its extension, or `none` when there is no file name
     /// @see https://rux-lang.dev/docs/api/path/path/stem
-    pub func Stem(self: &Path) -> Option<OsStringView> {
+    pub func Stem(self: &Path) -> OsStringView? {
         let name = self.FileName();
-        if name.IsNone() { return Option::None<OsStringView>(); }
-        let whole = name.ValueOr(OsStringView());
+        let whole = name ?? return none;
         let units = whole.Units();
         let cut = LastDot(units);
-        if cut == 0 || cut >= units.length { return Option::Some<OsStringView>(whole); }
+        if cut == 0 || cut >= units.length { return whole; }
         let kept = (units.data)[..cut];
-        return Option::Some<OsStringView>(OsStringView::FromUnits(kept));
+        return OsStringView::FromUnits(kept);
     }
 
-    /// The extension after the last dot, without the dot, or `None` where there is none.
+    /// The extension after the last dot, without the dot, or `none` where there is none.
     ///
-    /// `None` for `.bashrc` and for `Makefile` alike: a name that is all extension has none.
+    /// `none` for `.bashrc` and for `Makefile` alike: a name that is all extension has none.
     ///
-    /// @returns the file name's extension without the dot, or `None` when it has none
+    /// @returns the file name's extension without the dot, or `none` when it has none
     /// @see https://rux-lang.dev/docs/api/path/path/extension
-    pub func Extension(self: &Path) -> Option<OsStringView> {
+    pub func Extension(self: &Path) -> OsStringView? {
         let name = self.FileName();
-        if name.IsNone() { return Option::None<OsStringView>(); }
-        let whole = name.ValueOr(OsStringView());
+        let whole = name ?? return none;
         let units = whole.Units();
         let cut = LastDot(units);
-        if cut == 0 || cut >= units.length { return Option::None<OsStringView>(); }
+        if cut == 0 || cut >= units.length { return none; }
         let kept = (@units.data[cut + 1])[..units.length - cut - 1];
-        return Option::Some<OsStringView>(OsStringView::FromUnits(kept));
+        return OsStringView::FromUnits(kept);
     }
 }
 

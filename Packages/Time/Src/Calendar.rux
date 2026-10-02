@@ -60,7 +60,7 @@ extend Date {
     /// @see https://rux-lang.dev/docs/api/time/date/new
     pub func New(year: int32, month: uint8, day: uint8) -> Date? {
         if day < 1u8 || day > DaysInMonth(year, month) { return none; }
-        return .Some(Date { year: year, month: month, day: day });
+        return Date { year: year, month: month, day: day };
     }
 
     /// Days since 1970-01-01, negative before it.
@@ -236,7 +236,7 @@ extend UtcOffset {
         if hours > 23i32 || hours < -23i32 || minutes > 59i32 || minutes < -59i32 { return none; }
         if hours > 0i32 && minutes < 0i32 { return none; }
         if hours < 0i32 && minutes > 0i32 { return none; }
-        return .Some(UtcOffset { seconds: hours * 3600i32 + minutes * 60i32 });
+        return UtcOffset { seconds: hours * 3600i32 + minutes * 60i32 };
     }
 
     /// The whole seconds east of UTC, negative west.

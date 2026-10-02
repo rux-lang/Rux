@@ -121,7 +121,7 @@ extend Timestamp {
         let shifted = mine.Plus(span);
         if shifted == none { return none; }
         let landed = shifted ?? Duration::Zero();
-        return .Some(Timestamp { seconds: landed.seconds, nanoseconds: landed.nanoseconds });
+        return Timestamp { seconds: landed.seconds, nanoseconds: landed.nanoseconds };
     }
 
     /// Whether two timestamps name the same moment.

@@ -32,7 +32,7 @@ func Walk(path: Path, expected0: OsStringView, expected1: OsStringView, expected
                 }
                 seen = seen + 1;
             },
-            .None => {
+            none => {
                 walking = false;
             }
         }

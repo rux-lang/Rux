@@ -263,11 +263,11 @@ when #target.os != .Windows {
         var stepping = true;
         while stepping {
             let step = walk.Next();
-            if step.IsNone() {
+            if !(step is OsStringView) {
                 stepping = false;
             }
             else {
-                let segment = step.ValueOr(OsStringView());
+                let segment = step ?? OsStringView();
                 if segment.IsEmpty() || SegmentIs(segment, 1) {
                     // The root component and a bare `.` both add nothing.
                 }
