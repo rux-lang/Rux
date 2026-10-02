@@ -16,6 +16,10 @@ namespace Rux::X86_64Detail {
     switch (t.kind) {
     case TypeRef::Kind::Tuple:
     case TypeRef::Kind::Array:
+    // A native sum, optional, or fallible is a tag followed by its widest payload.
+    case TypeRef::Kind::Sum:
+    case TypeRef::Kind::Optional:
+    case TypeRef::Kind::Fallible:
         return true;
     case TypeRef::Kind::Named: {
         const std::string base = BaseTypeName(t.name);

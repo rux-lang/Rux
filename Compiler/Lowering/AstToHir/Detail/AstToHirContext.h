@@ -181,6 +181,10 @@ protected:
     /// `expression` lowered as a value of the native type `targetType`.
     [[nodiscard]] HirExprPtr LowerNativeAs(const Expr &expression, const TypeRef &targetType);
     [[nodiscard]] HirExprPtr LowerPendingNative(const Expr &expression);
+    /// Copy and move recipes for a native level: one variant case per alternative, its payload copied or moved
+    /// recursively, and nothing when every payload is trivial.
+    [[nodiscard]] HirCopyPlan BuildNativeCopyPlan(const TypeRef &type);
+    [[nodiscard]] HirMovePlan BuildNativeMovePlan(const TypeRef &type);
     /// `fail value`: an ordinary return of the enclosing function's outer failure.
     [[nodiscard]] HirStmtPtr LowerFail(const Expr *value, SourceLocation location);
     /// A diverging arm, mapping, or fallback body: the statement it spells, in a block that yields no value.

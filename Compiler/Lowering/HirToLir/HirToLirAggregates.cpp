@@ -63,8 +63,14 @@ void HirToLirContext::StoreEnumConstructIntoSlot(const HirEnumConstructExpr &e, 
         const LirReg offsetReg = EmitConst(std::to_string(offset), TypeRef::MakeUInt64());
         const LirReg payloadSlot = EmitIndexPtr(slot, offsetReg, TypeRef::MakeChar8());
         PushPartialCleanupFrame(e.failureCleanups, index, slot);
-        const LirReg payload = LowerExpr(*payloadExpr);
-        EmitStore(payload, payloadSlot, payloadExpr->type);
+        // A zero-sized payload has no data bytes to write, and the unit value has nothing to evaluate either.
+        const auto *unit = dynamic_cast<const HirTupleExpr *>(payloadExpr.get());
+        if (size != 0 || !unit || !unit->elements.empty()) {
+            const LirReg payload = LowerExpr(*payloadExpr);
+            if (size != 0) {
+                EmitStore(payload, payloadSlot, payloadExpr->type);
+            }
+        }
         PopPartialCleanupFrame();
         enumPayloadSlots[slot].push_back(payloadSlot);
         offset += size;

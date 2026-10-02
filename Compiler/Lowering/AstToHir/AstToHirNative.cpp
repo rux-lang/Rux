@@ -368,6 +368,62 @@ HirExprPtr AstToHirContext::LowerDiverge(const DivergeExpr &expression) {
     return block;
 }
 
+HirCopyPlan AstToHirContext::BuildNativeCopyPlan(const TypeRef &type) {
+    HirCopyPlan plan;
+    plan.type = type;
+    plan.form = CaseTypeForm::Variant;
+    bool needsPlan = false;
+    for (const auto &[tag, payloadType] : NativeCases(type)) {
+        plan.variantDiscriminants.push_back(std::to_string(tag));
+        std::vector<TypeRef> payloadTypes;
+        std::vector<HirCopyPlan> payloadPlans;
+        if (payloadType) {
+            payloadTypes.push_back(*payloadType);
+            payloadPlans.push_back(BuildCopyPlan(*payloadType));
+            needsPlan = needsPlan || payloadPlans.back().kind != HirCopyPlan::Kind::Trivial;
+        }
+        plan.variantPayloadTypes.push_back(std::move(payloadTypes));
+        plan.variantComponents.push_back(std::move(payloadPlans));
+    }
+    if (needsPlan) {
+        plan.kind = HirCopyPlan::Kind::Enum;
+    }
+    else {
+        plan.variantDiscriminants.clear();
+        plan.variantPayloadTypes.clear();
+        plan.variantComponents.clear();
+    }
+    return plan;
+}
+
+HirMovePlan AstToHirContext::BuildNativeMovePlan(const TypeRef &type) {
+    HirMovePlan plan;
+    plan.type = type;
+    plan.form = CaseTypeForm::Variant;
+    bool needsPlan = false;
+    for (const auto &[tag, payloadType] : NativeCases(type)) {
+        plan.variantDiscriminants.push_back(std::to_string(tag));
+        std::vector<TypeRef> payloadTypes;
+        std::vector<HirMovePlan> payloadPlans;
+        if (payloadType) {
+            payloadTypes.push_back(*payloadType);
+            payloadPlans.push_back(BuildMovePlan(*payloadType));
+            needsPlan = needsPlan || payloadPlans.back().kind != HirMovePlan::Kind::Trivial;
+        }
+        plan.variantPayloadTypes.push_back(std::move(payloadTypes));
+        plan.variantComponents.push_back(std::move(payloadPlans));
+    }
+    if (needsPlan) {
+        plan.kind = HirMovePlan::Kind::Variant;
+    }
+    else {
+        plan.variantDiscriminants.clear();
+        plan.variantPayloadTypes.clear();
+        plan.variantComponents.clear();
+    }
+    return plan;
+}
+
 HirExprPtr AstToHirContext::LowerPendingNative(const Expr &expression) {
     const TypeRef targetType = pendingNativeTarget ? *pendingNativeTarget : ResolvedExpressionType(expression);
     pendingNativeTarget.reset();

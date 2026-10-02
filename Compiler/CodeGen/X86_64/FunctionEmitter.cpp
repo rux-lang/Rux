@@ -44,6 +44,10 @@ bool X86_64FunctionEmitter::IsAggregate(const TypeRef &type) const {
     switch (type.kind) {
     case TypeRef::Kind::Tuple:
     case TypeRef::Kind::Array:
+    // A native sum, optional, or fallible is a tag followed by its widest payload.
+    case TypeRef::Kind::Sum:
+    case TypeRef::Kind::Optional:
+    case TypeRef::Kind::Fallible:
         return true;
     case TypeRef::Kind::Named: {
         const std::string base = BaseTypeName(type.name);

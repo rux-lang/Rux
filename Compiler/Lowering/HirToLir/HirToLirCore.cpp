@@ -2,6 +2,7 @@
 
 #include "Lowering/HirToLir/HirToLir.h"
 #include "Lowering/HirToLir/HirToLirContext.h"
+#include "Types/NativeLayout.h"
 #include "Types/PrimitiveCatalog.h"
 
 #include <algorithm>
@@ -289,6 +290,19 @@ HirTypeLayout HirToLirContext::TypeLayoutOf(const TypeRef &type) const {
             return layout->second;
         }
     }
+    if (type.IsUnit()) {
+        return {0, 1};
+    }
+    // A native level an instantiation composed is laid out from its members, by the one native layout contract.
+    if (type.IsSum() || type.IsOptional() || type.IsFallible()) {
+        const auto native = ComputeNativeLayout(type, [this](const TypeRef &member) -> std::optional<SizeAndAlignment> {
+            const HirTypeLayout layout = TypeLayoutOf(member);
+            return SizeAndAlignment{layout.size, layout.alignment};
+        });
+        if (native) {
+            return {native->size, native->alignment};
+        }
+    }
     // Manually constructed HIR may omit semantic facts. Primitive-only recipes retain their self-contained layout.
     const auto size = type.SizeInBytes().value_or(8);
     return {size, PrimitiveAlign(type.kind, 8).value_or(size > 0 ? std::min<std::uint64_t>(size, 8) : 1)};
@@ -519,6 +533,10 @@ bool HirToLirContext::IsInstantiatedPayloadEnum(const TypeRef &type) const {
 /// reaches lowering without a marker is a front-end bug rather than a compact enum, and is reported as one: silently
 /// treating it as compact is what turned a returned `Option<int32>` into a packed word its callee never wrote.
 std::optional<std::uint64_t> HirToLirContext::EnumLayoutSize(const TypeRef &type) const {
+    // A native level is always an addressable tag followed by its payload storage.
+    if (type.IsSum() || type.IsOptional() || type.IsFallible()) {
+        return TypeLayoutOf(type).size;
+    }
     if (type.kind != TypeRef::Kind::Named) {
         return std::nullopt;
     }

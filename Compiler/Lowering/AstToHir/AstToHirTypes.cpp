@@ -886,6 +886,9 @@ HirCopyPlan AstToHirContext::BuildCopyPlan(const TypeRef &type, const FuncDecl *
         }
         return plan;
     }
+    if (IsNativeType(type)) {
+        return BuildNativeCopyPlan(type);
+    }
     if (type.kind == TypeRef::Kind::Named) {
         const std::string base = BaseTypeName(type.name);
         if (const auto declaration = structDecls.find(base); declaration != structDecls.end()) {
@@ -953,6 +956,9 @@ HirMovePlan AstToHirContext::BuildMovePlan(const TypeRef &type, const FuncDecl *
             plan.components.clear();
         }
         return plan;
+    }
+    if (IsNativeType(type)) {
+        return BuildNativeMovePlan(type);
     }
     if (type.kind == TypeRef::Kind::Named) {
         const std::string base = BaseTypeName(type.name);
