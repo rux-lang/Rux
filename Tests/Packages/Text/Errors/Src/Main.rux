@@ -168,8 +168,6 @@ func Main() -> int {
     Assert(Inspected(allocBlockDebug, "AllocError::InvalidBlock"), "named");
 
     // PageError, the other low-level type this package already depends on.
-    let pageNone: Display = PageError::None;
-    Assert(Shown(pageNone, "no error"), "a page operation that happened");
     let pageLength: Display = PageError::InvalidLength;
     Assert(Shown(pageLength, "invalid length"), "a length of zero or past the address space");
     let pageAddress: Display = PageError::InvalidAddress;

@@ -16,7 +16,7 @@
 import Core::uint;
 import Allocator::{ AllocError, EmptyBlockAddress, IsEmptyBlock, Layout };
 import Core::Assert;
-import Memory::{ AlignUp, AlignUpChecked, PageAlign, PageAllocate, PageError, PageRead, PageRelease, PageWrite };
+import Memory::{ AlignUp, AlignUpChecked, PageAlign, PageAllocate, PageRead, PageRelease, PageWrite };
 
 /// What a system allocation records about itself, immediately before the address the caller sees.
 ///
@@ -106,11 +106,10 @@ extend SystemAllocator : Allocator {
         let length = PageAlign(total);
         if length < total { return AllocError::Unsupported; }
 
-        var base: *var opaque = null;
-        let pageError = PageAllocate(length, PageRead | PageWrite, @base);
-        if pageError != PageError::None {
-            return pageError == PageError::OutOfMemory ? AllocError::OutOfMemory : AllocError::Unsupported;
-        }
+        let base = PageAllocate(length, PageRead | PageWrite) catch {
+            .OutOfMemory => return AllocError::OutOfMemory,
+            else => return AllocError::Unsupported
+        };
 
         let address = (base as uint) + prefix;
         let header = (address - headerSize) as *var SystemBlockHeader;
@@ -144,9 +143,10 @@ extend SystemAllocator : Allocator {
         let header = ((block as uint) - headerSize) as *var SystemBlockHeader;
         if header.magic != SystemBlockMagic || header.size != layout.size { return AllocError::InvalidBlock; }
         header.magic = 0;
-        return PageRelease(header.base as *var opaque, header.length) == PageError::None
-                 ? AllocError::None
-                 : AllocError::InvalidBlock;
+        return match PageRelease(header.base as *var opaque, header.length) {
+            .Success(_) => AllocError::None,
+            .Failure(_) => AllocError::InvalidBlock
+        };
     }
 
     /// Changes the size of a block by taking a new one and copying what fits.

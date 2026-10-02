@@ -68,12 +68,11 @@ pub const PageExecute: uint32 = 4;
 ///
 /// One set of reasons across four systems that report failure three different ways: an errno, a `GetLastError` code,
 /// and a sentinel address. A reason the mapping does not cover arrives as `Failed`, which is not a promise that
-/// nothing went wrong — only that this module could not name it.
+/// nothing went wrong — only that this module could not name it. Every case is a failure: a call that succeeds
+/// reports its success channel instead.
 ///
 /// @see https://rux-lang.dev/docs/api/memory/page-error
 pub enum PageError: uint8 {
-    /// Nothing went wrong. This is what a successful call reports, so it is not an error case.
-    None = 0,
     /// The length was zero, or too large for the address space to hold.
     InvalidLength = 1,
     /// The address was not page-aligned, or names nothing this process may operate on.
@@ -113,8 +112,6 @@ pub const MinimumPageSize: uint = 4096;
 /// publishes the value in the auxiliary vector rather than behind a system call. Nothing is captured at process
 /// start and no libc is called.
 ///
-/// `result` receives the size when this reports `None`, and is left unwritten otherwise; it must not be null.
-///
 /// # Failures
 ///
 /// Reports `Unsupported` when the system would not answer — on Linux, a container built without `/proc` is the
@@ -125,26 +122,22 @@ pub const MinimumPageSize: uint = 4096;
 /// Allocates nothing. Runs in constant time on three systems and performs one open, read and close on Linux, so a
 /// caller that needs the size more than once should keep it.
 ///
-/// @param result receives the page size in bytes
-/// @returns `None` when the system answered
+/// @returns the page size in bytes, or the reason the system would not answer
 /// @see https://rux-lang.dev/docs/api/memory/page-size
-pub func PageSize(result: *var uint) -> PageError {
-    if result == null { return PageError::InvalidAddress; }
+pub func PageSize() -> uint ! PageError {
     when #target.os {
         .Windows => {
             // GetSystemInfo has no failure to report; a system that could not answer could not have started the
             // process. The zero check is a guard against a future stub rather than an observed case.
             var info: SystemInfo;
             GetSystemInfo(@info);
-            if info.pageSize == 0 { return PageError::Unsupported; }
-            *result = info.pageSize as uint;
-            return PageError::None;
+            if info.pageSize == 0 { fail PageError::Unsupported; }
+            return info.pageSize as uint;
         }
         else => {
             let size = QueryPageSize();
-            if size <= 0 { return PageError::Unsupported; }
-            *result = size as uint;
-            return PageError::None;
+            if size <= 0 { fail PageError::Unsupported; }
+            return size as uint;
         }
     }
 }
@@ -152,8 +145,7 @@ pub func PageSize(result: *var uint) -> PageError {
 /// Takes `length` bytes of address space with the given protection, and reports where it landed.
 ///
 /// `length` is rounded up to whole pages by the system. `protection` is a combination of the `Page*` flags, and
-/// `PageNone` is legal — it takes the space and refuses every access to it. `result` receives the base address when
-/// this reports `None`, and is left unwritten otherwise; it must not be null.
+/// `PageNone` is legal — it takes the space and refuses every access to it.
 ///
 /// The pages are zero-filled on every supported system. Nothing else about their contents is promised.
 ///
@@ -170,31 +162,28 @@ pub func PageSize(result: *var uint) -> PageError {
 ///
 /// @param length how many bytes of address space to take, rounded up to whole pages by the system
 /// @param protection what may be done with the pages, as `Page*` flags
-/// @param result receives the base address when this reports `None`
-/// @returns `None` when the address space was taken
+/// @returns the base address of the pages, or the reason the address space was not taken
 /// @see https://rux-lang.dev/docs/api/memory/page-allocate
-pub func PageAllocate(length: uint, protection: uint32, result: *var *var opaque) -> PageError {
-    if length == 0 { return PageError::InvalidLength; }
+pub func PageAllocate(length: uint, protection: uint32) -> (*var opaque) ! PageError {
+    if length == 0 { fail PageError::InvalidLength; }
     when #target.os {
         .Windows => {
             let mapped = VirtualAlloc(null, length, MEM_RESERVE | MEM_COMMIT, WindowsProtection(protection));
-            if mapped == null { return WindowsError(GetLastError()); }
-            *result = mapped;
-            return PageError::None;
+            if mapped == null { fail WindowsError(GetLastError()); }
+            return mapped;
         }
         else => {
             let mapped = Mmap(null, length, UnixProtection(protection), MapPrivate | MapAnonymous, -1, 0);
-            if IsError(mapped) { return UnixError(Errno(mapped)); }
-            *result = mapped as *var opaque;
-            return PageError::None;
+            if IsError(mapped) { fail UnixError(Errno(mapped)); }
+            return mapped as *var opaque;
         }
     }
 }
 
 /// Gives back `length` bytes of address space at `address`.
 ///
-/// `address` must be a base address `PageAllocate` returned, and `length` the length it was given. Returns `None`
-/// when the system accepted the release.
+/// `address` must be a base address `PageAllocate` returned, and `length` the length it was given. Succeeds when the
+/// system accepted the release.
 ///
 /// A `length` of zero is refused with `InvalidLength`, and a null `address` with `InvalidAddress`, rather than either
 /// being quietly ignored: both are arithmetic errors at the caller far more often than intentions.
@@ -207,29 +196,27 @@ pub func PageAllocate(length: uint, protection: uint32, result: *var *var opaque
 ///
 /// @param address a base address `PageAllocate` returned
 /// @param length the length it was given
-/// @returns `None` when the system accepted the release
+/// @returns nothing on success, or the reason the system refused the release
 /// @see https://rux-lang.dev/docs/api/memory/page-release
-pub func PageRelease(address: *var opaque, length: uint) -> PageError {
-    if address == null { return PageError::InvalidAddress; }
-    if length == 0 { return PageError::InvalidLength; }
+pub func PageRelease(address: *var opaque, length: uint) -> ! PageError {
+    if address == null { fail PageError::InvalidAddress; }
+    if length == 0 { fail PageError::InvalidLength; }
     when #target.os {
         .Windows => {
             // MEM_RELEASE takes the whole reservation and requires a size of zero; the length is checked above only
             // so that a caller's arithmetic error is reported on every system rather than on some of them.
-            if VirtualFree(address, 0, MEM_RELEASE) == 0 { return WindowsError(GetLastError()); }
-            return PageError::None;
+            if VirtualFree(address, 0, MEM_RELEASE) == 0 { fail WindowsError(GetLastError()); }
         }
         else => {
-            if Munmap(address as *opaque, length) != 0 { return PageError::Failed; }
-            return PageError::None;
+            if Munmap(address as *opaque, length) != 0 { fail PageError::Failed; }
         }
     }
 }
 
 /// Changes what may be done with `length` bytes at `address`.
 ///
-/// `address` must be page-aligned and `length` is rounded up to whole pages. Returns `None` when the system accepted
-/// the change.
+/// `address` must be page-aligned and `length` is rounded up to whole pages. Succeeds when the system accepted the
+/// change.
 ///
 /// The change takes effect at once, so a thread touching the range concurrently faults rather than finishing what it
 /// started.
@@ -242,22 +229,20 @@ pub func PageRelease(address: *var opaque, length: uint) -> PageError {
 /// @param address a page-aligned address
 /// @param length how many bytes, rounded up to whole pages
 /// @param protection what may be done with the pages afterwards
-/// @returns `None` when the system accepted the change
+/// @returns nothing on success, or the reason the system refused the change
 /// @see https://rux-lang.dev/docs/api/memory/page-protect
-pub func PageProtect(address: *var opaque, length: uint, protection: uint32) -> PageError {
-    if address == null { return PageError::InvalidAddress; }
-    if length == 0 { return PageError::InvalidLength; }
+pub func PageProtect(address: *var opaque, length: uint, protection: uint32) -> ! PageError {
+    if address == null { fail PageError::InvalidAddress; }
+    if length == 0 { fail PageError::InvalidLength; }
     when #target.os {
         .Windows => {
             var previous: uint32 = 0;
             if VirtualProtect(address, length, WindowsProtection(protection), @previous) == 0 {
-                return WindowsError(GetLastError());
+                fail WindowsError(GetLastError());
             }
-            return PageError::None;
         }
         else => {
-            if Mprotect(address as *opaque, length, UnixProtection(protection)) != 0 { return PageError::Failed; }
-            return PageError::None;
+            if Mprotect(address as *opaque, length, UnixProtection(protection)) != 0 { fail PageError::Failed; }
         }
     }
 }

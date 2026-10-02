@@ -336,7 +336,6 @@ extend PageError : Display {
     pub func WriteDisplay(self: &PageError, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
         AcceptsErrorSpec(spec)?;
         return match self {
-            .None => WriteBytes(writer, "no error"),
             .InvalidLength => WriteBytes(writer, "invalid length"),
             .InvalidAddress => WriteBytes(writer, "invalid address"),
             .OutOfMemory => WriteBytes(writer, "out of memory"),
@@ -360,7 +359,6 @@ extend PageError : Debug {
     pub func WriteDebug(self: &PageError, writer: &var TextWriter, spec: FormatSpec) -> Result<Unit, FormatError> {
         AcceptsErrorSpec(spec)?;
         return match self {
-            .None => WriteBytes(writer, "PageError::None"),
             .InvalidLength => WriteBytes(writer, "PageError::InvalidLength"),
             .InvalidAddress => WriteBytes(writer, "PageError::InvalidAddress"),
             .OutOfMemory => WriteBytes(writer, "PageError::OutOfMemory"),
