@@ -78,9 +78,7 @@ extend JsonNumber {
     /// @returns whether the text is an integer that fits
     /// @see https://rux-lang.dev/docs/api/json/json-number/as-int64
     pub func AsInt64(self: &JsonNumber, result: *var int64) -> bool {
-        let parsed = ParseInt64(self.text.View().Bytes());
-        if parsed.IsError() { return false; }
-        *result = parsed.ValueOr(0i64);
+        *result = ParseInt64(self.text.View().Bytes()) catch { else => return false };
         return true;
     }
 
@@ -90,9 +88,7 @@ extend JsonNumber {
     /// @returns whether the text is a non-negative integer that fits
     /// @see https://rux-lang.dev/docs/api/json/json-number/as-uint64
     pub func AsUint64(self: &JsonNumber, result: *var uint64) -> bool {
-        let parsed = ParseUint64(self.text.View().Bytes());
-        if parsed.IsError() { return false; }
-        *result = parsed.ValueOr(0u64);
+        *result = ParseUint64(self.text.View().Bytes()) catch { else => return false };
         return true;
     }
 
@@ -105,9 +101,7 @@ extend JsonNumber {
     /// @returns whether the text converted; the value is the nearest representable one
     /// @see https://rux-lang.dev/docs/api/json/json-number/as-float64
     pub func AsFloat64(self: &JsonNumber, result: *var float64) -> bool {
-        let parsed = ParseFloat64(self.text.View().Bytes());
-        if parsed.IsError() { return false; }
-        *result = parsed.ValueOr(0.0);
+        *result = ParseFloat64(self.text.View().Bytes()) catch { else => return false };
         return true;
     }
 

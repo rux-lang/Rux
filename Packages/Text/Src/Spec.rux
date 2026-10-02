@@ -11,7 +11,7 @@
 // reachable by anything in Format, and moving it here would otherwise have handed the same reach to every package
 // that renders a value. Reading is what implementations need; writing belongs to the parser alone.
 
-import Core::{ Result, uint };
+import Core::uint;
 
 /// Where the padding goes when the rendering is narrower than the width.
 ///
@@ -293,8 +293,8 @@ func IsDigit(byte: char8) -> bool {
 }
 
 // One malformed-specification failure, carrying where it was found.
-func Malformed(offset: uint) -> Result<FormatSpec, FormatError> {
-    return Result::Error<FormatSpec, FormatError>(FormatError::InvalidSpecification(offset));
+func Malformed(offset: uint) -> FormatSpec ! FormatError {
+    fail FormatError::InvalidSpecification(offset);
 }
 
 // Reads a run of digits into `value`, reporting the offset of the digit that would overflow.
@@ -344,7 +344,7 @@ func ReadNumber(text: char8[..], start: uint, value: *var uint, end: *var uint) 
 /// @param text the specification body, without the surrounding braces or the colon
 /// @returns the parsed specification, or where it was malformed
 /// @see https://rux-lang.dev/docs/api/text/parse-format-spec
-pub func ParseFormatSpec(text: char8[..]) -> Result<FormatSpec, FormatError> {
+pub func ParseFormatSpec(text: char8[..]) -> FormatSpec ! FormatError {
     var spec = FormatSpec::Plain();
     var index: uint = 0;
 
@@ -404,7 +404,7 @@ pub func ParseFormatSpec(text: char8[..]) -> Result<FormatSpec, FormatError> {
         spec.base = BaseOfStyle(spec.style);
     }
 
-    return Result::Success<FormatSpec, FormatError>(spec);
+    return spec;
 }
 
 // The base a style names, for the four single letters that carry one. Every other style leaves the base decimal,
@@ -432,7 +432,7 @@ func BaseOfStyle(style: char8[..]) -> FormatBase {
 /// @returns success when no style was named
 /// @see https://rux-lang.dev/docs/api/text/reject-style
 pub func RejectStyle(spec: FormatSpec) -> ! FormatError {
-    if spec.HasStyle() { return .Failure(FormatError::UnsupportedRequest); }
+    if spec.HasStyle() { fail FormatError::UnsupportedRequest; }
     return;
 }
 

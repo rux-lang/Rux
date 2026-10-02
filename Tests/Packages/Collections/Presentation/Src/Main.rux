@@ -1,6 +1,6 @@
 import Allocator::{ Allocator, SystemAllocator };
 import Collections::{ Array, CollectionError, Deque, Vector, WriteArrayDebug, WriteDequeDebug, WriteVectorDebug };
-import Core::{ Assert, Failed, Succeeded };
+import Core::{ Assert, Failed, Panic, Succeeded };
 import Format::WriteFormat;
 import Text::{ BufferWriter, Debug, FormatError, FormatSpec, ParseFormatSpec, TextWriter, WriteAscii, WriteBytes };
 
@@ -61,7 +61,7 @@ func Same(actual: char8[..], expected: char8[..]) -> bool {
 
 func Spec(text: char8[..]) -> FormatSpec {
     var spec = FormatSpec::Plain();
-    Assert(ParseFormatSpec(text).TryIntoValue(@spec), "the spec parses");
+    spec = ParseFormatSpec(text) catch { else => Panic("the spec parses") };
     return spec;
 }
 

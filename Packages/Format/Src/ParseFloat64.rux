@@ -15,13 +15,12 @@
 // The grammar this file accepts is `[+-]?(digits[.digits?]?|.digits)([eE][+-]?digits)?`, plus the two special
 // spellings `NaN` and `Inf` exactly as formatting writes them, so what one side prints the other reads.
 
-import Core::{ Result, Unit };
 import Text::{ ParseFailure, StringView };
 
 /// Why text could not be read as a value.
 ///
-/// Failure-only: every case is a failure, and each says where in the text it was found. Success is
-/// `Result::Success` rather than a case here.
+/// Failure-only: every case is a failure, and each says where in the text it was found. Success is the other channel
+/// of the `T ! ParseError` a parser returns rather than a case here.
 ///
 /// Copy, carrying one offset.
 ///
@@ -93,7 +92,7 @@ pub struct DecimalReading {
 /// @param reading receives what the decimal spells
 /// @returns success when the whole text was the grammar
 /// @see https://rux-lang.dev/docs/api/format/scan-decimal
-pub func ScanDecimal(str: char8[..], reading: *var DecimalReading) -> Result<Unit, ParseError> {
+pub func ScanDecimal(str: char8[..], reading: *var DecimalReading) -> ! ParseError {
     *reading = DecimalReading {
         digits: FixedNat(),
         exponent: 0,
@@ -102,24 +101,24 @@ pub func ScanDecimal(str: char8[..], reading: *var DecimalReading) -> Result<Uni
         negative: false,
         special: 0
     };
-    if str.length == 0 { return Result::Error<Unit, ParseError>(ParseError::Empty); }
+    if str.length == 0 { fail ParseError::Empty; }
 
     var index: uint = 0;
     if str[index] == c8'+' || str[index] == c8'-' {
         reading.negative = str[index] == c8'-';
         index++;
-        if index == str.length { return Result::Error<Unit, ParseError>(ParseError::InvalidCharacter(index - 1)); }
+        if index == str.length { fail ParseError::InvalidCharacter(index - 1); }
     }
 
     // The two special spellings. A NaN has no sign to keep — the sign is accepted because formatting never writes
     // one and input may carry one, and there is only one NaN as far as comparison is concerned.
     if index + 3 == str.length && str[index] == c8'N' && str[index + 1] == c8'a' && str[index + 2] == c8'N' {
         reading.special = 1;
-        return Result::Success<Unit, ParseError>(Unit());
+        return;
     }
     if index + 3 == str.length && str[index] == c8'I' && str[index + 1] == c8'n' && str[index + 2] == c8'f' {
         reading.special = 2;
-        return Result::Success<Unit, ParseError>(Unit());
+        return;
     }
 
     // The significant digits are kept exactly, up to the bound past which a dropped digit can only mean "strictly
@@ -139,7 +138,7 @@ pub func ScanDecimal(str: char8[..], reading: *var DecimalReading) -> Result<Uni
                 significant = true;
                 if reading.significant < RetainedDecimalDigits {
                     if !reading.digits.MultiplyAddSmall(10u64, digit) {
-                        return Result::Error<Unit, ParseError>(ParseError::OutOfMemory(index));
+                        fail ParseError::OutOfMemory(index);
                     }
                     reading.significant = reading.significant + 1u;
                 }
@@ -158,7 +157,7 @@ pub func ScanDecimal(str: char8[..], reading: *var DecimalReading) -> Result<Uni
         }
         break;
     }
-    if digitCount == 0u { return Result::Error<Unit, ParseError>(ParseError::InvalidCharacter(index)); }
+    if digitCount == 0u { fail ParseError::InvalidCharacter(index); }
 
     if index < str.length && (str[index] == c8'e' || str[index] == c8'E') {
         index++;
@@ -169,7 +168,7 @@ pub func ScanDecimal(str: char8[..], reading: *var DecimalReading) -> Result<Uni
             index++;
         }
         if index == str.length || str[index] < c8'0' || str[index] > c8'9' {
-            return Result::Error<Unit, ParseError>(ParseError::InvalidCharacter(exponentMarker));
+            fail ParseError::InvalidCharacter(exponentMarker);
         }
         var exponent: int = 0;
         while index < str.length && str[index] >= c8'0' && str[index] <= c8'9' {
@@ -188,8 +187,8 @@ pub func ScanDecimal(str: char8[..], reading: *var DecimalReading) -> Result<Uni
             reading.exponent = reading.exponent + exponent;
         }
     }
-    if index != str.length { return Result::Error<Unit, ParseError>(ParseError::InvalidCharacter(index)); }
-    return Result::Success<Unit, ParseError>(Unit());
+    if index != str.length { fail ParseError::InvalidCharacter(index); }
+    return;
 }
 
 /// Reads `str` as the `float64` nearest what it spells, rounding to nearest with ties to even.
@@ -207,7 +206,7 @@ pub func ScanDecimal(str: char8[..], reading: *var DecimalReading) -> Result<Uni
 /// @param str the text to read
 /// @returns the value, or why the text is not one
 /// @see https://rux-lang.dev/docs/api/format/parse-float64
-pub func ParseFloat64(str: char8[..]) -> Result<float64, ParseError> {
+pub func ParseFloat64(str: char8[..]) -> float64 ! ParseError {
     var reading = DecimalReading {
         digits: FixedNat(),
         exponent: 0,
@@ -216,12 +215,10 @@ pub func ParseFloat64(str: char8[..]) -> Result<float64, ParseError> {
         negative: false,
         special: 0
     };
-    let scanned = ScanDecimal(str, @reading);
-    var failure = ParseError::Empty;
-    if scanned.TryIntoError(@failure) { return Result::Error<float64, ParseError>(failure); }
-    if reading.special == 1 { return Result::Success<float64, ParseError>(0.0 / 0.0); }
+    ScanDecimal(str, @reading)?;
+    if reading.special == 1 { return 0.0 / 0.0; }
     if reading.special == 2 {
-        return Result::Success<float64, ParseError>(reading.negative ? -1.0 / 0.0 : 1.0 / 0.0);
+        return reading.negative ? -1.0 / 0.0 : 1.0 / 0.0;
     }
 
     // Anything clearly past the format is answered without building the numbers that would say so exactly: the
@@ -229,19 +226,19 @@ pub func ParseFloat64(str: char8[..]) -> Result<float64, ParseError> {
     // are far outside that.
     if !reading.digits.IsZero() {
         let magnitude = (reading.significant as int) + reading.exponent;
-        if magnitude > 310 { return Result::Error<float64, ParseError>(ParseError::Overflow(str.length)); }
+        if magnitude > 310 { fail ParseError::Overflow(str.length); }
         if magnitude < -340 {
-            return Result::Success<float64, ParseError>(reading.negative ? -0.0 : 0.0);
+            return reading.negative ? -0.0 : 0.0;
         }
     }
 
     var value = 0.0;
     var overflowed = false;
     if !ExactFloat64(reading.digits, reading.exponent, reading.truncated, reading.negative, @value, @overflowed) {
-        if overflowed { return Result::Error<float64, ParseError>(ParseError::Overflow(str.length)); }
-        return Result::Error<float64, ParseError>(ParseError::OutOfMemory(str.length));
+        if overflowed { fail ParseError::Overflow(str.length); }
+        fail ParseError::OutOfMemory(str.length);
     }
-    return Result::Success<float64, ParseError>(value);
+    return value;
 }
 
 // Parses what a view spans, borrowing it. A view is the shape parsing wants: it copies nothing, owns
@@ -251,7 +248,7 @@ pub func ParseFloat64(str: char8[..]) -> Result<float64, ParseError> {
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse-float64
-pub func ParseFloat64(str: StringView) -> Result<float64, ParseError> {
+pub func ParseFloat64(str: StringView) -> float64 ! ParseError {
     return ParseFloat64(str.Bytes());
 }
 
@@ -268,7 +265,7 @@ pub func ParseFloat64(str: StringView) -> Result<float64, ParseError> {
 /// @param str the text to read
 /// @returns the value, or why the text is not one
 /// @see https://rux-lang.dev/docs/api/format/parse-float32
-pub func ParseFloat32(str: char8[..]) -> Result<float32, ParseError> {
+pub func ParseFloat32(str: char8[..]) -> float32 ! ParseError {
     var reading = DecimalReading {
         digits: FixedNat(),
         exponent: 0,
@@ -277,29 +274,27 @@ pub func ParseFloat32(str: char8[..]) -> Result<float32, ParseError> {
         negative: false,
         special: 0
     };
-    let scanned = ScanDecimal(str, @reading);
-    var failure = ParseError::Empty;
-    if scanned.TryIntoError(@failure) { return Result::Error<float32, ParseError>(failure); }
-    if reading.special == 1 { return Result::Success<float32, ParseError>(0.0f32 / 0.0f32); }
+    ScanDecimal(str, @reading)?;
+    if reading.special == 1 { return 0.0f32 / 0.0f32; }
     if reading.special == 2 {
-        return Result::Success<float32, ParseError>(reading.negative ? -1.0f32 / 0.0f32 : 1.0f32 / 0.0f32);
+        return reading.negative ? -1.0f32 / 0.0f32 : 1.0f32 / 0.0f32;
     }
 
     if !reading.digits.IsZero() {
         let magnitude = (reading.significant as int) + reading.exponent;
-        if magnitude > 41 { return Result::Error<float32, ParseError>(ParseError::Overflow(str.length)); }
+        if magnitude > 41 { fail ParseError::Overflow(str.length); }
         if magnitude < -50 {
-            return Result::Success<float32, ParseError>(reading.negative ? -0.0f32 : 0.0f32);
+            return reading.negative ? -0.0f32 : 0.0f32;
         }
     }
 
     var value = 0.0f32;
     var overflowed = false;
     if !ExactFloat32(reading.digits, reading.exponent, reading.truncated, reading.negative, @value, @overflowed) {
-        if overflowed { return Result::Error<float32, ParseError>(ParseError::Overflow(str.length)); }
-        return Result::Error<float32, ParseError>(ParseError::OutOfMemory(str.length));
+        if overflowed { fail ParseError::Overflow(str.length); }
+        fail ParseError::OutOfMemory(str.length);
     }
-    return Result::Success<float32, ParseError>(value);
+    return value;
 }
 
 /// The same grammar for a view.
@@ -307,6 +302,6 @@ pub func ParseFloat32(str: char8[..]) -> Result<float32, ParseError> {
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse-float32-view
-pub func ParseFloat32(str: StringView) -> Result<float32, ParseError> {
+pub func ParseFloat32(str: StringView) -> float32 ! ParseError {
     return ParseFloat32(str.Bytes());
 }

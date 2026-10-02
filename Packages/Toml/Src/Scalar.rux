@@ -229,12 +229,10 @@ pub func TomlParseInteger(text: char8[..]) -> Result<int64, TomlScalarError> {
         }
         index = index + 1u;
     }
-    let parsed = ParseInt64(digits);
-    var failure = ParseError::Empty;
-    if parsed.TryIntoError(@failure) {
-        return Result::Error<int64, TomlScalarError>(TomlScalarError::OutOfRange(0u));
-    }
-    return Result::Success<int64, TomlScalarError>(parsed.ValueOr(0i64));
+    let parsed = ParseInt64(digits) catch {
+        else => return Result::Error<int64, TomlScalarError>(TomlScalarError::OutOfRange(0u))
+    };
+    return Result::Success<int64, TomlScalarError>(parsed);
 }
 
 // The base a prefix letter names.
@@ -301,14 +299,12 @@ pub func TomlParseFloat(text: char8[..]) -> Result<float64, TomlScalarError> {
     if !CheckFloatShape(digits, start, @shapeAt) {
         return Result::Error<float64, TomlScalarError>(TomlScalarError::Malformed(stripped.Source(shapeAt)));
     }
-    let parsed = ParseFloat64(digits);
-    var failure = ParseError::Empty;
-    if parsed.TryIntoError(@failure) {
-        // The shape is a float's; what the reader refused is the magnitude, which is the whole value rather than
-        // any character of it.
-        return Result::Error<float64, TomlScalarError>(TomlScalarError::OutOfRange(0u));
-    }
-    return Result::Success<float64, TomlScalarError>(parsed.ValueOr(0.0));
+    // The shape is a float's; what the reader refused is the magnitude, which is the whole value rather than any
+    // character of it.
+    let parsed = ParseFloat64(digits) catch {
+        else => return Result::Error<float64, TomlScalarError>(TomlScalarError::OutOfRange(0u))
+    };
+    return Result::Success<float64, TomlScalarError>(parsed);
 }
 
 // Whether `digits` from `start` is exactly `word`.

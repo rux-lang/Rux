@@ -6,7 +6,7 @@
 
 import Text::{ FormatSpec, ParseFormatSpec, TextWriter };
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, Failed, Succeeded };
+import Core::{ Assert, Failed, Panic, Succeeded };
 import Format::{ ByteCursor, Float128, Float256, Float512, Float80, FloatLayout, ParseError, ParseFloat128, ParseFloat256, ParseFloat512, ParseFloat80, ParseWideFloat, UnpackWide, WideClass, WriteWideFloat };
 
 // The bytes a string spans, which is how a text overload reaches the slice one.
@@ -52,7 +52,7 @@ func Precision(places: uint) -> FormatSpec {
     var text: char8[2];
     text[0] = c8'.';
     text[1] = (0x30u + places) as char8;
-    Assert(ParseFormatSpec((@text[0])[..2]).TryIntoValue(@spec), "the precision spec parses");
+    spec = ParseFormatSpec((@text[0])[..2]) catch { else => Panic("the precision spec parses") };
     return spec;
 }
 
@@ -60,18 +60,13 @@ func Precision(places: uint) -> FormatSpec {
 func Bits(text: char8[..], layout: &FloatLayout) -> uint512 {
     var system = SystemAllocator();
     let allocator: Allocator = system;
-    let parsed = ParseWideFloat(allocator, text, layout);
-    var failure = ParseError::Empty;
-    Assert(!parsed.TryIntoError(@failure), "a text that should read");
-    return parsed.ValueOr(0u512);
+    return ParseWideFloat(allocator, text, layout) catch { else => Panic("a text that should read") };
 }
 
 func Refused(text: char8[..], layout: &FloatLayout) -> bool {
     var system = SystemAllocator();
     let allocator: Allocator = system;
-    let parsed = ParseWideFloat(allocator, text, layout);
-    var failure = ParseError::Empty;
-    return parsed.TryIntoError(@failure);
+    return Failed(ParseWideFloat(allocator, text, layout));
 }
 
 func Main() -> int {
@@ -121,7 +116,7 @@ func Main() -> int {
     Assert(Same(Render(Bits("0.0006", b128), b128, Precision(3u), room), "0.001"), "and above it is one");
     Assert(Same(Render(0u512, b128, Precision(2u), room), "0.00"), "zero to two places");
     var signed = FormatSpec::Plain();
-    Assert(ParseFormatSpec("+").TryIntoValue(@signed), "the sign spec parses");
+    signed = ParseFormatSpec("+") catch { else => Panic("the sign spec parses") };
     Assert(Same(Render(Bits("1", b128), b128, signed, room), "+1.0"), "an asked-for sign");
 
     // A huge value to a fixed precision is every one of its integer digits: the largest float128 has 4933 of
@@ -223,21 +218,20 @@ func Main() -> int {
 
     // A style is refused by the value, which the removed Display wrapper used to do on its way past.
     var styled = FormatSpec::Plain();
-    Assert(ParseFormatSpec("x").TryIntoValue(@styled), "a base spec parses");
+    styled = ParseFormatSpec("x") catch { else => Panic("a base spec parses") };
     var second = ByteCursor(room);
     let other: &var TextWriter = second;
     Assert(Failed(one.FormatWith(allocator, other, styled)), "and a style is still refused");
-    let typed = ParseFloat256(allocator, "2.5");
-    var failure = ParseError::Empty;
-    Assert(!typed.TryIntoError(@failure), "the typed entry point reads");
-    let value = typed.ValueOr(Float256::FromBits(0u256));
+    let value = ParseFloat256(allocator, "2.5") catch { else => Panic("the typed entry point reads") };
     Assert(value.IsFinite() && !value.IsNegative() && !value.IsNan(), "and answers the questions a caller asks");
-    let tiny = ParseFloat80(allocator, "1e-4940").ValueOr(Float80::FromBits(0u128));
+    let tiny = ParseFloat80(allocator, "1e-4940") catch { else => Panic("a float80 subnormal reads") };
     Assert(tiny.IsFinite() && tiny.Bits() != 0u128, "a float80 subnormal reads as itself");
-    let widest = ParseFloat512(allocator, "Inf").ValueOr(Float512::FromBits(0u512));
+    let widest = ParseFloat512(allocator, "Inf") catch { else => Panic("an infinity reads") };
     Assert(widest.IsInfinite(), "and the widest width reads an infinity");
-    let narrow = ParseFloat128(allocator, "1e5000");
-    Assert(narrow.TryIntoError(@failure), "a value past the format is refused");
+    let failure = match ParseFloat128(allocator, "1e5000") {
+        .Failure(reason) => reason,
+        .Success(_) => Panic("a value past the format is refused")
+    };
     let named = match failure {
         .Overflow(_) => true,
         else => false

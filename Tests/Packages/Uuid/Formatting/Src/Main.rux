@@ -14,7 +14,7 @@
 // matters — a writer that reports the failure after laying down thirty of the thirty-six characters has still left
 // a string that is not a UUID where a caller may go on to read one.
 
-import Core::{ Assert, Failed, Succeeded };
+import Core::{ Assert, Failed, Panic, Succeeded };
 import Text::{ BufferWriter, Debug, Display, FormatError, FormatSpec, ParseFailure, ParseFormatSpec, StringView,
                TextWriter };
 import Uuid::{ Format, FormatUpper, FormatUrn, Parse, Uuid, UuidParseError, UuidTextLength, UuidUrnLength };
@@ -54,7 +54,7 @@ func Accepts(text: char8[..]) -> bool {
 
 func Spec(text: char8[..]) -> FormatSpec {
     var spec = FormatSpec::Plain();
-    Assert(ParseFormatSpec(text).TryIntoValue(@spec), "the spec parses");
+    spec = ParseFormatSpec(text) catch { else => Panic("the spec parses") };
     return spec;
 }
 

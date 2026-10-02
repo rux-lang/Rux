@@ -153,8 +153,8 @@ func EmitFloat(writer: &var TextWriter, value: float64) -> ! FormatError {
         WriteDecimal(cursor, value, significant);
         let rendered = cursor.Written();
         length = rendered.length;
-        let parsed = ParseFloat64(rendered);
-        if parsed.ValueOr(0.0) == value {
+        let parsed = ParseFloat64(rendered) catch { else => 0.0 };
+        if parsed == value {
             significant = 18u;
         }
         else {

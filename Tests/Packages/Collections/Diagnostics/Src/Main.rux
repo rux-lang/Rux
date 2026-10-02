@@ -1,7 +1,7 @@
 import Allocator::{ Allocator, SystemAllocator };
 import Collections::{ CollectionError, CompareInt32, EqualsInt32, HashInt32, HashMap, HashSet, TableSeed, TreeMap,
                       TreeSet, WriteHashMapDebug, WriteHashSetDebug, WriteTreeMapDebug, WriteTreeSetDebug };
-import Core::{ Assert, Failed, Succeeded };
+import Core::{ Assert, Failed, Panic, Succeeded };
 import Format::WriteFormat;
 import Text::{ BufferWriter, Debug, Display, FormatError, FormatSpec, ParseFormatSpec, TextWriter, WriteAscii,
                WriteBytes };
@@ -87,7 +87,7 @@ func Occurrences(text: char8[..], needle: char8[..]) -> uint {
 
 func Spec(text: char8[..]) -> FormatSpec {
     var spec = FormatSpec::Plain();
-    Assert(ParseFormatSpec(text).TryIntoValue(@spec), "the spec parses");
+    spec = ParseFormatSpec(text) catch { else => Panic("the spec parses") };
     return spec;
 }
 

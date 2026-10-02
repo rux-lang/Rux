@@ -13,7 +13,7 @@ func TripInt64(allocator: Allocator, value: int64) -> bool {
         .Success(parsed) => {
             return parsed == value;
         },
-        .Error(_) => {
+        .Failure(_) => {
             return false;
         }
     }
@@ -25,7 +25,7 @@ func TripUint64Hex(allocator: Allocator, value: uint64) -> bool {
         .Success(parsed) => {
             return parsed == value;
         },
-        .Error(_) => {
+        .Failure(_) => {
             return false;
         }
     }
@@ -37,7 +37,7 @@ func TripFloat64(allocator: Allocator, value: float64) -> bool {
         .Success(parsed) => {
             return parsed == value;
         },
-        .Error(_) => {
+        .Failure(_) => {
             return false;
         }
     }
@@ -67,14 +67,14 @@ func Main() -> int {
         .Success(parsed) => {
             if parsed != -170141183460469231731687303715884105728i128 { return 31; }
         },
-        .Error(_) => { return 32; }
+        .Failure(_) => { return 32; }
     }
     let widest = Rendered(allocator, Render(allocator, "{}", 13407807929942597099574024998205846127479365820592393377723561443721764030073546976801874298166903427690031858186486050853753882811946569946433649006084095u512));
     match ParseUint512(widest.View()) {
         .Success(parsed) => {
             if parsed % 10u512 != 5u512 { return 34; }
         },
-        .Error(_) => { return 35; }
+        .Failure(_) => { return 35; }
     }
 
     // Floats whose text is exact at fifteen digits, and the special values.
@@ -92,7 +92,7 @@ func Main() -> int {
         .Success(parsed) => {
             if !IsNan(parsed) { return 51; }
         },
-        .Error(_) => { return 52; }
+        .Failure(_) => { return 52; }
     }
 
     return 0;

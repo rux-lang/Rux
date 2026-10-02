@@ -1,4 +1,4 @@
-import Core::{ Assert, Succeeded };
+import Core::{ Assert, Panic, Succeeded };
 import Format::Render;
 import Text::{ BufferWriter, Debug, Display, FormatSpec, ParseFormatSpec };
 
@@ -14,7 +14,7 @@ func Same(actual: char8[..], expected: char8[..]) -> bool {
 
 func Spec(text: char8[..]) -> FormatSpec {
     var spec = FormatSpec::Plain();
-    Assert(ParseFormatSpec(text).TryIntoValue(@spec), "the regression specification is valid");
+    spec = ParseFormatSpec(text) catch { else => Panic("the regression specification is valid") };
     return spec;
 }
 

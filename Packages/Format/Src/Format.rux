@@ -68,7 +68,7 @@ func ReadSpecification(format: char8[..], found: Placeholder) -> FormatSpec ! Fo
     let body = (@format.data[found.bodyStart])[..found.bodyEnd - found.bodyStart];
     return match ParseFormatSpec(body) {
         .Success(value) => value,
-        .Error(reason) => fail match reason {
+        .Failure(reason) => fail match reason {
             .InvalidSpecification(offset) => FormatError::InvalidSpecification(found.bodyStart + offset),
             else => reason
         }

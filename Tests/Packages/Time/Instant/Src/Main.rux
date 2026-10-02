@@ -1,4 +1,4 @@
-import Core::{ Assert, Failed };
+import Core::{ Assert, Failed, Panic };
 import Text::{ BufferWriter, Debug, FormatSpec, ParseFormatSpec };
 import Time::{ Duration, Instant, SleepFor, TimeError };
 
@@ -44,7 +44,7 @@ func TicksShown(reading: Instant, ticks: *var uint64) -> bool {
 // precision is a request it cannot honour rather than one it may ignore.
 func RefusesSpec(reading: Instant, text: char8[..]) -> bool {
     var spec = FormatSpec::Plain();
-    Assert(ParseFormatSpec(text).TryIntoValue(@spec), "the spec parses");
+    spec = ParseFormatSpec(text) catch { else => Panic("the spec parses") };
     var storage: char8[64];
     var writer = BufferWriter((@storage[0])[..64]);
     let shown: Debug = reading;

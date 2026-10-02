@@ -30,7 +30,7 @@ func Same(actual: char8[..], expected: char8[..]) -> bool {
 
 func Spec(text: char8[..]) -> FormatSpec {
     var spec = FormatSpec::Plain();
-    Assert(ParseFormatSpec(text).TryIntoValue(@spec), "the spec parses");
+    spec = ParseFormatSpec(text) catch { else => Panic("the spec parses") };
     return spec;
 }
 

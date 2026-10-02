@@ -44,7 +44,7 @@ func RoundTrips64(allocator: Allocator, value: float64) -> bool {
         .Success(text) => {
             match ParseFloat64(text.View().Bytes()) {
                 .Success(read) => { ok = BitsOfFloat64(read) == BitsOfFloat64(value); },
-                .Error(_) => { ok = false; }
+                .Failure(_) => { ok = false; }
             }
         },
         .Failure(_) => {
@@ -60,7 +60,7 @@ func RoundTrips32(allocator: Allocator, value: float32) -> bool {
         .Success(text) => {
             match ParseFloat32(text.View().Bytes()) {
                 .Success(read) => { ok = BitsOfFloat32(read) == BitsOfFloat32(value); },
-                .Error(_) => { ok = false; }
+                .Failure(_) => { ok = false; }
             }
         },
         .Failure(_) => {

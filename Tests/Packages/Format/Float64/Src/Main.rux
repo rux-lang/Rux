@@ -2,7 +2,7 @@
 import Text::{ Display, FormatSpec, TextWriter };
 import Text::StringView;
 import Format::{ ByteCursor, IsNan, IsInfinite, IsFinite, ParseError, ParseFloat64 };
-import Core::{ Failed, Result };
+import Core::{ Failed, Succeeded };
 
 
 // A failed check returns its numbered exit code for `rux test`.
@@ -31,16 +31,16 @@ func Check(value: float64, expected: char8[..], code: int) -> int {
 func CheckParse(str: char8[..], expected: float64, code: int) -> int {
     let result = ParseFloat64(str);
     return match result {
-        Result::Success(value) => value == expected ? 0 : code,
-        Result::Error(_) => code
+        .Success(value) => value == expected ? 0 : code,
+        .Failure(_) => code
     };
 }
 
 func CheckParseError(str: char8[..], expected: ParseError, code: int) -> int {
     let result = ParseFloat64(str);
     return match result {
-        Result::Success(_) => code,
-        Result::Error(error) => error == expected ? 0 : code
+        .Success(_) => code,
+        .Failure(error) => error == expected ? 0 : code
     };
 }
 
@@ -68,8 +68,8 @@ func CheckParseOverloads() -> int {
     var text = StringView::FromBytes("3.5") ?? StringView();
     let parsed = ParseFloat64(text);
     let code = match parsed {
-        Result::Success(value) => value == 3.5 ? 0 : 120,
-        Result::Error(_) => 120
+        .Success(value) => value == 3.5 ? 0 : 120,
+        .Failure(_) => 120
     };
     if code != 0 { return code; }
 
@@ -78,21 +78,21 @@ func CheckParseOverloads() -> int {
     var value = 9.0;
     match ParseFloat64("6.25") {
         .Success(parsedValue) => { value = parsedValue; },
-        .Error(_) => { return 121; }
+        .Failure(_) => { return 121; }
     }
     if value != 6.25 { return 122; }
-    if ParseFloat64("invalid").IsSuccess() { return 123; }
+    if Succeeded(ParseFloat64("invalid")) { return 123; }
     if value != 6.25 { return 124; }
 
     text = StringView::FromBytes("-4.5") ?? StringView();
     match ParseFloat64(text) {
         .Success(parsedView) => { value = parsedView; },
-        .Error(_) => { return 126; }
+        .Failure(_) => { return 126; }
     }
     if value != -4.5 { return 127; }
 
     text = StringView::FromBytes("bad") ?? StringView();
-    if ParseFloat64(text).IsSuccess() { return 128; }
+    if Succeeded(ParseFloat64(text)) { return 128; }
     if value != -4.5 { return 129; }
     return 0;
 }

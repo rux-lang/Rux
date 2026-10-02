@@ -1,5 +1,5 @@
 
-import Core::Succeeded;
+import Core::{ Failed, Succeeded };
 import Allocator::{ Allocator, SystemAllocator };
 import Format::Render;
 import Text::{ FormatError, ParseFormatSpec, String, StringView };
@@ -19,7 +19,7 @@ func TextBytes(text: char8[..]) -> char8[..] {
 func MalformedAt(text: char8[..], offset: uint) -> int {
     return match ParseFormatSpec(text) {
         .Success(_) => 1,
-        .Error(reason) => match reason {
+        .Failure(reason) => match reason {
             .InvalidSpecification(found) => found == offset ? 0 : 2,
             else => 3
         }
@@ -184,8 +184,8 @@ func Main() -> int {
     // The parser itself, where a failure carries where it was found. The cases above check that a format call
     // reports the same failure with the offset moved into the pattern; these check the parser against the body it
     // was actually given.
-    if ParseFormatSpec("").IsError() { return 80; }
-    if ParseFormatSpec(">8.2iso8601").IsError() { return 81; }
+    if Failed(ParseFormatSpec("")) { return 80; }
+    if Failed(ParseFormatSpec(">8.2iso8601")) { return 81; }
     if MalformedAt("{>8", 0u) != 0 { return 82; }
     if MalformedAt(".", 1u) != 0 { return 83; }
     if MalformedAt(".x", 1u) != 0 { return 84; }
@@ -197,7 +197,7 @@ func Main() -> int {
     // fit, which is the twentieth digit: nineteen nines fit a 64-bit uint and twenty do not.
     if MalformedAt("999999999999999999999", 19u) != 0 { return 88; }
     if MalformedAt(".999999999999999999999", 20u) != 0 { return 89; }
-    if ParseFormatSpec("18446744073709551615").IsError() { return 90; }
+    if Failed(ParseFormatSpec("18446744073709551615")) { return 90; }
 
     // Float precision: digits after the point, rounded to nearest with ties to even. A tie goes to the even
     // neighbour rather than away from zero, which is what reading the result back would do with it — so 1.25 at one
