@@ -1,0 +1,87 @@
+// The other half of the package: generic producers of native values, compiled as their own module, so every native
+// type crossing between the two modules has to agree on its identity and layout.
+
+module GenericSum::Shapes {
+    pub struct Box<T> {
+        value: T;
+    }
+
+    pub struct Timeout {
+        after: int32;
+    }
+
+    pub struct ParseError {
+        position: int32;
+    }
+
+    pub struct IoError {
+        code: int32;
+    }
+
+    // A public alias exposes its members: callers see and match the sum itself.
+    pub type ReadError = ParseError | IoError;
+
+    // A named wrapper keeps a stable boundary and still carries the original cause.
+    pub variant LoadError {
+        Unreadable(ReadError),
+        Expired(Timeout)
+    }
+
+    pub func Choose<T, U>(useLeft: bool, left: T, right: U) -> T | U {
+        if useLeft {
+            return left;
+        }
+        return right;
+    }
+
+    pub func Boxes<T, U>(useLeft: bool, left: Box<T>, right: Box<U>) -> Box<T> | Box<U> {
+        if useLeft {
+            return left;
+        }
+        return right;
+    }
+
+    pub func WithTimeout<E>(error: E, expired: bool) -> int32 ! (E | Timeout) {
+        if expired {
+            fail Timeout { after: 30i32 };
+        }
+        fail error;
+    }
+
+    pub func Read(text: int32) -> int32 ! ReadError {
+        if text < 0i32 {
+            fail ParseError { position: -text };
+        }
+        if text > 1000i32 {
+            fail IoError { code: text };
+        }
+        return text;
+    }
+
+    pub func Load(text: int32) -> int32 ! LoadError {
+        return Read(text)? else (e => LoadError::Unreadable(e));
+    }
+
+    pub func Lookup<T>(present: bool, value: T) -> T? {
+        if present {
+            return value;
+        }
+        return none;
+    }
+
+    pub func Nest<T, E>(depth: int32, value: T, error: E) -> (T ! E)? {
+        if depth == 0i32 {
+            return none;
+        }
+        if depth == 1i32 {
+            return .Some(.Failure(error));
+        }
+        return .Some(.Success(value));
+    }
+
+    pub func Complete(ok: bool) -> ! IoError {
+        if !ok {
+            fail IoError { code: 1i32 };
+        }
+    }
+}

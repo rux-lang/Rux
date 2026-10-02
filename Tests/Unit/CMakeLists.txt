@@ -80,6 +80,7 @@ set(RUX_TEST_SOURCES
     NativeConstructorTests.cpp
     NativeConstructionLoweringTests.cpp
     NativeConversionFactsTests.cpp
+    NativeBoundaryTests.cpp
     NativeCapabilityTests.cpp
     NativeCleanupLoweringTests.cpp
     NativeConversionTests.cpp

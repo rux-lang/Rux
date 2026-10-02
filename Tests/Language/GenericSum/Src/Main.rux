@@ -1,0 +1,108 @@
+// Generic sums: native types built from type parameters, normalized after substitution, and passed between modules.
+//
+// `T | U` is accepted for any arguments. When they differ, a value keeps whichever member it entered as; when they are
+// equal, the sum collapses to that one type, so `Choose<int32, int32>` returns an `int32`. A match written over `T | U`
+// stays valid at every instantiation by ending in `else`. Native values built in one module are read in another with
+// the same identity and layout, aliases name exactly their members, and a named error wrapper keeps its cause.
+
+import Core::Assert;
+import GenericSum::Shapes::{ Box, Boxes, Choose, Complete, IoError, Load, LoadError, Lookup, Nest, ParseError, Read,
+                             ReadError, Timeout, WithTimeout };
+
+func Left<T, U>(value: T | U) -> bool {
+    return match value {
+        left: T => true,
+        else => false
+    };
+}
+
+func Size<T>(value: T) -> int32 {
+    return match value {
+        whole: T => 1i32
+    };
+}
+
+func Describe(error: ReadError) -> int32 {
+    return match error {
+        parse: ParseError => parse.position,
+        io: IoError => io.code
+    };
+}
+
+func Main() -> int {
+    // Different arguments keep two members; equal ones collapse to one type.
+    let different = Choose<int32, int64>(false, 1i32, 2i64);
+    let right = match different {
+        wide: int64 => wide == 2i64,
+        else => false
+    };
+    Assert(right, "the right member of a two-member sum");
+    Assert(Left<int32, int64>(Choose<int32, int64>(true, 1i32, 2i64)), "the left member");
+    let same: int32 = Choose<int32, int32>(false, 1i32, 2i32);
+    Assert(same == 2i32, "a collapsed sum is its member");
+    Assert(Left<int32, int32>(5i32), "a collapsed match takes the first arm");
+
+    // Repeated outer constructors are members too, and collapse the same way.
+    let boxes = Boxes<int32, bool>(false, Box<int32> { value: 1i32 }, Box<bool> { value: true });
+    let boxed = match boxes {
+        number: Box<int32> => number.value,
+        flag: Box<bool> => flag.value ? 10i32 : 20i32
+    };
+    Assert(boxed == 10i32, "a member chosen by its instantiation");
+    let sameBoxes: Box<int32> = Boxes<int32, int32>(true, Box<int32> { value: 7i32 }, Box<int32> { value: 8i32 });
+    Assert(sameBoxes.value == 7i32, "equal instantiations collapse");
+
+    // An error parameter joined with a concrete error.
+    let timedOut = match WithTimeout<IoError>(IoError { code: 4i32 }, true) {
+        .Success(_) => 0i32,
+        .Failure(_: Timeout) => 1i32,
+        .Failure(io: IoError) => io.code
+    };
+    Assert(timedOut == 1i32, "the concrete member of a generic error sum");
+    let collapsedError = match WithTimeout<Timeout>(Timeout { after: 9i32 }, false) {
+        .Success(_) => 0i32,
+        .Failure(timeout) => timeout.after
+    };
+    Assert(collapsedError == 9i32, "an error parameter equal to the concrete member collapses");
+
+    // Values built in the other module keep their payloads exactly.
+    let failure = match Read(-12i32) {
+        .Success(_) => 0i32,
+        .Failure(error) => Describe(error)
+    };
+    Assert(failure == 12i32, "an alias exposes its members across modules");
+    let wrapped = match Load(5000i32) {
+        .Success(_) => 0i32,
+        .Failure(LoadError::Unreadable(cause)) => Describe(cause),
+        .Failure(LoadError::Expired(_)) => -1i32
+    };
+    Assert(wrapped == 5000i32, "a named wrapper keeps the original cause");
+
+    Assert(Lookup<int32>(true, 3i32) == .Some(3i32), "a generic presence");
+    Assert(Lookup<int32>(false, 3i32) == none, "a generic absence");
+    let nestedOptional: int32?? = Lookup<int32?>(true, none);
+    Assert(nestedOptional == .Some(none), "a present absence through a type parameter");
+    Assert(Nest<int32, ParseError>(2i32, 4i32, ParseError { position: 1i32 }) == .Some(.Success(4i32)),
+           "a nested success");
+    Assert(Nest<int32, ParseError>(1i32, 4i32, ParseError { position: 1i32 }) ==
+               .Some(.Failure(ParseError { position: 1i32 })),
+           "a nested failure is data");
+    Assert(Complete(true) == .Success(()), "a unit success across modules");
+
+    // A whole-subject typed pattern binds the whole value whatever the parameter stands for.
+    Assert(Size<int32?>(none) == 1i32, "an optional argument");
+    Assert(Size<int32 ! IoError>(.Success(1i32)) == 1i32, "a fallible argument");
+
+    // A pointer to an optional and an optional pointer are different things.
+    var slot: int32? = 6i32;
+    let pointerToOptional: *var int32? = @slot;
+    let optionalPointer: (*var int32?)? = .Some(pointerToOptional);
+    match optionalPointer {
+        pointer? => {
+            *pointer = .Some((*pointer ?? 0i32) + 1i32);
+        },
+        none => {}
+    }
+    Assert(slot == .Some(7i32), "an optional pointer to an optional, written through");
+    return 0;
+}
