@@ -1,0 +1,206 @@
+// Iteration driven by a native optional: `Next -> Item?`.
+//
+// Each iteration calls `Next` once. A present result continues the loop with its payload and only the outer absence
+// ends it, so an item may itself be absent, failed, or the unit without ending anything. Loops over a container use
+// its `Iterate`, which borrows the container and hands out an independent iterator; a temporary iterator lives exactly
+// as long as its loop, and items the loop owns are destroyed once each.
+
+import Core::Assert;
+
+struct Missing {}
+
+struct Counter {
+    count: int32;
+}
+
+struct Tracked {
+    counter: *var Counter;
+    id: int32;
+}
+
+extend Tracked {
+    func =(self: &var Tracked, other: &Tracked);
+
+    func ~Tracked(self: &var Tracked) {
+        self.counter.count = self.counter.count + 1;
+    }
+}
+
+// Counts up to a limit, then reports the end.
+struct Upto {
+    next: int32;
+    limit: int32;
+}
+
+extend Upto {
+    func Next(self: &var Upto) -> int32? {
+        if self.next >= self.limit {
+            return none;
+        }
+        self.next = self.next + 1i32;
+        return self.next;
+    }
+}
+
+func CountTo(limit: int32) -> Upto {
+    return Upto { next: 0i32, limit: limit };
+}
+
+// Reports items that are themselves optional: an absent item is still an item.
+struct Sparse {
+    index: int32;
+}
+
+extend Sparse {
+    func Next(self: &var Sparse) -> int32?? {
+        self.index = self.index + 1i32;
+        if self.index > 4i32 {
+            return none;
+        }
+        if self.index % 2i32 == 0i32 {
+            return .Some(none);
+        }
+        return .Some(.Some(self.index));
+    }
+}
+
+// Reports fallible items: a failed item is data, and iteration continues past it.
+struct Checked {
+    index: int32;
+}
+
+extend Checked {
+    func Next(self: &var Checked) -> (int32 ! Missing)? {
+        self.index = self.index + 1i32;
+        if self.index > 3i32 {
+            return none;
+        }
+        if self.index == 2i32 {
+            return .Some(.Failure(Missing {}));
+        }
+        return .Some(.Success(self.index));
+    }
+}
+
+// Reports unit items.
+struct Ticks {
+    remaining: int32;
+}
+
+extend Ticks {
+    func Next(self: &var Ticks) -> ()? {
+        if self.remaining == 0i32 {
+            return none;
+        }
+        self.remaining = self.remaining - 1i32;
+        return ();
+    }
+}
+
+// A container borrowed by `Iterate`, which hands out an iterator over its range.
+struct Range {
+    start: int32;
+    end: int32;
+}
+
+extend Range {
+    func Iterate(self: &Range) -> Upto {
+        return Upto { next: self.start, limit: self.end };
+    }
+}
+
+// Owned items, so destruction can be counted.
+struct Tracker {
+    counter: *var Counter;
+    remaining: int32;
+}
+
+extend Tracker {
+    func Next(self: &var Tracker) -> Tracked? {
+        if self.remaining == 0i32 {
+            return none;
+        }
+        self.remaining = self.remaining - 1i32;
+        return Tracked { counter: self.counter, id: self.remaining };
+    }
+}
+
+func Main() -> int {
+    var total = 0i32;
+    for value in CountTo(4i32) {
+        total = total + value;
+    }
+    Assert(total == 10i32, "a temporary iterator runs to its end");
+
+    var present = 0i32;
+    var absent = 0i32;
+    for item in (Sparse { index: 0i32 }) {
+        match item {
+            value? => {
+                present = present + value;
+            },
+            none => {
+                absent = absent + 1i32;
+            }
+        }
+    }
+    Assert(present == 4i32 && absent == 2i32, "an absent item does not end the loop");
+
+    var succeeded = 0i32;
+    var failed = 0i32;
+    for item in (Checked { index: 0i32 }) {
+        match item {
+            .Success(value) => {
+                succeeded = succeeded + value;
+            },
+            .Failure(_) => {
+                failed = failed + 1i32;
+            }
+        }
+    }
+    Assert(succeeded == 4i32 && failed == 1i32, "a failed item is data");
+
+    var ticks = 0i32;
+    for tick in (Ticks { remaining: 3i32 }) {
+        ticks = ticks + 1i32;
+    }
+    Assert(ticks == 3i32, "unit items");
+
+    let range = Range { start: 2i32, end: 5i32 };
+    var first = 0i32;
+    var second = 0i32;
+    for value in range {
+        first = first + value;
+    }
+    for value in range {
+        second = second + value;
+    }
+    Assert(first == 12i32 && second == 12i32, "each loop over a container gets its own iterator");
+
+    var seen = 0i32;
+    for value in CountTo(100i32) {
+        if value % 2i32 == 0i32 {
+            continue;
+        }
+        if value > 7i32 {
+            break;
+        }
+        seen = seen + value;
+    }
+    Assert(seen == 16i32, "break and continue");
+
+    var counter = Counter { count: 0i32 };
+    var ids = 0i32;
+    for owned in (Tracker { counter: @counter, remaining: 3i32 }) {
+        ids = ids + owned.id;
+    }
+    Assert(ids == 3i32, "owned items are delivered");
+    Assert(counter.count == 3i32, "and destroyed once each");
+    for owned in (Tracker { counter: @counter, remaining: 3i32 }) {
+        if owned.id == 1i32 {
+            break;
+        }
+    }
+    Assert(counter.count == 5i32, "an item the loop leaves early is destroyed too");
+    return 0;
+}

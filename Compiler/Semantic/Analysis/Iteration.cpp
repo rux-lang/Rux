@@ -170,10 +170,6 @@ void AnalysisContext::RecordIteration(const ForStmt &statement, const IterationS
     iteration.entry = shape.entry;
     iteration.reportedType = shape.reportedType;
     iteration.native = shape.reportedType.IsOptional();
-    if (iteration.native) {
-        // Checked ahead of its lowering: a loop driven by a native optional stops here until it can be compiled.
-        EmitError(statement.location, "iteration over a native optional 'Next' is not supported yet");
-    }
     if (shape.reportedDeclaration) {
         iteration.optionVariantName = programIndex.NominalName(*shape.reportedDeclaration);
         iteration.someVariant = std::string(kOptionSomeVariant);

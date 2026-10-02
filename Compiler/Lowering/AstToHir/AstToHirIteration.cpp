@@ -6,6 +6,7 @@
 // hands out a value, that value sits in a slot, and each iteration writes it in place.
 
 #include "Lowering/AstToHir/Detail/AstToHirContext.h"
+#include "Types/NativeLayout.h"
 
 #include <format>
 #include <utility>
@@ -102,8 +103,15 @@ HirStmtPtr AstToHirContext::LowerIteratorFor(const ForStmt &statement, const Res
     itemBinding->location = statement.location;
     itemBinding->name = itemName;
     itemBinding->type = itemType;
-    itemPattern->argIndices.push_back(0);
-    itemPattern->args.push_back(std::move(itemBinding));
+    if (fact.native) {
+        // A native optional reports the item by its presence tag; an item that is itself absent is still an item.
+        itemPattern =
+            NativeCasePattern(reportedType, NativePresentTag, itemType, std::move(itemBinding), statement.location);
+    }
+    else {
+        itemPattern->argIndices.push_back(0);
+        itemPattern->args.push_back(std::move(itemBinding));
+    }
 
     // The loop variable is a fresh binding initialized from the reported item, so the body reads the name the source
     // wrote and nothing observes the temporary the pattern bound.
@@ -146,6 +154,10 @@ HirStmtPtr AstToHirContext::LowerIteratorFor(const ForStmt &statement, const Res
     endPattern->form = CaseTypeForm::Variant;
     endPattern->discriminant = LookupEnumVariantDiscriminant(fact.optionVariantName, fact.noneVariant);
     endPattern->unitDiscriminants = unitDiscriminants;
+    if (fact.native) {
+        // Only the outer absence ends the loop.
+        endPattern = NativeCasePattern(reportedType, NativeAbsentTag, std::nullopt, nullptr, statement.location);
+    }
 
     auto exit = std::make_unique<HirBreakStmt>();
     exit->location = statement.location;
