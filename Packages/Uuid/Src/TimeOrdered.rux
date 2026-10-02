@@ -17,16 +17,15 @@ import Time::Timestamp;
 
 /// A version 7 UUID: the current time in its leading bits, entropy in the rest.
 ///
-/// `error` reports why entropy was unavailable, and the result is nil in that case rather than a
-/// timestamp-shaped value with no randomness — which would be guessable and would look fine.
+/// Fails with why entropy was unavailable rather than producing a timestamp-shaped value with no randomness — which
+/// would be guessable and would look fine.
 ///
-/// @param error receives why the value could not be produced, or `None`
-/// @returns a version 7 value carrying the current time, or the nil value on failure
+/// @returns a version 7 value carrying the current time, or why entropy was unavailable
 /// @see https://rux-lang.dev/docs/api/uuid/time-ordered
-pub func TimeOrdered(error: *var EntropyError) -> Uuid {
+pub func TimeOrdered() -> Uuid ! EntropyError {
     let now = Timestamp::Now();
     let milliseconds = (now.UnixSeconds() as uint64) * 1000u64 + ((now.SubsecondNanoseconds() / 1000000u32) as uint64);
-    return TimeOrderedAt(milliseconds, error);
+    return TimeOrderedAt(milliseconds);
 }
 
 /// A version 7 UUID for a given millisecond, with entropy in the rest.
@@ -34,13 +33,11 @@ pub func TimeOrdered(error: *var EntropyError) -> Uuid {
 /// For reproducing an identifier from a recorded time, and for testing.
 ///
 /// @param milliseconds the timestamp to embed, in milliseconds since the Unix epoch
-/// @param error receives why the value could not be produced, or `None`
-/// @returns a version 7 value carrying `milliseconds`, or the nil value on failure
+/// @returns a version 7 value carrying `milliseconds`, or why entropy was unavailable
 /// @see https://rux-lang.dev/docs/api/uuid/time-ordered-at
-pub func TimeOrderedAt(milliseconds: uint64, error: *var EntropyError) -> Uuid {
+pub func TimeOrderedAt(milliseconds: uint64) -> Uuid ! EntropyError {
     var bytes: char8[16];
-    *error = Fill(@bytes[0] as *var opaque, 16u);
-    if *error != EntropyError::None { return Uuid::Nil(); }
+    Fill(@bytes[0] as *var opaque, 16u)?;
     var value = Uuid::FromBytes((@bytes[0])[..16]);
     // Six bytes of milliseconds, most significant first — which is what makes byte order equal time order.
     var index: uint = 0;
@@ -100,12 +97,11 @@ extend MonotonicUuid {
 
     /// The next identifier, strictly greater than the one before it.
     ///
-    /// @param error receives why the value could not be produced, or `None`
-    /// @returns the next value, which sorts after every value this generator has produced
+    /// @returns the next value, which sorts after every value this generator has produced, or why entropy was
+    /// unavailable
     /// @see https://rux-lang.dev/docs/api/uuid/monotonic-uuid/next
-    pub func Next(self: &var MonotonicUuid, error: *var EntropyError) -> Uuid {
-        let candidate = TimeOrdered(error);
-        if *error != EntropyError::None { return Uuid::Nil(); }
+    pub func Next(self: &var MonotonicUuid) -> Uuid ! EntropyError {
+        let candidate = TimeOrdered()?;
         if !self.started {
             self.previous = candidate;
             self.started = true;

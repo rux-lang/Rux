@@ -18,7 +18,7 @@ rux add Rux/Uuid
 - **Version 7** — time-ordered, so byte order is time order and a database index built on one does not fragment; with a caller-owned `MonotonicUuid()` generator for identifiers minted in the same millisecond.
 - **Windows GUIDs** — an explicit, self-inverse byte-order conversion, because the two layouts disagree about the first three fields and a silent reinterpretation produces a valid-looking UUID with the wrong timestamp.
 
-Formatting and comparison borrow UUID values directly. Generation retains raw scalar error-output pointers and entropy retains raw byte buffers; neither kind transfers ownership.
+Formatting and comparison borrow UUID values directly. Generation returns `Uuid ! EntropyError`, failing rather than producing a predictable identifier when the system has no entropy, and entropy retains raw byte buffers that transfer no ownership.
 
 ## Documentation
 

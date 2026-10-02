@@ -14,31 +14,23 @@ import Entropy::{ EntropyError, NextUint64 };
 
 /// A `Xoshiro256` seeded from the operating system's entropy.
 ///
-/// `error` is written with why the entropy could not be obtained, or `None` when it could. On failure the
-/// generator is returned seeded from zero rather than left in an unusable state, so a caller who ignores the
-/// error gets a working — but entirely predictable — generator instead of undefined behavior. Anything that
-/// depends on the seed being unpredictable must check.
+/// Fails with why the entropy could not be obtained. A caller that is content with a predictable generator when
+/// the system has no entropy recovers explicitly, as in `XoshiroFromEntropy() catch { else => Xoshiro256(0u64) }`.
 ///
-/// @param error receives why the generator could not be seeded, or `None`
-/// @returns a generator seeded from the system, or one seeded with zeros on failure
+/// @returns a generator seeded from the system, or why it could not be seeded
 /// @see https://rux-lang.dev/docs/api/random/xoshiro-from-entropy
-pub func XoshiroFromEntropy(error: *var EntropyError) -> Xoshiro256 {
-    let seed = NextUint64(error);
-    if *error != EntropyError::None { return Xoshiro256(0u64); }
-    return Xoshiro256(seed);
+pub func XoshiroFromEntropy() -> Xoshiro256 ! EntropyError {
+    return Xoshiro256(NextUint64()?);
 }
 
 /// A `Pcg64Dxsm` seeded from the operating system's entropy, on the default stream.
 ///
 /// Fails and recovers exactly as `XoshiroFromEntropy` does.
 ///
-/// @param error receives why the generator could not be seeded, or `None`
-/// @returns a generator seeded from the system, or one seeded with zeros on failure
+/// @returns a generator seeded from the system, or why it could not be seeded
 /// @see https://rux-lang.dev/docs/api/random/pcg-from-entropy
-pub func PcgFromEntropy(error: *var EntropyError) -> Pcg64Dxsm {
-    let seed = NextUint64(error);
-    if *error != EntropyError::None { return Pcg64Dxsm(0u64); }
-    return Pcg64Dxsm(seed);
+pub func PcgFromEntropy() -> Pcg64Dxsm ! EntropyError {
+    return Pcg64Dxsm(NextUint64()?);
 }
 
 /// A `Pcg64Dxsm` seeded from entropy on the stream `stream` selects.
@@ -47,11 +39,8 @@ pub func PcgFromEntropy(error: *var EntropyError) -> Pcg64Dxsm {
 /// independent by construction and the whole run is reproducible from the one seed if it is recorded.
 ///
 /// @param stream which of the generator's independent sequences to draw from
-/// @param error receives why the generator could not be seeded, or `None`
-/// @returns a generator on that stream seeded from the system, or one seeded with zeros on failure
+/// @returns a generator on that stream seeded from the system, or why it could not be seeded
 /// @see https://rux-lang.dev/docs/api/random/pcg-from-entropy-with-stream
-pub func PcgFromEntropyWithStream(stream: uint64, error: *var EntropyError) -> Pcg64Dxsm {
-    let seed = NextUint64(error);
-    if *error != EntropyError::None { return Pcg64Dxsm::WithStream(0u64, stream); }
-    return Pcg64Dxsm::WithStream(seed, stream);
+pub func PcgFromEntropyWithStream(stream: uint64) -> Pcg64Dxsm ! EntropyError {
+    return Pcg64Dxsm::WithStream(NextUint64()?, stream);
 }

@@ -29,7 +29,7 @@
 import Core::uint;
 import Allocator::Allocator;
 import Core::Option;
-import Entropy::{ EntropyError, NextUint64 };
+import Entropy::NextUint64;
 
 /// The state byte of a slot that has never held an entry, and does not now.
 ///
@@ -78,11 +78,8 @@ extend TableSeed {
     /// @returns a seed drawn from the system, so two tables in one process iterate differently
     /// @see https://rux-lang.dev/docs/api/collections/table-seed/random
     pub func Random() -> TableSeed {
-        var error = EntropyError::None;
-        let low = NextUint64(@error);
-        if error.IsError() { return TableSeed { low: 0x9E3779B97F4A7C15, high: 0xBF58476D1CE4E5B9 }; }
-        let high = NextUint64(@error);
-        if error.IsError() { return TableSeed { low: low, high: 0xBF58476D1CE4E5B9 }; }
+        let low = NextUint64() catch { else => 0x9E3779B97F4A7C15 };
+        let high = NextUint64() catch { else => 0xBF58476D1CE4E5B9 };
         return TableSeed { low: low, high: high };
     }
 

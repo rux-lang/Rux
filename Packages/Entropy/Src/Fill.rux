@@ -16,14 +16,14 @@ import Memory::ZeroizeBlock;
 /// Something that can fill a buffer with unpredictable bytes.
 ///
 /// Implemented by `SystemEntropy` for the operating system's generator, and by a test for a source that fails on
-/// demand. An implementation either fills the whole buffer and reports `None`, or reports why it did not.
+/// demand. An implementation either fills the whole buffer and succeeds, or fails with why it did not.
 ///
 /// @see https://rux-lang.dev/docs/api/entropy/entropy-source
 pub interface EntropySource {
     /// Fills `length` bytes of `buffer` with unpredictable bytes.
     ///
-    /// `buffer` is borrowed and written; `length` is read by value. Reports `None` only when every byte was written.
-    /// An implementation may write part of the buffer before failing — the caller is what guarantees nothing
+    /// `buffer` is borrowed and written; `length` is read by value. Succeeds only when every byte was written. An
+    /// implementation may write part of the buffer before failing — the caller is what guarantees nothing
     /// partial survives.
     ///
     /// # Safety
@@ -32,9 +32,9 @@ pub interface EntropySource {
     ///
     /// @param buffer receives the bytes
     /// @param length how many bytes to fill
-    /// @returns `None` only when every byte was written
+    /// @returns nothing when every byte was written, or why not
     /// @see https://rux-lang.dev/docs/api/entropy/entropy-source/fill
-    func Fill(buffer: *var opaque, length: uint) -> EntropyError;
+    func Fill(buffer: *var opaque, length: uint) -> ! EntropyError;
 }
 
 /// The operating system's generator, as an `EntropySource`.
@@ -65,7 +65,7 @@ extend SystemEntropy {
 extend SystemEntropy : EntropySource {
     /// Fills `length` bytes of `buffer` from the operating system.
     ///
-    /// Exactly `FillFromSource`, reached through the interface. Reports `None` only when every byte was written.
+    /// Exactly `FillFromSource`, reached through the interface. Succeeds only when every byte was written.
     ///
     /// Runs in time proportional to `length` and allocates nothing.
     ///
@@ -75,17 +75,17 @@ extend SystemEntropy : EntropySource {
     ///
     /// @param buffer receives the bytes
     /// @param length how many bytes to fill
-    /// @returns `None` only when every byte was written
+    /// @returns nothing when every byte was written, or why not
     /// @see https://rux-lang.dev/docs/api/entropy/system-entropy/fill
-    pub func Fill(self: &var SystemEntropy, buffer: *var opaque, length: uint) -> EntropyError {
+    pub func Fill(self: &var SystemEntropy, buffer: *var opaque, length: uint) -> ! EntropyError {
         return FillFromSource(buffer, length);
     }
 }
 
 /// Fills `length` bytes of `buffer` from `source`, in as many calls as it takes.
 ///
-/// `source` is borrowed for the call; `buffer` is borrowed and written; `length` is read by value. Reports `None`
-/// only when every byte was written, and otherwise reports what the source reported.
+/// `source` is borrowed for the call; `buffer` is borrowed and written; `length` is read by value. Succeeds only when
+/// every byte was written, and otherwise fails with what the source reported.
 ///
 /// A request larger than a single call accepts is split, so a caller need not know what that limit is. A failure
 /// part-way through a split request is a failure of the whole request: there is no state in which some of a buffer
@@ -101,25 +101,25 @@ extend SystemEntropy : EntropySource {
 /// @param source where the bytes come from
 /// @param buffer receives the bytes
 /// @param length how many bytes to fill
-/// @returns `None` only when every byte was written
+/// @returns nothing when every byte was written, or why not
 /// @see https://rux-lang.dev/docs/api/entropy/fill-from
-pub func FillFrom(source: &var EntropySource, buffer: *var opaque, length: uint) -> EntropyError {
-    if length == 0 { return EntropyError::None; }
-    if buffer == null { return EntropyError::Failed; }
+pub func FillFrom(source: &var EntropySource, buffer: *var opaque, length: uint) -> ! EntropyError {
+    if length == 0 { return; }
+    if buffer == null { fail EntropyError::Failed; }
 
     var filled: uint = 0;
     while filled < length {
         let remaining = length - filled;
         let take = remaining > MaxEntropyRequest ? MaxEntropyRequest : remaining;
         let target = ((buffer as uint) + filled) as *var opaque;
-        let error = source.Fill(target, take);
-        if error.IsError() {
-            ZeroizeBlock(buffer, length);
-            return error;
-        }
+        source.Fill(target, take) catch {
+            error => {
+                ZeroizeBlock(buffer, length);
+                fail error;
+            }
+        };
         filled = filled + take;
     }
-    return EntropyError::None;
 }
 
 /// Fills `length` bytes of `buffer` from `source`, trying again while the failure says trying again might work.
@@ -142,16 +142,24 @@ pub func FillFrom(source: &var EntropySource, buffer: *var opaque, length: uint)
 /// @param buffer receives the bytes
 /// @param length how many bytes to fill
 /// @param attempts how many times to go back to an interrupted source before giving up
-/// @returns `None` only when every byte was written, or `Interrupted` after `attempts` tries
+/// @returns nothing when every byte was written, or why not — `Interrupted` after `attempts` tries
 /// @see https://rux-lang.dev/docs/api/entropy/fill-with-retries
-pub func FillWithRetries(source: &var EntropySource, buffer: *var opaque, length: uint, attempts: uint) -> EntropyError {
-    var error = FillFrom(source, buffer, length);
+pub func FillWithRetries(source: &var EntropySource, buffer: *var opaque, length: uint, attempts: uint)
+    -> ! EntropyError {
     var remaining = attempts;
-    while error.IsTransient() && remaining > 0 {
-        remaining = remaining - 1;
-        error = FillFrom(source, buffer, length);
+    while true {
+        FillFrom(source, buffer, length) catch {
+            error => {
+                var reason = error;
+                if !reason.IsTransient() || remaining == 0 {
+                    fail reason;
+                }
+                remaining = remaining - 1;
+                continue;
+            }
+        };
+        return;
     }
-    return error;
 }
 
 /// Fills `length` bytes of `buffer` from the operating system.
@@ -167,9 +175,9 @@ pub func FillWithRetries(source: &var EntropySource, buffer: *var opaque, length
 ///
 /// @param buffer receives the bytes
 /// @param length how many bytes to fill
-/// @returns `None` only when every byte was written
+/// @returns nothing when every byte was written, or why not
 /// @see https://rux-lang.dev/docs/api/entropy/fill
-pub func Fill(buffer: *var opaque, length: uint) -> EntropyError {
+pub func Fill(buffer: *var opaque, length: uint) -> ! EntropyError {
     var system = SystemEntropy();
     let source: &var EntropySource = system;
     return FillFrom(source, buffer, length);
@@ -177,21 +185,19 @@ pub func Fill(buffer: *var opaque, length: uint) -> EntropyError {
 
 /// An unpredictable 64-bit value, which is what a generator wants for a seed.
 ///
-/// `error` is borrowed and written with why the value could not be obtained, or `None` when it could. Returns zero
-/// on failure — a value a caller who ignores `error` will notice, rather than one that looks plausible.
+/// A failed draw scrubs its local copy before failing, so nothing of a partial draw is left behind on the stack.
 ///
 /// Runs in constant time and allocates nothing.
 ///
-/// @param error receives why the draw failed, or `None`
-/// @returns eight unpredictable bytes as a value; zero when the draw failed, which `error` says
+/// @returns eight unpredictable bytes as a value, or why the draw failed
 /// @see https://rux-lang.dev/docs/api/entropy/next-uint64
-pub func NextUint64(error: *var EntropyError) -> uint64 {
+pub func NextUint64() -> uint64 ! EntropyError {
     var value: uint64 = 0;
-    *error = Fill(@value as *var opaque, 8);
-    if error.IsError() {
-        // Not merely returning zero: the local is scrubbed, so a failed draw leaves nothing behind on the stack.
-        ZeroizeBlock(@value as *var opaque, 8);
-        return 0;
-    }
+    Fill(@value as *var opaque, 8) catch {
+        error => {
+            ZeroizeBlock(@value as *var opaque, 8);
+            fail error;
+        }
+    };
     return value;
 }

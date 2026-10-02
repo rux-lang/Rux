@@ -7,14 +7,11 @@ import Core::Assert;
 import Entropy::EntropyError;
 import Random::{ PcgFromEntropy, PcgFromEntropyWithStream, Pcg64Dxsm, RandomGenerator, Xoshiro256, XoshiroFromEntropy };
 
-func Main() -> int {
-    var error = EntropyError::None;
+func Main() -> ! EntropyError {
 
     // Entropy seeding succeeds on a supported system, and different calls give different streams.
-    var first = XoshiroFromEntropy(@error);
-    Assert(error == EntropyError::None, "the system supplies entropy");
-    var second = XoshiroFromEntropy(@error);
-    Assert(error == EntropyError::None, "twice");
+    var first = XoshiroFromEntropy()?;
+    var second = XoshiroFromEntropy()?;
     var agreements: uint = 0;
     var index: uint = 0;
     while index < 16u {
@@ -25,9 +22,8 @@ func Main() -> int {
     }
     Assert(agreements == 0u, "two entropy-seeded generators do not produce the same words");
 
-    var pcgFirst = PcgFromEntropy(@error);
-    Assert(error == EntropyError::None, "the other generator seeds from entropy too");
-    var pcgSecond = PcgFromEntropy(@error);
+    var pcgFirst = PcgFromEntropy()?;
+    var pcgSecond = PcgFromEntropy()?;
     agreements = 0;
     index = 0;
     while index < 16u {
@@ -39,9 +35,8 @@ func Main() -> int {
     Assert(agreements == 0u, "and two of those differ as well");
 
     // The parallel shape: one entropy seed per worker with its own stream.
-    var workerZero = PcgFromEntropyWithStream(0u64, @error);
-    var workerOne = PcgFromEntropyWithStream(1u64, @error);
-    Assert(error == EntropyError::None, "a stream-selected generator seeds from entropy");
+    var workerZero = PcgFromEntropyWithStream(0u64)?;
+    var workerOne = PcgFromEntropyWithStream(1u64)?;
     agreements = 0;
     index = 0;
     while index < 16u {
@@ -86,6 +81,4 @@ func Main() -> int {
     let fromFork = forked.NextUint64();
     Assert(fromOriginal == fromFork, "a copy continues from where it was copied");
     Assert(original.NextUint64() == forked.NextUint64(), "and the two then advance independently in step");
-
-    return 0;
 }

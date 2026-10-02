@@ -4,19 +4,18 @@
 // all — and a caller asking for a key does not want to know which. What a caller does want to know is whether to
 // try again, whether the source exists on this system, and whether the buffer holds anything.
 //
-// One rule holds across every function in this package: a request either fills the whole buffer and reports `None`,
-// or reports something else and leaves the buffer whatever it already held. There is no partial fill to inspect,
+// One rule holds across every function in this package: a request either fills the whole buffer and succeeds, or
+// fails with one of these and leaves the buffer whatever it already held. There is no partial fill to inspect,
 // because a half-filled key is more dangerous than none at all — the first half looks exactly as random as a whole
 // one.
 
 /// Why unpredictable bytes could not be obtained.
 ///
-/// `None` means the whole buffer was filled. Every other value means nothing was written that a caller may rely on.
+/// Every case is a failure: nothing was written that a caller may rely on. A filled buffer is the success channel of
+/// the `! EntropyError` the fill returns.
 ///
 /// @see https://rux-lang.dev/docs/api/entropy/entropy-error
 pub enum EntropyError {
-    /// The whole buffer was filled with unpredictable bytes.
-    None,
     /// This system has no entropy source this package can reach.
     ///
     /// A kernel too old for its own generator reports this. It does not change while a program runs, so retrying is
@@ -35,31 +34,6 @@ pub enum EntropyError {
 }
 
 extend EntropyError {
-    /// Whether this reports success.
-    ///
-    /// `self` is borrowed. True only for `None`, which is the only value that means the buffer was filled.
-    ///
-    /// Cannot fail. Runs in constant time and allocates nothing.
-    ///
-    /// @returns whether this is `None`, meaning the whole buffer was filled
-    /// @see https://rux-lang.dev/docs/api/entropy/entropy-error/is-ok
-    pub func IsOk(self: *EntropyError) -> bool {
-        return *self == EntropyError::None;
-    }
-
-    /// Whether this reports a failure.
-    ///
-    /// `self` is borrowed. The negation of `IsOk`, written out because `if error.IsError()` reads better than the
-    /// comparison it stands for.
-    ///
-    /// Cannot fail. Runs in constant time and allocates nothing.
-    ///
-    /// @returns whether this is anything but `None`
-    /// @see https://rux-lang.dev/docs/api/entropy/entropy-error/is-error
-    pub func IsError(self: *EntropyError) -> bool {
-        return *self != EntropyError::None;
-    }
-
     /// Whether trying again might work.
     ///
     /// `self` is borrowed. True for `Interrupted`, which says a signal arrived rather than that anything is wrong.

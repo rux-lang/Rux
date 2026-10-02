@@ -13,7 +13,7 @@
 
 import Allocator::Allocator;
 import Core::{ #target };
-import Entropy::{ EntropyError, NextUint64 };
+import Entropy::NextUint64;
 import Io::{ IoError, IoErrorKind };
 import Path::{ OsString, OsStringView, OsUnit, Path, PathBuffer };
 import Text::TextError;
@@ -83,13 +83,13 @@ pub func TemporaryDirectory(allocator: Allocator, error: *var IoError) -> PathBu
 // Sixteen hex digits of entropy, appended to `prefix`, as one path segment.
 func RandomName(allocator: Allocator, prefix: char8[..], error: *var IoError) -> OsString {
     *error = IoError::Ok();
-    var entropyError = EntropyError::None;
-    let bits = NextUint64(@entropyError);
-    if entropyError != EntropyError::None {
-        // A name without entropy behind it is not a name this package will hand out.
-        *error = IoError::Of(IoErrorKind::Other);
-        return OsString(allocator);
-    }
+    // A name without entropy behind it is not a name this package will hand out.
+    let bits = NextUint64() catch {
+        else => {
+            *error = IoError::Of(IoErrorKind::Other);
+            return OsString(allocator);
+        }
+    };
     var text: char8[64];
     var length: uint = 0;
     while length < prefix.length && length < 40u {

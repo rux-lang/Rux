@@ -1,4 +1,4 @@
-import Core::Assert;
+import Core::{ Assert, Panic };
 import Entropy::{ EntropyError, FillFromSource, MaxEntropyRequest };
 
 // Entropy cannot be tested by comparing against an expected answer — the whole point is that there is not one. What
@@ -6,25 +6,20 @@ import Entropy::{ EntropyError, FillFromSource, MaxEntropyRequest };
 // not one byte more, that the same request twice does not give the same answer, that the error values behave, and
 // that the degenerate requests are handled rather than passed to the system.
 
-func Main() -> int {
-    // The error values answer the three questions a caller has.
-    Assert(EntropyError::None.IsOk(), "None is the only value that reports success");
-    Assert(!EntropyError::None.IsError(), "and the only one that is not an error");
-    Assert(EntropyError::Failed.IsError(), "a refusal is an error");
-    Assert(EntropyError::Unsupported.IsError(), "and so is a system with no source");
+func Main() -> ! EntropyError {
+    // The error values answer the question a caller has: whether to try again.
     Assert(EntropyError::Interrupted.IsTransient(), "an interruption is worth retrying");
     Assert(!EntropyError::Unsupported.IsTransient(), "a system with no source will not grow one");
     Assert(!EntropyError::Failed.IsTransient(), "and a refusal repeated is still a refusal");
-    Assert(!EntropyError::None.IsTransient(), "success is not a thing to retry");
 
     // A zero-length request succeeds without touching anything.
-    Assert(FillFromSource(null, 0) == EntropyError::None, "a zero-length request succeeds");
+    FillFromSource(null, 0)?;
 
     // A null buffer with a real length is refused rather than written through.
-    Assert(FillFromSource(null, 32) == EntropyError::Failed, "a null buffer with a length is refused");
+    Assert(Refusal(FillFromSource(null, 32)) == EntropyError::Failed, "a null buffer with a length is refused");
 
     // A request larger than the source accepts in one call is refused rather than truncated.
-    Assert(FillFromSource(null, MaxEntropyRequest + 1) == EntropyError::TooLarge,
+    Assert(Refusal(FillFromSource(null, MaxEntropyRequest + 1)) == EntropyError::TooLarge,
            "a request past the single-call limit is refused");
 
     // A real fill writes every byte of the buffer and nothing outside it. The guard bytes on either side are a
@@ -37,7 +32,7 @@ func Main() -> int {
     }
 
     let start = @storage[8] as *var opaque;
-    Assert(FillFromSource(start, 64) == EntropyError::None, "a real request succeeds");
+    FillFromSource(start, 64)?;
 
     index = 0;
     while index < 8 {
@@ -62,8 +57,8 @@ func Main() -> int {
     // one, and the probability of a false failure here is two to the minus five hundred and twelve.
     var firstDraw: byte[64];
     var secondDraw: byte[64];
-    Assert(FillFromSource(@firstDraw[0] as *var opaque, 64) == EntropyError::None, "the first draw succeeds");
-    Assert(FillFromSource(@secondDraw[0] as *var opaque, 64) == EntropyError::None, "and so does the second");
+    FillFromSource(@firstDraw[0] as *var opaque, 64)?;
+    FillFromSource(@secondDraw[0] as *var opaque, 64)?;
 
     var identical = true;
     index = 0;
@@ -90,7 +85,7 @@ func Main() -> int {
     // A single byte is as valid a request as a large one, and the smallest case a loop can get wrong.
     var one: byte[1];
     one[0] = 0x5A;
-    Assert(FillFromSource(@one[0] as *var opaque, 1) == EntropyError::None, "a one-byte request succeeds");
+    FillFromSource(@one[0] as *var opaque, 1)?;
 
     // A request larger than any single kernel call is filled completely, which is what the loop is for.
     var large: byte[4096];
@@ -99,7 +94,7 @@ func Main() -> int {
         large[index] = 0xC3;
         index++;
     }
-    Assert(FillFromSource(@large[0] as *var opaque, 4096) == EntropyError::None, "a large request succeeds");
+    FillFromSource(@large[0] as *var opaque, 4096)?;
 
     var stillPattern: uint = 0;
     index = 0;
@@ -121,6 +116,13 @@ func Main() -> int {
         index++;
     }
     Assert(tailPattern < 256, "including the last bytes, where a short loop would have stopped");
+}
 
-    return 0;
+/// Why an operation the test expects to fail failed. One that succeeds instead panics, so an expected failure
+/// cannot pass by accident.
+func Refusal<T>(outcome: T ! EntropyError) -> EntropyError {
+    return match <-outcome {
+        .Failure(error) => error,
+        .Success(_) => Panic("the operation was expected to fail")
+    };
 }

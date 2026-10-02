@@ -6,15 +6,13 @@ import Core::{ Assert, Ordering };
 import Entropy::EntropyError;
 import Uuid::{ MillisecondOf, MonotonicUuid, Random, RandomFromBytes, SwapGuidOrder, TimeOrdered, TimeOrderedAt, Uuid, UuidVariant };
 
-func Main() -> int {
-    var error = EntropyError::None;
+func Main() -> ! EntropyError {
 
     // Version 4: well-formed, and distinct across many draws.
     var previous = Uuid::Nil();
     var draw: uint = 0;
     while draw < 500u {
-        var value = Random(@error);
-        Assert(error == EntropyError::None, "entropy is available");
+        var value = Random()?;
         Assert(value.Version() == 4u8, "a random UUID reports version four");
         Assert(value.Variant() == UuidVariant::Standard, "and the standard variant");
         Assert(!value.IsNil() && !value.IsMax(), "and is neither sentinel");
@@ -43,26 +41,25 @@ func Main() -> int {
     Assert(forcedZero.Version() == 4u8 && forcedZero.Variant() == UuidVariant::Standard, "from either extreme");
 
     // Version 7: well-formed, carrying the millisecond it was given.
-    var timed = TimeOrderedAt(1724300000000u64, @error);
-    Assert(error == EntropyError::None, "a timed UUID is generated");
+    var timed = TimeOrderedAt(1724300000000u64)?;
     Assert(timed.Version() == 7u8, "reporting version seven");
     Assert(timed.Variant() == UuidVariant::Standard, "and the standard variant");
     Assert(MillisecondOf(timed) == 1724300000000u64, "and carrying the millisecond it was made for");
 
     // The property version 7 exists for: later times sort above earlier ones, by the ordinary byte comparison.
-    var earlier = TimeOrderedAt(1000000000000u64, @error);
-    var later = TimeOrderedAt(1000000000001u64, @error);
-    var muchLater = TimeOrderedAt(2000000000000u64, @error);
+    var earlier = TimeOrderedAt(1000000000000u64)?;
+    var later = TimeOrderedAt(1000000000001u64)?;
+    var muchLater = TimeOrderedAt(2000000000000u64)?;
     Assert(earlier.Compare(later) == Ordering::Less, "one millisecond later sorts higher");
     Assert(later.Compare(muchLater) == Ordering::Less, "and much later higher still");
     Assert(muchLater.Compare(earlier) == Ordering::Greater, "in both directions");
 
     // Across a long run of increasing timestamps, the ordering never breaks.
     var step: uint = 0;
-    var lastTimed = TimeOrderedAt(1u64, @error);
+    var lastTimed = TimeOrderedAt(1u64)?;
     while step < 300u {
         let moment = (2u + step) as uint64;
-        var current = TimeOrderedAt(moment, @error);
+        var current = TimeOrderedAt(moment)?;
         Assert(lastTimed.Compare(current) == Ordering::Less, "byte order follows time over a long run");
         lastTimed = current;
         step = step + 1;
@@ -71,13 +68,11 @@ func Main() -> int {
     // Two identifiers in the same millisecond are not ordered by the format — which is what the monotonic
     // generator exists to fix.
     var monotonic = MonotonicUuid();
-    var lastValue = monotonic.Next(@error);
-    Assert(error == EntropyError::None, "the monotonic generator produces a first value");
+    var lastValue = monotonic.Next()?;
     Assert(lastValue.Version() == 7u8, "which is a version seven UUID");
     var round: uint = 0;
     while round < 2000u {
-        var next = monotonic.Next(@error);
-        Assert(error == EntropyError::None, "and keeps producing them");
+        var next = monotonic.Next()?;
         Assert(lastValue.Compare(next) == Ordering::Less,
                "each strictly greater than the last, even within one millisecond");
         Assert(next.Version() == 7u8 && next.Variant() == UuidVariant::Standard,
@@ -89,12 +84,12 @@ func Main() -> int {
     // Two generators are independent: neither disturbs the other's sequence.
     var first = MonotonicUuid();
     var second = MonotonicUuid();
-    var firstLast = first.Next(@error);
-    var secondLast = second.Next(@error);
+    var firstLast = first.Next()?;
+    var secondLast = second.Next()?;
     round = 0;
     while round < 200u {
-        var firstNext = first.Next(@error);
-        var secondNext = second.Next(@error);
+        var firstNext = first.Next()?;
+        var secondNext = second.Next()?;
         Assert(firstLast.Compare(firstNext) == Ordering::Less, "each generator increases on its own");
         Assert(secondLast.Compare(secondNext) == Ordering::Less, "independently of the other");
         firstLast = firstNext;
@@ -129,6 +124,4 @@ func Main() -> int {
     Assert(!timedSwapped.Equals(timed), "a swapped identifier is a different identifier");
     Assert(MillisecondOf(timedSwapped) != MillisecondOf(timed),
            "and its timestamp reads as something else entirely, which is why this is never automatic");
-
-    return 0;
 }

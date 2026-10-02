@@ -45,7 +45,7 @@ pub const MaxEntropyRequest: uint = 0xFFFFFFFF;
 
 /// Fills `length` bytes of `buffer` from the system's generator, in one pass.
 ///
-/// `buffer` is borrowed and written; `length` is read by value. Reports `None` only when every byte was written.
+/// `buffer` is borrowed and written; `length` is read by value. Succeeds only when every byte was written.
 /// A zero length succeeds without touching anything. A length past what the source accepts is reported before the
 /// buffer is looked at, so an impossible request is refused whatever was passed with it; a null buffer with an
 /// ordinary length reports `Failed` rather than being written through.
@@ -64,23 +64,23 @@ pub const MaxEntropyRequest: uint = 0xFFFFFFFF;
 ///
 /// @param buffer receives the bytes
 /// @param length how many bytes to fill
-/// @returns `None` only when every byte was written in this one pass
+/// @returns nothing when every byte was written in this one pass, or why not
 /// @see https://rux-lang.dev/docs/api/entropy/fill-from-source
-pub func FillFromSource(buffer: *var opaque, length: uint) -> EntropyError {
-    if length == 0 { return EntropyError::None; }
-    if length > MaxEntropyRequest { return EntropyError::TooLarge; }
-    if buffer == null { return EntropyError::Failed; }
+pub func FillFromSource(buffer: *var opaque, length: uint) -> ! EntropyError {
+    if length == 0 { return; }
+    if length > MaxEntropyRequest { fail EntropyError::TooLarge; }
+    if buffer == null { fail EntropyError::Failed; }
 
     when #target.os {
         .Windows => {
-            if GetRandom(buffer, length) { return EntropyError::None; }
+            if GetRandom(buffer, length) { return; }
             ZeroizeBlock(buffer, length);
-            return EntropyError::Failed;
+            fail EntropyError::Failed;
         },
         .macOS => {
             // Darwin's generator is seeded before any user code runs and has no failure to report.
             GetRandom(buffer, length);
-            return EntropyError::None;
+            return;
         },
         else => {
             var filled: uint = 0;
@@ -94,30 +94,30 @@ pub func FillFromSource(buffer: *var opaque, length: uint) -> EntropyError {
                         attempts = attempts + 1;
                         if attempts >= MaxEntropyAttempts {
                             ZeroizeBlock(buffer, length);
-                            return EntropyError::Interrupted;
+                            fail EntropyError::Interrupted;
                         }
                         continue;
                     }
                     if number == ENOSYS {
                         ZeroizeBlock(buffer, length);
-                        return EntropyError::Unsupported;
+                        fail EntropyError::Unsupported;
                     }
                     ZeroizeBlock(buffer, length);
-                    return EntropyError::Failed;
+                    fail EntropyError::Failed;
                 }
                 if taken == 0 {
                     // A source that accepts the call and writes nothing is not going to start; do not spin on it.
                     attempts = attempts + 1;
                     if attempts >= MaxEntropyAttempts {
                         ZeroizeBlock(buffer, length);
-                        return EntropyError::Failed;
+                        fail EntropyError::Failed;
                     }
                     continue;
                 }
                 filled = filled + (taken as uint);
                 attempts = 0;
             }
-            return EntropyError::None;
+            return;
         }
     }
 }

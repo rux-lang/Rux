@@ -16,18 +16,14 @@ import Entropy::{ EntropyError, Fill };
 
 /// A version 4 UUID drawn from the operating system's entropy.
 ///
-/// `error` says why entropy was unavailable, and the result is nil in that case — deliberately not a
-/// zero-filled UUID with the version bits set, which would be a valid-looking identifier that is entirely
-/// predictable. A caller that ignores the error gets something obviously wrong rather than something subtly
-/// wrong.
+/// Fails with why entropy was unavailable rather than producing a zero-filled UUID with the version bits set, which
+/// would be a valid-looking identifier that is entirely predictable.
 ///
-/// @param error receives why the value could not be produced, or `None`
-/// @returns a version 4 value drawn from the system's generator, or the nil value on failure
+/// @returns a version 4 value drawn from the system's generator, or why entropy was unavailable
 /// @see https://rux-lang.dev/docs/api/uuid/random
-pub func Random(error: *var EntropyError) -> Uuid {
+pub func Random() -> Uuid ! EntropyError {
     var bytes: char8[16];
-    *error = Fill(@bytes[0] as *var opaque, 16u);
-    if *error != EntropyError::None { return Uuid::Nil(); }
+    Fill(@bytes[0] as *var opaque, 16u)?;
     var value = Uuid::FromBytes((@bytes[0])[..16]);
     // Version 4 in the high nibble of byte six, and the standard variant in the top bits of byte eight.
     value.bytes[6] = (((value.bytes[6] as uint8) & 0x0Fu8) | 0x40u8) as char8;
