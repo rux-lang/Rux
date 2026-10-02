@@ -3,7 +3,7 @@
 
 struct NotFound {}
 
-func Read() -> int32 {
+func Read() -> int32 ! NotFound {
     return 1;
 }
 

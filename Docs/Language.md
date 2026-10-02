@@ -375,6 +375,23 @@ Propagation consumes its evaluated outcome. A named copyable outcome is copied a
 
 A propagated failure follows ordinary return behavior: it captures the failure before running registered defers in LIFO order and then performs ownership cleanup. The returned payload belongs to the caller; live locals and completed components of interrupted aggregate construction retain their normal cleanup.
 
+## Postfix Recovery
+
+`outcome catch { arms }` recovers from the failure of exactly one outer fallible level. The subject is evaluated once; a success passes through unchanged, inner levels and all, and a failure is matched by the arms, whose patterns see only the error payload:
+
+```rux
+func LoadWithDefaults() -> Options | Defaults ! IoError {
+    return Read() catch {
+        _: ParseError => Defaults {},
+        e: IoError => fail e
+    };
+}
+```
+
+The arms use ordinary match-arm grammar, including guards and an `else` arm, and must cover every error value. Each arm either produces a value that converts to the success type or leaves through `fail`, `return`, `break`, `continue`, a call to `Panic`, or a no-return function; a leaving arm never decides the result type. A block arm completes with `()`, so `Close(file) catch { else => {} };` is valid only for a unit success; a non-unit success never acquires an invented fallback value. An arm's own `fail` or `?` leaves the enclosing function normally and is not caught again.
+
+`catch` binds tightly to the postfix expression before it, so `a + F() catch { ... }` recovers `F()` alone, and a chain continues after the closing brace. It consumes its subject: a named copyable subject is copied, a named move-only subject is transferred as `(<-outcome) catch { ... }`, and a borrowed fallible is never a subject. An arm that binds the error owns it, so an error payload that prohibits moving cannot be bound by value. A `match` expression may be the subject, as in `let value = match key { ... } catch { ... };`; a match statement takes no postfix operator.
+
 ## Option Coalescing
 
 `option ?? fallback` extracts the value carried by an Option or evaluates `fallback` when the Option is `None`:

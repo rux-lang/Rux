@@ -17,6 +17,7 @@ enum class ValueConsumptionKind {
     CoalescingOperand,
     CoalescingFallback,
     MatchSubject,
+    CatchSubject,
     ConstructorOperand,
     ExplicitMove,
 };

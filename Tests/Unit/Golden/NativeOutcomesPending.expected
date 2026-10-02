@@ -1,5 +1,4 @@
 11:28: error: 'catch' is not supported yet
-11:5: warning: cannot infer type of 'recovered'
 12:24: error: '? else' error mapping is not supported yet
 12:5: warning: cannot infer type of 'mapped'
 14:18: error: 'none' is not supported yet

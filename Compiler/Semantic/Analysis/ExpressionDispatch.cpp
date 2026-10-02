@@ -25,9 +25,6 @@ namespace {
 /// The subject of the pending diagnostic for a native handling expression that has no semantics yet, or nullopt for
 /// every other expression.
 std::optional<std::string> PendingNativeExpressionForm(const Expr &expr) {
-    if (dynamic_cast<const CatchExpr *>(&expr)) {
-        return "'catch' is";
-    }
     if (dynamic_cast<const MappedTryExpr *>(&expr)) {
         return "'? else' error mapping is";
     }
@@ -248,6 +245,13 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
         case NativeConstructExpr::Kind::Failure:
             return TypeRef::MakeFallible(TypeRef::MakeOpaque(), operand);
         }
+    }
+
+    if (const auto *recovery = dynamic_cast<const CatchExpr *>(&expr)) {
+        const TypeRef recovered = CheckCatchExpression(*recovery);
+        // Checked ahead of its lowering: a program that recovers with `catch` stops here until it can be compiled.
+        EmitError(expr.location, "'catch' is not supported yet");
+        return recovered;
     }
 
     // The native handling forms parse ahead of their semantics. Each is rejected here with one stable diagnostic, and

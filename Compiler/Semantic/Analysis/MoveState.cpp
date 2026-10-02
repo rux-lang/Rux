@@ -34,6 +34,8 @@ std::string ExplicitMoveHelp(const ValueConsumptionKind kind, const std::string 
         return std::format("prefix the fallback with '<-', as in 'option ?? <-{}'", place);
     case ValueConsumptionKind::MatchSubject:
         return std::format("transfer the subject with 'match <-{}'", place);
+    case ValueConsumptionKind::CatchSubject:
+        return std::format("transfer the subject with '(<-{}) catch {{ ... }}'", place);
     case ValueConsumptionKind::ConstructorOperand:
         return std::format("prefix the operand with '<-', as in '.Success(<-{})'", place);
     case ValueConsumptionKind::ExplicitMove:
@@ -237,7 +239,6 @@ TypeRef AnalysisContext::CheckTernaryExpression(const TernaryExpr &expression) {
     return thenType.IsUnknown() ? elseType : thenType;
 }
 
-namespace {
 /// Whether a pattern binds anything a value can be taken out into.
 ///
 /// A wildcard or a literal reads the subject and keeps nothing; an enum pattern with a named position, a struct
@@ -274,7 +275,6 @@ bool PatternBindsValue(const Pattern &pattern) {
     }
     return false;
 }
-} // namespace
 
 /// A match that binds part of its subject takes that part out of it, so the subject must not also be destroyed
 /// holding what an arm now owns.

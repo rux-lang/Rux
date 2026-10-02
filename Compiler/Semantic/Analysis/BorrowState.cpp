@@ -64,6 +64,29 @@ void CollectExpressionUses(const Expr &expression, NameSet &uses) {
     else if (const auto *propagation = dynamic_cast<const TryExpr *>(&expression)) {
         CollectExpressionUses(*propagation->operand, uses);
     }
+    else if (const auto *mapped = dynamic_cast<const MappedTryExpr *>(&expression)) {
+        CollectExpressionUses(*mapped->operand, uses);
+        if (mapped->mapper) {
+            CollectExpressionUses(*mapped->mapper, uses);
+        }
+    }
+    else if (const auto *construct = dynamic_cast<const NativeConstructExpr *>(&expression)) {
+        if (construct->operand) {
+            CollectExpressionUses(*construct->operand, uses);
+        }
+    }
+    else if (const auto *diverge = dynamic_cast<const DivergeExpr *>(&expression)) {
+        if (diverge->value) {
+            CollectExpressionUses(*diverge->value, uses);
+        }
+    }
+    else if (const auto *recovery = dynamic_cast<const CatchExpr *>(&expression)) {
+        CollectExpressionUses(*recovery->subject, uses);
+        for (const auto &arm : recovery->arms) {
+            CollectPatternUses(*arm.pattern, uses);
+            CollectExpressionUses(*arm.body, uses);
+        }
+    }
     else if (const auto *postfix = dynamic_cast<const PostfixExpr *>(&expression)) {
         CollectExpressionUses(*postfix->operand, uses);
     }
@@ -272,6 +295,28 @@ void RecordExpressionLastUses(const Expr &expression, LastUseOffsets &offsets, L
     }
     else if (const auto *propagation = dynamic_cast<const TryExpr *>(&expression)) {
         RecordExpressionLastUses(*propagation->operand, offsets, result);
+    }
+    else if (const auto *mapped = dynamic_cast<const MappedTryExpr *>(&expression)) {
+        RecordExpressionLastUses(*mapped->operand, offsets, result);
+        if (mapped->mapper) {
+            RecordExpressionLastUses(*mapped->mapper, offsets, result);
+        }
+    }
+    else if (const auto *construct = dynamic_cast<const NativeConstructExpr *>(&expression)) {
+        if (construct->operand) {
+            RecordExpressionLastUses(*construct->operand, offsets, result);
+        }
+    }
+    else if (const auto *diverge = dynamic_cast<const DivergeExpr *>(&expression)) {
+        if (diverge->value) {
+            RecordExpressionLastUses(*diverge->value, offsets, result);
+        }
+    }
+    else if (const auto *recovery = dynamic_cast<const CatchExpr *>(&expression)) {
+        RecordExpressionLastUses(*recovery->subject, offsets, result);
+        for (const auto &arm : recovery->arms) {
+            RecordExpressionLastUses(*arm.body, offsets, result);
+        }
     }
     else if (const auto *postfix = dynamic_cast<const PostfixExpr *>(&expression)) {
         RecordExpressionLastUses(*postfix->operand, offsets, result);

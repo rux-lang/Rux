@@ -39,6 +39,7 @@ rux_add_component(RuxSemantic
     Analysis/PatternCoverage.cpp
     Analysis/ProgramIndex.cpp
     Analysis/Propagation.cpp
+    Analysis/Recovery.cpp
     Analysis/PublicApi.cpp
     Analysis/Receivers.cpp
     Analysis/TypeProperties.cpp

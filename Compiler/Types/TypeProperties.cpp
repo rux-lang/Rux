@@ -27,6 +27,8 @@ std::string_view ValueConsumptionKindName(const ValueConsumptionKind kind) noexc
         return "coalescing fallback";
     case ValueConsumptionKind::MatchSubject:
         return "match subject";
+    case ValueConsumptionKind::CatchSubject:
+        return "catch subject";
     case ValueConsumptionKind::ConstructorOperand:
         return "native constructor";
     case ValueConsumptionKind::ExplicitMove:

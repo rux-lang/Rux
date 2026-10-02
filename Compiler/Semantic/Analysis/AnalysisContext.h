@@ -33,6 +33,9 @@ struct AnalysisInputs {
     const PackageImportBindings &imports;
 };
 
+/// Whether a pattern binds anything a value can be taken out into: a looked-at value is not taken apart.
+[[nodiscard]] bool PatternBindsValue(const Pattern &pattern);
+
 class AnalysisContext final {
 public:
     AnalysisContext(AnalysisInputs inputs, SemanticFacts &output);
@@ -264,6 +267,10 @@ private:
     [[nodiscard]] TypeRef CheckShortCircuitExpression(const BinaryExpr &expression);
     [[nodiscard]] TypeRef CheckTernaryExpression(const TernaryExpr &expression);
     [[nodiscard]] TypeRef CheckMatchExpression(const MatchExpr &expression);
+    /// `outcome catch { arms }`: the success passes through, and the arms recover from the error or leave.
+    [[nodiscard]] TypeRef CheckCatchExpression(const CatchExpr &expression);
+    /// Checks recovery arms whose subject was rejected, so their bindings and bodies report nothing spurious.
+    void CheckRecoveryArmsWithoutSubject(const std::vector<MatchExpr::Arm> &arms);
 
     void CheckBlock(const Block &block);
     void CheckFunctionBody(const Block &block, const FuncDecl &function, const TypeRef &returnType);
@@ -340,6 +347,9 @@ private:
     void NoteDeferredNativeType(const TypeRef &type);
     [[nodiscard]] const TypeRef *TypedPatternAnnotation(const TypedPattern &pattern) const;
     [[nodiscard]] bool BlockDefinitelyReturns(const Block &block) const;
+    /// Whether a pattern matches every value of the subject: a binding, a wildcard, or a typed pattern naming exactly
+    /// the subject's type.
+    [[nodiscard]] bool MatchesWholeSubject(const Pattern &pattern, const TypeRef &subjectType) const;
     [[nodiscard]] std::optional<TypeRef> CheckBasicExpression(const Expr &expression);
     void CheckCast(const TypeRef &operand, const TypeRef &target, SourceLocation location);
     [[nodiscard]] bool CastTypesAreCompatible(const TypeRef &operand, const TypeRef &target) const;

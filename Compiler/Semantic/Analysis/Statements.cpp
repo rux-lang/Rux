@@ -993,7 +993,7 @@ void AnalysisContext::ValidateMatchPatterns(const std::vector<const Pattern *> &
                 coveredVariants.insert(variantName);
             }
         }
-        coveredAll = PatternMatchesEveryValue(*pattern);
+        coveredAll = MatchesWholeSubject(*pattern, subjectType);
     }
 
     if (coveredAll || subjectType.kind != TypeRef::Kind::Named) {
@@ -1036,8 +1036,8 @@ bool AnalysisContext::MatchPatternsAreExhaustive(const std::vector<const Pattern
             patterns.empty() ? nativeMatchExhaustive.end() : nativeMatchExhaustive.find(patterns.front());
         return found != nativeMatchExhaustive.end() && found->second;
     }
-    if (std::ranges::any_of(patterns,
-                            [](const Pattern *pattern) { return pattern && PatternMatchesEveryValue(*pattern); })) {
+    if (std::ranges::any_of(
+            patterns, [&](const Pattern *pattern) { return pattern && MatchesWholeSubject(*pattern, subjectType); })) {
         return true;
     }
     if (subjectType.IsBool()) {
@@ -1072,6 +1072,16 @@ bool AnalysisContext::MatchPatternsAreExhaustive(const std::vector<const Pattern
     }
     return std::ranges::all_of(declaration->variants,
                                [&](const auto &variant) { return covered.contains(variant.name); });
+}
+
+bool AnalysisContext::MatchesWholeSubject(const Pattern &pattern, const TypeRef &subjectType) const {
+    if (PatternMatchesEveryValue(pattern)) {
+        return true;
+    }
+    // A typed pattern whose annotation is exactly the subject's type binds the whole subject, on every form.
+    const auto *typed = dynamic_cast<const TypedPattern *>(&pattern);
+    const TypeRef *annotation = typed ? TypedPatternAnnotation(*typed) : nullptr;
+    return annotation && !subjectType.IsUnknown() && *annotation == subjectType;
 }
 
 bool AnalysisContext::BlockDefinitelyReturns(const Block &block) const {
