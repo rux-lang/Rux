@@ -114,17 +114,17 @@ extend TomlEventReader {
         };
     }
 
-    /// Why reading stopped, positioned, or `None` while nothing has gone wrong.
+    /// Why reading stopped, positioned, or `none` while nothing has gone wrong.
     ///
     /// This is what a caller asks after `Next` reports `Error`. A lexical refusal carries the lexer's own reason
     /// inside it rather than in a second call, so a caller holding the failure is holding all of it — and it is
     /// the same `TomlParseFailure` the tree parser answers, so the two ways of reading a document report a
     /// refusal in one vocabulary rather than two.
     ///
-    /// @returns the failure, positioned at the token the reader stopped on, or `None`
+    /// @returns the failure, positioned at the token the reader stopped on, or `none`
     /// @see https://rux-lang.dev/docs/api/toml/event-reader/failure
-    pub func Failure(self: &TomlEventReader) -> Option<TomlParseFailure> {
-        if self.stop == TomlStop::None { return Option::None<TomlParseFailure>(); }
+    pub func Failure(self: &TomlEventReader) -> TomlParseFailure? {
+        if self.stop == TomlStop::None { return none; }
         let stopped = TomlStopped {
             stop: self.stop,
             lexical: self.lexical,
@@ -133,7 +133,7 @@ extend TomlEventReader {
             line: self.current.line,
             column: self.current.column
         };
-        return Option::Some<TomlParseFailure>(BuiltFailure(stopped));
+        return BuiltFailure(stopped);
     }
 
     /// The bytes the current event's token spans, as written: a string is still escaped and a number is still

@@ -5,7 +5,7 @@
 
 import Core::{ Assert, Succeeded };
 import Text::{ BufferWriter, FormatSpec, TextWriter };
-import Toml::{ TomlEvent, TomlEventReader, TomlParseError, TomlParseFailure };
+import Toml::{ TomlEvent, TomlEventReader };
 
 // Whether the events of `text`, written as one letter each, are `expected`.
 func Shape(text: char8[..]) -> uint {
@@ -30,10 +30,7 @@ func FailsWith(text: char8[..], into: var char8[..]) -> uint {
         let event = reader.Next();
         if event == TomlEvent::End || event == TomlEvent::Error { break; }
     }
-    var failure = TomlParseFailure {
-        reason: TomlParseError::Truncated, offset: 0, line: 0, column: 0
-    };
-    if !reader.Failure().TryIntoValue(@failure) { return 0; }
+    let failure = reader.Failure() ?? return 0;
     var writer = BufferWriter(into);
     let sink: &var TextWriter = writer;
     Assert(Succeeded(failure.WriteDebug(sink, FormatSpec::Plain())), "a failure renders");

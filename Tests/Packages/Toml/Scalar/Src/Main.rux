@@ -11,7 +11,7 @@
 // base does not have is the sixth character and the fourth digit, and the case below would report four if the
 // mapping from stripped text back to written text were dropped.
 
-import Core::{ Assert, Succeeded };
+import Core::{ Assert, Failed, Panic, Succeeded };
 import Text::{ BufferWriter, FormatSpec, TextWriter };
 import Time::{ Date, TimeOfDay, UtcOffset };
 import Toml::{ TomlDateTime, TomlDateTimeShape, TomlParseDateTime, TomlParseFloat, TomlParseInteger,
@@ -42,19 +42,19 @@ func Rendered(reason: &TomlScalarError, into: var char8[..]) -> uint {
 
 func Integer(text: char8[..]) -> int64 {
     var value = 0i64;
-    Assert(TomlParseInteger(text).TryIntoValue(@value), "a number that should parse");
+    value = TomlParseInteger(text) catch { else => Panic("a number that should parse") };
     return value;
 }
 
 func IntegerFails(text: char8[..]) -> bool {
-    return TomlParseInteger(text).IsError();
+    return Failed(TomlParseInteger(text));
 }
 
 // Whether the integer is refused with exactly this rendering — the case and the position together.
 func IntegerRefused(text: char8[..], expected: char8[..]) -> bool {
     return match TomlParseInteger(text) {
         .Success(_) => false,
-        .Error(reason) => {
+        .Failure(reason) => {
             var storage: char8[64];
             let length = Rendered(reason, (@storage[0])[..64]);
             return Same((@storage[0])[..length], expected);
@@ -64,18 +64,18 @@ func IntegerRefused(text: char8[..], expected: char8[..]) -> bool {
 
 func Float(text: char8[..]) -> float64 {
     var value = 0.0;
-    Assert(TomlParseFloat(text).TryIntoValue(@value), "a float that should parse");
+    value = TomlParseFloat(text) catch { else => Panic("a float that should parse") };
     return value;
 }
 
 func FloatFails(text: char8[..]) -> bool {
-    return TomlParseFloat(text).IsError();
+    return Failed(TomlParseFloat(text));
 }
 
 func FloatRefused(text: char8[..], expected: char8[..]) -> bool {
     return match TomlParseFloat(text) {
         .Success(_) => false,
-        .Error(reason) => {
+        .Failure(reason) => {
             var storage: char8[64];
             let length = Rendered(reason, (@storage[0])[..64]);
             return Same((@storage[0])[..length], expected);
@@ -92,18 +92,18 @@ func Moment(text: char8[..]) -> TomlDateTime {
         time: TimeOfDay { hour: 0u8, minute: 0u8, second: 0u8, nanosecond: 0u32 },
         offset: UtcOffset::Utc()
     };
-    Assert(TomlParseDateTime(text).TryIntoValue(@built), "a date-time that should parse");
+    built = TomlParseDateTime(text) catch { else => Panic("a date-time that should parse") };
     return built;
 }
 
 func MomentFails(text: char8[..]) -> bool {
-    return TomlParseDateTime(text).IsError();
+    return Failed(TomlParseDateTime(text));
 }
 
 func MomentRefused(text: char8[..], expected: char8[..]) -> bool {
     return match TomlParseDateTime(text) {
         .Success(_) => false,
-        .Error(reason) => {
+        .Failure(reason) => {
             var storage: char8[64];
             let length = Rendered(reason, (@storage[0])[..64]);
             return Same((@storage[0])[..length], expected);

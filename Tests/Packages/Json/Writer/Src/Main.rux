@@ -54,7 +54,7 @@ func CaseOf(reason: &FormatError) -> int32 {
 func Parsed(allocator: Allocator, text: char8[..]) -> JsonValue {
     var outcome = Parse(allocator, text);
     var value = JsonValue::Null(allocator);
-    Assert((<-outcome).TryIntoValue(@value), "the document parses");
+    value = (<-outcome) catch { else => Panic("the document parses") };
     return <-value;
 }
 

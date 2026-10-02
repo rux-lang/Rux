@@ -123,14 +123,14 @@ extend JsonEventReader {
         return <-reader;
     }
 
-    /// Why reading stopped, positioned, or `None` while nothing has gone wrong.
+    /// Why reading stopped, positioned, or `none` while nothing has gone wrong.
     ///
     /// This is what a caller asks after `Next` reports `Error`. A lexical refusal carries the lexer's own reason
     /// inside it rather than in a second call, so a caller holding the failure is holding all of it.
     ///
-    /// @returns the failure, positioned at the byte the reader stopped on, or `None`
+    /// @returns the failure, positioned at the byte the reader stopped on, or `none`
     /// @see https://rux-lang.dev/docs/api/json/json-event-reader/failure
-    pub func Failure(self: &JsonEventReader) -> Option<JsonParseError> {
+    pub func Failure(self: &JsonEventReader) -> JsonParseError? {
         return BuildFailure(self.stop, self.lexical, self.position);
     }
 

@@ -11,7 +11,7 @@
 // is a value the caller owns rather than a global, for the reason the random package gives at length: shared
 // mutable state makes results depend on who else is running.
 
-import Core::{ Ordering };
+import Core::Ordering;
 import Entropy::{ EntropyError, Fill };
 import Time::Timestamp;
 

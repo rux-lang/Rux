@@ -4,7 +4,7 @@
 // writer to work out which of the three they had broken.
 
 import Allocator::{ AllocError, Allocator, Layout, SystemAllocator };
-import Core::{ Assert, Result, Succeeded };
+import Core::{ Assert, Failed, Panic, Succeeded };
 import Text::{ BufferWriter, Display, FormatSpec, String, StringView, TextError, TextWriter, WriteAscii };
 import Toml::{ TomlKind, TomlParse, TomlParseError, TomlParseFailure, TomlScalarError, TomlValue };
 
@@ -13,18 +13,15 @@ func View(bytes: char8[..]) -> StringView {
 }
 
 func Accepts(allocator: Allocator, text: char8[..], note: char8[..]) -> TomlValue {
-    var outcome = TomlParse(allocator, text);
-    var value = TomlValue::Table(allocator);
-    Assert((<-outcome).TryIntoValue(@value), note);
-    return <-value;
+    return TomlParse(allocator, text) catch { else => Panic(note) };
 }
 
 // The rendering of whatever refused a document: the case, whatever it carries, and where it happened. One string
 // covering all three, since checking them apart would be three assertions saying one thing.
-func Refusal(outcome: &Result<TomlValue, TomlParseFailure>, into: var char8[..]) -> uint {
+func Refusal(outcome: &(TomlValue ! TomlParseFailure), into: var char8[..]) -> uint {
     return match outcome {
         .Success(_) => 0u,
-        .Error(failure) => {
+        .Failure(failure) => {
             var writer = BufferWriter(into);
             let sink: &var TextWriter = writer;
             Assert(Succeeded(failure.WriteDebug(sink, FormatSpec::Plain())), "a failure renders");
@@ -217,7 +214,7 @@ func Main() -> int {
     Assert(RefusedAt(allocator, "a = 1\nb = 2\na = 3", "TomlParseError::DuplicateKey at 3:6"),
            "the duplicate is found on the line it is written on");
     let refused = TomlParse(allocator, "a = 1\nb = 2\na = 3");
-    Assert(refused.IsError(), "and the document does not come back beside the reason");
+    Assert(Failed(<-refused), "and the document does not come back beside the reason");
 
     // A bad scalar is reported at the character inside it, which takes two positions added together: the token's
     // own place in the document, and the failure's place inside the token's text. Neither alone is any use — the
@@ -256,7 +253,8 @@ func Main() -> int {
            "a document that fails on its last line is refused");
     Assert(state.live == 0i32, "and everything the partial document held is released");
 
-    Assert(Refuses(tracked, "[t]\nx = \"a\"\ny = \"b\"\nport = 010", "TomlParseError::BadValue(TomlScalarError::Malformed(0))"),
+    Assert(Refuses(tracked, "[t]\nx = \"a\"\ny = \"b\"\nport = 010",
+                   "TomlParseError::BadValue(TomlScalarError::Malformed(0))"),
            "a document with a bad value after good ones is refused");
     Assert(state.live == 0i32, "and so is everything that one held");
 

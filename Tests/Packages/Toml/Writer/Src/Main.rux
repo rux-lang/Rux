@@ -4,7 +4,7 @@
 // and a document written, read and written again is the same the second time.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, Succeeded };
+import Core::{ Assert, Panic, Succeeded };
 import Format::{ ByteCursor, TextWriter };
 import Text::{ BufferWriter, FormatError, StringView, TextError };
 import Time::UtcOffset;
@@ -63,10 +63,7 @@ func SameFailure(outcome: &(! FormatError), expected: &FormatError) -> bool {
 
 // A document this test knows is well-formed, which is every one of them: what is under test here is the writer.
 func Parsed(allocator: Allocator, text: char8[..], note: char8[..]) -> TomlValue {
-    var outcome = TomlParse(allocator, text);
-    var value = TomlValue::Table(allocator);
-    Assert((<-outcome).TryIntoValue(@value), note);
-    return <-value;
+    return TomlParse(allocator, text) catch { else => Panic(note) };
 }
 
 func Main() -> int {

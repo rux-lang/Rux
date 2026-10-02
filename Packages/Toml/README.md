@@ -11,12 +11,12 @@ rux add Rux/Toml
 ## What it provides
 
 - **Lexing** — every token TOML 1.1 defines, with source spans: bare and quoted keys, the four string forms, integers in four bases, floats, booleans, and the date and time types.
-- **Parsing** — dotted keys, tables, arrays of tables, and the duplicate-definition rules that make TOML's table syntax unambiguous. `TomlParse` returns `Result<TomlValue, TomlParseFailure>`: a document or a reason, never both. A refusal releases whatever had been read rather than handing it back, because a program configured from half a file runs with some settings applied and some defaulted, which is a state nobody wrote down.
+- **Parsing** — dotted keys, tables, arrays of tables, and the duplicate-definition rules that make TOML's table syntax unambiguous. `TomlParse` returns `TomlValue ! TomlParseFailure`: a document or a reason, never both. A refusal releases whatever had been read rather than handing it back, because a program configured from half a file runs with some settings applied and some defaulted, which is a state nobody wrote down.
 
   ```rux
   match TomlParse(allocator, bytes) {
       .Success(document) => Configure(document),
-      .Error(failure) => Report(failure)
+      .Failure(failure) => Report(failure)
   }
   ```
 
@@ -24,7 +24,7 @@ rux add Rux/Toml
 
   `TomlEventReader::Failure` answers the same `TomlParseFailure`, so the streaming reader and the tree parser report a refusal in one vocabulary rather than two.
 - **A semantic DOM** — ordered, move-only tables and arrays with explicit `<-` transfers and deterministic `~Type` cleanup, and dates and times as `Rux/Time` values rather than strings.
-- **Scalars that say where they went wrong** — `TomlParseInteger`, `TomlParseFloat` and `TomlParseDateTime` return `Result<T, TomlScalarError>`, and every failure carries the byte offset into the scalar's own text, reachable through `Text::ParseFailure`. The offsets are into the text as the caller wrote it, underscores included, so `0b1_0_2` points at the `2` where checking it happened four characters earlier. `TomlParseDateTime` answers a `TomlDateTime` carrying which of the four shapes it is, rather than a shape beside three fields the shape may or may not fill.
+- **Scalars that say where they went wrong** — `TomlParseInteger`, `TomlParseFloat` and `TomlParseDateTime` return `T ! TomlScalarError`, and every failure carries the byte offset into the scalar's own text, reachable through `Text::ParseFailure`. The offsets are into the text as the caller wrote it, underscores included, so `0b1_0_2` points at the `2` where checking it happened four characters earlier. `TomlParseDateTime` answers a `TomlDateTime` carrying which of the four shapes it is, rather than a shape beside three fields the shape may or may not fill.
 
   The parser adds the two positions together — the token's place in the document, and the failure's place inside the token — so `port = 0b102` is reported at line 1, column 12, and `TomlParseOutcome::Scalar` hands the caller the scalar reader's own reason. Neither half is any use alone: the token's place points at the value rather than at what is wrong with it, and the offset is into a few characters nobody can find without it.
 - **Writing** — deterministic output that borrows the document without copying and chooses a valid key and string form for whatever it is given. `TomlWriteDocument` returns `! FormatError`, the same contract every writer in the workspace uses, so a document goes into anything a `TextWriter` reaches with no translation at the seam. What the destination said travels unchanged: a buffer that is merely full reports `InsufficientCapacity` and a stream that has died reports `WriterFailure`, where `TomlWriteError` had one case for both. A header path longer than `MaximumHeaderPath` is `ValueOutOfRange` — the document is good and the form asked for cannot hold it.

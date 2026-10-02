@@ -13,7 +13,6 @@
 import Allocator::Allocator;
 import Collections::CollectionError;
 
-import Core::{ Option, Result };
 import Text::{ Debug, Display, FormatError, FormatSpec, ParseFailure, RejectStyle, String, StringBuilder,
                StringView, TextError, TextWriter, WriteAscii, WriteBytes };
 
@@ -274,12 +273,12 @@ extend JsonParser {
 
     /// Whether parsing stopped, and why.
     ///
-    /// `None` while nothing has gone wrong, which for a parser that has finished means the document was read.
+    /// `none` while nothing has gone wrong, which for a parser that has finished means the document was read.
     /// A caller using `Parse` never needs this: the failure comes back in the result.
     ///
-    /// @returns the failure, positioned, or `None`
+    /// @returns the failure, positioned, or `none`
     /// @see https://rux-lang.dev/docs/api/json/json-parser/failure
-    pub func Failure(self: &JsonParser) -> Option<JsonParseError> {
+    pub func Failure(self: &JsonParser) -> JsonParseError? {
         return BuildFailure(self.stop, self.lexical, self.position);
     }
 
@@ -592,7 +591,7 @@ extend JsonParser {
     ///
     /// @returns the document, or the failure that stopped it
     /// @see https://rux-lang.dev/docs/api/json/json-parser/parse
-    pub func Parse(self: &var JsonParser) -> Result<JsonValue, JsonParseError> {
+    pub func Parse(self: &var JsonParser) -> JsonValue ! JsonParseError {
         var value = self.ParseValue(self.lexer.Next());
         if self.stop == JsonStop::None {
             let trailing = self.lexer.Next();
@@ -604,9 +603,9 @@ extend JsonParser {
         if self.stop != JsonStop::None {
             // The partial document goes here, at the end of this scope, rather than out to a caller who asked for
             // a document and is being told there is none.
-            return Result::Error<JsonValue, JsonParseError>(BuiltFailure(self.stop, self.lexical, self.position));
+            fail BuiltFailure(self.stop, self.lexical, self.position);
         }
-        return Result::Success<JsonValue, JsonParseError>(<-value);
+        return <-value;
     }
 }
 
@@ -630,9 +629,9 @@ func BuiltFailure(stop: JsonStop, lexical: JsonLexError, position: uint) -> Json
 }
 
 // The same, as an `Option`, for the reader that reports whether it stopped rather than what it produced.
-func BuildFailure(stop: JsonStop, lexical: JsonLexError, position: uint) -> Option<JsonParseError> {
-    if stop == JsonStop::None { return Option::None<JsonParseError>(); }
-    return Option::Some<JsonParseError>(BuiltFailure(stop, lexical, position));
+func BuildFailure(stop: JsonStop, lexical: JsonLexError, position: uint) -> JsonParseError? {
+    if stop == JsonStop::None { return none; }
+    return BuiltFailure(stop, lexical, position);
 }
 
 /// Parses `input` into a value, rejecting duplicate names.
@@ -648,7 +647,7 @@ func BuildFailure(stop: JsonStop, lexical: JsonLexError, position: uint) -> Opti
 /// @param input the document, as UTF-8 bytes
 /// @returns the document, or the failure that stopped it
 /// @see https://rux-lang.dev/docs/api/json/parse
-pub func Parse(allocator: Allocator, input: char8[..]) -> Result<JsonValue, JsonParseError> {
+pub func Parse(allocator: Allocator, input: char8[..]) -> JsonValue ! JsonParseError {
     var parser = JsonParser(allocator, input, JsonLimits::Default());
     return parser.Parse();
 }
@@ -671,7 +670,7 @@ pub func Parse(allocator: Allocator, input: char8[..]) -> Result<JsonValue, Json
 /// @returns the document, or the failure that stopped it
 /// @see https://rux-lang.dev/docs/api/json/parse-with
 pub func ParseWith(allocator: Allocator, input: char8[..], limits: JsonLimits,
-                   duplicates: DuplicateKeyPolicy) -> Result<JsonValue, JsonParseError> {
+                   duplicates: DuplicateKeyPolicy) -> JsonValue ! JsonParseError {
     var parser = JsonParser(allocator, input, limits);
     parser.SetDuplicatePolicy(duplicates);
     return parser.Parse();

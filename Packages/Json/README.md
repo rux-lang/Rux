@@ -12,12 +12,12 @@ rux add Rux/Json
 
 - **A document model** — move-only `JsonValue` trees with explicit `<-` transfers and deterministic `~Type` cleanup, covering the six kinds RFC 8259 defines. Objects keep arrival order, and numbers keep their original text, so an identifier past 2^53 comes back as itself rather than as the nearest double.
 - **A parser** — strict RFC 8259, refusing every JavaScript-only form. Duplicate object names are rejected by default, and the other three policies are chosen per call.
-- **A document or a reason, never both** — `Parse` and `ParseWith` return `Result<JsonValue, JsonParseError>`. A refusal hands back no value at all, which is the distinction the old shape could not make: it answered a refused parse with `null`, and `null` is a perfectly good document, so a caller who did not read the outcome beside it could not tell one from the other. Whatever the parser had built when it stopped is released rather than handed over, so a caller is never left holding a partial tree.
+- **A document or a reason, never both** — `Parse` and `ParseWith` return `JsonValue ! JsonParseError`. A refusal hands back no value at all, which is the distinction the old shape could not make: it answered a refused parse with `null`, and `null` is a perfectly good document, so a caller who did not read the outcome beside it could not tell one from the other. Whatever the parser had built when it stopped is released rather than handed over, so a caller is never left holding a partial tree.
 
   ```rux
   match Parse(allocator, bytes) {
       .Success(document) => Use(document),
-      .Error(reason) => Report(reason.Offset(), reason)
+      .Failure(reason) => Report(reason.Offset(), reason)
   }
   ```
 

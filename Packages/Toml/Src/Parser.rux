@@ -17,7 +17,6 @@
 // else.
 
 import Allocator::Allocator;
-import Core::{ Option, Result };
 import Collections::{ CollectionError, Vector };
 import Text::{ Display, FormatError, FormatSpec, ParseFailure, RejectStyle, String, StringView,
                TextError, TextWriter, WriteAscii, WriteBytes };
@@ -351,15 +350,15 @@ extend TomlParser {
         };
     }
 
-    /// Why parsing stopped, positioned, or `None` while nothing has gone wrong.
+    /// Why parsing stopped, positioned, or `none` while nothing has gone wrong.
     ///
     /// A caller using `Parse` never needs this: the failure comes back in the result.
     ///
-    /// @returns the failure, or `None`
+    /// @returns the failure, or `none`
     /// @see https://rux-lang.dev/docs/api/toml/parser/failure
-    pub func Failure(self: &TomlParser) -> Option<TomlParseFailure> {
-        if self.outcome.stop == TomlStop::None { return Option::None<TomlParseFailure>(); }
-        return Option::Some<TomlParseFailure>(BuiltFailure(self.outcome));
+    pub func Failure(self: &TomlParser) -> TomlParseFailure? {
+        if self.outcome.stop == TomlStop::None { return none; }
+        return BuiltFailure(self.outcome);
     }
 
     /// Whether parsing has failed.
@@ -454,19 +453,19 @@ extend TomlParser {
         if token.kind == TomlTokenKind::Integer {
             return match TomlParseInteger(span) {
                 .Success(value) => TomlValue::Integer(self.allocator, value),
-                .Error(reason) => self.RefuseScalar(token, reason)
+                .Failure(reason) => self.RefuseScalar(token, reason)
             };
         }
         if token.kind == TomlTokenKind::Float {
             return match TomlParseFloat(span) {
                 .Success(value) => TomlValue::Float(self.allocator, value),
-                .Error(reason) => self.RefuseScalar(token, reason)
+                .Failure(reason) => self.RefuseScalar(token, reason)
             };
         }
         if token.kind == TomlTokenKind::DateTime {
             return match TomlParseDateTime(span) {
                 .Success(moment) => self.MomentValue(moment),
-                .Error(reason) => self.RefuseScalar(token, reason)
+                .Failure(reason) => self.RefuseScalar(token, reason)
             };
         }
         if token.kind == TomlTokenKind::End {
@@ -867,7 +866,7 @@ extend TomlParser {
     ///
     /// @returns the document, or the failure and where it was found
     /// @see https://rux-lang.dev/docs/api/toml/parser/parse
-    pub func Parse(self: &var TomlParser) -> Result<TomlValue, TomlParseFailure> {
+    pub func Parse(self: &var TomlParser) -> TomlValue ! TomlParseFailure {
         var root = TomlValue::Table(self.allocator);
         root.defined = true;
         var current = @root;
@@ -896,9 +895,9 @@ extend TomlParser {
             // Whatever was read before the refusal goes here, at the end of this scope. A configuration read from
             // half a file is worse than none of it: a program started from it runs with some settings applied and
             // some defaulted, which is a state nobody wrote down and nobody tested.
-            return Result::Error<TomlValue, TomlParseFailure>(BuiltFailure(self.outcome));
+            fail BuiltFailure(self.outcome);
         }
-        return Result::Success<TomlValue, TomlParseFailure>(<-root);
+        return <-root;
     }
 }
 
@@ -915,7 +914,7 @@ extend TomlParser {
 /// @param input the document, as UTF-8 bytes
 /// @returns the document, or the failure that stopped it
 /// @see https://rux-lang.dev/docs/api/toml/parse
-pub func TomlParse(allocator: Allocator, input: char8[..]) -> Result<TomlValue, TomlParseFailure> {
+pub func TomlParse(allocator: Allocator, input: char8[..]) -> TomlValue ! TomlParseFailure {
     var parser = TomlParser(allocator, input, TomlLimits::Default());
     return parser.Parse();
 }

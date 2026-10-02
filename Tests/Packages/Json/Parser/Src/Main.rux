@@ -11,7 +11,7 @@
 // that said nothing from one that was not a document.
 
 import Allocator::{ AllocError, Allocator, Layout, SystemAllocator };
-import Core::{ Assert, Result, Succeeded };
+import Core::{ Assert, Panic, Succeeded };
 import Json::{ DuplicateKeyPolicy, JsonKind, JsonLexError, JsonLimits, JsonParseError, JsonParser, JsonValue, Parse,
                ParseWith };
 import Text::{ BufferWriter, FormatSpec, StringView, TextError, TextWriter };
@@ -46,17 +46,14 @@ func Refuses(allocator: Allocator, text: char8[..], expected: char8[..], what: c
 }
 
 func Accepts(allocator: Allocator, text: char8[..], what: char8[..]) -> JsonValue {
-    var outcome = Parse(allocator, text);
-    var value = JsonValue::Null(allocator);
-    Assert((<-outcome).TryIntoValue(@value), what);
-    return <-value;
+    return Parse(allocator, text) catch { else => Panic(what) };
 }
 
 // Whether an outcome a caller already holds is the refusal it should be, rendering and all.
-func Refusal(outcome: &Result<JsonValue, JsonParseError>, expected: char8[..]) -> bool {
+func Refusal(outcome: &(JsonValue ! JsonParseError), expected: char8[..]) -> bool {
     return match outcome {
         .Success(_) => false,
-        .Error(reason) => {
+        .Failure(reason) => {
             var storage: char8[96];
             let length = Rendered(reason, (@storage[0])[..96]);
             return Same((@storage[0])[..length], expected);
@@ -66,10 +63,7 @@ func Refusal(outcome: &Result<JsonValue, JsonParseError>, expected: char8[..]) -
 
 // A parser used directly, for the cases that need a limit or a policy the one-call form does not take.
 func Built(allocator: Allocator, parser: &var JsonParser, what: char8[..]) -> JsonValue {
-    var outcome = parser.Parse();
-    var value = JsonValue::Null(allocator);
-    Assert((<-outcome).TryIntoValue(@value), what);
-    return <-value;
+    return parser.Parse() catch { else => Panic(what) };
 }
 
 
@@ -236,11 +230,9 @@ func Main() -> int {
            "a lexical failure keeps the lexer's own reason and its position");
 
     // The same choices through the one-call form, which is what most callers will reach for.
-    var directAllOutcome = ParseWith(allocator, "{\"a\":1,\"a\":2}", JsonLimits::Default(),
-                                     DuplicateKeyPolicy::KeepAll);
-    var directAll = JsonValue::Null(allocator);
-    Assert((<-directAllOutcome).TryIntoValue(@directAll) && directAll.Length() == 2u,
-           "the one-call form honours a chosen policy");
+    let directAll = ParseWith(allocator, "{\"a\":1,\"a\":2}", JsonLimits::Default(), DuplicateKeyPolicy::KeepAll)
+        catch { else => Panic("the one-call form honours a chosen policy") };
+    Assert(directAll.Length() == 2u, "the one-call form honours a chosen policy");
     let directRejectOutcome = ParseWith(allocator, "{\"a\":1,\"a\":2}", JsonLimits::Default(),
                                         DuplicateKeyPolicy::Reject);
     Assert(Refusal(directRejectOutcome, "JsonParseError::DuplicateName(12)"),

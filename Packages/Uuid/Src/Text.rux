@@ -26,7 +26,6 @@
 // and no way to learn it. Every writer here checks the room it needs before it writes a byte, so a refusal leaves
 // the destination exactly as it was and a success is always the complete form.
 
-import Core::Result;
 import Text::{ Debug, Display, FormatError, FormatSpec, ParseFailure, StringView, TextWriter, WriteBytes };
 
 /// How long the canonical text form is: thirty-two digits and four hyphens.
@@ -42,7 +41,8 @@ pub const UuidUrnLength: uint = 45;
 /// Why text could not be read as a UUID.
 ///
 /// Failure-only: every case is a failure, and each carries the zero-based UTF-8 byte offset into the text where it
-/// was found. Success is `Result::Success`, so there is no case here meaning nothing went wrong.
+/// was found. Success is the other channel of `Uuid ! UuidParseError`, so there is no case here meaning nothing went
+/// wrong.
 ///
 /// Copy, carrying one offset and owning nothing.
 ///
@@ -107,7 +107,7 @@ func IsHyphenPosition(index: uint) -> bool {
 /// @param text the text to read
 /// @returns the identifier, or why the text is not one
 /// @see https://rux-lang.dev/docs/api/uuid/parse
-pub func Parse(text: char8[..]) -> Result<Uuid, UuidParseError> {
+pub func Parse(text: char8[..]) -> Uuid ! UuidParseError {
     var start: uint = 0;
     if text.length == UuidUrnLength {
         let prefix = "urn:uuid:";
@@ -118,7 +118,7 @@ pub func Parse(text: char8[..]) -> Result<Uuid, UuidParseError> {
                 mine = mine + 32u8;
             }
             if mine != (prefix.data[index] as uint8) {
-                return Result::Error<Uuid, UuidParseError>(UuidParseError::BadPrefix(index));
+                fail UuidParseError::BadPrefix(index);
             }
             index = index + 1;
         }
@@ -128,7 +128,7 @@ pub func Parse(text: char8[..]) -> Result<Uuid, UuidParseError> {
         // Too short, and the offset is the end of the text, where the character that is missing would go. Too long,
         // and it is the first character past the form, which is the one that has nowhere to be.
         let at = text.length < UuidTextLength ? text.length : UuidTextLength;
-        return Result::Error<Uuid, UuidParseError>(UuidParseError::WrongLength(at));
+        fail UuidParseError::WrongLength(at);
     }
 
     var value = Uuid::Nil();
@@ -141,7 +141,7 @@ pub func Parse(text: char8[..]) -> Result<Uuid, UuidParseError> {
         let c = text.data[at] as uint8;
         if IsHyphenPosition(position) {
             if c != 0x2Du8 {
-                return Result::Error<Uuid, UuidParseError>(UuidParseError::Misplaced(at));
+                fail UuidParseError::Misplaced(at);
             }
         }
         else {
@@ -150,9 +150,9 @@ pub func Parse(text: char8[..]) -> Result<Uuid, UuidParseError> {
                 // A hyphen where a digit belongs is a misplacement rather than a bad character, which is a more
                 // useful thing to be told: the digits are right and the grouping is not.
                 if c == 0x2Du8 {
-                    return Result::Error<Uuid, UuidParseError>(UuidParseError::Misplaced(at));
+                    fail UuidParseError::Misplaced(at);
                 }
-                return Result::Error<Uuid, UuidParseError>(UuidParseError::NotHexadecimal(at));
+                fail UuidParseError::NotHexadecimal(at);
             }
             if haveHigh {
                 value.bytes[byteIndex] = ((pending << 4u8) | digit) as char8;
@@ -166,7 +166,7 @@ pub func Parse(text: char8[..]) -> Result<Uuid, UuidParseError> {
         }
         position = position + 1u;
     }
-    return Result::Success<Uuid, UuidParseError>(value);
+    return value;
 }
 
 /// Reads a UUID from the text a `StringView` borrows.
@@ -180,7 +180,7 @@ pub func Parse(text: char8[..]) -> Result<Uuid, UuidParseError> {
 /// @param text the text to read
 /// @returns the identifier, or why the text is not one
 /// @see https://rux-lang.dev/docs/api/uuid/parse
-pub func Parse(text: StringView) -> Result<Uuid, UuidParseError> {
+pub func Parse(text: StringView) -> Uuid ! UuidParseError {
     return Parse(text.Bytes());
 }
 

@@ -35,7 +35,7 @@ func CodeOf(error: &UuidParseError) -> int {
 func Refuses(text: char8[..], code: int, at: uint) -> bool {
     return match Parse(text) {
         .Success(_) => false,
-        .Error(reason) => CodeOf(reason) == code && reason.Offset() == at
+        .Failure(reason) => CodeOf(reason) == code && reason.Offset() == at
     };
 }
 
@@ -44,12 +44,12 @@ func Refuses(text: char8[..], code: int, at: uint) -> bool {
 func Parsed(text: char8[..]) -> Uuid {
     return match Parse(text) {
         .Success(value) => value,
-        .Error(_) => Uuid::Nil()
+        .Failure(_) => Uuid::Nil()
     };
 }
 
 func Accepts(text: char8[..]) -> bool {
-    return Parse(text).IsSuccess();
+    return Succeeded(Parse(text));
 }
 
 func Spec(text: char8[..]) -> FormatSpec {
@@ -295,10 +295,10 @@ func Main() -> int {
     Assert(Parsed(shownWriter.Written()).Equals(value), "and parses back to the same identifier");
 
     // The StringView overload reaches the same parser, refusals included.
-    Assert(Parse(StringView::FromValidated(canonical)).IsSuccess(), "a StringView parses");
+    Assert(Succeeded(Parse(StringView::FromValidated(canonical))), "a StringView parses");
     Assert(Parsed(StringView::FromValidated(canonical).Bytes()).Equals(value),
            "to the same identifier its bytes do");
-    Assert(Parse(StringView::FromValidated("not a uuid")).IsError(), "and a view of something else is refused");
+    Assert(Failed(Parse(StringView::FromValidated("not a uuid"))), "and a view of something else is refused");
 
     return 0;
 }

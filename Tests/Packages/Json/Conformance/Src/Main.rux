@@ -6,7 +6,7 @@
 // same way, to survive it.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, Failed, Result, Succeeded };
+import Core::{ Assert, Failed, Panic, Succeeded };
 import Format::{ TextWriter };
 import Io::{ IoError, IoErrorKind, Reader };
 import Json::{ DuplicateKeyPolicy, JsonEvent, JsonEventReader, JsonKind, JsonLimits, JsonParseError, JsonStyle,
@@ -209,9 +209,7 @@ func Main() -> int {
 // Parses, writes, parses again, and requires the two writings to agree — then requires the streaming reader to
 // see the same shape as the tree.
 func CheckRoundTrip(allocator: Allocator, text: char8[..], wrote: *var bool) {
-    var outcome = Parse(allocator, text);
-    var value = JsonValue::Null(allocator);
-    Assert((<-outcome).TryIntoValue(@value), "a well-formed document parses");
+    let value = Parse(allocator, text) catch { else => Panic("a well-formed document parses") };
 
     var builder = StringBuilder(allocator);
     let sink: &var TextWriter = builder;
@@ -219,9 +217,7 @@ func CheckRoundTrip(allocator: Allocator, text: char8[..], wrote: *var bool) {
     Assert(*wrote, "and writes");
     var once = builder.IntoString();
 
-    var second = Parse(allocator, once.View().Bytes());
-    var again = JsonValue::Null(allocator);
-    Assert((<-second).TryIntoValue(@again), "and the written form parses");
+    let again = Parse(allocator, once.View().Bytes()) catch { else => Panic("and the written form parses") };
     var secondBuilder = StringBuilder(allocator);
     let secondSink: &var TextWriter = secondBuilder;
     *wrote = Succeeded(WriteValue(secondSink, again, JsonStyle::Compact()));
@@ -246,21 +242,20 @@ func CheckRoundTrip(allocator: Allocator, text: char8[..], wrote: *var bool) {
 
 // Requires a document to be refused, and nothing at all to come back with the refusal.
 //
-// That second half is the shape rather than a check: the result carries either a document or a failure, so a
+// That second half is the shape rather than a check: the outcome carries either a document or a failure, so a
 // refused parse cannot hand over a partial tree the way the old outcome-beside-a-value form could. What is left to
 // check is that whatever the parser built before it stopped was released rather than leaked, and the allocator
 // counting that is in the parser test.
 func CheckRefused(allocator: Allocator, text: char8[..]) {
-    let outcome = Parse(allocator, text);
-    Assert(outcome.IsError(), "a malformed document is refused");
+    Assert(Failed(Parse(allocator, text)), "a malformed document is refused");
 }
 
 // Whether an outcome is the refusal it should be, by the failure's own rendering, which names the case and the
 // byte it stopped at.
-func RefusedWith(outcome: &Result<JsonValue, JsonParseError>, expected: char8[..]) -> bool {
+func RefusedWith(outcome: &(JsonValue ! JsonParseError), expected: char8[..]) -> bool {
     return match outcome {
         .Success(_) => false,
-        .Error(reason) => {
+        .Failure(reason) => {
             var storage: char8[96];
             var writer = BufferWriter((@storage[0])[..96]);
             let sink: &var TextWriter = writer;

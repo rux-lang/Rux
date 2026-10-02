@@ -2,7 +2,7 @@
 // document far larger than the buffer must stream through it without the buffer growing.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, Failed, Option };
+import Core::{ Assert, Failed };
 import Io::{ IoError, IoErrorKind, Reader };
 import Json::{ JsonEvent, JsonEventReader, JsonLimits, JsonParseError };
 import Text::{ BufferWriter, FormatSpec, TextWriter };
@@ -50,9 +50,8 @@ extend SliceHandle : Reader {
 // parser test against exact documents; here what matters is that a streaming reader reports the same cases a
 // whole-document parse does, and that it reports them through the same positioned failure rather than through a
 // pair of fields a caller has to read in the right order.
-func StoppedAt(failure: Option<JsonParseError>, expected: char8[..]) -> bool {
-    var reason = JsonParseError::OutOfMemory(0);
-    if !failure.TryIntoValue(@reason) { return false; }
+func StoppedAt(failure: JsonParseError?, expected: char8[..]) -> bool {
+    let reason = failure ?? return false;
     var storage: char8[96];
     var writer = BufferWriter((@storage[0])[..96]);
     let sink: &var TextWriter = writer;
@@ -94,7 +93,7 @@ func Main() -> int {
     Assert(reader.Next() == JsonEvent::ObjectEnd, "the object closes");
     Assert(reader.Depth() == 0u, "back to the top");
     Assert(reader.Next() == JsonEvent::End, "and the document ends");
-    Assert(reader.Failure().IsNone(), "with nothing wrong");
+    Assert(!(reader.Failure() is JsonParseError), "with nothing wrong");
     reader.Release();
 
     // The point of streaming: a document far larger than the buffer streams through it. Ten thousand records,
@@ -145,7 +144,7 @@ func Main() -> int {
     Assert(seen == 10000u, "every record arrives as an event");
     Assert(event == JsonEvent::ArrayEnd, "and the array closes");
     Assert(bigReader.Next() == JsonEvent::End, "leaving the document finished");
-    Assert(bigReader.Failure().IsNone(), "with nothing wrong");
+    Assert(!(bigReader.Failure() is JsonParseError), "with nothing wrong");
     bigReader.Release();
 
     // Structural mistakes are still caught, which a reader that only emitted tokens would leave to the caller.
