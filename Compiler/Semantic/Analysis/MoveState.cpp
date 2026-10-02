@@ -32,6 +32,10 @@ std::string ExplicitMoveHelp(const ValueConsumptionKind kind, const std::string 
         return std::format("prefix the option with '<-', as in '(<-{}) ?? fallback'", place);
     case ValueConsumptionKind::CoalescingFallback:
         return std::format("prefix the fallback with '<-', as in 'option ?? <-{}'", place);
+    case ValueConsumptionKind::MatchSubject:
+        return std::format("transfer the subject with 'match <-{}'", place);
+    case ValueConsumptionKind::ConstructorOperand:
+        return std::format("prefix the operand with '<-', as in '.Success(<-{})'", place);
     case ValueConsumptionKind::ExplicitMove:
         break;
     }
@@ -243,6 +247,13 @@ bool PatternBindsValue(const Pattern &pattern) {
     if (dynamic_cast<const IdentPattern *>(&pattern)) {
         return true;
     }
+    // `v: T` binds its selection, while `_: T` only selects; `p?` binds whatever `p` binds.
+    if (const auto *typed = dynamic_cast<const TypedPattern *>(&pattern)) {
+        return !typed->name.empty();
+    }
+    if (const auto *presence = dynamic_cast<const PresencePattern *>(&pattern)) {
+        return presence->inner && PatternBindsValue(*presence->inner);
+    }
     if (const auto *enumeration = dynamic_cast<const EnumPattern *>(&pattern)) {
         return std::ranges::any_of(enumeration->args,
                                    [](const PatternPtr &argument) { return PatternBindsValue(*argument); }) ||
@@ -281,7 +292,7 @@ void AnalysisContext::ConsumeMatchSubject(const Expr &subject, const TypeRef &su
     if (AnalyzeMovePlace(subject).IsBorrowedStorage()) {
         return;
     }
-    ConsumeValue(subject, subjectType, ValueConsumptionKind::Receiver, location);
+    ConsumeValue(subject, subjectType, ValueConsumptionKind::MatchSubject, location);
 }
 
 template void AnalysisContext::ConsumeMatchSubject<MatchExpr::Arm>(const Expr &, const TypeRef &,
@@ -296,6 +307,9 @@ TypeRef AnalysisContext::CheckMatchExpression(const MatchExpr &expression) {
                                   : expressionType;
 
     ConsumeMatchSubject(*expression.subject, expressionType, expression.arms, expression.location);
+    const PatternBorrow armBorrow = IsNativeMatchSubject(subjectType)
+                                      ? MatchSubjectBorrow(*expression.subject, expressionType)
+                                      : PatternBorrow::Owned;
 
     const TrackedFlow matchEntry = SaveTrackedFlow();
     std::vector<TrackedFlow> exits;
@@ -306,7 +320,9 @@ TypeRef AnalysisContext::CheckMatchExpression(const MatchExpr &expression) {
     for (const auto &arm : expression.arms) {
         RestoreTrackedFlow(matchEntry);
         PushScope();
+        const PatternBorrow savedBorrow = std::exchange(currentPatternBorrow, armBorrow);
         CheckPattern(*arm.pattern, subjectType);
+        currentPatternBorrow = savedBorrow;
         // A diverging arm, such as `return` or a call to `Panic`, leaves the match and never decides its type.
         const TypeRef checkedArm = CheckExpr(*arm.body);
         const TypeRef armType = IsDivergingExpression(*arm.body) ? TypeRef::MakeUnknown() : checkedArm;
@@ -531,9 +547,7 @@ void AnalysisContext::ConsumeValue(const Expr &expression, const TypeRef &type, 
     const TypeProperties properties = ClassifyTypeProperties(type);
     if (properties.IsCopy()) {
         const MovePlace place = AnalyzeMovePlace(expression);
-        const bool storedAggregate =
-            type.kind == TypeRef::Kind::Named || type.kind == TypeRef::Kind::Array || type.kind == TypeRef::Kind::Tuple;
-        if (storedAggregate && (place.IsNamedStorage() || place.IsBorrowedStorage())) {
+        if (IsStoredAggregate(type) && (place.IsNamedStorage() || place.IsBorrowedStorage())) {
             const FuncDecl *custom = nullptr;
             if (properties.copyOperation == TypeProperties::SpecialOperationState::Custom) {
                 custom = LookupSourceSpecialOperation(type, "=", location);
@@ -576,6 +590,9 @@ void AnalysisContext::ConsumeValue(const Expr &expression, const TypeRef &type, 
 
 void AnalysisContext::ConsumeExplicitValue(const Expr &expression, const TypeRef &type, const SourceLocation location) {
     if (!trackedFlowReachable || type.IsUnknown()) {
+        return;
+    }
+    if (RejectSubsetViewUse(expression, location, "be moved")) {
         return;
     }
     if (type.kind == TypeRef::Kind::Reference) {

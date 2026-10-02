@@ -16,6 +16,8 @@ enum class ValueConsumptionKind {
     PropagationOperand,
     CoalescingOperand,
     CoalescingFallback,
+    MatchSubject,
+    ConstructorOperand,
     ExplicitMove,
 };
 

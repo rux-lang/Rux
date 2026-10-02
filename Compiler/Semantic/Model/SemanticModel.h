@@ -102,6 +102,13 @@ struct ResolvedCasePattern {
     std::unordered_map<std::string, TypeRef> substitutions;
 };
 
+/// How a binding under a borrowed native match subject refers to the payload it names. An alias is the payload in
+/// place, at its offset inside the subject; a view reads several members of a sum through the subject's own tag.
+enum class PatternBindingMode {
+    Alias,
+    View,
+};
+
 struct VariantEqualityPayload {
     enum class Operation {
         Builtin,
@@ -300,6 +307,8 @@ struct SemanticFacts {
     /// The sum member a qualified case, struct, literal, or tuple pattern selects, keyed by that pattern; the pattern's
     /// own recorded type stays the sum.
     std::unordered_map<const Pattern *, TypeRef> sumMemberPatterns;
+    /// The binding mode of each binding pattern under a borrowed native match subject; owned subjects bind values.
+    std::unordered_map<const Pattern *, PatternBindingMode> patternBindingModes;
     std::unordered_map<const BinaryExpr *, ResolvedVariantEquality> variantEqualities;
     std::unordered_map<std::string, VariantEqualityPlan> variantEqualityPlans;
     // An expression records only whether to negate; each concrete instantiation owns its element recipe.
@@ -366,6 +375,8 @@ struct SemanticModel {
     [[nodiscard]] const TypeRef *TryGetTypedPatternType(const TypedPattern &pattern) const noexcept;
     /// Returns null unless the pattern selects one member of a sum subject.
     [[nodiscard]] const TypeRef *TryGetSumMember(const Pattern &pattern) const noexcept;
+    /// Returns null for a binding of an owned subject, which binds a value rather than referring to the subject.
+    [[nodiscard]] const PatternBindingMode *TryGetPatternBindingMode(const Pattern &pattern) const noexcept;
 
     [[nodiscard]] const ResolvedVariantEquality *TryGetVariantEquality(const BinaryExpr &expression) const noexcept;
     [[nodiscard]] const VariantEqualityPlan *TryGetVariantEqualityPlan(const TypeRef &type) const noexcept;

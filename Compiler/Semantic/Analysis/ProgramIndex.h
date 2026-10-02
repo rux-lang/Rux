@@ -29,6 +29,9 @@ struct Symbol {
     SourceLocation location;
     TypeRef type;
     bool isMut = false;
+    /// A binding that views several members of a borrowed sum: it can be inspected and copied, but its tags belong
+    /// to the subject, so it is never borrowed, addressed, or moved.
+    bool isSubsetView = false;
     bool isPublic = false;
     bool isEffectivelyPublic = false;
     std::string ownerPackage;

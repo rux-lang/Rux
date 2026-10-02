@@ -198,6 +198,11 @@ const TypeRef *SemanticModel::TryGetSumMember(const Pattern &pattern) const noex
     return member == facts.sumMemberPatterns.end() ? nullptr : &member->second;
 }
 
+const PatternBindingMode *SemanticModel::TryGetPatternBindingMode(const Pattern &pattern) const noexcept {
+    const auto mode = facts.patternBindingModes.find(&pattern);
+    return mode == facts.patternBindingModes.end() ? nullptr : &mode->second;
+}
+
 const ResolvedVariantEquality *SemanticModel::TryGetVariantEquality(const BinaryExpr &expression) const noexcept {
     const auto fact = facts.variantEqualities.find(&expression);
     return fact == facts.variantEqualities.end() ? nullptr : &fact->second;

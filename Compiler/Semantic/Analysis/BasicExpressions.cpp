@@ -201,6 +201,7 @@ std::optional<TypeRef> AnalysisContext::CheckBasicExpression(const Expr &express
             }
         }
         if (unary->op == TokenKind::At) {
+            RejectSubsetViewUse(*unary->operand, unary->location, "have its address taken");
             checkingPlainAssignmentTarget = true;
             operandType.isMut = PlaceIsWritable(*unary->operand, operandType);
             checkingPlainAssignmentTarget = savedAssignmentTarget;
@@ -467,10 +468,7 @@ void AnalysisContext::ValidateDeferredBasicExpressionChecks(
             const TypeProperties properties = ClassifyTypeProperties(resolved);
             if (deferred.kind != ValueConsumptionKind::ExplicitMove && properties.IsCopy()) {
                 const MovePlace place = AnalyzeMovePlace(*deferred.expression);
-                const bool storedAggregate = resolved.kind == TypeRef::Kind::Named ||
-                                             resolved.kind == TypeRef::Kind::Array ||
-                                             resolved.kind == TypeRef::Kind::Tuple;
-                if (storedAggregate && (place.IsNamedStorage() || place.IsBorrowedStorage())) {
+                if (IsStoredAggregate(resolved) && (place.IsNamedStorage() || place.IsBorrowedStorage())) {
                     // Recorded with the unsubstituted type and no resolved operation: the record is keyed by the
                     // shared generic expression, so every instantiation reads it, and each one must substitute its
                     // own type argument and resolve its own copy operation when the plan is built. Baking this

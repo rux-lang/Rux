@@ -727,6 +727,9 @@ void AnalysisContext::ValidateCallReferenceBorrows(const CallExpr &call, const s
         if (parameter.kind != TypeRef::Kind::Reference || parameter.inner.empty()) {
             continue;
         }
+        if (RejectSubsetViewUse(*call.args[index], call.args[index]->location, "be passed to a reference parameter")) {
+            continue;
+        }
         const auto place = ResolveBorrowPlace(*call.args[index]);
         if (!place) {
             continue;

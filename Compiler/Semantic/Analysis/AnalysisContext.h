@@ -277,6 +277,26 @@ private:
     // Native patterns and membership tests (PatternCoverage.cpp).
     friend class NativePatternTranslator;
 
+    /// How the subject of the native match whose patterns are being checked is held: bindings of a borrowed subject
+    /// refer to its storage, and only an exclusively borrowed one can be written through them.
+    enum class PatternBorrow {
+        Owned,
+        Shared,
+        Exclusive,
+    };
+
+    /// Whether a copy of this type out of named or borrowed storage needs a recorded copy plan: a declared type, an
+    /// array, a tuple, or a native sum, optional, or fallible.
+    [[nodiscard]] static bool IsStoredAggregate(const TypeRef &type) noexcept;
+    /// How the arms of a native match over `subject` hold it.
+    [[nodiscard]] PatternBorrow MatchSubjectBorrow(const Expr &subject, const TypeRef &expressionType) const;
+    /// Gives a binding pattern under a borrowed native subject its binding mode.
+    void RecordPatternBinding(const Pattern &pattern, Symbol &symbol, bool view);
+    /// Rejects `use` of a subset view, reporting it once; true when `expression` names one.
+    bool RejectSubsetViewUse(const Expr &expression, SourceLocation location, std::string_view use);
+    /// Rejects a guard that moved a binding of its own arm, which a later arm still needs when the guard fails.
+    void CheckGuardKeepsBindings(const GuardedPattern &pattern);
+
     /// A pattern diagnostic computed before it is known whether, or with which instantiation note, it is reported.
     struct PatternIssue {
         SourceLocation location;
@@ -455,6 +475,11 @@ private:
     std::unordered_map<const EnumPattern *, ResolvedCasePattern> &casePatterns;
     std::unordered_map<const TypedPattern *, TypeRef> &typedPatternTypes;
     std::unordered_map<const Pattern *, TypeRef> &sumMemberPatterns;
+    std::unordered_map<const Pattern *, PatternBindingMode> &patternBindingModes;
+
+    PatternBorrow currentPatternBorrow = PatternBorrow::Owned;
+    /// Native constructors whose operand has already been handed over, so checking one twice never moves twice.
+    std::unordered_set<const NativeConstructExpr *> consumedConstructorOperands;
     /// Whether each native match, keyed by its first arm's pattern, covers its subject, so control flow can ask after
     /// the arms are checked.
     std::unordered_map<const Pattern *, bool> nativeMatchExhaustive;

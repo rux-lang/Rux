@@ -184,6 +184,10 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
         if (letStatement->type) {
             ValidateArrayType(**letStatement->type, false);
         }
+        if (letStatement->init && letStatement->type &&
+            dynamic_cast<const ReferenceTypeExpr *>(letStatement->type->get())) {
+            RejectSubsetViewUse(*letStatement->init, letStatement->location, "be stored as a reference");
+        }
         TypeRef initializerType = letStatement->init ? CheckExpr(*letStatement->init) : TypeRef::MakeUnknown();
         TypeRef declarationType = letStatement->type ? ResolveType(**letStatement->type) : initializerType;
         // `none`, `.Success(v)`, and `.Failure(e)` leave a part of their type to the context, so a binding cannot take
@@ -463,6 +467,9 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
                                       ? expressionType.inner.front()
                                       : expressionType;
         ConsumeMatchSubject(*matchStatement->subject, expressionType, matchStatement->arms, matchStatement->location);
+        const PatternBorrow armBorrow = IsNativeMatchSubject(subjectType)
+                                          ? MatchSubjectBorrow(*matchStatement->subject, expressionType)
+                                          : PatternBorrow::Owned;
         const TrackedFlow matchEntry = SaveTrackedFlow();
         std::vector<TrackedFlow> exits;
         std::vector<const Pattern *> patterns;
@@ -472,7 +479,9 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
             patterns.push_back(arm.pattern.get());
             RestoreTrackedFlow(matchEntry);
             PushScope();
+            const PatternBorrow savedBorrow = std::exchange(currentPatternBorrow, armBorrow);
             CheckPattern(*arm.pattern, subjectType);
+            currentPatternBorrow = savedBorrow;
             CheckExpr(*arm.body);
             PopScope();
             if (!coveredAll) {
@@ -746,6 +755,7 @@ void AnalysisContext::CheckPattern(const Pattern &pattern, const TypeRef &subjec
         symbol.location = identifierPattern->location;
         symbol.type = subjectType;
         symbol.isMut = false;
+        RecordPatternBinding(pattern, symbol, false);
         DefineTrackedLocal(std::move(symbol), true);
     }
     else if (const auto *literalPattern = dynamic_cast<const LiteralPattern *>(&pattern)) {
@@ -760,11 +770,16 @@ void AnalysisContext::CheckPattern(const Pattern &pattern, const TypeRef &subjec
     }
     else if (const auto *guardedPattern = dynamic_cast<const GuardedPattern *>(&pattern)) {
         CheckPattern(*guardedPattern->inner, subjectType);
+        // The guard runs with the arm's bindings in place but before the arm is chosen, so it reads them as an
+        // ordinary expression and must leave them for whichever arm runs next.
+        const PatternBorrow savedBorrow = std::exchange(currentPatternBorrow, PatternBorrow::Owned);
         const TypeRef guardType = CheckExpr(*guardedPattern->guard);
+        currentPatternBorrow = savedBorrow;
         if (!guardType.IsUnknown() && !guardType.IsBool()) {
             EmitError(guardedPattern->guard->location,
                       std::format("pattern guard must have type 'bool', but found '{}'", guardType.ToString()));
         }
+        CheckGuardKeepsBindings(*guardedPattern);
     }
     else if (const auto *rangePattern = dynamic_cast<const RangePattern *>(&pattern)) {
         if (!subjectType.IsUnknown() && !subjectType.IsNumeric()) {

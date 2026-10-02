@@ -283,6 +283,103 @@ std::string MemberList(const TypeRef &sum) {
 }
 } // namespace
 
+bool AnalysisContext::IsStoredAggregate(const TypeRef &type) noexcept {
+    return type.kind == TypeRef::Kind::Named || type.kind == TypeRef::Kind::Array ||
+           type.kind == TypeRef::Kind::Tuple || type.IsSum() || type.IsOptional() || type.IsFallible();
+}
+
+AnalysisContext::PatternBorrow AnalysisContext::MatchSubjectBorrow(const Expr &subject,
+                                                                   const TypeRef &expressionType) const {
+    if (expressionType.kind == TypeRef::Kind::Reference && !expressionType.inner.empty()) {
+        return expressionType.inner.front().isMut ? PatternBorrow::Exclusive : PatternBorrow::Shared;
+    }
+    return AnalyzeMovePlace(subject).IsBorrowedStorage() ? PatternBorrow::Shared : PatternBorrow::Owned;
+}
+
+void AnalysisContext::RecordPatternBinding(const Pattern &pattern, Symbol &symbol, const bool view) {
+    if (currentPatternBorrow == PatternBorrow::Owned) {
+        return;
+    }
+    // A borrowed subject is never consumed, so its bindings refer to its storage. A payload that sits whole at its own
+    // offset can be written through an exclusive borrow; a view of several members cannot, because the tag it would
+    // need belongs to the subject.
+    patternBindingModes.insert_or_assign(&pattern, view ? PatternBindingMode::View : PatternBindingMode::Alias);
+    symbol.isSubsetView = view;
+    symbol.isMut = currentPatternBorrow == PatternBorrow::Exclusive && !view;
+}
+
+bool AnalysisContext::RejectSubsetViewUse(const Expr &expression, const SourceLocation location,
+                                          const std::string_view use) {
+    const Expr *named = &expression;
+    if (const auto *move = dynamic_cast<const MoveExpr *>(named)) {
+        named = move->operand.get();
+    }
+    const auto *identifier = dynamic_cast<const IdentExpr *>(named);
+    const Symbol *symbol = identifier ? currentScope->Lookup(identifier->name) : nullptr;
+    if (!symbol || !symbol->isSubsetView) {
+        return false;
+    }
+    EmitError(
+        location, std::format("subset view '{}' cannot {}", symbol->name, use),
+        {std::format("'{}' reads several members of a borrowed subject through the subject's own tag", symbol->name)},
+        std::format("copy it into an owned value first, as in 'let owned: {} = {};'", symbol->type.ToString(),
+                    symbol->name));
+    return true;
+}
+
+void AnalysisContext::CheckGuardKeepsBindings(const GuardedPattern &pattern) {
+    std::vector<std::pair<std::string, SourceLocation>> names;
+    const auto collect = [&](this auto &&self, const Pattern &candidate) -> void {
+        const auto visit = [&](const PatternPtr &child) {
+            if (child) {
+                self(*child);
+            }
+        };
+        if (const auto *identifier = dynamic_cast<const IdentPattern *>(&candidate)) {
+            names.emplace_back(identifier->name, identifier->location);
+        }
+        else if (const auto *typed = dynamic_cast<const TypedPattern *>(&candidate)) {
+            if (!typed->name.empty()) {
+                names.emplace_back(typed->name, typed->location);
+            }
+        }
+        else if (const auto *presence = dynamic_cast<const PresencePattern *>(&candidate)) {
+            visit(presence->inner);
+        }
+        else if (const auto *enumeration = dynamic_cast<const EnumPattern *>(&candidate)) {
+            std::ranges::for_each(enumeration->args, visit);
+            for (const EnumPattern::NamedArg &argument : enumeration->namedArgs) {
+                visit(argument.pattern);
+            }
+        }
+        else if (const auto *tuple = dynamic_cast<const TuplePattern *>(&candidate)) {
+            std::ranges::for_each(tuple->elements, visit);
+        }
+        else if (const auto *structure = dynamic_cast<const StructPattern *>(&candidate)) {
+            for (const StructPattern::Field &field : structure->fields) {
+                visit(field.pattern);
+            }
+        }
+    };
+    if (pattern.inner) {
+        collect(*pattern.inner);
+    }
+    for (const auto &[name, location] : names) {
+        const Symbol *symbol = currentScope->LookupLocal(name);
+        if (!symbol) {
+            continue;
+        }
+        const MoveStateTracker::Record *record = moveStates.TryGet(MoveStateTracker::Local(symbol));
+        if (record &&
+            (record->state == MoveStateTracker::State::Moved || record->state == MoveStateTracker::State::MaybeMoved)) {
+            EmitError(pattern.guard ? pattern.guard->location : location,
+                      std::format("pattern guard cannot move '{}'", name),
+                      {"a guard that fails falls through to later arms, which still need the payload"},
+                      "move the binding in the arm body instead");
+        }
+    }
+}
+
 bool AnalysisContext::IsNativeMatchSubject(const TypeRef &subjectType) {
     return subjectType.IsUnit() || MentionsNativeType(subjectType);
 }
@@ -463,13 +560,18 @@ void AnalysisContext::CheckTypedPattern(const TypedPattern &pattern, const TypeR
     }
     if (!pattern.name.empty() && CheckFreeBindingName(pattern.name, pattern.location, TypeRef::MakeUnknown())) {
         // Whatever the annotation selects, the binding has the annotation's type: the whole subject, the selected
-        // member or subset, or the selected payload.
+        // member or subset, or the selected payload. Several selected members make a subset, which under a borrowed
+        // subject is only a view of it.
         Symbol symbol;
         symbol.kind = Symbol::Kind::Var;
         symbol.name = pattern.name;
         symbol.location = pattern.location;
         symbol.type = annotation;
         symbol.isMut = false;
+        const NativeSelection selection = annotation.IsUnknown() || subjectType.IsUnknown()
+                                            ? NativeSelection{}
+                                            : ClassifyNativeSelection(subjectType, annotation);
+        RecordPatternBinding(pattern, symbol, selection.members.size() > 1);
         DefineTrackedLocal(std::move(symbol), true);
     }
 }

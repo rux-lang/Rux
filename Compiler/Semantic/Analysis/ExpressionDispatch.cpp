@@ -235,6 +235,11 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
         if (operand.IsUnknown()) {
             return operand;
         }
+        // The constructed value takes its operand by value, exactly once however often the constructor is checked.
+        if (consumedConstructorOperands.insert(construct).second) {
+            ConsumeValue(*construct->operand, operand, ValueConsumptionKind::ConstructorOperand,
+                         construct->operand->location);
+        }
         switch (construct->kind) {
         case NativeConstructExpr::Kind::Some:
             return TypeRef::MakeOptional(operand);
