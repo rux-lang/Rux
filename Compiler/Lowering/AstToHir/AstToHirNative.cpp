@@ -591,6 +591,146 @@ HirExprPtr AstToHirContext::LowerNativeMembership(const IsExpr &expression) {
     return match;
 }
 
+HirExprPtr AstToHirContext::LowerNativeTry(const TryExpr &expression) {
+    const SourceLocation location = expression.location;
+    const TypeRef operandType = ResolvedExpressionType(*expression.operand);
+    const TypeRef success = operandType.FallibleSuccess();
+    const TypeRef error = operandType.FallibleError();
+    const TypeRef returnType = currentReturnType;
+    const std::size_t ordinal = propagationOrdinal++;
+    const std::string payloadName = std::format("$try.value.{}", ordinal);
+    const std::string failureName = std::format("$try.failure.{}", ordinal);
+    const auto binding = [&](const std::string &name, const TypeRef &type) {
+        auto bound = std::make_unique<HirBindingPattern>();
+        bound->location = location;
+        bound->name = name;
+        bound->type = type;
+        return bound;
+    };
+
+    HirMatchArm continuing;
+    continuing.location = location;
+    continuing.pattern =
+        NativeCasePattern(operandType, NativeSuccessTag, success, binding(payloadName, success), location);
+    continuing.body = TransferredBinding(payloadName, success, location);
+
+    // The failure leaves through the enclosing function's outer failure channel, chosen directly: the error is only
+    // injected or widened into that channel, and the exit is an ordinary return with its defers and cleanup.
+    HirExprPtr outgoing = ConvertNative(TransferredBinding(failureName, error, location),
+                                        returnType.IsFallible() ? returnType.FallibleError() : error, location);
+    auto exit = std::make_unique<HirBlockExpr>();
+    exit->location = location;
+    exit->type = success;
+    exit->block.location = location;
+    exit->block.stmts.push_back(
+        LowerFunctionReturn(MakeNativeCase(returnType, NativeFailureTag, std::move(outgoing), location), location));
+    HirMatchArm failing;
+    failing.location = location;
+    failing.pattern = NativeCasePattern(operandType, NativeFailureTag, error, binding(failureName, error), location);
+    failing.body = std::move(exit);
+
+    auto lowered = std::make_unique<HirMatchExpr>();
+    lowered->location = location;
+    lowered->type = success;
+    lowered->subject = LowerExpr(*expression.operand);
+    lowered->arms.push_back(std::move(continuing));
+    lowered->arms.push_back(std::move(failing));
+    return lowered;
+}
+
+HirFunc AstToHirContext::FallibleEntryWrapper(const HirFunc &body) {
+    const SourceLocation location = body.location;
+    const TypeRef outcome = body.returnType;
+    const TypeRef status = TypeRef::MakeInt();
+    const auto literal = [&](const std::string &value) {
+        auto result = std::make_unique<HirLiteralExpr>();
+        result->location = location;
+        result->type = status;
+        result->value = value;
+        return result;
+    };
+
+    auto call = std::make_unique<HirCallExpr>();
+    call->location = location;
+    call->type = outcome;
+    auto callee = std::make_unique<HirVarExpr>();
+    callee->location = location;
+    callee->name = std::string(kFallibleMainBody);
+    std::vector<TypeRef> parameterTypes;
+    for (const HirParam &parameter : body.params) {
+        parameterTypes.push_back(parameter.type);
+        auto argument = std::make_unique<HirVarExpr>();
+        argument->location = location;
+        argument->name = parameter.name;
+        argument->type = parameter.type;
+        call->args.push_back(std::move(argument));
+    }
+    callee->type = TypeRef::MakeFunc(std::move(parameterTypes), outcome);
+    call->callee = std::move(callee);
+
+    const TypeRef &success = outcome.FallibleSuccess();
+    HirMatchArm succeeded;
+    succeeded.location = location;
+    if (success.IsInteger()) {
+        auto value = std::make_unique<HirBindingPattern>();
+        value->location = location;
+        value->name = "$main.status";
+        value->type = success;
+        succeeded.pattern = NativeCasePattern(outcome, NativeSuccessTag, success, std::move(value), location);
+        auto read = std::make_unique<HirVarExpr>();
+        read->location = location;
+        read->name = "$main.status";
+        read->type = success;
+        auto cast = std::make_unique<HirCastExpr>();
+        cast->location = location;
+        cast->type = status;
+        cast->targetType = status;
+        cast->operand = std::move(read);
+        succeeded.body = std::move(cast);
+    }
+    else {
+        auto ignored = std::make_unique<HirWildcardPattern>();
+        ignored->location = location;
+        succeeded.pattern = NativeCasePattern(outcome, NativeSuccessTag, success, std::move(ignored), location);
+        succeeded.body = literal("0");
+    }
+    HirMatchArm failed;
+    failed.location = location;
+    auto ignoredError = std::make_unique<HirWildcardPattern>();
+    ignoredError->location = location;
+    failed.pattern =
+        NativeCasePattern(outcome, NativeFailureTag, outcome.FallibleError(), std::move(ignoredError), location);
+    failed.body = literal("1");
+
+    auto match = std::make_unique<HirMatchExpr>();
+    match->location = location;
+    match->type = status;
+    // The outcome is a temporary the entry point owns, so each arm destroys what it leaves unbound.
+    call->consumption = ValueConsumptionKind::MatchSubject;
+    match->subject = std::move(call);
+    match->arms.push_back(std::move(succeeded));
+    match->arms.push_back(std::move(failed));
+
+    auto returned = std::make_unique<HirReturnStmt>();
+    returned->location = location;
+    returned->value = std::move(match);
+
+    HirFunc entry;
+    entry.name = body.name;
+    entry.isPublic = body.isPublic;
+    entry.callConv = body.callConv;
+    entry.params = body.params;
+    for (HirParam &parameter : entry.params) {
+        parameter.bindingId = 0;
+    }
+    entry.returnType = status;
+    entry.location = location;
+    entry.body = HirBlock{};
+    entry.body->location = location;
+    entry.body->stmts.push_back(std::move(returned));
+    return entry;
+}
+
 HirExprPtr AstToHirContext::LowerPendingNative(const Expr &expression) {
     const TypeRef targetType = pendingNativeTarget ? *pendingNativeTarget : ResolvedExpressionType(expression);
     pendingNativeTarget.reset();

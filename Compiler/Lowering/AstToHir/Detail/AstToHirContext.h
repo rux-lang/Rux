@@ -204,6 +204,13 @@ protected:
     [[nodiscard]] HirStmtPtr LowerFail(const Expr *value, SourceLocation location);
     /// A diverging arm, mapping, or fallback body: the statement it spells, in a block that yields no value.
     [[nodiscard]] HirExprPtr LowerDiverge(const DivergeExpr &expression);
+    /// `?` on a native fallible: a match whose failure arm returns the error as the enclosing outer failure.
+    [[nodiscard]] HirExprPtr LowerNativeTry(const TryExpr &expression);
+    /// The symbol a fallible `Main` is renamed to, called by the synthesized entry point.
+    static constexpr std::string_view kFallibleMainBody = "Main$fallible";
+    /// `Main() -> int` calling the fallible `body`: a success exits with its integer payload or 0, a failure with 1,
+    /// after the failure's payload is destroyed.
+    [[nodiscard]] HirFunc FallibleEntryWrapper(const HirFunc &body);
 
     [[nodiscard]] HirExprPtr LowerCheckedArithmeticCall(const std::string &intrinsicName, const CallExpr &call);
     [[nodiscard]] HirExprPtr LowerZeroizeCall(const CallExpr &call);

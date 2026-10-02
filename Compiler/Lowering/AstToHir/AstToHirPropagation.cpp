@@ -61,6 +61,9 @@ HirExprPtr AstToHirContext::LowerTryExpr(const TryExpr &expression) {
     if (!fact) {
         std::abort();
     }
+    if (fact->native) {
+        return LowerNativeTry(expression);
+    }
 
     // Expression facts and propagation facts both need the current substitutions and concrete variant layout.
     // A named error without its layout marker otherwise travels as one word, dropping any nested payload.

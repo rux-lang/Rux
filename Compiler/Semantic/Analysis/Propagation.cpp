@@ -200,9 +200,6 @@ TypeRef AnalysisContext::CheckNativeTry(const TryExpr &expression, const TypeRef
     ConsumeValue(*expression.operand, operandType, ValueConsumptionKind::PropagationOperand,
                  expression.operand->location);
 
-    // Checked ahead of its lowering: a program that propagates a native fallible stops here until it can be compiled.
-    EmitError(expression.location, "'?' on a native fallible is not supported yet");
-
     ResolvedPropagation propagation;
     propagation.native = true;
     propagation.isResult = true;

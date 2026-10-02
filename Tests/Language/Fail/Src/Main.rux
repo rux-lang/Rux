@@ -1,12 +1,183 @@
-// `fail` is a reserved keyword. `fail error;` leaves a fallible function through its outer failure channel, and
-// `fail value` may also be the whole body of a match or catch arm, an error mapping, or the fallback of `??`.
+// `fail` and `?`: leaving a fallible function through its outer failure.
 //
-// This directory exists so LanguageTestMatrixTests can name an owning language test for the keyword from the commit
-// that reserves it. A program that spells `fail` cannot be that test yet: the compiler parses it and then reports
-// that it is not supported. That refusal is asserted in Tests/Unit/Golden/NativeOutcomesPending.rux, where an
-// expected compile failure is the whole point. Once failure exits are lowered, replace this placeholder with the
-// executable case rather than adding a directory.
+// `fail error;` returns the enclosing function's failure with `error` converted to its error channel, and `value?`
+// either continues with the success of one fallible level or returns that failure the same way. Both are ordinary
+// returns: the outgoing value is captured first, then registered defers run in reverse order, then everything the
+// function still owns is destroyed, including the completed parts of an aggregate whose construction was interrupted.
+// A nested level is never unwrapped twice, so an inner failure held as successful data stays data.
+//
+// `Main` itself may be fallible: a success exits with its integer payload, or 0 for the unit, and a failure exits
+// with 1 after ordinary cleanup.
 
-func Main() -> int {
-    return 0;
+import Core::Assert;
+
+struct ParseError {
+    position: int32;
+}
+
+struct IoError {
+    code: int32;
+}
+
+struct Counter {
+    count: int32;
+}
+
+struct Tracked {
+    counter: *var Counter;
+}
+
+extend Tracked {
+    func =(self: &var Tracked, other: &Tracked);
+
+    func ~Tracked(self: &var Tracked) {
+        self.counter.count = self.counter.count + 1;
+    }
+}
+
+struct Pair {
+    first: Tracked;
+    second: int32;
+}
+
+func Parse(text: int32) -> int32 ! ParseError {
+    if text < 0i32 {
+        fail ParseError { position: -text };
+    }
+    return text;
+}
+
+func Value(outcome: int32 ! ParseError) -> int32 {
+    return match outcome {
+        .Success(value) => value,
+        .Failure(error) => -error.position
+    };
+}
+
+// `fail` with a unit error payload.
+func Bare(stop: bool) -> int32 ! () {
+    if stop {
+        fail ();
+    }
+    return 1i32;
+}
+
+// Propagation continues with the success and stops at the first failure.
+func Sum(first: int32, second: int32) -> int32 ! ParseError {
+    return Parse(first)? + Parse(second)?;
+}
+
+// Each operand is evaluated once, whether it succeeds or not.
+func Counted(calls: *var int32, text: int32) -> int32 ! ParseError {
+    *calls = *calls + 1i32;
+    return Parse(text);
+}
+
+func Once(calls: *var int32, text: int32) -> int32 ! ParseError {
+    let value = Counted(calls, text)?;
+    return value;
+}
+
+// A failure leaves through the outer channel: an inner failure that is successful data is not propagated.
+func Layer(depth: int32) -> (int32 ! ParseError) ! IoError {
+    if depth > 1i32 {
+        fail IoError { code: depth };
+    }
+    if depth == 1i32 {
+        return .Success(.Failure(ParseError { position: 7i32 }));
+    }
+    return .Success(.Success(5i32));
+}
+
+func Unlayer(depth: int32) -> int32 ! IoError {
+    let inner: int32 ! ParseError = Layer(depth)?;
+    return match inner {
+        .Success(value) => value,
+        .Failure(error) => 100i32 + error.position
+    };
+}
+
+func UnlayerValue(depth: int32) -> int32 {
+    return match Unlayer(depth) {
+        .Success(value) => value,
+        .Failure(error) => 200i32 + error.code
+    };
+}
+
+// The error is injected into a wider error channel on its way out.
+func Wider(text: int32) -> int32 ! (IoError | ParseError) {
+    return Parse(text)?;
+}
+
+func WiderValue(text: int32) -> int32 {
+    return match Wider(text) {
+        .Success(value) => value,
+        .Failure(io: IoError) => 1000i32 + io.code,
+        .Failure(parse: ParseError) => 2000i32 + parse.position
+    };
+}
+
+// Defers run after the outgoing failure is captured, in reverse order of registration.
+func Deferred(log: *var int32, text: int32) -> int32 ! ParseError {
+    defer *log = *log * 10i32 + 1i32;
+    defer *log = *log * 10i32 + 2i32;
+    let value = Parse(text)?;
+    *log = *log * 10i32 + 9i32;
+    return value;
+}
+
+// A completed field of an interrupted aggregate is destroyed when the failure leaves.
+func Interrupted(counter: *var Counter, text: int32) -> Pair ! ParseError {
+    return Pair { first: Tracked { counter: counter }, second: Parse(text)? };
+}
+
+func Owned(counter: *var Counter, text: int32) -> int32 ! ParseError {
+    let held = Tracked { counter: counter };
+    if text < 0i32 {
+        fail ParseError { position: 1i32 };
+    }
+    return 0i32;
+}
+
+func Main() -> int ! ParseError {
+    Assert(Value(Parse(4i32)) == 4i32, "a success returns normally");
+    Assert(Value(Parse(-4i32)) == -4i32, "'fail' returns the outer failure");
+    let bare = match Bare(true) {
+        .Success(_) => 0i32,
+        .Failure(()) => 1i32
+    };
+    Assert(bare == 1i32, "'fail ();' fails with the unit");
+
+    Assert(Value(Sum(2i32, 3i32)) == 5i32, "both operands succeed");
+    Assert(Value(Sum(-2i32, 3i32)) == -2i32, "the first failure leaves");
+    Assert(Value(Sum(2i32, -3i32)) == -3i32, "a later failure leaves too");
+
+    var calls = 0i32;
+    Assert(Value(Once(@calls, 1i32)) == 1i32, "a propagated success");
+    Assert(Value(Once(@calls, -1i32)) == -1i32, "a propagated failure");
+    Assert(calls == 2i32, "each operand is evaluated once");
+
+    Assert(UnlayerValue(0i32) == 5i32, "one level is removed");
+    Assert(UnlayerValue(1i32) == 107i32, "an inner failure stays data");
+    Assert(UnlayerValue(2i32) == 202i32, "only the outer failure leaves");
+
+    Assert(WiderValue(8i32) == 8i32, "a success through a wider channel");
+    Assert(WiderValue(-6i32) == 2006i32, "a failure injected into the wider channel");
+
+    var log = 0i32;
+    Assert(Value(Deferred(@log, 5i32)) == 5i32, "a success runs its defers");
+    Assert(log == 921i32, "after the body, in reverse order");
+    log = 0i32;
+    Assert(Value(Deferred(@log, -5i32)) == -5i32, "a failure exit runs them too");
+    Assert(log == 21i32, "skipping the rest of the body");
+
+    var counter = Counter { count: 0i32 };
+    let interrupted = Interrupted(@counter, -1i32);
+    Assert(counter.count == 1i32, "a completed field of an interrupted aggregate is destroyed");
+    let failed = Owned(@counter, -1i32);
+    Assert(counter.count == 2i32, "a local is destroyed when 'fail' leaves");
+
+    // A propagated success at the top level; a failure here would exit with status 1.
+    let checked = Parse(0i32)?;
+    return checked;
 }

@@ -519,6 +519,15 @@ void AstToHirContext::LowerTopLevelDecl(const Decl &decl, HirModule &module) {
         }
         HirFunc loweredFunction = LowerFunc(*function);
         loweredFunction.name = FunctionCalleeName(*function);
+        // A fallible entry point is wrapped: the process exit status is an integer, so the wrapper keeps the `Main`
+        // symbol and turns the outcome into one.
+        if (loweredFunction.name == "Main" && loweredFunction.returnType.IsFallible()) {
+            HirFunc entry = FallibleEntryWrapper(loweredFunction);
+            loweredFunction.name = std::string(kFallibleMainBody);
+            module.funcs.push_back(std::move(loweredFunction));
+            module.funcs.push_back(std::move(entry));
+            return;
+        }
         module.funcs.push_back(std::move(loweredFunction));
     }
     else if (const auto *structDecl = dynamic_cast<const StructDecl *>(&decl)) {

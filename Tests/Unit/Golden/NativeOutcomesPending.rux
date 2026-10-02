@@ -18,8 +18,3 @@ func Handling() -> int32 ! NotFound {
     }
     fail NotFound {};
 }
-
-func Propagates() -> int32 ! NotFound {
-    let value = Handling()?;
-    return value;
-}
