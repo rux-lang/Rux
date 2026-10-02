@@ -143,10 +143,92 @@ std::string_view AnalysisContext::PropagationKindPhrase(const PropagationShape::
     return kind == PropagationShape::Kind::Result ? "a Result" : "an Option";
 }
 
+bool AnalysisContext::ErrorFitsChannel(const TypeRef &error, const TypeRef &channel) {
+    if (error == channel) {
+        return true;
+    }
+    if (!channel.IsSum()) {
+        return false;
+    }
+    const auto member = [&](const TypeRef &candidate) { return std::ranges::contains(channel.inner, candidate); };
+    return member(error) || (error.IsSum() && std::ranges::all_of(error.inner, member));
+}
+
+TypeRef AnalysisContext::CheckNativeTry(const TryExpr &expression, const TypeRef &operandType) {
+    const TypeRef &success = operandType.FallibleSuccess();
+    const TypeRef &error = operandType.FallibleError();
+    if (!currentReturnType.IsFallible()) {
+        const bool legacy = PropagationShapeOf(currentReturnType).has_value();
+        const std::string returned =
+            currentReturnType.IsOpaque() ? "nothing" : std::format("'{}'", currentReturnType.ToString());
+        EmitError(
+            expression.location,
+            std::format("'?' propagates native fallible '{}', but the enclosing function returns {}",
+                        operandType.ToString(), returned),
+            {"'?' leaves through the outer failure channel of a fallible function"},
+            legacy ? std::optional<std::string>("native and legacy outcomes do not convert; match the value and return "
+                                                "'Result::Success(...)' or 'Result::Error(...)' explicitly")
+                   : std::optional<std::string>(
+                         "declare the function's error channel, as in '-> T ! E', or handle the failure with "
+                         "'match'"));
+        return success;
+    }
+    const TypeRef &channel = currentReturnType.FallibleError();
+    const bool dependent = MentionsTypeParameter(error) || MentionsTypeParameter(channel);
+    if (!dependent && !error.IsUnknown() && !channel.IsUnknown() && !ErrorFitsChannel(error, channel)) {
+        EmitError(
+            expression.location,
+            std::format("'?' propagates error type '{}', but the enclosing function fails with '{}'", error.ToString(),
+                        channel.ToString()),
+            {"'?' moves an error into the outer failure only by identity, sum member injection, or subset "
+             "widening; it never converts an error"},
+            std::format("map the error to '{}' with '? else (e => ...)', or match the value", channel.ToString()));
+        return success;
+    }
+
+    // The continuing success and the outgoing error are both moved out of the evaluated operand.
+    const auto validatePayload = [&](const TypeRef &payload) {
+        if (MentionsTypeParameter(payload) && currentFunctionDecl) {
+            deferredOutcomeChecks[currentFunctionDecl].push_back({payload, expression.location, true});
+        }
+        else {
+            static_cast<void>(ValidateOutcomePayload(payload, expression.location, true));
+        }
+    };
+    validatePayload(success);
+    validatePayload(error);
+    ConsumeValue(*expression.operand, operandType, ValueConsumptionKind::PropagationOperand,
+                 expression.operand->location);
+
+    // Checked ahead of its lowering: a program that propagates a native fallible stops here until it can be compiled.
+    EmitError(expression.location, "'?' on a native fallible is not supported yet");
+
+    ResolvedPropagation propagation;
+    propagation.native = true;
+    propagation.isResult = true;
+    propagation.payloadType = success;
+    propagation.failureType = error;
+    propagation.returnType = currentReturnType;
+    propagations.insert_or_assign(&expression, std::move(propagation));
+    return success;
+}
+
 std::optional<TypeRef> AnalysisContext::CheckTryExpression(const TryExpr &expression) {
     const TypeRef operandType = CheckExpr(*expression.operand);
     if (operandType.IsUnknown()) {
         return TypeRef::MakeUnknown();
+    }
+    // A borrowed outcome cannot hand its payload to the continuing expression or its error to the caller.
+    if (operandType.kind == TypeRef::Kind::Reference && !operandType.inner.empty() &&
+        operandType.inner.front().IsFallible()) {
+        EmitError(expression.location,
+                  std::format("'?' cannot consume the borrowed fallible '{}'", operandType.ToString()),
+                  {"'?' moves the success onward or the error out of the function, and a reference owns neither"},
+                  "match the borrowed value to inspect it, or propagate an owned value");
+        return TypeRef::MakeUnknown();
+    }
+    if (operandType.IsFallible()) {
+        return CheckNativeTry(expression, operandType);
     }
 
     const auto operand = PropagationShapeOf(operandType);
@@ -172,11 +254,15 @@ std::optional<TypeRef> AnalysisContext::CheckTryExpression(const TryExpr &expres
         const std::string returned = currentReturnType.kind == TypeRef::Kind::Opaque
                                        ? "nothing"
                                        : std::format("'{}'", currentReturnType.ToString());
+        const bool native = currentReturnType.IsFallible() || currentReturnType.IsOptional();
         EmitError(expression.location,
                   std::format("'?' propagates {}, but the enclosing function returns {}", operandKind, returned),
                   std::move(notes),
-                  std::format("give the function a '{}' return type, or handle the failure with 'match'",
-                              PropagationKindName(operand->kind)));
+                  native ? std::format("native and legacy outcomes do not convert; match the {} and return "
+                                       "'.Success(...)', '.Failure(...)', '.Some(...)', or 'none' explicitly",
+                                       PropagationKindName(operand->kind))
+                         : std::format("give the function a '{}' return type, or handle the failure with 'match'",
+                                       PropagationKindName(operand->kind)));
         return operand->payload;
     }
 

@@ -364,6 +364,10 @@ private:
     [[nodiscard]] static std::string_view PropagationKindName(PropagationShape::Kind kind);
     [[nodiscard]] static std::string_view PropagationKindPhrase(PropagationShape::Kind kind);
     [[nodiscard]] std::optional<TypeRef> CheckTryExpression(const TryExpr &expression);
+    /// `?` on a native fallible: the success continues and the error leaves as the enclosing outer failure.
+    [[nodiscard]] TypeRef CheckNativeTry(const TryExpr &expression, const TypeRef &operandType);
+    /// Whether an error enters a failure channel by identity, sum member injection, or subset widening.
+    [[nodiscard]] static bool ErrorFitsChannel(const TypeRef &error, const TypeRef &channel);
     [[nodiscard]] TypeRef CheckCoalesceExpression(const BinaryExpr &expression);
     [[nodiscard]] bool ValidateOutcomePayload(const TypeRef &payload, SourceLocation location,
                                               bool propagation = false);

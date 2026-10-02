@@ -187,6 +187,9 @@ struct ResolvedIndexAssignment {
 /// the enclosing return type, so lowering builds the early return from this rather than recognizing the shape again.
 struct ResolvedPropagation {
     bool isResult = false;
+    /// A native fallible operand: its success continues and its error leaves as the enclosing function's outer failure,
+    /// injected or widened into that error channel. The variant names are unused.
+    bool native = false;
     /// The operand's variant declaration and the cases to test, and the declaration the early return constructs.
     std::string variantName;
     std::string successVariant;
