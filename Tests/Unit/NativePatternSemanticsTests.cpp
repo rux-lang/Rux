@@ -7,12 +7,11 @@ using namespace Rux;
 using namespace Rux::Testing::SemanticTestSupport;
 
 namespace {
-/// The errors in `source` other than the pending rejection of the native forms still awaiting their semantics.
+/// The errors in `source`.
 std::vector<std::string> Errors(const std::string &source) {
     std::vector<std::string> errors;
     for (const auto &diagnostic : AnalyzeSource(source)) {
-        if (diagnostic.severity == SemanticDiagnostic::Severity::Error &&
-            !diagnostic.message.contains("is not supported yet")) {
+        if (diagnostic.severity == SemanticDiagnostic::Severity::Error) {
             errors.push_back(diagnostic.message);
         }
     }
@@ -23,8 +22,7 @@ std::vector<std::string> Errors(const std::string &source) {
 std::vector<SemanticDiagnostic> ErrorDiagnostics(const std::string &source) {
     std::vector<SemanticDiagnostic> errors;
     for (auto &diagnostic : AnalyzeSource(source)) {
-        if (diagnostic.severity == SemanticDiagnostic::Severity::Error &&
-            !diagnostic.message.contains("is not supported yet")) {
+        if (diagnostic.severity == SemanticDiagnostic::Severity::Error) {
             errors.push_back(std::move(diagnostic));
         }
     }

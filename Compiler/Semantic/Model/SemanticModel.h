@@ -209,6 +209,8 @@ struct ResolvedCoalescing {
     std::string someVariant;
     std::string noneVariant;
     TypeRef payloadType;
+    /// A native optional operand: its presence is tested by its native tag and the variant names are unused.
+    bool native = false;
 };
 
 /// How one accepted `for` loop reads its subject. Analysis decides whether the subject is driven directly or through

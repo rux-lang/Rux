@@ -413,9 +413,13 @@ The arms use ordinary match-arm grammar, including guards and an `else` arm, and
 
 On a native optional `T?`, `value?` removes exactly one presence level: a present value continues as its payload, which may itself be an optional or a fallible, and absence returns from the enclosing function. The enclosing function returns either an optional `U?`, which then returns `none`, or a fallible whose success is an optional, `U? ! F`, which then succeeds with `none`. Absence never becomes an invented error, and no deeper level is a target. As with fallible propagation, the operand is consumed, a move-only operand is transferred as `(<-value)?`, and a borrowed optional is never an operand. A legacy Option operand and a native optional destination, or the reverse, are rejected with a help naming the explicit rewrap.
 
+### Coalescing
+
+`option ?? fallback` takes the payload of one native optional level, or evaluates `fallback` when it is absent. The fallback is evaluated lazily and must convert to the payload type, or leave: `candidate ?? fail NotFound {}` turns absence into a failure, and `?? return`, `?? break`, `?? continue`, and a call to `Panic` are accepted the same way. A present absence is a value: with `nested: int32??`, `nested ?? fallback` yields the inner `int32?`. `??` operates only on an optional; a fallible operand is rejected because coalescing would silently discard its error, and a borrowed optional is never an operand.
+
 ### Legacy coalescing
 
-`option ?? fallback` extracts the value carried by an Option or evaluates `fallback` when the Option is `None`:
+The legacy protocol extracts the value carried by an Option-shaped variant or evaluates `fallback` when it is `None`:
 
 ```rux
 let port = configuredPort ?? ReadDefaultPort();

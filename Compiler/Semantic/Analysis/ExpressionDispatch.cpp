@@ -21,17 +21,6 @@
 namespace Rux::SemanticDetail {
 using Layout::AlignUp;
 
-namespace {
-/// The subject of the pending diagnostic for a native handling expression that has no semantics yet, or nullopt for
-/// every other expression.
-std::optional<std::string> PendingNativeExpressionForm(const Expr &expr) {
-    if (dynamic_cast<const NoneExpr *>(&expr)) {
-        return "'none' is";
-    }
-    return std::nullopt;
-}
-} // namespace
-
 TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
     if (const std::optional<TypeRef> basicType = CheckBasicExpression(expr)) {
         return *basicType;
@@ -251,12 +240,10 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
         return CheckCatchExpression(*recovery);
     }
 
-    // The native handling forms parse ahead of their semantics. Each is rejected here with one stable diagnostic, and
-    // its operands are left unchecked, so no program that spells one reaches lowering before its analysis exists.
-    if (const std::optional<std::string> pending = PendingNativeExpressionForm(expr)) {
-        EmitError(expr.location, std::format("{} not supported yet", *pending));
-        // `none` still takes the type its context completes, so its conversion is checked like any other value's.
-        return dynamic_cast<const NoneExpr *>(&expr) ? TypeRef::MakeNoneValue() : TypeRef::MakeUnknown();
+    // `none` has a placeholder type until its context completes it, so its conversion is checked like any other
+    // value's.
+    if (dynamic_cast<const NoneExpr *>(&expr)) {
+        return TypeRef::MakeNoneValue();
     }
 
     if (const auto *e = dynamic_cast<const EnumShorthandExpr *>(&expr)) {

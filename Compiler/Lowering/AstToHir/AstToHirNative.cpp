@@ -796,6 +796,34 @@ HirExprPtr AstToHirContext::LowerNativeOptionalTry(const TryExpr &expression, co
     return lowered;
 }
 
+HirExprPtr AstToHirContext::LowerNativeCoalesce(const BinaryExpr &expression) {
+    const SourceLocation location = expression.location;
+    const TypeRef operandType = ResolvedExpressionType(*expression.left);
+    const TypeRef payload = operandType.inner.front();
+    const std::string payloadName = std::format("$coalesce.value.{}", coalescingOrdinal++);
+    auto bound = std::make_unique<HirBindingPattern>();
+    bound->location = location;
+    bound->name = payloadName;
+    bound->type = payload;
+    HirMatchArm present;
+    present.location = location;
+    present.pattern = NativeCasePattern(operandType, NativePresentTag, payload, std::move(bound), location);
+    present.body = TransferredBinding(payloadName, payload, location);
+    HirMatchArm absent;
+    absent.location = location;
+    absent.pattern = NativeCasePattern(operandType, NativeAbsentTag, std::nullopt, nullptr, location);
+    absent.body = dynamic_cast<const DivergeExpr *>(expression.right.get()) ? LowerExpr(*expression.right)
+                                                                            : LowerExprAs(*expression.right, payload);
+
+    auto lowered = std::make_unique<HirMatchExpr>();
+    lowered->location = location;
+    lowered->type = payload;
+    lowered->subject = LowerExpr(*expression.left);
+    lowered->arms.push_back(std::move(present));
+    lowered->arms.push_back(std::move(absent));
+    return lowered;
+}
+
 HirFunc AstToHirContext::FallibleEntryWrapper(const HirFunc &body) {
     const SourceLocation location = body.location;
     const TypeRef outcome = body.returnType;

@@ -21,8 +21,7 @@
 using namespace Rux;
 
 namespace {
-/// The LIR of `source`. `none` is still stopped before compilation by a pending diagnostic, which is the only error the
-/// source may produce; lowering reads the facts analysis recorded anyway.
+/// The LIR of `source`, which must analyze without errors.
 LirPackage LowerToLir(const std::string &source) {
     Lexer lexer(source, "native.rux");
     auto lexed = lexer.Tokenize();
@@ -35,7 +34,7 @@ LirPackage LowerToLir(const std::string &source) {
     for (const auto &diagnostic : model.diagnostics) {
         if (diagnostic.severity == SemanticDiagnostic::Severity::Error) {
             INFO(diagnostic.message);
-            REQUIRE(diagnostic.message.contains("is not supported"));
+            FAIL_CHECK(diagnostic.message);
         }
     }
     AstToHirLowering hirLowering(model);

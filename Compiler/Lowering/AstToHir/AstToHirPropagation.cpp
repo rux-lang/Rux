@@ -145,6 +145,9 @@ HirExprPtr AstToHirContext::LowerCoalesceExpr(const BinaryExpr &expression) {
         std::abort();
     }
 
+    if (fact->native) {
+        return LowerNativeCoalesce(expression);
+    }
     const TypeRef operandType = ResolvedExpressionType(*expression.left);
     const TypeRef payloadType = ResolvedExpressionType(expression);
     const std::string payloadName = CoalescingBindingName(coalescingOrdinal++);

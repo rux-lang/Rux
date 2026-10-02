@@ -8,12 +8,11 @@ using namespace Rux;
 using namespace Rux::Testing::SemanticTestSupport;
 
 namespace {
-/// The errors in `source` other than the pending rejection of the native forms still awaiting their lowering.
+/// The errors in `source`.
 std::vector<std::string> Errors(const std::string &source) {
     std::vector<std::string> errors;
     for (const auto &diagnostic : AnalyzeSource(source)) {
-        if (diagnostic.severity == SemanticDiagnostic::Severity::Error &&
-            !diagnostic.message.contains("is not supported yet")) {
+        if (diagnostic.severity == SemanticDiagnostic::Severity::Error) {
             errors.push_back(diagnostic.message);
         }
     }
@@ -24,8 +23,7 @@ std::vector<std::string> Errors(const std::string &source) {
 std::vector<SemanticDiagnostic> ErrorDiagnostics(const std::string &source) {
     std::vector<SemanticDiagnostic> errors;
     for (auto &diagnostic : AnalyzeSource(source)) {
-        if (diagnostic.severity == SemanticDiagnostic::Severity::Error &&
-            !diagnostic.message.contains("is not supported yet")) {
+        if (diagnostic.severity == SemanticDiagnostic::Severity::Error) {
             errors.push_back(std::move(diagnostic));
         }
     }
@@ -279,4 +277,61 @@ TEST_CASE("absence never becomes an error or reaches a deeper level") {
     CHECK(AnyContains(errors, "but the enclosing function returns 'Option<int32>'"));
     CHECK(AnyContains(errors, "but the enclosing function returns '(int32? ! ParseError) ! IoError'"));
     CHECK(AnyContains(errors, "'?' cannot consume the borrowed value"));
+}
+
+TEST_CASE("coalescing takes the payload or a fallback that converts or leaves") {
+    CHECK(ErrorsIn(R"(
+        intrinsic func Panic(message: char8[..]);
+        func Fallbacks(count: int32?, nested: int32??, unit: ()?) -> int32 ! ParseError {
+            let a = count ?? 0i32;
+            let b = count ?? fail ParseError {};
+            let c = count ?? Panic("absent");
+            let d: int32? = nested ?? none;
+            let e = unit ?? ();
+            for index in 0i32..3i32 {
+                let f = count ?? continue;
+                let g = count ?? break;
+            }
+            return count ?? return 1i32;
+        }
+    )")
+              .empty());
+
+    const auto errors = ErrorsIn(R"(
+        func Wrong(count: int32?) -> int32 {
+            return count ?? true;
+        }
+        func Fallible(outcome: int32 ! ParseError) -> int32 {
+            return outcome ?? 0i32;
+        }
+        func Borrowed(count: &int32?) -> int32 {
+            return count ?? 0i32;
+        }
+        func Pinned(value: Pinned?, fallback: Pinned) -> int32 {
+            let pinned = (<-value) ?? <-fallback;
+            return 0i32;
+        }
+    )");
+    CHECK(AnyContains(errors, "coalescing fallback has type 'bool8', but the optional payload is 'int32'"));
+    CHECK(AnyContains(errors, "cannot take 'int32 ! ParseError'"));
+    CHECK(AnyContains(errors, "cannot take '&"));
+    CHECK(AnyContains(errors, "cannot extract payload type 'Pinned' because moving it is prohibited"));
+}
+
+TEST_CASE("coalescing moves its operand and only possibly its fallback") {
+    CHECK(ErrorsIn(R"(
+        func Take(value: Owned?, fallback: Owned) -> int32 {
+            let owned = (<-value) ?? <-fallback;
+            return owned.handle;
+        }
+    )")
+              .empty());
+    const auto errors = ErrorsIn(R"(
+        func Keep(owned: Owned) {}
+        func Reuse(value: Owned?, fallback: Owned) {
+            let owned = (<-value) ?? <-fallback;
+            Keep(<-fallback);
+        }
+    )");
+    CHECK(AnyContains(errors, "'fallback'"));
 }

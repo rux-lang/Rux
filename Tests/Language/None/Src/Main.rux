@@ -1,12 +1,50 @@
-// `none` is a reserved keyword. It is the outer absence of the optional type its context expects, written the same
-// way as a value and as a pattern.
+// `none`: the outer absence of the optional type its context expects.
 //
-// This directory exists so LanguageTestMatrixTests can name an owning language test for the keyword from the commit
-// that reserves it. A program that spells `none` cannot be that test yet: the compiler parses it and then reports
-// that it is not supported. That refusal is asserted in Tests/Unit/Golden/NativeOutcomesPending.rux, where an
-// expected compile failure is the whole point. Once native optionals are lowered, replace this placeholder with the
-// executable case rather than adding a directory.
+// `none` is a reserved keyword, written the same way as a value and as a pattern. As a value it takes its whole type
+// from its context, so `let value = none;` has no type to infer; it reaches through success levels to the optional it
+// stands for, and selects the absence of that optional only, never of a level inside it. As a pattern it matches the
+// outer absence of the optional being matched.
+
+import Core::Assert;
+
+struct ParseError {}
+
+func Absent() -> int32? {
+    return none;
+}
+
+// In a fallible result whose success is optional, `none` is the successful absence.
+func SuccessfullyAbsent() -> int32? ! ParseError {
+    return none;
+}
+
+func Describe(found: int32??) -> int32 {
+    return match found {
+        .Some(.Some(value)) => value,
+        .Some(none) => -1i32,
+        none => -2i32
+    };
+}
 
 func Main() -> int {
+    let missing: int32? = none;
+    Assert(missing == none, "an absent value equals none");
+    Assert(Absent() == none, "a returned none");
+    Assert(SuccessfullyAbsent() == .Success(none), "none inside a success level");
+
+    // Each optional level has its own absence: `none` is only the outermost one.
+    let outer: int32?? = none;
+    let inner: int32?? = .Some(none);
+    Assert(Describe(outer) == -2i32, "outer absence");
+    Assert(Describe(inner) == -1i32, "a present absence");
+    Assert(outer != inner, "the two absences are different values");
+
+    let present: int32? = 3i32;
+    Assert(present != none, "a present value is not none");
+    let matched = match present {
+        none => false,
+        else => true
+    };
+    Assert(matched, "the none pattern does not match a present value");
     return 0;
 }

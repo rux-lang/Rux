@@ -1,0 +1,152 @@
+// Optionals: `T?` is either a present `T` or absent, and `T??` keeps both levels.
+//
+// An optional never collapses: `none`, `.Some(none)`, and `.Some(.Some(value))` are three different `int32??` values,
+// each written directly. A plain value becomes present in an optional context, and an optional is matched with
+// `.Some(pattern)` or its suffix spelling `pattern?`, with `none`, or with a typed presence pattern. `value?` removes one
+// level or returns absence, and `option ?? fallback` takes the payload or evaluates the fallback only for absence; the
+// fallback may also leave with `fail`, `return`, `break`, `continue`, or a call to `Panic`.
+
+import Core::Assert;
+
+struct NotFound {}
+
+struct Counter {
+    count: int32;
+}
+
+struct Tracked {
+    counter: *var Counter;
+    id: int32;
+}
+
+extend Tracked {
+    func =(self: &var Tracked, other: &Tracked);
+
+    func ~Tracked(self: &var Tracked) {
+        self.counter.count = self.counter.count + 1;
+    }
+}
+
+func Lookup(key: int32) -> int32?? {
+    if key == 0i32 {
+        return none;
+    }
+    if key == 1i32 {
+        return .Some(none);
+    }
+    return .Some(.Some(key * 10i32));
+}
+
+func Classify(found: int32??) -> int32 {
+    return match found {
+        value?? => value,
+        none? => -1i32,
+        none => -2i32
+    };
+}
+
+func Typed(found: int32??) -> int32 {
+    return match found {
+        stored: int32? => match stored {
+            value? => value,
+            none => -1i32
+        },
+        none => -2i32
+    };
+}
+
+func First(values: int32?[..]) -> int32? {
+    for value in values {
+        match value {
+            present? => return present,
+            none => {}
+        }
+    }
+    return none;
+}
+
+func Sum(left: int32?, right: int32?) -> int32? {
+    return left? + right?;
+}
+
+func Required(value: int32?) -> int32 ! NotFound {
+    return value ?? fail NotFound {};
+}
+
+func Expensive(calls: *var int32) -> int32 {
+    *calls = *calls + 1i32;
+    return 99i32;
+}
+
+func Hold(counter: *var Counter) {
+    let held: Tracked? = .Some(Tracked { counter: counter, id: 1i32 });
+}
+
+func Unwrap(counter: *var Counter, value: Tracked?) -> int32 {
+    let tracked = (<-value) ?? Tracked { counter: counter, id: 0i32 };
+    return tracked.id;
+}
+
+func Main() -> int {
+    // Every optional state is constructed directly and stays distinct.
+    Assert(Classify(Lookup(0i32)) == -2i32, "outer absence");
+    Assert(Classify(Lookup(1i32)) == -1i32, "a present absence");
+    Assert(Classify(Lookup(2i32)) == 20i32, "a present present value");
+    Assert(Typed(Lookup(1i32)) == -1i32, "a typed presence pattern takes one level");
+    Assert(Typed(Lookup(3i32)) == 30i32, "and leaves the inner level to match");
+
+    // A plain value is present in an optional context, and an optional in an optional of optionals.
+    let count: int32? = 4i32;
+    let wrapped: int32?? = count;
+    Assert(wrapped == .Some(.Some(4i32)), "presence is constructed around the value");
+
+    Assert(First([none, 5i32, 6i32]) == .Some(5i32), "an absent element does not end anything");
+    Assert(First([none, none]) == none, "all absent");
+
+    Assert(Sum(.Some(1i32), .Some(2i32)) == .Some(3i32), "'?' continues with present values");
+    Assert(Sum(.Some(1i32), none) == none, "'?' returns absence");
+
+    // Coalescing evaluates its fallback only for absence.
+    var calls = 0i32;
+    let present: int32? = 7i32;
+    let absent: int32? = none;
+    Assert((present ?? Expensive(@calls)) == 7i32 && calls == 0i32, "no fallback for a present value");
+    Assert((absent ?? Expensive(@calls)) == 99i32 && calls == 1i32, "the fallback for absence, once");
+    Assert((absent ?? present ?? 3i32) == 7i32, "coalescing associates to the right");
+    let nested: int32?? = .Some(none);
+    Assert((nested ?? .Some(1i32)) == none, "a present absence is a value, not absence");
+
+    let found = match Required(.Some(8i32)) {
+        .Success(value) => value,
+        .Failure(_) => -1i32
+    };
+    let notFound = match Required(none) {
+        .Success(value) => value,
+        .Failure(_) => -1i32
+    };
+    Assert(found == 8i32 && notFound == -1i32, "'?? fail' turns absence into failure");
+
+    var total = 0i32;
+    for index in 0i32..4i32 {
+        let value: int32? = index == 2i32 ? none : .Some(index);
+        total = total + (value ?? continue);
+    }
+    Assert(total == 4i32, "'?? continue' skips an absent value");
+    for index in 0i32..10i32 {
+        let value: int32? = index == 3i32 ? none : .Some(index);
+        total = total + (value ?? break);
+    }
+    Assert(total == 7i32, "'?? break' leaves the loop");
+
+    let unit: ()? = .Some(());
+    Assert(unit != none, "a present unit");
+
+    var counter = Counter { count: 0i32 };
+    Hold(@counter);
+    Assert(counter.count == 1i32, "a present payload is destroyed once");
+    Assert(Unwrap(@counter, .Some(Tracked { counter: @counter, id: 5i32 })) == 5i32, "coalescing moves the payload");
+    Assert(counter.count == 2i32, "which is destroyed once, with no fallback built");
+    Assert(Unwrap(@counter, none) == 0i32, "the fallback for an absent owner");
+    Assert(counter.count == 3i32, "the fallback is destroyed once");
+    return 0;
+}

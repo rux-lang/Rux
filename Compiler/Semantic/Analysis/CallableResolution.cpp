@@ -356,6 +356,11 @@ const FuncDecl *AnalysisContext::LookupFunctionOverload(const Symbol &sym, const
 }
 
 bool AnalysisContext::DefaultLiteralReachesNative(const TypeRef &argument, const TypeRef &parameter) {
+    // `none` or a constructor whose other channel is still open takes its type from the parameter, and so does an
+    // array of them; the argument's own conversion is checked against the selected parameter.
+    if (argument.MentionsIncompleteNative()) {
+        return true;
+    }
     // An unsuffixed literal carries its default width until a destination gives it one. A native parameter does so the
     // way the conversion rules do: through presence and success levels, then to the one member of its literal kind.
     // The argument's own check still rejects a value that does not fit, or an argument that is no literal at all.

@@ -61,8 +61,7 @@ std::vector<Kind> RouteOf(const Analyzed &analyzed, const Expr &expr) {
 std::vector<std::string> Errors(const Analyzed &analyzed) {
     std::vector<std::string> errors;
     for (const auto &diagnostic : analyzed.model.diagnostics) {
-        if (diagnostic.severity == SemanticDiagnostic::Severity::Error &&
-            !diagnostic.message.contains("is not supported yet")) {
+        if (diagnostic.severity == SemanticDiagnostic::Severity::Error) {
             errors.push_back(diagnostic.message);
         }
     }

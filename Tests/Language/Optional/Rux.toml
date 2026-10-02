@@ -2,10 +2,10 @@
 Version = 1
 
 [Package]
-Name = "None"
+Name = "Optional"
 Version = "0.1.0"
 Type = "Executable"
-Description = "Language test: None"
+Description = "Language test: Optional"
 
 [Dependencies]
 Core = { Path = "../../../Packages/Core" }

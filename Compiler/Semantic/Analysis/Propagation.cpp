@@ -384,10 +384,68 @@ bool AnalysisContext::ValidateOutcomePayload(const TypeRef &payload, const Sourc
     return true;
 }
 
+TypeRef AnalysisContext::CheckNativeCoalesce(const BinaryExpr &expression, const TypeRef &leftType) {
+    const TypeRef &payload = leftType.inner.front();
+    bool payloadValid = true;
+    if (MentionsTypeParameter(payload) && currentFunctionDecl) {
+        deferredOutcomeChecks[currentFunctionDecl].push_back({payload, expression.location});
+    }
+    else {
+        payloadValid = ValidateOutcomePayload(payload, expression.location);
+    }
+    ConsumeValue(*expression.left, leftType, ValueConsumptionKind::CoalescingOperand, expression.left->location);
+    const TrackedFlow presentExit = SaveTrackedFlow();
+
+    // The fallback runs only for absence, and either converts to the payload type or leaves.
+    const TypeRef checkedFallback = CheckExpr(*expression.right);
+    const TypeRef rightType = IsDivergingExpression(*expression.right) ? TypeRef::MakeUnknown() : checkedFallback;
+    const bool fallbackValid =
+        rightType.IsUnknown() || payload.IsUnknown() || CanAssignExprTo(*expression.right, rightType, payload);
+    if (!fallbackValid) {
+        EmitError(expression.right->location,
+                  AssignmentErrorMessage(*expression.right, payload,
+                                         std::format("coalescing fallback has type '{}', but the optional payload is "
+                                                     "'{}'",
+                                                     rightType.ToString(), payload.ToString())));
+    }
+    else if (!rightType.IsUnknown()) {
+        ConsumeValue(*expression.right, rightType, ValueConsumptionKind::CoalescingFallback,
+                     expression.right->location);
+    }
+    const TrackedFlow absentExit = SaveTrackedFlow();
+    MergeTrackedFlows({presentExit, absentExit});
+    if (payloadValid && fallbackValid && !payload.IsUnknown()) {
+        ResolvedCoalescing coalescing;
+        coalescing.native = true;
+        coalescing.payloadType = payload;
+        coalescings.insert_or_assign(&expression, std::move(coalescing));
+    }
+    return payload;
+}
+
 TypeRef AnalysisContext::CheckCoalesceExpression(const BinaryExpr &expression) {
     const TypeRef leftType = CheckExpr(*expression.left);
     if (leftType.IsUnknown()) {
         static_cast<void>(CheckExpr(*expression.right));
+        return TypeRef::MakeUnknown();
+    }
+    if (leftType.IsOptional() && !leftType.IsIncompleteNative()) {
+        return CheckNativeCoalesce(expression, leftType);
+    }
+    if (leftType.IsFallible() || (leftType.kind == TypeRef::Kind::Reference && !leftType.inner.empty() &&
+                                  (leftType.inner.front().IsOptional() || leftType.inner.front().IsFallible()))) {
+        static_cast<void>(CheckExpr(*expression.right));
+        const bool reference = leftType.kind == TypeRef::Kind::Reference;
+        EmitError(expression.location,
+                  std::format("operator '{}' cannot take '{}'",
+                              "?"
+                              "?",
+                              leftType.ToString()),
+                  {reference ? std::string("coalescing consumes its operand, and a reference owns nothing to consume")
+                             : std::string("coalescing tests one optional level and would silently discard an "
+                                           "error")},
+                  reference ? std::string("match the borrowed value, or coalesce an owned optional")
+                            : std::string("recover the error with 'catch', or propagate it with '?'"));
         return TypeRef::MakeUnknown();
     }
 

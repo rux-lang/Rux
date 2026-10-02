@@ -31,9 +31,7 @@ LayoutMap Layouts() {
     return layouts;
 }
 
-/// The LIR of `source` for `triple`. `none` is still stopped before compilation by a pending diagnostic, which is the
-/// only error the source may produce. It stays out of call arguments: its pending error would also withdraw the
-/// enclosing call's binding.
+/// The LIR of `source` for `triple`, which must analyze without errors.
 LirPackage LowerFor(const std::string &source, const std::string_view triple) {
     Lexer lexer(source, "native.rux");
     auto lexed = lexer.Tokenize();
@@ -49,7 +47,7 @@ LirPackage LowerFor(const std::string &source, const std::string_view triple) {
     for (const auto &diagnostic : model.diagnostics) {
         if (diagnostic.severity == SemanticDiagnostic::Severity::Error) {
             INFO(diagnostic.message);
-            REQUIRE(diagnostic.message.contains("is not supported"));
+            FAIL_CHECK(diagnostic.message);
         }
     }
     AstToHirLowering hirLowering(model);
