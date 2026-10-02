@@ -280,3 +280,28 @@ TEST_CASE("guards and sum-member patterns lower onto the same tag tests") {
     Case(*arms[3].pattern, "1");
     RequireBackEndsAccept(std::move(package));
 }
+
+TEST_CASE("an arm that never returns stores no value") {
+    // A call that never returns closes its block, so the match, catch, or conditional holding it must not store
+    // into the result or jump to the merge from there.
+    RequireBackEndsAccept(LowerSource(R"(
+        intrinsic func Panic(message: char8[..]);
+        struct IoError {}
+        struct Big { a: int64; b: int64; c: int64; }
+        func Read() -> int32 ! IoError { return 1i32; }
+        func ReadBig() -> Big ! IoError { return Big { a: 1, b: 2, c: 3 }; }
+        func Matched() -> int32 {
+            let value = match Read() { .Success(value) => value, .Failure(_) => Panic("failed") };
+            return value;
+        }
+        func Recovered() -> int64 {
+            let big = ReadBig() catch { e => Panic("failed") };
+            return big.c;
+        }
+        func Chosen(flag: bool) -> int64 {
+            let value = flag ? 1i32 : Panic("failed");
+            let big: Big = flag ? Big { a: 1, b: 2, c: 3 } : Panic("failed");
+            return big.a + value as int64;
+        }
+    )"));
+}

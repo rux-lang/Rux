@@ -166,10 +166,15 @@ std::unique_ptr<LetStmt> Parser::ParseLetStmt() {
     if (Check(TokenKind::Ident) && !Peek(1).Is(TokenKind::LeftBrace) && !Peek(1).Is(TokenKind::ColonColon)) {
         s->name = Advance().text;
     }
-    else if (Check(TokenKind::NoneKeyword)) {
-        // `none` is the absence pattern, which could never bind; a binding spelled that way is a rename to make.
-        EmitError(CurrentLocation(), "'none' is a reserved keyword and cannot name a binding",
-                  "choose another name, such as 'absent'");
+    else if (CheckAny({TokenKind::NoneKeyword, TokenKind::CatchKeyword, TokenKind::FailKeyword})) {
+        // `none` is the absence pattern, which could never bind, and `catch` and `fail` are reserved for recovery and
+        // failure; a binding spelled as one of them is a rename to make.
+        const std::string keyword = Peek().text;
+        const std::string_view suggestion = Check(TokenKind::NoneKeyword)  ? "absent"
+                                          : Check(TokenKind::CatchKeyword) ? "caught"
+                                                                           : "failed";
+        EmitError(CurrentLocation(), std::format("'{}' is a reserved keyword and cannot name a binding", keyword),
+                  std::format("choose another name, such as '{}'", suggestion));
         auto recovered = std::make_unique<WildcardPattern>();
         recovered->location = Advance().location;
         s->pattern = std::move(recovered);

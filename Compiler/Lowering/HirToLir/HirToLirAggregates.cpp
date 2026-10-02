@@ -511,13 +511,18 @@ void HirToLirContext::StoreTernaryInit(const HirTernaryExpr &e, LirReg slot, con
     const std::uint32_t mergeBlock = NewBlock("ternary.store.merge");
     Branch(cond, thenBlock, elseBlock);
 
+    // An arm that never returns closes its own block and does not reach the merge.
     SetBlock(thenBlock);
     StoreExprIntoSlot(*e.thenExpr, slot, type);
-    Jump(mergeBlock);
+    if (!IsTerminated()) {
+        Jump(mergeBlock);
+    }
 
     SetBlock(elseBlock);
     StoreExprIntoSlot(*e.elseExpr, slot, type);
-    Jump(mergeBlock);
+    if (!IsTerminated()) {
+        Jump(mergeBlock);
+    }
 
     SetBlock(mergeBlock);
 }
@@ -609,6 +614,10 @@ void HirToLirContext::StoreExprValueIntoSlot(const HirExpr &expr, LirReg slot, c
     }
 
     const LirReg val = LowerExpr(expr);
+    // A call that never returns, such as `Panic`, closes its block and produces no value to store.
+    if (IsTerminated()) {
+        return;
+    }
     EmitStore(EmitCastIfNeeded(val, expr.type, type), slot, type);
 }
 
@@ -829,19 +838,35 @@ LirReg HirToLirContext::LowerTernary(const HirTernaryExpr &e) {
     // the block it started in gave the merge a phi listing a block that does not branch to it and none of the
     // blocks that do -- a program the verifier refuses rather than one that runs wrongly, but only because the
     // verifier is there to catch it.
+    // An arm that never returns closes its own block, reaches no merge, and contributes no value to the phi.
     const std::uint32_t thenIdx = builder->CurrentBlock();
-    Jump(mergeBlock);
+    const bool thenReaches = !IsTerminated();
+    if (thenReaches) {
+        Jump(mergeBlock);
+    }
     SetBlock(elseBlock);
     LirReg elseVal = LowerExpr(*e.elseExpr);
     const std::uint32_t elseIdx = builder->CurrentBlock();
-    Jump(mergeBlock);
+    const bool elseReaches = !IsTerminated();
+    if (elseReaches) {
+        Jump(mergeBlock);
+    }
     SetBlock(mergeBlock);
+    if (!thenReaches && !elseReaches) {
+        Unreachable();
+        return thenVal;
+    }
     LirReg result = NewReg();
     LirInstr phi;
     phi.dst = result;
     phi.op = LirOpcode::Phi;
     phi.type = e.type;
-    phi.phiPreds = {{thenVal, thenIdx}, {elseVal, elseIdx}};
+    if (thenReaches) {
+        phi.phiPreds.emplace_back(thenVal, thenIdx);
+    }
+    if (elseReaches) {
+        phi.phiPreds.emplace_back(elseVal, elseIdx);
+    }
     Emit(std::move(phi));
     return result;
 }

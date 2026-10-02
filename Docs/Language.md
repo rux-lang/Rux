@@ -129,6 +129,58 @@ Removing or renaming an enum member or variant case is likewise a source-breakin
 
 The source cutover is intentionally narrow. Scalar enums retain their syntax, discriminants, conversions, and representation. First-party payload types that used the compiler's default enum layout migrate directly to `variant`. External payload enums that exposed an integer base or assigned discriminants are not source-compatible: because a variant's tag is private, those declarations require an explicit redesign, usually a scalar wire enum plus a separate payload type or a manually controlled union.
 
+## Native Sums, Optionals, and Fallibles
+
+Four compiler-owned type forms describe outcomes without a library declaration. Each has one purpose:
+
+| Form | Meaning | Inspection |
+| --- | --- | --- |
+| `A \| B` | A *sum*: one value of a set of distinct types. | Typed patterns, qualified case patterns, `is`. |
+| `T?` | An *optional*: a present `T` or absence. `T??` keeps both levels. | `value?`, `.Some(pattern)`, `none`, typed presence patterns, `is`, `?`, `??`. |
+| `T ! E` | A *fallible*: a successful `T` or a failed `E`, even when `T` and `E` are the same type. | `.Success(pattern)`, `.Failure(pattern)`, `catch`, `?`, `? else`. |
+| `()` | The *unit*, the empty tuple, whose only value is also written `()`. `! E` is exactly `() ! E`. | The pattern `()` or a binding. |
+
+`variant` remains the form for alternatives distinguished by case names, and `union` the untagged overlapping storage. In a type, the postfix `?` binds tightest, then `|`, then `!`, so `int32 | bool ! IoError` is `(int32 | bool) ! IoError`. A suffix never reaches across `!` or `|`: an optional error is written `T ! (E?)` and an optional result `(T ! E)?`, an optional member `A | (B?)` and an optional sum `(A | B)?`, and a nested fallible `(T ! E1) ! E2`. As for every postfix suffix, `*T?` is a pointer to an optional and `(*T)?` an optional pointer, and `int32?[..]` is a slice of optionals while `int32[..]?` is an optional slice.
+
+A sum is a set of resolved types: aliases are resolved, nested sums flattened, duplicates removed, and members ordered canonically by their fully qualified identity, so `A | B`, `B | A`, and `A | A | B` are one type, and `A | A` is `A`. Flattening never crosses an optional or fallible level. A sum over type parameters is normalized again for each instantiation, so `T | U` at `T = U = int32` is `int32`. Optionals and fallibles never collapse: `int32??` distinguishes absence, a present absence, and a present value, and an inner failure held as a success is data, not a failure of the outer level. Error payloads need no base type; a failure holding `none` is still a failure.
+
+Native forms are ordinary values in parameters, locals, fields, containers, and each other. They cannot refer to themselves, so recursive data uses a named `variant` or `struct` holding a pointer, which may be an optional pointer `(*Node)?`. They are not `extend` targets and implement no interface, so `int32?` satisfies no `Display` bound; reusable operations are generic functions that spell the forms, such as `func ValueOr<T, E>(value: T ! E, fallback: T) -> T`, and inference descends through `T?`, `T ! E`, and `&(T ! E)` as through named generic types. An alias names its resolved type and hides nothing: a public `type ReadError = ParseError | IoError;` exposes both members to exhaustive callers, while a named error variant keeps an explicit boundary and can carry the original cause.
+
+### Construction and conversion
+
+`.Success(value)`, `.Failure(error)`, and `.Some(value)` construct a level directly, and `none` is the absence of the expected optional's outer level, so every nested state is written without temporaries: `let stored: int32?? = .Some(none);`. A native constructor needs an expected type for every part it does not fix, so `let value = none;` and `let result = .Success(1i32);` are rejected with the annotation to write; `.Some(value)` alone takes its payload's type.
+
+Where a value meets an expected native type, identity wins; otherwise exactly one route must apply, made of member injection, subset widening of a sum, success or presence construction, and the same widening applied within one fallible channel or one optional payload. `A?` widens to `(A | B)?` and `T ! A` to `T ! (A | B)`, but no route converts a payload, extracts a value, or constructs a level inside an existing one. When two routes give different meanings, the conversion is ambiguous and must be written out. With `R = int32 ! ParseError`, `return value;` in a function returning `(int32 | R) ! ParseError` could keep a failed `R` as successful data or fail the outer level with it, so it is rejected: `return .Success(value);` keeps it and `return value?;` forwards it. An unsuffixed integer or float literal targets a sum only when exactly one member is of its kind, independent of its value, so both `5` and `300` are ambiguous for `uint8 | int32`; every other literal is injected only when its own type is a member.
+
+`fail error;` returns the enclosing function's failure with `error` converted to its error channel and is rejected outside a fallible function. `return;` and falling off the end produce `.Success(())` only when the success type is exactly `()`; a type that merely contains the unit, such as `()?` or `() | X`, needs a value. An omitted return type still declares a void function, which is not a unit-returning one, and `Core::Unit` is an ordinary struct unrelated to `()`. `Main` may return `! E` or `int ! E`: a success exits with its integer payload, or 0 for the unit, and a failure runs ordinary cleanup and exits with status 1 without printing the error.
+
+### Matching
+
+An ordinary `match` inspects native values one level at a time:
+
+```rux
+func Describe(outcome: (Options | Defaults) ! (DecodeError | IoError)) -> int32 {
+    return match outcome {
+        .Success(options: Options) => options.verbose ? 2i32 : 1i32,
+        .Success(_: Defaults) => 0i32,
+        .Failure(DecodeError::InvalidDigit(position)) => position,
+        else => -1i32
+    };
+}
+```
+
+`.Success(p)` and `.Failure(p)` select a channel, and `.Some(p)` and `none` an optional level. The presence suffix `p?` is exact shorthand for `.Some(p)`, so `value??` binds the payload of two levels and `none?` matches a present absence. A typed pattern `v: T` selects the sum member `T` and binds it, a subset `v: A | B` binds the matched members as a smaller sum, and on an optional subject the typed presence pattern selects one present level whose payload has that type; on a fallible subject it must name the whole type. `_: T` selects without binding. A qualified case pattern `Type::Case(...)` selects the variant member and its case at once, and is ambiguous when two members are instantiations of the same variant; an unqualified `.Case` on a sum subject is rejected in favour of `Type::Case`. Guards and the unit pattern `()` work as elsewhere.
+
+An identifier pattern binds only a free name. A name that already resolves to a type, alias, generic parameter, enum, variant, interface, constant, function, or module, or that spells a case of the subject or of one of its members, is rejected rather than silently binding the whole subject: `Options =>` on `Options | Defaults` and `Missing =>` on a `DecodeError` channel are errors whose help names `options: Options`, `Options { ... }`, or `DecodeError::Missing`. Shadowing a local variable or parameter remains legal.
+
+Coverage is checked over every level, so a missing `.Failure(_: IoError)` or `.Some(none)` is named in the diagnostic. An arm covered entirely by earlier unguarded arms is unreachable, but an `else` arm never is: it covers whatever remains, possibly nothing, which keeps `x: T => ..., else => ...` valid when a generic `T | U` collapses at `T = U`. Patterns that depend on type parameters are rechecked for each instantiation and report conflicts there, with both locations.
+
+A match consumes an owned subject, so arms that bind payloads own them and the payload of an arm that binds nothing is destroyed there. A borrowed subject is matched in place: bindings alias the payloads where they lie and a subset binding reads the original tag through the borrow. Such a view can be read and matched but not borrowed again, passed by reference, stored, or moved, and only a single-member binding writes through. `==` and `!=` compare native values structurally: the tags of each level first, then the active payloads.
+
+### Discarded results
+
+A fallible that is dropped loses its failure, so an expression statement producing a fallible, a bare-expression arm of a match statement that produces one, and `let _ = outcome;` are errors, and a fallible local that nothing reads is a warning. These are practical checks rather than a proof of handling: reading, passing, storing, or overwriting a fallible counts as a use, and nothing is followed through fields, containers, or later writes. A match covering both channels with `.Success(_) => {}` and `.Failure(_) => {}` discards a fallible deliberately, and `catch { else => {} }` does so for a unit success only.
+
 ## Membership Tests
 
 `value is Type` answers a question about the operand's type and never consumes, binds, or narrows it: after the test, `value` keeps its static type, and extracting a payload still takes a pattern. The tested type is a postfix type, so a sum or fallible target is grouped, as in `value is (A | B)`; an ungrouped `value is A | B` whose right operand names a type is rejected with that grouping as the fix. The right-hand type is resolved first, and its form and the subject's select the mode:

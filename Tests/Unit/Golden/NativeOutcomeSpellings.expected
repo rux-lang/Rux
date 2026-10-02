@@ -1,0 +1,5 @@
+7:33: error: an optional error type must be grouped
+11:36: error: an optional sum member must be grouped
+16:9: error: 'none' is a reserved keyword and cannot name a binding
+17:9: error: 'catch' is a reserved keyword and cannot name a binding
+18:9: error: 'fail' is a reserved keyword and cannot name a binding

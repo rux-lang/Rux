@@ -229,7 +229,8 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
         TypeRef declarationType = letStatement->type ? ResolveType(**letStatement->type) : initializerType;
         // `none`, `.Success(v)`, and `.Failure(e)` leave a part of their type to the context, so a binding cannot take
         // its whole type from one of them.
-        if (!letStatement->type && initializerType.MentionsIncompleteNative()) {
+        const bool incompleteNative = !letStatement->type && initializerType.MentionsIncompleteNative();
+        if (incompleteNative) {
             const bool isNone = initializerType.IsNoneValue();
             EmitError(letStatement->location,
                       std::format("cannot infer the type of '{}' from {}", letStatement->name,
@@ -281,7 +282,7 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
             EmitError(letStatement->location, "destructuring declaration requires an initializer");
         }
 
-        if (!letStatement->type && declarationType.IsUnknown() && !letStatement->pattern) {
+        if (!letStatement->type && declarationType.IsUnknown() && !letStatement->pattern && !incompleteNative) {
             EmitWarning(letStatement->location, std::format("cannot infer type of '{}'", letStatement->name));
         }
 

@@ -1,0 +1,84 @@
+// Native outcome sketches the language rejects. Each has a nearby spelling that is accepted, and the diagnostic names
+// it: an explicit constructor or `?` for an ambiguous conversion, a value or a diverging arm for a non-unit catch, the
+// grouping that was meant for a pointer, a fallible return type for `fail`, an annotation for a context-free `none`
+// or constructor, a typed or qualified pattern for a capitalized name, and a two-channel match for inspecting a
+// fallible.
+
+struct ParseError {}
+struct IoError {}
+struct Options {}
+struct Defaults {}
+
+type R = int32 ! ParseError;
+
+variant DecodeError {
+    Missing,
+    InvalidDigit(int32)
+}
+
+// `R` can enter the success sum intact, or fail the outer level with its own failure.
+func KeepAsData(value: R) -> (int32 | R) ! ParseError {
+    return value;
+}
+
+// `ParseError` injects into the wider channel, so the bare return is ambiguous here too.
+func Widened(value: R) -> R ! (ParseError | IoError) {
+    return value;
+}
+
+// Into a channel that cannot hold `ParseError`, it is unique success construction.
+func Stored(value: R) -> R ! IoError {
+    return value;
+}
+
+func Read() -> int32 ! IoError {
+    return 1i32;
+}
+
+func Save() -> ! IoError {}
+
+// An empty recovery invents no value; it is valid only for a unit success.
+func Recovered() -> int32 {
+    return Read() catch { else => {} };
+}
+
+func Completed() {
+    Save() catch { else => {} };
+}
+
+// A pointer to an optional is not an optional pointer.
+func Pointer(value: *int32?) {
+    let wrong: (*int32)? = value;
+}
+
+func Plain() -> int32 {
+    fail IoError {};
+}
+
+func Inferred() {
+    let absent = none;
+    let success = .Success(1i32);
+}
+
+// A capitalized name in a pattern selects nothing, so it would bind the whole subject.
+func Bound(value: Options | Defaults) -> int32 {
+    return match value {
+        Options => 1i32,
+        else => 0i32
+    };
+}
+
+func Decoded() -> int32 ! DecodeError {
+    return 1i32;
+}
+
+func Caught() -> int32 {
+    return Decoded() catch {
+        Missing => 0i32,
+        else => 1i32
+    };
+}
+
+func Inspected(value: int32 ! IoError) -> bool {
+    return value is int32;
+}

@@ -1,0 +1,19 @@
+// Spellings the parser rejects before any name resolves. A postfix `?` never reaches across `!` or `|`, so an optional
+// error or an optional sum member must be grouped to say which level it belongs to. `none`, `catch`, and `fail` are
+// reserved keywords, so a binding cannot be named with one of them.
+
+struct IoError {}
+
+func OptionalError() -> int32 ! IoError? {
+    return 1i32;
+}
+
+func OptionalMember(value: int32 | bool?) {}
+
+func Grouped(first: int32 ! (IoError?), second: (int32 ! IoError)?, third: int32 | (bool?), fourth: (int32 | bool)?) {}
+
+func Keywords() {
+    let none = 1i32;
+    let catch = 2i32;
+    let fail = 3i32;
+}

@@ -1,0 +1,228 @@
+// The native outcome forms working together, as the design describes them: sums select by type, fallibles carry a
+// success or a failure as data, optionals keep every presence level, and `?`, `catch`, `? else`, and `??` each handle
+// exactly one level. `Main` itself is fallible, so a failure anywhere at the top level would exit with status 1.
+
+import Core::{ Assert, Panic };
+
+struct Options {
+    verbose: bool;
+}
+
+struct Defaults {}
+
+struct ParseError {
+    position: int32;
+}
+
+struct IoError {
+    code: int32;
+}
+
+struct NotFound {}
+
+struct ConfigError {
+    line: int32;
+}
+
+type ReadError = ParseError | IoError;
+
+variant DecodeError {
+    Missing,
+    InvalidDigit(int32)
+}
+
+func Read(mode: int32) -> (Options | Defaults) ! ReadError {
+    if mode == 1i32 {
+        fail ParseError { position: 3i32 };
+    }
+    if mode == 2i32 {
+        fail IoError { code: 5i32 };
+    }
+    if mode == 3i32 {
+        return Defaults {};
+    }
+    return Options { verbose: mode == 4i32 };
+}
+
+func ReadConfig(mode: int32) -> Options ! (DecodeError | IoError) {
+    if mode == 1i32 {
+        fail DecodeError::Missing;
+    }
+    if mode == 2i32 {
+        fail DecodeError::InvalidDigit(7i32);
+    }
+    if mode == 3i32 {
+        fail IoError { code: 9i32 };
+    }
+    return Options { verbose: true };
+}
+
+func ReadOptional(mode: int32) -> Options? ! IoError {
+    if mode == 1i32 {
+        fail IoError { code: 1i32 };
+    }
+    if mode == 2i32 {
+        return none;
+    }
+    return Options { verbose: mode == 3i32 };
+}
+
+func Describe(value: Options | Defaults) -> int32 {
+    return match value {
+        options: Options => options.verbose ? 2i32 : 1i32,
+        defaults: Defaults => 0i32
+    };
+}
+
+// Domain errors widen into a public error sum.
+func Load(mode: int32) -> Options | Defaults ! ParseError | IoError | ConfigError {
+    let value = Read(mode)?;
+    return value;
+}
+
+// Contextual mapping: the complete error and local context become one public error.
+func LoadConfig(mode: int32, line: int32) -> Options | Defaults ! ConfigError {
+    let value = Read(mode)? else (e => ConfigError { line: line });
+    return value;
+}
+
+// Recovery: a parse failure becomes defaults, an I/O failure keeps failing.
+func LoadWithDefaults(mode: int32) -> Options | Defaults ! IoError {
+    return Read(mode) catch {
+        _: ParseError => Defaults {},
+        e: IoError => fail e
+    };
+}
+
+func RecoverOptions(position: int32) -> Options {
+    return Options { verbose: position > 5i32 };
+}
+
+func Configured(mode: int32) -> Options ! IoError {
+    let options = ReadConfig(mode) catch {
+        DecodeError::Missing => Options { verbose: false },
+        DecodeError::InvalidDigit(position) => RecoverOptions(position),
+        e: IoError => fail e
+    };
+    return options;
+}
+
+// Nesting and forwarding are different: storing keeps an inner failure as data, `?` forwards it.
+type R = int32 ! ParseError;
+
+func KeepAsData(value: R) -> (int32 | R) ! ParseError {
+    return .Success(value);
+}
+
+func Forward(value: R) -> (int32 | R) ! ParseError {
+    return value?;
+}
+
+// Optional propagation and absence turned into failure explicitly.
+func FindOptions(mode: int32) -> Options? ! IoError {
+    let candidate = ReadOptional(mode)?;
+    let options = candidate?;
+    return options;
+}
+
+func RequireOptions(mode: int32) -> Options ! NotFound | IoError {
+    let candidate = ReadOptional(mode)?;
+    return candidate ?? fail NotFound {};
+}
+
+// Unit success is the same generic fallible as any other.
+func Save(ok: bool) -> ! IoError {
+    if !ok {
+        fail IoError { code: 2i32 };
+    }
+}
+
+func Failed<T, E>(value: T ! E) -> bool {
+    return match value {
+        .Success(_) => false,
+        .Failure(_) => true
+    };
+}
+
+func ValueOr<T, E>(value: T ! E, fallback: T) -> T {
+    return value catch { else => fallback };
+}
+
+func Choose<T, U>(useLeft: bool, left: T, right: U) -> T | U {
+    if useLeft {
+        return left;
+    }
+    return right;
+}
+
+func Main() -> ! IoError {
+    Assert(Describe(Read(3i32) catch { e => Panic("unexpected read failure") }) == 0i32, "a defaults member");
+    Assert(Describe(Read(4i32) catch { e => Panic("unexpected read failure") }) == 2i32, "an options member");
+    let defaulted: Options | Defaults = Defaults {};
+    Assert(defaulted is Defaults && !(defaulted is Options), "membership does not narrow");
+
+    let accepted: Options ! ParseError = .Success(Options { verbose: false });
+    let rejected: Options ! ParseError = .Failure(ParseError { position: 1i32 });
+    Assert(!Failed(accepted) && Failed(rejected), "constructed outcomes are ordinary values");
+
+    let loaded = match Load(2i32) {
+        .Success(_) => 0i32,
+        .Failure(_: ParseError) => 1i32,
+        .Failure(io: IoError) => io.code,
+        .Failure(_: ConfigError) => 3i32
+    };
+    Assert(loaded == 5i32, "an error injected into a public sum");
+    let mapped = match LoadConfig(1i32, 42i32) {
+        .Success(_) => 0i32,
+        .Failure(error) => error.line
+    };
+    Assert(mapped == 42i32, "a mapped error carries local context");
+    Assert(Describe(LoadWithDefaults(1i32)?) == 0i32, "a parse failure recovered as defaults");
+    Assert(Failed(LoadWithDefaults(2i32)), "an i/o failure still fails");
+    Assert(!(Configured(1i32)?).verbose, "a unit case recovered");
+    Assert((Configured(2i32)?).verbose, "a payload case recovered");
+    Assert(Failed(Configured(3i32)), "an i/o failure is forwarded by the arm");
+
+    let inner: R = .Failure(ParseError { position: 8i32 });
+    let kept = match KeepAsData(inner) {
+        .Success(data: R) => Failed(data),
+        else => false
+    };
+    let forwarded = match Forward(inner) {
+        .Failure(error) => error.position == 8i32,
+        else => false
+    };
+    Assert(kept && forwarded, "storing keeps the failure as data, forwarding fails the outer level");
+
+    let missing: int32?? = none;
+    let storedAbsence: int32?? = .Some(none);
+    let storedValue: int32?? = .Some(.Some(7i32));
+    Assert(missing != storedAbsence && storedAbsence != storedValue, "every optional state is distinct");
+    Assert(match storedValue { value?? => value, none? => 0i32, none => -1i32 } == 7i32, "presence suffixes");
+
+    let present = match FindOptions(3i32) {
+        .Success(options?) => options.verbose,
+        else => false
+    };
+    Assert(present, "present options pass through both levels");
+    let found = match FindOptions(2i32) {
+        .Success(none) => true,
+        else => false
+    };
+    Assert(found, "absence propagates as successful absence");
+    let required = match RequireOptions(2i32) {
+        .Failure(_: NotFound) => true,
+        else => false
+    };
+    Assert(required, "absence turned into failure explicitly");
+
+    let completed: ! IoError = .Success(());
+    Assert(!Failed(completed) && Failed(Save(false)), "unit success is generic");
+    Assert(ValueOr<int32, IoError>(.Failure(IoError { code: 1i32 }), 6i32) == 6i32, "a generic fallback");
+    let same: int32 = Choose<int32, int32>(true, 1i32, 2i32);
+    Assert(same == 1i32, "equal generic members collapse");
+
+    // A unit-only discard: recovering a unit success needs no value.
+    Save(false) catch { else => {} };
+    Save(true)?;
+}
