@@ -467,17 +467,14 @@ TypeRef AnalysisContext::ResolveTypeImpl(const TypeExpr &expr) {
     }
 
     // A native form resolves its children, and normalizes a sum, through the same `ResolveType` that records each
-    // child's fact. Lowering cannot represent these types yet, so the outermost native form of each written type is
-    // rejected once after it resolves; a child that fails to resolve has already been reported and adds nothing more.
+    // child's fact; a child that fails to resolve has already been reported and adds nothing more.
     if (IsNativeTypeExpr(expr)) {
-        ++nativeTypeResolutionDepth;
         std::vector<TypeRef> resolved;
         bool unknown = false;
         for (const TypeExpr *child : NativeTypeChildren(expr)) {
             resolved.push_back(ResolveType(*child));
             unknown = unknown || resolved.back().IsUnknown();
         }
-        --nativeTypeResolutionDepth;
         if (unknown || resolved.empty()) {
             return TypeRef::MakeUnknown();
         }
@@ -495,10 +492,7 @@ TypeRef AnalysisContext::ResolveTypeImpl(const TypeExpr &expr) {
             TypeRef success = hasSuccess ? std::move(resolved.front()) : TypeRef::MakeUnit();
             type = TypeRef::MakeFallible(std::move(success), std::move(error));
         }
-        if (nativeTypeResolutionDepth == 0 && reportedPendingNativeTypes.insert(&expr).second) {
-            EmitError(expr.location,
-                      std::format("native type '{}' is not supported in compiled code yet", type.ToString()));
-        }
+        NoteDeferredNativeType(type);
         return type;
     }
 

@@ -1,0 +1,251 @@
+// Fallibles: `T ! E` is either a successful `T` or a failed `E`, and `! E` is exactly `() ! E`.
+//
+// Both channels are first-class data. `.Success(value)` and `.Failure(error)` build either one anywhere a value is
+// expected, `fail error;` leaves a function through its outer failure, and `return;` or falling off the end of a
+// function whose success is the unit succeeds with `()`. Channels never collapse: the same type on both sides stays two
+// distinguishable states, and a failed result nested inside a successful one is data, not a failure of the outer level.
+// Matching covers both channels with ordinary `.Success` and `.Failure` patterns.
+//
+// Every check that holds a tracked payload counts destructions, so whichever channel is active is destroyed exactly
+// once and the inactive one never.
+
+import Core::Assert;
+
+struct Counter {
+    count: int32;
+}
+
+struct Tracked {
+    counter: *var Counter;
+    id: int32;
+}
+
+extend Tracked {
+    func =(self: &var Tracked, other: &Tracked);
+
+    func ~Tracked(self: &var Tracked) {
+        self.counter.count = self.counter.count + 1;
+    }
+}
+
+struct ParseError {
+    position: int32;
+}
+
+struct IoError {
+    code: int32;
+}
+
+struct Big {
+    a: int64;
+    b: int64;
+    c: int64;
+    d: int64;
+}
+
+func Make(counter: *var Counter, id: int32) -> Tracked {
+    return Tracked { counter: counter, id: id };
+}
+
+func Parse(text: int32) -> int32 ! ParseError {
+    if text < 0i32 {
+        fail ParseError { position: -text };
+    }
+    return text * 2i32;
+}
+
+func Value(outcome: int32 ! ParseError) -> int32 {
+    return match outcome {
+        .Success(value) => value,
+        .Failure(error) => -error.position
+    };
+}
+
+// The same type on both channels stays two states.
+func Signed(outcome: int32 ! int32) -> int32 {
+    return match outcome {
+        .Success(value) => value,
+        .Failure(code) => -code
+    };
+}
+
+// A unit success completes by `return;` or by falling off the end.
+func Save(ok: bool, early: bool) -> ! IoError {
+    if early {
+        return;
+    }
+    if !ok {
+        fail IoError { code: 5i32 };
+    }
+}
+
+func Saved(outcome: ! IoError) -> int32 {
+    return match outcome {
+        .Success(()) => 0i32,
+        .Failure(error) => error.code
+    };
+}
+
+// A failed inner result stays data inside a successful outer one.
+func Layered(depth: int32) -> (int32 ! ParseError) ! IoError {
+    if depth == 0i32 {
+        return .Success(.Success(1i32));
+    }
+    if depth == 1i32 {
+        return .Success(.Failure(ParseError { position: 2i32 }));
+    }
+    fail IoError { code: 3i32 };
+}
+
+func Unlayer(outcome: (int32 ! ParseError) ! IoError) -> int32 {
+    return match outcome {
+        .Success(.Success(value)) => value,
+        .Success(.Failure(inner)) => 100i32 + inner.position,
+        .Failure(outer) => 200i32 + outer.code
+    };
+}
+
+// An error channel may be a sum; widening it keeps the failure and its payload.
+func Widen(outcome: int32 ! ParseError) -> int32 ! (IoError | ParseError) {
+    return outcome;
+}
+
+func Classify(outcome: int32 ! (IoError | ParseError)) -> int32 {
+    return match outcome {
+        .Success(value) => value,
+        .Failure(io: IoError) => 1000i32 + io.code,
+        .Failure(parse: ParseError) => 2000i32 + parse.position
+    };
+}
+
+func Wide(seed: int64) -> Big ! IoError {
+    if seed < 0i64 {
+        fail IoError { code: 9i32 };
+    }
+    return Big { a: seed, b: seed + 1i64, c: seed + 2i64, d: seed + 3i64 };
+}
+
+func Total(outcome: Big ! IoError) -> int64 {
+    return match outcome {
+        .Success(big) => big.a + big.b + big.c + big.d,
+        .Failure(error) => error.code as int64
+    };
+}
+
+// Through an exclusive borrow, a channel's binding writes the payload in place.
+func Bump(outcome: &var (ParseError ! IoError)) {
+    match outcome {
+        .Success(parse) => {
+            parse.position = parse.position + 1i32;
+        },
+        .Failure(_) => {}
+    }
+}
+
+func Generic<T, E>(value: T) -> T ! E {
+    return value;
+}
+
+func HoldSuccess(counter: *var Counter) {
+    let held: Tracked ! IoError = .Success(Make(counter, 1i32));
+}
+
+func HoldFailure(counter: *var Counter) {
+    let held: int32 ! Tracked = .Failure(Make(counter, 1i32));
+}
+
+func HoldNested(counter: *var Counter) {
+    let held: (Tracked ! IoError) ! IoError = .Success(.Success(Make(counter, 1i32)));
+}
+
+func Discard(counter: *var Counter) {
+    let held: Tracked ! IoError = .Success(Make(counter, 1i32));
+    match <-held {
+        .Success(_) => {},
+        .Failure(_) => {}
+    }
+}
+
+func Produce(counter: *var Counter) -> Tracked ! IoError {
+    return .Success(Make(counter, 1i32));
+}
+
+func DiscardTemporary(counter: *var Counter) {
+    match Produce(counter) {
+        .Success(_) => {},
+        .Failure(_) => {}
+    }
+}
+
+func FailWith(counter: *var Counter) -> int32 ! Tracked {
+    fail Make(counter, 1i32);
+}
+
+func RunFail(counter: *var Counter) {
+    let failed = FailWith(counter);
+}
+
+func Destroyed(run: func(*var Counter)) -> int32 {
+    var counter = Counter { count: 0i32 };
+    run(@counter);
+    return counter.count;
+}
+
+func Main() -> int {
+    Assert(Value(Parse(21i32)) == 42i32, "a returned success");
+    Assert(Value(Parse(-3i32)) == -3i32, "a failure from 'fail'");
+
+    // Constructors build either channel as a value without leaving the function.
+    let accepted: int32 ! ParseError = .Success(7i32);
+    let rejected: int32 ! ParseError = .Failure(ParseError { position: 4i32 });
+    Assert(Value(accepted) == 7i32, "a constructed success");
+    Assert(Value(rejected) == -4i32, "a constructed failure");
+    let contextual: int32 ! ParseError = 9i32;
+    Assert(Value(contextual) == 9i32, "a plain value becomes the success in context");
+
+    let positive: int32 ! int32 = .Success(5i32);
+    let negative: int32 ! int32 = .Failure(5i32);
+    Assert(Signed(positive) == 5i32, "the success of a same-type fallible");
+    Assert(Signed(negative) == -5i32, "the failure of a same-type fallible");
+
+    Assert(Saved(Save(true, false)) == 0i32, "falling off the end succeeds with the unit");
+    Assert(Saved(Save(true, true)) == 0i32, "'return;' succeeds with the unit");
+    Assert(Saved(Save(false, false)) == 5i32, "a unit success can still fail");
+    let completed: ! IoError = .Success(());
+    Assert(Saved(completed) == 0i32, "a constructed unit success");
+
+    Assert(Unlayer(Layered(0i32)) == 1i32, "success of a success");
+    Assert(Unlayer(Layered(1i32)) == 102i32, "an inner failure is successful data");
+    Assert(Unlayer(Layered(2i32)) == 203i32, "an outer failure");
+
+    Assert(Classify(Widen(Parse(-6i32))) == 2006i32, "a failure widened into an error sum");
+    Assert(Classify(Widen(Parse(4i32))) == 8i32, "a success passes through widening");
+
+    Assert(Total(Wide(10i64)) == 46i64, "a payload wider than two registers");
+    Assert(Total(Wide(-1i64)) == 9i64, "its failure");
+
+    var position: ParseError ! IoError = .Success(ParseError { position: 1i32 });
+    Bump(position);
+    Bump(position);
+    let bumped = match position {
+        .Success(parse) => parse.position,
+        .Failure(_) => 0i32
+    };
+    Assert(bumped == 3i32, "a channel written through an exclusive borrow");
+
+    Assert(Value(Generic<int32, ParseError>(11i32)) == 11i32, "a generic success");
+    let unitOutcome: ! ParseError = Generic<(), ParseError>(());
+    let unitSucceeded = match unitOutcome {
+        .Success(()) => true,
+        .Failure(_) => false
+    };
+    Assert(unitSucceeded, "a generic success over the unit");
+
+    Assert(Destroyed(HoldSuccess) == 1, "an active success is destroyed once");
+    Assert(Destroyed(HoldFailure) == 1, "an active failure is destroyed once");
+    Assert(Destroyed(HoldNested) == 1, "a nested payload is destroyed once");
+    Assert(Destroyed(Discard) == 1, "a two-channel discard match destroys the payload");
+    Assert(Destroyed(DiscardTemporary) == 1, "and so does one over a temporary");
+    Assert(Destroyed(RunFail) == 1, "a payload that left through 'fail' is destroyed by its receiver");
+    return 0;
+}

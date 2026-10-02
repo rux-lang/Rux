@@ -666,6 +666,7 @@ void AnalysisContext::CheckLetPattern(const Pattern &pattern, const TypeRef &typ
 void AnalysisContext::CheckPattern(const Pattern &pattern, const TypeRef &subjectType) {
     if (!subjectType.IsUnknown()) {
         patternTypes.insert_or_assign(&pattern, subjectType);
+        NoteDeferredNativeType(subjectType);
     }
     if (const auto *typedPattern = dynamic_cast<const TypedPattern *>(&pattern)) {
         CheckTypedPattern(*typedPattern, subjectType);

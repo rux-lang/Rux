@@ -49,11 +49,6 @@ const Expr &Initializer(const FuncDecl &function, const std::size_t index) {
     REQUIRE(let != nullptr);
     return *let->init;
 }
-
-std::size_t CountContaining(const SemanticModel &model, const std::string_view text) {
-    return static_cast<std::size_t>(std::ranges::count_if(
-        model.diagnostics, [&](const SemanticDiagnostic &diagnostic) { return diagnostic.message.contains(text); }));
-}
 } // namespace
 
 TEST_CASE("renormalizing a substituted sum removes members that became equal") {
@@ -81,10 +76,8 @@ TEST_CASE("bare parameters and repeated outer constructors are legal sum members
         func Boxes<T, U>(value: Box<T> | Box<U>) {}
     )");
     const Analyzed &analyzed = *analyzedPointer;
-    // Only the pending native-type diagnostics are reported: nothing rejects these members at the declaration.
-    CHECK_EQ(analyzed.model.diagnostics.size(),
-             CountContaining(analyzed.model, "is not supported in compiled code yet"));
-    CHECK_EQ(CountContaining(analyzed.model, "is not supported in compiled code yet"), 3);
+    // Nothing rejects these members at the declaration.
+    CHECK(analyzed.model.diagnostics.empty());
 }
 
 TEST_CASE("a sum normalizes again for each instantiation") {

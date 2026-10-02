@@ -1148,6 +1148,13 @@ void AnalysisContext::ValidateDeferredPatternChecks(const FuncDecl &declaration,
         EmitError(issue.location, std::move(issue.message), {note}, std::move(issue.help));
     };
 
+    if (const auto it = deferredNativeTypes.find(&declaration); it != deferredNativeTypes.end()) {
+        for (const TypeRef &type : it->second) {
+            TypeRef instantiated = SubstituteTypeParameters(type, substitutions);
+            LayoutOfTypeRef(instantiated);
+            instantiatedTypes.push_back(std::move(instantiated));
+        }
+    }
     if (const auto it = deferredMatchChecks.find(&declaration); it != deferredMatchChecks.end()) {
         for (const DeferredMatchCheck &check : it->second) {
             std::vector<PatternIssue> issues;
@@ -1164,6 +1171,16 @@ void AnalysisContext::ValidateDeferredPatternChecks(const FuncDecl &declaration,
                 emit(std::move(*issue));
             }
         }
+    }
+}
+
+void AnalysisContext::NoteDeferredNativeType(const TypeRef &type) {
+    if (!currentFunctionDecl || !MentionsNativeType(type) || !MentionsTypeParameter(type)) {
+        return;
+    }
+    std::vector<TypeRef> &noted = deferredNativeTypes[currentFunctionDecl];
+    if (std::ranges::find(noted, type) == noted.end()) {
+        noted.push_back(type);
     }
 }
 

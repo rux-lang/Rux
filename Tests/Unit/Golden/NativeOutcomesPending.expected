@@ -1,15 +1,7 @@
-8:17: error: native type 'Defaults | Options' is not supported in compiled code yet
-10:22: error: native type 'int32?' is not supported in compiled code yet
-10:38: error: native type 'int32??' is not supported in compiled code yet
-12:22: error: native type 'Options ! ParseError' is not supported in compiled code yet
-12:56: error: native type '! ParseError' is not supported in compiled code yet
-14:21: error: native type '(Defaults | Options)?' is not supported in compiled code yet
-14:52: error: native type 'int32?' is not supported in compiled code yet
-27:20: error: native type 'int32 ! NotFound' is not supported in compiled code yet
-28:28: error: 'catch' is not supported yet
-28:5: warning: cannot infer type of 'recovered'
-29:24: error: '? else' error mapping is not supported yet
-29:5: warning: cannot infer type of 'mapped'
-31:18: error: 'none' is not supported yet
-31:5: error: cannot infer the type of 'absent' from 'none'
-31:5: warning: cannot infer type of 'absent'
+11:28: error: 'catch' is not supported yet
+11:5: warning: cannot infer type of 'recovered'
+12:24: error: '? else' error mapping is not supported yet
+12:5: warning: cannot infer type of 'mapped'
+14:18: error: 'none' is not supported yet
+14:5: error: cannot infer the type of 'absent' from 'none'
+14:5: warning: cannot infer type of 'absent'

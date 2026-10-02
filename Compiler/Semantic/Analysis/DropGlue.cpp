@@ -1,4 +1,5 @@
 #include "Semantic/Analysis/AnalysisContext.h"
+#include "Types/NativeLayout.h"
 #include "Types/NominalName.h"
 
 #include <algorithm>
@@ -81,6 +82,38 @@ std::vector<DropGlueStep> AnalysisContext::BuildDropGlueSteps(const TypeRef &typ
             elements.reverse = true;
             elements.children = std::move(elementSteps);
             steps.push_back(std::move(elements));
+        }
+    }
+    else if (type.IsSum() || type.IsOptional() || type.IsFallible()) {
+        // A native level destroys only its active payload: one variant step per alternative that owns anything, its
+        // tag the alternative's native tag, and its single payload at the offset the shared native layout gives it.
+        std::vector<std::pair<std::uint64_t, TypeRef>> cases;
+        if (type.IsSum()) {
+            for (std::size_t index = 0; index < type.inner.size(); ++index) {
+                cases.emplace_back(index, type.inner[index]);
+            }
+        }
+        else if (type.IsOptional()) {
+            cases.emplace_back(NativePresentTag, type.inner.front());
+        }
+        else {
+            cases.emplace_back(NativeSuccessTag, type.FallibleSuccess());
+            cases.emplace_back(NativeFailureTag, type.FallibleError());
+        }
+        for (const auto &[tag, payload] : cases) {
+            std::vector<DropGlueStep> children = BuildDropGlueSteps(payload, activeTypes);
+            if (children.empty()) {
+                continue;
+            }
+            std::vector<DropGlueStep> payloadSteps;
+            payloadSteps.push_back(
+                AggregateStep(DropGlueStep::Kind::TupleElement, payload, {}, 0, std::move(children)));
+            DropGlueStep step =
+                AggregateStep(DropGlueStep::Kind::EnumVariant, type, std::to_string(tag), tag, std::move(payloadSteps));
+            step.form = CaseTypeForm::Variant;
+            step.discriminant = std::to_string(tag);
+            step.payloadTypes = {payload};
+            steps.push_back(std::move(step));
         }
     }
     else if (type.kind == TypeRef::Kind::Tuple) {

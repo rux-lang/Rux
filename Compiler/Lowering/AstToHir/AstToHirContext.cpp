@@ -122,7 +122,7 @@ void AstToHirContext::ResolveDropGlueSteps(std::vector<DropGlueStep> &steps) {
         if (step.kind == DropGlueStep::Kind::InvokeDrop) {
             step.dropSymbol = DestructorSymbol(step.type);
         }
-        else if (step.kind == DropGlueStep::Kind::EnumVariant) {
+        else if (step.kind == DropGlueStep::Kind::EnumVariant && step.discriminant.empty()) {
             step.discriminant = LookupEnumVariantDiscriminant(NamedBaseTypeName(step.type), step.name)
                                     .value_or(std::to_string(step.ordinal));
         }

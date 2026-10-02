@@ -90,6 +90,56 @@ LirReg HirToLirContext::BorrowedNativeSubjectSlot(const HirExpr &subject) {
     return LowerExpr(*dereference->operand);
 }
 
+bool HirToLirContext::PatternBindsAnything(const HirPattern &pattern) {
+    if (dynamic_cast<const HirBindingPattern *>(&pattern)) {
+        return true;
+    }
+    if (const auto *enumeration = dynamic_cast<const HirEnumPattern *>(&pattern)) {
+        return std::ranges::any_of(enumeration->args,
+                                   [](const HirPatternPtr &argument) { return PatternBindsAnything(*argument); });
+    }
+    if (const auto *structure = dynamic_cast<const HirStructPattern *>(&pattern)) {
+        return std::ranges::any_of(
+            structure->fields, [](const HirStructPatternField &field) { return PatternBindsAnything(*field.pattern); });
+    }
+    if (const auto *tuple = dynamic_cast<const HirTuplePattern *>(&pattern)) {
+        return std::ranges::any_of(tuple->elements,
+                                   [](const HirPatternPtr &element) { return PatternBindsAnything(*element); });
+    }
+    if (const auto *guarded = dynamic_cast<const HirGuardedPattern *>(&pattern)) {
+        return guarded->inner && PatternBindsAnything(*guarded->inner);
+    }
+    if (const auto *subset = dynamic_cast<const HirNativeSubsetPattern *>(&pattern)) {
+        return subset->binding != nullptr;
+    }
+    return false;
+}
+
+LirReg HirToLirContext::LowerArmPattern(const HirPattern &pattern, const LirReg subjectValue,
+                                        const TypeRef &subjectType, const std::vector<LirReg> *enumPayload,
+                                        const LirReg subjectSlot, const bool consumed,
+                                        std::vector<std::pair<LirReg, TypeRef>> &residual) {
+    // An arm over a consumed subject takes what it binds; the rest of the active payload is its to destroy. An arm
+    // that binds nothing leaves the whole subject, whose glue destroys only the active payload.
+    if (consumed && subjectSlot != LirNoReg && !PatternBindsAnything(pattern)) {
+        residual.emplace_back(subjectSlot, subjectType);
+        return LowerPattern(pattern, subjectValue, subjectType, enumPayload, subjectSlot);
+    }
+    std::vector<std::pair<LirReg, TypeRef>> *const saved = residualPayloads;
+    residualPayloads = consumed ? &residual : nullptr;
+    const LirReg matched = LowerPattern(pattern, subjectValue, subjectType, enumPayload, subjectSlot);
+    residualPayloads = saved;
+    return matched;
+}
+
+void HirToLirContext::EmitResidualDrops(const std::vector<std::pair<LirReg, TypeRef>> &residual) {
+    for (const auto &[address, type] : residual) {
+        if (const auto glue = dropGlueSymbols.find(type.ToString()); glue != dropGlueSymbols.end()) {
+            EmitDropGlueCall(glue->second, address);
+        }
+    }
+}
+
 LirReg HirToLirContext::LowerNativeSubsetPattern(const HirNativeSubsetPattern &pattern, const LirReg subjectVal,
                                                  const LirReg subjectSlot) {
     const TypeRef tagType = TypeRef::MakeInt64();
@@ -178,9 +228,12 @@ void HirToLirContext::LowerMatch(const HirMatchStmt &s) {
         const bool isLast = (i + 1 == s.arms.size());
         std::uint32_t bodyBlock = NewBlock(std::format("match.arm{}", i));
         std::uint32_t nextBlock = isLast ? mergeBlock : NewBlock(std::format("match.next{}", i));
-        LirReg matched = LowerPattern(*arm.pattern, subjectVal, s.subject->type, subjectPayload, subjectSlot);
+        std::vector<std::pair<LirReg, TypeRef>> residual;
+        LirReg matched = LowerArmPattern(*arm.pattern, subjectVal, s.subject->type, subjectPayload, subjectSlot,
+                                         s.subject->consumption.has_value(), residual);
         Branch(matched, bodyBlock, nextBlock);
         SetBlock(bodyBlock);
+        EmitResidualDrops(residual);
         LowerExpr(*arm.body);
         // A pattern binding owns whatever it matched out of the subject, and the arm is the whole of its life.
         EmitCleanups(arm.cleanups);
@@ -236,7 +289,9 @@ LirReg HirToLirContext::LowerPattern(const HirPattern &pat, LirReg subjectVal, c
     if (auto *p = dynamic_cast<const HirBindingPattern *>(&pat)) {
         // A borrowed native payload is named where it lies, so writing through the binding writes the subject.
         if (p->alias && subjectSlot != LirNoReg) {
-            locals[p->name] = subjectSlot;
+            // The payload's address is a byte offset into the subject; field access needs it typed as the payload.
+            locals[p->name] =
+                EmitCast(subjectSlot, TypeRef::MakePointer(TypeRef::MakeChar8()), TypeRef::MakePointer(p->type));
             return EmitConst("1", TypeRef::MakeBool());
         }
         LirReg bindSlot = EmitAlloca(p->type);
@@ -335,7 +390,15 @@ LirReg HirToLirContext::LowerPattern(const HirPattern &pat, LirReg subjectVal, c
                 payload = EmitBinary(LirOpcode::Shr, subjectVal, shift, TypeRef::MakeInt64());
                 payload = EmitCastIfNeeded(payload, TypeRef::MakeInt64(), payloadType);
             }
+            // Over a consumed subject, a payload the arm matches without binding has no other owner left.
+            std::vector<std::pair<LirReg, TypeRef>> *const residual = residualPayloads;
+            const bool unbound = residual && payloadSlot != LirNoReg && !PatternBindsAnything(*arg);
+            if (unbound) {
+                residual->emplace_back(payloadSlot, payloadType);
+                residualPayloads = nullptr;
+            }
             const LirReg argumentMatches = LowerPattern(*arg, payload, payloadType, nullptr, payloadSlot);
+            residualPayloads = residual;
             payloadMatches = EmitBinary(LirOpcode::And, payloadMatches, argumentMatches, TypeRef::MakeBool());
         }
         const std::uint32_t payloadPred = builder->CurrentBlock();
@@ -813,9 +876,12 @@ void HirToLirContext::StoreMatchInit(const HirMatchExpr &e, LirReg slot, const T
         const bool isLast = (i + 1 == e.arms.size());
         const std::uint32_t bodyBlock = NewBlock(std::format("match.expr.store.arm{}", i));
         const std::uint32_t nextBlock = isLast ? mergeBlock : NewBlock(std::format("match.expr.store.next{}", i));
-        const LirReg matched = LowerPattern(*arm.pattern, subjectVal, e.subject->type, subjectPayload, subjectSlot);
+        std::vector<std::pair<LirReg, TypeRef>> residual;
+        const LirReg matched = LowerArmPattern(*arm.pattern, subjectVal, e.subject->type, subjectPayload, subjectSlot,
+                                               e.subject->consumption.has_value(), residual);
         Branch(matched, bodyBlock, nextBlock);
         SetBlock(bodyBlock);
+        EmitResidualDrops(residual);
         StoreExprIntoSlot(*arm.body, slot, type);
         if (!IsTerminated()) {
             EmitCleanups(arm.cleanups);

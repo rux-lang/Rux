@@ -55,18 +55,7 @@ TEST_CASE("native types resolve to their normalized identities") {
     CHECK_EQ(parameter(5), TypeRef::MakeSum({TypeRef::MakeFallible(TypeRef::MakeInt32(), e), Named("A")}));
     CHECK_EQ(parameter(6).ToString(), "Box<int32?>");
     CHECK_EQ(parameter(7), TypeRef::MakeOptional(TypeRef::MakeSum({Named("A"), Named("B")})));
-
-    // Each written native type is reported once, at its outermost form, until it can be compiled.
-    std::vector<std::string> pending;
-    for (const auto &diagnostic : model.diagnostics) {
-        if (diagnostic.message.contains("is not supported in compiled code yet")) {
-            pending.push_back(diagnostic.message);
-        }
-    }
-    CHECK(std::ranges::find(pending, "native type 'A | B' is not supported in compiled code yet") != pending.end());
-    CHECK(std::ranges::find(pending, "native type '! E' is not supported in compiled code yet") != pending.end());
-    CHECK(std::ranges::find(pending, "native type '(A | B)?' is not supported in compiled code yet") != pending.end());
-    CHECK_EQ(std::ranges::count(pending, "native type 'A | B' is not supported in compiled code yet"), 1);
+    CHECK_FALSE(model.HasErrors());
 }
 
 TEST_CASE("an unresolved member makes the whole native type unresolved") {
@@ -75,7 +64,6 @@ TEST_CASE("an unresolved member makes the whole native type unresolved") {
         func F(value: A | Missing, optional: Missing?) {}
     )");
     CHECK(CountContaining(diagnostics, "type 'Missing' is not defined") > 0);
-    CHECK_EQ(CountContaining(diagnostics, "is not supported in compiled code yet"), 0);
 }
 
 TEST_CASE("native types keep the existing visibility rule") {
@@ -126,8 +114,6 @@ TEST_CASE("native and unit types are never extension targets") {
     CHECK_EQ(CountContaining(diagnostics, "cannot extend native type 'A | B'"), 1);
     CHECK_EQ(CountContaining(diagnostics, "cannot extend native type 'int32 ! E'"), 1);
     CHECK_EQ(CountContaining(diagnostics, "cannot extend native type '()'"), 1);
-    // The specific rejection replaces the pending diagnostic rather than adding to it.
-    CHECK_EQ(CountContaining(diagnostics, "is not supported in compiled code yet"), 0);
 }
 
 TEST_CASE("unit is an ordinary type without recognizing Core::Unit") {

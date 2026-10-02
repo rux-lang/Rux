@@ -1,0 +1,217 @@
+// Sum types: `A | B` holds one value of one of a set of distinct types.
+//
+// A sum is not a named variant. Its members are types, not case names, so `int32 | bool` and `bool | int32` are the
+// same type, a member is selected by its type with a typed pattern, and a sum whose members coincide after generic
+// substitution collapses to the one type they share. A value enters a sum by exact member injection or by widening a
+// sum of fewer members, and leaves it only through a pattern: no conversion, extraction, or narrowing is implicit.
+//
+// Destruction is case-aware. Every check that holds a tracked payload counts destructions, so a value that moved into a
+// wider sum, into a binding, or out through a call is shown to be destroyed exactly once, and an inactive member never.
+
+import Core::Assert;
+
+struct Counter {
+    count: int32;
+}
+
+struct Tracked {
+    counter: *var Counter;
+    id: int32;
+}
+
+extend Tracked {
+    func =(self: &var Tracked, other: &Tracked);
+
+    func ~Tracked(self: &var Tracked) {
+        self.counter.count = self.counter.count + 1;
+    }
+}
+
+struct Options {
+    verbose: bool;
+}
+
+struct Defaults {}
+
+struct Point {
+    x: int32;
+    y: int32;
+}
+
+variant DecodeError {
+    Missing,
+    InvalidDigit(int32)
+}
+
+struct IoError {
+    code: int32;
+}
+
+func Make(counter: *var Counter, id: int32) -> Tracked {
+    return Tracked { counter: counter, id: id };
+}
+
+// A typed pattern selects a member and binds it at the member's type.
+func Describe(value: Options | Defaults | int32) -> int32 {
+    return match value {
+        options: Options => options.verbose ? 1i32 : 2i32,
+        defaults: Defaults => 3i32,
+        number: int32 => number
+    };
+}
+
+// A typed pattern may select several members at once; the binding is then the smaller sum.
+func Kind(value: Options | Defaults | int32) -> int32 {
+    return match value {
+        configured: Options | Defaults => match configured {
+            options: Options => 10i32,
+            defaults: Defaults => 20i32
+        },
+        number: int32 => 30i32
+    };
+}
+
+// A qualified case pattern selects a variant member and its case in one step.
+func Recover(error: DecodeError | IoError) -> int32 {
+    return match error {
+        DecodeError::Missing => -1i32,
+        DecodeError::InvalidDigit(position) => position,
+        io: IoError => 1000i32 + io.code
+    };
+}
+
+// Widening keeps the active member and its payload; only the set of members grows.
+func Widen(value: Options | int32) -> Options | Defaults | int32 {
+    return value;
+}
+
+// A borrowed subject is inspected in place and stays with its owner.
+func Sum(point: &(Point | int32)) -> int32 {
+    return match point {
+        p: Point => p.x + p.y,
+        n: int32 => n
+    };
+}
+
+// Through an exclusive borrow, a binding of one member writes the subject in place.
+func Shift(point: &var (Point | int32)) {
+    match point {
+        p: Point => {
+            p.x = p.x + 10i32;
+        },
+        else => {}
+    }
+}
+
+// Generic members normalize after substitution: `T | U` with `T = U` is `T`, and `else` stays valid there.
+func Pick<T, U>(value: T | U) -> int32 {
+    return match value {
+        x: T => 1i32,
+        else => 2i32
+    };
+}
+
+func Choose<T, U>(useLeft: bool, left: T, right: U) -> T | U {
+    if useLeft {
+        return left;
+    }
+    return right;
+}
+
+func Hold(counter: *var Counter) {
+    let held: Tracked | int32 = Make(counter, 1i32);
+}
+
+func HoldInactive(counter: *var Counter) {
+    let held: Tracked | int32 = 7i32;
+}
+
+func HoldWidened(counter: *var Counter) {
+    let narrow: Tracked | int32 = Make(counter, 1i32);
+    let wide: Tracked | int32 | bool = <-narrow;
+}
+
+func TakeMember(counter: *var Counter) -> int32 {
+    let held: Tracked | int32 = Make(counter, 5i32);
+    return match <-held {
+        tracked: Tracked => tracked.id,
+        number: int32 => number
+    };
+}
+
+func DiscardMember(counter: *var Counter) {
+    let held: Tracked | int32 | bool = Make(counter, 1i32);
+    match <-held {
+        _: Tracked | bool => {},
+        number: int32 => {}
+    }
+}
+
+func Keep(value: Tracked | int32) {}
+
+func Pass(counter: *var Counter) {
+    let held: Tracked | int32 = Make(counter, 1i32);
+    Keep(<-held);
+}
+
+func Replace(counter: *var Counter) {
+    var held: Tracked | int32 = Make(counter, 1i32);
+    held = 3i32;
+    held = Make(counter, 2i32);
+}
+
+func Destroyed(run: func(*var Counter)) -> int32 {
+    var counter = Counter { count: 0i32 };
+    run(@counter);
+    return counter.count;
+}
+
+func Main() -> int {
+    // Member order is canonical, so the spelling of a sum does not change its identity.
+    let first: int32 | bool = true;
+    let second: bool | int32 = first;
+    Assert(second is bool, "a reordered spelling is the same sum");
+
+    // Injection picks the member of the value's type; an unsuffixed integer picks the one integer member.
+    Assert(Describe(Options { verbose: true }) == 1i32, "a struct member");
+    Assert(Describe(Defaults {}) == 3i32, "an empty struct member");
+    Assert(Describe(42) == 42i32, "an unsuffixed integer takes the integer member");
+    Assert(Kind(Defaults {}) == 20i32, "a subset arm, then its own match");
+    Assert(Kind(9i32) == 30i32, "the remaining member");
+
+    Assert(Recover(DecodeError::Missing) == -1i32, "a qualified unit case");
+    Assert(Recover(DecodeError::InvalidDigit(4i32)) == 4i32, "a qualified payload case");
+    Assert(Recover(IoError { code: 2i32 }) == 1002i32, "the other member");
+
+    let wide = Widen(Options { verbose: false });
+    Assert(Describe(wide) == 2i32, "widening keeps the payload");
+    Assert(Describe(Widen(5i32)) == 5i32, "widening keeps another member's payload");
+
+    // Membership tests one member or a subset, without consuming or narrowing anything.
+    Assert(wide is Options, "the active member");
+    Assert(!(wide is int32), "an inactive member");
+    Assert(wide is (Options | Defaults), "a subset containing the active member");
+    Assert(!(wide is (Defaults | int32)), "a subset without it");
+
+    var point: Point | int32 = Point { x: 1i32, y: 2i32 };
+    Assert(Sum(point) == 3i32, "a borrowed member read in place");
+    Shift(point);
+    Assert(Sum(point) == 13i32, "a member written through an exclusive borrow");
+
+    Assert(Pick<int32, int64>(1i32) == 1i32, "the left parameter's member");
+    Assert(Pick<int32, int64>(2i64) == 2i32, "the right parameter's member");
+    Assert(Pick<int32, int32>(3i32) == 1i32, "equal parameters collapse to one type");
+    let collapsed: int32 = Choose<int32, int32>(false, 1i32, 2i32);
+    Assert(collapsed == 2i32, "a collapsed sum is its member");
+
+    Assert(Destroyed(Hold) == 1, "an active payload is destroyed once");
+    Assert(Destroyed(HoldInactive) == 0, "an inactive member owns nothing");
+    Assert(Destroyed(HoldWidened) == 1, "a widened value is destroyed once, in its new sum");
+    Assert(Destroyed(DiscardMember) == 1, "an arm that discards its member destroys it");
+    Assert(Destroyed(Pass) == 1, "a value passed on is destroyed by its new owner");
+    Assert(Destroyed(Replace) == 2, "assignment destroys the active payload it replaces");
+    var counter = Counter { count: 0i32 };
+    Assert(TakeMember(@counter) == 5i32, "a binding takes the member out");
+    Assert(counter.count == 1, "and destroys it when the arm ends");
+    return 0;
+}

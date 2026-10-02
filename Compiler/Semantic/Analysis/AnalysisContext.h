@@ -288,6 +288,9 @@ private:
     /// Whether a copy of this type out of named or borrowed storage needs a recorded copy plan: a declared type, an
     /// array, a tuple, or a native sum, optional, or fallible.
     [[nodiscard]] static bool IsStoredAggregate(const TypeRef &type) noexcept;
+    /// Whether an argument of an unsuffixed literal's default type can reach a native parameter, by the literal rule
+    /// of the native conversions; overload resolution asks before the argument's own conversion is checked.
+    [[nodiscard]] static bool DefaultLiteralReachesNative(const TypeRef &argument, const TypeRef &parameter);
     /// How the arms of a native match over `subject` hold it.
     [[nodiscard]] PatternBorrow MatchSubjectBorrow(const Expr &subject, const TypeRef &expressionType) const;
     /// Gives a binding pattern under a borrowed native subject its binding mode.
@@ -333,6 +336,8 @@ private:
     [[nodiscard]] static bool PatternContains(const Pattern &pattern, const Pattern &target);
     void ValidateDeferredPatternChecks(const FuncDecl &declaration,
                                        const std::unordered_map<std::string, TypeRef> &substitutions);
+    /// Notes `type` against the generic function being checked when it is a native type built from its parameters.
+    void NoteDeferredNativeType(const TypeRef &type);
     [[nodiscard]] const TypeRef *TypedPatternAnnotation(const TypedPattern &pattern) const;
     [[nodiscard]] bool BlockDefinitelyReturns(const Block &block) const;
     [[nodiscard]] std::optional<TypeRef> CheckBasicExpression(const Expr &expression);
@@ -557,12 +562,6 @@ private:
     const std::unordered_map<const FuncDecl *, std::string> &functionDeclFiles;
     const std::unordered_map<const Decl *, SemanticProgramIndex::DeclarationInfo> &declarationInfos;
     std::unordered_set<const TypeExpr *> reportedPrivateApiTypes;
-    /// Native type nodes already reported as unsupported; a signature is resolved more than once.
-    std::unordered_set<const TypeExpr *> reportedPendingNativeTypes;
-    /// How many native type forms enclose the type being resolved; only the outermost one reports as pending.
-    int nativeTypeResolutionDepth = 0;
-    /// Whether a native value has been rejected as not yet compilable; one report keeps the program from lowering.
-    bool nativeValueGateReported = false;
     std::unordered_set<const Decl *> reportedPrivateApiDeclarations;
     std::unordered_map<const ConstDecl *, TypeRef> checkedConstantTypes;
     std::unordered_set<const ConstDecl *> checkingConstants;
@@ -718,6 +717,9 @@ private:
     };
 
     std::unordered_map<const FuncDecl *, std::vector<DeferredMatchCheck>> deferredMatchChecks;
+    /// Native types a generic body composes out of its own parameters. Nothing written concretely spells them, so each
+    /// instantiation composes them again where the parameters are types, which gives them layouts and drop glue.
+    std::unordered_map<const FuncDecl *, std::vector<TypeRef>> deferredNativeTypes;
     std::unordered_map<const FuncDecl *, std::vector<DeferredMembershipCheck>> deferredMembershipChecks;
     std::unordered_set<const TypeExpr *> reportedGenericArity;
 

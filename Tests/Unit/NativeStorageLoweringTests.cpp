@@ -21,8 +21,8 @@
 using namespace Rux;
 
 namespace {
-/// The LIR of `source`. Native values are still stopped before compilation by pending diagnostics, which are the only
-/// errors the source may produce; lowering reads the facts analysis recorded anyway.
+/// The LIR of `source`. `none` is still stopped before compilation by a pending diagnostic, which is the only error the
+/// source may produce; lowering reads the facts analysis recorded anyway.
 LirPackage LowerToLir(const std::string &source) {
     Lexer lexer(source, "native.rux");
     auto lexed = lexer.Tokenize();

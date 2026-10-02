@@ -105,6 +105,9 @@ LirPackage HirToLirContext::Run(const HirPackage &hir) {
             funcNames.insert(f.name);
         }
     }
+    for (const DropGluePlan &plan : hir.dropGlues) {
+        dropGlueSymbols.emplace(plan.type.ToString(), plan.symbol);
+    }
     LirPackage pkg;
     pkg.dropGlues = hir.dropGlues;
     for (const auto &mod : hir.modules) {

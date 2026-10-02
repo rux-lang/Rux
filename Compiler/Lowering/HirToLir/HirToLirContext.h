@@ -51,6 +51,11 @@ private:
     std::unordered_map<std::string, const HirConst *> globalConsts;
     std::unordered_map<std::string, LocalConstValue> localConsts;
     std::unordered_map<LirReg, std::vector<LirReg>> enumPayloadSlots;
+    /// The drop glue of every droppable type, keyed by its spelling.
+    std::unordered_map<std::string, std::string> dropGlueSymbols;
+    /// While the pattern of an arm over a consumed subject is lowered: the payloads it matches without binding, which
+    /// that arm destroys before its body because nothing else owns them once the subject was handed over.
+    std::vector<std::pair<LirReg, TypeRef>> *residualPayloads = nullptr;
     /// The bool slot standing for "this binding still owns its value", one per droppable binding of the function being
     /// lowered. A cleanup reads it, a consuming expression clears it, and an initialization sets it.
     std::unordered_map<std::uint64_t, LirReg> dropFlags;
@@ -160,6 +165,12 @@ private:
     /// The referenced storage of a native match subject read through a reference, or no register for any other
     /// subject.
     LirReg BorrowedNativeSubjectSlot(const HirExpr &subject);
+    [[nodiscard]] static bool PatternBindsAnything(const HirPattern &pattern);
+    /// Lowers an arm's pattern, collecting what it leaves unbound in `residual` when the subject was consumed.
+    LirReg LowerArmPattern(const HirPattern &pattern, LirReg subjectValue, const TypeRef &subjectType,
+                           const std::vector<LirReg> *enumPayload, LirReg subjectSlot, bool consumed,
+                           std::vector<std::pair<LirReg, TypeRef>> &residual);
+    void EmitResidualDrops(const std::vector<std::pair<LirReg, TypeRef>> &residual);
     LirReg LowerNativeSubsetPattern(const HirNativeSubsetPattern &pattern, LirReg subjectValue, LirReg subjectSlot);
     LirReg LowerExpr(const HirExpr &expression);
     LirReg LowerExprValue(const HirExpr &expression);

@@ -1,6 +1,3 @@
-17:19: error: native type 'Defaults | Options' is not supported in compiled code yet
-57:22: error: native type 'int32 ! DecodeError' is not supported in compiled code yet
-72:21: error: native type 'int32?' is not supported in compiled code yet
 19:9: error: pattern 'Options' cannot bind a new variable because 'Options' already names a type
 27:9: error: pattern 'Settings' cannot bind a new variable because 'Settings' already names a type
 35:9: error: pattern 'Limit' cannot bind a new variable because 'Limit' already names a constant

@@ -31,9 +31,9 @@ LayoutMap Layouts() {
     return layouts;
 }
 
-/// The LIR of `source` for `triple`. Native values, and `none`, are still stopped before compilation by pending
-/// diagnostics, which are the only errors the source may produce. `none` stays out of call arguments: its pending error
-/// would also withdraw the enclosing call's binding.
+/// The LIR of `source` for `triple`. `none` is still stopped before compilation by a pending diagnostic, which is the
+/// only error the source may produce. It stays out of call arguments: its pending error would also withdraw the
+/// enclosing call's binding.
 LirPackage LowerFor(const std::string &source, const std::string_view triple) {
     Lexer lexer(source, "native.rux");
     auto lexed = lexer.Tokenize();

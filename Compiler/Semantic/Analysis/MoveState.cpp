@@ -286,10 +286,14 @@ bool PatternBindsValue(const Pattern &pattern) {
 template <typename Arm>
 void AnalysisContext::ConsumeMatchSubject(const Expr &subject, const TypeRef &subjectType, const std::vector<Arm> &arms,
                                           const SourceLocation location) {
-    if (!std::ranges::any_of(arms, [](const Arm &arm) { return PatternBindsValue(*arm.pattern); })) {
+    const MovePlace place = AnalyzeMovePlace(subject);
+    if (place.IsBorrowedStorage()) {
         return;
     }
-    if (AnalyzeMovePlace(subject).IsBorrowedStorage()) {
+    // A named subject that no arm takes anything from stays with its owner; a temporary has no other owner, so its
+    // match takes it whole and destroys whatever the selected arm leaves.
+    if (!std::ranges::any_of(arms, [](const Arm &arm) { return PatternBindsValue(*arm.pattern); }) &&
+        place.IsNamedStorage()) {
         return;
     }
     ConsumeValue(subject, subjectType, ValueConsumptionKind::MatchSubject, location);
@@ -365,6 +369,7 @@ TypeRef AnalysisContext::ReadTrackedSymbol(const Symbol &symbol, const SourceLoc
 }
 
 void AnalysisContext::RecordCheckedExpression(const Expr &expression, const TypeRef &type) {
+    NoteDeferredNativeType(type);
     if (type.IsUnknown()) {
         // An expression lowering will ask a type for has to have one; reporting it here is what keeps that invariant a
         // diagnostic rather than a crash further down.

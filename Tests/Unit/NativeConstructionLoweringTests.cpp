@@ -17,8 +17,8 @@
 using namespace Rux;
 
 namespace {
-/// The HIR of `source`. Native values, and `none`, are still stopped before compilation by pending diagnostics, which
-/// are the only errors the source may produce; lowering reads the facts analysis recorded anyway.
+/// The HIR of `source`. `none` is still stopped before compilation by a pending diagnostic, which is the only error the
+/// source may produce; lowering reads the facts analysis recorded anyway.
 HirPackage LowerSource(const std::string &source) {
     Lexer lexer(source, "native.rux");
     auto lexed = lexer.Tokenize();

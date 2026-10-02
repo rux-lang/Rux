@@ -1,22 +1,5 @@
-// Native sum, optional, and fallible types, and the native handling forms, parse ahead of their semantics. Each
-// spelling is rejected once, where it is written, until the change that gives it meaning removes it from this file.
-
-struct Options {}
-struct Defaults {}
-struct ParseError {}
-
-func Sum(value: Options | Defaults) {}
-
-func Optional(value: int32?, nested: int32??) {}
-
-func Fallible(value: Options ! ParseError, completion: ! ParseError) {}
-
-func Grouped(value: (Options | Defaults)?, data: *(int32?)) {}
-
-func Main() -> int {
-    let unit: () = ();
-    return 0;
-}
+// The native handling forms parse ahead of their semantics. Each spelling is rejected once, where it is written,
+// until the change that gives it meaning removes it from this file.
 
 struct NotFound {}
 

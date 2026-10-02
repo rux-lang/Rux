@@ -149,7 +149,8 @@ const FuncDecl *AnalysisContext::LookupMethodCall(const TypeRef &receiverType, c
             const auto &parameter = parameterTypes[i];
             if (!argument.IsUnknown() && !parameter.IsUnknown() && !argument.IsAssignableTo(parameter) &&
                 !argument.CanImplicitlyBorrowTo(parameter) && !argument.CanReadScalarTo(parameter) &&
-                !CanConvertToInterface(argument, parameter) && !(argument.IsInteger() && parameter.IsInteger())) {
+                !CanConvertToInterface(argument, parameter) && !(argument.IsInteger() && parameter.IsInteger()) &&
+                !DefaultLiteralReachesNative(argument, parameter)) {
                 matches = false;
                 break;
             }
@@ -277,7 +278,8 @@ const FuncDecl *AnalysisContext::LookupFunctionOverload(const Symbol &sym, const
             if (!argTypes[i].IsAssignableTo(funcType.inner[i]) && !argTypes[i].CanReadScalarTo(funcType.inner[i]) &&
                 !argTypes[i].CanImplicitlyBorrowTo(funcType.inner[i]) &&
                 !CanConvertToInterface(argTypes[i], funcType.inner[i]) &&
-                !(argTypes[i].IsInteger() && funcType.inner[i].IsInteger())) {
+                !(argTypes[i].IsInteger() && funcType.inner[i].IsInteger()) &&
+                !DefaultLiteralReachesNative(argTypes[i], funcType.inner[i])) {
                 return nullptr;
             }
         }
@@ -333,7 +335,8 @@ const FuncDecl *AnalysisContext::LookupFunctionOverload(const Symbol &sym, const
                     // passed a bare literal from resolving at all. Only the coercing pass grants it, so an exact
                     // match still wins, and only `int` widens, so an explicitly typed argument is never silently
                     // narrowed to a different width.
-                    const bool literalToInteger = argTypes[i].kind == TypeRef::Kind::Int && paramType.IsInteger();
+                    const bool literalToInteger = (argTypes[i].kind == TypeRef::Kind::Int && paramType.IsInteger()) ||
+                                                  DefaultLiteralReachesNative(argTypes[i], paramType);
                     const bool assignable = argTypes[i].IsAssignableTo(paramType) ||
                                             argTypes[i].CanReadScalarTo(paramType) ||
                                             argTypes[i].CanImplicitlyBorrowTo(paramType) ||
@@ -350,6 +353,28 @@ const FuncDecl *AnalysisContext::LookupFunctionOverload(const Symbol &sym, const
         }
     }
     return nullptr;
+}
+
+bool AnalysisContext::DefaultLiteralReachesNative(const TypeRef &argument, const TypeRef &parameter) {
+    // An unsuffixed literal carries its default width until a destination gives it one. A native parameter does so the
+    // way the conversion rules do: through presence and success levels, then to the one member of its literal kind.
+    // The argument's own check still rejects a value that does not fit, or an argument that is no literal at all.
+    const bool integer = argument.kind == TypeRef::Kind::Int;
+    const bool floating = argument.kind == TypeRef::Kind::Float64;
+    if ((!integer && !floating) || !(parameter.IsSum() || parameter.IsOptional() || parameter.IsFallible())) {
+        return false;
+    }
+    TypeRef level = parameter;
+    while (level.IsOptional() || level.IsFallible()) {
+        TypeRef payload = level.inner.front();
+        level = std::move(payload);
+    }
+    if (!level.IsSum()) {
+        return integer ? level.IsInteger() : level.IsFloat();
+    }
+    return std::ranges::count_if(level.inner, [&](const TypeRef &member) {
+               return integer ? member.IsInteger() : member.IsFloat();
+           }) == 1;
 }
 
 TypeRef AnalysisContext::FunctionType(const FuncDecl &decl) {

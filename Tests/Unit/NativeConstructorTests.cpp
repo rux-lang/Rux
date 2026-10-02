@@ -62,7 +62,6 @@ std::vector<std::string> Errors(const Analyzed &analyzed) {
     std::vector<std::string> errors;
     for (const auto &diagnostic : analyzed.model.diagnostics) {
         if (diagnostic.severity == SemanticDiagnostic::Severity::Error &&
-            !diagnostic.message.contains("is not supported in compiled code yet") &&
             !diagnostic.message.contains("is not supported yet")) {
             errors.push_back(diagnostic.message);
         }
@@ -182,12 +181,12 @@ TEST_CASE("a constructor meeting another form or a nominal variant is refused") 
     CHECK(Reports(*analyzed, "'.Success(...)' constructs a native fallible, but the expected type is 'int32?'"));
 }
 
-TEST_CASE("a native value without a written native type cannot reach lowering") {
+TEST_CASE("a native value without a written native type is an ordinary value") {
     const auto analyzed = Analyze(R"(
         func Main() -> int {
             let value = .Some(1i32);
             return 0;
         }
     )");
-    CHECK(Reports(*analyzed, "native value of type 'int32?' is not supported in compiled code yet"));
+    CHECK_FALSE(analyzed->model.HasErrors());
 }
