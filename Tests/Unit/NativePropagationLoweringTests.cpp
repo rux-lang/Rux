@@ -1,6 +1,6 @@
 // What native propagation lowers to: a match over the evaluated operand whose success arm moves the payload onward and
 // whose failure arm is an ordinary return of the enclosing outer failure, the error injected or widened into its
-// channel; and a fallible `Main` behind a synthesized integer entry point.
+// channel; `catch` lowered to the same kind of match; and a fallible `Main` behind a synthesized integer entry point.
 
 #include "Lexer/Lexer.h"
 #include "Lowering/AstToHir/AstToHir.h"
@@ -129,4 +129,33 @@ TEST_CASE("a fallible Main is wrapped by an integer entry point") {
     const auto *failed = dynamic_cast<const HirLiteralExpr *>(match->arms[1].body.get());
     REQUIRE(failed != nullptr);
     CHECK_EQ(failed->value, "1");
+}
+
+TEST_CASE("catch passes the success through and matches recovery arms inside the failure") {
+    const HirPackage package = LowerSource(R"(
+        struct IoError { code: int32; }
+        func Count() -> int32 ! IoError { return 1i32; }
+        func Recover(limit: int32) -> int32 {
+            let value = Count() catch {
+                e if e.code > limit => e.code,
+                else => 0i32
+            };
+            return value;
+        }
+    )");
+    const HirMatchExpr &match = LetMatch(RequireFunction(package, "Recover"));
+    CHECK_EQ(match.type, TypeRef::MakeInt32());
+    REQUIRE_EQ(match.arms.size(), 3);
+    const auto *success = dynamic_cast<const HirEnumPattern *>(match.arms[0].pattern.get());
+    REQUIRE(success != nullptr);
+    CHECK_EQ(success->discriminant, "0");
+    // A guard applies to the whole arm, around the failure case it matches in.
+    const auto *guarded = dynamic_cast<const HirGuardedPattern *>(match.arms[1].pattern.get());
+    REQUIRE(guarded != nullptr);
+    const auto *failure = dynamic_cast<const HirEnumPattern *>(guarded->inner.get());
+    REQUIRE(failure != nullptr);
+    CHECK_EQ(failure->discriminant, "1");
+    const auto *otherwise = dynamic_cast<const HirEnumPattern *>(match.arms[2].pattern.get());
+    REQUIRE(otherwise != nullptr);
+    CHECK_EQ(otherwise->discriminant, "1");
 }

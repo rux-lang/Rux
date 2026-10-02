@@ -1,12 +1,167 @@
-// `catch` is a reserved keyword. `value catch { pattern => body, ... }` recovers from the outer failure of its
-// subject, and it binds as tightly as postfix `?`, so it attaches to the nearest postfix expression.
+// `catch`: recovering from the failure of one fallible level.
 //
-// This directory exists so LanguageTestMatrixTests can name an owning language test for the keyword from the commit
-// that reserves it. A program that spells `catch` cannot be that test yet: the compiler parses it and then reports
-// that it is not supported. That refusal is asserted in Tests/Unit/Golden/NativeOutcomesPending.rux, where an
-// expected compile failure is the whole point. Once postfix recovery is lowered, replace this placeholder with the
-// executable case rather than adding a directory.
+// `outcome catch { arms }` evaluates its subject once. A success passes through unchanged, with every inner level it
+// holds, and a failure is matched by the arms, which see only the error payload and must cover all of it. Each arm
+// either recovers a value of the success type or leaves the function; an arm's own `fail` or `?` is an ordinary exit,
+// never caught again by the same `catch`. A block arm completes with `()`, which only a unit success can take.
+//
+// `catch` binds to the postfix expression right before it, so arithmetic around it needs no parentheses, and the value
+// it recovers continues a postfix chain. The subject is consumed: an error the arm binds belongs to the arm, and one it
+// does not bind is destroyed when the arm is chosen.
+
+import Core::Assert;
+
+struct ParseError {
+    position: int32;
+}
+
+struct IoError {
+    code: int32;
+}
+
+struct Point {
+    x: int32;
+    y: int32;
+}
+
+variant DecodeError {
+    Missing,
+    InvalidDigit(int32)
+}
+
+struct Counter {
+    count: int32;
+}
+
+struct Tracked {
+    counter: *var Counter;
+}
+
+extend Tracked {
+    func =(self: &var Tracked, other: &Tracked);
+
+    func ~Tracked(self: &var Tracked) {
+        self.counter.count = self.counter.count + 1;
+    }
+}
+
+func Parse(text: int32) -> int32 ! ParseError {
+    if text < 0i32 {
+        fail ParseError { position: -text };
+    }
+    return text;
+}
+
+func Decode(text: int32) -> int32 ! (DecodeError | IoError) {
+    if text == 0i32 {
+        fail DecodeError::Missing;
+    }
+    if text < 0i32 {
+        fail DecodeError::InvalidDigit(-text);
+    }
+    if text > 100i32 {
+        fail IoError { code: text };
+    }
+    return text;
+}
+
+func Recover(text: int32) -> int32 {
+    return Decode(text) catch {
+        DecodeError::Missing => -1i32,
+        DecodeError::InvalidDigit(position) if position > 9i32 => -100i32,
+        DecodeError::InvalidDigit(position) => -position,
+        io: IoError => io.code * 2i32
+    };
+}
+
+func Origin(valid: bool) -> Point ! ParseError {
+    if !valid {
+        fail ParseError { position: 1i32 };
+    }
+    return Point { x: 3i32, y: 4i32 };
+}
+
+func Counted(calls: *var int32, text: int32) -> int32 ! ParseError {
+    *calls = *calls + 1i32;
+    return Parse(text);
+}
+
+// An inner failure that is successful data passes through; only the outer failure reaches the arms.
+func Layer(depth: int32) -> (int32 ! ParseError) ! IoError {
+    if depth > 1i32 {
+        fail IoError { code: depth };
+    }
+    if depth == 1i32 {
+        return .Success(.Failure(ParseError { position: 7i32 }));
+    }
+    return .Success(.Success(5i32));
+}
+
+func Unlayer(depth: int32) -> int32 {
+    let inner: int32 ! ParseError = Layer(depth) catch { e => .Failure(ParseError { position: 100i32 + e.code }) };
+    return match inner {
+        .Success(value) => value,
+        .Failure(error) => -error.position
+    };
+}
+
+// An arm leaves through the enclosing function's own failure; the same `catch` never sees it.
+func Escalate(text: int32) -> int32 ! IoError {
+    let value = Parse(text) catch { e => fail IoError { code: e.position } };
+    return value;
+}
+
+func EscalateValue(text: int32) -> int32 {
+    return Escalate(text) catch { e => 1000i32 + e.code };
+}
+
+// A unit success recovers with a block that completes normally.
+func Close(ok: bool) -> ! IoError {
+    if !ok {
+        fail IoError { code: 9i32 };
+    }
+}
+
+func Track(counter: *var Counter) -> int32 ! Tracked {
+    fail Tracked { counter: counter };
+}
 
 func Main() -> int {
+    Assert(Recover(5i32) == 5i32, "a success passes through");
+    Assert(Recover(0i32) == -1i32, "a unit case of the error");
+    Assert(Recover(-4i32) == -4i32, "a payload case of the error");
+    Assert(Recover(-40i32) == -100i32, "a guarded arm");
+    Assert(Recover(300i32) == 600i32, "another member of the error sum");
+
+    // Postfix binding: the arithmetic around a catch needs no grouping, and a chain continues after it.
+    Assert(1i32 + Parse(-5i32) catch { else => 10i32 } == 11i32, "catch takes only the call before it");
+    Assert(Origin(true) catch { else => Point { x: 0i32, y: 0i32 } }.y == 4i32, "the recovered value continues");
+    Assert(Origin(false) catch { else => Point { x: 0i32, y: 8i32 } }.y == 8i32, "the fallback continues too");
+
+    var calls = 0i32;
+    let once = Counted(@calls, -1i32) catch { else => 0i32 };
+    Assert(once == 0i32 && calls == 1i32, "the subject is evaluated once");
+
+    Assert(Unlayer(0i32) == 5i32, "an inner success passes through");
+    Assert(Unlayer(1i32) == -7i32, "an inner failure is data, not recovered");
+    Assert(Unlayer(2i32) == -102i32, "the outer failure is recovered");
+
+    Assert(EscalateValue(4i32) == 4i32, "no failure to escalate");
+    Assert(EscalateValue(-3i32) == 1003i32, "a failing arm leaves the enclosing function");
+
+    var closed = 0i32;
+    Close(true) catch { else => {} };
+    Close(false) catch {
+        e: IoError => {
+            closed = e.code;
+        }
+    };
+    Assert(closed == 9i32, "a block arm recovers a unit success");
+
+    var counter = Counter { count: 0i32 };
+    let discarded = Track(@counter) catch { else => 0i32 };
+    Assert(counter.count == 1i32, "an error the arm does not bind is destroyed");
+    let bound = Track(@counter) catch { error => 0i32 };
+    Assert(counter.count == 2i32, "and one it binds is destroyed when the arm ends");
     return 0;
 }

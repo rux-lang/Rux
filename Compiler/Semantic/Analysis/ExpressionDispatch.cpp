@@ -248,10 +248,7 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
     }
 
     if (const auto *recovery = dynamic_cast<const CatchExpr *>(&expr)) {
-        const TypeRef recovered = CheckCatchExpression(*recovery);
-        // Checked ahead of its lowering: a program that recovers with `catch` stops here until it can be compiled.
-        EmitError(expr.location, "'catch' is not supported yet");
-        return recovered;
+        return CheckCatchExpression(*recovery);
     }
 
     // The native handling forms parse ahead of their semantics. Each is rejected here with one stable diagnostic, and

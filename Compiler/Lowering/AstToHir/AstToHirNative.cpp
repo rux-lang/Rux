@@ -638,6 +638,59 @@ HirExprPtr AstToHirContext::LowerNativeTry(const TryExpr &expression) {
     return lowered;
 }
 
+HirExprPtr AstToHirContext::LowerCatch(const CatchExpr &expression) {
+    const SourceLocation location = expression.location;
+    auto lowered = std::make_unique<HirMatchExpr>();
+    lowered->location = location;
+    lowered->type = ResolvedExpressionType(expression);
+    lowered->subject = LowerMatchSubject(*expression.subject);
+    const TypeRef subjectType = lowered->subject->type;
+    const TypeRef success = subjectType.FallibleSuccess();
+    const TypeRef error = subjectType.FallibleError();
+
+    // The success passes through untouched, moved out of the consumed subject.
+    const std::string payloadName = std::format("$catch.value.{}", propagationOrdinal++);
+    auto payload = std::make_unique<HirBindingPattern>();
+    payload->location = location;
+    payload->name = payloadName;
+    payload->type = success;
+    HirMatchArm passThrough;
+    passThrough.location = location;
+    passThrough.pattern = NativeCasePattern(subjectType, NativeSuccessTag, success, std::move(payload), location);
+    passThrough.body = ConvertNative(TransferredBinding(payloadName, success, location), lowered->type, location);
+    lowered->arms.push_back(std::move(passThrough));
+
+    // Each recovery arm matches inside the failure channel; its guard still applies to the whole arm.
+    const bool armsOwnPayload = lowered->subject->consumption.has_value();
+    for (const auto &arm : expression.arms) {
+        HirMatchArm recovery;
+        recovery.location = arm.location;
+        PushScope();
+        const bool savedOwnership = patternBindingsOwnPayload;
+        patternBindingsOwnPayload = armsOwnPayload;
+        const auto *guarded = dynamic_cast<const GuardedPattern *>(arm.pattern.get());
+        const Pattern &errorPattern = guarded && guarded->inner ? *guarded->inner : *arm.pattern;
+        HirPatternPtr inner = LowerPattern(errorPattern, error);
+        HirPatternPtr failure = NativeCasePattern(subjectType, NativeFailureTag, error, std::move(inner), location);
+        if (guarded) {
+            auto withGuard = std::make_unique<HirGuardedPattern>();
+            withGuard->location = guarded->location;
+            withGuard->inner = std::move(failure);
+            withGuard->guard = LowerExpr(*guarded->guard);
+            failure = std::move(withGuard);
+        }
+        recovery.pattern = std::move(failure);
+        patternBindingsOwnPayload = savedOwnership;
+        const bool leaves =
+            dynamic_cast<const DivergeExpr *>(arm.body.get()) || dynamic_cast<const BlockExpr *>(arm.body.get());
+        recovery.body = leaves ? LowerExpr(*arm.body) : LowerExprAs(*arm.body, lowered->type);
+        recovery.cleanups = CurrentScopeCleanups();
+        PopScope();
+        lowered->arms.push_back(std::move(recovery));
+    }
+    return lowered;
+}
+
 HirFunc AstToHirContext::FallibleEntryWrapper(const HirFunc &body) {
     const SourceLocation location = body.location;
     const TypeRef outcome = body.returnType;

@@ -206,6 +206,9 @@ protected:
     [[nodiscard]] HirExprPtr LowerDiverge(const DivergeExpr &expression);
     /// `?` on a native fallible: a match whose failure arm returns the error as the enclosing outer failure.
     [[nodiscard]] HirExprPtr LowerNativeTry(const TryExpr &expression);
+    /// `outcome catch { arms }`: a match whose success arm passes the payload through and whose other arms are the
+    /// recovery arms, each matching inside the failure channel.
+    [[nodiscard]] HirExprPtr LowerCatch(const CatchExpr &expression);
     /// The symbol a fallible `Main` is renamed to, called by the synthesized entry point.
     static constexpr std::string_view kFallibleMainBody = "Main$fallible";
     /// `Main() -> int` calling the fallible `body`: a success exits with its integer payload or 0, a failure with 1,

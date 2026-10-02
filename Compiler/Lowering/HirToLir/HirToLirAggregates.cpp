@@ -200,7 +200,10 @@ void HirToLirContext::LowerMatch(const HirMatchStmt &s) {
     if (auto *subjectVar = dynamic_cast<const HirVarExpr *>(s.subject.get())) {
         if (const auto localIt = locals.find(subjectVar->name); localIt != locals.end()) {
             subjectSlot = localIt->second;
-            if (const auto payloadIt = enumPayloadSlots.find(localIt->second); payloadIt != enumPayloadSlots.end()) {
+            // An addressable variant finds its payload from the subject's own storage. Cached payload addresses
+            // come from whichever construction last wrote the local, which need not be on this path.
+            if (const auto payloadIt = enumPayloadSlots.find(localIt->second);
+                payloadIt != enumPayloadSlots.end() && !IsAggregateEnumType(subjectVar->type)) {
                 subjectPayload = &payloadIt->second;
             }
         }
@@ -849,7 +852,10 @@ void HirToLirContext::StoreMatchInit(const HirMatchExpr &e, LirReg slot, const T
     if (auto *subjectVar = dynamic_cast<const HirVarExpr *>(e.subject.get())) {
         if (const auto localIt = locals.find(subjectVar->name); localIt != locals.end()) {
             subjectSlot = localIt->second;
-            if (const auto payloadIt = enumPayloadSlots.find(localIt->second); payloadIt != enumPayloadSlots.end()) {
+            // An addressable variant finds its payload from the subject's own storage. Cached payload addresses
+            // come from whichever construction last wrote the local, which need not be on this path.
+            if (const auto payloadIt = enumPayloadSlots.find(localIt->second);
+                payloadIt != enumPayloadSlots.end() && !IsAggregateEnumType(subjectVar->type)) {
                 subjectPayload = &payloadIt->second;
             }
         }

@@ -533,6 +533,9 @@ HirExprPtr AstToHirContext::LowerExpr(const Expr &expr) {
     if (const auto *e = dynamic_cast<const DivergeExpr *>(&expr)) {
         return LowerDiverge(*e);
     }
+    if (const auto *e = dynamic_cast<const CatchExpr *>(&expr)) {
+        return finish(LowerCatch(*e));
+    }
     if (auto *e = dynamic_cast<const SpreadExpr *>(&expr)) {
         return finish(LowerExpr(*e->operand));
     }
