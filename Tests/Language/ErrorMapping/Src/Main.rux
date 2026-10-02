@@ -1,0 +1,150 @@
+// `? else (e => mapper)`: propagating a failure after converting it with local context.
+//
+// On success the value continues and the mapper never runs. On failure the binder owns the complete error, the
+// mapper runs exactly once, and its value leaves as the enclosing function's outer failure through an ordinary return:
+// defers run and remaining values are destroyed, and the binder is destroyed too unless the mapper moved it. A local
+// the mapper moves is still owned on the continuing path, because the mapper's path always leaves.
+
+import Core::Assert;
+
+struct ParseError {
+    position: int32;
+}
+
+struct IoError {
+    code: int32;
+}
+
+struct ConfigError {
+    kind: int32;
+    detail: int32;
+}
+
+struct Counter {
+    count: int32;
+}
+
+struct Tracked {
+    counter: *var Counter;
+    id: int32;
+}
+
+extend Tracked {
+    func =(self: &var Tracked, other: &Tracked);
+
+    func ~Tracked(self: &var Tracked) {
+        self.counter.count = self.counter.count + 1;
+    }
+}
+
+func Read(text: int32) -> int32 ! (ParseError | IoError) {
+    if text < 0i32 {
+        fail ParseError { position: -text };
+    }
+    if text > 100i32 {
+        fail IoError { code: text };
+    }
+    return text;
+}
+
+func ToConfig(error: ParseError | IoError, line: int32) -> ConfigError {
+    return match error {
+        parse: ParseError => ConfigError { kind: 1i32, detail: parse.position * 100i32 + line },
+        io: IoError => ConfigError { kind: 2i32, detail: io.code * 100i32 + line }
+    };
+}
+
+func Load(text: int32, line: int32) -> int32 ! ConfigError {
+    let value = Read(text)? else (e => ToConfig(e, line));
+    return value + 1i32;
+}
+
+func Describe(outcome: int32 ! ConfigError) -> int32 {
+    return match outcome {
+        .Success(value) => value,
+        .Failure(error) => -(error.kind * 100000i32 + error.detail)
+    };
+}
+
+// The mapper is evaluated only on failure, once.
+func Counted(calls: *var int32, text: int32) -> int32 ! ConfigError {
+    let value = Read(text)? else (e => Mapped(calls));
+    return value;
+}
+
+func Mapped(calls: *var int32) -> ConfigError {
+    *calls = *calls + 1i32;
+    return ConfigError { kind: 9i32, detail: 0i32 };
+}
+
+// A move-only error is transferred into the mapped failure.
+func Owned(counter: *var Counter, broken: bool) -> int32 ! Tracked {
+    if broken {
+        fail Tracked { counter: counter, id: 4i32 };
+    }
+    return 1i32;
+}
+
+func Transfer(counter: *var Counter, broken: bool) -> int32 ! ConfigError {
+    let value = Owned(counter, broken)? else (e => ConfigError { kind: 3i32, detail: e.id });
+    return value;
+}
+
+func Wrap(owned: Tracked) -> ConfigError {
+    return ConfigError { kind: 4i32, detail: owned.id };
+}
+
+// A local moved only inside the mapper is still owned after the expression.
+func Context(counter: *var Counter, text: int32) -> int32 ! ConfigError {
+    let context = Tracked { counter: counter, id: 7i32 };
+    let value = Read(text)? else (e => Wrap(<-context));
+    return value + context.id;
+}
+
+// A mapper that leaves directly, and one that returns instead of failing.
+func Leave(text: int32) -> int32 ! ConfigError {
+    let value = Read(text)? else (e => fail ConfigError { kind: 5i32, detail: 0i32 });
+    return value;
+}
+
+func Fallback(text: int32) -> int32 ! ConfigError {
+    let value = Read(text)? else (e => return 77i32);
+    return value;
+}
+
+// Defers run after the mapped failure is captured.
+func Deferred(log: *var int32, text: int32) -> int32 ! ConfigError {
+    defer *log = *log * 10i32 + 1i32;
+    let value = Read(text)? else (e => ToConfig(e, *log));
+    return value;
+}
+
+func Main() -> int {
+    Assert(Describe(Load(5i32, 3i32)) == 6i32, "a success continues and the mapper does not run");
+    Assert(Describe(Load(-2i32, 3i32)) == -(100000i32 + 203i32), "a parse failure mapped with its context");
+    Assert(Describe(Load(300i32, 4i32)) == -(200000i32 + 30004i32), "an i/o failure mapped differently");
+
+    var calls = 0i32;
+    Assert(Describe(Counted(@calls, 1i32)) == 1i32 && calls == 0i32, "no mapper call on success");
+    Assert(Describe(Counted(@calls, -1i32)) == -900000i32 && calls == 1i32, "one mapper call on failure");
+
+    var counter = Counter { count: 0i32 };
+    Assert(Describe(Transfer(@counter, false)) == 1i32, "a success leaves the error untouched");
+    Assert(Describe(Transfer(@counter, true)) == -(300000i32 + 4i32), "the error is read by the mapper");
+    Assert(counter.count == 1i32, "the binder is destroyed once on the failure exit");
+
+    counter.count = 0i32;
+    Assert(Describe(Context(@counter, 1i32)) == 8i32, "the context stays usable after a success");
+    Assert(counter.count == 1i32, "and is destroyed once at the end of the function");
+    counter.count = 0i32;
+    Assert(Describe(Context(@counter, -1i32)) == -(400000i32 + 7i32), "the mapper moved the context");
+    Assert(counter.count == 1i32, "which is destroyed once, by its new owner");
+
+    Assert(Describe(Leave(-1i32)) == -500000i32, "a mapper that fails directly");
+    Assert(Describe(Fallback(-1i32)) == 77i32, "a mapper that returns instead");
+
+    var log = 0i32;
+    Assert(Describe(Deferred(@log, -3i32)) == -(100000i32 + 300i32), "the mapper sees state before the defers");
+    Assert(log == 1i32, "and the defer runs on the failure exit");
+    return 0;
+}

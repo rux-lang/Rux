@@ -209,6 +209,8 @@ protected:
     /// `outcome catch { arms }`: a match whose success arm passes the payload through and whose other arms are the
     /// recovery arms, each matching inside the failure channel.
     [[nodiscard]] HirExprPtr LowerCatch(const CatchExpr &expression);
+    /// `value? else (e => mapper)`: propagation whose failure arm owns the error as `e` and fails with the mapper.
+    [[nodiscard]] HirExprPtr LowerMappedTry(const MappedTryExpr &expression);
     /// The symbol a fallible `Main` is renamed to, called by the synthesized entry point.
     static constexpr std::string_view kFallibleMainBody = "Main$fallible";
     /// `Main() -> int` calling the fallible `body`: a success exits with its integer payload or 0, a failure with 1,

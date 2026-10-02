@@ -9,7 +9,6 @@ func Read() -> int32 ! NotFound {
 
 func Handling() -> int32 ! NotFound {
     let recovered = 1i32;
-    let mapped = Read()? else (e => NotFound {});
     let present = .Some(1i32);
     let absent = none;
     match recovered {

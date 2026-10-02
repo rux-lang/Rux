@@ -638,6 +638,75 @@ HirExprPtr AstToHirContext::LowerNativeTry(const TryExpr &expression) {
     return lowered;
 }
 
+HirExprPtr AstToHirContext::LowerMappedTry(const MappedTryExpr &expression) {
+    const SourceLocation location = expression.location;
+    const TypeRef operandType = ResolvedExpressionType(*expression.operand);
+    const TypeRef success = operandType.FallibleSuccess();
+    const TypeRef error = operandType.FallibleError();
+    const TypeRef returnType = currentReturnType;
+    const std::string payloadName = std::format("$try.value.{}", propagationOrdinal++);
+
+    auto lowered = std::make_unique<HirMatchExpr>();
+    lowered->location = location;
+    lowered->type = success;
+    lowered->subject = LowerExpr(*expression.operand);
+
+    auto payload = std::make_unique<HirBindingPattern>();
+    payload->location = location;
+    payload->name = payloadName;
+    payload->type = success;
+    HirMatchArm continuing;
+    continuing.location = location;
+    continuing.pattern = NativeCasePattern(operandType, NativeSuccessTag, success, std::move(payload), location);
+    continuing.body = TransferredBinding(payloadName, success, location);
+    lowered->arms.push_back(std::move(continuing));
+
+    // The failure arm owns the error as the mapper's binder; the mapper runs once and its value leaves as the outer
+    // failure through an ordinary return, which destroys the binder unless the mapper moved it.
+    HirMatchArm failing;
+    failing.location = location;
+    PushScope();
+    HirPatternPtr binder;
+    if (expression.binding == "_") {
+        auto ignored = std::make_unique<HirWildcardPattern>();
+        ignored->location = expression.bindingLocation;
+        binder = std::move(ignored);
+    }
+    else {
+        auto bound = std::make_unique<HirBindingPattern>();
+        bound->location = expression.bindingLocation;
+        bound->name = expression.binding;
+        bound->type = error;
+        HirSymbol symbol;
+        symbol.kind = HirSymbol::Kind::Var;
+        symbol.name = expression.binding;
+        symbol.type = error;
+        symbol.bindingId = RegisterCleanupBinding(symbol.name, symbol.type, expression.bindingLocation);
+        bound->bindingId = symbol.bindingId;
+        Define(std::move(symbol));
+        binder = std::move(bound);
+    }
+    failing.pattern = NativeCasePattern(operandType, NativeFailureTag, error, std::move(binder), location);
+    if (dynamic_cast<const DivergeExpr *>(expression.mapper.get())) {
+        failing.body = LowerExpr(*expression.mapper);
+    }
+    else {
+        const TypeRef channel = returnType.IsFallible() ? returnType.FallibleError() : error;
+        auto exit = std::make_unique<HirBlockExpr>();
+        exit->location = location;
+        exit->type = success;
+        exit->block.location = location;
+        exit->block.stmts.push_back(LowerFunctionReturn(
+            MakeNativeCase(returnType, NativeFailureTag, LowerExprAs(*expression.mapper, channel), location),
+            location));
+        failing.body = std::move(exit);
+    }
+    failing.cleanups = CurrentScopeCleanups();
+    PopScope();
+    lowered->arms.push_back(std::move(failing));
+    return lowered;
+}
+
 HirExprPtr AstToHirContext::LowerCatch(const CatchExpr &expression) {
     const SourceLocation location = expression.location;
     auto lowered = std::make_unique<HirMatchExpr>();

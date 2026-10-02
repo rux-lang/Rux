@@ -159,3 +159,26 @@ TEST_CASE("catch passes the success through and matches recovery arms inside the
     REQUIRE(otherwise != nullptr);
     CHECK_EQ(otherwise->discriminant, "1");
 }
+
+TEST_CASE("a mapped propagation owns the error and fails with the mapper's value") {
+    const HirPackage package = LowerSource(R"(
+        struct ParseError {}
+        struct ConfigError { line: int32; }
+        func Read() -> int32 ! ParseError { return 1i32; }
+        func Load(line: int32) -> int32 ! ConfigError {
+            let value = Read()? else (e => ConfigError { line: line });
+            return value;
+        }
+    )");
+    const HirMatchExpr &match = LetMatch(RequireFunction(package, "Load"));
+    REQUIRE_EQ(match.arms.size(), 2);
+    const auto *failure = dynamic_cast<const HirEnumPattern *>(match.arms[1].pattern.get());
+    REQUIRE(failure != nullptr);
+    REQUIRE_EQ(failure->args.size(), 1);
+    const auto *binder = dynamic_cast<const HirBindingPattern *>(failure->args.front().get());
+    REQUIRE(binder != nullptr);
+    CHECK_EQ(binder->name, "e");
+    const HirEnumConstructExpr &mapped = ReturnedFailure(match.arms[1]);
+    CHECK_EQ(mapped.discriminant, "1");
+    CHECK_EQ(mapped.payloads.front()->type.ToString(), "ConfigError");
+}

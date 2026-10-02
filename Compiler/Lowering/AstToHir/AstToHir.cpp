@@ -536,6 +536,9 @@ HirExprPtr AstToHirContext::LowerExpr(const Expr &expr) {
     if (const auto *e = dynamic_cast<const CatchExpr *>(&expr)) {
         return finish(LowerCatch(*e));
     }
+    if (const auto *e = dynamic_cast<const MappedTryExpr *>(&expr)) {
+        return finish(LowerMappedTry(*e));
+    }
     if (auto *e = dynamic_cast<const SpreadExpr *>(&expr)) {
         return finish(LowerExpr(*e->operand));
     }

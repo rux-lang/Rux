@@ -1,4 +1,3 @@
-12:24: error: '? else' error mapping is not supported yet
-14:18: error: 'none' is not supported yet
-14:5: error: cannot infer the type of 'absent' from 'none'
-14:5: warning: cannot infer type of 'absent'
+13:18: error: 'none' is not supported yet
+13:5: error: cannot infer the type of 'absent' from 'none'
+13:5: warning: cannot infer type of 'absent'

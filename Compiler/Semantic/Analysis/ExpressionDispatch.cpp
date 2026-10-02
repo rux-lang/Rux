@@ -245,10 +245,7 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
     }
 
     if (const auto *mapped = dynamic_cast<const MappedTryExpr *>(&expr)) {
-        const TypeRef continued = CheckMappedTry(*mapped);
-        // Checked ahead of its lowering: a program that maps an error stops here until it can be compiled.
-        EmitError(expr.location, "'? else' error mapping is not supported yet");
-        return continued;
+        return CheckMappedTry(*mapped);
     }
     if (const auto *recovery = dynamic_cast<const CatchExpr *>(&expr)) {
         return CheckCatchExpression(*recovery);
