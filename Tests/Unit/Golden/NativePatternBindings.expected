@@ -1,0 +1,11 @@
+17:19: error: native type 'Defaults | Options' is not supported in compiled code yet
+57:22: error: native type 'int32 ! DecodeError' is not supported in compiled code yet
+72:21: error: native type 'int32?' is not supported in compiled code yet
+19:9: error: pattern 'Options' cannot bind a new variable because 'Options' already names a type
+27:9: error: pattern 'Settings' cannot bind a new variable because 'Settings' already names a type
+35:9: error: pattern 'Limit' cannot bind a new variable because 'Limit' already names a constant
+41:9: error: pattern 'Helper' cannot bind a new variable because 'Helper' already names a function
+47:9: error: pattern 'T' cannot bind a new variable because 'T' already names a generic parameter
+53:9: error: pattern 'Missing' cannot bind a new variable because 'Missing' is a case of variant 'DecodeError'
+60:18: error: pattern 'Missing' cannot bind a new variable because 'Missing' is a case of variant 'DecodeError'
+74:9: error: '.None' matches a variant case; use 'none' for native optional 'int32?'

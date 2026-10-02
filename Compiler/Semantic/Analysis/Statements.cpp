@@ -612,6 +612,7 @@ void AnalysisContext::CheckLetPattern(const Pattern &pattern, const TypeRef &typ
         patternTypes.insert_or_assign(&pattern, type);
     }
     if (const auto *identifierPattern = dynamic_cast<const IdentPattern *>(&pattern)) {
+        CheckFreeBindingName(identifierPattern->name, identifierPattern->location, type);
         Symbol symbol;
         symbol.kind = Symbol::Kind::Var;
         symbol.name = identifierPattern->name;
@@ -654,37 +655,91 @@ void AnalysisContext::CheckLetPattern(const Pattern &pattern, const TypeRef &typ
 }
 
 void AnalysisContext::CheckPattern(const Pattern &pattern, const TypeRef &subjectType) {
-    // The native patterns parse ahead of their semantics. Each is rejected once, and a typed binding is still defined,
-    // with an unknown type, so its uses in the arm do not cascade into unknown-name errors.
-    if (const auto *typedPattern = dynamic_cast<const TypedPattern *>(&pattern)) {
-        EmitError(typedPattern->location, "typed patterns are not supported yet");
-        if (!typedPattern->name.empty()) {
-            Symbol symbol;
-            symbol.kind = Symbol::Kind::Var;
-            symbol.name = typedPattern->name;
-            symbol.location = typedPattern->location;
-            symbol.type = TypeRef::MakeUnknown();
-            DefineTrackedLocal(std::move(symbol), true);
-        }
-        return;
-    }
-    if (const auto *presencePattern = dynamic_cast<const PresencePattern *>(&pattern)) {
-        EmitError(presencePattern->location, "presence patterns are not supported yet");
-        const Pattern *inner = presencePattern->inner.get();
-        while (const auto *nested = dynamic_cast<const PresencePattern *>(inner)) {
-            inner = nested->inner.get();
-        }
-        CheckPattern(*inner, TypeRef::MakeUnknown());
-        return;
-    }
-    if (dynamic_cast<const NonePattern *>(&pattern)) {
-        EmitError(pattern.location, "'none' patterns are not supported yet");
-        return;
-    }
     if (!subjectType.IsUnknown()) {
         patternTypes.insert_or_assign(&pattern, subjectType);
     }
+    if (const auto *typedPattern = dynamic_cast<const TypedPattern *>(&pattern)) {
+        CheckTypedPattern(*typedPattern, subjectType);
+        return;
+    }
+    if (const auto *presencePattern = dynamic_cast<const PresencePattern *>(&pattern)) {
+        // `p?` is exactly `.Some(p)`: it needs an optional at its position and checks `p` against the payload.
+        TypeRef payload = TypeRef::MakeUnknown();
+        if (subjectType.IsOptional()) {
+            payload = subjectType.inner.front();
+        }
+        else if (!subjectType.IsUnknown()) {
+            EmitError(presencePattern->location,
+                      std::format("a presence suffix needs an optional subject, but the matched value has type '{}'",
+                                  subjectType.ToString()),
+                      {},
+                      subjectType.IsFallible() ? std::optional<std::string>("match '.Success(...)' or '.Failure(...)'")
+                                               : std::nullopt);
+        }
+        if (presencePattern->inner) {
+            CheckPattern(*presencePattern->inner, payload);
+        }
+        return;
+    }
+    if (dynamic_cast<const NonePattern *>(&pattern)) {
+        if (!subjectType.IsUnknown() && !subjectType.IsOptional()) {
+            const std::string nominal =
+                subjectType.kind == TypeRef::Kind::Named ? BaseTypeName(subjectType.name) : std::string();
+            if (!nominal.empty() && LookupCase(nominal, "None")) {
+                EmitError(pattern.location,
+                          std::format("'none' matches a native optional; use '.None' for variant '{}'", nominal), {},
+                          "write '.None'");
+            }
+            else {
+                EmitError(pattern.location,
+                          std::format("'none' needs an optional subject, but the matched value has type '{}'",
+                                      subjectType.ToString()));
+            }
+        }
+        return;
+    }
+    const bool bindsWhole = dynamic_cast<const IdentPattern *>(&pattern) != nullptr ||
+                            dynamic_cast<const WildcardPattern *>(&pattern) != nullptr ||
+                            dynamic_cast<const GuardedPattern *>(&pattern) != nullptr;
+    if (subjectType.IsSum() && !bindsWhole && !dynamic_cast<const RangePattern *>(&pattern)) {
+        // A sum member is selected by what the pattern names: a qualified case or struct names its member, a literal
+        // or a tuple its member's type. The pattern is then checked against that member, and keeps the sum as its own
+        // type so coverage and lowering see where the selection happens.
+        std::string issue;
+        std::optional<std::string> help;
+        if (const std::optional<std::size_t> member = SumMemberOfPattern(pattern, subjectType, &issue, &help)) {
+            const TypeRef memberType = subjectType.inner[*member];
+            CheckPattern(pattern, memberType);
+            patternTypes.insert_or_assign(&pattern, subjectType);
+            sumMemberPatterns.insert_or_assign(&pattern, memberType);
+        }
+        else {
+            EmitError(pattern.location, std::move(issue), {}, std::move(help));
+            DefinePatternBindings(pattern);
+        }
+        return;
+    }
+    if (subjectType.IsOptional() || subjectType.IsFallible()) {
+        const auto *enumeration = dynamic_cast<const EnumPattern *>(&pattern);
+        if (enumeration && enumeration->path.size() == 1) {
+            CheckNativeCasePattern(*enumeration, subjectType);
+            return;
+        }
+        if (!bindsWhole) {
+            // Native levels are opened only by their own patterns; nothing implicitly enters presence or success.
+            const bool optional = subjectType.IsOptional();
+            EmitError(pattern.location,
+                      std::format("this pattern cannot match native {} '{}'", optional ? "optional" : "fallible",
+                                  subjectType.ToString()),
+                      {},
+                      optional ? "match a present value with '.Some(...)' or 'value?', and absence with 'none'"
+                               : "match a channel with '.Success(...)' or '.Failure(...)'");
+            DefinePatternBindings(pattern);
+            return;
+        }
+    }
     if (const auto *identifierPattern = dynamic_cast<const IdentPattern *>(&pattern)) {
+        CheckFreeBindingName(identifierPattern->name, identifierPattern->location, subjectType);
         Symbol symbol;
         symbol.kind = Symbol::Kind::Var;
         symbol.name = identifierPattern->name;
@@ -892,6 +947,10 @@ void AnalysisContext::CheckPattern(const Pattern &pattern, const TypeRef &subjec
 }
 
 void AnalysisContext::ValidateMatchPatterns(const std::vector<const Pattern *> &patterns, const TypeRef &subjectType) {
+    if (IsNativeMatchSubject(subjectType)) {
+        ValidateNativeMatch(patterns, subjectType);
+        return;
+    }
     std::unordered_set<std::string> seen;
     std::unordered_set<std::string> coveredVariants;
     bool coveredAll = false;
@@ -900,7 +959,10 @@ void AnalysisContext::ValidateMatchPatterns(const std::vector<const Pattern *> &
             continue;
         }
         if (coveredAll) {
-            EmitError(pattern->location, "match arm is unreachable because an earlier pattern matches every value");
+            // An `else` arm covers whatever remains, possibly nothing, so it is never reported.
+            if (!dynamic_cast<const WildcardPattern *>(pattern)) {
+                EmitError(pattern->location, "match arm is unreachable because an earlier pattern matches every value");
+            }
             continue;
         }
         const std::string key = PatternKey(*pattern);
@@ -953,6 +1015,11 @@ void AnalysisContext::ValidateMatchPatterns(const MatchExpr &expression, const T
 
 bool AnalysisContext::MatchPatternsAreExhaustive(const std::vector<const Pattern *> &patterns,
                                                  const TypeRef &subjectType) const {
+    if (IsNativeMatchSubject(subjectType)) {
+        const auto found =
+            patterns.empty() ? nativeMatchExhaustive.end() : nativeMatchExhaustive.find(patterns.front());
+        return found != nativeMatchExhaustive.end() && found->second;
+    }
     if (std::ranges::any_of(patterns,
                             [](const Pattern *pattern) { return pattern && PatternMatchesEveryValue(*pattern); })) {
         return true;

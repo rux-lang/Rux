@@ -188,6 +188,16 @@ const ResolvedCasePattern *SemanticModel::TryGetCasePattern(const EnumPattern &p
     return fact == facts.casePatterns.end() ? nullptr : &fact->second;
 }
 
+const TypeRef *SemanticModel::TryGetTypedPatternType(const TypedPattern &pattern) const noexcept {
+    const auto type = facts.typedPatternTypes.find(&pattern);
+    return type == facts.typedPatternTypes.end() ? nullptr : &type->second;
+}
+
+const TypeRef *SemanticModel::TryGetSumMember(const Pattern &pattern) const noexcept {
+    const auto member = facts.sumMemberPatterns.find(&pattern);
+    return member == facts.sumMemberPatterns.end() ? nullptr : &member->second;
+}
+
 const ResolvedVariantEquality *SemanticModel::TryGetVariantEquality(const BinaryExpr &expression) const noexcept {
     const auto fact = facts.variantEqualities.find(&expression);
     return fact == facts.variantEqualities.end() ? nullptr : &fact->second;

@@ -129,6 +129,22 @@ Removing or renaming an enum member or variant case is likewise a source-breakin
 
 The source cutover is intentionally narrow. Scalar enums retain their syntax, discriminants, conversions, and representation. First-party payload types that used the compiler's default enum layout migrate directly to `variant`. External payload enums that exposed an integer base or assigned discriminants are not source-compatible: because a variant's tag is private, those declarations require an explicit redesign, usually a scalar wire enum plus a separate payload type or a manually controlled union.
 
+## Membership Tests
+
+`value is Type` answers a question about the operand's type and never consumes, binds, or narrows it: after the test, `value` keeps its static type, and extracting a payload still takes a pattern. The tested type is a postfix type, so a sum or fallible target is grouped, as in `value is (A | B)`; an ungrouped `value is A | B` whose right operand names a type is rejected with that grouping as the fix. The right-hand type is resolved first, and its form and the subject's select the mode:
+
+| Subject | Meaning |
+| --- | --- |
+| A sum `A \| B \| C` | The active member is the tested type, or one of the members of a tested subset sum. A type that is not a member or subset is rejected. |
+| An optional `T?` | The value is present and its payload is the tested type, or a member or subset of a sum payload. Only one optional level is ever inspected. |
+| A fallible `T ! E` | Rejected; a channel is matched with `.Success(...)` or `.Failure(...)`. |
+| Any other type | Exact type identity after alias resolution. A test that can never be true is a compile error, never a constant `false`. |
+| An interface on the right-hand side | Reported as unavailable: interface implementation tests are not implemented, and no native form implements an interface. |
+
+A reference subject is tested through the reference without being consumed. A test whose subject or tested type mentions a type parameter is checked again for each instantiation, so `x is T` over `T | U` stays valid when `T` and `U` are the same type and the subject collapses to that type.
+
+Membership is not interface implementation: knowing that every member of a sum implements an interface, or that a test succeeded, makes no shared member available on the sum.
+
 ## Bindings and Parameters
 
 Bindings have three forms:

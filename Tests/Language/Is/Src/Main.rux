@@ -1,22 +1,17 @@
 // `is`: asking what type an expression has.
 //
-// The keyword had no case of its own, and it is easy to mistake for something it is not. It is a static test: the
-// compiler compares the operand's resolved type against the written one and folds the whole expression to `true` or
-// `false` before any code is generated. Nothing is examined at run time, no tag is read, and the operand's value
-// never matters — only its type does.
+// On a value that is not a sum or an optional, `is` is a static test: the compiler compares the operand's resolved type
+// with the written one, and the whole expression becomes `true` before any code is generated. Nothing is examined at
+// run time, no tag is read, and the operand's value never matters — only its type does. A test that could never be
+// true is a compile error rather than a quiet `false`, so every test below is one that holds.
 //
 // The one thing `is` deliberately cannot do is ask whether a value implements an interface. That would be a
 // run-time question, and it is reported as unavailable rather than answered wrongly.
 
 import Core::Assert;
-import Core::{ bool, bool8, char32, char8, float32, float64, int16, int32, int64, uint32, uint64 };
+import Core::{ bool, bool8, char8, float32, float64, int32, int64 };
 
 struct Point {
-    x: int32;
-    y: int32;
-}
-
-struct Pixel {
     x: int32;
     y: int32;
 }
@@ -31,13 +26,9 @@ func Identity(value: int32) -> int32 {
 }
 
 func Main() -> int {
-    // The exact type answers true; every other type answers false, including one that differs only in width.
+    // The exact type answers true.
     let count: int32 = 7i32;
     Assert(count is int32, "the declared type matches");
-    Assert(!(count is int64), "a wider integer does not");
-    Assert(!(count is int16), "nor a narrower one");
-    Assert(!(count is uint32), "nor the same width at the other signedness");
-    Assert(!(count is float32), "nor another family");
 
     // The operand's value is irrelevant, because the test is on its type. Zero and the maximum answer alike.
     let zero: int32 = 0i32;
@@ -47,7 +38,6 @@ func Main() -> int {
     // An inferred type is a real type, and a suffix is what fixes it.
     let inferred = 5i64;
     Assert(inferred is int64, "a suffix fixes the inferred type");
-    Assert(!(inferred is int32), "and it is not the default width");
     let inferredFloat = 1.5f32;
     Assert(inferredFloat is float32, "the same for a float suffix");
 
@@ -56,27 +46,22 @@ func Main() -> int {
     Assert(flag is bool8, "bool resolves to the width it names");
     Assert(flag is bool, "and answers to its own spelling too");
 
-    // Declared types, including two structurally identical ones. `is` compares names, not layouts, which is the
-    // whole point of declaring two records with the same fields.
+    // Declared types match their own name. `is` compares names, not layouts, so a structurally identical record with
+    // another name could never match and is rejected at compile time.
     let here = Point { x: 1i32, y: 2i32 };
     Assert(here is Point, "a struct matches its own name");
-    Assert(!(here is Pixel), "and not an identically shaped one with another name");
-    Assert(!(here is int32), "nor anything else");
 
     // A variant is one type whatever case it currently holds, because the test is static.
     let empty = Shape::Empty;
     let round = Shape::Round(3i32);
     Assert(empty is Shape, "an empty case has the variant's type");
     Assert(round is Shape, "and so does a payload case");
-    Assert(!(empty is Point), "a variant is not a struct");
 
     // Characters and floats, to cover the remaining families.
     let letter: char8 = c8'A';
     Assert(letter is char8, "a code unit matches its width");
-    Assert(!(letter is char32), "and not the scalar-value width");
     let ratio: float64 = 0.5f64;
     Assert(ratio is float64, "a float matches its width");
-    Assert(!(ratio is float32), "and not the narrower one");
 
     // The operand is an expression, not just a name.
     Assert(Identity(3i32) is int32, "a call's return type");
@@ -86,7 +71,7 @@ func Main() -> int {
     Assert(here.x is int32, "a field access");
 
     // `is` produces an ordinary boolean, so it composes like one and drives control flow.
-    Assert((count is int32) && !(count is int64), "the result combines with other booleans");
+    Assert((count is int32) && (flag is bool), "the result combines with other booleans");
     var reached = false;
     if count is int32 {
         reached = true;

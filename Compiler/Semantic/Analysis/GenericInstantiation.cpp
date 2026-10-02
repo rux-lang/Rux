@@ -155,6 +155,7 @@ void AnalysisContext::ValidatePendingGenericInstantiations() {
         }
 
         ValidateDeferredBasicExpressionChecks(*instantiation.decl, instantiation.substitutions);
+        ValidateDeferredPatternChecks(*instantiation.decl, instantiation.substitutions);
         if (const auto it = deferredGenericCalls.find(instantiation.decl); it != deferredGenericCalls.end()) {
             for (const DeferredGenericCall &call : it->second) {
                 std::unordered_map<std::string, TypeRef> substitutions;

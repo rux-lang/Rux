@@ -294,6 +294,12 @@ struct SemanticFacts {
     std::unordered_map<const TypeExpr *, TypeRef> typeNodeTypes;
     std::unordered_map<const Pattern *, TypeRef> patternTypes;
     std::unordered_map<const EnumPattern *, ResolvedCasePattern> casePatterns;
+    /// The resolved annotation of each accepted typed pattern, before generic substitution. What it selects follows
+    /// from the substituted subject and annotation through `ClassifyNativeSelection`.
+    std::unordered_map<const TypedPattern *, TypeRef> typedPatternTypes;
+    /// The sum member a qualified case, struct, literal, or tuple pattern selects, keyed by that pattern; the pattern's
+    /// own recorded type stays the sum.
+    std::unordered_map<const Pattern *, TypeRef> sumMemberPatterns;
     std::unordered_map<const BinaryExpr *, ResolvedVariantEquality> variantEqualities;
     std::unordered_map<std::string, VariantEqualityPlan> variantEqualityPlans;
     // An expression records only whether to negate; each concrete instantiation owns its element recipe.
@@ -356,6 +362,10 @@ struct SemanticModel {
 
     /// Returns null for non-case patterns and case patterns rejected during semantic analysis.
     [[nodiscard]] const ResolvedCasePattern *TryGetCasePattern(const EnumPattern &pattern) const noexcept;
+    /// Returns null for a typed pattern whose annotation did not resolve.
+    [[nodiscard]] const TypeRef *TryGetTypedPatternType(const TypedPattern &pattern) const noexcept;
+    /// Returns null unless the pattern selects one member of a sum subject.
+    [[nodiscard]] const TypeRef *TryGetSumMember(const Pattern &pattern) const noexcept;
 
     [[nodiscard]] const ResolvedVariantEquality *TryGetVariantEquality(const BinaryExpr &expression) const noexcept;
     [[nodiscard]] const VariantEqualityPlan *TryGetVariantEqualityPlan(const TypeRef &type) const noexcept;

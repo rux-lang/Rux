@@ -5,5 +5,6 @@ rux_add_component(RuxTypes
     PrimitiveCatalog.cpp
     TypeProperties.cpp
     NativeConversion.cpp
-    NativeLayout.cpp)
+    NativeLayout.cpp
+    NativeSelection.cpp)
 target_link_libraries(RuxTypes PUBLIC RuxTarget)

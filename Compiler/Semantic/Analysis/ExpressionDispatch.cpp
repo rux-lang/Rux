@@ -300,15 +300,19 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
 
     if (auto *e = dynamic_cast<const IsExpr *>(&expr)) {
         TypeRef operandType = CheckExpr(*e->operand);
-        const std::string ifaceName = NamedBaseTypeName(ResolveType(*e->type));
+        const TypeRef testedType = ResolveType(*e->type);
+        const std::string ifaceName = NamedBaseTypeName(testedType);
         if (!ifaceName.empty()) {
             Symbol *sym = currentScope->Lookup(ifaceName);
             if (sym && sym->kind == Symbol::Kind::Interface) {
                 EmitError(e->location, std::format("type test 'is {}' is unavailable: interface checks are not "
                                                    "implemented",
                                                    ifaceName));
+                return TypeRef::MakeBool();
             }
         }
+        // Membership never consumes, binds, or narrows: the operand is only inspected.
+        CheckMembershipTest(*e, operandType, testedType);
         return TypeRef::MakeBool();
     }
     if (auto *e = dynamic_cast<const MatchExpr *>(&expr)) {

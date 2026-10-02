@@ -239,6 +239,21 @@ std::optional<TypeRef> AnalysisContext::CheckBasicExpression(const Expr &express
         if (binary->op == TokenKind::AmpAmp || binary->op == TokenKind::PipePipe) {
             return CheckShortCircuitExpression(*binary);
         }
+        // An `as` or `is` target is a postfix type, so `value is A | B` parses as a bitwise or of the test with `B`.
+        // That reading is only a mistake once `B` turns out to name a type, so it is caught here rather than by the
+        // parser, with the grouping the author meant.
+        if (binary->op == TokenKind::Pipe &&
+            (dynamic_cast<const IsExpr *>(binary->left.get()) || dynamic_cast<const CastExpr *>(binary->left.get()))) {
+            const auto *name = dynamic_cast<const IdentExpr *>(binary->right.get());
+            const Symbol *symbol = name ? currentScope->Lookup(name->name) : nullptr;
+            if (symbol && symbol->kind == Symbol::Kind::Type) {
+                const bool test = dynamic_cast<const IsExpr *>(binary->left.get()) != nullptr;
+                static_cast<void>(CheckExpr(*binary->left));
+                EmitError(binary->location, std::format("a sum type after '{}' must be grouped", test ? "is" : "as"),
+                          {}, std::format("write 'value {} (A | {})'", test ? "is" : "as", name->name));
+                return TypeRef::MakeUnknown();
+            }
+        }
         TypeRef left = CheckExpr(*binary->left);
         TypeRef right = CheckExpr(*binary->right);
         return CheckBinary(binary->op, left, right, *binary->left, *binary->right, binary->location, binary);

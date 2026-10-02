@@ -273,6 +273,47 @@ private:
     void ValidateMatchPatterns(const MatchExpr &expression, const TypeRef &subjectType);
     [[nodiscard]] bool MatchPatternsAreExhaustive(const std::vector<const Pattern *> &patterns,
                                                   const TypeRef &subjectType) const;
+
+    // Native patterns and membership tests (PatternCoverage.cpp).
+    friend class NativePatternTranslator;
+
+    /// A pattern diagnostic computed before it is known whether, or with which instantiation note, it is reported.
+    struct PatternIssue {
+        SourceLocation location;
+        std::string message;
+        std::optional<std::string> help;
+    };
+
+    /// Whether a match over this subject is checked by native coverage: the unit, or a type that mentions a sum,
+    /// optional, or fallible at any level.
+    [[nodiscard]] static bool IsNativeMatchSubject(const TypeRef &subjectType);
+    /// Rejects a binding pattern whose name already names a type, alias, generic parameter, function, constant,
+    /// module, or interface, or a case of the matched value; shadowing a variable or parameter stays legal.
+    bool CheckFreeBindingName(const std::string &name, SourceLocation location, const TypeRef &subjectType);
+    /// The member of `sum` that a qualified case, struct, literal, or tuple pattern selects, or nothing with the
+    /// reason in `issue` and `help`.
+    [[nodiscard]] std::optional<std::size_t> SumMemberOfPattern(const Pattern &pattern, const TypeRef &sum,
+                                                                std::string *issue, std::optional<std::string> *help);
+    void CheckTypedPattern(const TypedPattern &pattern, const TypeRef &subjectType);
+    void CheckNativeCasePattern(const EnumPattern &pattern, const TypeRef &subjectType);
+    /// Defines every name a rejected pattern binds, with no type, so its arm does not cascade into unknown names.
+    void DefinePatternBindings(const Pattern &pattern);
+    [[nodiscard]] std::optional<PatternIssue>
+    TypedSelectionIssue(const TypedPattern &pattern, const TypeRef &subjectType, const TypeRef &annotation) const;
+    void CheckMembershipTest(const IsExpr &expression, const TypeRef &operandType, const TypeRef &testedType);
+    [[nodiscard]] std::optional<PatternIssue> MembershipIssue(const TypeRef &subject, const TypeRef &tested,
+                                                              SourceLocation location) const;
+    /// The constructors coverage splits a type into, each with its field types, or nothing for an open type.
+    [[nodiscard]] std::optional<std::vector<std::vector<TypeRef>>> CoverageConstructors(const TypeRef &type);
+    /// Whether the arms cover every value of the subject; unreachable arms and missing values go to `issues`.
+    bool NativeMatchCoverage(const std::vector<const Pattern *> &patterns, const TypeRef &subjectType,
+                             const std::unordered_map<std::string, TypeRef> &substitutions,
+                             std::vector<PatternIssue> *issues);
+    void ValidateNativeMatch(const std::vector<const Pattern *> &patterns, const TypeRef &subjectType);
+    [[nodiscard]] static bool PatternContains(const Pattern &pattern, const Pattern &target);
+    void ValidateDeferredPatternChecks(const FuncDecl &declaration,
+                                       const std::unordered_map<std::string, TypeRef> &substitutions);
+    [[nodiscard]] const TypeRef *TypedPatternAnnotation(const TypedPattern &pattern) const;
     [[nodiscard]] bool BlockDefinitelyReturns(const Block &block) const;
     [[nodiscard]] std::optional<TypeRef> CheckBasicExpression(const Expr &expression);
     void CheckCast(const TypeRef &operand, const TypeRef &target, SourceLocation location);
@@ -412,6 +453,11 @@ private:
     std::unordered_map<const TypeExpr *, TypeRef> &typeNodeTypes;
     std::unordered_map<const Pattern *, TypeRef> &patternTypes;
     std::unordered_map<const EnumPattern *, ResolvedCasePattern> &casePatterns;
+    std::unordered_map<const TypedPattern *, TypeRef> &typedPatternTypes;
+    std::unordered_map<const Pattern *, TypeRef> &sumMemberPatterns;
+    /// Whether each native match, keyed by its first arm's pattern, covers its subject, so control flow can ask after
+    /// the arms are checked.
+    std::unordered_map<const Pattern *, bool> nativeMatchExhaustive;
     std::unordered_map<const BinaryExpr *, ResolvedVariantEquality> &variantEqualities;
     std::unordered_map<std::string, VariantEqualityPlan> &variantEqualityPlans;
     std::unordered_map<const BinaryExpr *, bool> &aggregateEqualities;
@@ -632,6 +678,22 @@ private:
     std::unordered_map<const FuncDecl *, std::vector<DeferredScalarRead>> deferredScalarReads;
     std::unordered_map<const FuncDecl *, std::vector<DeferredOutcomeCheck>> deferredOutcomeChecks;
     std::unordered_map<const FuncDecl *, std::vector<DeferredConsumption>> deferredConsumptions;
+
+    /// A native match whose subject or typed annotations mention a type parameter, checked again per instantiation.
+    struct DeferredMatchCheck {
+        std::vector<const Pattern *> patterns;
+        TypeRef subject;
+    };
+
+    /// An `is` test whose subject or tested type mentions a type parameter, checked again per instantiation.
+    struct DeferredMembershipCheck {
+        TypeRef subject;
+        TypeRef tested;
+        SourceLocation location;
+    };
+
+    std::unordered_map<const FuncDecl *, std::vector<DeferredMatchCheck>> deferredMatchChecks;
+    std::unordered_map<const FuncDecl *, std::vector<DeferredMembershipCheck>> deferredMembershipChecks;
     std::unordered_set<const TypeExpr *> reportedGenericArity;
 
     /// The suffixed integer literals sitting directly under a unary minus, registered before the operand is checked

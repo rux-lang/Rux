@@ -13,6 +13,3 @@
 31:18: error: 'none' is not supported yet
 31:5: error: cannot infer the type of 'absent' from 'none'
 31:5: warning: cannot infer type of 'absent'
-41:9: error: typed patterns are not supported yet
-42:9: error: presence patterns are not supported yet
-43:9: error: 'none' patterns are not supported yet

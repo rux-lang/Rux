@@ -35,12 +35,3 @@ func Handling() -> int32 ! NotFound {
     }
     fail NotFound {};
 }
-
-func Patterns(value: int32) -> int32 {
-    return match value {
-        v: int32 => v,
-        present? => present,
-        none => 0i32,
-        else => 1i32
-    };
-}

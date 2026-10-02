@@ -36,6 +36,7 @@ rux_add_component(RuxSemantic
     Analysis/FunctionSignatures.cpp
     Analysis/Iteration.cpp
     Analysis/Statements.cpp
+    Analysis/PatternCoverage.cpp
     Analysis/ProgramIndex.cpp
     Analysis/Propagation.cpp
     Analysis/PublicApi.cpp

@@ -117,7 +117,7 @@ func SumRepeated(value: RepeatedPayload) -> int32 {
 func ReadMixed(value: MixedLayout) -> int64 {
     return match value {
         .Empty => 0i64,
-        .Byte(byte) => byte as int64,
+        .Byte(small) => small as int64,
         .Word(word) => word,
         .Record { code, enabled } => (code as int64) + match enabled { true => 100i64, false => 0i64 }
     };

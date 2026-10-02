@@ -1,0 +1,77 @@
+// A binding pattern introduces a free name. A name that already names a type, alias, generic parameter, constant,
+// or function, or that spells a case of the matched value, is a selection the author forgot to write, so it is
+// rejected in every arm position and inside nested patterns. Shadowing a variable or parameter stays legal.
+
+struct Options {}
+struct Defaults {}
+type Settings = Options;
+const Limit: int32 = 4i32;
+
+func Helper() {}
+
+variant DecodeError {
+    Missing,
+    InvalidDigit(int32)
+}
+
+func First(value: Options | Defaults) -> int32 {
+    return match value {
+        Options => 1i32,
+        else => 2i32
+    };
+}
+
+func Middle(value: int32) -> int32 {
+    return match value {
+        1i32 => 1i32,
+        Settings => 2i32,
+        else => 3i32
+    };
+}
+
+func Last(value: int32) -> int32 {
+    return match value {
+        1i32 => 1i32,
+        Limit => 2i32
+    };
+}
+
+func Function(value: int32) -> int32 {
+    return match value {
+        Helper => 1i32
+    };
+}
+
+func Parameter<T>(value: int32) -> int32 {
+    return match value {
+        T => 1i32
+    };
+}
+
+func Case(error: DecodeError) -> int32 {
+    return match error {
+        Missing => 1i32
+    };
+}
+
+func Nested(outcome: int32 ! DecodeError) -> int32 {
+    return match outcome {
+        .Success(value) => value,
+        .Failure(Missing) => 1i32
+    };
+}
+
+func Shadow(value: int32, limit: int32) -> int32 {
+    let count = 3i32;
+    return match value {
+        1i32 => limit,
+        count => count
+    };
+}
+
+func Crossed(value: int32?) -> int32 {
+    return match value {
+        .None => 0i32,
+        else => 1i32
+    };
+}
