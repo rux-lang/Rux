@@ -14,7 +14,7 @@ That rules out the table-driven shortest-representation algorithms in their publ
 
 ## The algorithm
 
-**Exact rational digit generation**, the method Steele and White described in *How to Print Floating-Point Numbers Accurately* (1990) and Burger and Dybvig refined in *Printing Floating-Point Numbers Quickly and Accurately* (1996), commonly called Dragon4.
+**Exact rational digit generation**, the method Steele and White described in _How to Print Floating-Point Numbers Accurately_ (1990) and Burger and Dybvig refined in _Printing Floating-Point Numbers Quickly and Accurately_ (1996), commonly called Dragon4.
 
 The value is `f × 2^e` with `f` an integer below `2^53` and `e` an integer. The algorithm forms it as an exact ratio of two integers, `R / S`, together with two more integers `M+` and `M-` that measure the distance to the neighbouring representable values. Digits come out one at a time by multiplying the remainder by ten and dividing, and generation stops as soon as what has been emitted is closer to the value than to either neighbour — which is the definition of a shortest representation that reads back to the same bits. Fixed precision stops on a digit count instead and rounds the remainder to nearest with ties to even. Parsing runs the same machinery in the other direction: the decimal is formed as an exact ratio, scaled into [1, 2), and the significand's bits are taken from it by long division. What the division leaves is the tail, held exactly, so “is it more than half” is a comparison rather than an estimate and a tie is a tie rather than a value that landed near one.
 
@@ -34,14 +34,14 @@ The fixed workspace is `FixedNat`: an unsigned integer of exactly **sixty-four 6
 
 The bound comes from the worst case of the six quantities the two directions hold, for `float64`, which is the wider of the two narrow formats:
 
-| Direction | Quantity                                          | Largest value                  | Bits    |
-| --------- | -------------------------------------------------- | ------------------------------ | ------- |
-| Rendering | `R` for a large value, `f × 2^(e+1)`              | `2^53 × 2^972` = `2^1025`      | 1,025   |
-| Rendering | `S` for a small value, `2^(1-e)` at `e = -1074`   | `2^1075`                       | 1,075   |
-| Rendering | `R` after scaling a small value by `10^324`       | `2^54 × 10^324` ≈ `2^1131`     | 1,131   |
-| Rendering | `S` after scaling a large value by `10^309`       | `2 × 10^309` ≈ `2^1029`        | 1,029   |
-| Reading   | the retained digits, `10^768`                     | `10^768`                       | 2,551   |
-| Reading   | `S` for a long decimal with a tiny exponent       | `10^1108`                      | 3,681   |
+| Direction | Quantity                                        | Largest value              | Bits  |
+| --------- | ----------------------------------------------- | -------------------------- | ----- |
+| Rendering | `R` for a large value, `f × 2^(e+1)`            | `2^53 × 2^972` = `2^1025`  | 1,025 |
+| Rendering | `S` for a small value, `2^(1-e)` at `e = -1074` | `2^1075`                   | 1,075 |
+| Rendering | `R` after scaling a small value by `10^324`     | `2^54 × 10^324` ≈ `2^1131` | 1,131 |
+| Rendering | `S` after scaling a large value by `10^309`     | `2 × 10^309` ≈ `2^1029`    | 1,029 |
+| Reading   | the retained digits, `10^768`                   | `10^768`                   | 2,551 |
+| Reading   | `S` for a long decimal with a tiny exponent     | `10^1108`                  | 3,681 |
 
 The largest is 3,681 bits, from the denominator a decimal with the full retained digit count and an exponent at the bottom of the range is read over. Long division shifts a remainder left by at most one bit per step and never past the divisor's width, so nothing during either direction exceeds that figure by more than a limb. Sixty-four limbs gives 4,096 bits: **415 bits of headroom over the worst case**, which is over six limbs.
 

@@ -16,12 +16,12 @@ The check `Tests/Scripts/CI/Check.sh` runs on every host through CTest as `Scrip
 
 `CI.yml`'s first job runs `.github/Scripts/Scope.sh`, which decides the scope from the event and, for a push or a pull request, from the files that changed.
 
-| Scope      | When                                                        | What runs                                                                                                                                                                 |
-| ---------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `docs`     | only documentation or community metadata changed            | nothing builds; the `CI` check reports success                                                                                                                            |
-| `fast`     | a push to a topic branch                                    | policy and formatting, and Linux x86-64: build, C++ and Rux suites, runtime closure, Rux formatting, every cross target checked, the macOS and FreeBSD cross-build inspections |
-| `full`     | a pull request to `dev` or `main`                           | `fast`, plus clang-tidy, Linux AArch64, macOS AArch64, macOS x86-64 under Rosetta, Windows x86-64, Windows AArch64, FreeBSD x86-64, and FreeBSD AArch64 with its emulated smoke |
-| `extended` | a push to `dev` or `main`, a dispatched run, and a release  | `full`, plus everything that runs under emulation: Windows x86-64 on an ARM64 host, the FreeBSD transfer test, and the complete Rux suites on FreeBSD AArch64             |
+| Scope      | When                                                       | What runs                                                                                                                                                                       |
+| ---------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `docs`     | only documentation or community metadata changed           | nothing builds; the `CI` check reports success                                                                                                                                  |
+| `fast`     | a push to a topic branch                                   | policy and formatting, and Linux x86-64: build, C++ and Rux suites, runtime closure, Rux formatting, every cross target checked, the macOS and FreeBSD cross-build inspections  |
+| `full`     | a pull request to `dev` or `main`                          | `fast`, plus clang-tidy, Linux AArch64, macOS AArch64, macOS x86-64 under Rosetta, Windows x86-64, Windows AArch64, FreeBSD x86-64, and FreeBSD AArch64 with its emulated smoke |
+| `extended` | a push to `dev` or `main`, a dispatched run, and a release | `full`, plus everything that runs under emulation: Windows x86-64 on an ARM64 host, the FreeBSD transfer test, and the complete Rux suites on FreeBSD AArch64                   |
 
 A documentation-only change is one whose every file is Markdown under `Docs/` or at the repository root, or lives under `.github/` as Markdown, an issue template, or the funding file. Markdown anywhere else — a package license, the test-suite guide — is code, because something may read it. When the changed files cannot be listed, the scope never shrinks.
 
@@ -33,23 +33,23 @@ The `main` branch is GitHub's default branch. Actions caches are visible to the 
 
 Every job carries an explicit timeout. Nothing can run for hours except the emulated FreeBSD suites, which are scoped so that nothing waits on them.
 
-| Job                                | Runner                          | Scope      | Timeout  |
-| ---------------------------------- | ------------------------------- | ---------- | -------- |
-| Scope                              | ubuntu-26.04                    | every      | 3        |
-| Policy and formatting              | ubuntu-26.04                    | fast       | 10       |
-| `clang-tidy` × 3 shards            | ubuntu-26.04                    | full       | 25       |
-| Linux x86-64 / Build               | ubuntu-26.04                    | fast       | 25       |
-| Linux AArch64 / Build              | ubuntu-26.04-arm                | full       | 25       |
-| macOS AArch64 / Build              | macos-26                        | full       | 30       |
-| macOS x86-64 / Build               | macos-26, under Rosetta         | full       | 35       |
-| Windows x86-64 / Build             | windows-2025                    | full       | 30       |
-| Windows x86-64 / Under emulation   | windows-11-arm                  | extended   | 30       |
-| Windows AArch64 / Build            | windows-11-arm                  | full       | 30       |
-| FreeBSD x86-64 / Build             | ubuntu-26.04, KVM guest         | full       | 45       |
-| FreeBSD x86-64 / Transfer          | ubuntu-24.04, emulated guest    | extended   | 90       |
-| FreeBSD AArch64 / Build            | ubuntu-26.04, KVM guest         | full       | 45       |
-| FreeBSD AArch64 / Test             | ubuntu-24.04, emulated guest    | full       | 60 / 180 |
-| `CI` — the gate                    | ubuntu-26.04                    | every      | 5        |
+| Job                              | Runner                       | Scope    | Timeout  |
+| -------------------------------- | ---------------------------- | -------- | -------- |
+| Scope                            | ubuntu-26.04                 | every    | 3        |
+| Policy and formatting            | ubuntu-26.04                 | fast     | 10       |
+| `clang-tidy` × 3 shards          | ubuntu-26.04                 | full     | 25       |
+| Linux x86-64 / Build             | ubuntu-26.04                 | fast     | 25       |
+| Linux AArch64 / Build            | ubuntu-26.04-arm             | full     | 25       |
+| macOS AArch64 / Build            | macos-26                     | full     | 30       |
+| macOS x86-64 / Build             | macos-26, under Rosetta      | full     | 35       |
+| Windows x86-64 / Build           | windows-2025                 | full     | 30       |
+| Windows x86-64 / Under emulation | windows-11-arm               | extended | 30       |
+| Windows AArch64 / Build          | windows-11-arm               | full     | 30       |
+| FreeBSD x86-64 / Build           | ubuntu-26.04, KVM guest      | full     | 45       |
+| FreeBSD x86-64 / Transfer        | ubuntu-24.04, emulated guest | extended | 90       |
+| FreeBSD AArch64 / Build          | ubuntu-26.04, KVM guest      | full     | 45       |
+| FreeBSD AArch64 / Test           | ubuntu-24.04, emulated guest | full     | 60 / 180 |
+| `CI` — the gate                  | ubuntu-26.04                 | every    | 5        |
 
 Build and test share one job per target. Splitting them would cost an artifact round-trip and a second runner acquisition on every target without proving anything the closure check below does not prove more directly.
 
@@ -81,11 +81,11 @@ The `-23`-suffixed tool names are mandatory, not cosmetic: they are what `Script
 
 ## Caches
 
-| Cache                 | Key                                                                        | Approximate size |
-| --------------------- | -------------------------------------------------------------------------- | ---------------- |
-| Toolchain prefix      | `toolchain-<target>-<hash of Toolchains.env and the packers>`              | 110–220 MB × 5   |
-| Compilation cache     | `ccache-<target>-<hash of Toolchains.env>-<sha>`, restored by prefix       | ≤ 400 MB × 8     |
-| Prepared FreeBSD disk | managed by `vmactions/freebsd-vm`, keyed on the prepare script             | ~2 GB × 1        |
+| Cache                 | Key                                                                  | Approximate size |
+| --------------------- | -------------------------------------------------------------------- | ---------------- |
+| Toolchain prefix      | `toolchain-<target>-<hash of Toolchains.env and the packers>`        | 110–220 MB × 5   |
+| Compilation cache     | `ccache-<target>-<hash of Toolchains.env>-<sha>`, restored by prefix | ≤ 400 MB × 8     |
+| Prepared FreeBSD disk | managed by `vmactions/freebsd-vm`, keyed on the prepare script       | ~2 GB × 1        |
 
 The compilation cache uses the separate restore and save actions. The `<sha>` suffix makes its primary key always miss, so every saving run writes back a cache warmer than the one it restored. It is saved on pushes only — a pull request rebuilds the commit its branch push already cached, so letting it save as well would only churn the quota — and **before** the tests run, so a slow or failing suite does not cost the next run its warm cache. In the FreeBSD guests the cache rides in and out with the workspace.
 
@@ -117,15 +117,15 @@ The published asset names are the ones the end-user installers resolve (`Packagi
 
 Everything under `.github` is PowerShell or POSIX shell. There is no Python.
 
-| Script                                          | Role                                                              |
-| ----------------------------------------------- | ----------------------------------------------------------------- |
-| `actions/toolchain/action.yml`                  | Restore or pack the host toolchain prefix, cache it, export it    |
-| `Scripts/SetupToolchain.sh` / `.ps1`            | Pack on a miss, check CMake and Ninja, export the environment      |
-| `Scripts/Toolchain/Pack{Linux,MacOS}.sh`, `PackWindows.ps1` | Write one prefix from the pinned upstream assets        |
-| `Scripts/VsDevEnv.ps1`                          | Import the Visual Studio environment once and export it           |
-| `Scripts/Scope.sh`                              | Classify the changed files and resolve the verification scope     |
-| `Scripts/FreeBSDEnv.sh`                         | Export the build environment inside a FreeBSD guest               |
-| `Scripts/Verify.sh` / `Verify.ps1`              | Build, test, format, and closure stages                           |
+| Script                                                      | Role                                                           |
+| ----------------------------------------------------------- | -------------------------------------------------------------- |
+| `actions/toolchain/action.yml`                              | Restore or pack the host toolchain prefix, cache it, export it |
+| `Scripts/SetupToolchain.sh` / `.ps1`                        | Pack on a miss, check CMake and Ninja, export the environment  |
+| `Scripts/Toolchain/Pack{Linux,MacOS}.sh`, `PackWindows.ps1` | Write one prefix from the pinned upstream assets               |
+| `Scripts/VsDevEnv.ps1`                                      | Import the Visual Studio environment once and export it        |
+| `Scripts/Scope.sh`                                          | Classify the changed files and resolve the verification scope  |
+| `Scripts/FreeBSDEnv.sh`                                     | Export the build environment inside a FreeBSD guest            |
+| `Scripts/Verify.sh` / `Verify.ps1`                          | Build, test, format, and closure stages                        |
 
 `Verify.sh` runs unchanged on a native POSIX runner and inside the FreeBSD guest, so those two paths cannot drift. Both verifiers go through `./Run.sh` and `./Run.ps1`, the entry points developers use, so a green job means the developer workflow is green.
 

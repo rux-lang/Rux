@@ -31,15 +31,15 @@ Checks that the requested version is a three-part number, that `project(Rux VERS
 
 Each of the eight jobs `needs: verify` and calls the target's reusable workflow with the `extended` scope, so a release is built by the very steps CI verified and nothing that runs under emulation is skipped: every target builds Release **and runs its suites**, and a broken build or failing test blocks the release.
 
-| Job               | Runner                                          | Binary artifact       |
-| ----------------- | ----------------------------------------------- | --------------------- |
-| `linux-x86_64`    | Ubuntu 26.04                                    | `rux-linux-x86_64`    |
-| `linux-aarch64`   | Ubuntu 26.04 ARM                                | `rux-linux-aarch64`   |
-| `macos-aarch64`   | macOS 26                                        | `rux-macos-aarch64`   |
-| `macos-x86_64`    | macOS 26, cross-built and tested under Rosetta  | `rux-macos-x86_64`    |
-| `windows-x86_64`  | Windows 2025, then Windows 11 ARM under emulation | `rux-windows-x86_64` |
-| `windows-aarch64` | Windows 11 ARM                                  | `rux-windows-aarch64` |
-| `freebsd-x86_64`  | FreeBSD 15.1 x86-64 guest, then the transfer test in an AArch64 guest | `rux-freebsd-x86_64` |
+| Job               | Runner                                                                        | Binary artifact       |
+| ----------------- | ----------------------------------------------------------------------------- | --------------------- |
+| `linux-x86_64`    | Ubuntu 26.04                                                                  | `rux-linux-x86_64`    |
+| `linux-aarch64`   | Ubuntu 26.04 ARM                                                              | `rux-linux-aarch64`   |
+| `macos-aarch64`   | macOS 26                                                                      | `rux-macos-aarch64`   |
+| `macos-x86_64`    | macOS 26, cross-built and tested under Rosetta                                | `rux-macos-x86_64`    |
+| `windows-x86_64`  | Windows 2025, then Windows 11 ARM under emulation                             | `rux-windows-x86_64`  |
+| `windows-aarch64` | Windows 11 ARM                                                                | `rux-windows-aarch64` |
+| `freebsd-x86_64`  | FreeBSD 15.1 x86-64 guest, then the transfer test in an AArch64 guest         | `rux-freebsd-x86_64`  |
 | `freebsd-aarch64` | cross-built in the x86-64 guest, then the complete suites in an AArch64 guest | `rux-freebsd-aarch64` |
 
 Each job runs language tests from the repository root. Test manifests use local path dependencies, and transitive first-party dependencies resolve from workspace members with registry fallback disabled, so release validation is deterministic and network-independent. The Windows AArch64 job additionally runs the native executable exit-code, assertion/panic output, stack-probe, and DLL load/call/unload fixtures. The macOS AArch64 job runs the Apple Silicon import-free exit-code, fixed/variadic libSystem, assertion/panic, and dylib load/call/unload fixtures; each image's ARM64 header and in-process ad-hoc signature are checked before execution. The FreeBSD AArch64 job runs its freestanding, libc, assertion/panic, BSD syscall, and shared-library fixtures on a native AArch64 kernel, and the FreeBSD x86-64 job's transfer test has a fresh AArch64 guest with no compiler installed verify and execute a payload the x86-64 compiler cross-built. These native acceptance steps must pass before the corresponding asset can reach the publish job. The Linux x86-64 job also checks every maintained Rux source with `rux fmt --check`.

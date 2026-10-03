@@ -1,6 +1,6 @@
 # First-Party Package Style
 
-This page is the house style for the 25 first-party packages under `Packages/`. It is narrower than [Comments and Documentation](Comments.md), which defines the *language* contract — what comment syntax exists, how documentation attaches, and which tags the compiler understands. Nothing here changes that contract. Both `//` and `///` remain supported everywhere in the language; this page says which one first-party package sources use, and what a documented declaration in those packages must contain.
+This page is the house style for the 25 first-party packages under `Packages/`. It is narrower than [Comments and Documentation](Comments.md), which defines the _language_ contract — what comment syntax exists, how documentation attaches, and which tags the compiler understands. Nothing here changes that contract. Both `//` and `///` remain supported everywhere in the language; this page says which one first-party package sources use, and what a documented declaration in those packages must contain.
 
 The rules are enforced by `Tests/Unit/PackageDocumentationStyleTests.cpp`, which reads the same lexer trivia, AST declarations and `Syntax::Documentation` metadata the compiler does. It does not rescan Rux with regular expressions. Run it on its own with:
 
@@ -12,11 +12,11 @@ The rules are enforced by `Tests/Unit/PackageDocumentationStyleTests.cpp`, which
 
 Three tools run before this checker and own rules it does not repeat.
 
-| Tool                          | What it owns                                                                                     |
-| ----------------------------- | ------------------------------------------------------------------------------------------------ |
-| `rux fmt`                     | Supported comment spelling, tag spacing, and manifest canonical form                             |
-| `rux lint`                    | Documentation attachment, public-declaration documentation, and structured-tag validity          |
-| `rux doc`                     | Included documentation, generated routes, duplicate routes, and unsafe links                     |
+| Tool       | What it owns                                                                            |
+| ---------- | --------------------------------------------------------------------------------------- |
+| `rux fmt`  | Supported comment spelling, tag spacing, and manifest canonical form                    |
+| `rux lint` | Documentation attachment, public-declaration documentation, and structured-tag validity |
+| `rux doc`  | Included documentation, generated routes, duplicate routes, and unsafe links            |
 
 `rux fmt` preserves authored tag order and does not insert the blank line required before a tag block, and `rux lint` does not require complete parameter or return coverage or an API URL. Those additional rules belong to the checker described here.
 
@@ -34,19 +34,19 @@ Three tools run before this checker and own rules it does not repeat.
 
 Maintained package APIs use `///` throughout.
 
-| Declaration kind               | Required content                                                                                       |
-| ------------------------------ | ------------------------------------------------------------------------------------------------------ |
-| Public function                | Summary, every named parameter, return meaning, relevant failure and safety behavior, canonical `@see` URL |
-| Public method                  | The function requirements, excluding an `@param self`; plus state mutation or consumption              |
-| Constructor or factory         | Result invariant, allocation and failure behavior, and named ownership transfers                       |
-| Struct, variant, enum, interface | Purpose, invariants, ownership and copy behavior, and relevant representation promises                 |
-| Public field                   | Meaning, units, valid range, and ownership or lifetime where relevant                                  |
-| Enum member or variant case    | Meaning, and payload semantics for a payload case                                                      |
-| Interface requirement          | The parameter and return contract, and the obligations it places on implementations                    |
-| Public `asm` function          | ABI, effects, clobber assumptions and raw-memory safety obligations                                    |
-| Public `extern`                | Foreign API meaning, linked runtime, sentinels, error source and pointer requirements                  |
-| Public `const` or type alias   | Meaning and units or value contract, or the reason the alias exists                                    |
-| Destructor                     | Cleanup behavior and retained unsafe assumptions; never `@returns`                                     |
+| Declaration kind                 | Required content                                                                                           |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Public function                  | Summary, every named parameter, return meaning, relevant failure and safety behavior, canonical `@see` URL |
+| Public method                    | The function requirements, excluding an `@param self`; plus state mutation or consumption                  |
+| Constructor or factory           | Result invariant, allocation and failure behavior, and named ownership transfers                           |
+| Struct, variant, enum, interface | Purpose, invariants, ownership and copy behavior, and relevant representation promises                     |
+| Public field                     | Meaning, units, valid range, and ownership or lifetime where relevant                                      |
+| Enum member or variant case      | Meaning, and payload semantics for a payload case                                                          |
+| Interface requirement            | The parameter and return contract, and the obligations it places on implementations                        |
+| Public `asm` function            | ABI, effects, clobber assumptions and raw-memory safety obligations                                        |
+| Public `extern`                  | Foreign API meaning, linked runtime, sentinels, error source and pointer requirements                      |
+| Public `const` or type alias     | Meaning and units or value contract, or the reason the alias exists                                        |
+| Destructor                       | Cleanup behavior and retained unsafe assumptions; never `@returns`                                         |
 
 A summary must say something. A restatement of the declaration's own name is not a summary: `/// Reads a byte.` on `func ReadByte()` conveys nothing the signature did not.
 

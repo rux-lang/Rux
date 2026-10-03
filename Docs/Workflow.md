@@ -6,12 +6,12 @@ The day-to-day loop for changing the Rux compiler. For where your branch should 
 
 Install the current stable toolchain for your OS — see [Building from Source](../README.md#building-from-source). The versions below were verified on September 5, 2026:
 
-| Tool                                                                             | Current release | Repository requirement                                                 |
-| -------------------------------------------------------------------------------- | --------------- | ---------------------------------------------------------------------- |
-| [LLVM / Clang](https://github.com/llvm/llvm-project/releases/tag/llvmorg-23.1.0) | 23.1.0          | Upstream Clang 23.1+; LLVM 23 `clang-format` and `clang-tidy`          |
+| Tool                                                                             | Current release | Repository requirement                                                  |
+| -------------------------------------------------------------------------------- | --------------- | ----------------------------------------------------------------------- |
+| [LLVM / Clang](https://github.com/llvm/llvm-project/releases/tag/llvmorg-23.1.0) | 23.1.0          | Upstream Clang 23.1+; LLVM 23 `clang-format` and `clang-tidy`           |
 | [CMake](https://cmake.org/download/)                                             | 4.4.3           | CMake 3.31+ with policies through 4.4; CI uses the runner image's CMake |
-| [Ninja](https://github.com/ninja-build/ninja/releases/tag/v1.13.2)               | 1.13.2          | 1.13.2+; CI uses the runner image's Ninja                              |
-| [Git](https://git-scm.com/install/)                                              | 2.55.0          | Use the current stable release; platform packaging suffixes may differ |
+| [Ninja](https://github.com/ninja-build/ninja/releases/tag/v1.13.2)               | 1.13.2          | 1.13.2+; CI uses the runner image's Ninja                               |
+| [Git](https://git-scm.com/install/)                                              | 2.55.0          | Use the current stable release; platform packaging suffixes may differ  |
 
 Configuration rejects unsupported C++ compilers, older Clang/CMake versions, and Ninja versions below 1.13.2. Install `clang-format` and `clang-tidy` from the same LLVM 23 release.
 
