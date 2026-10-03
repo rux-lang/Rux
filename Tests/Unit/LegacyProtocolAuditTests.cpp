@@ -36,11 +36,8 @@ using namespace Rux;
 
 namespace {
 
-/// The fixtures whose subject is the legacy Option protocol. They keep it working until it is removed.
-constexpr std::array ProtocolFixtures{
-    std::string_view("Tests/Language/Coalescing"),
-    std::string_view("Tests/Language/Iteration"),
-};
+/// The fixtures whose subject was a legacy protocol. Both protocols are removed, so none remains excluded.
+constexpr std::array<std::string_view, 0> ProtocolFixtures{};
 
 /// One `rux check` run, and the name its sites are recorded under when the source it checks is not a file of the
 /// repository.
@@ -121,10 +118,6 @@ std::vector<std::string> AuditErrors(const std::vector<SemanticDiagnostic> &diag
     return errors;
 }
 
-constexpr std::string_view LegacyProtocols = R"(
-    variant Option<T> { Some(T), None }
-)";
-
 std::map<std::string, std::size_t> LoadBaseline() {
     std::map<std::string, std::size_t> entries;
     std::ifstream input(BaselinePath());
@@ -156,50 +149,37 @@ void WriteBaseline(const std::map<std::string, std::size_t> &counts) {
 
 } // namespace
 
-TEST_CASE("the audit reports each legacy protocol site once and changes nothing without the switch") {
-    const std::string source = std::string(LegacyProtocols) + R"(
+TEST_CASE("the audit has nothing left to report once the legacy protocols are gone") {
+    const std::string source = R"(
         struct E {}
         struct Counter { n: int32; }
         extend Counter {
-            func Next(self: &var Counter) -> Option<int32> { return Option::None<int32>(); }
+            func Next(self: &var Counter) -> int32? { return none; }
         }
-        func Find() -> Option<int32> { return Option::Some<int32>(2i32); }
-        func Forward() -> Option<int32> { return Option::Some<int32>(Find()?); }
+        func Find() -> int32? { return 2i32; }
+        func Forward() -> int32? { return Find()?; }
         func Pick() -> int32 { return Find() ?? 0i32; }
-        func Fallback<T>(value: Option<T>, fallback: T) -> T { return value ?? fallback; }
+        func Fallback<T>(value: T?, fallback: T) -> T { return value ?? fallback; }
         func Loop(counter: Counter) -> int32 {
             var total = 0i32;
             for value in counter {
                 total = total + value;
             }
-            return total + Fallback<int32>(Find(), 1i32) + (Fallback<bool>(Option::Some<bool>(true), false) ? 1i32 : 0i32);
+            return total + Fallback<int32>(Find(), 1i32) + (Fallback<bool>(true, false) ? 1i32 : 0i32);
         }
         func Native(value: int32 ! E, optional: int32?) -> int32 ! E {
             return value? + (optional ?? 0i32);
         }
     )";
-    CHECK(AuditErrors(Testing::SemanticTestSupport::AnalyzeSource(source)).empty());
-
-    const auto errors = AuditErrors(Testing::SemanticTestSupport::AnalyzeSource(source, {.denyLegacyProtocols = true}));
-    INFO(std::ranges::fold_left(errors, std::string(), [](std::string all, const std::string &error) {
-        return std::move(all) + error + "\n";
-    }));
-    REQUIRE_EQ(errors.size(), 5);
-    CHECK(errors[0].contains("iterator method 'Next' on 'Counter' uses the legacy Option protocol"));
-    CHECK(errors[1].contains("'?' uses the legacy Option protocol on 'Option<int32>'; migrate to a native optional"));
-    CHECK(errors[2].contains("'?"
-                             "?' uses the legacy Option protocol on 'Option<int32>'"));
-    // The generic body is analyzed for each instantiation but reported once.
-    CHECK(errors[3].contains("'?"
-                             "?' uses the legacy Option protocol on 'Option<T>'"));
-    CHECK(errors[4].contains("'for' uses the legacy Option protocol of 'Option<int32>'"));
+    CHECK(Testing::SemanticTestSupport::AnalyzeSource(source).empty());
+    CHECK(Testing::SemanticTestSupport::AnalyzeSource(source, {.denyLegacyProtocols = true}).empty());
 }
 
-TEST_CASE("the audit reports only the package being analyzed") {
-    const std::string dependency = std::string(LegacyProtocols) + R"(
-        pub func Find() -> Option<int32> { return Option::Some<int32>(2i32); }
+TEST_CASE("the audit reports nothing for a dependency's native forms") {
+    const std::string dependency = R"(
+        pub func Find() -> int32? { return 2i32; }
         pub func Pick() -> int32 { return Find() ?? 0i32; }
-        pub func Fallback<T>(value: Option<T>, fallback: T) -> T { return value ?? fallback; }
+        pub func Fallback<T>(value: T?, fallback: T) -> T { return value ?? fallback; }
     )";
     const auto errors =
         AuditErrors(Testing::SemanticTestSupport::AnalyzeWithDep(R"(

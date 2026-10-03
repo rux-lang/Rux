@@ -98,7 +98,7 @@ const std::string kOptionPrelude = R"(
     variant Option<T> { Some(T), None }
     struct Counter { value: int32; limit: int32; }
     extend Counter {
-        func Next(self: &var Counter) -> Option<int32> {
+        func Advance(self: &var Counter) -> Option<int32> {
             if self.value >= self.limit { return Option::None<int32>(); }
             let current = self.value;
             self.value = self.value + 1i32;
@@ -112,14 +112,14 @@ TEST_CASE("a returned variant is matched in the representation it was built in")
     const LirPackage package = LowerSource(kOptionPrelude + R"(
         func Main() -> int {
             var it = Counter { value: 0i32, limit: 3i32 };
-            let a = match it.Next() { .Some(v) => v as int, .None => 90 };
-            let b = match it.Next() { .Some(v) => v as int, .None => 90 };
+            let a = match it.Advance() { .Some(v) => v as int, .None => 90 };
+            let b = match it.Advance() { .Some(v) => v as int, .None => 90 };
             return a * 10 + b;
         }
     )");
 
     // The method builds the aggregate: every payload it writes is placed at an offset from the enum's storage.
-    const LirFunc &next = RequireFunction(package, "Counter::Next");
+    const LirFunc &next = RequireFunction(package, "Counter::Advance");
     CHECK(ReadsPayloadByOffset(next));
     CHECK_FALSE(ReadsPayloadByShift(next));
 
@@ -136,7 +136,7 @@ TEST_CASE("a method's returned variant type carries the same layout as one built
         func Main() -> int {
             var it = Counter { value: 0i32, limit: 1i32 };
             let built = Option::Some<int32>(1i32);
-            let returned = it.Next();
+            let returned = it.Advance();
             return match built { .Some(v) => v as int, .None => 0 } +
                    match returned { .Some(v) => v as int, .None => 0 };
         }

@@ -1,5 +1,5 @@
-// What a `for` loop becomes: the direct loop for an array, a slice or a range, and the calls of the iterator convention
-// for anything else.
+// What a `for` loop becomes: the direct loop for an array, a slice or a range, and the calls of the iterator
+// convention, matching the native optional `Next` reports, for anything else.
 
 #include "Lexer/Lexer.h"
 #include "Lowering/AstToHir/AstToHir.h"
@@ -67,14 +67,13 @@ std::string CalleeName(const HirExpr &expr) {
 }
 
 const std::string kIterationPrelude = R"(
-    variant Option<T> { Some(T), None }
     struct Counter { value: int32; limit: int32; }
     extend Counter {
-        func Next(self: &var Counter) -> Option<int32> {
-            if self.value >= self.limit { return Option::None<int32>(); }
+        func Next(self: &var Counter) -> int32? {
+            if self.value >= self.limit { return none; }
             let current = self.value;
             self.value = self.value + 1i32;
-            return Option::Some<int32>(current);
+            return current;
         }
     }
     struct Span { limit: int32; }
@@ -106,16 +105,15 @@ TEST_CASE("a loop over an iterator advances it and matches what it reports") {
     const HirMatchStmt &step = RequireAdvanceStep(scope);
     CHECK_EQ(CalleeName(*step.subject), "Counter::Next");
     REQUIRE_EQ(step.arms.size(), 2);
+    // The item arrives by the presence tag of the native optional `Next` reports, and only its absence ends the loop.
     const auto *item = dynamic_cast<const HirEnumPattern *>(step.arms[0].pattern.get());
     REQUIRE(item != nullptr);
-    CHECK_EQ(item->path, std::vector<std::string>{"Option", "Some"});
-    CHECK_EQ(item->form, CaseTypeForm::Variant);
+    CHECK_EQ(item->discriminant, "1");
     CHECK(item->hasPayload);
     CHECK_EQ(item->payloadTypes, std::vector<TypeRef>{TypeRef::MakeInt32()});
     const auto *end = dynamic_cast<const HirEnumPattern *>(step.arms[1].pattern.get());
     REQUIRE(end != nullptr);
-    CHECK_EQ(end->path, std::vector<std::string>{"Option", "None"});
-    CHECK_EQ(end->form, CaseTypeForm::Variant);
+    CHECK_EQ(end->discriminant, "0");
     CHECK_FALSE(end->hasPayload);
 }
 
@@ -160,38 +158,6 @@ TEST_CASE("a container is asked for its iterator once, before the loop") {
     CHECK_EQ(CalleeName(*iterator->init), "Span::Iterate");
     CHECK_EQ(iterator->type, TypeRef::MakeNamed("Counter"));
     CHECK_EQ(CalleeName(*RequireAdvanceStep(scope).subject), "Counter::Next");
-}
-
-TEST_CASE("custom Option-shaped variants retain their declared name in iterator matches") {
-    const HirPackage package = LowerSource(R"(
-        variant Step<T> { Some(T), None }
-        struct Counter { value: int32; limit: int32; }
-        extend Counter {
-            func Next(self: &var Counter) -> Step<int32> {
-                if self.value >= self.limit { return Step::None<int32>(); }
-                let current = self.value;
-                self.value = self.value + 1i32;
-                return Step::Some<int32>(current);
-            }
-        }
-        func Walk() {
-            var counter = Counter { value: 0i32, limit: 1i32 };
-            for item in counter {}
-        }
-    )");
-
-    const HirMatchStmt &step = RequireAdvanceStep(RequireIterationScope(RequireFunction(package, "Walk"), 1));
-    REQUIRE_EQ(step.arms.size(), 2);
-    const auto *item = dynamic_cast<const HirEnumPattern *>(step.arms[0].pattern.get());
-    const auto *end = dynamic_cast<const HirEnumPattern *>(step.arms[1].pattern.get());
-    REQUIRE(item != nullptr);
-    REQUIRE(end != nullptr);
-    CHECK_EQ(item->path, std::vector<std::string>{"Step", "Some"});
-    CHECK_EQ(end->path, std::vector<std::string>{"Step", "None"});
-    CHECK_EQ(item->form, CaseTypeForm::Variant);
-    CHECK_EQ(end->form, CaseTypeForm::Variant);
-    CHECK(item->hasPayload);
-    CHECK_FALSE(end->hasPayload);
 }
 
 TEST_CASE("nested convention-driven loops advance separate iterators") {

@@ -125,7 +125,7 @@ TEST_CASE("explicit propagation is the forwarding alternative of the ambiguous r
               .empty());
 }
 
-TEST_CASE("legacy and native outcomes never propagate into each other") {
+TEST_CASE("native outcomes and Option-shaped variants never propagate into each other") {
     const auto errors = ErrorDiagnostics(std::string(kDeclarations) + R"(
         variant Option<T> {
             Some(T),
@@ -148,11 +148,12 @@ TEST_CASE("legacy and native outcomes never propagate into each other") {
     REQUIRE(native->help.has_value());
     CHECK(native->help->contains("'-> T ! E'"));
     const auto legacy = std::ranges::find_if(errors, [](const SemanticDiagnostic &diagnostic) {
-        return diagnostic.message.starts_with("'?' propagates an Option, but the enclosing function returns");
+        return diagnostic.message == "'Option<int32>' cannot be propagated with '?' because it is neither a native "
+                                     "fallible nor an optional";
     });
     REQUIRE(legacy != errors.end());
     REQUIRE(legacy->help.has_value());
-    CHECK(legacy->help->contains("'.Some(...)'"));
+    CHECK(legacy->help->contains("propagate a native optional"));
 }
 
 TEST_CASE("'?' needs a fallible enclosing function at the outer level") {

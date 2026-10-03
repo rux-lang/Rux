@@ -400,7 +400,7 @@ extend String {
 }
 ```
 
-Constructors are called as `String(...)` or `Vector<int32>(...)`, not through an implicit conversion. Infallible same-type `New` factories migrate to this form. Fallible factories returning `Option<T>` and descriptive factories such as `NewKeyed` or `New128` are not constructors and may keep their names.
+Constructors are called as `String(...)` or `Vector<int32>(...)`, not through an implicit conversion. Infallible same-type `New` factories migrate to this form. Fallible factories returning `T?` or `T ! E` and descriptive factories such as `NewKeyed` or `New128` are not constructors and may keep their names.
 
 `var value: T;` invokes `T()` when an accessible default constructor exists. With no `T()`, the declaration remains legal but denotes compiler-tracked uninitialized storage. Reading or destroying that storage before definite initialization is an error. Construction and assignment are distinct: a constructor creates a value, while `=` replaces or initializes storage according to its current state. Constructor lookup is never a general hidden conversion rule.
 
@@ -421,7 +421,7 @@ The element type must be copyable. Construct move-only elements explicitly or in
 
 On a native fallible `T ! E`, the enclosing function must itself be fallible, `-> U ! F`, and the error leaves as its outer failure. The error enters `F` only by identity, by injection as a member of a sum `F`, or by widening a sum `E` whose members are all members of `F`; `?` never converts an error, so a different error type is mapped explicitly or matched. The failure exit chooses the outer failure channel directly, so it never competes with the success construction a plain `return` might perform: in a function returning `(int32 | R) ! E` where `R = int32 ! E`, `return value?;` forwards an inner failure while `return .Success(value);` keeps it as data. An enclosing optional or a nested level is not a propagation target; deeper handling is written with `match`.
 
-A failure propagates only from a native fallible. A variant with `Success` and `Error` cases is an ordinary variant: `?` rejects it, and its cases are constructed and matched like any other. The legacy Option protocol, described under [Option Coalescing](#option-coalescing), still lets `?` remove one level of an Option-shaped variant until it is removed in turn; a legacy operand never propagates into a native form, nor a native operand into a legacy variant, and `rux check --deny-legacy-protocols` reports every remaining use of it as an error.
+A failure propagates only from a native fallible and absence only from a native optional. A variant with `Success` and `Error` cases, or with `Some` and `None` cases, is an ordinary variant whatever its declaration is called: `?` rejects it with a note naming the native form, and its cases are constructed and matched like any other.
 
 Propagation consumes its evaluated outcome. A named copyable outcome is copied and remains usable; a named move-only outcome requires `(<-outcome)?`, and a borrowed fallible is never an operand. The continuing payload and the outgoing error are transferred using their move operations. Reference payloads cannot preserve hidden borrow provenance, and payloads that prohibit moving are rejected, including when instantiated in a generic. Use an explicit match when the payload needs to be borrowed or copied instead.
 
@@ -463,35 +463,27 @@ The arms use ordinary match-arm grammar, including guards and an `else` arm, and
 
 ### Optional propagation
 
-On a native optional `T?`, `value?` removes exactly one presence level: a present value continues as its payload, which may itself be an optional or a fallible, and absence returns from the enclosing function. The enclosing function returns either an optional `U?`, which then returns `none`, or a fallible whose success is an optional, `U? ! F`, which then succeeds with `none`. Absence never becomes an invented error, and no deeper level is a target. As with fallible propagation, the operand is consumed, a move-only operand is transferred as `(<-value)?`, and a borrowed optional is never an operand. A legacy Option operand and a native optional destination, or the reverse, are rejected with a help naming the explicit rewrap. The legacy protocol also removes one level of a variant with exactly `Some(T)` and payload-less `None` cases when the enclosing function returns such a variant, preserving the complete active payload, including nested and generic payloads and zero-sized values.
+On a native optional `T?`, `value?` removes exactly one presence level: a present value continues as its payload, which may itself be an optional or a fallible, and absence returns from the enclosing function. The enclosing function returns either an optional `U?`, which then returns `none`, or a fallible whose success is an optional, `U? ! F`, which then succeeds with `none`. Absence never becomes an invented error, and no deeper level is a target. As with fallible propagation, the operand is consumed, a move-only operand is transferred as `(<-value)?`, and a borrowed optional is never an operand. The complete active payload continues, including nested and generic payloads and zero-sized values.
 
 ### Coalescing
 
 `option ?? fallback` takes the payload of one native optional level, or evaluates `fallback` when it is absent. The fallback is evaluated lazily and must convert to the payload type, or leave: `candidate ?? fail NotFound {}` turns absence into a failure, and `?? return`, `?? break`, `?? continue`, and a call to `Panic` are accepted the same way. A present absence is a value: with `nested: int32??`, `nested ?? fallback` yields the inner `int32?`. `??` operates only on an optional; a fallible operand is rejected because coalescing would silently discard its error, and a borrowed optional is never an operand.
 
-### Legacy coalescing
+### Evaluation and ownership
 
-The legacy protocol extracts the value carried by an Option-shaped variant or evaluates `fallback` when it is `None`:
+The left operand is evaluated exactly once. The fallback is checked at compile time but evaluated only for absence, so it may perform expensive work or visible side effects without paying that cost when a value is present. A variant with `Some` and `None` cases is not an optional and is rejected as a left operand, as is a raw pointer; a raw pointer may still be the payload of an optional. Reference payloads are not supported because extracting one would lose its borrow provenance.
 
-```rux
-let port = configuredPort ?? ReadDefaultPort();
-```
-
-The left operand is evaluated exactly once. The fallback is checked at compile time but evaluated only for `None`, so it may perform expensive work or visible side effects without paying that cost on the `Some` path. The result type is the payload type, and the fallback must be assignable to it.
-
-Option is a structural protocol rather than a built-in type name. The left type must be a `variant` with exactly `Some(T)` and payload-less `None` cases; a user-declared `Maybe<T>` with that shape works identically. `Result`, scalar enums, malformed lookalikes, references to an Option, and raw pointers used directly as the left operand are rejected. A raw pointer may still be the `T` inside an Option. Reference payloads are not supported because extracting one would lose the borrow provenance hidden inside `Some`.
-
-Coalescing consumes its evaluated Option. A named copyable Option is copied and remains usable, while a named move-only Option must make the transfer visible:
+Coalescing consumes its evaluated optional. A named copyable optional is copied and remains usable, while a named move-only optional must make the transfer visible:
 
 ```rux
 let value = (<-ownedOption) ?? <-ownedFallback;
 ```
 
-The fallback transfer is conditional, so `ownedFallback` is possibly moved after this expression. `??` associates to the right. Logical `||` binds more tightly and `?:` binds less tightly, so `first ?? second ?? fallback` means `first ?? (second ?? fallback)`. The operator is compiler-owned control flow: it cannot be declared in an `extend` block or overloaded, and there is no `??=` form. Because `??` is now a single maximal-munch token, two adjacent postfix propagations must be written `(nested?)?` instead of `nested??`.
+The fallback transfer is conditional, so `ownedFallback` is possibly moved after this expression. `??` associates to the right. Logical `||` binds more tightly and `?:` binds less tightly, so `first ?? second ?? fallback` means `first ?? (second ?? fallback)`. The operator is compiler-owned control flow: it cannot be declared in an `extend` block or overloaded, and there is no `??=` form. Because `??` is a single maximal-munch token, two adjacent postfix propagations must be written `(nested?)?` instead of `nested??`.
 
 ## Iteration
 
-`for item in subject` iterates an array, a slice, or a range directly. Any other subject is driven by the iterator convention: an iterator declares `func Next(self: &var Iterator) -> Item?`, and a container declares a parameterless `Iterate` returning such an iterator, so two loops over one container advance independent iterators. Each iteration calls `Next` once; a present result continues the loop with its payload, and only the outer absence ends it. An item may itself be an optional, a fallible, a sum, or the unit: an absent or failed item is an ordinary value of the loop, and no error channel is added to iteration. During the migration from the legacy protocol, `Next` may instead return an Option-shaped variant with exactly `Some(Item)` and payload-less `None` cases.
+`for item in subject` iterates an array, a slice, or a range directly. Any other subject is driven by the iterator convention: an iterator declares `func Next(self: &var Iterator) -> Item?`, and a container declares a parameterless `Iterate` returning such an iterator, so two loops over one container advance independent iterators. Each iteration calls `Next` once; a present result continues the loop with its payload, and only the outer absence ends it. An item may itself be an optional, a fallible, a sum, or the unit: an absent or failed item is an ordinary value of the loop, and no error channel is added to iteration. A `Next` returning a variant with `Some` and `None` cases is rejected where it is declared, because no loop reads such a variant.
 
 ## Indexing
 

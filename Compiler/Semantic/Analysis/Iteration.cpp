@@ -13,9 +13,6 @@ namespace Rux::SemanticDetail {
 namespace {
 constexpr std::string_view kNextMethod = "Next";
 constexpr std::string_view kIterateMethod = "Iterate";
-/// The cases a `Next` reports with. They are `Option`'s, named here because the loop matches them by name.
-constexpr std::string_view kOptionSomeVariant = "Some";
-constexpr std::string_view kOptionNoneVariant = "None";
 
 /// The parameters a method declares besides its receiver.
 [[nodiscard]] std::size_t WrittenParameterCount(const FuncDecl &declaration) {
@@ -72,13 +69,9 @@ std::optional<AnalysisContext::ReportedItem> AnalysisContext::ReportedItemOf(con
     // A native optional reports an item by its presence and the end by its outer absence; an item may itself be
     // absent or failed without ending anything.
     if (returned.IsOptional() && !returned.IsIncompleteNative()) {
-        return ReportedItem{returned.inner.front(), returned, nullptr};
+        return ReportedItem{returned.inner.front(), returned};
     }
-    const auto reported = PropagationShapeOf(returned);
-    if (!reported) {
-        return std::nullopt;
-    }
-    return ReportedItem{reported->payload, returned, reported->declaration};
+    return std::nullopt;
 }
 
 const FuncDecl *AnalysisContext::LookupIterableEntry(const TypeRef &type) const {
@@ -122,7 +115,6 @@ std::optional<AnalysisContext::IterationShape> AnalysisContext::IterationShapeOf
             shape.iteratorType = subject;
             shape.advance = advance;
             shape.reportedType = std::move(reported->reportedType);
-            shape.reportedDeclaration = reported->declaration;
             return shape;
         }
         return std::nullopt;
@@ -140,7 +132,6 @@ std::optional<AnalysisContext::IterationShape> AnalysisContext::IterationShapeOf
                 shape.advance = advance;
                 shape.entry = entry;
                 shape.reportedType = std::move(reported->reportedType);
-                shape.reportedDeclaration = reported->declaration;
                 return shape;
             }
         }
@@ -169,18 +160,6 @@ void AnalysisContext::RecordIteration(const ForStmt &statement, const IterationS
     iteration.advance = shape.advance;
     iteration.entry = shape.entry;
     iteration.reportedType = shape.reportedType;
-    iteration.native = shape.reportedType.IsOptional();
-    if (shape.reportedDeclaration) {
-        ReportLegacyProtocol(
-            statement.location,
-            std::format("'for' uses the legacy Option protocol of '{}'; migrate its 'Next' to return a "
-                        "native optional",
-                        shape.reportedType.ToString()),
-            "declare 'func Next(self: &var Iterator) -> Item?'");
-        iteration.optionVariantName = programIndex.NominalName(*shape.reportedDeclaration);
-        iteration.someVariant = std::string(kOptionSomeVariant);
-        iteration.noneVariant = std::string(kOptionNoneVariant);
-    }
     iterations.insert_or_assign(&statement, std::move(iteration));
 }
 
@@ -192,8 +171,8 @@ void AnalysisContext::EmitNotIterable(const SourceLocation location, const TypeR
     if (const auto methods = methodsByType.find(typeName); methods != methodsByType.end()) {
         if (methods->second.contains(std::string(kNextMethod))) {
             notes.push_back(
-                std::format("type '{}' declares 'Next', but not as 'func Next(self: &var {}) -> T?' returning an "
-                            "optional or an Option-shaped variant",
+                std::format("type '{}' declares 'Next', but not as 'func Next(self: &var {}) -> T?' returning a "
+                            "native optional",
                             subject.ToString(), typeName));
         }
         else if (methods->second.contains(std::string(kIterateMethod))) {
@@ -211,26 +190,22 @@ void AnalysisContext::ValidateIteratorConvention(const FuncDecl &declaration, co
     }
 
     if (declaration.name == kNextMethod) {
-        // Only a `Next` that reports an end is the convention's; one returning anything else is an ordinary method that
-        // happens to share the name.
+        // Only a `Next` that reports an end with a native optional is the convention's; one returning anything else is
+        // an ordinary method that happens to share the name. A variant with `Some` and `None` cases is the one return
+        // type that looks like it was meant to be, and no loop reads it, so it is refused where it is declared.
         const TypeRef returned =
             declaration.returnType ? ResolveType(*declaration.returnType->get()) : TypeRef::MakeOpaque();
-        const auto reported = PropagationShapeOf(returned);
-        if (!returned.IsOptional() && !reported) {
-            if (auto issue = PropagationShapeIssue(returned)) {
+        if (!returned.IsOptional()) {
+            if (LegacyOutcomeShapeOf(returned) == LegacyOutcomeShape::Option) {
                 EmitError(declaration.location,
-                          std::format("iterator method 'Next' on '{}' must return an Option-shaped variant",
+                          std::format("iterator method 'Next' on '{}' must return a native optional",
                                       currentExtendedType.ToString()),
-                          {std::move(*issue)}, "return a variant with exactly 'Some(T)' and payload-less 'None' cases");
+                          {std::format("'{}' is an ordinary variant; 'for' ends only at the absence of a native "
+                                       "optional",
+                                       returned.ToString())},
+                          "return 'Item?' and report the end with 'none'");
             }
             return;
-        }
-        if (!returned.IsOptional()) {
-            ReportLegacyProtocol(declaration.location,
-                                 std::format("iterator method 'Next' on '{}' uses the legacy Option protocol; migrate "
-                                             "it to return a native optional",
-                                             currentExtendedType.ToString()),
-                                 std::format("return '{}?'", reported->payload.ToString()));
         }
         if (WrittenParameterCount(declaration) != 0) {
             EmitError(declaration.location,

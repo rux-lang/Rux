@@ -363,19 +363,15 @@ private:
     void CheckCast(const TypeRef &operand, const TypeRef &target, SourceLocation location);
     [[nodiscard]] bool CastTypesAreCompatible(const TypeRef &operand, const TypeRef &target) const;
 
-    /// A variant the legacy Option protocol applies to, recognized by its declared cases rather than by a built-in
-    /// identity: exactly `Some(T)` and a payload-less `None`. Failure has no legacy shape.
-    struct PropagationShape {
-        const EnumDecl *declaration = nullptr;
-        TypeRef payload = TypeRef::MakeUnknown();
+    /// The case names the retired Result and Option protocols recognized. Such a variant is ordinary and earns no
+    /// operator or iterator behavior; the shape only lets the diagnostics that reject it name the native replacement.
+    enum class LegacyOutcomeShape {
+        None,
+        Result,
+        Option
     };
 
-    [[nodiscard]] std::optional<PropagationShape> PropagationShapeOf(const TypeRef &type);
-    /// Why a variant that names an Option case still is not Option-shaped, for the diagnostic that rejects it.
-    [[nodiscard]] std::optional<std::string> PropagationShapeIssue(const TypeRef &type) const;
-    /// Whether `type` is a variant with `Success` and `Error` cases, which the retired Result protocol recognized; it
-    /// is an ordinary variant now, and the diagnostics that reject it say so.
-    [[nodiscard]] bool IsLegacyResultShape(const TypeRef &type) const;
+    [[nodiscard]] LegacyOutcomeShape LegacyOutcomeShapeOf(const TypeRef &type) const;
     [[nodiscard]] std::optional<TypeRef> CheckTryExpression(const TryExpr &expression);
     /// `?` on a native fallible: the success continues and the error leaves as the enclosing outer failure.
     [[nodiscard]] TypeRef CheckNativeTry(const TryExpr &expression, const TypeRef &operandType);
@@ -409,19 +405,17 @@ private:
         TypeRef iteratorType = TypeRef::MakeUnknown();
         const FuncDecl *advance = nullptr;
         const FuncDecl *entry = nullptr;
-        /// What `Next` reports, and the enum declaration that reports it.
+        /// The native optional `Next` reports.
         TypeRef reportedType = TypeRef::MakeUnknown();
-        const EnumDecl *reportedDeclaration = nullptr;
     };
 
     [[nodiscard]] const FuncDecl *LookupIteratorAdvance(const TypeRef &type) const;
     [[nodiscard]] const FuncDecl *LookupIterableEntry(const TypeRef &type) const;
 
-    /// What one `Next` reports: the item it carries, the Option type it is wrapped in, and that enum's declaration.
+    /// What one `Next` reports: the item it carries and the native optional it is wrapped in.
     struct ReportedItem {
         TypeRef itemType;
         TypeRef reportedType;
-        const EnumDecl *declaration = nullptr;
     };
 
     [[nodiscard]] std::optional<ReportedItem> ReportedItemOf(const TypeRef &iteratorType, const FuncDecl &advance);

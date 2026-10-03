@@ -13,11 +13,6 @@ enum IoError: int32 {
     Closed
 }
 
-variant Option<T> {
-    Some(T),
-    None
-}
-
 struct Plain {
     value: int32;
 }
@@ -67,8 +62,8 @@ struct Cursor {
 }
 
 extend Cursor {
-    func Next(self: &Cursor) -> Option<int32> {
-        return Option::None<int32>();
+    func Next(self: &Cursor) -> int32? {
+        return none;
     }
 }
 

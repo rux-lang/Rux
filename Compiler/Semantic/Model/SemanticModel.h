@@ -183,34 +183,21 @@ struct ResolvedIndexAssignment {
     TypeRef valueType;
 };
 
-/// What one accepted `expr?` propagates. Analysis checks a native fallible or optional, or identifies a legacy `Option`
-/// by its variant cases, against the enclosing return type, so lowering builds the early return from this rather than
-/// recognizing the shape again.
+/// What one accepted `expr?` propagates. Analysis checks a native fallible or optional against the enclosing return
+/// type: a fallible's success continues and its error leaves as the enclosing outer failure, injected or widened into
+/// that error channel, and an optional's payload continues while its absence leaves.
 struct ResolvedPropagation {
-    /// A native fallible operand: its success continues and its error leaves as the enclosing function's outer failure,
-    /// injected or widened into that error channel. The variant names are unused.
-    bool native = false;
-    /// The operand's variant declaration and the cases to test, and the declaration the early return constructs.
-    std::string variantName;
-    std::string successVariant;
-    std::string failureVariant;
-    std::string returnVariantName;
-    /// What the expression evaluates to, and the error a native fallible's early return carries. Absence carries no
-    /// payload, so an optional, native or legacy, leaves the second unset.
+    /// What the expression evaluates to, and the error a fallible's early return carries. Absence carries no payload,
+    /// so an optional leaves the second unset.
     TypeRef payloadType;
     std::optional<TypeRef> failureType;
     TypeRef returnType;
 };
 
-/// What one accepted `option ?? fallback` coalesces. Analysis identifies the Option protocol structurally and fixes
-/// the payload type, so lowering only has to build the lazy match it describes.
+/// What one accepted `option ?? fallback` coalesces. Analysis checks the native optional and fixes the payload type,
+/// so lowering only has to build the lazy match it describes.
 struct ResolvedCoalescing {
-    std::string variantName;
-    std::string someVariant;
-    std::string noneVariant;
     TypeRef payloadType;
-    /// A native optional operand: its presence is tested by its native tag and the variant names are unused.
-    bool native = false;
 };
 
 /// How one accepted `for` loop reads its subject. Analysis decides whether the subject is driven directly or through
@@ -231,14 +218,8 @@ struct ResolvedIteration {
     TypeRef iteratorType;
     const FuncDecl *advance = nullptr;
     const FuncDecl *entry = nullptr;
-    /// What `Next` reports, and the variant type it reports it with: the loop matches the item case to continue and the
-    /// end case to leave.
+    /// The native optional `Next` reports: presence continues the loop and outer absence ends it.
     TypeRef reportedType;
-    std::string optionVariantName;
-    std::string someVariant;
-    std::string noneVariant;
-    /// `Next` reports a native optional: presence continues the loop and outer absence ends it.
-    bool native = false;
 };
 
 /// The key analysis and lowering both use to name one proven bound. A pointer receiver and a generic instantiation

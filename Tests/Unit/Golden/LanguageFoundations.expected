@@ -1,13 +1,13 @@
-26:21: error: name 'Plain' is a type, not an interface, and cannot bound type parameter 'T'
-26:31: error: interface 'Displya' is not defined
-37:18: error: type argument 'Plain' does not satisfy interface bound 'Display' on type parameter 'T'
-42:17: error: no interface bound on type parameter 'T' provides method 'Measure'
-51:25: error: '?' propagates error type 'ParseError', but the enclosing function fails with 'IoError'
-56:25: error: '?' propagates native fallible 'int32 ! ParseError', but the enclosing function returns nothing
-60:21: error: 'int32' cannot be propagated with '?' because it is neither a native fallible nor an optional
-60:5: warning: cannot infer type of 'value'
-70:5: error: iterator method 'Next' on 'Cursor' must take a mutable receiver
-77:17: error: cannot iterate over 'Plain'
-82:11: error: checked arithmetic intrinsic 'CheckedAdd' must be declared as 'func CheckedAdd(left: uint64, right: uint64, result: *var uint64) -> bool'
-84:11: error: zeroization intrinsic 'Zeroize' must be declared as 'func Zeroize(memory: *var uint8, length: uint64)'
-92:12: error: cannot determine the alignment of type 'Recursive'
+21:21: error: name 'Plain' is a type, not an interface, and cannot bound type parameter 'T'
+21:31: error: interface 'Displya' is not defined
+32:18: error: type argument 'Plain' does not satisfy interface bound 'Display' on type parameter 'T'
+37:17: error: no interface bound on type parameter 'T' provides method 'Measure'
+46:25: error: '?' propagates error type 'ParseError', but the enclosing function fails with 'IoError'
+51:25: error: '?' propagates native fallible 'int32 ! ParseError', but the enclosing function returns nothing
+55:21: error: 'int32' cannot be propagated with '?' because it is neither a native fallible nor an optional
+55:5: warning: cannot infer type of 'value'
+65:5: error: iterator method 'Next' on 'Cursor' must take a mutable receiver
+72:17: error: cannot iterate over 'Plain'
+77:11: error: checked arithmetic intrinsic 'CheckedAdd' must be declared as 'func CheckedAdd(left: uint64, right: uint64, result: *var uint64) -> bool'
+79:11: error: zeroization intrinsic 'Zeroize' must be declared as 'func Zeroize(memory: *var uint8, length: uint64)'
+87:12: error: cannot determine the alignment of type 'Recursive'

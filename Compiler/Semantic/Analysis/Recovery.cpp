@@ -124,7 +124,6 @@ TypeRef AnalysisContext::CheckMappedTry(const MappedTryExpr &expression) {
     RestoreTrackedFlow(continuing);
 
     ResolvedPropagation propagation;
-    propagation.native = true;
     propagation.payloadType = success;
     propagation.failureType = error;
     propagation.returnType = currentReturnType;
@@ -147,7 +146,7 @@ TypeRef AnalysisContext::CheckCatchExpression(const CatchExpr &expression) {
         return TypeRef::MakeUnknown();
     }
     if (!subjectType.IsFallible()) {
-        const bool legacy = PropagationShapeOf(subjectType).has_value() || IsLegacyResultShape(subjectType);
+        const bool legacy = LegacyOutcomeShapeOf(subjectType) != LegacyOutcomeShape::None;
         EmitError(
             expression.location,
             std::format("'catch' recovers a native fallible, but the subject has type '{}'", subjectType.ToString()),

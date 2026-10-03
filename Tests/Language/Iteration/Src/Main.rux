@@ -1,25 +1,19 @@
 import Core::Assert;
 
-// The end of iteration is reported with an ordinary variant; nothing here is built in.
-variant Option {
-    Some(int32),
-    None
-}
-
-// An iterator: `Next` advances the receiver and reports either the next item or the end.
+// An iterator: `Next` advances the receiver and reports either the next item or, with `none`, the end.
 struct Counter {
     value: int32;
     limit: int32;
 }
 
 extend Counter {
-    func Next(self: &var Counter) -> Option {
+    func Next(self: &var Counter) -> int32? {
         if self.value >= self.limit {
-            return Option::None;
+            return none;
         }
         let current = self.value;
         self.value = self.value + 1i32;
-        return Option::Some(current);
+        return current;
     }
 }
 

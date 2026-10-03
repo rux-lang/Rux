@@ -144,10 +144,6 @@ protected:
     [[nodiscard]] HirExprPtr LowerBasicExpr(const Expr &expression);
     [[nodiscard]] HirExprPtr LowerTryExpr(const TryExpr &expression);
     [[nodiscard]] HirExprPtr LowerCoalesceExpr(const BinaryExpr &expression);
-    [[nodiscard]] std::unique_ptr<HirEnumPattern>
-    LowerOutcomeVariantPattern(SourceLocation location, const std::string &variantName, const std::string &caseName,
-                               const TypeRef &operandType, const std::string &bindingName, const TypeRef &bindingType,
-                               bool hasPayload);
     // Native construction and conversion (AstToHirNative.cpp).
     /// Distinguishes the hidden payload bindings native widening introduces.
     std::size_t nativeOrdinal = 0;

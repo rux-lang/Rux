@@ -1,5 +1,5 @@
-// What a legacy Option `expr?` becomes: a match whose absence arm returns from the enclosing function, carrying the
-// destruction of every local that was live at the point the absence left.
+// What `expr?` becomes: a match whose failure or absence arm returns from the enclosing function, carrying the
+// destruction of every local that was live at the point it left.
 
 #include "Lexer/Lexer.h"
 #include "Lowering/AstToHir/AstToHir.h"
@@ -65,16 +65,16 @@ const HirReturnStmt &RequireEarlyReturn(const HirMatchExpr &match) {
 }
 
 const std::string kPropagationPrelude = R"(
-    variant Option<T> { Some(T), None }
-    func Lookup(ok: bool) -> Option<int32> { return Option::Some<int32>(1i32); }
+    struct ParseError { code: int32; }
+    func Read(ok: bool) -> int32 ! ParseError { return 1i32; }
 )";
 } // namespace
 
-TEST_CASE("propagation lowers to a match that tests the operand's variants") {
+TEST_CASE("propagation lowers to a match that tests the operand's channel") {
     const HirPackage package = LowerSource(kPropagationPrelude + R"(
-        func Doubled(ok: bool) -> Option<int32> {
-            let value = Lookup(ok)?;
-            return Option::Some<int32>(value * 2i32);
+        func Doubled(ok: bool) -> int32 ! ParseError {
+            let value = Read(ok)?;
+            return value * 2i32;
         }
     )");
 
@@ -85,38 +85,36 @@ TEST_CASE("propagation lowers to a match that tests the operand's variants") {
     CHECK_EQ(match.type, TypeRef::MakeInt32());
 
     REQUIRE_EQ(match.arms.size(), 2);
-    const auto *present = dynamic_cast<const HirEnumPattern *>(match.arms[0].pattern.get());
-    REQUIRE(present != nullptr);
-    CHECK_EQ(present->path, std::vector<std::string>{"Option", "Some"});
-    CHECK_EQ(present->form, CaseTypeForm::Variant);
-    CHECK(present->hasPayload);
-    CHECK_EQ(present->payloadTypes, std::vector<TypeRef>{TypeRef::MakeInt32()});
-    const auto *absent = dynamic_cast<const HirEnumPattern *>(match.arms[1].pattern.get());
-    REQUIRE(absent != nullptr);
-    CHECK_EQ(absent->path, std::vector<std::string>{"Option", "None"});
-    CHECK_EQ(absent->form, CaseTypeForm::Variant);
-    CHECK_FALSE(absent->hasPayload);
+    const auto *success = dynamic_cast<const HirEnumPattern *>(match.arms[0].pattern.get());
+    REQUIRE(success != nullptr);
+    CHECK_EQ(success->discriminant, "0");
+    CHECK(success->hasPayload);
+    CHECK_EQ(success->payloadTypes, std::vector<TypeRef>{TypeRef::MakeInt32()});
+    const auto *failure = dynamic_cast<const HirEnumPattern *>(match.arms[1].pattern.get());
+    REQUIRE(failure != nullptr);
+    CHECK_EQ(failure->discriminant, "1");
+    CHECK(failure->hasPayload);
 
-    // The present arm evaluates to the payload the pattern bound, so nothing is copied through a temporary slot.
+    // The success arm evaluates to the payload the pattern bound, so nothing is copied through a temporary slot.
     const auto *payload = dynamic_cast<const HirVarExpr *>(match.arms[0].body.get());
     REQUIRE(payload != nullptr);
-    const auto *bound = dynamic_cast<const HirBindingPattern *>(present->args.front().get());
+    const auto *bound = dynamic_cast<const HirBindingPattern *>(success->args.front().get());
     REQUIRE(bound != nullptr);
     CHECK_EQ(payload->name, bound->name);
     CHECK_EQ(payload->type, TypeRef::MakeInt32());
 }
 
-TEST_CASE("a propagated absence destroys every local that was live when it left") {
+TEST_CASE("a propagated failure destroys every local that was live when it left") {
     const HirPackage package = LowerSource(kPropagationPrelude + R"(
         struct Handle { value: int32; }
         extend Handle {
             func =(self: &var Handle, other: &Handle);
             func ~Handle(self: &var Handle) {}
         }
-        func Guarded(ok: bool) -> Option<int32> {
+        func Guarded(ok: bool) -> int32 ! ParseError {
             let handle = Handle { value: 1i32 };
-            let value = Lookup(ok)?;
-            return Option::Some<int32>(value);
+            let value = Read(ok)?;
+            return value;
         }
     )");
 
@@ -135,10 +133,10 @@ TEST_CASE("a local declared after the propagation is not destroyed by it") {
             func =(self: &var Handle, other: &Handle);
             func ~Handle(self: &var Handle) {}
         }
-        func Later(ok: bool) -> Option<int32> {
-            let value = Lookup(ok)?;
+        func Later(ok: bool) -> int32 ! ParseError {
+            let value = Read(ok)?;
             let handle = Handle { value: 1i32 };
-            return Option::Some<int32>(value);
+            return value;
         }
     )");
 
@@ -146,63 +144,33 @@ TEST_CASE("a local declared after the propagation is not destroyed by it") {
     CHECK(early.cleanups.empty());
 }
 
-TEST_CASE("propagating an Option returns its payload-less failure variant") {
-    const HirPackage package = LowerSource(kPropagationPrelude + R"(
-        func Found(ok: bool) -> Option<int32> {
+TEST_CASE("propagating an optional returns the enclosing absence without a payload") {
+    const HirPackage package = LowerSource(R"(
+        func Lookup(ok: bool) -> int32? { return 1i32; }
+        func Found(ok: bool) -> int32? {
             let value = Lookup(ok)?;
-            return Option::Some<int32>(value);
+            return value;
         }
     )");
 
     const HirMatchExpr &match = RequirePropagation(RequireFunction(package, "Found"), 0);
-    const auto *failurePattern = dynamic_cast<const HirEnumPattern *>(match.arms[1].pattern.get());
-    REQUIRE(failurePattern != nullptr);
-    CHECK_EQ(failurePattern->path, std::vector<std::string>{"Option", "None"});
-    CHECK_FALSE(failurePattern->hasPayload);
-
-    const HirReturnStmt &returned = RequireEarlyReturn(match);
-    REQUIRE(returned.value.has_value());
-    const auto *constructed = dynamic_cast<const HirEnumConstructExpr *>(returned.value->get());
-    REQUIRE(constructed != nullptr);
-    CHECK(constructed->payloads.empty());
-}
-
-TEST_CASE("non-generic custom Option variants preserve their concrete payload") {
-    const HirPackage package = LowerSource(R"(
-        variant Maybe { Some(int32), None }
-        func Forward(input: Maybe) -> Maybe {
-            let value = input?;
-            return Maybe::Some(value);
-        }
-    )");
-
-    const HirMatchExpr &match = RequirePropagation(RequireFunction(package, "Forward"), 0);
-    const auto *present = dynamic_cast<const HirEnumPattern *>(match.arms[0].pattern.get());
-    REQUIRE(present != nullptr);
-    CHECK_EQ(present->path, std::vector<std::string>{"Maybe", "Some"});
-    CHECK_EQ(present->form, CaseTypeForm::Variant);
-    REQUIRE_EQ(present->payloadTypes.size(), 1);
-    CHECK_EQ(present->payloadTypes.front(), TypeRef::MakeInt32());
-
     const auto *absent = dynamic_cast<const HirEnumPattern *>(match.arms[1].pattern.get());
     REQUIRE(absent != nullptr);
-    CHECK_EQ(absent->path, std::vector<std::string>{"Maybe", "None"});
+    CHECK_EQ(absent->discriminant, "0");
     CHECK_FALSE(absent->hasPayload);
 
     const HirReturnStmt &returned = RequireEarlyReturn(match);
     REQUIRE(returned.value.has_value());
     const auto *constructed = dynamic_cast<const HirEnumConstructExpr *>(returned.value->get());
     REQUIRE(constructed != nullptr);
-    CHECK_EQ(constructed->form, CaseTypeForm::Variant);
-    CHECK_EQ(constructed->type, TypeRef::MakeNamed("Maybe"));
     CHECK(constructed->payloads.empty());
 }
 
 TEST_CASE("two propagations in one expression bind their payloads separately") {
     const HirPackage package = LowerSource(kPropagationPrelude + R"(
-        func Sum(ok: bool) -> Option<int32> {
-            let total = Lookup(ok)? + Lookup(ok)?;
-            return Option::Some<int32>(total);
+        func Sum(ok: bool) -> int32 ! ParseError {
+            let total = Read(ok)? + Read(ok)?;
+            return total;
         }
     )");
 
@@ -225,37 +193,41 @@ TEST_CASE("two propagations in one expression bind their payloads separately") {
     CHECK_NE(boundName(*added->left), boundName(*added->right));
 }
 
-TEST_CASE("propagation restores the storage layout of a nested variant payload") {
+TEST_CASE("propagation keeps the storage layout of a nested variant error") {
     const HirPackage package = LowerSource(R"(
         variant Reason { First(uint64), Second(uint64) }
-        variant Option<T> { Some(T), None }
-        func Forward(input: Option<Reason>) -> Option<int32> {
-            let value = input?;
-            return Option::Some<int32>(1i32);
+        func Forward(input: ! Reason) -> int32 ! Reason {
+            input?;
+            return 1i32;
         }
     )");
-    const HirMatchExpr &match = RequirePropagation(RequireFunction(package, "Forward"), 0);
-    const auto *present = dynamic_cast<const HirEnumPattern *>(match.arms[0].pattern.get());
-    REQUIRE(present != nullptr);
-    REQUIRE_EQ(present->payloadTypes.size(), 1);
-    CHECK_EQ(present->payloadTypes.front().SizeInBytes(), 16);
-    const auto *bound = dynamic_cast<const HirBindingPattern *>(present->args.front().get());
+    REQUIRE(RequireFunction(package, "Forward").body.has_value());
+    const auto *statement =
+        dynamic_cast<const HirExprStmt *>(RequireFunction(package, "Forward").body->stmts.front().get());
+    REQUIRE(statement != nullptr);
+    const auto *match = dynamic_cast<const HirMatchExpr *>(statement->expr.get());
+    REQUIRE(match != nullptr);
+    const auto *failure = dynamic_cast<const HirEnumPattern *>(match->arms[1].pattern.get());
+    REQUIRE(failure != nullptr);
+    REQUIRE_EQ(failure->payloadTypes.size(), 1);
+    CHECK_EQ(failure->payloadTypes.front().SizeInBytes(), 16);
+    const auto *bound = dynamic_cast<const HirBindingPattern *>(failure->args.front().get());
     REQUIRE(bound != nullptr);
     CHECK_EQ(bound->type.SizeInBytes(), 16);
 }
 
-TEST_CASE("propagation captures its absence before deferred statements and ownership cleanup") {
+TEST_CASE("propagation captures its failure before deferred statements and ownership cleanup") {
     const HirPackage package = LowerSource(kPropagationPrelude + R"(
         struct Guard { count: *var int32; }
         extend Guard {
             func =(self: &var Guard, other: &Guard);
             func ~Guard(self: &var Guard) { *self.count += 1i32; }
         }
-        func Guarded(count: *var int32) -> Option<int32> {
+        func Guarded(count: *var int32) -> int32 ! ParseError {
             let guard = Guard { count: count };
             defer *count += 10i32;
-            let value = Lookup(false)?;
-            return Option::Some<int32>(value);
+            let value = Read(false)?;
+            return value;
         }
     )");
     const HirMatchExpr &match = RequirePropagation(RequireFunction(package, "Guarded"), 1);
@@ -278,36 +250,40 @@ TEST_CASE("propagation captures its absence before deferred statements and owner
     CHECK_EQ(returned->cleanups.front().name, "guard");
 }
 
-TEST_CASE("propagation invokes the custom move of the present payload") {
+TEST_CASE("propagation invokes custom moves for both active payload channels") {
     const HirPackage package = LowerSource(R"(
-        variant Option<T> { Some(T), None }
         struct Handle { value: int32; }
         extend Handle {
             func =(self: &var Handle, other: &Handle);
             func <-(self: &var Handle, other: Handle) { self.value = other.value; }
             func ~Handle(self: &var Handle) {}
         }
-        func Forward(input: Option<Handle>) -> Option<Handle> {
+        func Forward(input: Handle ! Handle) -> Handle ! Handle {
             let value = (<-input)?;
-            return Option::Some<Handle>(<-value);
+            return .Success(<-value);
         }
     )");
     const HirMatchExpr &match = RequirePropagation(RequireFunction(package, "Forward"), 0);
-    const auto *present = dynamic_cast<const HirMoveExpr *>(match.arms[0].body.get());
-    REQUIRE(present != nullptr);
-    CHECK_EQ(present->plan.kind, HirMovePlan::Kind::Custom);
+    const auto *success = dynamic_cast<const HirMoveExpr *>(match.arms[0].body.get());
+    REQUIRE(success != nullptr);
+    CHECK_EQ(success->plan.kind, HirMovePlan::Kind::Custom);
+    const HirReturnStmt &returned = RequireEarlyReturn(match);
+    const auto *constructed = dynamic_cast<const HirEnumConstructExpr *>(returned.value->get());
+    REQUIRE(constructed != nullptr);
+    REQUIRE_EQ(constructed->payloads.size(), 1);
+    const auto *failure = dynamic_cast<const HirMoveExpr *>(constructed->payloads.front().get());
+    REQUIRE(failure != nullptr);
+    CHECK_EQ(failure->plan.kind, HirMovePlan::Kind::Custom);
 }
 
 TEST_CASE("generic propagation emits only concrete function instantiations") {
     HirPackage hir = LowerSource(R"(
-        struct Unit {}
-        variant Option<T> { Some(T), None }
-        func Forward<T>(input: Option<T>) -> Option<Unit> {
+        variant Reason { At(uint64), Empty }
+        func Forward<T, E>(input: T ! E) -> ! E {
             input?;
-            return Option::Some<Unit>(Unit {});
         }
         func Main() -> int32 {
-            Forward<uint64>(Option::None<uint64>());
+            Forward<uint64, Reason>(.Failure(Reason::At(99u64))) catch { else => {} };
             return 0i32;
         }
     )");

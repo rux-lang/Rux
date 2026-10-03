@@ -1,6 +1,6 @@
 // Iteration lowering for the types the iterator convention drives. An array, a slice or a range keeps the direct loop
-// HIR already has; a user-written iterator is driven the way the convention says, by advancing it and matching what it
-// reports.
+// HIR already has; a user-written iterator is driven the way the convention says, by advancing it and matching the
+// native optional it reports.
 //
 // The iterator lives in a local of the enclosing scope, so a loop over a container allocates nothing: the container
 // hands out a value, that value sits in a slot, and each iteration writes it in place.
@@ -29,19 +29,6 @@ HirStmtPtr AstToHirContext::LowerIteratorFor(const ForStmt &statement, const Res
     const std::string iteratorName = IteratorBindingName(ordinal);
     const TypeRef iteratorType = fact.iteratorType;
     const TypeRef itemType = fact.itemType;
-
-    // Which of the reporting enum's variants carry nothing, which is how pattern lowering tells a value with a payload
-    // to read from one without.
-    std::vector<std::string> unitDiscriminants;
-    if (const auto declaration = enumDecls.find(fact.optionVariantName); declaration != enumDecls.end()) {
-        for (const auto &variant : declaration->second->variants) {
-            if (variant.fields.empty() && variant.namedFields.empty()) {
-                if (auto discriminant = LookupEnumVariantDiscriminant(fact.optionVariantName, variant.name)) {
-                    unitDiscriminants.push_back(*discriminant);
-                }
-            }
-        }
-    }
 
     auto scope = std::make_unique<HirScopeStmt>();
     scope->location = statement.location;
@@ -90,28 +77,13 @@ HirStmtPtr AstToHirContext::LowerIteratorFor(const ForStmt &statement, const Res
     const TypeRef reportedType = reported->type;
 
     const std::string itemName = ItemBindingName(ordinal);
-    auto itemPattern = std::make_unique<HirEnumPattern>();
-    itemPattern->location = statement.location;
-    itemPattern->path = {fact.optionVariantName, fact.someVariant};
-    itemPattern->resolvedType = reportedType;
-    itemPattern->form = CaseTypeForm::Variant;
-    itemPattern->discriminant = LookupEnumVariantDiscriminant(fact.optionVariantName, fact.someVariant);
-    itemPattern->hasPayload = true;
-    itemPattern->payloadTypes.push_back(itemType);
-    itemPattern->unitDiscriminants = unitDiscriminants;
     auto itemBinding = std::make_unique<HirBindingPattern>();
     itemBinding->location = statement.location;
     itemBinding->name = itemName;
     itemBinding->type = itemType;
-    if (fact.native) {
-        // A native optional reports the item by its presence tag; an item that is itself absent is still an item.
-        itemPattern =
-            NativeCasePattern(reportedType, NativePresentTag, itemType, std::move(itemBinding), statement.location);
-    }
-    else {
-        itemPattern->argIndices.push_back(0);
-        itemPattern->args.push_back(std::move(itemBinding));
-    }
+    // The item arrives by its presence tag; an item that is itself absent is still an item.
+    auto itemPattern =
+        NativeCasePattern(reportedType, NativePresentTag, itemType, std::move(itemBinding), statement.location);
 
     // The loop variable is a fresh binding initialized from the reported item, so the body reads the name the source
     // wrote and nothing observes the temporary the pattern bound.
@@ -147,17 +119,8 @@ HirStmtPtr AstToHirContext::LowerIteratorFor(const ForStmt &statement, const Res
     itemArm.pattern = std::move(itemPattern);
     itemArm.body = std::move(itemBody);
 
-    auto endPattern = std::make_unique<HirEnumPattern>();
-    endPattern->location = statement.location;
-    endPattern->path = {fact.optionVariantName, fact.noneVariant};
-    endPattern->resolvedType = reportedType;
-    endPattern->form = CaseTypeForm::Variant;
-    endPattern->discriminant = LookupEnumVariantDiscriminant(fact.optionVariantName, fact.noneVariant);
-    endPattern->unitDiscriminants = unitDiscriminants;
-    if (fact.native) {
-        // Only the outer absence ends the loop.
-        endPattern = NativeCasePattern(reportedType, NativeAbsentTag, std::nullopt, nullptr, statement.location);
-    }
+    // Only the outer absence ends the loop.
+    auto endPattern = NativeCasePattern(reportedType, NativeAbsentTag, std::nullopt, nullptr, statement.location);
 
     auto exit = std::make_unique<HirBreakStmt>();
     exit->location = statement.location;
