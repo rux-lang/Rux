@@ -1,4 +1,10 @@
-import Core::{ Assert, Option };
+import Core::Assert;
+
+// An Option-shaped variant of the test's own, which the legacy protocol recognizes by its cases.
+variant Option<T> {
+    Some(T),
+    None
+}
 
 // `Option<V>` is named only inside a generic body. The concrete `Option<Tracked>` instantiation therefore has to
 // receive its layout and destruction glue through substitution rather than from a concrete source declaration.

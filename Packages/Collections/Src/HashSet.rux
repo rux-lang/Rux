@@ -9,7 +9,7 @@
 // A set owns its elements, so it prohibits copying and is move-only.
 
 import Allocator::Allocator;
-import Core::{ Iterator, Unit };
+import Core::Iterator;
 
 /// A hash table of distinct values.
 ///
@@ -19,7 +19,7 @@ import Core::{ Iterator, Unit };
 /// @see https://rux-lang.dev/docs/api/collections/hash-set
 pub struct HashSet<T> {
     /// The slots and the elements. The value side carries nothing, which is what makes this a set.
-    table: Table<T, Unit>;
+    table: Table<T, ()>;
     /// What an element's hash is, given the table's seed.
     hash: func(T, uint64, uint64) -> uint64;
     /// Whether two elements are the same element.
@@ -52,7 +52,7 @@ extend HashSet<T> {
     /// @see https://rux-lang.dev/docs/api/collections/hash-set/with-seed
     pub func WithSeed(allocator: Allocator, seed: TableSeed, hash: func(T, uint64, uint64) -> uint64,
                   equals: func(T, T) -> bool) -> HashSet<T> {
-        return HashSet<T> { table: Table<T, Unit>(allocator, seed), hash: hash, equals: equals };
+        return HashSet<T> { table: Table<T, ()>(allocator, seed), hash: hash, equals: equals };
     }
 
     /// An empty set with room for `capacity` elements already taken.
@@ -121,9 +121,7 @@ extend HashSet<T> {
         if self.table.Find(value, self.hash, self.equals) != none { return false; }
 
         self.table.EnsureRoom(self.hash)?;
-        // Named first: a struct literal cannot appear inside an `if` condition, since its brace opens the body.
-        let nothing = Unit {};
-        if self.table.Place(<-value, nothing, self.hash) == none { fail CollectionError::Unsupported; }
+        if self.table.Place(<-value, (), self.hash) == none { fail CollectionError::Unsupported; }
         return true;
     }
 
@@ -239,7 +237,7 @@ extend HashSetIterator<T> : Iterator {}
 /// @see https://rux-lang.dev/docs/api/collections/hash-set-into-iterator
 pub struct HashSetIntoIterator<T> {
     /// The table taken from the set.
-    table: Table<T, Unit>;
+    table: Table<T, ()>;
     /// The slot to look at next.
     cursor: uint;
 }
@@ -305,7 +303,7 @@ extend HashSet<T> {
     pub func IntoIterator(self: HashSet<T>) -> HashSetIntoIterator<T> {
         var set <- self;
         let taken = HashSetIntoIterator<T> {
-            table: Table<T, Unit> {
+            table: Table<T, ()> {
                 keys: set.table.keys,
                 values: set.table.values,
                 states: set.table.states,

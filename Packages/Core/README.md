@@ -13,9 +13,9 @@ rux add Rux/Core
 ## What it provides
 
 - **Compile-time context** — `#target` (os, arch, abi, endian, pointer width, data model, object format, triple, `HasFeature`), `#build`, `#compiler`, `#source`, and `#config`, together with the enums they are typed by: `OperatingSystem`, `Architecture`, `ApplicationBinaryInterface`, `Endianness`, `DataModel`, `ObjectFormat`, `BuildMode`, `OptimizationMode`, `OutputKind`, `TargetFeature`.
-- **Diagnostics** — `Assert`, `DebugAssert`, and `Panic` report and terminate; `#Error` and `#Warn` reject or flag an unsupported configuration while compiling and produce no runtime code. A release build removes `DebugAssert` checks without evaluating their arguments. Neither `Assert` nor `Panic` unwinds, so no destructor runs on the way out — anything that must be released on a failing path belongs to a caller that saw the failure, which is what `Result<T, E>` is for.
+- **Diagnostics** — `Assert`, `DebugAssert`, and `Panic` report and terminate; `#Error` and `#Warn` reject or flag an unsupported configuration while compiling and produce no runtime code. A release build removes `DebugAssert` checks without evaluating their arguments. Neither `Assert` nor `Panic` unwinds, so no destructor runs on the way out — anything that must be released on a failing path belongs to a caller that saw the failure, which is what a native fallible `T ! E` is for.
 - **Native outcome questions** — `Succeeded` and `Failed` answer which channel a native fallible `T ! E` holds without unwrapping it. Native forms have no methods of their own, so these are ordinary generic functions; each takes the outcome by value, so a call's result is asked directly and a named outcome with a move-only payload is passed as `<-outcome`.
-- **Value outcomes** — `Option<T>` for an absence that needs no explanation, `Result<T, E>` for a failure that does, `Unit` for an operation with nothing to report, and `Ordering` for a three-way comparison. Asking which case an outcome holds borrows it (`IsSome`, `IsNone`, `IsSuccess`, `IsError`); reaching a payload consumes it (`ValueOr`, `TryIntoValue`, `TryIntoError`), so pass a named outcome as `<-outcome`. A `Try*` extraction deliberately retains a nullable raw output pointer and leaves it unwritten on failure.
+- **Ordering** — the result of a three-way comparison, with `IsLess`, `IsEqual`, `IsGreater`, the derived `IsLessOrEqual` and `IsGreaterOrEqual`, and `Reverse`. Absence and failure are not library types: they are the native optional `T?` and fallible `T ! E`, with the native unit `()` for an operation with nothing to report.
 - **Interfaces for generic code** — `Equatable` and `Comparable` borrow their `Self`-typed operands through non-null references, `Hashable` gives the 64-bit summary a table keys on, and `Iterator`/`Iterable` name the iteration protocol the compiler drives by shape. Resource types prohibit copying with a bodyless canonical `=` and release themselves with `~Type`. Bounds such as `func Sort<T: Comparable>(...)` resolve `Self` to each type argument without dynamic dispatch.
 - **Integer arithmetic** — `AddChecked`, `SubChecked`, and `MulChecked` report whether the true answer was representable and write the machine's answer either way; `AddWrapping`, `SubWrapping`, and `MulWrapping` name the wrapping that `+`, `-`, and `*` already do; `AddSaturating`, `SubSaturating`, and `MulSaturating` clamp to whichever limit the true answer ran past. `MaximumOf` and `MinimumOf` report a type's limits. All are generic over the integer type and work at every width, signed and unsigned, deriving a type's zero, signedness, and limits from one operand rather than being written out per width. The operation comes first in each name because `CheckedAdd`, `CheckedSub`, and `CheckedMul` already name the compiler's `uint64` intrinsics, which are emitted inline and are what allocation-size arithmetic is written with.
 - **Bit operations** — `CountOnes`, `CountZeros`, `LeadingZeros`, `TrailingZeros`, `LeadingOnes`, `TrailingOnes`, `RotateLeft`, `RotateRight`, `ReverseBits`, `ReverseBytes`, `BitAt`, `BitWidthOf`, `IsPowerOfTwo`, and `ShiftRightLogical`. All are generic over the integer type and right at every width, signed and unsigned: `>>` copies the sign bit down on a signed type, so everything that reads a value's bits as bits goes through `ShiftRightLogical`, which brings zeros in either way.
@@ -73,7 +73,7 @@ Core diagnostic messages and compile-time context text use `char8[..]`. External
 
 ## Ownership and borrowing
 
-Core methods borrow ordinary values with `&T` and mutable receivers with `&var T`; callers pass the value directly and the compiler creates the short-lived borrow. Named move-only values require `<-` when ownership crosses a binding, call, assignment, return, or consuming receiver. Copyable Core values use generated structural copying. Canonical constructors are type calls such as `Unit()` and `SemanticVersion(1, 2, 3)`. Fallible or descriptive factories retain names such as `Option::Some` and `Result::Success`.
+Core methods borrow ordinary values with `&T` and mutable receivers with `&var T`; callers pass the value directly and the compiler creates the short-lived borrow. Named move-only values require `<-` when ownership crosses a binding, call, assignment, return, or consuming receiver. Copyable Core values use generated structural copying. Canonical constructors are type calls such as `SemanticVersion(1, 2, 3)`, and descriptive factories retain their names.
 
 Raw pointers remain where absence, storage, or address arithmetic is part of the contract: slice fields, nullable `TryInto*` outputs, unchecked checked-arithmetic/conversion destinations, byte-order buffers, and zeroization.
 
@@ -98,7 +98,7 @@ when #target.os {
 ```
 
 ```rux
-import Core::{ Assert, Option, SemanticVersion };
+import Core::{ Assert, SemanticVersion };
 
 func Major(version: &SemanticVersion) -> uint {
     return version.major;
@@ -106,9 +106,9 @@ func Major(version: &SemanticVersion) -> uint {
 
 func Main() -> int {
     let version = SemanticVersion(1, 2, 3);
-    let answer = Option::Some<int32>(42i32);
+    let answer: int32? = .Some(42i32);
     Assert(Major(version) == 1u, "borrowed version");
-    Assert((<-answer).ValueOr(0i32) == 42i32, "explicit outcome move");
+    Assert((answer ?? 0i32) == 42i32, "present optional value");
     return 0;
 }
 ```

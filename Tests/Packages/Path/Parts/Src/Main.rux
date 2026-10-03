@@ -1,6 +1,6 @@
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, Option, Panic };
+import Core::{ Assert, Panic };
 import Path::{ Join, Normalize, OsString, OsStringView, Path, PathBuffer };
 
 // The named parts at their edges — the root has no parent, a leading dot is a name, one extension comes off --

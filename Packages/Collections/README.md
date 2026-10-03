@@ -163,7 +163,7 @@ A borrow from a `TreeMap` outlives more than a `HashMap`'s: each entry is its ow
 
 `TreeSet` is to `HashSet` what `TreeMap` is to `HashMap`: order, at the price of a pointer chase per level. It walks smallest first, answers `Floor` and `Ceiling`, and hands back what lies between two bounds through `Range`.
 
-Its elements are the keys of a tree whose values are `Unit`, which occupies no bytes — a set is a map with the values compiled away rather than a second copy of the same balancing.
+Its elements are the keys of a tree whose values are the unit `()`, which occupies no bytes — a set is a map with the values compiled away rather than a second copy of the same balancing.
 
 An element must be copyable, exactly as a `HashSet`'s must: the comparison takes its two elements by value and every descent compares against elements the set holds, so an element that owned something would be destroyed by the first comparison it took part in. Owning values belong in a `TreeMap` under copyable keys.
 

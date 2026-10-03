@@ -1,5 +1,5 @@
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, Option, Panic };
+import Core::{ Assert, Panic };
 import Path::{ IsSeparator, OsString, OsStringView, Path, PathBuffer, PreferredSeparator };
 
 // The lexical layer alone: which units separate, how segments walk out, and how a buffer grows a path one segment

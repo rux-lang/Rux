@@ -1,4 +1,4 @@
-import Core::{ Assert, Comparable, Equatable, Hashable, Iterable, Iterator, Option, Ordering };
+import Core::{ Assert, Comparable, Equatable, Hashable, Iterable, Iterator, Ordering };
 
 // A resource value declares that copying is prohibited and releases itself with
 // its type-named destructor.
@@ -56,13 +56,11 @@ struct Counter {
 }
 
 extend Counter : Iterator {
-    func Next(self: &var Counter) -> Option<int32> {
-        if self.next >= self.limit {
-            return Option::None<int32>();
-        }
+    func Next(self: &var Counter) -> int32? {
+        if self.next >= self.limit { return none; }
         let current = self.next;
         self.next += 1;
-        return Option::Some<int32>(current);
+        return current;
     }
 }
 
@@ -127,18 +125,18 @@ func Main() -> int {
     var seen = 0i32;
     var count = 0i32;
     var item = cursor.Next();
-    while item.IsSome() {
-        seen += item.ValueOr(0i32);
+    while item is int32 {
+        seen += item ?? 0i32;
         count += 1;
         item = cursor.Next();
     }
     Assert(seen == 3i32, "Advancing by hand yields every item");
     Assert(count == 3i32, "Advancing by hand stops at the end");
-    Assert(cursor.Next().IsNone(), "An exhausted iterator keeps reporting the end");
+    Assert(!(cursor.Next() is int32), "An exhausted iterator keeps reporting the end");
 
     // An empty sequence reports the end immediately.
     var empty = Counter { next: 0i32, limit: 0i32 };
-    Assert(empty.Next().IsNone(), "An empty iterator reports the end at once");
+    Assert(!(empty.Next() is int32), "An empty iterator reports the end at once");
 
     // A droppable value is move-only: passing it by value consumes it, and the
     // value that was moved into the call is the one that arrives.

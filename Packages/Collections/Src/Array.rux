@@ -18,7 +18,6 @@
 // moved in exactly once.
 
 import Allocator::Allocator;
-import Core::Option;
 
 /// A fixed-length run of elements on storage this array owns.
 ///

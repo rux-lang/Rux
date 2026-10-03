@@ -1,4 +1,4 @@
-import Core::{ Assert, Option, Ordering, Result, Unit };
+import Core::{ Assert, Failed, Ordering, Succeeded };
 
 struct Handle {
     value: int32;
@@ -15,42 +15,17 @@ enum Failure: int8 {
 }
 
 func Main() -> int {
-    let some = Option::Some<int32>(7i32);
-    Assert(some.IsSome() && !some.IsNone(), "Some tag inspection");
-    let copiedSome = some;
-    Assert(copiedSome.IsSome() && (<-some).ValueOr(9i32) == 7i32, "Some copy and consuming extraction");
+    // Which channel a native fallible holds, asked without unwrapping it.
+    let success: int32 ! Failure = .Success(13i32);
+    Assert(Succeeded(success) && !Failed(success), "Success channel inspection");
+    let failure: int32 ! Failure = .Failure(Failure::Invalid);
+    Assert(Failed(failure) && !Succeeded(failure), "Failure channel inspection");
+    let completed: ! Failure = .Success(());
+    Assert(Succeeded(completed), "Unit success inspection");
 
-    let absent = Option::None<int32>();
-    Assert(absent.IsNone() && !absent.IsSome(), "None tag inspection");
-    Assert((<-absent).ValueOr(9i32) == 9i32, "None fallback extraction");
-
-    var extracted = 0i32;
-    Assert(Option::Some<int32>(11i32).TryIntoValue(@extracted), "Option output extraction");
-    Assert(extracted == 11i32, "Option output payload");
-    Assert(!Option::None<int32>().TryIntoValue(@extracted), "Option absent output");
-    Assert(extracted == 11i32, "Option failure leaves output unchanged");
-
-    let success = Result::Success<int32, Failure>(13i32);
-    Assert(success.IsSuccess() && !success.IsError(), "Success tag inspection");
-    Assert((<-success).ValueOr(17i32) == 13i32, "Success consuming extraction");
-
-    let failure = Result::Error<int32, Failure>(Failure::Invalid);
-    Assert(failure.IsError() && !failure.IsSuccess(), "Error tag inspection");
-    Assert((<-failure).ValueOr(17i32) == 17i32, "Error fallback extraction");
-
-    var error = Failure::Missing;
-    Assert(Result::Error<int32, Failure>(Failure::Invalid).TryIntoError(@error), "Result error extraction");
-    Assert(error == Failure::Invalid, "Result error payload");
-    Assert(!Result::Success<int32, Failure>(19i32).TryIntoError(@error), "Successful result has no error");
-    Assert(error == Failure::Invalid, "Result success leaves error output unchanged");
-
-    let held = Option::Some<Handle>(Handle { value: 23i32 });
-    Assert(held.IsSome(), "Borrowed inspection preserves move-only option");
-    let handle <- (<-held).ValueOr(Handle { value: 29i32 });
-    Assert(handle.value == 23i32, "Consuming extraction moves the payload");
-
-    let unitResult = Result::Success<Unit, Failure>(Unit());
-    Assert(unitResult.IsSuccess(), "Unit construction");
+    // A move-only payload is asked by transferring the outcome, which is then gone.
+    let held: Handle ! Failure = .Success(Handle { value: 23i32 });
+    Assert(Succeeded(<-held), "A move-only outcome is asked by transfer");
 
     Assert(Ordering::Less.IsLess(), "Less classification");
     Assert(Ordering::Equal.IsEqual(), "Equal classification");
@@ -71,22 +46,5 @@ func Main() -> int {
     Assert(Ordering::Less as int8 == -1i8, "Less is -1");
     Assert(Ordering::Equal as int8 == 0i8, "Equal is 0");
     Assert(Ordering::Greater as int8 == 1i8, "Greater is 1");
-
-    // A null destination is refused rather than written through, and the option
-    // is still consumed.
-    let nowhere: *var int32 = null;
-    Assert(!Option::Some<int32>(31i32).TryIntoValue(nowhere), "Option refuses a null destination");
-    Assert(!Result::Success<int32, Failure>(37i32).TryIntoValue(nowhere), "Result refuses a null destination");
-
-    // A fallback that goes unused is still consumed, and a move-only fallback is
-    // dropped rather than leaked.
-    let kept = Option::Some<Handle>(Handle { value: 41i32 }).ValueOr(Handle { value: 43i32 });
-    Assert(kept.value == 41i32, "An unused fallback is discarded");
-    let taken = Option::None<Handle>().ValueOr(Handle { value: 47i32 });
-    Assert(taken.value == 47i32, "An empty option yields the fallback");
-
-    // Unit fills a type position for an operation with nothing to report.
-    var unitOut = Unit();
-    Assert(Result::Success<Unit, Failure>(Unit()).TryIntoValue(@unitOut), "Unit extraction and type constructor");
     return 0;
 }

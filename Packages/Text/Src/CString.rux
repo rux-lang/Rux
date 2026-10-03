@@ -15,7 +15,6 @@
 // appends is never visible through anything else, and a `String` never holds one.
 
 import Allocator::{ AllocError, Allocator, Layout };
-import Core::Option;
 import Memory::Copy;
 
 /// Text carrying the terminator C expects, in storage of its own.

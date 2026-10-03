@@ -10,7 +10,6 @@
 // ASCII thing to text that was not ASCII would be wrong in a way nobody notices until the text is not English.
 
 import Allocator::Allocator;
-import Core::Option;
 
 /// The text of `left` followed by the text of `right`.
 ///

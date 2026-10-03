@@ -18,7 +18,6 @@
 
 import Algorithms::Rotate;
 import Allocator::Allocator;
-import Core::Option;
 import Memory::Copy;
 
 /// The capacity a deque takes when it first has to allocate.

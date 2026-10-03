@@ -35,7 +35,6 @@
 // `Display` is the description a reader is shown and `Debug` names the case, exactly as for the errors Text
 // presents. The descriptions are stable and are not a parsing contract: a program branches on the case.
 
-import Core::Unit;
 import Text::{ Debug, Display, FormatError, FormatSpec, RejectStyle, TextWriter, WriteAscii, WriteBytes,
                WriteSliceDebug };
 
@@ -264,7 +263,7 @@ pub func WriteTreeMapDebug<K: Debug, V: Debug>(writer: &var TextWriter, value: &
 pub func WriteTreeSetDebug<T: Debug>(writer: &var TextWriter, value: &TreeSet<T>,
                                      spec: FormatSpec) -> ! FormatError {
     WriteAscii(writer, c8'{')?;
-    var node = Tree::Minimum<T, Unit>(value.tree.root);
+    var node = Tree::Minimum<T, ()>(value.tree.root);
     var written: uint = 0;
     while node != null {
         if written != 0 {
@@ -272,7 +271,7 @@ pub func WriteTreeSetDebug<T: Debug>(writer: &var TextWriter, value: &TreeSet<T>
         }
         node.key.WriteDebug(writer, spec)?;
         written = written + 1;
-        node = Tree::Successor<T, Unit>(node);
+        node = Tree::Successor<T, ()>(node);
     }
     return WriteAscii(writer, c8'}');
 }

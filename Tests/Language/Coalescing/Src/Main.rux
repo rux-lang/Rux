@@ -1,4 +1,13 @@
-import Core::{ Assert, Option, Unit };
+import Core::Assert;
+
+// An Option-shaped variant of the test's own, which the legacy protocol recognizes by its cases.
+variant Option<T> {
+    Some(T),
+    None
+}
+
+// A payload with nothing in it.
+struct Unit {}
 
 variant Maybe<T> {
     Some(T),
@@ -98,7 +107,7 @@ func Main() -> int {
     let wide = Option::Some<Wide>(Wide { first: 1, second: 2, third: 3 }) ??
                Wide { first: 4, second: 5, third: 6 };
     Assert(wide.third == 3, "wide payloads should transfer through match lowering");
-    let unit = Option::None<Unit>() ?? Unit();
+    let unit = Option::None<Unit>() ?? Unit {};
 
     var pointee = 21i32;
     let pointer = Option::Some<*var int32>(@pointee) ?? null;

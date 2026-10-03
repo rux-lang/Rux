@@ -1,4 +1,13 @@
-import Core::{Assert, Result, Unit};
+import Core::Assert;
+
+// A Result-shaped variant of the test's own, which the legacy protocol recognizes by its cases.
+variant Result<T, E> {
+    Success(T),
+    Error(E)
+}
+
+// A payload with nothing in it.
+struct Unit {}
 
 variant Reason {
     First(uint),

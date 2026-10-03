@@ -4,7 +4,13 @@
 // to a counter and bumps it as it is destroyed. The count after a construct is what says destruction happened at the
 // right place — and, for a value that was moved away, that it did not happen twice.
 
-import Core::{ Assert, Option };
+import Core::Assert;
+
+// An Option-shaped variant of the test's own, which the legacy protocol recognizes by its cases.
+variant Option<T> {
+    Some(T),
+    None
+}
 
 struct Counter {
     count: int32;

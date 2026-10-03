@@ -8,11 +8,11 @@ struct Cursor<T> {
 }
 
 extend Cursor<T> {
-    func Next(self: &var Cursor<T>) -> Option<*var T> {
-        if self.position >= self.length { return Option::None<*var T>(); }
+    func Next(self: &var Cursor<T>) -> (*var T)? {
+        if self.position >= self.length { return none; }
         let pointer = @self.data[self.position];
         self.position = self.position + 1;
-        return Option::Some<*var T>(pointer);
+        return .Some(pointer);
     }
 
     func Read(self: &Cursor<T>) -> Option<*T> {
@@ -60,17 +60,17 @@ func Main() -> int {
     // The for loop owns a copy of its cursor. Exhaust the original with direct calls as well.
     var sum = 0;
     loop {
-        match cursor.Next() { .Some(pointer) => { sum = sum + *pointer; }, .None => { break; } }
+        match cursor.Next() { pointer? => { sum = sum + *pointer; }, none => { break; } }
     }
     if sum != 36 { return 11; }
-    match cursor.Next() { .Some(_) => { return 4; }, .None => {} }
-    match cursor.Next() { .Some(_) => { return 5; }, .None => {} }
+    match cursor.Next() { _? => { return 4; }, none => {} }
+    match cursor.Next() { _? => { return 5; }, none => {} }
 
     var wide = 99i64;
     Change<int64>(@wide, 1234567890123i64);
     if Inspect<int64>(@wide) != 1234567890123i64 { return 6; }
     var empty = Cursor<int64> { data: @wide, length: 0, position: 0 };
-    match empty.Next() { .Some(_) => { return 7; }, .None => {} }
+    match empty.Next() { _? => { return 7; }, none => {} }
     match empty.Read() { .Some(_) => { return 8; }, .None => {} }
     let writable = Wrap<*var int64>(@wide);
     let readable = Wrap<*int64>(@wide);

@@ -1,4 +1,7 @@
-import Core::{ Assert, Unit };
+import Core::Assert;
+
+// A payload with nothing in it.
+struct Unit {}
 
 // A value that occupies no bytes is written and read as nothing at all.
 //

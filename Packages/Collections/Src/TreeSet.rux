@@ -11,8 +11,8 @@
 // what it would save is a logarithm. The operations that change a set do exploit the order, by asking for the next
 // element by key rather than by pointer, which is what lets them remove while walking.
 //
-// The elements are the keys of a tree whose values are nothing at all. `Unit` occupies no bytes, so a set is a map
-// with the values compiled away rather than a second copy of the same balancing.
+// The elements are the keys of a tree whose values are nothing at all. The unit `()` occupies no bytes, so a set is
+// a map with the values compiled away rather than a second copy of the same balancing.
 //
 // An element must be copyable, for the same reason a `HashSet`'s must: the comparison takes its two elements by
 // value, and every descent compares against elements the set is holding. An element that owned something would be
@@ -21,7 +21,7 @@
 // put the owning values in a `TreeMap` under keys that are copyable.
 
 import Allocator::Allocator;
-import Core::{ Iterator, Ordering, Unit };
+import Core::{ Iterator, Ordering };
 
 /// An ordered set of unique elements.
 ///
@@ -31,7 +31,7 @@ import Core::{ Iterator, Ordering, Unit };
 /// @see https://rux-lang.dev/docs/api/collections/tree-set
 pub struct TreeSet<T> {
     /// The elements, as the keys of a tree carrying no values.
-    tree: Tree<T, Unit>;
+    tree: Tree<T, ()>;
     /// The order the elements are kept in. Fixed when the set is made.
     compare: func(T, T) -> Ordering;
 }
@@ -52,7 +52,7 @@ extend TreeSet<T> {
     /// @returns an empty collection that has taken no storage yet
     /// @see https://rux-lang.dev/docs/api/collections/tree-set/new
     pub func TreeSet(allocator: Allocator, compare: func(T, T) -> Ordering) -> TreeSet<T> {
-        return TreeSet<T> { tree: Tree<T, Unit>(allocator), compare: compare };
+        return TreeSet<T> { tree: Tree<T, ()>(allocator), compare: compare };
     }
 
     /// How many elements the set holds.
@@ -94,9 +94,8 @@ extend TreeSet<T> {
     /// @returns whether the value was new rather than already present
     /// @see https://rux-lang.dev/docs/api/collections/tree-set/insert
     pub func Insert(self: &var TreeSet<T>, value: T) -> bool ! CollectionError {
-        let nothing = Unit {};
-        let replaced = self.tree.Attach(<-value, nothing, self.compare)?;
-        return !(replaced is Unit);
+        let replaced = self.tree.Attach(<-value, (), self.compare)?;
+        return !(replaced is ());
     }
 
     /// Takes `value` out of the set, reporting whether it was there.
@@ -129,7 +128,7 @@ extend TreeSet<T> {
     /// @returns the smallest element, or `none` when empty
     /// @see https://rux-lang.dev/docs/api/collections/tree-set/first
     pub func First(self: &TreeSet<T>) -> T? {
-        return TreeSet::ElementOf<T>(Tree::Minimum<T, Unit>(self.tree.root));
+        return TreeSet::ElementOf<T>(Tree::Minimum<T, ()>(self.tree.root));
     }
 
     /// The largest element, or `none` for an empty set.
@@ -137,7 +136,7 @@ extend TreeSet<T> {
     /// @returns the largest element, or `none` when empty
     /// @see https://rux-lang.dev/docs/api/collections/tree-set/last
     pub func Last(self: &TreeSet<T>) -> T? {
-        return TreeSet::ElementOf<T>(Tree::Maximum<T, Unit>(self.tree.root));
+        return TreeSet::ElementOf<T>(Tree::Maximum<T, ()>(self.tree.root));
     }
 
     /// The largest element at or below `value`, or `none` when every element is above it.
@@ -163,7 +162,7 @@ extend TreeSet<T> {
     }
 
     // The element a node holds, or `none` for a node that is not there. Every ordered query ends in one of these.
-    func ElementOf(node: *var TreeNode<T, Unit>) -> T? {
+    func ElementOf(node: *var TreeNode<T, ()>) -> T? {
         if node == null { return none; }
         return .Some(node.key);
     }
@@ -175,7 +174,7 @@ extend TreeSet<T> {
 /// @see https://rux-lang.dev/docs/api/collections/tree-set-iterator
 pub struct TreeSetIterator<T> {
     /// The node to hand back next, or null when the walk is done.
-    next: *var TreeNode<T, Unit>;
+    next: *var TreeNode<T, ()>;
 }
 
 extend TreeSetIterator<T> {
@@ -188,7 +187,7 @@ extend TreeSetIterator<T> {
     pub func Next(self: &var TreeSetIterator<T>) -> T? {
         let node = self.next;
         if node == null { return none; }
-        self.next = Tree::Successor<T, Unit>(node);
+        self.next = Tree::Successor<T, ()>(node);
         return .Some(node.key);
     }
 }
@@ -201,7 +200,7 @@ extend TreeSetIterator<T> : Iterator {}
 /// @see https://rux-lang.dev/docs/api/collections/tree-set-range-iterator
 pub struct TreeSetRangeIterator<T> {
     /// The node to hand back next, or null when the walk is done.
-    next: *var TreeNode<T, Unit>;
+    next: *var TreeNode<T, ()>;
     /// The first element the walk will not hand back.
     end: T;
     /// The order the set is kept in, so the walk knows where to stop.
@@ -220,7 +219,7 @@ extend TreeSetRangeIterator<T> {
             self.next = null;
             return none;
         }
-        self.next = Tree::Successor<T, Unit>(node);
+        self.next = Tree::Successor<T, ()>(node);
         return .Some(node.key);
     }
 }
@@ -236,7 +235,7 @@ extend TreeSetRangeIterator<T> : Iterator {}
 /// @see https://rux-lang.dev/docs/api/collections/tree-set-into-iterator
 pub struct TreeSetIntoIterator<T> {
     /// What is left of the set.
-    tree: Tree<T, Unit>;
+    tree: Tree<T, ()>;
 }
 
 extend TreeSetIntoIterator<T> {
@@ -250,7 +249,7 @@ extend TreeSetIntoIterator<T> {
     /// @returns the next element in order, or `none` at the end
     /// @see https://rux-lang.dev/docs/api/collections/tree-set-into-iterator/next
     pub func Next(self: &var TreeSetIntoIterator<T>) -> T? {
-        let node = Tree::Minimum<T, Unit>(self.tree.root);
+        let node = Tree::Minimum<T, ()>(self.tree.root);
         if node == null { return none; }
         let entry = self.tree.Detach(node);
         return .Some(entry.key);
@@ -267,7 +266,7 @@ extend TreeSet<T> {
     /// @returns a cursor over the elements in order
     /// @see https://rux-lang.dev/docs/api/collections/tree-set/iterate
     pub func Iterate(self: &TreeSet<T>) -> TreeSetIterator<T> {
-        return TreeSetIterator<T> { next: Tree::Minimum<T, Unit>(self.tree.root) };
+        return TreeSetIterator<T> { next: Tree::Minimum<T, ()>(self.tree.root) };
     }
 
     /// A walk over the elements at or above `start` and below `end`.
@@ -299,7 +298,7 @@ extend TreeSet<T> {
         // iterator was handed.
         var set <- self;
         let taken = TreeSetIntoIterator<T> {
-            tree: Tree<T, Unit> { root: set.tree.root, length: set.tree.length, allocator: set.tree.allocator }
+            tree: Tree<T, ()> { root: set.tree.root, length: set.tree.length, allocator: set.tree.allocator }
         };
         set.tree.root = null;
         set.tree.length = 0;
@@ -421,7 +420,7 @@ extend TreeSet<T> {
     /// @param other the collection to compare or combine with
     /// @see https://rux-lang.dev/docs/api/collections/tree-set/intersect-with
     pub func IntersectWith(self: &var TreeSet<T>, other: &TreeSet<T>) {
-        var node = Tree::Minimum<T, Unit>(self.tree.root);
+        var node = Tree::Minimum<T, ()>(self.tree.root);
         while node != null {
             let value = node.key;
             if !other.Contains(value) {
@@ -439,7 +438,7 @@ extend TreeSet<T> {
     /// @see https://rux-lang.dev/docs/api/collections/tree-set/subtract
     pub func Subtract(self: &var TreeSet<T>, other: &TreeSet<T>) {
         if other.Length() == 0 { return; }
-        var node = Tree::Minimum<T, Unit>(self.tree.root);
+        var node = Tree::Minimum<T, ()>(self.tree.root);
         while node != null {
             let value = node.key;
             if other.Contains(value) {
