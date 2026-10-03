@@ -1,45 +1,37 @@
 import Core::Assert;
 
-// A Result-shaped variant of the test's own, which the legacy protocol recognizes by its cases.
-variant Result<T, E> {
-    Success(T),
-    Error(E)
-}
-
-// A payload with nothing in it.
-struct Unit {}
+// `?` on a native fallible moves the complete active payload: the success onward, or the error out as the enclosing
+// function's failure, with nested, generic, wide, scalar, zero-sized, copied, and move-only payloads intact.
 
 variant Reason {
     First(uint),
     Second(uint)
 }
 
-func Step(at: uint) -> Result<Unit, Reason> {
-    return Result::Error<Unit, Reason>(Reason::First(at));
+func Step(at: uint) -> ! Reason {
+    fail Reason::First(at);
 }
 
-func Outer(at: uint) -> Result<uint, Reason> {
+func Outer(at: uint) -> uint ! Reason {
     Step(at)?;
-    return Result::Success<uint, Reason>(0u);
+    return 0u;
 }
 
-func KeepSame(at: uint) -> Result<Unit, Reason> {
+func KeepSame(at: uint) -> ! Reason {
     Step(at)?;
-    return Result::Success<Unit, Reason>(Unit {});
 }
 
-func Chain(at: uint, log: *var int) -> Result<int32, Reason> {
+func Chain(at: uint, log: *var int) -> int32 ! Reason {
     defer *log = *log * 10 + 1;
     if at > 0u {
         defer *log = *log * 10 + 2;
         Outer(at)?;
     }
-    return Result::Success<int32, Reason>(7i32);
+    return 7i32;
 }
 
-func Generic<T, E>(input: Result<T, E>) -> Result<Unit, E> {
+func Generic<T, E>(input: T ! E) -> ! E {
     input?;
-    return Result::Success<Unit, E>(Unit {});
 }
 
 struct Words {
@@ -53,14 +45,13 @@ variant Nested {
     Present(Reason, Words)
 }
 
-func Wide(input: Result<uint8, Words>) -> Result<Words, Words> {
+func Wide(input: uint8 ! Words) -> Words ! Words {
     input?;
-    return Result::Success<Words, Words>(Words { first: 1u64, second: 2u64, third: 3u64 });
+    return .Success(Words { first: 1u64, second: 2u64, third: 3u64 });
 }
 
-func Scalar(input: Result<uint8, uint64>) -> Result<Unit, uint64> {
+func Scalar(input: uint8 ! uint64) -> ! uint64 {
     input?;
-    return Result::Success<Unit, uint64>(Unit {});
 }
 
 struct Token {
@@ -77,27 +68,26 @@ extend Token {
     }
 }
 
-func OwnedStep(drops: *var int) -> Result<Unit, Token> {
-    return Result::Error<Unit, Token>(Token { value: 123u64, tail: 456u64, drops: drops });
+func OwnedStep(drops: *var int) -> ! Token {
+    fail Token { value: 123u64, tail: 456u64, drops: drops };
 }
 
-func Owned(drops: *var int, log: *var int) -> Result<uint, Token> {
+func Owned(drops: *var int, log: *var int) -> uint ! Token {
     defer *log += 1;
     let input = OwnedStep(drops);
     (<-input)?;
-    return Result::Success<uint, Token>(0u);
+    return 0u;
 }
 
-func GenericOwned<T, E>(input: Result<T, E>) -> Result<Unit, E> {
+func GenericOwned<T, E>(input: T ! E) -> ! E {
     let value = (<-input)?;
-    return Result::Success<Unit, E>(Unit {});
 }
 
 func OwnError(drops: *var int, log: *var int) {
     let input = GenericOwned<uint, Token>(Owned(drops, log));
     Assert(*drops == 0 && *log == 1, "propagation transfers the error before deferred cleanup");
     match <-input {
-        .Error(token) => {
+        .Failure(token) => {
             Assert(token.value == 123u64 && token.tail == 456u64, "all move-only payload words survive");
             Assert(*drops == 0, "the error stays alive until its caller leaves the arm");
         },
@@ -124,30 +114,30 @@ extend Copied {
     func ~Copied(self: &var Copied) { *self.drops += 1; }
 }
 
-func CopyPropagation(copies: *var int, drops: *var int) -> Result<uint, Copied> {
-    let original = Result::Error<Unit, Copied>(Copied { value: 19u64, tail: 73u64, copies: copies, drops: drops });
+func CopyPropagation(copies: *var int, drops: *var int) -> uint ! Copied {
+    let original: ! Copied = .Failure(Copied { value: 19u64, tail: 73u64, copies: copies, drops: drops });
     original?;
-    return Result::Success<uint, Copied>(0u);
+    return 0u;
 }
 
 func OwnCopy(copies: *var int, drops: *var int) {
     let result = CopyPropagation(copies, drops);
     Assert(*copies == 1 && *drops == 1, "plain propagation copies its named source and cleans the original");
     match <-result {
-        .Error(value) => Assert(value.value == 19u64 && value.tail == 73u64, "the copied error retains all fields"),
+        .Failure(value) => Assert(value.value == 19u64 && value.tail == 73u64, "the copied error retains all fields"),
         .Success(_) => Assert(false, "expected copied error")
     }
 }
 
-func SuccessStep(drops: *var int) -> Result<Token, Reason> {
-    return Result::Success<Token, Reason>(Token { value: 811u64, tail: 922u64, drops: drops });
+func SuccessStep(drops: *var int) -> Token ! Reason {
+    return Token { value: 811u64, tail: 922u64, drops: drops };
 }
 
-func SuccessForward(drops: *var int, log: *var int) -> Result<Token, Reason> {
+func SuccessForward(drops: *var int, log: *var int) -> Token ! Reason {
     defer *log += 1;
     let value = SuccessStep(drops)?;
     Assert(value.value == 811u64 && value.tail == 922u64 && *drops == 0, "successful extraction transfers its owner");
-    return Result::Success<Token, Reason>(<-value);
+    return <-value;
 }
 
 func OwnSuccess(drops: *var int, log: *var int) {
@@ -155,28 +145,14 @@ func OwnSuccess(drops: *var int, log: *var int) {
     match <-result {
         .Success(value) => Assert(value.value == 811u64 && value.tail == 922u64 && *log == 1 && *drops == 0,
                                  "successful propagation retains ownership until its caller leaves"),
-        .Error(_) => Assert(false, "expected owned success")
+        .Failure(_) => Assert(false, "expected owned success")
     }
 }
 
-variant Attempt {
-    Error(Words),
-    Success(uint8)
-}
-
-variant Completion {
-    Success(Unit),
-    Error(Words)
-}
-
-func Reordered(input: Attempt) -> Completion {
-    input?;
-    return Completion::Success(Unit {});
-}
-
-func EmptyError() -> Result<uint, Unit> {
-    Result::Error<Words, Unit>(Unit {})?;
-    return Result::Success<uint, Unit>(0u);
+func EmptyError() -> uint ! () {
+    let failing: Words ! () = .Failure(());
+    failing?;
+    return 0u;
 }
 
 struct Relocated {
@@ -193,27 +169,27 @@ extend Relocated {
     }
 }
 
-func RelocatedError(moves: *var int) -> Result<Unit, Relocated> {
-    return Result::Error<Unit, Relocated>(Relocated { value: 991u64, moves: moves });
+func RelocatedError(moves: *var int) -> ! Relocated {
+    fail Relocated { value: 991u64, moves: moves };
 }
 
-func RelocatedForward(moves: *var int) -> Result<uint, Relocated> {
+func RelocatedForward(moves: *var int) -> uint ! Relocated {
     RelocatedError(moves)?;
-    return Result::Success<uint, Relocated>(0u);
+    return 0u;
 }
 
 func OwnRelocated(moves: *var int) {
     let result = RelocatedForward(moves);
-    Assert(*moves == 1, "rewrapping invokes the error payload's custom move exactly once");
+    Assert(*moves == 1, "propagation invokes the error payload's custom move exactly once");
     match <-result {
-        .Error(value) => Assert(value.value == 991u64 && *moves == 2, "explicit matching performs its separate move"),
+        .Failure(value) => Assert(value.value == 991u64 && *moves == 2, "explicit matching performs its separate move"),
         .Success(_) => Assert(false, "expected relocated error")
     }
 }
 
 func Main() -> int {
     match Outer(173u) {
-        .Error(reason) => {
+        .Failure(reason) => {
             match reason {
                 .First(at) => Assert(at == 173u, "propagation preserves the nested payload"),
                 .Second(_) => Assert(false, "propagation preserves the active nested case")
@@ -222,7 +198,7 @@ func Main() -> int {
         .Success(_) => Assert(false, "failure cannot become success")
     }
     match KeepSame(271u) {
-        .Error(reason) => {
+        .Failure(reason) => {
             match reason {
                 .First(at) => Assert(at == 271u, "equal success types preserve the error too"),
                 .Second(_) => Assert(false, "expected first case")
@@ -232,7 +208,7 @@ func Main() -> int {
     }
     var log = 0;
     match Chain(319u, @log) {
-        .Error(reason) => {
+        .Failure(reason) => {
             match reason {
                 .First(at) => Assert(at == 319u && log == 21, "chained propagation runs nested defers once"),
                 .Second(_) => Assert(false, "expected first case")
@@ -243,10 +219,10 @@ func Main() -> int {
     log = 0;
     match Chain(0u, @log) {
         .Success(value) => Assert(value == 7i32 && log == 1, "normal return uses only registered defers"),
-        .Error(_) => Assert(false, "expected success")
+        .Failure(_) => Assert(false, "expected success")
     }
-    match Generic<uint, Reason>(Result::Error<uint, Reason>(Reason::Second(829u))) {
-        .Error(reason) => {
+    match Generic<uint, Reason>(.Failure(Reason::Second(829u))) {
+        .Failure(reason) => {
             match reason {
                 .First(_) => Assert(false, "expected second case"),
                 .Second(at) => Assert(at == 829u, "generic propagation substitutes the nested error layout")
@@ -255,17 +231,17 @@ func Main() -> int {
         .Success(_) => Assert(false, "expected generic failure")
     }
     let words = Words { first: 0x1122334455667788u64, second: 0x8877665544332211u64, third: 0xFEDCBA9876543210u64 };
-    match Wide(Result::Error<uint8, Words>(words)) {
-        .Error(value) => Assert(value.first == words.first && value.second == words.second && value.third == words.third,
-                               "rewrapping a struct copies every payload byte"),
+    match Wide(.Failure(words)) {
+        .Failure(value) => Assert(value.first == words.first && value.second == words.second && value.third == words.third,
+                                 "propagating a struct copies every payload byte"),
         .Success(_) => Assert(false, "expected multiword error")
     }
-    match Scalar(Result::Error<uint8, uint64>(0xFEDCBA9876543210u64)) {
-        .Error(value) => Assert(value == 0xFEDCBA9876543210u64, "a scalar error retains its high bits"),
+    match Scalar(.Failure(0xFEDCBA9876543210u64)) {
+        .Failure(value) => Assert(value == 0xFEDCBA9876543210u64, "a scalar error retains its high bits"),
         .Success(_) => Assert(false, "expected scalar error")
     }
-    match Generic<int32, Nested>(Result::Error<int32, Nested>(Nested::Present(Reason::Second(937u), words))) {
-        .Error(nested) => {
+    match Generic<int32, Nested>(.Failure(Nested::Present(Reason::Second(937u), words))) {
+        .Failure(nested) => {
             match nested {
                 .Empty => Assert(false, "expected nested payload"),
                 .Present(reason, value) => {
@@ -292,13 +268,8 @@ func Main() -> int {
     log = 0;
     OwnSuccess(@drops, @log);
     Assert(drops == 1 && log == 1, "successful payload is destroyed exactly once");
-    match Reordered(Attempt::Error(words)) {
-        .Error(value) => Assert(value.first == words.first && value.second == words.second && value.third == words.third,
-                               "source and return variants may order their cases differently"),
-        .Success(_) => Assert(false, "expected reordered failure")
-    }
     match EmptyError() {
-        .Error(_) => {},
+        .Failure(_) => {},
         .Success(_) => Assert(false, "zero-sized error payload still propagates")
     }
     var moves = 0;

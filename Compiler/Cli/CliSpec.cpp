@@ -58,7 +58,7 @@ constexpr std::array check_usage = {"[options]"sv};
 constexpr std::array check_opts = {
     OptionDoc{.flags = "--define <name[=value]>"sv, .desc = "Set or override a config compile-time value"sv},
     OptionDoc{.flags = "--deny-legacy-protocols"sv,
-              .desc = "Report each use of the legacy Result and Option protocols as an error"sv},
+              .desc = "Report each use of the legacy Option protocol as an error"sv},
     OptionDoc{.flags = "--json"sv, .desc = "Output diagnostics in JSON format"sv},
     OptionDoc{.flags = "--target <triple>"sv, .desc = "Check code health for a specific target platform"sv}};
 constexpr std::array check_exs = {""sv, "--json"sv, "--target windows-x86_64"sv, "--deny-legacy-protocols"sv};
@@ -189,7 +189,7 @@ constexpr std::array test_opts = {
     OptionDoc{.flags = "--jobs <N>"sv, .desc = "Run up to N test packages concurrently (default: 1)"sv},
     OptionDoc{.flags = "--define <name[=value]>"sv, .desc = "Set or override a config compile-time value"sv},
     OptionDoc{.flags = "--deny-legacy-protocols"sv,
-              .desc = "Report each use of the legacy Result and Option protocols as an error"sv},
+              .desc = "Report each use of the legacy Option protocol as an error"sv},
     OptionDoc{.flags = "--release"sv, .desc = "Build with release profile"sv},
     OptionDoc{.flags = "--target <triple>"sv, .desc = "Build and run the tests for the specified target platform"sv}};
 constexpr std::array test_exs = {""sv, "--release"sv};

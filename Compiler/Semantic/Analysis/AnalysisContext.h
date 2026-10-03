@@ -363,25 +363,19 @@ private:
     void CheckCast(const TypeRef &operand, const TypeRef &target, SourceLocation location);
     [[nodiscard]] bool CastTypesAreCompatible(const TypeRef &operand, const TypeRef &target) const;
 
-    /// A type `?` can propagate from, recognized by its declared variant cases rather than by a built-in identity:
-    /// `Result` carries a payload and a failure, `Option` only a payload.
+    /// A variant the legacy Option protocol applies to, recognized by its declared cases rather than by a built-in
+    /// identity: exactly `Some(T)` and a payload-less `None`. Failure has no legacy shape.
     struct PropagationShape {
-        enum class Kind {
-            Result,
-            Option
-        };
-
-        Kind kind = Kind::Result;
         const EnumDecl *declaration = nullptr;
         TypeRef payload = TypeRef::MakeUnknown();
-        std::optional<TypeRef> failure;
     };
 
     [[nodiscard]] std::optional<PropagationShape> PropagationShapeOf(const TypeRef &type);
-    [[nodiscard]] std::optional<std::string>
-    PropagationShapeIssue(const TypeRef &type, std::optional<PropagationShape::Kind> expectedKind = std::nullopt) const;
-    [[nodiscard]] static std::string_view PropagationKindName(PropagationShape::Kind kind);
-    [[nodiscard]] static std::string_view PropagationKindPhrase(PropagationShape::Kind kind);
+    /// Why a variant that names an Option case still is not Option-shaped, for the diagnostic that rejects it.
+    [[nodiscard]] std::optional<std::string> PropagationShapeIssue(const TypeRef &type) const;
+    /// Whether `type` is a variant with `Success` and `Error` cases, which the retired Result protocol recognized; it
+    /// is an ordinary variant now, and the diagnostics that reject it say so.
+    [[nodiscard]] bool IsLegacyResultShape(const TypeRef &type) const;
     [[nodiscard]] std::optional<TypeRef> CheckTryExpression(const TryExpr &expression);
     /// `?` on a native fallible: the success continues and the error leaves as the enclosing outer failure.
     [[nodiscard]] TypeRef CheckNativeTry(const TryExpr &expression, const TypeRef &operandType);

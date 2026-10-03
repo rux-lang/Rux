@@ -87,9 +87,9 @@ func Days(month: Month) -> int32 {
 `variant` is a closed tagged union. A case may be unit-like, carry positional values, or carry named fields, and the declaration may be generic. Its tag is private: source cannot choose a base type or assign case discriminants.
 
 ```rux
-variant Result<T, E> {
-    Success(T),
-    Error(E)
+variant Lookup<T> {
+    Found(T),
+    Missing
 }
 
 variant Shape {
@@ -421,7 +421,7 @@ The element type must be copyable. Construct move-only elements explicitly or in
 
 On a native fallible `T ! E`, the enclosing function must itself be fallible, `-> U ! F`, and the error leaves as its outer failure. The error enters `F` only by identity, by injection as a member of a sum `F`, or by widening a sum `E` whose members are all members of `F`; `?` never converts an error, so a different error type is mapped explicitly or matched. The failure exit chooses the outer failure channel directly, so it never competes with the success construction a plain `return` might perform: in a function returning `(int32 | R) ! E` where `R = int32 ! E`, `return value?;` forwards an inner failure while `return .Success(value);` keeps it as data. An enclosing optional or a nested level is not a propagation target; deeper handling is written with `match`.
 
-The legacy protocol still recognizes ordinary variants with exactly `Success(T)` and `Error(E)` cases, or `Some(T)` and payload-less `None` cases. Its enclosing return type must use the same protocol and error type; its success type and case order may differ. Rewrapping preserves the complete active payload, including nested and generic variants and zero-sized values. A legacy operand never propagates into a native fallible, and a native operand never into a legacy variant: the boundary rewraps explicitly with `match` and the other form's constructors. `rux check --deny-legacy-protocols` reports every remaining use of the legacy protocols, including legacy coalescing and iteration, as an error.
+A failure propagates only from a native fallible. A variant with `Success` and `Error` cases is an ordinary variant: `?` rejects it, and its cases are constructed and matched like any other. The legacy Option protocol, described under [Option Coalescing](#option-coalescing), still lets `?` remove one level of an Option-shaped variant until it is removed in turn; a legacy operand never propagates into a native form, nor a native operand into a legacy variant, and `rux check --deny-legacy-protocols` reports every remaining use of it as an error.
 
 Propagation consumes its evaluated outcome. A named copyable outcome is copied and remains usable; a named move-only outcome requires `(<-outcome)?`, and a borrowed fallible is never an operand. The continuing payload and the outgoing error are transferred using their move operations. Reference payloads cannot preserve hidden borrow provenance, and payloads that prohibit moving are rejected, including when instantiated in a generic. Use an explicit match when the payload needs to be borrowed or copied instead.
 
@@ -463,7 +463,7 @@ The arms use ordinary match-arm grammar, including guards and an `else` arm, and
 
 ### Optional propagation
 
-On a native optional `T?`, `value?` removes exactly one presence level: a present value continues as its payload, which may itself be an optional or a fallible, and absence returns from the enclosing function. The enclosing function returns either an optional `U?`, which then returns `none`, or a fallible whose success is an optional, `U? ! F`, which then succeeds with `none`. Absence never becomes an invented error, and no deeper level is a target. As with fallible propagation, the operand is consumed, a move-only operand is transferred as `(<-value)?`, and a borrowed optional is never an operand. A legacy Option operand and a native optional destination, or the reverse, are rejected with a help naming the explicit rewrap.
+On a native optional `T?`, `value?` removes exactly one presence level: a present value continues as its payload, which may itself be an optional or a fallible, and absence returns from the enclosing function. The enclosing function returns either an optional `U?`, which then returns `none`, or a fallible whose success is an optional, `U? ! F`, which then succeeds with `none`. Absence never becomes an invented error, and no deeper level is a target. As with fallible propagation, the operand is consumed, a move-only operand is transferred as `(<-value)?`, and a borrowed optional is never an operand. A legacy Option operand and a native optional destination, or the reverse, are rejected with a help naming the explicit rewrap. The legacy protocol also removes one level of a variant with exactly `Some(T)` and payload-less `None` cases when the enclosing function returns such a variant, preserving the complete active payload, including nested and generic payloads and zero-sized values.
 
 ### Coalescing
 

@@ -323,18 +323,15 @@ TEST_CASE("scalar enum destruction never enters variant payload dispatch") {
 TEST_CASE("propagation rolls back every completed variant payload in reverse order") {
     const LirPackage package = DropLir(kOwner + R"(
         enum Error: uint8 { Bad = 1 }
-        variant Result<T, E> { Success(T), Error(E) }
         variant Choice { Empty, Build(Handle, Handle, int32) }
 
-        func Read(ok: bool) -> Result<int32, Error> {
-            if ok { return Result::Success<int32, Error>(7i32); }
-            return Result::Error<int32, Error>(Error::Bad);
+        func Read(ok: bool) -> int32 ! Error {
+            if ok { return 7i32; }
+            fail Error::Bad;
         }
 
-        func Build(ok: bool) -> Result<Choice, Error> {
-            return Result::Success<Choice, Error>(
-                Choice::Build(Handle { value: 1i32 }, Handle { value: 2i32 }, Read(ok)?)
-            );
+        func Build(ok: bool) -> Choice ! Error {
+            return Choice::Build(Handle { value: 1i32 }, Handle { value: 2i32 }, Read(ok)?);
         }
     )");
     const auto handle = std::ranges::find(package.dropGlues, TypeRef::MakeNamed("Handle"), &DropGluePlan::type);

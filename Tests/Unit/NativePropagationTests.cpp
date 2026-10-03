@@ -127,15 +127,15 @@ TEST_CASE("explicit propagation is the forwarding alternative of the ambiguous r
 
 TEST_CASE("legacy and native outcomes never propagate into each other") {
     const auto errors = ErrorDiagnostics(std::string(kDeclarations) + R"(
-        variant Result<T, E> {
-            Success(T),
-            Error(E)
+        variant Option<T> {
+            Some(T),
+            None
         }
         func Native() -> int32 ! ParseError { return 1i32; }
-        func Legacy() -> Result<int32, ParseError> { return Result::Success<int32, ParseError>(1i32); }
-        func NativeIntoLegacy() -> Result<int32, ParseError> {
+        func Legacy() -> Option<int32> { return Option::Some<int32>(1i32); }
+        func NativeIntoLegacy() -> Option<int32> {
             let value = Native()?;
-            return Result::Success<int32, ParseError>(value);
+            return Option::Some<int32>(value);
         }
         func LegacyIntoNative() -> int32 ! ParseError {
             return Legacy()?;
@@ -146,13 +146,13 @@ TEST_CASE("legacy and native outcomes never propagate into each other") {
     });
     REQUIRE(native != errors.end());
     REQUIRE(native->help.has_value());
-    CHECK(native->help->contains("'Result::Success(...)'"));
+    CHECK(native->help->contains("'-> T ! E'"));
     const auto legacy = std::ranges::find_if(errors, [](const SemanticDiagnostic &diagnostic) {
-        return diagnostic.message.starts_with("'?' propagates a Result, but the enclosing function returns");
+        return diagnostic.message.starts_with("'?' propagates an Option, but the enclosing function returns");
     });
     REQUIRE(legacy != errors.end());
     REQUIRE(legacy->help.has_value());
-    CHECK(legacy->help->contains("'.Failure(...)'"));
+    CHECK(legacy->help->contains("'.Some(...)'"));
 }
 
 TEST_CASE("'?' needs a fallible enclosing function at the outer level") {

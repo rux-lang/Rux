@@ -174,6 +174,6 @@ TEST_CASE("CLI contract offers the legacy protocol audit on check and test") {
         CHECK(CliHelp::RenderCommand(*command, 120, false).contains("--deny-legacy-protocols"));
         CHECK(CliHelp::RenderJson("test-version", name)
                   .contains("\"flags\":\"--deny-legacy-protocols\",\"description\":\"Report each use of the legacy "
-                            "Result and Option protocols as an error\""));
+                            "Option protocol as an error\""));
     }
 }

@@ -1,54 +1,43 @@
 import Core::Assert;
 
-// An Option-shaped variant of the test's own, which the legacy protocol recognizes by its cases.
-variant Option<T> {
-    Some(T),
-    None
-}
+// `?` on an optional and on a fallible, each leaving through the enclosing function's own form.
 
-// A Result-shaped variant of the test's own, which the legacy protocol recognizes by its cases.
-variant Result<T, E> {
-    Success(T),
-    Error(E)
-}
-
-func ParseVal(x: int) -> Option<int> {
+func ParseVal(x: int) -> int? {
     if x > 0 {
-        return Option::Some<int>(x * 2);
+        return x * 2;
     }
-    return Option::None<int>();
+    return none;
 }
 
-func ComputeOption(x: int) -> Option<int> {
+func ComputeOption(x: int) -> int? {
     let v = ParseVal(x)?;
-    return Option::Some<int>(v + 10);
+    return v + 10;
 }
 
-func ParseResult(x: int) -> Result<int, int> {
+func ParseResult(x: int) -> int ! int {
     if x > 0 {
-        return Result::Success<int, int>(x * 2);
+        return x * 2;
     }
-    return Result::Error<int, int>(-1);
+    fail -1;
 }
 
-func ComputeResult(x: int) -> Result<int, int> {
+func ComputeResult(x: int) -> int ! int {
     let v = ParseResult(x)?;
-    return Result::Success<int, int>(v + 10);
+    return .Success(v + 10);
 }
 
 func Main() -> int {
     let resSome = ComputeOption(5);
-    Assert(match resSome { .Some(v) => v == 20, .None => false }, "ComputeOption(5) should be Some(20)");
+    Assert(match resSome { v? => v == 20, none => false }, "ComputeOption(5) should be present with 20");
 
     let resNone = ComputeOption(-1);
-    Assert(match resNone { .Some(_) => false, .None => true }, "ComputeOption(-1) should be None");
+    Assert(!(resNone is int), "ComputeOption(-1) should be absent");
 
     let resSuccess = ComputeResult(5);
-    Assert(match resSuccess { .Success(v) => v == 20, .Error(_) => false },
-           "ComputeResult(5) should be Success(20)");
+    Assert(match resSuccess { .Success(v) => v == 20, .Failure(_) => false }, "ComputeResult(5) should succeed with 20");
 
     let resError = ComputeResult(-1);
-    Assert(match resError { .Success(_) => false, .Error(e) => e == -1 }, "ComputeResult(-1) should be Error(-1)");
+    Assert(match resError { .Success(_) => false, .Failure(e) => e == -1 }, "ComputeResult(-1) should fail with -1");
 
     return 0;
 }

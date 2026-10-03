@@ -73,7 +73,8 @@ TEST_CASE("coalescing diagnoses invalid operands shapes and fallbacks") {
     CHECK(HasCoalescingError(diagnostics, "requires an Option-shaped left operand, but found 'int32'"));
     CHECK(HasCoalescingError(diagnostics, "requires an Option-shaped left operand, but found '*int32'"));
     CHECK(HasCoalescingError(diagnostics, "requires an Option-shaped left operand, but found '&Option<int32>'"));
-    CHECK(HasCoalescingError(diagnostics, "cannot be coalesced"));
+    CHECK(
+        HasCoalescingError(diagnostics, "requires an Option-shaped left operand, but found 'Result<int32, Failure>'"));
     CHECK(HasCoalescingError(diagnostics, "requires an Option-shaped left operand, but found 'BadOption'"));
     CHECK(HasCoalescingError(diagnostics, "requires an Option-shaped left operand, but found 'BadGeneric<int32>'"));
     CHECK(HasCoalescingError(diagnostics, "coalescing fallback has type 'bool8'"));

@@ -1,11 +1,11 @@
-// The legacy Result and Option protocols, audited across everything the workspace maintains.
+// The legacy Option protocol, audited across everything the workspace maintains.
 //
 // `rux check --deny-legacy-protocols` reports each `?` and `??` the compiler still resolves by a variant's case names,
 // and each iterator whose `Next` returns such a variant, as an error at its site. This suite runs that audit over
 // every workspace package, every first-party README block, and every Tests/Language and Tests/Packages fixture, and
 // compares the sites per file with LegacyProtocolAuditBaseline.txt. The baseline records what remains to migrate:
 // it may only shrink, and the package migration gate is passed when it is empty. The fixtures that exist to test the
-// legacy protocols themselves are excluded; tasks 36-37 migrate or remove them together with the protocols.
+// legacy Option protocol itself are excluded until that protocol is removed. The Result protocol is already gone.
 //
 // To regenerate the baseline after a migration, run the test binary with RUX_UPDATE_GOLDEN=1 and review the diff.
 
@@ -36,11 +36,10 @@ using namespace Rux;
 
 namespace {
 
-/// The fixtures whose subject is a legacy protocol. They keep it working until tasks 36-37 remove it.
+/// The fixtures whose subject is the legacy Option protocol. They keep it working until it is removed.
 constexpr std::array ProtocolFixtures{
-    std::string_view("Tests/Language/Coalescing"),  std::string_view("Tests/Language/Iteration"),
-    std::string_view("Tests/Language/Propagation"), std::string_view("Tests/Language/PropagationPayload"),
-    std::string_view("Tests/Language/Try"),
+    std::string_view("Tests/Language/Coalescing"),
+    std::string_view("Tests/Language/Iteration"),
 };
 
 /// One `rux check` run, and the name its sites are recorded under when the source it checks is not a file of the
@@ -123,7 +122,6 @@ std::vector<std::string> AuditErrors(const std::vector<SemanticDiagnostic> &diag
 }
 
 constexpr std::string_view LegacyProtocols = R"(
-    variant Result<T, E> { Success(T), Error(E) }
     variant Option<T> { Some(T), None }
 )";
 
@@ -147,7 +145,7 @@ std::map<std::string, std::size_t> LoadBaseline() {
 
 void WriteBaseline(const std::map<std::string, std::size_t> &counts) {
     std::ofstream output(BaselinePath(), std::ios::binary);
-    output << "# Legacy Result and Option protocol sites that remain to migrate, counted per file.\n"
+    output << "# Legacy Option protocol sites that remain to migrate, counted per file.\n"
               "# Format: count|file   A README block is named as its README plus '#' and its position.\n"
               "# This file may only shrink; the package migration gate is passed when no entry remains.\n"
               "# Regenerate with: RUX_UPDATE_GOLDEN=1 rux-tests --source-file='*LegacyProtocolAuditTests.cpp'\n";
@@ -164,11 +162,6 @@ TEST_CASE("the audit reports each legacy protocol site once and changes nothing 
         struct Counter { n: int32; }
         extend Counter {
             func Next(self: &var Counter) -> Option<int32> { return Option::None<int32>(); }
-        }
-        func Read() -> Result<int32, E> { return Result::Success<int32, E>(1i32); }
-        func Use() -> Result<int32, E> {
-            let value = Read()?;
-            return Result::Success<int32, E>(value);
         }
         func Find() -> Option<int32> { return Option::Some<int32>(2i32); }
         func Forward() -> Option<int32> { return Option::Some<int32>(Find()?); }
@@ -191,17 +184,15 @@ TEST_CASE("the audit reports each legacy protocol site once and changes nothing 
     INFO(std::ranges::fold_left(errors, std::string(), [](std::string all, const std::string &error) {
         return std::move(all) + error + "\n";
     }));
-    REQUIRE_EQ(errors.size(), 6);
+    REQUIRE_EQ(errors.size(), 5);
     CHECK(errors[0].contains("iterator method 'Next' on 'Counter' uses the legacy Option protocol"));
-    CHECK(
-        errors[1].contains("'?' uses the legacy Result protocol on 'Result<int32, E>'; migrate to a native fallible"));
-    CHECK(errors[2].contains("'?' uses the legacy Option protocol on 'Option<int32>'; migrate to a native optional"));
-    CHECK(errors[3].contains("'?"
+    CHECK(errors[1].contains("'?' uses the legacy Option protocol on 'Option<int32>'; migrate to a native optional"));
+    CHECK(errors[2].contains("'?"
                              "?' uses the legacy Option protocol on 'Option<int32>'"));
     // The generic body is analyzed for each instantiation but reported once.
-    CHECK(errors[4].contains("'?"
+    CHECK(errors[3].contains("'?"
                              "?' uses the legacy Option protocol on 'Option<T>'"));
-    CHECK(errors[5].contains("'for' uses the legacy Option protocol of 'Option<int32>'"));
+    CHECK(errors[4].contains("'for' uses the legacy Option protocol of 'Option<int32>'"));
 }
 
 TEST_CASE("the audit reports only the package being analyzed") {

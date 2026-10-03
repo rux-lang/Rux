@@ -32,9 +32,9 @@ struct DepPackage {
 
 /// Switches that change what analysis accepts without changing the language a program is written in.
 struct SemanticOptions {
-    /// Report every use of the legacy Result and Option protocols in the analyzed package as an error: `?` and `??` on
-    /// a variant recognized by its case names, and an iterator whose `Next` returns one. Dependencies are not reported,
-    /// so each package's audit lists only its own sites.
+    /// Report every use of the legacy Option protocol in the analyzed package as an error: `?` and `??` on a variant
+    /// recognized by its case names, and an iterator whose `Next` returns one. Dependencies are not reported, so each
+    /// package's audit lists only its own sites.
     bool denyLegacyProtocols = false;
 };
 

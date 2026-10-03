@@ -13,11 +13,6 @@ enum IoError: int32 {
     Closed
 }
 
-variant Result<T, E> {
-    Success(T),
-    Error(E)
-}
-
 variant Option<T> {
     Some(T),
     None
@@ -47,23 +42,23 @@ func Missing<T: Display>(value: T) -> int32 {
     return value.Measure();
 }
 
-func Read(ok: bool) -> Result<int32, ParseError> {
-    return Result::Success<int32, ParseError>(1i32);
+func Read(ok: bool) -> int32 ! ParseError {
+    return 1i32;
 }
 
 // Propagation out of a function that returns neither the same failure nor any at all.
-func Rethrown(ok: bool) -> Result<int32, IoError> {
+func Rethrown(ok: bool) -> int32 ! IoError {
     let value = Read(ok)?;
-    return Result::Success<int32, IoError>(value);
+    return value;
 }
 
 func Discarded(ok: bool) {
     let value = Read(ok)?;
 }
 
-func NotPropagatable() -> Result<int32, ParseError> {
+func NotPropagatable() -> int32 ! ParseError {
     let value = 3i32?;
-    return Result::Success<int32, ParseError>(value);
+    return value;
 }
 
 // An iterator whose `Next` cannot advance the value it is called on.

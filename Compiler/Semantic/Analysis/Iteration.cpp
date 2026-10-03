@@ -75,7 +75,7 @@ std::optional<AnalysisContext::ReportedItem> AnalysisContext::ReportedItemOf(con
         return ReportedItem{returned.inner.front(), returned, nullptr};
     }
     const auto reported = PropagationShapeOf(returned);
-    if (!reported || reported->kind != PropagationShape::Kind::Option) {
+    if (!reported) {
         return std::nullopt;
     }
     return ReportedItem{reported->payload, returned, reported->declaration};
@@ -216,8 +216,8 @@ void AnalysisContext::ValidateIteratorConvention(const FuncDecl &declaration, co
         const TypeRef returned =
             declaration.returnType ? ResolveType(*declaration.returnType->get()) : TypeRef::MakeOpaque();
         const auto reported = PropagationShapeOf(returned);
-        if (!returned.IsOptional() && (!reported || reported->kind != PropagationShape::Kind::Option)) {
-            if (auto issue = PropagationShapeIssue(returned, PropagationShape::Kind::Option)) {
+        if (!returned.IsOptional() && !reported) {
+            if (auto issue = PropagationShapeIssue(returned)) {
                 EmitError(declaration.location,
                           std::format("iterator method 'Next' on '{}' must return an Option-shaped variant",
                                       currentExtendedType.ToString()),

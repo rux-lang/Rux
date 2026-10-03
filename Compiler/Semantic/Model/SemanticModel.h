@@ -183,10 +183,10 @@ struct ResolvedIndexAssignment {
     TypeRef valueType;
 };
 
-/// What one accepted `expr?` propagates. Analysis identifies `Result` and `Option` by their variant cases and checks
-/// the enclosing return type, so lowering builds the early return from this rather than recognizing the shape again.
+/// What one accepted `expr?` propagates. Analysis checks a native fallible or optional, or identifies a legacy `Option`
+/// by its variant cases, against the enclosing return type, so lowering builds the early return from this rather than
+/// recognizing the shape again.
 struct ResolvedPropagation {
-    bool isResult = false;
     /// A native fallible operand: its success continues and its error leaves as the enclosing function's outer failure,
     /// injected or widened into that error channel. The variant names are unused.
     bool native = false;
@@ -195,8 +195,8 @@ struct ResolvedPropagation {
     std::string successVariant;
     std::string failureVariant;
     std::string returnVariantName;
-    /// Payload of the success variant, which is what the expression evaluates to, and of the failure variant, which the
-    /// early return carries unchanged. A failure with no payload, such as `Option::None`, leaves the second unset.
+    /// What the expression evaluates to, and the error a native fallible's early return carries. Absence carries no
+    /// payload, so an optional, native or legacy, leaves the second unset.
     TypeRef payloadType;
     std::optional<TypeRef> failureType;
     TypeRef returnType;

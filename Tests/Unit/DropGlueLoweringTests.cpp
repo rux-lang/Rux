@@ -247,21 +247,20 @@ TEST_SUITE("DropGlueLowering") {
     TEST_CASE("propagation rolls back completed aggregate components") {
         const LirPackage package = CompileToLir(std::string(HandleSource) + R"(
             enum Error: uint8 { Bad }
-            variant Result<T, E> { Success(T), Error(E) }
             struct Pair {
                 first: Handle;
                 second: int32;
             }
 
-            func Read(ok: bool) -> Result<int32, Error> {
-                return Result::Success<int32, Error>(7i32);
+            func Read(ok: bool) -> int32 ! Error {
+                return 7i32;
             }
 
-            func Build(ok: bool) -> Result<Pair, Error> {
-                return Result::Success<Pair, Error>(Pair {
+            func Build(ok: bool) -> Pair ! Error {
+                return Pair {
                     first: Handle { slot: 1i32 },
                     second: Read(ok)?,
-                });
+                };
             }
         )");
 

@@ -107,8 +107,7 @@ void AnalysisContext::ReportLegacyProtocol(const SourceLocation location, std::s
         return;
     }
     EmitError(location, std::move(message),
-              {"the audit reports each use of the Result and Option protocols that the native forms replace"},
-              std::move(help));
+              {"the audit reports each use of the Option protocol that the native optional replaces"}, std::move(help));
 }
 
 void AnalysisContext::EmitUndefinedName(const SourceLocation location, const std::string &name) const {
