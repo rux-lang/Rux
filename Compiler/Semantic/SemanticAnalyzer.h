@@ -30,14 +30,6 @@ struct DepPackage {
 [[nodiscard]] const std::string &PackageOwningSource(const std::vector<DepPackage> &deps, const std::string &rootId,
                                                      std::string_view source);
 
-/// Switches that change what analysis accepts without changing the language a program is written in.
-struct SemanticOptions {
-    /// Report every use of the legacy Option protocol in the analyzed package as an error: `?` and `??` on a variant
-    /// recognized by its case names, and an iterator whose `Next` returns one. Dependencies are not reported, so each
-    /// package's audit lists only its own sites.
-    bool denyLegacyProtocols = false;
-};
-
 /**
  * @brief Runs semantic analysis over a set of parsed modules.
  *
@@ -62,18 +54,12 @@ public:
     /// outlive it.
     [[nodiscard]] SemanticModel Analyze();
 
-    /// Replace the analysis switches; the defaults accept every program the language does.
-    void SetOptions(const SemanticOptions &inputOptions) {
-        options = inputOptions;
-    }
-
 private:
     std::vector<Module *> modules;
     std::vector<DepPackage> deps;
     std::string packageName;
     CompileTimeContext compileTimeContext;
     PackageImportBindings imports;
-    SemanticOptions options;
     std::vector<SemanticDiagnostic> diags;
     std::vector<SemanticSymbol> symbols;
 };

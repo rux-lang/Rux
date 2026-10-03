@@ -83,7 +83,7 @@ SemanticModel SemanticAnalyzer::Analyze() {
     std::vector<const Module *> constModules(modules.begin(), modules.end());
     SemanticFacts facts;
     SemanticDetail::AnalysisContext analyzer(
-        {constModules, deps, packageName, diags, symbols, compileTimeContext, imports, options}, facts);
+        {constModules, deps, packageName, diags, symbols, compileTimeContext, imports}, facts);
     analyzer.Run();
     facts.effectiveVisibilities = analyzer.EffectiveVisibilities();
     std::vector<const Module *> orderedModules;

@@ -101,15 +101,6 @@ void AnalysisContext::EmitWarning(const SourceLocation location, std::string mes
     diags.push_back({SemanticDiagnostic::Severity::Warning, currentFile, location, std::move(message), {}, {}, {}});
 }
 
-void AnalysisContext::ReportLegacyProtocol(const SourceLocation location, std::string message, std::string help) {
-    if (!options.denyLegacyProtocols || currentPackage != packageName ||
-        !reportedLegacyProtocolSites.emplace(currentFile, location.line, location.column).second) {
-        return;
-    }
-    EmitError(location, std::move(message),
-              {"the audit reports each use of the Option protocol that the native optional replaces"}, std::move(help));
-}
-
 void AnalysisContext::EmitUndefinedName(const SourceLocation location, const std::string &name) const {
     std::optional<std::string> help;
     if (const Symbol *suggestion = currentScope->Suggest(name)) {

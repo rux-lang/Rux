@@ -40,9 +40,6 @@ struct CompileOptions {
     bool checkOnly = false; // stop after semantic analysis; keep going past
     // frontend errors so all diagnostics are reported
     bool captureFrontend = false; // retain folded user ASTs in CompileResult
-    /// Report every use of the legacy Option protocol in this package as an error
-    /// (`--deny-legacy-protocols`).
-    bool denyLegacyProtocols = false;
 
     /// Debug dumps written under <package root>/Temp (build --dump-*).
     bool dumpTokens = false;

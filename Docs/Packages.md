@@ -185,5 +185,3 @@ rux test
 ```
 
 Run these commands from the repository root. Package tests are centralized below `Tests/Packages/`; running `rux test` from an individual `Packages/<Name>/` directory does not discover them.
-
-`rux check --deny-legacy-protocols` and `rux test --deny-legacy-protocols` report each remaining use of the legacy Option protocol, a `?` or `??` on a variant recognized by its case names or an iterator whose `Next` returns one, as an error in the package that writes it. `Tests/Unit/LegacyProtocolAuditTests.cpp` runs the same audit over every workspace package, README block, and test package and holds the remaining sites per file in `Tests/Unit/LegacyProtocolAuditBaseline.txt`, which may only shrink as packages migrate to the native forms.

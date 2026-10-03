@@ -36,7 +36,6 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
     const Reporter output(stdout, reporterOptions);
     const Reporter diagnostics(stderr, reporterOptions);
     bool isRelease = false;
-    bool denyLegacyProtocols = false;
     std::size_t jobs = 1;
     std::string_view target;
     std::map<std::string, std::string> defines;
@@ -57,10 +56,6 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
         }
         if (arg == "--release") {
             isRelease = true;
-            continue;
-        }
-        if (arg == "--deny-legacy-protocols") {
-            denyLegacyProtocols = true;
             continue;
         }
         if (arg == "--target" && i + 1 < args.size()) {
@@ -248,7 +243,6 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
     compileOptions.profile = profile;
     compileOptions.defines = defines;
     compileOptions.localPackageRoots = localPackageRoots;
-    compileOptions.denyLegacyProtocols = denyLegacyProtocols;
     std::vector<TestOutcome> outcomes(testPackages.size());
     RunTestTasks(
         tasks, jobs,

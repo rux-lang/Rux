@@ -36,7 +36,6 @@ int Cli::RunCheck(std::span<const std::string_view> args, const GlobalOptions &o
     const bool diagnosticColor = !jsonOutput && ColorEnabled(opts.color, OutputStream::Stderr);
     std::string_view target;
     std::map<std::string, std::string> defines;
-    bool denyLegacyProtocols = false;
     for (std::size_t i = 0; i < args.size(); ++i) {
         std::string_view arg = args[i];
         if (arg == "-q" || arg == "--quiet") {
@@ -46,10 +45,6 @@ int Cli::RunCheck(std::span<const std::string_view> args, const GlobalOptions &o
             continue;
         }
         if (arg == "--json") {
-            continue;
-        }
-        if (arg == "--deny-legacy-protocols") {
-            denyLegacyProtocols = true;
             continue;
         }
         if (arg == "--target" && i + 1 < args.size()) {
@@ -164,7 +159,6 @@ int Cli::RunCheck(std::span<const std::string_view> args, const GlobalOptions &o
             copts.emitProgress = [&](const CompileProgress &event) { ReportCompileProgress(output, event); };
         }
         copts.checkOnly = true;
-        copts.denyLegacyProtocols = denyLegacyProtocols;
         copts.emitDiagnostic = [&](const Diagnostic &diagnostic, const SourceLineLookup &sourceLineLookup) {
             EmitDiag(diagnostic, sourceLineLookup);
         };

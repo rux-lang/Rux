@@ -16,7 +16,7 @@
 namespace Rux::Testing::SemanticTestSupport {
 using namespace Rux;
 
-inline std::vector<SemanticDiagnostic> AnalyzeSource(const std::string &source, const SemanticOptions &options = {}) {
+inline std::vector<SemanticDiagnostic> AnalyzeSource(const std::string &source) {
     Lexer lexer(source, "test.rux");
     auto lexed = lexer.Tokenize();
     REQUIRE_FALSE(lexed.HasErrors());
@@ -26,15 +26,13 @@ inline std::vector<SemanticDiagnostic> AnalyzeSource(const std::string &source, 
     REQUIRE_FALSE(parsed.HasErrors());
 
     SemanticAnalyzer analyzer({&parsed.module}, {}, "test", "Windows");
-    analyzer.SetOptions(options);
     return analyzer.Analyze().diagnostics;
 }
 
 // Analyze `userSource` with a single dependency package `depName` whose source
 // is `depSource`. The parsed modules stay alive for the whole Analyze() call.
 inline std::vector<SemanticDiagnostic> AnalyzeWithDep(const std::string &userSource, const std::string &depName,
-                                                      const std::string &depSource,
-                                                      const SemanticOptions &options = {}) {
+                                                      const std::string &depSource) {
     Lexer depLexer(depSource, "dep.rux");
     auto depLexed = depLexer.Tokenize();
     REQUIRE_FALSE(depLexed.HasErrors());
@@ -54,7 +52,6 @@ inline std::vector<SemanticDiagnostic> AnalyzeWithDep(const std::string &userSou
     dep.modules.push_back({depName, &depParsed.module});
 
     SemanticAnalyzer analyzer({&parsed.module}, {std::move(dep)}, "App", "Windows");
-    analyzer.SetOptions(options);
     return analyzer.Analyze().diagnostics;
 }
 

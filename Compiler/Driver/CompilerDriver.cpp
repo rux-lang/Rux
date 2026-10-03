@@ -478,7 +478,6 @@ bool CompilerDriver::Impl::Analyze() {
     }
     SemanticAnalyzer analyzer(std::move(userModules), std::move(depPackages), dependencyGraph->Root().id,
                               compileTimeContext, dependencyGraph->Bindings());
-    analyzer.SetOptions({.denyLegacyProtocols = opts.denyLegacyProtocols});
     semanticModel = analyzer.Analyze();
     EmitAll(semanticModel->diagnostics);
     if (opts.dumpSema) {
