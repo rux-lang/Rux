@@ -1,4 +1,3 @@
-
 // What the filesystem says about a file, and what it will not say. Every claim is checked against something the
 // test itself just did — a file of known length, a directory it made, a timestamp it wrote — and the fields
 // the running system cannot answer are checked to be reported as unanswerable rather than quietly zero.
@@ -20,10 +19,17 @@ func PathOf(allocator: Allocator, text: char8[..], holder: *var OsString) -> Pat
     return Path::FromView((*holder).View());
 }
 
-func Main() -> int {
+// The failure an outcome carries, which the test expects to be there.
+func Refusal<T>(outcome: T ! IoError) -> IoError {
+    return match <-outcome {
+        .Success(_) => Panic("expected a failure"),
+        .Failure(error) => error
+    };
+}
+
+func Main() -> int ! IoError {
     var system = SystemAllocator();
     let allocator: Allocator = system;
-    var error = IoError::Ok();
     let able = CapabilitiesOfSystem();
 
     var dirHolder = OsString(allocator);
@@ -31,33 +37,31 @@ func Main() -> int {
     var fileHolder = OsString(allocator);
     let file = PathOf(allocator, "Bin/FileSystemMeta.tmp/f.txt", @fileHolder);
 
-    DeleteFile(allocator, file);
-    DeleteDirectory(allocator, dir);
-    Assert(MakeDirectory(allocator, dir).IsOk(), "the scratch directory is made");
+    DeleteFile(allocator, file) catch { else => {} };
+    DeleteDirectory(allocator, dir) catch { else => {} };
+    MakeDirectory(allocator, dir)?;
 
     // A file of known length reports that length and calls itself a file.
-    var written = File::Open(allocator, file, OpenOptions::Writing(), @error);
-    Assert(written.IsOpen() && error.IsOk(), "the file opens for writing");
-    Assert(WriteAll(written, TextBytes("0123456789")).IsOk(), "ten bytes are written");
-    let openMetadata = written.Metadata(@error);
-    Assert(error.IsOk(), "the open handle describes itself");
+    var written = File::Open(allocator, file, OpenOptions::Writing())?;
+    Assert(written.IsOpen(), "the file opens for writing");
+    WriteAll(written, TextBytes("0123456789"))?;
+    let openMetadata = written.Metadata()?;
     Assert(openMetadata.kind == FileKind::File, "as a file");
     Assert(openMetadata.size == 10u64, "of the length just written");
-    Assert(written.Close().IsOk(), "and closes");
+    written.Close()?;
 
     // The same answers through the path.
-    let byPath = MetadataOf(allocator, file, true, @error);
-    Assert(error.IsOk(), "the path describes the same file");
+    let byPath = MetadataOf(allocator, file, true)?;
     Assert(byPath.kind == FileKind::File && byPath.size == 10u64, "identically");
     Assert(byPath.linkCount >= 1u64, "with at least the one name it was made under");
 
     // A directory is a directory, and asking about a name that is not there is NotFound.
-    let dirMetadata = MetadataOf(allocator, dir, true, @error);
-    Assert(error.IsOk() && dirMetadata.kind == FileKind::Directory, "a directory reports as one");
+    let dirMetadata = MetadataOf(allocator, dir, true)?;
+    Assert(dirMetadata.kind == FileKind::Directory, "a directory reports as one");
     var missingHolder = OsString(allocator);
     let missing = PathOf(allocator, "Bin/FileSystemMeta.tmp/nothing.txt", @missingHolder);
-    MetadataOf(allocator, missing, true, @error);
-    Assert(error.kind == IoErrorKind::NotFound, "and a missing name is NotFound");
+    Assert(Refusal(MetadataOf(allocator, missing, true)).kind == IoErrorKind::NotFound,
+           "and a missing name is NotFound");
 
     // Creation time is present exactly where the system claims it is.
     Assert(byPath.hasCreated == able.creationTime, "creation time is reported present exactly when it is real");
@@ -65,38 +69,39 @@ func Main() -> int {
     // Timestamps written are timestamps read back. A whole second is used because filesystems differ in the
     // fraction they keep, and the second is what every one of them stores.
     let moment = Timestamp::FromUnixSeconds(1000000000);
-    Assert(SetTimes(allocator, file, moment, moment, true).IsOk(), "the times are set");
-    let retimed = MetadataOf(allocator, file, true, @error);
-    Assert(error.IsOk(), "the file describes itself again");
+    SetTimes(allocator, file, moment, moment, true)?;
+    let retimed = MetadataOf(allocator, file, true)?;
     Assert(retimed.modified.UnixSeconds() == 1000000000i64, "the modification time is the one written");
     Assert(retimed.accessed.UnixSeconds() == 1000000000i64, "and so is the access time");
 
     // Read-only is the one permission every supported system records: setting and clearing it round trips. An
     // ordinary writer is refused, while a privileged Unix process may validly bypass the mode bits.
-    Assert(SetPermissions(allocator, file, Permissions::FromReadOnly(true)).IsOk(), "read-only is set");
-    let locked = MetadataOf(allocator, file, true, @error);
-    Assert(error.IsOk() && !locked.permissions.IsWritable(), "and reads back without owner-write permission");
-    var probe = File::Open(allocator, file, OpenOptions::Writing(), @error);
-    if probe.IsOpen() {
-        Assert(able.unixPermissions && error.IsOk(), "only a privileged Unix writer may bypass read-only");
-        Assert(probe.Close().IsOk(), "and the privileged probe closes");
-    }
-    else {
-        Assert(error.kind == IoErrorKind::PermissionDenied, "an ordinary write is PermissionDenied");
+    SetPermissions(allocator, file, Permissions::FromReadOnly(true))?;
+    let locked = MetadataOf(allocator, file, true)?;
+    Assert(!locked.permissions.IsWritable(), "and reads back without owner-write permission");
+    match File::Open(allocator, file, OpenOptions::Writing()) {
+        .Success(opened) => {
+            var probe <- opened;
+            Assert(able.unixPermissions, "only a privileged Unix writer may bypass read-only");
+            probe.Close() catch { else => Panic("and the privileged probe closes") };
+        },
+        .Failure(error) => {
+            Assert(error.kind == IoErrorKind::PermissionDenied, "an ordinary write is PermissionDenied");
+        }
     }
 
-    Assert(SetPermissions(allocator, file, Permissions::FromReadOnly(false)).IsOk(), "read-only is cleared");
-    let unlocked = MetadataOf(allocator, file, true, @error);
-    Assert(error.IsOk() && unlocked.permissions.IsWritable(), "and reads back as writable");
-    var allowed = File::Open(allocator, file, OpenOptions::Writing(), @error);
-    Assert(allowed.IsOpen() && error.IsOk(), "and the write is allowed again");
-    Assert(allowed.Close().IsOk(), "and closes");
+    SetPermissions(allocator, file, Permissions::FromReadOnly(false))?;
+    let unlocked = MetadataOf(allocator, file, true)?;
+    Assert(unlocked.permissions.IsWritable(), "and reads back as writable");
+    var allowed = File::Open(allocator, file, OpenOptions::Writing())?;
+    Assert(allowed.IsOpen(), "and the write is allowed again");
+    allowed.Close()?;
 
     if able.unixPermissions {
         // Where the mode is the system's own, an exact triple survives the round trip.
-        Assert(SetPermissions(allocator, file, Permissions::FromMode(0x1A4u32)).IsOk(), "an exact mode is set");
-        let moded = MetadataOf(allocator, file, true, @error);
-        Assert(error.IsOk() && moded.permissions.mode == 0x1A4u32, "and reads back bit for bit");
+        SetPermissions(allocator, file, Permissions::FromMode(0x1A4u32))?;
+        let moded = MetadataOf(allocator, file, true)?;
+        Assert(moded.permissions.mode == 0x1A4u32, "and reads back bit for bit");
     }
     else {
         // Where it is not, the mode is synthesized and says so by being one of exactly two values.
@@ -104,8 +109,8 @@ func Main() -> int {
         Assert(locked.permissions.mode == 0x124u32, "and a synthesized read-only mode is the other");
     }
 
-    Assert(DeleteFile(allocator, file).IsOk(), "the file cleans up");
-    Assert(DeleteDirectory(allocator, dir).IsOk(), "and so does the directory");
+    DeleteFile(allocator, file)?;
+    DeleteDirectory(allocator, dir)?;
 
     return 0;
 }

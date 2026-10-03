@@ -15,41 +15,39 @@ import Text::StringBuilder;
 /// input may be shared with whatever runs next, and a buffer here would take bytes that were never this line's.
 ///
 /// @param builder receives the line, appended to whatever it already holds
-/// @returns `None` when a line was read; `IsEnd` at the end of input with nothing appended
+/// @returns success when a line was read; `IsEnd` at the end of input with nothing appended
 /// @see https://rux-lang.dev/docs/api/io/read-line
-pub func ReadLine(builder: &var StringBuilder) -> IoError {
+pub func ReadLine(builder: &var StringBuilder) -> ! IoError {
     var input = StandardIn::Acquire();
     var byte: char8[1];
     let room = (@byte[0])[..1];
     var sawAnything = false;
     var pendingCarriageReturn = false;
     while true {
-        var filled: uint = 0;
-        let outcome = input.Read(room, @filled);
-        if outcome.IsError() {
-            if outcome.IsTransient() { continue; }
-            if outcome.IsEnd() {
-                if pendingCarriageReturn {
-                    builder.AppendAscii(c8'\r') catch { else => return IoError::Of(IoErrorKind::Other) };
-                }
-                return sawAnything ? IoError::Ok() : IoError::Of(IoErrorKind::EndOfStream);
+        let filled = input.Read(room) catch {
+            error if error.IsTransient() => continue,
+            error if error.IsEnd() => 0u,
+            error => fail error
+        };
+        if filled == 0 {
+            if pendingCarriageReturn {
+                builder.AppendAscii(c8'\r') catch { else => fail IoError::Of(IoErrorKind::Other) };
             }
-            return outcome;
+            if !sawAnything { fail IoError::Of(IoErrorKind::EndOfStream); }
+            return;
         }
-        if filled == 0 { return sawAnything ? IoError::Ok() : IoError::Of(IoErrorKind::EndOfStream); }
         sawAnything = true;
         let ch = byte[0];
-        if ch == c8'\n' { return IoError::Ok(); }
+        if ch == c8'\n' { return; }
         if pendingCarriageReturn {
-            builder.AppendAscii(c8'\r') catch { else => return IoError::Of(IoErrorKind::Other) };
+            builder.AppendAscii(c8'\r') catch { else => fail IoError::Of(IoErrorKind::Other) };
             pendingCarriageReturn = false;
         }
         if ch == c8'\r' {
             pendingCarriageReturn = true;
         }
         else {
-            builder.AppendAscii(ch) catch { else => return IoError::Of(IoErrorKind::Other) };
+            builder.AppendAscii(ch) catch { else => fail IoError::Of(IoErrorKind::Other) };
         }
     }
-    return IoError::Ok();
 }

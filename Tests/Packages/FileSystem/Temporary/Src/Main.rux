@@ -1,9 +1,8 @@
-
 // Two names in a row must differ, the file must actually exist while it is held, and it must be gone once the
 // handle is done with it — through Close, and through a scope ending without one.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, Panic };
+import Core::{ Assert, Panic, Succeeded };
 import Io::{ IoError, IoErrorKind, ReadExact, Reader, SeekFrom, WriteAll, Writer };
 import Path::{ OsString, Path, PathBuffer };
 import FileSystem::{ DeleteFile, File, MetadataOf, OpenOptions, TemporaryDirectory, TemporaryDirectoryHandle, TemporaryFile };
@@ -31,16 +30,14 @@ func SamePath(left: Path, right: Path) -> bool {
 }
 
 func Exists(allocator: Allocator, path: Path) -> bool {
-    var error = IoError::Ok();
-    MetadataOf(allocator, path, true, @error);
-    return error.IsOk();
+    return Succeeded(MetadataOf(allocator, path, true));
 }
 
 // Makes a temporary file, writes to it, and lets it fall out of scope without a Close.
 func Abandon(allocator: Allocator, directory: Path) -> PathBuffer {
-    var error = IoError::Ok();
-    var scratch = TemporaryFile::Create(allocator, directory, "abandoned-", @error);
-    Assert(error.IsOk(), "the abandoned file is created");
+    var scratch = TemporaryFile::Create(allocator, directory, "abandoned-") catch {
+        else => Panic("the abandoned file is created")
+    };
     var remembered = PathBuffer::FromPath(allocator, scratch.AsPath()) catch {
         else => Panic("and its name is remembered")
     };
@@ -48,36 +45,30 @@ func Abandon(allocator: Allocator, directory: Path) -> PathBuffer {
     return <-remembered;
 }
 
-func Main() -> int {
+func Main() -> int ! IoError {
     var system = SystemAllocator();
     let allocator: Allocator = system;
-    var error = IoError::Ok();
 
     // The system's temporary directory is a directory that exists.
-    var root = TemporaryDirectory(allocator, @error);
-    Assert(error.IsOk(), "the system temporary directory is reported");
+    var root = TemporaryDirectory(allocator)?;
     Assert(Exists(allocator, root.AsPath()), "and exists");
 
     // A temporary directory of our own, to keep the rest out of everyone else's way.
-    var home = TemporaryDirectoryHandle::Create(allocator, root.AsPath(), "rux-storage-", @error);
-    Assert(error.IsOk(), "a temporary directory is created");
+    var home = TemporaryDirectoryHandle::Create(allocator, root.AsPath(), "rux-storage-")?;
     Assert(Exists(allocator, home.AsPath()), "and exists");
 
     // Two files in a row get different names: the entropy is doing its job.
-    var first = TemporaryFile::Create(allocator, home.AsPath(), "t-", @error);
-    Assert(error.IsOk(), "the first temporary file is created");
-    var second = TemporaryFile::Create(allocator, home.AsPath(), "t-", @error);
-    Assert(error.IsOk(), "and so is the second");
+    var first = TemporaryFile::Create(allocator, home.AsPath(), "t-")?;
+    var second = TemporaryFile::Create(allocator, home.AsPath(), "t-")?;
     Assert(!SamePath(first.AsPath(), second.AsPath()), "and their names differ");
     Assert(Exists(allocator, first.AsPath()) && Exists(allocator, second.AsPath()), "both exist");
 
     // It is a real file, open for reading and writing.
-    Assert(WriteAll(first.file, TextBytes("held briefly")).IsOk(), "the temporary file takes content");
-    var position: uint64 = 0;
-    Assert(first.file.Seek(SeekFrom::Start, 0, @position).IsOk(), "and rewinds");
+    WriteAll(first.file, TextBytes("held briefly"))?;
+    Assert(first.file.Seek(SeekFrom::Start, 0)? == 0u64, "and rewinds");
     var storage: char8[16];
     let room = (@storage[0])[..12];
-    Assert(ReadExact(first.file, room).IsOk(), "and reads back what was written");
+    ReadExact(first.file, room)?;
     Assert(storage[0] == c8'h' && storage[11] == c8'y', "byte for byte");
 
     // Close deletes it and says so; the name is free afterwards.
@@ -85,7 +76,7 @@ func Main() -> int {
     firstPathHolder <- PathBuffer::FromPath(allocator, first.AsPath()) catch {
         else => Panic("the first name is remembered")
     };
-    Assert(first.Close(allocator).IsOk(), "closing reports success");
+    first.Close(allocator)?;
     Assert(!Exists(allocator, firstPathHolder.AsPath()), "and the file is gone");
 
     // A handle that simply goes out of scope cleans up too — the reason the type exists.
@@ -93,21 +84,20 @@ func Main() -> int {
     Assert(!Exists(allocator, abandonedPath.AsPath()), "an abandoned temporary file is deleted on the way out");
 
     // Keep gives up ownership: the file stays, and cleaning it up becomes the caller's business.
-    var kept = TemporaryFile::Create(allocator, home.AsPath(), "kept-", @error);
-    Assert(error.IsOk(), "a kept file is created");
+    var kept = TemporaryFile::Create(allocator, home.AsPath(), "kept-")?;
     var keptPath = PathBuffer::FromPath(allocator, kept.AsPath()) catch {
         else => Panic("the kept name is remembered")
     };
-    Assert(kept.Keep().IsOk(), "keeping closes the file");
+    kept.Keep()?;
     Assert(Exists(allocator, keptPath.AsPath()), "and leaves it behind");
 
-    Assert(second.Close(allocator).IsOk(), "the second file cleans up");
-    Assert(DeleteFile(allocator, keptPath.AsPath()).IsOk(), "and so does the kept one, by hand");
+    second.Close(allocator)?;
+    DeleteFile(allocator, keptPath.AsPath())?;
 
     var homePath = PathBuffer::FromPath(allocator, home.AsPath()) catch {
         else => Panic("the directory name is remembered")
     };
-    Assert(home.Close(allocator).IsOk(), "the temporary directory is removed");
+    home.Close(allocator)?;
     Assert(!Exists(allocator, homePath.AsPath()), "and is gone");
 
     firstPathHolder.Release();

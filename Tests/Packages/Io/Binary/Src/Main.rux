@@ -1,7 +1,7 @@
 // The caller names the format's byte order, and the host's own never enters into it: the same value writes to
 // mirrored bytes under the two orders, and each order reads back exactly what it wrote.
 
-import Core::{ Assert };
+import Core::{ Assert, Panic };
 import Io::{ Endian, IoError, IoErrorKind, Reader, Writer };
 import Io::{ ReadFloat32, ReadFloat64, ReadInt16, ReadInt64, ReadInt8, ReadUint128, ReadUint16, ReadUint256, ReadUint32, ReadUint512, ReadUint64, ReadUint8 };
 import Io::{ WriteFloat32, WriteFloat64, WriteInt16, WriteInt64, WriteInt8, WriteUint128, WriteUint16, WriteUint256, WriteUint32, WriteUint512, WriteUint64, WriteUint8 };
@@ -14,11 +14,10 @@ struct MemoryState {
 }
 
 extend MemoryState : Reader {
-    func Read(self: &var MemoryState, into: var char8[..], filled: *var uint) -> IoError {
-        *filled = 0;
+    func Read(self: &var MemoryState, into: var char8[..]) -> uint ! IoError {
         var give = self.length - self.offset;
         if give == 0 {
-            return IoError::Of(IoErrorKind::EndOfStream);
+            fail IoError::Of(IoErrorKind::EndOfStream);
         }
         if give > into.length {
             give = into.length;
@@ -29,25 +28,23 @@ extend MemoryState : Reader {
             index = index + 1;
         }
         self.offset = self.offset + give;
-        *filled = give;
-        return IoError::Ok();
+        return give;
     }
 }
 
 extend MemoryState : Writer {
-    func Write(self: &var MemoryState, bytes: char8[..], taken: *var uint) -> IoError {
+    func Write(self: &var MemoryState, bytes: char8[..]) -> uint ! IoError {
         var index: uint = 0;
         while index < bytes.length {
             self.room.data[self.length + index] = bytes.data[index];
             index = index + 1;
         }
         self.length = self.length + bytes.length;
-        *taken = bytes.length;
-        return IoError::Ok();
+        return bytes.length;
     }
 
-    func Flush(self: &var MemoryState) -> IoError {
-        return IoError::Ok();
+    func Flush(self: &var MemoryState) -> ! IoError {
+        return;
     }
 }
 
@@ -55,12 +52,25 @@ func ByteAt(state: &MemoryState, index: uint) -> uint8 {
     return state.room.data[index] as uint8;
 }
 
+// The value an operation expected to succeed produced.
+func Expect<T>(outcome: T ! IoError, message: char8[..]) -> T {
+    return outcome catch { else => Panic(message) };
+}
+
+// The failure an operation expected to fail reported.
+func Refusal<T>(outcome: T ! IoError) -> IoError {
+    return match outcome {
+        .Success(_) => Panic("expected a failure"),
+        .Failure(error) => error
+    };
+}
+
 func Main() -> int {
     // The two orders write mirrored bytes: the value is the same, only which end comes first differs.
     var goldenStorage: char8[256];
     var golden = MemoryState { room: (@goldenStorage[0])[..256], length: 0, offset: 0 };
-    Assert(WriteUint32(golden, Endian::Big, 0x12345678u32).IsOk(), "big writes");
-    Assert(WriteUint32(golden, Endian::Little, 0x12345678u32).IsOk(), "and little writes");
+    WriteUint32(golden, Endian::Big, 0x12345678u32) catch { else => Panic("big writes") };
+    WriteUint32(golden, Endian::Little, 0x12345678u32) catch { else => Panic("and little writes") };
     Assert(ByteAt(golden, 0) == 0x12u8 && ByteAt(golden, 1) == 0x34u8 &&
            ByteAt(golden, 2) == 0x56u8 && ByteAt(golden, 3) == 0x78u8,
            "big-endian puts the most significant byte first");
@@ -71,7 +81,7 @@ func Main() -> int {
     // The IEEE 754 pattern of 1.0, byte for byte, in network order.
     var floatsStorage: char8[256];
     var floats = MemoryState { room: (@floatsStorage[0])[..256], length: 0, offset: 0 };
-    Assert(WriteFloat64(floats, Endian::Big, 1.0).IsOk(), "the float writes");
+    WriteFloat64(floats, Endian::Big, 1.0) catch { else => Panic("the float writes") };
     Assert(ByteAt(floats, 0) == 0x3Fu8 && ByteAt(floats, 1) == 0xF0u8 && ByteAt(floats, 2) == 0u8 &&
            ByteAt(floats, 7) == 0u8, "as the bit pattern its specification names");
 
@@ -83,44 +93,32 @@ func Main() -> int {
     var order = Endian::Big;
     var pass: uint = 0;
     while pass < 2 {
-        Assert(WriteUint8(record, order, 0xABu8).IsOk(), "u8 writes");
-        Assert(WriteUint16(record, order, 0xBEEFu16).IsOk(), "u16 writes");
-        Assert(WriteUint32(record, order, 0xDEADBEEFu32).IsOk(), "u32 writes");
-        Assert(WriteUint64(record, order, 0x0123456789ABCDEFu64).IsOk(), "u64 writes");
-        Assert(WriteUint128(record, order, wideValue as uint128).IsOk(), "u128 writes");
-        Assert(WriteUint256(record, order, (hugeValue as uint256) | 1u256).IsOk(), "u256 writes");
-        Assert(WriteUint512(record, order, hugeValue).IsOk(), "u512 writes");
-        Assert(WriteInt8(record, order, -100i8).IsOk(), "i8 writes");
-        Assert(WriteInt16(record, order, -32768i16).IsOk(), "the most negative i16 writes");
-        Assert(WriteInt64(record, order, -1i64).IsOk(), "minus one writes");
-        Assert(WriteFloat32(record, order, -2.5f32).IsOk(), "f32 writes");
-        Assert(WriteFloat64(record, order, 6.02214076e23).IsOk(), "f64 writes");
+        WriteUint8(record, order, 0xABu8) catch { else => Panic("u8 writes") };
+        WriteUint16(record, order, 0xBEEFu16) catch { else => Panic("u16 writes") };
+        WriteUint32(record, order, 0xDEADBEEFu32) catch { else => Panic("u32 writes") };
+        WriteUint64(record, order, 0x0123456789ABCDEFu64) catch { else => Panic("u64 writes") };
+        WriteUint128(record, order, wideValue as uint128) catch { else => Panic("u128 writes") };
+        WriteUint256(record, order, (hugeValue as uint256) | 1u256) catch { else => Panic("u256 writes") };
+        WriteUint512(record, order, hugeValue) catch { else => Panic("u512 writes") };
+        WriteInt8(record, order, -100i8) catch { else => Panic("i8 writes") };
+        WriteInt16(record, order, -32768i16) catch { else => Panic("the most negative i16 writes") };
+        WriteInt64(record, order, -1i64) catch { else => Panic("minus one writes") };
+        WriteFloat32(record, order, -2.5f32) catch { else => Panic("f32 writes") };
+        WriteFloat64(record, order, 6.02214076e23) catch { else => Panic("f64 writes") };
 
-        var u8Back = 0u8;
-        var u16Back = 0u16;
-        var u32Back = 0u32;
-        var u64Back = 0u64;
-        var u128Back = 0u128;
-        var u256Back = 0u256;
-        var u512Back = 0u512;
-        var i8Back = 0i8;
-        var i16Back = 0i16;
-        var i64Back = 0i64;
-        var f32Back = 0.0f32;
-        var f64Back = 0.0;
-        Assert(ReadUint8(record, order, @u8Back).IsOk() && u8Back == 0xABu8, "u8 returns");
-        Assert(ReadUint16(record, order, @u16Back).IsOk() && u16Back == 0xBEEFu16, "u16 returns");
-        Assert(ReadUint32(record, order, @u32Back).IsOk() && u32Back == 0xDEADBEEFu32, "u32 returns");
-        Assert(ReadUint64(record, order, @u64Back).IsOk() && u64Back == 0x0123456789ABCDEFu64, "u64 returns");
-        Assert(ReadUint128(record, order, @u128Back).IsOk() && u128Back == (wideValue as uint128), "u128 returns");
-        Assert(ReadUint256(record, order, @u256Back).IsOk() && u256Back == ((hugeValue as uint256) | 1u256),
+        Assert(Expect(ReadUint8(record, order), "u8 reads") == 0xABu8, "u8 returns");
+        Assert(Expect(ReadUint16(record, order), "u16 reads") == 0xBEEFu16, "u16 returns");
+        Assert(Expect(ReadUint32(record, order), "u32 reads") == 0xDEADBEEFu32, "u32 returns");
+        Assert(Expect(ReadUint64(record, order), "u64 reads") == 0x0123456789ABCDEFu64, "u64 returns");
+        Assert(Expect(ReadUint128(record, order), "u128 reads") == (wideValue as uint128), "u128 returns");
+        Assert(Expect(ReadUint256(record, order), "u256 reads") == ((hugeValue as uint256) | 1u256),
                "u256 returns");
-        Assert(ReadUint512(record, order, @u512Back).IsOk() && u512Back == hugeValue, "u512 returns");
-        Assert(ReadInt8(record, order, @i8Back).IsOk() && i8Back == -100i8, "i8 returns");
-        Assert(ReadInt16(record, order, @i16Back).IsOk() && i16Back == -32768i16, "the most negative i16 returns");
-        Assert(ReadInt64(record, order, @i64Back).IsOk() && i64Back == -1i64, "minus one returns");
-        Assert(ReadFloat32(record, order, @f32Back).IsOk() && f32Back == -2.5f32, "f32 returns");
-        Assert(ReadFloat64(record, order, @f64Back).IsOk() && f64Back == 6.02214076e23, "f64 returns");
+        Assert(Expect(ReadUint512(record, order), "u512 reads") == hugeValue, "u512 returns");
+        Assert(Expect(ReadInt8(record, order), "i8 reads") == -100i8, "i8 returns");
+        Assert(Expect(ReadInt16(record, order), "i16 reads") == -32768i16, "the most negative i16 returns");
+        Assert(Expect(ReadInt64(record, order), "i64 reads") == -1i64, "minus one returns");
+        Assert(Expect(ReadFloat32(record, order), "f32 reads") == -2.5f32, "f32 returns");
+        Assert(Expect(ReadFloat64(record, order), "f64 reads") == 6.02214076e23, "f64 returns");
 
         record.length = 0;
         record.offset = 0;
@@ -131,8 +129,7 @@ func Main() -> int {
     // A stream two bytes long cannot yield a four-byte value, and says so rather than inventing the rest.
     var shortStorage: char8[256];
     var short = MemoryState { room: (@shortStorage[0])[..256], length: 2, offset: 0 };
-    var lost = 0u32;
-    Assert(ReadUint32(short, Endian::Big, @lost).IsEnd(), "a short stream is the end, not a value");
+    Assert(Refusal(ReadUint32(short, Endian::Big)).IsEnd(), "a short stream is the end, not a value");
 
     return 0;
 }

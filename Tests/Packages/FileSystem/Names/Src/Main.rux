@@ -22,53 +22,59 @@ func PathOf(allocator: Allocator, text: char8[..], holder: *var OsString) -> Pat
 // Creates `name` inside `directory`, finds it by enumeration, reopens it under the name enumeration reported,
 // and deletes it. Anything lossy in that circle breaks one of the steps.
 func RoundTrip(allocator: Allocator, directory: Path, name: OsStringView, what: char8[..]) {
-    var error = IoError::Ok();
     var full = PathBuffer::FromPath(allocator, directory) catch { else => Panic("the directory copies") };
     full.Push(name) catch { else => Panic("and the name appends") };
 
-    var made = File::Open(allocator, full.AsPath(), OpenOptions::Writing(), @error);
-    Assert(made.IsOpen() && error.IsOk(), what);
-    Assert(made.Close().IsOk(), "and closes");
+    var made = File::Open(allocator, full.AsPath(), OpenOptions::Writing()) catch { else => Panic(what) };
+    Assert(made.IsOpen(), what);
+    made.Close() catch { else => Panic("and closes") };
 
     // Enumeration must report the name the way it was written.
-    var walk = ReadDirectory(allocator, directory, @error);
-    Assert(error.IsOk(), "the directory opens for reading");
+    var walk = ReadDirectory(allocator, directory) catch { else => Panic("the directory opens for reading") };
     var found = false;
     var reported = OsString(allocator);
-    var entry = OsString(allocator);
-    while walk.Next(@entry, @error) {
-        let view = entry.View();
-        if view.Equals(name) {
-            found = true;
-            reported = OsString::FromView(allocator, view) catch { else => Panic("and the reported name copies") };
+    while true {
+        let next = walk.Next() catch { else => Panic("the enumeration ends rather than fails") };
+        match next {
+            entry? => {
+                let view = entry.View();
+                if view.Equals(name) {
+                    found = true;
+                    reported = OsString::FromView(allocator, view) catch {
+                        else => Panic("and the reported name copies")
+                    };
+                }
+            },
+            none => {
+                break;
+            }
         }
-        entry.Clear();
     }
-    Assert(error.IsOk(), "the enumeration ends rather than fails");
     Assert(found, "the name reads back exactly as it was written");
     walk.Release();
 
     // Reopening under the reported name proves the round trip is usable, not merely equal.
     var reopenPath = PathBuffer::FromPath(allocator, directory) catch { else => Panic("the directory copies again") };
     reopenPath.Push(reported.View()) catch { else => Panic("the reported name appends") };
-    var reopened = File::Open(allocator, reopenPath.AsPath(), OpenOptions::Reading(), @error);
-    Assert(reopened.IsOpen() && error.IsOk(), "and opens the same file");
-    Assert(reopened.Close().IsOk(), "which closes");
+    var reopened = File::Open(allocator, reopenPath.AsPath(), OpenOptions::Reading()) catch {
+        else => Panic("and opens the same file")
+    };
+    Assert(reopened.IsOpen(), "and opens the same file");
+    reopened.Close() catch { else => Panic("which closes") };
 
-    Assert(DeleteFile(allocator, full.AsPath()).IsOk(), "and deletes under the original name");
+    DeleteFile(allocator, full.AsPath()) catch { else => Panic("and deletes under the original name") };
     full.Release();
     reopenPath.Release();
 }
 
-func Main() -> int {
+func Main() -> int ! IoError {
     var system = SystemAllocator();
     let allocator: Allocator = system;
-    var error = IoError::Ok();
 
     var dirHolder = OsString(allocator);
     let dir = PathOf(allocator, "Bin/FileSystemNames.tmp", @dirHolder);
-    DeleteDirectory(allocator, dir);
-    Assert(MakeDirectory(allocator, dir).IsOk(), "the scratch directory is made");
+    DeleteDirectory(allocator, dir) catch { else => {} };
+    MakeDirectory(allocator, dir)?;
 
     // Characters no ANSI code page holds, which is what a lossy conversion loses first.
     var cyrillicHolder = OsString(allocator);
@@ -111,7 +117,7 @@ func Main() -> int {
         Assert(Failed(hostile.ToText(allocator)), "and refuses to become text rather than being mangled into it");
     }
 
-    Assert(DeleteDirectory(allocator, dir).IsOk(), "the scratch directory cleans up");
+    DeleteDirectory(allocator, dir)?;
     return 0;
 }
 

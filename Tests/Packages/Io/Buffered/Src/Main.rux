@@ -1,6 +1,6 @@
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert };
+import Core::{ Assert, Panic };
 import Io::{ BufferedReader, BufferedWriter, IoError, IoErrorKind, Reader, Writer };
 
 // The bytes a string spans, which is how a caller holding text reaches an entry point that takes bytes.
@@ -24,12 +24,11 @@ struct SourceHandle {
 }
 
 extend SourceHandle : Reader {
-    func Read(self: &var SourceHandle, into: var char8[..], filled: *var uint) -> IoError {
-        *filled = 0;
+    func Read(self: &var SourceHandle, into: var char8[..]) -> uint ! IoError {
         let state = self.state;
         state.calls = state.calls + 1;
         if state.served >= state.limit {
-            return IoError::Of(IoErrorKind::EndOfStream);
+            fail IoError::Of(IoErrorKind::EndOfStream);
         }
         var give = state.limit - state.served;
         if give > into.length {
@@ -41,8 +40,7 @@ extend SourceHandle : Reader {
             index = index + 1;
         }
         state.served = state.served + give;
-        *filled = give;
-        return IoError::Ok();
+        return give;
     }
 }
 
@@ -59,7 +57,7 @@ struct SinkHandle {
 }
 
 extend SinkHandle : Writer {
-    func Write(self: &var SinkHandle, bytes: char8[..], taken: *var uint) -> IoError {
+    func Write(self: &var SinkHandle, bytes: char8[..]) -> uint ! IoError {
         let state = self.state;
         state.calls = state.calls + 1;
         var take = bytes.length;
@@ -72,43 +70,36 @@ extend SinkHandle : Writer {
             index = index + 1;
         }
         state.written = state.written + take;
-        *taken = take;
-        return IoError::Ok();
+        return take;
     }
 
-    func Flush(self: &var SinkHandle) -> IoError {
+    func Flush(self: &var SinkHandle) -> ! IoError {
         self.state.flushes = self.state.flushes + 1;
-        return IoError::Ok();
     }
 }
 
 func Main() -> int {
     var system = SystemAllocator();
     let allocator: Allocator = system;
-    var error = IoError::Ok();
 
     // Sixty-four one-byte reads out of a 16-byte buffer cost the source four calls, not sixty-four.
     var source = CountingSource { served: 0, calls: 0, limit: 64 };
     let sourceHandle: Reader = SourceHandle { state: @source };
-    var createdReader = BufferedReader::New(allocator, sourceHandle, 16, @error);
-    var reader <- createdReader;
-    Assert(error.IsOk(), "the reader takes its buffer");
+    var reader = BufferedReader::New(allocator, sourceHandle, 16) catch {
+        else => Panic("the reader takes its buffer")
+    };
     var one: char8[1];
     let oneRoom = (@one[0])[..1];
     var count: uint = 0;
     var lastByte = 0u8 as char8;
-    var reading = true;
-    while reading {
-        var filled: uint = 0;
-        let outcome = reader.Read(oneRoom, @filled);
-        if outcome.IsEnd() {
-            reading = false;
-        }
-        else {
-            Assert(outcome.IsOk(), "every read before the end succeeds");
-            count = count + 1;
-            lastByte = one[0];
-        }
+    while true {
+        let filled = reader.Read(oneRoom) catch {
+            error if error.IsEnd() => break,
+            else => Panic("every read before the end succeeds")
+        };
+        Assert(filled == 1, "each read fills the one-byte room");
+        count = count + 1;
+        lastByte = one[0];
     }
     Assert(count == 64, "every byte arrives");
     Assert(lastByte == ((63u % 26u + 0x61u) as char8), "in order, to the last");
@@ -117,19 +108,22 @@ func Main() -> int {
     // A read larger than the whole buffer bypasses it.
     var bigSource = CountingSource { served: 0, calls: 0, limit: 64 };
     let bigHandle: Reader = SourceHandle { state: @bigSource };
-    var bypassReader = BufferedReader::New(allocator, bigHandle, 8, @error);
+    var bypassReader = BufferedReader::New(allocator, bigHandle, 8) catch {
+        else => Panic("the reader takes its buffer")
+    };
     var bigStorage: char8[32];
     let bigRoom = (@bigStorage[0])[..32];
-    var filled: uint = 0;
-    Assert(bypassReader.Read(bigRoom, @filled).IsOk(), "the large read succeeds");
+    let filled = bypassReader.Read(bigRoom) catch { else => Panic("the large read succeeds") };
     Assert(filled == 32, "whole");
     Assert(bigSource.calls == 1, "in one conversation, straight past the buffer");
 
     // Buffered() and Consume() expose the lookahead line reading is built from.
     var peekSource = CountingSource { served: 0, calls: 0, limit: 10 };
     let peekHandle: Reader = SourceHandle { state: @peekSource };
-    var peekReader = BufferedReader::New(allocator, peekHandle, 16, @error);
-    Assert(peekReader.Fill().IsOk(), "the buffer fills on request");
+    var peekReader = BufferedReader::New(allocator, peekHandle, 16) catch {
+        else => Panic("the reader takes its buffer")
+    };
+    peekReader.Fill() catch { else => Panic("the buffer fills on request") };
     Assert(peekReader.Available() == 10, "with everything the source had");
     let peeked = peekReader.Buffered();
     Assert(peeked.data[0] == c8'a' && peeked.data[9] == c8'j', "visible without being consumed");
@@ -145,26 +139,27 @@ func Main() -> int {
         flushes: 0
     };
     let sinkHandle: Writer = SinkHandle { state: @sink };
-    var createdWriter = BufferedWriter::New(allocator, sinkHandle, 32, @error);
-    var writer <- createdWriter;
-    Assert(error.IsOk(), "the writer takes its buffer");
+    var writer = BufferedWriter::New(allocator, sinkHandle, 32) catch { else => Panic("the writer takes its buffer") };
     var piece: uint = 0;
     while piece < 8 {
-        var taken: uint = 0;
-        Assert(writer.Write(TextBytes("ab"), @taken).IsOk() && taken == 2, "each small write is taken whole");
+        let taken = writer.Write(TextBytes("ab")) catch { else => Panic("each small write succeeds") };
+        Assert(taken == 2, "each small write is taken whole");
         piece = piece + 1;
     }
     Assert(sink.calls == 0, "and none of them reached the sink yet");
     Assert(writer.Pending() == 16, "they wait in the buffer");
-    Assert(writer.Flush().IsOk(), "until the flush");
+    writer.Flush() catch { else => Panic("until the flush") };
     Assert(sink.calls == 1, "which is one conversation");
     Assert(sink.flushes == 1, "passed through to the sink");
     Assert(sink.written == 16 && sinkStorage[0] == c8'a' && sinkStorage[15] == c8'b', "carrying every byte in order");
 
     // A write larger than the buffer goes around it — after what was gathered, so order holds.
-    var taken: uint = 0;
-    Assert(writer.Write(TextBytes("xy"), @taken).IsOk(), "a small write gathers");
-    Assert(writer.Write(TextBytes("0123456789abcdefghijklmnopqrstuvwxyz"), @taken).IsOk(), "a huge one goes around");
+    let gathered = writer.Write(TextBytes("xy")) catch { else => Panic("a small write gathers") };
+    Assert(gathered == 2, "and is taken whole");
+    let around = writer.Write(TextBytes("0123456789abcdefghijklmnopqrstuvwxyz")) catch {
+        else => Panic("a huge one goes around")
+    };
+    Assert(around == 36, "whole");
     Assert(sinkStorage[16] == c8'x' && sinkStorage[17] == c8'y', "the gathered bytes went first");
     Assert(sinkStorage[18] == c8'0', "then the bypass");
     Assert(writer.Pending() == 0, "and nothing waits");

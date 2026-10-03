@@ -1,17 +1,25 @@
 // Printing, with the failure a caller can act on returned rather than swallowed.
 //
-// Every overload returns the `IoError` of the write it made. Most call sites will keep ignoring it, and that is
-// now their decision rather than this module's: a program logging to a terminal loses nothing by not looking,
-// while one whose output feeds a closed pipe finally has something to look at. The bytes go through the standard
-// output handle, so the console-versus-redirection encoding is decided where it always is, not re-decided here.
+// Every overload returns the `IoError` of the write it made, or `none` when there was nothing to report. Most call
+// sites will keep ignoring it, and that is their decision rather than this module's: a program logging to a terminal
+// loses nothing by not looking, while one whose output feeds a closed pipe has something to look at. That is why the
+// result is an optional failure rather than a fallible, which a statement could not leave unread. The bytes go
+// through the standard output handle, so the console-versus-redirection encoding is decided where it always is, not
+// re-decided here.
 
 import Format::WriteFormat;
 import Text::{ Display, FormatError, FormatSpec, String, StringView, TextWriter };
 
 // The one write under everything here.
-func PrintBytes(bytes: char8[..]) -> IoError {
+func PrintBytes(bytes: char8[..]) -> ! IoError {
     var out = StandardOut::Acquire();
     return WriteAll(out, bytes);
+}
+
+// The failure a write reported, as the optional every printing call returns.
+func FailureOf(outcome: ! IoError) -> IoError? {
+    outcome catch { error => return error };
+    return none;
 }
 
 // What one printing call reports, given the slot the adapter recorded into and what the formatter said.
@@ -20,12 +28,10 @@ func PrintBytes(bytes: char8[..]) -> IoError {
 // and can say nothing about what a broken pipe was, while the slot holds the failure itself. Only once the stream
 // is known to be healthy is the formatter's own failure worth translating, and by then it can only be a fault of
 // the request or of the value.
-func Reported(failure: IoError, formatted: ! FormatError) -> IoError {
-    if failure.IsError() { return failure; }
-    return match formatted {
-        .Success(_) => IoError::Ok(),
-        .Failure(reason) => ToIoError(reason)
-    };
+func Reported(failure: IoError?, formatted: ! FormatError) -> IoError? {
+    if failure is IoError { return failure; }
+    formatted catch { reason => return ToIoError(reason) };
+    return none;
 }
 
 /// Writes a value's text to standard output.
@@ -43,10 +49,10 @@ func Reported(failure: IoError, formatted: ! FormatError) -> IoError {
 /// room for one; a caller who needs it builds a `ConsoleWriter` and calls `Text::WriteValue` themselves.
 ///
 /// @param value the value to write
-/// @returns what the stream reported, or the translated formatting failure on a healthy stream
+/// @returns what the stream reported, or the translated formatting failure on a healthy stream, or `none`
 /// @see https://rux-lang.dev/docs/api/io/print-value
-pub func PrintValue(value: Display) -> IoError {
-    var failure = IoError::Ok();
+pub func PrintValue(value: Display) -> IoError? {
+    var failure: IoError? = none;
     var sink = ConsoleWriter(@failure);
     let writer: &var TextWriter = sink;
     let formatted = value.WriteDisplay(writer, FormatSpec::Plain());
@@ -56,37 +62,37 @@ pub func PrintValue(value: Display) -> IoError {
 /// Writes a value's text to standard output, then a newline.
 ///
 /// @param value the value to write
-/// @returns `None` when the whole value was written
+/// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print-value-line
-pub func PrintValueLine(value: Display) -> IoError {
+pub func PrintValueLine(value: Display) -> IoError? {
     return Terminate(PrintValue(value));
 }
 
 /// Writes a string to standard output.
 ///
 /// @param value the value to write
-/// @returns `None` when the whole value was written
+/// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print
-pub func Print(value: String) -> IoError {
-    return PrintBytes((value.data)[..value.length]);
+pub func Print(value: String) -> IoError? {
+    return FailureOf(PrintBytes((value.data)[..value.length]));
 }
 
 /// Provides the public `Print` operation.
 ///
 /// @param value the value to write
-/// @returns `None` when the whole value was written
+/// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print
-pub func Print(value: StringView) -> IoError {
-    return PrintBytes(value.Bytes());
+pub func Print(value: StringView) -> IoError? {
+    return FailureOf(PrintBytes(value.Bytes()));
 }
 
 /// Writes text to standard output.
 ///
 /// @param value the value to write
-/// @returns `None` when the whole value was written
+/// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print
-pub func Print(value: char8[..]) -> IoError {
-    return PrintBytes(value);
+pub func Print(value: char8[..]) -> IoError? {
+    return FailureOf(PrintBytes(value));
 }
 
 /// Writes `format` to standard output with each `{}` replaced by the next argument.
@@ -95,10 +101,10 @@ pub func Print(value: char8[..]) -> IoError {
 /// `PrintValue`'s do.
 ///
 /// @param format the format string, with `{}` for each argument
-/// @returns `None` when the whole value was written
+/// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print-format
-pub func Print(format: char8[..], args: Display...) -> IoError {
-    var failure = IoError::Ok();
+pub func Print(format: char8[..], args: Display...) -> IoError? {
+    var failure: IoError? = none;
     var sink = ConsoleWriter(@failure);
     let writer: &var TextWriter = sink;
     let formatted = WriteFormat(writer, format, args...);
@@ -108,9 +114,9 @@ pub func Print(format: char8[..], args: Display...) -> IoError {
 /// Provides the public `Print` operation.
 ///
 /// @param value the value to write
-/// @returns `None` when the whole value was written
+/// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print
-pub func Print(value: bool8) -> IoError {
+pub func Print(value: bool8) -> IoError? {
     let shown: Display = value;
     return PrintValue(shown);
 }
@@ -118,9 +124,9 @@ pub func Print(value: bool8) -> IoError {
 /// Provides the public `Print` operation.
 ///
 /// @param value the value to write
-/// @returns `None` when the whole value was written
+/// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print
-pub func Print(value: bool16) -> IoError {
+pub func Print(value: bool16) -> IoError? {
     let shown: Display = value;
     return PrintValue(shown);
 }
@@ -128,9 +134,9 @@ pub func Print(value: bool16) -> IoError {
 /// Provides the public `Print` operation.
 ///
 /// @param value the value to write
-/// @returns `None` when the whole value was written
+/// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print
-pub func Print(value: bool32) -> IoError {
+pub func Print(value: bool32) -> IoError? {
     let shown: Display = value;
     return PrintValue(shown);
 }
@@ -138,9 +144,9 @@ pub func Print(value: bool32) -> IoError {
 /// Provides the public `Print` operation.
 ///
 /// @param value the value to write
-/// @returns `None` when the whole value was written
+/// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print
-pub func Print(value: char8) -> IoError {
+pub func Print(value: char8) -> IoError? {
     let shown: Display = value;
     return PrintValue(shown);
 }
@@ -148,9 +154,9 @@ pub func Print(value: char8) -> IoError {
 /// Provides the public `Print` operation.
 ///
 /// @param value the value to write
-/// @returns `None` when the whole value was written
+/// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print
-pub func Print(value: char16) -> IoError {
+pub func Print(value: char16) -> IoError? {
     let shown: Display = value;
     return PrintValue(shown);
 }
@@ -158,9 +164,9 @@ pub func Print(value: char16) -> IoError {
 /// Provides the public `Print` operation.
 ///
 /// @param value the value to write
-/// @returns `None` when the whole value was written
+/// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print
-pub func Print(value: char32) -> IoError {
+pub func Print(value: char32) -> IoError? {
     let shown: Display = value;
     return PrintValue(shown);
 }
@@ -168,9 +174,9 @@ pub func Print(value: char32) -> IoError {
 /// Provides the public `Print` operation.
 ///
 /// @param value the value to write
-/// @returns `None` when the whole value was written
+/// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print
-pub func Print(value: int8) -> IoError {
+pub func Print(value: int8) -> IoError? {
     let shown: Display = value;
     return PrintValue(shown);
 }
@@ -178,9 +184,9 @@ pub func Print(value: int8) -> IoError {
 /// Provides the public `Print` operation.
 ///
 /// @param value the value to write
-/// @returns `None` when the whole value was written
+/// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print
-pub func Print(value: int16) -> IoError {
+pub func Print(value: int16) -> IoError? {
     let shown: Display = value;
     return PrintValue(shown);
 }
@@ -188,9 +194,9 @@ pub func Print(value: int16) -> IoError {
 /// Provides the public `Print` operation.
 ///
 /// @param value the value to write
-/// @returns `None` when the whole value was written
+/// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print
-pub func Print(value: int32) -> IoError {
+pub func Print(value: int32) -> IoError? {
     let shown: Display = value;
     return PrintValue(shown);
 }
@@ -198,9 +204,9 @@ pub func Print(value: int32) -> IoError {
 /// Provides the public `Print` operation.
 ///
 /// @param value the value to write
-/// @returns `None` when the whole value was written
+/// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print
-pub func Print(value: int64) -> IoError {
+pub func Print(value: int64) -> IoError? {
     let shown: Display = value;
     return PrintValue(shown);
 }
@@ -208,9 +214,9 @@ pub func Print(value: int64) -> IoError {
 /// Provides the public `Print` operation.
 ///
 /// @param value the value to write
-/// @returns `None` when the whole value was written
+/// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print
-pub func Print(value: uint8) -> IoError {
+pub func Print(value: uint8) -> IoError? {
     let shown: Display = value;
     return PrintValue(shown);
 }
@@ -218,9 +224,9 @@ pub func Print(value: uint8) -> IoError {
 /// Provides the public `Print` operation.
 ///
 /// @param value the value to write
-/// @returns `None` when the whole value was written
+/// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print
-pub func Print(value: uint16) -> IoError {
+pub func Print(value: uint16) -> IoError? {
     let shown: Display = value;
     return PrintValue(shown);
 }
@@ -228,9 +234,9 @@ pub func Print(value: uint16) -> IoError {
 /// Provides the public `Print` operation.
 ///
 /// @param value the value to write
-/// @returns `None` when the whole value was written
+/// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print
-pub func Print(value: uint32) -> IoError {
+pub func Print(value: uint32) -> IoError? {
     let shown: Display = value;
     return PrintValue(shown);
 }
@@ -238,9 +244,9 @@ pub func Print(value: uint32) -> IoError {
 /// Provides the public `Print` operation.
 ///
 /// @param value the value to write
-/// @returns `None` when the whole value was written
+/// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print
-pub func Print(value: uint64) -> IoError {
+pub func Print(value: uint64) -> IoError? {
     let shown: Display = value;
     return PrintValue(shown);
 }
@@ -248,9 +254,9 @@ pub func Print(value: uint64) -> IoError {
 /// Provides the public `Print` operation.
 ///
 /// @param value the value to write
-/// @returns `None` when the whole value was written
+/// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print
-pub func Print(value: int) -> IoError {
+pub func Print(value: int) -> IoError? {
     let shown: Display = value;
     return PrintValue(shown);
 }
@@ -258,9 +264,9 @@ pub func Print(value: int) -> IoError {
 /// Provides the public `Print` operation.
 ///
 /// @param value the value to write
-/// @returns `None` when the whole value was written
+/// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print
-pub func Print(value: uint) -> IoError {
+pub func Print(value: uint) -> IoError? {
     let shown: Display = value;
     return PrintValue(shown);
 }
@@ -268,9 +274,9 @@ pub func Print(value: uint) -> IoError {
 /// Provides the public `Print` operation.
 ///
 /// @param value the value to write
-/// @returns `None` when the whole value was written
+/// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print
-pub func Print(value: float32) -> IoError {
+pub func Print(value: float32) -> IoError? {
     let shown: Display = value;
     return PrintValue(shown);
 }
@@ -278,9 +284,9 @@ pub func Print(value: float32) -> IoError {
 /// Provides the public `Print` operation.
 ///
 /// @param value the value to write
-/// @returns `None` when the whole value was written
+/// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print
-pub func Print(value: float64) -> IoError {
+pub func Print(value: float64) -> IoError? {
     let shown: Display = value;
     return PrintValue(shown);
 }

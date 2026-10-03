@@ -1,6 +1,6 @@
 import Core::{ Assert, Succeeded };
 import Format::WriteFormat;
-import Io::PrintLine;
+import Io::{ IoError, PrintLine };
 import Text::{ BufferWriter, FormatSpec, WriteValue };
 
 func Same(left: char8[..], right: char8[..]) -> bool {
@@ -21,8 +21,8 @@ func Check(flag: bool) {
     var plainWriter = BufferWriter((@plainStorage[0])[..32]);
     Assert(Succeeded(WriteValue(plainWriter, flag ? "alpha" : "B", FormatSpec::Plain())), "an ordinary interface argument succeeds");
     Assert(Same(plainWriter.Written(), flag ? "alpha" : "B"), "ordinary interface conversion preserves the text");
-    Assert(PrintLine("{}/{}/{}", flag ? "alpha" : "B", flag ? "" : "alpha", flag ? "B" : "").IsOk(), "inline PrintLine succeeds");
-    Assert(PrintLine("{} {}", flag ? "alpha" : "B", flag ? "alpha" : "B").IsOk(), "repeated PrintLine arguments succeed");
+    Assert(!(PrintLine("{}/{}/{}", flag ? "alpha" : "B", flag ? "" : "alpha", flag ? "B" : "") is IoError), "inline PrintLine succeeds");
+    Assert(!(PrintLine("{} {}", flag ? "alpha" : "B", flag ? "alpha" : "B") is IoError), "repeated PrintLine arguments succeed");
 }
 func Main() -> int {
     var iteration = 0;

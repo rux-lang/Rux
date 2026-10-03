@@ -27,25 +27,6 @@ when #target.os {
     }
 }
 
-// Two native paths, or the reason there are not; the second is only converted once the first succeeds.
-func NativePathPair(allocator: Allocator, first: Path, second: Path, firstNative: *var *var OsUnit,
-                    secondNative: *var *var OsUnit) -> IoError {
-    let converted = NativePath(allocator, first, firstNative);
-    if converted.IsError() { return converted; }
-    let again = NativePath(allocator, second, secondNative);
-    if again.IsError() {
-        ReleaseNativePath(allocator, *firstNative, first.name.units.length);
-        return again;
-    }
-    return IoError::Ok();
-}
-
-func ReleaseNativePathPair(allocator: Allocator, first: Path, second: Path, firstNative: *var OsUnit,
-                           secondNative: *var OsUnit) {
-    ReleaseNativePath(allocator, firstNative, first.name.units.length);
-    ReleaseNativePath(allocator, secondNative, second.name.units.length);
-}
-
 /// Renames `from` to `to`, moving it between directories if the paths differ there.
 ///
 /// An existing `to` is replaced, atomically within one volume: a reader sees the old file or the new, never a
@@ -54,27 +35,24 @@ func ReleaseNativePathPair(allocator: Allocator, first: Path, second: Path, firs
 /// @param allocator where the storage comes from
 /// @param from the path that exists now
 /// @param to the path it should have afterwards
-/// @returns `None` when the file is at its new path
+/// @returns success when the file is at its new path
 /// @see https://rux-lang.dev/docs/api/filesystem/rename
-pub func Rename(allocator: Allocator, from: Path, to: Path) -> IoError {
-    var fromNative: *var OsUnit = null;
-    var toNative: *var OsUnit = null;
-    let converted = NativePathPair(allocator, from, to, @fromNative, @toNative);
-    if converted.IsError() { return converted; }
-    var outcome = IoError::Ok();
+pub func Rename(allocator: Allocator, from: Path, to: Path) -> ! IoError {
+    let fromNative = NativePath(allocator, from)?;
+    defer ReleaseNativePath(allocator, fromNative, from.name.units.length);
+    let toNative = NativePath(allocator, to)?;
+    defer ReleaseNativePath(allocator, toNative, to.name.units.length);
     when #target.os == .Windows {
         if MoveFileExW(fromNative as *char16, toNative as *char16, MOVEFILE_REPLACE_EXISTING) == 0 {
-            outcome = TranslateNative(GetLastError() as int32);
+            fail TranslateNative(GetLastError() as int32);
         }
     }
     else {
         let result = RenameAt(AtFdCwd, fromNative as *char8, AtFdCwd, toNative as *char8);
         if result < 0 {
-            outcome = TranslateNative((0i64 - result) as int32);
+            fail TranslateNative((0i64 - result) as int32);
         }
     }
-    ReleaseNativePathPair(allocator, from, to, fromNative, toNative);
-    return outcome;
 }
 
 /// Creates `link` as a hard link: a second name for the file `existing` names.
@@ -86,27 +64,24 @@ pub func Rename(allocator: Allocator, from: Path, to: Path) -> IoError {
 /// @param allocator where the storage comes from
 /// @param existing the file that exists now
 /// @param link the link to create
-/// @returns `None` when the new name refers to the same file
+/// @returns success when the new name refers to the same file
 /// @see https://rux-lang.dev/docs/api/filesystem/create-hard-link
-pub func CreateHardLink(allocator: Allocator, existing: Path, link: Path) -> IoError {
-    var existingNative: *var OsUnit = null;
-    var linkNative: *var OsUnit = null;
-    let converted = NativePathPair(allocator, existing, link, @existingNative, @linkNative);
-    if converted.IsError() { return converted; }
-    var outcome = IoError::Ok();
+pub func CreateHardLink(allocator: Allocator, existing: Path, link: Path) -> ! IoError {
+    let existingNative = NativePath(allocator, existing)?;
+    defer ReleaseNativePath(allocator, existingNative, existing.name.units.length);
+    let linkNative = NativePath(allocator, link)?;
+    defer ReleaseNativePath(allocator, linkNative, link.name.units.length);
     when #target.os == .Windows {
         if CreateHardLinkW(linkNative as *char16, existingNative as *char16, null) == 0 {
-            outcome = TranslateNative(GetLastError() as int32);
+            fail TranslateNative(GetLastError() as int32);
         }
     }
     else {
         let result = LinkAt(AtFdCwd, existingNative as *char8, AtFdCwd, linkNative as *char8, 0);
         if result < 0 {
-            outcome = TranslateNative((0i64 - result) as int32);
+            fail TranslateNative((0i64 - result) as int32);
         }
     }
-    ReleaseNativePathPair(allocator, existing, link, existingNative, linkNative);
-    return outcome;
 }
 
 /// Creates `link` as a symbolic link holding `target` as its text.
@@ -120,31 +95,28 @@ pub func CreateHardLink(allocator: Allocator, existing: Path, link: Path) -> IoE
 /// @param target the path the link will point at, which need not exist
 /// @param link the link to create
 /// @param targetIsDirectory whether the target is a directory, which Windows must be told in advance
-/// @returns `None` when the link was created; Windows needs a privilege for this
+/// @returns success when the link was created; Windows needs a privilege for this
 /// @see https://rux-lang.dev/docs/api/filesystem/create-symbolic-link
-pub func CreateSymbolicLink(allocator: Allocator, target: Path, link: Path, targetIsDirectory: bool) -> IoError {
-    var targetNative: *var OsUnit = null;
-    var linkNative: *var OsUnit = null;
-    let converted = NativePathPair(allocator, target, link, @targetNative, @linkNative);
-    if converted.IsError() { return converted; }
-    var outcome = IoError::Ok();
+pub func CreateSymbolicLink(allocator: Allocator, target: Path, link: Path, targetIsDirectory: bool) -> ! IoError {
+    let targetNative = NativePath(allocator, target)?;
+    defer ReleaseNativePath(allocator, targetNative, target.name.units.length);
+    let linkNative = NativePath(allocator, link)?;
+    defer ReleaseNativePath(allocator, linkNative, link.name.units.length);
     when #target.os == .Windows {
         var flags = SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE;
         if targetIsDirectory {
             flags = flags | SYMBOLIC_LINK_FLAG_DIRECTORY;
         }
         if CreateSymbolicLinkW(linkNative as *char16, targetNative as *char16, flags) == 0u8 {
-            outcome = TranslateNative(GetLastError() as int32);
+            fail TranslateNative(GetLastError() as int32);
         }
     }
     else {
         let result = SymlinkAt(targetNative as *char8, AtFdCwd, linkNative as *char8);
         if result < 0 {
-            outcome = TranslateNative((0i64 - result) as int32);
+            fail TranslateNative((0i64 - result) as int32);
         }
     }
-    ReleaseNativePathPair(allocator, target, link, targetNative, linkNative);
-    return outcome;
 }
 
 /// Copies the file `from` names to `to`, following a symbolic link to the bytes it points at.
@@ -155,75 +127,62 @@ pub func CreateSymbolicLink(allocator: Allocator, target: Path, link: Path, targ
 /// @param allocator where the storage comes from
 /// @param from the path that exists now
 /// @param to the path it should have afterwards
-/// @returns `None` when the destination holds a copy
+/// @returns success when the destination holds a copy
 /// @see https://rux-lang.dev/docs/api/filesystem/copy-file
-pub func CopyFile(allocator: Allocator, from: Path, to: Path) -> IoError {
+pub func CopyFile(allocator: Allocator, from: Path, to: Path) -> ! IoError {
     when #target.os == .Windows {
-        var fromNative: *var OsUnit = null;
-        var toNative: *var OsUnit = null;
-        let converted = NativePathPair(allocator, from, to, @fromNative, @toNative);
-        if converted.IsError() { return converted; }
-        var outcome = IoError::Ok();
+        let fromNative = NativePath(allocator, from)?;
+        defer ReleaseNativePath(allocator, fromNative, from.name.units.length);
+        let toNative = NativePath(allocator, to)?;
+        defer ReleaseNativePath(allocator, toNative, to.name.units.length);
         if CopyFileW(fromNative as *char16, toNative as *char16, 0) == 0 {
-            outcome = TranslateNative(GetLastError() as int32);
+            fail TranslateNative(GetLastError() as int32);
         }
-        ReleaseNativePathPair(allocator, from, to, fromNative, toNative);
-        return outcome;
     }
     else {
-        var error = IoError::Ok();
-        var source = File::Open(allocator, from, OpenOptions::Reading(), @error);
-        if error.IsError() { return error; }
-        var destination = File::Open(allocator, to, OpenOptions::Writing(), @error);
-        if error.IsError() {
-            source.Close();
-            return error;
-        }
+        // A file opened here and abandoned by a failure is closed by its destructor.
+        var source = File::Open(allocator, from, OpenOptions::Reading())?;
+        var destination = File::Open(allocator, to, OpenOptions::Writing())?;
 
         let layout = Layout { size: 65536, alignment: 8 };
         var borrowed = allocator;
-        let block = borrowed.Allocate(layout) catch {
-            else => {
-                    source.Close();
-                    destination.Close();
-                    return IoError::Of(IoErrorKind::Other);
-            }
-        };
+        let block = borrowed.Allocate(layout) catch { else => fail IoError::Of(IoErrorKind::Other) };
         let buffer = (block as *var char8)[..65536];
 
-        var outcome = IoError::Ok();
+        var failure: IoError? = none;
         var copying = true;
         while copying {
-            var filled: uint = 0;
-            let readOutcome = source.Read(buffer, @filled);
-            if readOutcome.IsError() {
-                if readOutcome.IsEnd() {
-                    copying = false;
-                }
-                else if !readOutcome.IsTransient() {
-                    outcome = readOutcome;
-                    copying = false;
-                }
-            }
-            else {
-                let piece = (block as *char8)[..filled];
-                let wrote = WriteAll(destination, piece);
-                if wrote.IsError() {
-                    outcome = wrote;
-                    copying = false;
+            match source.Read(buffer) {
+                .Success(filled) => {
+                    let piece = (block as *char8)[..filled];
+                    WriteAll(destination, piece) catch {
+                        error => {
+                            failure = error;
+                            copying = false;
+                        }
+                    };
+                },
+                .Failure(error) => {
+                    if error.IsEnd() {
+                        copying = false;
+                    }
+                    else if !error.IsTransient() {
+                        failure = error;
+                        copying = false;
+                    }
                 }
             }
         }
 
         borrowed.Deallocate(block, layout) catch { else => {} };
+        // Both files close whatever happened; a close failure is reported only when the copy itself went through.
         let closedSource = source.Close();
         let closedDestination = destination.Close();
-        if outcome.IsOk() && closedSource.IsError() {
-            outcome = closedSource;
+        match failure {
+            error? => fail error,
+            none => {}
         }
-        if outcome.IsOk() && closedDestination.IsError() {
-            outcome = closedDestination;
-        }
-        return outcome;
+        closedSource?;
+        closedDestination?;
     }
 }

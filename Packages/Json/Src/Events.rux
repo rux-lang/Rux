@@ -98,12 +98,9 @@ extend JsonEventReader {
     /// @param allocator where the storage comes from
     /// @param source the text to read
     /// @param limits the bounds the parse refuses to exceed
-    /// @param error receives why the operation failed, or `None`
-    /// @returns a reader positioned before the first event
+    /// @returns a reader positioned before the first event; `Other` when its buffer could not be allocated
     /// @see https://rux-lang.dev/docs/api/json/json-event-reader/new
-    pub func New(allocator: Allocator, source: Reader, limits: JsonLimits,
-             error: *var IoError) -> JsonEventReader {
-        *error = IoError::Ok();
+    pub func New(allocator: Allocator, source: Reader, limits: JsonLimits) -> JsonEventReader ! IoError {
         var reader = JsonEventReader {
             source: source, data: null, capacity: 0, filled: 0, position: 0, exhausted: false,
             allocator: allocator, limits: limits, stack: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -112,12 +109,7 @@ extend JsonEventReader {
         };
         var borrowed = allocator;
         let chunk = Layout { size: JsonStreamChunk, alignment: 1 };
-        let block = borrowed.Allocate(chunk) catch {
-            else => {
-                *error = IoError::Of(IoErrorKind::Other);
-                return <-reader;
-            }
-        };
+        let block = borrowed.Allocate(chunk) catch { else => fail IoError::Of(IoErrorKind::Other) };
         reader.data = block as *var char8;
         reader.capacity = JsonStreamChunk;
         return <-reader;
@@ -199,17 +191,17 @@ extend JsonEventReader {
             self.capacity = wanted;
         }
         if self.exhausted { return false; }
-        var read: uint = 0;
         let room = (@self.data[self.filled])[..self.capacity - self.filled];
-        let outcome = self.source.Read(room, @read);
-        if outcome.IsError() {
-            self.exhausted = true;
-            if !outcome.IsEnd() {
-                self.stop = JsonStop::Lexical;
-                self.lexical = JsonLexError::UnexpectedByte;
+        let read = self.source.Read(room) catch {
+            error => {
+                self.exhausted = true;
+                if !error.IsEnd() {
+                    self.stop = JsonStop::Lexical;
+                    self.lexical = JsonLexError::UnexpectedByte;
+                }
+                return false;
             }
-            return false;
-        }
+        };
         self.filled = self.filled + read;
         return read > 0u;
     }

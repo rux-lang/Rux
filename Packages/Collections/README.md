@@ -225,7 +225,7 @@ func Show() -> ! FormatError {
     numbers.Push(1) catch { else => {} };
     numbers.Push(2) catch { else => {} };
 
-    var failure = IoError::Ok();
+    var failure: IoError? = none;
     var console = ConsoleWriter(@failure);
     let sink: &var TextWriter = console;
     return WriteVectorDebug<int32>(sink, numbers, FormatSpec::Plain());

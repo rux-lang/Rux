@@ -3,8 +3,8 @@
 // the one a program in a pipeline lives on, and these writes must land as the raw bytes they are.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert };
-import Io::{ BufferedWriter, IoError, StandardError, StandardIn, StandardOut, WriteAll, Writer };
+import Core::{ Assert, Panic };
+import Io::{ BufferedWriter, StandardError, StandardIn, StandardOut, WriteAll, Writer };
 
 // The bytes a string spans, which is how a caller holding text reaches an entry point that takes bytes.
 func TextBytes(text: char8[..]) -> char8[..] {
@@ -20,25 +20,28 @@ func Main() -> int {
 
     // A write to standard output takes the bytes and says so.
     let line = TextBytes("standard streams under test\n");
-    Assert(WriteAll(out, line).IsOk(), "the write is taken in full");
-    var taken: uint = 0;
-    Assert(out.Write(TextBytes(""), @taken).IsOk() && taken == 0, "an empty write is nothing and succeeds");
-    Assert(out.Flush().IsOk(), "and flush holds nothing back");
+    WriteAll(out, line) catch { else => Panic("the write is taken in full") };
+    let taken = out.Write(TextBytes("")) catch { else => Panic("an empty write succeeds") };
+    Assert(taken == 0, "an empty write is nothing and succeeds");
+    out.Flush() catch { else => Panic("and flush holds nothing back") };
 
     // Standard error is the same contract on the other stream.
-    Assert(WriteAll(errStream, TextBytes("a report belongs on standard error\n")).IsOk(), "stderr takes its bytes");
+    WriteAll(errStream, TextBytes("a report belongs on standard error\n")) catch {
+        else => Panic("stderr takes its bytes")
+    };
 
     // The handle is a plain byte Writer, so the buffered writer stacks on it unchanged.
-    var failure = IoError::Ok();
     var system = SystemAllocator();
     let allocator: Allocator = system;
     let sink: Writer = out;
-    var buffered = BufferedWriter::New(allocator, sink, 64, @failure);
-    Assert(failure.IsOk(), "the buffered writer takes its buffer");
-    var part: uint = 0;
-    Assert(buffered.Write(TextBytes("buffered "), @part).IsOk(), "a piece is gathered");
-    Assert(buffered.Write(TextBytes("through the standard stream\n"), @part).IsOk(), "and another");
-    Assert(buffered.Flush().IsOk(), "and the flush sends them");
+    var buffered = BufferedWriter::New(allocator, sink, 64) catch {
+        else => Panic("the buffered writer takes its buffer")
+    };
+    let piece = buffered.Write(TextBytes("buffered ")) catch { else => Panic("a piece is gathered") };
+    Assert(piece == 9, "and taken whole");
+    let another = buffered.Write(TextBytes("through the standard stream\n")) catch { else => Panic("and another") };
+    Assert(another == 28, "also whole");
+    buffered.Flush() catch { else => Panic("and the flush sends them") };
 
     return 0;
 }

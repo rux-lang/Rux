@@ -3,7 +3,7 @@
 // requests that contradict themselves. The scratch file lives under Bin/, which is ignored and rewritten.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, Panic };
+import Core::{ Assert, Panic, Succeeded };
 import Io::{ IoError, IoErrorKind };
 import Path::{ OsString, Path };
 import FileSystem::{ File, NativeKind, OpenOptions, TranslateNative };
@@ -13,55 +13,59 @@ func PathOf(allocator: Allocator, text: char8[..], holder: *var OsString) -> Pat
     return Path::FromView((*holder).View());
 }
 
-func Main() -> int {
+// The failure an outcome carries, which the test expects to be there.
+func Refusal<T>(outcome: T ! IoError) -> IoError {
+    return match <-outcome {
+        .Success(_) => Panic("expected a failure"),
+        .Failure(error) => error
+    };
+}
+
+func Main() -> int ! IoError {
     var system = SystemAllocator();
     let allocator: Allocator = system;
-    var error = IoError::Ok();
 
     // A name that does not exist is NotFound, in the platform's own words, translated.
     var missingHolder = OsString(allocator);
     let missing = PathOf(allocator, "Bin/FileSystemNoSuchFile.tmp", @missingHolder);
-    var absent = File::Open(allocator, missing, OpenOptions::Reading(), @error);
-    Assert(!absent.IsOpen() && error.kind == IoErrorKind::NotFound, "reading a missing file is NotFound");
+    Assert(Refusal(File::Open(allocator, missing, OpenOptions::Reading())).kind == IoErrorKind::NotFound,
+           "reading a missing file is NotFound");
 
     // Writing creates it; Close is the error-visible path and closing twice is a quiet no-op.
     var scratchHolder = OsString(allocator);
     let scratch = PathOf(allocator, "Bin/FileSystemOpen.tmp", @scratchHolder);
-    var written = File::Open(allocator, scratch, OpenOptions::Writing(), @error);
-    Assert(written.IsOpen() && error.IsOk(), "writing creates the missing file");
-    Assert(written.Close().IsOk(), "and the close reports");
-    Assert(!written.IsOpen() && written.Close().IsOk(), "a second close is a no-op");
+    var written = File::Open(allocator, scratch, OpenOptions::Writing())?;
+    Assert(written.IsOpen(), "writing creates the missing file");
+    written.Close()?;
+    Assert(!written.IsOpen() && Succeeded(written.Close()), "a second close is a no-op");
 
     // Now that it exists: reading finds it, and a creation claim is refused.
-    var opened = File::Open(allocator, scratch, OpenOptions::Reading(), @error);
+    var opened = File::Open(allocator, scratch, OpenOptions::Reading())?;
     var readable <- opened;
-    Assert(readable.IsOpen() && error.IsOk(), "the created file reads");
-    Assert(readable.Close().IsOk(), "and an explicitly moved handle closes once");
+    Assert(readable.IsOpen(), "the created file reads");
+    readable.Close()?;
     var claimed = OpenOptions();
     claimed.write = true;
     claimed.createNew = true;
-    var exclusive = File::Open(allocator, scratch, claimed, @error);
-    Assert(!exclusive.IsOpen() && error.kind == IoErrorKind::AlreadyExists,
+    Assert(Refusal(File::Open(allocator, scratch, claimed)).kind == IoErrorKind::AlreadyExists,
            "createNew against an existing file is AlreadyExists");
 
     // Appending opens what Writing made.
-    var appended = File::Open(allocator, scratch, OpenOptions::Appending(), @error);
-    Assert(appended.IsOpen() && error.IsOk(), "appending opens the existing file");
-    Assert(appended.Close().IsOk(), "and closes");
+    var appended = File::Open(allocator, scratch, OpenOptions::Appending())?;
+    Assert(appended.IsOpen(), "appending opens the existing file");
+    appended.Close()?;
 
     // The contradictions are refused before the platform is asked.
     var nothing = OpenOptions();
-    var refusedNothing = File::Open(allocator, scratch, nothing, @error);
-    Assert(!refusedNothing.IsOpen() && error.kind == IoErrorKind::InvalidInput, "no access at all is refused");
+    Assert(Refusal(File::Open(allocator, scratch, nothing)).kind == IoErrorKind::InvalidInput,
+           "no access at all is refused");
     var readTruncate = OpenOptions::Reading();
     readTruncate.truncate = true;
-    var refusedTruncate = File::Open(allocator, scratch, readTruncate, @error);
-    Assert(!refusedTruncate.IsOpen() && error.kind == IoErrorKind::InvalidInput,
+    Assert(Refusal(File::Open(allocator, scratch, readTruncate)).kind == IoErrorKind::InvalidInput,
            "truncating without writing is refused");
     var readCreate = OpenOptions::Reading();
     readCreate.create = true;
-    var refusedCreate = File::Open(allocator, scratch, readCreate, @error);
-    Assert(!refusedCreate.IsOpen() && error.kind == IoErrorKind::InvalidInput,
+    Assert(Refusal(File::Open(allocator, scratch, readCreate)).kind == IoErrorKind::InvalidInput,
            "creating without writing is refused");
 
     // The translation table, sampled from both sides of the platform divide.

@@ -38,11 +38,10 @@ struct RecordingStream {
 }
 
 extend RecordingStream : Writer {
-    func Write(self: &var RecordingStream, bytes: char8[..], taken: *var uint) -> IoError {
+    func Write(self: &var RecordingStream, bytes: char8[..]) -> uint ! IoError {
         self.state.calls = self.state.calls + 1u;
         if bytes.length > self.state.allowed {
-            *taken = 0;
-            return IoError::Of(self.state.refusal);
+            fail IoError::Of(self.state.refusal);
         }
         var index: uint = 0;
         while index < bytes.length {
@@ -51,12 +50,11 @@ extend RecordingStream : Writer {
         }
         self.state.length = self.state.length + bytes.length;
         self.state.allowed = self.state.allowed - bytes.length;
-        *taken = bytes.length;
-        return IoError::Ok();
+        return bytes.length;
     }
 
-    func Flush(self: &var RecordingStream) -> IoError {
-        return IoError::Ok();
+    func Flush(self: &var RecordingStream) -> ! IoError {
+        return;
     }
 }
 
@@ -119,12 +117,20 @@ func IsUnsupported(outcome: ! FormatError) -> bool {
     };
 }
 
+// Whether a failure slot holds a failure of `kind`.
+func Holds(slot: IoError?, kind: IoErrorKind) -> bool {
+    return match slot {
+        error? => error.kind == kind,
+        none => false
+    };
+}
+
 func Main() -> int {
     // Going out: success is the formatter's success value, and every failure is the one case the protocol has.
-    Assert(Succeeded(FromIoError(IoError::Ok())), "a stream that took the bytes reports success");
-    Assert(IsWriterFailure(FromIoError(IoError::Of(IoErrorKind::StorageFull))), "a full disk is a writer failure");
-    Assert(IsWriterFailure(FromIoError(IoError::Of(IoErrorKind::PermissionDenied))), "and so is a refusal");
-    Assert(IsWriterFailure(FromIoError(IoError::Of(IoErrorKind::EndOfStream))),
+    Assert(Succeeded(FromIoError(.Success(()))), "a stream that took the bytes reports success");
+    Assert(IsWriterFailure(FromIoError(.Failure(IoError::Of(IoErrorKind::StorageFull)))), "a full disk is a writer failure");
+    Assert(IsWriterFailure(FromIoError(.Failure(IoError::Of(IoErrorKind::PermissionDenied)))), "and so is a refusal");
+    Assert(IsWriterFailure(FromIoError(.Failure(IoError::Of(IoErrorKind::EndOfStream)))),
            "and so is the end of a stream, since a write that reports it cannot take the bytes");
 
     // Coming back: a request that was wrong is not a fact about the destination, and stays apart from one. Each
@@ -157,13 +163,13 @@ func Main() -> int {
                               calls: 0 };
     var stream = RecordingStream { state: @state };
     let sink: Writer = stream;
-    var failure = IoError::Ok();
+    var failure: IoError? = none;
     var adapter = StreamWriter(sink, @failure);
     let writer: &var TextWriter = adapter;
 
     let refused = writer.Write("hello");
     Assert(IsWriterFailure(refused), "the formatter is told the destination failed");
-    Assert(failure.kind == IoErrorKind::StorageFull, "and the caller is told what it was");
+    Assert(Holds(failure, IoErrorKind::StorageFull), "and the caller is told what it was");
     Assert(state.length == 0u, "with nothing written");
     Assert(state.calls == 1u, "the stream having been asked once");
 
@@ -172,7 +178,7 @@ func Main() -> int {
     let again = writer.Write("more");
     Assert(IsWriterFailure(again), "a later write is refused too");
     Assert(state.calls == 1u, "without asking the stream a second time");
-    Assert(failure.kind == IoErrorKind::StorageFull, "and the first failure is the one kept");
+    Assert(Holds(failure, IoErrorKind::StorageFull), "and the first failure is the one kept");
 
     // A healthy stream takes the bytes, and a value writes itself into it. This is the thing that could not be done
     // at all before: a value describing itself into somewhere other than standard output or memory.
@@ -180,7 +186,7 @@ func Main() -> int {
                                calls: 0 };
     var open = RecordingStream { state: @second };
     let target: Writer = open;
-    var healthy = IoError::Ok();
+    var healthy: IoError? = none;
     var good = StreamWriter(target, @healthy);
     let out: &var TextWriter = good;
 
@@ -188,7 +194,7 @@ func Main() -> int {
     var value = Owned { counter: @destroyed, tag: 7i32 };
     Assert(Succeeded(WriteValueLine(out, value)), "a value writes itself into a stream");
     Assert(Same((@second.written[0])[..second.length], "owned-7\n"), "with its newline after it");
-    Assert(healthy.IsOk(), "and nothing recorded against the stream");
+    Assert(!(healthy is IoError), "and nothing recorded against the stream");
 
     // The value was borrowed, not taken. This is what the bound buys over an interface parameter: binding a
     // move-only value to a `Display` transfers ownership of it, so the value would have been gone after one line.
@@ -203,14 +209,14 @@ func Main() -> int {
                               calls: 0 };
     var third_stream = RecordingStream { state: @third };
     let third_sink: Writer = third_stream;
-    var third_failure = IoError::Ok();
+    var third_failure: IoError? = none;
     var third_adapter = StreamWriter(third_sink, @third_failure);
     let third_out: &var TextWriter = third_adapter;
 
     var bad = Refuses {};
     Assert(IsUnsupported(WriteValueLine(third_out, bad)), "a value that refuses reports its own failure");
     Assert(third.length == 0u, "and no newline follows it");
-    Assert(third_failure.IsOk(), "the destination being blameless");
+    Assert(!(third_failure is IoError), "the destination being blameless");
 
     // The same rule for a pattern. Each of the two ways a pattern can be wrong leaves no terminator behind.
     Assert(Failed(WriteFormatLine(third_out, "abc{")), "a pattern that does not parse is refused");
@@ -228,21 +234,21 @@ func Main() -> int {
                                calls: 0 };
     var fourth_stream = RecordingStream { state: @fourth };
     let fourth_sink: Writer = fourth_stream;
-    var fourth_failure = IoError::Ok();
+    var fourth_failure: IoError? = none;
     var fourth_adapter = StreamWriter(fourth_sink, @fourth_failure);
     let fourth_out: &var TextWriter = fourth_adapter;
     Assert(IsWriterFailure(WriteValueLine(fourth_out, value)),
            "a destination with room for the value but not the newline reports a writer failure");
     Assert(Same((@fourth.written[0])[..fourth.length], "owned-7"), "having written the value");
-    Assert(fourth_failure.kind == IoErrorKind::StorageFull, "and recorded what the stream said");
+    Assert(Holds(fourth_failure, IoErrorKind::StorageFull), "and recorded what the stream said");
 
     // A console writer built over a slot that already holds a failure writes nothing at all, which is the same rule
     // over standard output. Nothing is printed by this case, which is the point of it.
-    var recorded = IoError::Of(IoErrorKind::PermissionDenied);
+    var recorded: IoError? = IoError::Of(IoErrorKind::PermissionDenied);
     var console = ConsoleWriter(@recorded);
     let consoleOut: &var TextWriter = console;
     Assert(IsWriterFailure(consoleOut.Write("this must not appear")), "a failed console is not written to again");
-    Assert(recorded.kind == IoErrorKind::PermissionDenied, "and the recorded failure is untouched");
+    Assert(Holds(recorded, IoErrorKind::PermissionDenied), "and the recorded failure is untouched");
 
     // A bounded destination reaches the same boundary from the other side: `InsufficientCapacity` is not a stream
     // failure and must not be reported as one.

@@ -53,50 +53,21 @@ extend AtomicWrite {
     ///
     /// @param allocator where the storage comes from
     /// @param target the path the finished contents will take
-    /// @param error receives why the operation failed, or `None`
-    /// @returns a write in progress against a temporary file, empty when it could not be started
+    /// @returns a write in progress against a temporary file
     /// @see https://rux-lang.dev/docs/api/filesystem/atomic-write/begin
-    pub func Begin(allocator: Allocator, target: Path, error: *var IoError) -> AtomicWrite {
-        *error = IoError::Ok();
-        var result = AtomicWrite {
-            scratch: TemporaryFile {
-                file: File { handle: NoFile(), open: false },
-                path: PathBuffer(allocator),
-                owned: false
-            },
-            target: PathBuffer(allocator),
-            pending: false
-        };
-
+    pub func Begin(allocator: Allocator, target: Path) -> AtomicWrite ! IoError {
         // A target with no parent is a bare name in the working directory, whose parent is that directory.
         let parent = target.Parent();
         var here: OsUnit[1];
         here[0] = DotSegmentUnit();
         let parentPath = (parent is Path) ? (parent ?? Path()) : Path::FromView(OsStringView::FromUnits(here[0..1]));
         var directory = PathBuffer::FromPath(allocator, parentPath) catch {
-            else => {
-                *error = IoError::Of(IoErrorKind::Other);
-                return <-result;
-            }
+            else => fail IoError::Of(IoErrorKind::Other)
         };
-
-        var held = PathBuffer::FromPath(allocator, target) catch {
-            else => {
-                *error = IoError::Of(IoErrorKind::Other);
-                directory.Release();
-                return <-result;
-            }
-        };
-        var scratch = TemporaryFile::Create(allocator, directory.AsPath(), ".rux-atomic-", error);
+        var held = PathBuffer::FromPath(allocator, target) catch { else => fail IoError::Of(IoErrorKind::Other) };
+        var scratch = TemporaryFile::Create(allocator, directory.AsPath(), ".rux-atomic-")?;
         directory.Release();
-        if (*error).IsError() {
-            held.Release();
-            return <-result;
-        }
-        result.scratch <- scratch;
-        result.target <- held;
-        result.pending = true;
-        return <-result;
+        return AtomicWrite { scratch: <-scratch, target: <-held, pending: true };
     }
 
     /// A stored writer over the partial file.
@@ -133,11 +104,10 @@ extend AtomicWrite : Writer {
     /// One attempt, partial on purpose, exactly as the underlying file's is; `WriteAll` does the looping.
     ///
     /// @param bytes the run to write
-    /// @param taken receives how much of it the file took
-    /// @returns what the file reported
+    /// @returns how much of it the file took
     /// @see https://rux-lang.dev/docs/api/filesystem/atomic-write/write
-    pub func Write(self: &var AtomicWrite, bytes: char8[..], taken: *var uint) -> IoError {
-        return self.scratch.file.Write(bytes, taken);
+    pub func Write(self: &var AtomicWrite, bytes: char8[..]) -> uint ! IoError {
+        return self.scratch.file.Write(bytes);
     }
 
     /// Flushes the partial file, which holds nothing back.
@@ -146,7 +116,7 @@ extend AtomicWrite : Writer {
     ///
     /// @returns what the file reported
     /// @see https://rux-lang.dev/docs/api/filesystem/atomic-write/flush
-    pub func Flush(self: &var AtomicWrite) -> IoError {
+    pub func Flush(self: &var AtomicWrite) -> ! IoError {
         return self.scratch.file.Flush();
     }
 }
@@ -163,34 +133,28 @@ extend AtomicWrite {
     /// rather than being durable on some and pretending on the rest.
     ///
     /// @param allocator where the storage comes from
-    /// @returns `None` when the target now holds the contents; on failure it still holds the old ones
+    /// @returns success when the target now holds the contents; on failure it still holds the old ones
     /// @see https://rux-lang.dev/docs/api/filesystem/atomic-write/commit
-    pub func Commit(self: &var AtomicWrite, allocator: Allocator) -> IoError {
-        if !self.pending { return IoError::Of(IoErrorKind::InvalidInput); }
-        let synced = self.scratch.file.Sync();
-        if synced.IsError() { return synced; }
+    pub func Commit(self: &var AtomicWrite, allocator: Allocator) -> ! IoError {
+        if !self.pending { fail IoError::Of(IoErrorKind::InvalidInput); }
+        self.scratch.file.Sync()?;
         // The handle must close before the rename: Windows will not move a file that is open without sharing
         // rights it was not necessarily given, and closing is where a delayed write failure finally reports.
-        let closed = self.scratch.file.Close();
-        if closed.IsError() { return closed; }
-        let moved = Rename(allocator, self.scratch.AsPath(), self.target.AsPath());
-        if moved.IsError() {
-            // The temporary is still ours to clean up, and the target still holds whatever it held.
-            return moved;
-        }
+        self.scratch.file.Close()?;
+        // On failure the temporary is still ours to clean up, and the target still holds whatever it held.
+        Rename(allocator, self.scratch.AsPath(), self.target.AsPath())?;
         // The name now belongs to the target, so the temporary must not delete it.
         self.scratch.owned = false;
         self.pending = false;
-        return IoError::Ok();
     }
 
     /// Throws the partial file away and leaves the target as it was.
     ///
     /// @param allocator where the storage comes from
-    /// @returns `None` when the temporary file was removed and the target left alone
+    /// @returns success when the temporary file was removed and the target left alone
     /// @see https://rux-lang.dev/docs/api/filesystem/atomic-write/abandon
-    pub func Abandon(self: &var AtomicWrite, allocator: Allocator) -> IoError {
-        if !self.pending { return IoError::Ok(); }
+    pub func Abandon(self: &var AtomicWrite, allocator: Allocator) -> ! IoError {
+        if !self.pending { return; }
         self.pending = false;
         return self.scratch.Close(allocator);
     }
@@ -221,20 +185,20 @@ extend AtomicWrite {
 /// @param allocator where the storage comes from
 /// @param target the path the finished contents will take
 /// @param contents the bytes the file should end up holding
-/// @returns `None` when the target now holds exactly `contents`
+/// @returns success when the target now holds exactly `contents`
 /// @see https://rux-lang.dev/docs/api/filesystem/write-atomically
-pub func WriteAtomically(allocator: Allocator, target: Path, contents: char8[..]) -> IoError {
-    var error = IoError::Ok();
-    var replacement = AtomicWrite::Begin(allocator, target, @error);
-    if error.IsError() { return error; }
-    let wrote = WriteAll(replacement, contents);
-    if wrote.IsError() {
-        replacement.Abandon(allocator);
-        return wrote;
-    }
-    let committed = replacement.Commit(allocator);
-    if committed.IsError() {
-        replacement.Abandon(allocator);
-    }
-    return committed;
+pub func WriteAtomically(allocator: Allocator, target: Path, contents: char8[..]) -> ! IoError {
+    var replacement = AtomicWrite::Begin(allocator, target)?;
+    WriteAll(replacement, contents) catch {
+        error => {
+            replacement.Abandon(allocator) catch { else => {} };
+            fail error;
+        }
+    };
+    replacement.Commit(allocator) catch {
+        error => {
+            replacement.Abandon(allocator) catch { else => {} };
+            fail error;
+        }
+    };
 }

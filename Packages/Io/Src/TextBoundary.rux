@@ -8,10 +8,10 @@
 //
 // So the crossing is made in both directions, once, here.
 //
-// Going out, `FromIoError` turns what a stream reported into what a formatter understands: success becomes
-// `Success(Unit())` and every failure becomes `WriterFailure`. That is lossy on purpose, and the loss is made good
-// by the adapter, which records the original `IoError` in a slot the caller holds. So the formatter learns exactly
-// what it can act on — stop writing — and the caller learns exactly what happened.
+// Going out, `FromIoError` turns what a stream reported into what a formatter understands: success stays success
+// and every failure becomes `WriterFailure`. That is lossy on purpose, and the loss is made good by the adapter,
+// which records the original `IoError` in an optional slot the caller holds. So the formatter learns exactly what it
+// can act on — stop writing — and the caller learns exactly what happened.
 //
 // Coming back, `ToIoError` turns a formatting failure into something a stream's caller can act on, and the one
 // distinction it must preserve is the one that decides what to do next: a destination that failed may be worth
@@ -38,12 +38,11 @@ import Text::{ Display, FormatError, FormatSpec, TextFailureKind, TextWriter };
 /// The end of a stream is a failure here. Nothing is being read, so a write that reports it is a destination that
 /// cannot take the bytes, whatever it calls that.
 ///
-/// @param error what the stream reported
-/// @returns success for `IsOk`, and `WriterFailure` otherwise
+/// @param outcome what the stream reported
+/// @returns success for a success, and `WriterFailure` for any failure
 /// @see https://rux-lang.dev/docs/api/io/from-io-error
-pub func FromIoError(error: IoError) -> ! FormatError {
-    if error.IsOk() { return .Success(()); }
-    fail FormatError::WriterFailure;
+pub func FromIoError(outcome: ! IoError) -> ! FormatError {
+    outcome catch { else => fail FormatError::WriterFailure };
 }
 
 /// Turns a formatting failure into something a stream's caller can act on.
@@ -86,7 +85,8 @@ func KindOf(kind: &TextFailureKind) -> IoError {
 /// Text has no vocabulary for a broken pipe and does not pretend to. So this adapter keeps both halves. It reports
 /// `WriterFailure` to the formatter, which stops the write, and records the original `IoError` in the slot it was
 /// built over, which is what the caller reads afterwards. Nothing about the stream failure is lost, and nothing
-/// about it leaks into a package that could not interpret it.
+/// about it leaks into a package that could not interpret it. The slot starts as `none`, and holds the failure once
+/// there is one.
 ///
 /// # Safety
 /// The slot must outlive the writer. It is a stored address, so nothing here tracks that.
@@ -94,7 +94,7 @@ func KindOf(kind: &TextFailureKind) -> IoError {
 /// @see https://rux-lang.dev/docs/api/io/console-writer
 pub struct ConsoleWriter {
     /// Where the first stream failure is recorded.
-    failure: *var IoError;
+    failure: *var IoError?;
 }
 
 extend ConsoleWriter {
@@ -103,10 +103,10 @@ extend ConsoleWriter {
     /// The slot is read before every write as well as written on failure, so a writer built over a slot that
     /// already holds a failure writes nothing at all.
     ///
-    /// @param failure where the first stream failure is recorded
+    /// @param failure where the first stream failure is recorded, `none` until there is one
     /// @returns a writer over standard output
     /// @see https://rux-lang.dev/docs/api/io/console-writer/new
-    pub func ConsoleWriter(failure: *var IoError) -> ConsoleWriter {
+    pub func ConsoleWriter(failure: *var IoError?) -> ConsoleWriter {
         return ConsoleWriter { failure: failure };
     }
 }
@@ -125,14 +125,13 @@ extend ConsoleWriter : TextWriter {
     /// @returns success when the stream accepted the whole run
     /// @see https://rux-lang.dev/docs/api/io/console-writer/write
     pub func Write(self: &var ConsoleWriter, bytes: char8[..]) -> ! FormatError {
-        if (*self.failure).IsError() {
-            fail FormatError::WriterFailure;
-        }
-        let outcome = PrintBytes(bytes);
-        if outcome.IsError() {
-            *self.failure = outcome;
-        }
-        return FromIoError(outcome);
+        if (*self.failure) is IoError { fail FormatError::WriterFailure; }
+        PrintBytes(bytes) catch {
+            error => {
+                *self.failure = error;
+                fail FormatError::WriterFailure;
+            }
+        };
     }
 }
 
@@ -154,7 +153,7 @@ pub struct StreamWriter {
     /// Where the bytes go.
     sink: Writer;
     /// Where the first stream failure is recorded.
-    failure: *var IoError;
+    failure: *var IoError?;
 }
 
 extend StreamWriter {
@@ -164,10 +163,10 @@ extend StreamWriter {
     /// so a writer built over a slot that already holds a failure writes nothing at all.
     ///
     /// @param sink where the bytes go
-    /// @param failure where the first stream failure is recorded
+    /// @param failure where the first stream failure is recorded, `none` until there is one
     /// @returns a text writer over that stream
     /// @see https://rux-lang.dev/docs/api/io/stream-writer/new
-    pub func StreamWriter(sink: Writer, failure: *var IoError) -> StreamWriter {
+    pub func StreamWriter(sink: Writer, failure: *var IoError?) -> StreamWriter {
         return StreamWriter { sink: sink, failure: failure };
     }
 }
@@ -184,14 +183,13 @@ extend StreamWriter : TextWriter {
     /// @returns success when the stream accepted the whole run
     /// @see https://rux-lang.dev/docs/api/io/stream-writer/write
     pub func Write(self: &var StreamWriter, bytes: char8[..]) -> ! FormatError {
-        if (*self.failure).IsError() {
-            fail FormatError::WriterFailure;
-        }
-        let outcome = WriteAll(self.sink, bytes);
-        if outcome.IsError() {
-            *self.failure = outcome;
-        }
-        return FromIoError(outcome);
+        if (*self.failure) is IoError { fail FormatError::WriterFailure; }
+        WriteAll(self.sink, bytes) catch {
+            error => {
+                *self.failure = error;
+                fail FormatError::WriterFailure;
+            }
+        };
     }
 }
 

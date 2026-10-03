@@ -36,32 +36,28 @@ extend File : Reader {
     /// Reads what one attempt yields into `into`; a short count is not an error and the end is `EndOfStream`.
     ///
     /// @param into receives the bytes
-    /// @param filled receives how many bytes were read
-    /// @returns `None` when the read was accepted; zero in `filled` is end of file, not a failure
+    /// @returns how many bytes were read; `IsEnd` at the end of the file
     /// @see https://rux-lang.dev/docs/api/filesystem/file/read
-    pub func Read(self: &var File, into: var char8[..], filled: *var uint) -> IoError {
-        *filled = 0;
-        if !self.open { return ClosedFile(); }
-        if into.length == 0 { return IoError::Ok(); }
+    pub func Read(self: &var File, into: var char8[..]) -> uint ! IoError {
+        if !self.open { fail ClosedFile(); }
+        if into.length == 0 { return 0; }
         when #target.os == .Windows {
             let count = into.length > 0x40000000u ? 0x40000000u32 : into.length as uint32;
             var read: uint32 = 0;
             if !ReadFile(self.handle, into.data as *var opaque, count, @read, null) {
                 let raw = GetLastError() as int32;
                 // A pipe whose writing end closed reports through a failure; for a reader it is the end.
-                if raw == 109 { return IoError::Of(IoErrorKind::EndOfStream); }
-                return TranslateNative(raw);
+                if raw == 109 { fail IoError::Of(IoErrorKind::EndOfStream); }
+                fail TranslateNative(raw);
             }
-            if read == 0 { return IoError::Of(IoErrorKind::EndOfStream); }
-            *filled = read as uint;
-            return IoError::Ok();
+            if read == 0 { fail IoError::Of(IoErrorKind::EndOfStream); }
+            return read as uint;
         }
         else {
             let result = Read(self.handle, into.data as *var opaque, into.length);
-            if result < 0 { return TranslateNative((0i64 - result) as int32); }
-            if result == 0 { return IoError::Of(IoErrorKind::EndOfStream); }
-            *filled = result as uint;
-            return IoError::Ok();
+            if result < 0 { fail TranslateNative((0i64 - result) as int32); }
+            if result == 0 { fail IoError::Of(IoErrorKind::EndOfStream); }
+            return result as uint;
         }
     }
 }
@@ -70,37 +66,32 @@ extend File : Writer {
     /// Writes what one attempt takes of `bytes`; a short count means call again, which `WriteAll` does.
     ///
     /// @param bytes the bytes to write
-    /// @param taken receives how many bytes were taken
-    /// @returns `None` when the bytes were taken, which may be fewer than offered
+    /// @returns how many bytes were taken, which may be fewer than offered
     /// @see https://rux-lang.dev/docs/api/filesystem/file/write
-    pub func Write(self: &var File, bytes: char8[..], taken: *var uint) -> IoError {
-        *taken = 0;
-        if !self.open { return ClosedFile(); }
-        if bytes.length == 0 { return IoError::Ok(); }
+    pub func Write(self: &var File, bytes: char8[..]) -> uint ! IoError {
+        if !self.open { fail ClosedFile(); }
+        if bytes.length == 0 { return 0; }
         when #target.os == .Windows {
             let count = bytes.length > 0x40000000u ? 0x40000000u32 : bytes.length as uint32;
             var written: uint32 = 0;
             if !WriteFile(self.handle, bytes.data as *opaque, count, @written, null) {
-                return TranslateNative(GetLastError() as int32);
+                fail TranslateNative(GetLastError() as int32);
             }
-            *taken = written as uint;
-            return IoError::Ok();
+            return written as uint;
         }
         else {
             let result = Write(self.handle, bytes.data as *opaque, bytes.length);
-            if result < 0 { return TranslateNative((0i64 - result) as int32); }
-            *taken = result as uint;
-            return IoError::Ok();
+            if result < 0 { fail TranslateNative((0i64 - result) as int32); }
+            return result as uint;
         }
     }
 
     /// Nothing: these writes hold nothing back. Durability is `Sync`, which is a different promise.
     ///
-    /// @returns `None` when everything written reached the system
+    /// @returns success when everything written reached the system
     /// @see https://rux-lang.dev/docs/api/filesystem/file/flush
-    pub func Flush(self: &var File) -> IoError {
-        if !self.open { return ClosedFile(); }
-        return IoError::Ok();
+    pub func Flush(self: &var File) -> ! IoError {
+        if !self.open { fail ClosedFile(); }
     }
 }
 
@@ -113,19 +104,16 @@ extend File : Seeker {
     ///
     /// @param origin where the offset is measured from
     /// @param offset how far to move
-    /// @param position receives the resulting offset from the start
-    /// @returns `None` when the offset moved
+    /// @returns the resulting offset from the start
     /// @see https://rux-lang.dev/docs/api/filesystem/file/seek
-    pub func Seek(self: &var File, origin: SeekFrom, offset: int64, position: *var uint64) -> IoError {
-        *position = 0;
-        if !self.open { return ClosedFile(); }
+    pub func Seek(self: &var File, origin: SeekFrom, offset: int64) -> uint64 ! IoError {
+        if !self.open { fail ClosedFile(); }
         when #target.os == .Windows {
             var landed: int64 = 0;
             if !SetFilePointerEx(self.handle, offset, @landed, origin as int32 as uint32) {
-                return TranslateNative(GetLastError() as int32);
+                fail TranslateNative(GetLastError() as int32);
             }
-            *position = landed as uint64;
-            return IoError::Ok();
+            return landed as uint64;
         }
         else {
             var whence = SeekSet;
@@ -136,9 +124,8 @@ extend File : Seeker {
                 whence = SeekEnd;
             }
             let landed = Lseek(self.handle, offset, whence);
-            if landed < 0 { return TranslateNative((0i64 - landed) as int32); }
-            *position = landed as uint64;
-            return IoError::Ok();
+            if landed < 0 { fail TranslateNative((0i64 - landed) as int32); }
+            return landed as uint64;
         }
     }
 }
@@ -149,18 +136,16 @@ extend File {
     /// Not "handed to the kernel" but "acknowledged by the device": the promise that holds through a power
     /// failure, and the one a caller who just wrote something they cannot lose actually wants.
     ///
-    /// @returns `None` when the system reported the data durable
+    /// @returns success when the system reported the data durable
     /// @see https://rux-lang.dev/docs/api/filesystem/file/sync
-    pub func Sync(self: &var File) -> IoError {
-        if !self.open { return ClosedFile(); }
+    pub func Sync(self: &var File) -> ! IoError {
+        if !self.open { fail ClosedFile(); }
         when #target.os == .Windows {
-            if FlushFileBuffers(self.handle) == 0 { return TranslateNative(GetLastError() as int32); }
-            return IoError::Ok();
+            if FlushFileBuffers(self.handle) == 0 { fail TranslateNative(GetLastError() as int32); }
         }
         else {
             let result = Fsync(self.handle);
-            if result < 0 { return TranslateNative((0i64 - result) as int32); }
-            return IoError::Ok();
+            if result < 0 { fail TranslateNative((0i64 - result) as int32); }
         }
     }
 
@@ -170,27 +155,23 @@ extend File {
     /// position for a moment; a reader racing this on the same open file may see it. The stat-based answer
     /// arrives with the metadata work.
     ///
-    /// @param size receives the file's size in bytes
-    /// @returns `None` when the size was read
+    /// @returns the file's size in bytes
     /// @see https://rux-lang.dev/docs/api/filesystem/file/size
-    pub func Size(self: &var File, size: *var uint64) -> IoError {
-        *size = 0;
-        if !self.open { return ClosedFile(); }
+    pub func Size(self: &var File) -> uint64 ! IoError {
+        if !self.open { fail ClosedFile(); }
         when #target.os == .Windows {
             var reported: int64 = 0;
-            if !GetFileSizeEx(self.handle, @reported) { return TranslateNative(GetLastError() as int32); }
-            *size = reported as uint64;
-            return IoError::Ok();
+            if !GetFileSizeEx(self.handle, @reported) { fail TranslateNative(GetLastError() as int32); }
+            return reported as uint64;
         }
         else {
             let held = Lseek(self.handle, 0, SeekCurrent);
-            if held < 0 { return TranslateNative((0i64 - held) as int32); }
+            if held < 0 { fail TranslateNative((0i64 - held) as int32); }
             let end = Lseek(self.handle, 0, SeekEnd);
-            if end < 0 { return TranslateNative((0i64 - end) as int32); }
+            if end < 0 { fail TranslateNative((0i64 - end) as int32); }
             let back = Lseek(self.handle, held, SeekSet);
-            if back < 0 { return TranslateNative((0i64 - back) as int32); }
-            *size = end as uint64;
-            return IoError::Ok();
+            if back < 0 { fail TranslateNative((0i64 - back) as int32); }
+            return end as uint64;
         }
     }
 
@@ -200,30 +181,28 @@ extend File {
     /// grows the file again — the same rule as seeking past the end.
     ///
     /// @param length the size the file should have afterwards
-    /// @returns `None` when the file is that size; extending reads back as zeros
+    /// @returns success when the file is that size; extending reads back as zeros
     /// @see https://rux-lang.dev/docs/api/filesystem/file/set-length
-    pub func SetLength(self: &var File, length: uint64) -> IoError {
-        if !self.open { return ClosedFile(); }
+    pub func SetLength(self: &var File, length: uint64) -> ! IoError {
+        if !self.open { fail ClosedFile(); }
         when #target.os == .Windows {
             // SetEndOfFile cuts at the current position, so the position moves there and back.
             var held: int64 = 0;
-            if !SetFilePointerEx(self.handle, 0, @held, 1) { return TranslateNative(GetLastError() as int32); }
+            if !SetFilePointerEx(self.handle, 0, @held, 1) { fail TranslateNative(GetLastError() as int32); }
             var landed: int64 = 0;
             if !SetFilePointerEx(self.handle, length as int64, @landed, 0) {
-                return TranslateNative(GetLastError() as int32);
+                fail TranslateNative(GetLastError() as int32);
             }
             if SetEndOfFile(self.handle as *var opaque) == 0 {
                 let raw = GetLastError() as int32;
                 SetFilePointerEx(self.handle, held, @landed, 0);
-                return TranslateNative(raw);
+                fail TranslateNative(raw);
             }
-            if !SetFilePointerEx(self.handle, held, @landed, 0) { return TranslateNative(GetLastError() as int32); }
-            return IoError::Ok();
+            if !SetFilePointerEx(self.handle, held, @landed, 0) { fail TranslateNative(GetLastError() as int32); }
         }
         else {
             let result = Ftruncate(self.handle, length as int64);
-            if result < 0 { return TranslateNative((0i64 - result) as int32); }
-            return IoError::Ok();
+            if result < 0 { fail TranslateNative((0i64 - result) as int32); }
         }
     }
 }
@@ -282,11 +261,10 @@ extend FileStream : Reader {
     /// Reads through the borrowed file.
     ///
     /// @param into receives the bytes
-    /// @param filled receives how many bytes were read
-    /// @returns `None` when the read was accepted; zero in `filled` is end of file, not a failure
+    /// @returns how many bytes were read; `IsEnd` at the end of the file
     /// @see https://rux-lang.dev/docs/api/filesystem/file-stream/read
-    pub func Read(self: &var FileStream, into: var char8[..], filled: *var uint) -> IoError {
-        return (*self.file).Read(into, filled);
+    pub func Read(self: &var FileStream, into: var char8[..]) -> uint ! IoError {
+        return (*self.file).Read(into);
     }
 }
 
@@ -294,18 +272,17 @@ extend FileStream : Writer {
     /// Writes through the borrowed file.
     ///
     /// @param bytes the bytes to write
-    /// @param taken receives how many bytes were taken
-    /// @returns `None` when the bytes were taken, which may be fewer than offered
+    /// @returns how many bytes were taken, which may be fewer than offered
     /// @see https://rux-lang.dev/docs/api/filesystem/file-stream/write
-    pub func Write(self: &var FileStream, bytes: char8[..], taken: *var uint) -> IoError {
-        return (*self.file).Write(bytes, taken);
+    pub func Write(self: &var FileStream, bytes: char8[..]) -> uint ! IoError {
+        return (*self.file).Write(bytes);
     }
 
     /// Flushes the borrowed file, which holds nothing back.
     ///
-    /// @returns `None` when everything written reached the system
+    /// @returns success when everything written reached the system
     /// @see https://rux-lang.dev/docs/api/filesystem/file-stream/flush
-    pub func Flush(self: &var FileStream) -> IoError {
+    pub func Flush(self: &var FileStream) -> ! IoError {
         return (*self.file).Flush();
     }
 }
@@ -315,10 +292,9 @@ extend FileStream : Seeker {
     ///
     /// @param origin where the offset is measured from
     /// @param offset how far to move
-    /// @param position receives the resulting offset from the start
-    /// @returns `None` when the offset moved
+    /// @returns the resulting offset from the start
     /// @see https://rux-lang.dev/docs/api/filesystem/file-stream/seek
-    pub func Seek(self: &var FileStream, origin: SeekFrom, offset: int64, position: *var uint64) -> IoError {
-        return (*self.file).Seek(origin, offset, position);
+    pub func Seek(self: &var FileStream, origin: SeekFrom, offset: int64) -> uint64 ! IoError {
+        return (*self.file).Seek(origin, offset);
     }
 }

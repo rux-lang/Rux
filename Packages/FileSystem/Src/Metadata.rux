@@ -388,52 +388,29 @@ when #target.os == .Windows {
 /// @param allocator where the storage comes from
 /// @param path the path to act on
 /// @param followLinks whether a final symbolic link is followed rather than described
-/// @param error receives why the operation failed, or `None`
-/// @returns what the system knows about the path, or an empty record on failure
+/// @returns what the system knows about the path
 /// @see https://rux-lang.dev/docs/api/filesystem/metadata-of
-pub func MetadataOf(allocator: Allocator, path: Path, followLinks: bool, error: *var IoError) -> Metadata {
-    *error = IoError::Ok();
-    var result = Metadata {
-        kind: FileKind::Other,
-        size: 0,
-        linkCount: 0,
-        permissions: Permissions::FromMode(0),
-        accessed: Timestamp::Epoch(),
-        modified: Timestamp::Epoch(),
-        created: Timestamp::Epoch(),
-        hasCreated: false
-    };
-    var native: *var OsUnit = null;
-    *error = NativePath(allocator, path, @native);
-    if (*error).IsError() { return result; }
+pub func MetadataOf(allocator: Allocator, path: Path, followLinks: bool) -> Metadata ! IoError {
+    let native = NativePath(allocator, path)?;
+    defer ReleaseNativePath(allocator, native, path.name.units.length);
     var buffer: char8[256];
     when #target.os == .Windows {
         let handle = OpenForQuery(native, followLinks);
-        if (handle as uint64) == InvalidHandleValue {
-            *error = TranslateNative(GetLastError() as int32);
-        }
-        else {
-            if GetFileInformationByHandle(handle, @buffer[0] as *var opaque) == 0 {
-                *error = TranslateNative(GetLastError() as int32);
-            }
-            else {
-                result = MetadataFromHandleInformation(@buffer[0]);
-            }
+        if (handle as uint64) == InvalidHandleValue { fail TranslateNative(GetLastError() as int32); }
+        if GetFileInformationByHandle(handle, @buffer[0] as *var opaque) == 0 {
+            let raw = GetLastError() as int32;
             CloseHandle(handle);
+            fail TranslateNative(raw);
         }
+        CloseHandle(handle);
+        return MetadataFromHandleInformation(@buffer[0]);
     }
     else {
         let flags = followLinks ? 0i32 : SymlinkNoFollow;
         let outcome = FstatAt(AtFdCwd, native as *char8, @buffer[0] as *var opaque, flags);
-        if outcome < 0 {
-            *error = TranslateNative((0i64 - outcome) as int32);
-        }
-        else {
-            result = MetadataFromStat(@buffer[0]);
-        }
+        if outcome < 0 { fail TranslateNative((0i64 - outcome) as int32); }
+        return MetadataFromStat(@buffer[0]);
     }
-    ReleaseNativePath(allocator, native, path.name.units.length);
-    return result;
 }
 
 extend File {
@@ -442,39 +419,20 @@ extend File {
     /// Answers about the file the handle holds, so nothing can rename or replace the name out from under the
     /// query the way a path-based one can.
     ///
-    /// @param error receives why the operation failed, or `None`
-    /// @returns what the system knows about the open file, or an empty record on failure
+    /// @returns what the system knows about the open file
     /// @see https://rux-lang.dev/docs/api/filesystem/file/metadata
-    pub func Metadata(self: &File, error: *var IoError) -> Metadata {
-        *error = IoError::Ok();
-        var result = Metadata {
-            kind: FileKind::Other,
-            size: 0,
-            linkCount: 0,
-            permissions: Permissions::FromMode(0),
-            accessed: Timestamp::Epoch(),
-            modified: Timestamp::Epoch(),
-            created: Timestamp::Epoch(),
-            hasCreated: false
-        };
-        if !self.open {
-            *error = IoError::Of(IoErrorKind::InvalidHandle);
-            return result;
-        }
+    pub func Metadata(self: &File) -> Metadata ! IoError {
+        if !self.open { fail IoError::Of(IoErrorKind::InvalidHandle); }
         var buffer: char8[256];
         when #target.os == .Windows {
             if GetFileInformationByHandle(self.handle, @buffer[0] as *var opaque) == 0 {
-                *error = TranslateNative(GetLastError() as int32);
-                return result;
+                fail TranslateNative(GetLastError() as int32);
             }
             return MetadataFromHandleInformation(@buffer[0]);
         }
         else {
             let outcome = Fstat(self.handle, @buffer[0] as *var opaque);
-            if outcome < 0 {
-                *error = TranslateNative((0i64 - outcome) as int32);
-                return result;
-            }
+            if outcome < 0 { fail TranslateNative((0i64 - outcome) as int32); }
             return MetadataFromStat(@buffer[0]);
         }
     }
@@ -489,17 +447,15 @@ extend File {
 /// @param allocator where the storage comes from
 /// @param path the path to act on
 /// @param permissions the permissions to apply
-/// @returns `None` when the permissions were applied
+/// @returns success when the permissions were applied
 /// @see https://rux-lang.dev/docs/api/filesystem/set-permissions
-pub func SetPermissions(allocator: Allocator, path: Path, permissions: Permissions) -> IoError {
-    var native: *var OsUnit = null;
-    let converted = NativePath(allocator, path, @native);
-    if converted.IsError() { return converted; }
-    var outcome = IoError::Ok();
+pub func SetPermissions(allocator: Allocator, path: Path, permissions: Permissions) -> ! IoError {
+    let native = NativePath(allocator, path)?;
+    defer ReleaseNativePath(allocator, native, path.name.units.length);
     when #target.os == .Windows {
         let attributes = GetFileAttributesW(native as *char16);
         if attributes == INVALID_FILE_ATTRIBUTES {
-            outcome = TranslateNative(GetLastError() as int32);
+            fail TranslateNative(GetLastError() as int32);
         }
         else {
             var wanted = attributes & ~FILE_ATTRIBUTE_READONLY;
@@ -510,18 +466,16 @@ pub func SetPermissions(allocator: Allocator, path: Path, permissions: Permissio
                 wanted = FILE_ATTRIBUTE_NORMAL;
             }
             if SetFileAttributesW(native as *char16, wanted) == 0 {
-                outcome = TranslateNative(GetLastError() as int32);
+                fail TranslateNative(GetLastError() as int32);
             }
         }
     }
     else {
         let result = FchmodAt(AtFdCwd, native as *char8, (permissions.mode & 0xFFFu32) as uint16, 0);
         if result < 0 {
-            outcome = TranslateNative((0i64 - result) as int32);
+            fail TranslateNative((0i64 - result) as int32);
         }
     }
-    ReleaseNativePath(allocator, native, path.name.units.length);
-    return outcome;
 }
 
 /// Sets the access and modification times of the file `path` names.
@@ -534,18 +488,16 @@ pub func SetPermissions(allocator: Allocator, path: Path, permissions: Permissio
 /// @param accessed the access time to set, or `None` to leave it
 /// @param modified the modification time to set, or `None` to leave it
 /// @param followLinks whether a final symbolic link is followed rather than described
-/// @returns `None` when the times were applied
+/// @returns success when the times were applied
 /// @see https://rux-lang.dev/docs/api/filesystem/set-times
 pub func SetTimes(allocator: Allocator, path: Path, accessed: Timestamp, modified: Timestamp,
-              followLinks: bool) -> IoError {
-    var native: *var OsUnit = null;
-    let converted = NativePath(allocator, path, @native);
-    if converted.IsError() { return converted; }
-    var outcome = IoError::Ok();
+              followLinks: bool) -> ! IoError {
+    let native = NativePath(allocator, path)?;
+    defer ReleaseNativePath(allocator, native, path.name.units.length);
     when #target.os == .Windows {
         let handle = OpenForQuery(native, followLinks);
         if (handle as uint64) == InvalidHandleValue {
-            outcome = TranslateNative(GetLastError() as int32);
+            fail TranslateNative(GetLastError() as int32);
         }
         else {
             // A query handle carries no access rights, and writing times needs one; the handle is reopened with
@@ -559,13 +511,15 @@ pub func SetTimes(allocator: Allocator, path: Path, accessed: Timestamp, modifie
                                        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, null,
                                        CreationDisposition::OpenExisting as uint32, flags, null);
             if (writable as uint64) == InvalidHandleValue {
-                outcome = TranslateNative(GetLastError() as int32);
+                fail TranslateNative(GetLastError() as int32);
             }
             else {
                 var accessTime = FileTimeFromTimestamp(accessed);
                 var writeTime = FileTimeFromTimestamp(modified);
                 if SetFileTime(writable as *var opaque, null, @accessTime, @writeTime) == 0 {
-                    outcome = TranslateNative(GetLastError() as int32);
+                    let raw = GetLastError() as int32;
+                    CloseHandle(writable as *var opaque);
+                    fail TranslateNative(raw);
                 }
                 CloseHandle(writable as *var opaque);
             }
@@ -579,11 +533,9 @@ pub func SetTimes(allocator: Allocator, path: Path, accessed: Timestamp, modifie
         let flags = followLinks ? 0i32 : SymlinkNoFollow;
         let result = UtimensAt(AtFdCwd, native as *char8, @times[0] as *opaque, flags);
         if result < 0 {
-            outcome = TranslateNative((0i64 - result) as int32);
+            fail TranslateNative((0i64 - result) as int32);
         }
     }
-    ReleaseNativePath(allocator, native, path.name.units.length);
-    return outcome;
 }
 
 when #target.os != .Windows {

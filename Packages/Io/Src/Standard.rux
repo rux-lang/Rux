@@ -65,22 +65,21 @@ func PlatformFailure(raw: int32) -> IoError {
 }
 
 // One write attempt against a platform stream: the shared machinery under both outgoing standard streams.
-func WriteRaw(handle: RawStream, console: bool, bytes: char8[..], taken: *var uint) -> IoError {
-    *taken = 0;
-    if bytes.length == 0 { return IoError::Ok(); }
+func WriteRaw(handle: RawStream, console: bool, bytes: char8[..]) -> uint ! IoError {
+    if bytes.length == 0 { return 0; }
     when #target.os == .Windows {
         if !console {
             let count = bytes.length > 0x100000u ? 0x100000u32 : bytes.length as uint32;
             var written: uint32 = 0;
             if !WriteFile(handle, bytes.data as *opaque, count, @written, null) {
-                return PlatformFailure(GetLastError() as int32);
+                fail PlatformFailure(GetLastError() as int32);
             }
-            *taken = written as uint;
-            return IoError::Ok();
+            return written as uint;
         }
         // A console renders characters, so the bytes convert to UTF-16 and go through the console's own door.
         // The chunk backs off to a scalar boundary so no character is cut by the chunking; text that has no
-        // boundary to back off to goes through whole and renders as the malformed thing it is.
+        // boundary to back off to goes through whole and renders as the malformed thing it is. Progress already made
+        // is reported as a short write, and the failure surfaces on the next attempt.
         var offset: uint = 0;
         while offset < bytes.length {
             var chunk = bytes.length - offset;
@@ -97,26 +96,31 @@ func WriteRaw(handle: RawStream, console: bool, bytes: char8[..], taken: *var ui
             var wide: char16[1024];
             let units = MultiByteToWideChar(CodePage::Utf8 as uint32, 0, @bytes.data[offset], chunk as int32,
                                             @wide[0], 1024);
-            if units <= 0 { return PlatformFailure(GetLastError() as int32); }
+            if units <= 0 {
+                if offset > 0 { return offset; }
+                fail PlatformFailure(GetLastError() as int32);
+            }
             var sent: uint = 0;
             while sent < units as uint {
                 var written: uint32 = 0;
                 if !WriteConsoleW(handle, @wide[sent], (units as uint - sent) as uint32, @written, null) {
-                    return PlatformFailure(GetLastError() as int32);
+                    if offset > 0 { return offset; }
+                    fail PlatformFailure(GetLastError() as int32);
                 }
-                if written == 0 { return IoError::Of(IoErrorKind::WriteZero); }
+                if written == 0 {
+                    if offset > 0 { return offset; }
+                    fail IoError::Of(IoErrorKind::WriteZero);
+                }
                 sent = sent + written as uint;
             }
             offset = offset + chunk;
-            *taken = offset;
         }
-        return IoError::Ok();
+        return offset;
     }
     else {
         let result = Write(handle, bytes.data as *opaque, bytes.length);
-        if result < 0 { return PlatformFailure((0i64 - result) as int32); }
-        *taken = result as uint;
-        return IoError::Ok();
+        if result < 0 { fail PlatformFailure((0i64 - result) as int32); }
+        return result as uint;
     }
 }
 
@@ -171,12 +175,10 @@ extend StandardIn : Reader {
     /// Fills what it can of `into` from standard input.
     ///
     /// @param into receives the bytes
-    /// @param filled receives how many bytes were read
-    /// @returns `None` when the read was accepted; zero in `filled` is end of input
+    /// @returns how many bytes were read; `IsEnd` at the end of input
     /// @see https://rux-lang.dev/docs/api/io/standard-in/read
-    pub func Read(self: &var StandardIn, into: var char8[..], filled: *var uint) -> IoError {
-        *filled = 0;
-        if into.length == 0 { return IoError::Ok(); }
+    pub func Read(self: &var StandardIn, into: var char8[..]) -> uint ! IoError {
+        if into.length == 0 { return 0; }
         var served: uint = 0;
         while self.pendingCount > 0 && served < into.length {
             into[served] = (self.pending & 0xFFu64) as uint8 as char8;
@@ -184,41 +186,32 @@ extend StandardIn : Reader {
             self.pendingCount = self.pendingCount - 1;
             served = served + 1;
         }
-        if served == into.length {
-            *filled = served;
-            return IoError::Ok();
-        }
+        if served == into.length { return served; }
         when #target.os == .Windows {
-            if self.console { return self.ReadConsole(into, served, filled); }
+            if self.console { return self.ReadConsole(into, served); }
             var read: uint32 = 0;
             let room = into.length - served;
             let count = room > 0x100000u ? 0x100000u32 : room as uint32;
             if !ReadFile(self.handle, @into[served] as *var opaque, count, @read, null) {
                 let raw = GetLastError() as int32;
-                if served > 0 {
-                    *filled = served;
-                    return IoError::Ok();
-                }
+                if served > 0 { return served; }
                 // A pipe whose writing end has closed reports through a failure; it means the stream is over.
-                if raw == 109 { return IoError::Of(IoErrorKind::EndOfStream); }
-                return PlatformFailure(raw);
+                if raw == 109 { fail IoError::Of(IoErrorKind::EndOfStream); }
+                fail PlatformFailure(raw);
             }
-            *filled = served + read as uint;
-            if *filled == 0 { return IoError::Of(IoErrorKind::EndOfStream); }
-            return IoError::Ok();
+            let total = served + read as uint;
+            if total == 0 { fail IoError::Of(IoErrorKind::EndOfStream); }
+            return total;
         }
         else {
             let result = Read(self.handle, @into[served] as *var opaque, into.length - served);
             if result < 0 {
-                if served > 0 {
-                    *filled = served;
-                    return IoError::Ok();
-                }
-                return PlatformFailure((0i64 - result) as int32);
+                if served > 0 { return served; }
+                fail PlatformFailure((0i64 - result) as int32);
             }
-            *filled = served + result as uint;
-            if *filled == 0 { return IoError::Of(IoErrorKind::EndOfStream); }
-            return IoError::Ok();
+            let total = served + result as uint;
+            if total == 0 { fail IoError::Of(IoErrorKind::EndOfStream); }
+            return total;
         }
     }
 }
@@ -228,8 +221,7 @@ when #target.os == .Windows {
         // The console path: characters arrive as UTF-16 and leave as UTF-8. A high surrogate at the end of a
         // read waits for its partner, converted bytes past the caller's room wait in `pending`, and a
         // substitute character first in a read is the console's end-of-input.
-        func ReadConsole(self: &var StandardIn, into: var char8[..], served: uint, filled: *var uint)
-            -> IoError {
+        func ReadConsole(self: &var StandardIn, into: var char8[..], served: uint) -> uint ! IoError {
             var wide: char16[257];
             var base: uint = 0;
             if self.hasHeldUnit {
@@ -247,41 +239,28 @@ when #target.os == .Windows {
             }
             var read: uint32 = 0;
             if ReadConsoleW(self.handle as *var opaque, @wide[base] as *var opaque, ask as uint32, @read, null) == 0 {
-                if served > 0 {
-                    *filled = served;
-                    return IoError::Ok();
-                }
-                return PlatformFailure(GetLastError() as int32);
+                if served > 0 { return served; }
+                fail PlatformFailure(GetLastError() as int32);
             }
             var total = base + read as uint;
-            if total == 0 {
-                *filled = served;
-                return served > 0 ? IoError::Ok() : IoError::Of(IoErrorKind::EndOfStream);
-            }
-            // Ctrl-Z at the start of a line is how a console says the input is over.
-            if (wide[0] as uint16) == 0x1Au16 {
-                *filled = served;
-                return served > 0 ? IoError::Ok() : IoError::Of(IoErrorKind::EndOfStream);
+            // Nothing at all, or Ctrl-Z at the start of a line, is how a console says the input is over.
+            if total == 0 || (wide[0] as uint16) == 0x1Au16 {
+                if served > 0 { return served; }
+                fail IoError::Of(IoErrorKind::EndOfStream);
             }
             let last = wide[total - 1] as uint16;
             if last >= 0xD800u16 && last <= 0xDBFFu16 {
                 self.heldUnit = last;
                 self.hasHeldUnit = true;
                 total = total - 1;
-                if total == 0 {
-                    *filled = served;
-                    return IoError::Ok();
-                }
+                if total == 0 { return served; }
             }
             var text: char8[1028];
             let converted = WideCharToMultiByte(CodePage::Utf8 as uint32, 0, @wide[0], total as int32,
                                                 @text[0], 1028, null, null);
             if converted <= 0 {
-                if served > 0 {
-                    *filled = served;
-                    return IoError::Ok();
-                }
-                return PlatformFailure(GetLastError() as int32);
+                if served > 0 { return served; }
+                fail PlatformFailure(GetLastError() as int32);
             }
             var index: uint = 0;
             var at = served;
@@ -298,8 +277,7 @@ when #target.os == .Windows {
                 index = index + 1;
                 shift = shift + 1;
             }
-            *filled = at;
-            return IoError::Ok();
+            return at;
         }
     }
 }
@@ -336,19 +314,17 @@ extend StandardOut : Writer {
     /// Writes what it can of `bytes` to standard output.
     ///
     /// @param bytes the bytes to write
-    /// @param taken receives how many bytes were taken
-    /// @returns `None` when the bytes were taken
+    /// @returns how many bytes were taken
     /// @see https://rux-lang.dev/docs/api/io/standard-out/write
-    pub func Write(self: &var StandardOut, bytes: char8[..], taken: *var uint) -> IoError {
-        return WriteRaw(self.handle, self.console, bytes, taken);
+    pub func Write(self: &var StandardOut, bytes: char8[..]) -> uint ! IoError {
+        return WriteRaw(self.handle, self.console, bytes);
     }
 
     /// Nothing: these writes hold nothing back.
     ///
-    /// @returns `None` when everything written reached the system
+    /// @returns success, since everything written already reached the system
     /// @see https://rux-lang.dev/docs/api/io/standard-out/flush
-    pub func Flush(self: &var StandardOut) -> IoError {
-        return IoError::Ok();
+    pub func Flush(self: &var StandardOut) -> ! IoError {
     }
 }
 
@@ -384,18 +360,16 @@ extend StandardError : Writer {
     /// Writes what it can of `bytes` to standard error.
     ///
     /// @param bytes the bytes to write
-    /// @param taken receives how many bytes were taken
-    /// @returns `None` when the bytes were taken
+    /// @returns how many bytes were taken
     /// @see https://rux-lang.dev/docs/api/io/standard-error/write
-    pub func Write(self: &var StandardError, bytes: char8[..], taken: *var uint) -> IoError {
-        return WriteRaw(self.handle, self.console, bytes, taken);
+    pub func Write(self: &var StandardError, bytes: char8[..]) -> uint ! IoError {
+        return WriteRaw(self.handle, self.console, bytes);
     }
 
     /// Nothing: these writes hold nothing back.
     ///
-    /// @returns `None` when everything written reached the system
+    /// @returns success, since everything written already reached the system
     /// @see https://rux-lang.dev/docs/api/io/standard-error/flush
-    pub func Flush(self: &var StandardError) -> IoError {
-        return IoError::Ok();
+    pub func Flush(self: &var StandardError) -> ! IoError {
     }
 }

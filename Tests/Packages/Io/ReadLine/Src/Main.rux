@@ -9,24 +9,21 @@ func Main() -> int {
     var system = SystemAllocator();
     let allocator: Allocator = system;
     var count: uint = 0;
-    var reading = true;
-    while reading && count < 8 {
+    while count < 8 {
         var builder = StringBuilder(allocator);
-        let outcome = ReadLine(builder);
-        if outcome.IsEnd() {
-            reading = false;
-            builder.Release();
-        }
-        else {
-            if outcome.IsError() {
+        match ReadLine(builder) {
+            .Success(_) => {
+                let line = builder.IntoString();
+                Print("[");
+                Print(line);
+                PrintLine("]");
+                count = count + 1;
+            },
+            .Failure(error) => {
                 builder.Release();
-                return 1;
+                if !error.IsEnd() { return 1; }
+                break;
             }
-            let line = builder.IntoString();
-            Print("[");
-            Print(line);
-            PrintLine("]");
-            count = count + 1;
         }
     }
     return 0;

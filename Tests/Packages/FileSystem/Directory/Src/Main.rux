@@ -2,7 +2,7 @@
 // system's own units — refused deletion while full, and deleted once empty.
 
 import Allocator::{ Allocator, SystemAllocator };
-import Core::{ Assert, Panic };
+import Core::{ Assert, Failed, Panic };
 import Io::{ IoError, IoErrorKind };
 import Path::{ OsString, OsStringView, Path };
 import FileSystem::{ DeleteDirectory, DeleteFile, DirectoryIterator, File, MakeDirectory, OpenOptions, ReadDirectory };
@@ -12,11 +12,18 @@ func PathOf(allocator: Allocator, text: char8[..], holder: *var OsString) -> Pat
     return Path::FromView((*holder).View());
 }
 
+// The failure an outcome carries, which the test expects to be there.
+func Refusal<T>(outcome: T ! IoError) -> IoError {
+    return match <-outcome {
+        .Success(_) => Panic("expected a failure"),
+        .Failure(error) => error
+    };
+}
+
 func Touch(allocator: Allocator, path: Path) {
-    var error = IoError::Ok();
-    var made = File::Open(allocator, path, OpenOptions::Writing(), @error);
-    Assert(made.IsOpen() && error.IsOk(), "a file is made");
-    Assert(made.Close().IsOk(), "and closed");
+    var made = File::Open(allocator, path, OpenOptions::Writing()) catch { else => Panic("a file is made") };
+    Assert(made.IsOpen(), "a file is made");
+    made.Close() catch { else => Panic("and closed") };
 }
 
 func NameOf(allocator: Allocator, text: char8[..], holder: *var OsString) -> OsStringView {
@@ -24,10 +31,9 @@ func NameOf(allocator: Allocator, text: char8[..], holder: *var OsString) -> OsS
     return (*holder).View();
 }
 
-func Main() -> int {
+func Main() -> int ! IoError {
     var system = SystemAllocator();
     let allocator: Allocator = system;
-    var error = IoError::Ok();
 
     var dirHolder = OsString(allocator);
     let dir = PathOf(allocator, "Bin/FileSystemDir.tmp", @dirHolder);
@@ -39,22 +45,21 @@ func Main() -> int {
     let accent = PathOf(allocator, "Bin/FileSystemDir.tmp/caf\u{00E9}.txt", @accentHolder);
 
     // Fresh ground: an earlier run may have left the tree behind, and cleanup is not the thing under test yet.
-    DeleteFile(allocator, one);
-    DeleteFile(allocator, two);
-    DeleteFile(allocator, accent);
-    DeleteDirectory(allocator, dir);
+    DeleteFile(allocator, one) catch { else => {} };
+    DeleteFile(allocator, two) catch { else => {} };
+    DeleteFile(allocator, accent) catch { else => {} };
+    DeleteDirectory(allocator, dir) catch { else => {} };
 
     // Made once; a second claim on the name is refused with the reason named.
-    Assert(MakeDirectory(allocator, dir).IsOk(), "the directory is made");
-    Assert(MakeDirectory(allocator, dir).kind == IoErrorKind::AlreadyExists, "a second make is AlreadyExists");
+    MakeDirectory(allocator, dir)?;
+    Assert(Refusal(MakeDirectory(allocator, dir)).kind == IoErrorKind::AlreadyExists, "a second make is AlreadyExists");
 
     Touch(allocator, one);
     Touch(allocator, two);
     Touch(allocator, accent);
 
     // Read back: three names, each one expected, the accent intact in the system's own units.
-    var iterator = ReadDirectory(allocator, dir, @error);
-    Assert(error.IsOk(), "the directory opens for reading");
+    var iterator = ReadDirectory(allocator, dir)?;
     var oneWantHolder = OsString(allocator);
     let oneWant = NameOf(allocator, "one.txt", @oneWantHolder);
     var twoWantHolder = OsString(allocator);
@@ -65,44 +70,45 @@ func Main() -> int {
     var seenTwo = false;
     var seenAccent = false;
     var count: uint = 0;
-    var entry = OsString(allocator);
-    while iterator.Next(@entry, @error) {
-        count = count + 1;
-        let view = entry.View();
-        if view.Equals(oneWant) {
-            seenOne = true;
+    while true {
+        let next = iterator.Next() catch { else => Panic("the enumeration ends rather than fails") };
+        match next {
+            entry? => {
+                count = count + 1;
+                let view = entry.View();
+                if view.Equals(oneWant) {
+                    seenOne = true;
+                }
+                else if view.Equals(twoWant) {
+                    seenTwo = true;
+                }
+                else if view.Equals(accentWant) {
+                    seenAccent = true;
+                }
+            },
+            none => {
+                break;
+            }
         }
-        else if view.Equals(twoWant) {
-            seenTwo = true;
-        }
-        else if view.Equals(accentWant) {
-            seenAccent = true;
-        }
-        entry.Clear();
     }
-    Assert(error.IsOk(), "the enumeration ends rather than fails");
     Assert(count == 3, "three entries, dot entries skipped");
     Assert(seenOne && seenTwo && seenAccent, "every written name reads back, the accent losslessly");
     iterator.Release();
 
     // Deletion respects fullness: refused while anything is inside, clean once nothing is.
-    Assert(DeleteDirectory(allocator, dir).IsError(), "a full directory refuses deletion");
-    Assert(DeleteFile(allocator, one).IsOk(), "the first file deletes");
-    Assert(DeleteFile(allocator, two).IsOk(), "the second file deletes");
-    Assert(DeleteFile(allocator, accent).IsOk(), "the accented file deletes");
-    Assert(DeleteFile(allocator, one).kind == IoErrorKind::NotFound, "deleting it again is NotFound");
+    Assert(Failed(DeleteDirectory(allocator, dir)), "a full directory refuses deletion");
+    DeleteFile(allocator, one)?;
+    DeleteFile(allocator, two)?;
+    DeleteFile(allocator, accent)?;
+    Assert(Refusal(DeleteFile(allocator, one)).kind == IoErrorKind::NotFound, "deleting it again is NotFound");
 
-    var emptied = ReadDirectory(allocator, dir, @error);
-    Assert(error.IsOk(), "the emptied directory still opens");
-    var nothing = OsString(allocator);
-    Assert(!emptied.Next(@nothing, @error) && error.IsOk(), "and holds nothing");
+    var emptied = ReadDirectory(allocator, dir)?;
+    let nothing = emptied.Next() catch { else => Panic("the emptied directory reads without failing") };
+    Assert(!(nothing is OsString), "and holds nothing");
     emptied.Release();
-    nothing.Clear();
 
-    Assert(DeleteDirectory(allocator, dir).IsOk(), "the empty directory deletes");
-    var gone = ReadDirectory(allocator, dir, @error);
-    Assert(error.kind == IoErrorKind::NotFound, "and reading it afterward is NotFound");
-    gone.Release();
+    DeleteDirectory(allocator, dir)?;
+    Assert(Refusal(ReadDirectory(allocator, dir)).kind == IoErrorKind::NotFound, "and reading it afterward is NotFound");
 
     return 0;
 }

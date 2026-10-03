@@ -29,7 +29,7 @@ pub const DefaultBufferCapacity: uint = 8192;
 pub struct BufferedReader {
     /// Where bytes come from when the buffer runs out.
     source: Reader;
-    /// The buffer, or null when allocation was refused.
+    /// The buffer, or null once it has been given back.
     data: *var char8;
     /// How much the buffer holds.
     capacity: uint;
@@ -47,17 +47,12 @@ extend BufferedReader {
 
     /// A buffered reader over `source` with `capacity` bytes of buffer.
     ///
-    /// `error` receives `OutOfMemory` when the buffer cannot be had; the reader still works then, passing every
-    /// read straight through, because a reader that exists but cannot read would be worse than a slow one.
-    ///
     /// @param allocator where the storage comes from
     /// @param source where the bytes come from
     /// @param capacity how many bytes the buffer holds
-    /// @param error receives why the operation failed, or `None`
-    /// @returns the buffered stream, empty when the allocator refused
+    /// @returns the buffered stream; `Other` when the allocator refused the buffer
     /// @see https://rux-lang.dev/docs/api/io/buffered-reader/new
-    pub func New(allocator: Allocator, source: Reader, capacity: uint, error: *var IoError) -> BufferedReader {
-        *error = IoError::Ok();
+    pub func New(allocator: Allocator, source: Reader, capacity: uint) -> BufferedReader ! IoError {
         var reader = BufferedReader {
             source: source,
             data: null,
@@ -69,15 +64,9 @@ extend BufferedReader {
         let wanted = capacity == 0u ? DefaultBufferCapacity : capacity;
         let layout = Layout::New(wanted, 1) ?? Layout { size: wanted, alignment: 1 };
         var borrowed = allocator;
-        match borrowed.Allocate(layout) {
-            .Success(block) => {
-                reader.data = block as *var char8;
-                reader.capacity = wanted;
-            },
-            .Failure(_) => {
-                *error = IoError::Of(IoErrorKind::Other);
-            }
-        }
+        let block = borrowed.Allocate(layout) catch { else => fail IoError::Of(IoErrorKind::Other) };
+        reader.data = block as *var char8;
+        reader.capacity = wanted;
         return <-reader;
     }
 
@@ -112,53 +101,51 @@ extend BufferedReader {
     /// Reports what the source reported; `EndOfStream` when the source is done. A source that reports success
     /// while handing over nothing breaks the `Reader` contract, and is reported as the end rather than looped on.
     ///
-    /// @returns `None` when at least one byte was buffered; `IsEnd` at the end of the source
+    /// @returns success when at least one byte is buffered; `IsEnd` at the end of the source
     /// @see https://rux-lang.dev/docs/api/io/buffered-reader/fill
-    pub func Fill(self: &var BufferedReader) -> IoError {
-        if self.Available() > 0 { return IoError::Ok(); }
-        if self.data == null { return IoError::Of(IoErrorKind::Other); }
+    pub func Fill(self: &var BufferedReader) -> ! IoError {
+        if self.Available() > 0 { return; }
+        if self.data == null { fail IoError::Of(IoErrorKind::Other); }
         self.start = 0;
         self.end = 0;
-        var filled: uint = 0;
-        var outcome = self.source.Read((self.data)[..self.capacity], @filled);
-        while outcome.IsTransient() {
-            outcome = self.source.Read((self.data)[..self.capacity], @filled);
+        while true {
+            let filled = self.source.Read((self.data)[..self.capacity]) catch {
+                error if error.IsTransient() => continue,
+                error => fail error
+            };
+            if filled == 0 { fail IoError::Of(IoErrorKind::EndOfStream); }
+            self.end = filled;
+            return;
         }
-        if outcome.IsError() { return outcome; }
-        if filled == 0 { return IoError::Of(IoErrorKind::EndOfStream); }
-        self.end = filled;
-        return IoError::Ok();
     }
 
     /// Fills what it can of `into`: from the buffer while it has bytes, straight from the source for a request
     /// already larger than the whole buffer.
     ///
     /// @param into receives the bytes
-    /// @param filled receives how many bytes were read
-    /// @returns `None` when the read was accepted; zero in `filled` is end of input
+    /// @returns how many bytes were read; `IsEnd` at the end of input
     /// @see https://rux-lang.dev/docs/api/io/buffered-reader/read
-    pub func Read(self: &var BufferedReader, into: var char8[..], filled: *var uint) -> IoError {
-        *filled = 0;
-        if into.length == 0 { return IoError::Ok(); }
+    pub func Read(self: &var BufferedReader, into: var char8[..]) -> uint ! IoError {
+        if into.length == 0 { return 0; }
         if self.Available() == 0 && into.length >= self.capacity {
             // The bypass: copying a buffer-sized read through the buffer would be pure overhead.
-            var outcome = self.source.Read(into, filled);
-            while outcome.IsTransient() {
-                outcome = self.source.Read(into, filled);
+            while true {
+                let filled = self.source.Read(into) catch {
+                    error if error.IsTransient() => continue,
+                    error => fail error
+                };
+                if filled == 0 { fail IoError::Of(IoErrorKind::EndOfStream); }
+                return filled;
             }
-            if outcome.IsOk() && *filled == 0 { return IoError::Of(IoErrorKind::EndOfStream); }
-            return outcome;
         }
-        let refilled = self.Fill();
-        if refilled.IsError() { return refilled; }
+        self.Fill()?;
         var give = self.Available();
         if give > into.length {
             give = into.length;
         }
         Copy(into.data as *var opaque, @self.data[self.start] as *opaque, give);
         self.Consume(give);
-        *filled = give;
-        return IoError::Ok();
+        return give;
     }
 
     /// Gives the buffer back.
@@ -196,7 +183,7 @@ extend BufferedReader {
 pub struct BufferedWriter {
     /// Where the gathered bytes go.
     sink: Writer;
-    /// The buffer, or null when allocation was refused.
+    /// The buffer, or null once it has been given back.
     data: *var char8;
     /// How much the buffer holds.
     capacity: uint;
@@ -212,29 +199,19 @@ extend BufferedWriter {
 
     /// A buffered writer over `sink` with `capacity` bytes of buffer.
     ///
-    /// A refused buffer leaves a writer that passes everything straight through, for the reader's reason.
-    ///
     /// @param allocator where the storage comes from
     /// @param sink where the bytes go
     /// @param capacity how many bytes the buffer holds
-    /// @param error receives why the operation failed, or `None`
-    /// @returns the buffered stream, empty when the allocator refused
+    /// @returns the buffered stream; `Other` when the allocator refused the buffer
     /// @see https://rux-lang.dev/docs/api/io/buffered-writer/new
-    pub func New(allocator: Allocator, sink: Writer, capacity: uint, error: *var IoError) -> BufferedWriter {
-        *error = IoError::Ok();
+    pub func New(allocator: Allocator, sink: Writer, capacity: uint) -> BufferedWriter ! IoError {
         var writer = BufferedWriter { sink: sink, data: null, capacity: 0, length: 0, allocator: allocator };
         let wanted = capacity == 0u ? DefaultBufferCapacity : capacity;
         let layout = Layout::New(wanted, 1) ?? Layout { size: wanted, alignment: 1 };
         var borrowed = allocator;
-        match borrowed.Allocate(layout) {
-            .Success(block) => {
-                writer.data = block as *var char8;
-                writer.capacity = wanted;
-            },
-            .Failure(_) => {
-                *error = IoError::Of(IoErrorKind::Other);
-            }
-        }
+        let block = borrowed.Allocate(layout) catch { else => fail IoError::Of(IoErrorKind::Other) };
+        writer.data = block as *var char8;
+        writer.capacity = wanted;
         return <-writer;
     }
 
@@ -248,50 +225,40 @@ extend BufferedWriter {
 
     /// Sends everything gathered, then asks the sink to flush too.
     ///
-    /// @returns `None` when everything buffered reached the sink
+    /// @returns success when everything buffered reached the sink
     /// @see https://rux-lang.dev/docs/api/io/buffered-writer/flush
-    pub func Flush(self: &var BufferedWriter) -> IoError {
-        if self.length > 0 {
-            let held = (self.data)[..self.length];
-            let sent = WriteAll(self.sink, held);
-            if sent.IsError() { return sent; }
-            self.length = 0;
-        }
+    pub func Flush(self: &var BufferedWriter) -> ! IoError {
+        self.SendHeld()?;
         return self.sink.Flush();
+    }
+
+    // Sends whatever is gathered, so that the bytes written after it keep their order.
+    func SendHeld(self: &var BufferedWriter) -> ! IoError {
+        if self.length == 0 { return; }
+        let held = (self.data)[..self.length];
+        WriteAll(self.sink, held)?;
+        self.length = 0;
     }
 
     /// Takes `bytes`: into the buffer while they fit, around it in one piece when they never would.
     ///
     /// @param bytes the bytes to write
-    /// @param taken receives how many bytes were taken
-    /// @returns `None` when the bytes were taken
+    /// @returns how many bytes were taken, which is all of them
     /// @see https://rux-lang.dev/docs/api/io/buffered-writer/write
-    pub func Write(self: &var BufferedWriter, bytes: char8[..], taken: *var uint) -> IoError {
-        *taken = 0;
-        if bytes.length == 0 { return IoError::Ok(); }
+    pub func Write(self: &var BufferedWriter, bytes: char8[..]) -> uint ! IoError {
+        if bytes.length == 0 { return 0; }
         if self.data == null || bytes.length >= self.capacity {
             // The bypass, after clearing what order requires: bytes gathered earlier go first.
-            if self.length > 0 {
-                let held = (self.data)[..self.length];
-                let sent = WriteAll(self.sink, held);
-                if sent.IsError() { return sent; }
-                self.length = 0;
-            }
-            let outcome = WriteAll(self.sink, bytes);
-            if outcome.IsError() { return outcome; }
-            *taken = bytes.length;
-            return IoError::Ok();
+            self.SendHeld()?;
+            WriteAll(self.sink, bytes)?;
+            return bytes.length;
         }
         if self.length + bytes.length > self.capacity {
-            let held = (self.data)[..self.length];
-            let sent = WriteAll(self.sink, held);
-            if sent.IsError() { return sent; }
-            self.length = 0;
+            self.SendHeld()?;
         }
         Copy(@self.data[self.length] as *var opaque, bytes.data as *opaque, bytes.length);
         self.length = self.length + bytes.length;
-        *taken = bytes.length;
-        return IoError::Ok();
+        return bytes.length;
     }
 
     /// Gives the buffer back without sending what it holds.
@@ -318,7 +285,7 @@ extend BufferedWriter {
     ///
     /// @see https://rux-lang.dev/docs/api/io/buffered-writer/destructor
     func ~BufferedWriter(self: &var BufferedWriter) {
-        let outcome = self.Flush();
+        self.Flush() catch { else => {} };
         self.Abandon();
     }
 }

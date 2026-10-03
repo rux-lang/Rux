@@ -28,13 +28,10 @@ struct SliceHandle {
 }
 
 extend SliceHandle : Reader {
-    func Read(self: &var SliceHandle, into: var char8[..], filled: *var uint) -> IoError {
-        *filled = 0;
+    func Read(self: &var SliceHandle, into: var char8[..]) -> uint ! IoError {
         let state = self.state;
         let remaining = state.bytes.length - state.offset;
-        if remaining == 0 {
-            return IoError::Of(IoErrorKind::EndOfStream);
-        }
+        if remaining == 0 { fail IoError::Of(IoErrorKind::EndOfStream); }
         var give = remaining < 7u ? remaining : 7u;
         if into.length < give {
             give = into.length;
@@ -45,18 +42,16 @@ extend SliceHandle : Reader {
             index = index + 1;
         }
         state.offset = state.offset + give;
-        *filled = give;
-        return IoError::Ok();
+        return give;
     }
 }
 
 // Counts the values a streaming read reports, which is a shape the tree can also be asked for.
 func StreamCounts(allocator: Allocator, text: char8[..], scalars: *var uint, opens: *var uint,
                   names: *var uint) -> bool {
-    var error = IoError::Ok();
     var state = SliceState { bytes: text, offset: 0 };
     let handle: Reader = SliceHandle { state: @state };
-    var reader = JsonEventReader::New(allocator, handle, JsonLimits::Default(), @error);
+    var reader = JsonEventReader::New(allocator, handle, JsonLimits::Default()) catch { else => return false };
     *scalars = 0;
     *opens = 0;
     *names = 0;

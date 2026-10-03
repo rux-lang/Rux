@@ -42,57 +42,28 @@ pub const SymbolicLinkLimit: uint = 40;
 /// The process's working directory, as an absolute path.
 ///
 /// @param allocator where the storage comes from
-/// @param error receives why the operation failed, or `None`
-/// @returns the working directory, or an empty string on failure
+/// @returns the working directory
 /// @see https://rux-lang.dev/docs/api/filesystem/current-directory
-pub func CurrentDirectory(allocator: Allocator, error: *var IoError) -> OsString {
-    *error = IoError::Ok();
+pub func CurrentDirectory(allocator: Allocator) -> OsString ! IoError {
     var units: OsUnit[4096];
     when #target.os == .Windows {
         // The length is reported without the terminator, and a length larger than the buffer means the answer
         // did not fit rather than that anything failed.
         let written = GetCurrentDirectoryW(4096, @units[0] as *var char16);
-        if written == 0u32 {
-            *error = TranslateNative(GetLastError() as int32);
-            return OsString(allocator);
-        }
-        if written > 4096u32 {
-            *error = IoError::Of(IoErrorKind::LimitExceeded);
-            return OsString(allocator);
-        }
+        if written == 0u32 { fail TranslateNative(GetLastError() as int32); }
+        if written > 4096u32 { fail IoError::Of(IoErrorKind::LimitExceeded); }
         let view = OsStringView::FromUnits((@units[0])[..written as uint]);
-        var held = OsString(allocator);
-        match OsString::FromView(allocator, view) {
-            .Success(made) => {
-                held <- made;
-            },
-            .Failure(_) => {
-                *error = IoError::Of(IoErrorKind::Other);
-            }
-        }
-        return <-held;
+        return OsString::FromView(allocator, view) catch { else => fail IoError::Of(IoErrorKind::Other) };
     }
     else {
         let outcome = Getcwd(@units[0], 4096);
-        if outcome < 0 {
-            *error = TranslateNative((0i64 - outcome) as int32);
-            return OsString(allocator);
-        }
+        if outcome < 0 { fail TranslateNative((0i64 - outcome) as int32); }
         var length: uint = 0;
         while length < 4096u && units[length] != (0u8 as char8) {
             length = length + 1;
         }
         let view = OsStringView::FromUnits((@units[0])[..length]);
-        var held = OsString(allocator);
-        match OsString::FromView(allocator, view) {
-            .Success(made) => {
-                held <- made;
-            },
-            .Failure(_) => {
-                *error = IoError::Of(IoErrorKind::Other);
-            }
-        }
-        return <-held;
+        return OsString::FromView(allocator, view) catch { else => fail IoError::Of(IoErrorKind::Other) };
     }
 }
 
@@ -103,26 +74,22 @@ pub func CurrentDirectory(allocator: Allocator, error: *var IoError) -> OsString
 ///
 /// @param allocator where the storage comes from
 /// @param path the path to act on
-/// @returns `None` when the working directory changed
+/// @returns success when the working directory changed
 /// @see https://rux-lang.dev/docs/api/filesystem/set-current-directory
-pub func SetCurrentDirectory(allocator: Allocator, path: Path) -> IoError {
-    var native: *var OsUnit = null;
-    let converted = NativePath(allocator, path, @native);
-    if converted.IsError() { return converted; }
-    var outcome = IoError::Ok();
+pub func SetCurrentDirectory(allocator: Allocator, path: Path) -> ! IoError {
+    let native = NativePath(allocator, path)?;
+    defer ReleaseNativePath(allocator, native, path.name.units.length);
     when #target.os == .Windows {
         if SetCurrentDirectoryW(native as *char16) == 0 {
-            outcome = TranslateNative(GetLastError() as int32);
+            fail TranslateNative(GetLastError() as int32);
         }
     }
     else {
         let result = Chdir(native as *char8);
         if result < 0 {
-            outcome = TranslateNative((0i64 - result) as int32);
+            fail TranslateNative((0i64 - result) as int32);
         }
     }
-    ReleaseNativePath(allocator, native, path.name.units.length);
-    return outcome;
 }
 
 /// `path` made absolute against the working directory and simplified lexically.
@@ -133,60 +100,29 @@ pub func SetCurrentDirectory(allocator: Allocator, path: Path) -> IoError {
 ///
 /// @param allocator where the storage comes from
 /// @param path the path to act on
-/// @param error receives why the operation failed, or `None`
 /// @returns the path made absolute without touching the file system
 /// @see https://rux-lang.dev/docs/api/filesystem/absolute
-pub func Absolute(allocator: Allocator, path: Path, error: *var IoError) -> PathBuffer {
-    *error = IoError::Ok();
+pub func Absolute(allocator: Allocator, path: Path) -> PathBuffer ! IoError {
     if IsAbsolute(path) {
-        var simplified = PathBuffer(allocator);
-        match Normalize(allocator, path) {
-            .Success(made) => {
-                simplified <- made;
-            },
-            .Failure(_) => {
-                *error = IoError::Of(IoErrorKind::Other);
-            }
-        }
-        return <-simplified;
+        return Normalize(allocator, path) catch { else => fail IoError::Of(IoErrorKind::Other) };
     }
-    var here = CurrentDirectory(allocator, error);
-    if (*error).IsError() { return PathBuffer(allocator); }
+    var here = CurrentDirectory(allocator)?;
     var joined = PathBuffer::FromPath(allocator, Path::FromView(here.View())) catch {
-        else => {
-            *error = IoError::Of(IoErrorKind::Other);
-            return PathBuffer(allocator);
-        }
+        else => fail IoError::Of(IoErrorKind::Other)
     };
-    joined.Push(path.name) catch {
-        else => {
-            *error = IoError::Of(IoErrorKind::Other);
-            return <-joined;
-        }
-    };
-    var simplified = PathBuffer(allocator);
-    match Normalize(allocator, joined.AsPath()) {
-        .Success(made) => {
-            simplified <- made;
-        },
-        .Failure(_) => {
-            *error = IoError::Of(IoErrorKind::Other);
-        }
-    }
+    joined.Push(path.name) catch { else => fail IoError::Of(IoErrorKind::Other) };
+    var simplified = Normalize(allocator, joined.AsPath()) catch { else => fail IoError::Of(IoErrorKind::Other) };
     joined.Release();
     return <-simplified;
 }
 
 when #target.os != .Windows {
-    // The text a symbolic link at `path` holds, and whether it was a link at all.
+    // The text a symbolic link at `path` holds, or `none` when it is not a link at all.
     //
     // A name that is not a link is not an error: `EINVAL` from readlink means "that is an ordinary file", which
     // is the answer the walk below asks for at every component.
-    func ReadLinkText(allocator: Allocator, path: Path, target: *var OsString, linked: *var bool) -> IoError {
-        *linked = false;
-        var native: *var OsUnit = null;
-        let converted = NativePath(allocator, path, @native);
-        if converted.IsError() { return converted; }
+    func ReadLinkText(allocator: Allocator, path: Path) -> OsString? ! IoError {
+        let native = NativePath(allocator, path)?;
         var units: OsUnit[4096];
         let written = ReadlinkAt(AtFdCwd, native as *char8, @units[0], 4096);
         ReleaseNativePath(allocator, native, path.name.units.length);
@@ -194,22 +130,17 @@ when #target.os != .Windows {
             let raw = (0i64 - written) as int32;
             if raw == 22 {
                 // EINVAL: an ordinary file, which is not a failure of this question.
-                return IoError::Ok();
+                return none;
             }
-            return TranslateNative(raw);
+            fail TranslateNative(raw);
         }
         if written as uint >= 4096u {
             // readlink truncates silently, so a full buffer cannot be told from a perfect fit.
-            return IoError::Of(IoErrorKind::LimitExceeded);
+            fail IoError::Of(IoErrorKind::LimitExceeded);
         }
         let view = OsStringView::FromUnits((@units[0])[..written as uint]);
-        *target = OsString::FromView(allocator, view) catch {
-            else => {
-     return IoError::Of(IoErrorKind::Other);
-            }
-        };
-        *linked = true;
-        return IoError::Ok();
+        var target = OsString::FromView(allocator, view) catch { else => fail IoError::Of(IoErrorKind::Other) };
+        return .Some(<-target);
     }
 
     // Drops the last segment of `buffer`, leaving the root in place.
@@ -246,18 +177,13 @@ when #target.os != .Windows {
     //
     // Recursive, because a link's target is itself a path that must be walked the same way — and bounded by the
     // follow count rather than by the nesting, since it is the link chain that can loop.
-    func ResolveInto(allocator: Allocator, path: Path, resolved: &var PathBuffer,
-                     followed: *var uint) -> IoError {
+    func ResolveInto(allocator: Allocator, path: Path, resolved: &var PathBuffer, followed: *var uint) -> ! IoError {
         if IsAbsolute(path) {
             // An absolute path abandons whatever was resolved so far and starts again from the root.
             var root: OsUnit[1];
             root[0] = PreferredSeparator();
             resolved.length = 0;
-            resolved.Push(OsStringView::FromUnits(root[0..1])) catch {
-                else => {
-     return IoError::Of(IoErrorKind::Other);
-                }
-            };
+            resolved.Push(OsStringView::FromUnits(root[0..1])) catch { else => fail IoError::Of(IoErrorKind::Other) };
         }
         var walk = path.Components();
         var stepping = true;
@@ -277,27 +203,20 @@ when #target.os != .Windows {
                     PopSegment(resolved);
                 }
                 else {
-                    resolved.Push(segment) catch {
-                        else => {
-     return IoError::Of(IoErrorKind::Other);
-                        }
-                    };
-                    var target = OsString(allocator);
-                    var linked = false;
-                    let read = ReadLinkText(allocator, resolved.AsPath(), @target, @linked);
-                    if read.IsError() { return read; }
-                    if linked {
-                        *followed = *followed + 1;
-                        if *followed > SymbolicLinkLimit { return IoError::Of(IoErrorKind::LimitExceeded); }
-                        // The link's own name is replaced by whatever it holds, resolved in turn.
-                        PopSegment(resolved);
-                        let nested = ResolveInto(allocator, Path::FromView(target.View()), resolved, followed);
-                        if nested.IsError() { return nested; }
+                    resolved.Push(segment) catch { else => fail IoError::Of(IoErrorKind::Other) };
+                    match ReadLinkText(allocator, resolved.AsPath())? {
+                        target? => {
+                            *followed = *followed + 1;
+                            if *followed > SymbolicLinkLimit { fail IoError::Of(IoErrorKind::LimitExceeded); }
+                            // The link's own name is replaced by whatever it holds, resolved in turn.
+                            PopSegment(resolved);
+                            ResolveInto(allocator, Path::FromView(target.View()), resolved, followed)?;
+                        },
+                        none => {}
                     }
                 }
             }
         }
-        return IoError::Ok();
     }
 }
 
@@ -314,68 +233,38 @@ when #target.os != .Windows {
 ///
 /// @param allocator where the storage comes from
 /// @param path the path to act on
-/// @param error receives why the operation failed, or `None`
 /// @returns the path with every link and relative component resolved, which needs the file system and so can fail
 /// @see https://rux-lang.dev/docs/api/filesystem/canonicalize
-pub func Canonicalize(allocator: Allocator, path: Path, error: *var IoError) -> PathBuffer {
-    *error = IoError::Ok();
+pub func Canonicalize(allocator: Allocator, path: Path) -> PathBuffer ! IoError {
     when #target.os == .Windows {
         // Windows resolves the whole path itself, given a handle to what stands at the end of it. A query handle
         // carries no access rights, which is enough here and works on a file this process may not read.
-        var native: *var OsUnit = null;
-        *error = NativePath(allocator, path, @native);
-        if (*error).IsError() { return PathBuffer(allocator); }
+        let native = NativePath(allocator, path)?;
         let handle = OpenForQuery(native, true);
         ReleaseNativePath(allocator, native, path.name.units.length);
-        if (handle as uint64) == InvalidHandleValue {
-            *error = TranslateNative(GetLastError() as int32);
-            return PathBuffer(allocator);
-        }
+        if (handle as uint64) == InvalidHandleValue { fail TranslateNative(GetLastError() as int32); }
         var units: OsUnit[4096];
         let written = GetFinalPathNameByHandleW(handle, @units[0] as *var char16, 4096, 0);
+        let raw = GetLastError() as int32;
         CloseHandle(handle);
-        if written == 0u32 {
-            *error = TranslateNative(GetLastError() as int32);
-            return PathBuffer(allocator);
-        }
-        if written >= 4096u32 {
-            *error = IoError::Of(IoErrorKind::LimitExceeded);
-            return PathBuffer(allocator);
-        }
+        if written == 0u32 { fail TranslateNative(raw); }
+        if written >= 4096u32 { fail IoError::Of(IoErrorKind::LimitExceeded); }
         let view = OsStringView::FromUnits((@units[0])[..written as uint]);
-        var resolved = PathBuffer(allocator);
-        match PathBuffer::FromPath(allocator, Path::FromView(view)) {
-            .Success(made) => {
-                resolved <- made;
-            },
-            .Failure(_) => {
-                *error = IoError::Of(IoErrorKind::Other);
-            }
-        }
-        return <-resolved;
+        return PathBuffer::FromPath(allocator, Path::FromView(view)) catch {
+            else => fail IoError::Of(IoErrorKind::Other)
+        };
     }
     else {
         // No Unix kernel resolves a whole path for a caller — `realpath` is library code over `readlink` — so
         // the walk is done here, component by component, against what each link actually points at.
-        var started = Absolute(allocator, path, error);
-        if (*error).IsError() { return <-started; }
+        var started = Absolute(allocator, path)?;
         var resolved = PathBuffer(allocator);
         var followed: uint = 0;
-        *error = ResolveInto(allocator, started.AsPath(), resolved, @followed);
+        ResolveInto(allocator, started.AsPath(), resolved, @followed)?;
         started.Release();
-        if (*error).IsError() {
-            resolved.Release();
-            return PathBuffer(allocator);
-        }
         // Nothing above confirmed the last component exists: the walk only asked whether each one was a link,
         // and a missing name answers that with "no".
-        var missing = IoError::Ok();
-        MetadataOf(allocator, resolved.AsPath(), true, @missing);
-        if missing.IsError() {
-            *error = missing;
-            resolved.Release();
-            return PathBuffer(allocator);
-        }
+        MetadataOf(allocator, resolved.AsPath(), true)?;
         return <-resolved;
     }
 }
