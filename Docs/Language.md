@@ -131,14 +131,14 @@ The source cutover is intentionally narrow. Scalar enums retain their syntax, di
 
 ## Native Sums, Optionals, and Fallibles
 
-Four compiler-owned type forms describe outcomes without a library declaration. Each has one purpose:
+Four compiler-owned type forms describe outcomes without a library declaration. Each has one purpose; the design decisions behind them, and the migration from the retired `Result`/`Option` protocols, are recorded in [Native Sums, Optionals, and Fallibles](NativeOutcomes.md):
 
-| Form | Meaning | Inspection |
-| --- | --- | --- |
-| `A \| B` | A *sum*: one value of a set of distinct types. | Typed patterns, qualified case patterns, `is`. |
-| `T?` | An *optional*: a present `T` or absence. `T??` keeps both levels. | `value?`, `.Some(pattern)`, `none`, typed presence patterns, `is`, `?`, `??`. |
-| `T ! E` | A *fallible*: a successful `T` or a failed `E`, even when `T` and `E` are the same type. | `.Success(pattern)`, `.Failure(pattern)`, `catch`, `?`, `? else`. |
-| `()` | The *unit*, the empty tuple, whose only value is also written `()`. `! E` is exactly `() ! E`. | The pattern `()` or a binding. |
+| Form     | Meaning                                                                                        | Inspection                                                                    |
+| -------- | ---------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `A \| B` | A _sum_: one value of a set of distinct types.                                                 | Typed patterns, qualified case patterns, `is`.                                |
+| `T?`     | An _optional_: a present `T` or absence. `T??` keeps both levels.                              | `value?`, `.Some(pattern)`, `none`, typed presence patterns, `is`, `?`, `??`. |
+| `T ! E`  | A _fallible_: a successful `T` or a failed `E`, even when `T` and `E` are the same type.       | `.Success(pattern)`, `.Failure(pattern)`, `catch`, `?`, `? else`.             |
+| `()`     | The _unit_, the empty tuple, whose only value is also written `()`. `! E` is exactly `() ! E`. | The pattern `()` or a binding.                                                |
 
 `variant` remains the form for alternatives distinguished by case names, and `union` the untagged overlapping storage. In a type, the postfix `?` binds tightest, then `|`, then `!`, so `int32 | bool ! IoError` is `(int32 | bool) ! IoError`. A suffix never reaches across `!` or `|`: an optional error is written `T ! (E?)` and an optional result `(T ! E)?`, an optional member `A | (B?)` and an optional sum `(A | B)?`, and a nested fallible `(T ! E1) ! E2`. As for every postfix suffix, `*T?` is a pointer to an optional and `(*T)?` an optional pointer, and `int32?[..]` is a slice of optionals while `int32[..]?` is an optional slice.
 
@@ -185,13 +185,13 @@ A fallible that is dropped loses its failure, so an expression statement produci
 
 `value is Type` answers a question about the operand's type and never consumes, binds, or narrows it: after the test, `value` keeps its static type, and extracting a payload still takes a pattern. The tested type is a postfix type, so a sum or fallible target is grouped, as in `value is (A | B)`; an ungrouped `value is A | B` whose right operand names a type is rejected with that grouping as the fix. The right-hand type is resolved first, and its form and the subject's select the mode:
 
-| Subject | Meaning |
-| --- | --- |
-| A sum `A \| B \| C` | The active member is the tested type, or one of the members of a tested subset sum. A type that is not a member or subset is rejected. |
-| An optional `T?` | The value is present and its payload is the tested type, or a member or subset of a sum payload. Only one optional level is ever inspected. |
-| A fallible `T ! E` | Rejected; a channel is matched with `.Success(...)` or `.Failure(...)`. |
-| Any other type | Exact type identity after alias resolution. A test that can never be true is a compile error, never a constant `false`. |
-| An interface on the right-hand side | Reported as unavailable: interface implementation tests are not implemented, and no native form implements an interface. |
+| Subject                             | Meaning                                                                                                                                     |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| A sum `A \| B \| C`                 | The active member is the tested type, or one of the members of a tested subset sum. A type that is not a member or subset is rejected.      |
+| An optional `T?`                    | The value is present and its payload is the tested type, or a member or subset of a sum payload. Only one optional level is ever inspected. |
+| A fallible `T ! E`                  | Rejected; a channel is matched with `.Success(...)` or `.Failure(...)`.                                                                     |
+| Any other type                      | Exact type identity after alias resolution. A test that can never be true is a compile error, never a constant `false`.                     |
+| An interface on the right-hand side | Reported as unavailable: interface implementation tests are not implemented, and no native form implements an interface.                    |
 
 A reference subject is tested through the reference without being consumed. A test whose subject or tested type mentions a type parameter is checked again for each instantiation, so `x is T` over `T | U` stays valid when `T` and `U` are the same type and the subject collapses to that type.
 
@@ -325,14 +325,14 @@ Character literals accept the existing simple escapes and `\u{...}` with one to 
 
 Range expressions and annotations use the same punctuation family. Bounds in a two-sided range have one type.
 
-| Expression | Type | Members |
-| --- | --- | --- |
-| `1..4` | `int..int` | `.start`, `.end` |
-| `1..=4` | `int..=int` | `.start`, `.end` |
-| `1..` | `int..` | `.start` |
-| `..4` | `..int` | `.end` |
-| `..=4` | `..=int` | `.end` |
-| `..` | `..` | none |
+| Expression | Type        | Members          |
+| ---------- | ----------- | ---------------- |
+| `1..4`     | `int..int`  | `.start`, `.end` |
+| `1..=4`    | `int..=int` | `.start`, `.end` |
+| `1..`      | `int..`     | `.start`         |
+| `..4`      | `..int`     | `.end`           |
+| `..=4`     | `..=int`    | `.end`           |
+| `..`       | `..`        | none             |
 
 Range members are compiler-owned and need no import. Inclusive ranges include their final bound; ordinary two-sided ranges exclude it. The full range selects an entire array or slice. A pointer requires an explicit end.
 

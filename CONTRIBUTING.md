@@ -47,6 +47,8 @@ For anything beyond the quick start, see the detailed guides:
 | ------------------------------------------------- | --------------------------------------------------------------- |
 | [Comments and Documentation](Docs/Comments.md)    | Comment syntax, doc attachment, tags, formatting, and tooling   |
 | [Language Ownership](Docs/Language.md)            | Values, references, copy, move, construction, and destruction   |
+| [Native Outcomes](Docs/NativeOutcomes.md)         | Sums, optionals, fallibles: design decisions and migration      |
+| [Compiler Defects](Docs/CompilerDefects.md)       | Known compiler bugs and the workarounds code relies on          |
 | [Development Workflow](Docs/Workflow.md)          | Day-to-day loop: build, change, test, format, commit            |
 | [Compiler Architecture](Docs/Architecture.md)     | Component ownership, dependency direction, compilation pipeline |
 | [Package Builds](Docs/Builds.md)                  | Profiles, targets, artifact paths, and the 16-cell build matrix |

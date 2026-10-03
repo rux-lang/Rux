@@ -83,8 +83,8 @@ The `Storage` rename covered the registry identity and dependency names, the `Pa
 
 These packages are deliberately absent from the release set. Their sources and executable tests were deleted rather than excluded: keeping an unreleased but compiling subset would be a maintenance commitment this release does not make. Git history retains every implementation.
 
-| Package     | Why it is not shipping                                                                                                                                                     |
-| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Package     | Why it is not shipping                                                                                                                                                      |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `Benchmark` | Configuration and result arithmetic with no measurement loop, and a `BlackBox` that is an ordinary local store and load. Measurement methodology is not a `Time` concern.   |
 | `Simd`      | Four scalar records performing field-by-field arithmetic. Scalar records do not establish the accelerated SIMD contract the package advertised.                             |
 | `Sync`      | AArch64 updates use ordinary loads and stores, guards expose raw fields and permit copying, and `Once` cannot initialize. The whole package goes, including x86-64 atomics. |
@@ -103,6 +103,9 @@ These are settled for v0.1.0. Revisit the decision before changing anything that
 - **`Memory` and `Allocator` stay separate.** Memory owns addresses and page and block operations; Allocator owns layouts, policies and lifetimes.
 - **`FileSystem` owns `File`** and implements Io's interfaces. `Io` does not acquire filesystem resources.
 - **`Entropy` has no presentation dependency.** `EntropyError` implements neither `Display` nor `Debug` in v0.1.0; callers handle its cases or wrap it in their own diagnostic type. `Format` must not acquire an `Entropy` dependency in either direction, and neither must `Text`. The edge is what makes the decision reversible by accident — adding the implementation would look local to whoever added it — so `Tests/Unit/ManifestTests.cpp` checks the transitive dependency closure in both directions rather than the implementation. `Text` presents the low-level `AllocError` and `PageError` it already depends on, since they surface through `TextError`.
+- **Fallible operations return native forms.** An operation that can fail returns `T ! E`, absence is `T?`, and iterators return `Item?`; status enums lost their success member and their `IsOk`/`IsError` questions, and an output slot beside a status became the success payload. Core declares no `Option`, `Result`, or `Unit`. The [native outcome guide](NativeOutcomes.md) has the design and the migration table.
+- **Printing reports an optional failure.** `Print`, `PrintLine`, `PrintValue`, and `PrintValueLine` return `IoError?` — `none` when everything was written — rather than `! IoError`, because a bare printing statement must stay valid and a discarded fallible is an error. Stream operations (`Read`, `Write`, `Flush`, `WriteAll`, `ReadLine`, and the rest) are fallible.
+- **Single-failure helpers keep `bool` and output slots.** APIs with exactly one way to fail that are not status enums stay as they are: `AddChecked`, `AlignUpChecked`, the Math `*Checked` family, the Json/Toml `AsX(result)` accessors, `Box.TryTake`, the Unicode `written` slots, Algorithms `MinMaxIndex`, the Collections `Try*` methods, `HashMap.GetOrInsert`'s `existing`/`inserted` out-parameters (it returns `! CollectionError`), and Json/Toml `Push`/`Insert`, which return `bool`.
 - **`Entropy`, `Uuid` and `Hash` stay separate identities.** Unpredictable OS input with its retries and zeroization, UUID layout and version semantics, and named non-cryptographic hash engines are each a coherent domain.
 
 A new concern belongs with the package that owns its invariants. Shared implementation detail moves downward only when it has an independent contract and introduces no upward dependency. Add a package dependency only for actual use.
@@ -126,13 +129,13 @@ All four agree with their sources at the current commit. Do not add a `Windows` 
 
 The rule applies to what the three actually have in common. `Brk` is absent on Darwin, `Dup2` on Linux and `Pipe2` on Darwin, and those absences are real; an emulating wrapper that papers over one would be a worse answer than the branch it saved.
 
-| Aspect                     | Rule                                                                                                      |
-| -------------------------- | --------------------------------------------------------------------------------------------------------- |
+| Aspect                     | Rule                                                                                                                                                                      |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Wrapper names              | Identical for an equivalent call. Linux's `FstatAt` keeps the kernel's `newfstatat` numbering under `SysNewFstatAt`, but the wrapper is spelled as the BSDs spell theirs. |
-| Parameter names and shapes | Identical, including the pointer qualifiers. Kernel records pass by address on all three, never by reference. |
-| ABI type names             | `ProcessId`, `FileDescriptor`, `FileOffset`, `FileMode`, `UserId`, `GroupId` and `Timespec` are declared by all three; each width is that system's own. |
-| Errno names                | The shared POSIX set is declared by all three, in the kernel's own spelling. Each number is that system's own. |
-| Constants and flags        | Never shared. A value carried between two of these packages compiles and means something else.               |
+| Parameter names and shapes | Identical, including the pointer qualifiers. Kernel records pass by address on all three, never by reference.                                                             |
+| ABI type names             | `ProcessId`, `FileDescriptor`, `FileOffset`, `FileMode`, `UserId`, `GroupId` and `Timespec` are declared by all three; each width is that system's own.                   |
+| Errno names                | The shared POSIX set is declared by all three, in the kernel's own spelling. Each number is that system's own.                                                            |
+| Constants and flags        | Never shared. A value carried between two of these packages compiles and means something else.                                                                            |
 
 `Tests/Unit/PlatformBindingContractTests.cpp` enforces every row of that table over the parsed sources, and also asserts that the values a reader might carry across really do differ. The executable tests under `Tests/Packages/{Linux,macOS,FreeBSD}/Syscall` carry a block that is byte-identical across the three, which is the same claim made from the other direction: if the contract diverges, only one of the three still compiles.
 
