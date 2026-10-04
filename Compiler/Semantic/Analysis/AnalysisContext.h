@@ -101,6 +101,8 @@ private:
     void PopScope();
     Symbol *Define(Symbol symbol);
     Symbol *DefineTrackedLocal(Symbol symbol, bool initialized);
+    /// Whether a value of `type` needs destruction, or may once its type parameters are substituted.
+    [[nodiscard]] bool MayNeedDestruction(const TypeRef &type);
     [[nodiscard]] const FuncDecl *BeginTrackedFunction(const FuncDecl &function);
     void EndTrackedFunction(const FuncDecl *previousFunction);
     void CheckTrackedRead(const Symbol &symbol, SourceLocation location);
@@ -108,6 +110,10 @@ private:
     void RecordCheckedExpression(const Expr &expression, const TypeRef &type);
     void ReportUntypedExpression(const Expr &expression) const;
     void MarkTrackedAssignment(const Expr &target, SourceLocation location);
+    /// Reports writing a part of `target`'s local — a field, tuple element, or array element at any depth — while that
+    /// local is not definitely initialized and its type needs destruction. The local's drop flag covers it whole, so a
+    /// value written into one of its parts would never be destroyed. `action` names the write, such as `write`.
+    void ReportPartWriteIntoEmptyLocal(const Expr &target, std::string_view action, SourceLocation location);
     [[nodiscard]] std::optional<MoveStateTracker::Issue> MoveTrackedExpression(const Expr &expression,
                                                                                SourceLocation location);
     [[nodiscard]] bool ValidateMoveSource(const Expr &expression, SourceLocation location);

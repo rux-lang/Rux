@@ -190,3 +190,53 @@ TEST_CASE("loop exits preserve only reachable availability states") {
     const SemanticModel model = analyzer.Analyze();
     CHECK(model.diagnostics.empty());
 }
+
+TEST_CASE("a part written into a droppable local that holds no value names why it holds none") {
+    Lexer lexer(R"(
+struct Handle { code: int32; }
+extend Handle { func ~Handle(self: &var Handle) {} }
+struct Holder { handle: Handle; }
+struct Plain { code: int32; }
+
+func Main(holder: Holder) {
+    var empty: Holder;
+    empty.handle <- Handle { code: 1 };
+    var moved <- holder;
+    let taken <- moved;
+    moved.handle <- Handle { code: 2 };
+    var plain: Plain;
+    plain.code = 3;
+    let read = plain.code;
+}
+)",
+                "part_write.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+    Parser parser(std::move(lexed.tokens), "part_write.rux");
+    auto parsed = parser.Parse();
+    REQUIRE_FALSE(parsed.HasErrors());
+
+    SemanticAnalyzer analyzer({&parsed.module}, {}, "test", "Windows");
+    const SemanticModel model = analyzer.Analyze();
+    REQUIRE_EQ(model.diagnostics.size(), 2);
+
+    const SemanticDiagnostic &declared = model.diagnostics[0];
+    CHECK(declared.IsError());
+    CHECK_EQ(declared.location.line, 9);
+    CHECK_EQ(declared.message, "cannot write field 'handle' of 'empty', which holds no value");
+    REQUIRE_EQ(declared.notes.size(), 2);
+    CHECK_EQ(declared.notes[0], "'empty' was declared without a value at 8:5");
+    CHECK_EQ(declared.notes[1],
+             "'Holder' needs destruction, and a value written into a part of storage that holds none would never be "
+             "destroyed");
+    REQUIRE(declared.help.has_value());
+    CHECK_EQ(*declared.help, "initialize 'empty' whole, as in 'empty = Holder { ... }'");
+
+    const SemanticDiagnostic &moved = model.diagnostics[1];
+    CHECK_EQ(moved.location.line, 12);
+    CHECK_EQ(moved.message, "cannot write field 'handle' of 'moved', which holds no value");
+    REQUIRE_FALSE(moved.notes.empty());
+    CHECK_EQ(moved.notes[0], "'moved' was moved at 11:15");
+    REQUIRE(moved.help.has_value());
+    CHECK_EQ(*moved.help, "initialize 'moved' whole, as in 'moved = Holder { ... }'");
+}

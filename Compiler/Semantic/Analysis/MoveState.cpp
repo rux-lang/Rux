@@ -53,12 +53,24 @@ Symbol *AnalysisContext::Define(Symbol symbol) {
     return currentScope->LookupLocal(name);
 }
 
+bool AnalysisContext::MayNeedDestruction(const TypeRef &type) {
+    if (type.IsUnknown()) {
+        return false;
+    }
+    // A type that still depends on a type parameter may be instantiated with one that needs destruction.
+    const TypeProperties properties = ClassifyTypeProperties(type);
+    return properties.droppable || !properties.IsResolved();
+}
+
 Symbol *AnalysisContext::DefineTrackedLocal(Symbol symbol, const bool initialized) {
     Symbol *defined = Define(std::move(symbol));
     if (defined) {
         // Fixed arrays are raw inline storage and may be populated element-by-element. Until element-level definite
-        // initialization exists, tracking the aggregate as uninitialized produces false paths for every fill loop.
-        const bool hasInitialStorage = initialized || defined->type.kind == TypeRef::Kind::Array;
+        // initialization exists, tracking the aggregate as uninitialized produces false paths for every fill loop. An
+        // array whose elements need destruction cannot be filled that way, because its drop flag covers it whole and
+        // a written element would never be destroyed, so it is tracked like any other local declared without a value.
+        const bool fillableArray = defined->type.kind == TypeRef::Kind::Array && !MayNeedDestruction(defined->type);
+        const bool hasInitialStorage = initialized || fillableArray;
         moveStates.Declare(MoveStateTracker::Local(defined),
                            hasInitialStorage ? MoveStateTracker::State::Initialized
                                              : MoveStateTracker::State::Uninitialized,
@@ -520,6 +532,117 @@ void AnalysisContext::MarkTrackedAssignment(const Expr &target, const SourceLoca
     if (Symbol *symbol = currentScope->Lookup(identifier->name); symbol && symbol->kind == Symbol::Kind::Var) {
         moveStates.Assign(MoveStateTracker::Local(symbol), location);
     }
+}
+
+void AnalysisContext::ReportPartWriteIntoEmptyLocal(const Expr &target, const std::string_view action,
+                                                    const SourceLocation location) {
+    if (!trackedFlowReachable) {
+        return;
+    }
+    // Walk out from the place through the projections that stay inside one value to the local they are part of. A
+    // reference, a slice, or a raw pointer on the way leaves the local's own storage, so the write lands elsewhere.
+    const Expr *place = &target;
+    while (true) {
+        const Expr *object = nullptr;
+        if (const auto *field = dynamic_cast<const FieldExpr *>(place)) {
+            object = field->object.get();
+        }
+        else if (const auto *index = dynamic_cast<const IndexExpr *>(place); index && !IsIndexOperatorCall(*index)) {
+            object = index->object.get();
+        }
+        if (!object) {
+            break;
+        }
+        const auto objectType = expressionTypes.find(object);
+        if (objectType == expressionTypes.end() || objectType->second.kind == TypeRef::Kind::Pointer ||
+            objectType->second.kind == TypeRef::Kind::Reference || SliceElementType(objectType->second)) {
+            return;
+        }
+        place = object;
+    }
+    if (place == &target) {
+        return;
+    }
+    const auto *identifier = dynamic_cast<const IdentExpr *>(place);
+    if (!identifier) {
+        return;
+    }
+    const Symbol *symbol = currentScope->Lookup(identifier->name);
+    if (!symbol || symbol->kind != Symbol::Kind::Var) {
+        return;
+    }
+    const MoveStateTracker::Record *record = moveStates.TryGet(MoveStateTracker::Local(symbol));
+    if (!record || record->state == MoveStateTracker::State::Initialized) {
+        return;
+    }
+    // A part of a local holds a value only while the local owns one, and the local's drop flag says whether it does.
+    // Writing one part cannot make the whole local live, so a value written there would never be destroyed. A type
+    // with nothing to destroy cannot leak, and may still be initialized part by part.
+    if (!MayNeedDestruction(symbol->type)) {
+        return;
+    }
+
+    using State = MoveStateTracker::State;
+    const State state = record->state;
+    const SourceLocation transition = record->previousTransition;
+    const bool certain = state == State::Uninitialized || state == State::Moved;
+    std::string note;
+    switch (state) {
+    case State::Uninitialized:
+        note =
+            std::format("'{}' was declared without a value at {}:{}", symbol->name, transition.line, transition.column);
+        break;
+    case State::Moved:
+        note = std::format("'{}' was moved at {}:{}", symbol->name, transition.line, transition.column);
+        break;
+    case State::MaybeMoved:
+        note = std::format("'{}' may have been moved on some control-flow paths; one originates at {}:{}", symbol->name,
+                           transition.line, transition.column);
+        break;
+    default:
+        note = std::format("'{}' may hold no value on some control-flow paths; one originates at {}:{}", symbol->name,
+                           transition.line, transition.column);
+        break;
+    }
+
+    const MovePlace part = AnalyzeMovePlace(target);
+    const std::string container = part.ContainerDisplay();
+    std::string message = std::format("cannot {} {} of '{}', ", action, part.LastProjectionDescription(), container);
+    if (container == symbol->name) {
+        message += certain ? "which holds no value" : "which may hold no value";
+    }
+    else {
+        message += std::format("because '{}' {}", symbol->name, certain ? "holds no value" : "may hold no value");
+    }
+
+    // A generic instantiation is recorded under its package-qualified name; the source names it without the qualifier.
+    const TypeRef &type = symbol->type;
+    std::string typeName = type.DisplayString();
+    if (type.kind == TypeRef::Kind::Named) {
+        const std::size_t arguments = typeName.find('<');
+        if (const std::size_t qualifier = typeName.rfind("::", arguments); qualifier != std::string::npos) {
+            typeName.erase(0, qualifier + 2);
+        }
+    }
+    std::string example;
+    if (type.kind == TypeRef::Kind::Named) {
+        example = std::format("{} = {} {{ ... }}", symbol->name, typeName);
+    }
+    else if (type.kind == TypeRef::Kind::Tuple) {
+        example = std::format("{} = (...)", symbol->name);
+    }
+    else if (type.kind == TypeRef::Kind::Array) {
+        example = std::format("{} = [...]", symbol->name);
+    }
+    const std::string help = example.empty()
+                               ? std::format("initialize '{}' whole before writing its parts", symbol->name)
+                               : std::format("initialize '{}' whole, as in '{}'", symbol->name, example);
+    const bool needsDestruction = ClassifyTypeProperties(type).droppable;
+    EmitError(location, message,
+              {note, std::format("'{}' {}, and a value written into a part of storage that holds none would never be "
+                                 "destroyed",
+                                 typeName, needsDestruction ? "needs destruction" : "may need destruction")},
+              help);
 }
 
 std::optional<MoveStateTracker::Issue> AnalysisContext::MoveTrackedExpression(const Expr &expression,

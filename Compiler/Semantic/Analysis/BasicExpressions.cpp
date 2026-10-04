@@ -250,6 +250,7 @@ std::optional<TypeRef> AnalysisContext::CheckBasicExpression(const Expr &express
             operandType.isMut = PlaceIsWritable(*unary->operand, operandType);
             checkingPlainAssignmentTarget = savedAssignmentTarget;
             if (operandType.isMut) {
+                ReportPartWriteIntoEmptyLocal(*unary->operand, "take the address of", unary->location);
                 MarkTrackedAssignment(*unary->operand, unary->location);
             }
             return TypeRef::MakePointer(std::move(operandType));
@@ -374,6 +375,7 @@ std::optional<TypeRef> AnalysisContext::CheckBasicExpression(const Expr &express
         }
         checkingPlainAssignmentTarget = savedAssignmentTarget;
         if (isAssignable && simpleAssignment && target.kind != TypeRef::Kind::Reference) {
+            ReportPartWriteIntoEmptyLocal(*assignment->target, "write", assignment->location);
             RecordPlaceReplacement(*assignment, writtenReference != nullptr);
         }
         if (isAssignable && !simpleAssignment && !target.IsUnknown() && !value.IsUnknown()) {

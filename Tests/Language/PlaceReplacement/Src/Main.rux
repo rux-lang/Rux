@@ -184,11 +184,13 @@ func RawInitialization(log: *var Log) {
     Free(block as *var opaque);
 }
 
-// A local declared without a value owns nothing, so writing one of its parts destroys nothing.
-func UninitializedOwner(log: *var Log) {
+// A local declared without a value owns one once it is assigned whole, and from then on writing a part replaces it.
+// Writing a part before that is refused, because the local's drop flag covers it whole.
+func InitializedOwner(log: *var Log) {
     var holder: Holder;
-    holder.tracked <- Make(log, 1i32);
-    Assert(log.count == 0i32, "a part of storage that holds no value is initialized, not replaced");
+    holder = Holder { tracked: Make(log, 1i32), count: 0i32 };
+    holder.tracked <- Make(log, 2i32);
+    Mark(log);
 }
 
 func Main() -> int {
@@ -238,6 +240,7 @@ func Main() -> int {
     Assert(log.count == 0i32 && log.order == 0i64, "values written through a raw pointer are left to their owner");
 
     Reset(@log);
-    UninitializedOwner(@log);
+    InitializedOwner(@log);
+    Assert(log.count == 2i32 && log.order == 102i64, "a part of a local assigned whole is replaced");
     return 0;
 }

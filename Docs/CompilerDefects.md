@@ -1120,7 +1120,9 @@ func Main() -> int {
 - **Actual:** `copy 2`, `drop 1`, `assigned`, `drop 2`. The custom `=` copies the temporary, and the temporary itself is never destroyed.
 - **Notes:** found while fixing D57; the same happens when the target is written through `&var T`.
 
-## D62. A field written into a local that holds no value is never destroyed
+## D62. A field written into a local that holds no value is never destroyed (fixed)
+
+**Fixed**; covered by `Tests/Language/PartInitialization`, `Tests/Language/PlaceReplacement`, the `PartWriteIntoEmptyLocal` golden, and `MoveStateTests.cpp`.
 
 ```rux
 struct Tracked { id: int; }
@@ -1140,4 +1142,4 @@ func Main() -> int {
 
 - **Expected:** either a compile error, because `empty` and `moved` hold no whole value for a field to belong to, or `drop 1` and `drop 3` along with `drop 2` when the scope ends.
 - **Actual:** `end`, then only `drop 2`. The values written into `empty.t` and `moved.t` are never destroyed.
-- **Notes:** found while fixing D60. Semantic analysis treats the whole local as initialized after a write to one of its parts, but lowering never sets the local's drop flag, so nothing destroys it. Writing into a `var` with no value, or into a moved-from local, should either be rejected or have its parts tracked.
+- **Notes:** found while fixing D60. Semantic analysis treats the whole local as initialized after a write to one of its parts, but lowering never sets the local's drop flag, so nothing destroys it. Writing into a `var` with no value, or into a moved-from local, should either be rejected or have its parts tracked. Resolved by rejecting it: writing a part of a local that is not definitely initialized, or taking its writable address, is an error when the local's type needs destruction (`cannot write field 't' of 'empty', which holds no value`); a type with nothing to destroy keeps being initialized part by part. A fixed array with droppable elements declared without a value had the same leak — Semantic tracked every fixed array as initialized from its declaration so fill loops would pass — and is now tracked like any other local declared without a value.

@@ -1,0 +1,154 @@
+// Writing a part of a local that holds no value.
+// A local declared without a value, or moved from, owns nothing, and its drop flag covers it whole. A value with
+// nothing to destroy cannot leak, so it may still be initialized one field, tuple element, or array element at a time,
+// and the local counts as initialized afterwards. A droppable local has to be assigned whole first — writing one of its
+// parts before that is refused — and from then on a part write replaces the value there. Each tracked value appends
+// its id to a log as it is destroyed, and each check appends a 0 where it stands, so the log is the exact order of
+// events.
+
+import Core::Assert;
+
+struct Log {
+    count: int32;
+    order: int64;
+}
+
+// Destroyed with its id appended to the log.
+struct Tracked {
+    log: *var Log;
+    id: int32;
+}
+
+extend Tracked {
+    func ~Tracked(self: &var Tracked) {
+        self.log.count = self.log.count + 1;
+        self.log.order = self.log.order * 10 + (self.id as int64);
+    }
+}
+
+struct Holder {
+    tracked: Tracked;
+    count: int32;
+}
+
+struct Point {
+    x: int32;
+    y: int32;
+}
+
+struct Segment {
+    start: Point;
+    end: Point;
+}
+
+func Mark(log: *var Log) {
+    log.order = log.order * 10;
+}
+
+func Reset(log: *var Log) {
+    log.count = 0i32;
+    log.order = 0i64;
+}
+
+func Make(log: *var Log, id: int32) -> Tracked {
+    return Tracked { log: log, id: id };
+}
+
+// Plain values have nothing to destroy, so their parts initialize them.
+func PlainParts() {
+    var point: Point;
+    point.x = 3i32;
+    point.y = 4i32;
+    Assert(point.x == 3i32 && point.y == 4i32, "a plain struct is initialized field by field");
+
+    var segment: Segment;
+    segment.start.x = 1i32;
+    segment.start.y = 2i32;
+    segment.end = point;
+    Assert(segment.start.y == 2i32 && segment.end.x == 3i32, "a nested plain field initializes its owner");
+
+    var pair: (int32, int64);
+    pair.0 = 5i32;
+    pair.1 = 6i64;
+    Assert(pair.0 == 5i32 && pair.1 == 6i64, "a plain tuple is initialized element by element");
+
+    var values: int32[3];
+    for i in 0..3 {
+        values[i] = (i as int32) * 2i32;
+    }
+    Assert(values[0] == 0i32 && values[2] == 4i32, "a plain array is initialized element by element");
+
+    var moved = Point { x: 7i32, y: 8i32 };
+    let taken <- moved;
+    moved.x = 9i32;
+    moved.y = 10i32;
+    Assert(taken.x == 7i32 && moved.x == 9i32 && moved.y == 10i32, "a plain struct moved from is initialized again");
+}
+
+// A local declared without a value and then assigned whole replaces its parts from then on.
+func WholeThenPart(log: *var Log) {
+    var holder: Holder;
+    holder = Holder { tracked: Make(log, 1i32), count: 0i32 };
+    holder.tracked <- Make(log, 2i32);
+    holder.count = 1i32;
+    Mark(log);
+    Assert(holder.tracked.id == 2i32 && holder.count == 1i32, "the part written after the whole is installed");
+}
+
+// A moved-from local assigned whole again owns that value, and its parts are replaced as usual.
+func ReinitializedAfterMove(log: *var Log) {
+    var holder = Holder { tracked: Make(log, 1i32), count: 0i32 };
+    let taken <- holder;
+    holder = Holder { tracked: Make(log, 2i32), count: 0i32 };
+    holder.tracked <- Make(log, 3i32);
+    Mark(log);
+    Assert(taken.tracked.id == 1i32 && holder.tracked.id == 3i32, "the moved value and the new one are kept apart");
+}
+
+// Assigned whole on every path, the local holds a value where the paths meet.
+func WholeOnEveryPath(log: *var Log, first: bool) {
+    var holder: Holder;
+    if first {
+        holder = Holder { tracked: Make(log, 1i32), count: 0i32 };
+    }
+    else {
+        holder = Holder { tracked: Make(log, 2i32), count: 0i32 };
+    }
+    holder.tracked <- Make(log, 3i32);
+    Mark(log);
+}
+
+// Every iteration replaces the value the one before it left.
+func PartInLoop(log: *var Log) {
+    var holder: Holder;
+    holder = Holder { tracked: Make(log, 1i32), count: 0i32 };
+    for i in 2..4 {
+        holder.tracked <- Make(log, i as int32);
+    }
+    Mark(log);
+}
+
+func Main() -> int {
+    PlainParts();
+
+    var log = Log { count: 0i32, order: 0i64 };
+    WholeThenPart(@log);
+    Assert(log.count == 2i32 && log.order == 102i64, "the first value is replaced, the second destroyed at the end");
+
+    Reset(@log);
+    ReinitializedAfterMove(@log);
+    Assert(log.count == 3i32 && log.order == 2013i64, "each value is destroyed exactly once, the later binding first");
+
+    Reset(@log);
+    WholeOnEveryPath(@log, true);
+    Assert(log.count == 2i32 && log.order == 103i64, "the value from the taken path is replaced");
+
+    Reset(@log);
+    WholeOnEveryPath(@log, false);
+    Assert(log.count == 2i32 && log.order == 203i64, "the value from the other path is replaced");
+
+    Reset(@log);
+    PartInLoop(@log);
+    Assert(log.count == 3i32 && log.order == 1203i64, "each iteration destroys the value before it");
+    return 0;
+}
