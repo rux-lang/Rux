@@ -8,7 +8,8 @@ name: FreeBSD AArch64
 # AArch64 guest that runs under emulation and has no toolchain at all: a smoke
 # in the full scope, the complete suites in the extended scope. The prepare
 # script is identical to FreeBSD-x86_64.yml's so the two share one cached
-# disk; Tests/Scripts/CI/Check.sh keeps them identical. CI.yml calls this
+# disk, which FreeBSD-Image.yml prepares before either runs;
+# Tests/Scripts/CI/Check.sh keeps the three identical. CI.yml calls this
 # workflow with the scope of the run, and Release.yml calls it with
 # `extended`, so a release is built by exactly the steps CI verified.
 
@@ -29,7 +30,7 @@ jobs:
     runs-on: ubuntu-26.04
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
@@ -53,7 +54,7 @@ jobs:
       # same path inside it, and registers the `freebsd` shell the steps below
       # use; each of those steps is synced in before it runs and back out after.
       - name: Boot the FreeBSD guest
-        uses: vmactions/freebsd-vm@f0552d3b69211736abd97f02ff3d4674c56b73b1 # v1.5.5
+        uses: vmactions/freebsd-vm@c46abacb49f09938ca4e1702d15d836285d694cc # v1.5.9
         with:
           release: ${{ env.FREEBSD_VERSION }}
           arch: x86_64
@@ -89,6 +90,8 @@ jobs:
 
       # CMake honours CMAKE_TOOLCHAIN_FILE from the environment on the first
       # configure, so Run.sh needs no new option; the guest's Build/ is fresh.
+      # The unit tests are left out: they would be AArch64 binaries this guest
+      # cannot run, and the AArch64 guest below has no toolchain to need them.
       - name: Cross-build for freebsd-aarch64
         shell: freebsd {0}
         run: |
@@ -96,6 +99,7 @@ jobs:
           . .github/Scripts/FreeBSDEnv.sh
           export CMAKE_TOOLCHAIN_FILE="$PWD/Compiler/CMake/Toolchains/FreeBSD-AArch64.cmake"
           export RUX_FREEBSD_AARCH64_SYSROOT=/opt/sysroot/freebsd-aarch64
+          export RUX_BUILD_TESTS=OFF
           sh .github/Scripts/Verify.sh --stage build
 
       # Saved on pushes only: a pull request rebuilds the commit its branch
@@ -136,13 +140,13 @@ jobs:
   test:
     name: Test
     needs: build
-    # The runner image vmactions exercises its emulated guests on; the newer
-    # image ships a QEMU and firmware under which the AArch64 guest never
-    # brings its network up.
-    runs-on: ubuntu-24.04
+    # vmactions 1.5.8 works around the firmware this image ships, under which
+    # an AArch64 guest used to hang, so the emulated guest runs on the same
+    # image as everything else.
+    runs-on: ubuntu-26.04
     timeout-minutes: ${{ inputs.scope == 'extended' && 180 || 60 }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
@@ -150,13 +154,13 @@ jobs:
         run: grep -E '^[A-Z0-9_]+=' .github/Toolchains.env >> "$GITHUB_ENV"
 
       - name: Download the compiler
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: rux-freebsd-aarch64
           path: Bin
 
       - name: Run the compiler in an AArch64 guest
-        uses: vmactions/freebsd-vm@f0552d3b69211736abd97f02ff3d4674c56b73b1 # v1.5.5
+        uses: vmactions/freebsd-vm@c46abacb49f09938ca4e1702d15d836285d694cc # v1.5.9
         env:
           RUX_SCOPE: ${{ inputs.scope }}
         with:

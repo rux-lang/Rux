@@ -1,0 +1,37 @@
+name: Toolchain
+
+# Packs one host toolchain into the Actions cache before the jobs that share it
+# start. Several jobs install the same prefix, and on a cold cache each of them
+# used to download and pack it in parallel, with every save but the first
+# refused. Here one job packs it and the others only restore. On a warm cache
+# this job looks the key up without downloading anything and exits.
+
+on:
+  workflow_call:
+    inputs:
+      target:
+        description: The toolchain to pack, as the toolchain action names it
+        type: string
+        required: true
+      runner:
+        description: The runner image that toolchain is packed on
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  pack:
+    name: Pack
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Pack the toolchain on a miss
+        uses: ./.github/actions/toolchain
+        with:
+          target: ${{ inputs.target }}
+          warm: 'true'

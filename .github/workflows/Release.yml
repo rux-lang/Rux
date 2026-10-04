@@ -31,7 +31,7 @@ jobs:
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
           fetch-depth: 0
@@ -62,6 +62,18 @@ jobs:
   # Each target workflow uploads its compiler as rux-<target>; the jobs below
   # download those. A dispatched run saves no compilation cache, so a release
   # never disturbs what the branches restore.
+  # The macOS targets share one toolchain and the FreeBSD targets one guest
+  # disk; each is put in the cache once before its two users start, as in CI.
+  toolchain-macos-aarch64:
+    needs: verify
+    uses: ./.github/workflows/Toolchain.yml
+    with:
+      target: macos-aarch64
+      runner: macos-26
+  freebsd-image:
+    needs: verify
+    uses: ./.github/workflows/FreeBSD-Image.yml
+
   linux-x86_64:
     needs: verify
     uses: ./.github/workflows/Linux-x86_64.yml
@@ -73,12 +85,12 @@ jobs:
     with:
       scope: extended
   macos-aarch64:
-    needs: verify
+    needs: [verify, toolchain-macos-aarch64]
     uses: ./.github/workflows/macOS-AArch64.yml
     with:
       scope: extended
   macos-x86_64:
-    needs: verify
+    needs: [verify, toolchain-macos-aarch64]
     uses: ./.github/workflows/macOS-x86_64.yml
     with:
       scope: extended
@@ -93,12 +105,12 @@ jobs:
     with:
       scope: extended
   freebsd-x86_64:
-    needs: verify
+    needs: [verify, freebsd-image]
     uses: ./.github/workflows/FreeBSD-x86_64.yml
     with:
       scope: extended
   freebsd-aarch64:
-    needs: verify
+    needs: [verify, freebsd-image]
     uses: ./.github/workflows/FreeBSD-AArch64.yml
     with:
       scope: extended
@@ -117,10 +129,10 @@ jobs:
     runs-on: ubuntu-26.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           path: Artifacts
           pattern: rux-*
@@ -167,10 +179,10 @@ jobs:
     runs-on: windows-2025
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           name: rux-windows-x86_64
           path: Bin
@@ -194,8 +206,8 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/download-artifact@v7
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           path: Release
           pattern: release-*

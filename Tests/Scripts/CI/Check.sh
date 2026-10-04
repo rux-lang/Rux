@@ -401,6 +401,26 @@ check_target_workflows() {
     done
     [ "$(grep -c '^      scope: extended$' "$release")" -eq 8 ] ||
         fail 'Release.yml does not call every target with the extended scope'
+    # The shared caches are filled by one job each before their users start,
+    # in a release exactly as in CI.
+    for name in Toolchain.yml FreeBSD-Image.yml; do
+        file=$workflows/$name
+        [ -f "$file" ] || fail "$name was not found"
+        grep -q '^  workflow_call:' "$file" || fail "$name cannot be called by CI.yml"
+        if grep -qE '^  (push|pull_request|schedule|workflow_dispatch):' "$file"; then
+            fail "$name triggers on its own; CI.yml decides when it runs"
+        fi
+        grep -q "uses: ./.github/workflows/$name\$" "$ci" || fail "CI.yml does not call $name"
+        grep -q "uses: ./.github/workflows/$name\$" "$release" || fail "Release.yml does not call $name"
+    done
+    grep -q "^          warm: 'true'\$" "$workflows/Toolchain.yml" ||
+        fail 'Toolchain.yml installs the toolchain instead of only filling the cache'
+    for job in freebsd-x86_64 freebsd-aarch64; do
+        for file in "$ci" "$release"; do
+            sed -n "/^  $job:\$/,/^\$/p" "$file" | grep -qE '^    needs: \[.*freebsd-image\]$' ||
+                fail "$(basename "$file") starts $job before the FreeBSD image is prepared"
+        done
+    done
     if grep -qE '^  schedule:' "$ci"; then
         fail 'CI.yml runs on a schedule; verification is driven by pushes, pull requests, and dispatch'
     fi
@@ -422,6 +442,8 @@ check_retired_paths() {
 # Both FreeBSD workflows boot the same prepared guest, which vmactions caches
 # keyed on the prepare script; a byte of difference costs a second multi-GB
 # disk in the cache and a second package installation on every miss.
+# FreeBSD-Image.yml prepares that disk before either runs, so it carries the
+# same script, and the same sync method, which is the other half of the key.
 extract_prepare() {
     awk '
         /^[[:space:]]*prepare: \|[[:space:]]*$/ { indent = match($0, /[^ ]/) - 1; active = 1; next }
@@ -439,6 +461,16 @@ check_freebsd_prepare_scripts_match() {
     [ -s "$fixture_root/prepare-aarch64" ] || fail 'FreeBSD-AArch64.yml has no prepare script'
     cmp -s "$fixture_root/prepare-x86_64" "$fixture_root/prepare-aarch64" ||
         fail 'the FreeBSD prepare scripts differ, so the guests cannot share one cached disk'
+    extract_prepare "$workflows/FreeBSD-Image.yml" >"$fixture_root/prepare-image"
+    cmp -s "$fixture_root/prepare-x86_64" "$fixture_root/prepare-image" ||
+        fail 'FreeBSD-Image.yml prepares a different disk from the one the FreeBSD workflows boot'
+    for name in FreeBSD-Image.yml FreeBSD-x86_64.yml FreeBSD-AArch64.yml; do
+        grep -B8 '^          prepare: |$' "$workflows/$name" | grep -q '^          sync: rsync$' ||
+            fail "$name does not sync its prepared guest with rsync, so its disk has a key of its own"
+    done
+    if grep -q '^          copyback: true$' "$workflows/FreeBSD-Image.yml"; then
+        fail 'FreeBSD-Image.yml copies its workspace back, so a cold cache waits on the disk upload'
+    fi
 
     # Run the actual checksum guard with matching and mismatching digests.
     # sh -n alone cannot catch a missing closing bracket in a test command.
@@ -471,7 +503,8 @@ check_actions_are_pinned() {
         [ "${#reference}" -eq 40 ] || fail "$use is not pinned to a full commit hash"
     done <"$fixture_root/uses"
 
-    for file in "$workflows"/CI.yml "$workflows"/*-x86_64.yml "$workflows"/*-AArch64.yml; do
+    for file in "$workflows"/CI.yml "$workflows"/*-x86_64.yml "$workflows"/*-AArch64.yml \
+        "$workflows"/Toolchain.yml "$workflows"/FreeBSD-Image.yml; do
         checkouts=$(grep -c 'actions/checkout@' "$file" || true)
         guarded=$(grep -c 'persist-credentials: false' "$file" || true)
         [ "$checkouts" -eq "$guarded" ] ||

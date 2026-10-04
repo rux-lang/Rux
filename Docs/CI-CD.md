@@ -4,13 +4,14 @@ Continuous integration builds and verifies Rux on all eight supported targets. N
 
 ## Workflows
 
-Ten workflows, plus the community metadata GitHub owns.
+Twelve workflows, plus the community metadata GitHub owns.
 
 - **`CI.yml`** — the one workflow every push, pull request, and manual run starts with. It resolves the verification scope once, runs the host-independent checks (policy guards, C++ formatting, clang-tidy, and the branch policy that rejects pull requests targeting `main`), calls one reusable workflow per target with the scope, and owns the single required check, **`CI`**.
 - **One reusable workflow per target** — `Linux-x86_64.yml`, `Linux-AArch64.yml`, `macOS-x86_64.yml`, `macOS-AArch64.yml`, `Windows-x86_64.yml`, `Windows-AArch64.yml`, `FreeBSD-x86_64.yml`, `FreeBSD-AArch64.yml`. Each is `workflow_call` only, takes the scope as its one input, and lists, in order, exactly the steps its target runs. Nothing in a target workflow is conditioned on a platform or a matrix, so a job page shows no skipped steps; the only conditions are the scope gates on the jobs that run under emulation and the cache save, which runs on pushes.
+- **`Toolchain.yml` and `FreeBSD-Image.yml`** — `workflow_call` only. Each puts one shared cache entry in place before the jobs that use it start: a host toolchain prefix, or the prepared FreeBSD guest disk. Several jobs use the same entry, and on a cold cache they would otherwise all build it at once and all but one would fail to save it. On a warm cache `Toolchain.yml` only looks the key up and `FreeBSD-Image.yml` boots the cached disk and exits. `CI.yml` and `Release.yml` both call them.
 - **`Release.yml`** — manual only (`workflow_dispatch`, with a version input and a dry-run switch). It calls all eight target workflows with the `extended` scope, so a release is built by the very steps CI verified and nothing that runs under emulation is skipped. Pushing a tag never starts a release by itself.
 
-The check `Tests/Scripts/CI/Check.sh` runs on every host through CTest as `Scripts.CI` and keeps the pieces from drifting: every target workflow exists, is called by both `CI.yml` and `Release.yml`, uploads the compiler under the name `Release.yml` downloads, and triggers on nothing of its own.
+The check `Tests/Scripts/CI/Check.sh` runs on every host through CTest as `Scripts.CI` and keeps the pieces from drifting: every target workflow exists, is called by both `CI.yml` and `Release.yml`, uploads the compiler under the name `Release.yml` downloads, and triggers on nothing of its own; the two cache workflows are called by both as well.
 
 ## Scope
 
@@ -36,6 +37,9 @@ Every job carries an explicit timeout. Nothing can run for hours except the emul
 | Job                              | Runner                       | Scope    | Timeout  |
 | -------------------------------- | ---------------------------- | -------- | -------- |
 | Scope                            | ubuntu-26.04                 | every    | 3        |
+| Linux x86-64 toolchain / Pack    | ubuntu-26.04                 | fast     | 15       |
+| macOS toolchain / Pack           | macos-26                     | full     | 15       |
+| FreeBSD image / Prepare          | ubuntu-26.04, KVM guest      | full     | 30       |
 | Policy and formatting            | ubuntu-26.04                 | fast     | 10       |
 | `clang-tidy` × 3 shards          | ubuntu-26.04                 | full     | 25       |
 | Linux x86-64 / Build             | ubuntu-26.04                 | fast     | 25       |
@@ -46,10 +50,12 @@ Every job carries an explicit timeout. Nothing can run for hours except the emul
 | Windows x86-64 / Under emulation | windows-11-arm               | extended | 30       |
 | Windows AArch64 / Build          | windows-11-arm               | full     | 30       |
 | FreeBSD x86-64 / Build           | ubuntu-26.04, KVM guest      | full     | 45       |
-| FreeBSD x86-64 / Transfer        | ubuntu-24.04, emulated guest | extended | 90       |
+| FreeBSD x86-64 / Transfer        | ubuntu-26.04, emulated guest | extended | 90       |
 | FreeBSD AArch64 / Build          | ubuntu-26.04, KVM guest      | full     | 45       |
-| FreeBSD AArch64 / Test           | ubuntu-24.04, emulated guest | full     | 60 / 180 |
+| FreeBSD AArch64 / Test           | ubuntu-26.04, emulated guest | full     | 60 / 180 |
 | `CI` — the gate                  | ubuntu-26.04                 | every    | 5        |
+
+GitHub may annotate the macOS jobs with a notice that macOS arm64 runners can queue longer under capacity constraints. It is informational: it says nothing about the run it appears on, and no workflow setting removes it.
 
 Build and test share one job per target. Splitting them would cost an artifact round-trip and a second runner acquisition on every target without proving anything the closure check below does not prove more directly.
 
@@ -69,7 +75,7 @@ The per-target check runs are named `<Target> / <Job>`, for example `Linux x86-6
 
 `.github/Toolchains.env` is the single source of truth for every pinned version and every asset checksum. Workflows load it with one `grep` into `GITHUB_ENV`, the setup scripts and packers parse it, and every toolchain and compilation cache key hashes it, so changing a pin invalidates exactly the caches that must change. The format is flat `KEY=VALUE`: POSIX `sh` dot-sources it and PowerShell parses it with one regex, and because it is sourced, every reader rejects a manifest containing anything but comments and plain assignments before reading it.
 
-Every host job starts with the composite action `.github/actions/toolchain`. It restores one prefix — Clang 23 as `clang++-23`, `clang-format-23` and `clang-tidy-23`, the compiler's resource headers, `llvm-readobj` on Windows, and `ccache` — from the Actions cache, keyed on the manifest and the packers. When the cache holds nothing for that key, `.github/Scripts/SetupToolchain.sh` (or `.ps1`) packs the prefix from the pinned upstream assets and the action saves it at once, so a build that fails later in the job does not cost the next run a repack:
+Every host job starts with the composite action `.github/actions/toolchain`. It restores one prefix — Clang 23 as `clang++-23`, `clang-format-23` and `clang-tidy-23`, the compiler's resource headers, `llvm-readobj` on Windows, and `ccache` — from the Actions cache, keyed on the manifest and the packers. When the cache holds nothing for that key, `.github/Scripts/SetupToolchain.sh` (or `.ps1`) packs the prefix from the pinned upstream assets and the action saves it at once, so a build that fails later in the job does not cost the next run a repack. With `warm: 'true'`, which is how `Toolchain.yml` calls it, the action only looks the key up, and packs and saves on a miss without installing anything for the calling job:
 
 - **Linux and Windows** — the official LLVM release archives, whose members are listed once and extracted only where needed, plus ccache's static release. Every download is verified against the SHA-256 the publisher recorded; a checksum still recorded as `TBD` stops the packer before it fetches anything.
 - **macOS** — LLVM publishes no macOS archive, so the packer installs Homebrew's `llvm` formula, pinned by version, copies the tools out with every library they load, rewrites their install names relative to the prefix, and re-signs them. There is no macOS x86-64 toolchain: that compiler is cross-built from this prefix on the AArch64 runner, and its tests run under Rosetta on the same machine, because the macOS SDK is universal.
@@ -91,14 +97,14 @@ The compilation cache uses the separate restore and save actions. The `<sha>` su
 
 `CCACHE_NOHASHDIR=1` is set so that runs building the same tree at different paths share entries. `RUX_USE_PCH` is off in CI, because a compilation cache and precompiled headers defeat each other.
 
-Both FreeBSD workflows use a byte-identical prepare script, so they share one cached disk; `Tests/Scripts/CI/Check.sh` refuses a difference.
+Both FreeBSD workflows and `FreeBSD-Image.yml` use a byte-identical prepare script, so they share one cached disk; `Tests/Scripts/CI/Check.sh` refuses a difference. `FreeBSD-Image.yml` runs first and is the only job that ever saves the disk. Two build jobs saving it at once made the loser wait on an upload that was discarded, and the action's copy-back gave up on that wait with a `Background tasks timed out` warning.
 
 ## FreeBSD
 
 There is no hosted FreeBSD runner, and no hosted runner accelerates an AArch64 guest: the Linux ARM runners expose no KVM and the macOS runners no nested virtualization. Both FreeBSD targets therefore run in `vmactions/freebsd-vm` guests on x86-64 Linux hosts, pinned to a commit.
 
 - **FreeBSD x86-64** runs natively under KVM. The guest is prepared once — the `latest` package branch, the packages above, and the AArch64 base system unpacked as a sysroot — and cached; later runs boot straight into it. The workspace is mirrored at the host's path, each step runs through the guest shell and is synced back, and `.github/Scripts/FreeBSDEnv.sh` exports inside the guest what the toolchain action exports on a host.
-- **FreeBSD AArch64** is cross-compiled in that same x86-64 guest, with the guest's own Clang and lld against the sysroot, through `Compiler/CMake/Toolchains/FreeBSD-AArch64.cmake`; the host then checks the result is a FreeBSD AArch64 ELF image before uploading it. A separate AArch64 guest with no toolchain installed downloads the compiler and runs it under emulation: in the full scope a bounded smoke — every workspace package checked, the native fixtures, the runtime closure, and one language test built and launched — and in the extended scope the lint and the complete Rux test suite as well. The C++ unit tests are host-agnostic and already run on the seven other hosts, FreeBSD x86-64 included, so they are not repeated under emulation.
+- **FreeBSD AArch64** is cross-compiled in that same x86-64 guest, with the guest's own Clang and lld against the sysroot, through `Compiler/CMake/Toolchains/FreeBSD-AArch64.cmake`, without the C++ unit tests, which no machine in the run could execute (`RUX_BUILD_TESTS=OFF`, which `Verify.sh` turns into `Run.sh build --no-tests`); the host then checks the result is a FreeBSD AArch64 ELF image before uploading it. A separate AArch64 guest with no toolchain installed downloads the compiler and runs it under emulation: in the full scope a bounded smoke — every workspace package checked, the native fixtures, the runtime closure, and one language test built and launched — and in the extended scope the lint and the complete Rux test suite as well. The C++ unit tests are host-agnostic and already run on the seven other hosts, FreeBSD x86-64 included, so they are not repeated under emulation.
 - **The transfer test** is a two-machine contract in the extended scope: the x86-64 guest produces a payload of target binaries and a manifest, and a fresh AArch64 guest with no compiler installed verifies the hashes and ELF identity and executes them.
 
 ## Runtime closure
