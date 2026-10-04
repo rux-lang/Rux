@@ -797,7 +797,7 @@ func Main() -> int {
 - **Course workaround:** `DataFormats/JsonStream` prints only the failure's reason, not its offset.
 
 Language note: a string literal cannot span lines, and literals cannot be concatenated. Multi-line
-documents in lessons are therefore built line by line with a `StringBuilder`.
+documents in lessons are therefore built line by line with a `StringBuilder`. **Not a defect**: this is the language as designed, so no change was made; multi-line literals or concatenation would be a language proposal.
 ## D41. A `when` condition can read a Core field that is private when read as a value (fixed)
 
 **Fixed**; covered by `Tests/Language/BuiltinAssert` and `ConditionalEvaluationTests.cpp`.
