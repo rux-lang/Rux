@@ -13,8 +13,8 @@
 /// written rather than calling out to a helper.
 /// @param left the left operand
 /// @param right the right operand
-/// @param result receives the answer when this reports success
-/// @returns true when the sum does not fit, leaving `result` unwritten
+/// @param result receives the answer the machine produced, true or wrapped
+/// @returns true when the sum does not fit; `result` then holds the wrapped sum
 /// @see https://rux-lang.dev/docs/api/core/checked-add
 pub intrinsic func CheckedAdd(left: uint64, right: uint64, result: *var uint64) -> bool;
 
@@ -26,8 +26,8 @@ pub intrinsic func CheckedAdd(left: uint64, right: uint64, result: *var uint64) 
 /// written rather than calling out to a helper.
 /// @param left the left operand
 /// @param right the right operand
-/// @param result receives the answer when this reports success
-/// @returns true when the difference does not fit, leaving `result` unwritten
+/// @param result receives the answer the machine produced, true or wrapped
+/// @returns true when the difference does not fit; `result` then holds the wrapped difference
 /// @see https://rux-lang.dev/docs/api/core/checked-sub
 pub intrinsic func CheckedSub(left: uint64, right: uint64, result: *var uint64) -> bool;
 
@@ -41,7 +41,7 @@ pub intrinsic func CheckedSub(left: uint64, right: uint64, result: *var uint64) 
 /// written rather than calling out to a helper.
 /// @param left the left operand
 /// @param right the right operand
-/// @param result receives the answer when this reports success
-/// @returns true when the product does not fit, leaving `result` unwritten
+/// @param result receives the answer the machine produced, true or wrapped
+/// @returns true when the product does not fit; `result` then holds the wrapped product
 /// @see https://rux-lang.dev/docs/api/core/checked-mul
 pub intrinsic func CheckedMul(left: uint64, right: uint64, result: *var uint64) -> bool;

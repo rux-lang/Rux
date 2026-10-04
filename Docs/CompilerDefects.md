@@ -689,7 +689,9 @@ func Main() -> int {
 - **Actual:** two 309-digit integers followed by `.000`. `PrintLine("{:e} {:e}", nan, inf)`
   prints nothing at all.
 
-## P4. Core's checked-arithmetic documentation contradicts its behaviour
+## P4. Core's checked-arithmetic documentation contradicts its behaviour (fixed)
+
+**Fixed**; covered by `Tests/Packages/Core/Arithmetic`, `Tests/Packages/Core/Conversion`, `Tests/Language/AllocationMath` and `PackageDocumentationStyleTests.cpp`.
 
 - **Where:** the `@returns` tags of `AddChecked`, `SubChecked`, `MulChecked` and
   `ConvertChecked`.

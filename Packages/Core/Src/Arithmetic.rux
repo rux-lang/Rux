@@ -55,8 +55,8 @@ pub func MinimumOf<T>(sample: T) -> T {
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param left the left operand
 /// @param right the right operand
-/// @param result receives the answer when this reports success
-/// @returns true when the sum does not fit, leaving `result` unwritten
+/// @param result receives the answer the machine produced, true or wrapped; never null
+/// @returns true when the sum does not fit; `result` then holds the wrapped sum
 /// @see https://rux-lang.dev/docs/api/core/add-checked
 pub func AddChecked<T>(left: T, right: T, result: *var T) -> bool {
     let sum = left + right;
@@ -78,8 +78,8 @@ pub func AddChecked<T>(left: T, right: T, result: *var T) -> bool {
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param left the left operand
 /// @param right the right operand
-/// @param result receives the answer when this reports success
-/// @returns true when the difference does not fit, leaving `result` unwritten
+/// @param result receives the answer the machine produced, true or wrapped; never null
+/// @returns true when the difference does not fit; `result` then holds the wrapped difference
 /// @see https://rux-lang.dev/docs/api/core/sub-checked
 pub func SubChecked<T>(left: T, right: T, result: *var T) -> bool {
     let difference = left - right;
@@ -104,8 +104,8 @@ pub func SubChecked<T>(left: T, right: T, result: *var T) -> bool {
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param left the left operand
 /// @param right the right operand
-/// @param result receives the answer when this reports success
-/// @returns true when the product does not fit, leaving `result` unwritten
+/// @param result receives the answer the machine produced, true or wrapped; never null
+/// @returns true when the product does not fit; `result` then holds the wrapped product
 /// @see https://rux-lang.dev/docs/api/core/mul-checked
 pub func MulChecked<T>(left: T, right: T, result: *var T) -> bool {
     let product = left * right;

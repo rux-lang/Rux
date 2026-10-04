@@ -87,11 +87,13 @@ func Main() -> int {
     Assert(!CheckedSub(9u64, 4u64, @difference), "Expected 9 - 4 not to overflow");
     Assert(difference == 5u64, "Expected the checked difference");
     Assert(CheckedSub(4u64, 9u64, @difference), "Expected a negative difference to be reported");
+    Assert(difference == 18446744073709551611u64, "Expected the wrapped difference to be written anyway");
 
     var bytes = 0u64;
     Assert(!ByteCount(4u64, sizeof(Header), @bytes), "Expected a small allocation size to be exact");
     Assert(bytes == 64u64, "Expected four headers to need 64 bytes");
     Assert(ByteCount(18446744073709551615u64, 2u64, @bytes), "Expected an impossible allocation to be refused");
+    Assert(bytes == 18446744073709551614u64, "Expected the wrapped product to be written anyway");
     Assert(!ByteCount(0u64, 18446744073709551615u64, @bytes), "Expected an empty allocation not to overflow");
     Assert(bytes == 0u64, "Expected an empty allocation to need no bytes");
     Assert(!ByteCount(18446744073709551615u64, 1u64, @bytes), "Expected the largest exact product to be accepted");

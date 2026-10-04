@@ -36,6 +36,8 @@ func CheckUnsigned<T>(zero: T, one: T, two: T, maximum: T) -> int32 {
     if MulChecked<T>(maximum, zero, @out) { return 17; }
     if out != zero { return 18; }
     if !MulChecked<T>(maximum, two, @out) { return 19; }
+    // The wrapped product is written even when the overflow is reported.
+    if out != maximum - one { return 29; }
 
     // Wrapping says the same thing without reporting it.
     if AddWrapping<T>(maximum, one) != zero { return 20; }
@@ -89,6 +91,7 @@ func CheckSigned<T>(zero: T, one: T, two: T, minimum: T, maximum: T) -> int32 {
     if MulChecked<T>(negativeOne, maximum, @out) { return 24; }
     if out != minimum + one { return 25; }
     if !MulChecked<T>(maximum, two, @out) { return 26; }
+    if out != negativeOne + negativeOne { return 40; }
     if MulChecked<T>(zero, minimum, @out) { return 27; }
     if out != zero { return 28; }
 

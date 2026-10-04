@@ -38,8 +38,8 @@ pub func IsSignedType<T>(sample: T) -> bool {
 /// @typeParam From the source type
 /// @typeParam To the destination type
 /// @param value the value to act on
-/// @param result receives the answer when this reports success
-/// @returns true when the value does not fit the destination, leaving `result` unwritten
+/// @param result receives the conversion the machine produced, exact or lossy; never null
+/// @returns true when the value does not fit the destination; `result` then holds the lossy conversion
 /// @see https://rux-lang.dev/docs/api/core/convert-checked
 pub func ConvertChecked<From, To>(value: From, result: *var To) -> bool {
     *result = value as To;
@@ -60,7 +60,7 @@ pub func ConvertChecked<From, To>(value: From, result: *var To) -> bool {
 /// @typeParam From the source type
 /// @typeParam To the destination type
 /// @param value the value to act on
-/// @param result receives the answer when this reports success
+/// @param result receives the wrapped, truncated or rounded conversion; never null
 /// @see https://rux-lang.dev/docs/api/core/convert-wrapping
 pub func ConvertWrapping<From, To>(value: From, result: *var To) {
     *result = value as To;
@@ -77,7 +77,7 @@ pub func ConvertWrapping<From, To>(value: From, result: *var To) {
 /// @typeParam From the source type
 /// @typeParam To the destination type
 /// @param value the value to act on
-/// @param result receives the answer when this reports success
+/// @param result receives the nearest representable value; never null
 /// @see https://rux-lang.dev/docs/api/core/convert-saturating
 pub func ConvertSaturating<From, To>(value: From, result: *var To) {
     if !ConvertChecked<From, To>(value, result) { return; }
