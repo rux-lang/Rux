@@ -498,7 +498,9 @@ func Main() -> int {
 - **Actual:** `type 'Grid' cannot be indexed`, with the help `declare 'func []' on 'Grid'`, even
   though `func []` is declared. Any index whose type matches no `[]` gets this message, for
   example `week[1]` when `[]` takes a `Day`. The setter `g[(1, 1)] = 7` is accepted.
-## D31. A conditional expression with mismatched branch types is accepted and crashes
+## D31. A conditional expression with mismatched branch types is accepted and crashes (fixed)
+
+**Fixed**; covered by the `ConditionalBranchTypes` golden.
 
 ```rux
 import Io::PrintLine;
