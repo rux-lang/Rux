@@ -5,6 +5,7 @@
 #include "Driver/CompilerDriver.h"
 #include "ElfReader.h"
 #include "MachOReader.h"
+#include "Package/Cache.h"
 #include "System/Os.h"
 #include "System/Process.h"
 #include "Target/Target.h"
@@ -229,9 +230,23 @@ pub module Api {
         REQUIRE(application.Save(appRoot / "Rux.toml"));
     }
 
+    /// A workspace whose members declare namespace `Rux` and include `Transitive`.
     void ConfigureLocalWorkspace(CompileOptions &options) const {
         options.localPackageRoots.push_back(transitiveRoot);
-        options.localDependenciesOnly = true;
+        options.localNamespaces.insert("rux");
+    }
+
+    /// The `Transitive` package installed into the package cache under its registry identity, as `rux install` would.
+    void InstallTransitiveIntoCache() const {
+        const auto loaded = Manifest::Load(transitiveRoot / "Rux.toml");
+        REQUIRE(loaded.Ok());
+        const auto &manifest = *loaded.manifest;
+        const auto cached =
+            Packages::RegistryPackageDir(*manifest.package.ns, manifest.package.name, manifest.package.version);
+        std::filesystem::create_directories(cached / "Src");
+        REQUIRE(manifest.Save(cached / "Rux.toml"));
+        std::filesystem::copy_file(transitiveRoot / "Src" / "Api.rux", cached / "Src" / "Api.rux",
+                                   std::filesystem::copy_options::overwrite_existing);
     }
 
     [[nodiscard]] CompileOptions Options(const bool checkOnly, std::vector<Diagnostic> &diagnostics) const {

@@ -1,7 +1,9 @@
+#include "CliProcessTestSupport.h"
 #include "CompilerDriverTestSupport.h"
 
 using namespace Rux;
 using namespace Rux::Testing::CompilerDriverTestSupport;
+using Rux::Testing::CliProcessTestSupport::ScopedCliPackageCache;
 
 TEST_CASE("compiler driver runs inferred literals and arithmetic without Core") {
     DependencyFixture fixture;
@@ -301,6 +303,45 @@ TEST_CASE("compiler driver resolves transitive workspace dependencies by normali
     std::vector<Diagnostic> diagnostics;
     auto options = fixture.Options(true, diagnostics);
     fixture.ConfigureLocalWorkspace(options);
+
+    const auto result = CompilerDriver(std::move(options)).Compile();
+
+    CHECK(result.ok);
+    CHECK(diagnostics.empty());
+    CHECK(result.stats.dependencyFiles == 2);
+}
+
+TEST_CASE("compiler driver refuses a package of a workspace-owned namespace that no member supplies") {
+    // The workspace's members declare namespace `Rux`, so `Rux/Transitive` must be one of them. It is not, and the
+    // package cache is never consulted for it.
+    ScopedCliPackageCache cache;
+    DependencyFixture fixture;
+    fixture.UseRegistryDeclaredTransitiveDependency();
+    fixture.InstallTransitiveIntoCache();
+    std::vector<Diagnostic> diagnostics;
+    auto options = fixture.Options(true, diagnostics);
+    options.localNamespaces.insert("rux");
+
+    const auto result = CompilerDriver(std::move(options)).Compile();
+
+    CHECK_FALSE(result.ok);
+    REQUIRE(diagnostics.size() == 1);
+    CHECK(diagnostics[0].message ==
+          "package 'Rux/Transitive' is not a workspace member, but the workspace owns namespace 'Rux'");
+    REQUIRE(diagnostics[0].help);
+    CHECK(diagnostics[0].help->contains("[Workspace].Packages"));
+}
+
+TEST_CASE("compiler driver resolves a registry package outside the workspace's namespaces from the package cache") {
+    // A user workspace whose members declare namespace `App` takes `Rux/Transitive` from the cache, as a lone package
+    // does, while a `Rux` workspace would refuse it.
+    ScopedCliPackageCache cache;
+    DependencyFixture fixture;
+    fixture.UseRegistryDeclaredTransitiveDependency();
+    fixture.InstallTransitiveIntoCache();
+    std::vector<Diagnostic> diagnostics;
+    auto options = fixture.Options(true, diagnostics);
+    options.localNamespaces.insert("app");
 
     const auto result = CompilerDriver(std::move(options)).Compile();
 

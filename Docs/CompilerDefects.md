@@ -874,7 +874,9 @@ func Main() -> int {
 - **Course workaround:**
   - `Projects/Prime` writes `[false; 100]` and reads the limit back from `.length`.
   - `Basics/Const` no longer claims that a constant can size an array.
-## D49. A workspace root refuses registry dependencies in `rux check` and `rux doc`
+## D49. A workspace root refuses registry dependencies in `rux check` and `rux doc` (fixed)
+
+**Fixed**; covered by `PackageDependencyGraphTests.cpp`, `CompilerDriverTests.cpp` and `CliWorkspaceProcessTests.cpp`.
 
 - **Reproducer:** a root manifest with `[Workspace] Packages = ["App", "Greeter"]`, where App
   depends on `Io = { Namespace = "Rux", Version = "*" }`. Run `rux check` at the root.
@@ -895,7 +897,9 @@ func Main() -> int {
 - **Related:** at a workspace root, `rux fmt --check` examines only the root's `Src` and reports
   "no source files were examined". `rux lint` at the same root does visit the members.
 
-## D51. `rux test` resolves dependencies from local paths only
+## D51. `rux test` resolves dependencies from local paths only (fixed)
+
+**Fixed**; covered by `PackageDependencyGraphTests.cpp`, `CompilerDriverTests.cpp` and `CliWorkspaceProcessTests.cpp`.
 
 - **Where:** `Cli/Testing/TestExecution.cpp:36`.
 - **Problem:** a test package cannot import `Core::Assert`, and cannot depend on a package that

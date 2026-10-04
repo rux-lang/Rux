@@ -338,7 +338,7 @@ bool CompilerDriver::Impl::LoadDependencies() {
     BeginPhase(CompilePhase::LoadingDependency, opts.manifest.package.name.Text(), root);
 
     dependencyGraph.emplace(opts.manifest, opts.manifestPath, opts.target, opts.localPackageRoots,
-                            opts.localDependenciesOnly);
+                            opts.localNamespaces);
     auto &graph = *dependencyGraph;
 
     // Packages are parsed into stable storage before their conditionals ask for imported declarations.

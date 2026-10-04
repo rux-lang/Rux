@@ -18,6 +18,7 @@
 #include <fstream>
 #include <map>
 #include <print>
+#include <set>
 #include <span>
 #include <string>
 #include <string_view>
@@ -105,6 +106,7 @@ int Cli::RunDoc(std::span<const std::string_view> args, const GlobalOptions &opt
     }
 
     std::vector<std::filesystem::path> localPackages;
+    std::set<std::string> localNamespaces;
     if (rootManifest->IsWorkspace()) {
         for (const auto &member : rootManifest->workspace.packages) {
             const auto memberPath = root / member / "Rux.toml";
@@ -112,6 +114,8 @@ int Cli::RunDoc(std::span<const std::string_view> args, const GlobalOptions &opt
             if (!memberManifest || memberManifest->IsWorkspace())
                 return DocumentationFailed();
             localPackages.push_back(memberPath.parent_path());
+            if (memberManifest->package.ns)
+                localNamespaces.insert(memberManifest->package.ns->Normalized());
         }
     }
 
@@ -126,7 +130,7 @@ int Cli::RunDoc(std::span<const std::string_view> args, const GlobalOptions &opt
         compileOptions.target = *targetTriple;
         compileOptions.defines = defines;
         compileOptions.localPackageRoots = localPackages;
-        compileOptions.localDependenciesOnly = rootManifest->IsWorkspace();
+        compileOptions.localNamespaces = localNamespaces;
         CliSupport::ConfigureCompileDiagnostics(compileOptions, diagnostics);
         if (opts.verbose) {
             compileOptions.emitProgress = [&](const CompileProgress &event) {

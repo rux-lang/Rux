@@ -19,6 +19,7 @@
 #include <format>
 #include <map>
 #include <optional>
+#include <set>
 #include <span>
 #include <string>
 #include <string_view>
@@ -142,7 +143,7 @@ int Cli::RunCheck(std::span<const std::string_view> args, const GlobalOptions &o
     }
     auto manifest = std::move(rootResult.manifest);
     std::vector<std::filesystem::path> localPackageRoots;
-    bool localDependenciesOnly = false;
+    std::set<std::string> localNamespaces;
     auto CheckPackage = [&](const std::filesystem::path &packageManifestPath, Manifest packageManifest) {
         if (packageManifest.IsWorkspace() || packageManifest.package.name.Empty()) {
             EmitFatal("workspace member '" + packageManifestPath.parent_path().string() + "' is not a package");
@@ -154,7 +155,7 @@ int Cli::RunCheck(std::span<const std::string_view> args, const GlobalOptions &o
         copts.target = *targetTriple;
         copts.defines = defines;
         copts.localPackageRoots = localPackageRoots;
-        copts.localDependenciesOnly = localDependenciesOnly;
+        copts.localNamespaces = localNamespaces;
         if (opts.verbose && !jsonOutput) {
             copts.emitProgress = [&](const CompileProgress &event) { ReportCompileProgress(output, event); };
         }
@@ -207,13 +208,14 @@ int Cli::RunCheck(std::span<const std::string_view> args, const GlobalOptions &o
                 continue;
             }
             localPackageRoots.push_back(memberManifestPath.parent_path());
+            if (memberManifest->package.ns)
+                localNamespaces.insert(memberManifest->package.ns->Normalized());
             if (IsPlatformPackageName(memberManifest->package.name.Text()) &&
                 !PlatformPackageMatchesTarget(memberManifest->package.name.Text(), *targetTriple)) {
                 continue;
             }
             jobs.push_back({memberManifestPath, memberManifest->package.name.Text(), std::move(*memberManifest)});
         }
-        localDependenciesOnly = true;
     }
     else {
         if (!jsonOutput) {

@@ -34,7 +34,7 @@ Test manifests are intentionally uniform:
 - Every dependency is a `{ Path = "..." }` inline table resolving below the root `Packages/` directory or `Tests/Fixtures/`. A renamed dependency sets `Package` explicitly.
 - Registry dependencies are forbidden in test manifests.
 
-During workspace tests, transitive dependencies in publishable first-party package manifests are resolved from matching local workspace members. Registry fallback is disabled, so the suite does not require `rux install`, a populated package cache, or network access.
+During workspace tests, transitive dependencies in publishable first-party package manifests are resolved from matching local workspace members. A workspace owns the namespaces its members declare, and every member here declares `Rux`, so a `Rux` package is never taken from the package cache and the suite does not require `rux install`, a populated package cache, or network access. A registry dependency in a namespace no member declares falls back to the package cache, which is what lets a user workspace test packages built on the standard library. `rux test` itself accepts registry dependencies in a test manifest; the rule above that forbids them here is a repository convention checked by `Unit/ManifestTests.cpp`.
 
 `Language/CoreOptional` exercises inference, arrays, range syntax, and scalar arithmetic without dependencies. `Language/IntrinsicReplacement` imports `Fixtures/IntrinsicProvider` as `Foundation`, including scalar aliases, constants, a character-slice alias, and compiler context. Slice and range operations need no provider. Fixture providers are local-only `SourceLibrary` packages; they are not executable tests or workspace library APIs.
 

@@ -251,7 +251,8 @@ constexpr std::array G_COMMAND_HELP_MAPS = {
                               "without emitting compilation binaries."sv,
                .usage = Data::check_usage,
                .postUsage = {},
-               .footer = {},
+               .footer = "At a workspace root, checks every member. A registry dependency in a namespace that a member "
+                         "declares resolves only from members; any other comes from the package cache."sv,
                .examples = Data::check_exs,
                .options = Data::check_opts,
                .conflicts = {}},
@@ -443,7 +444,8 @@ constexpr std::array G_COMMAND_HELP_MAPS = {
                .description = "Run package unit tests"sv,
                .usage = Data::test_usage,
                .postUsage = {},
-               .footer = {},
+               .footer = "In a workspace, a registry dependency in a namespace that a member declares resolves only "
+                         "from members; any other comes from the package cache."sv,
                .examples = Data::test_exs,
                .options = Data::test_opts,
                .conflicts = {}},

@@ -217,7 +217,7 @@ The namespace and name directories carry the spelling the package was published 
 
 Selecting among installed versions is a local operation in `Package/Cache`, so a build never reaches the network; only `install`, `update`, `add`, `info` and the publication commands do.
 
-An explicit `[Workspace]` manifest names its member packages. Workspace checks resolve qualified registry dependencies from matching namespaced members and resolve test-only path dependencies directly. `rux test` discovers `Executable` packages below the root `Tests/` tree, requires their direct dependencies to use local path entries, resolves transitive first-party dependencies from workspace members, and disables registry fallback. Publishable package manifests can therefore retain qualified registry dependencies without making repository tests depend on the network or shared package cache.
+An explicit `[Workspace]` manifest names its member packages. Workspace `check`, `doc` and `test` resolve qualified registry dependencies from matching namespaced members and resolve path dependencies directly. A workspace owns every namespace its members declare: a registry dependency in an owned namespace must resolve to a member, while one in any other namespace falls back to the package cache. `rux test` discovers `Executable` packages below the root `Tests/` tree and builds them under the same rule. Every member of this repository declares `Rux`, so publishable package manifests retain qualified registry dependencies without making repository tests depend on the network or shared package cache, while a user workspace whose members declare their own namespace takes `Rux/Io` from the cache.
 
 ## Option Coalescing
 

@@ -38,8 +38,16 @@ struct GraphFixture {
         owner.dependencies.back().package = *IdentitySegment::Parse(name);
     }
 
-    DependencyGraph Graph(Manifest manifest, const std::vector<std::filesystem::path> &locals = {}) const {
-        return {std::move(manifest), root / "App" / "Rux.toml", Target::TargetTriple::Host(), locals};
+    DependencyGraph Graph(Manifest manifest, const std::vector<std::filesystem::path> &locals = {},
+                          std::set<std::string> localNamespaces = {}) const {
+        return {std::move(manifest), root / "App" / "Rux.toml", Target::TargetTriple::Host(), locals,
+                std::move(localNamespaces)};
+    }
+
+    static void Install(const Manifest &manifest) {
+        const auto cached = RegistryPackageDir(*manifest.package.ns, manifest.package.name, manifest.package.version);
+        std::filesystem::create_directories(cached / "Src");
+        REQUIRE(manifest.Save(cached / "Rux.toml"));
     }
 
     CompileOptions StageOptions() const {
@@ -160,6 +168,35 @@ TEST_CASE("package graph never substitutes a bare name or a different namespace 
     REQUIRE(graph.Diagnostics().size() == 1);
     CHECK(graph.Diagnostics().front().message.contains("no installed version of 'rux/text'"));
     CHECK(graph.Diagnostics().front().notes.front() == "no versions are installed");
+}
+
+TEST_CASE("package graph keeps a workspace's own namespaces local and takes other registry packages from the cache") {
+    GraphFixture fixture;
+    fixture.Make("Greeter", "Greeter", "App");
+    GraphFixture::Install(fixture.Make("CachedIo", "Io", "Rux"));
+    GraphFixture::Install(fixture.Make("CachedMissing", "Missing", "App"));
+    auto app = fixture.Make("App", "App", "App");
+    fixture.Registry(app, "Greeter", "App", "Greeter");
+    fixture.Registry(app, "Io", "Rux", "Io");
+    fixture.Registry(app, "Missing", "App", "Missing");
+    auto graph = fixture.Graph(app, {fixture.root / "Greeter"}, {"app"});
+
+    const auto *greeter = graph.Resolve(graph.Root(), "Greeter");
+    REQUIRE(greeter);
+    CHECK(greeter->Root() == std::filesystem::weakly_canonical(fixture.root / "Greeter"));
+    const auto *io = graph.Resolve(graph.Root(), "Io");
+    REQUIRE(io);
+    CHECK(io->id == "rux/io");
+    CHECK(io->Root() == std::filesystem::weakly_canonical(RegistryPackageDir(*IdentitySegment::Parse("Rux"),
+                                                                             *IdentitySegment::Parse("Io"),
+                                                                             *SemanticVersion::Parse("0.4.0"))));
+    CHECK(graph.Diagnostics().empty());
+
+    // An installed copy does not stand in for a member of a namespace the workspace owns.
+    CHECK_FALSE(graph.Resolve(graph.Root(), "Missing"));
+    REQUIRE(graph.Diagnostics().size() == 1);
+    CHECK(graph.Diagnostics().front().message ==
+          "package 'App/Missing' is not a workspace member, but the workspace owns namespace 'App'");
 }
 
 TEST_CASE("package graph reports incompatible local identities and versions at their declaring manifest") {

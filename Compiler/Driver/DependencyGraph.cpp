@@ -28,9 +28,10 @@ std::string Describe(const SourcePackage &package) {
 
 DependencyGraph::DependencyGraph(Manifest rootManifest, std::filesystem::path manifestPath,
                                  const Target::TargetTriple inputTarget,
-                                 const std::span<const std::filesystem::path> localRoots, const bool inputLocalOnly)
+                                 const std::span<const std::filesystem::path> localRoots,
+                                 std::set<std::string> inputLocalNamespaces)
     : target(inputTarget)
-    , localOnly(inputLocalOnly) {
+    , localNamespaces(std::move(inputLocalNamespaces)) {
     manifestPath = CanonicalManifest(manifestPath);
     rootId = Identity(rootManifest, manifestPath);
     manifests.emplace(manifestPath, rootManifest);
@@ -134,11 +135,12 @@ const SourcePackage *DependencyGraph::Resolve(const SourcePackage &owner, const 
             }
             path = local->second.front();
         }
-        else if (localOnly) {
+        else if (localNamespaces.contains(registry->ns.Normalized())) {
             Fail(owner,
-                 std::format("package '{}' is not a local workspace member; registry dependencies are disabled",
-                             registry->ns.Text() + "/" + dependency->package.Text()),
-                 {"workspace checks resolve registry declarations only from matching local members"},
+                 std::format("package '{}' is not a workspace member, but the workspace owns namespace '{}'",
+                             registry->ns.Text() + "/" + dependency->package.Text(), registry->ns.Text()),
+                 {"packages in a namespace declared by workspace members resolve only from those members, never "
+                  "from the package cache"},
                  "add the package to [Workspace].Packages or use a local Path dependency");
             return nullptr;
         }

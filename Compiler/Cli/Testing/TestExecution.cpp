@@ -17,23 +17,9 @@ TestOutcome RunTestPackage(const TestPackage &package, CompileOptions copts, con
         return outcome;
     };
 
-    for (const auto &dependency : package.manifest.dependencies) {
-        if (!dependency.IsPath()) {
-            outcome.status = TestStatus::BuildError;
-            outcome.output = std::format(
-                "error: test dependency '{}' must use a local Path entry in '{}'; registry dependencies are "
-                "not allowed\n",
-                dependency.importName.Text(), (package.dir / "Rux.toml").string());
-            outcome.diagnostics = std::move(outcome.output);
-            outcome.output.clear();
-            return Finish();
-        }
-    }
-
     // Build the package quietly (suppress per-file build output for tests).
     copts.manifestPath = package.dir / "Rux.toml";
     copts.manifest = package.manifest;
-    copts.localDependenciesOnly = true;
     copts.isTest = true;
     copts.emitDiagnostic = [&](const Diagnostic &diagnostic, const SourceLineLookup &sourceLineLookup) {
         outcome.diagnostics += RenderDiagnostic(diagnostic, color, sourceLineLookup);

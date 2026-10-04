@@ -178,7 +178,7 @@ Run the full suite from the repository root:
 ./Bin/rux test --release  # omit --release for a Debug-profile test build
 ```
 
-The root `Rux.toml` is a versioned workspace manifest that declares every first-party package as a member. Every dependency in a test manifest must use a local `Path` into `Packages/`; the C++ manifest-policy test enforces this across the whole tree. While running tests, qualified transitive dependencies declared by publishable package manifests are overridden by matching namespaced workspace members, and registry fallback is disabled. The repository test suite therefore requires no package-cache setup or network access. The complete syntax is defined by the [`Rux.toml` manifest contract](Manifest.md).
+The root `Rux.toml` is a versioned workspace manifest that declares every first-party package as a member. Every dependency in a test manifest must use a local `Path` into `Packages/`; the C++ manifest-policy test enforces this across the whole tree. While running tests, qualified transitive dependencies declared by publishable package manifests are overridden by matching namespaced workspace members. Every member declares namespace `Rux`, which the workspace therefore owns: a `Rux` package that is not a member is an error rather than a package-cache lookup. The repository test suite therefore requires no package-cache setup or network access. The complete syntax is defined by the [`Rux.toml` manifest contract](Manifest.md).
 
 `rux test` walks `Tests/` recursively: a directory with a `Rux.toml` is a test package; a directory without one (like `Tests/Language/` or `Tests/Packages/`) is a group and is searched further. Each package is built and run, and per-package results plus a summary are reported.
 

@@ -20,6 +20,7 @@
 #include <format>
 #include <map>
 #include <optional>
+#include <set>
 #include <span>
 #include <string>
 #include <string_view>
@@ -119,6 +120,7 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
     std::filesystem::path projectRoot;
     std::vector<TestRoot> testRoots;
     std::vector<std::filesystem::path> localPackageRoots;
+    std::set<std::string> localNamespaces;
     if (manifestPath) {
         auto manifestResult = Manifest::Load(*manifestPath);
         if (!manifestResult.Ok()) {
@@ -155,6 +157,8 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
                     return 1;
                 }
                 localPackageRoots.push_back(memberDir);
+                if (memberResult.manifest->package.ns)
+                    localNamespaces.insert(memberResult.manifest->package.ns->Normalized());
                 if (auto memberTests = memberDir / "Tests"; std::filesystem::exists(memberTests, ec)) {
                     testRoots.push_back({std::move(memberTests), std::filesystem::path(member).generic_string()});
                 }
@@ -243,6 +247,7 @@ int Cli::RunTest(std::span<const std::string_view> args, const GlobalOptions &op
     compileOptions.profile = profile;
     compileOptions.defines = defines;
     compileOptions.localPackageRoots = localPackageRoots;
+    compileOptions.localNamespaces = localNamespaces;
     std::vector<TestOutcome> outcomes(testPackages.size());
     RunTestTasks(
         tasks, jobs,

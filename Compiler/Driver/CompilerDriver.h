@@ -18,6 +18,7 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <set>
 #include <span>
 #include <string>
 #include <string_view>
@@ -34,7 +35,9 @@ struct CompileOptions {
     /// Workspace source roots. Manifests supply normalized namespace/name identities; matching registry requirements
     /// use these sources while publishable manifests retain version-based dependencies.
     std::vector<std::filesystem::path> localPackageRoots;
-    bool localDependenciesOnly = false;
+    /// Normalized namespaces owned by the workspace: a registry dependency in one of them must resolve from
+    /// `localPackageRoots`, while any other registry dependency without a local source falls back to the package cache.
+    std::set<std::string> localNamespaces;
 
     bool isTest = false;
     bool checkOnly = false; // stop after semantic analysis; keep going past
