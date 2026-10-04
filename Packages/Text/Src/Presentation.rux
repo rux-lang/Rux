@@ -159,10 +159,10 @@ func WriteHex(writer: &var TextWriter, value: uint32) -> ! FormatError {
         count = 1;
     }
     while rest > 0u32 {
-        let digit = rest % 16u32;
-        digits[count] = (digit < 10u32 ? digit + 0x30u32 : digit + 0x57u32) as char8;
+        let digit = rest % 16;
+        digits[count] = (digit < 10u32 ? digit + 0x30 : digit + 0x57) as char8;
         count = count + 1;
-        rest = rest / 16u32;
+        rest = rest / 16;
     }
     var index = count;
     while index > 0 {

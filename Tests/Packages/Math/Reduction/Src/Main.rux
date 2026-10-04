@@ -51,7 +51,7 @@ func Main() -> int {
         let argument = head;
         // sin(count*Pi - tail) is -cos(count*Pi) * sin(tail), and sin(tail) is tail to well within a ulp for
         // something this small. So the answer is -tail for an even multiple and +tail for an odd one.
-        let evenMultiple = (multiple % 2u) == 0u;
+        let evenMultiple = (multiple % 2) == 0u;
         let expected = evenMultiple ? 0.0 - tail : tail;
         let got = Sin(argument);
         // A few ulps, because the reference itself is a double-double product and the sine has its own bound.
@@ -74,7 +74,7 @@ func Main() -> int {
         let doubledCosine = Cos(x + x);
         Assert(Abs(doubledCosine - (1.0 - 2.0 * sine * sine)) < 1.0e-13,
                "and the cosine of twice an argument matches the half-angle form");
-        power = power + 1i64;
+        power = power + 1;
     }
 
     // The same across arguments that are not powers of two, including some enormous ones.
@@ -103,7 +103,7 @@ func Main() -> int {
     }
 
     // The bounds hold however large the argument: a reduction that overflowed its window would leave them.
-    let enormous = ScaleByPowerOfTwo(1.0, 1023i64);
+    let enormous = ScaleByPowerOfTwo(1.0, 1023);
     Assert(Sin(enormous) >= -1.0 && Sin(enormous) <= 1.0, "the sine of the largest power of two is in range");
     Assert(Cos(enormous) >= -1.0 && Cos(enormous) <= 1.0, "and so is the cosine");
     Assert(!IsNan(Sin(enormous)) && !IsNan(Cos(enormous)), "and neither is a NaN");

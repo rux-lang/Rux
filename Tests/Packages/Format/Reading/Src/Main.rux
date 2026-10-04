@@ -20,14 +20,14 @@ import Format::{ BitsOfFloat32, BitsOfFloat64, ParseError, ParseFloat32, ParseFl
 func Bits(text: char8[..]) -> uint64 {
     return match ParseFloat64(text) {
         .Success(value) => BitsOfFloat64(value),
-        .Failure(_) => 0xFFFFFFFFFFFFFFFFu64
+        .Failure(_) => 0xFFFFFFFFFFFFFFFF
     };
 }
 
 func Bits32(text: char8[..]) -> uint32 {
     return match ParseFloat32(text) {
         .Success(value) => BitsOfFloat32(value),
-        .Failure(_) => 0xFFFFFFFFu32
+        .Failure(_) => 0xFFFFFFFF
     };
 }
 

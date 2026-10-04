@@ -79,7 +79,7 @@ extend PathBuffer {
     func Reserve(self: &var PathBuffer, additional: uint) -> ! TextError {
         let required = self.length + additional;
         if required <= self.capacity { return; }
-        var wanted = self.capacity * 2u;
+        var wanted = self.capacity * 2;
         if wanted < required {
             wanted = required;
         }

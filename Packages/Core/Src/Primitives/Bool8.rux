@@ -12,9 +12,9 @@ extend bool8 {
     /// The number of bits in the representation.
     ///
     /// @see https://rux-lang.dev/docs/api/core/bool8/bits
-    pub const Bits: uint = 8u;
+    pub const Bits: uint = 8;
     /// The number of bytes in the representation.
     ///
     /// @see https://rux-lang.dev/docs/api/core/bool8/bytes
-    pub const Bytes: uint = 1u;
+    pub const Bytes: uint = 1;
 }

@@ -263,7 +263,7 @@ extend TomlLimits {
     /// @returns limits that refuse nothing, for input that is already trusted
     /// @see https://rux-lang.dev/docs/api/toml/limits/unlimited
     pub func Unlimited() -> TomlLimits {
-        return TomlLimits { maximumDepth: 18446744073709551615u };
+        return TomlLimits { maximumDepth: 18446744073709551615 };
     }
 }
 
@@ -343,7 +343,7 @@ extend TomlParser {
             outcome: TomlStopped {
                 stop: TomlStop::None,
                 lexical: TomlLexError::None,
-                scalar: TomlScalarError::Malformed(0u),
+                scalar: TomlScalarError::Malformed(0),
                 offset: 0,
                 line: 1,
                 column: 1
@@ -485,7 +485,7 @@ extend TomlParser {
             self.Stop(TomlStop::TooDeep);
             return TomlValue::Table(self.allocator);
         }
-        self.depth = self.depth + 1u;
+        self.depth = self.depth + 1;
         self.Advance();
         var array = TomlValue::Array(self.allocator);
         while true {
@@ -520,7 +520,7 @@ extend TomlParser {
             self.Stop(TomlStop::Unexpected);
             break;
         }
-        self.depth = self.depth - 1u;
+        self.depth = self.depth - 1;
         return <-array;
     }
 }
@@ -533,7 +533,7 @@ extend TomlParser {
             self.Stop(TomlStop::TooDeep);
             return TomlValue::Table(self.allocator);
         }
-        self.depth = self.depth + 1u;
+        self.depth = self.depth + 1;
         self.Advance();
         var table = TomlValue::Table(self.allocator);
         table.defined = true;
@@ -566,7 +566,7 @@ extend TomlParser {
             self.Stop(TomlStop::Unexpected);
             break;
         }
-        self.depth = self.depth - 1u;
+        self.depth = self.depth - 1;
         return <-table;
     }
 
@@ -643,16 +643,16 @@ extend TomlParser {
         }
         var target = into;
         var index: uint = 0;
-        while index + 1u < parts.Length() && target != null {
+        while index + 1 < parts.Length() && target != null {
             let name = parts.AsSlice().data[index].View();
             target = self.DescendDotted(target, name, parts.AsSlice().data[index].View());
-            index = index + 1u;
+            index = index + 1;
         }
         if target == null {
             parts.Clear();
             return;
         }
-        let last = parts.Length() - 1u;
+        let last = parts.Length() - 1;
         let finalName = parts.AsSlice().data[last].View();
         if (*target).Find(finalName) != null {
             self.Stop(TomlStop::DuplicateKey);
@@ -738,15 +738,15 @@ extend TomlParser {
         }
         var target = root;
         var index: uint = 0;
-        while index + 1u < parts.Length() && target != null {
+        while index + 1 < parts.Length() && target != null {
             target = self.DescendHeader(target, parts.AsSlice().data[index].View());
-            index = index + 1u;
+            index = index + 1;
         }
         if target == null {
             parts.Clear();
             return null;
         }
-        let last = parts.Length() - 1u;
+        let last = parts.Length() - 1;
         var opened = array ? self.OpenTableArray(target, parts.AsSlice().data[last].View())
                            : self.OpenTable(target, parts.AsSlice().data[last].View());
         parts.Clear();
@@ -773,7 +773,7 @@ extend TomlParser {
             }
             // A path through an array of tables means its most recent element, which is the one still being
             // written; the earlier ones are finished.
-            return (*existing).AtMutable((*existing).Length() - 1u);
+            return (*existing).AtMutable((*existing).Length() - 1);
         }
         if existing.kind != TomlKind::Table {
             self.Stop(TomlStop::NotATable);
@@ -850,7 +850,7 @@ extend TomlParser {
             self.Stop(TomlStop::OutOfMemory);
             return null;
         }
-        return (*existing).AtMutable((*existing).Length() - 1u);
+        return (*existing).AtMutable((*existing).Length() - 1);
     }
 }
 

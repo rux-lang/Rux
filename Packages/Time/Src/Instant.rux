@@ -48,12 +48,12 @@ extend Instant {
             let rate = frequency as uint64;
             let whole = ticks / rate;
             let rest = ticks % rate;
-            return Instant { ticks: whole * 1000000000u64 + rest * 1000000000u64 / rate };
+            return Instant { ticks: whole * 1000000000 + rest * 1000000000 / rate };
         }
         else {
             var time = Timespec { seconds: 0, nanoseconds: 0 };
             ClockGetTime(ClockMonotonic, @time);
-            return Instant { ticks: (time.seconds as uint64) * 1000000000u64 + time.nanoseconds as uint64 };
+            return Instant { ticks: (time.seconds as uint64) * 1000000000 + time.nanoseconds as uint64 };
         }
     }
 
@@ -68,8 +68,8 @@ extend Instant {
     pub func Since(self: &Instant, earlier: Instant) -> Duration? {
         if self.ticks < earlier.ticks { return none; }
         let gap = self.ticks - earlier.ticks;
-        var result = Duration::FromSeconds((gap / 1000000000u64) as int64);
-        result.nanoseconds = (gap % 1000000000u64) as uint32;
+        var result = Duration::FromSeconds((gap / 1000000000) as int64);
+        result.nanoseconds = (gap % 1000000000) as uint32;
         return result;
     }
 

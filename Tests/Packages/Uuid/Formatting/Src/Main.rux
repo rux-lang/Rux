@@ -171,42 +171,42 @@ func Main() -> int {
     // The refusals: every widely-circulated non-standard form. A text short of the canonical length points at its
     // own end, where the missing character would have gone; a longer one points at the first character that has
     // nowhere to be.
-    Assert(Refuses("f81d4fae7dec11d0a76500a0c91e6bf6", 1, 32u),
+    Assert(Refuses("f81d4fae7dec11d0a76500a0c91e6bf6", 1, 32),
            "the hyphen-free form some databases store is refused at its end");
-    Assert(Refuses("{f81d4fae-7dec-11d0-a765-00a0c91e6bf6}", 1, 36u),
+    Assert(Refuses("{f81d4fae-7dec-11d0-a765-00a0c91e6bf6}", 1, 36),
            "the brace-wrapped form Windows tools print is refused at the first character past the form");
-    Assert(Refuses("f81d4fae-7dec-11d0-a765-00a0c91e6bf", 1, 35u), "one digit short points at the missing digit");
-    Assert(Refuses("f81d4fae-7dec-11d0-a765-00a0c91e6bf67", 1, 36u), "one digit long points at the extra one");
-    Assert(Refuses("", 1, 0u), "and nothing at all is refused at offset zero");
+    Assert(Refuses("f81d4fae-7dec-11d0-a765-00a0c91e6bf", 1, 35), "one digit short points at the missing digit");
+    Assert(Refuses("f81d4fae-7dec-11d0-a765-00a0c91e6bf67", 1, 36), "one digit long points at the extra one");
+    Assert(Refuses("", 1, 0), "and nothing at all is refused at offset zero");
 
     // Hyphens in the wrong places, which is the error a length check alone would miss.
-    Assert(Refuses("f81d4fae7-dec-11d0-a765-00a0c91e6bf6", 2, 8u),
+    Assert(Refuses("f81d4fae7-dec-11d0-a765-00a0c91e6bf6", 2, 8),
            "a hyphen one position late is refused where the hyphen belonged");
-    Assert(Refuses("f81d4fa-e7dec-11d0-a765-00a0c91e6bf6", 2, 7u),
+    Assert(Refuses("f81d4fa-e7dec-11d0-a765-00a0c91e6bf6", 2, 7),
            "and one position early, where the hyphen stands and a digit belongs");
-    Assert(Refuses("f81d4fae_7dec-11d0-a765-00a0c91e6bf6", 2, 8u), "and a separator that is not a hyphen");
+    Assert(Refuses("f81d4fae_7dec-11d0-a765-00a0c91e6bf6", 2, 8), "and a separator that is not a hyphen");
 
     // Every one of the four hyphen positions is checked, not only the first.
-    Assert(Refuses("f81d4fae-7dec_11d0-a765-00a0c91e6bf6", 2, 13u), "the second hyphen position is checked");
-    Assert(Refuses("f81d4fae-7dec-11d0_a765-00a0c91e6bf6", 2, 18u), "and the third");
-    Assert(Refuses("f81d4fae-7dec-11d0-a765_00a0c91e6bf6", 2, 23u), "and the fourth");
+    Assert(Refuses("f81d4fae-7dec_11d0-a765-00a0c91e6bf6", 2, 13), "the second hyphen position is checked");
+    Assert(Refuses("f81d4fae-7dec-11d0_a765-00a0c91e6bf6", 2, 18), "and the third");
+    Assert(Refuses("f81d4fae-7dec-11d0-a765_00a0c91e6bf6", 2, 23), "and the fourth");
 
     // Characters that are not hexadecimal, at the first, middle and last digit positions.
-    Assert(Refuses("g81d4fae-7dec-11d0-a765-00a0c91e6bf6", 3, 0u), "a letter past f is refused at its position");
-    Assert(Refuses("f81d4fae-7dec-11d0-a765-00a0c91e6bf ", 3, 35u), "and so is a trailing space");
-    Assert(Refuses("f81d4fae-7dec-11z0-a765-00a0c91e6bf6", 3, 16u), "and one in the middle of a group");
+    Assert(Refuses("g81d4fae-7dec-11d0-a765-00a0c91e6bf6", 3, 0), "a letter past f is refused at its position");
+    Assert(Refuses("f81d4fae-7dec-11d0-a765-00a0c91e6bf ", 3, 35), "and so is a trailing space");
+    Assert(Refuses("f81d4fae-7dec-11z0-a765-00a0c91e6bf6", 3, 16), "and one in the middle of a group");
 
     // A URN prefix that is misspelled, which is its own kind of wrong, pointing at the character that is wrong.
-    Assert(Refuses("urn:uuix:f81d4fae-7dec-11d0-a765-00a0c91e6bf6", 4, 7u),
+    Assert(Refuses("urn:uuix:f81d4fae-7dec-11d0-a765-00a0c91e6bf6", 4, 7),
            "a misspelled URN prefix is refused at the misspelling");
-    Assert(Refuses("uri:uuid:f81d4fae-7dec-11d0-a765-00a0c91e6bf6", 4, 2u), "as is the wrong scheme");
-    Assert(Refuses("urn uuid:f81d4fae-7dec-11d0-a765-00a0c91e6bf6", 4, 3u), "and a missing separator");
+    Assert(Refuses("uri:uuid:f81d4fae-7dec-11d0-a765-00a0c91e6bf6", 4, 2), "as is the wrong scheme");
+    Assert(Refuses("urn uuid:f81d4fae-7dec-11d0-a765-00a0c91e6bf6", 4, 3), "and a missing separator");
 
     // Inside a URN, the offsets are into the whole text rather than into the value it wraps. That is the
     // convention a caller underlining a character depends on, and the case that proves it.
-    Assert(Refuses("urn:uuid:g81d4fae-7dec-11d0-a765-00a0c91e6bf6", 3, 9u),
+    Assert(Refuses("urn:uuid:g81d4fae-7dec-11d0-a765-00a0c91e6bf6", 3, 9),
            "a bad digit in a URN is numbered from the start of the URN");
-    Assert(Refuses("urn:uuid:f81d4fae_7dec-11d0-a765-00a0c91e6bf6", 2, 17u),
+    Assert(Refuses("urn:uuid:f81d4fae_7dec-11d0-a765-00a0c91e6bf6", 2, 17),
            "and so is a misplaced hyphen inside one");
 
     // The sentinels have text forms too.
@@ -282,8 +282,8 @@ func Main() -> int {
     Assert(RefusedBySpec(value, Spec(".8")), "and a precision is refused rather than truncating the form");
 
     // A destination too small reports the writer's own failure through the protocol rather than swallowing it.
-    Assert(RefusedByWriter(value, plain, 35u), "a writer one byte short reports insufficient capacity");
-    Assert(RefusedByWriter(value, Spec("urn"), 44u), "and so does one a byte short of the URN form");
+    Assert(RefusedByWriter(value, plain, 35), "a writer one byte short reports insufficient capacity");
+    Assert(RefusedByWriter(value, Spec("urn"), 44), "and so does one a byte short of the URN form");
 
     // What Display writes parses back, in both forms, which is what makes the pair a round trip rather than two
     // separate opinions about the text.

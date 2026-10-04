@@ -23,11 +23,11 @@ import Entropy::{ EntropyError, Fill };
 /// @see https://rux-lang.dev/docs/api/uuid/random
 pub func Random() -> Uuid ! EntropyError {
     var bytes: byte[16];
-    Fill(@bytes[0] as *var opaque, 16u)?;
+    Fill(@bytes[0] as *var opaque, 16)?;
     var value = Uuid::FromBytes((@bytes[0])[..16]);
     // Version 4 in the high nibble of byte six, and the standard variant in the top bits of byte eight.
-    value.bytes[6] = (value.bytes[6] & 0x0Fu8) | 0x40u8;
-    value.bytes[8] = (value.bytes[8] & 0x3Fu8) | 0x80u8;
+    value.bytes[6] = (value.bytes[6] & 0x0F) | 0x40;
+    value.bytes[8] = (value.bytes[8] & 0x3F) | 0x80;
     return value;
 }
 
@@ -42,8 +42,8 @@ pub func Random() -> Uuid ! EntropyError {
 /// @see https://rux-lang.dev/docs/api/uuid/random-from-bytes
 pub func RandomFromBytes(bytes: byte[..]) -> Uuid {
     var value = Uuid::FromBytes(bytes);
-    value.bytes[6] = (value.bytes[6] & 0x0Fu8) | 0x40u8;
-    value.bytes[8] = (value.bytes[8] & 0x3Fu8) | 0x80u8;
+    value.bytes[6] = (value.bytes[6] & 0x0F) | 0x40;
+    value.bytes[8] = (value.bytes[8] & 0x3F) | 0x80;
     return value;
 }
 

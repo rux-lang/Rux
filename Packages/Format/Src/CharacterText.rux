@@ -49,10 +49,10 @@ pub func IsWideScalarValue(value: uint64) -> bool {
 // Writes `value` as `count` lower-case hexadecimal digits, most significant first.
 func WriteHexDigits(writer: &var TextWriter, value: uint64, count: uint) -> ! FormatError {
     let digits = "0123456789abcdef";
-    var shift = count * 4u;
+    var shift = count * 4;
     while shift > 0 {
-        shift = shift - 4u;
-        WriteAscii(writer, digits.data[((value >> (shift as uint64)) & 0xFu64) as uint])?;
+        shift = shift - 4;
+        WriteAscii(writer, digits.data[((value >> (shift as uint64)) & 0xF) as uint])?;
     }
     return;
 }
@@ -73,7 +73,7 @@ func WriteHexDigits(writer: &var TextWriter, value: uint64, count: uint) -> ! Fo
 pub func WriteInvalidEscape(writer: &var TextWriter, value: uint64) -> ! FormatError {
     if value <= 0xFFu64 {
         WriteBytes(writer, "\\x{")?;
-        WriteHexDigits(writer, value, 2u)?;
+        WriteHexDigits(writer, value, 2)?;
         return WriteBytes(writer, "}");
     }
     WriteBytes(writer, "\\u{")?;

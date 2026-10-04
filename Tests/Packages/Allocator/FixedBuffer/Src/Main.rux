@@ -36,8 +36,8 @@ func Main() -> ! AllocError {
     // Writing through both addresses must not disturb either.
     let firstBytes = first as *var uint64;
     let secondBytes = second as *var uint64;
-    *firstBytes = 0x0123456789ABCDEFu64;
-    *secondBytes = 0xFEDCBA9876543210u64;
+    *firstBytes = 0x0123456789ABCDEF;
+    *secondBytes = 0xFEDCBA9876543210;
     Assert(*firstBytes == 0x0123456789ABCDEFu64, "the first allocation keeps its bytes");
     Assert(*secondBytes == 0xFEDCBA9876543210u64, "and so does the second");
 

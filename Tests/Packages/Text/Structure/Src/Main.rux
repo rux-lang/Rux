@@ -32,7 +32,7 @@ extend Tracked {
 
     func ~Tracked(self: &var Tracked) {
         if self.counter != null {
-            *self.counter = *self.counter + 1i32;
+            *self.counter = *self.counter + 1;
         }
     }
 }
@@ -63,9 +63,9 @@ extend Spy : Debug {
 // A decimal count, written here because this package converts no numbers and depends on nothing that does.
 func WriteNumber(writer: &var TextWriter, value: uint) -> ! FormatError {
     if value >= 10u {
-        WriteNumber(writer, value / 10u)?;
+        WriteNumber(writer, value / 10)?;
     }
-    return WriteAscii(writer, ((value % 10u) + 0x30u) as char8);
+    return WriteAscii(writer, ((value % 10) + 0x30) as char8);
 }
 
 func Same(actual: char8[..], expected: char8[..]) -> bool {
@@ -151,7 +151,7 @@ func Main() -> int {
     // Showing a value does not take it. The tracked element is move-only and reports its own destruction, so this
     // is the property counted rather than assumed.
     var destroyed: int32 = 0;
-    var held: Tracked? = .Some(Tracked { counter: @destroyed, tag: 7u });
+    var held: Tracked? = .Some(Tracked { counter: @destroyed, tag: 7 });
     var storage: char8[128];
     var writer = BufferWriter((@storage[0])[..128]);
     Assert(Succeeded(WriteOptionalDebug<Tracked>(writer, held, plain)), "a move-only payload is shown");
@@ -162,8 +162,8 @@ func Main() -> int {
     Assert(Same(writer.Written(), "Some(T(7))Some(T(7))"), "twice, identically");
 
     // The same for a run of them: every element is reached through a borrow.
-    var elements: Tracked[3] = [Tracked { counter: @destroyed, tag: 0u }, Tracked { counter: @destroyed, tag: 12u },
-                                Tracked { counter: @destroyed, tag: 345u }];
+    var elements: Tracked[3] = [Tracked { counter: @destroyed, tag: 0 }, Tracked { counter: @destroyed, tag: 12 },
+                                Tracked { counter: @destroyed, tag: 345 }];
     var runStorage: char8[128];
     var runWriter = BufferWriter((@runStorage[0])[..128]);
     let runSink: &var TextWriter = runWriter;

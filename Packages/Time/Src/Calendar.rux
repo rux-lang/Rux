@@ -30,9 +30,9 @@ pub struct Date {
 /// @returns whether that year has 366 days under the proleptic Gregorian calendar
 /// @see https://rux-lang.dev/docs/api/time/is-leap-year
 pub func IsLeapYear(year: int32) -> bool {
-    if year % 4i32 != 0i32 { return false; }
-    if year % 100i32 != 0i32 { return true; }
-    return year % 400i32 == 0i32;
+    if year % 4 != 0i32 { return false; }
+    if year % 100 != 0i32 { return true; }
+    return year % 400 == 0i32;
 }
 
 /// How many days `month` holds in `year`.
@@ -44,10 +44,10 @@ pub func IsLeapYear(year: int32) -> bool {
 /// @returns how many days that month has in that year
 /// @see https://rux-lang.dev/docs/api/time/days-in-month
 pub func DaysInMonth(year: int32, month: uint8) -> uint8 {
-    if month == 2u8 { return IsLeapYear(year) ? 29u8 : 28u8; }
-    if month == 4u8 || month == 6u8 || month == 9u8 || month == 11u8 { return 30u8; }
-    if month >= 1u8 && month <= 12u8 { return 31u8; }
-    return 0u8;
+    if month == 2u8 { return IsLeapYear(year) ? 29 : 28; }
+    if month == 4u8 || month == 6u8 || month == 9u8 || month == 11u8 { return 30; }
+    if month >= 1u8 && month <= 12u8 { return 31; }
+    return 0;
 }
 
 extend Date {
@@ -73,14 +73,14 @@ extend Date {
     pub func DaysFromEpoch(self: &Date) -> int64 {
         var year = self.year as int64;
         if self.month <= 2u8 {
-            year = year - 1i64;
+            year = year - 1;
         }
         let era = (year >= 0i64 ? year : year - 399i64) / 400i64;
-        let yearOfEra = year - era * 400i64;
+        let yearOfEra = year - era * 400;
         let shiftedMonth = (self.month as int64) + (self.month > 2u8 ? -3i64 : 9i64);
-        let dayOfYear = (153i64 * shiftedMonth + 2i64) / 5i64 + (self.day as int64) - 1i64;
-        let dayOfEra = yearOfEra * 365i64 + yearOfEra / 4i64 - yearOfEra / 100i64 + dayOfYear;
-        return era * 146097i64 + dayOfEra - 719468i64;
+        let dayOfYear = (153i64 * shiftedMonth + 2) / 5 + (self.day as int64) - 1;
+        let dayOfEra = yearOfEra * 365 + yearOfEra / 4 - yearOfEra / 100 + dayOfYear;
+        return era * 146097 + dayOfEra - 719468;
     }
 
     /// The date `days` after 1970-01-01, negative before it.
@@ -111,7 +111,7 @@ extend Date {
     pub func DayOfWeek(self: &Date) -> uint8 {
         let days = self.DaysFromEpoch();
         // The epoch was a Thursday; the shift keeps the remainder non-negative either side of it.
-        let weekday = (days % 7i64 + 11i64) % 7i64;
+        let weekday = (days % 7 + 11) % 7;
         return weekday as uint8;
     }
 
@@ -121,7 +121,7 @@ extend Date {
     /// @see https://rux-lang.dev/docs/api/time/date/day-of-year
     pub func DayOfYear(self: &Date) -> uint16 {
         let opening = Date { year: self.year, month: 1, day: 1 };
-        return (self.DaysFromEpoch() - opening.DaysFromEpoch() + 1i64) as uint16;
+        return (self.DaysFromEpoch() - opening.DaysFromEpoch() + 1) as uint16;
     }
 
     /// Whether two dates are the same day.
@@ -198,7 +198,7 @@ extend TimeOfDay {
     /// @returns how many whole seconds into the day this is
     /// @see https://rux-lang.dev/docs/api/time/time-of-day/seconds-from-midnight
     pub func SecondsFromMidnight(self: &TimeOfDay) -> uint32 {
-        return (self.hour as uint32) * 3600u32 + (self.minute as uint32) * 60u32 + self.second as uint32;
+        return (self.hour as uint32) * 3600 + (self.minute as uint32) * 60 + self.second as uint32;
     }
 }
 
@@ -236,7 +236,7 @@ extend UtcOffset {
         if hours > 23i32 || hours < -23i32 || minutes > 59i32 || minutes < -59i32 { return none; }
         if hours > 0i32 && minutes < 0i32 { return none; }
         if hours < 0i32 && minutes > 0i32 { return none; }
-        return UtcOffset { seconds: hours * 3600i32 + minutes * 60i32 };
+        return UtcOffset { seconds: hours * 3600 + minutes * 60 };
     }
 
     /// The whole seconds east of UTC, negative west.
@@ -272,7 +272,7 @@ extend DateTime {
     /// @see https://rux-lang.dev/docs/api/time/date-time/to-timestamp
     pub func ToTimestamp(self: &DateTime, offset: UtcOffset) -> Timestamp {
         let days = self.date.DaysFromEpoch();
-        let seconds = days * 86400i64 + (self.time.SecondsFromMidnight() as int64) -
+        let seconds = days * 86400 + (self.time.SecondsFromMidnight() as int64) -
                       (offset.TotalSeconds() as int64);
         return Timestamp { seconds: seconds, nanoseconds: self.time.nanosecond };
     }
@@ -285,18 +285,18 @@ extend DateTime {
     /// @see https://rux-lang.dev/docs/api/time/date-time/from-timestamp
     pub func FromTimestamp(moment: Timestamp, offset: UtcOffset) -> DateTime {
         let shifted = moment.UnixSeconds() + (offset.TotalSeconds() as int64);
-        var days = shifted / 86400i64;
-        var secondOfDay = shifted % 86400i64;
+        var days = shifted / 86400;
+        var secondOfDay = shifted % 86400;
         if secondOfDay < 0i64 {
-            days = days - 1i64;
-            secondOfDay = secondOfDay + 86400i64;
+            days = days - 1;
+            secondOfDay = secondOfDay + 86400;
         }
         return DateTime {
             date: Date::FromEpochDays(days),
             time: TimeOfDay {
-                hour: (secondOfDay / 3600i64) as uint8,
-                minute: (secondOfDay % 3600i64 / 60i64) as uint8,
-                second: (secondOfDay % 60i64) as uint8,
+                hour: (secondOfDay / 3600) as uint8,
+                minute: (secondOfDay % 3600 / 60) as uint8,
+                second: (secondOfDay % 60) as uint8,
                 nanosecond: moment.SubsecondNanoseconds()
             }
         };

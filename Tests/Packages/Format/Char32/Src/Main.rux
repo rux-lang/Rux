@@ -34,22 +34,22 @@ func Check(value: char32, length: uint, bytes: uint64, code: int) -> int {
 func Main() -> int {
     // A char32 holds one code point, which becomes one to four bytes of UTF-8.
     // The first three widths are the ones a char16 could reach as well.
-    var code = Check(c32'A', 1u, 0x41u64, 10);
+    var code = Check(c32'A', 1, 0x41, 10);
     if code != 0 { return code; }
-    code = Check(c32'é', 2u, 0xC3A9u64, 11);
+    code = Check(c32'é', 2, 0xC3A9, 11);
     if code != 0 { return code; }
-    code = Check(c32'€', 3u, 0xE282ACu64, 12);
+    code = Check(c32'€', 3, 0xE282AC, 12);
     if code != 0 { return code; }
 
     // The fourth is what only a char32 reaches: the planes above the first.
     // U+10000, where those sequences begin, and U+1F600, the grinning face.
-    code = Check(c32'\u{10000}', 4u, 0xF0908080u64, 20);
+    code = Check(c32'\u{10000}', 4, 0xF0908080, 20);
     if code != 0 { return code; }
-    code = Check(c32'\u{1F600}', 4u, 0xF09F9880u64, 21);
+    code = Check(c32'\u{1F600}', 4, 0xF09F9880, 21);
     if code != 0 { return code; }
 
     // The last code point there is, U+10FFFF.
-    code = Check(c32'\u{10FFFF}', 4u, 0xF48FBFBFu64, 22);
+    code = Check(c32'\u{10FFFF}', 4, 0xF48FBFBF, 22);
     if code != 0 { return code; }
 
     // The values that are not code points at all. The compiler rejects them as
@@ -59,25 +59,25 @@ func Main() -> int {
     //
     // The surrogate range is reserved by UTF-16 and means nothing in UTF-8.
     var surrogate: uint32 = 0xD800;
-    code = Check(surrogate as char32, 3u, 0xEFBFBDu64, 30);
+    code = Check(surrogate as char32, 3, 0xEFBFBD, 30);
     if code != 0 { return code; }
 
     var reserved: uint32 = 0xDFFF;
-    code = Check(reserved as char32, 3u, 0xEFBFBDu64, 31);
+    code = Check(reserved as char32, 3, 0xEFBFBD, 31);
     if code != 0 { return code; }
 
     // The first value past the last code point, and one far beyond it.
     var past: uint32 = 0x110000;
-    code = Check(past as char32, 3u, 0xEFBFBDu64, 32);
+    code = Check(past as char32, 3, 0xEFBFBD, 32);
     if code != 0 { return code; }
 
     var far: uint32 = 0xFFFFFFFF;
-    code = Check(far as char32, 3u, 0xEFBFBDu64, 33);
+    code = Check(far as char32, 3, 0xEFBFBD, 33);
     if code != 0 { return code; }
 
     // U+FFFD itself encodes as what it stands in for, which is what says the
     // replacement is an encoding and not a special case.
-    code = Check(c32'\u{FFFD}', 3u, 0xEFBFBDu64, 34);
+    code = Check(c32'\u{FFFD}', 3, 0xEFBFBD, 34);
     if code != 0 { return code; }
 
     return 0;

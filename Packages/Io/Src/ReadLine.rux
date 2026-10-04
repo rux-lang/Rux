@@ -26,7 +26,7 @@ pub func ReadLine(builder: &var StringBuilder) -> ! IoError {
     while true {
         let filled = input.Read(room) catch {
             error if error.IsTransient() => continue,
-            error if error.IsEnd() => 0u,
+            error if error.IsEnd() => 0,
             error => fail error
         };
         if filled == 0 {

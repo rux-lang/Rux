@@ -100,7 +100,7 @@ func Main() -> int ! IoError {
 
     if able.unixPermissions {
         // Where the mode is the system's own, an exact triple survives the round trip.
-        SetPermissions(allocator, file, Permissions::FromMode(0x1A4u32))?;
+        SetPermissions(allocator, file, Permissions::FromMode(0x1A4))?;
         let moded = MetadataOf(allocator, file, true)?;
         Assert(moded.permissions.mode == 0x1A4u32, "and reads back bit for bit");
     }

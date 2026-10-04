@@ -8,7 +8,7 @@ func Same(left: char8[..], right: char8[..]) -> bool {
     var index: uint = 0;
     while index < left.length {
         if left[index] != right[index] { return false; }
-        index += 1u;
+        index += 1;
     }
     return true;
 }

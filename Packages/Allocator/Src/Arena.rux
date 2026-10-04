@@ -146,7 +146,7 @@ extend Arena {
     /// @returns how many payload bytes the current block has handed out
     /// @see https://rux-lang.dev/docs/api/allocator/arena/bytes-used
     pub func BytesUsed(self: &Arena) -> uint {
-        return self.current == null ? 0u : self.current.used;
+        return self.current == null ? 0 : self.current.used;
     }
 
     /// How many blocks the arena holds.

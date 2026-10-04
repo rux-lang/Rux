@@ -121,6 +121,6 @@ func WriteFloat(cursor: &var ByteCursor, value: float64) {
     // rendering is still a number rather than nothing.
     let parts = DecomposeFloat64(value);
     if !WriteShortestFloat(cursor, parts, ScientificFrom64) {
-        WriteDecimal(cursor, value, 17u);
+        WriteDecimal(cursor, value, 17);
     }
 }

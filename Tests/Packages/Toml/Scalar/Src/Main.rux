@@ -87,8 +87,8 @@ func FloatRefused(text: char8[..], expected: char8[..]) -> bool {
 func Moment(text: char8[..]) -> TomlDateTime {
     var built = TomlDateTime {
         shape: TomlDateTimeShape::DateOnly,
-        date: Date { year: 1970, month: 1u8, day: 1u8 },
-        time: TimeOfDay { hour: 0u8, minute: 0u8, second: 0u8, nanosecond: 0u32 },
+        date: Date { year: 1970, month: 1, day: 1 },
+        time: TimeOfDay { hour: 0, minute: 0, second: 0, nanosecond: 0 },
         offset: UtcOffset::Utc()
     };
     built = TomlParseDateTime(text) catch { else => Panic("a date-time that should parse") };

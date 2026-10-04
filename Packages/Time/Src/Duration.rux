@@ -53,7 +53,7 @@ extend Duration {
     /// @see https://rux-lang.dev/docs/api/time/duration/from-minutes
     pub func FromMinutes(minutes: int64) -> Duration? {
         var seconds: int64 = 0;
-        if MulChecked<int64>(minutes, 60i64, @seconds) { return none; }
+        if MulChecked<int64>(minutes, 60, @seconds) { return none; }
         return Duration::FromSeconds(seconds);
     }
 
@@ -64,7 +64,7 @@ extend Duration {
     /// @see https://rux-lang.dev/docs/api/time/duration/from-hours
     pub func FromHours(hours: int64) -> Duration? {
         var seconds: int64 = 0;
-        if MulChecked<int64>(hours, 3600i64, @seconds) { return none; }
+        if MulChecked<int64>(hours, 3600, @seconds) { return none; }
         return Duration::FromSeconds(seconds);
     }
 
@@ -76,7 +76,7 @@ extend Duration {
     /// @returns that many milliseconds
     /// @see https://rux-lang.dev/docs/api/time/duration/from-milliseconds
     pub func FromMilliseconds(milliseconds: int64) -> Duration {
-        return Duration::FromScaled(milliseconds, 1000000u32);
+        return Duration::FromScaled(milliseconds, 1000000);
     }
 
     /// Exactly `microseconds` microseconds.
@@ -85,7 +85,7 @@ extend Duration {
     /// @returns that many microseconds
     /// @see https://rux-lang.dev/docs/api/time/duration/from-microseconds
     pub func FromMicroseconds(microseconds: int64) -> Duration {
-        return Duration::FromScaled(microseconds, 1000u32);
+        return Duration::FromScaled(microseconds, 1000);
     }
 
     /// Exactly `nanoseconds` nanoseconds.
@@ -94,7 +94,7 @@ extend Duration {
     /// @returns that many nanoseconds
     /// @see https://rux-lang.dev/docs/api/time/duration/from-nanoseconds
     pub func FromNanoseconds(nanoseconds: int64) -> Duration {
-        return Duration::FromScaled(nanoseconds, 1u32);
+        return Duration::FromScaled(nanoseconds, 1);
     }
 
     // `count` units of `scale` nanoseconds each: floor-divide into seconds so the fraction comes out non-negative,
@@ -104,7 +104,7 @@ extend Duration {
         var seconds = count / perSecond;
         var rest = count % perSecond;
         if rest < 0i64 {
-            seconds = seconds - 1i64;
+            seconds = seconds - 1;
             rest = rest + perSecond;
         }
         return Duration { seconds: seconds, nanoseconds: (rest as uint32) * scale };
@@ -151,7 +151,7 @@ extend Duration {
     /// @returns the whole span in milliseconds, or `None` when it does not fit
     /// @see https://rux-lang.dev/docs/api/time/duration/total-milliseconds
     pub func TotalMilliseconds(self: &Duration) -> int64? {
-        return self.Total(1000000u32);
+        return self.Total(1000000);
     }
 
     /// This span as microseconds, truncated toward zero.
@@ -159,7 +159,7 @@ extend Duration {
     /// @returns the whole span in microseconds, or `None` when it does not fit
     /// @see https://rux-lang.dev/docs/api/time/duration/total-microseconds
     pub func TotalMicroseconds(self: &Duration) -> int64? {
-        return self.Total(1000u32);
+        return self.Total(1000);
     }
 
     /// This span as nanoseconds, or `None` where an `int64` of them cannot hold it — about 292 years.
@@ -167,7 +167,7 @@ extend Duration {
     /// @returns the whole span in nanoseconds, or `None` when it does not fit
     /// @see https://rux-lang.dev/docs/api/time/duration/total-nanoseconds
     pub func TotalNanoseconds(self: &Duration) -> int64? {
-        return self.Total(1u32);
+        return self.Total(1);
     }
 
     // The count of `scale`-nanosecond units, truncated toward zero, checked.
@@ -191,7 +191,7 @@ extend Duration {
         var nanoseconds = self.nanoseconds + other.nanoseconds;
         if nanoseconds >= NanosecondsPerSecond {
             nanoseconds = nanoseconds - NanosecondsPerSecond;
-            if AddChecked<int64>(seconds, 1i64, @seconds) { return none; }
+            if AddChecked<int64>(seconds, 1, @seconds) { return none; }
         }
         return Duration { seconds: seconds, nanoseconds: nanoseconds };
     }
@@ -206,7 +206,7 @@ extend Duration {
         if SubChecked<int64>(self.seconds, other.seconds, @seconds) { return none; }
         var nanoseconds = self.nanoseconds;
         if nanoseconds < other.nanoseconds {
-            if SubChecked<int64>(seconds, 1i64, @seconds) { return none; }
+            if SubChecked<int64>(seconds, 1, @seconds) { return none; }
             nanoseconds = nanoseconds + NanosecondsPerSecond;
         }
         return Duration { seconds: seconds, nanoseconds: nanoseconds - other.nanoseconds };
@@ -233,7 +233,7 @@ extend Duration {
         if MulChecked<int64>(self.seconds, factor, @wholePart) { return none; }
         var fractionTotal: int64 = 0;
         if MulChecked<int64>(self.nanoseconds as int64, factor, @fractionTotal) { return none; }
-        let scaled = Duration::FromScaled(fractionTotal, 1u32);
+        let scaled = Duration::FromScaled(fractionTotal, 1);
         var seconds: int64 = 0;
         if AddChecked<int64>(wholePart, scaled.seconds, @seconds) { return none; }
         return Duration { seconds: seconds, nanoseconds: scaled.nanoseconds };

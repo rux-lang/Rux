@@ -16,21 +16,21 @@ extend Tracked {
 
     func ~Tracked(self: &var Tracked) {
         if self.destroyed != null {
-            *self.destroyed += 1i32;
+            *self.destroyed += 1;
         }
     }
 }
 
 func BoxAndDestroy(allocator: Allocator, destroyed: *var int32) -> ! AllocError {
     // A box accepts a move-only value.
-    var boxed = Box::Create<Tracked>(allocator, Tracked { destroyed: destroyed, value: 91i32 })?;
+    var boxed = Box::Create<Tracked>(allocator, Tracked { destroyed: destroyed, value: 91 })?;
     Assert(boxed.Get().value == 91i32, "the box owns its value");
     Assert(*destroyed == 0i32, "without destroying it during construction");
 }
 
 func BoxAndTake(allocator: Allocator, destroyed: *var int32) -> ! AllocError {
-    var boxed = Box::Create<Tracked>(allocator, Tracked { destroyed: destroyed, value: 27i32 })?;
-    var taken = Tracked { destroyed: null, value: 0i32 };
+    var boxed = Box::Create<Tracked>(allocator, Tracked { destroyed: destroyed, value: 27 })?;
+    var taken = Tracked { destroyed: null, value: 0 };
     Assert(boxed.TryTake(@taken), "a move-only value can be taken from a box");
     Assert(boxed.IsEmpty(), "taking leaves its box empty");
     Assert(taken.value == 27i32 && *destroyed == 0i32, "and transfers rather than destroys the value");
@@ -56,7 +56,7 @@ func Main() -> ! AllocError {
     Assert(!boxed.TryTake(@taken), "and taking again reports that there is nothing");
 
     // A box of a value wider than a machine word, to exercise a layout that is not the default.
-    var wide = Box::Create<uint64>(allocator, 0xFEDCBA9876543210u64)?;
+    var wide = Box::Create<uint64>(allocator, 0xFEDCBA9876543210)?;
     Assert(*wide.Get() == 0xFEDCBA9876543210u64, "a wide box keeps every bit of its value");
 
     // Many boxes in sequence, each released as its scope ends. A leak here would exhaust the address space long

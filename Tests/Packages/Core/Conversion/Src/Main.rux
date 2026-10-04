@@ -105,20 +105,20 @@ func CheckFloat<T>(zero: T, negativeZero: T, one: T, infinity: T, nan: T) -> int
 
 func Main() -> int {
     // A type reports its own signedness, at every width.
-    Assert(IsSignedType<int8>(0i8), "int8 is signed");
-    Assert(IsSignedType<int64>(0i64), "int64 is signed");
-    Assert(IsSignedType<int128>(0i128), "int128 is signed");
-    Assert(IsSignedType<int512>(0i512), "int512 is signed");
-    Assert(!IsSignedType<uint8>(0u8), "uint8 is unsigned");
-    Assert(!IsSignedType<uint64>(0u64), "uint64 is unsigned");
-    Assert(!IsSignedType<uint512>(0u512), "uint512 is unsigned");
+    Assert(IsSignedType<int8>(0), "int8 is signed");
+    Assert(IsSignedType<int64>(0), "int64 is signed");
+    Assert(IsSignedType<int128>(0), "int128 is signed");
+    Assert(IsSignedType<int512>(0), "int512 is signed");
+    Assert(!IsSignedType<uint8>(0), "uint8 is unsigned");
+    Assert(!IsSignedType<uint64>(0), "uint64 is unsigned");
+    Assert(!IsSignedType<uint512>(0), "uint512 is unsigned");
 
     // Narrowing: what fits, and what does not.
-    Assert(CheckExact<int32, uint8>(200i32, 200u8, 0u8) == 0, "a value inside the narrower range");
-    Assert(CheckLost<int32, uint8>(300i32, 44u8, 255u8, 0u8) == 0, "a magnitude past the narrower maximum");
-    Assert(CheckLost<int32, uint8>(-1i32, 255u8, 0u8, 0u8) == 0, "a negative value converted to an unsigned type");
-    Assert(CheckExact<int32, int8>(-128i32, -128i8, 0i8) == 0, "the narrower minimum itself");
-    Assert(CheckLost<int32, int8>(-129i32, 127i8, -128i8, 0i8) == 0, "one past the narrower minimum");
+    Assert(CheckExact<int32, uint8>(200, 200, 0) == 0, "a value inside the narrower range");
+    Assert(CheckLost<int32, uint8>(300, 44, 255, 0) == 0, "a magnitude past the narrower maximum");
+    Assert(CheckLost<int32, uint8>(-1, 255, 0, 0) == 0, "a negative value converted to an unsigned type");
+    Assert(CheckExact<int32, int8>(-128, -128, 0) == 0, "the narrower minimum itself");
+    Assert(CheckLost<int32, int8>(-129, 127, -128, 0) == 0, "one past the narrower minimum");
 
     // Widening never loses anything, sign included.
     Assert(CheckExact<int32, int64>(-5i32, -5i64, 0i64) == 0, "a negative value widened");

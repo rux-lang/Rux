@@ -15,15 +15,15 @@ import Text::{ Debug, Display, FormatError, FormatSpec, TextFailureKind, TextWri
 func WriteDigits128(writer: &var TextWriter, spec: FormatSpec, magnitude: uint128, negative: bool) -> ! FormatError {
     var digits: char8[128];
     var count: uint = 0;
-    var radix: uint128 = 10u128;
+    var radix: uint128 = 10;
     if spec.Base() == FormatBase::Binary {
-        radix = 2u128;
+        radix = 2;
     }
     else if spec.Base() == FormatBase::Octal {
-        radix = 8u128;
+        radix = 8;
     }
     else if spec.Base() == FormatBase::LowerHex || spec.Base() == FormatBase::UpperHex {
-        radix = 16u128;
+        radix = 16;
     }
     let letter = spec.Base() == FormatBase::UpperHex ? 0x37u64 : 0x57u64;
     var rest = magnitude;
@@ -33,7 +33,7 @@ func WriteDigits128(writer: &var TextWriter, spec: FormatSpec, magnitude: uint12
     }
     while rest > 0u128 {
         let digit = (rest % radix) as uint64;
-        digits[count] = (digit < 10u64 ? digit + 0x30u64 : digit + letter) as char8;
+        digits[count] = (digit < 10u64 ? digit + 0x30 : digit + letter) as char8;
         count = count + 1;
         rest = rest / radix;
     }
@@ -109,15 +109,15 @@ extend int128 : Debug {
 func WriteDigits256(writer: &var TextWriter, spec: FormatSpec, magnitude: uint256, negative: bool) -> ! FormatError {
     var digits: char8[256];
     var count: uint = 0;
-    var radix: uint256 = 10u256;
+    var radix: uint256 = 10;
     if spec.Base() == FormatBase::Binary {
-        radix = 2u256;
+        radix = 2;
     }
     else if spec.Base() == FormatBase::Octal {
-        radix = 8u256;
+        radix = 8;
     }
     else if spec.Base() == FormatBase::LowerHex || spec.Base() == FormatBase::UpperHex {
-        radix = 16u256;
+        radix = 16;
     }
     let letter = spec.Base() == FormatBase::UpperHex ? 0x37u64 : 0x57u64;
     var rest = magnitude;
@@ -127,7 +127,7 @@ func WriteDigits256(writer: &var TextWriter, spec: FormatSpec, magnitude: uint25
     }
     while rest > 0u256 {
         let digit = (rest % radix) as uint64;
-        digits[count] = (digit < 10u64 ? digit + 0x30u64 : digit + letter) as char8;
+        digits[count] = (digit < 10u64 ? digit + 0x30 : digit + letter) as char8;
         count = count + 1;
         rest = rest / radix;
     }
@@ -203,15 +203,15 @@ extend int256 : Debug {
 func WriteDigits512(writer: &var TextWriter, spec: FormatSpec, magnitude: uint512, negative: bool) -> ! FormatError {
     var digits: char8[512];
     var count: uint = 0;
-    var radix: uint512 = 10u512;
+    var radix: uint512 = 10;
     if spec.Base() == FormatBase::Binary {
-        radix = 2u512;
+        radix = 2;
     }
     else if spec.Base() == FormatBase::Octal {
-        radix = 8u512;
+        radix = 8;
     }
     else if spec.Base() == FormatBase::LowerHex || spec.Base() == FormatBase::UpperHex {
-        radix = 16u512;
+        radix = 16;
     }
     let letter = spec.Base() == FormatBase::UpperHex ? 0x37u64 : 0x57u64;
     var rest = magnitude;
@@ -221,7 +221,7 @@ func WriteDigits512(writer: &var TextWriter, spec: FormatSpec, magnitude: uint51
     }
     while rest > 0u512 {
         let digit = (rest % radix) as uint64;
-        digits[count] = (digit < 10u64 ? digit + 0x30u64 : digit + letter) as char8;
+        digits[count] = (digit < 10u64 ? digit + 0x30 : digit + letter) as char8;
         count = count + 1;
         rest = rest / radix;
     }

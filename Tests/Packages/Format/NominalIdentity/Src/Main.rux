@@ -2,7 +2,7 @@ import Core::Failed;
 import Format::ParseBool;
 variant ParseError { Local(uint64) }
 func Main() -> int {
-    let local = ParseError::Local(1234567890123u64);
+    let local = ParseError::Local(1234567890123);
     let parsed = ParseBool("true");
     let valid = match parsed { .Success(value) => value, .Failure(error) => false };
     if !valid || !Failed(ParseBool("")) || !Failed(ParseBool("false!")) { return 1; }

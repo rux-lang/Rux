@@ -34,26 +34,26 @@ func Check(value: char16, length: uint, bytes: uint64, code: int) -> int {
 func Main() -> int {
     // A char16 holds one UTF-16 code unit, which becomes one to three bytes of
     // UTF-8. Below U+0080 the byte is the code point itself.
-    var code = Check(c16'A', 1u, 0x41u64, 10);
+    var code = Check(c16'A', 1, 0x41, 10);
     if code != 0 { return code; }
-    code = Check(c16'\0', 1u, 0x00u64, 11);
+    code = Check(c16'\0', 1, 0x00, 11);
     if code != 0 { return code; }
 
     // U+0080, the first code point that does not fit in a byte, and U+00E9, e
     // with an acute accent: two bytes each.
-    code = Check(c16'\u{80}', 2u, 0xC280u64, 20);
+    code = Check(c16'\u{80}', 2, 0xC280, 20);
     if code != 0 { return code; }
-    code = Check(c16'é', 2u, 0xC3A9u64, 21);
+    code = Check(c16'é', 2, 0xC3A9, 21);
     if code != 0 { return code; }
 
     // U+0800, where the three byte sequences begin, and U+20AC, the euro sign.
-    code = Check(c16'\u{800}', 3u, 0xE0A080u64, 30);
+    code = Check(c16'\u{800}', 3, 0xE0A080, 30);
     if code != 0 { return code; }
-    code = Check(c16'€', 3u, 0xE282ACu64, 31);
+    code = Check(c16'€', 3, 0xE282AC, 31);
     if code != 0 { return code; }
 
     // The last code unit a char16 can hold, U+FFFF.
-    code = Check(c16'\u{FFFF}', 3u, 0xEFBFBFu64, 32);
+    code = Check(c16'\u{FFFF}', 3, 0xEFBFBF, 32);
     if code != 0 { return code; }
 
     // A lone half of a surrogate pair says nothing outside UTF-16: the character
@@ -63,18 +63,18 @@ func Main() -> int {
     // has to defend itself. It comes out as U+FFFD, the replacement character,
     // rather than as an ill-formed sequence.
     var high: uint32 = 0xD800;
-    code = Check(high as char16, 3u, 0xEFBFBDu64, 40);
+    code = Check(high as char16, 3, 0xEFBFBD, 40);
     if code != 0 { return code; }
 
     var low: uint32 = 0xDFFF;
-    code = Check(low as char16, 3u, 0xEFBFBDu64, 41);
+    code = Check(low as char16, 3, 0xEFBFBD, 41);
     if code != 0 { return code; }
 
     // The code points on either side of the surrogate range are ordinary and
     // survive untouched, which is what says the guard is not too wide.
-    code = Check(c16'\u{D7FF}', 3u, 0xED9FBFu64, 42);
+    code = Check(c16'\u{D7FF}', 3, 0xED9FBF, 42);
     if code != 0 { return code; }
-    code = Check(c16'\u{E000}', 3u, 0xEE8080u64, 43);
+    code = Check(c16'\u{E000}', 3, 0xEE8080, 43);
     if code != 0 { return code; }
 
     return 0;

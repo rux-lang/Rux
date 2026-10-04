@@ -51,7 +51,7 @@ extend TomlPath {
         var index: uint = 0;
         while index < bytes.length {
             self.room.data[self.length + index] = bytes.data[index];
-            index = index + 1u;
+            index = index + 1;
         }
         self.length = self.length + bytes.length;
         return true;
@@ -71,7 +71,7 @@ func IsBareKey(name: char8[..]) -> bool {
         let allowed = (c >= 0x41u8 && c <= 0x5Au8) || (c >= 0x61u8 && c <= 0x7Au8) ||
                       (c >= 0x30u8 && c <= 0x39u8) || c == 0x5Fu8 || c == 0x2Du8;
         if !allowed { return false; }
-        index = index + 1u;
+        index = index + 1;
     }
     return true;
 }
@@ -90,12 +90,12 @@ func EmitByte(writer: &var TextWriter, byte: uint8) -> ! FormatError {
 // A basic string: the quote, the backslash and every control character escaped, and nothing else. The short
 // escapes are used where TOML defines them, and a four-digit form otherwise.
 func EmitBasicString(writer: &var TextWriter, text: char8[..]) -> ! FormatError {
-    EmitByte(writer, 0x22u8)?;
+    EmitByte(writer, 0x22)?;
     var index: uint = 0;
     while index < text.length {
         let c = text.data[index] as uint8;
         if c == 0x22u8 || c == 0x5Cu8 {
-            EmitByte(writer, 0x5Cu8)?;
+            EmitByte(writer, 0x5C)?;
             EmitByte(writer, c)?;
         }
         else if c == 0x08u8 {
@@ -118,14 +118,14 @@ func EmitBasicString(writer: &var TextWriter, text: char8[..]) -> ! FormatError 
             // readers too, and choosing the older spelling costs nothing here.
             Emit(writer, "\\u00")?;
             EmitByte(writer, HexDigit(c >> 4u8))?;
-            EmitByte(writer, HexDigit(c & 0x0Fu8))?;
+            EmitByte(writer, HexDigit(c & 0x0F))?;
         }
         else {
             EmitByte(writer, c)?;
         }
-        index = index + 1u;
+        index = index + 1;
     }
-    return EmitByte(writer, 0x22u8);
+    return EmitByte(writer, 0x22);
 }
 
 func HexDigit(value: uint8) -> uint8 {
@@ -155,10 +155,10 @@ func EmitFloat(writer: &var TextWriter, value: float64) -> ! FormatError {
         length = rendered.length;
         let parsed = ParseFloat64(rendered) catch { else => 0.0 };
         if parsed == value {
-            significant = 18u;
+            significant = 18;
         }
         else {
-            significant = significant + 1u;
+            significant = significant + 1;
         }
     }
     let text = (@storage[0])[..length];
@@ -169,7 +169,7 @@ func EmitFloat(writer: &var TextWriter, value: float64) -> ! FormatError {
     while index < length {
         let c = text.data[index] as uint8;
         if c == 0x2Eu8 || c == 0x65u8 || c == 0x45u8 { return .Success(()); }
-        index = index + 1u;
+        index = index + 1;
     }
     return Emit(writer, ".0");
 }
@@ -184,22 +184,22 @@ func EmitInteger(writer: &var TextWriter, value: int64) -> ! FormatError {
     var rest = negative ? (~(value as uint64) + 1u64) : value as uint64;
     if rest == 0u64 {
         storage[0] = c8'0';
-        length = 1u;
+        length = 1;
     }
     while rest > 0u64 {
-        storage[length] = ((rest % 10u64) + 0x30u64) as char8;
-        length = length + 1u;
-        rest = rest / 10u64;
+        storage[length] = ((rest % 10) + 0x30) as char8;
+        length = length + 1;
+        rest = rest / 10;
     }
     if negative {
         storage[length] = c8'-';
-        length = length + 1u;
+        length = length + 1;
     }
     var reversed: char8[24];
     var index: uint = 0;
     while index < length {
-        reversed[index] = storage[length - index - 1u];
-        index = index + 1u;
+        reversed[index] = storage[length - index - 1];
+        index = index + 1;
     }
     return Emit(writer, reversed[0..length]);
 }
@@ -210,9 +210,9 @@ func EmitPadded(writer: &var TextWriter, value: uint32, width: uint) -> ! Format
     var index = width;
     var rest = value;
     while index > 0u {
-        index = index - 1u;
-        storage[index] = ((rest % 10u32) + 0x30u32) as char8;
-        rest = rest / 10u32;
+        index = index - 1;
+        storage[index] = ((rest % 10) + 0x30) as char8;
+        rest = rest / 10;
     }
     return Emit(writer, storage[0..width]);
 }
@@ -221,33 +221,33 @@ func EmitPadded(writer: &var TextWriter, value: uint32, width: uint) -> ! Format
 func EmitDateTime(writer: &var TextWriter, value: &TomlValue) -> ! FormatError {
     let kind = value.Kind();
     if kind != TomlKind::LocalTime {
-        EmitPadded(writer, value.date.year as uint32, 4u)?;
-        EmitByte(writer, 0x2Du8)?;
-        EmitPadded(writer, value.date.month as uint32, 2u)?;
-        EmitByte(writer, 0x2Du8)?;
-        EmitPadded(writer, value.date.day as uint32, 2u)?;
+        EmitPadded(writer, value.date.year as uint32, 4)?;
+        EmitByte(writer, 0x2D)?;
+        EmitPadded(writer, value.date.month as uint32, 2)?;
+        EmitByte(writer, 0x2D)?;
+        EmitPadded(writer, value.date.day as uint32, 2)?;
         if kind == TomlKind::LocalDate { return .Success(()); }
-        EmitByte(writer, 0x54u8)?;
+        EmitByte(writer, 0x54)?;
     }
-    EmitPadded(writer, value.time.hour as uint32, 2u)?;
-    EmitByte(writer, 0x3Au8)?;
-    EmitPadded(writer, value.time.minute as uint32, 2u)?;
-    EmitByte(writer, 0x3Au8)?;
-    EmitPadded(writer, value.time.second as uint32, 2u)?;
+    EmitPadded(writer, value.time.hour as uint32, 2)?;
+    EmitByte(writer, 0x3A)?;
+    EmitPadded(writer, value.time.minute as uint32, 2)?;
+    EmitByte(writer, 0x3A)?;
+    EmitPadded(writer, value.time.second as uint32, 2)?;
     if value.time.nanosecond != 0u32 {
-        EmitByte(writer, 0x2Eu8)?;
+        EmitByte(writer, 0x2E)?;
         // Nine digits always, rather than the shortest that survives: a fixed width is what makes two documents
         // with the same instant produce the same bytes.
-        EmitPadded(writer, value.time.nanosecond, 9u)?;
+        EmitPadded(writer, value.time.nanosecond, 9)?;
     }
     if kind != TomlKind::OffsetDateTime { return .Success(()); }
     let seconds = value.offset.TotalSeconds();
-    if seconds == 0i32 { return EmitByte(writer, 0x5Au8); }
+    if seconds == 0i32 { return EmitByte(writer, 0x5A); }
     let magnitude = seconds < 0i32 ? -seconds : seconds;
-    EmitByte(writer, seconds < 0i32 ? 0x2Du8 : 0x2Bu8)?;
-    EmitPadded(writer, (magnitude / 3600i32) as uint32, 2u)?;
-    EmitByte(writer, 0x3Au8)?;
-    return EmitPadded(writer, ((magnitude % 3600i32) / 60i32) as uint32, 2u);
+    EmitByte(writer, seconds < 0i32 ? 0x2D : 0x2B)?;
+    EmitPadded(writer, (magnitude / 3600) as uint32, 2)?;
+    EmitByte(writer, 0x3A)?;
+    return EmitPadded(writer, ((magnitude % 3600) / 60) as uint32, 2);
 }
 
 // A value written where a value belongs: on the right of an equals sign, or inside an array. A table reached
@@ -259,16 +259,16 @@ func EmitValue(writer: &var TextWriter, value: &TomlValue) -> ! FormatError {
     if kind == TomlKind::Float { return EmitFloat(writer, value.number); }
     if kind == TomlKind::Text { return EmitBasicString(writer, value.AsText().Bytes()); }
     if kind == TomlKind::Array {
-                EmitByte(writer, 0x5Bu8)?;
+                EmitByte(writer, 0x5B)?;
         var index: uint = 0;
         while index < value.Length() {
             if index > 0u {
                 Emit(writer, ", ")?;
             }
             EmitValue(writer, *value.At(index))?;
-            index = index + 1u;
+            index = index + 1;
         }
-        return EmitByte(writer, 0x5Du8);
+        return EmitByte(writer, 0x5D);
     }
     if kind == TomlKind::Table {
         // An empty inline table is `{}` rather than `{ }`: the space belongs between entries, and there are
@@ -284,7 +284,7 @@ func EmitValue(writer: &var TextWriter, value: &TomlValue) -> ! FormatError {
             EmitKey(writer, (*entry).key.View().Bytes())?;
             Emit(writer, " = ")?;
             EmitValue(writer, (*entry).value)?;
-            index = index + 1u;
+            index = index + 1;
         }
         return Emit(writer, " }");
     }
@@ -309,9 +309,9 @@ func EmitBody(writer: &var TextWriter, table: &TomlValue) -> ! FormatError {
                         EmitKey(writer, (*entry).key.View().Bytes())?;
             Emit(writer, " = ")?;
             EmitValue(writer, (*entry).value)?;
-            EmitByte(writer, 0x0Au8)?;
+            EmitByte(writer, 0x0A)?;
         }
-        index = index + 1u;
+        index = index + 1;
     }
     return;
 }
@@ -321,12 +321,12 @@ func EmitHeader(writer: &var TextWriter, path: &TomlPath, array: bool, first: bo
     if !first {
         // A blank line before every header but the first, which is what makes a configuration file readable and
         // is also the only whitespace this writer ever produces.
-        EmitByte(writer, 0x0Au8)?;
+        EmitByte(writer, 0x0A)?;
     }
     Emit(writer, array ? "[[" : "[")?;
     Emit(writer, path.Bytes())?;
     Emit(writer, array ? "]]" : "]")?;
-    return EmitByte(writer, 0x0Au8);
+    return EmitByte(writer, 0x0A);
 }
 
 // The sub-tables of a table, each under a header of its own, after the body has been written. The order is the
@@ -337,7 +337,7 @@ func EmitSections(writer: &var TextWriter, table: &TomlValue, path: &var TomlPat
     while index < table.Length() {
         let entry = table.EntryAt(index);
         if IsBodyEntry((*entry).value) {
-            index = index + 1u;
+            index = index + 1;
             continue;
         }
         let mark = path.length;
@@ -347,7 +347,7 @@ func EmitSections(writer: &var TextWriter, table: &TomlValue, path: &var TomlPat
         KeyIntoPath(path, (*entry).key.View().Bytes())?;
         if (*entry).value.Kind() == TomlKind::Table {
             EmitHeader(writer, path, false, *written == 0u)?;
-            *written = *written + 1u;
+            *written = *written + 1;
             EmitBody(writer, (*entry).value)?;
             EmitSections(writer, (*entry).value, path, written, false)?;
         }
@@ -356,14 +356,14 @@ func EmitSections(writer: &var TextWriter, table: &TomlValue, path: &var TomlPat
             while element < (*entry).value.Length() {
                 let held = (*entry).value.At(element);
                 EmitHeader(writer, path, true, *written == 0u)?;
-                *written = *written + 1u;
+                *written = *written + 1;
                 EmitBody(writer, *held)?;
                 EmitSections(writer, *held, path, written, false)?;
-                element = element + 1u;
+                element = element + 1;
             }
         }
         path.length = mark;
-        index = index + 1u;
+        index = index + 1;
     }
     return;
 }
@@ -422,9 +422,9 @@ func CountBodyEntries(table: &TomlValue) -> uint {
     var index: uint = 0;
     while index < table.Length() {
         if IsBodyEntry((*table.EntryAt(index)).value) {
-            count = count + 1u;
+            count = count + 1;
         }
-        index = index + 1u;
+        index = index + 1;
     }
     return count;
 }

@@ -35,8 +35,8 @@ func Main() -> ! EntropyError {
     Assert(agreements == 0u, "and two of those differ as well");
 
     // The parallel shape: one entropy seed per worker with its own stream.
-    var workerZero = PcgFromEntropyWithStream(0u64)?;
-    var workerOne = PcgFromEntropyWithStream(1u64)?;
+    var workerZero = PcgFromEntropyWithStream(0)?;
+    var workerOne = PcgFromEntropyWithStream(1)?;
     agreements = 0;
     index = 0;
     while index < 16u {
@@ -49,8 +49,8 @@ func Main() -> ! EntropyError {
 
     // Independence: generators are values, so drawing from one cannot disturb another. This is what a shared
     // global generator would take away, and the reason there is not one.
-    var left = Xoshiro256(77u64);
-    var right = Xoshiro256(77u64);
+    var left = Xoshiro256(77);
+    var right = Xoshiro256(77);
     var expected: uint64[8];
     index = 0;
     while index < 8u {
@@ -58,8 +58,8 @@ func Main() -> ! EntropyError {
         index = index + 1;
     }
     // Interleave a great deal of unrelated drawing between the second generator's draws.
-    var noise = Xoshiro256(1234u64);
-    var noisePcg = Pcg64Dxsm(4321u64);
+    var noise = Xoshiro256(1234);
+    var noisePcg = Pcg64Dxsm(4321);
     index = 0;
     while index < 8u {
         var burst: uint = 0;
@@ -74,7 +74,7 @@ func Main() -> ! EntropyError {
     }
 
     // A copy of a generator is a fork of its stream, not a share of it.
-    var original = Xoshiro256(555u64);
+    var original = Xoshiro256(555);
     original.NextUint64();
     var forked = original;
     let fromOriginal = original.NextUint64();

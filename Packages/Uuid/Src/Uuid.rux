@@ -121,7 +121,7 @@ extend Uuid {
     /// @returns the version nibble, 0 through 15; a value this package did not make may hold anything
     /// @see https://rux-lang.dev/docs/api/uuid/uuid/version
     pub func Version(self: &Uuid) -> uint8 {
-        return (self.bytes[6] >> 4u8) & 0x0Fu8;
+        return (self.bytes[6] >> 4u8) & 0x0F;
     }
 
     /// The variant, from the high bits of the ninth byte.
@@ -133,9 +133,9 @@ extend Uuid {
     /// @see https://rux-lang.dev/docs/api/uuid/uuid/variant
     pub func Variant(self: &Uuid) -> UuidVariant {
         let octet = self.bytes[8];
-        if (octet & 0x80u8) == 0u8 { return UuidVariant::NetworkComputingSystem; }
-        if (octet & 0x40u8) == 0u8 { return UuidVariant::Standard; }
-        if (octet & 0x20u8) == 0u8 { return UuidVariant::Microsoft; }
+        if (octet & 0x80) == 0u8 { return UuidVariant::NetworkComputingSystem; }
+        if (octet & 0x40) == 0u8 { return UuidVariant::Standard; }
+        if (octet & 0x20) == 0u8 { return UuidVariant::Microsoft; }
         return UuidVariant::Future;
     }
 }
@@ -186,7 +186,7 @@ extend Uuid {
         var index: uint = 0;
         while index < 16u {
             accumulated = accumulated ^ (self.bytes[index] as uint64);
-            accumulated = accumulated * 0x100000001B3u64;
+            accumulated = accumulated * 0x100000001B3;
             index = index + 1;
         }
         return accumulated;

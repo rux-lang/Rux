@@ -94,19 +94,19 @@ pub func WriteEscaped(writer: &var TextWriter, text: char8[..]) -> ! FormatError
             escape[0] = 0x5Cu8 as char8;
             var letter: uint8 = 0;
             if c == 0x08u8 {
-                letter = 0x62u8;
+                letter = 0x62;
             }
             else if c == 0x0Cu8 {
-                letter = 0x66u8;
+                letter = 0x66;
             }
             else if c == 0x0Au8 {
-                letter = 0x6Eu8;
+                letter = 0x6E;
             }
             else if c == 0x0Du8 {
-                letter = 0x72u8;
+                letter = 0x72;
             }
             else {
-                letter = 0x74u8;
+                letter = 0x74;
             }
             escape[1] = letter as char8;
             escapeLength = 2;
@@ -117,8 +117,8 @@ pub func WriteEscaped(writer: &var TextWriter, text: char8[..]) -> ! FormatError
             escape[1] = 0x75u8 as char8;
             escape[2] = 0x30u8 as char8;
             escape[3] = 0x30u8 as char8;
-            escape[4] = JsonHexDigits.data[((c >> 4u8) & 0x0Fu8) as uint];
-            escape[5] = JsonHexDigits.data[(c & 0x0Fu8) as uint];
+            escape[4] = JsonHexDigits.data[((c >> 4u8) & 0x0F) as uint];
+            escape[5] = JsonHexDigits.data[(c & 0x0F) as uint];
             escapeLength = 6;
         }
         if escapeLength > 0u {
@@ -127,9 +127,9 @@ pub func WriteEscaped(writer: &var TextWriter, text: char8[..]) -> ! FormatError
                 sink.Write(run)?;
             }
             sink.Write(escape[0..escapeLength])?;
-            runStart = index + 1u;
+            runStart = index + 1;
         }
-        index = index + 1u;
+        index = index + 1;
     }
     if index > runStart {
         let run = (@text.data[runStart])[..index - runStart];
@@ -148,7 +148,7 @@ func IsFiniteNumberText(text: char8[..]) -> bool {
         let allowed = (c >= 0x30u8 && c <= 0x39u8) || c == 0x2Du8 || c == 0x2Bu8 || c == 0x2Eu8 ||
                       c == 0x65u8 || c == 0x45u8;
         if !allowed { return false; }
-        index = index + 1u;
+        index = index + 1;
     }
     return true;
 }
@@ -169,7 +169,7 @@ func WriteNewlineAndIndent(writer: &var TextWriter, style: JsonStyle, level: uin
     var index: uint = 0;
     while index < 64u {
         spaces[index] = 0x20u8 as char8;
-        index = index + 1u;
+        index = index + 1;
     }
     var remaining = style.indent * level;
     while remaining > 0u {
@@ -198,7 +198,7 @@ func WriteNewlineAndIndent(writer: &var TextWriter, style: JsonStyle, level: uin
 /// @returns success when the whole document was accepted
 /// @see https://rux-lang.dev/docs/api/json/write-value
 pub func WriteValue(writer: &var TextWriter, value: &JsonValue, style: JsonStyle) -> ! FormatError {
-    return WriteAtLevel(writer, value, style, 0u);
+    return WriteAtLevel(writer, value, style, 0);
 }
 
 func WriteAtLevel(writer: &var TextWriter, value: &JsonValue, style: JsonStyle,
@@ -240,7 +240,7 @@ func WriteAtLevel(writer: &var TextWriter, value: &JsonValue, style: JsonStyle,
         if index > 0u {
             WriteJsonBytes(writer, ",")?;
         }
-        WriteNewlineAndIndent(writer, style, level + 1u)?;
+        WriteNewlineAndIndent(writer, style, level + 1)?;
         if isObject {
             let member = value.MemberAt(index);
             WriteEscaped(writer, member.name.View().Bytes())?;
@@ -248,12 +248,12 @@ func WriteAtLevel(writer: &var TextWriter, value: &JsonValue, style: JsonStyle,
             if style.indent > 0u || style.spaceAfterColon {
                 WriteJsonBytes(writer, " ")?;
             }
-            WriteAtLevel(writer, (*member).value, style, level + 1u)?;
+            WriteAtLevel(writer, (*member).value, style, level + 1)?;
         }
         else {
-            WriteAtLevel(writer, *value.At(index), style, level + 1u)?;
+            WriteAtLevel(writer, *value.At(index), style, level + 1)?;
         }
-        index = index + 1u;
+        index = index + 1;
     }
     WriteNewlineAndIndent(writer, style, level)?;
     return WriteJsonBytes(writer, closing);

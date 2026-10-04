@@ -12,9 +12,9 @@ extend bool32 {
     /// The number of bits in the representation.
     ///
     /// @see https://rux-lang.dev/docs/api/core/bool32/bits
-    pub const Bits: uint = 32u;
+    pub const Bits: uint = 32;
     /// The number of bytes in the representation.
     ///
     /// @see https://rux-lang.dev/docs/api/core/bool32/bytes
-    pub const Bytes: uint = 4u;
+    pub const Bytes: uint = 4;
 }

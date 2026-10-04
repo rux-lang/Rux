@@ -110,7 +110,7 @@ func Main() -> int {
         var working: int32[48];
         var index: uint = 0;
         while index < length {
-            let value = (NextRandom(@state) % 20u64) as int32;
+            let value = (NextRandom(@state) % 20) as int32;
             values[index] = value;
             expected[index] = value;
             index++;
@@ -265,7 +265,7 @@ func Main() -> int {
             pruned[index] = values[index];
             index++;
         }
-        let target = (NextRandom(@state) % 20u64) as int32;
+        let target = (NextRandom(@state) % 20) as int32;
         var occurrences: int32 = 0;
         index = 0;
         while index < length {

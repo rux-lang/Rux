@@ -12,9 +12,9 @@ extend bool16 {
     /// The number of bits in the representation.
     ///
     /// @see https://rux-lang.dev/docs/api/core/bool16/bits
-    pub const Bits: uint = 16u;
+    pub const Bits: uint = 16;
     /// The number of bytes in the representation.
     ///
     /// @see https://rux-lang.dev/docs/api/core/bool16/bytes
-    pub const Bytes: uint = 2u;
+    pub const Bytes: uint = 2;
 }

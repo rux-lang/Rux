@@ -70,8 +70,8 @@ pub func BitsOfFloat32(value: float32) -> uint32 {
 /// @see https://rux-lang.dev/docs/api/format/decompose-float64
 pub func DecomposeFloat64(value: float64) -> FloatParts {
     let bits = BitsOfFloat64(value);
-    let mantissa = bits & 0xFFFFFFFFFFFFFu64;
-    let biased = ((bits >> 52u64) & 0x7FFu64) as int;
+    let mantissa = bits & 0xFFFFFFFFFFFFF;
+    let biased = ((bits >> 52u64) & 0x7FF) as int;
     let negative = (bits >> 63u64) != 0u64;
     if biased == 0 {
         // Subnormal: no implicit bit, and the exponent is the smallest the format has. The lower gap is never
@@ -79,7 +79,7 @@ pub func DecomposeFloat64(value: float64) -> FloatParts {
         return FloatParts { significand: mantissa, exponent: -1074, atBinadeBottom: false, negative: negative };
     }
     return FloatParts {
-        significand: mantissa | 0x10000000000000u64,
+        significand: mantissa | 0x10000000000000,
         exponent: biased - 1075,
         // The smallest normal is at the bottom of its binade by the mantissa test, but its lower neighbour is the
         // largest subnormal, a full gap away — the exponent does not step down below it.
@@ -98,14 +98,14 @@ pub func DecomposeFloat64(value: float64) -> FloatParts {
 /// @see https://rux-lang.dev/docs/api/format/decompose-float32
 pub func DecomposeFloat32(value: float32) -> FloatParts {
     let bits = BitsOfFloat32(value);
-    let mantissa = (bits & 0x7FFFFFu32) as uint64;
-    let biased = ((bits >> 23u32) & 0xFFu32) as int;
+    let mantissa = (bits & 0x7FFFFF) as uint64;
+    let biased = ((bits >> 23u32) & 0xFF) as int;
     let negative = (bits >> 31u32) != 0u32;
     if biased == 0 {
         return FloatParts { significand: mantissa, exponent: -149, atBinadeBottom: false, negative: negative };
     }
     return FloatParts {
-        significand: mantissa | 0x800000u64,
+        significand: mantissa | 0x800000,
         exponent: biased - 150,
         atBinadeBottom: mantissa == 0u64 && biased > 1,
         negative: negative

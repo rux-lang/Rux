@@ -24,7 +24,7 @@ func Same(left: char8[..], right: char8[..]) -> bool {
         if left.data[index] != right.data[index] {
             return false;
         }
-        index = index + 1u;
+        index = index + 1;
     }
     return true;
 }

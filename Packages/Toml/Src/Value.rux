@@ -105,11 +105,11 @@ extend TomlValue {
         return TomlValue {
             kind: TomlKind::Table,
             boolean: false,
-            integer: 0i64,
+            integer: 0,
             number: 0.0,
             text: String(allocator),
-            date: Date { year: 1970, month: 1u8, day: 1u8 },
-            time: TimeOfDay { hour: 0u8, minute: 0u8, second: 0u8, nanosecond: 0u32 },
+            date: Date { year: 1970, month: 1, day: 1 },
+            time: TimeOfDay { hour: 0, minute: 0, second: 0, nanosecond: 0 },
             offset: UtcOffset::Utc(),
             elements: Vector<TomlValue>(allocator),
             entries: Vector<TomlEntry>(allocator),
@@ -363,7 +363,7 @@ extend TomlValue {
     pub func Length(self: &TomlValue) -> uint {
         if self.kind == TomlKind::Array { return self.elements.Length(); }
         if self.kind == TomlKind::Table { return self.entries.Length(); }
-        return 0u;
+        return 0;
     }
 }
 
@@ -434,7 +434,7 @@ extend TomlValue {
         while index < slice.length {
             var held = key;
             if slice.data[index].key.View().Equals(held) { return @slice.data[index].value; }
-            index = index + 1u;
+            index = index + 1;
         }
         return null;
     }
@@ -451,7 +451,7 @@ extend TomlValue {
         while index < slice.length {
             var held = key;
             if slice.data[index].key.View().Equals(held) { return @slice.data[index].value; }
-            index = index + 1u;
+            index = index + 1;
         }
         return null;
     }

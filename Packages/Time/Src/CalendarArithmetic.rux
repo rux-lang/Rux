@@ -38,18 +38,18 @@ extend Date {
     /// @see https://rux-lang.dev/docs/api/time/date/plus-months
     pub func PlusMonths(self: &Date, months: int64) -> Date? {
         // Months count in a flat sequence from year zero, so the shift is one add and a floor division back.
-        var flat: int64 = (self.year as int64) * 12i64 + (self.month as int64) - 1i64;
+        var flat: int64 = (self.year as int64) * 12 + (self.month as int64) - 1;
         if AddChecked<int64>(flat, months, @flat) { return none; }
-        var year = flat / 12i64;
-        var month = flat % 12i64;
+        var year = flat / 12;
+        var month = flat % 12;
         if month < 0i64 {
-            year = year - 1i64;
-            month = month + 12i64;
+            year = year - 1;
+            month = month + 12;
         }
         if year < 0i64 || year > 9999i64 { return none; }
-        let cap = DaysInMonth(year as int32, (month + 1i64) as uint8);
+        let cap = DaysInMonth(year as int32, (month + 1) as uint8);
         let day = self.day <= cap ? self.day : cap;
-        return Date::New(year as int32, (month + 1i64) as uint8, day);
+        return Date::New(year as int32, (month + 1) as uint8, day);
     }
 
     /// The date `years` later, with February 29th clamping to the 28th where the year is not leap.

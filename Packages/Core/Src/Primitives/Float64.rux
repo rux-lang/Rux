@@ -11,11 +11,11 @@ extend float64 {
     /// The number of bits in the representation.
     ///
     /// @see https://rux-lang.dev/docs/api/core/float64/bits
-    pub const Bits: uint = 64u;
+    pub const Bits: uint = 64;
     /// The number of bytes in the representation.
     ///
     /// @see https://rux-lang.dev/docs/api/core/float64/bytes
-    pub const Bytes: uint = 8u;
+    pub const Bytes: uint = 8;
     /// The lowest finite value.
     ///
     /// @see https://rux-lang.dev/docs/api/core/float64/lowest

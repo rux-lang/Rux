@@ -42,7 +42,7 @@ pub func BitWidthOf<T>(sample: T) -> uint64 {
 pub func ShiftRightLogical<T>(value: T, amount: uint64) -> T {
     let zero = value - value;
     if amount == 0u64 { return value; }
-    let bits = sizeof(T) * 8u64;
+    let bits = sizeof(T) * 8;
     if amount >= bits { return zero; }
     // Every bit the shift kept lives below `bits - amount`, so a mask of that many ones drops whatever an arithmetic
     // shift replicated above them. Building the mask by subtraction works at either signedness: the one bit above the
@@ -64,7 +64,7 @@ pub func ShiftRightLogical<T>(value: T, amount: uint64) -> T {
 /// @see https://rux-lang.dev/docs/api/core/bit-at
 pub func BitAt<T>(value: T, index: uint64) -> bool {
     let zero = value - value;
-    if index >= sizeof(T) * 8u64 { return false; }
+    if index >= sizeof(T) * 8 { return false; }
     // Masking with one leaves nothing for an arithmetic shift to have replicated, so signedness does not matter here.
     return ((value >> index) & (zero + 1)) != zero;
 }
@@ -80,14 +80,14 @@ pub func BitAt<T>(value: T, index: uint64) -> bool {
 /// @returns how many bits are set
 /// @see https://rux-lang.dev/docs/api/core/count-ones
 pub func CountOnes<T>(value: T) -> uint32 {
-    let bits = sizeof(T) * 8u64;
+    let bits = sizeof(T) * 8;
     var count: uint32 = 0;
     var index: uint64 = 0;
     while index < bits {
         if BitAt<T>(value, index) {
-            count = count + 1u32;
+            count = count + 1;
         }
-        index = index + 1u64;
+        index = index + 1;
     }
     return count;
 }

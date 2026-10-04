@@ -47,9 +47,9 @@ func WriteUnsigned(writer: &var TextWriter, value: uint64) -> ! FormatError {
         count = 1;
     }
     while rest > 0u64 {
-        digits[count] = ((rest % 10u64) + 0x30u64) as char8;
+        digits[count] = ((rest % 10) + 0x30) as char8;
         count = count + 1;
-        rest = rest / 10u64;
+        rest = rest / 10;
     }
     var index = count;
     while index > 0 {
@@ -67,8 +67,8 @@ func WriteSecondsFraction(writer: &var TextWriter, fraction: uint32, spec: Forma
     var rest = fraction;
     while index > 0 {
         index = index - 1;
-        digits[index] = ((rest % 10u32) + 0x30u32) as char8;
-        rest = rest / 10u32;
+        digits[index] = ((rest % 10) + 0x30) as char8;
+        rest = rest / 10;
     }
     var kept: uint = 9;
     if spec.HasPrecision() {

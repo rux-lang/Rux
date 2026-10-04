@@ -107,7 +107,7 @@ extend TomlEventReader {
             state: TomlEventState::Document,
             tableArray: false,
             namedSomething: false,
-            containers: 0u64,
+            containers: 0,
             depth: 0,
             stop: TomlStop::None,
             lexical: TomlLexError::None
@@ -128,7 +128,7 @@ extend TomlEventReader {
         let stopped = TomlStopped {
             stop: self.stop,
             lexical: self.lexical,
-            scalar: TomlScalarError::Malformed(0u),
+            scalar: TomlScalarError::Malformed(0),
             offset: self.current.start,
             line: self.current.line,
             column: self.current.column
@@ -217,7 +217,7 @@ extend TomlEventReader {
     // container, which is also why the depth limit here is sixty-four.
     func InsideInlineTable(self: &TomlEventReader) -> bool {
         if self.depth == 0u { return false; }
-        return (self.containers >> ((self.depth - 1u) as uint64) & 1u64) == 1u64;
+        return (self.containers >> ((self.depth - 1) as uint64) & 1) == 1u64;
     }
 
     func OpenContainer(self: &var TomlEventReader, inlineTable: bool) -> bool {
@@ -234,7 +234,7 @@ extend TomlEventReader {
 
     func CloseContainer(self: &var TomlEventReader) {
         if self.depth > 0u {
-            self.depth = self.depth - 1u;
+            self.depth = self.depth - 1;
         }
     }
 

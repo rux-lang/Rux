@@ -8,7 +8,7 @@ import Math::{ Abs, IsFinite, Sqrt };
 import Random::{ Beta, Binomial, Gamma, GammaWithScale, Poisson, RandomGenerator, Xoshiro256 };
 
 func Main() -> int {
-    var generator = Xoshiro256(31337u64);
+    var generator = Xoshiro256(31337);
 
     // Gamma: mean equals the shape and variance equals the shape, at a shape above one and below it — the two
     // sides of the boosting cutoff.
@@ -61,7 +61,7 @@ func Main() -> int {
     var smallSquares = 0.0;
     draw = 0;
     while draw < 60000u {
-        let value = Binomial<Xoshiro256>(generator, 20u64, 0.3) as float64;
+        let value = Binomial<Xoshiro256>(generator, 20, 0.3) as float64;
         Assert(value <= 20.0, "a binomial never exceeds its trial count");
         smallTotal = smallTotal + value;
         smallSquares = smallSquares + value * value;
@@ -77,7 +77,7 @@ func Main() -> int {
     var largeSquares = 0.0;
     draw = 0;
     while draw < 40000u {
-        let value = Binomial<Xoshiro256>(generator, 1000u64, 0.3) as float64;
+        let value = Binomial<Xoshiro256>(generator, 1000, 0.3) as float64;
         Assert(value <= 1000.0, "the reduced method also respects the trial count");
         largeTotal = largeTotal + value;
         largeSquares = largeSquares + value * value;
@@ -89,16 +89,16 @@ func Main() -> int {
     Assert(Abs(variance - 210.0) < 12.0, "and the same variance");
 
     // A count far past anything the direct method could reach, which is the point of the reduction.
-    let huge = Binomial<Xoshiro256>(generator, 1000000000u64, 0.5);
+    let huge = Binomial<Xoshiro256>(generator, 1000000000, 0.5);
     Assert(huge > 499000000u64 && huge < 501000000u64,
            "a binomial over a billion trials is drawn without a billion draws");
 
     // The saturating edges.
-    Assert(Binomial<Xoshiro256>(generator, 0u64, 0.5) == 0u64, "no trials give no successes");
-    Assert(Binomial<Xoshiro256>(generator, 50u64, 0.0) == 0u64, "a probability of zero gives none");
-    Assert(Binomial<Xoshiro256>(generator, 50u64, 1.0) == 50u64, "and one of one gives all of them");
-    Assert(Binomial<Xoshiro256>(generator, 50u64, -0.5) == 0u64, "an out-of-range probability saturates");
-    Assert(Binomial<Xoshiro256>(generator, 50u64, 2.0) == 50u64, "at both ends");
+    Assert(Binomial<Xoshiro256>(generator, 0, 0.5) == 0u64, "no trials give no successes");
+    Assert(Binomial<Xoshiro256>(generator, 50, 0.0) == 0u64, "a probability of zero gives none");
+    Assert(Binomial<Xoshiro256>(generator, 50, 1.0) == 50u64, "and one of one gives all of them");
+    Assert(Binomial<Xoshiro256>(generator, 50, -0.5) == 0u64, "an out-of-range probability saturates");
+    Assert(Binomial<Xoshiro256>(generator, 50, 2.0) == 50u64, "at both ends");
 
     // Poisson below the cutoff, where Knuth's method applies: mean and variance are both the parameter.
     var poissonTotal = 0.0;

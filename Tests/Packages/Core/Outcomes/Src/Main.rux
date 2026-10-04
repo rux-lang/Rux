@@ -16,7 +16,7 @@ enum Failure: int8 {
 
 func Main() -> int {
     // Which channel a native fallible holds, asked without unwrapping it.
-    let success: int32 ! Failure = .Success(13i32);
+    let success: int32 ! Failure = .Success(13);
     Assert(Succeeded(success) && !Failed(success), "Success channel inspection");
     let failure: int32 ! Failure = .Failure(Failure::Invalid);
     Assert(Failed(failure) && !Succeeded(failure), "Failure channel inspection");
@@ -24,7 +24,7 @@ func Main() -> int {
     Assert(Succeeded(completed), "Unit success inspection");
 
     // A move-only payload is asked by transferring the outcome, which is then gone.
-    let held: Handle ! Failure = .Success(Handle { value: 23i32 });
+    let held: Handle ! Failure = .Success(Handle { value: 23 });
     Assert(Succeeded(<-held), "A move-only outcome is asked by transfer");
 
     Assert(Ordering::Less.IsLess(), "Less classification");

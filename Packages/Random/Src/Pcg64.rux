@@ -37,7 +37,7 @@ extend Pcg64Dxsm {
     /// @returns a generator seeded with that value, on the default stream
     /// @see https://rux-lang.dev/docs/api/random/pcg64-dxsm/new
     pub func Pcg64Dxsm(seed: uint64) -> Pcg64Dxsm {
-        return Pcg64Dxsm::WithStream(seed, 0u64);
+        return Pcg64Dxsm::WithStream(seed, 0);
     }
 
     /// A generator on the stream `stream` selects.
@@ -58,10 +58,10 @@ extend Pcg64Dxsm {
         let incrementHigh = streamMixer.NextUint64() as uint128;
         let incrementLow = streamMixer.NextUint64() as uint128;
         var generator = Pcg64Dxsm {
-            state: 0u128,
+            state: 0,
             // The increment must be odd for the state to reach its full period, and forcing the low bit is the
             // standard way to say so: it halves the number of distinct streams and costs nothing else.
-            increment: (((incrementHigh << 64u128) | incrementLow) << 1u128) | 1u128
+            increment: (((incrementHigh << 64u128) | incrementLow) << 1u128) | 1
         };
         // The published initialization: start at the increment, take one step, add the seed, take another.
         generator.state = generator.increment;
@@ -88,7 +88,7 @@ extend Pcg64Dxsm : RandomGenerator {
     /// @see https://rux-lang.dev/docs/api/random/pcg64-dxsm/next-uint64
     pub func NextUint64(self: &var Pcg64Dxsm) -> uint64 {
         var high = (self.state >> 64u128) as uint64;
-        let low = ((self.state as uint64) | 1u64);
+        let low = ((self.state as uint64) | 1);
         high = high ^ (high >> 32u64);
         high = high * PcgMultiplier;
         high = high ^ (high >> 48u64);

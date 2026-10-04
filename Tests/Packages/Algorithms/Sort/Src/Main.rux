@@ -80,7 +80,7 @@ func NextRandom(state: *var uint64) -> uint64 {
     x = x ^ (x << 25u64);
     x = x ^ (x >> 27u64);
     *state = x;
-    return x * 2685821657736338717u64;
+    return x * 2685821657736338717;
 }
 
 // Shapes chosen for the ways a sort can go wrong: sorted and reversed defeat a
@@ -110,7 +110,7 @@ func FillShape(data: *var int32, length: uint, shape: int, state: *var uint64) {
             data[i] = (i % 3) as int32;
         }
         else {
-            data[i] = (NextRandom(state) % 50u64) as int32;
+            data[i] = (NextRandom(state) % 50) as int32;
         }
         i++;
     }
@@ -151,7 +151,7 @@ func CheckSort(source: *int32, length: uint) -> int {
 
 func Main() -> int {
     var buffer: int32[320];
-    var state: uint64 = 88172645463325252u64;
+    var state: uint64 = 88172645463325252;
     var caseId: int = 0;
 
     // Sizes straddle the insertion-sort threshold of 16, where the algorithm
@@ -176,7 +176,7 @@ func Main() -> int {
     // seed, so a failure reproduces exactly.
     var round: int = 0;
     while round < 60 {
-        let length = ((NextRandom(@state) % 200u64) as uint) + 1;
+        let length = ((NextRandom(@state) % 200) as uint) + 1;
         FillShape(@buffer[0], length, 5, @state);
         if CheckSort(@buffer[0], length) != 0 {
             return 190 + (round % 8);
@@ -224,12 +224,12 @@ func Main() -> int {
     if !Sorted<int32>(@heaped[1], 8) { return 215; }
 
     // Signed and unsigned limits sort as ordinary values.
-    var signed: int32[5] = [0i32, 2147483647i32, -2147483648i32, -1i32, 1i32];
+    var signed: int32[5] = [0, 2147483647, -2147483648, -1, 1];
     Sort<int32>(Viewed<int32>(@signed[0], 5));
     if signed[0] != -2147483648i32 || signed[4] != 2147483647i32 { return 220; }
     if !Sorted<int32>(@signed[0], 5) { return 221; }
 
-    var unsigned: uint32[5] = [7u32, 0u32, 4294967295u32, 1u32, 4294967294u32];
+    var unsigned: uint32[5] = [7, 0, 4294967295, 1, 4294967294];
     Sort<uint32>(Viewed<uint32>(@unsigned[0], 5));
     if unsigned[0] != 0u32 || unsigned[4] != 4294967295u32 { return 222; }
     if !Sorted<uint32>(@unsigned[0], 5) { return 223; }

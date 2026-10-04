@@ -43,7 +43,7 @@ func Same(value: &String, expected: char8[..]) -> bool {
         if bytes.data[index] != expected.data[index] {
             return false;
         }
-        index = index + 1u;
+        index = index + 1;
     }
     return true;
 }

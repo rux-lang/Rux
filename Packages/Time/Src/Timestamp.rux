@@ -58,7 +58,7 @@ extend Timestamp {
             let rest = ticks % FileTimeTicksPerSecond;
             return Timestamp {
                 seconds: (seconds as int64) - (FileTimeToUnixEpochSeconds as int64),
-                nanoseconds: (rest as uint32) * 100u32
+                nanoseconds: (rest as uint32) * 100
             };
         }
         else {

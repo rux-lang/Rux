@@ -33,7 +33,7 @@ pub func MaximumOf<T>(sample: T) -> T {
     let allOnes = zero - 1;
     // A signed type gives up its top bit to the sign, so its maximum is every bit below that one. An unsigned type
     // keeps the bit and tops out at all-ones.
-    let signBit = (zero + 1) << (sizeof(T) * 8u64 - 1u64);
+    let signBit = (zero + 1) << (sizeof(T) * 8 - 1);
     return allOnes < zero ? signBit - 1 : allOnes;
 }
 
@@ -52,7 +52,7 @@ pub func MinimumOf<T>(sample: T) -> T {
     let zero = sample - sample;
     let allOnes = zero - 1;
     // The sign bit alone is the most negative value; an unsigned type has nothing below zero.
-    let signBit = (zero + 1) << (sizeof(T) * 8u64 - 1u64);
+    let signBit = (zero + 1) << (sizeof(T) * 8 - 1);
     return allOnes < zero ? signBit : zero;
 }
 

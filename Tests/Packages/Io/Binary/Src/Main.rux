@@ -71,8 +71,8 @@ func Main() -> int {
     // The two orders write mirrored bytes: the value is the same, only which end comes first differs.
     var goldenStorage: char8[256];
     var golden = MemoryState { room: (@goldenStorage[0])[..256], length: 0, offset: 0 };
-    WriteUint32(golden, Endian::Big, 0x12345678u32) catch { else => Panic("big writes") };
-    WriteUint32(golden, Endian::Little, 0x12345678u32) catch { else => Panic("and little writes") };
+    WriteUint32(golden, Endian::Big, 0x12345678) catch { else => Panic("big writes") };
+    WriteUint32(golden, Endian::Little, 0x12345678) catch { else => Panic("and little writes") };
     Assert(ByteAt(golden, 0) == 0x12u8 && ByteAt(golden, 1) == 0x34u8 &&
            ByteAt(golden, 2) == 0x56u8 && ByteAt(golden, 3) == 0x78u8,
            "big-endian puts the most significant byte first");
@@ -95,16 +95,16 @@ func Main() -> int {
     var order = Endian::Big;
     var pass: uint = 0;
     while pass < 2 {
-        WriteUint8(record, order, 0xABu8) catch { else => Panic("u8 writes") };
-        WriteUint16(record, order, 0xBEEFu16) catch { else => Panic("u16 writes") };
-        WriteUint32(record, order, 0xDEADBEEFu32) catch { else => Panic("u32 writes") };
-        WriteUint64(record, order, 0x0123456789ABCDEFu64) catch { else => Panic("u64 writes") };
+        WriteUint8(record, order, 0xAB) catch { else => Panic("u8 writes") };
+        WriteUint16(record, order, 0xBEEF) catch { else => Panic("u16 writes") };
+        WriteUint32(record, order, 0xDEADBEEF) catch { else => Panic("u32 writes") };
+        WriteUint64(record, order, 0x0123456789ABCDEF) catch { else => Panic("u64 writes") };
         WriteUint128(record, order, wideValue as uint128) catch { else => Panic("u128 writes") };
-        WriteUint256(record, order, (hugeValue as uint256) | 1u256) catch { else => Panic("u256 writes") };
+        WriteUint256(record, order, (hugeValue as uint256) | 1) catch { else => Panic("u256 writes") };
         WriteUint512(record, order, hugeValue) catch { else => Panic("u512 writes") };
-        WriteInt8(record, order, -100i8) catch { else => Panic("i8 writes") };
-        WriteInt16(record, order, -32768i16) catch { else => Panic("the most negative i16 writes") };
-        WriteInt64(record, order, -1i64) catch { else => Panic("minus one writes") };
+        WriteInt8(record, order, -100) catch { else => Panic("i8 writes") };
+        WriteInt16(record, order, -32768) catch { else => Panic("the most negative i16 writes") };
+        WriteInt64(record, order, -1) catch { else => Panic("minus one writes") };
         WriteFloat32(record, order, -2.5f32) catch { else => Panic("f32 writes") };
         WriteFloat64(record, order, 6.02214076e23) catch { else => Panic("f64 writes") };
 
@@ -113,7 +113,7 @@ func Main() -> int {
         Assert(Expect(ReadUint32(record, order), "u32 reads") == 0xDEADBEEFu32, "u32 returns");
         Assert(Expect(ReadUint64(record, order), "u64 reads") == 0x0123456789ABCDEFu64, "u64 returns");
         Assert(Expect(ReadUint128(record, order), "u128 reads") == (wideValue as uint128), "u128 returns");
-        Assert(Expect(ReadUint256(record, order), "u256 reads") == ((hugeValue as uint256) | 1u256),
+        Assert(Expect(ReadUint256(record, order), "u256 reads") == ((hugeValue as uint256) | 1),
                "u256 returns");
         Assert(Expect(ReadUint512(record, order), "u512 reads") == hugeValue, "u512 returns");
         Assert(Expect(ReadInt8(record, order), "i8 reads") == -100i8, "i8 returns");

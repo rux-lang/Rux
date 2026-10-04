@@ -63,7 +63,7 @@ pub func WriteWord(writer: &var Writer, endian: Endian, width: uint, value: uint
     while index < width {
         // Least significant out of the accumulator, placed at whichever end the order says it lives.
         let at = endian == Endian::Little ? index : width - 1 - index;
-        bytes[at] = ((word & 0xFFu512) as uint8) as char8;
+        bytes[at] = ((word & 0xFF) as uint8) as char8;
         word = word >> 8u512;
         index = index + 1;
     }

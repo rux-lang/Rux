@@ -10,186 +10,186 @@ func FormatCount80() -> uint {
 
 func FormatBits80(index: uint) -> uint128 {
     if index == 0u {
-        return 0x0u128;
+        return 0x0;
     }
     if index == 1u {
-        return 0x80000000000000000000u128;
+        return 0x80000000000000000000;
     }
     if index == 2u {
-        return 0x7fff8000000000000000u128;
+        return 0x7fff8000000000000000;
     }
     if index == 3u {
-        return 0xffff8000000000000000u128;
+        return 0xffff8000000000000000;
     }
     if index == 4u {
-        return 0x7fffc000000000000000u128;
+        return 0x7fffc000000000000000;
     }
     if index == 5u {
-        return 0x3fff8000000000000000u128;
+        return 0x3fff8000000000000000;
     }
     if index == 6u {
-        return 0xbfff8000000000000000u128;
+        return 0xbfff8000000000000000;
     }
     if index == 7u {
-        return 0x3ffe8000000000000000u128;
+        return 0x3ffe8000000000000000;
     }
     if index == 8u {
-        return 0x40008000000000000000u128;
+        return 0x40008000000000000000;
     }
     if index == 9u {
-        return 0x4002a000000000000000u128;
+        return 0x4002a000000000000000;
     }
     if index == 10u {
-        return 0x4005c800000000000000u128;
+        return 0x4005c800000000000000;
     }
     if index == 11u {
-        return 0x40099a522b6ae7d566cfu128;
+        return 0x40099a522b6ae7d566cf;
     }
     if index == 12u {
-        return 0x3ffbcccccccccccccccdu128;
+        return 0x3ffbcccccccccccccccd;
     }
     if index == 13u {
-        return 0x3ffccccccccccccccccdu128;
+        return 0x3ffccccccccccccccccd;
     }
     if index == 14u {
-        return 0x3ffd999999999999999au128;
+        return 0x3ffd999999999999999a;
     }
     if index == 15u {
-        return 0x3feea7c5ac471b478423u128;
+        return 0x3feea7c5ac471b478423;
     }
     if index == 16u {
-        return 0x3ff1d1b71758e219652cu128;
+        return 0x3ff1d1b71758e219652c;
     }
     if index == 17u {
-        return 0x3ff28164ef6de184eab6u128;
+        return 0x3ff28164ef6de184eab6;
     }
     if index == 18u {
-        return 0x405fc77487fb61b9f077u128;
+        return 0x405fc77487fb61b9f077;
     }
     if index == 19u {
-        return 0x4062c9f2c9cd04674edfu128;
+        return 0x4062c9f2c9cd04674edf;
     }
     if index == 20u {
-        return 0xc062c9f2c9cd04674edfu128;
+        return 0xc062c9f2c9cd04674edf;
     }
     if index == 21u {
-        return 0x3f9ba2425ff75e14fc32u128;
+        return 0x3f9ba2425ff75e14fc32;
     }
     if index == 22u {
-        return 0x404dff0c2e52be28b98cu128;
+        return 0x404dff0c2e52be28b98c;
     }
     if index == 23u {
-        return 0x4000c90fdaa22168c235u128;
+        return 0x4000c90fdaa22168c235;
     }
     if index == 24u {
-        return 0x3ffdaaaaaaaaaaaaaaabu128;
+        return 0x3ffdaaaaaaaaaaaaaaab;
     }
     if index == 25u {
-        return 0x43e3bf21e44003acdd2du128;
+        return 0x43e3bf21e44003acdd2d;
     }
     if index == 26u {
-        return 0x3c1aab70fe17c79ac6cau128;
+        return 0x3c1aab70fe17c79ac6ca;
     }
     if index == 27u {
-        return 0x4cf8f38db1f9dd3dac05u128;
+        return 0x4cf8f38db1f9dd3dac05;
     }
     if index == 28u {
-        return 0x3305868a9188a89e1467u128;
+        return 0x3305868a9188a89e1467;
     }
     if index == 29u {
-        return 0xc1a88b5c51585510508u128;
+        return 0xc1a88b5c51585510508;
     }
     if index == 30u {
-        return 0x73ea81c50124abc4eedcu128;
+        return 0x73ea81c50124abc4eedc;
     }
     if index == 31u {
-        return 0x7ffeffffffffffffffffu128;
+        return 0x7ffeffffffffffffffff;
     }
     if index == 32u {
-        return 0xfffeffffffffffffffffu128;
+        return 0xfffeffffffffffffffff;
     }
     if index == 33u {
-        return 0x18000000000000000u128;
+        return 0x18000000000000000;
     }
     if index == 34u {
-        return 0x1u128;
+        return 0x1;
     }
     if index == 35u {
-        return 0x7fffffffffffffffu128;
+        return 0x7fffffffffffffff;
     }
     if index == 36u {
-        return 0x4058bc48b6a5f90b2170u128;
+        return 0x4058bc48b6a5f90b2170;
     }
     if index == 37u {
-        return 0x40b4dae4d9eb3b2edf26u128;
+        return 0x40b4dae4d9eb3b2edf26;
     }
     if index == 38u {
-        return 0xbfb9c11464edb9e159abu128;
+        return 0xbfb9c11464edb9e159ab;
     }
     if index == 39u {
-        return 0x404aff72c769e7ec49d7u128;
+        return 0x404aff72c769e7ec49d7;
     }
     if index == 40u {
-        return 0xc0e394bfec5618f556d9u128;
+        return 0xc0e394bfec5618f556d9;
     }
     if index == 41u {
-        return 0x40b5b990cfc9d4d813b5u128;
+        return 0x40b5b990cfc9d4d813b5;
     }
     if index == 42u {
-        return 0xc0509f7500ef806be2a9u128;
+        return 0xc0509f7500ef806be2a9;
     }
     if index == 43u {
-        return 0xbf819e817715c8ded93au128;
+        return 0xbf819e817715c8ded93a;
     }
     if index == 44u {
-        return 0xc054cfb111d16f4377d0u128;
+        return 0xc054cfb111d16f4377d0;
     }
     if index == 45u {
-        return 0x40589f014d129ea21912u128;
+        return 0x40589f014d129ea21912;
     }
     if index == 46u {
-        return 0x3effe64c39966fcca484u128;
+        return 0x3effe64c39966fcca484;
     }
     if index == 47u {
-        return 0x3f23d86e4471bb2646a4u128;
+        return 0x3f23d86e4471bb2646a4;
     }
     if index == 48u {
-        return 0xc05bca11285f22f65d0fu128;
+        return 0xc05bca11285f22f65d0f;
     }
     if index == 49u {
-        return 0xbfc4e489d0585a280556u128;
+        return 0xbfc4e489d0585a280556;
     }
     if index == 50u {
-        return 0xbf9f9d507f17bb459910u128;
+        return 0xbf9f9d507f17bb459910;
     }
     if index == 51u {
-        return 0xc1148aafd691175c3c61u128;
+        return 0xc1148aafd691175c3c61;
     }
     if index == 52u {
-        return 0x467ced0fac2ce24b421cu128;
+        return 0x467ced0fac2ce24b421c;
     }
     if index == 53u {
-        return 0x7cfd85a84bb047d7e17u128;
+        return 0x7cfd85a84bb047d7e17;
     }
     if index == 54u {
-        return 0xce6c8f3c7df90800818du128;
+        return 0xce6c8f3c7df90800818d;
     }
     if index == 55u {
-        return 0x8940d189d2bd9b578d6fu128;
+        return 0x8940d189d2bd9b578d6f;
     }
     if index == 56u {
-        return 0x2e3ae423b411e12au128;
+        return 0x2e3ae423b411e12a;
     }
     if index == 57u {
-        return 0x2ca5ee04628e7ff3u128;
+        return 0x2ca5ee04628e7ff3;
     }
     if index == 58u {
-        return 0x6c2d981f15672f2du128;
+        return 0x6c2d981f15672f2d;
     }
     if index == 59u {
-        return 0x2859eb6a469281ddu128;
+        return 0x2859eb6a469281dd;
     }
-    return 0u128;
+    return 0;
 }
 
 func FormatText80(index: uint) -> char8[..] {
@@ -395,15 +395,15 @@ func HalfwayText80(index: uint) -> char8[..] {
 
 func HalfwayBits80(index: uint) -> uint128 {
     if index == 0u {
-        return 0x3fffa6c828f041072242u128;
+        return 0x3fffa6c828f041072242;
     }
     if index == 1u {
-        return 0x3fffc612e87e42a5c744u128;
+        return 0x3fffc612e87e42a5c744;
     }
     if index == 2u {
-        return 0x3fff87e0095e4723d344u128;
+        return 0x3fff87e0095e4723d344;
     }
-    return 0u128;
+    return 0;
 }
 
 func FormatCount128() -> uint {
@@ -412,186 +412,186 @@ func FormatCount128() -> uint {
 
 func FormatBits128(index: uint) -> uint128 {
     if index == 0u {
-        return 0x0u128;
+        return 0x0;
     }
     if index == 1u {
-        return 0x80000000000000000000000000000000u128;
+        return 0x80000000000000000000000000000000;
     }
     if index == 2u {
-        return 0x7fff0000000000000000000000000000u128;
+        return 0x7fff0000000000000000000000000000;
     }
     if index == 3u {
-        return 0xffff0000000000000000000000000000u128;
+        return 0xffff0000000000000000000000000000;
     }
     if index == 4u {
-        return 0x7fff8000000000000000000000000000u128;
+        return 0x7fff8000000000000000000000000000;
     }
     if index == 5u {
-        return 0x3fff0000000000000000000000000000u128;
+        return 0x3fff0000000000000000000000000000;
     }
     if index == 6u {
-        return 0xbfff0000000000000000000000000000u128;
+        return 0xbfff0000000000000000000000000000;
     }
     if index == 7u {
-        return 0x3ffe0000000000000000000000000000u128;
+        return 0x3ffe0000000000000000000000000000;
     }
     if index == 8u {
-        return 0x40000000000000000000000000000000u128;
+        return 0x40000000000000000000000000000000;
     }
     if index == 9u {
-        return 0x40024000000000000000000000000000u128;
+        return 0x40024000000000000000000000000000;
     }
     if index == 10u {
-        return 0x40059000000000000000000000000000u128;
+        return 0x40059000000000000000000000000000;
     }
     if index == 11u {
-        return 0x400934a456d5cfaacd9e83e425aee632u128;
+        return 0x400934a456d5cfaacd9e83e425aee632;
     }
     if index == 12u {
-        return 0x3ffb999999999999999999999999999au128;
+        return 0x3ffb999999999999999999999999999a;
     }
     if index == 13u {
-        return 0x3ffc999999999999999999999999999au128;
+        return 0x3ffc999999999999999999999999999a;
     }
     if index == 14u {
-        return 0x3ffd3333333333333333333333333333u128;
+        return 0x3ffd3333333333333333333333333333;
     }
     if index == 15u {
-        return 0x3fee4f8b588e368f08461f9f01b866e4u128;
+        return 0x3fee4f8b588e368f08461f9f01b866e4;
     }
     if index == 16u {
-        return 0x3ff1a36e2eb1c432ca57a786c226809du128;
+        return 0x3ff1a36e2eb1c432ca57a786c226809d;
     }
     if index == 17u {
-        return 0x3ff202c9dedbc309d56bd7bf6f163851u128;
+        return 0x3ff202c9dedbc309d56bd7bf6f163851;
     }
     if index == 18u {
-        return 0x405f8ee90ff6c373e0ee4e3f0ad20000u128;
+        return 0x405f8ee90ff6c373e0ee4e3f0ad20000;
     }
     if index == 19u {
-        return 0x406293e5939a08ce9dbd480000000000u128;
+        return 0x406293e5939a08ce9dbd480000000000;
     }
     if index == 20u {
-        return 0xc06293e5939a08ce9dbd480000000000u128;
+        return 0xc06293e5939a08ce9dbd480000000000;
     }
     if index == 21u {
-        return 0x3f9b4484bfeebc29f863424b06f3529au128;
+        return 0x3f9b4484bfeebc29f863424b06f3529a;
     }
     if index == 22u {
-        return 0x404dfe185ca57c517318000000000000u128;
+        return 0x404dfe185ca57c517318000000000000;
     }
     if index == 23u {
-        return 0x4000921fb54442d18469898cc51701b8u128;
+        return 0x4000921fb54442d18469898cc51701b8;
     }
     if index == 24u {
-        return 0x3ffd5555555555555555555555555555u128;
+        return 0x3ffd5555555555555555555555555555;
     }
     if index == 25u {
-        return 0x43e37e43c8800759ba59c08e14c7cd7bu128;
+        return 0x43e37e43c8800759ba59c08e14c7cd7b;
     }
     if index == 26u {
-        return 0x3c1a56e1fc2f8f358d94db7ac6149156u128;
+        return 0x3c1a56e1fc2f8f358d94db7ac6149156;
     }
     if index == 27u {
-        return 0x4cf8e71b63f3ba7b580af1a52d2a7379u128;
+        return 0x4cf8e71b63f3ba7b580af1a52d2a7379;
     }
     if index == 28u {
-        return 0x33050d152311513c28ce202627c06ec2u128;
+        return 0x33050d152311513c28ce202627c06ec2;
     }
     if index == 29u {
-        return 0xc1a116b8a2b0aa20a104044c76f6df5u128;
+        return 0xc1a116b8a2b0aa20a104044c76f6df5;
     }
     if index == 30u {
-        return 0x73ea038a02495789ddb81a227b42b97fu128;
+        return 0x73ea038a02495789ddb81a227b42b97f;
     }
     if index == 31u {
-        return 0x7ffeffffffffffffffffffffffffffffu128;
+        return 0x7ffeffffffffffffffffffffffffffff;
     }
     if index == 32u {
-        return 0xfffeffffffffffffffffffffffffffffu128;
+        return 0xfffeffffffffffffffffffffffffffff;
     }
     if index == 33u {
-        return 0x10000000000000000000000000000u128;
+        return 0x10000000000000000000000000000;
     }
     if index == 34u {
-        return 0x1u128;
+        return 0x1;
     }
     if index == 35u {
-        return 0xffffffffffffffffffffffffffffu128;
+        return 0xffffffffffffffffffffffffffff;
     }
     if index == 36u {
-        return 0x3fb1c64b3397b3a055e504caa52e74c0u128;
+        return 0x3fb1c64b3397b3a055e504caa52e74c0;
     }
     if index == 37u {
-        return 0xc09a6de2c064b54fee101d07e747fc30u128;
+        return 0xc09a6de2c064b54fee101d07e747fc30;
     }
     if index == 38u {
-        return 0x40543af20a9ca2ee2be04ae0a47dde27u128;
+        return 0x40543af20a9ca2ee2be04ae0a47dde27;
     }
     if index == 39u {
-        return 0xbffd8f67b9158d766271360cadbdd521u128;
+        return 0xbffd8f67b9158d766271360cadbdd521;
     }
     if index == 40u {
-        return 0xc12577f580fcfe603befaed641b0ea6cu128;
+        return 0xc12577f580fcfe603befaed641b0ea6c;
     }
     if index == 41u {
-        return 0x4127ee68759208c39a63e682cad557b4u128;
+        return 0x4127ee68759208c39a63e682cad557b4;
     }
     if index == 42u {
-        return 0xbef2b00eeb9287260292ffe310a2d260u128;
+        return 0xbef2b00eeb9287260292ffe310a2d260;
     }
     if index == 43u {
-        return 0xbf6620e4ca258ebf346e4b214ea5f7abu128;
+        return 0xbf6620e4ca258ebf346e4b214ea5f7ab;
     }
     if index == 44u {
-        return 0x3f20911ca93c6d19eba94eca63e4ad49u128;
+        return 0x3f20911ca93c6d19eba94eca63e4ad49;
     }
     if index == 45u {
-        return 0x3eed0dac845d2dcc55e7db44eca03ce6u128;
+        return 0x3eed0dac845d2dcc55e7db44eca03ce6;
     }
     if index == 46u {
-        return 0xc01eb001b3517d4727ab4326a33d5cf4u128;
+        return 0xc01eb001b3517d4727ab4326a33d5cf4;
     }
     if index == 47u {
-        return 0xc0e0c71e781ff8489572983867426a1au128;
+        return 0xc0e0c71e781ff8489572983867426a1a;
     }
     if index == 48u {
-        return 0xbfa3c2d562617b7eec52951bd9aba595u128;
+        return 0xbfa3c2d562617b7eec52951bd9aba595;
     }
     if index == 49u {
-        return 0xbf652f8b219955de5916f6da5e9e28e0u128;
+        return 0xbf652f8b219955de5916f6da5e9e28e0;
     }
     if index == 50u {
-        return 0xc0c75b6a4af28cec40173b614ff30902u128;
+        return 0xc0c75b6a4af28cec40173b614ff30902;
     }
     if index == 51u {
-        return 0xc10728ebb893dce7f7f077c13635e378u128;
+        return 0xc10728ebb893dce7f7f077c13635e378;
     }
     if index == 52u {
-        return 0xb5ffb5e090ae7528e93ab01ba886b327u128;
+        return 0xb5ffb5e090ae7528e93ab01ba886b327;
     }
     if index == 53u {
-        return 0x662596c28d838096ceef69e6b6f4c672u128;
+        return 0x662596c28d838096ceef69e6b6f4c672;
     }
     if index == 54u {
-        return 0xc2dd97f06776aa3364fa2aa918858739u128;
+        return 0xc2dd97f06776aa3364fa2aa918858739;
     }
     if index == 55u {
-        return 0xa7c5095dcaa8505b80160131aa8bcb31u128;
+        return 0xa7c5095dcaa8505b80160131aa8bcb31;
     }
     if index == 56u {
-        return 0x3214e676baaa5c0ecfbd297633eeu128;
+        return 0x3214e676baaa5c0ecfbd297633ee;
     }
     if index == 57u {
-        return 0x244c35de94098a4dcc0a07dc29b0u128;
+        return 0x244c35de94098a4dcc0a07dc29b0;
     }
     if index == 58u {
-        return 0x7d2a24608e83ddb0c4ad18b38d9bu128;
+        return 0x7d2a24608e83ddb0c4ad18b38d9b;
     }
     if index == 59u {
-        return 0xe7a55d38999a25bc7df3d2fa9401u128;
+        return 0xe7a55d38999a25bc7df3d2fa9401;
     }
-    return 0u128;
+    return 0;
 }
 
 func FormatText128(index: uint) -> char8[..] {
@@ -797,15 +797,15 @@ func HalfwayText128(index: uint) -> char8[..] {
 
 func HalfwayBits128(index: uint) -> uint128 {
     if index == 0u {
-        return 0x3fff86da02df16a83625f1726261b5c0u128;
+        return 0x3fff86da02df16a83625f1726261b5c0;
     }
     if index == 1u {
-        return 0x3fff27d8cbbea79898b3cfa31a853a44u128;
+        return 0x3fff27d8cbbea79898b3cfa31a853a44;
     }
     if index == 2u {
-        return 0x3fffa0717875a54ce6e4951250c639c4u128;
+        return 0x3fffa0717875a54ce6e4951250c639c4;
     }
-    return 0u128;
+    return 0;
 }
 
 func FormatCount256() -> uint {
@@ -814,186 +814,186 @@ func FormatCount256() -> uint {
 
 func FormatBits256(index: uint) -> uint256 {
     if index == 0u {
-        return 0x0u256;
+        return 0x0;
     }
     if index == 1u {
-        return 0x8000000000000000000000000000000000000000000000000000000000000000u256;
+        return 0x8000000000000000000000000000000000000000000000000000000000000000;
     }
     if index == 2u {
-        return 0x7ffff00000000000000000000000000000000000000000000000000000000000u256;
+        return 0x7ffff00000000000000000000000000000000000000000000000000000000000;
     }
     if index == 3u {
-        return 0xfffff00000000000000000000000000000000000000000000000000000000000u256;
+        return 0xfffff00000000000000000000000000000000000000000000000000000000000;
     }
     if index == 4u {
-        return 0x7ffff80000000000000000000000000000000000000000000000000000000000u256;
+        return 0x7ffff80000000000000000000000000000000000000000000000000000000000;
     }
     if index == 5u {
-        return 0x3ffff00000000000000000000000000000000000000000000000000000000000u256;
+        return 0x3ffff00000000000000000000000000000000000000000000000000000000000;
     }
     if index == 6u {
-        return 0xbffff00000000000000000000000000000000000000000000000000000000000u256;
+        return 0xbffff00000000000000000000000000000000000000000000000000000000000;
     }
     if index == 7u {
-        return 0x3fffe00000000000000000000000000000000000000000000000000000000000u256;
+        return 0x3fffe00000000000000000000000000000000000000000000000000000000000;
     }
     if index == 8u {
-        return 0x4000000000000000000000000000000000000000000000000000000000000000u256;
+        return 0x4000000000000000000000000000000000000000000000000000000000000000;
     }
     if index == 9u {
-        return 0x4000240000000000000000000000000000000000000000000000000000000000u256;
+        return 0x4000240000000000000000000000000000000000000000000000000000000000;
     }
     if index == 10u {
-        return 0x4000590000000000000000000000000000000000000000000000000000000000u256;
+        return 0x4000590000000000000000000000000000000000000000000000000000000000;
     }
     if index == 11u {
-        return 0x4000934a456d5cfaacd9e83e425aee631f8a0902de00d1b71758e219652bd3c3u256;
+        return 0x4000934a456d5cfaacd9e83e425aee631f8a0902de00d1b71758e219652bd3c3;
     }
     if index == 12u {
-        return 0x3fffb9999999999999999999999999999999999999999999999999999999999au256;
+        return 0x3fffb9999999999999999999999999999999999999999999999999999999999a;
     }
     if index == 13u {
-        return 0x3fffc9999999999999999999999999999999999999999999999999999999999au256;
+        return 0x3fffc9999999999999999999999999999999999999999999999999999999999a;
     }
     if index == 14u {
-        return 0x3fffd33333333333333333333333333333333333333333333333333333333333u256;
+        return 0x3fffd33333333333333333333333333333333333333333333333333333333333;
     }
     if index == 15u {
-        return 0x3ffee4f8b588e368f08461f9f01b866e43aa79bbadc0980b242070b8cfbfc654u256;
+        return 0x3ffee4f8b588e368f08461f9f01b866e43aa79bbadc0980b242070b8cfbfc654;
     }
     if index == 16u {
-        return 0x3fff1a36e2eb1c432ca57a786c226809d495182a9930be0ded288ce703afb7e9u256;
+        return 0x3fff1a36e2eb1c432ca57a786c226809d495182a9930be0ded288ce703afb7e9;
     }
     if index == 17u {
-        return 0x3fff202c9dedbc309d56bd7bf6f163850a965bf7779b421045c8612d4181aa90u256;
+        return 0x3fff202c9dedbc309d56bd7bf6f163850a965bf7779b421045c8612d4181aa90;
     }
     if index == 18u {
-        return 0x4005f8ee90ff6c373e0ee4e3f0ad200000000000000000000000000000000000u256;
+        return 0x4005f8ee90ff6c373e0ee4e3f0ad200000000000000000000000000000000000;
     }
     if index == 19u {
-        return 0x4006293e5939a08ce9dbd4800000000000000000000000000000000000000000u256;
+        return 0x4006293e5939a08ce9dbd4800000000000000000000000000000000000000000;
     }
     if index == 20u {
-        return 0xc006293e5939a08ce9dbd4800000000000000000000000000000000000000000u256;
+        return 0xc006293e5939a08ce9dbd4800000000000000000000000000000000000000000;
     }
     if index == 21u {
-        return 0x3ff9b4484bfeebc29f863424b06f3529a051a31be599a3fc014076c7308e3840u256;
+        return 0x3ff9b4484bfeebc29f863424b06f3529a051a31be599a3fc014076c7308e3840;
     }
     if index == 22u {
-        return 0x4004dfe185ca57c5173180000000000000000000000000000000000000000000u256;
+        return 0x4004dfe185ca57c5173180000000000000000000000000000000000000000000;
     }
     if index == 23u {
-        return 0x40000921fb54442d18469898cc51701b839a252049c1114cf98e80066e8118e9u256;
+        return 0x40000921fb54442d18469898cc51701b839a252049c1114cf98e80066e8118e9;
     }
     if index == 24u {
-        return 0x3fffd55555555555555555555555555555555555555555555555555555555555u256;
+        return 0x3fffd55555555555555555555555555555555555555555555555555555555555;
     }
     if index == 25u {
-        return 0x403e37e43c8800759ba59c08e14c7cd7aad86a4a458109f91c21c571dbe84d53u256;
+        return 0x403e37e43c8800759ba59c08e14c7cd7aad86a4a458109f91c21c571dbe84d53;
     }
     if index == 26u {
-        return 0x3fc1a56e1fc2f8f358d94db7ac6149155e80d19928dee1b069c164e9a1ff4723u256;
+        return 0x3fc1a56e1fc2f8f358d94db7ac6149155e80d19928dee1b069c164e9a1ff4723;
     }
     if index == 27u {
-        return 0x40cf8e71b63f3ba7b580af1a52d2a73796da55f43e559571963d1f47679b229eu256;
+        return 0x40cf8e71b63f3ba7b580af1a52d2a73796da55f43e559571963d1f47679b229e;
     }
     if index == 28u {
-        return 0x3f3050d152311513c28ce202627c06ec1c6f05a80ad2c17f0386474af526032cu256;
+        return 0x3f3050d152311513c28ce202627c06ec1c6f05a80ad2c17f0386474af526032c;
     }
     if index == 29u {
-        return 0x3cc1a116b8a2b0aa20a104044c76f6df4f30ab4641c25f85caa2278d09dceda0u256;
+        return 0x3cc1a116b8a2b0aa20a104044c76f6df4f30ab4641c25f85caa2278d09dceda0;
     }
     if index == 30u {
-        return 0x433ea038a02495789ddb81a227b42b97ed210dd499d11c5a943248b5f42f2b05u256;
+        return 0x433ea038a02495789ddb81a227b42b97ed210dd499d11c5a943248b5f42f2b05;
     }
     if index == 31u {
-        return 0x7fffefffffffffffffffffffffffffffffffffffffffffffffffffffffffffffu256;
+        return 0x7fffefffffffffffffffffffffffffffffffffffffffffffffffffffffffffff;
     }
     if index == 32u {
-        return 0xffffefffffffffffffffffffffffffffffffffffffffffffffffffffffffffffu256;
+        return 0xffffefffffffffffffffffffffffffffffffffffffffffffffffffffffffffff;
     }
     if index == 33u {
-        return 0x100000000000000000000000000000000000000000000000000000000000u256;
+        return 0x100000000000000000000000000000000000000000000000000000000000;
     }
     if index == 34u {
-        return 0x1u256;
+        return 0x1;
     }
     if index == 35u {
-        return 0xfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffu256;
+        return 0xfffffffffffffffffffffffffffffffffffffffffffffffffffffffffff;
     }
     if index == 36u {
-        return 0xc004f2d4a467e8beb82e0739532047d60a19174ef900cc3a7edf1b6da23d3272u256;
+        return 0xc004f2d4a467e8beb82e0739532047d60a19174ef900cc3a7edf1b6da23d3272;
     }
     if index == 37u {
-        return 0x3ff25a38216fa82edbd79334a532f63bae4445d8cd61a9b0848fd4a98e18b26bu256;
+        return 0x3ff25a38216fa82edbd79334a532f63bae4445d8cd61a9b0848fd4a98e18b26b;
     }
     if index == 38u {
-        return 0x4005a2ff02a995783ce383bb48add1bbe1d7722fc07ad3bd7859ac093189d38bu256;
+        return 0x4005a2ff02a995783ce383bb48add1bbe1d7722fc07ad3bd7859ac093189d38b;
     }
     if index == 39u {
-        return 0x400986f6a132ef95f242235b500818e2e95378c460a1fab0d8fb3e04237d2115u256;
+        return 0x400986f6a132ef95f242235b500818e2e95378c460a1fab0d8fb3e04237d2115;
     }
     if index == 40u {
-        return 0x40011c8ee796192e5d6a85ba9640fc29bb68256c99b600ad872faff2196dcc49u256;
+        return 0x40011c8ee796192e5d6a85ba9640fc29bb68256c99b600ad872faff2196dcc49;
     }
     if index == 41u {
-        return 0xc00632290d7b8b3c80429094499335225ba5985639650e929feca27ed0e725efu256;
+        return 0xc00632290d7b8b3c80429094499335225ba5985639650e929feca27ed0e725ef;
     }
     if index == 42u {
-        return 0x3ff399f9994d95b8f44cff881a9dd6dba5a1608102a5b9320272932781acbc68u256;
+        return 0x3ff399f9994d95b8f44cff881a9dd6dba5a1608102a5b9320272932781acbc68;
     }
     if index == 43u {
-        return 0xc00514bf959de8fa5922a81599e97ac672258be29cbc3d09d46a37acbe011feau256;
+        return 0xc00514bf959de8fa5922a81599e97ac672258be29cbc3d09d46a37acbe011fea;
     }
     if index == 44u {
-        return 0xbffc8f4005c4bfea3e420991c9fbfe23a0fbded67ffc34e4518a70335ad3027eu256;
+        return 0xbffc8f4005c4bfea3e420991c9fbfe23a0fbded67ffc34e4518a70335ad3027e;
     }
     if index == 45u {
-        return 0x3fed82f09338ab8ee284b7a2965225b477a331887b09e65329cafe73162841e4u256;
+        return 0x3fed82f09338ab8ee284b7a2965225b477a331887b09e65329cafe73162841e4;
     }
     if index == 46u {
-        return 0xbff396f14a7d9cfe310ba0a3ba2580cf719f20bef4094dc0d44630ca32330da8u256;
+        return 0xbff396f14a7d9cfe310ba0a3ba2580cf719f20bef4094dc0d44630ca32330da8;
     }
     if index == 47u {
-        return 0xbffc408a7f98f7552959382acc3fc6a8ea2e0dea4eccff314fb05d00f8daa966u256;
+        return 0xbffc408a7f98f7552959382acc3fc6a8ea2e0dea4eccff314fb05d00f8daa966;
     }
     if index == 48u {
-        return 0xc00f2d2fb0c85e72323b95ae93adad2257df5128993813463e07e36d3239238eu256;
+        return 0xc00f2d2fb0c85e72323b95ae93adad2257df5128993813463e07e36d3239238e;
     }
     if index == 49u {
-        return 0xc00fc81a4ab9fe70ff7200ea165b03ffb9c1be5cc0ce322d8a702ba8517936ceu256;
+        return 0xc00fc81a4ab9fe70ff7200ea165b03ffb9c1be5cc0ce322d8a702ba8517936ce;
     }
     if index == 50u {
-        return 0x3ffe326b97eec65b5aea4fa1e030c30fda1cca3d0fd9159d7ee819e6e85e086cu256;
+        return 0x3ffe326b97eec65b5aea4fa1e030c30fda1cca3d0fd9159d7ee819e6e85e086c;
     }
     if index == 51u {
-        return 0xc00f4651cde898ebc203e3231d225344c88a1dfc004dc8631de30bbe4897d0dfu256;
+        return 0xc00f4651cde898ebc203e3231d225344c88a1dfc004dc8631de30bbe4897d0df;
     }
     if index == 52u {
-        return 0xb22d57d047260fffb07f81fc91a894dac462d11d40249a745a4bffb14bd94f7cu256;
+        return 0xb22d57d047260fffb07f81fc91a894dac462d11d40249a745a4bffb14bd94f7c;
     }
     if index == 53u {
-        return 0x64dd9b71738dd98011b9ccbe07acb07cd5a5bb97b379ec3565949722ff7ef8e8u256;
+        return 0x64dd9b71738dd98011b9ccbe07acb07cd5a5bb97b379ec3565949722ff7ef8e8;
     }
     if index == 54u {
-        return 0x741aefa82660454a2364db9583e46fea4e8723ae9cc00c3cfdb443af5d19aaf9u256;
+        return 0x741aefa82660454a2364db9583e46fea4e8723ae9cc00c3cfdb443af5d19aaf9;
     }
     if index == 55u {
-        return 0xb7dcd6292aa9e32c22669909950829a0c995661a503fb8e91c66b4489aebc7a1u256;
+        return 0xb7dcd6292aa9e32c22669909950829a0c995661a503fb8e91c66b4489aebc7a1;
     }
     if index == 56u {
-        return 0x8cbfee6d2b70047d48f3ce4c6b3f8523871f2a14ff628330d3979c2b819u256;
+        return 0x8cbfee6d2b70047d48f3ce4c6b3f8523871f2a14ff628330d3979c2b819;
     }
     if index == 57u {
-        return 0xc2e8012f8ee0fa96fc78fac6b21ff60311d4b1514be5b219c1d9e1a39f6u256;
+        return 0xc2e8012f8ee0fa96fc78fac6b21ff60311d4b1514be5b219c1d9e1a39f6;
     }
     if index == 58u {
-        return 0x251413af02183356800bc2a049799bf47a6e7c65bde05548d5986b7814du256;
+        return 0x251413af02183356800bc2a049799bf47a6e7c65bde05548d5986b7814d;
     }
     if index == 59u {
-        return 0xe8c0db1c786f3a520a515df4092f9fe891c386b47ac06d2db42a2aae720u256;
+        return 0xe8c0db1c786f3a520a515df4092f9fe891c386b47ac06d2db42a2aae720;
     }
-    return 0u256;
+    return 0;
 }
 
 func FormatText256(index: uint) -> char8[..] {
@@ -1199,13 +1199,13 @@ func HalfwayText256(index: uint) -> char8[..] {
 
 func HalfwayBits256(index: uint) -> uint256 {
     if index == 0u {
-        return 0x3ffff283d89cebc512159d3c37f13e1dc89a93d0214adc5ebb37ad852ab216c2u256;
+        return 0x3ffff283d89cebc512159d3c37f13e1dc89a93d0214adc5ebb37ad852ab216c2;
     }
     if index == 1u {
-        return 0x3ffff114855382bd0a0b4e058f4c710204e8985d8c9c339cc325cd95c6b0f942u256;
+        return 0x3ffff114855382bd0a0b4e058f4c710204e8985d8c9c339cc325cd95c6b0f942;
     }
     if index == 2u {
-        return 0x3ffff49d7bc04a8bd8398b5d83c10f7a9304b0297a29015a09267a4f0b13e842u256;
+        return 0x3ffff49d7bc04a8bd8398b5d83c10f7a9304b0297a29015a09267a4f0b13e842;
     }
     return 0u256;
 }

@@ -59,7 +59,7 @@ func Main() -> int {
         Assert(Abs(Sinh(ArcSinh(value)) - value) < 1.0e-14 * Abs(value),
                "the inverse hyperbolic sine inverts, at every scale");
         Assert(ArcSinh(0.0 - value) == 0.0 - ArcSinh(value), "and is odd");
-        power = power + 1i64;
+        power = power + 1;
     }
 
     // The inverse cosine splits at one, two and 2^28; the interval just above one is the delicate part.
@@ -75,7 +75,7 @@ func Main() -> int {
         let value = ScaleByPowerOfTwo(1.7, scale);
         Assert(Abs(Cosh(ArcCosh(value)) - value) < 1.0e-13 * value,
                "and at every scale above that");
-        scale = scale + 1i64;
+        scale = scale + 1;
     }
 
     // The inverse tangent splits at 2^-28 and a half; the walk crosses both and approaches the poles.
@@ -95,15 +95,15 @@ func Main() -> int {
         Assert(ArcTanh(value) == value,
                "and is the argument itself near zero, where the closed form would cancel it away");
         Assert(ArcSinh(value) == value, "as is the inverse sine on the same range");
-        tinyPower = tinyPower + 1i64;
+        tinyPower = tinyPower + 1;
     }
     // Just above that boundary the cubic term appears, which is what makes the split necessary.
-    let justAbove = ScaleByPowerOfTwo(1.0, -20i64);
+    let justAbove = ScaleByPowerOfTwo(1.0, -20);
     Assert(Abs(ArcTanh(justAbove) - (justAbove + justAbove * justAbove * justAbove / 3.0)) < 1.0e-30,
            "and just above it the cubic term of the series is exactly what appears");
 
     // A value large enough that the closed form's square root would overflow, while the answer is ordinary.
-    let enormous = ScaleByPowerOfTwo(1.0, 600i64);
+    let enormous = ScaleByPowerOfTwo(1.0, 600);
     Assert(!IsNan(ArcSinh(enormous)) && ArcSinh(enormous) < 500.0,
            "an argument whose square overflows still has an ordinary inverse sine");
     Assert(!IsNan(ArcCosh(enormous)) && ArcCosh(enormous) < 500.0, "and an ordinary inverse cosine");

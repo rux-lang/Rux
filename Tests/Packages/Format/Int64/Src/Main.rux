@@ -45,13 +45,13 @@ func CheckParseError(str: char8[..], expected: ParseError, code: int) -> int {
 }
 
 func CheckParsedValues() -> int {
-    var code = CheckParse("0", 0i64, 100);
+    var code = CheckParse("0", 0, 100);
     if code != 0 { return code; }
-    code = CheckParse("+42", 42i64, 101);
+    code = CheckParse("+42", 42, 101);
     if code != 0 { return code; }
-    code = CheckParse("-42", -42i64, 102);
+    code = CheckParse("-42", -42, 102);
     if code != 0 { return code; }
-    code = CheckParse("00017", 17i64, 103);
+    code = CheckParse("00017", 17, 103);
     if code != 0 { return code; }
     code = CheckParse("9223372036854775807", int64::Max, 104);
     if code != 0 { return code; }
@@ -61,13 +61,13 @@ func CheckParsedValues() -> int {
 func CheckParseErrors() -> int {
     var code = CheckParseError("", ParseError::Empty, 110);
     if code != 0 { return code; }
-    code = CheckParseError("12x", ParseError::InvalidCharacter(2u), 111);
+    code = CheckParseError("12x", ParseError::InvalidCharacter(2), 111);
     if code != 0 { return code; }
-    code = CheckParseError("-", ParseError::InvalidCharacter(0u), 112);
+    code = CheckParseError("-", ParseError::InvalidCharacter(0), 112);
     if code != 0 { return code; }
-    code = CheckParseError("9223372036854775808", ParseError::Overflow(19u), 113);
+    code = CheckParseError("9223372036854775808", ParseError::Overflow(19), 113);
     if code != 0 { return code; }
-    return CheckParseError("-9223372036854775809", ParseError::Overflow(20u), 114);
+    return CheckParseError("-9223372036854775809", ParseError::Overflow(20), 114);
 }
 
 func CheckParseOverloads() -> int {

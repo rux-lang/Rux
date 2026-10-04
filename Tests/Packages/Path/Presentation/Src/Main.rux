@@ -144,10 +144,10 @@ func Main() -> int {
     var hostile: OsUnit[4];
     when #target.os == .Windows {
         // An unpaired high surrogate between letters, which Windows keeps on disk without complaint.
-        hostile[0] = 0x0061u16;
-        hostile[1] = 0xD800u16;
-        hostile[2] = 0x0062u16;
-        hostile[3] = 0x0063u16;
+        hostile[0] = 0x0061;
+        hostile[1] = 0xD800;
+        hostile[2] = 0x0062;
+        hostile[3] = 0x0063;
     }
     else {
         // A lone continuation byte and a lead byte with nothing after it, between letters.
@@ -216,10 +216,10 @@ func Main() -> int {
     // and differently under Debug. This is why the lossy form is never an identity.
     var other: OsUnit[4];
     when #target.os == .Windows {
-        other[0] = 0x0061u16;
-        other[1] = 0xDBFFu16;
-        other[2] = 0x0062u16;
-        other[3] = 0x0063u16;
+        other[0] = 0x0061;
+        other[1] = 0xDBFF;
+        other[2] = 0x0062;
+        other[3] = 0x0063;
     }
     else {
         other[0] = 0x61u8 as char8;

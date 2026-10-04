@@ -58,7 +58,7 @@ func Main() -> int {
         let (sine, cosine) = SinCos(angle);
         Assert(sine == Sin(angle) && cosine == Cos(angle), "the pair agrees at every power of two as well");
         Assert(Abs(sine * sine + cosine * cosine - 1.0) < 1.0e-15, "and the two describe one angle");
-        power = power + 1i64;
+        power = power + 1;
     }
 
     // And on the specials and the tiny arguments, where the fast paths live.
@@ -67,7 +67,7 @@ func Main() -> int {
     let (negativeZeroSine, negativeZeroCosine) = SinCos(-0.0);
     Assert(SignBit(negativeZeroSine) && negativeZeroCosine == 1.0,
            "the pair at a negative zero keeps the sine's sign");
-    let tiny = ScaleByPowerOfTwo(1.0, -40i64);
+    let tiny = ScaleByPowerOfTwo(1.0, -40);
     let (tinySine, tinyCosine) = SinCos(tiny);
     Assert(tinySine == tiny && tinyCosine == 1.0, "the pair on a tiny argument takes the short path in both");
     let (nanSine, nanCosine) = SinCos(notANumber);

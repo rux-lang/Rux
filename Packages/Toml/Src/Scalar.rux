@@ -135,27 +135,27 @@ extend Stripped {
 // Copies `text` into `into`, dropping underscores and refusing any that is not surrounded by digits of the base.
 // A refused underscore reports its own position in the original, since that is the character at fault.
 func StripUnderscores(text: char8[..], into: *var Stripped, at: *var uint) -> bool {
-    into.length = 0u;
+    into.length = 0;
     into.source = text.length;
     var index: uint = 0;
     while index < text.length {
         let c = text.data[index] as uint8;
         if c == 0x5Fu8 {
-            if index == 0u || index + 1u == text.length {
+            if index == 0u || index + 1 == text.length {
                 *at = index;
                 return false;
             }
-            if !IsBaseDigit(text.data[index - 1u] as uint8) || !IsBaseDigit(text.data[index + 1u] as uint8) {
+            if !IsBaseDigit(text.data[index - 1] as uint8) || !IsBaseDigit(text.data[index + 1] as uint8) {
                 *at = index;
                 return false;
             }
-            index = index + 1u;
+            index = index + 1;
             continue;
         }
         into.digits[into.length] = text.data[index];
         into.origin[into.length] = index;
-        into.length = into.length + 1u;
-        index = index + 1u;
+        into.length = into.length + 1;
+        index = index + 1;
     }
     return true;
 }
@@ -180,11 +180,11 @@ func IsBaseDigit(c: uint8) -> bool {
 /// @returns the integer, or why it could not be read and where
 /// @see https://rux-lang.dev/docs/api/toml/parse-integer
 pub func TomlParseInteger(text: char8[..]) -> int64 ! TomlScalarError {
-    if text.length == 0u { return .Failure(TomlScalarError::Malformed(0u)); }
+    if text.length == 0u { return .Failure(TomlScalarError::Malformed(0)); }
     if text.length > ScalarCapacity {
         fail TomlScalarError::TooLong(ScalarCapacity);
     }
-    var stripped = Stripped { digits: [c8'0'; 160], origin: [0u; 160], length: 0, source: 0 };
+    var stripped = Stripped { digits: [c8'0'; 160], origin: [0; 160], length: 0, source: 0 };
     var badUnderscore: uint = 0;
     if !StripUnderscores(text, @stripped, @badUnderscore) {
         fail TomlScalarError::Malformed(badUnderscore);
@@ -196,7 +196,7 @@ pub func TomlParseInteger(text: char8[..]) -> int64 ! TomlScalarError {
         let sign = digits.data[0] as uint8;
         if sign == 0x2Bu8 || sign == 0x2Du8 {
             signed = true;
-            start = 1u;
+            start = 1;
         }
     }
     if start >= digits.length {
@@ -204,11 +204,11 @@ pub func TomlParseInteger(text: char8[..]) -> int64 ! TomlScalarError {
     }
     var based = false;
     if digits.length - start > 1u && (digits.data[start] as uint8) == 0x30u8 {
-        let mark = digits.data[start + 1u] as uint8;
+        let mark = digits.data[start + 1] as uint8;
         based = mark == 0x78u8 || mark == 0x6Fu8 || mark == 0x62u8;
         // A sign on a based integer is a dialect the grammar does not offer; the sign is the character at fault.
         if based && signed {
-            fail TomlScalarError::Malformed(stripped.Source(0u));
+            fail TomlScalarError::Malformed(stripped.Source(0));
         }
         // A leading zero is only ever a base prefix; `010` is not a TOML integer in any base, and the zero is
         // where a reader has to look.
@@ -225,19 +225,19 @@ pub func TomlParseInteger(text: char8[..]) -> int64 ! TomlScalarError {
         if !DigitFits(digits.data[index] as uint8, radix) {
             fail TomlScalarError::Malformed(stripped.Source(index));
         }
-        index = index + 1u;
+        index = index + 1;
     }
     let parsed = ParseInt64(digits) catch {
-        else => return .Failure(TomlScalarError::OutOfRange(0u))
+        else => return .Failure(TomlScalarError::OutOfRange(0))
     };
     return parsed;
 }
 
 // The base a prefix letter names.
 func BaseOf(mark: uint8) -> uint8 {
-    if mark == 0x78u8 { return 16u8; }
-    if mark == 0x6Fu8 { return 8u8; }
-    return 2u8;
+    if mark == 0x78u8 { return 16; }
+    if mark == 0x6Fu8 { return 8; }
+    return 2;
 }
 
 // Whether `c` is a digit of `radix`. TOML writes hexadecimal in either case but nothing else above nine.
@@ -264,11 +264,11 @@ func DigitFits(c: uint8, radix: uint8) -> bool {
 /// @returns the float, or why it could not be read and where
 /// @see https://rux-lang.dev/docs/api/toml/parse-float
 pub func TomlParseFloat(text: char8[..]) -> float64 ! TomlScalarError {
-    if text.length == 0u { return .Failure(TomlScalarError::Malformed(0u)); }
+    if text.length == 0u { return .Failure(TomlScalarError::Malformed(0)); }
     if text.length > ScalarCapacity {
         fail TomlScalarError::TooLong(ScalarCapacity);
     }
-    var stripped = Stripped { digits: [c8'0'; 160], origin: [0u; 160], length: 0, source: 0 };
+    var stripped = Stripped { digits: [c8'0'; 160], origin: [0; 160], length: 0, source: 0 };
     var badUnderscore: uint = 0;
     if !StripUnderscores(text, @stripped, @badUnderscore) {
         fail TomlScalarError::Malformed(badUnderscore);
@@ -279,7 +279,7 @@ pub func TomlParseFloat(text: char8[..]) -> float64 ! TomlScalarError {
     let sign = digits.data[0] as uint8;
     if sign == 0x2Bu8 || sign == 0x2Du8 {
         negative = sign == 0x2Du8;
-        start = 1u;
+        start = 1;
     }
     if start >= digits.length {
         fail TomlScalarError::Malformed(stripped.Source(start));
@@ -300,7 +300,7 @@ pub func TomlParseFloat(text: char8[..]) -> float64 ! TomlScalarError {
     // The shape is a float's; what the reader refused is the magnitude, which is the whole value rather than any
     // character of it.
     let parsed = ParseFloat64(digits) catch {
-        else => return .Failure(TomlScalarError::OutOfRange(0u))
+        else => return .Failure(TomlScalarError::OutOfRange(0))
     };
     return parsed;
 }
@@ -311,7 +311,7 @@ func MatchesWord(digits: char8[..], start: uint, word: char8[..]) -> bool {
     var index: uint = 0;
     while index < word.length {
         if digits.data[start + index] != word.data[index] { return false; }
-        index = index + 1u;
+        index = index + 1;
     }
     return true;
 }
@@ -322,8 +322,8 @@ func CheckFloatShape(digits: char8[..], start: uint, at: *var uint) -> bool {
     var index = start;
     var whole: uint = 0;
     while index < digits.length && IsDecimal(digits.data[index] as uint8) {
-        whole = whole + 1u;
-        index = index + 1u;
+        whole = whole + 1;
+        index = index + 1;
     }
     *at = index;
     if whole == 0u { return false; }
@@ -334,11 +334,11 @@ func CheckFloatShape(digits: char8[..], start: uint, at: *var uint) -> bool {
     }
     var fraction = false;
     if index < digits.length && (digits.data[index] as uint8) == 0x2Eu8 {
-        index = index + 1u;
+        index = index + 1;
         var after: uint = 0;
         while index < digits.length && IsDecimal(digits.data[index] as uint8) {
-            after = after + 1u;
-            index = index + 1u;
+            after = after + 1;
+            index = index + 1;
         }
         *at = index;
         if after == 0u { return false; }
@@ -349,17 +349,17 @@ func CheckFloatShape(digits: char8[..], start: uint, at: *var uint) -> bool {
         let mark = digits.data[index] as uint8;
         *at = index;
         if mark != 0x65u8 && mark != 0x45u8 { return false; }
-        index = index + 1u;
+        index = index + 1;
         if index < digits.length {
             let sign = digits.data[index] as uint8;
             if sign == 0x2Bu8 || sign == 0x2Du8 {
-                index = index + 1u;
+                index = index + 1;
             }
         }
         var after: uint = 0;
         while index < digits.length && IsDecimal(digits.data[index] as uint8) {
-            after = after + 1u;
-            index = index + 1u;
+            after = after + 1;
+            index = index + 1;
         }
         *at = index;
         if after == 0u { return false; }
@@ -427,14 +427,14 @@ pub struct TomlDateTime {
 pub func TomlParseDateTime(text: char8[..]) -> TomlDateTime ! TomlScalarError {
     var built = TomlDateTime {
         shape: TomlDateTimeShape::DateOnly,
-        date: Date { year: 1970, month: 1u8, day: 1u8 },
-        time: TimeOfDay { hour: 0u8, minute: 0u8, second: 0u8, nanosecond: 0u32 },
+        date: Date { year: 1970, month: 1, day: 1 },
+        time: TimeOfDay { hour: 0, minute: 0, second: 0, nanosecond: 0 },
         offset: UtcOffset::Utc()
     };
     var at: uint = 0;
     if text.length >= 5u && (text.data[2] as uint8) == 0x3Au8 {
         var consumed: uint = 0;
-        if !ReadTime(text, 0u, @built.time, @consumed, @at) {
+        if !ReadTime(text, 0, @built.time, @consumed, @at) {
             fail TomlScalarError::Malformed(at);
         }
         if consumed != text.length {
@@ -446,16 +446,16 @@ pub func TomlParseDateTime(text: char8[..]) -> TomlDateTime ! TomlScalarError {
     if text.length < 10u {
         fail TomlScalarError::Malformed(text.length);
     }
-    if !ReadDate(text, 0u, @built.date, @at) {
+    if !ReadDate(text, 0, @built.date, @at) {
         fail TomlScalarError::Malformed(at);
     }
     if text.length == 10u { return .Success(built); }
     let separator = text.data[10] as uint8;
     if separator != 0x54u8 && separator != 0x74u8 && separator != 0x20u8 {
-        fail TomlScalarError::Malformed(10u);
+        fail TomlScalarError::Malformed(10);
     }
     var consumed: uint = 0;
-    if !ReadTime(text, 11u, @built.time, @consumed, @at) {
+    if !ReadTime(text, 11, @built.time, @consumed, @at) {
         fail TomlScalarError::Malformed(at);
     }
     if consumed == text.length {
@@ -473,34 +473,34 @@ pub func TomlParseDateTime(text: char8[..]) -> TomlDateTime ! TomlScalarError {
 // four correct digit pairs and not a date.
 func ReadDate(text: char8[..], at: uint, date: *var Date, stopped: *var uint) -> bool {
     *stopped = at;
-    if at + 10u > text.length {
+    if at + 10 > text.length {
         *stopped = text.length;
         return false;
     }
     var year: uint32 = 0;
     var month: uint32 = 0;
     var day: uint32 = 0;
-    if !Digits(text, at, 4u, @year) { return false; }
-    *stopped = at + 5u;
-    if !Digits(text, at + 5u, 2u, @month) { return false; }
-    *stopped = at + 8u;
-    if !Digits(text, at + 8u, 2u, @day) { return false; }
-    if (text.data[at + 4u] as uint8) != 0x2Du8 {
-        *stopped = at + 4u;
+    if !Digits(text, at, 4, @year) { return false; }
+    *stopped = at + 5;
+    if !Digits(text, at + 5, 2, @month) { return false; }
+    *stopped = at + 8;
+    if !Digits(text, at + 8, 2, @day) { return false; }
+    if (text.data[at + 4] as uint8) != 0x2Du8 {
+        *stopped = at + 4;
         return false;
     }
-    if (text.data[at + 7u] as uint8) != 0x2Du8 {
-        *stopped = at + 7u;
+    if (text.data[at + 7] as uint8) != 0x2Du8 {
+        *stopped = at + 7;
         return false;
     }
     let made = Date::New(year as int32, month as uint8, day as uint8);
     if !(made is Date) {
         // Four correct digit pairs that name no day. The month is where a reader has to look, since that is what
         // decides how many days there are.
-        *stopped = at + 5u;
+        *stopped = at + 5;
         return false;
     }
-    *date = made ?? Date { year: 1970, month: 1u8, day: 1u8 };
+    *date = made ?? Date { year: 1970, month: 1, day: 1 };
     return true;
 }
 
@@ -511,40 +511,40 @@ func ReadDate(text: char8[..], at: uint, date: *var Date, stopped: *var uint) ->
 func ReadTime(text: char8[..], at: uint, time: *var TimeOfDay, consumed: *var uint,
               stopped: *var uint) -> bool {
     *stopped = at;
-    if at + 5u > text.length {
+    if at + 5 > text.length {
         *stopped = text.length;
         return false;
     }
     var hour: uint32 = 0;
     var minute: uint32 = 0;
     var second: uint32 = 0;
-    if !Digits(text, at, 2u, @hour) { return false; }
-    *stopped = at + 3u;
-    if !Digits(text, at + 3u, 2u, @minute) { return false; }
-    if (text.data[at + 2u] as uint8) != 0x3Au8 {
-        *stopped = at + 2u;
+    if !Digits(text, at, 2, @hour) { return false; }
+    *stopped = at + 3;
+    if !Digits(text, at + 3, 2, @minute) { return false; }
+    if (text.data[at + 2] as uint8) != 0x3Au8 {
+        *stopped = at + 2;
         return false;
     }
-    var index = at + 5u;
+    var index = at + 5;
     if index < text.length && (text.data[index] as uint8) == 0x3Au8 {
-        *stopped = index + 1u;
-        if !Digits(text, index + 1u, 2u, @second) { return false; }
-        index = index + 3u;
+        *stopped = index + 1;
+        if !Digits(text, index + 1, 2, @second) { return false; }
+        index = index + 3;
     }
     var nanosecond: uint32 = 0;
     if index < text.length && (text.data[index] as uint8) == 0x2Eu8 {
-        index = index + 1u;
+        index = index + 1;
         var place: uint = 0;
-        var scale: uint32 = 100000000u32;
+        var scale: uint32 = 100000000;
         while index < text.length && IsDecimal(text.data[index] as uint8) {
             // Digits past the ninth are dropped rather than refused: they are more precision than a nanosecond
             // holds, and refusing a document over precision nobody can represent helps no one.
             if place < 9u {
-                nanosecond = nanosecond + ((text.data[index] as uint8) - 0x30u8) as uint32 * scale;
-                scale = scale / 10u32;
+                nanosecond = nanosecond + ((text.data[index] as uint8) - 0x30) as uint32 * scale;
+                scale = scale / 10;
             }
-            place = place + 1u;
-            index = index + 1u;
+            place = place + 1;
+            index = index + 1;
         }
         if place == 0u {
             *stopped = index;
@@ -554,15 +554,15 @@ func ReadTime(text: char8[..], at: uint, time: *var TimeOfDay, consumed: *var ui
     // Second sixty is a leap second, which the calendar does not represent; it folds to the last nanosecond of
     // fifty-nine, the same policy `Time` states for RFC 3339.
     if second == 60u32 {
-        second = 59u32;
-        nanosecond = 999999999u32;
+        second = 59;
+        nanosecond = 999999999;
     }
     let made = TimeOfDay::New(hour as uint8, minute as uint8, second as uint8, nanosecond);
     if !(made is TimeOfDay) {
         *stopped = at;
         return false;
     }
-    *time = made ?? TimeOfDay { hour: 0u8, minute: 0u8, second: 0u8, nanosecond: 0u32 };
+    *time = made ?? TimeOfDay { hour: 0, minute: 0, second: 0, nanosecond: 0 };
     *consumed = index;
     return true;
 }
@@ -573,22 +573,22 @@ func ReadOffset(text: char8[..], at: uint, offset: *var UtcOffset, stopped: *var
     let mark = text.data[at] as uint8;
     if mark == 0x5Au8 || mark == 0x7Au8 {
         *offset = UtcOffset::Utc();
-        *stopped = at + 1u;
-        return at + 1u == text.length;
+        *stopped = at + 1;
+        return at + 1 == text.length;
     }
     if mark != 0x2Bu8 && mark != 0x2Du8 { return false; }
-    if at + 6u != text.length {
+    if at + 6 != text.length {
         *stopped = text.length;
         return false;
     }
     var hours: uint32 = 0;
     var minutes: uint32 = 0;
-    *stopped = at + 1u;
-    if !Digits(text, at + 1u, 2u, @hours) { return false; }
-    *stopped = at + 4u;
-    if !Digits(text, at + 4u, 2u, @minutes) { return false; }
-    if (text.data[at + 3u] as uint8) != 0x3Au8 {
-        *stopped = at + 3u;
+    *stopped = at + 1;
+    if !Digits(text, at + 1, 2, @hours) { return false; }
+    *stopped = at + 4;
+    if !Digits(text, at + 4, 2, @minutes) { return false; }
+    if (text.data[at + 3] as uint8) != 0x3Au8 {
+        *stopped = at + 3;
         return false;
     }
     var signedHours = hours as int32;
@@ -599,7 +599,7 @@ func ReadOffset(text: char8[..], at: uint, offset: *var UtcOffset, stopped: *var
     }
     let made = UtcOffset::Of(signedHours, signedMinutes);
     if !(made is UtcOffset) {
-        *stopped = at + 1u;
+        *stopped = at + 1;
         return false;
     }
     *offset = made ?? UtcOffset::Utc();
@@ -609,13 +609,13 @@ func ReadOffset(text: char8[..], at: uint, offset: *var UtcOffset, stopped: *var
 // Exactly `count` decimal digits at `at`, as a value.
 func Digits(text: char8[..], at: uint, count: uint, value: *var uint32) -> bool {
     if at + count > text.length { return false; }
-    *value = 0u32;
+    *value = 0;
     var index: uint = 0;
     while index < count {
         let c = text.data[at + index] as uint8;
         if !IsDecimal(c) { return false; }
-        *value = *value * 10u32 + (c - 0x30u8) as uint32;
-        index = index + 1u;
+        *value = *value * 10 + (c - 0x30) as uint32;
+        index = index + 1;
     }
     return true;
 }

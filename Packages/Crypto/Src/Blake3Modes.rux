@@ -25,9 +25,9 @@ func Blake3KeyWords(key: char8[..], words: *var uint32) {
         var word: uint32 = 0;
         var part: uint = 0;
         while part < 4u {
-            let position = index * 4u + part;
+            let position = index * 4 + part;
             let value = position < key.length ? (key.data[position] as uint8) : 0u8;
-            word = word | ((value as uint32) << ((part * 8u) as uint32));
+            word = word | ((value as uint32) << ((part * 8) as uint32));
             part = part + 1;
         }
         words[index] = word;

@@ -55,7 +55,7 @@ struct Reading {
 func BuildRatio(state: &var Reading, digits: &FixedNat, exponent: int) -> bool {
     state.numerator.Assign(digits);
     state.denominator = FixedNat();
-    if !state.denominator.SetPowerOfTwo(0u) { return false; }
+    if !state.denominator.SetPowerOfTwo(0) { return false; }
     if exponent >= 0 {
         return state.numerator.MultiplyPowerOfTen(exponent as uint);
     }
@@ -221,14 +221,14 @@ func PackFloat64(significand: uint64, exponent: int, negative: bool) -> uint64 {
         // A significand with its top bit set is normal, and the leading bit is implicit; anything narrower is a
         // subnormal and is stored as it stands with a zero exponent field.
         if (significand >> 52u64) != 0u64 {
-            let biased = ((exponent + 1075) as uint64) & 0x7FFu64;
-            bits = (biased << 52u64) | (significand & 0xFFFFFFFFFFFFFu64);
+            let biased = ((exponent + 1075) as uint64) & 0x7FF;
+            bits = (biased << 52u64) | (significand & 0xFFFFFFFFFFFFF);
         }
         else {
             bits = significand;
         }
     }
-    if negative { bits = bits | 0x8000000000000000u64; }
+    if negative { bits = bits | 0x8000000000000000; }
     return bits;
 }
 
@@ -243,14 +243,14 @@ func PackFloat32(significand: uint64, exponent: int, negative: bool) -> uint32 {
     var bits: uint32 = 0;
     if significand != 0u64 {
         if (significand >> 23u64) != 0u64 {
-            let biased = ((exponent + 150) as uint32) & 0xFFu32;
-            bits = (biased << 23u32) | ((significand as uint32) & 0x7FFFFFu32);
+            let biased = ((exponent + 150) as uint32) & 0xFF;
+            bits = (biased << 23u32) | ((significand as uint32) & 0x7FFFFF);
         }
         else {
             bits = significand as uint32;
         }
     }
-    if negative { bits = bits | 0x80000000u32; }
+    if negative { bits = bits | 0x80000000; }
     return bits;
 }
 

@@ -58,13 +58,13 @@ func StreamCounts(allocator: Allocator, text: char8[..], scalars: *var uint, ope
     var event = reader.Next();
     while event != JsonEvent::End && event != JsonEvent::Error {
         if event == JsonEvent::ObjectStart || event == JsonEvent::ArrayStart {
-            *opens = *opens + 1u;
+            *opens = *opens + 1;
         }
         else if event == JsonEvent::Name {
-            *names = *names + 1u;
+            *names = *names + 1;
         }
         else if event != JsonEvent::ObjectEnd && event != JsonEvent::ArrayEnd {
-            *scalars = *scalars + 1u;
+            *scalars = *scalars + 1;
         }
         event = reader.Next();
     }
@@ -77,7 +77,7 @@ func StreamCounts(allocator: Allocator, text: char8[..], scalars: *var uint, ope
 func TreeCounts(value: &JsonValue, scalars: *var uint, opens: *var uint, names: *var uint) {
     let kind = value.Kind();
     if kind == JsonKind::Array {
-        *opens = *opens + 1u;
+        *opens = *opens + 1;
         var index: uint = 0;
         while index < value.Length() {
             TreeCounts(*value.At(index), scalars, opens, names);
@@ -86,17 +86,17 @@ func TreeCounts(value: &JsonValue, scalars: *var uint, opens: *var uint, names: 
         return;
     }
     if kind == JsonKind::Object {
-        *opens = *opens + 1u;
+        *opens = *opens + 1;
         var index: uint = 0;
         while index < value.Length() {
-            *names = *names + 1u;
+            *names = *names + 1;
             let member = value.MemberAt(index);
             TreeCounts((*member).value, scalars, opens, names);
             index = index + 1;
         }
         return;
     }
-    *scalars = *scalars + 1u;
+    *scalars = *scalars + 1;
 }
 
 func Main() -> int {

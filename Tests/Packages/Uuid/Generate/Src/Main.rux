@@ -42,22 +42,22 @@ func Main() -> ! EntropyError {
     Assert(forcedZero.Version() == 4u8 && forcedZero.Variant() == UuidVariant::Standard, "from either extreme");
 
     // Version 7: well-formed, carrying the millisecond it was given.
-    var timed = TimeOrderedAt(1724300000000u64)?;
+    var timed = TimeOrderedAt(1724300000000)?;
     Assert(timed.Version() == 7u8, "reporting version seven");
     Assert(timed.Variant() == UuidVariant::Standard, "and the standard variant");
     Assert(MillisecondOf(timed) == 1724300000000u64, "and carrying the millisecond it was made for");
 
     // The property version 7 exists for: later times sort above earlier ones, by the ordinary byte comparison.
-    var earlier = TimeOrderedAt(1000000000000u64)?;
-    var later = TimeOrderedAt(1000000000001u64)?;
-    var muchLater = TimeOrderedAt(2000000000000u64)?;
+    var earlier = TimeOrderedAt(1000000000000)?;
+    var later = TimeOrderedAt(1000000000001)?;
+    var muchLater = TimeOrderedAt(2000000000000)?;
     Assert(earlier.Compare(later) == Ordering::Less, "one millisecond later sorts higher");
     Assert(later.Compare(muchLater) == Ordering::Less, "and much later higher still");
     Assert(muchLater.Compare(earlier) == Ordering::Greater, "in both directions");
 
     // Across a long run of increasing timestamps, the ordering never breaks.
     var step: uint = 0;
-    var lastTimed = TimeOrderedAt(1u64)?;
+    var lastTimed = TimeOrderedAt(1)?;
     while step < 300u {
         let moment = (2u + step) as uint64;
         var current = TimeOrderedAt(moment)?;
@@ -102,7 +102,7 @@ func Main() -> ! EntropyError {
     var value = Uuid::Nil();
     index = 0;
     while index < 16u {
-        value.bytes[index] = (index + 1u) as byte;
+        value.bytes[index] = (index + 1) as byte;
         index = index + 1;
     }
     var swapped = SwapGuidOrder(value);
@@ -113,7 +113,7 @@ func Main() -> ! EntropyError {
     Assert(swappedBytes.data[6] == 8u8, "and the third");
     index = 8;
     while index < 16u {
-        Assert(swappedBytes.data[index] == (index + 1u) as byte,
+        Assert(swappedBytes.data[index] == (index + 1) as byte,
                "while the last eight bytes are a byte array in both layouts and are untouched");
         index = index + 1;
     }

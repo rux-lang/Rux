@@ -140,19 +140,19 @@ extend TomlLexer {
     func Make(self: &TomlLexer, kind: TomlTokenKind, form: TomlTextForm, start: uint, end: uint) -> TomlToken {
         return TomlToken {
             kind: kind, form: form, start: start, end: end, line: self.line,
-            column: start - self.lineStart + 1u, error: TomlLexError::None
+            column: start - self.lineStart + 1, error: TomlLexError::None
         };
     }
 
     func Fail(self: &TomlLexer, reason: TomlLexError) -> TomlToken {
         return TomlToken {
             kind: TomlTokenKind::Error, form: TomlTextForm::NotText, start: self.position, end: self.position,
-            line: self.line, column: self.position - self.lineStart + 1u, error: reason
+            line: self.line, column: self.position - self.lineStart + 1, error: reason
         };
     }
 
     func At(self: &TomlLexer, offset: uint) -> uint8 {
-        if self.position + offset >= self.input.length { return 0u8; }
+        if self.position + offset >= self.input.length { return 0; }
         return self.input.data[self.position + offset] as uint8;
     }
 
@@ -162,11 +162,11 @@ extend TomlLexer {
         while self.position < self.input.length {
             let c = self.input.data[self.position] as uint8;
             if c == 0x20u8 || c == 0x09u8 {
-                self.position = self.position + 1u;
+                self.position = self.position + 1;
             }
             else if c == 0x23u8 {
                 while self.position < self.input.length && (self.input.data[self.position] as uint8) != 0x0Au8 {
-                    self.position = self.position + 1u;
+                    self.position = self.position + 1;
                 }
             }
             else {
@@ -310,7 +310,7 @@ extend TomlLexer {
                 if !digit && !separator {
                     allDigits = false;
                 }
-                index = index + 1u;
+                index = index + 1;
                 continue;
             }
             // A sign at the very start belongs to the number, so it does not stop the run of digits that a
@@ -320,20 +320,20 @@ extend TomlLexer {
                     sawDash = true;
                     allDigits = false;
                 }
-                index = index + 1u;
+                index = index + 1;
                 continue;
             }
             if c == 0x2Bu8 {
                 if index != start {
                     allDigits = false;
                 }
-                index = index + 1u;
+                index = index + 1;
                 continue;
             }
             if c == 0x3Au8 {
                 sawColon = true;
                 allDigits = false;
-                index = index + 1u;
+                index = index + 1;
                 continue;
             }
             // A dot continues the token only when it looks like part of a number or the fraction of a time;
@@ -342,16 +342,16 @@ extend TomlLexer {
             if c == 0x2Eu8 && (allDigits || sawColon) {
                 sawDot = true;
                 allDigits = false;
-                index = index + 1u;
+                index = index + 1;
                 continue;
             }
             // A space continues the token only between a date and a time, which is the one place TOML lets a
             // value contain one.
-            if c == 0x20u8 && sawDash && !sawColon && index + 1u < self.input.length {
-                let after = self.input.data[index + 1u] as uint8;
-                if after >= 0x30u8 && after <= 0x39u8 && self.LooksLikeTime(index + 1u) {
+            if c == 0x20u8 && sawDash && !sawColon && index + 1 < self.input.length {
+                let after = self.input.data[index + 1] as uint8;
+                if after >= 0x30u8 && after <= 0x39u8 && self.LooksLikeTime(index + 1) {
                     sawColon = true;
-                    index = index + 2u;
+                    index = index + 2;
                     continue;
                 }
             }
@@ -391,29 +391,29 @@ extend TomlLexer {
         while index < 4u {
             let c = self.input.data[start + index] as uint8;
             if c < 0x30u8 || c > 0x39u8 { return false; }
-            index = index + 1u;
+            index = index + 1;
         }
-        return (self.input.data[start + 4u] as uint8) == 0x2Du8;
+        return (self.input.data[start + 4] as uint8) == 0x2Du8;
     }
 
     func LooksLikeTime(self: &TomlLexer, at: uint) -> bool {
         // `HH:MM`, the shortest thing that can follow a date across a space.
-        if at + 4u >= self.input.length { return false; }
-        return (self.input.data[at + 2u] as uint8) == 0x3Au8;
+        if at + 4 >= self.input.length { return false; }
+        return (self.input.data[at + 2] as uint8) == 0x3Au8;
     }
 
     // A hexadecimal float is not TOML, so an `e` that could be a hex digit only counts as an exponent when the
     // number is decimal — which is why this looks at the prefix first.
     func HasExponent(self: &TomlLexer, start: uint, end: uint) -> bool {
         if end - start > 2u && (self.input.data[start] as uint8) == 0x30u8 {
-            let radix = self.input.data[start + 1u] as uint8;
+            let radix = self.input.data[start + 1] as uint8;
             if radix == 0x78u8 || radix == 0x6Fu8 || radix == 0x62u8 { return false; }
         }
         var index = start;
         while index < end {
             let c = self.input.data[index] as uint8;
             if c == 0x65u8 || c == 0x45u8 { return true; }
-            index = index + 1u;
+            index = index + 1;
         }
         return false;
     }
@@ -423,7 +423,7 @@ extend TomlLexer {
         var index: uint = 0;
         while index < word.length {
             if self.input.data[start + index] != word.data[index] { return false; }
-            index = index + 1u;
+            index = index + 1;
         }
         return true;
     }
@@ -442,60 +442,60 @@ extend TomlLexer {
         let c = self.input.data[self.position] as uint8;
         if c == 0x0Du8 || c == 0x0Au8 {
             let start = self.position;
-            let token = self.Make(TomlTokenKind::Newline, TomlTextForm::NotText, start, start + 1u);
+            let token = self.Make(TomlTokenKind::Newline, TomlTextForm::NotText, start, start + 1);
             if c == 0x0Du8 {
-                self.position = self.position + 1u;
+                self.position = self.position + 1;
                 if self.position < self.input.length && (self.input.data[self.position] as uint8) == 0x0Au8 {
-                    self.position = self.position + 1u;
+                    self.position = self.position + 1;
                 }
             }
             else {
-                self.position = self.position + 1u;
+                self.position = self.position + 1;
             }
-            self.line = self.line + 1u;
+            self.line = self.line + 1;
             self.lineStart = self.position;
             return token;
         }
         if c == 0x22u8 || c == 0x27u8 { return self.LexText(c); }
         if c == 0x3Du8 {
             let token = self.Make(TomlTokenKind::Equals, TomlTextForm::NotText, self.position,
-                                  self.position + 1u);
-            self.position = self.position + 1u;
+                                  self.position + 1);
+            self.position = self.position + 1;
             return token;
         }
         if c == 0x2Eu8 {
-            let token = self.Make(TomlTokenKind::Dot, TomlTextForm::NotText, self.position, self.position + 1u);
-            self.position = self.position + 1u;
+            let token = self.Make(TomlTokenKind::Dot, TomlTextForm::NotText, self.position, self.position + 1);
+            self.position = self.position + 1;
             return token;
         }
         if c == 0x2Cu8 {
             let token = self.Make(TomlTokenKind::Comma, TomlTextForm::NotText, self.position,
-                                  self.position + 1u);
-            self.position = self.position + 1u;
+                                  self.position + 1);
+            self.position = self.position + 1;
             return token;
         }
         if c == 0x5Bu8 {
             let token = self.Make(TomlTokenKind::LeftBracket, TomlTextForm::NotText, self.position,
-                                  self.position + 1u);
-            self.position = self.position + 1u;
+                                  self.position + 1);
+            self.position = self.position + 1;
             return token;
         }
         if c == 0x5Du8 {
             let token = self.Make(TomlTokenKind::RightBracket, TomlTextForm::NotText, self.position,
-                                  self.position + 1u);
-            self.position = self.position + 1u;
+                                  self.position + 1);
+            self.position = self.position + 1;
             return token;
         }
         if c == 0x7Bu8 {
             let token = self.Make(TomlTokenKind::LeftBrace, TomlTextForm::NotText, self.position,
-                                  self.position + 1u);
-            self.position = self.position + 1u;
+                                  self.position + 1);
+            self.position = self.position + 1;
             return token;
         }
         if c == 0x7Du8 {
             let token = self.Make(TomlTokenKind::RightBrace, TomlTextForm::NotText, self.position,
-                                  self.position + 1u);
-            self.position = self.position + 1u;
+                                  self.position + 1);
+            self.position = self.position + 1;
             return token;
         }
         if TomlLexer::IsBareKeyByte(c) || c == 0x2Bu8 { return self.LexBare(); }
@@ -541,27 +541,27 @@ pub func TomlDecodeText(allocator: Allocator, span: char8[..], form: TomlTextFor
             // accented letter beside an escape would quietly disappear.
             var run = index;
             while run < span.length && (span.data[run] as uint8) != 0x5Cu8 {
-                run = run + 1u;
+                run = run + 1;
             }
             let piece = (@span.data[index])[..run - index];
             builder.AppendBytes(piece)?;
             index = run;
             continue;
         }
-        index = index + 1u;
+        index = index + 1;
         if index >= span.length {
             *bad = true;
             break;
         }
         let kind = span.data[index] as uint8;
-        index = index + 1u;
+        index = index + 1;
         if kind == 0x75u8 || kind == 0x55u8 || kind == 0x78u8 {
             var digits: uint = 8;
             if kind == 0x75u8 {
-                digits = 4u;
+                digits = 4;
             }
             else if kind == 0x78u8 {
-                digits = 2u;
+                digits = 2;
             }
             if index + digits > span.length {
                 *bad = true;
@@ -599,11 +599,11 @@ pub func TomlDecodeText(allocator: Allocator, span: char8[..], form: TomlTextFor
             builder.AppendAscii(kind as char8)?;
         }
         else if multiline && (kind == 0x0Au8 || kind == 0x0Du8 || kind == 0x20u8 || kind == 0x09u8) {
-            index = index - 1u;
+            index = index - 1;
             while index < span.length {
                 let w = span.data[index] as uint8;
                 if w != 0x20u8 && w != 0x09u8 && w != 0x0Au8 && w != 0x0Du8 { break; }
-                index = index + 1u;
+                index = index + 1;
             }
         }
         else {
@@ -622,16 +622,16 @@ func TomlHexRun(span: char8[..], at: uint, count: uint) -> uint32 {
         let c = span.data[at + index] as uint8;
         var digit: uint32 = 0;
         if c >= 0x30u8 && c <= 0x39u8 {
-            digit = (c - 0x30u8) as uint32;
+            digit = (c - 0x30) as uint32;
         }
         else if c >= 0x61u8 && c <= 0x66u8 {
-            digit = (c - 0x61u8 + 10u8) as uint32;
+            digit = (c - 0x61 + 10) as uint32;
         }
         else {
-            digit = (c - 0x41u8 + 10u8) as uint32;
+            digit = (c - 0x41 + 10) as uint32;
         }
         value = (value << 4u32) | digit;
-        index = index + 1u;
+        index = index + 1;
     }
     return value;
 }

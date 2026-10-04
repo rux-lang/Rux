@@ -16,7 +16,7 @@ func Shape(text: char8[..]) -> uint {
         if event == TomlEvent::End || event == TomlEvent::Error {
             return count;
         }
-        count = count + 1u;
+        count = count + 1;
     }
     return count;
 }

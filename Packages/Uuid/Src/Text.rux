@@ -81,10 +81,10 @@ extend UuidParseError : ParseFailure {
 
 // The value of one hexadecimal digit, or sixteen for anything else.
 func HexValue(c: uint8) -> uint8 {
-    if c >= 0x30u8 && c <= 0x39u8 { return c - 0x30u8; }
-    if c >= 0x61u8 && c <= 0x66u8 { return c - 0x61u8 + 10u8; }
-    if c >= 0x41u8 && c <= 0x46u8 { return c - 0x41u8 + 10u8; }
-    return 16u8;
+    if c >= 0x30u8 && c <= 0x39u8 { return c - 0x30; }
+    if c >= 0x61u8 && c <= 0x66u8 { return c - 0x61 + 10; }
+    if c >= 0x41u8 && c <= 0x46u8 { return c - 0x41 + 10; }
+    return 16;
 }
 
 // Where the four hyphens belong in the canonical form.
@@ -115,14 +115,14 @@ pub func Parse(text: char8[..]) -> Uuid ! UuidParseError {
         while index < 9u {
             var mine = text.data[index] as uint8;
             if mine >= 0x41u8 && mine <= 0x5Au8 {
-                mine = mine + 32u8;
+                mine = mine + 32;
             }
             if mine != (prefix.data[index] as uint8) {
                 fail UuidParseError::BadPrefix(index);
             }
             index = index + 1;
         }
-        start = 9u;
+        start = 9;
     }
     else if text.length != UuidTextLength {
         // Too short, and the offset is the end of the text, where the character that is missing would go. Too long,
@@ -156,7 +156,7 @@ pub func Parse(text: char8[..]) -> Uuid ! UuidParseError {
             }
             if haveHigh {
                 value.bytes[byteIndex] = (pending << 4u8) | digit;
-                byteIndex = byteIndex + 1u;
+                byteIndex = byteIndex + 1;
                 haveHigh = false;
             }
             else {
@@ -164,7 +164,7 @@ pub func Parse(text: char8[..]) -> Uuid ! UuidParseError {
                 haveHigh = true;
             }
         }
-        position = position + 1u;
+        position = position + 1;
     }
     return value;
 }
@@ -196,12 +196,12 @@ func WriteCanonicalInto(value: &Uuid, into: var char8[..]) {
             into.data[position] = 0x2Du8 as char8;
         }
         else {
-            let octet = value.bytes[byteIndex / 2u];
+            let octet = value.bytes[byteIndex / 2];
             let nibble = (byteIndex % 2u) == 0u ? (octet >> 4u8) : (octet & 0x0Fu8);
             into.data[position] = digits.data[nibble as uint];
-            byteIndex = byteIndex + 1u;
+            byteIndex = byteIndex + 1;
         }
-        position = position + 1u;
+        position = position + 1;
     }
 }
 
@@ -243,7 +243,7 @@ pub func FormatUpper(value: &Uuid, into: var char8[..]) -> ! FormatError {
     while index < UuidTextLength {
         let c = into.data[index] as uint8;
         if c >= 0x61u8 && c <= 0x7Au8 {
-            into.data[index] = (c - 32u8) as char8;
+            into.data[index] = (c - 32) as char8;
         }
         index = index + 1;
     }

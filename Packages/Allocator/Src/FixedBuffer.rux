@@ -54,7 +54,7 @@ extend FixedBuffer {
         let base = storage == null ? 0u : storage as uint;
         return FixedBuffer {
             start: base,
-            capacity: base == 0 ? 0u : capacity,
+            capacity: base == 0 ? 0 : capacity,
             used: 0,
             lastAllocation: 0
         };

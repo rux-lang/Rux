@@ -47,7 +47,7 @@ func PrepareQuotient(state: &var Quotient, significand: uint64, exponent: int, p
     state.denominator = FixedNat();
     if exponent >= 0 {
         if !state.numerator.ShiftLeft(exponent as uint) { return false; }
-        if !state.denominator.SetPowerOfTwo(0u) { return false; }
+        if !state.denominator.SetPowerOfTwo(0) { return false; }
     }
     else {
         if !state.denominator.SetPowerOfTwo((0 - exponent) as uint) { return false; }
@@ -55,19 +55,19 @@ func PrepareQuotient(state: &var Quotient, significand: uint64, exponent: int, p
 
     var scaled: int = 0;
     while state.numerator.Compare(state.denominator) >= 0i32 {
-        if !state.denominator.MultiplySmall(10u64) { return false; }
+        if !state.denominator.MultiplySmall(10) { return false; }
         scaled = scaled + 1;
     }
     // Ten times the value still below one means the first significant digit is further down, so the numerator
     // climbs until it is not.
     var reach = FixedNat();
     reach.Assign(state.numerator);
-    if !reach.MultiplySmall(10u64) { return false; }
+    if !reach.MultiplySmall(10) { return false; }
     while reach.Compare(state.denominator) < 0i32 {
-        if !state.numerator.MultiplySmall(10u64) { return false; }
+        if !state.numerator.MultiplySmall(10) { return false; }
         scaled = scaled - 1;
         reach.Assign(state.numerator);
-        if !reach.MultiplySmall(10u64) { return false; }
+        if !reach.MultiplySmall(10) { return false; }
     }
     *power = scaled;
     return true;
@@ -79,7 +79,7 @@ func TakeDigit(state: &var Quotient) -> uint64 {
     var digit: uint64 = 0;
     while state.numerator.Compare(state.denominator) >= 0i32 {
         state.numerator.Subtract(state.denominator);
-        digit = digit + 1u64;
+        digit = digit + 1;
     }
     return digit;
 }
@@ -123,9 +123,9 @@ pub func PrecisionDigits(significand: uint64, exponent: int, precision: uint, in
     if wanted > 0 {
         if (wanted as uint) > into.length { return false; }
         while produced < (wanted as uint) {
-            if !state.numerator.MultiplySmall(10u64) { return false; }
-            into.data[produced] = (TakeDigit(state) + 0x30u64) as char8;
-            produced = produced + 1u;
+            if !state.numerator.MultiplySmall(10) { return false; }
+            into.data[produced] = (TakeDigit(state) + 0x30) as char8;
+            produced = produced + 1;
         }
     }
 
@@ -134,37 +134,37 @@ pub func PrecisionDigits(significand: uint64, exponent: int, precision: uint, in
     // implicit last digit is a zero, which is even, so a tie stays down.
     var twice = FixedNat();
     twice.Assign(state.numerator);
-    if !twice.ShiftLeft(1u) { return false; }
+    if !twice.ShiftLeft(1) { return false; }
     let order = twice.Compare(state.denominator);
     var roundUp = order > 0i32;
     if order == 0i32 && produced > 0u {
-        roundUp = ((into.data[produced - 1u] as uint32) - 0x30u32) % 2u32 == 1u32;
+        roundUp = ((into.data[produced - 1] as uint32) - 0x30) % 2 == 1u32;
     }
 
     if roundUp {
         var index = produced;
         var carry = true;
         while carry && index > 0u {
-            index = index - 1u;
+            index = index - 1;
             if into.data[index] == c8'9' {
                 into.data[index] = c8'0';
             }
             else {
-                into.data[index] = ((into.data[index] as uint32) + 1u32) as char8;
+                into.data[index] = ((into.data[index] as uint32) + 1) as char8;
                 carry = false;
             }
         }
         if carry {
             // The carry ran off the front: every digit was a nine, so the value rounds up to a one in the place
             // above them. 9.99 at one decimal is 10.0.
-            if produced + 1u > into.length { return false; }
+            if produced + 1 > into.length { return false; }
             var back = produced;
             while back > 0u {
-                into.data[back] = into.data[back - 1u];
-                back = back - 1u;
+                into.data[back] = into.data[back - 1];
+                back = back - 1;
             }
             into.data[0] = c8'1';
-            produced = produced + 1u;
+            produced = produced + 1;
             scaled = scaled + 1;
         }
     }
@@ -199,7 +199,7 @@ pub func WritePrecisionFloat(cursor: &var ByteCursor, parts: FloatParts, precisi
             var zeros: uint = 0;
             while zeros < precision {
                 cursor.Push(c8'0');
-                zeros = zeros + 1u;
+                zeros = zeros + 1;
             }
         }
         return true;
@@ -222,7 +222,7 @@ pub func WritePrecisionFloat(cursor: &var ByteCursor, parts: FloatParts, precisi
         var index: uint = 0;
         while index < (power as uint) {
             cursor.Push(index < count ? digits[index] : c8'0');
-            index = index + 1u;
+            index = index + 1;
         }
     }
     if precision == 0u { return true; }
@@ -234,13 +234,13 @@ pub func WritePrecisionFloat(cursor: &var ByteCursor, parts: FloatParts, precisi
     var leading = power < 0 ? (0 - power) as uint : 0u;
     while written < leading && written < precision {
         cursor.Push(c8'0');
-        written = written + 1u;
+        written = written + 1;
     }
     var from = power > 0 ? (power as uint) : 0u;
     while written < precision {
         cursor.Push(from < count ? digits[from] : c8'0');
-        from = from + 1u;
-        written = written + 1u;
+        from = from + 1;
+        written = written + 1;
     }
     return true;
 }
@@ -272,7 +272,7 @@ pub func WritePrecision(writer: &var TextWriter, spec: FormatSpec, parts: FloatP
     var rendered = cursor.Written();
     if spec.ShowsSign() && rendered.length > 0 && rendered.data[0] != c8'-' {
         storage[1] = c8'+';
-        rendered = (@storage[1])[..rendered.length + 1u];
+        rendered = (@storage[1])[..rendered.length + 1];
     }
     return WriteAligned(writer, spec, rendered, true);
 }

@@ -36,7 +36,7 @@ extend SourceHandle : Reader {
         }
         var index: uint = 0;
         while index < give {
-            into.data[index] = ((state.served + index) % 26u + 0x61u) as char8;
+            into.data[index] = ((state.served + index) % 26 + 0x61) as char8;
             index = index + 1;
         }
         state.served = state.served + give;

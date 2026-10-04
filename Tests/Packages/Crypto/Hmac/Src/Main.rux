@@ -17,15 +17,15 @@ func FromHex(text: char8[..], into: var char8[..]) {
         var value: uint8 = 0;
         var half: uint = 0;
         while half < 2u {
-            let c = text.data[index * 2u + half] as uint8;
+            let c = text.data[index * 2 + half] as uint8;
             var digit: uint8 = 0;
             if c >= 0x30u8 && c <= 0x39u8 {
-                digit = c - 0x30u8;
+                digit = c - 0x30;
             }
             else {
-                digit = c - 0x61u8 + 10u8;
+                digit = c - 0x61 + 10;
             }
-            value = value * 16u8 + digit;
+            value = value * 16 + digit;
             half = half + 1;
         }
         into.data[index] = value as char8;
@@ -102,7 +102,7 @@ func Main() -> int {
     var secondTag: char8[32];
     let keyA = (@stretched[0])[..200];
     HmacOf<Sha256>(Sha256(), keyA, TextBytes("message"), (@firstTag[0])[..32]);
-    stretched[250] = (stretched[250] as uint8 ^ 0xFFu8) as char8;
+    stretched[250] = (stretched[250] as uint8 ^ 0xFF) as char8;
     let keyB = (@stretched[0])[..200];
     HmacOf<Sha256>(Sha256(), keyB, TextBytes("message"), (@secondTag[0])[..32]);
     Assert(Equal((@firstTag[0])[..32],
@@ -110,7 +110,7 @@ func Main() -> int {
            "a change past the key's used length changes nothing, since the key was already hashed");
 
     // A change inside the key does change the tag.
-    stretched[10] = (stretched[10] as uint8 ^ 0xFFu8) as char8;
+    stretched[10] = (stretched[10] as uint8 ^ 0xFF) as char8;
     let keyC = (@stretched[0])[..200];
     var thirdTag: char8[32];
     HmacOf<Sha256>(Sha256(), keyC, TextBytes("message"), (@thirdTag[0])[..32]);
@@ -122,7 +122,7 @@ func Main() -> int {
     var message: char8[500];
     index = 0;
     while index < 500u {
-        message[index] = ((index % 251u) as uint8) as char8;
+        message[index] = ((index % 251) as uint8) as char8;
         index = index + 1;
     }
     let whole = (@message[0])[..500];
@@ -140,7 +140,7 @@ func Main() -> int {
         state.Finish((@got[0])[..32]);
         Assert(Equal((@got[0])[..32], oneShotBytes),
                "every split of a message gives the same tag");
-        split = split + 25u;
+        split = split + 25;
     }
 
     // An empty key and an empty message are both legal.

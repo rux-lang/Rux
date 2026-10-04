@@ -101,10 +101,10 @@ func Main() -> int {
 
     // char32: an element is a character or it is nothing, and only a cast makes it nothing.
     Assert(Same(Render(allocator, "{}", c32'A'), "A"), "a scalar is itself");
-    Assert(Same(Render(allocator, "{}", AsChar32(0xD800u32)), "\u{FFFD}"), "a surrogate is not a scalar");
-    Assert(Same(Render(allocator, "{}", AsChar32(0x110000u32)), "\u{FFFD}"), "nor is a value past the last one");
-    let surrogate32: Debug = AsChar32(0xD800u32);
-    let past32: Debug = AsChar32(0x110000u32);
+    Assert(Same(Render(allocator, "{}", AsChar32(0xD800)), "\u{FFFD}"), "a surrogate is not a scalar");
+    Assert(Same(Render(allocator, "{}", AsChar32(0x110000)), "\u{FFFD}"), "nor is a value past the last one");
+    let surrogate32: Debug = AsChar32(0xD800);
+    let past32: Debug = AsChar32(0x110000);
     Assert(Inspected(surrogate32, "'\\u{d800}'"), "Debug keeps the surrogate");
     Assert(Inspected(past32, "'\\u{00110000}'"), "and the out-of-range value");
 
@@ -112,12 +112,12 @@ func Main() -> int {
     // the check has to happen before the narrowing rather than after it.
     Assert(Same(Render(allocator, "{}", c32'A' as char64), "A"), "a scalar at the widest character width");
     Assert(Same(Render(allocator, "{}", c32'\u{1F600}' as char64), "😀"), "including a supplementary one");
-    Assert(Same(Render(allocator, "{}", AsChar64(0x100000041u64)), "\u{FFFD}"),
+    Assert(Same(Render(allocator, "{}", AsChar64(0x100000041)), "\u{FFFD}"),
            "a value whose low thirty-two bits spell A is still not a character");
-    let disguised: Debug = AsChar64(0x100000041u64);
+    let disguised: Debug = AsChar64(0x100000041);
     Assert(Inspected(disguised, "'\\u{0000000100000041}'"),
            "and Debug shows the whole of it, which is what proves the check ran at the full width");
-    Assert(Same(Render(allocator, "{}", AsChar64(0xD800u64)), "\u{FFFD}"), "a surrogate is refused at this width too");
+    Assert(Same(Render(allocator, "{}", AsChar64(0xD800)), "\u{FFFD}"), "a surrogate is refused at this width too");
     let letter64: Debug = c32'A' as char64;
     Assert(Inspected(letter64, "'A'"), "and an ordinary character is quoted");
 
@@ -126,7 +126,7 @@ func Main() -> int {
     let backslash: Debug = c8'\\';
     let newline: Debug = c8'\n';
     let zero: Debug = 0x00u8 as char8;
-    let control: Debug = AsChar32(0x01u32);
+    let control: Debug = AsChar32(0x01);
     Assert(Inspected(quote, "'\\''"), "a quote is escaped");
     Assert(Inspected(backslash, "'\\\\'"), "and a backslash");
     Assert(Inspected(newline, "'\\n'"), "and a newline gets its short form");
@@ -137,7 +137,7 @@ func Main() -> int {
     var wide: char32[4];
     wide[0] = c32'a';
     wide[1] = c32'\u{1F600}';
-    wide[2] = AsChar32(0xD800u32);
+    wide[2] = AsChar32(0xD800);
     wide[3] = c32'b';
     let wideView: char32[..] = (@wide[0])[..4];
     let wideDebug: Debug = wideView;
@@ -151,7 +151,7 @@ func Main() -> int {
     var other: char32[4];
     other[0] = c32'a';
     other[1] = c32'\u{1F600}';
-    other[2] = AsChar32(0x110000u32);
+    other[2] = AsChar32(0x110000);
     other[3] = c32'b';
     let otherView: char32[..] = (@other[0])[..4];
     let otherDebug: Debug = otherView;

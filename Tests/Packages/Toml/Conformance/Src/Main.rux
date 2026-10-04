@@ -980,7 +980,7 @@ func Same(left: char8[..], right: char8[..]) -> bool {
         if left.data[index] != right.data[index] {
             return false;
         }
-        index = index + 1u;
+        index = index + 1;
     }
     return true;
 }
@@ -1001,7 +1001,7 @@ func StreamedScalars(text: char8[..], clean: *var bool) -> uint {
         }
         if event == TomlEvent::Text || event == TomlEvent::Integer || event == TomlEvent::Float ||
             event == TomlEvent::Boolean || event == TomlEvent::DateTime {
-            count = count + 1u;
+            count = count + 1;
         }
     }
     *clean = false;
@@ -1016,7 +1016,7 @@ func TreeScalars(value: &TomlValue) -> uint {
         var index: uint = 0;
         while index < value.Length() {
             total = total + TreeScalars((*value.EntryAt(index)).value);
-            index = index + 1u;
+            index = index + 1;
         }
         return total;
     }
@@ -1025,11 +1025,11 @@ func TreeScalars(value: &TomlValue) -> uint {
         var index: uint = 0;
         while index < value.Length() {
             total = total + TreeScalars(*value.At(index));
-            index = index + 1u;
+            index = index + 1;
         }
         return total;
     }
-    return 1u;
+    return 1;
 }
 
 // A document this test knows TOML accepts. A refusal hands back nothing, so there is nothing to fall back on and
@@ -1083,7 +1083,7 @@ func Main() -> int {
         var again = Accepted(allocator, once, Reparsed(index));
         let twice = Render(again, (@second[0])[..8192]);
         Assert(Same(once, twice), Fixed(index));
-        index = index + 1u;
+        index = index + 1;
     }
 
     // Every document TOML refuses, refused — and refused with a position, not merely a flag.
@@ -1093,7 +1093,7 @@ func Main() -> int {
         let outcome = TomlParse(allocator, text);
         Assert(Refused(outcome), Refusal(index));
         Assert(Positioned(outcome), "reported at a position a reader can find, in bytes and in line and column");
-        index = index + 1u;
+        index = index + 1;
     }
 
     // The differential check: the tree parser and the streaming reader must agree about every accepted
@@ -1107,7 +1107,7 @@ func Main() -> int {
         let streamed = StreamedScalars(text, @clean);
         Assert(clean, Differential(index));
         Assert(streamed == TreeScalars(parsed), Differential(index));
-        index = index + 1u;
+        index = index + 1;
     }
 
     // And they must agree about refusals of syntax. The streaming reader cannot catch a table defined twice,
@@ -1125,7 +1125,7 @@ func Main() -> int {
             StreamedScalars(text, @clean);
             Assert(!clean, Refusal(index));
         }
-        index = index + 1u;
+        index = index + 1;
     }
 
     return 0;

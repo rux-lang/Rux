@@ -20,7 +20,7 @@ func Main() -> int {
         otherKey[index] = (index as uint8) as char8;
         index = index + 1;
     }
-    otherKey[31] = (otherKey[31] as uint8 ^ 1u8) as char8;
+    otherKey[31] = (otherKey[31] as uint8 ^ 1) as char8;
     let keyBytes = (@key[0])[..32];
     let otherKeyBytes = (@otherKey[0])[..32];
 
@@ -53,7 +53,7 @@ func Main() -> int {
     var long: char8[3000];
     index = 0;
     while index < 3000u {
-        long[index] = ((index % 251u) as uint8) as char8;
+        long[index] = ((index % 251) as uint8) as char8;
         index = index + 1;
     }
     let longBytes = (@long[0])[..3000];

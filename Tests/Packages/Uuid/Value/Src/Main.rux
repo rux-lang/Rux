@@ -17,7 +17,7 @@ func Main() -> int {
     var raw: byte[16];
     var index: uint = 0;
     while index < 16u {
-        raw[index] = (index * 17u) as byte;
+        raw[index] = (index * 17) as byte;
         index = index + 1;
     }
     let rawBytes = (@raw[0])[..16];
@@ -76,7 +76,7 @@ func Main() -> int {
     }
     var first: uint = 0;
     while first < 16u {
-        var second = first + 1u;
+        var second = first + 1;
         while second < 16u {
             Assert(hashes[first] != hashes[second], "values differing in one byte hash differently");
             second = second + 1;

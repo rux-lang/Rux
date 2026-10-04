@@ -117,6 +117,6 @@ func WriteFloat(cursor: &var ByteCursor, value: float32) {
     // would give the shortest decimal for the wider value, which is a different and longer number.
     let parts = DecomposeFloat32(value);
     if !WriteShortestFloat(cursor, parts, ScientificFrom32) {
-        WriteDecimal(cursor, value as float64, 9u);
+        WriteDecimal(cursor, value as float64, 9);
     }
 }

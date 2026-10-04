@@ -59,9 +59,9 @@ func CheckParsedValues() -> int {
 func CheckParseErrors() -> int {
     var code = CheckParseError("", ParseError::Empty, 110);
     if code != 0 { return code; }
-    code = CheckParseError("12x", ParseError::InvalidCharacter(2u), 111);
+    code = CheckParseError("12x", ParseError::InvalidCharacter(2), 111);
     if code != 0 { return code; }
-    return CheckParseError("1e400", ParseError::Overflow(5u), 112);
+    return CheckParseError("1e400", ParseError::Overflow(5), 112);
 }
 
 func CheckParseOverloads() -> int {

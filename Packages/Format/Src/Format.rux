@@ -164,7 +164,7 @@ pub func WriteFormat(writer: &var TextWriter, format: char8[..], args: Display..
         }
         if (ch as uint32) < 0x80u32 {
             WriteAscii(writer, ch)?;
-            index += 1u;
+            index += 1;
         } else {
             // Writers accept complete UTF-8 characters. Passing each byte through WriteAscii rejects valid text.
             var width: uint = 0;

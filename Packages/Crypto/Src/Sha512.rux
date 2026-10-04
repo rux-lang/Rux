@@ -92,7 +92,7 @@ extend Sha512 {
         var index: uint = 0;
         while index < 128u {
             buffer[index] = 0u8 as char8;
-            index = index + 1u;
+            index = index + 1;
         }
         return Sha512 { state: initial, buffer: buffer, buffered: 0, length: 0, outputLength: outputLength };
     }
@@ -102,7 +102,7 @@ extend Sha512 {
     /// @returns a hasher producing a 512-bit digest
     /// @see https://rux-lang.dev/docs/api/crypto/sha512/new
     pub func Sha512() -> Sha512 {
-        return Sha512::Start(Sha512InitialState, 64u);
+        return Sha512::Start(Sha512InitialState, 64);
     }
 
     /// A SHA-384 state.
@@ -110,7 +110,7 @@ extend Sha512 {
     /// @returns a hasher producing a 384-bit digest
     /// @see https://rux-lang.dev/docs/api/crypto/sha512/new-384
     pub func New384() -> Sha512 {
-        return Sha512::Start(Sha384InitialState, 48u);
+        return Sha512::Start(Sha384InitialState, 48);
     }
 
     /// A SHA-512/224 state.
@@ -118,7 +118,7 @@ extend Sha512 {
     /// @returns a hasher producing SHA-512/224
     /// @see https://rux-lang.dev/docs/api/crypto/sha512/new-trunc224
     pub func NewTrunc224() -> Sha512 {
-        return Sha512::Start(Sha512Trunc224InitialState, 28u);
+        return Sha512::Start(Sha512Trunc224InitialState, 28);
     }
 
     /// A SHA-512/256 state.
@@ -126,7 +126,7 @@ extend Sha512 {
     /// @returns a hasher producing SHA-512/256
     /// @see https://rux-lang.dev/docs/api/crypto/sha512/new-trunc256
     pub func NewTrunc256() -> Sha512 {
-        return Sha512::Start(Sha512Trunc256InitialState, 32u);
+        return Sha512::Start(Sha512Trunc256InitialState, 32);
     }
 
     // One block of a hundred and twenty eight bytes.
@@ -137,18 +137,18 @@ extend Sha512 {
             var word: uint64 = 0;
             var part: uint = 0;
             while part < 8u {
-                word = (word << 8u64) | (block[index * 8u + part] as uint8 as uint64);
+                word = (word << 8u64) | (block[index * 8 + part] as uint8 as uint64);
                 part = part + 1;
             }
             schedule[index] = word;
             index = index + 1;
         }
         while index < 80u {
-            let previous = schedule[index - 15u];
-            let recent = schedule[index - 2u];
-            let s0 = RotateRight64(previous, 1u64) ^ RotateRight64(previous, 8u64) ^ (previous >> 7u64);
-            let s1 = RotateRight64(recent, 19u64) ^ RotateRight64(recent, 61u64) ^ (recent >> 6u64);
-            schedule[index] = schedule[index - 16u] + s0 + schedule[index - 7u] + s1;
+            let previous = schedule[index - 15];
+            let recent = schedule[index - 2];
+            let s0 = RotateRight64(previous, 1) ^ RotateRight64(previous, 8) ^ (previous >> 7u64);
+            let s1 = RotateRight64(recent, 19) ^ RotateRight64(recent, 61) ^ (recent >> 6u64);
+            schedule[index] = schedule[index - 16] + s0 + schedule[index - 7] + s1;
             index = index + 1;
         }
 
@@ -163,10 +163,10 @@ extend Sha512 {
 
         index = 0;
         while index < 80u {
-            let sigma1 = RotateRight64(e, 14u64) ^ RotateRight64(e, 18u64) ^ RotateRight64(e, 41u64);
+            let sigma1 = RotateRight64(e, 14) ^ RotateRight64(e, 18) ^ RotateRight64(e, 41);
             let choose = (e & f) ^ ((~e) & g);
             let temp1 = h + sigma1 + choose + Sha512RoundConstants[index] + schedule[index];
-            let sigma0 = RotateRight64(a, 28u64) ^ RotateRight64(a, 34u64) ^ RotateRight64(a, 39u64);
+            let sigma0 = RotateRight64(a, 28) ^ RotateRight64(a, 34) ^ RotateRight64(a, 39);
             let majority = (a & b) ^ (a & c) ^ (b & c);
             let temp2 = sigma0 + majority;
             h = g;
@@ -202,7 +202,7 @@ extend Sha512 : Digest {
         if self.buffered > 0u {
             while index < bytes.length && self.buffered < 128u {
                 self.buffer[self.buffered] = bytes[index];
-                self.buffered = self.buffered + 1u;
+                self.buffered = self.buffered + 1;
                 index = index + 1;
             }
             if self.buffered == 128u {
@@ -210,13 +210,13 @@ extend Sha512 : Digest {
                 self.buffered = 0;
             }
         }
-        while index + 128u <= bytes.length {
+        while index + 128 <= bytes.length {
             self.Compress(@bytes[index]);
-            index = index + 128u;
+            index = index + 128;
         }
         while index < bytes.length {
             self.buffer[self.buffered] = bytes[index];
-            self.buffered = self.buffered + 1u;
+            self.buffered = self.buffered + 1;
             index = index + 1;
         }
     }
@@ -283,7 +283,7 @@ extend Sha512 : Digest {
     /// @returns how many bytes the compression function consumes at a time
     /// @see https://rux-lang.dev/docs/api/crypto/sha512/block-length
     pub func BlockLength(self: &Sha512) -> uint {
-        return 128u;
+        return 128;
     }
 }
 

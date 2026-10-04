@@ -71,7 +71,7 @@ func Prepare(state: &var Ratio, significand: uint64, exponent: int, atBinadeBott
         let shift = exponent as uint;
         if !state.numerator.ShiftLeft(shift + scale) { return false; }
         if !state.denominator.SetPowerOfTwo(scale) { return false; }
-        if !state.upperGap.SetPowerOfTwo(shift + scale - 1u) { return false; }
+        if !state.upperGap.SetPowerOfTwo(shift + scale - 1) { return false; }
         if !state.lowerGap.SetPowerOfTwo(shift) { return false; }
         if !atBinadeBottom { state.lowerGap.Assign(state.upperGap); }
         return true;
@@ -79,8 +79,8 @@ func Prepare(state: &var Ratio, significand: uint64, exponent: int, atBinadeBott
     let shift = (0 - exponent) as uint;
     if !state.numerator.ShiftLeft(scale) { return false; }
     if !state.denominator.SetPowerOfTwo(shift + scale) { return false; }
-    if !state.upperGap.SetPowerOfTwo(scale - 1u) { return false; }
-    if !state.lowerGap.SetPowerOfTwo(0u) { return false; }
+    if !state.upperGap.SetPowerOfTwo(scale - 1) { return false; }
+    if !state.lowerGap.SetPowerOfTwo(0) { return false; }
     if !atBinadeBottom { state.lowerGap.Assign(state.upperGap); }
     return true;
 }
@@ -95,7 +95,7 @@ func Scale(state: &var Ratio, inclusive: bool, exponent10: *var int) -> bool {
     var power: int = 0;
     // Too large: the value reaches the first digit position, so the denominator climbs until it does not.
     while SumExceeds(state.numerator, state.upperGap, state.denominator, inclusive) {
-        if !state.denominator.MultiplySmall(10u64) { return false; }
+        if !state.denominator.MultiplySmall(10) { return false; }
         power = power + 1;
     }
     // Too small: ten times the value still would not reach the first digit position, so everything but the
@@ -104,16 +104,16 @@ func Scale(state: &var Ratio, inclusive: bool, exponent10: *var int) -> bool {
     var reach = FixedNat();
     reach.Assign(state.numerator);
     if !reach.Add(state.upperGap) { return false; }
-    if !reach.MultiplySmall(10u64) { return false; }
+    if !reach.MultiplySmall(10) { return false; }
     var short = inclusive ? reach.Compare(state.denominator) < 0i32 : reach.Compare(state.denominator) <= 0i32;
     while short {
-        if !state.numerator.MultiplySmall(10u64) { return false; }
-        if !state.upperGap.MultiplySmall(10u64) { return false; }
-        if !state.lowerGap.MultiplySmall(10u64) { return false; }
+        if !state.numerator.MultiplySmall(10) { return false; }
+        if !state.upperGap.MultiplySmall(10) { return false; }
+        if !state.lowerGap.MultiplySmall(10) { return false; }
         power = power - 1;
         reach.Assign(state.numerator);
         if !reach.Add(state.upperGap) { return false; }
-        if !reach.MultiplySmall(10u64) { return false; }
+        if !reach.MultiplySmall(10) { return false; }
         short = inclusive ? reach.Compare(state.denominator) < 0i32 : reach.Compare(state.denominator) <= 0i32;
     }
     *exponent10 = power;
@@ -126,7 +126,7 @@ func NextDigit(state: &var Ratio) -> uint64 {
     var digit: uint64 = 0;
     while state.numerator.Compare(state.denominator) >= 0i32 {
         state.numerator.Subtract(state.denominator);
-        digit = digit + 1u64;
+        digit = digit + 1;
     }
     return digit;
 }
@@ -171,15 +171,15 @@ pub func ShortestDigits(significand: uint64, exponent: int, atBinadeBottom: bool
     // A decimal exactly on a gap boundary is acceptable when reading it back would round to this value, which for
     // an even significand it would: round-to-nearest-even lands on the even one. So every boundary test here is
     // inclusive for an even significand and strict for an odd one, in the scaling as well as in the generation.
-    let inclusive = (significand % 2u64) == 0u64;
+    let inclusive = (significand % 2) == 0u64;
     var power: int = 0;
     if !Scale(state, inclusive, @power) { return false; }
 
     var written: uint = 0;
     while written < MaximumShortestDigits {
-        if !state.numerator.MultiplySmall(10u64) { return false; }
-        if !state.upperGap.MultiplySmall(10u64) { return false; }
-        if !state.lowerGap.MultiplySmall(10u64) { return false; }
+        if !state.numerator.MultiplySmall(10) { return false; }
+        if !state.upperGap.MultiplySmall(10) { return false; }
+        if !state.lowerGap.MultiplySmall(10) { return false; }
         var digit = NextDigit(state);
 
         // Below the lower gap: what is left is nearer this value than the neighbour under it, so stopping here
@@ -188,8 +188,8 @@ pub func ShortestDigits(significand: uint64, exponent: int, atBinadeBottom: bool
         let low = inclusive ? order <= 0i32 : order < 0i32;
         let high = SumExceeds(state.numerator, state.upperGap, state.denominator, inclusive);
         if !low && !high {
-            into.data[written] = (digit + 0x30u64) as char8;
-            written = written + 1u;
+            into.data[written] = (digit + 0x30) as char8;
+            written = written + 1;
             continue;
         }
         if low && high {
@@ -197,14 +197,14 @@ pub func ShortestDigits(significand: uint64, exponent: int, atBinadeBottom: bool
             // which. A tie goes down, which keeps the digit the value's own rather than its neighbour's.
             var twice = FixedNat();
             twice.Assign(state.numerator);
-            if !twice.ShiftLeft(1u) { return false; }
-            if twice.Compare(state.denominator) > 0i32 { digit = digit + 1u64; }
+            if !twice.ShiftLeft(1) { return false; }
+            if twice.Compare(state.denominator) > 0i32 { digit = digit + 1; }
         }
         else if high {
-            digit = digit + 1u64;
+            digit = digit + 1;
         }
-        into.data[written] = (digit + 0x30u64) as char8;
-        written = written + 1u;
+        into.data[written] = (digit + 0x30) as char8;
+        written = written + 1;
         *count = written;
         *exponent10 = power - 1;
         return true;

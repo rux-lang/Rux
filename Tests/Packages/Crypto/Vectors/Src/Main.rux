@@ -27,7 +27,7 @@ func BitsDiffering(left: char8[..], right: char8[..]) -> uint {
     while index < left.length && index < right.length {
         var difference = (left.data[index] as uint8) ^ (right.data[index] as uint8);
         while difference != 0u8 {
-            count = count + (difference & 1u8) as uint;
+            count = count + (difference & 1) as uint;
             difference = difference >> 1u8;
         }
         index = index + 1;
@@ -114,16 +114,16 @@ func HashWith(which: uint, message: char8[..], into: var char8[..]) {
 func Main() -> int {
     // Avalanche, on every algorithm the package offers — including the legacy pair, which are broken for
     // collisions and still diffuse properly, since that is not what broke them.
-    CheckAvalanche(32u, 0u, "SHA-256 diffuses a single flipped bit across about half its output");
-    CheckAvalanche(64u, 1u, "SHA-512 diffuses a single flipped bit");
-    CheckAvalanche(32u, 2u, "SHA3-256 diffuses a single flipped bit");
-    CheckAvalanche(32u, 3u, "BLAKE3 diffuses a single flipped bit");
-    CheckAvalanche(32u, 4u, "SHAKE128 diffuses a single flipped bit");
-    CheckAvalanche(28u, 5u, "SHA-224 diffuses a single flipped bit");
-    CheckAvalanche(48u, 6u, "SHA-384 diffuses a single flipped bit");
-    CheckAvalanche(64u, 7u, "SHA3-512 diffuses a single flipped bit");
-    CheckAvalanche(20u, 8u, "SHA-1 diffuses a single flipped bit");
-    CheckAvalanche(16u, 9u, "MD5 diffuses a single flipped bit");
+    CheckAvalanche(32, 0, "SHA-256 diffuses a single flipped bit across about half its output");
+    CheckAvalanche(64, 1, "SHA-512 diffuses a single flipped bit");
+    CheckAvalanche(32, 2, "SHA3-256 diffuses a single flipped bit");
+    CheckAvalanche(32, 3, "BLAKE3 diffuses a single flipped bit");
+    CheckAvalanche(32, 4, "SHAKE128 diffuses a single flipped bit");
+    CheckAvalanche(28, 5, "SHA-224 diffuses a single flipped bit");
+    CheckAvalanche(48, 6, "SHA-384 diffuses a single flipped bit");
+    CheckAvalanche(64, 7, "SHA3-512 diffuses a single flipped bit");
+    CheckAvalanche(20, 8, "SHA-1 diffuses a single flipped bit");
+    CheckAvalanche(16, 9, "MD5 diffuses a single flipped bit");
 
     // Boundary lengths: the exact block, rate and chunk sizes of every algorithm, and one either side of each.
     // A padding mistake shows at exactly one of these lengths and nowhere else.
@@ -131,7 +131,7 @@ func Main() -> int {
     var message: char8[2100];
     var index: uint = 0;
     while index < 2100u {
-        message[index] = ((index % 251u) as uint8) as char8;
+        message[index] = ((index % 251) as uint8) as char8;
         index = index + 1;
     }
 
@@ -149,7 +149,7 @@ func Main() -> int {
             Assert(Equal((@oneShot[0])[..32],
                          (@again[0])[..32]),
                    "a boundary length hashes deterministically");
-            let shorter = (@message[0])[..length - 1u];
+            let shorter = (@message[0])[..length - 1];
             var shorterHash: char8[64];
             HashWith(which, shorter, (@shorterHash[0])[..32]);
             Assert(!Equal((@oneShot[0])[..32],
@@ -183,7 +183,7 @@ func Main() -> int {
         Assert(Equal((@direct[0])[..32],
                      (@piecedOut[0])[..32]),
                "BLAKE3 agrees across its chunk boundary whatever the feed size");
-        let shorter = (@message[0])[..length - 1u];
+        let shorter = (@message[0])[..length - 1];
         var shorterHash: char8[32];
         Blake3Of(shorter, (@shorterHash[0])[..32]);
         Assert(!Equal((@direct[0])[..32],
@@ -197,15 +197,15 @@ func Main() -> int {
     var digests: char8[320];
     which = 0;
     while which < 10u {
-        HashWith(which, "the same message", (@digests[which * 32u])[..16]);
+        HashWith(which, "the same message", (@digests[which * 32])[..16]);
         which = which + 1;
     }
     var first: uint = 0;
     while first < 10u {
-        var second = first + 1u;
+        var second = first + 1;
         while second < 10u {
-            Assert(!Equal((@digests[first * 32u])[..16],
-                          (@digests[second * 32u])[..16]),
+            Assert(!Equal((@digests[first * 32])[..16],
+                          (@digests[second * 32])[..16]),
                    "no two algorithms produce the same digest for one message");
             second = second + 1;
         }

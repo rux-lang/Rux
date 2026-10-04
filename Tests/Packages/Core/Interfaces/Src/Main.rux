@@ -70,7 +70,7 @@ struct Span {
 
 extend Span : Iterable {
     func Iterate(self: &Span) -> Counter {
-        return Counter { next: 0i32, limit: self.limit };
+        return Counter { next: 0, limit: self.limit };
     }
 }
 
@@ -90,9 +90,9 @@ func Digest<T: Hashable>(value: &T) -> uint64 {
 
 func Main() -> int {
     // Equality is an equivalence: reflexive, symmetric, and agreeing with hashing.
-    let low = Card { value: 3i32 };
-    let alsoLow = Card { value: 3i32 };
-    let high = Card { value: 9i32 };
+    let low = Card { value: 3 };
+    let alsoLow = Card { value: 3 };
+    let high = Card { value: 9 };
     Assert(Matches<Card>(low, low), "Equality is reflexive");
     Assert(Matches<Card>(low, alsoLow), "Equal cards compare equal");
     Assert(Matches<Card>(alsoLow, low), "Equality reads the same in either order");
@@ -115,18 +115,18 @@ func Main() -> int {
     // The iteration protocol, driven by shape: a `for` over an iterable, and the
     // cursor advanced by hand.
     var total: int32 = 0;
-    let span = Span { limit: 5i32 };
+    let span = Span { limit: 5 };
     for value in span {
         total += value;
     }
     Assert(total == 10i32, "A for loop reads an iterable to its end");
 
-    var cursor = Counter { next: 0i32, limit: 3i32 };
+    var cursor = Counter { next: 0, limit: 3 };
     var seen: int32 = 0;
     var count: int32 = 0;
     var item = cursor.Next();
     while item is int32 {
-        seen += item ?? 0i32;
+        seen += item ?? 0;
         count += 1;
         item = cursor.Next();
     }
@@ -135,20 +135,20 @@ func Main() -> int {
     Assert(!(cursor.Next() is int32), "An exhausted iterator keeps reporting the end");
 
     // An empty sequence reports the end immediately.
-    var empty = Counter { next: 0i32, limit: 0i32 };
+    var empty = Counter { next: 0, limit: 0 };
     Assert(!(empty.Next() is int32), "An empty iterator reports the end at once");
 
     // A droppable value is move-only: passing it by value consumes it, and the
     // value that was moved into the call is the one that arrives.
     var drops: int32 = 0;
-    let guard = Guard { value: 5i32, drops: @drops };
+    let guard = Guard { value: 5, drops: @drops };
     Assert(Spend(<-guard) == 5i32, "A droppable value is passed by consuming it");
     Assert(drops == 1i32, "The consumed value is destroyed in the callee");
 
     // Reinitializing after a complete move gives a fresh value to consume.
-    var reused = Guard { value: 7i32, drops: @drops };
+    var reused = Guard { value: 7, drops: @drops };
     Assert(Spend(<-reused) == 7i32, "A move-only value can be consumed once");
-    reused <- Guard { value: 11i32, drops: @drops };
+    reused <- Guard { value: 11, drops: @drops };
     Assert(Spend(<-reused) == 11i32, "And consumed again after being reinitialized");
     Assert(drops == 3i32, "Each owned value is destroyed exactly once");
 

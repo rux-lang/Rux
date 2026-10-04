@@ -12,17 +12,17 @@ extend uint16 {
     /// The number of bits in the representation.
     ///
     /// @see https://rux-lang.dev/docs/api/core/uint16/bits
-    pub const Bits: uint = 16u;
+    pub const Bits: uint = 16;
     /// The number of bytes in the representation.
     ///
     /// @see https://rux-lang.dev/docs/api/core/uint16/bytes
-    pub const Bytes: uint = 2u;
+    pub const Bytes: uint = 2;
     /// The smallest representable value.
     ///
     /// @see https://rux-lang.dev/docs/api/core/uint16/min
-    pub const Min: uint16 = 0u16;
+    pub const Min: uint16 = 0;
     /// The largest representable value.
     ///
     /// @see https://rux-lang.dev/docs/api/core/uint16/max
-    pub const Max: uint16 = 65535u16;
+    pub const Max: uint16 = 65535;
 }

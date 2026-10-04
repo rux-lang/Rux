@@ -28,9 +28,9 @@ pub func WriteUint(cursor: &var ByteCursor, value: uint64) {
     var length: uint = 0;
     var rest = value;
     while rest > 0u64 {
-        digits[length] = (rest % 10u64 + 48u64) as char8;
+        digits[length] = (rest % 10 + 48) as char8;
         length++;
-        rest /= 10u64;
+        rest /= 10;
     }
 
     var index = length;
@@ -52,7 +52,7 @@ pub func WriteUint(cursor: &var ByteCursor, value: uint64) {
 pub func WriteInt(cursor: &var ByteCursor, value: int64) {
     if value < 0i64 {
         cursor.Push(c8'-');
-        WriteUint(cursor, ~(value as uint64) + 1u64);
+        WriteUint(cursor, ~(value as uint64) + 1);
         return;
     }
     WriteUint(cursor, value as uint64);

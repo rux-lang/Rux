@@ -299,7 +299,7 @@ extend JsonValue {
     pub func Length(self: &JsonValue) -> uint {
         if self.kind == JsonKind::Array { return self.elements.Length(); }
         if self.kind == JsonKind::Object { return self.members.Length(); }
-        return 0u;
+        return 0;
     }
 }
 
@@ -406,7 +406,7 @@ extend JsonValue {
         }
         if target >= self.members.Length() { return false; }
         var tail = Vector<JsonMember>(self.allocator);
-        while self.members.Length() > target + 1u {
+        while self.members.Length() > target + 1 {
             var moved = JsonMember { name: String(self.allocator), value: JsonValue::Null(self.allocator) };
             if !self.members.TryPop(@moved) { break; }
             tail.Push(<-moved) catch { else => {} };

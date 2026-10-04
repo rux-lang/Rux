@@ -33,7 +33,7 @@ func DecomposeHangul(offset: uint32, into: var char32[..], at: uint, written: *v
     let lead = HangulLeadBase + offset / (HangulVowelCount * HangulTrailCount);
     let vowel = HangulVowelBase + (offset % (HangulVowelCount * HangulTrailCount)) / HangulTrailCount;
     let trail = offset % HangulTrailCount;
-    let needed: uint = trail == 0u32 ? 2u : 3u;
+    let needed: uint = trail == 0u32 ? 2 : 3;
     if at + needed > into.length { return false; }
     into[at] = lead as char32;
     into[at + 1] = vowel as char32;

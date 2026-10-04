@@ -39,12 +39,12 @@ func Refuses(allocator: Allocator, text: char8[..], expected: char8[..]) -> bool
     // Everything up to " at " is the case and whatever it carries; the position follows.
     var cut = length;
     var index: uint = 0;
-    while index + 4u <= length {
+    while index + 4 <= length {
         if Same((@storage[index])[..4], " at ") {
             cut = index;
             break;
         }
-        index = index + 1u;
+        index = index + 1;
     }
     return Same((@storage[0])[..cut], expected);
 }
@@ -89,13 +89,13 @@ struct CountingAllocator {
 extend CountingAllocator : Allocator {
     func Allocate(self: &var CountingAllocator, layout: Layout) -> (*var opaque) ! AllocError {
         let block = self.state.inner.Allocate(layout)?;
-        self.state.live = self.state.live + 1i32;
+        self.state.live = self.state.live + 1;
         return block;
     }
 
     func Deallocate(self: &var CountingAllocator, block: *var opaque, layout: Layout) -> ! AllocError {
         self.state.inner.Deallocate(block, layout)?;
-        self.state.live = self.state.live - 1i32;
+        self.state.live = self.state.live - 1;
     }
 
     func Reallocate(self: &var CountingAllocator, block: *var opaque, oldLayout: Layout, newLayout: Layout)
@@ -143,7 +143,7 @@ func Main() -> int {
     var array = Accepts(allocator, "ports = [ 8001, 8002,\n  8003 ]", "an array");
     Assert((*array.Find(View("ports"))).Length() == 3u, "spanning lines, with the newlines ignored inside it");
     var mixed = Accepts(allocator, "values = [ 1, \"two\", 3.0, true ]", "an array of mixed kinds");
-    Assert((*(*mixed.Find(View("values"))).At(1u)).Kind() == TomlKind::Text,
+    Assert((*(*mixed.Find(View("values"))).At(1)).Kind() == TomlKind::Text,
            "which TOML permits, unlike its ancestors");
 
     // TOML 1.1 allows a newline and a trailing comma inside an inline table, which 1.0 did not.
@@ -157,13 +157,13 @@ func Main() -> int {
                            "an array of tables");
     Assert((*products.Find(View("product"))).Kind() == TomlKind::Array, "is an array");
     Assert((*products.Find(View("product"))).Length() == 2u, "with one element per header");
-    Assert((*(*(*products.Find(View("product"))).At(1u)).Find(View("name"))).AsText().Length() == 4u,
+    Assert((*(*(*products.Find(View("product"))).At(1)).Find(View("name"))).AsText().Length() == 4u,
            "each holding the lines that followed it");
 
     // A header may descend through the most recent element of an array of tables.
     var deep = Accepts(allocator, "[[fruit]]\nname = \"apple\"\n[fruit.variety]\nname = \"red\"",
                        "a header under an array of tables");
-    Assert((*(*(*deep.Find(View("fruit"))).At(0u)).Find(View("variety"))).Find(View("name")) != null,
+    Assert((*(*(*deep.Find(View("fruit"))).At(0)).Find(View("variety"))).Find(View("name")) != null,
            "belongs to the element still being written");
 
     // The three ways of defining a table twice, each reported as itself.
@@ -245,7 +245,7 @@ func Main() -> int {
     // duplicate key on the last line, a bad number after a hundred good ones — so by the time the parser stops it
     // is holding most of a document, every string of it allocated. Those used to go back to the caller; now they
     // are released, and the count is what says so.
-    var state = CountState { inner: allocator, live: 0i32 };
+    var state = CountState { inner: allocator, live: 0 };
     var counting = CountingAllocator { state: @state };
     let tracked: Allocator = counting;
 

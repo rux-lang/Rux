@@ -25,7 +25,7 @@ func Main() -> int {
     while power <= 1023i64 {
         Assert(Log2(ScaleByPowerOfTwo(1.0, power)) == (power as float64),
                "the base-two logarithm of a power of two is that power exactly");
-        power = power + 1i64;
+        power = power + 1;
     }
 
     // Base ten, exact on the powers of ten that are exactly representable.
@@ -42,7 +42,7 @@ func Main() -> int {
     while probe < 300u {
         let value = (probe as float64) * 0.813;
         Assert(UlpDistance(Exp(Log(value)), value) <= 4u64, "exp undoes log");
-        Assert(UlpDistance(Log2(ScaleByPowerOfTwo(value, 0i64)) * 0.6931471805599453, Log(value)) <= 8u64,
+        Assert(UlpDistance(Log2(ScaleByPowerOfTwo(value, 0)) * 0.6931471805599453, Log(value)) <= 8u64,
                "and the two bases agree up to their scaling factor");
         probe = probe + 1;
     }
@@ -51,7 +51,7 @@ func Main() -> int {
     // is exactly zero while the true answer is x.
     Assert(Log1p(0.0) == 0.0 && !SignBit(Log1p(0.0)), "log1p of zero is zero");
     Assert(SignBit(Log1p(-0.0)), "and of a negative zero keeps its sign");
-    let tiny = ScaleByPowerOfTwo(1.0, -60i64);
+    let tiny = ScaleByPowerOfTwo(1.0, -60);
     Assert(Log(1.0 + tiny) == 0.0, "log of one plus a tiny argument loses it entirely");
     Assert(Log1p(tiny) == tiny, "while log1p returns it unchanged, which is the true answer to full precision");
     let small = 1.0e-12;

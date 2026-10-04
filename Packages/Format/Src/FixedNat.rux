@@ -55,8 +55,8 @@ pub struct FixedNat {
 
 // Drops the leading zero limbs, which is the invariant every operation restores before returning.
 func Normalize(value: &var FixedNat) {
-    while value.length > 0u && value.limbs[value.length - 1u] == 0u64 {
-        value.length = value.length - 1u;
+    while value.length > 0u && value.limbs[value.length - 1] == 0u64 {
+        value.length = value.length - 1;
     }
 }
 
@@ -69,14 +69,14 @@ func ScaleInPlace(value: &var FixedNat, factor: uint64, addend: uint64) -> bool 
         // A 64-by-64 product needs 128 bits, and the language has them, so the split is a cast rather than the
         // usual dance with halves.
         let wide = (value.limbs[index] as uint128) * (factor as uint128) + (carry as uint128);
-        value.limbs[index] = (wide & 0xFFFFFFFFFFFFFFFFu128) as uint64;
+        value.limbs[index] = (wide & 0xFFFFFFFFFFFFFFFF) as uint64;
         carry = (wide >> 64u128) as uint64;
-        index = index + 1u;
+        index = index + 1;
     }
     if carry != 0u64 {
         if value.length >= FixedNatLimbs { return false; }
         value.limbs[value.length] = carry;
-        value.length = value.length + 1u;
+        value.length = value.length + 1;
     }
     Normalize(value);
     return true;
@@ -91,15 +91,15 @@ func AddInPlace(value: &var FixedNat, other: &FixedNat) -> bool {
         let mine = index < value.length ? value.limbs[index] : 0u64;
         let theirs = index < other.length ? other.limbs[index] : 0u64;
         let sum = (mine as uint128) + (theirs as uint128) + (carry as uint128);
-        value.limbs[index] = (sum & 0xFFFFFFFFFFFFFFFFu128) as uint64;
+        value.limbs[index] = (sum & 0xFFFFFFFFFFFFFFFF) as uint64;
         carry = (sum >> 64u128) as uint64;
-        index = index + 1u;
+        index = index + 1;
     }
     value.length = wider;
     if carry != 0u64 {
         if value.length >= FixedNatLimbs { return false; }
         value.limbs[value.length] = carry;
-        value.length = value.length + 1u;
+        value.length = value.length + 1;
     }
     Normalize(value);
     return true;
@@ -113,7 +113,7 @@ extend FixedNat {
     /// @returns the value zero
     /// @see https://rux-lang.dev/docs/api/format/fixed-nat/new
     pub func FixedNat() -> FixedNat {
-        return FixedNat { limbs: [0u64; 64], length: 0 };
+        return FixedNat { limbs: [0; 64], length: 0 };
     }
 
     /// The value `initial`.
@@ -149,15 +149,15 @@ extend FixedNat {
     /// @returns the position one past the highest set bit
     /// @see https://rux-lang.dev/docs/api/format/fixed-nat/bit-length
     pub func BitLength(self: &FixedNat) -> uint {
-        if self.length == 0u { return 0u; }
-        let top = self.limbs[self.length - 1u];
+        if self.length == 0u { return 0; }
+        let top = self.limbs[self.length - 1];
         var bits: uint = 0;
         var rest = top;
         while rest > 0u64 {
-            bits = bits + 1u;
+            bits = bits + 1;
             rest = rest >> 1u64;
         }
-        return (self.length - 1u) * 64u + bits;
+        return (self.length - 1) * 64 + bits;
     }
 
     /// How this value orders against `other`.
@@ -168,15 +168,15 @@ extend FixedNat {
     /// @returns -1 when this is smaller, 0 when they are equal, and 1 when this is larger
     /// @see https://rux-lang.dev/docs/api/format/fixed-nat/compare
     pub func Compare(self: &FixedNat, other: &FixedNat) -> int32 {
-        if self.length != other.length { return self.length < other.length ? -1i32 : 1i32; }
+        if self.length != other.length { return self.length < other.length ? -1 : 1; }
         var index = self.length;
         while index > 0u {
-            index = index - 1u;
+            index = index - 1;
             if self.limbs[index] != other.limbs[index] {
-                return self.limbs[index] < other.limbs[index] ? -1i32 : 1i32;
+                return self.limbs[index] < other.limbs[index] ? -1 : 1;
             }
         }
-        return 0i32;
+        return 0;
     }
 
     /// Replaces this value with `other`.
@@ -189,7 +189,7 @@ extend FixedNat {
         var index: uint = 0;
         while index < FixedNatLimbs {
             self.limbs[index] = other.limbs[index];
-            index = index + 1u;
+            index = index + 1;
         }
         self.length = other.length;
     }
@@ -229,7 +229,7 @@ extend FixedNat {
     /// @returns true when the result fits
     /// @see https://rux-lang.dev/docs/api/format/fixed-nat/multiply-small
     pub func MultiplySmall(self: &var FixedNat, factor: uint64) -> bool {
-        return self.MultiplyAddSmall(factor, 0u64);
+        return self.MultiplyAddSmall(factor, 0);
     }
 
     /// Adds `addend`.
@@ -241,7 +241,7 @@ extend FixedNat {
     /// @returns true when the result fits
     /// @see https://rux-lang.dev/docs/api/format/fixed-nat/add-small
     pub func AddSmall(self: &var FixedNat, addend: uint64) -> bool {
-        return self.MultiplyAddSmall(1u64, addend);
+        return self.MultiplyAddSmall(1, addend);
     }
 
     /// Shifts left by `bits`, which multiplies by two to that power.
@@ -323,13 +323,13 @@ extend FixedNat {
             let taken = (theirs as uint128) + (borrow as uint128);
             if mine >= taken {
                 self.limbs[index] = (mine - taken) as uint64;
-                borrow = 0u64;
+                borrow = 0;
             }
             else {
-                self.limbs[index] = ((mine + 0x10000000000000000u128) - taken) as uint64;
-                borrow = 1u64;
+                self.limbs[index] = ((mine + 0x10000000000000000) - taken) as uint64;
+                borrow = 1;
             }
-            index = index + 1u;
+            index = index + 1;
         }
         Normalize(self);
     }
@@ -351,15 +351,15 @@ extend FixedNat {
     pub func MultiplyPowerOfTen(self: &var FixedNat, power: uint) -> bool {
         var remaining = power;
         while remaining >= 19u {
-            if !self.MultiplySmall(10000000000000000000u64) { return false; }
-            remaining = remaining - 19u;
+            if !self.MultiplySmall(10000000000000000000) { return false; }
+            remaining = remaining - 19;
         }
         if remaining == 0u { return true; }
         var factor: uint64 = 1;
         var step: uint = 0;
         while step < remaining {
-            factor = factor * 10u64;
-            step = step + 1u;
+            factor = factor * 10;
+            step = step + 1;
         }
         return self.MultiplySmall(factor);
     }
@@ -392,6 +392,6 @@ extend FixedNat {
     /// @returns the least significant limb, or zero
     /// @see https://rux-lang.dev/docs/api/format/fixed-nat/low64
     pub func Low64(self: &FixedNat) -> uint64 {
-        return self.length == 0u ? 0u64 : self.limbs[0];
+        return self.length == 0u ? 0 : self.limbs[0];
     }
 }

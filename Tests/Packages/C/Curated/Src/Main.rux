@@ -11,9 +11,9 @@ import C::{ fclose, fgetc, fopen, fseek, ftell, fwrite, memcmp, remove, strlen }
 func CompareInt32(left: *opaque, right: *opaque) -> int32 {
     let first = *(left as *int32);
     let second = *(right as *int32);
-    if first < second { return -1i32; }
-    if first > second { return 1i32; }
-    return 0i32;
+    if first < second { return -1; }
+    if first > second { return 1; }
+    return 0;
 }
 
 func Main() -> int {

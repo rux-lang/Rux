@@ -14,7 +14,7 @@ import Core::{ Assert, Panic };
 // than only in whether it crashed.
 
 func HashInt32(value: int32, low: uint64, high: uint64) -> uint64 {
-    return (value as uint64) * 2u64;
+    return (value as uint64) * 2;
 }
 
 func Main() -> int {

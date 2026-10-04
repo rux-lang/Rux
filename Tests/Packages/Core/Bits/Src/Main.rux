@@ -12,7 +12,7 @@ func CheckWidth<T>(zero: T, one: T, allOnes: T) -> int32 {
     let two = one + one;
 
     // The width follows from the type alone.
-    if bits != sizeof(T) * 8u64 { return 1; }
+    if bits != sizeof(T) * 8 { return 1; }
 
     // Counting, at both ends of the range.
     if CountOnes<T>(zero) != 0u32 { return 2; }
@@ -29,36 +29,36 @@ func CheckWidth<T>(zero: T, one: T, allOnes: T) -> int32 {
 
     // One at the bottom: nothing below it, everything but one bit above it.
     if TrailingZeros<T>(one) != 0u32 { return 11; }
-    if LeadingZeros<T>(one) != bits as uint32 - 1u32 { return 12; }
+    if LeadingZeros<T>(one) != bits as uint32 - 1 { return 12; }
     if TrailingOnes<T>(one) != 1u32 { return 13; }
     if LeadingOnes<T>(one) != 0u32 { return 14; }
 
     // Two is one bit up, whatever the width.
     if TrailingZeros<T>(two) != 1u32 { return 15; }
-    if LeadingZeros<T>(two) != bits as uint32 - 2u32 { return 16; }
+    if LeadingZeros<T>(two) != bits as uint32 - 2 { return 16; }
 
     // Reading individual bits, including past the end.
-    if !BitAt<T>(one, 0u64) { return 17; }
-    if BitAt<T>(one, 1u64) { return 18; }
-    if !BitAt<T>(allOnes, bits - 1u64) { return 19; }
+    if !BitAt<T>(one, 0) { return 17; }
+    if BitAt<T>(one, 1) { return 18; }
+    if !BitAt<T>(allOnes, bits - 1) { return 19; }
     if BitAt<T>(allOnes, bits) { return 20; }
 
     // A logical shift brings zeros in at either signedness, which is the whole reason it exists.
-    if ShiftRightLogical<T>(allOnes, 1u64) != (one << (bits - 1u64)) - one { return 21; }
+    if ShiftRightLogical<T>(allOnes, 1) != (one << (bits - 1)) - one { return 21; }
     if ShiftRightLogical<T>(allOnes, bits) != zero { return 22; }
-    if ShiftRightLogical<T>(allOnes, 0u64) != allOnes { return 23; }
-    if CountOnes<T>(ShiftRightLogical<T>(allOnes, 1u64)) != bits as uint32 - 1u32 { return 24; }
+    if ShiftRightLogical<T>(allOnes, 0) != allOnes { return 23; }
+    if CountOnes<T>(ShiftRightLogical<T>(allOnes, 1)) != bits as uint32 - 1 { return 24; }
 
     // Rotation loses nothing: the top bit comes back at the bottom and a full turn is the identity.
-    if RotateLeft<T>(one, bits - 1u64) != one << (bits - 1u64) { return 25; }
-    if RotateLeft<T>(one << (bits - 1u64), 1u64) != one { return 26; }
-    if RotateRight<T>(one, 1u64) != one << (bits - 1u64) { return 27; }
-    if RotateLeft<T>(allOnes, 3u64) != allOnes { return 28; }
+    if RotateLeft<T>(one, bits - 1) != one << (bits - 1) { return 25; }
+    if RotateLeft<T>(one << (bits - 1), 1) != one { return 26; }
+    if RotateRight<T>(one, 1) != one << (bits - 1) { return 27; }
+    if RotateLeft<T>(allOnes, 3) != allOnes { return 28; }
     if RotateLeft<T>(two, bits) != two { return 29; }
-    if RotateRight<T>(RotateLeft<T>(two, 5u64), 5u64) != two { return 30; }
+    if RotateRight<T>(RotateLeft<T>(two, 5), 5) != two { return 30; }
 
     // Reversal is its own inverse, and moves the lowest bit to the highest place.
-    if ReverseBits<T>(one) != one << (bits - 1u64) { return 31; }
+    if ReverseBits<T>(one) != one << (bits - 1) { return 31; }
     if ReverseBits<T>(ReverseBits<T>(two)) != two { return 32; }
     if ReverseBits<T>(allOnes) != allOnes { return 33; }
     if ReverseBytes<T>(ReverseBytes<T>(two)) != two { return 34; }
@@ -70,7 +70,7 @@ func CheckWidth<T>(zero: T, one: T, allOnes: T) -> int32 {
         if ReverseBytes<T>(one) != one { return 37; }
     }
     else {
-        if ReverseBytes<T>(one) != one << (bits - 8u64) { return 38; }
+        if ReverseBytes<T>(one) != one << (bits - 8) { return 38; }
     }
 
     // Exactly one bit set, asked about bits rather than magnitude.
@@ -78,7 +78,7 @@ func CheckWidth<T>(zero: T, one: T, allOnes: T) -> int32 {
     if !IsPowerOfTwo<T>(one) { return 40; }
     if !IsPowerOfTwo<T>(two) { return 41; }
     if IsPowerOfTwo<T>(one + two) { return 42; }
-    if bits > 8u64 && !IsPowerOfTwo<T>(one << (bits - 1u64)) { return 43; }
+    if bits > 8u64 && !IsPowerOfTwo<T>(one << (bits - 1)) { return 43; }
 
     // Converting to a named order and back is the identity, whichever order this target has.
     if FromLittleEndian<T>(ToLittleEndian<T>(two)) != two { return 44; }
@@ -106,8 +106,8 @@ func CheckBytes<T>(value: T, zero: T) -> int32 {
     StoreLittleEndian<T>(value, @little[0]);
     var index: uint64 = 0;
     while index < sizeof(T) {
-        if little[index] != buffer[sizeof(T) - index - 1u64] { return 3; }
-        index = index + 1u64;
+        if little[index] != buffer[sizeof(T) - index - 1] { return 3; }
+        index = index + 1;
     }
 
     // Reading a big-endian pattern back through the other order gives the byte-reversed value.

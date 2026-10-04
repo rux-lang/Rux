@@ -143,7 +143,7 @@ extend Sha3 {
     /// @returns a hasher producing a 224-bit digest
     /// @see https://rux-lang.dev/docs/api/crypto/sha3/new-224
     pub func New224() -> Sha3 {
-        return Sha3::Start(28u, 0x06u8);
+        return Sha3::Start(28, 0x06);
     }
 
     /// A SHA3-256 state.
@@ -151,7 +151,7 @@ extend Sha3 {
     /// @returns a hasher producing a 256-bit digest
     /// @see https://rux-lang.dev/docs/api/crypto/sha3/new-256
     pub func New256() -> Sha3 {
-        return Sha3::Start(32u, 0x06u8);
+        return Sha3::Start(32, 0x06);
     }
 
     /// A SHA3-384 state.
@@ -159,7 +159,7 @@ extend Sha3 {
     /// @returns a hasher producing a 384-bit digest
     /// @see https://rux-lang.dev/docs/api/crypto/sha3/new-384
     pub func New384() -> Sha3 {
-        return Sha3::Start(48u, 0x06u8);
+        return Sha3::Start(48, 0x06);
     }
 
     /// A SHA3-512 state.
@@ -167,14 +167,14 @@ extend Sha3 {
     /// @returns a hasher producing a 512-bit digest
     /// @see https://rux-lang.dev/docs/api/crypto/sha3/new-512
     pub func New512() -> Sha3 {
-        return Sha3::Start(64u, 0x06u8);
+        return Sha3::Start(64, 0x06);
     }
 
     // Exclusive-ors one byte into the state at the given position, which is how absorption works: the message
     // is mixed into the state rather than replacing any of it.
     func AbsorbByte(self: &var Sha3, position: uint, value: uint8) {
-        let lane = position / 8u;
-        let shift = ((position % 8u) * 8u) as uint64;
+        let lane = position / 8;
+        let shift = ((position % 8) * 8) as uint64;
         self.lanes[lane] = self.lanes[lane] ^ ((value as uint64) << shift);
     }
 }
@@ -188,7 +188,7 @@ extend Sha3 : Digest {
         var index: uint = 0;
         while index < bytes.length {
             self.AbsorbByte(self.absorbed, bytes[index] as uint8);
-            self.absorbed = self.absorbed + 1u;
+            self.absorbed = self.absorbed + 1;
             if self.absorbed == self.rate {
                 KeccakPermute(@self.lanes[0]);
                 self.absorbed = 0;
@@ -207,7 +207,7 @@ extend Sha3 : Digest {
     /// @see https://rux-lang.dev/docs/api/crypto/sha3/finish
     pub func Finish(self: &var Sha3, into: var char8[..]) {
         self.AbsorbByte(self.absorbed, self.domain);
-        self.AbsorbByte(self.rate - 1u, 0x80u8);
+        self.AbsorbByte(self.rate - 1, 0x80);
         KeccakPermute(@self.lanes[0]);
 
         var written: uint = 0;
@@ -218,12 +218,12 @@ extend Sha3 : Digest {
                 KeccakPermute(@self.lanes[0]);
             }
             let position = written % self.rate;
-            let lane = self.lanes[position / 8u];
-            let shift = ((position % 8u) * 8u) as uint64;
+            let lane = self.lanes[position / 8];
+            let shift = ((position % 8) * 8) as uint64;
             if written < into.length {
-                into[written] = ((lane >> shift) & 0xFFu64) as uint8 as char8;
+                into[written] = ((lane >> shift) & 0xFF) as uint8 as char8;
             }
-            written = written + 1u;
+            written = written + 1;
         }
         self.absorbed = 0;
     }

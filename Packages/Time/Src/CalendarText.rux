@@ -63,8 +63,8 @@ func WriteFixed(writer: &var TextWriter, value: uint32, width: uint) -> ! Format
     var rest = value;
     while index > 0 {
         index = index - 1;
-        digits[index] = ((rest % 10u32) + 0x30u32) as char8;
-        rest = rest / 10u32;
+        digits[index] = ((rest % 10) + 0x30) as char8;
+        rest = rest / 10;
     }
     return WriteBytes(writer, (@digits[0])[..width]);
 }
@@ -79,13 +79,13 @@ func WriteYear(writer: &var TextWriter, year: int32) -> ! FormatError {
         WriteAscii(writer, c8'-')?;
         let magnitude = (0i32 - year) as uint32;
         if magnitude > 9999u32 { return WriteWide(writer, magnitude); }
-        return WriteFixed(writer, magnitude, 4u);
+        return WriteFixed(writer, magnitude, 4);
     }
     if year > 9999i32 {
         WriteAscii(writer, c8'+')?;
         return WriteWide(writer, year as uint32);
     }
-    return WriteFixed(writer, year as uint32, 4u);
+    return WriteFixed(writer, year as uint32, 4);
 }
 
 // Writes an unsigned value in as many digits as it needs, for the years past four digits.
@@ -98,9 +98,9 @@ func WriteWide(writer: &var TextWriter, value: uint32) -> ! FormatError {
         count = 1;
     }
     while rest > 0u32 {
-        digits[count] = ((rest % 10u32) + 0x30u32) as char8;
+        digits[count] = ((rest % 10) + 0x30) as char8;
         count = count + 1;
-        rest = rest / 10u32;
+        rest = rest / 10;
     }
     var index = count;
     while index > 0 {
@@ -122,8 +122,8 @@ func WriteFraction(writer: &var TextWriter, nanosecond: uint32, spec: FormatSpec
     var rest = nanosecond;
     while index > 0 {
         index = index - 1;
-        digits[index] = ((rest % 10u32) + 0x30u32) as char8;
-        rest = rest / 10u32;
+        digits[index] = ((rest % 10) + 0x30) as char8;
+        rest = rest / 10;
     }
 
     var kept: uint = 9;
@@ -172,9 +172,9 @@ extend Date : Display {
         if spec.HasPrecision() { return .Failure(FormatError::UnsupportedRequest); }
         WriteYear(writer, self.year)?;
         WriteAscii(writer, c8'-')?;
-        WriteFixed(writer, self.month as uint32, 2u)?;
+        WriteFixed(writer, self.month as uint32, 2)?;
         WriteAscii(writer, c8'-')?;
-        return WriteFixed(writer, self.day as uint32, 2u);
+        return WriteFixed(writer, self.day as uint32, 2);
     }
 }
 
@@ -209,11 +209,11 @@ extend TimeOfDay : Display {
     /// @see https://rux-lang.dev/docs/api/time/time-of-day/write-display
     pub func WriteDisplay(self: &TimeOfDay, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         RejectCalendarStyle(spec)?;
-        WriteFixed(writer, self.hour as uint32, 2u)?;
+        WriteFixed(writer, self.hour as uint32, 2)?;
         WriteAscii(writer, c8':')?;
-        WriteFixed(writer, self.minute as uint32, 2u)?;
+        WriteFixed(writer, self.minute as uint32, 2)?;
         WriteAscii(writer, c8':')?;
-        WriteFixed(writer, self.second as uint32, 2u)?;
+        WriteFixed(writer, self.second as uint32, 2)?;
         return WriteFraction(writer, self.nanosecond, spec);
     }
 }
@@ -256,9 +256,9 @@ extend UtcOffset : Display {
         let negative = total < 0i32;
         let magnitude = (negative ? 0i32 - total : total) as uint32;
         WriteAscii(writer, negative ? c8'-' : c8'+')?;
-        WriteFixed(writer, magnitude / 3600u32, 2u)?;
+        WriteFixed(writer, magnitude / 3600, 2)?;
         WriteAscii(writer, c8':')?;
-        return WriteFixed(writer, (magnitude / 60u32) % 60u32, 2u);
+        return WriteFixed(writer, (magnitude / 60) % 60, 2);
     }
 }
 
@@ -321,9 +321,9 @@ extend DateTime : Debug {
 func WriteDateOnly(writer: &var TextWriter, date: Date) -> ! FormatError {
     WriteYear(writer, date.year)?;
     WriteAscii(writer, c8'-')?;
-    WriteFixed(writer, date.month as uint32, 2u)?;
+    WriteFixed(writer, date.month as uint32, 2)?;
     WriteAscii(writer, c8'-')?;
-    return WriteFixed(writer, date.day as uint32, 2u);
+    return WriteFixed(writer, date.day as uint32, 2);
 }
 
 extend OffsetDateTime : Display {
@@ -372,7 +372,7 @@ func WriteOffsetOnly(writer: &var TextWriter, offset: UtcOffset) -> ! FormatErro
     let negative = total < 0i32;
     let magnitude = (negative ? 0i32 - total : total) as uint32;
     WriteAscii(writer, negative ? c8'-' : c8'+')?;
-    WriteFixed(writer, magnitude / 3600u32, 2u)?;
+    WriteFixed(writer, magnitude / 3600, 2)?;
     WriteAscii(writer, c8':')?;
-    return WriteFixed(writer, (magnitude / 60u32) % 60u32, 2u);
+    return WriteFixed(writer, (magnitude / 60) % 60, 2);
 }

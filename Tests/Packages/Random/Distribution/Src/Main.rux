@@ -9,7 +9,7 @@ import Random::{ Bernoulli, Exponential, ExponentialWithRate, Normal, NormalPair
                  Xoshiro256 };
 
 func Main() -> int {
-    var generator = Xoshiro256(20240822u64);
+    var generator = Xoshiro256(20240822);
 
     // Bernoulli: the rate comes out right, and the two saturating ends are absolute rather than merely likely.
     var heads: uint = 0;

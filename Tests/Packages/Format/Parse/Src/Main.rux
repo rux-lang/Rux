@@ -137,7 +137,7 @@ func Main() -> int {
 
     match ParseUint128("340282366920938463463374607431768211455") {
         .Success(value) => {
-            if (value % 10u128) != 5u128 { return 40; }
+            if (value % 10) != 5u128 { return 40; }
         },
         .Failure(_) => { return 41; }
     }
@@ -241,35 +241,35 @@ func Main() -> int {
     if Succeeded(ParseInt64("nope")) { return 110; }
 
     // Where each refusal happened. An empty text has one position and it is zero, which is also its length.
-    Assert(FailedAt(ParseInt64(""), 1, 0u), "an empty text is Empty at zero");
-    Assert(FailedAt(ParseInt64("12a"), 2, 2u), "a byte that is not a digit is reported at that byte");
-    Assert(FailedAt(ParseInt64("-"), 2, 0u), "a sign with nothing after it points at the sign");
-    Assert(FailedAt(ParseInt64("0x"), 2, 1u), "and a prefix with no digits points at its mark");
-    Assert(FailedAt(ParseInt64("1 2"), 2, 1u), "a space inside a number is reported where it stands");
-    Assert(FailedAt(ParseInt64("0b102"), 2, 4u), "and a digit outside the base is reported at itself");
+    Assert(FailedAt(ParseInt64(""), 1, 0), "an empty text is Empty at zero");
+    Assert(FailedAt(ParseInt64("12a"), 2, 2), "a byte that is not a digit is reported at that byte");
+    Assert(FailedAt(ParseInt64("-"), 2, 0), "a sign with nothing after it points at the sign");
+    Assert(FailedAt(ParseInt64("0x"), 2, 1), "and a prefix with no digits points at its mark");
+    Assert(FailedAt(ParseInt64("1 2"), 2, 1), "a space inside a number is reported where it stands");
+    Assert(FailedAt(ParseInt64("0b102"), 2, 4), "and a digit outside the base is reported at itself");
 
     // The width bound: the whole number is what does not fit, so the offset is its end.
-    Assert(FailedAt8(ParseInt8("128"), 3, 3u), "one past the signed maximum overflows at the end of the number");
-    Assert(FailedAt8(ParseInt8("-129"), 3, 4u), "and one past the signed minimum, whose sign is part of the length");
-    Assert(FailedAtU8(ParseUint8("256"), 3, 3u), "the unsigned maximum likewise");
-    Assert(FailedAtU8(ParseUint8("-1"), 2, 0u), "while a sign on an unsigned width is a character, not an overflow");
+    Assert(FailedAt8(ParseInt8("128"), 3, 3), "one past the signed maximum overflows at the end of the number");
+    Assert(FailedAt8(ParseInt8("-129"), 3, 4), "and one past the signed minimum, whose sign is part of the length");
+    Assert(FailedAtU8(ParseUint8("256"), 3, 3), "the unsigned maximum likewise");
+    Assert(FailedAtU8(ParseUint8("-1"), 2, 0), "while a sign on an unsigned width is a character, not an overflow");
 
     // Past what the widest integer holds, where the digit that did it is the offset rather than the end.
     Assert(FailedAtU512(ParseUint512("99999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999"),
-                        3, 154u),
+                        3, 154),
            "a number past the widest magnitude points at the digit that passed it");
 
     // The two values whose text is a word or a character.
-    Assert(FailedAtBool(ParseBool(""), 1, 0u), "an empty boolean is Empty");
-    Assert(FailedAtBool(ParseBool("yes"), 2, 0u), "and a word that is not one of the two is reported at its start");
-    Assert(FailedAtBool(ParseBool("truex"), 2, 0u), "including a correct word with something after it");
-    Assert(FailedAtChar(ParseChar(""), 1, 0u), "an empty character is Empty");
-    Assert(FailedAtChar(ParseChar("ab"), 2, 1u), "and a second character is reported at itself");
+    Assert(FailedAtBool(ParseBool(""), 1, 0), "an empty boolean is Empty");
+    Assert(FailedAtBool(ParseBool("yes"), 2, 0), "and a word that is not one of the two is reported at its start");
+    Assert(FailedAtBool(ParseBool("truex"), 2, 0), "including a correct word with something after it");
+    Assert(FailedAtChar(ParseChar(""), 1, 0), "an empty character is Empty");
+    Assert(FailedAtChar(ParseChar("ab"), 2, 1), "and a second character is reported at itself");
 
     // Floats, where an exponent past the format is the number failing rather than a byte.
-    Assert(FailedAtFloat(ParseFloat64(""), 1, 0u), "an empty float is Empty");
-    Assert(FailedAtFloat(ParseFloat64("1.2.3"), 2, 3u), "a second point is reported where it stands");
-    Assert(FailedAtFloat(ParseFloat64("1e999"), 3, 5u), "and an exponent past the format overflows at the end");
+    Assert(FailedAtFloat(ParseFloat64(""), 1, 0), "an empty float is Empty");
+    Assert(FailedAtFloat(ParseFloat64("1.2.3"), 2, 3), "a second point is reported where it stands");
+    Assert(FailedAtFloat(ParseFloat64("1e999"), 3, 5), "and an exponent past the format overflows at the end");
 
     return 0;
 }

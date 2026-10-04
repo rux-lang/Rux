@@ -160,13 +160,13 @@ extend JsonEventReader {
             var moved: uint = 0;
             while self.position + moved < self.filled {
                 self.data[moved] = self.data[self.position + moved];
-                moved = moved + 1u;
+                moved = moved + 1;
             }
             self.filled = moved;
             self.position = 0;
         }
         if self.filled == self.capacity {
-            let wanted = self.capacity * 2u;
+            let wanted = self.capacity * 2;
             if wanted > self.limits.maximumTextBytes + JsonStreamChunk {
                 self.stop = JsonStop::TooManyEntries;
                 return false;
@@ -183,7 +183,7 @@ extend JsonEventReader {
             var copied: uint = 0;
             while copied < self.filled {
                 grown[copied] = self.data[copied];
-                copied = copied + 1u;
+                copied = copied + 1;
             }
             let previous = Layout { size: self.capacity, alignment: 1 };
             borrowed.Deallocate(self.data as *var opaque, previous) catch { else => {} };
@@ -239,7 +239,7 @@ extend JsonEventReader {
         while self.Available() {
             let c = self.data[self.position] as uint8;
             if c != 0x20u8 && c != 0x09u8 && c != 0x0Du8 && c != 0x0Au8 { return; }
-            self.position = self.position + 1u;
+            self.position = self.position + 1;
         }
     }
 
@@ -250,7 +250,7 @@ extend JsonEventReader {
         var index = self.position;
         var escaped = false;
         if isText {
-            index = index + 1u;
+            index = index + 1;
         }
         while true {
             if index >= self.filled {
@@ -274,14 +274,14 @@ extend JsonEventReader {
             if isText {
                 if c == 0x5Cu8 {
                     escaped = true;
-                    index = index + 2u;
+                    index = index + 2;
                     continue;
                 }
                 if c == 0x22u8 {
-                    self.tokenStart = start + 1u;
+                    self.tokenStart = start + 1;
                     self.tokenEnd = index;
                     self.tokenEscaped = escaped;
-                    self.position = index + 1u;
+                    self.position = index + 1;
                     if self.tokenEnd - self.tokenStart > self.limits.maximumTextBytes {
                         self.stop = JsonStop::Lexical;
                         self.lexical = JsonLexError::TextTooLong;
@@ -300,7 +300,7 @@ extend JsonEventReader {
                            c == 0x0Du8 || c == 0x0Au8;
                 if ends { break; }
             }
-            index = index + 1u;
+            index = index + 1;
         }
         self.tokenStart = start;
         self.tokenEnd = index;
@@ -341,7 +341,7 @@ extend JsonEventReader {
                 if !self.Refill() { return false; }
             }
             if self.data[self.position + index] != word.data[index] { return false; }
-            index = index + 1u;
+            index = index + 1;
         }
         self.position = self.position + word.length;
         return true;
@@ -361,7 +361,7 @@ extend JsonEventReader {
         while self.position < self.filled {
             let c = self.data[self.position] as uint8;
             if c != 0x2Cu8 && c != 0x3Au8 { break; }
-            self.position = self.position + 1u;
+            self.position = self.position + 1;
             self.SkipWhitespace();
         }
         if !self.Available() {
@@ -373,13 +373,13 @@ extend JsonEventReader {
         }
         let c = self.data[self.position] as uint8;
         if c == 0x7Bu8 {
-            self.position = self.position + 1u;
+            self.position = self.position + 1;
             if !self.PushContainer(true) { return JsonEvent::Error; }
             self.expectingValue = false;
             return JsonEvent::ObjectStart;
         }
         if c == 0x5Bu8 {
-            self.position = self.position + 1u;
+            self.position = self.position + 1;
             if !self.PushContainer(false) { return JsonEvent::Error; }
             self.expectingValue = true;
             return JsonEvent::ArrayStart;
@@ -392,8 +392,8 @@ extend JsonEventReader {
                 self.stop = JsonStop::Unexpected;
                 return JsonEvent::Error;
             }
-            self.position = self.position + 1u;
-            self.depth = self.depth - 1u;
+            self.position = self.position + 1;
+            self.depth = self.depth - 1;
             self.expectingValue = !self.InObject();
             return wantsObject ? JsonEvent::ObjectEnd : JsonEvent::ArrayEnd;
         }

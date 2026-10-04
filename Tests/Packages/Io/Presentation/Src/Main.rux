@@ -39,14 +39,14 @@ struct RecordingStream {
 
 extend RecordingStream : Writer {
     func Write(self: &var RecordingStream, bytes: char8[..]) -> uint ! IoError {
-        self.state.calls = self.state.calls + 1u;
+        self.state.calls = self.state.calls + 1;
         if bytes.length > self.state.allowed {
             fail IoError::Of(self.state.refusal);
         }
         var index: uint = 0;
         while index < bytes.length {
             self.state.written[self.state.length + index] = bytes.data[index];
-            index = index + 1u;
+            index = index + 1;
         }
         self.state.length = self.state.length + bytes.length;
         self.state.allowed = self.state.allowed - bytes.length;
@@ -69,7 +69,7 @@ extend Owned {
 
     func ~Owned(self: &var Owned) {
         if self.counter != null {
-            *self.counter = *self.counter + 1i32;
+            *self.counter = *self.counter + 1;
         }
     }
 }

@@ -39,7 +39,7 @@ extend Tracked {
 
     func ~Tracked(self: &var Tracked) {
         if self.counter != null {
-            *self.counter = *self.counter + 1i32;
+            *self.counter = *self.counter + 1;
         }
     }
 }

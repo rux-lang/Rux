@@ -137,10 +137,10 @@ pub func ScanDecimal(str: char8[..], reading: *var DecimalReading) -> ! ParseErr
             if digit != 0u64 || significant {
                 significant = true;
                 if reading.significant < RetainedDecimalDigits {
-                    if !reading.digits.MultiplyAddSmall(10u64, digit) {
+                    if !reading.digits.MultiplyAddSmall(10, digit) {
                         fail ParseError::OutOfMemory(index);
                     }
-                    reading.significant = reading.significant + 1u;
+                    reading.significant = reading.significant + 1;
                 }
                 else {
                     if digit != 0u64 { reading.truncated = true; }

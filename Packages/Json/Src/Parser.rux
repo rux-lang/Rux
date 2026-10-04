@@ -402,15 +402,15 @@ func HexQuad(span: char8[..], at: uint) -> uint32 {
         let c = span.data[at + index] as uint8;
         var digit: uint32 = 0;
         if c >= 0x30u8 && c <= 0x39u8 {
-            digit = (c - 0x30u8) as uint32;
+            digit = (c - 0x30) as uint32;
         }
         else if c >= 0x61u8 && c <= 0x66u8 {
-            digit = (c - 0x61u8 + 10u8) as uint32;
+            digit = (c - 0x61 + 10) as uint32;
         }
         else {
-            digit = (c - 0x41u8 + 10u8) as uint32;
+            digit = (c - 0x41 + 10) as uint32;
         }
-        value = value * 16u32 + digit;
+        value = value * 16 + digit;
         index = index + 1;
     }
     return value;
@@ -460,23 +460,23 @@ extend JsonParser {
         // The depth check happens before descending, so a document built to exhaust the stack is refused while
         // there is still stack to refuse it with.
         if self.depth >= self.limits.maximumDepth { return self.Stop(JsonStop::TooDeep); }
-        self.depth = self.depth + 1u;
+        self.depth = self.depth + 1;
         var array = JsonValue::Array(self.allocator);
         var token = self.lexer.Next();
         if token.kind == JsonTokenKind::ArrayEnd {
-            self.depth = self.depth - 1u;
+            self.depth = self.depth - 1;
             return <-array;
         }
         var entries: uint = 0;
         while true {
             var element = self.ParseValue(token);
             if self.stop != JsonStop::None { return <-array; }
-            entries = entries + 1u;
+            entries = entries + 1;
             if entries > self.limits.maximumEntries { return self.Stop(JsonStop::TooManyEntries); }
             if !array.Push(<-element) { return self.Stop(JsonStop::OutOfMemory); }
             token = self.lexer.Next();
             if token.kind == JsonTokenKind::ArrayEnd {
-                self.depth = self.depth - 1u;
+                self.depth = self.depth - 1;
                 return <-array;
             }
             if token.kind != JsonTokenKind::Comma {
@@ -493,11 +493,11 @@ extend JsonParser {
 extend JsonParser {
     func ParseObject(self: &var JsonParser) -> JsonValue {
         if self.depth >= self.limits.maximumDepth { return self.Stop(JsonStop::TooDeep); }
-        self.depth = self.depth + 1u;
+        self.depth = self.depth + 1;
         var object = JsonValue::Object(self.allocator);
         var token = self.lexer.Next();
         if token.kind == JsonTokenKind::ObjectEnd {
-            self.depth = self.depth - 1u;
+            self.depth = self.depth - 1;
             return <-object;
         }
         var entries: uint = 0;
@@ -541,10 +541,10 @@ extend JsonParser {
                 if self.duplicates == DuplicateKeyPolicy::KeepFirst {
                     // The first is already in place, so this one is simply not added.
                     name.Clear();
-                    entries = entries + 1u;
+                    entries = entries + 1;
                     token = self.lexer.Next();
                     if token.kind == JsonTokenKind::ObjectEnd {
-                        self.depth = self.depth - 1u;
+                        self.depth = self.depth - 1;
                         return <-object;
                     }
                     if token.kind != JsonTokenKind::Comma { return self.Stop(JsonStop::Unexpected); }
@@ -557,7 +557,7 @@ extend JsonParser {
                 }
             }
 
-            entries = entries + 1u;
+            entries = entries + 1;
             if entries > self.limits.maximumEntries {
                 name.Clear();
                 return self.Stop(JsonStop::TooManyEntries);
@@ -566,7 +566,7 @@ extend JsonParser {
 
             token = self.lexer.Next();
             if token.kind == JsonTokenKind::ObjectEnd {
-                self.depth = self.depth - 1u;
+                self.depth = self.depth - 1;
                 return <-object;
             }
             if token.kind != JsonTokenKind::Comma {

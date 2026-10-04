@@ -306,12 +306,12 @@ func ReadNumber(text: char8[..], start: uint, value: *var uint, end: *var uint) 
     var index = start;
     var total: uint = 0;
     while index < text.length && IsDigit(text.data[index]) {
-        let digit = ((text.data[index] as uint32) - 0x30u32) as uint;
-        if total > (uint::Max - digit) / 10u {
+        let digit = ((text.data[index] as uint32) - 0x30) as uint;
+        if total > (uint::Max - digit) / 10 {
             *end = index;
             return false;
         }
-        total = total * 10u + digit;
+        total = total * 10 + digit;
         index = index + 1;
     }
     *value = total;

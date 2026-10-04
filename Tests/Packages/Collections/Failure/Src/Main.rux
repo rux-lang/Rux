@@ -91,9 +91,9 @@ func Main() -> int {
     if populated.Capacity() != capacity { return 42; }
 
     // A rejected index is reported as itself, not as an exhausted allocator, and the container is left alone.
-    if Refusal(populated.Set(populated.Length(), 99i64)) != CollectionError::IndexOutOfRange { return 50; }
+    if Refusal(populated.Set(populated.Length(), 99)) != CollectionError::IndexOutOfRange { return 50; }
     if populated.Length() != length || populated.AsSlice().data != block { return 51; }
-    if populated.Get(0) != .Some(0i64) { return 52; }
+    if populated.Get(0) != .Some(0) { return 52; }
 
     // Reading past the end is an ordinary absence rather than a failure, and reads nothing.
     if populated.Get(populated.Length()) is int64 { return 53; }
@@ -103,15 +103,15 @@ func Main() -> int {
 
     // A Deque rejects the same requests and stays usable afterwards.
     var ring = Deque<int64>(allocator);
-    ring.PushBack(1i64) catch { else => return 60 };
+    ring.PushBack(1) catch { else => return 60 };
     let ringCapacity = ring.Capacity();
     if Refusal(ring.Reserve(uint::Max)) != CollectionError::CapacityOverflow { return 61; }
     if ring.Length() != 1 || ring.Capacity() != ringCapacity { return 62; }
-    if ring.Get(0) != .Some(1i64) { return 67; }
+    if ring.Get(0) != .Some(1) { return 67; }
     if Refusal(ring.Reserve(uint::Max / 4)) != CollectionError::CapacityOverflow { return 63; }
     if ring.Length() != 1 || ring.Capacity() != ringCapacity { return 64; }
-    ring.PushFront(0i64) catch { else => return 65 };
-    if ring.Get(0) != .Some(0i64) || ring.Get(1) != .Some(1i64) { return 66; }
+    ring.PushFront(0) catch { else => return 65 };
+    if ring.Get(0) != .Some(0) || ring.Get(1) != .Some(1) { return 66; }
 
     // A hash table rejects an unsizeable reservation and keeps every entry.
     var map = HashMap<int32, int32>(allocator, HashInt32, EqualsInt32);

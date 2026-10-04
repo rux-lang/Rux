@@ -82,22 +82,22 @@ func PropagationCases() {
     while length < complete.length {
         Assert(FailsAt(complete.data[..length], 1, length) == 0,
                "every truncated prefix preserves the failing reader's end offset");
-        length += 1u;
+        length += 1;
     }
-    Assert(FailsAt("2024-02-29T12:34:56+05:", 1, 23u) == 0, "offset minutes propagate through digit and offset readers");
-    Assert(FailsAt("2024-02-29T12:34:56+05:3", 1, 24u) == 0, "a partial final field retains its nonzero end offset");
-    Assert(FailsAt("2024-02-29T12:34:56+05:30extra", 1, 25u) == 0, "the end check reports the first trailing byte");
-    Assert(FailsAt("2024-02-29T12:34:éZ", 1, 17u) == 0, "a multibyte character fails at its first UTF-8 byte");
-    Assert(FailsAt("2024-02-29T12:34:56.123456789😀", 1, 29u) == 0, "a supplementary character is not an offset marker");
-    Assert(FailsAt("2024-02-29T12:34:56Zé", 1, 20u) == 0, "trailing Unicode keeps the byte position after Z");
-    Assert(HasFailure<Date>(ParseDate("2024-13-01"), 2, 5u), "date-only invalid months retain their category and offset");
-    Assert(HasFailure<Date>(ParseDate("2023-02-29"), 3, 8u), "date-only invalid days survive rewrapping");
-    Assert(HasFailure<Date>(ParseDate("2024-é-29"), 1, 5u), "date-only Unicode is rejected at its first byte");
-    Assert(HasFailure<TimeOfDay>(ParseTimeOfDay("12:60:00"), 4, 3u), "time-only validation reports the local minute offset");
-    Assert(HasFailure<TimeOfDay>(ParseTimeOfDay("12:34:56.1234567890"), 5, 18u), "time-only excessive fraction offset survives");
-    Assert(HasFailure<TimeOfDay>(ParseTimeOfDay("12:34:56Z"), 1, 8u), "time-only end check rejects an offset suffix");
-    Assert(HasFailure<DateTime>(ParseDateTime("2024-02-29T12:60:00"), 4, 14u), "embedded time uses its position in the full text");
-    Assert(HasFailure<DateTime>(ParseDateTime("2024-02-29T12:34:56Z"), 1, 19u), "local date-time rejects an offset without discarding it");
+    Assert(FailsAt("2024-02-29T12:34:56+05:", 1, 23) == 0, "offset minutes propagate through digit and offset readers");
+    Assert(FailsAt("2024-02-29T12:34:56+05:3", 1, 24) == 0, "a partial final field retains its nonzero end offset");
+    Assert(FailsAt("2024-02-29T12:34:56+05:30extra", 1, 25) == 0, "the end check reports the first trailing byte");
+    Assert(FailsAt("2024-02-29T12:34:éZ", 1, 17) == 0, "a multibyte character fails at its first UTF-8 byte");
+    Assert(FailsAt("2024-02-29T12:34:56.123456789😀", 1, 29) == 0, "a supplementary character is not an offset marker");
+    Assert(FailsAt("2024-02-29T12:34:56Zé", 1, 20) == 0, "trailing Unicode keeps the byte position after Z");
+    Assert(HasFailure<Date>(ParseDate("2024-13-01"), 2, 5), "date-only invalid months retain their category and offset");
+    Assert(HasFailure<Date>(ParseDate("2023-02-29"), 3, 8), "date-only invalid days survive rewrapping");
+    Assert(HasFailure<Date>(ParseDate("2024-é-29"), 1, 5), "date-only Unicode is rejected at its first byte");
+    Assert(HasFailure<TimeOfDay>(ParseTimeOfDay("12:60:00"), 4, 3), "time-only validation reports the local minute offset");
+    Assert(HasFailure<TimeOfDay>(ParseTimeOfDay("12:34:56.1234567890"), 5, 18), "time-only excessive fraction offset survives");
+    Assert(HasFailure<TimeOfDay>(ParseTimeOfDay("12:34:56Z"), 1, 8), "time-only end check rejects an offset suffix");
+    Assert(HasFailure<DateTime>(ParseDateTime("2024-02-29T12:60:00"), 4, 14), "embedded time uses its position in the full text");
+    Assert(HasFailure<DateTime>(ParseDateTime("2024-02-29T12:34:56Z"), 1, 19), "local date-time rejects an offset without discarding it");
 }
 
 func Main() -> int {
@@ -107,7 +107,7 @@ func Main() -> int {
     let plain = ParseRfc3339("2024-02-29T12:30:45Z");
     Assert(Succeeded(plain), "the plain shape parses");
     let moment = plain catch {
-        else => OffsetDateTime(DateTime { date: Date::FromEpochDays(0i64), time: TimeOfDay::Midnight() }, UtcOffset::Utc())
+        else => OffsetDateTime(DateTime { date: Date::FromEpochDays(0), time: TimeOfDay::Midnight() }, UtcOffset::Utc())
     };
     Assert(moment.dateTime.date.year == 2024i32 && moment.dateTime.date.month == 2u8 &&
            moment.dateTime.date.day == 29u8, "a leap day in a leap year is a day");
@@ -124,36 +124,36 @@ func Main() -> int {
     let leap = ParseRfc3339("2016-12-31T23:59:60Z");
     Assert(Succeeded(leap), "the leap second parses");
     let folded = leap catch {
-        else => OffsetDateTime(DateTime { date: Date::FromEpochDays(0i64), time: TimeOfDay::Midnight() }, UtcOffset::Utc())
+        else => OffsetDateTime(DateTime { date: Date::FromEpochDays(0), time: TimeOfDay::Midnight() }, UtcOffset::Utc())
     };
     Assert(folded.dateTime.time.second == 59u8 && folded.dateTime.time.nanosecond == 999999999u32,
            "and folds to the last nanosecond of second 59");
 
     // A syntax failure points at the byte where the shape stopped matching.
-    Assert(FailsAt("2024-02-29X12:30:45Z", 1, 10u) == 0, "a wrong separator is a syntax failure at the separator");
-    Assert(FailsAt("2024/02/29T12:30:45Z", 1, 4u) == 0, "and a wrong dash at the dash");
-    Assert(FailsAt("2024-02-29T12:30:45Z ", 1, 20u) == 0, "text after the offset is a syntax failure where it starts");
-    Assert(FailsAt("2024-02-29T12:30:45", 1, 19u) == 0, "and running out points one past the end");
-    Assert(FailsAt("", 1, 0u) == 0, "empty text fails at the beginning, which is also the end");
-    Assert(FailsAt("2O24-02-29T12:30:45Z", 1, 1u) == 0, "a letter where a digit belongs points at the letter");
+    Assert(FailsAt("2024-02-29X12:30:45Z", 1, 10) == 0, "a wrong separator is a syntax failure at the separator");
+    Assert(FailsAt("2024/02/29T12:30:45Z", 1, 4) == 0, "and a wrong dash at the dash");
+    Assert(FailsAt("2024-02-29T12:30:45Z ", 1, 20) == 0, "text after the offset is a syntax failure where it starts");
+    Assert(FailsAt("2024-02-29T12:30:45", 1, 19) == 0, "and running out points one past the end");
+    Assert(FailsAt("", 1, 0) == 0, "empty text fails at the beginning, which is also the end");
+    Assert(FailsAt("2O24-02-29T12:30:45Z", 1, 1) == 0, "a letter where a digit belongs points at the letter");
 
     // A well-formed field naming something that does not exist is a different category from a typo.
-    Assert(FailsAt("2024-13-01T00:00:00Z", 2, 5u) == 0, "month 13 is an invalid month at its first digit");
-    Assert(FailsAt("2024-00-01T00:00:00Z", 2, 5u) == 0, "and so is month 0");
-    Assert(FailsAt("2023-02-29T00:00:00Z", 3, 8u) == 0, "February 29 outside a leap year is a nonexistent day");
-    Assert(FailsAt("2024-04-31T00:00:00Z", 3, 8u) == 0, "and April has no 31st");
-    Assert(FailsAt("2024-01-00T00:00:00Z", 3, 8u) == 0, "nor has any month a zeroth");
-    Assert(FailsAt("2024-01-01T24:00:00Z", 4, 11u) == 0, "hour 24 is an invalid time at the hour");
-    Assert(FailsAt("2024-01-01T00:60:00Z", 4, 14u) == 0, "minute 60 at the minute");
-    Assert(FailsAt("2024-01-01T00:00:61Z", 4, 17u) == 0, "second 61 at the second, since 60 is the leap second");
+    Assert(FailsAt("2024-13-01T00:00:00Z", 2, 5) == 0, "month 13 is an invalid month at its first digit");
+    Assert(FailsAt("2024-00-01T00:00:00Z", 2, 5) == 0, "and so is month 0");
+    Assert(FailsAt("2023-02-29T00:00:00Z", 3, 8) == 0, "February 29 outside a leap year is a nonexistent day");
+    Assert(FailsAt("2024-04-31T00:00:00Z", 3, 8) == 0, "and April has no 31st");
+    Assert(FailsAt("2024-01-00T00:00:00Z", 3, 8) == 0, "nor has any month a zeroth");
+    Assert(FailsAt("2024-01-01T24:00:00Z", 4, 11) == 0, "hour 24 is an invalid time at the hour");
+    Assert(FailsAt("2024-01-01T00:60:00Z", 4, 14) == 0, "minute 60 at the minute");
+    Assert(FailsAt("2024-01-01T00:00:61Z", 4, 17) == 0, "second 61 at the second, since 60 is the leap second");
 
     // A fraction that will not fit, and an offset that is not one.
-    Assert(FailsAt("2024-01-01T00:00:00.0000000005Z", 5, 29u) == 0,
+    Assert(FailsAt("2024-01-01T00:00:00.0000000005Z", 5, 29) == 0,
            "a tenth fraction digit is an excessive fraction at that digit");
-    Assert(FailsAt("2024-01-01T00:00:00.Z", 1, 20u) == 0, "a point with no digits is a syntax failure");
-    Assert(FailsAt("2024-01-01T00:00:00+24:00", 6, 19u) == 0, "an impossible offset points at its sign");
-    Assert(FailsAt("2024-01-01T00:00:00+05:60", 6, 19u) == 0, "and so does an impossible offset minute");
-    Assert(FailsAt("2024-01-01T00:00:00", 1, 19u) == 0, "a missing offset runs out rather than defaulting to UTC");
+    Assert(FailsAt("2024-01-01T00:00:00.Z", 1, 20) == 0, "a point with no digits is a syntax failure");
+    Assert(FailsAt("2024-01-01T00:00:00+24:00", 6, 19) == 0, "an impossible offset points at its sign");
+    Assert(FailsAt("2024-01-01T00:00:00+05:60", 6, 19) == 0, "and so does an impossible offset minute");
+    Assert(FailsAt("2024-01-01T00:00:00", 1, 19) == 0, "a missing offset runs out rather than defaulting to UTC");
 
     // The three narrower parsers read what they name and nothing more.
     Assert(Succeeded(ParseDate("2024-02-29")), "a date parses on its own");
@@ -168,7 +168,7 @@ func Main() -> int {
     let source = ParseRfc3339("2024-02-29T12:30:45.5-08:00");
     Assert(Succeeded(source), "the round-trip source parses");
     let original = source catch {
-        else => OffsetDateTime(DateTime { date: Date::FromEpochDays(0i64), time: TimeOfDay::Midnight() }, UtcOffset::Utc())
+        else => OffsetDateTime(DateTime { date: Date::FromEpochDays(0), time: TimeOfDay::Midnight() }, UtcOffset::Utc())
     };
     Assert(Rendered(original, "2024-02-29T12:30:45.5-08:00"), "and renders back to the text it came from");
     let again = ParseRfc3339("2024-02-29T12:30:45.5-08:00");

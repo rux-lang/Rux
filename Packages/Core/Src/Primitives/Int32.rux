@@ -12,17 +12,17 @@ extend int32 {
     /// The number of bits in the representation.
     ///
     /// @see https://rux-lang.dev/docs/api/core/int32/bits
-    pub const Bits: uint = 32u;
+    pub const Bits: uint = 32;
     /// The number of bytes in the representation.
     ///
     /// @see https://rux-lang.dev/docs/api/core/int32/bytes
-    pub const Bytes: uint = 4u;
+    pub const Bytes: uint = 4;
     /// The smallest representable value.
     ///
     /// @see https://rux-lang.dev/docs/api/core/int32/min
-    pub const Min: int32 = -2147483648i32;
+    pub const Min: int32 = -2147483648;
     /// The largest representable value.
     ///
     /// @see https://rux-lang.dev/docs/api/core/int32/max
-    pub const Max: int32 = 2147483647i32;
+    pub const Max: int32 = 2147483647;
 }

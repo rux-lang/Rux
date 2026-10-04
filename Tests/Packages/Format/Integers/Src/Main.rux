@@ -67,7 +67,7 @@ func TopBitHex(outcome: String ! FormatError, zeros: uint) -> bool {
     match <-outcome {
         .Success(text) => {
             let bytes = text.View().Bytes();
-            if bytes.length == zeros + 2u && bytes.data[0] == c8'-' && bytes.data[1] == c8'8' {
+            if bytes.length == zeros + 2 && bytes.data[0] == c8'-' && bytes.data[1] == c8'8' {
                 ok = true;
                 var index: uint = 2;
                 while index < bytes.length {

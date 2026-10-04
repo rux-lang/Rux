@@ -45,7 +45,7 @@ func Ints(data: *int32, length: uint) -> int32[..] {
 }
 
 func Main() -> int {
-    let original = Record { key: 7i32, origin: 11i32 };
+    let original = Record { key: 7, origin: 11 };
     let copied = original;
     Assert(copied == original, "plain algorithm elements copy structurally");
 

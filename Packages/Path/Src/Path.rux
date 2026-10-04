@@ -33,7 +33,7 @@ pub func IsSeparator(unit: OsUnit) -> bool {
 /// @see https://rux-lang.dev/docs/api/path/preferred-separator
 pub func PreferredSeparator() -> OsUnit {
     when #target.os == .Windows {
-        return 0x5Cu16;
+        return 0x5C;
     }
     else {
         return c8'/';

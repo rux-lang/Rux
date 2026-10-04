@@ -41,9 +41,9 @@ func WriteCount(writer: &var TextWriter, value: uint) -> ! FormatError {
         count = 1;
     }
     while rest > 0u {
-        digits[count] = ((rest % 10u) + 0x30u) as char8;
+        digits[count] = ((rest % 10) + 0x30) as char8;
         count = count + 1;
-        rest = rest / 10u;
+        rest = rest / 10;
     }
     var index = count;
     while index > 0 {

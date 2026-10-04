@@ -47,7 +47,7 @@ func Main() -> int {
     var power: int64 = -1000;
     while power <= 1000i64 {
         Assert(Exp2(power as float64) == ScaleByPowerOfTwo(1.0, power), "two to an integer power is exact");
-        power = power + 1i64;
+        power = power + 1;
     }
     // A half power is the square root of two, which is not representable, so squaring it back rounds twice.
     Assert(UlpDistance(Exp2(0.5) * Exp2(0.5), 2.0) <= 2u64, "and a half power squares back to within two ulps");
@@ -59,7 +59,7 @@ func Main() -> int {
     // exp(x) - 1 is exactly zero while the true answer is x — a total loss, not a rounding.
     Assert(Expm1(0.0) == 0.0 && !SignBit(Expm1(0.0)), "expm1 of zero is zero");
     Assert(SignBit(Expm1(-0.0)), "and of a negative zero keeps the sign");
-    let tiny = ScaleByPowerOfTwo(1.0, -60i64);
+    let tiny = ScaleByPowerOfTwo(1.0, -60);
     Assert(Exp(tiny) - 1.0 == 0.0, "exp minus one loses a tiny argument entirely");
     Assert(Expm1(tiny) == tiny, "while expm1 returns it unchanged, which is the true answer to full precision");
     let small = 1.0e-10;

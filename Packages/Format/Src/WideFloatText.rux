@@ -67,7 +67,7 @@ pub func WriteWideFloat(allocator: Allocator, writer: &var TextWriter, spec: For
     var rendered = cursor.Written();
     if spec.ShowsSign() && rendered.length > 0u && rendered.data[0] != c8'-' {
         storage[1] = c8'+';
-        rendered = (@storage[1])[..rendered.length + 1u];
+        rendered = (@storage[1])[..rendered.length + 1];
     }
     return WriteAligned(writer, spec, rendered, true);
 }

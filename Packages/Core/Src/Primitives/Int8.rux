@@ -12,17 +12,17 @@ extend int8 {
     /// The number of bits in the representation.
     ///
     /// @see https://rux-lang.dev/docs/api/core/int8/bits
-    pub const Bits: uint = 8u;
+    pub const Bits: uint = 8;
     /// The number of bytes in the representation.
     ///
     /// @see https://rux-lang.dev/docs/api/core/int8/bytes
-    pub const Bytes: uint = 1u;
+    pub const Bytes: uint = 1;
     /// The smallest representable value.
     ///
     /// @see https://rux-lang.dev/docs/api/core/int8/min
-    pub const Min: int8 = -128i8;
+    pub const Min: int8 = -128;
     /// The largest representable value.
     ///
     /// @see https://rux-lang.dev/docs/api/core/int8/max
-    pub const Max: int8 = 127i8;
+    pub const Max: int8 = 127;
 }

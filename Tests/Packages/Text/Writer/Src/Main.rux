@@ -107,7 +107,7 @@ func Main() -> int {
     var fill: uint = 0;
     while fill < 20u {
         long[fill] = 0x80u8 as char8;
-        fill = fill + 1u;
+        fill = fill + 1;
     }
     Assert(FailureCode(writer.Write((@long[0])[..20])) == 1, "too long and invalid reports the capacity failure");
 
@@ -123,7 +123,7 @@ func Main() -> int {
 
     // WriteScalar refuses a value that is not a scalar value. A surrogate half encodes nothing on its own, and the
     // compiler refuses to fold one into a char32 at all, so the value has to arrive at run time to be tested here.
-    var half: uint32 = 0xD800u32;
+    var half: uint32 = 0xD800;
     Assert(FailureCode(WriteScalar(writer, half as char32)) == 2, "a surrogate half is not a scalar value");
 
     // A helper's failure propagates the writer's own failure unchanged rather than replacing it.

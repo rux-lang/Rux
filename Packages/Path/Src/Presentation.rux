@@ -35,10 +35,10 @@ func AcceptsNameSpec(spec: FormatSpec) -> ! FormatError {
 // Writes the low `count` hexadecimal digits of `value`, most significant first, in lower case.
 func WriteHexDigits(writer: &var TextWriter, value: uint32, count: uint) -> ! FormatError {
     let digits = "0123456789abcdef";
-    var shift = count * 4u;
+    var shift = count * 4;
     while shift > 0 {
-        shift = shift - 4u;
-        WriteAscii(writer, digits.data[((value >> (shift as uint32)) & 0xFu32) as uint])?;
+        shift = shift - 4;
+        WriteAscii(writer, digits.data[((value >> (shift as uint32)) & 0xF) as uint])?;
     }
     return;
 }
@@ -46,14 +46,14 @@ func WriteHexDigits(writer: &var TextWriter, value: uint32, count: uint) -> ! Fo
 // Writes one native byte as `\x{nn}`, the escape for a byte that is not part of any character.
 func WriteByteEscape(writer: &var TextWriter, value: uint32) -> ! FormatError {
     WriteBytes(writer, "\\x{")?;
-    WriteHexDigits(writer, value, 2u)?;
+    WriteHexDigits(writer, value, 2)?;
     return WriteBytes(writer, "}");
 }
 
 // Writes one UTF-16 code unit as `\u{xxxx}`, the escape for a code unit with no partner.
 func WriteUnitEscape(writer: &var TextWriter, value: uint32) -> ! FormatError {
     WriteBytes(writer, "\\u{")?;
-    WriteHexDigits(writer, value, 4u)?;
+    WriteHexDigits(writer, value, 4)?;
     return WriteBytes(writer, "}");
 }
 

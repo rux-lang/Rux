@@ -85,7 +85,7 @@ pub func WaitChunkMilliseconds(span: Duration) -> int64 {
 
     // Rounding up is what makes the promise "at least this long" true: a sub-millisecond remainder still costs a
     // whole millisecond of waiting rather than being dropped.
-    if span.SubsecondNanoseconds() % 1000000u32 != 0u32 { whole = whole + 1; }
+    if span.SubsecondNanoseconds() % 1000000 != 0u32 { whole = whole + 1; }
     return whole == 0 ? 1 : whole;
 }
 

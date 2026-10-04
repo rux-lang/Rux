@@ -79,7 +79,7 @@ func Main() -> int {
     Assert(array.Kind() == JsonKind::Array && array.Length() == 0u, "a new array is empty");
     var index: uint = 0;
     while index < 5u {
-        var element = JsonValue::Boolean(allocator, (index % 2u) == 0u);
+        var element = JsonValue::Boolean(allocator, (index % 2) == 0u);
         Assert(array.Push(<-element), "elements append");
         index = index + 1;
     }
@@ -89,11 +89,11 @@ func Main() -> int {
         let element = array.At(index);
         Assert(element != null, "every index is reachable");
         var value = false;
-        Assert((*element).AsBoolean(@value) && value == ((index % 2u) == 0u),
+        Assert((*element).AsBoolean(@value) && value == ((index % 2) == 0u),
                "and the elements are in the order they were added");
         index = index + 1;
     }
-    Assert(array.At(5u) == null, "and one past the end is not");
+    Assert(array.At(5) == null, "and one past the end is not");
 
     // Objects keep insertion order, which is what lets a document be written back recognisably.
     var object = JsonValue::Object(allocator);
@@ -109,11 +109,11 @@ func Main() -> int {
     Assert(object.Insert(muName, <-muValue), "and a third");
     Assert(object.Length() == 3u, "and the object grows");
 
-    let firstMember = object.MemberAt(0u);
+    let firstMember = object.MemberAt(0);
     let zeta = View("zeta");
     Assert(firstMember != null && firstMember.name.View().Equals(zeta),
            "the first member is the first one added, not the alphabetically first");
-    let secondMember = object.MemberAt(1u);
+    let secondMember = object.MemberAt(1);
     let alpha = View("alpha");
     Assert(secondMember != null && secondMember.name.View().Equals(alpha), "and insertion order is kept");
 
@@ -128,8 +128,8 @@ func Main() -> int {
     Assert(array.Find(mu) == null, "looking for a member in an array finds nothing rather than misreading it");
 
     // Wrong-kind accessors report failure rather than reinterpreting.
-    Assert(array.At(0u) != null && object.At(0u) == null, "indexing works on arrays and not on objects");
-    Assert(object.MemberAt(0u) != null && array.MemberAt(0u) == null, "and members the other way round");
+    Assert(array.At(0) != null && object.At(0) == null, "indexing works on arrays and not on objects");
+    Assert(object.MemberAt(0) != null && array.MemberAt(0) == null, "and members the other way round");
     Assert(nullValue.Length() == 0u && text.Length() == 0u, "a scalar has no length");
     var pushRefused = JsonValue::Null(allocator);
     Assert(!nullValue.Push(<-pushRefused), "pushing into a scalar is refused rather than ignored");

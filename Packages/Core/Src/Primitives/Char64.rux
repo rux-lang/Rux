@@ -12,11 +12,11 @@ extend char64 {
     /// The number of bits in the representation.
     ///
     /// @see https://rux-lang.dev/docs/api/core/char64/bits
-    pub const Bits: uint = 64u;
+    pub const Bits: uint = 64;
     /// The number of bytes in the representation.
     ///
     /// @see https://rux-lang.dev/docs/api/core/char64/bytes
-    pub const Bytes: uint = 8u;
+    pub const Bytes: uint = 8;
     /// The first code unit or Unicode scalar value.
     ///
     /// @see https://rux-lang.dev/docs/api/core/char64/min

@@ -24,7 +24,7 @@ import Time::Timestamp;
 /// @see https://rux-lang.dev/docs/api/uuid/time-ordered
 pub func TimeOrdered() -> Uuid ! EntropyError {
     let now = Timestamp::Now();
-    let milliseconds = (now.UnixSeconds() as uint64) * 1000u64 + ((now.SubsecondNanoseconds() / 1000000u32) as uint64);
+    let milliseconds = (now.UnixSeconds() as uint64) * 1000 + ((now.SubsecondNanoseconds() / 1000000) as uint64);
     return TimeOrderedAt(milliseconds);
 }
 
@@ -37,17 +37,17 @@ pub func TimeOrdered() -> Uuid ! EntropyError {
 /// @see https://rux-lang.dev/docs/api/uuid/time-ordered-at
 pub func TimeOrderedAt(milliseconds: uint64) -> Uuid ! EntropyError {
     var bytes: byte[16];
-    Fill(@bytes[0] as *var opaque, 16u)?;
+    Fill(@bytes[0] as *var opaque, 16)?;
     var value = Uuid::FromBytes((@bytes[0])[..16]);
     // Six bytes of milliseconds, most significant first — which is what makes byte order equal time order.
     var index: uint = 0;
     while index < 6u {
-        let shift = ((5u - index) * 8u) as uint64;
-        value.bytes[index] = ((milliseconds >> shift) & 0xFFu64) as byte;
+        let shift = ((5u - index) * 8) as uint64;
+        value.bytes[index] = ((milliseconds >> shift) & 0xFF) as byte;
         index = index + 1;
     }
-    value.bytes[6] = (value.bytes[6] & 0x0Fu8) | 0x70u8;
-    value.bytes[8] = (value.bytes[8] & 0x3Fu8) | 0x80u8;
+    value.bytes[6] = (value.bytes[6] & 0x0F) | 0x70;
+    value.bytes[8] = (value.bytes[8] & 0x3F) | 0x80;
     return value;
 }
 
@@ -117,10 +117,10 @@ extend MonotonicUuid {
         var stepped = self.previous;
         var index: uint = 16;
         while index > 6u {
-            index = index - 1u;
+            index = index - 1;
             let octet = stepped.bytes[index];
             if octet != 0xFFu8 {
-                stepped.bytes[index] = octet + 1u8;
+                stepped.bytes[index] = octet + 1;
                 self.previous = stepped;
                 return stepped;
             }

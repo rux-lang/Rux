@@ -105,7 +105,7 @@ func Matches(outcome: String ! FormatError, expected: char8[..]) -> bool {
 func RenderedLength(outcome: String ! FormatError) -> uint {
     return match <-outcome {
         .Success(text) => text.Length(),
-        .Failure(_) => 0u
+        .Failure(_) => 0
     };
 }
 
@@ -141,7 +141,7 @@ extend RefusingValue : Display {
     func WriteDisplay(self: &RefusingValue, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         *self.calls += 1;
         WriteBytes(writer, "partial")?;
-        fail FormatError::InvalidSpecification(73u);
+        fail FormatError::InvalidSpecification(73);
     }
 }
 
@@ -159,16 +159,16 @@ func PropagationCases(allocator: Allocator) {
     var counts = AllocationCounts { live: 0, allocations: 0, releases: 0, invalidReleases: 0 };
     var counting = CountingAllocator { inner: allocator, counts: @counts };
     let counted: Allocator = counting;
-    Assert(InvalidAt(Render(counted, "é 😀 {} {:>>>}", 1, 2), 15u), "embedded specification positions count UTF-8 bytes");
-    Assert(InvalidAt(Render(counted, "é 😀 {} {bad}", 1, 2), 12u), "a malformed later placeholder retains its absolute byte offset");
-    Assert(InvalidAt(Render(counted, "é {} tail {", 1), 11u), "an unterminated later placeholder points at its opening byte");
-    Assert(MismatchOf(Render(counted, "é {} {} {}", 1), 3u, 1u), "both words of argument-count failures survive Render");
+    Assert(InvalidAt(Render(counted, "é 😀 {} {:>>>}", 1, 2), 15), "embedded specification positions count UTF-8 bytes");
+    Assert(InvalidAt(Render(counted, "é 😀 {} {bad}", 1, 2), 12), "a malformed later placeholder retains its absolute byte offset");
+    Assert(InvalidAt(Render(counted, "é {} tail {", 1), 11), "an unterminated later placeholder points at its opening byte");
+    Assert(MismatchOf(Render(counted, "é {} {} {}", 1), 3, 1), "both words of argument-count failures survive Render");
     Assert(counts.live == 0 && counts.allocations == 4 && counts.releases == 4 && counts.invalidReleases == 0,
            "each validation failure releases its reserved builder once");
 
     var calls = 0;
     let refusing = RefusingValue { calls: @calls };
-    Assert(InvalidAt(Render(counted, "head {} tail", refusing), 73u), "a renderer failure propagates through WriteFormat and Render");
+    Assert(InvalidAt(Render(counted, "head {} tail", refusing), 73), "a renderer failure propagates through WriteFormat and Render");
     Assert(calls == 1 && counts.live == 0 && counts.allocations == 5 && counts.releases == 5,
            "a partial rendering is discarded with exactly one release");
     Assert(counts.invalidReleases == 0, "propagation does not attempt a second builder release");
@@ -218,34 +218,34 @@ func Main() -> int {
 
     // The argument count has to match the placeholder count exactly, in both directions, and the failure carries
     // both numbers — expected first, supplied second — because which way the mismatch runs is what a caller fixes.
-    if !MismatchOf(Render(allocator, "{}", 1, 2), 1u, 2u) { return 30; }
-    if !MismatchOf(Render(allocator, "[{}][{}]", 1), 2u, 1u) { return 31; }
-    if !MismatchOf(Render(allocator, "{}"), 1u, 0u) { return 32; }
-    if !MismatchOf(Render(allocator, "none", 1), 0u, 1u) { return 33; }
-    if !MismatchOf(Render(allocator, "{{}} {}", 1, 2), 1u, 2u) { return 34; }
+    if !MismatchOf(Render(allocator, "{}", 1, 2), 1, 2) { return 30; }
+    if !MismatchOf(Render(allocator, "[{}][{}]", 1), 2, 1) { return 31; }
+    if !MismatchOf(Render(allocator, "{}"), 1, 0) { return 32; }
+    if !MismatchOf(Render(allocator, "none", 1), 0, 1) { return 33; }
+    if !MismatchOf(Render(allocator, "{{}} {}", 1, 2), 1, 2) { return 34; }
 
     // Escaped braces are the only way to write one, and a lone brace of either kind is now a refusal rather than
     // literal text. The offset is the brace itself: that is where the pattern went wrong, not where the scan
     // noticed.
     if !Matches(Render(allocator, "{{}}"), "{}") { return 40; }
     if !Matches(Render(allocator, "{{{}}}", 7), "{7}") { return 41; }
-    if !InvalidAt(Render(allocator, "{"), 0u) { return 50; }
-    if !InvalidAt(Render(allocator, "}"), 0u) { return 51; }
-    if !InvalidAt(Render(allocator, "ab{"), 2u) { return 52; }
-    if !InvalidAt(Render(allocator, "ab}cd"), 2u) { return 53; }
-    if !InvalidAt(Render(allocator, "a{b"), 1u) { return 54; }
+    if !InvalidAt(Render(allocator, "{"), 0) { return 50; }
+    if !InvalidAt(Render(allocator, "}"), 0) { return 51; }
+    if !InvalidAt(Render(allocator, "ab{"), 2) { return 52; }
+    if !InvalidAt(Render(allocator, "ab}cd"), 2) { return 53; }
+    if !InvalidAt(Render(allocator, "a{b"), 1) { return 54; }
 
     // Between the braces, a specification opens with a colon and nothing else does. Positional and named arguments
     // are not part of this grammar, so the offset is the first character that is not a colon.
-    if !InvalidAt(Render(allocator, "{x} {}", 1), 1u) { return 55; }
-    if !InvalidAt(Render(allocator, "{0}", 1), 1u) { return 56; }
-    if !InvalidAt(Render(allocator, "ok {name}", 1), 4u) { return 57; }
+    if !InvalidAt(Render(allocator, "{x} {}", 1), 1) { return 55; }
+    if !InvalidAt(Render(allocator, "{0}", 1), 1) { return 56; }
+    if !InvalidAt(Render(allocator, "ok {name}", 1), 4) { return 57; }
 
     // A specification that does not parse is a refusal, and its offset is into the pattern rather than into the
     // specification — which is the case a test checking only the reason would pass with every offset at zero.
-    if !InvalidAt(Render(allocator, "{:>>>}", 1), 4u) { return 60; }
-    if !InvalidAt(Render(allocator, "ab {:>>>}", 1), 7u) { return 61; }
-    if !InvalidAt(Render(allocator, "{} {:>>>}", 1, 2), 7u) { return 62; }
+    if !InvalidAt(Render(allocator, "{:>>>}", 1), 4) { return 60; }
+    if !InvalidAt(Render(allocator, "ab {:>>>}", 1), 7) { return 61; }
+    if !InvalidAt(Render(allocator, "{} {:>>>}", 1, 2), 7) { return 62; }
 
     // A style the value refuses is a different failure from one the parser refuses: the first parses and is turned
     // down by the value, and it is reported as unsupported rather than as a malformed pattern.
@@ -301,9 +301,9 @@ func Main() -> int {
     let counted: Allocator = counting;
     if !Matches(Render(counted, "{} ok", 1), "1 ok") { return 100; }
     if counts.live != 0 { return 101; }
-    if !InvalidAt(Render(counted, "abcdefghijklmnop {", 1), 17u) { return 102; }
+    if !InvalidAt(Render(counted, "abcdefghijklmnop {", 1), 17) { return 102; }
     if counts.live != 0 { return 103; }
-    if !MismatchOf(Render(counted, "abcdefghijklmnop {}", 1, 2), 1u, 2u) { return 104; }
+    if !MismatchOf(Render(counted, "abcdefghijklmnop {}", 1, 2), 1, 2) { return 104; }
     if counts.live != 0 { return 105; }
 
     return 0;

@@ -16,15 +16,15 @@ func FromHex(text: char8[..], into: var char8[..]) {
         var value: uint8 = 0;
         var half: uint = 0;
         while half < 2u {
-            let c = text.data[index * 2u + half] as uint8;
+            let c = text.data[index * 2 + half] as uint8;
             var digit: uint8 = 0;
             if c >= 0x30u8 && c <= 0x39u8 {
-                digit = c - 0x30u8;
+                digit = c - 0x30;
             }
             else {
-                digit = c - 0x61u8 + 10u8;
+                digit = c - 0x61 + 10;
             }
-            value = value * 16u8 + digit;
+            value = value * 16 + digit;
             half = half + 1;
         }
         into.data[index] = value as char8;
@@ -78,7 +78,7 @@ func Main() -> int {
     var message: char8[200];
     var index: uint = 0;
     while index < 200u {
-        message[index] = ((index % 251u) as uint8) as char8;
+        message[index] = ((index % 251) as uint8) as char8;
         index = index + 1;
     }
     var length: uint = 0;
@@ -108,7 +108,7 @@ func Main() -> int {
             Assert(Equal((@sha1Got[0])[..20],
                          (@sha1OneShot[0])[..20]),
                    "and every split the same SHA-1");
-            split = split + 17u;
+            split = split + 17;
         }
         length = length + 1;
     }

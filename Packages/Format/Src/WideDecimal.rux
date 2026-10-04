@@ -137,7 +137,7 @@ func BitLengthOf(value: uint512) -> uint {
     var bits: uint = 0;
     while rest != 0u512 {
         rest = rest >> 1u;
-        bits = bits + 1u;
+        bits = bits + 1;
     }
     return bits;
 }
@@ -154,15 +154,15 @@ func FixedWideDigits(allocator: Allocator, value: &UnpackedWide, layout: &FloatL
     var tmp = BigNat(allocator);
     var base = BigNat(allocator);
     var scratch = BigNat(allocator);
-    if !r.SetWide(value.significand) || !s.SetSmall(1u64) { return false; }
+    if !r.SetWide(value.significand) || !s.SetSmall(1) { return false; }
     if value.exponent >= 0 {
         if !r.ShiftLeft(value.exponent as uint) { return false; }
     }
     else if !s.ShiftLeft((0 - value.exponent) as uint) {
         return false;
     }
-    let magnitude = (value.exponent as int64) + (BitLengthOf(value.significand) as int64) - 1i64;
-    var k = ((magnitude * 30103i64) / 100000i64) as int + 1;
+    let magnitude = (value.exponent as int64) + (BitLengthOf(value.significand) as int64) - 1;
+    var k = ((magnitude * 30103) / 100000) as int + 1;
     if magnitude < 0i64 {
         k = k - 1;
     }
@@ -177,13 +177,13 @@ func FixedWideDigits(allocator: Allocator, value: &UnpackedWide, layout: &FloatL
     }
     // Settle on r/s in [1/10, 1), so that the value is 0.d1d2... times ten to the k.
     while r.Compare(s) >= 0i32 {
-        if !s.MultiplySmall(10u64) { return false; }
+        if !s.MultiplySmall(10) { return false; }
         k = k + 1;
     }
     while true {
-        if !tmp.Assign(r) || !tmp.MultiplySmall(10u64) { return false; }
+        if !tmp.Assign(r) || !tmp.MultiplySmall(10) { return false; }
         if tmp.Compare(s) >= 0i32 { break; }
-        if !r.MultiplySmall(10u64) { return false; }
+        if !r.MultiplySmall(10) { return false; }
         k = k - 1;
     }
 
@@ -197,7 +197,7 @@ func FixedWideDigits(allocator: Allocator, value: &UnpackedWide, layout: &FloatL
     }
     if wanted == 0 {
         // Between a tenth and one unit in the last place: it is that unit, or nothing.
-        if !tmp.Assign(r) || !tmp.ShiftLeft(1u) { return false; }
+        if !tmp.Assign(r) || !tmp.ShiftLeft(1) { return false; }
         if tmp.Compare(s) > 0i32 {
             digits.data[0] = c8'1';
             *count = 1;
@@ -210,31 +210,31 @@ func FixedWideDigits(allocator: Allocator, value: &UnpackedWide, layout: &FloatL
         return true;
     }
     let needed = wanted as uint;
-    if needed + 1u > digits.length {
+    if needed + 1 > digits.length {
         *failure = WideDigitFailure::BufferTooSmall;
         return false;
     }
     var produced: uint = 0;
     while produced < needed {
-        if !r.MultiplySmall(10u64) { return false; }
-        digits.data[produced] = (r.TakeDigit(s) as uint8 + 0x30u8) as char8;
-        produced = produced + 1u;
+        if !r.MultiplySmall(10) { return false; }
+        digits.data[produced] = (r.TakeDigit(s) as uint8 + 0x30) as char8;
+        produced = produced + 1;
     }
     // What is left decides the last digit: over half rounds up, under half rounds down, and exactly half goes to
     // the even digit.
-    if !tmp.Assign(r) || !tmp.ShiftLeft(1u) { return false; }
+    if !tmp.Assign(r) || !tmp.ShiftLeft(1) { return false; }
     let order = tmp.Compare(s);
-    let lastOdd = ((digits.data[needed - 1u] as uint8) & 1u8) == 1u8;
+    let lastOdd = ((digits.data[needed - 1] as uint8) & 1) == 1u8;
     if order > 0i32 || (order == 0i32 && lastOdd) {
         var index = needed;
         var carried = true;
         while carried && index > 0u {
-            index = index - 1u;
+            index = index - 1;
             if digits.data[index] == c8'9' {
                 digits.data[index] = c8'0';
             }
             else {
-                digits.data[index] = ((digits.data[index] as uint8) + 1u8) as char8;
+                digits.data[index] = ((digits.data[index] as uint8) + 1) as char8;
                 carried = false;
             }
         }
@@ -242,11 +242,11 @@ func FixedWideDigits(allocator: Allocator, value: &UnpackedWide, layout: &FloatL
             // The carry ran off the front: the value became the next power of ten, one digit longer.
             var shift = needed;
             while shift > 0u {
-                digits.data[shift] = digits.data[shift - 1u];
-                shift = shift - 1u;
+                digits.data[shift] = digits.data[shift - 1];
+                shift = shift - 1;
             }
             digits.data[0] = c8'1';
-            produced = produced + 1u;
+            produced = produced + 1;
             *exponent10 = k;
         }
     }

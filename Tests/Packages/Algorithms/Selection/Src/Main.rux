@@ -64,7 +64,7 @@ func NextRandom(state: *var uint64) -> uint64 {
     x = x ^ (x << 25u64);
     x = x ^ (x >> 27u64);
     *state = x;
-    return x * 2685821657736338717u64;
+    return x * 2685821657736338717;
 }
 
 // Checks the whole NthElement contract at one position: the element landing at
@@ -154,7 +154,7 @@ func FillShape(data: *var int32, length: uint, shape: int, state: *var uint64) {
             data[i] = (i % 3) as int32;
         }
         else {
-            data[i] = (NextRandom(state) % 40u64) as int32;
+            data[i] = (NextRandom(state) % 40) as int32;
         }
         i++;
     }
@@ -162,7 +162,7 @@ func FillShape(data: *var int32, length: uint, shape: int, state: *var uint64) {
 
 func Main() -> int {
     var buffer: int32[260];
-    var state: uint64 = 2463534242u64;
+    var state: uint64 = 2463534242;
 
     // An index at or past the end is rejected, and the sequence is untouched.
     var small: int32[3] = [3, 1, 2];
@@ -217,7 +217,7 @@ func Main() -> int {
     // the ends, the median, and a quarter position.
     var round: int = 0;
     while round < 12 {
-        let length = ((NextRandom(@state) % 200u64) as uint) + 4;
+        let length = ((NextRandom(@state) % 200) as uint) + 4;
         FillShape(@buffer[0], length, 4, @state);
 
         if CheckNth(@buffer[0], length, 0) != 0 { return 120; }
@@ -252,7 +252,7 @@ func Main() -> int {
     if CheckPartial(@single[0], 1, 1) != 0 { return 141; }
 
     // Signed limits are ordinary values.
-    var signed: int32[5] = [0i32, 2147483647i32, -2147483648i32, -1i32, 1i32];
+    var signed: int32[5] = [0, 2147483647, -2147483648, -1, 1];
     if CheckNth(@signed[0], 5, 0) != 0 { return 150; }
     if CheckNth(@signed[0], 5, 4) != 0 { return 151; }
     if CheckPartial(@signed[0], 5, 2) != 0 { return 152; }

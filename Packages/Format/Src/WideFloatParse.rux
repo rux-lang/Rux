@@ -24,13 +24,13 @@ pub func ParseWideFloat(allocator: Allocator, str: char8[..], layout: &FloatLayo
     var negative = false;
     if str[index] == c8'+' || str[index] == c8'-' {
         negative = str[index] == c8'-';
-        index = index + 1u;
-        if index == str.length { fail ParseError::InvalidCharacter(index - 1u); }
+        index = index + 1;
+        if index == str.length { fail ParseError::InvalidCharacter(index - 1); }
     }
-    if index + 3u == str.length && str[index] == c8'N' && str[index + 1u] == c8'a' && str[index + 2u] == c8'N' {
+    if index + 3 == str.length && str[index] == c8'N' && str[index + 1] == c8'a' && str[index + 2] == c8'N' {
         return NanBits(layout);
     }
-    if index + 3u == str.length && str[index] == c8'I' && str[index + 1u] == c8'n' && str[index + 2u] == c8'f' {
+    if index + 3 == str.length && str[index] == c8'I' && str[index + 1] == c8'n' && str[index + 2] == c8'f' {
         return InfinityBits(negative, layout);
     }
 
@@ -43,22 +43,22 @@ pub func ParseWideFloat(allocator: Allocator, str: char8[..], layout: &FloatLayo
         let ch = str[index];
         if ch >= c8'0' && ch <= c8'9' {
             let digit = ((ch as uint) - (c8'0' as uint)) as uint64;
-            digitCount = digitCount + 1u;
+            digitCount = digitCount + 1;
             if afterPoint {
                 decimalExponent = decimalExponent - 1;
             }
             if digit != 0u64 || significant > 0u {
-                if !digits.MultiplySmall(10u64) || !digits.AddSmall(digit) {
+                if !digits.MultiplySmall(10) || !digits.AddSmall(digit) {
                     fail ParseError::OutOfMemory(index);
                 }
-                significant = significant + 1u;
+                significant = significant + 1;
             }
-            index = index + 1u;
+            index = index + 1;
             continue;
         }
         if ch == c8'.' && !afterPoint {
             afterPoint = true;
-            index = index + 1u;
+            index = index + 1;
             continue;
         }
         break;
@@ -66,11 +66,11 @@ pub func ParseWideFloat(allocator: Allocator, str: char8[..], layout: &FloatLayo
     if digitCount == 0u { fail ParseError::InvalidCharacter(index); }
     if index < str.length && (str[index] == c8'e' || str[index] == c8'E') {
         let marker = index;
-        index = index + 1u;
+        index = index + 1;
         var exponentNegative = false;
         if index < str.length && (str[index] == c8'+' || str[index] == c8'-') {
             exponentNegative = str[index] == c8'-';
-            index = index + 1u;
+            index = index + 1;
         }
         if index == str.length || str[index] < c8'0' || str[index] > c8'9' {
             fail ParseError::InvalidCharacter(marker);
@@ -83,20 +83,20 @@ pub func ParseWideFloat(allocator: Allocator, str: char8[..], layout: &FloatLayo
             if exponent < 100000000 {
                 exponent = exponent * 10 + digit;
             }
-            index = index + 1u;
+            index = index + 1;
         }
         decimalExponent = exponentNegative ? decimalExponent - exponent : decimalExponent + exponent;
     }
     if index != str.length { fail ParseError::InvalidCharacter(index); }
-    if digits.IsZero() { return PackWide(negative, 0u512, 0, layout); }
+    if digits.IsZero() { return PackWide(negative, 0, 0, layout); }
 
     // The value is at least ten to the magnitude less one and below ten to the magnitude; anything clearly past
     // the format is answered without building the numbers that would say so exactly.
     let magnitude = (significant as int) + decimalExponent;
-    let largest = ((layout.bias as int64 * 30103i64) / 100000i64) as int + 2;
-    let smallest = 0 - ((((layout.bias + layout.precision as int) as int64 * 30103i64) / 100000i64) as int + 3);
+    let largest = ((layout.bias as int64 * 30103) / 100000) as int + 2;
+    let smallest = 0 - ((((layout.bias + layout.precision as int) as int64 * 30103) / 100000) as int + 3);
     if magnitude > largest { fail ParseError::Overflow(str.length); }
-    if magnitude < smallest { return PackWide(negative, 0u512, 0, layout); }
+    if magnitude < smallest { return PackWide(negative, 0, 0, layout); }
     return RoundRatio(allocator, digits, decimalExponent, negative, layout, str.length);
 }
 

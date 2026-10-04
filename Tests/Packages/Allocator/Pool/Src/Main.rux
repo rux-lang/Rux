@@ -63,10 +63,10 @@ func Main() -> ! AllocError {
     Assert((fourth as uint) == (third as uint) + PoolSmallestClass, "and the fourth the third");
 
     // Writing through every block must not disturb the others.
-    *(first as *var uint64) = 0x1111111111111111u64;
-    *(second as *var uint64) = 0x2222222222222222u64;
-    *(third as *var uint64) = 0x3333333333333333u64;
-    *(fourth as *var uint64) = 0x4444444444444444u64;
+    *(first as *var uint64) = 0x1111111111111111;
+    *(second as *var uint64) = 0x2222222222222222;
+    *(third as *var uint64) = 0x3333333333333333;
+    *(fourth as *var uint64) = 0x4444444444444444;
     Assert(*(first as *uint64) == 0x1111111111111111u64, "the first block keeps its bytes");
     Assert(*(fourth as *uint64) == 0x4444444444444444u64, "and so does the fourth");
 
@@ -121,7 +121,7 @@ func Main() -> ! AllocError {
     Assert(direct != null, "which reports an address");
     Assert(pool.ChunkCount() == chunksBefore, "without the pool taking a chunk");
     Assert(pool.LiveBlocks() == liveBefore, "and without the pool counting it as its own");
-    *(direct as *var uint64) = 0x5555555555555555u64;
+    *(direct as *var uint64) = 0x5555555555555555;
     Assert(*(direct as *uint64) == 0x5555555555555555u64, "the direct block is usable storage");
     allocator.Deallocate(direct, huge)?;
 

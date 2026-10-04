@@ -69,7 +69,7 @@ extend Sha256 {
         var index: uint = 0;
         while index < 64u {
             buffer[index] = 0u8 as char8;
-            index = index + 1u;
+            index = index + 1;
         }
         return Sha256 { state: Sha256InitialState, buffer: buffer, buffered: 0, length: 0, outputLength: 32 };
     }
@@ -92,18 +92,18 @@ extend Sha256 {
         var schedule: uint32[64];
         var index: uint = 0;
         while index < 16u {
-            schedule[index] = ((block[index * 4u] as uint8 as uint32) << 24u32) |
-                              ((block[index * 4u + 1u] as uint8 as uint32) << 16u32) |
-                              ((block[index * 4u + 2u] as uint8 as uint32) << 8u32) |
-                              (block[index * 4u + 3u] as uint8 as uint32);
+            schedule[index] = ((block[index * 4] as uint8 as uint32) << 24u32) |
+                              ((block[index * 4 + 1] as uint8 as uint32) << 16u32) |
+                              ((block[index * 4 + 2] as uint8 as uint32) << 8u32) |
+                              (block[index * 4 + 3] as uint8 as uint32);
             index = index + 1;
         }
         while index < 64u {
-            let previous = schedule[index - 15u];
-            let recent = schedule[index - 2u];
-            let s0 = RotateRight32(previous, 7u32) ^ RotateRight32(previous, 18u32) ^ (previous >> 3u32);
-            let s1 = RotateRight32(recent, 17u32) ^ RotateRight32(recent, 19u32) ^ (recent >> 10u32);
-            schedule[index] = schedule[index - 16u] + s0 + schedule[index - 7u] + s1;
+            let previous = schedule[index - 15];
+            let recent = schedule[index - 2];
+            let s0 = RotateRight32(previous, 7) ^ RotateRight32(previous, 18) ^ (previous >> 3u32);
+            let s1 = RotateRight32(recent, 17) ^ RotateRight32(recent, 19) ^ (recent >> 10u32);
+            schedule[index] = schedule[index - 16] + s0 + schedule[index - 7] + s1;
             index = index + 1;
         }
 
@@ -118,10 +118,10 @@ extend Sha256 {
 
         index = 0;
         while index < 64u {
-            let sigma1 = RotateRight32(e, 6u32) ^ RotateRight32(e, 11u32) ^ RotateRight32(e, 25u32);
+            let sigma1 = RotateRight32(e, 6) ^ RotateRight32(e, 11) ^ RotateRight32(e, 25);
             let choose = (e & f) ^ ((~e) & g);
             let temp1 = h + sigma1 + choose + Sha256RoundConstants[index] + schedule[index];
-            let sigma0 = RotateRight32(a, 2u32) ^ RotateRight32(a, 13u32) ^ RotateRight32(a, 22u32);
+            let sigma0 = RotateRight32(a, 2) ^ RotateRight32(a, 13) ^ RotateRight32(a, 22);
             let majority = (a & b) ^ (a & c) ^ (b & c);
             let temp2 = sigma0 + majority;
             h = g;
@@ -161,7 +161,7 @@ extend Sha256 : Digest {
         if self.buffered > 0u {
             while index < bytes.length && self.buffered < 64u {
                 self.buffer[self.buffered] = bytes[index];
-                self.buffered = self.buffered + 1u;
+                self.buffered = self.buffered + 1;
                 index = index + 1;
             }
             if self.buffered == 64u {
@@ -169,13 +169,13 @@ extend Sha256 : Digest {
                 self.buffered = 0;
             }
         }
-        while index + 64u <= bytes.length {
+        while index + 64 <= bytes.length {
             self.Compress(@bytes[index]);
-            index = index + 64u;
+            index = index + 64;
         }
         while index < bytes.length {
             self.buffer[self.buffered] = bytes[index];
-            self.buffered = self.buffered + 1u;
+            self.buffered = self.buffered + 1;
             index = index + 1;
         }
     }
@@ -237,7 +237,7 @@ extend Sha256 : Digest {
     /// @returns how many bytes the compression function consumes at a time
     /// @see https://rux-lang.dev/docs/api/crypto/sha256/block-length
     pub func BlockLength(self: &Sha256) -> uint {
-        return 64u;
+        return 64;
     }
 }
 

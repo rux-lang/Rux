@@ -37,7 +37,7 @@ extend Shake {
         var state: Shake;
         var index: uint = 0;
         while index < 25u {
-            state.lanes[index] = 0u64;
+            state.lanes[index] = 0;
             index = index + 1;
         }
         state.rate = rate;
@@ -51,7 +51,7 @@ extend Shake {
     /// @returns a SHAKE128 sponge, which produces output of any length
     /// @see https://rux-lang.dev/docs/api/crypto/shake/new-128
     pub func New128() -> Shake {
-        return Shake::Start(168u);
+        return Shake::Start(168);
     }
 
     /// A SHAKE256 state: 256 bits of security, absorbing 136 bytes at a time.
@@ -59,7 +59,7 @@ extend Shake {
     /// @returns a SHAKE256 sponge, which produces output of any length
     /// @see https://rux-lang.dev/docs/api/crypto/shake/new-256
     pub func New256() -> Shake {
-        return Shake::Start(136u);
+        return Shake::Start(136);
     }
 
     /// Absorbs `bytes` into the state.
@@ -74,10 +74,10 @@ extend Shake {
         if self.reading { return; }
         var index: uint = 0;
         while index < bytes.length {
-            let lane = self.position / 8u;
-            let shift = ((self.position % 8u) * 8u) as uint64;
+            let lane = self.position / 8;
+            let shift = ((self.position % 8) * 8) as uint64;
             self.lanes[lane] = self.lanes[lane] ^ ((bytes[index] as uint8 as uint64) << shift);
-            self.position = self.position + 1u;
+            self.position = self.position + 1;
             if self.position == self.rate {
                 KeccakPermute(@self.lanes[0]);
                 self.position = 0;
@@ -119,10 +119,10 @@ extend Shake {
                 KeccakPermute(@self.lanes[0]);
                 self.position = 0;
             }
-            let lane = self.lanes[self.position / 8u];
-            let shift = ((self.position % 8u) * 8u) as uint64;
-            into[index] = ((lane >> shift) & 0xFFu64) as uint8 as char8;
-            self.position = self.position + 1u;
+            let lane = self.lanes[self.position / 8];
+            let shift = ((self.position % 8) * 8) as uint64;
+            into[index] = ((lane >> shift) & 0xFF) as uint8 as char8;
+            self.position = self.position + 1;
             index = index + 1;
         }
     }

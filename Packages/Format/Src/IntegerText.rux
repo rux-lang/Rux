@@ -108,7 +108,7 @@ pub func WriteIntegerSpec(writer: &var TextWriter, spec: FormatSpec, magnitude: 
     }
     while rest > 0u64 {
         let digit = rest % radix;
-        digits[count] = (digit < 10u64 ? digit + 0x30u64 : digit + letter) as char8;
+        digits[count] = (digit < 10u64 ? digit + 0x30 : digit + letter) as char8;
         count = count + 1;
         rest = rest / radix;
     }
