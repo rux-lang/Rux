@@ -462,7 +462,24 @@ void AnalysisContext::CheckDecl(const Decl &decl) {
         }
     }
     else if (auto *useDecl = dynamic_cast<const UseDecl *>(&decl)) {
+        // A module-level import was bound before signatures were resolved; binding it again picks up the resolved
+        // types of what it names, but must not report the problems of the first binding a second time.
+        const std::size_t before = diags.size();
         CheckUseDecl(*useDecl);
+        if (appliedImports.contains(useDecl)) {
+            const auto repeated = [&](const SemanticDiagnostic &diagnostic) {
+                return std::ranges::any_of(diags.begin(), diags.begin() + static_cast<std::ptrdiff_t>(before),
+                                           [&](const SemanticDiagnostic &earlier) {
+                                               return earlier.sourceName == diagnostic.sourceName &&
+                                                      earlier.location.line == diagnostic.location.line &&
+                                                      earlier.location.column == diagnostic.location.column &&
+                                                      earlier.message == diagnostic.message;
+                                           });
+            };
+            const auto removed =
+                std::ranges::remove_if(diags.begin() + static_cast<std::ptrdiff_t>(before), diags.end(), repeated);
+            diags.erase(removed.begin(), removed.end());
+        }
     }
     ValidatePublicDeclaration(decl);
 }

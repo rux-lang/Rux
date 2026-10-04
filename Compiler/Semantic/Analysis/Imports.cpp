@@ -37,6 +37,7 @@ void AnalysisContext::ApplyModuleImportsInScope(const Module &mod, Scope &scope)
 void AnalysisContext::ApplyDeclImports(const Decl &decl) {
     if (auto *useDecl = dynamic_cast<const UseDecl *>(&decl)) {
         CheckUseDecl(*useDecl);
+        appliedImports.insert(useDecl);
     }
     else if (auto *modDecl = dynamic_cast<const ModuleDecl *>(&decl)) {
         Scope *savedScope = currentScope;

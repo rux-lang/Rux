@@ -48,6 +48,11 @@ const SourcePackage &DependencyGraph::Root() const {
     return packages.at(rootId);
 }
 
+const SourcePackage *DependencyGraph::Find(const std::string &id) const {
+    const auto found = packages.find(id);
+    return found == packages.end() ? nullptr : &found->second;
+}
+
 void DependencyGraph::Fail(const SourcePackage &owner, std::string message, std::vector<std::string> notes,
                            std::optional<std::string> help) {
     auto diagnostic = ErrorDiagnostic(std::move(message), std::move(notes), std::move(help));

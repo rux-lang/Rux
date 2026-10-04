@@ -56,6 +56,8 @@ private:
     [[nodiscard]] bool IsAccessible(const Symbol &symbol) const;
     [[nodiscard]] bool IsAccessible(const Decl &declaration) const;
     [[nodiscard]] bool IsMemberAccessible(const Decl &owner, bool memberIsPublic) const;
+    /// How a diagnostic names the package with identity `package`: as its manifest spells it when it is a dependency.
+    [[nodiscard]] std::string PackageDisplayName(const std::string &package) const;
     void EmitPrivacyError(SourceLocation useLocation, const Symbol &symbol) const;
     void EmitPrivacyError(SourceLocation useLocation, const Decl &declaration, std::string_view kind,
                           std::string_view name) const;
@@ -1111,6 +1113,9 @@ private:
     void ImportSignatureDependencies(const Symbol &sym, const std::unordered_map<std::string, Symbol> &sourceTable);
 
     void CheckUseDecl(const UseDecl &d);
+    /// The module-level imports bound before signatures were resolved. Checking their module's declarations binds them
+    /// again, and the errors that second binding repeats are dropped.
+    std::unordered_set<const UseDecl *> appliedImports;
 
     static std::string MangleTypeName(const TypeRef &type);
 

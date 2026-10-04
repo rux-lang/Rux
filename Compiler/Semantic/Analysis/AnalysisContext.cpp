@@ -434,17 +434,27 @@ bool AnalysisContext::IsMemberAccessible(const Decl &owner, const bool memberIsP
            (memberIsPublic && found->second.isEffectivelyPublic);
 }
 
+std::string AnalysisContext::PackageDisplayName(const std::string &package) const {
+    for (const DepPackage &dependency : deps) {
+        if (dependency.name == package && !dependency.displayName.empty()) {
+            return dependency.displayName;
+        }
+    }
+    return package;
+}
+
 void AnalysisContext::EmitPrivacyError(const SourceLocation useLocation, const Symbol &symbol) const {
     EmitError(useLocation,
               std::format("{} '{}' is private to package '{}'", SymbolKindName(symbol.kind), symbol.name,
-                          symbol.ownerPackage),
+                          PackageDisplayName(symbol.ownerPackage)),
               {DeclarationNote(symbol)}, std::format("add 'pub' to the declaration of '{}'", symbol.name));
 }
 
 void AnalysisContext::EmitPrivacyError(const SourceLocation useLocation, const Decl &declaration,
                                        const std::string_view kind, const std::string_view name) const {
     const auto found = declarationInfos.find(&declaration);
-    const std::string owner = found == declarationInfos.end() ? std::string{} : found->second.ownerPackage;
+    const std::string owner =
+        found == declarationInfos.end() ? std::string{} : PackageDisplayName(found->second.ownerPackage);
     const std::string source = found == declarationInfos.end() ? std::string{} : found->second.sourceName;
     std::vector<std::string> notes;
     if (!source.empty()) {
@@ -458,7 +468,8 @@ void AnalysisContext::EmitPrivacyError(const SourceLocation useLocation, const D
 void AnalysisContext::EmitPrivateMemberError(const SourceLocation useLocation, const Decl &owner,
                                              const std::string_view kind, const std::string_view name) const {
     const auto found = declarationInfos.find(&owner);
-    const std::string package = found == declarationInfos.end() ? std::string{} : found->second.ownerPackage;
+    const std::string package =
+        found == declarationInfos.end() ? std::string{} : PackageDisplayName(found->second.ownerPackage);
     EmitError(useLocation, std::format("{} '{}' is private to package '{}'", kind, name, package), {},
               std::format("add 'pub' before the declaration of '{}'", name));
 }

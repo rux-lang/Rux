@@ -871,7 +871,9 @@ func Main() -> int {
 - **Problem:** item imports and module imports disagree about where the module lives.
 - **Course workaround:** `Packages/Module` uses module paths that do not repeat the package name.
 
-## D54. A grouped import of a private item reports the error twice, with an internal package name
+## D54. A grouped import of a private item reports the error twice, with an internal package name (fixed)
+
+**Fixed**; covered by `SemanticVisibilityTests.cpp` and `SemanticNameDiagnosticsTests.cpp`.
 
 - **Reproducer:** `import Tally::{ Counter, Clamp };` where `Clamp` is private.
 - **Actual:** the error is printed twice, and names the package `local:D:/…/Tally/Rux.toml` rather

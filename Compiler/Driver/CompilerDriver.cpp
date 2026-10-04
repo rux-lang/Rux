@@ -471,7 +471,12 @@ bool CompilerDriver::Impl::Analyze() {
             const std::string &pkgName = loadedPackages[i];
             auto [it, inserted] = pkgIdx.emplace(pkgName, depPackages.size());
             if (inserted) {
-                depPackages.push_back({pkgName, {}});
+                std::string displayName = pkgName;
+                if (const Driver::SourcePackage *source = dependencyGraph->Find(pkgName)) {
+                    const auto &package = source->manifest.package;
+                    displayName = package.ns ? package.ns->Text() + "/" + package.name.Text() : package.name.Text();
+                }
+                depPackages.push_back({pkgName, {}, std::move(displayName)});
             }
             depPackages[it->second].modules.push_back({loadedModuleNames[i], &depParseResults[i].module});
         }

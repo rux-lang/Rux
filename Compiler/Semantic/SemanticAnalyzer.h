@@ -24,6 +24,8 @@ struct DepPackage {
     };
 
     std::vector<ModuleEntry> modules;
+    /// How diagnostics name the package, as its manifest spells it (`Rux/Core`, `Tally`); the identity when empty.
+    std::string displayName{};
 };
 
 /// Locate a declaration source's owner, including when a conditional evaluator follows an imported alias or constant.

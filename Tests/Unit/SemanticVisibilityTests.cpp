@@ -31,10 +31,12 @@ std::unique_ptr<ParseResult> ParseSource(const Source &source) {
 }
 
 std::vector<SemanticDiagnostic> AnalyzePackages(const std::vector<Source> &userSources,
-                                                const std::vector<Source> &dependencySources = {}) {
+                                                const std::vector<Source> &dependencySources = {},
+                                                std::string dependencyDisplayName = {}) {
     std::vector<std::unique_ptr<ParseResult>> dependencies;
     DepPackage dependency;
     dependency.name = "Library";
+    dependency.displayName = std::move(dependencyDisplayName);
     for (const Source &source : dependencySources) {
         dependencies.push_back(ParseSource(source));
         dependency.modules.push_back({source.first, &dependencies.back()->module});
@@ -566,4 +568,13 @@ TEST_CASE("a root nominal declaration cannot expose a private dependency declara
     )"}},
                                              {{"library.rux", "struct Secret { hidden: int; }"}});
     CHECK_MESSAGE(HasMessage(diagnostics, "Secret' is private to package 'Library'"), Messages(diagnostics));
+}
+
+TEST_CASE("a grouped import of a private item is reported once, naming the package as its manifest does") {
+    const auto diagnostics = AnalyzePackages(
+        {{"main.rux", "import Library::{ Counter, Clamp };\nfunc Main() -> int { return 0; }\n"}},
+        {{"library.rux", "pub struct Counter { value: int; }\nfunc Clamp(value: int) -> int { return value; }\n"}},
+        "Tally");
+    REQUIRE_MESSAGE(diagnostics.size() == 1, Messages(diagnostics));
+    CHECK_EQ(diagnostics[0].message, "function 'Clamp' is private to package 'Tally'");
 }

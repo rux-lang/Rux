@@ -176,12 +176,12 @@ TEST_CASE("ambiguous module imports list candidate packages deterministically") 
     const auto diagnostics = AnalyzeWithDeps("import Shared::Value;", {{"Zulu", "module Shared { func Value() {} }"},
                                                                        {"Alpha", "module Shared { func Value() {} }"}});
 
-    REQUIRE_EQ(diagnostics.size(), 2);
+    // Reported once, although the import is bound both before and after signatures are resolved.
+    REQUIRE_EQ(diagnostics.size(), 1);
     CHECK_EQ(diagnostics[0].message, "module 'Shared' is ambiguous");
     REQUIRE_EQ(diagnostics[0].notes.size(), 2);
     CHECK_EQ(diagnostics[0].notes[0], "module 'Shared' is available from package 'Alpha'");
     CHECK_EQ(diagnostics[0].notes[1], "module 'Shared' is available from package 'Zulu'");
     REQUIRE(diagnostics[0].help.has_value());
     CHECK_EQ(*diagnostics[0].help, "qualify the import with one of the listed package names");
-    CHECK_EQ(diagnostics[1].message, diagnostics[0].message);
 }

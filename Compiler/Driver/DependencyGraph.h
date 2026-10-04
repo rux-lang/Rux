@@ -32,6 +32,8 @@ public:
                     std::span<const std::filesystem::path> localRoots = {}, bool localOnly = false);
 
     [[nodiscard]] const SourcePackage &Root() const;
+    /// The resolved package with identity `id`, or null when nothing resolved to it.
+    [[nodiscard]] const SourcePackage *Find(const std::string &id) const;
     [[nodiscard]] const SourcePackage *Resolve(const SourcePackage &owner, std::string_view importName);
 
     [[nodiscard]] const auto &Bindings() const {
