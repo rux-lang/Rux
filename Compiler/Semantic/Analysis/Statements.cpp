@@ -1185,6 +1185,14 @@ bool AnalysisContext::BlockDefinitelyReturns(const Block &block) const {
     std::function<bool(const Stmt &)> statementReturns;
     std::function<bool(const Block &, std::string_view, bool)> containsBreak;
     expressionReturns = [&](const Expr &expression) {
+        // An arm written as `return value` or `fail error` leaves the function; `break` and `continue` only leave a
+        // loop. A call to `Panic` or a no-return function never comes back either.
+        if (const auto *leave = dynamic_cast<const DivergeExpr *>(&expression)) {
+            return leave->kind == DivergeExpr::Kind::Return || leave->kind == DivergeExpr::Kind::Fail;
+        }
+        if (dynamic_cast<const CallExpr *>(&expression) && IsDivergingExpression(expression)) {
+            return true;
+        }
         const auto *blockExpression = dynamic_cast<const BlockExpr *>(&expression);
         return blockExpression && blockReturns(*blockExpression->block);
     };

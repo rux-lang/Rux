@@ -94,7 +94,9 @@ func Main() -> int {
 - **Course workaround:** `Errors/Panic` returns `int` (the days in a month) rather than a day
   name.
 
-## D5. A `match` statement whose every arm returns is not treated as returning
+## D5. A `match` statement whose every arm returns is not treated as returning (fixed)
+
+**Fixed**; covered by `Tests/Language/Match`.
 
 ```rux
 func Pick(day: uint) -> int {

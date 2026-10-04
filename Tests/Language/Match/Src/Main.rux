@@ -7,7 +7,7 @@
 // names every case, and the arms below are written without one wherever that is true, so removing a case from a
 // variant would fail to compile rather than silently fall through.
 
-import Core::Assert;
+import Core::{ Assert, Panic };
 
 enum Direction: int32 {
     North = 0,
@@ -63,6 +63,21 @@ func Classify(reading: Reading) -> int32 {
     };
 }
 
+// A match statement whose every arm leaves the function is the function's last word: nothing follows it.
+func Leave(day: uint) -> int32 {
+    match day {
+        0 => return 10i32,
+        else => return 11i32
+    }
+}
+
+func LeaveOrStop(day: uint) -> int32 {
+    match day {
+        0 => return 1i32,
+        else => Panic("out of range")
+    }
+}
+
 // A guard applies to the whole pattern before it, a range included.
 func Bucket(value: int32, small: bool) -> int32 {
     return match value {
@@ -106,6 +121,10 @@ func Main() -> int {
     Assert(Classify(Reading::Pair(0i32, 9i32)) == 109i32, "a literal positional field selects its arm");
     Assert(Classify(Reading::Pair(3i32, 9i32)) == 200i32, "a range positional field selects its arm");
     Assert(Classify(Reading::Pair(8i32, 9i32)) == 300i32, "and a value outside both reaches the last arm");
+
+    // Arms that return, or call a function that never returns, satisfy the function's result.
+    Assert(Leave(0) == 10i32 && Leave(3) == 11i32, "every arm returns");
+    Assert(LeaveOrStop(0) == 1i32, "an arm that panics need not produce a value");
 
     // A guard after a range pattern guards the range.
     Assert(Bucket(5i32, true) == 1i32, "a guarded range takes its arm when the guard holds");
