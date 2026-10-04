@@ -1074,3 +1074,44 @@ func Main() -> int {
 - **Expected:** one `drop 7` for every live value: the original and each copy made of it.
 - **Actual:** `copy 7` twice and `drop 7` twice, so one copy is never destroyed.
 - **Notes:** found while reading the pattern lowering for D18; the variant path appears to share the cause. A subject written with `<-` is destroyed correctly.
+
+## D60. Overwriting a droppable field never destroys the old value
+
+```rux
+struct Tracked { id: int; }
+extend Tracked { func ~Tracked(self: &var Tracked) { PrintLine("drop {}", self.id); } }
+struct Holder { t: Tracked; }
+
+func Main() -> int {
+    var h = Holder { t: Tracked { id: 1 } };
+    h.t <- Tracked { id: 2 };
+    PrintLine("replaced");
+    return 0;
+}
+```
+
+- **Expected:** `drop 1` before `replaced`, then `drop 2` at the end of `Main`, as replacing a droppable `var` local does.
+- **Actual:** `replaced`, then `drop 2`; the old field value is never destroyed.
+- **Notes:** found while fixing D57. AST→HIR already emits an overwrite cleanup for the place, but HIR→LIR's `EmitCleanup` (`Compiler/Lowering/HirToLir/HirToLirDrop.cpp`) looks the target up in `locals` and does nothing for a field. D57 enabled the place drop only for writes through a `&var` reference. A raw-pointer write into uninitialized storage (as in `Collections`) takes the same path and must not destroy anything, so the two need telling apart before the drop is enabled for every place.
+
+## D61. Assigning a fresh temporary calls the custom `=` and leaks the temporary
+
+```rux
+struct Counted { id: int; }
+extend Counted {
+    func =(self: &var Counted, other: &Counted) { self.id = other.id; PrintLine("copy {}", other.id); }
+    func ~Counted(self: &var Counted) { PrintLine("drop {}", self.id); }
+}
+func Make(id: int) -> Counted { return Counted { id: id }; }
+
+func Main() -> int {
+    var c = Counted { id: 1 };
+    c = Make(2);
+    PrintLine("assigned");
+    return 0;
+}
+```
+
+- **Expected:** the temporary transfers into `c` without a copy, as `Docs/Language.md` says a fresh temporary does: `drop 1`, `assigned`, `drop 2`.
+- **Actual:** `copy 2`, `drop 1`, `assigned`, `drop 2`. The custom `=` copies the temporary, and the temporary itself is never destroyed.
+- **Notes:** found while fixing D57; the same happens when the target is written through `&var T`.
