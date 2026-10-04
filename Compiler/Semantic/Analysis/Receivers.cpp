@@ -32,6 +32,7 @@ TypeRef AnalysisContext::DeclareReceiver(const FuncDecl &declaration, const bool
     ValidateIteratorConvention(declaration, isMethod);
     ValidateCheckedArithmeticIntrinsic(declaration);
     ValidateZeroizeIntrinsic(declaration);
+    ValidateIntrinsicFunction(declaration);
 
     if (isMethod) {
         Symbol self;

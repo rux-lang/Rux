@@ -387,6 +387,10 @@ private:
     void ValidateCheckedArithmeticIntrinsic(const FuncDecl &declaration);
     [[nodiscard]] static bool IsZeroizeIntrinsic(std::string_view intrinsicName);
     void ValidateZeroizeIntrinsic(const FuncDecl &declaration);
+    /// Rejects an intrinsic function the compiler does not implement, and holds a diagnostic intrinsic (`Assert`,
+    /// `DebugAssert`, `Panic`, `#Error`, `#Warn`) to the signature its calls are emitted for. Checked arithmetic and
+    /// zeroization have validators of their own.
+    void ValidateIntrinsicFunction(const FuncDecl &declaration);
 
     /// How a `for` loop reads a subject. An array, a slice and a range are driven directly; anything else is driven
     /// through the iterator convention, either because it is an iterator or because it hands one out.
@@ -490,6 +494,9 @@ private:
     [[nodiscard]] const ConstDecl *LookupAssociatedConstant(const Symbol &type, const std::string &name) const;
     [[nodiscard]] TypeRef CheckAssociatedConstant(const ConstDecl &declaration);
     void CheckIntrinsicType(const Decl &declaration);
+    /// Checks `intrinsic #name: Root;`: the compiler supplies a value only for a known root, and fills in only the
+    /// fields `CompilerParameters.h` lists for it.
+    void CheckCompilerParameterDeclaration(const ConstDecl &declaration, const TypeRef &type);
     std::unordered_map<std::string, std::unordered_set<const Decl *>> explicitTypeImports;
     [[nodiscard]] bool IsVisibleTypeSymbol(const Symbol &symbol) const;
     [[nodiscard]] const Decl *IntrinsicTypeBinding(const Symbol &symbol) const;

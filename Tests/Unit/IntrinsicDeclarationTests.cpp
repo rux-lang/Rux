@@ -2,11 +2,21 @@
 #include "Lexer/Lexer.h"
 #include "Lowering/AstToHir/AstToHir.h"
 #include "Semantic/Conditional/ConditionalCompilation.h"
+#include "Semantic/Model/CompilerParameters.h"
 #include "Semantic/SemanticAnalyzer.h"
 #include "Syntax/Parser/Parser.h"
 
+#include <algorithm>
+#include <cctype>
 #include <doctest.h>
+#include <filesystem>
+#include <format>
+#include <fstream>
+#include <iterator>
+#include <map>
 #include <string>
+#include <utility>
+#include <vector>
 
 using namespace Rux;
 
@@ -537,4 +547,236 @@ func Main() -> uint8 { let value = UserView<uint8> { value: 7u8 }; return value.
     const auto model = SemanticAnalyzer({&parsed.module}, {}, "App").Analyze();
     REQUIRE_FALSE(model.HasErrors());
     (void)AstToHirLowering(model).Generate();
+}
+
+namespace {
+std::vector<std::string> DiagnosticMessages(const SemanticModel &model) {
+    std::vector<std::string> messages;
+    for (const auto &diagnostic : model.diagnostics) {
+        messages.push_back(diagnostic.message);
+    }
+    return messages;
+}
+
+/// A declared type for every field the compiler supplies, so a test can declare each root in full.
+std::string_view SuppliedFieldType(const std::string_view root, const std::string_view field) {
+    static const std::map<std::pair<std::string_view, std::string_view>, std::string_view> types{
+        {{"Target", "os"}, "OperatingSystem"},
+        {{"Target", "arch"}, "Architecture"},
+        {{"Target", "abi"}, "ApplicationBinaryInterface"},
+        {{"Target", "endian"}, "Endianness"},
+        {{"Target", "pointerBits"}, "uint"},
+        {{"Target", "dataModel"}, "DataModel"},
+        {{"Target", "objectFormat"}, "ObjectFormat"},
+        {{"Target", "triple"}, "char8[..]"},
+        {{"Build", "profile"}, "char8[..]"},
+        {{"Build", "mode"}, "BuildMode"},
+        {{"Build", "optimization"}, "OptimizationMode"},
+        {{"Build", "debugAssertions"}, "bool"},
+        {{"Build", "debugInfo"}, "bool"},
+        {{"Build", "isTest"}, "bool"},
+        {{"Build", "outputKind"}, "OutputKind"},
+        {{"Build", "timestamp"}, "uint64"},
+        {{"Build", "date"}, "char8[..]"},
+        {{"Build", "time"}, "char8[..]"},
+        {{"Source", "line"}, "uint"},
+        {{"Source", "column"}, "uint"},
+        {{"Source", "file"}, "char8[..]"},
+        {{"Source", "fileName"}, "char8[..]"},
+        {{"Source", "filePath"}, "char8[..]"},
+        {{"Source", "function"}, "char8[..]"},
+        {{"Source", "module"}, "char8[..]"},
+        {{"Compiler", "version"}, "SemanticVersion"},
+    };
+    const auto found = types.find({root, field});
+    REQUIRE_MESSAGE(found != types.end(), "no test type for supplied field '", root, ".", field, "'");
+    return found->second;
+}
+
+std::string ValueName(const std::string_view root) {
+    std::string name = "#" + std::string(root);
+    name[1] = static_cast<char>(std::tolower(static_cast<unsigned char>(name[1])));
+    return name;
+}
+} // namespace
+
+TEST_CASE("an intrinsic function the compiler does not implement is rejected") {
+    auto parsed = ParseIntrinsicSource(R"(
+struct Target {}
+intrinsic func Frobnicate(value: int) -> int;
+extend Target { intrinsic func Measure(self: &Target) -> uint; }
+)");
+    const auto messages = DiagnosticMessages(SemanticAnalyzer({&parsed.module}, {}, "App").Analyze());
+    REQUIRE_EQ(messages.size(), 2);
+    CHECK_EQ(messages[0], "'Frobnicate' is not a supported intrinsic function");
+    CHECK_EQ(messages[1], "'Target.Measure' is not a supported intrinsic function");
+}
+
+TEST_CASE("every intrinsic function Core declares is one the compiler implements") {
+    auto parsed = ParseIntrinsicSource(R"(
+pub struct Target {}
+pub struct Compiler {}
+pub struct Config {}
+pub enum TargetFeature { SSE2 }
+extend Target { pub intrinsic func HasFeature(self: &Target, feature: TargetFeature) -> bool; }
+extend Compiler { pub intrinsic func HasFeature(self: &Compiler, feature: char8[..]) -> bool; }
+extend Config {
+    pub intrinsic func Get(self: &Config, name: char8[..]) -> char8[..];
+    pub intrinsic func Has(self: &Config, name: char8[..]) -> bool;
+}
+pub intrinsic func CheckedAdd(left: uint64, right: uint64, result: *var uint64) -> bool;
+pub intrinsic func CheckedSub(left: uint64, right: uint64, result: *var uint64) -> bool;
+pub intrinsic func CheckedMul(left: uint64, right: uint64, result: *var uint64) -> bool;
+pub intrinsic func Assert(condition: bool, message: char8[..]);
+pub intrinsic func DebugAssert(condition: bool, message: char8[..]);
+pub intrinsic func Panic(message: char8[..]);
+pub intrinsic func #Error(message: char8[..]);
+pub intrinsic func #Warn(message: char8[..]);
+pub intrinsic func Zeroize(memory: *var uint8, length: uint64);
+)");
+    CHECK(DiagnosticMessages(SemanticAnalyzer({&parsed.module}, {}, "App").Analyze()).empty());
+}
+
+TEST_CASE("a diagnostic intrinsic is held to the signature its calls are emitted for") {
+    auto parsed = ParseIntrinsicSource(R"(
+intrinsic func Assert(condition: int, message: char8[..]);
+intrinsic func DebugAssert(condition: bool);
+intrinsic func Panic(message: char8[..]) -> int;
+intrinsic func #Error(message: char16[..]);
+intrinsic func #Warn(message: char8[..], extra: int);
+)");
+    const auto model = SemanticAnalyzer({&parsed.module}, {}, "App").Analyze();
+    REQUIRE_EQ(model.diagnostics.size(), 5);
+    CHECK_EQ(model.diagnostics[0].message,
+             "intrinsic 'Assert' must be declared as 'func Assert(condition: bool, message: char8[..])'");
+    CHECK_EQ(model.diagnostics[0].notes, std::vector<std::string>{"parameter 'condition' has type 'int'"});
+    CHECK_EQ(model.diagnostics[1].notes, std::vector<std::string>{"it declares 1 parameter"});
+    CHECK_EQ(model.diagnostics[2].message, "intrinsic 'Panic' must be declared as 'func Panic(message: char8[..])'");
+    CHECK_EQ(model.diagnostics[2].notes, std::vector<std::string>{"it returns 'int'"});
+    CHECK_EQ(model.diagnostics[3].notes, std::vector<std::string>{"parameter 'message' has type 'char16[..]'"});
+    CHECK_EQ(model.diagnostics[4].notes, std::vector<std::string>{"it declares 2 parameters"});
+}
+
+TEST_CASE("an intrinsic value declares a known root and only the fields the compiler supplies") {
+    auto parsed = ParseIntrinsicSource(R"(
+struct Target { pointerBits: uint; wordSize: uint; }
+struct Machine { os: uint; }
+struct Config { name: char8[..]; }
+intrinsic #target: Target;
+intrinsic #machine: Machine;
+intrinsic #config: Config;
+)");
+    const auto messages = DiagnosticMessages(SemanticAnalyzer({&parsed.module}, {}, "App").Analyze());
+    REQUIRE_EQ(messages.size(), 3);
+    CHECK_EQ(messages[0], "field 'wordSize' of 'Target' is not one the compiler supplies for '#target'");
+    CHECK_EQ(messages[1], "'Machine' is not a value the compiler supplies for '#machine'");
+    CHECK_EQ(messages[2], "field 'name' of 'Config' is not one the compiler supplies for '#config'");
+}
+
+TEST_CASE("Core declares exactly the fields the compiler supplies") {
+    for (const CompilerParameterRoot &root : CompilerParameterRoots) {
+        CAPTURE(root.name);
+        const auto path = std::filesystem::path(RUX_PACKAGES_DIR) / "Core" / "Src" / (std::string(root.name) + ".rux");
+        std::ifstream input(path, std::ios::binary);
+        REQUIRE(input);
+        const std::string source((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+        auto parsed = ParseIntrinsicSource(source, path.filename().string());
+        const StructDecl *structure = nullptr;
+        bool declared = false;
+        for (const auto &item : parsed.module.items) {
+            if (const auto *candidate = dynamic_cast<const StructDecl *>(item.get());
+                candidate && candidate->name == root.name) {
+                structure = candidate;
+            }
+            if (const auto *constant = dynamic_cast<const ConstDecl *>(item.get())) {
+                declared |= constant->name == ValueName(root.name) && constant->intrinsicName == root.name;
+            }
+        }
+        REQUIRE(structure);
+        CHECK(declared);
+        std::vector<std::string_view> fields;
+        for (const auto &field : structure->fields) {
+            fields.push_back(field.name);
+        }
+        std::vector<std::string_view> supplied(root.fields.begin(), root.fields.end());
+        std::ranges::sort(fields);
+        std::ranges::sort(supplied);
+        CHECK_EQ(fields, supplied);
+    }
+}
+
+TEST_CASE("the compile-time evaluator and lowering answer every field the compiler supplies") {
+    std::string source = R"(
+enum OperatingSystem { Unknown, Windows }
+enum Architecture { Unknown, X86_64 }
+enum ApplicationBinaryInterface { Unknown, WindowsX64 }
+enum Endianness { Big, Little }
+enum DataModel { Unknown, LLP64 }
+enum ObjectFormat { Unknown, COFF }
+enum BuildMode { Debug, Release }
+enum OptimizationMode { None, Size, Speed }
+enum OutputKind { Executable, SharedLibrary, StaticLibrary, SourceLibrary }
+struct SemanticVersion { major: uint; minor: uint; patch: uint; }
+)";
+    std::string reads = "func Read() {\n";
+    std::size_t count = 0;
+    for (const CompilerParameterRoot &root : CompilerParameterRoots) {
+        source += std::format("struct {} {{\n", root.name);
+        for (const std::string_view field : root.fields) {
+            source += std::format("    {}: {};\n", field, SuppliedFieldType(root.name, field));
+            reads += std::format("    let read{} = {}.{};\n", count++, ValueName(root.name), field);
+        }
+        source += std::format("}}\nintrinsic {}: {};\n", ValueName(root.name), root.name);
+    }
+    source += reads + "}\n";
+    CAPTURE(source);
+
+    auto analyzed = ParseIntrinsicSource(source);
+    const auto model = SemanticAnalyzer({&analyzed.module}, {}, "App").Analyze();
+    for (const auto &diagnostic : model.diagnostics) {
+        INFO(diagnostic.message);
+    }
+    REQUIRE_FALSE(model.HasErrors());
+    AstToHirLowering lowering(model);
+    const HirPackage package = lowering.Generate();
+    CHECK(lowering.Diagnostics().empty());
+    const HirFunc *read = nullptr;
+    for (const auto &function : package.modules.front().funcs) {
+        if (function.name.ends_with("Read")) {
+            read = &function;
+        }
+    }
+    REQUIRE(read);
+    REQUIRE_EQ(read->body->stmts.size(), count);
+    for (const auto &statement : read->body->stmts) {
+        const auto *let = dynamic_cast<const HirLetStmt *>(statement.get());
+        REQUIRE(let);
+        CAPTURE(let->name);
+        // A supplied field folds to the value itself; a field read from storage would mean nothing filled it in.
+        CHECK((dynamic_cast<const HirLiteralExpr *>(let->init.get()) ||
+               dynamic_cast<const HirStructInitExpr *>(let->init.get())));
+    }
+
+    auto evaluated = ParseIntrinsicSource(source);
+    const CompileTimeContext context;
+    ConditionalEvaluator evaluator(context, {&evaluated.module});
+    evaluator.SetSourceContext(evaluated.module.name, "test", "Read");
+    evaluator.SetImports(evaluated.module);
+    for (const CompilerParameterRoot &root : CompilerParameterRoots) {
+        for (const std::string_view field : root.fields) {
+            if (root.name == "Compiler") {
+                continue; // The version is compared as a whole rather than read as one scalar.
+            }
+            CAPTURE(root.name);
+            CAPTURE(field);
+            FieldExpr fieldRead;
+            auto object = std::make_unique<IdentExpr>();
+            object->name = ValueName(root.name);
+            fieldRead.object = std::move(object);
+            fieldRead.field = std::string(field);
+            const auto value = evaluator.Evaluate(fieldRead);
+            CHECK(value.value.has_value());
+            CHECK(value.diagnostics.empty());
+        }
+    }
 }

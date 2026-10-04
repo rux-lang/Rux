@@ -2,6 +2,7 @@
 // compile-time `Compiler` values whose fields are resolved rather than read.
 
 #include "Lowering/AstToHir/Detail/AstToHirContext.h"
+#include "Semantic/Model/CompilerParameters.h"
 #include "Semantic/SemanticVersion.h"
 #include "Target/Platform.h"
 
@@ -160,6 +161,10 @@ AstToHirContext::LookupEnumVariantInitializer(const StructInitExpr &expression) 
 
 HirExprPtr AstToHirContext::LowerCompilerParamField(const std::string &root, const std::string &field,
                                                     const SourceLocation location) {
+    // Semantic analysis accepted only declarations whose fields the shared table lists, and nothing else is answered.
+    if (!IsSuppliedCompilerParameterField(root, field)) {
+        return nullptr;
+    }
     auto compilerEnum = [&](const std::string &typeName, const std::int64_t value) {
         TypeRef type = TypeRef::MakeNamed(typeName);
         if (const auto declaration = enumDecls.find(typeName); declaration != enumDecls.end()) {
@@ -245,7 +250,7 @@ HirExprPtr AstToHirContext::LowerCompilerParamField(const std::string &root, con
 
 HirExprPtr AstToHirContext::LowerCompilerParamObject(const std::string &root, const TypeRef &type,
                                                      const SourceLocation location) {
-    if (root != "Target" && root != "Build" && root != "Compiler" && root != "Source" && root != "Config") {
+    if (!FindCompilerParameterRoot(root)) {
         return nullptr;
     }
 

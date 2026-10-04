@@ -5,6 +5,7 @@
 #include "Numeric/IntegerLiteral.h"
 #include "Semantic/Conditional/ConditionalCompilation.h"
 #include "Semantic/Conditional/ConditionalEvaluatorInternal.h"
+#include "Semantic/Model/CompilerParameters.h"
 #include "Semantic/SemanticVersion.h"
 #include "Target/Target.h"
 #include "Types/PrimitiveCatalog.h"
@@ -575,7 +576,9 @@ bool ConditionalEvaluator::Impl::CompilerParamFieldIsAccessible(const Expr &root
 std::optional<CompileTimeValue> ConditionalEvaluator::Impl::EvalCompilerParamField(const std::string_view root,
                                                                                    const std::string_view field,
                                                                                    const SourceLocation location) {
-    if (root == "Target") {
+    // Only a field the shared table lists is answered, so a condition and a value read agree on what exists.
+    const bool supplied = IsSuppliedCompilerParameterField(root, field);
+    if (supplied && root == "Target") {
         if (field == "os") {
             if (const auto variant = OsVariantFor(ToString(context.target.os)))
                 return Value{EnumValue{"OperatingSystem", *variant}};
@@ -595,7 +598,7 @@ std::optional<CompileTimeValue> ConditionalEvaluator::Impl::EvalCompilerParamFie
         if (field == "triple")
             return Value{context.targetTriple};
     }
-    if (root == "Build") {
+    if (supplied && root == "Build") {
         if (field == "profile")
             return Value{std::string(context.ProfileName())};
         if (field == "mode")
@@ -628,7 +631,7 @@ std::optional<CompileTimeValue> ConditionalEvaluator::Impl::EvalCompilerParamFie
         if (field == "time")
             return Value{FormatTimestamp(context.buildInfo.Timestamp(), "%H:%M:%S")};
     }
-    if (root == "Source") {
+    if (supplied && root == "Source") {
         if (field == "line")
             return Value{static_cast<std::int64_t>(location.line)};
         if (field == "column")

@@ -812,7 +812,9 @@ documents in lessons are therefore built line by line with a `StringBuilder`.
 - **Actual:** `25`, the column of the `.`.
 - **Course workaround:** `CompileTime/SourceLocation` leaves the column out.
 
-## D44. An unknown `intrinsic func` is accepted and fails only at load time
+## D44. An unknown `intrinsic func` is accepted and fails only at load time (fixed)
+
+**Fixed**; covered by `IntrinsicDeclarationTests.cpp` and the `IntrinsicDeclarations` golden.
 
 - **Reproducer:** `intrinsic func Frobnicate(value: int) -> int;`, then a `Main` that prints
   `"a"` and then `Frobnicate(2)`.
@@ -821,14 +823,18 @@ documents in lessons are therefore built line by line with a `StringBuilder`.
 - **Actual:** check and build pass. `rux run` prints nothing, not even `a`, and exits 127.
   Running the executable directly gives 0xC0000139 (STATUS_ENTRYPOINT_NOT_FOUND).
 
-## D45. A field the compiler does not supply on a user-declared `#target` struct reads garbage
+## D45. A field the compiler does not supply on a user-declared `#target` struct reads garbage (fixed)
+
+**Fixed**; covered by `IntrinsicDeclarationTests.cpp` and the `IntrinsicDeclarations` golden.
 
 - **Reproducer:** `struct Target { pointerBits: uint; wordSize: uint; }`,
   `intrinsic #target: Target;`, then `PrintLine("{}", #target.wordSize);`.
 - **Expected:** a compile error for an unknown context field.
 - **Actual:** accepted, and prints `16974340`.
 
-## D46. The signature of an intrinsic function is not enforced
+## D46. The signature of an intrinsic function is not enforced (fixed)
+
+**Fixed**; covered by `IntrinsicDeclarationTests.cpp` and the `IntrinsicDeclarations` golden.
 
 - **Reproducer:** a provider declares `pub intrinsic func Assert(condition: int, message: char8[..]);`,
   and `Main` calls `Assert(256, "x");`.

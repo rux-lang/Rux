@@ -300,6 +300,10 @@ Scalar representation and arithmetic exist independently of these declarations. 
 
 Extension blocks may contain ordinary typed constants as well as methods. The only compiler-supplied associated constant values are `intrinsic const Infinity: float32;` and `intrinsic const NaN: float32;`, and their `float64` counterparts, declared inside extensions of the corresponding floating-point type. Other limits and metadata belong in ordinary source initializers.
 
+`intrinsic func` names a function the compiler implements itself, so only the ones it knows are accepted: `CheckedAdd`, `CheckedSub`, `CheckedMul`, `Zeroize`, `Assert`, `DebugAssert`, `Panic`, `#Error`, and `#Warn`, and the methods `Target.HasFeature`, `Compiler.HasFeature`, `Config.Get`, and `Config.Has`. Any other name is rejected with `'Frobnicate' is not a supported intrinsic function`. The compiler emits each call for one signature, so a declaration must match it exactly: `Assert` and `DebugAssert` take `(condition: bool, message: char8[..])`, `Panic`, `#Error`, and `#Warn` take `(message: char8[..])`, and none of them returns a value.
+
+`intrinsic #name: Root;` declares a value the compiler supplies, where `Root` is one of `Target`, `Build`, `Source`, `Compiler`, and `Config`. The struct `Root` names may declare any subset of the fields the compiler fills in for that root, and no others: a `struct Target { wordSize: uint; }` behind `intrinsic #target: Target;` is rejected with `field 'wordSize' of 'Target' is not one the compiler supplies for '#target'`, since nothing would fill it in.
+
 ### Writable sequence views
 
 `T[..]` is a read-only slice and `var T[..]` is a writable slice. Both contain a data pointer and an element count. The storage must outlive the view. Copying a view copies its descriptor, not its elements.

@@ -658,6 +658,9 @@ void AnalysisContext::CheckConstDecl(const ConstDecl &d) {
         }
         const TypeRef constType = ResolveType(**d.type);
         ValidateStoredType(constType, d.location, "intrinsic constant");
+        if (d.name.starts_with('#')) {
+            CheckCompilerParameterDeclaration(d, constType);
+        }
         if (Symbol *sym = currentScope->Lookup(d.name)) {
             sym->type = constType;
             sym->intrinsicName = d.intrinsicName;
