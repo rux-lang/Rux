@@ -856,6 +856,7 @@ void AnalysisContext::CheckPattern(const Pattern &pattern, const TypeRef &subjec
         DefineTrackedLocal(std::move(symbol), true);
     }
     else if (const auto *literalPattern = dynamic_cast<const LiteralPattern *>(&pattern)) {
+        ValidateCharLiteral(literalPattern->value, literalPattern->location);
         const TypeRef literalType = LiteralType(literalPattern->value);
         const bool compatibleNumeric = literalType.IsNumeric() && subjectType.IsNumeric();
         if (!literalType.IsUnknown() && !subjectType.IsUnknown() && !compatibleNumeric &&

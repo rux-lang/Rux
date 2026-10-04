@@ -676,6 +676,8 @@ private:
     /// An unsuffixed literal is checked against whatever it is being assigned to; a suffixed one names its type
     /// itself, so nothing else ever checks it.
     void ValidateSuffixedIntegerLiteral(const LiteralExpr &literal, bool negative);
+    /// Reports a prefixed character literal whose character is not one code unit of its width, such as `c8'é'`.
+    void ValidateCharLiteral(const Token &literal, SourceLocation location);
 
     /// Whether `type` still stands for something a type parameter in scope decides.
     ///

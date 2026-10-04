@@ -47,16 +47,7 @@ bool UnprefixedCharLiteralFits(const Expr &expression, const TypeRef &target) {
     const auto *literal = dynamic_cast<const LiteralExpr *>(&expression);
     const std::optional<std::uint32_t> codePoint =
         literal ? Lexer::DecodeCharLiteralCodePoint(literal->token.text) : std::nullopt;
-    if (!codePoint) {
-        return false;
-    }
-    if (target.kind == TypeRef::Kind::Char8) {
-        return *codePoint <= 0x7F;
-    }
-    if (target.kind == TypeRef::Kind::Char16) {
-        return *codePoint <= 0xFFFF && !IsSurrogate(*codePoint);
-    }
-    return IsValidCharacterValue(target.kind, *codePoint);
+    return codePoint && IsOneCharacterOf(target.kind, *codePoint);
 }
 } // namespace
 

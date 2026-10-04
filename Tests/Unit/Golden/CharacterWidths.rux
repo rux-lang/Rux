@@ -18,3 +18,20 @@ func Main() {
     let scalar: char32 = 'a';
     let narrowed: char16 = scalar;
 }
+
+func Literals() {
+    // A prefixed literal holds one code unit of its width, so a character that
+    // needs more is refused rather than truncated; a scalar width holds any.
+    let accent8 = c8'é';
+    let emoji8 = c8'😀';
+    let escaped8 = c8'\u{80}';
+    let emoji16 = c16'😀';
+    let accent16 = c16'é';
+    let ascii8 = c8'~';
+    let emoji32 = c32'😀';
+    let emoji64 = c64'\u{1F600}';
+    let matched = match ascii8 {
+        c8'é' => 1,
+        else => 0
+    };
+}

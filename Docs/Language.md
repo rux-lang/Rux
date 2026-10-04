@@ -343,6 +343,8 @@ func Prefix(text: char8[..], count: uint) -> char8[..] {
 
 Character literals hold one value. An unprefixed `'A'` has type `char32`; `c8'A'`, `c16'A'`, `c32'A'`, and `c64'A'` select their respective character widths. `char64` stores the same Unicode scalar values as `char32` in eight bytes, so `c64'😀'` and `c64'\u{1F600}'` have the same value. Prefixes work in constants, generic arguments, and match patterns. An identifier named `c64` remains valid; there is no `c64` string encoding.
 
+A prefixed literal holds exactly one character of its width and is never truncated. `c8` takes a character that is one UTF-8 code unit, U+0000 through U+007F; `c16` takes one UTF-16 code unit that is not a surrogate, up to U+FFFF; `c32` and `c64` take any scalar value. `c8'é'` and `c16'😀'` are rejected with `character 'é' (U+00E9) does not fit one 'char8' code unit`: a character that needs several code units is written as a string literal such as `c8"é"`, and a single byte such as `0xE9u8` is written as an integer. An unprefixed `'a'` takes `char8` or `char16` from its destination by the same rule.
+
 Character literals accept the existing simple escapes and `\u{...}` with one to eight hexadecimal digits. Empty literals, multiple characters, invalid escapes, surrogate scalars, and scalars above U+10FFFF are rejected. Character patterns compare decoded values, so a Unicode escape matches its literal spelling and equivalent unguarded arms are duplicate patterns.
 
 ### Range types

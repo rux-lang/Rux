@@ -1,6 +1,7 @@
 // Checking for literals, names, operators and assignment, including the
 // mutability rules an assignment target has to satisfy.
 
+#include "Lexer/Lexer.h"
 #include "Numeric/IntegerLiteral.h"
 #include "Semantic/Analysis/AnalysisContext.h"
 #include "Syntax/Parser/Detail/AstDumpWriter.h"
@@ -180,11 +181,35 @@ void AnalysisContext::ValidateSuffixedIntegerLiteral(const LiteralExpr &literal,
     }
 }
 
+void AnalysisContext::ValidateCharLiteral(const Token &literal, const SourceLocation location) {
+    if (literal.kind != TokenKind::CharLiteral) {
+        return;
+    }
+    const TypeRef type = CharLiteralType(literal);
+    const std::optional<std::uint32_t> codePoint = Lexer::DecodeCharLiteralCodePoint(literal.text);
+    if (!codePoint || IsOneCharacterOf(type.kind, *codePoint)) {
+        return;
+    }
+    const std::string_view text = literal.text;
+    const std::size_t open = text.find('\'');
+    const std::string_view character = text.substr(open + 1, text.size() - open - 2);
+    const std::string_view prefix = text.substr(0, open);
+    std::string help = std::format("write a string literal such as {}\"{}\"", prefix, character);
+    if (type.kind == TypeRef::Kind::Char8 && *codePoint <= 0xFF) {
+        help += std::format(", or a byte such as 0x{:02X}u8", *codePoint);
+    }
+    EmitError(location,
+              std::format("character '{}' (U+{:04X}) does not fit one '{}' code unit", character, *codePoint,
+                          type.ToString()),
+              {}, std::move(help));
+}
+
 std::optional<TypeRef> AnalysisContext::CheckBasicExpression(const Expr &expression) {
     if (const auto *literal = dynamic_cast<const LiteralExpr *>(&expression)) {
         if (!negatedIntegerLiterals.contains(literal)) {
             ValidateSuffixedIntegerLiteral(*literal, false);
         }
+        ValidateCharLiteral(literal->token, literal->location);
         const TypeRef type = LiteralType(literal->token);
         if (const PrimitiveInfo *primitive = FindPrimitive(type.kind); primitive && !primitive->implemented) {
             EmitError(literal->location,

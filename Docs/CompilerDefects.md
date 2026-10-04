@@ -383,7 +383,9 @@ func Main() -> int {
   `when C == 5`.
 - **Course workaround:** `Basics/Const` states the rule in a comment, without a diagnostic to quote.
 
-## D23. A `c8` or `c16` character literal that does not fit is silently truncated
+## D23. A `c8` or `c16` character literal that does not fit is silently truncated (fixed)
+
+**Fixed**; covered by the `CharacterWidths` golden.
 
 - **Reproducer:** `let e = c8'😀'; let f = c16'😀';`, then print each one `as uint32`.
 - **Expected:** a compile error saying that U+1F600 does not fit `char8` or `char16`.

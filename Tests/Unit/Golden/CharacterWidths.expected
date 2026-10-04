@@ -7,3 +7,8 @@
 12:34: error: constant cast from 'int' to 'char16' is outside the target type's range
 17:5: error: cannot assign 'char8' to 'char16'
 19:5: error: cannot assign 'char32' to 'char16'
+25:19: error: character 'é' (U+00E9) does not fit one 'char8' code unit
+26:18: error: character '😀' (U+1F600) does not fit one 'char8' code unit
+27:20: error: character '\u{80}' (U+0080) does not fit one 'char8' code unit
+28:19: error: character '😀' (U+1F600) does not fit one 'char16' code unit
+34:9: error: character 'é' (U+00E9) does not fit one 'char8' code unit

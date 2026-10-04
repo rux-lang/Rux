@@ -112,4 +112,11 @@ enum class CharacterDomain : std::uint8_t {
 ///
 /// @return false when `kind` is not a character
 [[nodiscard]] bool IsValidCharacterValue(TypeRef::Kind kind, std::uint64_t value) noexcept;
+
+/// Whether the character `codePoint` is written as exactly one character of this width: one UTF-8 code unit (U+0000
+/// through U+007F) for `char8`, one UTF-16 code unit that is not a surrogate for `char16`, and any scalar value for the
+/// scalar-valued widths. A character literal of a width holds one such character and nothing truncated from more.
+///
+/// @return false when `kind` is not a character
+[[nodiscard]] bool IsOneCharacterOf(TypeRef::Kind kind, std::uint32_t codePoint) noexcept;
 } // namespace Rux

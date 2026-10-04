@@ -191,4 +191,14 @@ bool IsValidCharacterValue(const TypeRef::Kind kind, const std::uint64_t value) 
     }
     return *domain == CharacterDomain::CodeUnit || !IsSurrogate(value);
 }
+
+bool IsOneCharacterOf(const TypeRef::Kind kind, const std::uint32_t codePoint) noexcept {
+    if (kind == TypeRef::Kind::Char8) {
+        return codePoint <= 0x7F;
+    }
+    if (kind == TypeRef::Kind::Char16) {
+        return codePoint <= 0xFFFF && !IsSurrogate(codePoint);
+    }
+    return IsValidCharacterValue(kind, codePoint);
+}
 } // namespace Rux
