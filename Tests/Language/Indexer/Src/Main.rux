@@ -3,7 +3,6 @@ import Core::Assert;
 
 // A type indexes itself by declaring `[]` in an `extend` block, the same way it
 // declares `==` or `<`. `v[i]` then calls that operator.
-//
 // The result is a value, not a place: a reference cannot be returned, so there
 // is no place-returning indexer to write back through. `v[i] = x` is rejected,
 // and writing stays on an ordinary method.

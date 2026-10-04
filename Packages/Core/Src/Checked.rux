@@ -1,19 +1,14 @@
 // The three arithmetic operations that report overflow instead of producing it.
-//
 // Compiler intrinsics rather than Rux source, because the answer and the overflow flag come out of one
 // machine instruction and no expression in the language can name both. Each reports `true` for failure,
 // which reads backwards the first time and is the convention the whole checked family agrees on.
-//
 // These take `uint64`. `Core::Arithmetic` is the generic layer above them, and is what ordinary code calls.
 
 /// Adds two unsigned 64-bit values and reports whether the true sum is representable.
-///
 /// `left` and `right` are read by value. `result` receives the sum the machine produced, which is the true sum when
 /// this returns `false` and the wrapped one when it returns `true`; it is written in both cases.
-///
 /// Returns `true` when the sum overflowed. The operation never traps, so the caller decides what a value too large to
 /// express becomes.
-///
 /// Runs in constant time and allocates nothing. The compiler emits the arithmetic and the check where the call is
 /// written rather than calling out to a helper.
 /// @param left the left operand
@@ -24,12 +19,9 @@
 pub intrinsic func CheckedAdd(left: uint64, right: uint64, result: *var uint64) -> bool;
 
 /// Subtracts one unsigned 64-bit value from another and reports whether the true difference is representable.
-///
 /// `left` and `right` are read by value. `result` receives the difference the machine produced, which is the true one
 /// when this returns `false` and the wrapped one when it returns `true`; it is written in both cases.
-///
 /// Returns `true` when the difference is negative and therefore not representable. The operation never traps.
-///
 /// Runs in constant time and allocates nothing. The compiler emits the arithmetic and the check where the call is
 /// written rather than calling out to a helper.
 /// @param left the left operand
@@ -40,14 +32,11 @@ pub intrinsic func CheckedAdd(left: uint64, right: uint64, result: *var uint64) 
 pub intrinsic func CheckedSub(left: uint64, right: uint64, result: *var uint64) -> bool;
 
 /// Multiplies two unsigned 64-bit values and reports whether the true product is representable.
-///
 /// `left` and `right` are read by value. `result` receives the product the machine produced, which is the true product
 /// when this returns `false` and the wrapped one when it returns `true`; it is written in both cases.
-///
 /// Returns `true` when the product overflowed. This is the operation an allocation size is computed with: a wrapped
 /// product is an allocation far smaller than the caller asked for, so the report has to be checked before the size is
 /// used.
-///
 /// Runs in constant time and allocates nothing. The compiler emits the arithmetic and the check where the call is
 /// written rather than calling out to a helper.
 /// @param left the left operand

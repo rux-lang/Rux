@@ -1,9 +1,7 @@
 // A power with a floating-point exponent.
-//
 // A logarithm and an exponential, with the special cases decided first because there are more of them here
 // than anywhere else in the package: every combination of zero, one, the infinities and a NaN has an answer
 // IEEE 754 names, and several of them are surprising — `Pow(1.0, NaN)` is one, and `Pow(NaN, 0.0)` is one.
-//
 // A whole-number exponent should go to `PowInteger`, which is exact wherever an exact answer is representable
 // and does not return 999.9999999999999 for the cube of ten.
 
@@ -157,7 +155,6 @@ func Pow2(pHigh: float64, pLow: float64, z: float64) -> float64 {
     pair - including several where one argument is a NaN.
 */
 /// Raises `x` to the power `y`.
-///
 /// The error is at most one ulp. A negative base requires an integer exponent; otherwise the result is a NaN.
 /// `PowInteger` is both faster and able to preserve exact results when the exponent is an integer.
 /// @param x base

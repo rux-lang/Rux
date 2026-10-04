@@ -3,7 +3,6 @@
 // so somewhere past 2^50 it has nothing left and returns a different number rather than a poor approximation.
 // Both tests here would pass trivially against a wrong reduction if they were written the obvious way, so
 // neither is.
-//
 // `sin^2 + cos^2 == 1` is the obvious way, and it is useless: a reduction that produces the wrong remainder
 // produces it for both functions, and the identity holds anyway. What does not survive a wrong reduction is an
 // identity relating *different* arguments, each reduced independently — so the double-angle formulas are used

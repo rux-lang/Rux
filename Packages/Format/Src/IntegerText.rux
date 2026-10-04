@@ -1,9 +1,7 @@
 // Spelling an integer: sign, base prefix, zero padding and digits, in that order.
-//
 // This is what is left in Format once the text-only half of padding moved into Text. Measuring a rendering and
 // writing fill around it is a text operation and lives there as `WriteAligned`; deciding that `-7` at width four is
 // `-007` rather than `00-7` is a fact about how a number is spelled, and lives here.
-//
 // The two interlock through `PaddingAround`, which hands back the two fill counts without requiring the rendered
 // text to exist anywhere as one run. That matters: a number goes out as sign, then prefix, then zeros, then digits,
 // each straight to the writer, so the widest integer costs no more storage than its own digit buffer.
@@ -12,12 +10,9 @@ import Text::{ Encode, FormatAlign, FormatBase, FormatError, FormatSpec, Padding
                TextFailureKind, TextWriter, WriteAligned, WriteAscii, WriteFill };
 
 /// Writes an integer whose digits are already produced, applying sign, prefix, zero-padding and alignment.
-///
 /// `digits` holds the digits least significant first, which is the order a division loop makes them; `count` says
 /// how many. Zero-padding puts its zeros between the sign and the digits and wins over alignment when both are
 /// asked for. Nothing here allocates or copies the digits: each piece goes to the writer as it is reached.
-///
-/// # Failures
 /// Reports whatever the writer reported, stopping at the first refusal.
 /// @param writer the destination
 /// @param spec what the placeholder asked for
@@ -72,11 +67,8 @@ pub func WriteIntegerDigits(writer: &var TextWriter, spec: FormatSpec, digits: c
 }
 
 /// Writes an integer under the whole of `spec`: base, sign, alternate prefix, zero-padding and alignment.
-///
 /// `magnitude` is the absolute value and `negative` its sign, kept apart because the most negative value of a
 /// signed width has no positive counterpart to negate into.
-///
-/// # Failures
 /// Reports whatever the writer reported.
 /// @param writer the destination
 /// @param spec what the placeholder asked for
@@ -114,8 +106,6 @@ pub func WriteIntegerSpec(writer: &var TextWriter, spec: FormatSpec, magnitude: 
 }
 
 /// Writes one character under `spec`'s width, fill and alignment.
-///
-/// # Failures
 /// Reports `TextFailure(InvalidUtf8)` when `scalar` is not a Unicode scalar value, and otherwise whatever the
 /// writer reported.
 /// @param writer the destination

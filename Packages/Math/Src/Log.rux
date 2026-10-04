@@ -1,5 +1,4 @@
 // The natural logarithm.
-//
 // The exponent gives the integer part and a polynomial in the reduced mantissa gives the rest, which is the
 // shape every logarithm here uses. Error at most one ulp. Zero is negative infinity, a negative argument is a
 // NaN, and `Log1p` is the one to use when the argument is near one.
@@ -62,7 +61,6 @@ func LogNormalize(x: float64) -> LogReduction {
 }
 
 /// Computes the natural logarithm of `x`.
-///
 /// The error is at most one ulp. Either signed zero returns negative infinity, a negative value returns a NaN, positive
 /// infinity returns itself, and a NaN remains a NaN.
 /// @param x positive value whose logarithm is computed

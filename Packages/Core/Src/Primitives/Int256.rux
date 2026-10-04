@@ -1,5 +1,4 @@
 // `int256`: a signed integer in 256 bits, two's complement.
-//
 // The range is asymmetric, as it is at every signed width: the most negative value has no positive counterpart, which
 // is behind nearly every edge case in checked arithmetic.
 

@@ -6,7 +6,6 @@ import Text::{ IsAsciiSpace, StringView };
 // character's encoding is a suffix of another's and no byte of a multi-byte character can be mistaken for the start
 // of one. A match on bytes therefore always lands on a character boundary. That is the claim worth testing, so the
 // text below is mixed-width and the needles are characters that take more than one byte.
-//
 // Nothing here allocates: every answer is a position, a boolean, or a borrow of bytes that were already there.
 
 func View(bytes: char8[..]) -> StringView {

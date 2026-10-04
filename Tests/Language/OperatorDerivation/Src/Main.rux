@@ -1,10 +1,8 @@
 import Core::Assert;
 
 // An operator a struct does not declare is derived from one it does:
-//
 //   a != b  ->  !(a == b)
 //   a >  b  ->  b < a
-//
 // Both spellings below deliberately disagree with a comparison of the operands'
 // raw bytes, which is what these used to fall back to. `Keyed` orders and
 // compares on `key` alone, so two values sharing a key are equal and neither is

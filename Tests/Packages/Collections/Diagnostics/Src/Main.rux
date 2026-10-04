@@ -7,14 +7,11 @@ import Text::{ BufferWriter, Debug, Display, FormatError, FormatSpec, ParseForma
                WriteBytes };
 
 // What a map, a set and a failure look like when a program has to say what it has.
-//
 // Maps and sets are written in braces rather than brackets, because what they hold is not a run of things and
 // reading one as a sequence would be reading it wrongly. Past that, the two kinds ask a different question each.
-//
 // An ordered map or set is written in key order, so its rendering is a fact about its contents and can be compared
 // against an exact string. Every case for `TreeMap` and `TreeSet` below does exactly that, including the one that
 // inserts in a deliberately unhelpful order.
-//
 // A hash map or set is written in the order of its table, which follows from a seed drawn from the operating system
 // when the container was made and from the displacement every insertion since has caused. So there is no exact
 // string to compare against, and a test that pinned one would pass on the machine that wrote it and fail somewhere
@@ -23,7 +20,6 @@ import Text::{ BufferWriter, Debug, Display, FormatError, FormatSpec, ParseForma
 // map twice gives the same text both times. The temptation worth naming is the case that is *not* here — two maps
 // made with the same seed and the same entries were expected to agree and do not, because which of two entries
 // wanting one slot gets it depends on which arrived first.
-//
 // `CollectionError` carries the same split every error in this repository has: `Display` is the description a reader
 // is shown and `Debug` names the case a program branches on. Both are checked for all four values, because a case
 // that shared another's words would be exactly the confusion the type exists to prevent.

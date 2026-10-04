@@ -1,14 +1,11 @@
 // What a mapping does at its edges: which requests the kernel refuses, what protection actually stops, and which
 // results are errors at all.
-//
 // The last of those is the one that is easy to get wrong. A mapping address is a pointer returned in the same
 // register an error number comes back in, and a valid address may have its top bit set, so a caller that tests the
 // sign gets a working mapping reported as a failure. The three packages answer that with one window — `-4095`
 // through `-1` and nothing else — and this file asserts both edges of it.
-//
 // Nothing here has ever been executed: the host that wrote it runs Windows, so this file exists to be run by
 // the macOS jobs in CI and its value is entirely in what those jobs report.
-//
 // An errno is asserted only where POSIX names it and all three supported systems agree. `Mmap` and `Mprotect`
 // disagree about which number an unmapped or oversized request earns, so those cases assert the refusal alone.
 

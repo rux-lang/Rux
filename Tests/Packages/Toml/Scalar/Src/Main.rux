@@ -2,7 +2,6 @@
 // Most of this is refusals, because the numbers TOML declines to accept are exactly the ones two readers would
 // disagree about. `010` is eight in one language and ten in another, so TOML says it is neither — and a port
 // number that means two things is a bug waiting for a deployment.
-//
 // A refusal now says where, and where is the half worth checking: a reader told only "malformed" about a
 // forty-character number has to find the offending character themselves, and the reader is usually a person
 // looking at a configuration file that stopped a program starting. The offsets are into the text as written,

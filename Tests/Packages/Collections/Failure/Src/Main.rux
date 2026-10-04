@@ -9,22 +9,18 @@ import Collections::{ EqualsInt32, HashInt32 };
 
 // The cross-cutting axis: what every container does when an operation cannot
 // be completed. Two things are checked here that the per-type tests do not.
-//
 // First, that the failure modes stay distinguishable. An exhausted allocator,
 // an unaddressable capacity and a rejected index are three different answers,
 // and a caller has to be able to tell them apart.
-//
 // Second, that a failed operation changes nothing. Every check below reads the
 // whole container back afterwards, because the defect this package was
 // rewritten to fix was exactly a failure that left a container claiming
 // storage it did not own.
-//
 // What is checked here is the capacity arithmetic: a size that cannot be
 // named, and an index that is not there. An allocator that actually refuses is
 // forced in Tests/Packages/Collections/ContainerStorage, where the same question is
 // asked of the other failure — that a refusal leaves the container as it was —
 // against a real allocation rather than a rejected layout.
-//
 // See Tests/Packages/Collections/Array for the numbered exit-code convention.
 
 /// Why an operation the test expects to fail failed. One that succeeds instead panics, so an expected failure

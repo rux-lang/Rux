@@ -1,5 +1,4 @@
 // The base-ten logarithm.
-//
 // Scaled from the natural logarithm with the constant carried in two parts, so the multiplication does not
 // cost a bit. An exact power of ten in range gives its exponent exactly, which is what a caller counting
 // digits depends on.
@@ -7,7 +6,6 @@
 import Core::float64;
 
 /// Computes the base-ten logarithm of `x`.
-///
 /// The error is at most one ulp, and an exact power of ten returns its exact exponent. Either signed zero returns
 /// negative infinity, a negative value returns a NaN, positive infinity returns itself, and a NaN remains a NaN.
 /// @param x positive value whose logarithm is computed

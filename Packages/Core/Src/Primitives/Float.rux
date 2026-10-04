@@ -1,5 +1,4 @@
 // `float`: the canonical floating-point width.
-//
 // An alias for `float64`, with identical representation, ABI, constants, conversions and overload identity. It exists
 // so ordinary code can say the short name and mean exactly the canonical one.
 

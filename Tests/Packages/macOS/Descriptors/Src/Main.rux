@@ -1,14 +1,11 @@
 // What a descriptor does at its edges: where the numbers come from, what a short read means, and which errno the
 // kernel picks for each way of getting it wrong.
-//
 // Everything above this layer — `Rux/Io`, `Rux/FileSystem` — translates these results into its own vocabulary, and
 // a translation can only be as right as what it translates. Nothing here has ever been executed: the host that
 // wrote it runs Windows, so this file exists to be run by the macOS jobs in CI and its value is entirely in what
 // those jobs report.
-//
 // The scratch files live under Bin/, which is ignored and rewritten, and every one of them is removed before the
 // test returns.
-//
 // A specific errno is asserted only where POSIX names it and all three supported systems agree: EBADF for a closed
 // descriptor, ENOENT for a name that is not there, EEXIST for an exclusive create, EINVAL for a negative seek.
 // Everywhere else the assertion is that the call failed, because a number this test guessed would be a number

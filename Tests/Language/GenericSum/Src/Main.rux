@@ -1,5 +1,4 @@
 // Generic sums: native types built from type parameters, normalized after substitution, and passed between modules.
-//
 // `T | U` is accepted for any arguments. When they differ, a value keeps whichever member it entered as; when they are
 // equal, the sum collapses to that one type, so `Choose<int32, int32>` returns an `int32`. A match written over `T | U`
 // stays valid at every instantiation by ending in `else`. Native values built in one module are read in another with

@@ -5,7 +5,6 @@ import Text::{ String, StringBuilder, StringView, TextError };
 // A builder exists so that assembling text is linear rather than quadratic, and so that the block it fills can be
 // handed over at the end instead of copied. Both are ownership questions, so that is what is checked: what happens
 // to the block when the builder is done with it, and whether the builder is still usable afterwards.
-//
 // The other half is the invariant. A builder holds well-formed UTF-8 at every moment, not only at the end, which is
 // what lets `View` cost nothing and `IntoString` skip validation. It is kept by refusing anything that is not a
 // whole character rather than by checking afterwards.

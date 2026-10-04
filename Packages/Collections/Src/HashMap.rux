@@ -1,17 +1,13 @@
 // An associative table: keys to values, in no particular order, with constant expected time for everything.
-//
 // Built on the `Table` kernel, so the probing, the displacement and the deletion are described there rather than
 // here. What this adds is the pair of callbacks that give a key type its identity, and the operations a caller
 // actually names.
-//
 // The hash and equality are supplied rather than taken from the key type, because Rux has no closures and an
 // interface value would be stored and dispatched through on every lookup. `Hashing` has ready-made pairs for the
 // usual key types; a caller keying on its own type writes them, and the one rule is that keys comparing equal must
 // hash the same.
-//
 // The hash is seeded, and the seed is drawn from `Rux/Entropy` unless the caller supplies one. That is what stops an
 // adversary who chooses keys from computing a few thousand that collide and turning every lookup into a scan.
-//
 // A map owns its keys and values, so it prohibits copying and is move-only. Entries are destroyed when the map is,
 // when they are cleared, and when they are replaced — but not when they are removed, which hands the value back
 // instead.
@@ -20,7 +16,6 @@ import Allocator::Allocator;
 import Core::Iterator;
 
 /// A hash table from keys to values.
-///
 /// Move-only: it owns its entries and storage and prohibits copying.
 /// @typeParam K the key type
 /// @typeParam V the value type
@@ -39,7 +34,6 @@ extend HashMap<K, V> {
     func =(self: &var HashMap<K, V>, other: &HashMap<K, V>);
 
     /// An empty map that has not allocated anything, with a seed drawn from the operating system.
-    ///
     /// `allocator` is borrowed for the call and kept. A program making many maps should draw one seed with
     /// `TableSeed::Random` and use `WithSeed`, since each draw here is a system call.
     /// @param allocator where the storage comes from
@@ -53,7 +47,6 @@ extend HashMap<K, V> {
     }
 
     /// An empty map that has not allocated anything, hashing with `seed`.
-    ///
     /// `allocator` is borrowed for the call and kept; `seed` is read by value. Two maps sharing a seed hash alike,
     /// which is what a caller drawing one seed for many maps wants and what a test needing the same table twice
     /// needs.
@@ -69,7 +62,6 @@ extend HashMap<K, V> {
     }
 
     /// An empty map with room for `capacity` entries already taken.
-    ///
     /// The capacity actually taken is rounded up to a power of two above the load factor, so it is larger than asked
     /// for.
     /// @param allocator where the storage comes from
@@ -93,7 +85,6 @@ extend HashMap<K, V> {
     }
 
     /// How many slots the table has.
-    ///
     /// Not how many entries fit: a quarter of the slots are kept free, because a table run fuller spends its time
     /// displacing entries rather than storing them.
     /// @returns how many entries fit before the next growth
@@ -110,9 +101,7 @@ extend HashMap<K, V> {
     }
 
     /// Whether the map has an entry for `key`.
-    ///
     /// `self` is borrowed; `key` is read by value.
-    ///
     /// Runs in constant expected time and allocates nothing.
     /// @param key the key to look up
     /// @returns whether an entry with that key is present
@@ -122,7 +111,6 @@ extend HashMap<K, V> {
     }
 
     /// The value stored under `key`, or `none` when there is no such entry.
-    ///
     /// `self` is borrowed; the value is returned by copy.
     /// @param key the key to look up
     /// @returns a copy of the value, or `none` when the key is absent
@@ -133,12 +121,8 @@ extend HashMap<K, V> {
     }
 
     /// A pointer to the value stored under `key`, or `none` when there is no such entry.
-    ///
     /// `self` is borrowed; the pointer borrows the value where it sits, which is how one that owns something is read
     /// without being taken.
-    ///
-    /// # Safety
-    ///
     /// The pointer is valid until the map grows, shrinks, or has anything inserted or removed.
     /// @param key the key to look up
     /// @returns the address of the value, or `none` when the key is absent
@@ -149,14 +133,9 @@ extend HashMap<K, V> {
     }
 
     /// Points `value` at the stored value for `key`, so it can be changed in place.
-    ///
     /// `self` is borrowed mutably; `value` receives the pointer and is left alone when there is no such entry.
     /// Reports whether there was one.
-    ///
     /// An out-parameter rather than an `(*var V)?`, which does not survive lowering inside a generic today.
-    ///
-    /// # Safety
-    ///
     /// The pointer is valid until the map grows, shrinks, or has anything inserted or removed. Overwriting through
     /// it replaces the value without destroying what was there.
     /// @param key the key to look up
@@ -170,12 +149,9 @@ extend HashMap<K, V> {
     }
 
     /// Stores `value` under `key`, replacing whatever was there.
-    ///
     /// `self` is borrowed mutably; both are moved in. A key already present keeps its stored key and takes the new
     /// value, and the value it had is destroyed — use `Remove` first where the old one is wanted.
-    ///
     /// A failure leaves the map exactly as it was and both arguments with the caller.
-    ///
     /// Runs in constant expected time.
     /// @param key the key to look up
     /// @param value the value to act on
@@ -203,12 +179,9 @@ extend HashMap<K, V> {
     }
 
     /// Takes the entry for `key` out and hands back its value.
-    ///
     /// `self` is borrowed mutably. The value is moved out rather than destroyed, so one that owns something leaves
     /// intact; the key is destroyed, having no other owner. Reports `none` when there is no such entry.
-    ///
     /// The gap closes behind the entry, so the table is left exactly as if it had never been inserted.
-    ///
     /// Runs in constant expected time.
     /// @param key the key to look up
     /// @returns the value that was stored, or `none` when the key was absent
@@ -222,7 +195,6 @@ extend HashMap<K, V> {
     }
 
     /// Makes room for `additional` more entries on top of those already present.
-    ///
     /// `self` is borrowed mutably; the length does not change. A failure leaves the map exactly as it was.
     /// @param additional how many more elements to make room for
     /// @returns nothing when the operation succeeded, or why it did not
@@ -232,7 +204,6 @@ extend HashMap<K, V> {
     }
 
     /// Releases the capacity the entry count does not need.
-    ///
     /// `self` is borrowed mutably. An empty map gives up its storage entirely.
     /// @returns nothing when the operation succeeded, or why it did not
     /// @see https://rux-lang.dev/docs/api/collections/hash-map/shrink-to-fit
@@ -241,7 +212,6 @@ extend HashMap<K, V> {
     }
 
     /// Destroys every entry, keeping the storage.
-    ///
     /// `self` is borrowed mutably. Runs in time proportional to the capacity.
     /// @see https://rux-lang.dev/docs/api/collections/hash-map/clear
     pub func Clear(self: &var HashMap<K, V>) {
@@ -249,10 +219,8 @@ extend HashMap<K, V> {
     }
 
     /// Walks to the next occupied slot at or after `cursor`, reporting the entry it holds.
-    ///
     /// `self` is borrowed; `cursor` is read and advanced past whatever is reported, so a caller starts it at zero
     /// and keeps calling. `key` and `value` receive copies and are left alone when this reports false.
-    ///
     /// The order is the table's, which is the seed's and not the insertion's. Nothing may be inserted or removed
     /// while a walk is in progress: either moves entries between slots, and a cursor is a slot.
     /// @param cursor the position to resume from, advanced past what was read
@@ -280,19 +248,13 @@ extend HashMap<K, V> {
     }
 
     /// Points `existing` at the value stored under `key`, inserting `value` first when there is none.
-    ///
     /// `self` is borrowed mutably; `key` and `value` are moved in only when there was no entry, and destroyed
     /// otherwise — the map keeps what it already had. `existing` receives a pointer to the stored value either way,
     /// and `inserted` receives whether the map grew; both may be null.
-    ///
     /// This is what an entry API is for, without pretending Rux has closures: a caller that wants to read a value or
     /// put one there gets one operation instead of a lookup followed by an insertion, and does not have to name the
     /// key twice.
-    ///
     /// A failure leaves the map exactly as it was.
-    ///
-    /// # Safety
-    ///
     /// The pointer is valid until the map grows, shrinks, or has anything inserted or removed.
     /// @param key the key to look up
     /// @param value the value to act on
@@ -327,11 +289,9 @@ extend HashMap<K, V> {
     }
 
     /// Stores `value` under `key` and hands back the value that was there.
-    ///
     /// `self` is borrowed mutably; both are moved in. The old value is moved out rather than destroyed, which is the
     /// difference between this and `Insert`: one hands the previous value back and the other throws it away.
     /// Reports `none` when there was no entry, having inserted this one.
-    ///
     /// A failure leaves the map exactly as it was, and is reported apart from the absence.
     /// @param key the key to look up
     /// @param value the value to act on
@@ -355,11 +315,9 @@ extend HashMap<K, V> {
     }
 
     /// Takes the entry for `key` out and hands back both halves of it.
-    ///
     /// `self` is borrowed mutably. Both the stored key and the value are moved out, so a key that owns something
     /// leaves intact too — which `Remove` does not offer, since it destroys the key. Reports `none` when there is
     /// no such entry.
-    ///
     /// The stored key is handed back rather than the one that was looked up: the two compare equal, but a key type
     /// carrying anything the equality ignores makes them different values, and the map's is the one that was kept.
     /// @param key the key to look up
@@ -374,12 +332,8 @@ extend HashMap<K, V> {
     }
 
     /// An iterator over the entries, by copy.
-    ///
     /// `self` is borrowed and must outlive the iterator. This is the method a `for` loop finds. The order is the
     /// table's, which is the seed's and not the insertion's.
-    ///
-    /// # Safety
-    ///
     /// Nothing may be inserted or removed while the iterator is alive.
     /// @returns a cursor over the entries, in an order the seed decides
     /// @see https://rux-lang.dev/docs/api/collections/hash-map/iterate
@@ -394,11 +348,9 @@ extend HashMap<K, V> {
     }
 
     /// Takes the map apart into an iterator over its entries.
-    ///
     /// Consumes the map: it is moved into the iterator, and the storage goes with it, so nothing is copied and
     /// nothing is reallocated. Each entry comes out by value, which is how one whose key or value owns something
     /// leaves.
-    ///
     /// Whatever is not taken is destroyed when the iterator's life ends.
     /// @returns a cursor that consumes the map as it goes
     /// @see https://rux-lang.dev/docs/api/collections/hash-map/into-iterator
@@ -429,7 +381,6 @@ extend HashMap<K, V> {
 }
 
 /// One entry of a map, as a value a caller can hold.
-///
 /// What a walk yields and what a consuming iteration hands back. Two fields rather than a pair, because `entry.key`
 /// says which is which and `entry.0` does not.
 /// @typeParam K the key type
@@ -443,7 +394,6 @@ pub struct KeyValue<K, V> {
 }
 
 /// An iterator over the entries of a map, by copy.
-///
 /// Borrows the map, so the map must outlive it and must not be inserted into or removed from while it is alive:
 /// either moves entries between slots, and this walks slots.
 /// @typeParam K the key type
@@ -461,7 +411,6 @@ pub struct HashMapIterator<K, V> {
 
 extend HashMapIterator<K, V> : Iterator {
     /// The next entry, or `none` once every slot has been looked at.
-    ///
     /// `self` is borrowed mutably and advanced. The key and value are copies; a map of things that own something is
     /// walked with `TryNextEntry` and a pointer instead.
     /// @returns the next entry, or `none` at the end
@@ -482,7 +431,6 @@ extend HashMapIterator<K, V> : Iterator {
 }
 
 /// An iterator that takes a map apart, yielding each entry by value.
-///
 /// Move-only: it owns the storage the map owned. Whatever is left when its life ends is destroyed with it, which is
 /// what makes stopping part-way safe.
 /// @typeParam K the key type
@@ -502,7 +450,6 @@ extend HashMapIntoIterator<K, V> {
 
 extend HashMapIntoIterator<K, V> : Iterator {
     /// The next entry, moved out, or `none` once every slot has been looked at.
-    ///
     /// `self` is borrowed mutably and advanced. The slot is emptied as the entry leaves, so what remains for the
     /// destructor is exactly what nobody took.
     /// @returns the next entry, or `none` at the end

@@ -4,10 +4,7 @@ import Text::{ Debug, Display, FormatError, FormatSpec, TextWriter };
 
 extend uint64 : Display {
     /// Writes this value's digits.
-    ///
     /// Allocates nothing: the digits go into a buffer on the stack and reach the writer in one call.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
     /// @param writer the destination
     /// @param spec what the placeholder asked for
@@ -20,8 +17,6 @@ extend uint64 : Display {
 
 extend uint64 : Debug {
     /// The same digits.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
     /// @param writer the destination
     /// @param spec what the placeholder asked for

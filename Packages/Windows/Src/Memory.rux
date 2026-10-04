@@ -1,9 +1,7 @@
 // Virtual memory: reserving and committing address space, and changing what may be done with it.
-//
 // Windows separates two things every other supported system runs together. Reserving takes address space without
 // backing it; committing gives the reserved range storage. A single call may do both, and an allocator that wants a
 // large arena without paying for it up front does them separately.
-//
 // A failing call here reports null rather than `InvalidHandleValue`, which is the opposite of the file interface.
 // The reason is in `GetLastError`.
 
@@ -15,7 +13,6 @@ import Windows::{ Dword, Handle };
 pub const MEM_COMMIT: uint32 = 0x00001000;
 
 /// `MEM_RESERVE`: take the address space without backing it.
-///
 /// A reserved page cannot be touched. Touching one faults exactly as an unmapped page does, which is what makes
 /// reservation a cheap way to hold a range for later.
 /// @see https://rux-lang.dev/docs/api/windows/mem-reserve
@@ -63,7 +60,6 @@ pub const PAGE_EXECUTE: uint32 = 0x10;
 pub const PAGE_EXECUTE_READ: uint32 = 0x20;
 
 /// `PAGE_EXECUTE_READWRITE`: the pages may be executed, read and written.
-///
 /// What a hardened process refuses, and what an exploit needs. Prefer writing through one protection and executing
 /// through another.
 /// @see https://rux-lang.dev/docs/api/windows/page-execute-read-write
@@ -71,7 +67,6 @@ pub const PAGE_EXECUTE_READ: uint32 = 0x20;
 pub const PAGE_EXECUTE_READWRITE: uint32 = 0x40;
 
 /// `PAGE_GUARD`: the next touch raises a one-shot guard exception and then clears the flag.
-///
 /// Combined with another protection. This is how a stack grows on Windows.
 /// @see https://rux-lang.dev/docs/api/windows/page-guard
 #Allow("naming.const")
@@ -80,7 +75,6 @@ pub const PAGE_GUARD: uint32 = 0x100;
 #Link("Kernel32.dll")
 pub extern {
     /// Reserves, commits, or changes the state of a region of pages.
-    ///
     /// Returns the base address of the region, or null on failure. A null address argument lets the system choose,
     /// which it does at 64 KiB granularity rather than page granularity.
     /// @param address an address in this process
@@ -92,7 +86,6 @@ pub extern {
     pub func VirtualAlloc(address: *var opaque, size: uint, allocationType: uint32, protect: uint32) -> *var opaque;
 
     /// Releases, decommits, or both, a region of pages.
-    ///
     /// Returns zero on failure. MEM_RELEASE requires a size of zero and the exact base address VirtualAlloc returned;
     /// giving it anything else fails rather than releasing part of the region.
     /// @param address an address in this process
@@ -103,7 +96,6 @@ pub extern {
     pub func VirtualFree(address: *var opaque, size: uint, freeType: uint32) -> int32;
 
     /// Changes the protection on a region of committed pages.
-    ///
     /// Writes the previous protection through oldProtect, which must not be null. Returns zero on failure.
     /// @param address an address in this process
     /// @param size a size in bytes
@@ -115,7 +107,6 @@ pub extern {
                         oldProtect: *var uint32) -> int32;
 
     /// Locks a region into physical memory so it is never written to the page file.
-    ///
     /// The way to keep a secret off the disk. The process working-set limit bounds how much may be locked, so this
     /// fails for a large region rather than succeeding slowly.
     /// @param address an address in this process

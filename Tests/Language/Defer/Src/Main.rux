@@ -1,10 +1,8 @@
 // `defer`: work registered now and run on the way out of the scope.
-//
 // The keyword appeared in one small case before this, which asserted LIFO ordering and that a defer runs before a
 // return. Both are real, and neither says what happens at the edges: a defer registered inside a branch that is
 // never taken, a defer in a loop body, several defers interleaved with early exits, or a defer that mutates the
 // very value being returned.
-//
 import Core::Assert;
 
 func LastInFirstOut(log: *var int) {

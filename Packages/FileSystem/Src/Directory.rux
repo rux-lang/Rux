@@ -1,5 +1,4 @@
 // Directories: made, deleted, and read entry by entry with nothing lost in the names.
-//
 // Enumeration hands back each entry's name as an `OsString` — the units the system actually stores, not a text
 // conversion that a hostile or merely foreign name would fail. The `.` and `..` entries are skipped, because no
 // caller walking a directory has ever wanted the directory itself twice. Order is whatever the filesystem
@@ -86,7 +85,6 @@ pub func DeleteFile(allocator: Allocator, path: Path) -> ! IoError {
 }
 
 /// A directory read one entry at a time.
-///
 /// Move-only: `Release` (or destruction) gives back the platform handle and the record buffer. `Next` hands each
 /// name over as a fresh `OsString` owned by the caller.
 /// @see https://rux-lang.dev/docs/api/filesystem/directory-iterator
@@ -189,7 +187,6 @@ extend DirectoryIterator {
     func =(self: &var DirectoryIterator, other: &DirectoryIterator);
 
     /// Hands over the next entry's name, or reports that the directory is done.
-    ///
     /// Succeeds with a name freshly owned by the caller, or with `none` at the end; a failure says what stopped the
     /// enumeration. The `.` and `..` entries are skipped.
     /// @returns the next entry's name, or `none` when the directory is done

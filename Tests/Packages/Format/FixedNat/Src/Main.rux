@@ -3,11 +3,9 @@ import Format::{ FixedNat, FixedNatBits, FixedNatLimbs };
 
 // The workspace the narrow float conversion runs in, checked at the three places a fixed-capacity integer goes
 // wrong: the carry between limbs, the shift across a limb boundary, and the capacity itself.
-//
 // The capacity is the one that matters most, because the alternative to reporting it is a wrong answer from an
 // algorithm whose whole claim is that it has nothing to approximate. Every operation that could pass the bound is
 // driven past it here and checked to say so, rather than to truncate, wrap or saturate.
-//
 // The bound is 4,096 bits against a worst case of 3,681, derived in Docs/NarrowFloat.md. The values that reach it
 // have cases of their own at the bottom: the rendering side's `2^54 × 10^324`, and the parsing side's `10^1108`,
 // which is the denominator a decimal with the full retained digit count and a tiny exponent is read over. Both

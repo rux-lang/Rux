@@ -1,13 +1,10 @@
 // A borrowed run of text that is known to be UTF-8.
-//
 // The point of a separate type is that the check happens once. A `char8[..]` may or may not be UTF-8, so every
 // function taking one either re-validates — which turns a linear pass into a linear pass per call — or assumes,
 // which is where the bugs are. A `StringView` cannot be built without the bytes being checked, so everything
 // downstream may assume and be right.
-//
 // It borrows: making one copies no bytes and owns nothing, so it is `Copy` and has no destructor. The bytes must
 // outlive it, and nothing here tracks that. `String` is what owns bytes.
-//
 // Every index it takes and gives is a byte index, not a scalar index. Counting scalars is linear, so an interface
 // in scalar indices would make indexing linear without saying so; byte indices are constant, and a cut at one that
 // is not a boundary is rejected rather than splitting a character in half.
@@ -15,7 +12,6 @@
 import Core::{ Iterator, Ordering };
 
 /// A borrowed run of bytes that has been checked to be UTF-8.
-///
 /// Copy, owning nothing. The bytes it names must outlive it.
 /// @see https://rux-lang.dev/docs/api/text/string-view
 pub struct StringView {
@@ -25,7 +21,6 @@ pub struct StringView {
 
 extend StringView {
     /// A view over nothing.
-    ///
     /// Cannot fail. Runs in constant time and allocates nothing.
     /// @returns an empty view
     /// @see https://rux-lang.dev/docs/api/text/string-view/new
@@ -34,10 +29,8 @@ extend StringView {
     }
 
     /// A view over `bytes` when they are UTF-8, and `none` when they are not.
-    ///
     /// `bytes` is borrowed and must outlive the view. This is the only way to make a view out of bytes whose
     /// provenance is unknown, and it costs one pass over them.
-    ///
     /// Runs in time proportional to the length and allocates nothing.
     /// @param bytes the bytes to act on
     /// @returns a view over those bytes, or `none` when they are not valid UTF-8
@@ -48,12 +41,8 @@ extend StringView {
     }
 
     /// A view over bytes the caller vouches are UTF-8.
-    ///
     /// Skips the pass `FromBytes` makes, which is worth having when the bytes came from something that already
     /// guarantees it — another view, a `String`, a literal.
-    ///
-    /// # Safety
-    ///
     /// The bytes must be well-formed UTF-8. Everything downstream assumes it, so bytes that are not produce wrong
     /// answers rather than errors: a scalar walk reads past a truncated sequence, and a cut lands mid-character.
     /// @param bytes the bytes to act on
@@ -64,7 +53,6 @@ extend StringView {
     }
 
     /// How many bytes the view spans.
-    ///
     /// Not how many characters: that is `ScalarCount`, and it costs a pass.
     /// @returns how many bytes the text occupies
     /// @see https://rux-lang.dev/docs/api/text/string-view/length
@@ -87,7 +75,6 @@ extend StringView {
     }
 
     /// How many scalar values the view holds.
-    ///
     /// Runs in time proportional to the length: there is no way to know without looking, which is why this is a
     /// method rather than a field.
     /// @returns how many Unicode scalar values the text holds, which is not its byte length
@@ -105,10 +92,8 @@ extend StringView {
     }
     /// The part of this view from `start` up to `end`, or `none` when either is not a boundary or they are the
     /// wrong way round.
-    ///
     /// Half-open, so `Part(a, b)` and `Part(b, c)` together are `Part(a, c)`. Refusing a cut that is not on a
     /// boundary is the point: the alternative is a view whose first bytes are the tail of a character.
-    ///
     /// Runs in constant time and allocates nothing.
     /// @param start the first byte offset, inclusive
     /// @param end the byte offset one past the last, exclusive
@@ -133,7 +118,6 @@ extend StringView {
     }
 
     /// Whether two views hold the same bytes.
-    ///
     /// Byte equality, which for well-formed UTF-8 is scalar-by-scalar equality, since each scalar value has exactly
     /// one encoding. It is not equality after normalization, which is a different question and a different package.
     /// @param other the value to compare against
@@ -150,7 +134,6 @@ extend StringView {
     }
 
     /// How this view orders against `other`, shortest first where one is a prefix of the other.
-    ///
     /// Byte order, which for UTF-8 is also code point order: the encoding is built so that comparing bytes and
     /// comparing scalar values give the same answer. It is not alphabetical in any language.
     /// @param other the value to compare against
@@ -170,7 +153,6 @@ extend StringView {
     }
 
     /// A walk over this view's scalar values.
-    ///
     /// `self` is borrowed and must outlive the walk.
     /// @returns a cursor over the text's scalar values
     /// @see https://rux-lang.dev/docs/api/text/string-view/scalars
@@ -190,7 +172,6 @@ pub struct ScalarIterator {
 
 extend ScalarIterator : Iterator {
     /// The next scalar value, or `none` at the end.
-    ///
     /// Bytes that are not well-formed end the walk rather than being reported: a view is validated when it is made,
     /// so reaching one means the bytes were vouched for and were not.
     /// @returns the next scalar value, or `none` at the end

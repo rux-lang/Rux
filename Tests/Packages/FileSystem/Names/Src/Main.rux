@@ -1,7 +1,6 @@
 // The phase gate's name question: a filesystem's names are not text the program chose, and everything here has
 // to carry them unchanged. Each name is created, found again by enumeration, reopened by the name enumeration
 // handed back, and deleted — so a lossy step anywhere in that circle shows up as a name that cannot be found.
-//
 // On Windows the hard cases are Unicode: characters outside any ANSI code page, and astral-plane characters
 // that occupy a surrogate pair, where a byte-oriented shortcut would split one character in half. On the Unix
 // systems the hard case is that a name need not be text at all, so one is built from bytes that are not valid

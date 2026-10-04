@@ -1,10 +1,8 @@
 // `match`: choosing an arm by the shape of a value.
-//
 // The keyword is used throughout the first-party packages and had no case of its own, so its behaviour was only
 // ever asserted incidentally, by tests that were really about the container or the option they happened to match
 // on. What belongs here is the construct: which patterns exist, that a payload binds, that a match is an expression
 // as well as a statement, and that arms are tried in order with only the first taken.
-//
 // Exhaustiveness is the property worth being deliberate about. A match over a closed set needs no `else` when it
 // names every case, and the arms below are written without one wherever that is true, so removing a case from a
 // variant would fail to compile rather than silently fall through.

@@ -1,18 +1,15 @@
 // Showing a name the system may not have written in text, without pretending either that it is text or that it
 // is not.
-//
 // A native name is bytes on the Unix systems and UTF-16 code units on Windows, and neither is obliged to be valid.
 // Real disks hold names that are not text: a byte sequence that is not UTF-8, a code unit with no partner. That is
 // why `OsString` exists and why converting out of it is fallible. But a program still has to say something when it
 // reports which file it could not open, and refusing to render the name is not an answer a user can act on.
-//
 // So the two protocols answer two different questions and neither one compromises. `Display` is the name as a
 // reader should see it: every unit that is not text becomes U+FFFD, the replacement character, which is exactly
 // what the substitution is for. It is lossy and says so; it is for a message, never for reopening the file.
 // `Debug` is the name as it actually is: every native unit survives, with the ones that are not text spelled as
 // escapes, so two different names never render alike. The exact conversions in `OsStringView::ToText` and the
 // filesystem operations are untouched by either — a path still travels to a system call as the units it is.
-//
 // One rule follows from that and is worth stating: a precision is refused rather than applied. Truncating a path
 // produces a different path, and one that may well exist; a rendering that silently answers about another file is
 // worse than a rendering that refuses.
@@ -59,7 +56,6 @@ func WriteUnitEscape(writer: &var TextWriter, value: uint32) -> ! FormatError {
 
 when #target.os == .Windows {
     // Writes the units as text, with every unit that is not part of a scalar replaced by U+FFFD.
-    //
     // A lone surrogate is one unit and becomes one replacement character; a well-formed pair is one scalar and is
     // written as itself. Advancing by a single unit after a replacement is what keeps a name with one bad unit in
     // the middle of it readable on both sides of the damage.
@@ -81,7 +77,6 @@ when #target.os == .Windows {
     }
 
     // Writes the units so that every one of them can be read back off the output.
-    //
     // A scalar is escaped the way this repository escapes text everywhere else, by encoding it and handing it to
     // `WriteEscaped`, so the quote, the backslash and the controls get the same treatment they get in a `String`.
     // A unit that is not part of a scalar is spelled `\u{xxxx}` with its own four digits, which no valid scalar
@@ -127,7 +122,6 @@ when #target.os == .Windows {
 else {
     // Writes the bytes as text, with every byte that is not part of a well-formed UTF-8 sequence replaced by
     // U+FFFD.
-    //
     // Runs of valid bytes are written whole rather than one scalar at a time, since they are already the UTF-8 the
     // destination wants. A bad byte costs one replacement character and advances one byte: replacing a maximal
     // subpart instead would produce fewer replacements for a truncated sequence, but one replacement per byte is
@@ -160,7 +154,6 @@ else {
     }
 
     // Writes the bytes so that every one of them can be read back off the output.
-    //
     // A run of valid text goes through `WriteEscaped`, so the quote, the backslash and the controls get the same
     // treatment they get in a `String`. A byte that is not text is spelled `\x{nn}`, which is a distinct escape
     // from the `\u{...}` a scalar uses, because a stray byte is not a scalar and should not be shown as one.
@@ -202,13 +195,10 @@ func WriteQuoted(writer: &var TextWriter, units: OsUnit[..]) -> ! FormatError {
 
 extend OsStringView : Display {
     /// Writes the name as text, with every native unit that is not text replaced by U+FFFD.
-    ///
     /// Lossy, deliberately and only here. A name the system holds is not obliged to be text, and a program
     /// reporting which file it could not open still has to name it; U+FFFD is what the standard provides for
     /// exactly that. What this produces is for a reader, never for reopening the file — two different names can
     /// render alike, and `Debug` is the rendering that does not.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, and `UnsupportedRequest` for any style or precision. A precision is
     /// refused rather than applied because a truncated path is a different path, and may be one that exists.
     /// @param writer the destination
@@ -224,13 +214,10 @@ extend OsStringView : Display {
 
 extend OsStringView : Debug {
     /// Writes the name exactly, quoted, with every unit that is not text spelled as an escape.
-    ///
     /// Nothing is lost: a Unix byte outside a well-formed sequence is written `\x{nn}` and a Windows code unit
     /// with no partner is written `\u{xxxx}`, so the native units can be read back off the output and two
     /// different names never render alike. The quote, the backslash and the control characters are escaped the way
     /// this repository escapes them everywhere else.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, and `UnsupportedRequest` for any style or precision.
     /// @param writer the destination
     /// @param spec what the placeholder asked for
@@ -244,8 +231,6 @@ extend OsStringView : Debug {
 
 extend OsString : Display {
     /// The lossy rendering of the units this text owns.
-    ///
-    /// # Failures
     /// The failures `OsStringView::WriteDisplay` reports.
     /// @param writer the destination
     /// @param spec what the placeholder asked for
@@ -259,8 +244,6 @@ extend OsString : Display {
 
 extend OsString : Debug {
     /// The exact rendering of the units this text owns.
-    ///
-    /// # Failures
     /// The failures `OsStringView::WriteDebug` reports.
     /// @param writer the destination
     /// @param spec what the placeholder asked for
@@ -274,11 +257,8 @@ extend OsString : Debug {
 
 extend Path : Display {
     /// The lossy rendering of the path's units.
-    ///
     /// The separators are written as they stand: a path is shown as it is, not normalized towards the platform's
     /// preferred separator, because which separators a name contains is part of what it is.
-    ///
-    /// # Failures
     /// The failures `OsStringView::WriteDisplay` reports.
     /// @param writer the destination
     /// @param spec what the placeholder asked for
@@ -292,8 +272,6 @@ extend Path : Display {
 
 extend Path : Debug {
     /// The exact, quoted rendering of the path's units.
-    ///
-    /// # Failures
     /// The failures `OsStringView::WriteDebug` reports.
     /// @param writer the destination
     /// @param spec what the placeholder asked for
@@ -307,8 +285,6 @@ extend Path : Debug {
 
 extend PathBuffer : Display {
     /// The lossy rendering of the units the buffer owns.
-    ///
-    /// # Failures
     /// The failures `OsStringView::WriteDisplay` reports.
     /// @param writer the destination
     /// @param spec what the placeholder asked for
@@ -322,8 +298,6 @@ extend PathBuffer : Display {
 
 extend PathBuffer : Debug {
     /// The exact, quoted rendering of the units the buffer owns.
-    ///
-    /// # Failures
     /// The failures `OsStringView::WriteDebug` reports.
     /// @param writer the destination
     /// @param spec what the placeholder asked for

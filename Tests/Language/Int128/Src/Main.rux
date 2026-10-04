@@ -1,5 +1,4 @@
 // int128: the narrowest width that no longer fits a machine register.
-//
 // What is worth pinning here is everything the 64-bit widths get for free and this one does not. A literal is
 // decoded exactly rather than through a machine word, arithmetic carries between lanes, a shift moves bits across
 // the lane boundary, and the value is passed and returned in whatever way the ABI chose for something wider than a

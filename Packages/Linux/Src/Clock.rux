@@ -1,5 +1,4 @@
 // Reading a clock, and waiting on one.
-//
 // Which clock is being read matters more than the reading: `ClockMonotonic` counts forward from an arbitrary point
 // and never jumps, while `ClockRealtime` tracks wall time and can move in either direction when something sets it.
 // A duration is measured with the first; a timestamp anyone else will see is taken from the second.
@@ -11,19 +10,14 @@ import Linux::{ SysClockGetRes, SysClockGetTime, SysClockNanosleep, SysNanosleep
 pub const ClockRealtime: int32 = 0;
 
 /// `CLOCK_MONOTONIC`: time since an unspecified point, which never goes backwards.
-///
 /// Not comparable between boots, and not the clock to record a timestamp with. It is the one to measure a duration
 /// with, because setting the system clock cannot affect it.
 /// @see https://rux-lang.dev/docs/api/linux/clock-monotonic
 pub const ClockMonotonic: int32 = 1;
 
 /// Reads `clockId` into `time`.
-///
 /// `clockId` is read by value; `time` is borrowed and written. Returns zero, or a negative error number — `EINVAL`
 /// for a clock this kernel does not have.
-///
-/// # Safety
-///
 /// `time` must be non-null and writable.
 /// @param clockId which clock to read
 /// @param time receives the reading
@@ -34,16 +28,11 @@ pub func ClockGetTime(clockId: int32, time: *var Timespec) -> int64 {
 }
 
 /// Suspends the caller for the requested duration.
-///
 /// `request` is borrowed and read; `remaining` is borrowed and written when the wait was cut short, and may be null
 /// when the caller does not care. Returns zero, or a negative error number.
-///
 /// A signal interrupts the wait and reports `EINTR` with the unslept time in `remaining`, which is what makes the
 /// second argument worth passing: resuming means calling again with what came back, not with the original request.
 /// The wait is against `ClockRealtime` but is not affected by the clock being set.
-///
-/// # Safety
-///
 /// `request` must be non-null, and its nanoseconds must be under one second or the call reports `EINVAL`.
 /// @param request how long to wait
 /// @param remaining receives the unslept time when a signal cut the wait short, and may be null
@@ -62,7 +51,6 @@ pub const ClockProcessCpuTime: int32 = 2;
 pub const ClockThreadCpuTime: int32 = 3;
 
 /// `CLOCK_MONOTONIC_RAW`: like `ClockMonotonic`, but not adjusted by time synchronization.
-///
 /// Ticks at the hardware's own rate rather than a corrected one, which makes it the wrong clock for measuring a
 /// duration anyone will compare against a wall clock, and the right one for measuring the hardware.
 /// @see https://rux-lang.dev/docs/api/linux/clock-monotonic-raw
@@ -73,12 +61,8 @@ pub const ClockMonotonicRaw: int32 = 4;
 pub const TimerAbsolute: int32 = 1;
 
 /// Reads the resolution of `clockId` into `resolution`.
-///
 /// Returns zero, or a negative error number. The resolution is the granularity the clock advances by, which is not
 /// the cost of reading it and not a promise about accuracy.
-///
-/// # Safety
-///
 /// `resolution` must be non-null and writable.
 /// @param clockId which clock to describe
 /// @param resolution receives the granularity
@@ -89,16 +73,11 @@ pub func ClockGetResolution(clockId: int32, resolution: *var Timespec) -> int64 
 }
 
 /// Suspends the caller against a named clock, optionally until an absolute time.
-///
 /// `flags` is zero for a relative wait or `TimerAbsolute` for a deadline. `remaining` is written only for a relative
 /// wait that a signal cut short, and may be null. Returns zero, or a positive error number — this one call reports
 /// its error positively rather than negatively, which is the kernel's inconsistency and not this binding's.
-///
 /// An absolute wait is what a loop should use: a relative wait restarted after a signal drifts, because the time
 /// spent handling the signal is not counted.
-///
-/// # Safety
-///
 /// `request` must be non-null.
 /// @param clockId which clock to wait against
 /// @param flags zero for a relative wait, or `TimerAbsolute` for a deadline

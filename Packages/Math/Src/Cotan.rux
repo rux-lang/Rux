@@ -1,5 +1,4 @@
 // The cotangent of an angle in radians.
-//
 // The reciprocal is computed inside the kernel rather than as `1 / Tan(x)`, which would round twice and lose
 // the answer near a pole. A signed zero maps to an infinity of the same sign; an infinite argument is a NaN,
 // since the cotangent has no limit there.
@@ -7,7 +6,6 @@
 import Core::float64;
 
 /// Computes the cotangent of `x`, where `x` is in radians.
-///
 /// The reciprocal is computed directly instead of as `1 / Tan(x)`, avoiding a second rounding near a pole. A signed
 /// zero maps to an infinity with the same sign; an infinite input returns a NaN, and a NaN remains a NaN.
 /// @param x angle in radians
@@ -39,7 +37,6 @@ pub func Cotan(x: float64) -> float64 {
 }
 
 /// Computes the cotangent of `x` at `float32` precision, where `x` is in radians.
-///
 /// The wide computation carries more precision than the result requires before being rounded to `float32`.
 /// @param x angle in radians
 /// @returns the cotangent of `x`, or a NaN when `x` is not finite

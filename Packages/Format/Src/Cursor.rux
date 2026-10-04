@@ -1,10 +1,8 @@
 // A fixed run of bytes being filled from the front.
-//
 // Every primitive has a longest possible rendering that is known in advance — twenty digits for a `uint64`, a
 // handful more for a float's sign, point and exponent — so the digits go into a buffer on the stack and reach the
 // writer in one call. Nothing here allocates, which is the point: printing a number should not need an allocator to
 // exist, let alone succeed.
-//
 // A cursor that runs out stops writing rather than overrunning, and says so. Every caller in this package sizes its
 // buffer from the same bound the formatter is written against, so running out means the bound is wrong; refusing
 // silently would turn that into a truncated number, which is worse than an obvious one.
@@ -73,12 +71,9 @@ extend ByteCursor {
 
 extend ByteCursor : TextWriter {
     /// Writes `bytes` into the buffer.
-    ///
-    /// # Failures
     /// Reports `InsufficientCapacity` when the bytes do not all fit. The cursor is a bounded destination, so this
     /// is the failure it exists to report; a `WriterFailure` is impossible, since there is no destination beyond
     /// the buffer, and the bytes are not revalidated here, so no `TextFailure` arises either.
-    ///
     /// Unlike a builder, a cursor that overruns keeps whatever fitted rather than leaving itself unchanged: the
     /// buffer is the caller's, the partial content is visible through `Written`, and `Overran` says it is partial.
     /// @param bytes the UTF-8 run to write

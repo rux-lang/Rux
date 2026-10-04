@@ -1,5 +1,4 @@
 // The square root, computed by the hardware instruction.
-//
 // Correctly rounded — error at most half an ulp — which is not a claim about this code but about the
 // instruction: IEEE 754 requires it to return the nearest representable value to the true root at every
 // argument, and every architecture here has one that does, with the special cases already right. The argument
@@ -12,7 +11,6 @@ when #target.arch {
     .X86_64 => {
         // Both the Win64 and System V ABIs pass the first float argument in xmm0 and return the result there.
         /// Computes the correctly rounded square root of `x` at `float32` precision.
-        ///
         /// A signed zero, positive infinity, or NaN passes through; a negative finite value returns a NaN.
         /// @param x value whose square root is computed
         /// @returns the non-negative square root of `x`, or a NaN when `x` is negative
@@ -23,7 +21,6 @@ when #target.arch {
         }
 
         /// Computes the correctly rounded square root of `x`.
-        ///
         /// A signed zero, positive infinity, or NaN passes through; a negative finite value returns a NaN.
         /// @param x value whose square root is computed
         /// @returns the non-negative square root of `x`, or a NaN when `x` is negative
@@ -37,7 +34,6 @@ when #target.arch {
         // AAPCS64 passes the first float argument in v0 and returns the result there, under the S view for float32 and
         // the D view for float64.
         /// Computes the correctly rounded square root of `x` at `float32` precision.
-        ///
         /// A signed zero, positive infinity, or NaN passes through; a negative finite value returns a NaN.
         /// @param x value whose square root is computed
         /// @returns the non-negative square root of `x`, or a NaN when `x` is negative
@@ -48,7 +44,6 @@ when #target.arch {
         }
 
         /// Computes the correctly rounded square root of `x`.
-        ///
         /// A signed zero, positive infinity, or NaN passes through; a negative finite value returns a NaN.
         /// @param x value whose square root is computed
         /// @returns the non-negative square root of `x`, or a NaN when `x` is negative

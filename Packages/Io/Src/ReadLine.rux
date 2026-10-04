@@ -1,5 +1,4 @@
 // Reading a line typed at the process, through the standard input handle.
-//
 // This is the console companion to `ReadTextLine`: the same line contract — a line feed ends the line, a
 // carriage return immediately before it belongs to the ending, the last line needs no ending — read byte by
 // byte from standard input, so nothing past the line is taken from a stream that may be shared. The bytes come
@@ -9,7 +8,6 @@
 import Text::StringBuilder;
 
 /// Appends the next line of standard input to `builder`, without its ending.
-///
 /// `EndOfStream` is reported only when the input ends with nothing before it; a stream failure is returned as
 /// itself, with whatever was read so far left in the builder. Reads one byte at a time on purpose: standard
 /// input may be shared with whatever runs next, and a buffer here would take bytes that were never this line's.

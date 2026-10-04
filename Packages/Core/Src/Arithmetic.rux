@@ -1,27 +1,21 @@
 // Checked, wrapping and saturating integer arithmetic, at every integer width the language spells.
-//
 // Each operation is generic over the integer type rather than repeated per width. Nothing here needs to be told which
 // type it has: an integer's zero, its all-ones pattern, its signedness and its two limits all follow from one operand
 // and the wrapping arithmetic the machine already does, so `int8` and `uint512` run the same code. Every helper below
 // derives what it needs the same way:
-//
 //   zero     = value - value           the type's zero
 //   allOnes  = zero - 1                every bit set: the maximum when unsigned, -1 when signed
 //   signed   = allOnes < zero          only a signed type reads all-ones as negative
 //   signBit  = 1 << (sizeof(T) * 8 - 1)  the top bit, which is the most negative value when signed
-//
 // Ordinary `+`, `-` and `*` wrap on overflow, which is what makes the checks below possible: they compute the wrapped
 // answer and then ask whether it is the true one.
-//
 // The operation comes first in each name because `CheckedAdd`, `CheckedSub` and `CheckedMul` already name the
 // compiler's own intrinsics, which are emitted inline for `uint64` and are the ones allocation-size arithmetic is
 // written with. These are the general family: any integer width, signed or unsigned, at the cost of being ordinary
 // code rather than an inline sequence.
 
 /// The largest value the integer type of `sample` can hold.
-///
 /// `sample` is read by value and only its type matters; its value is never used. Returns the maximum by copy.
-///
 /// Cannot fail. Runs in constant time and allocates nothing.
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param sample any value of the type, read only to deduce it
@@ -37,10 +31,8 @@ pub func MaximumOf<T>(sample: T) -> T {
 }
 
 /// The smallest value the integer type of `sample` can hold.
-///
 /// `sample` is read by value and only its type matters. Returns the minimum by copy: zero for an unsigned type, and
 /// the most negative value for a signed one.
-///
 /// Cannot fail. Runs in constant time and allocates nothing.
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param sample any value of the type, read only to deduce it
@@ -55,13 +47,10 @@ pub func MinimumOf<T>(sample: T) -> T {
 }
 
 /// Adds two integers and reports whether the true sum is representable.
-///
 /// `left` and `right` are read by value. `result` receives the sum the machine produced, which is the true sum when
 /// this returns `false` and the wrapped one when it returns `true`; it is written in both cases, so a caller that
 /// wants the wrapped answer does not have to compute it again. `result` must not be null.
-///
 /// Returns `true` when the sum overflowed. Never traps, so the caller decides what a sum too large to express means.
-///
 /// Runs in constant time and allocates nothing.
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param left the left operand
@@ -82,12 +71,9 @@ pub func AddChecked<T>(left: T, right: T, result: *var T) -> bool {
 }
 
 /// Subtracts one integer from another and reports whether the true difference is representable.
-///
 /// `left` and `right` are read by value. `result` receives the difference the machine produced, true or wrapped, and
 /// is written in both cases. `result` must not be null.
-///
 /// Returns `true` when the difference overflowed, which for an unsigned type means it was negative. Never traps.
-///
 /// Runs in constant time and allocates nothing.
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param left the left operand
@@ -109,14 +95,11 @@ pub func SubChecked<T>(left: T, right: T, result: *var T) -> bool {
 }
 
 /// Multiplies two integers and reports whether the true product is representable.
-///
 /// `left` and `right` are read by value. `result` receives the product the machine produced, true or wrapped, and is
 /// written in both cases. `result` must not be null.
-///
 /// Returns `true` when the product overflowed. This is the operation an allocation size is computed with: a wrapped
 /// product is an allocation far smaller than the caller asked for, so the report has to be read before the size is
 /// used. Never traps, including for the one signed pair whose quotient cannot be taken.
-///
 /// Runs in constant time and allocates nothing.
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param left the left operand
@@ -145,10 +128,8 @@ pub func MulChecked<T>(left: T, right: T, result: *var T) -> bool {
 }
 
 /// Adds two integers, wrapping around the type's range.
-///
 /// `left` and `right` are read by value; the sum is returned by copy. This is what `+` already does, named so that
 /// wrapping on purpose reads differently from wrapping by accident.
-///
 /// Cannot fail: every pair of operands has a wrapped sum. Runs in constant time and allocates nothing.
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param left the left operand
@@ -160,9 +141,7 @@ pub func AddWrapping<T>(left: T, right: T) -> T {
 }
 
 /// Subtracts one integer from another, wrapping around the type's range.
-///
 /// `left` and `right` are read by value; the difference is returned by copy.
-///
 /// Cannot fail. Runs in constant time and allocates nothing.
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param left the left operand
@@ -174,9 +153,7 @@ pub func SubWrapping<T>(left: T, right: T) -> T {
 }
 
 /// Multiplies two integers, wrapping around the type's range.
-///
 /// `left` and `right` are read by value; the product is returned by copy.
-///
 /// Cannot fail. Runs in constant time and allocates nothing.
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param left the left operand
@@ -188,10 +165,8 @@ pub func MulWrapping<T>(left: T, right: T) -> T {
 }
 
 /// Adds two integers, clamping to the type's range instead of wrapping.
-///
 /// `left` and `right` are read by value; the sum is returned by copy. A sum too large becomes the maximum, and for a
 /// signed type a sum too small becomes the minimum.
-///
 /// Cannot fail: the answer is always the nearest representable value to the true sum. Runs in constant time and
 /// allocates nothing.
 /// @typeParam T the integer or floating-point type, deduced from the arguments
@@ -211,10 +186,8 @@ pub func AddSaturating<T>(left: T, right: T) -> T {
 }
 
 /// Subtracts one integer from another, clamping to the type's range instead of wrapping.
-///
 /// `left` and `right` are read by value; the difference is returned by copy. For an unsigned type a negative
 /// difference becomes zero; for a signed one the difference clamps to whichever limit it ran past.
-///
 /// Cannot fail. Runs in constant time and allocates nothing.
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param left the left operand
@@ -233,10 +206,8 @@ pub func SubSaturating<T>(left: T, right: T) -> T {
 }
 
 /// Multiplies two integers, clamping to the type's range instead of wrapping.
-///
 /// `left` and `right` are read by value; the product is returned by copy. A product too large becomes the maximum,
 /// and for a signed type a product too small becomes the minimum.
-///
 /// Cannot fail. Runs in constant time and allocates nothing.
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param left the left operand

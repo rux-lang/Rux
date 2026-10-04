@@ -1,14 +1,11 @@
 // The C ABI's own types, spelled as the target's C environment spells them.
-//
 // A declaration that has to match a C interface cannot be written in Rux's own widths: `int` is not `c_int` on every
 // target, and `long` is not one width at all. The aliases below say what each C type is on the target being built for,
 // so a binding is written once and stays right when the target changes. Nothing here has a run-time representation of
 // its own — each is exactly the Rux type it names.
-//
 // The names follow C where C has one. `size_t`, `ptrdiff_t`, `intptr_t`, `uintptr_t`, `wchar_t` and `ssize_t` are the
 // spellings a C header uses, so a binding reads like the prototype it came from. The fundamental types have no typedef
 // to borrow, and their C spellings are Rux keywords, so those take a `c_` prefix: `c_int` for C's `int`.
-//
 // The one thing that cannot be settled here is the signedness of `c_char`, which C leaves to the implementation. Every
 // currently supported target makes it signed, and that is what is declared; a binding that cares should say `c_schar`
 // or `c_uchar` rather than rely on it.
@@ -26,7 +23,6 @@ pub type c_schar = int8;
 pub type c_uchar = uint8;
 
 /// C's plain `char`, whose signedness the standard leaves to the implementation.
-///
 /// Signed on every currently supported target. A binding whose meaning depends on the sign should name `c_schar` or
 /// `c_uchar` instead of relying on this.
 /// @see https://rux-lang.dev/docs/api/c/c-char
@@ -118,14 +114,12 @@ when #target.dataModel {
 }
 
 /// C's `size_t`: the type of a size, a count of bytes, and the result of `sizeof`.
-///
 /// Pointer-sized and unsigned on every supported target.
 /// @see https://rux-lang.dev/docs/api/c/size-t
 #Allow("naming.type")
 pub type size_t = uint;
 
 /// POSIX's `ssize_t`: a size that can also report `-1` for failure.
-///
 /// Declared on every target for the sake of bindings that share a signature, though Windows has no such type of its
 /// own and its C runtime spells the same thing `int` or `__int64` depending on the call.
 /// @see https://rux-lang.dev/docs/api/c/ssize-t
@@ -148,20 +142,15 @@ pub type intptr_t = int;
 pub type uintptr_t = uint;
 
 /// C's `FILE`: a stream, whose contents belong to the C runtime.
-///
 /// Declared with no fields on purpose. Its layout differs by platform and by runtime version, and no binding may read
 /// it; a stream is only ever handled through `*FILE` and the calls that take one. Naming the type rather than using
 /// `*opaque` is what keeps a stream from being passed where some other handle was meant.
-///
-/// # Safety
-///
 /// A `*FILE` is valid only between the call that produced it and the `fclose` that ends it. Nothing here tracks that.
 /// @see https://rux-lang.dev/docs/api/c/file
 #Allow("naming.type")
 pub struct FILE {}
 
 /// C's `fpos_t`: an opaque record of a position within a stream.
-///
 /// Declared with no fields for the same reason `FILE` is: its contents belong to the C runtime, and it is only ever
 /// produced by `fgetpos` and consumed by `fsetpos`. It is not a byte offset and must not be arithmetic on.
 /// @see https://rux-lang.dev/docs/api/c/fpos-t
@@ -170,7 +159,6 @@ pub struct fpos_t {}
 
 // Which shared object the C runtime lives in. This is the canonical answer for the whole package; each module
 // repeats the selection under its own name only because `#Link` accepts a constant from its own file alone.
-//
 // On Windows that is `ucrtbase.dll`, the Universal CRT, and not the legacy `msvcrt.dll`. The two are separate
 // runtimes with separate state: a stream opened by one and an `errno` read from the other belong to different worlds,
 // and mixing them is undefined rather than merely wasteful. `C::StdIo` and `C::Time` are still bound to the legacy
@@ -183,7 +171,6 @@ when #target.os {
         pub const CRuntime = "libc.so.7";
 
         /// The shared object `C::StdIo` and `C::Time` are bound to, which on this target is the same one.
-        ///
         /// Named separately because Windows splits the package across two runtimes; everywhere else the two
         /// constants are equal and `SeparateStreamRuntime` is false.
         /// @see https://rux-lang.dev/docs/api/c/stream-runtime
@@ -197,7 +184,6 @@ when #target.os {
         pub const CRuntime = "libc.so.6";
 
         /// The shared object `C::StdIo` and `C::Time` are bound to, which on this target is the same one.
-        ///
         /// Named separately because Windows splits the package across two runtimes; everywhere else the two
         /// constants are equal and `SeparateStreamRuntime` is false.
         /// @see https://rux-lang.dev/docs/api/c/stream-runtime
@@ -211,7 +197,6 @@ when #target.os {
         pub const CRuntime = "libSystem.B.dylib";
 
         /// The shared object `C::StdIo` and `C::Time` are bound to, which on this target is the same one.
-        ///
         /// Named separately because Windows splits the package across two runtimes; everywhere else the two
         /// constants are equal and `SeparateStreamRuntime` is false.
         /// @see https://rux-lang.dev/docs/api/c/stream-runtime
@@ -225,7 +210,6 @@ when #target.os {
         pub const CRuntime = "ucrtbase.dll";
 
         /// The shared object `C::StdIo` and `C::Time` are bound to, which on Windows is a different one.
-        ///
         /// The Universal CRT does not export the formatted-output family, so those two modules bind the legacy
         /// runtime. It keeps its own `errno`, its own stream table and its own locale, so a failure reported by a
         /// call through either module is readable only through `ErrnoFor(CRuntimeArea::Streams)`.
@@ -289,12 +273,10 @@ when #target.os {
 }
 
 /// Which of the package's C runtimes a call belongs to.
-///
 /// On Windows this package spans two: `StdLib` and `Math` bind the Universal CRT, while `StdIo` and `Time` bind the
 /// legacy runtime, because the Universal CRT does not export the formatted-output family. The two keep separate
 /// `errno` storage, so reading one after a call into the other reports a value belonging to something else
 /// entirely.
-///
 /// Everywhere else there is one runtime and both cases name it, so a caller that always passes the area matching
 /// the module it called is right on all four systems and needs no target branch of its own.
 /// @see https://rux-lang.dev/docs/api/c/c-runtime-area
@@ -306,7 +288,6 @@ pub enum CRuntimeArea: uint8 {
 }
 
 /// Whether the two areas are really two runtimes on this target.
-///
 /// True on Windows and false everywhere else. A caller that passes the right area never needs to read this; it is
 /// here so that a program can say why it is being careful, and so that a test can assert the split exists where it
 /// is supposed to and does not where it is not.
@@ -314,18 +295,12 @@ pub enum CRuntimeArea: uint8 {
 pub const SeparateStreamRuntime: bool = #target.os == OperatingSystem::Windows;
 
 /// The address of the calling thread's `errno`, in the runtime `area` names.
-///
 /// Returns a pointer that runtime owns, valid for as long as the calling thread runs. Writing through it is how
 /// C's `errno = 0` is spelled, which a caller does before a call whose failure is only reported through `errno`.
-///
 /// Pass the area matching the module whose call is being checked: `Streams` after anything from `C::StdIo` or
 /// `C::Time`, `General` after anything from `C::StdLib` or `C::Math`. Passing the wrong one is not a compile error
 /// and not a crash; it reads a different thread-local integer, which is the whole hazard this exists to remove.
-///
 /// Cannot fail. Runs in constant time and allocates nothing.
-///
-/// # Safety
-///
 /// The address belongs to the calling thread and must not be handed to another one.
 /// @param area which runtime's storage to reach
 /// @returns the address of that runtime's `errno` for this thread
@@ -340,11 +315,9 @@ pub func ErrnoLocationFor(area: CRuntimeArea) -> *var c_int {
 }
 
 /// The calling thread's current `errno` value, in the runtime `area` names.
-///
 /// Meaningful only after a call that documents setting it: no C function clears `errno` on success, so a value left
 /// over from an earlier failure is still there. Clear it through `ErrnoLocationFor` before the call whose failure
 /// is to be read.
-///
 /// Cannot fail. Runs in constant time and allocates nothing.
 /// @param area which runtime's storage to read
 /// @returns that runtime's `errno` for this thread
@@ -354,18 +327,12 @@ pub func ErrnoFor(area: CRuntimeArea) -> c_int {
 }
 
 /// The address of the calling thread's `errno`, in the runtime `C::StdLib` and `C::Math` are bound to.
-///
 /// Exactly `ErrnoLocationFor(CRuntimeArea::General)`, and the spelling to use when the call being checked came from
 /// one of those two modules. After a call from `C::StdIo` or `C::Time` on Windows this reads the wrong runtime's
 /// storage, which is what `ErrnoLocationFor` exists to let a caller avoid.
-///
 /// Writing through it is how C's `errno = 0` is spelled, which a caller does before a call whose failure is only
 /// reported through `errno`.
-///
 /// Cannot fail. Runs in constant time and allocates nothing.
-///
-/// # Safety
-///
 /// The address belongs to the calling thread and must not be handed to another one.
 /// @returns the address of the general runtime's `errno` for this thread
 /// @see https://rux-lang.dev/docs/api/c/errno-location
@@ -374,19 +341,14 @@ pub func ErrnoLocation() -> *var c_int {
 }
 
 /// The calling thread's current `errno` value.
-///
 /// Takes nothing and returns the value by copy. Meaningful only after a call that documents setting it: no C function
 /// clears `errno` on success, so a value left over from an earlier failure is still there. Clear it with
 /// `*ErrnoLocation() = 0` before the call whose failure is to be read.
-///
-/// # Safety
-///
 /// On Windows this reads the Universal CRT's `errno`, which is the one `C::StdLib` and `C::Math` set. `C::StdIo` and
 /// `C::Time` are still bound to the legacy `msvcrt.dll`, whose `errno` is a different variable in a different
 /// runtime, so a failure reported by a call in either of those modules is not visible here. That split is a known
 /// defect: the Universal CRT does not export the formatted-output family, so moving those modules across needs the
 /// `__stdio_common_*` entry points declared first.
-///
 /// Cannot fail. Runs in constant time and allocates nothing.
 /// @returns the general runtime's `errno` for this thread
 /// @see https://rux-lang.dev/docs/api/c/errno

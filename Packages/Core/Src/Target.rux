@@ -1,14 +1,11 @@
 // The machine being compiled for, as ordinary values available while compiling.
-//
 // `#target` answers questions about the target rather than about the host running the compiler, which is what makes a
 // cross-build produce the right code: a package selecting a syscall or a struct layout branches on these and never on
 // where it happens to be built.
-//
 // Each variant names one system rather than a family, so the BSDs are told apart. A `when` on one of these keeps only
 // the branch that applies, so the untaken side is never resolved and may name declarations this target does not have.
 
 /// An operating system a build can target.
-///
 /// Named per system rather than per family, so a package can tell FreeBSD from Linux where their interfaces differ.
 /// @see https://rux-lang.dev/docs/api/core/operating-system
 #Allow("naming.type")
@@ -38,7 +35,6 @@ pub enum Architecture: uint8 {
 }
 
 /// The calling and layout conventions a target's code follows.
-///
 /// This is what decides how arguments are passed and how aggregates are laid out, so a declaration that has to match
 /// a foreign interface branches on it rather than on the operating system.
 /// @see https://rux-lang.dev/docs/api/core/application-binary-interface
@@ -54,7 +50,6 @@ pub enum ApplicationBinaryInterface: uint8 {
 }
 
 /// A processor feature a target may be built with.
-///
 /// Presence is asked about with `Target::HasFeature` rather than read as a field, because a build enables a set
 /// rather than a single one.
 /// @see https://rux-lang.dev/docs/api/core/target-feature
@@ -91,7 +86,6 @@ pub enum Endianness: uint8 {
 }
 
 /// The widths a target's C environment assigns to `long` and to a pointer.
-///
 /// This is what a raw C declaration needs to get `long` right, since the two models disagree about it.
 /// @see https://rux-lang.dev/docs/api/core/data-model
 pub enum DataModel: uint8 {
@@ -117,7 +111,6 @@ pub enum ObjectFormat: uint8 {
 }
 
 /// Properties of the machine the build targets.
-///
 /// Every field is fixed when compiling begins. Reading one produces no runtime code, so a branch on a field is
 /// decided while compiling and the untaken side is not emitted.
 /// @see https://rux-lang.dev/docs/api/core/target
@@ -142,10 +135,8 @@ pub struct Target {
 
 extend Target {
     /// Whether the build enables `feature` on this target.
-    ///
     /// `self` is borrowed and `feature` is read by value. Answered while compiling, so a branch on it emits only the
     /// side that applies and a body using an instruction the feature provides is never emitted without it.
-    ///
     /// Cannot fail: a feature the target does not have is absent rather than an error. Costs nothing in the built
     /// program.
     /// @param feature the target feature to ask about
@@ -155,7 +146,6 @@ extend Target {
 }
 
 /// The machine being compiled for, as a compile-time value.
-///
 /// Reading a field produces no runtime code. A `when` on one keeps only the branch that applies, so the untaken side
 /// is never resolved or type-checked and may name declarations this target does not have.
 /// @see https://rux-lang.dev/docs/api/core/target

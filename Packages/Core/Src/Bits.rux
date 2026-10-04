@@ -1,21 +1,16 @@
 // Bit-level operations on integers, at every integer width the language spells.
-//
 // Like the arithmetic beside them, these are written once and generic over the integer type rather than repeated per
 // width, and they derive what they need from one operand: `sizeof(T) * 8` is the width, `value - value` is the type's
 // zero, and `zero + 1` is its one.
-//
 // Signedness is the thing to be careful about here, because `>>` is arithmetic on a signed type: it copies the sign
 // bit down instead of bringing zeros in. Every operation below that has to see a value's bits as bits rather than as
 // a number goes through `ShiftRightLogical`, which brings zeros in at either signedness. Reading a single bit with
 // `(value >> index) & 1` needs no such care — whatever arithmetic shift replicated above bit zero is masked away.
-//
 // Nothing here is a machine instruction. A back end may recognize some of these shapes, but the count and reversal
 // operations are written as loops over the width so that a 512-bit type behaves exactly like an 8-bit one.
 
 /// The number of bits in the integer type of `sample`.
-///
 /// `sample` is read by value and only its type matters; its value is never used. Returns the width by copy.
-///
 /// Cannot fail. Runs in constant time and allocates nothing.
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param sample any value of the type, read only to deduce it
@@ -26,11 +21,9 @@ pub func BitWidthOf<T>(sample: T) -> uint64 {
 }
 
 /// Shifts an integer right, bringing zeros in at the top whatever its signedness.
-///
 /// `value` and `amount` are read by value; the result is returned by copy. This is what `>>` does for an unsigned
 /// type and what it deliberately does not do for a signed one, where `>>` replicates the sign bit instead. An
 /// `amount` at or beyond the type's width yields zero rather than being left undefined.
-///
 /// Cannot fail. Runs in constant time and allocates nothing.
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param value the value to act on
@@ -50,9 +43,7 @@ pub func ShiftRightLogical<T>(value: T, amount: uint64) -> T {
 }
 
 /// Whether the bit at `index` is set, counting from the least significant bit.
-///
 /// `value` and `index` are read by value. An `index` at or beyond the type's width reads no bit and reports `false`.
-///
 /// Cannot fail. Runs in constant time and allocates nothing.
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param value the value to act on
@@ -67,9 +58,7 @@ pub func BitAt<T>(value: T, index: uint64) -> bool {
 }
 
 /// The number of set bits.
-///
 /// `value` is read by value. Returns a count between zero and the type's width.
-///
 /// Cannot fail. Runs in time linear in the type's width and allocates nothing.
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param value the value to act on
@@ -89,9 +78,7 @@ pub func CountOnes<T>(value: T) -> uint32 {
 }
 
 /// The number of clear bits.
-///
 /// `value` is read by value. Returns a count between zero and the type's width: the exact complement of `CountOnes`.
-///
 /// Cannot fail. Runs in time linear in the type's width and allocates nothing.
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param value the value to act on
@@ -102,9 +89,7 @@ pub func CountZeros<T>(value: T) -> uint32 {
 }
 
 /// The number of clear bits above the highest set bit.
-///
 /// `value` is read by value. A zero value has no set bit, so every bit counts and the answer is the type's width.
-///
 /// Cannot fail. Runs in time linear in the type's width and allocates nothing.
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param value the value to act on
@@ -122,9 +107,7 @@ pub func LeadingZeros<T>(value: T) -> uint32 {
 }
 
 /// The number of clear bits below the lowest set bit.
-///
 /// `value` is read by value. A zero value has no set bit, so the answer is the type's width.
-///
 /// Cannot fail. Runs in time linear in the type's width and allocates nothing.
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param value the value to act on
@@ -141,9 +124,7 @@ pub func TrailingZeros<T>(value: T) -> uint32 {
 }
 
 /// The number of set bits above the highest clear bit.
-///
 /// `value` is read by value. An all-ones value has no clear bit, so the answer is the type's width.
-///
 /// Cannot fail. Runs in time linear in the type's width and allocates nothing.
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param value the value to act on
@@ -161,9 +142,7 @@ pub func LeadingOnes<T>(value: T) -> uint32 {
 }
 
 /// The number of set bits below the lowest clear bit.
-///
 /// `value` is read by value. An all-ones value has no clear bit, so the answer is the type's width.
-///
 /// Cannot fail. Runs in time linear in the type's width and allocates nothing.
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param value the value to act on
@@ -180,10 +159,8 @@ pub func TrailingOnes<T>(value: T) -> uint32 {
 }
 
 /// Rotates an integer's bits toward the most significant end, wrapping the ones that run off.
-///
 /// `value` and `amount` are read by value; the result is returned by copy. `amount` is taken modulo the type's width,
 /// so no rotation is out of range and rotating by the width is the identity.
-///
 /// Cannot fail: no bit is lost, unlike a shift. Runs in constant time and allocates nothing.
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param value the value to act on
@@ -199,9 +176,7 @@ pub func RotateLeft<T>(value: T, amount: uint64) -> T {
 }
 
 /// Rotates an integer's bits toward the least significant end, wrapping the ones that run off.
-///
 /// `value` and `amount` are read by value; the result is returned by copy. `amount` is taken modulo the type's width.
-///
 /// Cannot fail. Runs in constant time and allocates nothing.
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param value the value to act on
@@ -216,9 +191,7 @@ pub func RotateRight<T>(value: T, amount: uint64) -> T {
 }
 
 /// The value with its bits in the opposite order: bit zero becomes the highest bit and back again.
-///
 /// `value` is read by value; the result is returned by copy.
-///
 /// Cannot fail. Runs in time linear in the type's width and allocates nothing.
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param value the value to act on
@@ -240,10 +213,8 @@ pub func ReverseBits<T>(value: T) -> T {
 }
 
 /// The value with its bytes in the opposite order, leaving the bits within each byte where they were.
-///
 /// `value` is read by value; the result is returned by copy. This is the operation that turns a little-endian value
 /// into the big-endian one with the same bytes, and is what the endian conversions are built from.
-///
 /// Cannot fail. Runs in time linear in the type's width and allocates nothing.
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param value the value to act on
@@ -268,10 +239,8 @@ pub func ReverseBytes<T>(value: T) -> T {
 }
 
 /// Whether the value has exactly one bit set.
-///
 /// `value` is read by value. Zero has no bit set and is not a power of two; for a signed type the most negative
 /// value has exactly one bit set and is reported as one, because this asks about bits rather than about magnitude.
-///
 /// Cannot fail. Runs in time linear in the type's width and allocates nothing.
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param value the value to act on

@@ -1,5 +1,4 @@
 // The tangent of an angle in radians.
-//
 // Argument reduction against Pi carried in enough parts to be exact, then the shared kernel in `Trig.rux`. The
 // reduction matters more here than for sine or cosine: near an odd multiple of `Pi/2` the tangent is enormous
 // and its value is decided entirely by the low bits of the reduced argument. An infinite argument is a NaN.
@@ -7,7 +6,6 @@
 import Core::float64;
 
 /// Computes the tangent of `x`, where `x` is in radians.
-///
 /// The error is at most one ulp for finite arguments away from poles. Exact argument reduction retains all available
 /// information near an odd multiple of `Pi / 2`. A signed zero returns itself; an infinity returns a NaN, and a NaN
 /// remains a NaN.
@@ -38,7 +36,6 @@ pub func Tan(x: float64) -> float64 {
 }
 
 /// Computes the tangent of `x` at `float32` precision, where `x` is in radians.
-///
 /// The wide computation carries more precision than the result requires before being rounded to `float32`.
 /// @param x angle in radians
 /// @returns the tangent of `x`, or a NaN when `x` is not finite

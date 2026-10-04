@@ -1,9 +1,7 @@
 // Why an allocation did not happen.
-//
 // An allocator that fails has to say so in a way the caller can act on, and "null" is not that: it cannot tell a
 // request that was too large from one the system refused from one the allocator was never able to serve. These are
 // the four answers, and every allocator in this package gives one of them.
-//
 // Every case is a failure. An allocator returns its address or completion through a native fallible, `T ! AllocError`,
 // so success is the other channel rather than a member of this enum, and a result nobody handles is diagnosed.
 
@@ -22,7 +20,6 @@ pub enum AllocError: uint8 {
 
 extend AllocError {
     /// Whether a later attempt could plausibly succeed.
-    ///
     /// `self` is borrowed. True only for `OutOfMemory`, which is a shortage rather than a mistake: `Unsupported` and
     /// `InvalidBlock` describe the request rather than the moment, so repeating either gives the same answer.
     /// @returns whether asking again later could succeed

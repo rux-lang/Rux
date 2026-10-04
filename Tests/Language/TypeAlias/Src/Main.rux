@@ -1,10 +1,8 @@
 // `type`: giving an existing type a second name.
-//
 // An alias is a spelling and nothing more. It introduces no new type, so a value of the alias and a value of the
 // aliased type are the same type, interchangeable everywhere without a conversion — which is exactly what makes
 // aliases useful for the C bindings, where `c_int` has to be whatever the platform's `int` is and callers should
 // not have to care.
-//
 // It is also what makes them a trap worth pinning: an alias gives no type safety. Two aliases of the same type are
 // interchangeable with each other, so `type Metres = int32` and `type Feet = int32` do not stop the two being
 // added together. A distinct type needs a struct.

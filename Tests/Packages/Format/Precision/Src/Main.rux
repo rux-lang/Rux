@@ -4,17 +4,14 @@ import Format::{ MaximumPrecision, Render };
 import Text::{ FormatError, String, StringView };
 
 // A precision means digits after the decimal point, exactly that many, rounded to nearest with ties to even.
-//
 // Four things go wrong in a fixed-precision renderer and each has its own section here. The rounding decision has
 // to be exact, which it is because the tail past the last digit is still held as a ratio — so a tie is a tie and
 // not a value that landed near one. Ties go to even, which is what reading the result back would do. A carry out
 // of the rounding runs the whole length of the digits, so 9.99 at one decimal is 10.0 and not 9.10. And a value
 // far below the last requested place produces a tail of zeros rather than nothing.
-//
 // The fifth is not a rounding question at all: a precision past what is supported is refused. The old engine fell
 // back to the shortest form when its arithmetic could not reach the precision asked for, which answered a question
 // nobody asked and answered it silently. There is no fallback now, and the cases at the bottom check that.
-//
 // The long expectations are exact expansions rather than approximations. `0.1` is not a tenth: the float64 nearest
 // it is 0.1000000000000000055511151231257827..., and asking for twenty places is asking for that, which is what
 // makes the case worth having.

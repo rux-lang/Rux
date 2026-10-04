@@ -1,5 +1,4 @@
 // Printing, with the failure a caller can act on returned rather than swallowed.
-//
 // Every overload returns the `IoError` of the write it made, or `none` when there was nothing to report. Most call
 // sites will keep ignoring it, and that is their decision rather than this module's: a program logging to a terminal
 // loses nothing by not looking, while one whose output feeds a closed pipe has something to look at. That is why the
@@ -23,7 +22,6 @@ func FailureOf(outcome: ! IoError) -> IoError? {
 }
 
 // What one printing call reports, given the slot the adapter recorded into and what the formatter said.
-//
 // The slot is read first, because a stream failure is the more specific answer: the formatter saw `WriterFailure`
 // and can say nothing about what a broken pipe was, while the slot holds the failure itself. Only once the stream
 // is known to be healthy is the formatter's own failure worth translating, and by then it can only be a fault of
@@ -35,14 +33,10 @@ func Reported(failure: IoError?, formatted: ! FormatError) -> IoError? {
 }
 
 /// Writes a value's text to standard output.
-///
 /// Nothing is allocated: the value writes itself straight to the stream.
-///
 /// The value arrives as an interface value, which copies it — or takes it, for a type that prohibits copying.
 /// `WriteValueLine` is the borrowing form, and takes any destination, so a value that must not be given up goes
 /// through a `ConsoleWriter` and that instead.
-///
-/// # Failures
 /// A stream failure is returned as the stream reported it. A formatting failure on a healthy stream is translated
 /// by `ToIoError`, so a request that was wrong arrives as `InvalidInput` and stays distinguishable from anything
 /// the destination did. Which formatting failure it was does not survive that translation, since `IoError` has no
@@ -91,7 +85,6 @@ pub func Print(value: char8[..]) -> IoError? {
 }
 
 /// Writes `format` to standard output with each `{}` replaced by the next argument.
-///
 /// Allocates nothing: the arguments write themselves to the stream as they are reached. Failures report as
 /// `PrintValue`'s do.
 /// @param format the format string, with `{}` for each argument

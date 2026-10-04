@@ -1,10 +1,8 @@
 // Binary values on a byte stream, with the byte order named rather than assumed.
-//
 // A file format or a wire protocol fixes its byte order once, in its specification, and every machine that reads
 // it honors that choice regardless of its own. So every function here takes the order as an argument: the caller
 // names the format's choice, and the code assembles values arithmetically — shift and or, never a reinterpreted
 // memory read — so the host's own order never enters into it.
-//
 // One pair of word functions does the actual work at every width, accumulating in the widest integer there is;
 // the typed functions are the surface, one per primitive width, so a format description reads as what it stores.
 // Floats travel as the IEEE 754 bit patterns of their width, moved between integer and float representation
@@ -23,7 +21,6 @@ pub enum Endian: int32 {
 }
 
 /// Reads a `width`-byte unsigned word in the given order, into the low bytes of the result.
-///
 /// The word functions are the one implementation the typed surface below stands on; call those unless the width
 /// itself is a runtime quantity.
 /// @param reader where the bytes come from

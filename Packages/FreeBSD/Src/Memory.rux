@@ -1,5 +1,4 @@
 // Mapping and unmapping address space, and moving the program break.
-//
 // Nothing here tracks what it hands out: an address from `Mmap` is valid until `Munmap` releases exactly the range
 // that was mapped.
 
@@ -35,7 +34,6 @@ pub const MapPrivate: int32 = 0x0002;
 pub const MapFixed: int32 = 0x0010;
 
 /// `MAP_EXCL`: with `MapFixed`, refuse the address rather than replace what occupies it.
-///
 /// The one way to ask whether a range is free: a fixed, exclusive request over anything already mapped fails with
 /// `ENOMEM`, and one over a hole takes it. `Mprotect` cannot answer that question, since it skips the holes in a
 /// range rather than refusing them.
@@ -43,18 +41,13 @@ pub const MapFixed: int32 = 0x0010;
 pub const MapExclusive: int32 = 0x4000;
 
 /// `MAP_ANON`: the mapping is backed by zeroed pages rather than by a file.
-///
 /// FreeBSD numbers this differently from Linux, which is one of the reasons the two packages are separate.
 /// @see https://rux-lang.dev/docs/api/freebsd/map-anonymous
 pub const MapAnonymous: int32 = 0x1000;
 
 /// Creates a mapping and returns its address, or a negative error number.
-///
 /// `address` is a hint unless `MapFixed` is set. `fd` is the object to map, or `-1` with `MapAnonymous`. Testing the
 /// result needs `Errors::IsError` rather than a sign test, since a valid address may have its top bit set.
-///
-/// # Safety
-///
 /// `MapFixed` replaces whatever occupies the address, including a mapping this program depends on, unless
 /// `MapExclusive` is set with it.
 /// @param address a hint for where to map, or null to let the kernel choose
@@ -78,11 +71,7 @@ pub func Mmap(address: *opaque, length: uint, protection: int32, flags: int32, f
 }
 
 /// Releases the mapping that begins at `address` and spans `length` bytes.
-///
 /// Returns zero, or a negative error number. Releasing a range that was never mapped succeeds and does nothing.
-///
-/// # Safety
-///
 /// Every pointer into the range becomes invalid.
 /// @param address a page-aligned address to release from
 /// @param length how many bytes to release
@@ -93,7 +82,6 @@ pub func Munmap(address: *opaque, length: uint) -> int64 {
 }
 
 /// Sets the program break and returns where it ended up.
-///
 /// Reports failure by not moving rather than by an error number. The break is a single process-wide value.
 /// @param address where to move the program break, or null to read it
 /// @returns the resulting break, or a negative error number
@@ -119,7 +107,6 @@ pub const AdviseSequential: int32 = 2;
 pub const AdviseWillNeed: int32 = 3;
 
 /// `MADV_DONTNEED`: the pages are not needed soon.
-///
 /// FreeBSD's meaning is weaker than Linux's: it does not discard the pages, so an anonymous page does not read back
 /// as zero afterwards. `MADV_FREE` is the one that lets the kernel take the storage, and that difference is exactly
 /// why an advice value must not be carried between the two packages.
@@ -131,12 +118,8 @@ pub const AdviseDontNeed: int32 = 4;
 pub const AdviseFree: int32 = 5;
 
 /// Changes what may be done with the pages covering a range.
-///
 /// `address` must be page-aligned. Returns zero, or a negative error number. Removing a permission takes effect at
 /// once, so a thread touching the range concurrently faults.
-///
-/// # Safety
-///
 /// Nothing checks that the range was ever mapped, and a hardened system refuses writable executable memory.
 /// @param address a page-aligned address
 /// @param length how many bytes, rounded up to whole pages
@@ -148,11 +131,7 @@ pub func Mprotect(address: *opaque, length: uint, protection: int32) -> int64 {
 }
 
 /// Tells the kernel how the pages covering a range are about to be used.
-///
 /// Advice is advice: the kernel is free to ignore it. `AdviseFree` is the one that actually releases storage.
-///
-/// # Safety
-///
 /// `AdviseFree` loses whatever the range held.
 /// @param address a page-aligned address
 /// @param length how many bytes the advice covers
@@ -171,11 +150,9 @@ pub const CtlHardware: int32 = 6;
 pub const HardwarePageSize: int32 = 7;
 
 /// The size of a page, asked of the kernel.
-///
 /// FreeBSD publishes this as the `hw.pagesize` sysctl rather than as a dedicated call, and that is the query this
 /// package uses: it needs no libc, no auxiliary vector and no state captured at process start. The value is a
 /// power of two and is the granularity `Mmap` rounds to.
-///
 /// A caller that cannot use a failure has no business asking: the whole point of returning one is that a system
 /// which will not answer is not a system to guess about.
 /// @returns the page size in bytes, or a negative error number

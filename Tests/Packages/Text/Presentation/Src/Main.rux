@@ -4,13 +4,11 @@ import Text::{ BufferWriter, Debug, Display, FormatError, FormatSpec, ParseForma
 
 // How text presents itself, checked through the protocols rather than through a format call, so a failure here is
 // about the value and not about the placeholder engine above it.
-//
 // Display is the text; Debug is the text quoted and escaped. The escaping is the part with judgement in it: the
 // quote and the backslash collide with the quoting, and the controls act on a terminal instead of being read, so
 // those are escaped and nothing else is. Ordinary non-ASCII text stays as it is, which is the case worth pinning,
 // because escaping it would make text in most of the world's scripts unreadable in the one place a reader is
 // trying to read it.
-//
 // Precision counts characters rather than bytes, so the multi-byte cases are where a byte-counting implementation
 // would be caught.
 

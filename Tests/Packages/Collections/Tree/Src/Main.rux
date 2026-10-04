@@ -3,13 +3,11 @@ import Collections::{ Tree, TreeNode };
 import Core::{ Assert, Ordering, Panic };
 
 // The red-black kernel, checked against its own rules rather than against its outputs.
-//
 // A balanced tree that is merely wrong about a colour still answers every lookup correctly, and goes on doing so
 // until an insertion sequence finds the shape that degenerates. So this test does not just ask what the tree holds:
 // after every insertion and every removal it walks the whole thing and checks the four rules directly — the root is
 // black, no red node has a red child, every path to a missing child crosses the same number of black nodes, and
 // every parent link points back at the node that points down.
-//
 // The orders matter as much as the counts. Ascending and descending insertion are the two that turn an uncoloured
 // binary search tree into a linked list, and a stride coprime with the count churns the tree in an order nothing
 // about the algorithm makes convenient.

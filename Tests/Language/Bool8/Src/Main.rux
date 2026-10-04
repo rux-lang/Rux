@@ -1,9 +1,7 @@
 // bool8: one of two values in one byte, and the width `bool` is an alias for.
-//
 // Boolean logic — short-circuiting, precedence, conditions — is the same at every width and is pinned once in
 // `Bool`. What belongs to a width is how much room it takes, what a cast into it stores, and whether converting to
 // and from another width still means what it meant. Those are what this file asserts.
-//
 // The cast is the part worth being careful about. A cast into a boolean asks whether the whole source value is
 // non-zero, not what its low bits are, so `256 as bool8` is `true` even though 256 truncated to a byte is zero.
 // Getting that wrong is silent: the value would simply be false, and only a source whose low byte happened to be

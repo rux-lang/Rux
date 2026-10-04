@@ -1,30 +1,23 @@
 // Searching a sequence that is already in order, and asking whether it is.
-//
 // Everything here assumes the slice is sorted by the same order the search uses. That is the caller's promise, and
 // nothing checks it on the way in: checking would cost the linear scan the binary search exists to avoid. A search
 // over an unsorted slice does not fail — it answers, and the answer is meaningless. `IsSorted` is there for a
 // caller who wants to check, once, where checking is worth it.
-//
 // A bound is a position rather than an element: `LowerBound` is the first position where the value could be inserted
 // without breaking the order, and `UpperBound` is the last. Between them lie exactly the elements equal to it, which
 // is what `EqualRange` returns in one pass. All three answer for a value that is not present at all — the answer is
 // an empty range at the position it would go.
-//
 // The plain forms need `<` on the element type. The `By` forms take a three-way comparison, which is what to use for
 // a type with no ordering of its own or an order that is not its own. Every `By` form must be given the same order
 // the slice was sorted by; a different one gives a meaningless answer just as an unsorted slice does.
-//
 // Nothing here allocates or writes.
 
 import Core::Ordering;
 
 /// Whether `items` is in non-decreasing order.
-///
 /// `items` is borrowed and read. An empty slice and a single element are sorted, there being no pair to be out of
 /// order. Equal neighbours are in order: this asks for non-decreasing, not strictly increasing.
-///
 /// Requires `<` on the element type.
-///
 /// Cannot fail. Runs in time proportional to the length, stopping at the first pair out of order, and allocates
 /// nothing.
 /// @typeParam T the element type
@@ -36,13 +29,10 @@ pub func IsSorted<T>(items: T[..]) -> bool {
 }
 
 /// How far `items` is in non-decreasing order.
-///
 /// `items` is borrowed and read. Returns the length of the longest sorted run starting at the front, which is the
 /// whole length when the slice is sorted, and the index of the first element smaller than the one before it
 /// otherwise. An empty slice gives zero and a single element gives one.
-///
 /// Requires `<` on the element type.
-///
 /// Cannot fail. Runs in time proportional to the answer and allocates nothing.
 /// @typeParam T the element type
 /// @param items the sequence to work on
@@ -59,13 +49,10 @@ pub func IsSortedUntil<T>(items: T[..]) -> uint {
 }
 
 /// The first position where `value` could be inserted without breaking the order.
-///
 /// `items` is borrowed and read; `value` is read by value. This is the index of the first element not less than
 /// `value` — the first equal one when there are equals, and where it would go when there are none. A value larger
 /// than everything gives the length.
-///
 /// Requires `<` on the element type, and requires `items` to be sorted by that order.
-///
 /// Cannot fail. Runs in time proportional to the logarithm of the length and allocates nothing.
 /// @typeParam T the element type
 /// @param items the sequence to work on
@@ -88,12 +75,9 @@ pub func LowerBound<T>(items: T[..], value: T) -> uint {
 }
 
 /// The last position where `value` could be inserted without breaking the order.
-///
 /// `items` is borrowed and read; `value` is read by value. This is the index of the first element greater than
 /// `value` — one past the last equal one when there are equals, and the same as `LowerBound` when there are none.
-///
 /// Requires `<` on the element type, and requires `items` to be sorted by that order.
-///
 /// Cannot fail. Runs in time proportional to the logarithm of the length and allocates nothing.
 /// @typeParam T the element type
 /// @param items the sequence to work on
@@ -116,15 +100,12 @@ pub func UpperBound<T>(items: T[..], value: T) -> uint {
 }
 
 /// The index of an element of `items` equal to `value`.
-///
 /// `items` is borrowed and read; `value` is read by value. Reports `none` when no element is equal. When several
 /// are, the one reported is the first of them, which makes the answer depend on the sequence rather than on how the
 /// search happened to divide it.
-///
 /// Requires `<` on the element type, and requires `items` to be sorted by that order. Equality is decided by the
 /// ordering rather than by `==`: two elements neither of which is less than the other are equal here, whatever `==`
 /// would say about them.
-///
 /// Cannot fail. Runs in time proportional to the logarithm of the length and allocates nothing.
 /// @typeParam T the element type
 /// @param items the sequence to work on
@@ -138,13 +119,10 @@ pub func BinarySearch<T>(items: T[..], value: T) -> uint? {
 }
 
 /// The range of positions in `items` holding elements equal to `value`.
-///
 /// `items` is borrowed and read; `value` is read by value. The range runs from `LowerBound` to `UpperBound`, so it
 /// is empty when no element is equal — and its `start` is then where the value would be inserted, which is the
 /// answer a caller inserting into a sorted sequence wants.
-///
 /// Requires `<` on the element type, and requires `items` to be sorted by that order.
-///
 /// Cannot fail. Runs in time proportional to the logarithm of the length and allocates nothing.
 /// @typeParam T the element type
 /// @param items the sequence to work on
@@ -156,10 +134,8 @@ pub func EqualRange<T>(items: T[..], value: T) -> uint..uint {
 }
 
 /// Whether `items` is in non-decreasing order under `compare`.
-///
 /// `items` is borrowed and read; `compare` is called once per neighbouring pair until one is out of order. An empty
 /// slice and a single element are sorted, and equal neighbours are in order.
-///
 /// Cannot fail. Runs in time proportional to the length and allocates nothing beyond whatever `compare` does.
 /// @typeParam T the element type
 /// @param items the sequence to work on
@@ -171,10 +147,8 @@ pub func IsSortedBy<T>(items: T[..], compare: func(T, T) -> Ordering) -> bool {
 }
 
 /// How far `items` is in non-decreasing order under `compare`.
-///
 /// `items` is borrowed and read. Returns the length of the longest sorted run starting at the front, exactly as
 /// `IsSortedUntil` does for the element type's own order.
-///
 /// Cannot fail. Runs in time proportional to the answer and allocates nothing beyond whatever `compare` does.
 /// @typeParam T the element type
 /// @param items the sequence to work on
@@ -192,9 +166,7 @@ pub func IsSortedUntilBy<T>(items: T[..], compare: func(T, T) -> Ordering) -> ui
 }
 
 /// The first position where `value` could be inserted into `items` under `compare` without breaking the order.
-///
 /// `items` is borrowed and read; `value` is read by value. `compare` must be the order `items` was sorted by.
-///
 /// Cannot fail. Runs in time proportional to the logarithm of the length and allocates nothing beyond whatever
 /// `compare` does.
 /// @typeParam T the element type
@@ -219,9 +191,7 @@ pub func LowerBoundBy<T>(items: T[..], value: T, compare: func(T, T) -> Ordering
 }
 
 /// The last position where `value` could be inserted into `items` under `compare` without breaking the order.
-///
 /// `items` is borrowed and read; `value` is read by value. `compare` must be the order `items` was sorted by.
-///
 /// Cannot fail. Runs in time proportional to the logarithm of the length and allocates nothing beyond whatever
 /// `compare` does.
 /// @typeParam T the element type
@@ -246,10 +216,8 @@ pub func UpperBoundBy<T>(items: T[..], value: T, compare: func(T, T) -> Ordering
 }
 
 /// The index of an element of `items` that `compare` calls equal to `value`.
-///
 /// `items` is borrowed and read; `value` is read by value. Reports `none` when no element is equal, and the first of
 /// them when several are. `compare` must be the order `items` was sorted by.
-///
 /// Cannot fail. Runs in time proportional to the logarithm of the length and allocates nothing beyond whatever
 /// `compare` does.
 /// @typeParam T the element type
@@ -265,10 +233,8 @@ pub func BinarySearchBy<T>(items: T[..], value: T, compare: func(T, T) -> Orderi
 }
 
 /// The range of positions in `items` holding elements `compare` calls equal to `value`.
-///
 /// `items` is borrowed and read; `value` is read by value. Empty when no element is equal, with its `start` at the
 /// position the value would be inserted. `compare` must be the order `items` was sorted by.
-///
 /// Cannot fail. Runs in time proportional to the logarithm of the length and allocates nothing beyond whatever
 /// `compare` does.
 /// @typeParam T the element type

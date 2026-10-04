@@ -2,12 +2,10 @@ import Core::{ Assert, Succeeded };
 import Format::{ BitsOfFloat32, BitsOfFloat64, ParseError, ParseFloat32, ParseFloat64 };
 
 // Reading a decimal into the float nearest it, checked as bits rather than as numbers.
-//
 // Bits because that is the claim. "Nearest" is a statement about which of two adjacent floats a decimal lands on,
 // and comparing the result against another decimal literal would only ask whether two readings agree — which they
 // would even if both were one step off. Every expectation here is a bit pattern, and the ones that are not
 // structurally obvious are built by walking from a value whose pattern is.
-//
 // Five things go wrong in a decimal reader and each has a section. A value exactly halfway between two floats must
 // go to the even one, and only an exactly representable decimal can be exactly halfway — so the halfway cases are
 // constructed from the midpoint's own decimal expansion rather than from something that looks like a half. A
@@ -95,7 +93,6 @@ func Main() -> int {
     // Underflow is a rounding question rather than a refusal, and the question is decided at the one place a
     // decimal reader can be exactly on the fence: half the smallest subnormal, which is 2^-1075 and is a tie
     // between zero and that subnormal. Zero is the even neighbour and takes it.
-    //
     // The tie is written out in full, all seven hundred and fifty-two significant digits of it, because a shorter
     // spelling is not the tie — it is a value slightly below one, and rounds down for a different reason. Writing
     // it out is what makes this a tie case rather than an underflow case, and it doubles as the longest input any

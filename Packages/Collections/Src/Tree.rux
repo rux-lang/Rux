@@ -1,31 +1,25 @@
 // The red-black kernel `TreeMap` and `TreeSet` are both built on, so the rotations and the two fix-ups exist once
 // rather than twice.
-//
 // A red-black tree keeps its entries in order and its height within twice the best possible, by colouring each node
 // and holding to four rules: the root is black, a red node has no red child, every path from a node down to a
 // missing child crosses the same number of black nodes, and a missing child counts as black. Insertion and removal
 // each break one of those locally, and each has a fix-up that walks back up until it is true again.
-//
 // What that buys over a hash table is order. A tree walks its entries smallest first, answers what the least key
 // above a bound is, and never rehashes — so a walk stays meaningful across insertions in a way a table's cannot,
 // since a table moves entries between slots whenever it grows. What it costs is a pointer chase per level and an
 // allocation per entry, against the table's single run of memory and constant expected time. Reach for the tree when
 // order is part of the question, and the table when it is not.
-//
 // Each node is its own allocation, which is what lets a node keep its address while the tree is rearranged around
 // it. Removal relinks the successor rather than copying its contents over the removed node, so the entry that stays
 // keeps the address it had. A table cannot promise that at all.
-//
 // Every comparison goes through a function the caller supplies, for the reason the hash tables take theirs: Rux has
 // no closures, and an interface would be dispatched through at every step of every descent.
-//
 // Internal to this package: the kernel, not something a caller reaches for.
 
 import Allocator::Allocator;
 import Core::Ordering;
 
 /// One node of a red-black tree.
-///
 /// Its own allocation, so its address survives any rearrangement of the tree around it.
 /// @typeParam K the key type
 /// @typeParam V the value type
@@ -46,7 +40,6 @@ pub struct TreeNode<K, V> {
 }
 
 /// An ordered collection of entries, kept balanced by colouring.
-///
 /// Owns every node and everything in them, so it prohibits copying and destroys them with `~Tree`.
 /// @typeParam K the key type
 /// @typeParam V the value type
@@ -65,9 +58,7 @@ extend Tree<K, V> {
     func =(self: &var Tree<K, V>, other: &Tree<K, V>);
 
     /// An empty tree that has allocated nothing.
-    ///
     /// `allocator` is borrowed for the call and kept for the tree's life.
-    ///
     /// Cannot fail. Runs in constant time and allocates nothing.
     /// @param allocator where the storage comes from
     /// @returns an empty tree that has taken no storage yet
@@ -77,7 +68,6 @@ extend Tree<K, V> {
     }
 
     /// How many entries the tree holds.
-    ///
     /// `self` is borrowed. Cannot fail; runs in constant time and allocates nothing.
     /// @returns how many nodes it holds
     /// @see https://rux-lang.dev/docs/api/collections/tree/length
@@ -86,7 +76,6 @@ extend Tree<K, V> {
     }
 
     /// Whether the tree holds no entries.
-    ///
     /// `self` is borrowed. Cannot fail; runs in constant time and allocates nothing.
     /// @returns whether it holds nothing
     /// @see https://rux-lang.dev/docs/api/collections/tree/is-empty
@@ -101,13 +90,11 @@ extend Tree<K, V> {
     }
 
     // Turns the subtree at `pivot` so its right child takes its place, which the right child must therefore have.
-    //
     //       x                 y
     //      / \               / \
     //     a   y     ->      x   c
     //        / \           / \
     //       b   c         a   b
-    //
     // Every key stays on the correct side of every other, which is why a rotation can be used to fix a colour
     // without touching the order.
     func RotateLeft(self: &var Tree<K, V>, pivot: *var TreeNode<K, V>) {
@@ -152,10 +139,8 @@ extend Tree<K, V> {
     }
 
     /// The node holding `key`, or null when the tree does not have it.
-    ///
     /// `self` is borrowed. `compare` must impose the same order every call, and the same one every earlier
     /// insertion used — a tree searched by a different order than it was built with misses entries it holds.
-    ///
     /// Runs in time proportional to the height, which the colouring holds to at most twice the logarithm of the
     /// length. Allocates nothing.
     /// @param key the key to look up
@@ -180,14 +165,11 @@ extend Tree<K, V> {
     }
 
     /// The node holding the smallest key strictly above `key`, or null when no key is above it.
-    ///
     /// `key` need not be in the tree. The descent keeps the last node it passed on the high side, which is the
     /// answer wherever it ends: once it has gone left of a key, nothing further down is larger than that key.
-    ///
     /// This is what lets a walk survive removing what it is standing on. `Successor` needs its node still linked
     /// into the tree, and removal relinks nodes around it; asking by key instead needs nothing to have stayed put,
     /// at the price of a descent per step rather than an edge.
-    ///
     /// Runs in time proportional to the height and allocates nothing.
     /// @param key the key to look up
     /// @param compare how two keys order against each other
@@ -209,7 +191,6 @@ extend Tree<K, V> {
     }
 
     /// The node holding the largest key strictly below `key`, or null when no key is below it.
-    ///
     /// The mirror of `Above`, with the same costs and the same use.
     /// @param key the key to look up
     /// @param compare how two keys order against each other
@@ -231,7 +212,6 @@ extend Tree<K, V> {
     }
 
     /// The node holding the smallest key of the subtree at `from`, or null when `from` is null.
-    ///
     /// Runs in time proportional to the height and allocates nothing.
     /// @param from the subtree to search
     /// @returns the leftmost node of that subtree, or null when it is empty
@@ -245,7 +225,6 @@ extend Tree<K, V> {
     }
 
     /// The node holding the largest key of the subtree at `from`, or null when `from` is null.
-    ///
     /// Runs in time proportional to the height and allocates nothing.
     /// @param from the subtree to search
     /// @returns the rightmost node of that subtree, or null when it is empty
@@ -259,10 +238,8 @@ extend Tree<K, V> {
     }
 
     /// The node holding the next key after `node`'s, or null when `node` holds the largest or is itself null.
-    ///
     /// Descends into the right subtree where there is one, and otherwise climbs past every ancestor `node` is the
     /// right child of — arriving at the first ancestor reached from the left, whose key is the next one up.
-    ///
     /// Runs in time proportional to the height for a single step, but a walk of the whole tree by successor is
     /// linear in the length: every edge is crossed exactly twice across the walk. Allocates nothing.
     /// @param node the node to act on
@@ -281,7 +258,6 @@ extend Tree<K, V> {
     }
 
     /// The node holding the key before `node`'s, or null when `node` holds the smallest or is itself null.
-    ///
     /// The mirror of `Successor`, with the same costs.
     /// @param node the node to act on
     /// @returns the node with the previous key in order, or null before the first
@@ -299,7 +275,6 @@ extend Tree<K, V> {
     }
 
     // Restores the colouring after a fresh red node was hung below a parent that may itself be red.
-    //
     // Only one rule can be broken here — a red node with a red parent — and only at the node just linked. There
     // are two ways out. When the uncle is red, repainting the parent and uncle black and the grandparent red fixes
     // this level and moves the same question up two levels, which is why this is a loop and not a step. When the
@@ -355,15 +330,12 @@ extend Tree<K, V> {
     }
 
     /// Puts `key` and `value` into the tree, replacing the value already stored under an equal key.
-    ///
     /// Takes ownership of both. Hands back the value an equal key already had, or `none` when the key is new — so a
     /// caller learns whether anything was displaced without a lookup first, and gets the displaced value rather than
     /// having it quietly destroyed. When the key is already present the new key is destroyed rather than stored, since
     /// the one in the tree is equal to it and is what everything already hanging below it was ordered against.
-    ///
     /// Reports `OutOfMemory` when the node cannot be allocated, having changed nothing — but `key` and `value` are
     /// destroyed rather than handed back, because there is nowhere left to put them.
-    ///
     /// Runs in time proportional to the height, with at most two rotations. Allocates one node for a new key and
     /// nothing at all for one already present.
     /// @param key the key to look up
@@ -437,12 +409,10 @@ extend Tree<K, V> {
     }
 
     // Restores the colouring after a black node left the tree.
-    //
     // Removing a black node takes one black off every path through where it was, and nothing local can put it back:
     // the deficit has to be paid by a sibling that can spare one, or pushed up to the parent and paid there. That is
     // what the loop does. `node` is what took the removed node's place and may be null, which is why the parent is
     // passed rather than read from it — a missing child has a colour but no pointer back up.
-    //
     // Four shapes, mirrored on each side. A red sibling is turned black by a rotation that produces one of the other
     // three. A sibling with two black children can give up its own black by turning red, which pays the deficit at
     // this level and moves it to the parent — the only case that loops. A sibling with a red child pays in full
@@ -525,14 +495,11 @@ extend Tree<K, V> {
     }
 
     /// Takes `node` out of the tree and hands back what it held.
-    ///
     /// `node` must be a node of this tree, and is freed here — nothing may read through it afterwards. The key and
     /// value become the caller's, in the pair a hash map hands its entries back in.
-    ///
     /// A node with two children is not emptied into: the successor is relinked in its place instead, so the entry
     /// that stays keeps the address it had and any pointer to it stays good. That is the whole reason the nodes are
     /// separate allocations, and it is why removal moves six pointers where copying two fields would do.
-    ///
     /// Cannot fail. Runs in time proportional to the height, with at most three rotations, and allocates nothing.
     /// @param node the node to act on
     /// @returns the entry the node held
@@ -588,10 +555,8 @@ extend Tree<K, V> {
     }
 
     /// Destroys every entry and gives every node back to the allocator, leaving an empty tree.
-    ///
     /// `self` is borrowed mutably and stays usable: entries may be attached again afterwards, and nothing has been
     /// kept back to make that cheaper, since a tree has no capacity to keep.
-    ///
     /// Cannot fail. Runs in time proportional to the length and allocates nothing.
     /// @see https://rux-lang.dev/docs/api/collections/tree/clear
     pub func Clear(self: &var Tree<K, V>) {
@@ -629,7 +594,6 @@ extend Tree<K, V> {
     }
 
     /// Destroys every entry and gives every node back.
-    ///
     /// Runs when the tree dies. Never called directly; a tree is move-only, so there is exactly one of these per
     /// tree however many times it was passed along.
     /// @see https://rux-lang.dev/docs/api/collections/tree/destructor

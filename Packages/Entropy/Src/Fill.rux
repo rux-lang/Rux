@@ -1,9 +1,7 @@
 // The call a caller actually makes, and the seam that makes its failure paths testable.
-//
 // `FillFromSource` is the system, reached directly. This is the layer above it: it splits a request larger than any
 // single call into as many calls as it takes, it zeroizes the whole buffer when any part of the request fails, and
 // it reaches the system through an interface rather than by name.
-//
 // That last part is the point of the module. Entropy failures are the ones nobody tests: they need a kernel with no
 // generator, a process being signalled steadily, or a cryptographic provider that refuses — none of which a test
 // can arrange. So the source is an `EntropySource`, `SystemEntropy` is the one that asks the operating system, and a
@@ -14,19 +12,14 @@ import Entropy::{ EntropyError, FillFromSource, MaxEntropyRequest };
 import Memory::ZeroizeBlock;
 
 /// Something that can fill a buffer with unpredictable bytes.
-///
 /// Implemented by `SystemEntropy` for the operating system's generator, and by a test for a source that fails on
 /// demand. An implementation either fills the whole buffer and succeeds, or fails with why it did not.
 /// @see https://rux-lang.dev/docs/api/entropy/entropy-source
 pub interface EntropySource {
     /// Fills `length` bytes of `buffer` with unpredictable bytes.
-    ///
     /// `buffer` is borrowed and written; `length` is read by value. Succeeds only when every byte was written. An
     /// implementation may write part of the buffer before failing — the caller is what guarantees nothing
     /// partial survives.
-    ///
-    /// # Safety
-    ///
     /// `buffer` must be writable for `length` bytes.
     /// @param buffer receives the bytes
     /// @param length how many bytes to fill
@@ -36,7 +29,6 @@ pub interface EntropySource {
 }
 
 /// The operating system's generator, as an `EntropySource`.
-///
 /// Holds nothing: the system's generator needs no handle, no seed and no shutdown. It exists so that code taking a
 /// source can be handed the real one.
 /// @see https://rux-lang.dev/docs/api/entropy/system-entropy
@@ -45,10 +37,8 @@ pub struct SystemEntropy {
 
 extend SystemEntropy {
     /// The operating system's generator.
-    ///
     /// Takes nothing and cannot fail. Costs nothing to make, so there is no reason to keep one around rather than
     /// making one where it is needed.
-    ///
     /// Runs in constant time and allocates nothing.
     /// @returns the source, which holds no state of its own
     /// @see https://rux-lang.dev/docs/api/entropy/system-entropy/new
@@ -60,13 +50,8 @@ extend SystemEntropy {
 
 extend SystemEntropy : EntropySource {
     /// Fills `length` bytes of `buffer` from the operating system.
-    ///
     /// Exactly `FillFromSource`, reached through the interface. Succeeds only when every byte was written.
-    ///
     /// Runs in time proportional to `length` and allocates nothing.
-    ///
-    /// # Safety
-    ///
     /// `buffer` must be writable for `length` bytes.
     /// @param buffer receives the bytes
     /// @param length how many bytes to fill
@@ -78,18 +63,12 @@ extend SystemEntropy : EntropySource {
 }
 
 /// Fills `length` bytes of `buffer` from `source`, in as many calls as it takes.
-///
 /// `source` is borrowed for the call; `buffer` is borrowed and written; `length` is read by value. Succeeds only when
 /// every byte was written, and otherwise fails with what the source reported.
-///
 /// A request larger than a single call accepts is split, so a caller need not know what that limit is. A failure
 /// part-way through a split request is a failure of the whole request: there is no state in which some of a buffer
 /// is unpredictable and the rest is not, because nothing downstream could act on the difference.
-///
 /// Runs in time proportional to `length` and allocates nothing.
-///
-/// # Safety
-///
 /// `buffer` must be writable for `length` bytes. On any failure the whole buffer is zeroized, including the parts an
 /// earlier call filled successfully.
 /// @param source where the bytes come from
@@ -117,18 +96,12 @@ pub func FillFrom(source: &var EntropySource, buffer: *var opaque, length: uint)
 }
 
 /// Fills `length` bytes of `buffer` from `source`, trying again while the failure says trying again might work.
-///
 /// `source` is borrowed for the call; `buffer` is borrowed and written; `length` and `attempts` are read by value.
 /// `attempts` is how many extra tries to make, so zero is one attempt and behaves exactly like `FillFrom`.
-///
 /// Only a transient failure is retried — `Interrupted`, which says a signal arrived rather than that anything is
 /// wrong. A system with no source and a provider that refused are both reported at once, because repeating them
 /// would only take longer to reach the same answer.
-///
 /// Runs in time proportional to `length` times the attempts made, and allocates nothing.
-///
-/// # Safety
-///
 /// `buffer` must be writable for `length` bytes. Every failed attempt zeroizes the buffer, so a failure that
 /// exhausts the attempts leaves zeros.
 /// @param source where the bytes come from
@@ -156,14 +129,9 @@ pub func FillWithRetries(source: &var EntropySource, buffer: *var opaque, length
 }
 
 /// Fills `length` bytes of `buffer` from the operating system.
-///
 /// `buffer` is borrowed and written; `length` is read by value. This is the call to make when there is no reason to
 /// name a source: it is `FillFrom` over `SystemEntropy`, with the same contract.
-///
 /// Runs in time proportional to `length` and allocates nothing.
-///
-/// # Safety
-///
 /// `buffer` must be writable for `length` bytes. On any failure the whole buffer is zeroized.
 /// @param buffer receives the bytes
 /// @param length how many bytes to fill
@@ -176,9 +144,7 @@ pub func Fill(buffer: *var opaque, length: uint) -> ! EntropyError {
 }
 
 /// An unpredictable 64-bit value, which is what a generator wants for a seed.
-///
 /// A failed draw scrubs its local copy before failing, so nothing of a partial draw is left behind on the stack.
-///
 /// Runs in constant time and allocates nothing.
 /// @returns eight unpredictable bytes as a value, or why the draw failed
 /// @see https://rux-lang.dev/docs/api/entropy/next-uint64

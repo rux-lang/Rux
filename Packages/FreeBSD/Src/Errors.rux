@@ -1,10 +1,8 @@
 // How a FreeBSD system call reports failure, and the numbers it reports.
-//
 // FreeBSD does not report an error the way Linux does. The kernel sets the carry flag and leaves a *positive* errno
 // in the result register, so the raw instruction result cannot be tested for sign. The assembly wrappers in
 // `Syscall` normalize that to Linux's convention — a small negative number — so everything above them reads the
 // same on both systems, and `IsError` and `Errno` are then the same two functions.
-//
 // The names keep the system's own spelling, because `EINVAL` is what a man page names. The values below are
 // FreeBSD's, which agree with Linux for the first thirty-four and then diverge.
 
@@ -148,10 +146,8 @@ pub const ETIMEDOUT: int64 = 60;
 pub const MaximumErrno: int64 = 4095;
 
 /// Whether a raw system-call result is one of the normalized error values.
-///
 /// `result` is read by value. True for `-4095` through `-1`, and false for everything else, including every valid
 /// mapping address a memory call returns.
-///
 /// Cannot fail. Runs in constant time and allocates nothing.
 /// @param result the raw result to test
 /// @returns whether it is one of the reserved error values
@@ -161,9 +157,7 @@ pub func IsError(result: int64) -> bool {
 }
 
 /// The error number a raw system-call result carries, or zero when it carries none.
-///
 /// `result` is read by value; the number is returned by copy, positive, as a man page names it.
-///
 /// Cannot fail. Runs in constant time and allocates nothing.
 /// @param result the raw result to read
 /// @returns the error number, positive, or zero when the result carries none

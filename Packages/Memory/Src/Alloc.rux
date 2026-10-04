@@ -1,10 +1,8 @@
 // Taking storage from the operating system, at whatever granularity it hands it out in.
-//
 // The one allocation primitive under `Rux/Allocator`, and deliberately the smallest possible: it takes bytes
 // and gives back an address, with no size class, no free list and no header of its own beyond what the
 // platform needs to release the block again. Everything shaped like an allocator is built on this rather
 // than inside it.
-//
 // A zero size returns null rather than an address, which is the one place this differs from the page layer
 // above it: `Rux/Allocator` gives a zero-sized request a shared non-null address so that no caller has to
 // branch, and does that itself.
@@ -19,15 +17,10 @@ when #target.os {
 }
 
 /// Allocates `size` uninitialized bytes.
-///
 /// Returns the base address, or null when the size overflows the platform bookkeeping or the system cannot satisfy
 /// the request. A zero size is permitted, but the returned address is platform-dependent and must not be touched.
-///
 /// The allocation is owned by the caller until `Free` releases it or `Realloc` replaces it. The address is aligned
 /// to at least 16 bytes on every supported target.
-///
-/// # Safety
-///
 /// The bytes are uninitialized. Reading any byte before writing it, accessing beyond `size`, or using the address
 /// after it is released is invalid.
 /// @param size how many bytes to take; zero returns null

@@ -1,5 +1,4 @@
 // The cosine of an angle in radians.
-//
 // Argument reduction against Pi carried in enough parts to be exact, then the shared kernel in `Trig.rux`. The
 // reduction is the whole difficulty: a naive one loses a bit of the answer for every bit the argument grows,
 // so a large angle would be meaningless. Error at most one ulp for every finite argument; an infinity is a NaN.
@@ -7,7 +6,6 @@
 import Core::float64;
 
 /// Computes the cosine of `x`, where `x` is in radians.
-///
 /// The error is at most one ulp for every finite argument. Exact argument reduction keeps a large angle no less
 /// accurate than a small one. Either signed zero returns `1.0`; an infinity returns a NaN, and a NaN remains a NaN.
 /// @param x angle in radians
@@ -38,7 +36,6 @@ pub func Cos(x: float64) -> float64 {
 }
 
 /// Computes the cosine of `x` at `float32` precision, where `x` is in radians.
-///
 /// The wide computation carries more precision than the result requires before being rounded to `float32`.
 /// @param x angle in radians
 /// @returns the cosine of `x`, in `[-1, 1]`, or a NaN when `x` is not finite

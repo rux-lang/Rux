@@ -4,7 +4,6 @@ import Text::{ Display, FormatSpec, TextWriter };
 import Format::{ ByteCursor };
 
 // A failed check returns its numbered exit code for `rux test`.
-//
 // The characters are checked byte by byte rather than against a literal, so that what is under test is the UTF-8
 // the package encodes and not the encoding this file happens to be saved in.
 
@@ -56,7 +55,6 @@ func Main() -> int {
     // constants, so they can only arrive through a cast at run time, which is
     // where the encoder has to defend itself: each comes out as U+FFFD, the
     // replacement character.
-    //
     // The surrogate range is reserved by UTF-16 and means nothing in UTF-8.
     var surrogate: uint32 = 0xD800;
     code = Check(surrogate as char32, 3, 0xEFBFBD, 30);

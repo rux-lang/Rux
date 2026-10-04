@@ -1,11 +1,9 @@
 // The line-ending variants: the value, then a newline, with the first failure returned.
-//
 // The newline is written only when the value's own write succeeded. That used to be unconditional, which meant a
 // line whose value could not be written still moved the cursor — so a program logging into a pipe that had
 // closed emitted a run of empty lines, and one whose value was refused for a bad request emitted a line with
 // nothing on it. Neither is what the caller asked for: a line is the value and its terminator together, and half
 // of one is worse than none of it.
-//
 // One helper decides that for every overload rather than each repeating the rule. There are twenty-two of them,
 // and a rule written twenty-two times is a rule that will be written wrongly once.
 

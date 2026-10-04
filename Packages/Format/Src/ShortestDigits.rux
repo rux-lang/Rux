@@ -1,17 +1,14 @@
 // The shortest decimal that reads back as the same bits, found exactly.
-//
 // This is the Steele and White method as Burger and Dybvig refined it, running on the fixed workspace next door.
 // Docs/NarrowFloat.md records why it and not one of the faster table-driven algorithms: those carry pre-computed
 // powers as data, and one of them carries a fallback path, and this package's rendering may neither allocate nor
 // have a path that behaves differently for inputs nobody tested.
-//
 // The idea is one sentence. A binary float is not a decimal, so what a reader wants is not the value's exact
 // decimal expansion — 0.1 is really 0.1000000000000000055511151231257827, and printing that is true and useless —
 // but the shortest decimal that no other float is closer to. The value and the two gaps to its neighbours are held
 // as exact integer ratios, digits are generated one at a time, and generation stops the moment what has been
 // emitted is nearer to this value than to either neighbour. Nothing is approximated, so nothing has to be checked
 // afterwards.
-//
 // The two asymmetries are where an implementation goes wrong, and both have cases in the test. A value at the
 // bottom of its binade is twice as far from its lower neighbour as from its upper one, because the exponent
 // changes underneath it, so the lower gap is half the width of the upper. And whether a decimal exactly on a gap
@@ -20,7 +17,6 @@
 
 
 /// The most digits a shortest rendering can need.
-///
 /// Seventeen for a `float64` and nine for a `float32`: those are the counts at which every value of the width is
 /// distinguishable from every other, which is the theoretical bound on how long a shortest form can be. The buffer
 /// a caller supplies is checked against this rather than against a guess.
@@ -37,7 +33,6 @@ struct Ratio {
 }
 
 // Whether `left + right` is larger than `limit`, or equal to it, without disturbing any of the three.
-//
 // The comparison appears twice per digit and is the only place the method needs a sum it does not keep, so it is
 // written once with its own scratch rather than left to each caller.
 func SumExceeds(left: &FixedNat, right: &FixedNat, limit: &FixedNat, orEqual: bool) -> bool {
@@ -53,7 +48,6 @@ func SumExceeds(left: &FixedNat, right: &FixedNat, limit: &FixedNat, orEqual: bo
 }
 
 // Sets up the ratio for `significand * 2^exponent`, with the gaps its neighbours are at.
-//
 // A value at the bottom of its binade has a lower neighbour half as far away as its upper one, because the
 // exponent steps down underneath it; `atBinadeBottom` says so and the setup doubles everything else to keep the
 // two gaps in the same units. Answers false only if the workspace could not hold the setup.
@@ -86,7 +80,6 @@ func Prepare(state: &var Ratio, significand: uint64, exponent: int, atBinadeBott
 
 // Scales the ratio so that the first digit generated is the first significant one, and reports the decimal
 // exponent that scaling implies.
-//
 // The loops are the estimate-free form: rather than guessing the exponent from a logarithm and correcting, the
 // ratio is multiplied or divided by ten until the value sits in [0.1, 1), which is where digit generation starts.
 // A guess would be faster and would need a proof that the correction is enough; this needs neither.
@@ -131,16 +124,12 @@ func NextDigit(state: &var Ratio) -> uint64 {
 }
 
 /// Writes the shortest decimal digits of `significand * 2^exponent` that read back to exactly that value.
-///
 /// The digits are the significant ones with no point and no sign: `into` receives them most significant first,
 /// `count` how many there are, and `exponent10` the power of ten the first of them stands for, so the value is
 /// `0.d1d2...dn * 10^(exponent10 + 1)` and the caller places the point.
-///
 /// `atBinadeBottom` says the value is the smallest significand of its exponent, whose lower neighbour is half as
 /// far away as its upper one. A caller reading a `float64` passes true when the stored mantissa is zero and the
 /// biased exponent is above one.
-///
-/// # Failures
 /// Answers false when `into` is shorter than `MaximumShortestDigits`, or when the workspace could not hold the
 /// arithmetic — which Docs/NarrowFloat.md proves the narrow widths do not reach, so a false from that cause is a
 /// defect in the bound rather than an input to handle. Nothing partial is reported: `count` is zero on failure.

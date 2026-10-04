@@ -3,7 +3,6 @@ import Text::{ BufferWriter, Display, FormatSpec, ParseFormatSpec };
 import Time::{ Date, DateTime, OffsetDateTime, TimeOfDay, UtcOffset };
 
 // What a calendar value looks like, and the one thing it refuses to do.
-//
 // The refusal is the subject worth testing hardest. A `DateTime` holds no offset, so it must not write one: not
 // `Z`, which would claim UTC, and not the machine's, which would claim a place. `OffsetDateTime` is the type that
 // carries one and therefore the one that can produce RFC 3339. Everything else here is field widths and the

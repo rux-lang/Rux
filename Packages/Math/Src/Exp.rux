@@ -1,7 +1,6 @@
 // exp(hi - lo) * 2^k, for a reduced argument |hi - lo| <= 0.5*ln2 whose leading part is hi. Keeping hi and lo apart
 // rather than passing their sum is what carries the last bits: the sum has already rounded, and near the ends of the
 // reduction that rounding is the whole error.
-//
 // Exp2 reaches the same reduced form by a different route and shares this.
 
 func ExpScaled(hi: float64, lo: float64, k: int64) -> float64 {
@@ -26,7 +25,6 @@ func ExpScaled(hi: float64, lo: float64, k: int64) -> float64 {
 }
 
 /// Computes `e` raised to `x`.
-///
 /// The error is at most one ulp. Positive infinity returns positive infinity, negative infinity returns `+0.0`, and a
 /// NaN remains a NaN. Finite results overflow to infinity or underflow to zero when required by `float64`.
 /// @param x exponent

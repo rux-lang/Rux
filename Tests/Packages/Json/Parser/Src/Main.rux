@@ -1,11 +1,9 @@
 // Strictness is the point, so most of this is documents that must be refused — and the ones worth writing down
 // are the ones that are perfectly good JavaScript and are not JSON.
-//
 // A refusal is checked by its debug rendering, which names the case and the byte it happened at:
 // `JsonParseError::Truncated(4)`. That is one assertion covering three things — that the right case was reported,
 // that it was positioned where the document actually goes wrong, and that the failure can say so — and the
 // position is the half that was easiest to get wrong while it lived in a structure beside the value.
-//
 // A refused parse hands back no value at all. That is the point of the shape: the old one answered a refusal with
 // `null`, which is a perfectly good document, so a caller who forgot to read the outcome could not tell a document
 // that said nothing from one that was not a document.

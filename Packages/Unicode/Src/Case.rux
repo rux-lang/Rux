@@ -1,11 +1,9 @@
 // Case, without a locale.
-//
 // Three kinds of mapping live here and they answer different questions. The simple mappings take one scalar value
 // to one: cheap, allocation-free, and wrong for the handful of characters whose case changes their length — a
 // sharp s uppercases to two letters, which one-to-one cannot say. The full mappings say it, writing up to three
 // values. And folding is neither case: it is the canonical form two strings are taken to before asking whether
 // they are the same text, chosen so the answer is the same in every locale.
-//
 // What is deliberately absent is everything conditional. A dotless i is what `i` uppercases to in Turkish and not
 // elsewhere; a final sigma depends on where in the word it stands. Those rules exist, are in the data, and are not
 // here, because applying them silently is how text changes meaning by passing through a machine set to the wrong
@@ -68,12 +66,8 @@ func WriteMapping(index: uint32[..], elements: uint32[..], scalar: char32, fallb
 }
 
 /// Writes the full uppercase of `scalar` into `into` and reports how many values it took.
-///
 /// Up to three values, so a buffer of three always suffices; reports `false` without writing when the room is
 /// short. Falls back to the simple mapping for the points that need no expansion, which is nearly all of them.
-///
-/// # Safety
-///
 /// `written` must be non-null and writable.
 /// @param scalar the scalar value to map
 /// @param into receives the mapping; three values always suffice
@@ -85,9 +79,6 @@ pub func ToUpperFull(scalar: char32, into: var char32[..], written: *var uint) -
 }
 
 /// Writes the full lowercase of `scalar` into `into`.
-///
-/// # Safety
-///
 /// `written` must be non-null and writable.
 /// @param scalar the scalar value to map
 /// @param into receives the mapping; three values always suffice
@@ -99,13 +90,9 @@ pub func ToLowerFull(scalar: char32, into: var char32[..], written: *var uint) -
 }
 
 /// Writes the full, locale-independent case folding of `scalar` into `into`.
-///
 /// Folding is for comparison rather than display: fold both strings, and equal foldings mean the same text
 /// whatever its case. It is built from the C and F entries alone, which is what makes the answer the same in every
 /// locale. A point with no entry folds to itself.
-///
-/// # Safety
-///
 /// `written` must be non-null and writable.
 /// @param scalar the scalar value to fold
 /// @param into receives the folding; three values always suffice

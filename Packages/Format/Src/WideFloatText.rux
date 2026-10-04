@@ -1,10 +1,8 @@
 // Rendering a wide float the way `float64` renders, at any width.
-//
 // The spelling is the narrow one exactly: `NaN`, `Inf`, a signed zero as `0.0`, fixed notation while the exponent
 // stays within what the digits can fill and scientific past it, and `{:.N}` as that many digits after the point.
 // A reader who knows what a `float64` looks like in text knows what these look like, which is the whole of the
 // design.
-//
 // What differs is that the digits come from exact integer arithmetic rather than from a scaled double, so they
 // are the shortest that read back as the same bits at every width — and that the arithmetic needs an allocator,
 // because the numbers it works on are as large as the exponent makes them.

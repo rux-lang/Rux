@@ -220,7 +220,6 @@ func Main() -> int {
     // own place in the document, and the failure's place inside the token's text. Neither alone is any use — the
     // token's place points at the value rather than at what is wrong with it, and the failure's place is an offset
     // into a few characters nobody can find without the first.
-    //
     // The token's place is also the *consumed* token's, not the lookahead's. A scalar has already been taken by
     // the time its text is read, so reporting through the general stop, which reads the lookahead, put every bad
     // number at whatever followed it — at the end of the document for the first case here, and a line late for the

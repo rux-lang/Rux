@@ -1,13 +1,11 @@
 import Core::Assert;
 
 // Passing an instantiation as a type argument, from inside the generic whose parameter it is built from.
-//
 // `Node<T>` is one named type whose arguments live in its name; there is nothing structural to walk to find the `T`.
 // The check for whether a type argument was still waiting on a parameter looked only at structure, so it called
 // `Node<T>` concrete and queued `Width<Node<T>>` as an instantiation of a type that does not exist. It was never
 // re-queued once the enclosing generic said what `T` was, so `sizeof(T)` inside it had no layout to fold against and
 // the compiler stopped where nothing was left to ask.
-//
 // This is what every container that allocates its own nodes does — a tree asks its allocator for a `TreeNode<K, V>`
 // from inside `Tree<K, V>` — so it is reached by allocating anything with a shape of its own.
 

@@ -1,5 +1,4 @@
 // Boolean logic, at the one width that has no number in its name.
-//
 // This file owns what is the same for every boolean width: what a comparison produces, how `&&` and `||`
 // short-circuit and bind, and what a cast into a boolean asks of its source. Storage, per-width casts and
 // conversion between widths belong to `Bool8`, `Bool16`, `Bool32` and `Bool64`, one file each, so a regression at

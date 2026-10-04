@@ -1,21 +1,17 @@
 // UTF-8, decoded and encoded by the table that defines it.
-//
 // A byte sequence is well-formed UTF-8 only if it matches Table 3-7 of the Unicode standard, and that table is not
 // the obvious one. The obvious rule — read the leading byte for a length, then take that many continuation bytes --
 // accepts three things the standard rejects, and each of them has been a security hole in something:
-//
 // - **Overlong forms.** `C0 80` would decode to U+0000 under the obvious rule. Encoding one scalar two ways means a
 //   check that looks for a byte sequence can be walked around by spelling it differently.
 // - **Surrogate halves.** U+D800 through U+DFFF are not scalar values; they exist only as a UTF-16 encoding
 //   mechanism. Encoded in UTF-8 they are `ED A0 80` and up, and accepting them lets text carry values that cannot
 //   round-trip through UTF-16.
 // - **Values past U+10FFFF.** Four bytes can express up to U+1FFFFF; Unicode stops at U+10FFFF.
-//
 // The table forbids all three by constraining the *second* byte's range per leading byte, rather than by decoding
 // and checking afterwards. That is what the ranges below are: a leading byte of `E0` admits only `A0..BF` next,
 // which is exactly the set that cannot produce an overlong; `ED` admits only `80..9F`, which is exactly the set
 // that cannot produce a surrogate. Checking after the fact would work too, and is easier to get subtly wrong.
-//
 // Every function here works on borrowed bytes and allocates nothing.
 
 /// The largest Unicode scalar value.
@@ -35,7 +31,6 @@ pub const LastSurrogate: uint32 = 0xDFFF;
 pub const MaxEncodedLength: uint = 4;
 
 /// What was wrong with a byte sequence.
-///
 /// The cases are distinguished because they mean different things about where the bytes came from. `Truncated` is
 /// what a buffer boundary looks like and may just mean read more; the rest mean the bytes are not UTF-8 and no
 /// amount of reading will change that. Every case is a failure: the functions here report success through the other
@@ -70,7 +65,6 @@ pub struct Utf8Failure {
 }
 
 /// Whether `value` is a Unicode scalar value: at most `MaxScalarValue`, and not a surrogate half.
-///
 /// Cannot fail. Runs in constant time and allocates nothing.
 /// @param value the value to act on
 /// @returns whether the value is a Unicode scalar value, which excludes the surrogates
@@ -80,7 +74,6 @@ pub func IsScalarValue(value: uint32) -> bool {
 }
 
 /// How many bytes `scalar` takes in UTF-8, or zero when it is not a scalar value.
-///
 /// Cannot fail. Runs in constant time and allocates nothing.
 /// @param scalar the Unicode scalar value
 /// @returns how many bytes the scalar's encoding occupies, one through four
@@ -103,11 +96,9 @@ pub func IsContinuation(byte: char8) -> bool {
 }
 
 /// Writes `scalar` into `into` as UTF-8 and reports how many bytes it took.
-///
 /// `into` is borrowed mutably and must have room for the encoding — at most `MaxEncodedLength` bytes. Fails with
 /// `InvalidStart` for a value that is not a scalar value, and `Truncated` when there is not enough room; nothing is
 /// written in either case.
-///
 /// Cannot allocate. Runs in constant time.
 /// @param scalar the Unicode scalar value
 /// @param into receives the bytes
@@ -189,10 +180,8 @@ func SecondByteRange(leading: uint32, low: *var uint32, high: *var uint32) -> ui
 }
 
 /// Decodes the scalar value starting at `index`, reporting it and how many bytes it occupied.
-///
 /// `bytes` is borrowed. On a failure the caller decides what to do — a decoder replacing bad input with U+FFFD
 /// advances one byte and carries on, and one rejecting it stops.
-///
 /// Cannot allocate. Runs in constant time.
 /// @param bytes the bytes to act on
 /// @param index the byte offset
@@ -230,9 +219,7 @@ pub func DecodeAt(bytes: char8[..], index: uint) -> DecodedScalar ! Utf8Error {
 }
 
 /// Whether `bytes` is well-formed UTF-8 from end to end, reporting where it first is not.
-///
 /// `bytes` is borrowed. A failure carries the index of the byte that starts the offending sequence.
-///
 /// Cannot allocate. Runs in time proportional to the length.
 /// @param bytes the bytes to act on
 /// @returns nothing when every byte is part of a valid sequence, or where and why the first one is not
@@ -246,9 +233,7 @@ pub func Validate(bytes: char8[..]) -> ! Utf8Failure {
 }
 
 /// Whether `index` is where a scalar value starts, and so a place a string may be cut.
-///
 /// The length counts as a boundary, so the end of a string is always a legal cut. An index past the length is not.
-///
 /// Cannot fail. Runs in constant time and allocates nothing.
 /// @param bytes the bytes to act on
 /// @param index the byte offset
@@ -261,10 +246,8 @@ pub func IsBoundary(bytes: char8[..], index: uint) -> bool {
 }
 
 /// How many scalar values `bytes` holds, assuming it is well-formed.
-///
 /// Counts leading bytes, which is one per scalar value in well-formed UTF-8. Bytes that are not well-formed give a
 /// count that means nothing; `Validate` is what answers whether they are.
-///
 /// Cannot fail. Runs in time proportional to the length and allocates nothing.
 /// @param bytes the bytes to act on
 /// @returns how many scalar values the bytes encode
@@ -282,7 +265,6 @@ pub func CountScalars(bytes: char8[..]) -> uint {
 }
 
 /// The index of the scalar boundary at or below `index`.
-///
 /// An index inside a sequence is walked back to the start of that sequence, which is what a caller cutting at an
 /// arbitrary byte offset needs. An index at or past the length gives the length.
 /// @param bytes the bytes to act on

@@ -1,5 +1,4 @@
 // The three streams every process is born holding, as byte streams with the encoding question answered once.
-//
 // Nothing here is opened and nothing is closed: stdin, stdout and stderr belong to the process, not to any value
 // in it, and a handle that closed them on drop would take them from every other part of the program. What
 // acquisition does own is the answer to a question that must not be asked per write: whether the stream is a
@@ -113,7 +112,6 @@ func WriteRaw(handle: RawStream, console: bool, bytes: char8[..]) -> uint ! IoEr
 }
 
 /// Standard input, with the console-versus-redirection question answered at acquisition.
-///
 /// On Windows a console delivers UTF-16, which arrives here converted to UTF-8 so a program reads the same bytes
 /// whether its input is typed or piped; a redirected stream is read as the bytes it is. The value carries the
 /// few bytes of a converted character that did not fit the caller's buffer, and a surrogate half waiting for the
@@ -136,7 +134,6 @@ pub struct StandardIn {
 
 extend StandardIn {
     /// The process's standard input.
-    ///
     /// Asks the platform once whether the stream is a console; nothing is opened, and nothing needs closing.
     /// @returns the stream, which the process owns for its whole life
     /// @see https://rux-lang.dev/docs/api/io/standard-in/acquire

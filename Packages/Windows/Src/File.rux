@@ -1,10 +1,8 @@
 // The Unicode file and device interface.
-//
 // Every entry point here is the `W` form, which takes UTF-16. The `A` forms in `Kernel` convert through the process
 // code page, which is lossy for any name the page cannot express and differs between machines — so a path that
 // works on one system fails on another for reasons the program cannot see. A path is not text the program chose; it
 // is text a user or a file system chose, and the `W` forms are the only ones that carry all of it.
-//
 // A failing call here reports `InvalidHandleValue` where it returns a handle and zero where it returns a `Bool`,
 // with the reason in `GetLastError`.
 
@@ -21,7 +19,6 @@ pub const GENERIC_READ: uint32 = 0x80000000;
 pub const GENERIC_WRITE: uint32 = 0x40000000;
 
 /// `FILE_APPEND_DATA`: the handle may append, and only append.
-///
 /// The access right that makes an append-only handle: every write lands at the end whatever the file pointer
 /// says, which `GENERIC_WRITE` does not promise.
 /// @see https://rux-lang.dev/docs/api/windows/file-append-data
@@ -29,7 +26,6 @@ pub const GENERIC_WRITE: uint32 = 0x40000000;
 pub const FILE_APPEND_DATA: uint32 = 0x00000004;
 
 /// `FILE_SHARE_READ`: other openers may read while this handle is open.
-///
 /// Windows denies sharing by default, which is the opposite of every Unix. A file opened without this cannot be
 /// opened for reading by anything else, including the same process.
 /// @see https://rux-lang.dev/docs/api/windows/file-share-read
@@ -52,7 +48,6 @@ pub const FILE_SHARE_DELETE: uint32 = 0x00000004;
 pub const FILE_ATTRIBUTE_NORMAL: uint32 = 0x00000080;
 
 /// `FILE_ATTRIBUTE_READONLY`: the file may not be opened for writing or deleted.
-///
 /// The whole of Windows' permission model as this package uses it: there are ACLs underneath, but nothing in the
 /// portable surface can express them, and this bit is what `chmod` maps onto.
 /// @see https://rux-lang.dev/docs/api/windows/file-attribute-readonly
@@ -75,7 +70,6 @@ pub const FILE_ATTRIBUTE_REPARSE_POINT: uint32 = 0x00000400;
 pub const INVALID_FILE_ATTRIBUTES: uint32 = 0xFFFFFFFF;
 
 /// `FILE_FLAG_BACKUP_SEMANTICS`: let `CreateFileW` open a directory.
-///
 /// Without it a directory cannot be opened at all, which makes this the flag every metadata query needs.
 /// @see https://rux-lang.dev/docs/api/windows/file-flag-backup-semantics
 #Allow("naming.const")
@@ -97,7 +91,6 @@ pub const FILE_FLAG_DELETE_ON_CLOSE: uint32 = 0x04000000;
 pub const FILE_FLAG_WRITE_THROUGH: uint32 = 0x80000000;
 
 /// `SYMBOLIC_LINK_FLAG_DIRECTORY`: the link's target is a directory.
-///
 /// Windows types its symbolic links: a link made without this flag misbehaves when its target is a directory,
 /// which no Unix symlink ever asked anyone to know in advance.
 /// @see https://rux-lang.dev/docs/api/windows/symbolic-link-flag-directory
@@ -106,7 +99,6 @@ pub const SYMBOLIC_LINK_FLAG_DIRECTORY: uint32 = 0x00000001;
 
 /// `SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE`: let a Developer Mode machine create the link without the
 /// privilege older systems demand.
-///
 /// Harmless where the privilege is held; without Developer Mode or the privilege the call still fails with
 /// `ERROR_PRIVILEGE_NOT_HELD`.
 /// @see https://rux-lang.dev/docs/api/windows/symbolic-link-flag-allow-unprivileged-create
@@ -119,7 +111,6 @@ pub const SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE: uint32 = 0x00000002;
 pub const MOVEFILE_REPLACE_EXISTING: uint32 = 0x00000001;
 
 /// `MOVEFILE_WRITE_THROUGH`: do not return until the move has reached the disk.
-///
 /// With `MOVEFILE_REPLACE_EXISTING`, this is what makes publishing a file under its final name durable.
 /// @see https://rux-lang.dev/docs/api/windows/move-file-write-through
 #Allow("naming.const")
@@ -128,7 +119,6 @@ pub const MOVEFILE_WRITE_THROUGH: uint32 = 0x00000008;
 #Link("Kernel32.dll")
 pub extern {
     /// Creates or opens a file or device, taking a UTF-16 path.
-    ///
     /// Returns InvalidHandleValue on failure, not null. The share mode is not a default: passing zero denies every
     /// other opener, which is Windows' behaviour and not most callers' intent.
     /// @param fileName the path, as a null-terminated string
@@ -144,7 +134,6 @@ pub extern {
                      creationDisposition: uint32, flagsAndAttributes: uint32, templateFile: *var opaque) -> *var opaque;
 
     /// Begins a directory enumeration matching a UTF-16 pattern.
-    ///
     /// Returns InvalidHandleValue on failure. `findFileData` receives a WIN32_FIND_DATAW record: attributes at
     /// offset 0 (4 bytes), three FILETIMEs from 4, the size's halves at 28 and 32, and the entry's NUL-terminated
     /// UTF-16 name from offset 44. The record is 592 bytes.
@@ -170,7 +159,6 @@ pub extern {
     func CreateHardLinkW(fileName: *char16, existingFileName: *char16, securityAttributes: *var opaque) -> int32;
 
     /// Creates a symbolic link; returns a BOOLEAN, so only the low byte is meaningful.
-    ///
     /// Creation needs SeCreateSymbolicLinkPrivilege or a Developer Mode machine with the allow-unprivileged flag;
     /// without either it fails with ERROR_PRIVILEGE_NOT_HELD.
     /// @param symlinkFileName the link to create
@@ -181,7 +169,6 @@ pub extern {
     func CreateSymbolicLinkW(symlinkFileName: *char16, targetFileName: *char16, flags: uint32) -> uint8;
 
     /// Fills a BY_HANDLE_FILE_INFORMATION record for an open handle.
-    ///
     /// The record is 52 bytes: attributes at offset 0 (4 bytes), the creation, last-access and last-write
     /// FILETIMEs at 4, 12 and 20 (8 bytes each), the volume serial number at 28, the size's high and low halves
     /// at 32 and 36, the link count at 40, and the file index's halves at 44 and 48.
@@ -192,7 +179,6 @@ pub extern {
     func GetFileInformationByHandle(file: *var opaque, fileInformation: *var opaque) -> int32;
 
     /// Sets the creation, last-access and last-write times of an open handle.
-    ///
     /// Each pointer may be null to leave that time alone.
     /// @param file an open file handle
     /// @param creationTime the creation time to set, or null to leave it
@@ -205,7 +191,6 @@ pub extern {
 
     /// Writes the final, resolved path of an open handle: symbolic links followed, short names expanded, case as
     /// the filesystem stores it.
-    ///
     /// Returns the length written, without the terminator, or the required length when the buffer is too small,
     /// or zero on failure. VOLUME_NAME_DOS (0) spells the answer with a drive letter where the file has one.
     /// @param file an open file handle
@@ -218,7 +203,6 @@ pub extern {
                                    flags: uint32) -> uint32;
 
     /// Writes the path of the directory designated for temporary files.
-    ///
     /// Returns the length written without the terminator, or the required length when the buffer is too small, or
     /// zero on failure. The answer always ends in a backslash. Consults TMP, then TEMP, then USERPROFILE, then the
     /// Windows directory, so it answers even where none of those are set.
@@ -235,7 +219,6 @@ pub extern {
     func DeleteFileW(fileName: *char16) -> int32;
 
     /// Moves or renames a file or directory, taking UTF-16 paths.
-    ///
     /// With MOVEFILE_REPLACE_EXISTING this replaces the target atomically within a volume, which is how a file is
     /// published under its final name. Across volumes it copies and deletes instead, which is not atomic.
     /// @param existingFileName the path that exists now
@@ -267,7 +250,6 @@ pub extern {
     func RemoveDirectoryW(pathName: *char16) -> int32;
 
     /// Reads a file's attributes, taking a UTF-16 path.
-    ///
     /// Returns 0xFFFFFFFF on failure, which is INVALID_FILE_ATTRIBUTES and not an attribute value.
     /// @param fileName the path, as a null-terminated string
     /// @returns the attribute bits, or `INVALID_FILE_ATTRIBUTES`
@@ -282,7 +264,6 @@ pub extern {
     func SetFileAttributesW(fileName: *char16, fileAttributes: uint32) -> int32;
 
     /// Reads the current directory into a UTF-16 buffer.
-    ///
     /// Returns the length written, or the length required when the buffer is too small — a return larger than the
     /// buffer is not a failure but a request to call again.
     /// @param bufferLength how many units `buffer` holds
@@ -298,7 +279,6 @@ pub extern {
     func SetCurrentDirectoryW(pathName: *char16) -> int32;
 
     /// Flushes a file handle's writes to the device.
-    ///
     /// Returns zero on failure. This is what makes a write durable; FILE_FLAG_WRITE_THROUGH is the alternative that
     /// does it on every write instead.
     /// @param file an open file handle

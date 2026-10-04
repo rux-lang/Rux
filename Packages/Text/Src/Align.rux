@@ -1,23 +1,18 @@
 // Applying a spec's width, fill and alignment to text that is already rendered.
-//
 // Padding is the one part of a spec every type applies the same way, so it is written once: measure the rendering,
 // and if the width asks for more columns, write fill where the alignment says. It lives here rather than with the
 // numeric conversion engine because it is a text operation — it counts scalars and writes fill bytes, and knows
 // nothing about digits — which is what lets Time, Uuid and Path align their output without depending on Format.
-//
 // Zero-padding is deliberately not here. Its zeros go inside the number, between the sign and the digits, so
 // `-7` at width four is `-007` rather than `00-7`. That is a fact about how a number is spelled, so the numeric
 // writer owns it.
 
 
 /// How many fill characters go on each side of a rendering that occupies `occupied` scalars.
-///
 /// Split out from `WriteAligned` because a numeric writer needs the two counts before it starts, so that a sign, a
 /// base prefix and the digits can go out in order without the rendered text existing anywhere as one run.
-///
 /// `numeric` picks the default alignment: numbers sit to the right and text to the left, which is what makes a
 /// column of numbers line up its units and a column of names line up its first letters.
-///
 /// Cannot fail. Runs in constant time and allocates nothing.
 /// @param spec what the placeholder asked for
 /// @param occupied how many Unicode scalar values the rendering occupies
@@ -44,8 +39,6 @@ pub func PaddingAround(spec: FormatSpec, occupied: uint, numeric: bool, before: 
 }
 
 /// Writes `count` copies of the spec's fill byte.
-///
-/// # Failures
 /// Reports whatever the writer reported, stopping at the first refusal rather than continuing to a destination
 /// that has already said no.
 /// @param writer the destination
@@ -63,11 +56,8 @@ pub func WriteFill(writer: &var TextWriter, spec: FormatSpec, count: uint) -> ! 
 }
 
 /// Writes `rendered` into `writer` under `spec`'s width, fill and alignment.
-///
 /// Width is measured in Unicode scalar values rather than bytes, so a name with an accent pads the same as one
 /// without. A rendering already at or past the requested width is written through unpadded.
-///
-/// # Failures
 /// Reports whatever the writer reported. A failure part-way leaves whatever the destination had already accepted;
 /// what that means is the destination's own documented guarantee.
 /// @param writer the destination

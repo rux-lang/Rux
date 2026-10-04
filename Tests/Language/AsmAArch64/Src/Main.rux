@@ -5,13 +5,11 @@ import Core::{ #Error, #target };
 // arithmetic across both register widths, memory reached through the caller's
 // pointers and through a frame the body opens for itself, control flow through
 // every branch form the assembler encodes, and a system call.
-//
 // Nothing here is portable, so on any other architecture the package is one
 // function that passes. The x86-64 side of inline assembly is Tests/Language/Asm.
 when #target.arch {
     .AArch64 => {
         // Arithmetic
-        //
         // The register and immediate forms of the same operator, so that a
         // wrong immediate encoding shows as a wrong answer rather than as a
         // refusal.
@@ -88,7 +86,6 @@ when #target.arch {
         }
 
         // Memory
-        //
         // The caller's pointer arrives in x0, so these read and write the
         // storage `Main` owns, and the frame ones open a frame of their own —
         // AAPCS64 promises no red zone.
@@ -137,7 +134,6 @@ when #target.arch {
         }
 
         // Branches
-        //
         // Every conditional form the assembler encodes, and a call.
 
         // The flags and the one instruction that reads them into a register.
@@ -206,7 +202,6 @@ when #target.arch {
         }
 
         // System calls
-        //
         // The arguments go in x0 onwards everywhere, but nothing else about the
         // entry point is shared. Linux numbers its own calls, takes the number
         // in x8 through `svc #0`, and returns a negative errno. FreeBSD keeps
@@ -215,7 +210,6 @@ when #target.arch {
         // failure by setting the carry flag over a positive errno, so `cneg`
         // puts it back in the negative form the checks below read. Windows has
         // no such entry point at all, so it builds neither body.
-        //
         // The two calls are getpid, which cannot fail and whose answer is
         // always positive, and a write to a descriptor that is not open, which
         // is -EBADF on all three. Reading that error back is what proves the

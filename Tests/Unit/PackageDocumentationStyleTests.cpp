@@ -6,7 +6,7 @@
 //
 // The rules deliberately do not repeat what rux fmt, rux lint and rux doc already own. They cover what those three
 // leave open: complete parameter and return tag coverage, structured @see URL ownership, tag ordering, meaningful
-// summaries, ordinary file headers, and the repository's prose dash convention.
+// summaries, ordinary file headers, compact comments, and the repository's prose dash convention.
 //
 // Sources predating the style would fail in the thousands at once, so accepted violations live in an explicit
 // baseline keyed by declaration identity and a fingerprint of the exact documentation and signature. The baseline
@@ -470,6 +470,86 @@ void CheckFileShape(const std::string &file, const std::string &text, const Lexe
     }
 }
 
+/// A comment line's text after its delimiter, without surrounding whitespace.
+std::string_view CommentText(const CommentTrivia &comment, const std::size_t delimiterLength) {
+    auto text = std::string_view(comment.raw).substr(std::min(delimiterLength, comment.raw.size()));
+    while (!text.empty() && (text.front() == ' ' || text.front() == '\t')) {
+        text.remove_prefix(1);
+    }
+    while (!text.empty() && (text.back() == ' ' || text.back() == '\t' || text.back() == '\r')) {
+        text.remove_suffix(1);
+    }
+    return text;
+}
+
+/// True for one of the three section headings declaration documentation once used: `# Safety`, `# Failures` or
+/// `# Panics`.
+bool IsSectionHeading(std::string_view text) {
+    if (text.size() < 2 || text.front() != '#' || (text[1] != ' ' && text[1] != '\t')) {
+        return false;
+    }
+    text.remove_prefix(1);
+    while (!text.empty() && (text.front() == ' ' || text.front() == '\t')) {
+        text.remove_prefix(1);
+    }
+    return text == "Safety" || text == "Failures" || text == "Panics";
+}
+
+/// True when `comment` is an ordinary `//` line comment standing on its own line.
+bool IsOrdinaryLineComment(const CommentTrivia &comment) {
+    return comment.kind == CommentKind::Line && comment.lineLeading;
+}
+
+/// Comments are compact. The summary is the first sentence rather than the first paragraph, so documentation prose
+/// runs on from line to line with no empty `///` line and no section heading, and an ordinary comment of several
+/// lines carries no empty `//` line between its paragraphs. Empty lines inside a fenced code block are code and stay.
+/// Applied to every source, generated or not, since nothing about a generated file needs an empty comment line.
+void CheckCompactComments(const std::string &file, const std::string &text, const LexerResult &lexed,
+                          std::vector<Violation> &violations) {
+    const auto fingerprint = Fingerprint(text.substr(0, std::min<std::size_t>(text.size(), 400)));
+    const auto report = [&](std::string rule, const CommentTrivia &comment, std::string detail) {
+        violations.push_back(Violation{std::move(rule), file, "file", "", fingerprint,
+                                       "line " + std::to_string(comment.range.start.line) + ": " + std::move(detail)});
+    };
+
+    bool inFence = false;
+    const auto &comments = lexed.comments;
+    for (std::size_t index = 0; index < comments.size(); ++index) {
+        const auto &comment = comments[index];
+        const auto *previous = index == 0 ? nullptr : &comments[index - 1];
+        const auto *next = index + 1 == comments.size() ? nullptr : &comments[index + 1];
+        const auto line = comment.range.start.line;
+
+        if (comment.kind == CommentKind::DocumentationLine) {
+            // A fence closes with its documentation comment: a new run of `///` lines starts outside one.
+            const bool continuesRun = previous != nullptr && previous->kind == CommentKind::DocumentationLine &&
+                                      previous->range.start.line + 1 == line;
+            inFence = inFence && continuesRun;
+            const auto content = CommentText(comment, 3);
+            if (content.starts_with("```") || content.starts_with("~~~")) {
+                inFence = !inFence;
+            }
+            else if (!inFence && content.empty()) {
+                report("empty-comment-line", comment, "an empty /// line; documentation prose runs on without one");
+            }
+            else if (!inFence && IsSectionHeading(content)) {
+                report("section-heading", comment, "a '" + std::string(content) + "' heading; write it into the prose");
+            }
+            continue;
+        }
+
+        if (IsOrdinaryLineComment(comment) && CommentText(comment, 2).empty()) {
+            const bool joinsPrevious =
+                previous != nullptr && IsOrdinaryLineComment(*previous) && previous->range.start.line + 1 == line;
+            const bool joinsNext =
+                next != nullptr && IsOrdinaryLineComment(*next) && next->range.start.line == line + 1;
+            if (joinsPrevious || joinsNext) {
+                report("empty-comment-line", comment, "an empty // line inside a comment; its paragraphs run on");
+            }
+        }
+    }
+}
+
 std::vector<Violation> InspectSource(const std::string &file, const std::string &text) {
     std::vector<Violation> violations;
 
@@ -481,6 +561,7 @@ std::vector<Violation> InspectSource(const std::string &file, const std::string 
     if (!IsGenerated(text)) {
         CheckFileShape(file, text, lexed, violations);
     }
+    CheckCompactComments(file, text, lexed, violations);
 
     std::vector<Subject> subjects;
     for (const auto &item : parsed.module.items) {
@@ -541,7 +622,6 @@ TEST_CASE("A source meeting the house style produces no violation") {
                                "import Core::Option;\n"
                                "\n"
                                "/// Decodes one value from `bytes`, starting at `offset`.\n"
-                               "///\n"
                                "/// @typeParam T The decoded value type.\n"
                                "/// @param bytes The bytes to read.\n"
                                "/// @param offset Where in `bytes` to start.\n"
@@ -555,7 +635,6 @@ TEST_CASE("A named parameter without an at-param tag is reported") {
     const std::string source = "// Header.\n"
                                "\n"
                                "/// Decodes a value.\n"
-                               "///\n"
                                "/// @param bytes The bytes to read.\n"
                                "/// @returns The value.\n"
                                "/// @see https://rux-lang.dev/docs/api/example/decode\n"
@@ -572,7 +651,6 @@ TEST_CASE("A receiver needs no at-param tag") {
                                "\n"
                                "extend Reader {\n"
                                "    /// Reports how many bytes remain.\n"
-                               "    ///\n"
                                "    /// @returns The remaining count.\n"
                                "    /// @see https://rux-lang.dev/docs/api/example/reader/remaining\n"
                                "    pub func Remaining(self: &Reader) -> uint;\n"
@@ -585,7 +663,6 @@ TEST_CASE("A type parameter without an at-typeParam tag is reported") {
     const std::string source = "// Header.\n"
                                "\n"
                                "/// Holds one value.\n"
-                               "///\n"
                                "/// @see https://rux-lang.dev/docs/api/example/box\n"
                                "pub struct Box<T> { }\n";
     CHECK(Fired(RulesFiredBy(source), "missing-typeparam"));
@@ -595,7 +672,6 @@ TEST_CASE("A value-returning callable without at-returns is reported, and a dest
     const std::string missing = "// Header.\n"
                                 "\n"
                                 "/// Reports the current length in bytes.\n"
-                                "///\n"
                                 "/// @see https://rux-lang.dev/docs/api/example/length\n"
                                 "pub func Length() -> uint;\n";
     CHECK(Fired(RulesFiredBy(missing), "missing-returns"));
@@ -603,7 +679,6 @@ TEST_CASE("A value-returning callable without at-returns is reported, and a dest
     const std::string voidReturning = "// Header.\n"
                                       "\n"
                                       "/// Releases the buffer back to its allocator.\n"
-                                      "///\n"
                                       "/// @see https://rux-lang.dev/docs/api/example/reset\n"
                                       "pub func Reset();\n";
     CHECK_FALSE(Fired(RulesFiredBy(voidReturning), "missing-returns"));
@@ -613,7 +688,6 @@ TEST_CASE("A public declaration without a canonical at-see URL is reported") {
     const std::string source = "// Header.\n"
                                "\n"
                                "/// Reports the current length in bytes.\n"
-                               "///\n"
                                "/// @returns The length.\n"
                                "pub func Length() -> uint;\n";
     CHECK(Fired(RulesFiredBy(source), "missing-see"));
@@ -623,7 +697,6 @@ TEST_CASE("A bare URL written as prose does not satisfy the at-see requirement")
     const std::string source = "// Header.\n"
                                "\n"
                                "/// Reports the current length in bytes.\n"
-                               "///\n"
                                "/// https://rux-lang.dev/docs/api/example/length\n"
                                "pub func Length() -> uint;\n";
     CHECK(Fired(RulesFiredBy(source), "missing-see"));
@@ -633,7 +706,6 @@ TEST_CASE("Tags out of the required order are reported") {
     const std::string source = "// Header.\n"
                                "\n"
                                "/// Decodes a value.\n"
-                               "///\n"
                                "/// @returns The value.\n"
                                "/// @param bytes The bytes to read.\n"
                                "/// @see https://rux-lang.dev/docs/api/example/decode\n"
@@ -645,7 +717,6 @@ TEST_CASE("A summary that only restates the declaration name is reported") {
     const std::string source = "// Header.\n"
                                "\n"
                                "/// Read byte.\n"
-                               "///\n"
                                "/// @returns The byte.\n"
                                "/// @see https://rux-lang.dev/docs/api/example/read-byte\n"
                                "pub func ReadByte() -> char8;\n";
@@ -664,7 +735,6 @@ TEST_CASE("A missing file header is reported and a present one is not") {
 
 TEST_CASE("A documentation comment does not count as the file header") {
     const std::string source = "/// Attached to the declaration, not the file.\n"
-                               "///\n"
                                "/// @see https://rux-lang.dev/docs/api/example/value\n"
                                "pub const Value: uint = 1;\n";
     CHECK(Fired(RulesFiredBy(source), "missing-header"));
@@ -680,6 +750,70 @@ TEST_CASE("A double hyphen is prose punctuation but an option is not") {
                                "\n"
                                "import Core::Option;\n";
     CHECK_FALSE(Fired(RulesFiredBy(option), "prose-dash"));
+}
+
+TEST_CASE("An empty documentation line is reported outside a fenced code block") {
+    const std::string separated = "// Header.\n"
+                                  "\n"
+                                  "/// Reports the current length in bytes.\n"
+                                  "///\n"
+                                  "/// Runs in constant time.\n"
+                                  "/// @returns The length.\n"
+                                  "/// @see https://rux-lang.dev/docs/api/example/length\n"
+                                  "pub func Length() -> uint;\n";
+    CHECK(Fired(RulesFiredBy(separated), "empty-comment-line"));
+
+    const std::string fenced = "// Header.\n"
+                               "\n"
+                               "/// Reports the current length in bytes.\n"
+                               "/// ```rux\n"
+                               "/// let first = Length();\n"
+                               "///\n"
+                               "/// let second = Length();\n"
+                               "/// ```\n"
+                               "/// @returns The length.\n"
+                               "/// @see https://rux-lang.dev/docs/api/example/length\n"
+                               "pub func Length() -> uint;\n";
+    CHECK(RulesFiredBy(fenced).empty());
+}
+
+TEST_CASE("An empty ordinary comment line is reported only inside a comment") {
+    const std::string inside = "// Reads values out of a buffer.\n"
+                               "//\n"
+                               "// The buffer is borrowed for the call.\n"
+                               "\n"
+                               "import Core::Option;\n";
+    CHECK(Fired(RulesFiredBy(inside), "empty-comment-line"));
+
+    const std::string alone = "// Reads values out of a buffer.\n"
+                              "\n"
+                              "//\n"
+                              "\n"
+                              "import Core::Option;\n";
+    CHECK_FALSE(Fired(RulesFiredBy(alone), "empty-comment-line"));
+}
+
+TEST_CASE("A Safety, Failures or Panics heading in documentation is reported") {
+    for (const std::string_view heading : {"# Safety", "# Failures", "# Panics"}) {
+        std::string source = "// Header.\n"
+                             "\n"
+                             "/// Writes one byte through `target`.\n";
+        source += "/// " + std::string(heading) + "\n";
+        source += "/// `target` must be non-null and writable.\n"
+                  "/// @param target where the byte goes\n"
+                  "/// @see https://rux-lang.dev/docs/api/example/write\n"
+                  "pub func Write(target: *var char8);\n";
+        CHECK_MESSAGE(Fired(RulesFiredBy(source), "section-heading"), heading);
+    }
+
+    const std::string other = "// Header.\n"
+                              "\n"
+                              "/// Writes one byte through `target`.\n"
+                              "/// # Examples\n"
+                              "/// @param target where the byte goes\n"
+                              "/// @see https://rux-lang.dev/docs/api/example/write\n"
+                              "pub func Write(target: *var char8);\n";
+    CHECK_FALSE(Fired(RulesFiredBy(other), "section-heading"));
 }
 
 TEST_CASE("A private declaration is not held to the public API style") {

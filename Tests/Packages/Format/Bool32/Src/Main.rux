@@ -5,7 +5,6 @@ import Text::{ Display, FormatSpec, TextWriter };
 import Format::{ ByteCursor };
 
 // A failed check returns its numbered exit code for `rux test`.
-//
 // Rendering goes into a buffer on the stack rather than into a string, which is what the writer-based contract
 // buys: this test needs no allocator at all.
 func Check(value: bool32, expected: char8[..], code: int) -> int {

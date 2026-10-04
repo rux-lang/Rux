@@ -1,13 +1,10 @@
 // A `bool16` is the word `true` or the word `false`.
-//
 // Lower case, unquoted, and the same for `Debug`: there is no second way to read a boolean.
 
 import Text::{ Debug, Display, FormatError, FormatSpec, RejectStyle, TextWriter };
 
 extend bool16 : Display {
     /// Writes `true` or `false`.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
     /// @param writer the destination
     /// @param spec what the placeholder asked for
@@ -21,8 +18,6 @@ extend bool16 : Display {
 
 extend bool16 : Debug {
     /// The same two words.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
     /// @param writer the destination
     /// @param spec what the placeholder asked for

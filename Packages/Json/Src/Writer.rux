@@ -1,15 +1,12 @@
 // Writing a value back out, compactly or for a human.
-//
 // Two things here are not negotiable. Strings are escaped exactly as RFC 8259 requires and no more: the quote,
 // the backslash and every control character below space, using the short escapes where they exist and a
 // four-digit form otherwise. The solidus is *not* escaped, though many writers do it — it is legal either way,
 // and escaping it makes output differ from every other writer's for no benefit.
-//
 // And a non-finite number cannot be written, because JSON has no way to spell one. A writer that emits `NaN` or
 // `Infinity` produces something that is not JSON and that other parsers reject, which turns a computation
 // problem into an interoperation problem somewhere far away. Refusing is the only honest answer; a caller who
 // has a non-finite value has to decide what it means, and only the caller can.
-//
 // Failures are the ones every writer in this workspace reports, which is what lets a JSON document be written
 // into anything a `TextWriter` reaches without a translation at the seam. This used to be a status enum of its
 // own with one case, `Failed`, standing for everything a destination could say — so a buffer that was simply full
@@ -21,7 +18,6 @@
 import Text::{ FormatError, TextWriter };
 
 /// How deep a document may nest before the writer refuses.
-///
 /// The writer descends recursively, so this bounds its own stack rather than the document's shape. It is far past
 /// the parser's default depth, which is what actually decides whether a document of this size can exist: a tree
 /// built in memory rather than parsed is the only way to reach this at all.
@@ -57,12 +53,9 @@ extend JsonStyle {
 const JsonHexDigits: char8[..] = "0123456789abcdef";
 
 /// Writes the escaped form of `text`, including its surrounding quotes.
-///
 /// Escapes exactly what the standard requires: the quote, the backslash, and every control character below
 /// space. Bytes above that pass through unchanged, so a UTF-8 document stays UTF-8 rather than being expanded
 /// into escapes — which is legal but makes output several times larger for no gain.
-///
-/// # Failures
 /// Reports whatever the destination reported, stopping at the first refusal, so a destination that has already
 /// refused something is not written to again and a partly written string is not followed by its closing quote.
 /// @param writer the destination
@@ -176,12 +169,9 @@ func WriteNewlineAndIndent(writer: &var TextWriter, style: JsonStyle, level: uin
 }
 
 /// Writes `value` to `writer` in the given style.
-///
 /// The value is borrowed and nothing is allocated: the document writes itself into the destination as it is
 /// walked. A number is written as the text it was read with, which is what keeps an identifier past 2^53 coming
 /// back as itself.
-///
-/// # Failures
 /// Reports whatever the destination reported, unchanged, so a buffer that is merely full stays distinguishable
 /// from a stream that has died — and stops at the first refusal rather than writing the rest of a document into a
 /// destination that has already said no. Reports `ValueOutOfRange` for a number JSON cannot spell, and for a

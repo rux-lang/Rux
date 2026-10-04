@@ -1,5 +1,4 @@
 // Win32's enumerated constants, under the spellings Microsoft's documentation uses.
-//
 // These are values a caller passes to the entry points in the other modules. Each keeps its published name and
 // value; nothing here is reinterpreted or renamed.
 

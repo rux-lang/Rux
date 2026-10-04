@@ -1,14 +1,11 @@
 // SHAKE128 and SHAKE256: the same sponge, squeezed for as long as the caller wants.
-//
 // A hash gives a fixed number of bytes because that is what a hash is for. An extendable-output function gives
 // as many as asked, from the same absorbed state, as one continuous stream — so `Read` twice for sixteen bytes
 // gives exactly what `Read` once for thirty-two gives. That property is the whole contract, and it is what makes
 // these usable as key-stream generators and as the expansion step of a key derivation.
-//
 // The number in the name is the security level, not the output length: SHAKE128 offers 128 bits of security
 // however many bytes are taken from it, and taking more does not add any. Nothing enforces that, because there
 // is no length at which it becomes wrong — only a length past which it stops helping.
-//
 // The domain byte is what separates these from SHA-3. The same state absorbing the same message produces a
 // different stream depending on that one byte, which is what stops a SHAKE output from ever colliding with a
 // SHA-3 digest by construction.
@@ -16,7 +13,6 @@
 
 
 /// An extendable-output function: absorb a message, then read as many bytes as wanted.
-///
 /// Structural `Copy`; copying takes an independent snapshot of the sponge and read position.
 /// @see https://rux-lang.dev/docs/api/crypto/shake
 pub struct Shake {
@@ -60,7 +56,6 @@ extend Shake {
     }
 
     /// Absorbs `bytes` into the state.
-    ///
     /// Absorbing after reading has begun is a caller error: the stream is a function of everything absorbed
     /// before the first read, and adding to it afterwards would silently change what a caller already has. This
     /// ignores such a call rather than corrupting the stream.
@@ -98,7 +93,6 @@ extend Shake {
     }
 
     /// Fills `into` with the next bytes of the stream.
-    ///
     /// Reading is continuous: any sequence of reads totalling the same number of bytes gives the same bytes.
     /// The first read applies the padding, after which `Update` does nothing.
     /// @param into receives the output

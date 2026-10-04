@@ -1,16 +1,13 @@
 // The UTF-16 and UTF-32 slices, transcoded on the way out.
-//
 // A `char8[..]` renders by being copied: it is already the encoding the destination wants. Neither of these is, so
 // each needs a printer that decodes its units and writes UTF-8, and that is the whole reason they had none until
 // now. What the printer decides is what to do with the units that are not characters, and the answer is the one
 // every character width here already gives: `Display` replaces them with U+FFFD and `Debug` preserves them as
 // escapes carrying their own numbers.
-//
 // The UTF-16 case is the one with structure. A scalar past U+FFFF is written as two units, a high half and a low
 // half, and only the pair means anything; a half on its own is not a character and never becomes one. So the
 // decoder reads a pair where there is one and reports a lone half where there is not, advancing a single unit
 // after it — which keeps a slice with one damaged unit in the middle of it readable on both sides of the damage.
-//
 // Nothing here transcodes into a buffer first. A buffer would bound how long a slice may be, and a slice has no
 // bound, so the width a placeholder asks for is measured in one pass over the units and the padding is written
 // around the transcoding instead.
@@ -18,7 +15,6 @@
 import Text::{ Debug, Display, FormatError, FormatSpec, RejectStyle, TextWriter, WriteAscii, WriteFill, WriteScalar };
 
 // One scalar out of the UTF-16 units at `index`: a unit outside the surrogate range, or a high-low pair.
-//
 // Answers false for a low half first and for a high half with no partner after it, leaving `scalar` holding the
 // unit itself so a caller that preserves rather than replaces has it.
 func DecodeUtf16(units: char16[..], index: uint, scalar: *var uint32, width: *var uint) -> bool {
@@ -52,12 +48,9 @@ func CountUtf16(units: char16[..]) -> uint {
 
 extend char16[..] : Display {
     /// Writes this text as UTF-8, with every unit that is not part of a character replaced by U+FFFD.
-    ///
     /// Lossy where the units are: a lone surrogate half has no character to be, and the replacement is what says
     /// so in text. Two slices differing only in their invalid halves render alike here, and differently under
     /// `Debug`.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal, and `UnsupportedRequest` for a style.
     /// @param writer the destination
     /// @param spec what the placeholder asked for
@@ -88,12 +81,9 @@ extend char16[..] : Display {
 
 extend char16[..] : Debug {
     /// Writes this text quoted, with every unit preserved: a lone half becomes `\u{xxxx}`.
-    ///
     /// Nothing is lost, so two slices that differ only in units that are not characters render differently, and
     /// what was in the slice can be read back off the output. The quote, the backslash and the controls are
     /// escaped the way this repository escapes them everywhere else.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal, and `UnsupportedRequest` for a style.
     /// @param writer the destination
     /// @param spec what the placeholder asked for
@@ -121,11 +111,8 @@ extend char16[..] : Debug {
 
 extend char32[..] : Display {
     /// Writes this text as UTF-8, with every element that is not a character replaced by U+FFFD.
-    ///
     /// Every element stands alone here: UTF-32 has no pairs, so an element is a character or it is nothing, and
     /// the only way it becomes nothing is a cast. One element renders as exactly one character either way.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal, and `UnsupportedRequest` for a style.
     /// @param writer the destination
     /// @param spec what the placeholder asked for
@@ -155,8 +142,6 @@ extend char32[..] : Display {
 
 extend char32[..] : Debug {
     /// Writes this text quoted, with every element preserved: one that is not a character becomes `\u{xxxx}`.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal, and `UnsupportedRequest` for a style.
     /// @param writer the destination
     /// @param spec what the placeholder asked for

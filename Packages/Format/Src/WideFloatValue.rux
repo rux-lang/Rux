@@ -1,8 +1,6 @@
 // The four wide widths as values: the bits, the questions a caller asks of them, and their text.
-//
 // Each carries its bits in the narrowest integer that holds them, and answers `IsNan`, `IsInfinite`, `IsFinite`
 // and `IsNegative` from the fields directly.
-//
 // None of them implements `Display` or `Debug`, and that absence is the design. Their text is found by exact
 // big-integer arithmetic that allocates — the narrow widths convert in a fixed workspace, but these are too wide
 // for one — and the protocols offer nowhere to pass an allocator. The four used to implement them anyway by
@@ -79,12 +77,9 @@ extend Float80 {
     }
 
     /// Writes this value's text under `spec`, taking the working storage from `allocator`.
-    ///
     /// The shortest decimal that reads back as the same bits, or the digits a precision asks for. This is the only
     /// way to render one of these: they implement neither `Display` nor `Debug`, because the exact arithmetic
     /// their text needs allocates and those protocols offer nowhere to say from where.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, `UnsupportedRequest` for any style, and `TextFailure(OutOfMemory)`
     /// where `allocator` could not supply the working storage.
     /// @param allocator where the working storage comes from
@@ -166,12 +161,9 @@ extend Float128 {
     }
 
     /// Writes this value's text under `spec`, taking the working storage from `allocator`.
-    ///
     /// The shortest decimal that reads back as the same bits, or the digits a precision asks for. This is the only
     /// way to render one of these: they implement neither `Display` nor `Debug`, because the exact arithmetic
     /// their text needs allocates and those protocols offer nowhere to say from where.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, `UnsupportedRequest` for any style, and `TextFailure(OutOfMemory)`
     /// where `allocator` could not supply the working storage.
     /// @param allocator where the working storage comes from
@@ -253,12 +245,9 @@ extend Float256 {
     }
 
     /// Writes this value's text under `spec`, taking the working storage from `allocator`.
-    ///
     /// The shortest decimal that reads back as the same bits, or the digits a precision asks for. This is the only
     /// way to render one of these: they implement neither `Display` nor `Debug`, because the exact arithmetic
     /// their text needs allocates and those protocols offer nowhere to say from where.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, `UnsupportedRequest` for any style, and `TextFailure(OutOfMemory)`
     /// where `allocator` could not supply the working storage.
     /// @param allocator where the working storage comes from
@@ -340,12 +329,9 @@ extend Float512 {
     }
 
     /// Writes this value's text under `spec`, taking the working storage from `allocator`.
-    ///
     /// The shortest decimal that reads back as the same bits, or the digits a precision asks for. This is the only
     /// way to render one of these: they implement neither `Display` nor `Debug`, because the exact arithmetic
     /// their text needs allocates and those protocols offer nowhere to say from where.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, `UnsupportedRequest` for any style, and `TextFailure(OutOfMemory)`
     /// where `allocator` could not supply the working storage.
     /// @param allocator where the working storage comes from

@@ -1,18 +1,14 @@
 // C's `<stdlib.h>`: allocation, numeric conversion, sorting and searching, and process control.
-//
 // Curated rather than complete. What is left out is left out on purpose, and the two groups worth naming are:
-//
 //   - **Reach for the `strto*` family, not the `ato*` one.** `atoi` and its relatives cannot report failure: a string
 //     that is not a number and a string that says zero give the same answer, and a value too large is undefined
 //     rather than reported. `strtol` and its relatives report both, through an end pointer and through `errno`.
 //   - **`system` runs whatever the shell decides it means.** A command built from anything the program did not write
 //     itself is an injection, and what a "shell" is differs by platform. It is declared because a binding to C would
 //     be dishonest without it, not because it should be used.
-//
 // `rand` is a pseudo-random generator with no guarantees at all: not the sequence, not the period, not the quality.
 // It must never seed a key, a token, or anything an adversary would like to predict; `Rux/Random` names its
 // generators and `Rux/Entropy` reaches the operating system.
-//
 // `#Link` accepts only a constant declared in this file, so the selection is repeated per module rather than taken
 // from `C::CRuntime`, which names the same library and is what a reader should trust. Every module of this package
 // must name the same one: on Windows the Universal CRT and the legacy `msvcrt.dll` are separate runtimes with
@@ -42,7 +38,6 @@ extern {
     pub func abs(n: c_int) -> c_int;
 
     /// Converts a byte string to a floating point value.
-    ///
     /// Cannot report failure: a string that is not a number gives zero, and a value out of range is undefined rather
     /// than reported. Use strtod, which reports both.
     /// @param str a null-terminated byte string
@@ -51,7 +46,6 @@ extern {
     pub func atof(str: *char8) -> c_double;
 
     /// Converts a byte string to an integer value.
-    ///
     /// Cannot report failure, and a value out of range is undefined rather than reported. Use strtol.
     /// @param str a null-terminated byte string
     /// @returns the value, or zero when nothing was read; there is no way to tell the two apart
@@ -59,7 +53,6 @@ extern {
     pub func atoi(str: *char8) -> c_int;
 
     /// Converts a byte string to a long integer value.
-    ///
     /// Cannot report failure. Use strtol.
     /// @param str a null-terminated byte string
     /// @returns the value, or zero when nothing was read; there is no way to tell the two apart
@@ -67,7 +60,6 @@ extern {
     pub func atol(str: *char8) -> int64;
 
     /// Converts a byte string to a long long integer value.
-    ///
     /// Cannot report failure. Use strtoll.
     /// @param str a null-terminated byte string
     /// @returns the value, or zero when nothing was read; there is no way to tell the two apart
@@ -92,7 +84,6 @@ extern {
     pub func free(ptr: *var opaque);
 
     /// Returns the value of an environment variable.
-    ///
     /// The result points at storage the runtime owns, which a later change to the environment may overwrite or free,
     /// and the call is not safe to make while another thread changes the environment.
     /// @param name the environment variable's name
@@ -119,7 +110,6 @@ extern {
     pub func malloc(size: size_t) -> *var opaque;
 
     /// Returns a pseudo-random integer value between 0 and RAND_MAX.
-    ///
     /// Nothing about the sequence is guaranteed, and it must never produce a key, a token, or anything an adversary
     /// would like to predict. Rux/Random names its generators; Rux/Entropy reaches the operating system.
     /// @returns a value in `[0, RAND_MAX]`, from a sequence that guarantees nothing
@@ -209,7 +199,6 @@ extern {
     func _Exit(status: c_int);
 
     /// Calls the host environment's command processor.
-    ///
     /// Runs whatever the platform's shell decides the string means, so a command built from anything the program did
     /// not write itself is an injection.
     /// @param command the command to hand to the shell

@@ -3,12 +3,10 @@ import Text::{ BufferWriter, Display, FormatSpec, ParseFormatSpec };
 import Time::{ Duration, ParseDuration, TimeParseError };
 
 // A span as text, and back.
-//
 // The negative case is the whole reason this file is careful. A `Duration` normalizes to seconds plus a fraction in
 // [0, 1e9), so minus one and a half seconds is stored as seconds = -2 with a fraction of 0.5. An implementation
 // that prints the fields as they sit says "-2.5s" — wrong by two seconds, and plausible enough to survive review.
 // Every negative case below exists to catch exactly that.
-//
 // The extrema are the other half. The magnitude of the most negative duration has no positive counterpart in
 // int64, so computing it there wraps to itself; it is computed in uint64 instead, and the case at the bottom of
 // the range is what proves it.

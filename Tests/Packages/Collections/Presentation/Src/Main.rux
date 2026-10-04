@@ -5,21 +5,17 @@ import Format::WriteFormat;
 import Text::{ BufferWriter, Debug, FormatError, FormatSpec, ParseFormatSpec, TextWriter, WriteAscii, WriteBytes };
 
 // What a sequential container looks like when a program has to say what is in it.
-//
 // The containers cannot implement `Debug` themselves — what a `Vector<T>` looks like is a question about `T`, and an
 // implementation has nowhere to say "when the element can be shown" — so these are functions carrying the bound, and
 // the questions are the ones that shape raises rather than the ones a method would.
-//
 // The first is whether showing a container takes anything out of it. It must not: the container owns its elements
 // and hands out no copy of a move-only one, so a diagnostic that consumed what it printed would be useless on
 // exactly the values worth printing. The tracked element below reports each of its own destructions, so a vector of
 // them is written twice and the count says whether the claim is true.
-//
 // The second is the deque, whose elements are in a ring and are therefore in two runs once it has wrapped. A reader
 // wants the order the deque has — what `PopFront` would yield — and wants no sign of where the split happens to be.
 // The wrapped case is built deliberately below, since a deque that has never wrapped would pass a writer that only
 // walked the first run.
-//
 // The third is that the capacity is not part of it. A vector reserved for a thousand elements and holding two shows
 // two, because the spare room holds nothing.
 

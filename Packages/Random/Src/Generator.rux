@@ -1,10 +1,8 @@
 // What a random generator is, and how one is seeded.
-//
 // A generator is borrowed mutably for every draw, either as its concrete type through a generic bound or as a
 // borrowed interface view. Both forms refer to the caller's original generator, so advancing it here advances
 // the state the caller observes. Generic bounds retain static dispatch for the distribution helpers without
 // forcing callers to expose a raw pointer.
-//
 // Everything is built on one primitive, `NextUint64`, because every other shape — bytes, narrower words,
 // bounded integers, floats — is a deterministic function of a stream of 64-bit words. Deriving them here rather
 // than letting each generator supply its own is what makes two generators seeded alike produce the same
@@ -13,7 +11,6 @@
 import Core::MinimumOf;
 
 /// A source of uniformly distributed 64-bit words.
-///
 /// The single operation every generator supplies. Implementations must advance their own state, so the receiver
 /// is a mutable reference. Borrowed interface views and generic bounds both keep it the caller's state that
 /// advances.
@@ -26,7 +23,6 @@ pub interface RandomGenerator {
 }
 
 /// The seeding generator: a fast mixer with a 64-bit state, used to spread one seed over a larger one.
-///
 /// Not for general use — its period is only 2^64 and it fails statistical tests a real generator passes. Its
 /// job is the one thing it is very good at: turning a seed a human chose, which is very likely to be zero or
 /// one or a timestamp, into a full-entropy state for a generator that deserves better input than that. Seeding
@@ -51,7 +47,6 @@ extend SplitMix64 {
 
 extend SplitMix64 : RandomGenerator {
     /// The next word: the state advanced by an odd constant, then avalanched.
-    ///
     /// The additive step guarantees the full period of 2^64 whatever the seed, and the mixing afterwards is
     /// what turns a counter into something that looks random. Both constants are Steele, Lea and Flood's.
     /// @returns the next 64 bits

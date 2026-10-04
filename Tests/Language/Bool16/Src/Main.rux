@@ -1,5 +1,4 @@
 // bool16: one of two values in two bytes.
-//
 // Boolean logic is pinned once in `Bool`; what belongs to a width is its storage, what a cast into it stores, and
 // whether conversion to another width preserves meaning. The interesting source value at this width is one whose
 // low two bytes are zero — 65536 — which a cast that truncated before testing would call false.

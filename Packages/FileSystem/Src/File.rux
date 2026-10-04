@@ -1,11 +1,9 @@
 // An owned file handle, opened under options that say what they mean.
-//
 // Opening a file asks two separate questions — what may happen through the handle, and what to do about the
 // file's existence — and most APIs tangle them. `OpenOptions` keeps them apart: `read`, `write` and `append`
 // answer the first; `create`, `createNew` and `truncate` answer the second. The contradictions are refused here,
 // before the platform is asked, so an impossible request fails the same way on every system instead of however
 // each platform happens to take it.
-//
 // `File` owns its handle the way `String` owns its bytes: `Close` releases it exactly once and reports what the
 // platform said, and its destructor is the safety net that closes with the outcome discarded. A file being written
 // deserves the explicit `Close`, for the same reason a buffered writer deserves the explicit `Flush`: the
@@ -36,7 +34,6 @@ else {
 }
 
 /// What an open may do, and what it does about existence.
-///
 /// `read`, `write` and `append` say what may happen through the handle; `create`, `createNew` and `truncate` say
 /// what happens to the file itself. `append` positions every write at the end, whatever was written in between,
 /// which is the property log writers need and `write` alone does not have.
@@ -106,7 +103,6 @@ extend OpenOptions {
 }
 
 /// An owned, open file.
-///
 /// Move-only: the handle closes exactly once, through `Close` or through its destructor. `Close` is the
 /// error-visible path; destruction discards the outcome, which is fine for a file that was read and a silent
 /// loss for one that was written.
@@ -159,7 +155,6 @@ extend File {
     func =(self: &var File, other: &File);
 
     /// Opens `path` under `options`.
-    ///
     /// The allocator is borrowed for the platform form of the path and holds nothing afterward. A failure says why
     /// in the platform's own terms, translated.
     /// @param allocator where the storage comes from
@@ -241,7 +236,6 @@ extend File {
     }
 
     /// Closes the handle and reports what the platform said.
-    ///
     /// Closing twice is not an error here: the second call is a no-op reporting success, because the first already
     /// gave the handle back. This is the error-visible path; a written file deserves it.
     /// @returns success when the descriptor was released; closing twice is not an error

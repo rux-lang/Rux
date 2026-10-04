@@ -1,11 +1,9 @@
 // A UUID: sixteen bytes, and the small amount of structure RFC 9562 gives them.
-//
 // The bytes are held in the order the standard defines, which is the order they are written in and the order
 // they travel in on the wire. That is worth saying because Microsoft's GUID is the same sixteen bytes with the
 // first three fields byte-swapped, and a program reading one as the other gets a value that looks entirely
 // plausible and is wrong — so the conversion between them is explicit and lives in its own function rather
 // than happening implicitly anywhere.
-//
 // Ordering is by the byte sequence, which for a version 7 UUID means ordering by time, since its timestamp sits
 // at the front in big-endian order. That is the whole reason version 7 exists, and it only works if comparison
 // never reorders the bytes.
@@ -34,7 +32,6 @@ pub enum UuidVariant: int32 {
 
 extend Uuid {
     /// The nil UUID: sixteen zero bytes.
-    ///
     /// A defined value rather than an absence, and worth having as one — the alternative is every caller
     /// inventing a sentinel of their own.
     /// @returns the all-zero value
@@ -58,7 +55,6 @@ extend Uuid {
     }
 
     /// A UUID from sixteen bytes in the standard's order.
-    ///
     /// Fewer than sixteen leaves the rest zero; more are ignored. No structure is imposed — the version and
     /// variant fields are whatever the bytes say, which is what lets this read a UUID from somewhere else.
     /// @param bytes sixteen bytes to take as the value, in big-endian order
@@ -106,7 +102,6 @@ extend Uuid {
     }
 
     /// The version, from the high nibble of the seventh byte.
-    ///
     /// Meaningful only for the standard variant; a nil or max UUID reports a number that means nothing, which
     /// is why `Variant` should be consulted first.
     /// @returns the version nibble, 0 through 15; a value this package did not make may hold anything
@@ -116,7 +111,6 @@ extend Uuid {
     }
 
     /// The variant, from the high bits of the ninth byte.
-    ///
     /// The encoding is variable-length rather than two fixed bits: a leading zero means the oldest layout, `10`
     /// the standard one, `110` Microsoft's, and `111` the reserved future.
     /// @returns the variant the layout declares
@@ -143,7 +137,6 @@ extend Uuid {
     }
 
     /// Orders two UUIDs by their bytes, most significant first.
-    ///
     /// For a version 7 UUID this is chronological order, because its timestamp occupies the leading bytes in
     /// big-endian form. Reordering here — to match a platform's GUID layout, say — would destroy that, which
     /// is why the byte order is fixed rather than negotiable.
@@ -161,7 +154,6 @@ extend Uuid {
     }
 
     /// A hash of the sixteen bytes, for use as a table key.
-    ///
     /// FNV-1a, which is not a cryptographic hash and does not need to be: a UUID is already the output of one,
     /// or of an entropy source, so what a table wants here is speed and an even spread over buckets.
     /// @returns the value's hash

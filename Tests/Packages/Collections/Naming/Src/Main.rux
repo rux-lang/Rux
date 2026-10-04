@@ -3,13 +3,11 @@ import Collections::{ EqualsInt32, HashSet, TableSeed };
 import Core::{ Assert, Panic };
 
 // A program declaring a name its dependency also declares.
-//
 // `Collections` exports `HashInt32`, and this program declares one of its own without importing that one. A call
 // resolves to the nearer declaration, which is this file's, and always did. Handing the same name over as a value
 // did not: the reference carried the name as written, the back end looked for a function emitted under exactly that
 // name, found none once two packages made it ambiguous, and read a function pointer out of a global that does not
 // exist. Calling through it faulted.
-//
 // The hash here is deliberately nothing like the real one, so which of the two ran is visible in the answer rather
 // than only in whether it crashed.
 

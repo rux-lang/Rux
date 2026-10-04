@@ -1,5 +1,4 @@
 // `float32`: IEEE 754 binary32.
-//
 // Twenty-four bits of significand, so about seven decimal digits round-trip. Rux/Format is what converts one to and
 // from decimal text exactly.
 

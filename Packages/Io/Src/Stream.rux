@@ -1,11 +1,9 @@
 // The three things a stream can be asked, and the helpers every asker shares.
-//
 // A `Reader` fills what it can of a buffer and succeeds with how much; a `Writer` takes what it can and succeeds with
 // how much; a `Seeker` moves the position and succeeds with where it landed. Partial progress is the interfaces'
 // honest unit — a socket hands over what has arrived, a pipe takes what fits — and the all-or-nothing shapes callers
 // usually want are the shared helpers, written once: `ReadExact` and `WriteAll` loop over partial progress, retry the
 // transient reports, and refuse to spin on a stream that makes none.
-//
 // Call-time streams are borrowed as interface references, so concrete readers and writers can be used directly
 // without copying their state or manufacturing an adapter. An interface value is still useful when a stream must
 // be stored, because references deliberately cannot escape into fields.
@@ -16,7 +14,6 @@
 /// @see https://rux-lang.dev/docs/api/io/reader
 pub interface Reader {
     /// Fills what it can of `into` and succeeds with how much.
-    ///
     /// A success of zero does not happen for a non-empty buffer: the end of the stream is the `EndOfStream` failure,
     /// so a caller never mistakes silence for data.
     /// @param into receives the bytes
@@ -63,14 +60,12 @@ pub interface Seeker {
 }
 
 /// How many consecutive zero-progress rounds the looping helpers tolerate before refusing.
-///
 /// A transient report is retried without counting; this counts only rounds where the stream reported success and
 /// moved nothing, which is a stream that will never finish the job.
 /// @see https://rux-lang.dev/docs/api/io/zero-progress-limit
 pub const ZeroProgressLimit: uint = 3;
 
 /// Fills all of `into`, looping over partial reads, or says why it could not.
-///
 /// Transient reports are retried; the end of the stream before the buffer fills is `EndOfStream` with the buffer
 /// partly written — how much is not reported, because a caller who needs the count reads incrementally.
 /// @param reader where the bytes come from
@@ -94,7 +89,6 @@ pub func ReadExact(reader: &var Reader, into: var char8[..]) -> ! IoError {
 }
 
 /// Writes all of `bytes`, looping over partial writes, or says why it could not.
-///
 /// A writer that accepts nothing while reporting success is refused with `WriteZero` after a few rounds: a loop
 /// that spins on it would hang the caller on a stream that will never take the rest.
 /// @param writer the destination

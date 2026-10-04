@@ -1,11 +1,9 @@
 // `fail` and `?`: leaving a fallible function through its outer failure.
-//
 // `fail error;` returns the enclosing function's failure with `error` converted to its error channel, and `value?`
 // either continues with the success of one fallible level or returns that failure the same way. Both are ordinary
 // returns: the outgoing value is captured first, then registered defers run in reverse order, then everything the
 // function still owns is destroyed, including the completed parts of an aggregate whose construction was interrupted.
 // A nested level is never unwrapped twice, so an inner failure held as successful data stays data.
-//
 // `Main` itself may be fallible: a success exits with its integer payload, or 0 for the unit, and a failure exits
 // with 1 after ordinary cleanup.
 

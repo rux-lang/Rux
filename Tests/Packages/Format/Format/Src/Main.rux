@@ -4,18 +4,15 @@ import Format::{ Render, WriteFormat };
 import Text::{ BufferWriter, Display, FormatError, FormatSpec, String, StringView, TextWriter, WriteAscii, WriteBytes };
 
 // Placeholder filling, and what it refuses.
-//
 // The grammar is four shapes: `{}`, `{:spec}`, `{{` and `}}`. Everything else containing a brace is a mistake in
 // the pattern, and this file's job is mostly the mistakes. Two of them used to be printed rather than reported — a
 // placeholder with no argument left rendered as nothing, and a specification that did not parse was copied through
 // as literal text — and both are now failures that carry where. Printing a mistake is the worst way to report one:
 // the program carries on, the output is wrong in a way that looks deliberate, and the caller hears about it from a
 // reader.
-//
 // The offsets are the half that fails quietly, so every refusal below names the exact byte, and the specification
 // cases are written so that the offset inside the specification is not the offset inside the pattern. A test that
 // only checked the reason would pass with every offset set to zero.
-//
 // The counting allocator at the bottom is what checks the other promise: a failed render gives its block back. A
 // leak is invisible to a test that only reads the result, because the result is an error either way.
 

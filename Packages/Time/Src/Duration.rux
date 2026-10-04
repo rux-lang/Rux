@@ -1,10 +1,8 @@
 // A span of time, exact to the nanosecond.
-//
 // A duration is seconds plus a nanosecond fraction, and the fraction is always in [0, 1e9): the value is
 // `seconds + nanoseconds / 1e9` with the sign carried entirely by the seconds. That single invariant is what makes
 // equality bytewise, ordering two comparisons, and arithmetic a carry — minus one and a half seconds is seconds
 // -2 and half a billion nanoseconds, not two fields that each carry a sign and can disagree.
-//
 // The arithmetic is checked. A duration overflows at about 292 billion years, which no honest computation reaches,
 // so an overflow is a bug in the caller's arithmetic — and the answer to a bug is a report, not a wrap that turns
 // a timeout into a deadline in the past.
@@ -16,7 +14,6 @@ import Core::{ AddChecked, MulChecked, Ordering, SubChecked };
 pub const NanosecondsPerSecond: uint32 = 1000000000;
 
 /// A span of time: seconds and a fraction, normalized.
-///
 /// `Copy`. The value is `seconds + nanoseconds / 1e9`, and `nanoseconds` is always in [0, 1e9).
 /// @see https://rux-lang.dev/docs/api/time/duration
 pub struct Duration {
@@ -63,7 +60,6 @@ extend Duration {
     }
 
     /// Exactly `milliseconds` milliseconds.
-    ///
     /// Cannot overflow: every `int64` count of milliseconds fits.
     /// @param milliseconds how many milliseconds
     /// @returns that many milliseconds
@@ -109,7 +105,6 @@ extend Duration {
     }
 
     /// Whether this span is negative.
-    ///
     /// The sign lives in the seconds alone, which the normalization guarantees.
     /// @returns whether the span runs backwards
     /// @see https://rux-lang.dev/docs/api/time/duration/is-negative
@@ -226,7 +221,6 @@ extend Duration {
     }
 
     /// How this span orders against `other`.
-    ///
     /// Two comparisons, which the normalization pays for: the seconds decide, and the fractions only tie-break.
     /// @param other the value to compare against
     /// @returns how this span orders against `other`

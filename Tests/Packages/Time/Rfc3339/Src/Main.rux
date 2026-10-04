@@ -4,12 +4,10 @@ import Time::{ Date, DateTime, OffsetDateTime, ParseDate, ParseDateTime, ParseRf
                TimeParseError, UtcOffset };
 
 // Reading a moment out of text, and saying where the text went wrong.
-//
 // The parsers answer a `Result` now rather than a bool through output slots, so the interesting half of this file
 // is the failures: which category a mistake lands in, and which byte it points at. A caller that cannot tell a typo
 // from a February the thirtieth cannot report either usefully, and one that cannot point at a character makes its
 // user re-read their own input to guess.
-//
 // The categories are the ones a caller acts on differently. A malformed shape is the writer's mistake. A month of
 // 13, a day the month does not have, and an hour of 24 are well-formed text naming something that does not exist,
 // which is usually a different bug. An excessive fraction and an impossible offset are fields that parsed and then

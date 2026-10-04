@@ -1,5 +1,4 @@
 // Reading and writing through a file descriptor, and the three descriptors a process starts with.
-//
 // The wrappers here name their arguments and nothing more: each returns the kernel's raw result, which is a byte
 // count or a small negative error number. A short count is not an error and not an end of file — a read that returns
 // fewer bytes than asked for has to be called again, which is the caller's loop to write.
@@ -23,15 +22,10 @@ pub const StdOut: int32 = 1;
 pub const StdErr: int32 = 2;
 
 /// Reads up to `count` bytes from `fd` into `buffer`.
-///
 /// `fd` and `count` are read by value; `buffer` is borrowed and written. Returns the number of bytes actually read,
 /// zero at end of file, or a negative error number.
-///
 /// A count smaller than `count` is ordinary and is not an end of file: a pipe, a terminal, or a signal can each cut a
 /// read short. Only zero means the source has ended.
-///
-/// # Safety
-///
 /// `buffer` must be writable for `count` bytes. The kernel checks the address and reports `EFAULT` rather than
 /// faulting, but it does not check the length against anything the caller knows.
 /// @param fd an open descriptor
@@ -44,15 +38,10 @@ pub func Read(fd: FileDescriptor, buffer: *var opaque, count: uint) -> int64 {
 }
 
 /// Writes up to `count` bytes from `buffer` to `fd`.
-///
 /// `fd` and `count` are read by value; `buffer` is borrowed and read. Returns the number of bytes actually written,
 /// or a negative error number.
-///
 /// A count smaller than `count` is ordinary, and the rest has to be written by calling again from where this
 /// stopped. Writing to a pipe whose reader has closed raises `SIGPIPE` before this can report `EPIPE`.
-///
-/// # Safety
-///
 /// `buffer` must be readable for `count` bytes.
 /// @param fd an open descriptor
 /// @param buffer the bytes to write
@@ -64,9 +53,7 @@ pub func Write(fd: FileDescriptor, buffer: *opaque, count: uint) -> int64 {
 }
 
 /// Closes `fd` and releases what the kernel held for it.
-///
 /// `fd` is read by value. Returns zero, or a negative error number.
-///
 /// A failure does not mean the descriptor is still open: on Linux it is released whatever this reports, so retrying
 /// a failed close can close a descriptor another thread has since opened under the same number.
 /// @param fd an open descriptor
@@ -77,7 +64,6 @@ pub func Close(fd: FileDescriptor) -> int64 {
 }
 
 /// `AT_FDCWD`: resolve a relative path against the current directory rather than a descriptor.
-///
 /// The value every `*at` call takes when the caller means an ordinary path. It is `-100` rather than `-1` so that a
 /// stray `-1` from a failed open cannot be mistaken for it.
 /// @see https://rux-lang.dev/docs/api/linux/at-fd-cwd
@@ -100,7 +86,6 @@ pub const OpenReadWrite: int32 = 2;
 pub const OpenCreate: int32 = 64;
 
 /// `O_EXCL`: with `OpenCreate`, fail rather than open a file that already exists.
-///
 /// The pair is what makes creating a file an atomic claim on the name.
 /// @see https://rux-lang.dev/docs/api/linux/open-exclusive
 pub const OpenExclusive: int32 = 128;
@@ -118,7 +103,6 @@ pub const OpenAppend: int32 = 1024;
 pub const OpenNonBlocking: int32 = 2048;
 
 /// `O_CLOEXEC`: close this descriptor automatically when the process executes a new program.
-///
 /// Worth setting on nearly everything: without it a descriptor leaks into every child, which is both a resource and
 /// a confidentiality problem.
 /// @see https://rux-lang.dev/docs/api/linux/open-close-on-exec
@@ -129,7 +113,6 @@ pub const OpenCloseOnExec: int32 = 524288;
 when #target.arch {
     .X86_64 => {
         /// `O_DIRECTORY`: fail unless the target is a directory.
-        ///
         /// x86-64 kept the number it had before the generic table was drawn up. On AArch64 this same bit means
         /// `O_DIRECT` instead, so a directory opened with the wrong number fails with `EINVAL` rather than opening.
         /// @see https://rux-lang.dev/docs/api/linux/open-directory
@@ -137,7 +120,6 @@ when #target.arch {
     }
     .AArch64 => {
         /// `O_DIRECTORY`: fail unless the target is a directory.
-        ///
         /// AArch64 uses the generic table's number. x86-64 uses a different one, and its bit means `O_DIRECT` here,
         /// so a directory opened with the wrong number fails with `EINVAL` rather than opening.
         /// @see https://rux-lang.dev/docs/api/linux/open-directory
@@ -159,16 +141,11 @@ pub const SeekCurrent: int32 = 1;
 pub const SeekEnd: int32 = 2;
 
 /// Opens `path` relative to `directoryFd` and returns a descriptor, or a negative error number.
-///
 /// `directoryFd` is a descriptor for the directory a relative path is resolved against, or `AtFdCwd` for the current
 /// one; an absolute path ignores it. `path` is borrowed and must be null-terminated. `flags` is one of the three
 /// access modes combined with whatever else applies. `mode` is the permission bits a newly created file gets, and is
 /// read only when `OpenCreate` is set.
-///
 /// This is the only open the package offers, because it is the only one AArch64 has.
-///
-/// # Safety
-///
 /// `path` must be non-null and terminated. The mode is masked by the process umask, which this cannot see.
 /// @param directoryFd the directory `path` is relative to, or `AtFdCwd` for an ordinary path
 /// @param path the path to open, as a null-terminated byte string
@@ -182,9 +159,7 @@ pub func OpenAt(directoryFd: FileDescriptor, path: *char8, flags: int32, mode: F
 }
 
 /// Moves the file offset of `fd` and returns where it ended up, or a negative error number.
-///
 /// `offset` is measured from whichever origin `whence` names. Returns the resulting absolute offset.
-///
 /// Seeking past the end is allowed and creates a hole when something is later written there. A pipe or socket has no
 /// offset to move and reports `ESPIPE`.
 /// @param fd an open descriptor
@@ -198,7 +173,6 @@ pub func Lseek(fd: FileDescriptor, offset: FileOffset, whence: int32) -> int64 {
 
 /// Reads directory entries from `fd` into `buffer`, and returns the bytes filled, zero at the end, or a negative
 /// error number.
-///
 /// The buffer holds packed `linux_dirent64` records: inode at offset 0 (8 bytes), a seek cookie at 8 (8 bytes),
 /// the record's length at 16 (2 bytes), the entry type at 18 (1 byte), and the NUL-terminated name from 19. The
 /// kernel writes as many whole records as fit; call again for the rest.
@@ -212,7 +186,6 @@ pub func Getdents64(fd: FileDescriptor, buffer: *var opaque, count: uint) -> int
 }
 
 /// Creates a hard link: `newPath` becomes a second name for the file `oldPath` names.
-///
 /// Returns zero, or a negative error number. `flags` is zero to leave a symbolic link at `oldPath` unfollowed,
 /// or `FollowSymlinks` to link what it points at.
 /// @param oldDirectoryFd the directory `oldPath` is relative to
@@ -233,7 +206,6 @@ pub func LinkAt(oldDirectoryFd: FileDescriptor, oldPath: *char8, newDirectoryFd:
 pub const FollowSymlinks: int32 = 0x0400;
 
 /// Creates a symbolic link at `linkPath` holding `target` as its text.
-///
 /// Returns zero, or a negative error number. The target is stored, not checked: a dangling link is created as
 /// readily as a good one, which is a property callers rely on.
 /// @param target the text the link will hold, which need not exist
@@ -250,12 +222,8 @@ pub func SymlinkAt(target: *char8, newDirectoryFd: FileDescriptor, linkPath: *ch
 pub const SymlinkNoFollow: int32 = 0x0100;
 
 /// Fills `statBuffer` with what the kernel knows about the file `path` names.
-///
 /// The kernel's own name for this call is `newfstatat`, which `SysNewFstatAt` keeps; the wrapper is spelled the way
 /// macOS and FreeBSD spell theirs, so one name reaches the call on all three systems.
-///
-/// # Safety
-///
 /// `statBuffer` must be writable for the whole of the architecture's `struct stat`, whose layout this package
 /// does not model: 144 bytes on x86-64 and 128 on AArch64, with the fields at different offsets in each.
 /// @param directoryFd the directory `path` is relative to, or `AtFdCwd` for an ordinary path
@@ -270,7 +238,6 @@ pub func FstatAt(directoryFd: FileDescriptor, path: *char8, statBuffer: *var opa
 }
 
 /// Sets the permission bits of the file `path` names.
-///
 /// `directoryFd` is `AtFdCwd` for an ordinary path. Returns zero, or a negative error number. Linux does not
 /// support `SymlinkNoFollow` here and reports `EOPNOTSUPP` for it: a symbolic link's own bits mean nothing.
 /// @param directoryFd the directory `path` is relative to, or `AtFdCwd` for an ordinary path
@@ -285,7 +252,6 @@ pub func FchmodAt(directoryFd: FileDescriptor, path: *char8, mode: FileMode, fla
 }
 
 /// Sets the access and modification times of the file `path` names.
-///
 /// `times` is borrowed and holds two `timespec` values — access first, then modification — each a whole-second
 /// count and a nanosecond fraction, both 8 bytes. A null `times` sets both to now. `flags` may carry
 /// `SymlinkNoFollow`. Returns zero, or a negative error number.
@@ -301,12 +267,8 @@ pub func UtimensAt(directoryFd: FileDescriptor, path: *char8, times: *opaque, fl
 }
 
 /// Writes the current working directory's absolute path into `buffer`, NUL-terminated.
-///
 /// Returns the length written including the terminator, or a negative error number; `ERANGE` where the buffer is
 /// too small for the answer.
-///
-/// # Safety
-///
 /// `buffer` must be writable for `size` bytes.
 /// @param buffer receives the working directory as a null-terminated path
 /// @param size how many bytes `buffer` holds
@@ -317,7 +279,6 @@ pub func Getcwd(buffer: *var char8, size: uint) -> int64 {
 }
 
 /// Makes `path` the process's working directory.
-///
 /// Returns zero, or a negative error number. The change is process-wide and immediately visible to every thread,
 /// which is why nothing above this should call it casually.
 /// @param path the directory to move to
@@ -328,7 +289,6 @@ pub func Chdir(path: *char8) -> int64 {
 }
 
 /// Reads the text a symbolic link holds into `buffer`.
-///
 /// `directoryFd` is `AtFdCwd` for an ordinary path. Returns the number of bytes written, or a negative error
 /// number. The text is **not** NUL-terminated, and is silently truncated where it does not fit, so a caller that
 /// filled the buffer exactly cannot tell truncation from a perfect fit and should retry with more room.
@@ -343,7 +303,6 @@ pub func ReadlinkAt(directoryFd: FileDescriptor, path: *char8, buffer: *var char
 }
 
 /// Flushes everything written to `fd` through to the storage device.
-///
 /// Returns zero, or a negative error number. Returning only once the device has acknowledged the write is the whole
 /// point: without it, data a successful `Write` reported may still be lost to a power failure.
 /// @param fd an open descriptor
@@ -354,7 +313,6 @@ pub func Fsync(fd: FileDescriptor) -> int64 {
 }
 
 /// Sets the length of the file behind `fd` to `length`.
-///
 /// Returns zero, or a negative error number. Growing a file this way creates a hole rather than allocating, so a
 /// later write into it can still fail with `ENOSPC`. Shrinking discards what was past the new end.
 /// @param fd an open descriptor
@@ -366,15 +324,10 @@ pub func Ftruncate(fd: FileDescriptor, length: FileOffset) -> int64 {
 }
 
 /// Removes the name `path` from its directory.
-///
 /// `flags` is zero to remove a file, or `RemoveDirectory` to remove an empty directory. Returns zero, or a negative
 /// error number.
-///
 /// Removing a name does not free the file: anything still holding it open keeps reading and writing it, and the
 /// storage goes only when the last descriptor closes.
-///
-/// # Safety
-///
 /// `path` must be non-null and terminated.
 /// @param directoryFd the directory `path` is relative to, or `AtFdCwd` for an ordinary path
 /// @param path the name to remove
@@ -390,11 +343,7 @@ pub func UnlinkAt(directoryFd: FileDescriptor, path: *char8, flags: int32) -> in
 pub const RemoveDirectory: int32 = 512;
 
 /// Creates a directory named `path` with permission bits `mode`.
-///
 /// Returns zero, or a negative error number — `EEXIST` when the name is taken, which is how this is used as a lock.
-///
-/// # Safety
-///
 /// `path` must be non-null and terminated. The mode is masked by the process umask.
 /// @param directoryFd the directory `path` is relative to, or `AtFdCwd` for an ordinary path
 /// @param path the directory to create
@@ -406,13 +355,9 @@ pub func MkdirAt(directoryFd: FileDescriptor, path: *char8, mode: FileMode) -> i
 }
 
 /// Renames `oldPath` to `newPath`, each resolved against its own directory descriptor.
-///
 /// Returns zero, or a negative error number. Within one file system this replaces any existing `newPath` atomically,
 /// which is what makes it the way to publish a file that was written under a temporary name. Across file systems it
 /// reports `EXDEV` rather than copying.
-///
-/// # Safety
-///
 /// Both paths must be non-null and terminated.
 /// @param oldDirectoryFd the directory `oldPath` is relative to
 /// @param oldPath the name to move
@@ -427,13 +372,9 @@ pub func RenameAt(oldDirectoryFd: FileDescriptor, oldPath: *char8, newDirectoryF
 }
 
 /// Fills `statBuffer` with what the kernel knows about the file behind `fd`.
-///
 /// `statBuffer` is borrowed and written with the kernel's `struct stat`, whose layout this package does not model:
 /// it differs by architecture, and reading it needs a declaration that says which. Returns zero, or a negative error
 /// number.
-///
-/// # Safety
-///
 /// `statBuffer` must be writable for the whole of the architecture's `struct stat`, which is 144 bytes on x86-64 and
 /// 128 on AArch64. Nothing here checks that.
 /// @param fd an open descriptor
@@ -445,11 +386,9 @@ pub func Fstat(fd: FileDescriptor, statBuffer: *var opaque) -> int64 {
 }
 
 /// Makes `newFd` a copy of `oldFd`, closing whatever `newFd` was.
-///
 /// `flags` may carry `OpenCloseOnExec`, which is the reason this exists rather than `dup2`: setting it afterwards
 /// leaves a window in which another thread can execute a new program and leak the descriptor. Returns `newFd`, or a
 /// negative error number.
-///
 /// Duplicating a descriptor onto itself reports `EINVAL` here, where `dup2` returned it unchanged.
 /// @param oldFd the descriptor to duplicate
 /// @param newFd the number the duplicate should have
@@ -461,12 +400,8 @@ pub func Dup3(oldFd: FileDescriptor, newFd: FileDescriptor, flags: int32) -> int
 }
 
 /// Creates a pipe and writes its two descriptors into `descriptors`.
-///
 /// `descriptors` is borrowed and receives the reading end at index zero and the writing end at index one. `flags`
 /// may carry `OpenCloseOnExec` and `OpenNonBlocking`. Returns zero, or a negative error number.
-///
-/// # Safety
-///
 /// `descriptors` must be writable for two `int32` values.
 /// @param descriptors receives the read end at index zero and the write end at index one
 /// @param flags zero, or `OpenCloseOnExec` for both ends

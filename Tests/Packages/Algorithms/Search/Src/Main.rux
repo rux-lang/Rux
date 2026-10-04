@@ -7,7 +7,6 @@ import Core::{ Assert, Ordering, Panic };
 // fails on the ones nobody does, so what is checked here is the boundaries: a value before everything, after
 // everything, absent between two present ones, present once, present many times, and every one of those against an
 // empty slice and a one-element slice.
-//
 // The bounds are checked against a linear count of the equal elements, so the two answers have to agree rather than
 // merely look plausible.
 

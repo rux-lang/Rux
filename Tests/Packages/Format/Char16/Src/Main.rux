@@ -4,7 +4,6 @@ import Text::{ Display, FormatSpec, TextWriter };
 import Format::{ ByteCursor };
 
 // A failed check returns its numbered exit code for `rux test`.
-//
 // The characters are checked byte by byte rather than against a literal, so that what is under test is the UTF-8
 // the package encodes and not the encoding this file happens to be saved in.
 

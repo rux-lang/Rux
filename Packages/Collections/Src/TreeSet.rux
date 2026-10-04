@@ -1,19 +1,15 @@
 // A set that keeps its elements in order.
-//
 // `HashSet` answers membership in constant expected time and is the one to reach for by default. This one costs a
 // pointer chase per level and gives back order: it walks smallest first, answers what the nearest element above or
 // below a bound is, and hands back everything between two bounds. A hash set can do none of that, because a hash
 // scatters elements on purpose.
-//
 // Order also changes what the algebra costs. Two hash sets can only be compared by looking every element of one up
 // in the other; two ordered sets could be merged in one pass. That merge is not what runs here — the predicates
 // below still ask `Contains` per element — because a merge needs both walks to survive the other's removals, and
 // what it would save is a logarithm. The operations that change a set do exploit the order, by asking for the next
 // element by key rather than by pointer, which is what lets them remove while walking.
-//
 // The elements are the keys of a tree whose values are nothing at all. The unit `()` occupies no bytes, so a set is
 // a map with the values compiled away rather than a second copy of the same balancing.
-//
 // An element must be copyable, for the same reason a `HashSet`'s must: the comparison takes its two elements by
 // value, and every descent compares against elements the set is holding. An element that owned something would be
 // handed to the comparison and destroyed there, taking what it owned with it. A set of owning values needs a
@@ -24,7 +20,6 @@ import Allocator::Allocator;
 import Core::{ Iterator, Ordering };
 
 /// An ordered set of unique elements.
-///
 /// Move-only: it owns every node and every element in them.
 /// @typeParam T the element type
 /// @see https://rux-lang.dev/docs/api/collections/tree-set
@@ -40,10 +35,8 @@ extend TreeSet<T> {
     func =(self: &var TreeSet<T>, other: &TreeSet<T>);
 
     /// An empty set ordered by `compare`, which has allocated nothing.
-    ///
     /// `allocator` is borrowed for the call and kept for the set's life. `compare` must impose the same order every
     /// call; a set whose comparison changes under it loses elements it still holds.
-    ///
     /// Cannot fail. Runs in constant time and allocates nothing.
     /// @param allocator where the storage comes from
     /// @param compare how two keys order against each other
@@ -68,7 +61,6 @@ extend TreeSet<T> {
     }
 
     /// Whether `value` is in the set.
-    ///
     /// Runs in time proportional to the height, which is at most twice the logarithm of the length.
     /// @param value the value to act on
     /// @returns whether the value is present
@@ -78,11 +70,9 @@ extend TreeSet<T> {
     }
 
     /// Puts `value` into the set, and reports whether it was not already there.
-    ///
     /// Takes ownership. An element equal to one already present is destroyed rather than stored, since the one in
     /// the set is equal to it and is what everything is already ordered against — so a set never grows past the
     /// number of distinct elements put into it.
-    ///
     /// Reports `OutOfMemory` when the node cannot be allocated, having changed nothing.
     /// @param value the value to act on
     /// @returns whether the value was new rather than already present
@@ -93,7 +83,6 @@ extend TreeSet<T> {
     }
 
     /// Takes `value` out of the set, reporting whether it was there.
-    ///
     /// Cannot fail. Runs in time proportional to the height and allocates nothing.
     /// @param value the value to act on
     /// @returns whether the value was there to remove
@@ -112,7 +101,6 @@ extend TreeSet<T> {
     }
 
     /// The smallest element, or `none` for an empty set.
-    ///
     /// Runs in time proportional to the height and allocates nothing.
     /// @returns the smallest element, or `none` when empty
     /// @see https://rux-lang.dev/docs/api/collections/tree-set/first
@@ -154,7 +142,6 @@ extend TreeSet<T> {
     }
 
     /// A walk over this set, smallest element first, leaving it untouched.
-    ///
     /// `self` is borrowed and must outlive the walk, which must not run across an insertion or a removal.
     /// @returns a cursor over the elements in order
     /// @see https://rux-lang.dev/docs/api/collections/tree-set/iterate
@@ -163,7 +150,6 @@ extend TreeSet<T> {
     }
 
     /// A walk over the elements at or above `start` and below `end`.
-    ///
     /// Half-open, so `Range(a, b)` and `Range(b, c)` together give exactly `Range(a, c)` with nothing repeated and
     /// nothing missed. A range whose `end` is not above its `start` hands back nothing.
     /// @param start the first element, inclusive
@@ -179,7 +165,6 @@ extend TreeSet<T> {
     }
 
     /// A walk that consumes this set, smallest element first.
-    ///
     /// Takes ownership; the set is gone afterwards.
     /// @returns a cursor that consumes the set as it goes, in order
     /// @see https://rux-lang.dev/docs/api/collections/tree-set/into-iterator
@@ -197,9 +182,7 @@ extend TreeSet<T> {
     }
 
     /// Whether every element of this set is in `other`.
-    ///
     /// The empty set is a subset of everything, including itself. Allocates nothing and cannot fail.
-    ///
     /// Runs in time proportional to this set's length times the logarithm of `other`'s.
     /// @param other the collection to compare or combine with
     /// @returns whether every element of this set is in `other`
@@ -230,7 +213,6 @@ extend TreeSet<T> {
     }
 
     /// Whether the two sets share no element.
-    ///
     /// The empty set is disjoint from everything, including itself. The smaller set is the one walked, since either
     /// walk gives the same answer and one of them is shorter.
     /// @param other the collection to compare or combine with
@@ -254,7 +236,6 @@ extend TreeSet<T> {
     }
 
     /// Whether the two sets hold exactly the same elements.
-    ///
     /// Order is not part of the question — two sets are equal when each contains the other — but having an order
     /// makes the lengths enough to reject most pairs before looking at an element.
     /// @param other the collection to compare or combine with
@@ -265,7 +246,6 @@ extend TreeSet<T> {
     }
 
     /// Adds every element of `other` that is not already here.
-    ///
     /// Reports `OutOfMemory` if a node cannot be allocated, having added what it managed to before that — unlike
     /// the hash set's, which reserves the worst case first and is all-or-nothing. A tree has no capacity to reserve:
     /// every element is a separate allocation, so there is no point at which the whole operation can be paid for in
@@ -291,9 +271,7 @@ extend TreeSet<T> {
     }
 
     /// Keeps only the elements that are also in `other`.
-    ///
     /// Allocates nothing and cannot fail: a set only ever gets smaller here.
-    ///
     /// The walk asks for the next element by key rather than by following a pointer, because removing relinks the
     /// nodes around what was removed — including, when it has two children, the very node a pointer walk would
     /// have been about to visit. A key survives that; a pointer does not. The price is a descent per element rather
@@ -312,7 +290,6 @@ extend TreeSet<T> {
     }
 
     /// Removes every element that is also in `other`.
-    ///
     /// Allocates nothing and cannot fail, and walks the same way `IntersectWith` does and for the same reason.
     /// @param other the collection to compare or combine with
     /// @see https://rux-lang.dev/docs/api/collections/tree-set/subtract
@@ -329,9 +306,7 @@ extend TreeSet<T> {
     }
 
     /// Keeps the elements that are in exactly one of the two sets.
-    ///
     /// Reports `OutOfMemory` if a node cannot be allocated, having done what it managed to first.
-    ///
     /// The removals and the additions cannot be interleaved: an element removed from this set would then look
     /// absent when `other`'s copy of it arrived, and be added straight back. So what is shared is taken out first,
     /// and only then is what is left of `other` put in.
@@ -374,7 +349,6 @@ extend TreeSet<T> {
     }
 
     /// A set holding what this one holds, ordered the same way and allocating from the same allocator.
-    ///
     /// A failed clone hands back nothing rather than half of a set.
     /// @returns an independent copy
     /// @see https://rux-lang.dev/docs/api/collections/tree-set/clone
@@ -395,7 +369,6 @@ pub struct TreeSetIterator<T> {
 
 extend TreeSetIterator<T> : Iterator {
     /// The next element in order, or `none` when there are no more.
-    ///
     /// Runs in constant amortized time: a whole walk crosses every edge of the tree exactly twice.
     /// @returns the next element in order, or `none` at the end
     /// @see https://rux-lang.dev/docs/api/collections/tree-set-iterator/next
@@ -436,7 +409,6 @@ extend TreeSetRangeIterator<T> : Iterator {
 }
 
 /// A walk that consumes the set, smallest element first.
-///
 /// Owns the nodes, and destroys whatever is left in them when it dies — so a walk stopped part-way destroys the
 /// rest exactly once, and nothing already handed out is destroyed twice.
 /// @typeParam T the element type
@@ -453,7 +425,6 @@ extend TreeSetIntoIterator<T> {
 
 extend TreeSetIntoIterator<T> : Iterator {
     /// The next element in order, or `none` when there are no more.
-    ///
     /// Takes the smallest element out of the tree rather than reading past it, which is what makes it the caller's.
     /// @returns the next element in order, or `none` at the end
     /// @see https://rux-lang.dev/docs/api/collections/tree-set-into-iterator/next

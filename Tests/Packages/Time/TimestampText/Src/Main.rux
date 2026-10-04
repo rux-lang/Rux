@@ -3,12 +3,10 @@ import Text::{ BufferWriter, Debug, Display, FormatError, FormatSpec, ParseForma
 import Time::{ ParseRfc3339, Timestamp };
 
 // The wall clock as text, where the whole question is which of its two readings a bare placeholder produces.
-//
 // A timestamp is a moment on the calendar and a count of seconds at the same time, and the decision under test is
 // that only the first is the default. `{}` is RFC 3339 in UTC; the second count exists but has to be named. So the
 // cases below are in three groups: what the default writes, what `unix` writes once it is asked for, and what
 // happens at the two edges where the calendar form stops existing but the second count does not.
-//
 // The pre-epoch fractional cases are the ones that catch a wrong implementation. A timestamp normalizes like a
 // duration — the sign in the seconds, the fraction counting up from them — so half a second before the epoch is
 // seconds = -1 with a fraction of 5e8. Printing the fields as they sit gives "-1.5" for a value that is -0.5.

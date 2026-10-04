@@ -1,14 +1,11 @@
 // Reading a document as a stream of events, without building a tree.
-//
 // A tree is convenient and it is also what makes a large document expensive. Streaming trades random access for
 // constant memory: events arrive in document order, once, and the caller keeps only what it wants. A program
 // reading one setting out of a large configuration file never allocates for the rest of it.
-//
 // What a streaming reader cannot do is notice that a table was defined twice, because knowing that requires
 // remembering every table already seen — which is the tree it was trying not to build. So this checks syntax
 // and structure and nothing else, and a caller that needs TOML's redefinition rules enforced wants the parser.
 // Saying so here is better than a reader that quietly accepts a document the parser would refuse.
-//
 // Text is left as it was written, escapes and all. Resolving them costs an allocation, and a caller skipping a
 // field should not pay for the field it is skipping; `TomlDecodeText` is there for the ones it keeps.
 
@@ -112,7 +109,6 @@ extend TomlEventReader {
     }
 
     /// Why reading stopped, positioned, or `none` while nothing has gone wrong.
-    ///
     /// This is what a caller asks after `Next` reports `Error`. A lexical refusal carries the lexer's own reason
     /// inside it rather than in a second call, so a caller holding the failure is holding all of it — and it is
     /// the same `TomlParseFailure` the tree parser answers, so the two ways of reading a document report a
@@ -249,7 +245,6 @@ extend TomlEventReader {
     }
 
     /// The next event, or `End` when the document is finished.
-    ///
     /// After an `Error` every later call returns `End`: everything past a refusal would be read from a position
     /// the document never meant.
     /// @returns the next event, or the end-of-input event

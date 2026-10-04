@@ -4,16 +4,13 @@ import Path::{ OsString, OsStringView, OsUnit, Path, PathBuffer };
 import Text::{ BufferWriter, Debug, Display, FormatSpec, ParseFormatSpec, TextWriter };
 
 // Two renderings of one name, and the reason there have to be two.
-//
 // A native name is not obliged to be text. `Display` shows it to a reader anyway, replacing every unit that is not
 // text with U+FFFD, because a program reporting which file it could not open still has to name it. `Debug` shows it
 // as it is, escaping those units so that nothing is lost.
-//
 // The case that proves both at once is at the bottom of this file: two different names whose only difference is in
 // units that are not text render identically under `Display` and differently under `Debug`. That is the whole
 // contract in one assertion — the lossy form is for a message and never for identity, and the exact form is what
 // tells two names apart.
-//
 // Every case runs on both platforms with the units that platform's names are made of: bytes that are not UTF-8 on
 // the Unix systems, an unpaired surrogate on Windows. The expectations differ because the units do, and are
 // written out per platform rather than hidden behind a helper that would obscure which is being checked.

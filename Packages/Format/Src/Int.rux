@@ -1,5 +1,4 @@
 // The decimal text of an `int`.
-//
 // A negative value opens with a minus sign; a positive one carries no sign, since a sign that is always there is
 // noise and one that is there on request belongs to the placeholder rather than the value.
 
@@ -10,10 +9,7 @@ import Text::{ Debug, Display, FormatError, FormatSpec, TextWriter };
 
 extend int : Display {
     /// Writes this value's digits.
-    ///
     /// Allocates nothing: the digits go into a buffer on the stack and reach the writer in one call.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
     /// @param writer the destination
     /// @param spec what the placeholder asked for
@@ -31,8 +27,6 @@ extend int : Display {
 
 extend int : Debug {
     /// The same digits: a number reads the same whoever is looking.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
     /// @param writer the destination
     /// @param spec what the placeholder asked for

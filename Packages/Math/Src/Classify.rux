@@ -1,11 +1,9 @@
 // What a floating-point value is, before any arithmetic is done to it.
-//
 // IEEE 754 sorts every bit pattern into five kinds, and most of the bugs in floating-point code come from
 // treating one as another: a NaN mistaken for a number because a comparison against it was false, a signed
 // zero whose sign a comparison threw away, a subnormal treated as zero because it printed as one. So the
 // questions here are answered by bit pattern wherever a comparison would lie, and the sign of a zero is
 // preserved rather than normalized away.
-//
 // The neighbourhood operations — `NextAfter`, `NextUp`, `NextDown`, `UlpDistance` — are here for the same
 // reason: they are about the representation rather than about the value, and they are how a test says two
 // results are within an ulp of each other.
@@ -25,7 +23,6 @@ import Core::{ float32, float64, int64, uint64 };
 */
 
 /// The five kinds IEEE 754 sorts every value into.
-///
 /// `Copy`.
 /// @see https://rux-lang.dev/docs/api/math/floatclass
 pub enum FloatClass: int32 {
@@ -42,7 +39,6 @@ pub enum FloatClass: int32 {
 }
 
 /// Whether `value` is a NaN.
-///
 /// A NaN is the only value not equal to itself, which is why this needs no bit pattern.
 /// @param value value to test
 /// @returns `true` when `value` is a NaN
@@ -92,7 +88,6 @@ pub func IsFinite(value: float32) -> bool {
 }
 
 /// Whether `value` is either zero.
-///
 /// Both zeros answer `true`; `SignBit` is what tells them apart.
 /// @param value value to test
 /// @returns `true` when `value` is positive or negative zero
@@ -128,7 +123,6 @@ pub func IsSubnormal(value: float32) -> bool {
 }
 
 /// Whether `value` is an ordinary value at full precision.
-///
 /// Zero is **not** normal, which surprises people and is the definition every IEEE 754 implementation uses.
 /// @param value value to test
 /// @returns `true` when `value` is normal
@@ -172,7 +166,6 @@ pub func Classify(value: float32) -> FloatClass {
 }
 
 /// Whether `value`'s sign bit is set.
-///
 /// This is the sign bit, not a comparison: `SignBit(-0.0)` is `true` where `-0.0 < 0.0` is false, and a negative NaN
 /// answers `true` where every comparison against it answers false. That is the whole reason to ask by bit.
 /// @param value value whose sign is inspected
@@ -191,7 +184,6 @@ pub func SignBit(value: float32) -> bool {
 }
 
 /// `magnitude` carrying the sign of `sign`.
-///
 /// Works on every value including NaNs and zeros, since it moves one bit and reads no others.
 /// @param magnitude value supplying every bit except the sign
 /// @param sign value supplying the sign bit
@@ -211,7 +203,6 @@ pub func CopySign(magnitude: float32, sign: float32) -> float32 {
 }
 
 /// The value adjacent to `from` in the direction of `toward`.
-///
 /// One representable value in that direction, subnormals and zeros included: stepping down from the smallest positive
 /// normal lands in the subnormals rather than jumping to zero, and stepping down from `+0.0` gives the smallest
 /// negative subnormal rather than `-0.0`. `from` equal to `toward` returns `toward`, which is what makes the sign of a
@@ -309,7 +300,6 @@ pub func QuietNan32() -> float32 {
 }
 
 /// `value` multiplied by two raised to `exponent`, with one rounding.
-///
 /// The obvious spelling - multiplying by a computed power of two - overflows for large exponents and rounds twice when
 /// the answer lands in the subnormals. This steps in bounded pieces so neither happens: the result is correctly rounded
 /// once, and an exponent far outside the range saturates to an infinity or a zero rather than wrapping the exponent
@@ -339,7 +329,6 @@ pub func ScaleByPowerOfTwo(value: float32, exponent: int64) -> float32 {
 }
 
 /// The exponent of `value`: the power of two of its most significant bit.
-///
 /// A normal value's exponent is such that its magnitude lies in `[2^e, 2^(e+1))`; a subnormal reports the exponent it
 /// would have with unbounded range, so the relationship keeps holding into the subnormals. Zero has no exponent and
 /// reports `NoExponent`, and a NaN or infinity reports `IndeterminateExponent`; both are values far outside any real
@@ -378,7 +367,6 @@ pub const NoExponent: int64 = int64::Min;
 pub const IndeterminateExponent: int64 = int64::Max;
 
 /// Splits `value` into a fraction in `[0.5, 1)` and a power of two, so that `fraction * 2^exponent == value`.
-///
 /// The classic decomposition. Zero gives zero with an exponent of zero, and a NaN or infinity is returned unchanged
 /// with an exponent of zero - neither has a decomposition, and inventing one would be worse than returning the value
 /// itself. The sign stays with the fraction. `exponent` must be non-null and writable.
@@ -408,7 +396,6 @@ pub func Decompose(value: float32, exponent: *var int64) -> float32 {
 }
 
 /// Splits `value` into its integral and fractional parts, both carrying its sign.
-///
 /// `integral` receives the part toward zero and the fractional part is returned, so the two always sum back to `value`
 /// exactly. An infinity puts itself in `integral` and returns a zero of the same sign; a NaN puts a NaN in both.
 /// `integral` must be non-null and writable.
@@ -444,7 +431,6 @@ pub func SplitIntegral(value: float32, integral: *var float32) -> float32 {
 }
 
 /// How many representable values lie between `left` and `right`.
-///
 /// The natural way to state a floating-point error bound: two values are one ulp apart when nothing is representable
 /// between them, and a function accurate to half an ulp returns the nearest representable value to the true answer.
 /// Counting steps rather than subtracting is what makes the measure meaningful near zero, where the absolute difference

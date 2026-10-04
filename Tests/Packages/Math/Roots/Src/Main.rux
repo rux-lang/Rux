@@ -2,7 +2,6 @@
 // and Hypot are measured here in the unit they are stated in: representable values apart, not absolute
 // difference, since a fixed absolute tolerance is meaninglessly loose near zero and impossibly tight near the
 // maximum.
-//
 // Correct rounding is checked without a higher-precision reference by bracketing: the true root of x lies
 // between two adjacent floats, and squaring each neighbour with exact arithmetic says which side it falls on.
 // Dekker's splitting makes that product exact — a double's square needs 106 bits, and a pair of doubles holds
@@ -30,7 +29,6 @@ func ExactProduct(left: float64, right: float64, remainder: *var float64) -> flo
 }
 
 // Whether `root` is the representable value nearest the true square root of `value`.
-//
 // The squares of `root` and of the neighbour on each side bracket `value`; the nearest root is the one whose
 // square is closest, measured exactly.
 func IsCorrectlyRoundedRoot(value: float64, root: float64) -> bool {

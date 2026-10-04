@@ -1,13 +1,10 @@
 // How a Linux system call reports failure, and the numbers it reports.
-//
 // There is no `errno` here. The kernel returns the error in the result register as a small negative number, and libc
 // is what turns that into a positive `errno` and a `-1` return. This package calls the kernel directly, so a caller
 // tests the raw result with `IsError` and reads the number with `Errno`.
-//
 // The reserved range is `-4095` through `-1`. Nothing else is an error, which is what makes `mmap` workable: a
 // mapping address is an unsigned value that may legitimately have its top bit set, and only the last page of the
 // address space could collide with the error range, which the kernel never hands out.
-//
 // The names keep the kernel's own spelling. `EINVAL` is what a man page names and what a reader porting code will
 // look for, and there is no Rux name for it that would be clearer. The values below are the architecture-independent
 // ones from `asm-generic/errno-base.h` and `asm-generic/errno.h`, which both supported architectures use.
@@ -48,7 +45,6 @@ pub const ENXIO: int64 = 6;
 pub const EBADF: int64 = 9;
 
 /// `EAGAIN`: the operation would block, and the descriptor was set not to.
-///
 /// Spelled `EWOULDBLOCK` in some interfaces; on Linux the two are one value.
 /// @see https://rux-lang.dev/docs/api/linux/eagain
 #Allow("naming.const")
@@ -130,7 +126,6 @@ pub const EPIPE: int64 = 32;
 pub const ENAMETOOLONG: int64 = 36;
 
 /// `ENOSYS`: the kernel does not implement this call.
-///
 /// What an architecture that lacks a call reports, which is how a caller falls back to another.
 /// @see https://rux-lang.dev/docs/api/linux/enosys
 #Allow("naming.const")
@@ -152,16 +147,13 @@ pub const EOVERFLOW: int64 = 75;
 pub const ETIMEDOUT: int64 = 110;
 
 /// The largest error number the kernel's reserved range holds.
-///
 /// A raw result below `-MaximumErrno` is a value, not an error.
 /// @see https://rux-lang.dev/docs/api/linux/maximum-errno
 pub const MaximumErrno: int64 = 4095;
 
 /// Whether a raw system-call result is one of the kernel's reserved error values.
-///
 /// `result` is read by value. True for `-4095` through `-1`, and false for everything else, including every valid
 /// mapping address a memory call returns.
-///
 /// Cannot fail. Runs in constant time and allocates nothing.
 /// @param result the raw result to test
 /// @returns whether it is one of the reserved error values
@@ -171,10 +163,8 @@ pub func IsError(result: int64) -> bool {
 }
 
 /// The error number a raw system-call result carries, or zero when it carries none.
-///
 /// `result` is read by value; the number is returned by copy, positive, as a man page names it. A successful result
 /// gives zero, which is not an error number and never collides with one.
-///
 /// Cannot fail. Runs in constant time and allocates nothing.
 /// @param result the raw result to read
 /// @returns the error number, positive, or zero when the result carries none

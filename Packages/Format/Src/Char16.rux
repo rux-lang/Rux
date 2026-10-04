@@ -1,5 +1,4 @@
 // A `char16` holds one UTF-16 code unit, which is one to three bytes of UTF-8.
-//
 // A code unit that is half of a surrogate pair says nothing on its own: the character it belongs to is spread across
 // two of them, and one of them is all this sees. So it is written as the replacement character rather than as an
 // ill-formed sequence.
@@ -8,8 +7,6 @@ import Text::{ IsScalarValue, TextError };
 
 extend char16 : Display {
     /// Writes this code unit's character, or the replacement character when it is half of one.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
     /// @param writer the destination
     /// @param spec what the placeholder asked for
@@ -25,11 +22,8 @@ extend char16 : Display {
 
 extend char16 : Debug {
     /// The same character, quoted, with half of a pair preserved as `\u{xxxx}`.
-    ///
     /// Where `Display` writes U+FFFD for a surrogate half, this writes the code unit itself, so a high half and a
     /// low half are told apart rather than rendered alike.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
     /// @param writer the destination
     /// @param spec what the placeholder asked for

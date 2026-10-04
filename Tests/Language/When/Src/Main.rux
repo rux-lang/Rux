@@ -1,14 +1,11 @@
 // `when`: the conditional that runs while compiling.
-//
 // `if` chooses at run time between two branches that both had to type-check. `when` chooses while compiling and
 // keeps only the branch it took — the other is never resolved, so it may name things that do not exist on this
 // build. That is the whole reason the keyword exists: platform code cannot be written with `if`, because the
 // branch for the other operating system would still have to compile here.
-//
 // This file pins both properties, and the second is the one worth being careful about. Two untaken branches below
 // call functions that are never declared anywhere, and the compile-time match ends in an `#Error` arm that would
 // stop the build if it were reached. If untaken branches were being resolved, none of this would compile.
-//
 // A chain keeps the keyword it opened with, so `else when` continues a `when` chain and `else if` inside one is an
 // error. That cannot be asserted from a program that compiles, so it is stated here rather than tested.
 

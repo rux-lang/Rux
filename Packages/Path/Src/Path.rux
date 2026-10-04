@@ -1,10 +1,8 @@
 // A path is a name with structure: segments, separated.
-//
 // `Path` borrows and `PathBuffer` owns, exactly as `OsStringView` and `OsString` do underneath them — a path adds
 // meaning, not storage. The meaning is small and lexical: which units separate segments, and how to walk the
 // segments between them. Nothing here touches a filesystem; whether a path names anything real is a question for
 // the S tasks, asked through the system.
-//
 // Windows accepts both slashes and prefers the backslash; the Unix systems know only the forward one. That pair of
 // facts is the whole platform difference at this layer, and it is confined to two functions.
 
@@ -12,7 +10,6 @@ import Allocator::Allocator;
 import Core::{ #target };
 
 /// Whether `unit` separates path segments on this system.
-///
 /// Both slashes on Windows, the forward one alone elsewhere.
 /// @param unit the unit to test
 /// @returns whether the unit separates components on this system
@@ -39,7 +36,6 @@ pub func PreferredSeparator() -> OsUnit {
 }
 
 /// A borrowed path.
-///
 /// `Copy`, owning nothing: structure over an `OsStringView`'s units.
 /// @see https://rux-lang.dev/docs/api/path/path
 pub struct Path {
@@ -85,7 +81,6 @@ extend Path {
     }
 
     /// Whether two paths are the same units.
-    ///
     /// Lexical, not semantic: `a/b` and `a//b` name the same file and are different paths here. Making them equal
     /// is normalization's job, asked for by name.
     /// @param other the value to compare against
@@ -105,7 +100,6 @@ extend Path {
 }
 
 /// A walk over a path's segments.
-///
 /// Runs of separators count as one, and a trailing separator ends the walk rather than yielding an empty segment:
 /// `a//b/` walks as `a`, `b`. A leading separator is the root, which the walk reports as an empty first component
 /// so that an absolute path is distinguishable from a relative one holding the same segments.

@@ -1,16 +1,13 @@
 // The four promises in Contract.rux, checked against every allocator rather than against one of them.
-//
 // Each allocator's own test covers what makes it different — how an arena rewinds, how a pool classes its blocks.
 // What none of them covers is the part a caller may rely on *without* knowing which allocator it has, and that is
 // exactly the part a generic over `<A: Allocator>` depends on. So this file takes the contract's four promises and
 // asks each implementation the same questions.
-//
 // The third promise is the one nothing tested at all. "A failed reallocation leaves the original block exactly as
 // it was, valid and still the caller's to release" is a claim about the block, not about the return value, and
 // every existing test checks only the return value. A `Reallocate` that freed the old block before discovering it
 // could not satisfy the request would pass all of them and corrupt every caller that handled the failure
 // correctly. So each failed reallocation here is followed by reading the original back and releasing it.
-//
 // Ownership is the other half. An arena, a pool and a fixed buffer are owners; a handle is a copyable adapter
 // pointing at one. The adapter holds an address, so two handles from one owner share its state and a handle does
 // not survive its owner moving — both documented, neither checked.
@@ -49,7 +46,6 @@ func LayoutOr(size: uint, alignment: uint) -> Layout {
 }
 
 /// The first promise: an address handed back satisfies the layout it was asked for.
-///
 /// Asked of every alignment a caller might reasonably want, and asked of whichever allocator is passed. An
 /// allocator that cannot serve an alignment must refuse it — what it may not do is serve it misaligned, which is
 /// the failure a caller has no way to notice until something faults much later.
@@ -113,7 +109,6 @@ func CheckZeroSize(allocator: Allocator) -> ! AllocError {
 
 /// The third promise, and the one nothing was checking: a failed reallocation leaves the original block exactly as
 /// it was — same address, same contents, still the caller's to release.
-///
 /// An alignment change is the failure every allocator here reports the same way, and it is a real one rather than a
 /// contrived one: `Unsupported` exists precisely so that no allocator silently moves a block to a different
 /// alignment.

@@ -1,11 +1,9 @@
 // The floating-point remainder, which is exact whenever it is defined.
-//
 // Computed by repeated scaled subtraction rather than through a division, so no rounding enters and the result
 // is the true remainder rather than the nearest representable one. The sign follows the dividend, as C's
 // `fmod` does. A zero divisor or an infinite dividend has no remainder and gives a NaN.
 
 /// Computes the floating-point remainder of `x / y`, with the sign of `x`.
-///
 /// The result is `x - n * y`, where `n` is `x / y` truncated toward zero. Its magnitude is less than `|y|`. A zero
 /// divisor, an infinite dividend, or a NaN operand returns a NaN; an infinite divisor returns `x`. The significands are
 /// reduced with integer long division so the intermediate product cannot discard the remainder.
@@ -90,7 +88,6 @@ pub func Mod(x: float64, y: float64) -> float64 {
 }
 
 /// Computes the floating-point remainder of `x / y` at `float32` precision, with the sign of `x`.
-///
 /// The exact remainder of two `float32` values is representable as `float32`, so the wide computation narrows without
 /// losing information.
 /// @param x dividend

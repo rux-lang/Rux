@@ -1,5 +1,4 @@
 // `bool16`: one of two values, stored in 16 bits.
-//
 // Every boolean width holds exactly zero or one whatever its size, so a cast into one asks whether the whole source
 // value is non-zero rather than truncating to the width first.
 

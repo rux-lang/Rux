@@ -1,12 +1,10 @@
 // Temporary files and directories: unguessable names, and cleanup that is not left to chance.
-//
 // The name comes from the entropy source rather than from a counter or the process id, because a predictable
 // name in a shared directory is the whole of the classic temp-file attack: an attacker who can guess the name
 // creates it first, as a symbolic link pointing somewhere it should not, and the program writes through it. The
 // name is also *claimed* rather than merely chosen — created with `createNew`, which fails rather than opens if
 // anything is already there — so winning the guess is not enough either. A collision is retried, since with 128
 // bits it means an attacker, not bad luck.
-//
 // Cleanup is deterministic: the handle owns both the file and its name, and dropping it deletes both. That is
 // stronger than the platform conveniences it replaces — Windows' delete-on-close needs the last handle to go,
 // and the Unix trick of unlinking immediately leaves nothing a caller could pass to another process by name.
@@ -22,14 +20,12 @@ when #target.os == .Windows {
 }
 
 /// How many names are tried before a temporary file gives up.
-///
 /// With 128 bits of name, one collision is already a surprise and three in a row is not chance; failing is the
 /// honest response to an entropy source that has stopped being one.
 /// @see https://rux-lang.dev/docs/api/filesystem/temporary-name-attempts
 pub const TemporaryNameAttempts: uint = 4;
 
 /// The directory the system sets aside for temporary files.
-///
 /// On Windows this is what the platform reports, which consults `TMP`, `TEMP` and `USERPROFILE` in turn. On the
 /// Unix systems it is `/tmp`: reading `TMPDIR` needs environment access this package does not have yet, so a
 /// caller who must honor it passes the directory to the functions below instead.
@@ -81,7 +77,6 @@ func RandomName(allocator: Allocator, prefix: char8[..]) -> OsString ! IoError {
 }
 
 /// A temporary file that owns both its contents and its name.
-///
 /// Move-only. `Close` deletes the file and reports what the deletion said; destruction does the same with the outcome
 /// discarded. `Keep` gives up ownership of the name instead, for the caller who has decided the file should
 /// outlive this value — which is what a rename into place is built on.
@@ -100,7 +95,6 @@ extend TemporaryFile {
     func =(self: &var TemporaryFile, other: &TemporaryFile);
 
     /// Creates a new temporary file in `directory`, named from `prefix` and sixteen hex digits of entropy.
-    ///
     /// The file is opened for reading and writing and is created, never opened: a name that already exists is a
     /// collision, and the next name is tried.
     /// @param allocator where the storage comes from
@@ -168,7 +162,6 @@ extend TemporaryFile {
     }
 
     /// Closes and deletes with the outcome discarded: the safety net, not the contract.
-    ///
     /// A destructor has nowhere to report a failed deletion, so a caller who needs to know calls `Close`. What
     /// this guarantees is that a temporary file is never left behind by an early return or a failure path, which
     /// is the reason the type exists.
@@ -184,7 +177,6 @@ extend TemporaryFile {
 }
 
 /// A temporary directory that owns its name.
-///
 /// Move-only, with the same contract as `TemporaryFile`: `Close` removes it and reports, destruction removes it
 /// quietly, `Keep` gives up ownership. Removal is of the directory itself and requires it to be empty — nothing
 /// here deletes a tree, because a temporary directory that silently erased whatever a caller put inside it

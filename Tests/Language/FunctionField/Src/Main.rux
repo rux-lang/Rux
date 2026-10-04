@@ -5,7 +5,6 @@ import Core::Assert;
 // its equality test for as long as it holds its keys, so the field form is what
 // decides whether `HashMap<K, V>` can own its callbacks or has to be handed
 // them again on every call.
-//
 // Three separate questions, because they can fail independently:
 //   1. a field of function type in a plain struct, called through the receiver
 //   2. the same field in a generic struct, typed by the struct's parameter

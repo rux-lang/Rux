@@ -1,14 +1,11 @@
 // What a mapping does at its edges: which requests the kernel refuses, what protection actually stops, and which
 // results are errors at all.
-//
 // The last of those is the one that is easy to get wrong. A mapping address is a pointer returned in the same
 // register an error number comes back in, and a valid address may have its top bit set, so a caller that tests the
 // sign gets a working mapping reported as a failure. The three packages answer that with one window — `-4095`
 // through `-1` and nothing else — and this file asserts both edges of it.
-//
 // The host that wrote this runs Windows, so the file exists to be run by the FreeBSD jobs in CI, and every
 // FreeBSD-specific claim below was settled by what those jobs reported.
-//
 // An errno is asserted only where POSIX names it and all three supported systems agree. Which number an oversized
 // `Mmap` earns differs between them, so that case asserts the refusal alone. Where FreeBSD accepts what the other
 // two refuse — a release from an unaligned address, a protection change over a hole — the file asserts FreeBSD's
@@ -119,7 +116,6 @@ when #target.os == OperatingSystem::FreeBSD {
         // so a release from one byte in takes the page the byte lies in, and a length short by one page takes
         // exactly the mapping and nothing past it. That is what a caller has to know, so it is what is asserted,
         // on a mapping of its own so that the one above stays whole for the release cases below.
-        //
         // Whether the range is free afterwards is asked with `MapExclusive`, which refuses a fixed mapping over
         // anything already there. `Mprotect` cannot tell: it skips the holes in a range rather than refusing them.
         let rounded = Mmap(null, MappingUnit, ProtectionRead | ProtectionWrite, MapPrivate | MapAnonymous, -1, 0);

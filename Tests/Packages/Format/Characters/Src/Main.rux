@@ -4,23 +4,19 @@ import Format::Render;
 import Text::{ BufferWriter, Debug, FormatError, FormatSpec, String, StringView, TextWriter, WriteDebugValue };
 
 // Every boolean and character width, and the two character slices that had no printer.
-//
 // One rule runs through all of it, applied at four widths and three slice types. A value that is not a whole
 // character is written as U+FFFD by `Display` and preserved as its own number by `Debug`, so the pair below is the
 // shape of nearly every case here: the same value rendered twice, alike under `Display` where two different
 // invalid values collide, and differently under `Debug` where they must not.
-//
 // Three cases are worth naming. `char64` is checked at its own width, because a number past the last scalar
 // narrows into a character that exists — `0x100000041` becomes `A` — and a check after narrowing would write the
 // wrong character rather than refusing. `char16` carries the surrogate structure: a pair is one character and a
 // half is none, and the two halves have to be told apart. And a `char16[..]` with one damaged unit in the middle
 // has to stay readable on both sides of the damage, which is what advancing a single unit after a replacement
 // buys.
-//
 // `Display` is reached through `Render`'s variadic arguments; explicit `Debug` bindings exercise interface dispatch.
 
 // A value that is not a scalar, made at run time.
-//
 // The compiler refuses to fold a surrogate or an out-of-range number into a `char32` or a `char64` at all, which is
 // the right answer for a constant and leaves no way to write one down. Passing the number through a function makes
 // the cast a run-time one, which is how such a value reaches a program in the first place — out of a cast on data

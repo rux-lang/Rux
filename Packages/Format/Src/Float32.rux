@@ -1,5 +1,4 @@
 // The text of a `float32`.
-//
 // The shortest decimal that reads back as the same value, which is what a reader almost always wants: 0.1 prints as
 // "0.1" rather than as the seventeen digits its binary value really is. A precision in the placeholder asks for
 // fixed notation instead, and is honoured exactly when the value has that many digits to give.
@@ -45,11 +44,8 @@ pub func IsFinite(value: float32) -> bool {
 
 extend float32 : Display {
     /// Writes this value's decimal text.
-    ///
     /// Allocates nothing: the digits go into a buffer on the stack and reach the writer in one call. Fifty bytes is
     /// more than the longest rendering — sign, digits, point and exponent — can need.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
     /// @param writer the destination
     /// @param spec what the placeholder asked for
@@ -80,8 +76,6 @@ extend float32 : Display {
 
 extend float32 : Debug {
     /// The same text.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
     /// @param writer the destination
     /// @param spec what the placeholder asked for

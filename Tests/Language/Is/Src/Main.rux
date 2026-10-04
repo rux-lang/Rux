@@ -1,10 +1,8 @@
 // `is`: asking what type an expression has.
-//
 // On a value that is not a sum or an optional, `is` is a static test: the compiler compares the operand's resolved type
 // with the written one, and the whole expression becomes `true` before any code is generated. Nothing is examined at
 // run time, no tag is read, and the operand's value never matters — only its type does. A test that could never be
 // true is a compile error rather than a quiet `false`, so every test below is one that holds.
-//
 // The one thing `is` deliberately cannot do is ask whether a value implements an interface. That would be a
 // run-time question, and it is reported as unavailable rather than answered wrongly.
 

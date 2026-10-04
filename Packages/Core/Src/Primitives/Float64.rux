@@ -1,5 +1,4 @@
 // `float64`: IEEE 754 binary64.
-//
 // Fifty-three bits of significand, so about seventeen decimal digits round-trip. This is the width `float` names.
 
 /// The compiler representation of float64.

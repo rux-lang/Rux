@@ -1,10 +1,8 @@
 // What went wrong at the edge of the machine.
-//
 // An I/O failure is not one thing. Some report a fact about the world — the file is not there, the disk is full,
 // permission was refused — and a caller acts on which fact. Some report a moment: the operation was interrupted,
 // or would block, and the right response is to go again. And the end of a stream is not a failure at all, but it
 // arrives through the same channel, so it lives in the same type where nobody can lose it.
-//
 // The set is deliberately the meanings shared by every platform, with the raw code carried beside the meaning:
 // translation loses detail, and the detail is sometimes the diagnosis. Success is not in the set: an operation that
 // can fail returns a native fallible, and `IoError` is only ever its failure.
@@ -47,7 +45,6 @@ pub enum IoErrorKind: int32 {
 }
 
 /// A structured I/O failure: the shared meaning, and the platform's own code beside it.
-///
 /// `Copy`. The `raw` field is `errno` on the Unix systems and the Win32 error code on Windows, kept because
 /// translation loses detail and the detail is sometimes the diagnosis.
 /// @see https://rux-lang.dev/docs/api/io/io-error

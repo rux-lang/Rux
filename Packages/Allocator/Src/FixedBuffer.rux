@@ -1,10 +1,8 @@
 // An allocator that hands out storage from a buffer the caller already has, and never asks anyone for more.
-//
 // This is the arena's shape without the arena's appetite: allocation is an addition and a bounds check, everything
 // is reclaimed at once, and when the buffer runs out the answer is `OutOfMemory` rather than another block. That
 // makes it the allocator for the places where allocation must not happen — a fixed working set, a signal-safe path,
 // an embedded target with no allocator underneath at all.
-//
 // It owns nothing, so it has no destructor and the buffer's life is entirely the caller's business. What it does
 // have is mutable state, and an allocator that is copied while it is being used would hand out the same storage
 // twice — so `Handle` is what implements `Allocator`, exactly as it is for the arena.
@@ -13,7 +11,6 @@ import Allocator::{ AllocError, Allocator, EmptyBlockAddress, IsEmptyBlock, Layo
 import Memory::{ AlignUp, Copy };
 
 /// An allocator that advances a pointer through storage it does not own.
-///
 /// Owns no storage and has no destructor, but prohibits copying because duplicated bump state could hand the same
 /// bytes to two callers. Use `Handle` when a storable `Allocator` adapter is needed.
 /// @see https://rux-lang.dev/docs/api/allocator/fixed-buffer
@@ -33,15 +30,10 @@ extend FixedBuffer {
     func =(self: &var FixedBuffer, other: &FixedBuffer);
 
     /// An allocator over `capacity` bytes at `storage`.
-    ///
     /// `storage` is borrowed and kept; nothing is copied and nothing is taken ownership of. A `capacity` of zero, or
     /// a null `storage`, gives an allocator that refuses every request with `OutOfMemory` — which is a usable
     /// allocator rather than an error, and is what a caller testing exhaustion wants.
-    ///
     /// Cannot fail. Runs in constant time and allocates nothing.
-    ///
-    /// # Safety
-    ///
     /// The storage must stay valid and untouched by anything else for as long as this allocator or any handle to it
     /// is used. Nothing here tracks that.
     /// @param storage the caller's bytes to hand out of
@@ -59,12 +51,8 @@ extend FixedBuffer {
     }
 
     /// A copyable interface adapter pointing at this allocator.
-    ///
     /// `self` is borrowed mutably and stays the caller's. Everything allocated through the handle advances this
     /// allocator's state rather than a copy of it, which is the whole reason the handle exists.
-    ///
-    /// # Safety
-    ///
     /// The handle borrows the allocator and must not outlive it or survive it being moved.
     /// @returns a copyable adapter pointing at this buffer
     /// @see https://rux-lang.dev/docs/api/allocator/fixed-buffer/handle
@@ -73,13 +61,8 @@ extend FixedBuffer {
     }
 
     /// Rewinds every allocation, making the whole buffer available again.
-    ///
     /// `self` is borrowed mutably. Every pointer this allocator handed out becomes invalid.
-    ///
     /// Cannot fail. Runs in constant time and allocates nothing.
-    ///
-    /// # Safety
-    ///
     /// Nothing may be read from or written to any earlier allocation afterwards.
     /// @see https://rux-lang.dev/docs/api/allocator/fixed-buffer/reset
     pub func Reset(self: &var FixedBuffer) {
@@ -88,7 +71,6 @@ extend FixedBuffer {
     }
 
     /// How many bytes have been handed out, including alignment padding.
-    ///
     /// `self` is borrowed.
     /// @returns how many bytes have been handed out
     /// @see https://rux-lang.dev/docs/api/allocator/fixed-buffer/bytes-used
@@ -97,7 +79,6 @@ extend FixedBuffer {
     }
 
     /// How many bytes remain, before any alignment padding the next request needs.
-    ///
     /// `self` is borrowed. A request of exactly this size succeeds only when it needs no padding.
     /// @returns how many bytes are left to hand out
     /// @see https://rux-lang.dev/docs/api/allocator/fixed-buffer/bytes-remaining
@@ -115,17 +96,11 @@ pub struct FixedBufferHandle {
 
 extend FixedBufferHandle : Allocator {
     /// Takes storage matching `layout` from the buffer.
-    ///
     /// `result` receives the address when this reports `None`. A zero-sized layout gives the shared empty block and
     /// consumes nothing.
-    ///
     /// Reports `OutOfMemory` when what remains cannot hold the request, counting the padding its alignment needs --
     /// so a request the size of `BytesRemaining` can still fail when it has to be aligned first.
-    ///
     /// Runs in constant time and allocates nothing beyond the buffer.
-    ///
-    /// # Safety
-    ///
     /// The storage lives until the allocator is reset, and no longer.
     /// @param layout the size and alignment wanted
     /// @returns the address of the storage, or why none was taken
@@ -150,7 +125,6 @@ extend FixedBufferHandle : Allocator {
     }
 
     /// Accepts a release and rewinds only the most recent allocation.
-    ///
     /// Everything else is reclaimed by `Reset` rather than one block at a time, so an ordinary release reports
     /// `None` having done nothing. Accepting rather than refusing lets this allocator stand in for any other in
     /// generic code that releases what it takes.
@@ -172,10 +146,8 @@ extend FixedBufferHandle : Allocator {
     }
 
     /// Grows or shrinks a block, extending the most recent allocation in place where the buffer has room.
-    ///
     /// The two layouts must share an alignment. Anything that is not the most recent allocation takes new storage
     /// and copies, leaving the old space behind until the next reset.
-    ///
     /// Shrinking to a zero-sized layout releases the block and reports the shared empty address rather than the one
     /// it rewound off of, so the result is releasable with the layout it was asked for.
     /// @param block the existing allocation's address

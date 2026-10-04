@@ -1,5 +1,4 @@
 // The bit-level primitives the rest of the package is built on.
-//
 // Nothing here is meant to be called from outside it. Both directions are one register-to-register move of a
 // bit pattern, but which registers those are is the calling convention's business, so each architecture writes
 // its own pair.

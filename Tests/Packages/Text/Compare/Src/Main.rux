@@ -5,7 +5,6 @@ import Text::{ String, StringView };
 // Comparison is by bytes, and for UTF-8 that is also by code point: the encoding is built so that comparing the
 // bytes of two strings and comparing their characters give the same answer. That is worth checking with characters
 // whose encodings differ in length, since it is exactly there that a byte comparison could have disagreed.
-//
 // What this is not is alphabetical. Two strings differing only in case are different here, and so are two that a
 // reader would call the same after normalization. Both of those need Unicode tables and a locale, and neither is
 // what a container keying on text wants.

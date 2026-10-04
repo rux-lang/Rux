@@ -1,11 +1,9 @@
 // Why a collection operation could not be completed.
-//
 // Every case is a failure: an operation that can fail returns its result, or nothing, through `T ! CollectionError`.
 // The return type is what separates the two kinds of failure in this package: an operation returning a native
 // fallible needed memory or capacity arithmetic, while an operation returning an optional or a `bool` never
 // allocates and has exactly one way to fail. So an exhausted allocator can never be mistaken for a missing key, and a
 // rejected index can never be mistaken for either.
-//
 // One rule holds everywhere: a failure means the receiver is unchanged. A container that could not
 // grow is the container it was, with the same elements at the same indices, and a caller may retry, give up, or
 // carry on using it. Nothing here leaves a collection half-modified.
@@ -13,17 +11,14 @@
 import Allocator::AllocError;
 
 /// Why a collection operation could not be completed.
-///
 /// Every case means the operation did not happen and the collection is as it was.
 /// @see https://rux-lang.dev/docs/api/collections/collection-error
 pub enum CollectionError: uint8 {
     /// The allocator had no storage to give.
-    ///
     /// Transient in principle: the same request may succeed later, and a caller with something to release may make
     /// it so.
     OutOfMemory = 1,
     /// The size the operation needed could not be represented.
-    ///
     /// A count times an element size that does not fit in a `uint`, or a length plus a growth that wraps. Not a
     /// shortage of memory but of arithmetic: no allocator could have served the request, because the number naming
     /// it does not exist.
@@ -31,7 +26,6 @@ pub enum CollectionError: uint8 {
     /// The index was not one the collection has.
     IndexOutOfRange = 3,
     /// The allocator refused the layout itself rather than running short.
-    ///
     /// An alignment stricter than the allocator serves, or a block it did not hand out. Retrying is pointless: the
     /// same request will be refused the same way.
     Unsupported = 4
@@ -39,12 +33,10 @@ pub enum CollectionError: uint8 {
 
 extend CollectionError {
     /// Whether the same operation might succeed later.
-    ///
     /// `self` is borrowed. True only for `OutOfMemory`, which says the allocator had nothing to give rather than
     /// that the request was impossible. A capacity that cannot be represented will not start being representable,
     /// an index the collection does not have will not appear, and a layout the allocator refuses will be refused
     /// again.
-    ///
     /// Cannot fail. Runs in constant time and allocates nothing.
     /// @returns whether trying again could succeed
     /// @see https://rux-lang.dev/docs/api/collections/collection-error/is-transient
@@ -54,11 +46,9 @@ extend CollectionError {
 }
 
 /// The collection error that corresponds to an allocator's.
-///
 /// `error` is read by value. `OutOfMemory` stays itself, and `Unsupported` and `InvalidBlock`
 /// both become `Unsupported`, because from a collection's side they are the same thing — the allocator will not
 /// serve this, and asking again will not change that.
-///
 /// Cannot fail. Runs in constant time and allocates nothing.
 /// @param error why the allocator refused
 /// @returns the same failure as a collection error

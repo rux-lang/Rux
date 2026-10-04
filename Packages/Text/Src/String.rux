@@ -1,17 +1,13 @@
 // Text that owns the bytes it holds.
-//
 // A `String` owns one block, knows the allocator to give it back to, and never writes to it again. Every operation
 // that produces different text produces a different `String`, and leaves the receiver as it was.
-//
 // Immutability is not a preference here, it is what makes the type safe to hand around: a `String` may be built over
 // bytes that came from a literal, and a literal lives on a read-only page. A type that promised mutation would have
 // to copy defensively on every write or fault on some of them. `StringBuilder` is where text is assembled; `String`
 // is what assembling it produces.
-//
 // Copying makes an independent block from the same allocator, so strings have value semantics even though each owns
 // storage. A fallible caller can use `Clone`; the language copy operation cannot return an error and therefore
 // terminates if its allocation fails. `StringView` borrows and copies no bytes; `View` creates one for free.
-//
 // Every `String` this package produces holds well-formed UTF-8, checked once where the bytes enter. Everything
 // downstream may rely on that, which is what makes cutting and indexing cheap.
 
@@ -20,7 +16,6 @@ import Core::{ Ordering, Panic };
 import Memory::Copy;
 
 /// Text that owns its bytes.
-///
 /// Copyable with value semantics: each copy owns an independent block and gives it back when it dies.
 /// @see https://rux-lang.dev/docs/api/text/string
 pub struct String {
@@ -38,7 +33,6 @@ pub struct String {
 
 extend String {
     /// Deep-copies `other` into independent storage from the same allocator.
-    ///
     /// The special copy operation cannot report allocation failure, so it terminates on exhaustion. Use `Clone`
     /// when failure must be handled. The source remains valid and unchanged.
     /// @param other the value to compare against
@@ -58,9 +52,7 @@ extend String {
     }
 
     /// Text of no length, which has allocated nothing.
-    ///
     /// `allocator` is borrowed for the call and kept, so an empty string can still grow into one that allocates.
-    ///
     /// Cannot fail. Runs in constant time and allocates nothing.
     /// @param allocator where the storage comes from
     /// @returns an empty string that has taken no storage yet
@@ -70,14 +62,9 @@ extend String {
     }
 
     /// A copy of bytes the caller vouches are UTF-8.
-    ///
     /// Skips the pass `FromBytes` makes, which is what to use when the bytes came from something that already
     /// guarantees it — another string, a view, this package's own output.
-    ///
     /// Fails with `OutOfMemory` when the copy cannot be made.
-    ///
-    /// # Safety
-    ///
     /// The bytes must be well-formed UTF-8. Everything downstream assumes it, so bytes that are not produce wrong
     /// answers rather than errors.
     /// @param allocator where the storage comes from
@@ -102,10 +89,8 @@ extend String {
     }
 
     /// A copy of `bytes` as text, or why it could not be made.
-    ///
     /// `bytes` is borrowed and copied, so what it names stays the caller's. It fails with `InvalidUtf8` when the
     /// bytes are not text and `OutOfMemory` when the copy cannot be made.
-    ///
     /// Runs in time proportional to the length — one pass to check, one to copy — and allocates once.
     /// @param allocator where the storage comes from
     /// @param bytes the bytes to act on
@@ -117,7 +102,6 @@ extend String {
     }
 
     /// A copy of what `view` spans.
-    ///
     /// The view was checked when it was made, so this copies without checking again.
     /// @param allocator where the storage comes from
     /// @param view the borrowed text to act on
@@ -128,7 +112,6 @@ extend String {
     }
 
     /// How many bytes the text spans.
-    ///
     /// Not how many characters: that is `ScalarCount`, and it costs a pass.
     /// @returns how many bytes the text occupies
     /// @see https://rux-lang.dev/docs/api/text/string/length
@@ -151,7 +134,6 @@ extend String {
     }
 
     /// A view over this string, which is what to pass to anything that only reads.
-    ///
     /// Copies nothing. The view borrows this string and must not outlive it.
     /// @returns a borrowed view of the text
     /// @see https://rux-lang.dev/docs/api/text/string/view
@@ -175,7 +157,6 @@ extend String {
     }
 
     /// A borrowed view of the part from `start` up to `end`, or `none` when either end is not a boundary.
-    ///
     /// Borrows rather than copying, since a part of a string is bytes the string already owns. `Substring` is what
     /// makes an owning copy.
     /// @param start the first byte offset, inclusive
@@ -188,7 +169,6 @@ extend String {
     }
 
     /// An owning copy of the part from `start` up to `end`.
-    ///
     /// Fails with `NotABoundary` when either end would cut a character in half.
     /// @param start the first byte offset, inclusive
     /// @param end the byte offset one past the last, exclusive
@@ -227,7 +207,6 @@ extend String {
     }
 
     /// Gives the block back and leaves text of no length behind.
-    ///
     /// Rarely needed: a string releases itself when it dies. This is for releasing one early, and is safe to call
     /// twice because what it leaves behind owns nothing.
     /// @see https://rux-lang.dev/docs/api/text/string/clear
@@ -244,7 +223,6 @@ extend String {
     }
 
     /// Replaces this string with `value`, transferring its block after releasing the old one.
-    ///
     /// A fresh value transfers directly. Passing a named string first invokes its deep copy, so the caller keeps an
     /// independent original.
     /// @param value the value to act on
@@ -262,7 +240,6 @@ extend String {
     }
 
     /// Gives the block back.
-    ///
     /// Runs when the string dies. Copies have independent blocks, so each destructor releases exactly its own.
     /// @see https://rux-lang.dev/docs/api/text/string/destructor
     func ~String(self: &var String) {

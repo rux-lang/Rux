@@ -4,13 +4,11 @@ import Text::{ BufferWriter, FormatError, String, StringBuilder, TextFailureKind
                WriteScalar };
 
 // What a `TextWriter` promises, checked at the promises rather than at one happy path.
-//
 // Three of them matter and none is observable from a successful write. A full write reports success and nothing
 // else — not a count, not a partial. A writer may report only `InsufficientCapacity`, `TextFailure` or
 // `WriterFailure`, so the failures belonging to the parser, the placeholder engine and the value cannot arrive from
 // a destination. And a writer that promises to leave itself unchanged on a failed write must actually do so, which
 // is only visible by failing one and looking at what is there afterwards.
-//
 // `BufferWriter` and `StringBuilder` are the two first-party writers reachable from here, and they differ in what
 // they can refuse: a fixed buffer runs out of room, a builder runs out of memory. Both validate, so both can refuse
 // bytes that are not text.

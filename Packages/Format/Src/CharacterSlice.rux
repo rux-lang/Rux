@@ -1,9 +1,7 @@
 // Character slices render their bytes directly, without conversion or copying. The caller supplies valid UTF-8
 // when the result is intended as text; an arbitrary character slice carries no validity guarantee.
-//
 // `Debug` is where the two partings show. Text shown to a reader is its characters; text shown to somebody looking
 // at a program is quoted, so that where it starts and stops is visible and an empty string is not invisible.
-//
 // This file is the `char8[..]` half, which renders by being copied: it is already the encoding the destination
 // wants. `char16[..]` and `char32[..]` each need a transcoding printer and have one in `WideCharacterSlice.rux`,
 // where the decisions about units that are not characters live.
@@ -12,8 +10,6 @@ import Text::{ Debug, Display, FormatError, FormatSpec, RejectStyle, TextWriter 
 
 extend char8[..] : Display {
     /// Writes this text.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
     /// @param writer the destination
     /// @param spec what the placeholder asked for
@@ -27,11 +23,8 @@ extend char8[..] : Display {
 
 extend char8[..] : Debug {
     /// Writes this text, quoted.
-    ///
     /// The quotes are all that is added. Escaping the characters between them is a question about which of them
     /// need it, which is a Unicode question and belongs where the Unicode tables are.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
     /// @param writer the destination
     /// @param spec what the placeholder asked for

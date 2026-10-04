@@ -1,10 +1,8 @@
 // How a libSystem call reports failure, and the numbers it reports.
-//
 // Darwin reports the way C does: the call returns `-1` and leaves a positive number in the thread's `errno`, which
 // is reached through the `__error` accessor rather than as a variable. That is two different things for a caller to
 // look at, so `Normalize` folds them into the one convention the Linux and FreeBSD packages already use — a value,
 // or a small negative error number — and `IsError` and `Errno` then read the result the same way on all three.
-//
 // The names keep the system's own spelling. The values are Darwin's, which agree with FreeBSD's more often than with
 // Linux's but match neither completely.
 
@@ -148,10 +146,8 @@ pub const ETIMEDOUT: int64 = 60;
 pub const MaximumErrno: int64 = 4095;
 
 /// The calling thread's current `errno` value.
-///
 /// Takes nothing and returns the value by copy. Meaningful only immediately after a call that failed: nothing on
 /// Darwin clears it on success, so a value left over from an earlier failure is still there.
-///
 /// Cannot fail. Runs in constant time and allocates nothing.
 /// @returns the calling thread's current `errno`
 /// @see https://rux-lang.dev/docs/api/macos/current-errno
@@ -160,13 +156,10 @@ pub func CurrentErrno() -> int64 {
 }
 
 /// Folds a libSystem result and the thread's `errno` into one value.
-///
 /// `result` is read by value. A result of `-1` becomes the negative of whatever `errno` holds; anything else is
 /// returned unchanged. That is what makes every wrapper in this package report the way the Linux and FreeBSD ones
 /// do, so a caller reads all three with `IsError` and `Errno`.
-///
 /// A call that legitimately returns `-1` would be misread, which is why nothing here wraps one.
-///
 /// Cannot fail. Runs in constant time and allocates nothing.
 /// @param result the libSystem result to fold
 /// @returns the result unchanged, or the negative of `errno` when it was -1
@@ -178,9 +171,7 @@ pub func Normalize(result: int64) -> int64 {
 }
 
 /// Whether a normalized result is one of the reserved error values.
-///
 /// `result` is read by value. True for `-4095` through `-1`.
-///
 /// Cannot fail. Runs in constant time and allocates nothing.
 /// @param result the raw result to test
 /// @returns whether it is one of the reserved error values
@@ -190,9 +181,7 @@ pub func IsError(result: int64) -> bool {
 }
 
 /// The error number a normalized result carries, or zero when it carries none.
-///
 /// `result` is read by value; the number is returned positive, as a man page names it.
-///
 /// Cannot fail. Runs in constant time and allocates nothing.
 /// @param result the raw result to read
 /// @returns the error number, positive, or zero when the result carries none

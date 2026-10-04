@@ -1,10 +1,8 @@
 // Sum types: `A | B` holds one value of one of a set of distinct types.
-//
 // A sum is not a named variant. Its members are types, not case names, so `int32 | bool` and `bool | int32` are the
 // same type, a member is selected by its type with a typed pattern, and a sum whose members coincide after generic
 // substitution collapses to the one type they share. A value enters a sum by exact member injection or by widening a
 // sum of fewer members, and leaves it only through a pattern: no conversion, extraction, or narrowing is implicit.
-//
 // Destruction is case-aware. Every check that holds a tracked payload counts destructions, so a value that moved into a
 // wider sum, into a binding, or out through a call is shown to be destroyed exactly once, and an inactive member never.
 

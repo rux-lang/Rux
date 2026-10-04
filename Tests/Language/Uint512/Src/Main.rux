@@ -1,5 +1,4 @@
 // uint512: eight lanes of magnitude, the widest integer the language has.
-//
 // The shared wide-integer test carried one uint512 assertion — that the maximum survives an argument and a return,
 // and that adding one to it wraps. Everything else about the width was unexercised. What is pinned here is unsigned
 // behavior at the far end of the range: a carry crossing six intermediate lanes, wrapping at zero, a top bit worth

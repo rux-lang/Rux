@@ -7,7 +7,6 @@
 // from the logarithm and one from what is fed to it.
 
 /// The inverse hyperbolic sine: the value whose hyperbolic sine is `x`.
-///
 /// Defined for every real argument, odd, and unbounded in both directions. A NaN propagates and an infinity gives an
 /// infinity of the same sign.
 /// @param x hyperbolic sine value to invert
@@ -46,7 +45,6 @@ pub func ArcSinh(x: float32) -> float32 {
 }
 
 /// The inverse hyperbolic cosine: the non-negative value whose hyperbolic cosine is `x`.
-///
 /// Defined only for arguments of one and above; anything below has no real answer and gives a NaN. The result is never
 /// negative, since the hyperbolic cosine is even and this returns the branch above zero.
 /// @param x hyperbolic cosine value to invert
@@ -74,7 +72,6 @@ pub func ArcCosh(x: float32) -> float32 {
 }
 
 /// The inverse hyperbolic tangent: the value whose hyperbolic tangent is `x`.
-///
 /// Defined strictly inside the unit interval. The endpoints are the poles and give infinities of the matching sign;
 /// anything beyond them has no real answer and gives a NaN.
 /// @param x hyperbolic tangent value to invert

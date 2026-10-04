@@ -1,5 +1,4 @@
 // `char8`: one UTF-8 code unit.
-//
 // A code unit, not a character: every value that fits is valid, and a scalar value above U+007F takes more than one of
 // these. It does not widen implicitly to `char16` or `char32`, because a UTF-8 byte above 0x7F is not the unit of the
 // same number in either encoding.

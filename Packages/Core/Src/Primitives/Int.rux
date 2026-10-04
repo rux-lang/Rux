@@ -1,5 +1,4 @@
 // `int`: a signed integer the width of a pointer on the target.
-//
 // Sixty-four bits on every currently supported target, and one of the two integer types whose width follows the target
 // rather than its name. A value that must keep its width across targets should name one that says it.
 

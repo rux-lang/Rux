@@ -1,12 +1,10 @@
 // What a process can ask or say about itself.
-//
 // Nothing here creates a process: a raw binding to `fork` and `execve` without signal handling, descriptor
 // inheritance and a wait protocol would be an invitation to get all three wrong.
 
 import FreeBSD::{ ProcessId, SysExit, SysGetPid, Syscall0, Syscall1 };
 
 /// Ends the calling process with `code`.
-///
 /// Only the low eight bits reach a waiting parent. Does not return, and nothing is flushed or destroyed on the way
 /// out.
 /// @param code the status to report to the parent
@@ -16,7 +14,6 @@ pub func Exit(code: int32) {
 }
 
 /// The calling process's own identifier.
-///
 /// Cannot fail. Runs in constant time and allocates nothing.
 /// @returns the calling process's identifier
 /// @see https://rux-lang.dev/docs/api/freebsd/get-pid

@@ -1,5 +1,4 @@
 // The two counting distributions, each exact at every parameter.
-//
 // Both have a direct method that is obviously right and obviously unusable past a modest parameter, and both
 // have a reduction that hands the large case to the gamma family. The reductions are Devroye's: they are exact
 // rather than approximate, and they recurse logarithmically rather than looping once per unit of the parameter.
@@ -7,10 +6,8 @@
 import Math::{ Exp, Floor, Log };
 
 /// The number of successes in `trials` independent trials each succeeding with probability `probability`.
-///
 /// A probability at or below zero gives zero successes and one at or above one gives every trial, matching
 /// `Bernoulli`'s treatment of the same edges. Zero trials give zero.
-///
 /// Small counts are summed directly, which is the definition. Large ones are split by a beta draw: the median
 /// trial's success probability has a beta distribution, and comparing it to `probability` says which side the
 /// answer falls on and leaves a strictly smaller problem. That halves the count each step, so a binomial over a
@@ -44,7 +41,6 @@ pub func Binomial<G: RandomGenerator>(generator: &var G, trials: uint64, probabi
 }
 
 /// The number of events in one interval when they arrive independently at the given mean rate.
-///
 /// A mean at or below zero gives zero. A small mean uses Knuth's method — multiply uniforms until the product
 /// falls below `exp(-mean)` — which costs about `mean` draws and is exact. A large mean would cost too many
 /// draws that way, and the product would underflow to zero before the loop ended, so the mean is consumed in

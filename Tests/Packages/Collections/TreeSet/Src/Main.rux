@@ -3,15 +3,12 @@ import Collections::{ CompareInt32, TreeSet };
 import Core::{ Assert, Panic };
 
 // A set whose elements come back in order, and the algebra over it.
-//
 // The sets the algebra runs on are ones whose overlaps can be written down — the evens, the odds, and everything
 // below six — so every answer is one a reader can check by eye rather than by trusting the implementation that
 // produced it. The vacuous cases are checked too: the empty set is a subset of everything and disjoint from
 // everything, and a set against its own copy has an empty symmetric difference.
-//
 // The elements arrive in a stride coprime with the count, so nothing about the insertion order helps them come out
 // sorted.
-//
 // Nothing here counts destructions, because a set cannot hold a value that owns anything: the comparison takes its
 // elements by value, so an owning element would be destroyed by the first comparison it took part in. That is a
 // constraint of the callback shape rather than of the tree, and `TreeMap` is where an owning value goes.

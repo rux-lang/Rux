@@ -3,19 +3,16 @@ import Text::{ BufferWriter, Debug, FormatError, FormatSpec, ParseFormatSpec, St
                WriteBytes, WriteFallibleDebug, WriteOptionalDebug, WriteSliceDebug };
 
 // Showing an outcome or a run of elements without taking it apart.
-//
 // Three writers, and one property runs through all of them: they borrow. `??` and a match on a moved optional
 // consume it because taking a payload out is a transfer of ownership — so the question a test has to answer is
 // whether showing a value is also taking it. The tracked element below reports its own destruction, so the answer is
 // counted rather than argued: an optional holding a move-only value is written twice, nothing is destroyed, and the
 // optional still holds it.
-//
 // The other half is what the specification means. It reaches each element unchanged, because a sequence has no
 // numeric or textual form of its own for a width or a precision to apply to — so a precision truncates each element
 // and the brackets and commas are punctuation that is never padded. What an element makes of a specification is that
 // element's own business, which is why the last of these cases is an element that reports what it was handed rather
 // than one that renders a value.
-//
 // And a refused write stops the rendering. A destination that has already said no is not written to again, and what
 // came after the failing element does not appear, which is the difference between a diagnostic that reports a full
 // buffer and one that quietly loses its tail.

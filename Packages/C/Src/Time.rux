@@ -1,9 +1,7 @@
 // C's `<time.h>`: the clocks, the calendar types, and the conversions between them.
-//
 // Bound rather than implemented. `Rux/Time` is the calendar and clock interface to prefer — it has an epoch it
 // states, an error it reports, and no storage the next call may reuse — and this exists for interoperating with
 // existing native code that already speaks in `time_t` and `tm`.
-//
 // Three of these calls return a pointer into storage the C runtime owns and the next call may overwrite:
 // `gmtime`, `localtime`, `asctime` and `ctime`. That is C's design and not something a binding can improve; copy
 // what you need before calling any of them again.
@@ -12,7 +10,6 @@ import Core::{ #Error, #target };
 import C::{ c_int, c_long, c_ulong };
 
 /// C's `time_t`: a calendar time as an arithmetic value.
-///
 /// What the value counts is implementation-defined by the standard, and is seconds since the Unix epoch on every
 /// supported target. `Rux/Time`'s `Timestamp` is the one that says so as a contract.
 /// @see https://en.cppreference.com/c/chrono/time_t
@@ -25,17 +22,14 @@ pub type time_t = int64;
 when #target.os {
     .Windows => {
         /// C's `clock_t`: processor time as an arithmetic value.
-        ///
         /// `long` on every supported target, and `long` is not one width: the Universal CRT makes it 32 bits while
         /// every
         /// supported Unix makes it 64, and Darwin spells the same type unsigned. Declaring it as a fixed 64-bit
         /// integer, as
         /// this once did, reads four bytes of whatever followed the result on Windows.
-        ///
         /// Spelled as the primitive rather than as `c_long`, because a type alias cannot name one declared in another
         /// file
         /// of this package. The width is the same thing said twice.
-        ///
         /// FreeBSD's definition is the one value here not confirmed against a running system; the eight-target fixture
         /// gate
         /// is what checks it.
@@ -46,17 +40,14 @@ when #target.os {
     }
     .macOS => {
         /// C's `clock_t`: processor time as an arithmetic value.
-        ///
         /// `long` on every supported target, and `long` is not one width: the Universal CRT makes it 32 bits while
         /// every
         /// supported Unix makes it 64, and Darwin spells the same type unsigned. Declaring it as a fixed 64-bit
         /// integer, as
         /// this once did, reads four bytes of whatever followed the result on Windows.
-        ///
         /// Spelled as the primitive rather than as `c_long`, because a type alias cannot name one declared in another
         /// file
         /// of this package. The width is the same thing said twice.
-        ///
         /// FreeBSD's definition is the one value here not confirmed against a running system; the eight-target fixture
         /// gate
         /// is what checks it.
@@ -67,17 +58,14 @@ when #target.os {
     }
     else => {
         /// C's `clock_t`: processor time as an arithmetic value.
-        ///
         /// `long` on every supported target, and `long` is not one width: the Universal CRT makes it 32 bits while
         /// every
         /// supported Unix makes it 64, and Darwin spells the same type unsigned. Declaring it as a fixed 64-bit
         /// integer, as
         /// this once did, reads four bytes of whatever followed the result on Windows.
-        ///
         /// Spelled as the primitive rather than as `c_long`, because a type alias cannot name one declared in another
         /// file
         /// of this package. The width is the same thing said twice.
-        ///
         /// FreeBSD's definition is the one value here not confirmed against a running system; the eight-target fixture
         /// gate
         /// is what checks it.
@@ -93,12 +81,10 @@ when #target.os {
 when #target.os {
     .Windows => {
         /// C's `tm`: a calendar time broken into its components.
-        ///
         /// Two of the fields are traps rather than conveniences, and both are C's rather than this binding's: `tm_year`
         /// counts from 1900, so 2026 is 126, and `tm_mon` counts from zero, so December is 11. `tm_sec` reaches 60 for
         /// a
         /// leap second.
-        ///
         /// Declared once per system because the field order and the trailing members differ; the nine standard fields
         /// are
         /// the same everywhere and are all this declares.
@@ -128,12 +114,10 @@ when #target.os {
     }
     else => {
         /// C's `tm`: a calendar time broken into its components.
-        ///
         /// Two of the fields are traps rather than conveniences, and both are C's rather than this binding's: `tm_year`
         /// counts from 1900, so 2026 is 126, and `tm_mon` counts from zero, so December is 11. `tm_sec` reaches 60 for
         /// a
         /// leap second.
-        ///
         /// Declared once per system because the field order and the trailing members differ; the nine standard fields
         /// are
         /// the same everywhere and are all this declares.
@@ -168,7 +152,6 @@ when #target.os {
 }
 
 // Time in seconds and nanoseconds
-//
 // `tv_nsec` is a `long`, which is 32 bits on Windows and 64 on every supported Unix, and the padding beside it on
 // Windows is not the runtime's to write. Declared as a fixed 64-bit integer, as this was, a nanosecond count filled
 // in by the runtime read four bytes of stale padding as its upper half.
@@ -185,7 +168,6 @@ pub struct timespec {
 
 // `#Link` accepts only a constant declared in this file, so the selection is repeated per module rather than taken
 // from `C::CRuntime`.
-//
 // On Windows this names the legacy `msvcrt.dll` rather than the Universal CRT the rest of the package binds against,
 // and that is a defect rather than a decision: the two are separate runtimes with separate state. Moving across needs
 // the `__stdio_common_*` entry points the Universal CRT exports in place of the formatted-output family, which is
@@ -202,7 +184,6 @@ when #target.os {
 #Link(TimeLib)
 extern {
     /// Converts a tm object to a textual representation.
-    ///
     /// Returns storage the runtime owns and the next call overwrites, shared by the whole program rather than per
     /// thread. Copy the result before making another call, and do not use it from two threads at once.
     /// @param time_ptr the time value to convert
@@ -318,10 +299,8 @@ when #target.os {
 }
 
 /// Fills `ts` with the current time on the given base.
-///
 /// `ts` is borrowed and written, so callers pass the value directly. `base` is read by value and `TIME_UTC` is the
 /// only base C defines. Returns `base` on success and zero on failure, which is the one way this reports one.
-///
 /// Runs in constant time and allocates nothing.
 /// @param ts receives the reading
 /// @param base which time base to read; `TIME_UTC` is the only one C defines

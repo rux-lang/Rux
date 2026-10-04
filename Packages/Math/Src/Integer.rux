@@ -12,7 +12,6 @@
 import Core::{ MaximumOf, MinimumOf, MulChecked };
 
 /// The magnitude of `value`, reporting whether it is representable.
-///
 /// `result` receives the magnitude the machine produced, which is the true one when this returns `false` and the
 /// wrapped one when it returns `true`. Only one input can overflow: the most negative value of a signed type, whose
 /// magnitude is one larger than the maximum. An unsigned type never overflows here, since it is already its own
@@ -35,7 +34,6 @@ pub func AbsChecked<T>(value: T, result: *var T) -> bool {
 }
 
 /// The magnitude of `value`, wrapping where it is not representable.
-///
 /// The most negative value of a signed type comes back unchanged, which is what the machine's own negation does. Use
 /// `AbsChecked` where that matters. Runs in constant time and allocates nothing.
 /// @typeParam T integer type
@@ -49,7 +47,6 @@ pub func AbsWrapping<T>(value: T) -> T {
 }
 
 /// The smaller of two integers.
-///
 /// Total and exact: integers have no NaN, so unlike the floating-point `Min` there is no case to decide.
 /// @typeParam T integer type
 /// @param left first value to compare
@@ -71,7 +68,6 @@ pub func Maximum<T>(left: T, right: T) -> T {
 }
 
 /// `value` brought into `[low, high]`.
-///
 /// A contradictory pair - `low` above `high` - has no correct answer, and this returns `low` rather than pretending
 /// otherwise. The behavior is stated so it is at least deterministic; callers who cannot rule the case out should check
 /// the bounds themselves.
@@ -88,7 +84,6 @@ pub func Clamp<T>(value: T, low: T, high: T) -> T {
 }
 
 /// The greatest common divisor of `left` and `right`, reporting whether it is representable.
-///
 /// Defined on magnitudes, so signs do not matter and the answer is never negative. `Gcd(0, 0)` is zero, which is the
 /// conventional answer and the only one that keeps `Gcd(x, 0) == |x|` true everywhere. The single overflow is a divisor
 /// equal to the magnitude of the most negative value - reachable only as `Gcd(min, 0)` and `Gcd(min, min)` - which no
@@ -123,7 +118,6 @@ pub func GcdChecked<T>(left: T, right: T, result: *var T) -> bool {
 }
 
 /// The least common multiple of `left` and `right`, reporting whether it is representable.
-///
 /// Zero with anything is zero, which keeps the identity `Gcd(a, b) * Lcm(a, b) == |a * b|` true. Everything else
 /// overflows readily - two coprime values multiply - so the flag is the usual case rather than the exception, and the
 /// division is done before the multiplication so a representable answer is not lost to an intermediate that is not.
@@ -151,7 +145,6 @@ pub func LcmChecked<T>(left: T, right: T, result: *var T) -> bool {
 }
 
 /// `base` raised to `exponent`, reporting whether the true power is representable.
-///
 /// The exponent is a plain `uint` because a negative exponent has no integer answer. Anything to the zeroth power is
 /// one, including zero: the empty product is one, and every identity that matters depends on it. `result` receives the
 /// wrapped power when this returns `true`, so a caller who wants modular arithmetic can use it directly. Runs in time

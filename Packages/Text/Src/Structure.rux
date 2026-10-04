@@ -1,36 +1,28 @@
 // Showing what is inside an outcome or a sequence, without taking it apart.
-//
 // An optional, a fallible and a slice are the three shapes almost every diagnostic is written around, and none of
 // them can implement `Debug` on its own: what a `T?` looks like depends entirely on what `T` looks like, and native
 // forms implement no interface at all. So these are handwritten functions with the bound written out —
 // `WriteOptionalDebug<T: Debug>` — which is the shape the language does have. Each instantiation
 // resolves its element's `WriteDebug` at compile time; nothing is dispatched at run time and nothing is reflected
 // over.
-//
 // The whole point is that they borrow. `??` and `?` consume the optional, because taking a payload out is a transfer
 // of ownership. But showing a value is not taking it: a `match` on a borrowed optional binds its payload where it
 // lies, and that binding is what these hand to the element's `WriteDebug`.
 // So an option holding a move-only value can be written twice and still hold it, which is the only behaviour worth
 // having — a diagnostic that consumed what it printed would be a diagnostic nobody could put in front of a value
 // they still needed.
-//
 // The specification describes the *elements*, not the container. There is no numeric or textual form a sequence
 // has of its own for a width or a precision to apply to, so each element is handed the caller's specification
 // unchanged and does with it whatever that element type does — `{:x}` over a slice of integers writes each one in
 // hexadecimal. The brackets, the commas and the case names are punctuation and are never padded, so a specification
 // that an element ignores changes nothing at all.
-//
 // Sequential containers are in `Rux/Collections`, which borrows a run of elements out of a vector, an array or a
 // deque and calls `WriteSliceDebug` with it. Nothing here knows those types exist.
 
 /// Writes a borrowed optional as `Some(value)` or `none`.
-///
 /// The optional is borrowed and its payload with it, so this can be called on an optional holding a value that
 /// cannot be copied, as many times as wanted, and the optional still holds it afterwards.
-///
 /// `spec` is handed to the payload's own `WriteDebug` and describes it rather than the wrapper.
-///
-/// # Failures
 /// Reports whatever the writer or the payload's implementation reported, stopping at the first refusal, so a
 /// destination that has already refused something is not written to again.
 /// @typeParam T the payload type, which must know how to show itself
@@ -54,13 +46,9 @@ pub func WriteOptionalDebug<T: Debug>(writer: &var TextWriter, value: &T?,
 }
 
 /// Writes a borrowed fallible as `Success(value)` or `Failure(reason)`.
-///
 /// Both payloads are borrowed, so neither channel is consumed by being shown. The names are the native channel
 /// names, so what is written names the case a reader would branch on.
-///
 /// `spec` is handed to whichever payload is present and describes it rather than the wrapper.
-///
-/// # Failures
 /// Reports whatever the writer or the payload's implementation reported, stopping at the first refusal.
 /// @typeParam T the success payload type, which must know how to show itself
 /// @typeParam E the failure payload type, which must know how to show itself
@@ -86,18 +74,13 @@ pub func WriteFallibleDebug<T: Debug, E: Debug>(writer: &var TextWriter, value: 
 }
 
 /// Writes a borrowed run of elements as `[first, second, third]`.
-///
 /// An empty run is `[]`, which is visible where writing nothing would not be. Elements are separated by a comma and
 /// a space, and every element is shown, since a diagnostic that elided part of what it was given would be worse
 /// than a long one.
-///
 /// The run is borrowed and each element is shown through a borrow of it, so a slice of a move-only element type is
 /// shown without disturbing a single one of them.
-///
 /// `spec` is handed to each element unchanged and means whatever that element type makes of it. The brackets and
 /// commas are punctuation and are never padded.
-///
-/// # Failures
 /// Reports whatever the writer or an element's implementation reported, stopping at the first refusal rather than
 /// continuing through the rest of the run.
 /// @typeParam T the element type, which must know how to show itself

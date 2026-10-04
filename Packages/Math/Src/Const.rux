@@ -1,5 +1,4 @@
 // The mathematical constants, each rounded once to the nearest `float64`.
-//
 // Written as decimal literals rather than computed, so no expression's rounding stands between the true value
 // and the stored one. A `float32` caller converts, which rounds a second time and is still the nearest
 // `float32` to the true constant for every value here.

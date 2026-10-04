@@ -1,12 +1,10 @@
 // The gamma family, and the two counting distributions built on it.
-//
 // These are the distributions where the shortest correct method is not obvious, and where the usual shortcuts
 // are wrong in ways that only show up in the tail. Summing `n` Bernoulli draws for a binomial is exact but takes
 // `n` draws, which is unusable for the large `n` that makes a binomial interesting. Multiplying uniforms for a
 // Poisson is exact but takes about `lambda` draws and underflows to a hang for a large mean. And a normal
 // approximation to either is not the distribution at all — it is a different one that happens to look similar
 // near the middle.
-//
 // So each is exact at every parameter, and each reduces to the gamma distribution when its parameter grows: the
 // binomial through a beta split that halves the problem, and the Poisson through a gamma step that consumes a
 // large chunk of the mean at once. Both are Devroye's constructions, and both recurse only logarithmically.
@@ -18,11 +16,9 @@ import Math::{ Exp, Log, Pow, Sqrt };
 pub const DirectMethodLimit: float64 = 30.0;
 
 /// A value from the gamma distribution with the given shape and unit scale.
-///
 /// Marsaglia and Tsang's method: a normal draw squeezed through a cube, which accepts on the first attempt more
 /// than ninety-five percent of the time for any shape at or above one. A shape below one is generated from a
 /// shape one larger and scaled down, since the density is unbounded at zero there and the squeeze does not hold.
-///
 /// A shape at or below zero has no distribution and gives zero.
 /// @typeParam G the generator's type
 /// @param generator where the bits come from
@@ -80,7 +76,6 @@ pub func GammaWithScale<G: RandomGenerator>(generator: &var G, shape: float64, s
 }
 
 /// A value from the beta distribution with the two given shapes, in `[0, 1]`.
-///
 /// Built from two gamma draws, which is the definition rather than an approximation of it. Two shapes that are
 /// both zero leave nothing to divide and give a half.
 /// @typeParam G the generator's type

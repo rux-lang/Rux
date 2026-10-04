@@ -1,5 +1,4 @@
 // Mapping and unmapping address space, and moving the program break.
-//
 // These are the calls an allocator is built on. Nothing here tracks what it hands out: an address returned by `Mmap`
 // is valid until `Munmap` releases exactly the range that was mapped, and this package has no way to notice a caller
 // releasing a range it never mapped.
@@ -32,29 +31,21 @@ pub const MapShared: int32 = 1;
 pub const MapPrivate: int32 = 2;
 
 /// `MAP_FIXED`: place the mapping exactly at the requested address, replacing whatever was there.
-///
 /// Dangerous by design: it silently unmaps anything already at the address, which may be someone else's mapping.
 /// @see https://rux-lang.dev/docs/api/linux/map-fixed
 pub const MapFixed: int32 = 16;
 
 /// `MAP_ANONYMOUS`: the mapping is backed by zeroed pages rather than by a file.
-///
 /// The descriptor argument is then unused and is conventionally `-1`.
 /// @see https://rux-lang.dev/docs/api/linux/map-anonymous
 pub const MapAnonymous: int32 = 32;
 
 /// Creates a mapping and returns its address, or a negative error number.
-///
 /// `address` is a hint unless `MapFixed` is set, and null asks the kernel to choose. `length` is rounded up to a
 /// whole number of pages. `fd` is the object to map, or `-1` with `MapAnonymous`. `offset` must be page-aligned.
-///
 /// Returns the mapping's address as an integer. Testing it needs `Errors::IsError` rather than a sign test: a valid
 /// address may have its top bit set, and only the kernel's reserved `-4095` through `-1` range is a failure.
-///
 /// The mapping outlives nothing on its own — it stays until `Munmap` releases it or the process ends.
-///
-/// # Safety
-///
 /// `MapFixed` replaces whatever occupies the address, including a mapping this program depends on.
 /// @param address a hint for where to map, or null to let the kernel choose
 /// @param length how many bytes, rounded up to whole pages
@@ -77,14 +68,9 @@ pub func Mmap(address: *opaque, length: uint, protection: int32, flags: int32, f
 }
 
 /// Releases the mapping that begins at `address` and spans `length` bytes.
-///
 /// `address` must be page-aligned; `length` is rounded up to whole pages. Returns zero, or a negative error number.
-///
 /// Releasing a range that was never mapped succeeds and does nothing, so this cannot be used to discover whether a
 /// range was mapped.
-///
-/// # Safety
-///
 /// Every pointer into the range becomes invalid, and the address space may be handed to a later mapping at once.
 /// @param address a page-aligned address to release from
 /// @param length how many bytes to release
@@ -95,10 +81,8 @@ pub func Munmap(address: *opaque, length: uint) -> int64 {
 }
 
 /// Sets the program break and returns where it ended up.
-///
 /// `address` is the requested new break, or null to ask where it is. Returns the resulting break, which is the old
 /// one when the request could not be met — this call reports failure by not moving rather than by an error number.
-///
 /// The break is a single process-wide value. Anything else in the process that uses it, including a C runtime that
 /// was linked in, is using the same one.
 /// @param address where to move the program break, or null to read it
@@ -109,7 +93,6 @@ pub func Brk(address: *opaque) -> int64 {
 }
 
 /// `MADV_DONTNEED`: the pages are not needed, and the kernel may discard them.
-///
 /// An anonymous page discarded this way reads back as zero next time, which is how a range is released without
 /// giving up the address space.
 /// @see https://rux-lang.dev/docs/api/linux/advise-dont-need
@@ -128,15 +111,10 @@ pub const AdviseRandom: int32 = 1;
 pub const AdviseSequential: int32 = 2;
 
 /// Changes what may be done with the pages covering `address` through `address + length`.
-///
 /// `address` must be page-aligned; `length` is rounded up to whole pages. `protection` is the same set `Mmap` takes.
 /// Returns zero, or a negative error number.
-///
 /// Removing a permission takes effect at once, so a thread touching the range concurrently faults rather than
 /// finishing what it started.
-///
-/// # Safety
-///
 /// Nothing here checks that the range was ever mapped, and marking executable memory writable at the same time is
 /// what a hardened system refuses.
 /// @param address a page-aligned address
@@ -149,12 +127,8 @@ pub func Mprotect(address: *opaque, length: uint, protection: int32) -> int64 {
 }
 
 /// Tells the kernel how the pages covering a range are about to be used.
-///
 /// `address` must be page-aligned. Returns zero, or a negative error number. Advice is advice: the kernel is free to
 /// ignore all of it, with the exception of `AdviseDontNeed`, which actually discards.
-///
-/// # Safety
-///
 /// `AdviseDontNeed` loses whatever the range held. On anonymous memory that is a zeroing; on a private file mapping
 /// it discards the modifications rather than writing them back.
 /// @param address a page-aligned address
@@ -174,18 +148,13 @@ pub const AuxPageSize: uint64 = 6;
 pub const AuxNull: uint64 = 0;
 
 /// The size of a page, read out of this process's auxiliary vector.
-///
 /// Linux publishes the page size in the auxiliary vector the kernel hands to a new process, not behind a system
 /// call. libc captures that vector at startup and answers from it, which is what `getauxval` reads; this package
 /// calls no libc and captures nothing at startup, so it asks the kernel for the same vector through the interface
 /// that exposes it as a file, `/proc/self/auxv`. The file is a sequence of `(type, value)` pairs of unsigned
 /// 64-bit words, ending at a type of `AuxNull`.
-///
 /// The cost is an open, a read and a close, so a caller needing the size more than once should keep it rather than
 /// ask again.
-///
-/// # Failures
-///
 /// Reports the open's or the read's own error number when `/proc` is not mounted or not readable, which is
 /// ordinary in a container built without it. Reports `-ENOENT` when the vector was readable but held no
 /// `AuxPageSize` entry, and `-EINVAL` when it held one that is not a size the address space could have.

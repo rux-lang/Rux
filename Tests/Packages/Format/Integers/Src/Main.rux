@@ -4,22 +4,18 @@ import Format::Render;
 import Text::{ FormatError, String, StringView };
 
 // Every implemented integer width, in every base it renders in, with the ends of each range.
-//
 // The per-width tests next door each check one type in decimal. What none of them checks is the matrix: sixteen
 // widths against five bases, which is where a shared digit loop goes wrong in one corner and nowhere else. Three
 // corners are worth naming, and each has its cases below.
-//
 // The signed minimum is the first. Its magnitude has no positive counterpart at its own width, so a renderer that
 // negates rather than taking the magnitude in the unsigned type gives the value back unchanged — and the wrong
 // answer looks like a plausible number rather than like a bug. Every signed width has its minimum here, in every
 // base, and the hexadecimal spelling of each is the one that makes the two's-complement pattern visible.
-//
 // The digit buffer is the second. Each width's buffer is sized for its longest rendering, which is the binary one:
 // sixty-four bytes for a `uint64`, five hundred and twelve for a `uint512`. Those sizes are exact rather than
 // generous, so the all-ones value of every width is rendered in binary here, which is the case that fills the
 // buffer to its last byte. Checking the shape — a run of exactly that many ones — is what makes the case readable
 // at five hundred and twelve digits.
-//
 // The pointer-sized pair is the third. `int` and `uint` are whatever the target says, so their bounds are checked
 // against the width the target actually has rather than against an assumed sixty-four bits.
 

@@ -79,7 +79,6 @@ when #target.os == OperatingSystem::macOS {
         }
 
         // --- The shared POSIX contract ------------------------------------------------------------------------
-        //
         // Everything below is spelled identically in the Linux, macOS and FreeBSD copies of this test. That is
         // the contract task 38 aligned: one wrapper name, one parameter shape, one call site. The numbers differ
         // per system and are asserted per system, which is the part that must not be shared.

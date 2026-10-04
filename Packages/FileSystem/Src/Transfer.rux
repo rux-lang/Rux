@@ -1,5 +1,4 @@
 // Moving file content and names around: copy, rename, and the two kinds of link.
-//
 // The follow policies are stated rather than inherited. `CopyFile` follows a symbolic link and copies what it
 // points at, because copying the pointer would surprise every caller who asked for the bytes. `CreateHardLink`
 // does not follow: it links the name given, symbolic link and all, because a caller linking a link said so.
@@ -21,7 +20,6 @@ when #target.os {
 }
 
 /// Renames `from` to `to`, moving it between directories if the paths differ there.
-///
 /// An existing `to` is replaced, atomically within one volume: a reader sees the old file or the new, never a
 /// gap. Across volumes Windows copies and deletes instead — not atomic — and the Unix systems refuse.
 /// @param allocator where the storage comes from
@@ -48,7 +46,6 @@ pub func Rename(allocator: Allocator, from: Path, to: Path) -> ! IoError {
 }
 
 /// Creates `link` as a hard link: a second name for the file `existing` names.
-///
 /// The two names are then equals — neither is "the original" — and the content lives until the last name is
 /// deleted. A symbolic link at `existing` is not followed: the link is made to the name given. Directories
 /// cannot be hard-linked on any supported system.
@@ -76,7 +73,6 @@ pub func CreateHardLink(allocator: Allocator, existing: Path, link: Path) -> ! I
 }
 
 /// Creates `link` as a symbolic link holding `target` as its text.
-///
 /// The target is stored, not checked: a dangling link is created as readily as a good one. `targetIsDirectory`
 /// matters only on Windows, which types its links; the Unix systems ignore it. Windows also gates creation
 /// behind a privilege unless the machine runs Developer Mode, so `PermissionDenied` here is an environment, not
@@ -110,7 +106,6 @@ pub func CreateSymbolicLink(allocator: Allocator, target: Path, link: Path, targ
 }
 
 /// Copies the file `from` names to `to`, following a symbolic link to the bytes it points at.
-///
 /// An existing `to` is replaced. The copy is the bytes and nothing else: permissions, timestamps and the rest of
 /// the metadata are the destination's own, fresh — carrying them is a policy the metadata work owns.
 /// @param allocator where the storage comes from

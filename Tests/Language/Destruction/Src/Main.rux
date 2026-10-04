@@ -1,5 +1,4 @@
 // Destruction has to run, run once, and run only where the value still lives.
-//
 // A destructor body has no way to report anything, so every check below counts instead: each tracked value holds a pointer
 // to a counter and bumps it as it is destroyed. The count after a construct is what says destruction happened at the
 // right place — and, for a value that was moved away, that it did not happen twice.

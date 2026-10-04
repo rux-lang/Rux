@@ -1,5 +1,4 @@
 // Resizing an allocation, preserving the bytes that still fit.
-//
 // Three degenerate cases, each answered rather than refused: a null pointer allocates, a zero size releases
 // and returns null, and a failure returns null while leaving the original allocation valid and still the
 // caller's. That last one is the one callers get wrong — assigning the result over the original pointer
@@ -12,13 +11,9 @@ when #target.os == .Windows {
 }
 
 /// Resizes an allocation to `size` bytes, preserving the bytes that still fit.
-///
 /// A null `ptr` behaves as `Alloc(size)`. A zero size releases a non-null allocation and returns null. On failure,
 /// returns null and leaves the original allocation valid; on success, the original address is invalid even when the
 /// returned address has the same numeric value.
-///
-/// # Safety
-///
 /// A non-null `ptr` must be the live base address returned by `Alloc` or an earlier `Realloc`. Interior, released,
 /// or foreign addresses are invalid. Bytes added beyond the old size are uninitialized.
 /// @param ptr the allocation to resize, or null to allocate

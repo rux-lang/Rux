@@ -6,7 +6,6 @@ import Core::{ Assert, Panic };
 // The plumbing every container shares: what an error means, and what the iterators yield. None of it is
 // interesting on its own, which is exactly why it is worth testing once here rather than discovering it through
 // whichever container gets it wrong.
-//
 // The allocator helpers used to be checked here directly. They are package-private now — they are how a container
 // talks to an allocator in elements rather than bytes, not something a caller composes with — so what they do is
 // checked through the containers instead, in Tests/Packages/Collections/ContainerStorage. That is the better place for it:

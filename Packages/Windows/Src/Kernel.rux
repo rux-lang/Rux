@@ -1,5 +1,4 @@
 // The Kernel32 entry points this package binds, under the exact symbols the library exports.
-//
 // A call reports failure the way Win32 does: a `Bool` of zero, a null pointer, or `InvalidHandleValue`,
 // depending on what it returns. The reason is then in `GetLastError`, which is per thread and is not cleared by
 // a successful call — so it means something only immediately after a failure.
@@ -170,7 +169,6 @@ pub extern {
     func GetFileSizeEx(file: *opaque, size: *int64) -> bool32;
 
     /// Reads what the system reports about the machine, including its page size.
-    ///
     /// Cannot fail and reports nothing: the structure is always filled.
     /// @param info receives the system information
     /// @see https://learn.microsoft.com/en-us/windows/win32/api/sysinfoapi/nf-sysinfoapi-getsysteminfo

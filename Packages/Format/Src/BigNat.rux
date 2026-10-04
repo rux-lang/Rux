@@ -1,11 +1,9 @@
 // An arbitrary-size natural number, for the two conversions that have to be exact.
-//
 // Turning a float into its shortest decimal, or a decimal into the nearest float, is a question about where the
 // exact value sits between two neighbours, and answering it with floating-point arithmetic loses the very bits the
 // answer depends on. The classic way out is integer arithmetic on the exact value: a float is an integer times a
 // power of two, a decimal is an integer times a power of ten, and comparing the two needs nothing more than big
 // integers that can be multiplied, shifted and compared. That is everything this type does, and nothing more.
-//
 // The sizes involved are why this cannot be a fixed width. A float512 reaches 2^4194303, and the exact decimal
 // conversion of a value near that limit works on numbers of that many bits. They come from an allocator because
 // nothing else can hold them; the narrow widths never get near that, and a float80 never needs more than a few
@@ -326,7 +324,6 @@ extend BigNat {
     }
 
     /// The quotient of this by `divisor` when it is below ten, removing that many divisors from this.
-    ///
     /// The digit loops only ever ask for one decimal digit at a time, so a count of subtractions is the whole of
     /// the division they need.
     /// @param divisor the value to divide by, which must be at most ten times this one
@@ -349,7 +346,6 @@ extend BigNat {
 }
 
 /// Sets `target` to 10^`power`, using `base` and `scratch` as working room.
-///
 /// Ten to the power is five to the power shifted, and five has fewer bits to carry through the squarings: the
 /// intermediate numbers are a third shorter, which is the difference between a tolerable and an intolerable wait at
 /// the widths where the exponent runs to millions.

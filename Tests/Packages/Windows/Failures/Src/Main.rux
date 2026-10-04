@@ -1,14 +1,11 @@
 // Three failure domains that look alike from a distance, and the ways a binding confuses them.
-//
 // Win32 has no single "it failed" value. A handle-returning call reports `InvalidHandleValue`, which is `-1` cast to
 // a pointer and is emphatically not null. A memory-returning call reports null, which is emphatically not
 // `InvalidHandleValue`. Both then leave the reason in a thread-local Win32 code that `GetLastError` reads. And
 // `BCryptGenRandom`, which is not a kernel call at all, reports an `NTSTATUS` and never touches that code.
-//
 // Every one of those pairings is a real mistake someone writes: testing a handle against null, testing an
 // allocation against `InvalidHandleValue`, reading `GetLastError` after a call that never set it. This file asserts
 // that the values stay apart, which is a property of the bindings rather than of any caller.
-//
 // This is the one platform-binding test that runs where it was written, so unlike its POSIX counterparts every
 // number in it was read out of a probe rather than out of documentation. Two of them were surprises and are called
 // out where they appear.
@@ -24,7 +21,6 @@ when #target.os == OperatingSystem::Windows {
                       VirtualAlloc, VirtualFree };
 
     /// Writes `name` as UTF-16 code units, NUL-terminated.
-    ///
     /// Rux has no UTF-16 string literal — a literal is a `char8[..]` — so handing a literal's bytes to a `W` entry
     /// point would pass UTF-8 to a call that reads pairs of bytes as code units. That is the mistake the `W` forms
     /// exist to prevent, so this file does not quietly make it. Every name below is ASCII, which is why widening a

@@ -1,27 +1,21 @@
 // Equality: whether two values of one type stand for the same thing.
-//
 // Deliberately not derived from `Comparable`: a type can be equatable without being orderable, and forcing
 // an order on one that has none produces an arbitrary answer that later reads as meaningful.
 
 /// Equality: whether two values of one type stand for the same thing.
-///
 /// The bound a generic writes when it needs to compare its element type — a search, a deduplication, a hash table's
 /// key. `Self` in the signature is the implementing type, so an `Equatable` value is only ever compared against
 /// another of its own type and never against an unrelated one.
-///
 /// An implementation must be an equivalence: a value equals itself, equality reads the same in either order, and two
 /// values each equal to a third are equal to each other. A type that cannot promise all three — one with a value that
 /// does not equal itself, the way a floating-point NaN does not — should not implement this, and callers relying on
 /// it are entitled to assume it holds.
-///
 /// A type that also implements `Hashable` must keep the two agreeable: equal values hash the same.
 /// @see https://rux-lang.dev/docs/api/core/equatable
 pub interface Equatable {
     /// Reports whether this value and `other` are equal.
-    ///
     /// Borrows both operands and takes ownership of neither, so comparing costs nothing and leaves both usable.
     /// The reference guarantees that `other` is present.
-    ///
     /// Cannot fail: every pair of values of the type is either equal or not.
     /// @param other the value to compare against
     /// @returns whether the two are equal

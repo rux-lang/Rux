@@ -1,13 +1,10 @@
 // The error codes `GetLastError` reports, and what reports them.
-//
 // Win32 has three unrelated ways of saying something failed, and reading one as another is a common mistake. A call
 // returning a `Bool` or a handle reports through `GetLastError`, whose codes are these. A call in the cryptographic
 // or native interface reports an `NtStatus` instead, which shares no numbering with these at all. And a C runtime
 // call sets `errno`, which is a third scheme again.
-//
 // `GetLastError` is per thread and is **not** cleared by a call that succeeds, so a code read at any moment other
 // than immediately after a failure is left over from something earlier.
-//
 // Only the codes a caller is likely to branch on are named. There are thousands, and a program that needs one this
 // module does not have should compare the number rather than wait for it to appear here.
 
@@ -27,7 +24,6 @@ pub const ERROR_FILE_NOT_FOUND: uint32 = 2;
 pub const ERROR_PATH_NOT_FOUND: uint32 = 3;
 
 /// `ERROR_ACCESS_DENIED`: the caller does not have the rights the operation needs.
-///
 /// Also what a sharing violation looks like when the file is already open without the matching share mode.
 /// @see https://rux-lang.dev/docs/api/windows/error-access-denied
 #Allow("naming.const")
@@ -39,7 +35,6 @@ pub const ERROR_ACCESS_DENIED: uint32 = 5;
 pub const ERROR_INVALID_HANDLE: uint32 = 6;
 
 /// `ERROR_NOT_ENOUGH_MEMORY`: not enough storage to complete the operation.
-///
 /// Distinct from `ERROR_OUTOFMEMORY`, and which of the two a call reports is the call's own business, so a caller
 /// checking for exhaustion has to accept either.
 /// @see https://rux-lang.dev/docs/api/windows/error-not-enough-memory
@@ -72,7 +67,6 @@ pub const ERROR_INVALID_PARAMETER: uint32 = 87;
 pub const ERROR_DISK_FULL: uint32 = 112;
 
 /// `ERROR_PRIVILEGE_NOT_HELD`: the account lacks a privilege the operation requires.
-///
 /// What refuses `CreateSymbolicLinkW` on a machine without Developer Mode, where creating a symbolic link needs
 /// `SeCreateSymbolicLinkPrivilege` — a restriction no other supported system places on the same operation.
 /// @see https://rux-lang.dev/docs/api/windows/error-privilege-not-held
@@ -80,7 +74,6 @@ pub const ERROR_DISK_FULL: uint32 = 112;
 pub const ERROR_PRIVILEGE_NOT_HELD: uint32 = 1314;
 
 /// `ERROR_NO_MORE_FILES`: a directory enumeration has handed over its last entry.
-///
 /// Reported by `FindNextFileW` at the end of an enumeration, where nothing has gone wrong at all — the caller
 /// distinguishes it from a real failure by this code.
 /// @see https://rux-lang.dev/docs/api/windows/error-no-more-files
@@ -88,7 +81,6 @@ pub const ERROR_PRIVILEGE_NOT_HELD: uint32 = 1314;
 pub const ERROR_NO_MORE_FILES: uint32 = 18;
 
 /// `ERROR_ALREADY_EXISTS`: the object already exists.
-///
 /// Reported by `CreateDirectoryW` where `ERROR_FILE_EXISTS` is reported by the file calls, which is why a caller
 /// asking "was it already there" has to accept both.
 /// @see https://rux-lang.dev/docs/api/windows/error-already-exists
@@ -101,7 +93,6 @@ pub const ERROR_ALREADY_EXISTS: uint32 = 183;
 pub const ERROR_INVALID_ADDRESS: uint32 = 487;
 
 /// `ERROR_COMMITMENT_LIMIT`: the system's commit limit is reached, so nothing more can be backed.
-///
 /// What a large commit fails with when the page file cannot grow, as distinct from running out of address space.
 /// @see https://rux-lang.dev/docs/api/windows/error-commitment-limit
 #Allow("naming.const")

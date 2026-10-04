@@ -1,17 +1,14 @@
 // Publishing a file under its final name without ever showing a reader a half-written one.
-//
 // The rule every reliable writer follows: write the new contents somewhere else, force them to the device, then
 // move the finished file onto the final name in one step the filesystem cannot interrupt. A reader opening the
 // name at any moment sees the old file or the new one, never a truncated one and never a missing one — which is
 // what writing in place cannot promise, since a crash between truncating and finishing leaves exactly the
 // half-written file the whole exercise is meant to avoid.
-//
 // Two details are not optional. The temporary must live in the **same directory** as the target, because a
 // rename is atomic only within a volume and a temporary directory is frequently on a different one — get that
 // wrong and the "atomic" publish silently becomes a copy-and-delete. And the contents must be synced **before**
 // the rename, not after: a rename that reaches the disk ahead of the data it names leaves the final name
 // pointing at a file whose contents never arrived.
-//
 // What is not promised is that the directory entry itself survives a crash. That needs the containing directory
 // synced too, which needs a directory opened as a file — ordinary on the Unix systems, not a thing Windows
 // does. Rather than offer durability on one platform and pretend on another, this stops at the atomicity every
@@ -27,7 +24,6 @@ func DotSegmentUnit() -> OsUnit {
 }
 
 /// A file being written to replace `target`, which appears under that name only when it is complete.
-///
 /// Move-only. `Commit` syncs the contents and moves them onto the target; `Abandon`, or destroying the value,
 /// deletes the partial file and leaves the target as it was. An early return therefore leaves the old contents
 /// in place, which is the behavior that makes this worth using.
@@ -46,7 +42,6 @@ extend AtomicWrite {
     func =(self: &var AtomicWrite, other: &AtomicWrite);
 
     /// Begins replacing `target`.
-    ///
     /// The temporary is created in the target's own directory, which is what keeps the final rename atomic. The
     /// target need not exist; if it does, it is untouched until `Commit`.
     /// @param allocator where the storage comes from
@@ -69,12 +64,8 @@ extend AtomicWrite {
     }
 
     /// A stored writer over the partial file.
-    ///
     /// Only for a value that must keep the stream, such as a buffered writer. Writing to the replacement for the
     /// duration of a call borrows the `AtomicWrite` itself, which is a `Writer`.
-    ///
-    /// # Safety
-    ///
     /// The `AtomicWrite` must outlive the result and must not be moved while it exists. See `FileStream`.
     /// @returns a stream over the partial file, held by address
     /// @see https://rux-lang.dev/docs/api/filesystem/atomic-write/stream
@@ -90,11 +81,9 @@ extend AtomicWrite {
     }
 
     /// Forces the contents to the device and moves them onto the target.
-    ///
     /// The sync happens **before** the rename, so the final name can never point at contents that never
     /// arrived. Afterwards the target holds the new file and the temporary is gone; a reader that opened the
     /// name at any moment saw the old file or the new one.
-    ///
     /// What this does not promise is that the directory entry survives a crash: that needs the containing
     /// directory synced too, which Windows does not offer, so the guarantee stops at atomicity on every system
     /// rather than being durable on some and pretending on the rest.
@@ -131,7 +120,6 @@ extend AtomicWrite {
         self.target.Release();
     }
     /// Discards an uncommitted replacement, leaving the target untouched.
-    ///
     /// This is the property that makes the type worth using: an early return or a failure part-way through
     /// writing leaves the old contents exactly where they were, with no partial file left behind.
     /// @see https://rux-lang.dev/docs/api/filesystem/atomic-write/destructor
@@ -143,11 +131,9 @@ extend AtomicWrite {
 
 extend AtomicWrite : Writer {
     /// Writes into the partial file.
-    ///
     /// Writing to a replacement is what the type is for, so it is a `Writer` itself rather than something a caller
     /// reaches a stream out of: `let sink: &var Writer = replacement;` borrows it, and nothing has to be kept alive
     /// beside it.
-    ///
     /// One attempt, partial on purpose, exactly as the underlying file's is; `WriteAll` does the looping.
     /// @param bytes the run to write
     /// @returns how much of it the file took
@@ -157,7 +143,6 @@ extend AtomicWrite : Writer {
     }
 
     /// Flushes the partial file, which holds nothing back.
-    ///
     /// `Commit` is what makes the contents durable, and it syncs before it renames.
     /// @returns what the file reported
     /// @see https://rux-lang.dev/docs/api/filesystem/atomic-write/flush
@@ -167,7 +152,6 @@ extend AtomicWrite : Writer {
 }
 
 /// Replaces `target` with `contents`, atomically.
-///
 /// The one-shot form of the type above, for the common case where the whole file is already in hand.
 /// @param allocator where the storage comes from
 /// @param target the path the finished contents will take

@@ -1,5 +1,4 @@
 // The base-two logarithm.
-//
 // The exponent field already holds the integer part, so an exact power of two in range gives its exponent
 // exactly and without arithmetic; the mantissa supplies the fraction. That exactness is why a caller sizing a
 // power-of-two allocation should reach for this rather than for a scaled natural logarithm.
@@ -7,7 +6,6 @@
 import Core::float64;
 
 /// Computes the base-two logarithm of `x`.
-///
 /// The error is at most one ulp, and an exact power of two returns its exact exponent. Either signed zero returns
 /// negative infinity, a negative value returns a NaN, positive infinity returns itself, and a NaN remains a NaN.
 /// @param x positive value whose logarithm is computed

@@ -1,16 +1,13 @@
 // Turning a scalar token's text into a value, with TOML's grammar applied rather than assumed.
-//
 // Every rule here is one a permissive reader would let through and a strict one would not: an underscore has to
 // sit between two digits, a decimal integer may not carry a leading zero, a float needs digits on both sides of
 // its point. None of that is decoration. `010` meaning eight to one reader and ten to another is how a port
 // number becomes the wrong port number, and TOML's answer is that it means neither — it is simply not a TOML
 // integer, and saying so is the job of this file.
-//
 // Each refusal says where. A scalar is short, so a reader given only "malformed" has to find the offending
 // character themselves — and the reader most often given one is a person looking at a configuration file that
 // stopped a program starting. The offsets are into the scalar's own text, counted in bytes from its first
 // character, and the parser adds the token's own position to reach a line and a column in the document.
-//
 // Getting that right takes one piece of bookkeeping: underscores are stripped before the digits are checked, so
 // an offset into the stripped text is not an offset into what the caller wrote. `Stripped` keeps, for each byte
 // it copies, where that byte came from, and every offset reported below is mapped back through it. `1_0_x0` must
@@ -22,7 +19,6 @@ import Text::{ Debug, Display, FormatError, FormatSpec, ParseFailure, RejectStyl
 import Time::{ Date, TimeOfDay, UtcOffset };
 
 /// Why a scalar could not be read, and where in it.
-///
 /// Failure-only: there is no case meaning nothing went wrong, because a scalar that read hands back its value
 /// instead. Every offset is a zero-based byte offset into the scalar's own text, as the caller wrote it —
 /// underscores included — and reachable through `Text::ParseFailure`.
@@ -41,7 +37,6 @@ pub variant TomlScalarError {
 
 extend TomlScalarError : ParseFailure {
     /// Where in the scalar's text the failure was found.
-    ///
     /// Borrows the failure and leaves it untouched. Cannot fail; runs in constant time and allocates nothing.
     /// @returns the zero-based byte offset into the scalar's own text
     /// @see https://rux-lang.dev/docs/api/toml/scalar-error/offset
@@ -56,11 +51,8 @@ extend TomlScalarError : ParseFailure {
 
 extend TomlScalarError : Display {
     /// Writes the description of why the scalar could not be read, without the position.
-    ///
     /// The offset is a number a caller places where it makes sense for them — beside a line and column, or not at
     /// all — so it is not written into the middle of a sentence here. `Debug` carries it.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, and `UnsupportedRequest` for any style or precision.
     /// @param writer the destination
     /// @param spec what the placeholder asked for
@@ -80,8 +72,6 @@ extend TomlScalarError : Display {
 
 extend TomlScalarError : Debug {
     /// Names the case and its position: `TomlScalarError::Malformed(3)`.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, and `UnsupportedRequest` for any style or precision.
     /// @param writer the destination
     /// @param spec what the placeholder asked for
@@ -162,12 +152,9 @@ func IsBaseDigit(c: uint8) -> bool {
 }
 
 /// Reads an integer, in any of the four bases TOML writes.
-///
 /// A leading zero is refused for a decimal integer, because `010` is eight in one language and ten in another
 /// and TOML declines to pick: it is not an integer at all. A sign is refused on a based integer for the same
 /// reason — the grammar does not offer one, so accepting it would be inventing a dialect.
-///
-/// # Failures
 /// `Malformed` at the first character that cannot be part of the integer, `TooLong` past the length bound, and
 /// `OutOfRange` at the start when the digits are a number `int64` cannot hold. Every offset is into `text` as
 /// written, underscores included.
@@ -246,11 +233,8 @@ func DigitFits(c: uint8, radix: uint8) -> bool {
 }
 
 /// Reads a float, including the infinities and NaN that TOML can spell and JSON cannot.
-///
 /// A point needs a digit on either side of it, which is what refuses `.7` and `7.` — both of which some readers
 /// accept and some do not, so a document containing one means different things in different places.
-///
-/// # Failures
 /// `Malformed` at the first character that cannot be part of the float, `TooLong` past the length bound, and
 /// `OutOfRange` at the start when the digits are a number `float64` cannot hold. Every offset is into `text` as
 /// written, underscores included.
@@ -369,7 +353,6 @@ func IsDecimal(c: uint8) -> bool {
 }
 
 /// Which of the four date-time shapes a token turned out to be.
-///
 /// There is no case for "not a date-time": text that is none of the four is a failure with a position, not a
 /// fifth shape a caller has to remember to check for before reading the fields beside it.
 /// @see https://rux-lang.dev/docs/api/toml/date-time-shape
@@ -385,7 +368,6 @@ pub enum TomlDateTimeShape: int32 {
 }
 
 /// A date-time as TOML writes it: which of the four shapes it is, and the parts that shape carries.
-///
 /// The parts that the shape does not carry are present and meaningless — a `DateOnly` has a time of midnight
 /// because the fields have to hold something — so `shape` is what decides which of them to read. That is why the
 /// shape travels with the value rather than being returned beside it.
@@ -402,13 +384,10 @@ pub struct TomlDateTime {
 }
 
 /// Reads any of TOML's four date-time forms, reporting which one it was.
-///
 /// The four are genuinely different things and the difference matters: an offset date-time names a moment, and a
 /// local date-time names a reading of a wall clock that different places reach at different moments. Collapsing
 /// them by assuming UTC is how a meeting ends up an hour out, so nothing here supplies an offset that the text
 /// did not.
-///
-/// # Failures
 /// `Malformed` at the byte where the text stops being one of the four forms — the separator that is not one, the
 /// field the calendar rejects, or the end of the text when it stops early. The calendar's own refusals arrive
 /// here too: the thirty-first of February is four correct digit pairs and not a date.
@@ -496,7 +475,6 @@ func ReadDate(text: char8[..], at: uint, date: *var Date, stopped: *var uint) ->
 }
 
 // `HH:MM` with optional seconds and an optional fraction, reporting how far it read.
-//
 // TOML 1.1 lets the seconds be left off, which is the shape a person writes when they mean a time of day rather
 // than an instant. They are read as zero, since that is what the shorter text names.
 func ReadTime(text: char8[..], at: uint, time: *var TimeOfDay, consumed: *var uint,

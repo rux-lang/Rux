@@ -1,20 +1,15 @@
 // Waiting for a whole span, and saying so when the wait did not happen.
-//
 // Sleeping looks like the simplest thing in this package and has three ways to be quietly wrong, all of which this
 // module used to have.
-//
 // A signal can cut a Unix wait short. The loop goes back for the remainder rather than returning early, because a
 // caller asked for a span, not for a span unless the process happened to receive a signal.
-//
 // Windows takes its interval as a 32-bit millisecond count, which runs out after about 49.7 days. Clamping a longer
 // span to that ceiling is what the previous version did, and it returned as though it had slept for the whole
 // hundred days it was asked for. A span longer than the ceiling is now waited for in chunks.
-//
 // And a wait can simply fail. `nanosleep` reports `EINVAL` for a request it will not honor, and the previous
 // version could not tell that from a completed sleep — both left the remainder at zero — so it returned success
 // having waited for nothing at all. The wait now reports a `TimeError`, and a caller that ignores it is at least
 // making that choice.
-//
 // The system wait is reached through the `Waiter` interface so that the chunking and the retry loop can be tested
 // against an injected one. A test for a hundred-day sleep must not take a hundred days, and a test for an
 // interrupted sleep cannot arrange a signal.
@@ -31,7 +26,6 @@ when #target.os {
 }
 
 /// Why a wait did not happen. `Copy`.
-///
 /// Every case is a failure. An interruption is not one: a waiter that was cut short succeeds with the part of the span
 /// still to wait, and `SleepFor` goes back for it, because a caller that asked for a span asked for the whole span.
 /// @see https://rux-lang.dev/docs/api/time/time-error
@@ -43,26 +37,20 @@ pub enum TimeError: uint8 {
 }
 
 /// The longest interval one system wait may be asked for, in milliseconds.
-///
 /// Windows takes a 32-bit count and reserves `0xFFFFFFFF` to mean "wait forever", so the largest finite request is
 /// one less. Every system's wait is chunked to this so that the loop is the same everywhere and so that a test of
 /// the chunking is a test of what actually runs.
-///
 /// About 49.7 days. A span longer than this is waited for in more than one chunk.
 /// @see https://rux-lang.dev/docs/api/time/maximum-wait-milliseconds
 pub const MaximumWaitMilliseconds: int64 = 4294967294;
 
 /// How long the next single wait should be asked for, given how much of the span is left.
-///
 /// Returns the whole millisecond count to ask the system for: the remaining span rounded **up**, since a wait
 /// promises at least what was asked and never less, or `MaximumWaitMilliseconds` when the remainder is longer than
 /// one wait can express. Never zero for a positive span, so a loop driven by this always makes progress.
-///
 /// A negative or zero span gives zero, which is the value a caller uses to stop.
-///
 /// This is where the old clamp was, and it is public so that the hundred-day case can be checked without waiting a
 /// hundred days.
-///
 /// Cannot fail. Runs in constant time and allocates nothing.
 /// @param span how much of the wait is left
 /// @returns the milliseconds to ask the system for
@@ -87,19 +75,14 @@ pub func WaitChunkMilliseconds(span: Duration) -> int64 {
 }
 
 /// One wait, however the caller reaches the system.
-///
 /// An implementation waits for at most `span` and reports what is left of it. Reporting less than the whole span as
 /// remaining is how a wait says it did some of the work, including when a signal stopped it early; failing is how it
 /// says the system refused. `SleepFor` drives whichever implementation it is given until nothing is left.
 /// @see https://rux-lang.dev/docs/api/time/waiter
 pub interface Waiter {
     /// Waits for at most `span`, and reports what remains of it.
-    ///
     /// Succeeds with the unwaited part, which is zero when the whole span was waited for and more than zero when
     /// something stopped the wait early with time still to go.
-    ///
-    /// # Failures
-    ///
     /// Fails when the system refused the wait. An implementation must not succeed with zero unless the span really
     /// elapsed.
     /// @param span how much time to wait for
@@ -109,7 +92,6 @@ pub interface Waiter {
 }
 
 /// The wait every supported system actually provides. `Copy`.
-///
 /// Holds nothing: the system is the state. Construct one with `SystemWaiter()` and hand it to `SleepUsing`, or use
 /// `SleepFor`, which does that.
 /// @see https://rux-lang.dev/docs/api/time/system-waiter
@@ -121,7 +103,6 @@ pub struct SystemWaiter {
 
 extend SystemWaiter {
     /// A waiter that reaches the operating system.
-    ///
     /// Cannot fail. Runs in constant time and allocates nothing.
     /// @returns the waiter
     /// @see https://rux-lang.dev/docs/api/time/system-waiter/new
@@ -172,20 +153,15 @@ extend SystemWaiter : Waiter {
 }
 
 /// How many waits `SleepFor` will make before giving up on a span that never shrinks.
-///
 /// A `Waiter` that reports success without waiting and without reducing the remainder would spin forever. This is
 /// not a limit any real wait reaches: the system waiter always either advances or fails.
 /// @see https://rux-lang.dev/docs/api/time/maximum-wait-attempts
 pub const MaximumWaitAttempts: uint = 4096;
 
 /// Waits out `span` through `waiter`, retrying interruptions and chunking what one wait cannot express.
-///
 /// A negative or zero span returns at once, having waited for nothing. Otherwise this calls `waiter` until it
 /// reports that nothing is left, so an interruption is invisible to the caller and a span longer than one wait
 /// takes several.
-///
-/// # Failures
-///
 /// Fails with whatever the waiter failed with, having stopped there rather than asking again. Fails with `Failed`
 /// when the waiter neither advanced nor failed `MaximumWaitAttempts` times running, which no real wait does and which
 /// is what keeps a broken implementation from hanging a program.
@@ -211,17 +187,12 @@ pub func SleepUsing<W: Waiter>(waiter: &var W, span: Duration) -> ! TimeError {
 }
 
 /// Stops the calling thread for at least `span`.
-///
 /// At least: the system wakes the thread no earlier, and how much later is the scheduler's business. A negative or
 /// zero span returns at once.
-///
 /// A signal can interrupt the wait on the Unix systems, and this goes back for the remainder until the whole span
 /// has passed — the interruption is invisible, which is what makes this safe to use for pacing. A span longer than
 /// one system wait can express is waited for in chunks rather than clamped, so a hundred-day sleep is a hundred
 /// days.
-///
-/// # Failures
-///
 /// Fails with `InvalidDuration` when the system refused the request, which a normalized non-negative span should not
 /// produce, and `Failed` for anything else. A caller with nothing to do about a failed wait says so with
 /// `SleepFor(span) catch { else => {} }`; the point is that it is no longer indistinguishable from success.

@@ -1,10 +1,8 @@
 // What a sleep does when the wait does not simply work.
-//
 // The three cases that matter are all ones a real sleep cannot be made to show on demand: a span longer than the
 // system's own ceiling, a signal arriving in the middle, and a wait the system refuses outright. So the loop is
 // driven here through an injected `Waiter` that can be told to do each of those, and the arithmetic that decides
 // how long one wait may be is checked directly. A hundred-day sleep is checked in microseconds.
-//
 // The real wait is exercised too, but only for the small, fast facts a real clock can confirm.
 
 import Core::{ Assert, Panic };

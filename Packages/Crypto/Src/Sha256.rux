@@ -1,10 +1,8 @@
 // SHA-256 and SHA-224, from FIPS 180-4.
-//
 // One compression function serves both: they differ only in the initial state and in how much of the final
 // state is kept. That is worth saying plainly, because it is also why SHA-224 is not simply "SHA-256 truncated"
 // — a different initial state means the two produce unrelated values, so neither can be derived from the other
 // after the fact.
-//
 // The padding is where implementations go wrong, and it is the same shape in every member of the family: a one
 // bit, then zeros, then the message length in bits as a big-endian 64-bit count. The awkward case is a message
 // whose final block leaves fewer than nine bytes free, which needs a whole extra block; the test covers exactly
@@ -42,7 +40,6 @@ func RotateRight32(value: uint32, amount: uint32) -> uint32 {
 }
 
 /// An incremental SHA-256 or SHA-224.
-///
 /// Structural `Copy`; copying takes an independent snapshot of the digest state.
 /// @see https://rux-lang.dev/docs/api/crypto/sha256
 pub struct Sha256 {
@@ -145,7 +142,6 @@ extend Sha256 {
 
 extend Sha256 : Digest {
     /// Adds `bytes` to the message.
-    ///
     /// Any split of the same bytes gives the same digest: whatever does not complete a block is buffered, and
     /// the buffer is only compressed once it is full.
     /// @param bytes the bytes to absorb
@@ -177,7 +173,6 @@ extend Sha256 : Digest {
     }
 
     /// Writes the digest into `into`.
-    ///
     /// The padding is a one bit, then zeros, then the message length in bits as a big-endian sixty-four bit
     /// count. When fewer than nine bytes remain in the final block there is no room for that count, so the
     /// block is finished with zeros and a whole further block carries it — the case that separates a correct

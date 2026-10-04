@@ -1,5 +1,4 @@
 // Loading a shared object at run time, and finding a symbol inside it.
-//
 // The one part of the FreeBSD interface that is not a system call: resolution, relocation and reference counting all
 // belong to the run-time linker, whose entry points live in libc.
 
@@ -30,14 +29,12 @@ pub const RTLD_LOCAL: int32 = 0;
 #Link(LoaderLib)
 extern {
     // Loads a shared object and returns a handle to it, or null on failure
-    //
     // A second call for an object already loaded returns the same handle and raises its reference count. Failure is
     // reported through dlerror, not errno.
     // https://man.freebsd.org/cgi/man.cgi?query=dlopen
     func dlopen(filename: *char8, flags: int32) -> *var opaque;
 
     // Finds a symbol in a loaded object and returns its address, or null
-    //
     // A null return is ambiguous, since a symbol whose address is legitimately zero exists. Clear dlerror first, then
     // call this, then read dlerror again to tell the two apart.
     // https://man.freebsd.org/cgi/man.cgi?query=dlsym

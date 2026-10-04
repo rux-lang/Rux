@@ -1,10 +1,8 @@
 // int: the one signed width whose size the target chooses.
-//
 // Every other integer width is a promise about a number of bits. This one is a promise about the machine: it is as
 // wide as a pointer, and its limits are derived rather than written, from `sizeof(int)` and from `~0u` shifted
 // down. That derivation is the thing worth testing, and it cannot be tested by comparing against 64 — a test that
 // spells the answer would keep passing on a target where the answer changed, which is the only case that matters.
-//
 // So every assertion here is a relationship: to `#target.pointerBits`, to `sizeof`, or between `Min` and `Max`.
 // Both currently supported architectures are 64-bit, and none of these assertions says so.
 

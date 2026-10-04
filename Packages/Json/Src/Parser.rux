@@ -1,9 +1,7 @@
 // Parsing a document into a value tree.
-//
 // The recursion is bounded by the depth limit rather than by the stack, which is the only way a recursive
 // descent parser can safely read untrusted input: the check happens before the call, so a document designed to
 // exhaust the stack is refused while there is still stack left to refuse it with.
-//
 // Duplicate object names are rejected by default. RFC 8259 says their behaviour is unpredictable and leaves
 // implementations to choose, which means a document with duplicates means different things to different
 // readers — and that difference has been used to smuggle one value past a validator and a different one to the
@@ -30,7 +28,6 @@ pub enum DuplicateKeyPolicy: int32 {
 }
 
 /// Why parsing stopped, and where.
-///
 /// Failure-only: there is no case meaning nothing went wrong, because a parse that did not fail hands back a
 /// document instead. Every case carries the zero-based byte offset into the input where the parser stopped, which
 /// is the first thing anybody debugging a document asks for and used to live in a separate structure that a caller
@@ -61,7 +58,6 @@ pub variant JsonParseError {
 
 extend JsonParseError : ParseFailure {
     /// Where in the input parsing stopped.
-    ///
     /// Borrows the failure and leaves it untouched. Cannot fail; runs in constant time and allocates nothing.
     /// @returns the zero-based byte offset into the document
     /// @see https://rux-lang.dev/docs/api/json/parse-error/offset
@@ -100,11 +96,8 @@ func WriteLexicalDescription(writer: &var TextWriter, reason: &JsonLexError) -> 
 
 extend JsonParseError : Display {
     /// Writes the description of why parsing stopped, without the position.
-    ///
     /// The offset is a number a caller renders where it makes sense for them — beside a line and column they
     /// computed, or not at all — so it is not written into the middle of a sentence here. `Debug` carries it.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, and `UnsupportedRequest` for any style or precision.
     /// @param writer the destination
     /// @param spec what the placeholder asked for
@@ -158,11 +151,8 @@ func WriteCase(writer: &var TextWriter, name: char8[..], at: uint) -> ! FormatEr
 
 extend JsonParseError : Debug {
     /// Names the case and its position: `JsonParseError::Unexpected(12)`.
-    ///
     /// A lexical failure names both, so nothing about it has to be looked up elsewhere:
     /// `JsonParseError::Lexical(BadEscape, 12)`.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, and `UnsupportedRequest` for any style or precision.
     /// @param writer the destination
     /// @param spec what the placeholder asked for
@@ -264,7 +254,6 @@ extend JsonParser {
     }
 
     /// Whether parsing stopped, and why.
-    ///
     /// `none` while nothing has gone wrong, which for a parser that has finished means the document was read.
     /// A caller using `Parse` never needs this: the failure comes back in the result.
     /// @returns the failure, positioned, or `none`
@@ -544,15 +533,11 @@ extend JsonParser {
     }
 
     /// Parses the whole document and returns its top-level value, or why it could not.
-    ///
     /// Anything after that value is `TrailingContent` — a document is one value, and two concatenated ones are
     /// not a document however well-formed each is.
-    ///
     /// A failure gives back nothing at all. Whatever had been built when the parser stopped is released here, which
     /// is the only place that can be done once: an array that failed at its third element owns two, and handing
     /// those back beside an error would leave a caller holding a document that is not one.
-    ///
-    /// # Failures
     /// Every case of `JsonParseError`, positioned at the byte where parsing stopped.
     /// @returns the document, or the failure that stopped it
     /// @see https://rux-lang.dev/docs/api/json/json-parser/parse
@@ -622,12 +607,9 @@ func BuildFailure(stop: JsonStop, lexical: JsonLexError, position: uint) -> Json
 }
 
 /// Parses `input` into a value, rejecting duplicate names.
-///
 /// The default limits apply. A failure gives back the reason and its position and no value at all, so a document
 /// that is not a document cannot be mistaken for one that is — which the old shape allowed, since it answered a
 /// refused parse with `null`, and `null` is a document.
-///
-/// # Failures
 /// Every case of `JsonParseError`, positioned at the byte where parsing stopped.
 /// @param allocator where the value is built
 /// @param input the document, as UTF-8 bytes
@@ -639,12 +621,9 @@ pub func Parse(allocator: Allocator, input: char8[..]) -> JsonValue ! JsonParseE
 }
 
 /// Parses `input` under chosen limits and a chosen duplicate-name policy.
-///
 /// The long form of `Parse`, for a caller who needs something other than the defaults. The policy is a
 /// parameter rather than a mutable setting on a shared parser, so two documents read under different policies
 /// in the same program cannot influence one another.
-///
-/// # Failures
 /// Every case of `JsonParseError`, positioned at the byte where parsing stopped. A limit that the document exceeds
 /// arrives as `TooDeep` or `TooManyEntries` from the parser, or nested inside `Lexical` when it was the lexer that
 /// measured it.

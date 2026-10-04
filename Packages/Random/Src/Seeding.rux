@@ -1,19 +1,16 @@
 // Seeding from the operating system's entropy, and the global generator that deliberately does not exist.
-//
 // **There is no default generator here, and that is a decision rather than an omission.** A global mutable
 // generator is convenient and costs three things worth more than the convenience. It makes results
 // irreproducible, because any library that draws from it shifts every subsequent draw a caller thought was
 // theirs. It makes correctness depend on threading, because two threads sharing one state either race or
 // serialize, and the fix for either is worse than passing a generator. And it makes seeding a global decision,
 // so a program that wants one deterministic component and one entropy-seeded one cannot have both.
-//
 // A caller who wants one generator for a whole program can make one and pass it. That is one parameter, and it
 // buys reproducibility, thread independence and per-component seeding all at once.
 
 import Entropy::{ EntropyError, NextUint64 };
 
 /// A `Xoshiro256` seeded from the operating system's entropy.
-///
 /// Fails with why the entropy could not be obtained. A caller that is content with a predictable generator when
 /// the system has no entropy recovers explicitly, as in `XoshiroFromEntropy() catch { else => Xoshiro256(0u64) }`.
 /// @returns a generator seeded from the system, or why it could not be seeded
@@ -23,7 +20,6 @@ pub func XoshiroFromEntropy() -> Xoshiro256 ! EntropyError {
 }
 
 /// A `Pcg64Dxsm` seeded from the operating system's entropy, on the default stream.
-///
 /// Fails and recovers exactly as `XoshiroFromEntropy` does.
 /// @returns a generator seeded from the system, or why it could not be seeded
 /// @see https://rux-lang.dev/docs/api/random/pcg-from-entropy
@@ -32,7 +28,6 @@ pub func PcgFromEntropy() -> Pcg64Dxsm ! EntropyError {
 }
 
 /// A `Pcg64Dxsm` seeded from entropy on the stream `stream` selects.
-///
 /// The intended shape for parallel work: every worker calls this with its own index, so the streams are
 /// independent by construction and the whole run is reproducible from the one seed if it is recorded.
 /// @param stream which of the generator's independent sequences to draw from

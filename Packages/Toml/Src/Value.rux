@@ -1,9 +1,7 @@
 // What a TOML value is, and what a table remembers about how it was made.
-//
 // TOML has real types where JSON has one number and a great deal of hope: an integer is an integer, a float is a
 // float, and a date is a date. That is most of what makes TOML pleasant to write configuration in, and it is why
 // a value here carries a `Date` and a `TimeOfDay` from `Time` rather than the text it was written with.
-//
 // A table also remembers how it came to exist. TOML forbids defining the same table twice, and forbids adding to
 // one that was written inline or reached through a dotted key — three different mistakes with three different
 // reasons. The flags below are what let the parser say which one happened instead of reporting a duplicate and
@@ -50,7 +48,6 @@ pub struct TomlEntry {
 }
 
 /// A TOML value: one of the ten kinds, owning whatever it holds.
-///
 /// Move-only, because it owns strings and nested values. The allocator it was built with travels with it, so a
 /// subtree can be released without the caller having to remember where it came from.
 /// @see https://rux-lang.dev/docs/api/toml/value
@@ -261,7 +258,6 @@ extend TomlValue {
     }
 
     /// The integer payload, or `false` when this is not an integer.
-    ///
     /// A float is not converted, even when its value happens to be whole: TOML distinguishes `1` from `1.0` and
     /// collapsing them here would throw away a distinction the document was making.
     /// @param result receives the value when this reports true
@@ -318,7 +314,6 @@ extend TomlValue {
     }
 
     /// The offset, or `false` when this is not an offset date-time.
-    ///
     /// A local date-time deliberately has none: it names a wall clock reading, and inventing an offset for it is
     /// how a meeting ends up an hour out.
     /// @param result receives the value when this reports true
@@ -340,7 +335,6 @@ extend TomlValue {
     }
 
     /// Appends `value` to an array, taking ownership of it.
-    ///
     /// Reports `false` when this is not an array or the allocator refused; `value` is consumed either way, so a
     /// caller does not have to decide who owns it on failure.
     /// @param value the value to act on
@@ -352,7 +346,6 @@ extend TomlValue {
     }
 
     /// Appends an entry to a table, copying the key and taking ownership of the value.
-    ///
     /// The order entries are added in is the order they are kept and written, which is what makes a document
     /// round-trip recognisably. Nothing here rejects a repeated key — that is the parser's business, where the
     /// three different ways of repeating one can be told apart.
@@ -377,7 +370,6 @@ extend TomlValue {
     }
 
     /// The element at `index`, borrowed for modification, or null when there is none.
-    ///
     /// This is how an array of tables grows: the header that opens a new one appends, and the lines under it
     /// are written into the last element in place.
     /// @param index which one, counting from zero
@@ -432,7 +424,6 @@ extend TomlValue {
     }
 
     /// Releases everything this value owns.
-    ///
     /// Written out rather than left to the compiler, because a value owns its string and its children own
     /// theirs: the recursion here is the shape of the document, and stating it makes the ownership of a nested
     /// tree something a reader can check.

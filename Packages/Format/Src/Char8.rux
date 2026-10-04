@@ -1,5 +1,4 @@
 // A `char8` is one byte of UTF-8, which is not the same thing as one character.
-//
 // A byte below 0x80 is a whole character and is written as it stands. A byte above that is one piece of a character
 // spread over several, and a writer takes whole characters — so what is written for one is the replacement
 // character, U+FFFD, which is what "there was something here and it could not be represented" looks like in text.
@@ -14,8 +13,6 @@ pub const ReplacementCharacter: char32 = 0xFFFDu32 as char32;
 
 extend char8 : Display {
     /// Writes this byte, or the replacement character when it is not a whole one.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
     /// @param writer the destination
     /// @param spec what the placeholder asked for
@@ -32,12 +29,9 @@ extend char8 : Display {
 
 extend char8 : Debug {
     /// The same byte, quoted, with one that is not a whole character preserved as `\x{nn}`.
-    ///
     /// Where `Display` writes U+FFFD, this writes the byte itself. Two different stray bytes render alike under
     /// `Display` and differently here, which is the point of having both: one is for a reader and the other is for
     /// somebody working out which byte arrived.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
     /// @param writer the destination
     /// @param spec what the placeholder asked for

@@ -1,5 +1,4 @@
 // Giving storage back to the operating system.
-//
 // A null pointer is accepted and does nothing, so a cleanup path need not test for one. Everything else must
 // be an address this module's `Alloc` or `Realloc` returned; there is no way to check that here and no
 // attempt to.
@@ -14,9 +13,6 @@ when #target.os {
 }
 
 /// Releases an allocation. A null pointer is accepted and does nothing.
-///
-/// # Safety
-///
 /// A non-null `ptr` must be the live base address returned by `Alloc` or `Realloc`. Every pointer into the block
 /// becomes invalid immediately; releasing an interior, foreign, or already released address is invalid.
 /// @param ptr an address `Alloc` or `Realloc` returned, or null

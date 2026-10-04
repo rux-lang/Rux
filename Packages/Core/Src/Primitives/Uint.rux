@@ -1,5 +1,4 @@
 // `uint`: an unsigned integer the width of a pointer on the target.
-//
 // Sixty-four bits on every currently supported target. This is the type a length, an index and a size are spelled in.
 
 /// A target pointer-sized unsigned integer.

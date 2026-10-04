@@ -1,22 +1,17 @@
 // xxHash64, the hash to reach for when there is a lot of data and the answer must be ready before the next cache
 // miss.
-//
 // Where FNV-1a takes one byte at a time, this takes thirty-two: four independent 64-bit accumulators, each mixing
 // its own eight bytes with a multiply and a rotate, so a wide machine has four chains to run at once instead of one
 // dependency chain to wait on. The accumulators are folded together at the end, the length is mixed in, and the tail
 // is finished eight, four and one byte at a time.
-//
 // The mixing is arithmetic rather than table lookup, which is what keeps it fast on data that does not fit in cache:
 // there is no table to evict. The final avalanche — shift, multiply, shift, multiply, shift — is what makes a
 // one-bit change in the input change about half the output bits, which the round function alone does not give.
-//
 // A seed is part of the algorithm here, not an afterthought: two runs with different seeds produce unrelated hashes
 // of the same input, which is enough to stop accidental collisions from following data between two tables. It is not
 // enough to stop a deliberate one — xxHash is not keyed in the cryptographic sense, and an adversary who learns the
 // seed can find collisions as easily as without it. `SipHash` is the answer where that matters.
-//
 // The result matches the reference implementation exactly, for every input length and every seed.
-//
 // https://github.com/Cyan4973/xxHash/blob/dev/doc/xxhash_spec.md
 
 import Core::RotateLeft;
@@ -43,22 +38,16 @@ pub const XxPrime4: uint64 = 0x85EBCA77C2B2AE63;
 pub const XxPrime5: uint64 = 0x27D4EB2F165667C5;
 
 /// How many bytes one xxHash64 round consumes: four lanes of eight.
-///
 /// An input shorter than this never touches the accumulators at all, which is why the short and long paths give
 /// different-looking code for the same algorithm.
 /// @see https://rux-lang.dev/docs/api/hash/xx-block-size
 pub const XxBlockSize: uint = 32;
 
 /// The eight bytes at `bytes` as a 64-bit value, least significant byte first.
-///
 /// `bytes` is borrowed and read. Assembled a byte at a time rather than read as a word, so the answer is the same at
 /// any address on any machine — xxHash is defined on a little-endian byte stream, not on whatever the machine
 /// happens to hold.
-///
 /// Cannot fail. Runs in constant time and allocates nothing.
-///
-/// # Safety
-///
 /// `bytes` must be readable for eight bytes.
 /// @param bytes eight bytes to read
 /// @returns them as a little-endian word
@@ -74,13 +63,8 @@ pub func ReadLittleEndian64(bytes: *byte) -> uint64 {
 }
 
 /// The four bytes at `bytes` as a 32-bit value, least significant byte first.
-///
 /// `bytes` is borrowed and read. Assembled a byte at a time, for the same reason as `ReadLittleEndian64`.
-///
 /// Cannot fail. Runs in constant time and allocates nothing.
-///
-/// # Safety
-///
 /// `bytes` must be readable for four bytes.
 /// @param bytes four bytes to read
 /// @returns them as a little-endian half word
@@ -96,10 +80,8 @@ pub func ReadLittleEndian32(bytes: *byte) -> uint32 {
 }
 
 /// One accumulator round: mix `lane` into `accumulator`.
-///
 /// Both are read by value and the new accumulator is returned. This is the whole of xxHash64's inner loop — scale
 /// the input, add, rotate, scale again — and it is what the four lanes each run independently.
-///
 /// Cannot fail. Runs in constant time and allocates nothing.
 /// @param accumulator the lane's running value
 /// @param lane the input word to fold into it
@@ -110,10 +92,8 @@ pub func XxRound(accumulator: uint64, lane: uint64) -> uint64 {
 }
 
 /// Folds one finished accumulator into the running hash.
-///
 /// Both are read by value and the new hash is returned. The accumulator is passed through a round from zero first,
 /// so a lane that happened to end at a convenient value does not stay convenient.
-///
 /// Cannot fail. Runs in constant time and allocates nothing.
 /// @param hash the running hash
 /// @param accumulator the lane to merge into it
@@ -125,10 +105,8 @@ pub func XxMerge(hash: uint64, accumulator: uint64) -> uint64 {
 }
 
 /// The final mixing step, which spreads every input bit across the whole result.
-///
 /// `hash` is read by value and the finished hash is returned. Without this a one-bit change in the input moves only
 /// the bits the round function reached; with it, about half of them move.
-///
 /// Cannot fail. Runs in constant time and allocates nothing.
 /// @param hash the value to mix
 /// @returns it with every input bit spread across the output
@@ -144,7 +122,6 @@ pub func XxAvalanche(hash: uint64) -> uint64 {
 }
 
 /// xxHash64 over a stream of bytes, in as many writes as the caller has.
-///
 /// Copy, but large: thirty-two bytes of pending input plus its accumulators. Borrow one by reference unless a
 /// snapshot of the hash so far is what is wanted.
 /// @see https://rux-lang.dev/docs/api/hash/xx-hash64
@@ -173,11 +150,9 @@ extend XxHash64 {
     }
 
     /// A hasher with nothing written into it yet, using `seed`.
-    ///
     /// `seed` is read by value. Two hashers with different seeds give unrelated answers for the same input, which is
     /// enough to keep accidental collisions from following data from one table to another. It is not enough to stop
     /// a deliberate collision: an adversary who knows the seed is no worse off than one hashing without it.
-    ///
     /// Cannot fail. Runs in constant time and allocates nothing.
     /// @param seed the seed to start from
     /// @returns a hasher seeded with it
@@ -196,9 +171,7 @@ extend XxHash64 {
     }
 
     /// Puts the hasher back to where it started, keeping its seed.
-    ///
     /// `self` is borrowed mutably. Everything written so far is forgotten; the seed is not.
-    ///
     /// Cannot fail. Runs in constant time and allocates nothing.
     /// @see https://rux-lang.dev/docs/api/hash/xx-hash64/reset
     pub func Reset(self: &var XxHash64) {
@@ -222,15 +195,10 @@ extend XxHash64 {
 
 extend XxHash64 : Hasher {
     /// Adds `length` bytes at `bytes` to the hash.
-    ///
     /// `bytes` is borrowed and read; `length` is read by value. A zero length changes nothing and is the one case in
     /// which `bytes` may be null. Input that does not fill a block is held until the rest of it arrives, so any
     /// division of the same byte stream into writes gives the same answer.
-    ///
     /// Runs in time proportional to `length` and allocates nothing.
-    ///
-    /// # Safety
-    ///
     /// `bytes` must be readable for `length` bytes.
     /// @param bytes the bytes to absorb
     /// @param length how many bytes; zero absorbs nothing
@@ -279,10 +247,8 @@ extend XxHash64 : Hasher {
     }
 
     /// The hash of everything written so far.
-    ///
     /// `self` is borrowed. Nothing is consumed: asking twice gives the same answer, and writing more continues from
     /// where the writes left off rather than starting over.
-    ///
     /// Cannot fail. Runs in time proportional to what is held pending, which is under one block. Allocates nothing.
     /// @returns the hash of everything written since the last reset
     /// @see https://rux-lang.dev/docs/api/hash/xx-hash64/finish
@@ -326,14 +292,9 @@ extend XxHash64 : Hasher {
 }
 
 /// The xxHash64 of `length` bytes at `bytes`, using `seed`.
-///
 /// `bytes` is borrowed and read; `length` and `seed` are read by value. A zero length gives the hash of the empty
 /// input for that seed, and is the one case in which `bytes` may be null.
-///
 /// Cannot fail. Runs in time proportional to `length` and allocates nothing.
-///
-/// # Safety
-///
 /// `bytes` must be readable for `length` bytes.
 /// @param bytes the bytes to hash
 /// @param length how many bytes
@@ -347,14 +308,9 @@ pub func XxHash64SeededOf(bytes: *byte, length: uint, seed: uint64) -> uint64 {
 }
 
 /// The xxHash64 of `length` bytes at `bytes`, seeded with zero.
-///
 /// `bytes` is borrowed and read; `length` is read by value. This is what every published xxHash64 test vector means
 /// by "the hash of" an input.
-///
 /// Cannot fail. Runs in time proportional to `length` and allocates nothing.
-///
-/// # Safety
-///
 /// `bytes` must be readable for `length` bytes.
 /// @param bytes the bytes to hash
 /// @param length how many bytes

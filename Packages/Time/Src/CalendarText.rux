@@ -1,14 +1,11 @@
 // What a calendar value looks like, and what it refuses to pretend to know.
-//
 // The whole design here is one decision applied four times: a value renders what it holds and never invents what it
 // does not. A `DateTime` is a date and a time with no offset field, so it renders without one — not with `Z`, which
 // would claim UTC, and not with the machine's local offset, which would claim a place. A reader who wants an offset
 // in the text attaches one and renders an `OffsetDateTime`, which has somewhere to keep it.
-//
 // That is why `OffsetDateTime` exists at all. RFC 3339 requires an offset, so a type that cannot carry one cannot
 // produce RFC 3339, and the alternative — letting `DateTime` take an offset argument at render time — puts the
 // decision in the wrong place: a format call has no way to pass one.
-//
 // The renderers write digits directly rather than borrowing Format's integer machinery, which they could not do
 // anyway without Time depending on it. Every field here has a known width, so the loops are fixed and nothing
 // allocates: a year is four digits or as many as it needs, everything else is exactly two.
@@ -16,11 +13,9 @@
 import Text::{ Debug, Display, FormatError, FormatSpec, RejectStyle, TextWriter, WriteAscii, WriteBytes };
 
 /// A date and time together with the offset from UTC they are stated in.
-///
 /// `DateTime` deliberately carries no offset, since what offset a bare date and time is in is usually the caller's
 /// knowledge rather than the value's. This is the pairing for when it is not: an instant written down for
 /// interchange, where the offset is part of what was recorded and losing it changes the meaning.
-///
 /// `Copy`, and exactly as wide as its two halves.
 /// @see https://rux-lang.dev/docs/api/time/offset-date-time
 pub struct OffsetDateTime {
@@ -32,7 +27,6 @@ pub struct OffsetDateTime {
 
 extend OffsetDateTime {
     /// The local date and time `dateTime` paired with the offset it is stated in.
-    ///
     /// Cannot fail: both halves are already valid, and no combination of a valid date-time and a valid offset is
     /// invalid. Runs in constant time and allocates nothing.
     /// @param dateTime the local date and time
@@ -44,7 +38,6 @@ extend OffsetDateTime {
     }
 
     /// The moment this names in UTC.
-    ///
     /// Cannot fail; runs in constant time and allocates nothing.
     /// @returns the instant, as a timestamp
     /// @see https://rux-lang.dev/docs/api/time/offset-date-time/to-timestamp
@@ -67,7 +60,6 @@ func WriteFixed(writer: &var TextWriter, value: uint32, width: uint) -> ! Format
 }
 
 // Writes a year: four digits at least, more when the year needs them, and a leading sign outside that range.
-//
 // ISO 8601 requires a sign for a year outside 0 through 9999 because four digits is the agreed width and anything
 // else is ambiguous without one. Year 0 exists here and is 1 BCE, which is the astronomical numbering the rest of
 // this package uses.
@@ -108,7 +100,6 @@ func WriteWide(writer: &var TextWriter, value: uint32) -> ! FormatError {
 }
 
 // Writes the fractional second under `spec`.
-//
 // A precision names exactly that many digits, 0 through 9, and truncates rather than rounding: a fraction rendered
 // short is a fraction read short, and rounding one up could carry into a second the value does not have. Without a
 // precision the fraction is written to whatever digits it actually has, trailing zeros trimmed, and omitted
@@ -152,11 +143,8 @@ func RejectCalendarStyle(spec: FormatSpec) -> ! FormatError {
 
 extend Date : Display {
     /// Writes the date as `YYYY-MM-DD`.
-    ///
     /// A year outside 0 through 9999 carries a sign and as many digits as it needs, which is what ISO 8601 requires
     /// for one: four digits is the agreed width, and anything wider is ambiguous without a sign to mark it.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, and `UnsupportedRequest` for a style other than `iso8601` or
     /// `rfc3339`, or for a precision, which a date has nothing to apply one to.
     /// @param writer the destination
@@ -176,8 +164,6 @@ extend Date : Display {
 
 extend Date : Debug {
     /// The same text as `Display`: a date has one reading, and quoting it would say nothing extra.
-    ///
-    /// # Failures
     /// The failures `WriteDisplay` reports.
     /// @param writer the destination
     /// @param spec what the placeholder asked for
@@ -190,11 +176,8 @@ extend Date : Debug {
 
 extend TimeOfDay : Display {
     /// Writes the time as `HH:MM:SS`, with a fractional part when there is one.
-    ///
     /// A precision names exactly that many fractional digits, 0 through 9, and truncates. Without one the fraction
     /// is written to the digits it has with trailing zeros trimmed, and omitted when it is zero.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, `UnsupportedRequest` for a style other than `iso8601` or `rfc3339`,
     /// and `UnsupportedRequest` for a precision past nine, which no fraction has.
     /// @param writer the destination
@@ -214,8 +197,6 @@ extend TimeOfDay : Display {
 
 extend TimeOfDay : Debug {
     /// The same text as `Display`.
-    ///
-    /// # Failures
     /// The failures `WriteDisplay` reports.
     /// @param writer the destination
     /// @param spec what the placeholder asked for
@@ -228,12 +209,9 @@ extend TimeOfDay : Debug {
 
 extend UtcOffset : Display {
     /// Writes the offset as `Z` for UTC, and as a signed `+HH:MM` otherwise.
-    ///
     /// `Z` rather than `+00:00` because that is what RFC 3339 names UTC, and because the two are the same offset
     /// written two ways rather than two different offsets. A value that must be `+00:00` in its output is not
     /// asking about the offset but about the format, which is a question for whatever assembles the text.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, and `UnsupportedRequest` for a style other than `iso8601` or
     /// `rfc3339`, or for a precision, which an offset has nothing to apply one to.
     /// @param writer the destination
@@ -256,8 +234,6 @@ extend UtcOffset : Display {
 
 extend UtcOffset : Debug {
     /// The same text as `Display`.
-    ///
-    /// # Failures
     /// The failures `WriteDisplay` reports.
     /// @param writer the destination
     /// @param spec what the placeholder asked for
@@ -270,13 +246,10 @@ extend UtcOffset : Debug {
 
 extend DateTime : Display {
     /// Writes the local date and time as `YYYY-MM-DDTHH:MM:SS`, with no offset.
-    ///
     /// The absence is deliberate and is the point of the type. A `DateTime` holds no offset, so writing one would
     /// mean inventing it: `Z` would claim UTC and the machine's local offset would claim a place, and both would
     /// be a guess presented as a fact. `OffsetDateTime` is the type that has somewhere to keep an offset, and it
     /// is what produces RFC 3339.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, `UnsupportedRequest` for a style other than `iso8601` or `rfc3339`,
     /// and `UnsupportedRequest` for a precision past nine.
     /// @param writer the destination
@@ -293,8 +266,6 @@ extend DateTime : Display {
 
 extend DateTime : Debug {
     /// The same text as `Display`.
-    ///
-    /// # Failures
     /// The failures `WriteDisplay` reports.
     /// @param writer the destination
     /// @param spec what the placeholder asked for
@@ -317,12 +288,9 @@ func WriteDateOnly(writer: &var TextWriter, date: Date) -> ! FormatError {
 
 extend OffsetDateTime : Display {
     /// Writes the moment as RFC 3339: `YYYY-MM-DDTHH:MM:SS[.fraction]` followed by `Z` or a signed `HH:MM`.
-    ///
     /// This is the type that can produce RFC 3339, because it is the one that carries an offset. The offset is
     /// written as it is held rather than normalized to UTC: what was recorded includes where, and shifting it away
     /// would discard that.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, `UnsupportedRequest` for a style other than `iso8601` or `rfc3339`,
     /// and `UnsupportedRequest` for a precision past nine.
     /// @param writer the destination
@@ -339,8 +307,6 @@ extend OffsetDateTime : Display {
 
 extend OffsetDateTime : Debug {
     /// The same text as `Display`.
-    ///
-    /// # Failures
     /// The failures `WriteDisplay` reports.
     /// @param writer the destination
     /// @param spec what the placeholder asked for

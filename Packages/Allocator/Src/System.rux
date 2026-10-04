@@ -1,14 +1,11 @@
 // The allocator that asks the operating system, and is the one everything else falls back to.
-//
 // It is built on `Rux/Memory`'s page layer rather than on a C heap, which is what lets it honour an alignment
 // stricter than a machine word: pages come aligned to a page, and a header placed before the returned address
 // records what has to be given back.
-//
 // The header is why a release needs its layout. The block handed to the caller is not the block taken from the
 // system — there is a header before it and padding before that — and the header holds the length to release. Both
 // the layout and the header are checked against each other, so a mismatched release is reported rather than
 // corrupting the next allocation.
-//
 // This is a page-granular allocator, so a small allocation costs a whole page. That is the right shape for the
 // backing store of an arena or a pool, and the wrong one for a program allocating many small values directly --
 // which is what the arena and pool allocators in this package exist for.
@@ -19,7 +16,6 @@ import Core::Assert;
 import Memory::{ AlignUp, AlignUpChecked, PageAlign, PageAllocate, PageRead, PageRelease, PageWrite };
 
 /// What a system allocation records about itself, immediately before the address the caller sees.
-///
 /// Never constructed by a caller. The magic is checked on release, which is what turns a mismatched or foreign
 /// pointer into a reported `InvalidBlock` rather than a corrupted heap.
 /// @see https://rux-lang.dev/docs/api/allocator/system-block-header
@@ -35,17 +31,14 @@ pub struct SystemBlockHeader {
 }
 
 /// The pattern a valid system block header carries.
-///
 /// Chosen to be unlikely in ordinary data, so a pointer that was never one of these is very unlikely to look like
 /// one. This is a check against a mistake, not against an adversary.
 /// @see https://rux-lang.dev/docs/api/allocator/system-block-magic
 pub const SystemBlockMagic: uint64 = 0x52757841_6C6C6F63;
 
 /// An allocator that asks the operating system for pages.
-///
 /// Carries no state: every instance behaves identically, and one may be created wherever it is needed rather than
 /// passed around. It is `Copy` for that reason.
-///
 /// Page-granular, so a small allocation costs a whole page. Use it as the backing store for an arena or a pool
 /// rather than for many small values directly.
 /// @see https://rux-lang.dev/docs/api/allocator/system-allocator
@@ -56,7 +49,6 @@ pub struct SystemAllocator {
 
 extend SystemAllocator {
     /// Constructs a stateless system allocator.
-    ///
     /// The result is structural and copyable. Borrow it as `&var Allocator` when a temporary interface view is
     /// sufficient; no adapter or owning conversion is required.
     /// @returns the allocator, which holds no state of its own
@@ -69,15 +61,10 @@ extend SystemAllocator {
 
 extend SystemAllocator : Allocator {
     /// Takes storage matching `layout` from the operating system.
-    ///
     /// `result` receives the address when this reports `None`. A zero-sized layout gives the shared empty block and
     /// takes nothing from the system.
-    ///
     /// Reports `Unsupported` for an alignment larger than the total the request would occupy, `OutOfMemory` when the
     /// system refuses.
-    ///
-    /// # Safety
-    ///
     /// The storage is the caller's until `Deallocate` takes it back with an equal layout.
     /// @param layout the size and alignment wanted
     /// @returns the address of the storage, or why none was taken
@@ -115,13 +102,9 @@ extend SystemAllocator : Allocator {
     }
 
     /// Gives the storage behind `block` back to the operating system.
-    ///
     /// `layout` must equal the one the block was allocated with. Reports `InvalidBlock` when the header is not
     /// there or does not agree with the layout, which catches a foreign pointer and a mismatched size before either
     /// reaches the page layer.
-    ///
-    /// # Safety
-    ///
     /// Every pointer into the block becomes invalid.
     /// @param block an address this allocator returned
     /// @param layout the layout it was allocated with
@@ -139,16 +122,11 @@ extend SystemAllocator : Allocator {
     }
 
     /// Changes the size of a block by taking a new one and copying what fits.
-    ///
     /// The two layouts must share an alignment; anything else reports `Unsupported` rather than moving the block to
     /// a different one. On success the original block is released and `result` holds the new address, which is
     /// generally not the old one.
-    ///
     /// This allocator never grows a block in place, even when the page it sits in has room: doing so would need a
     /// free-list it deliberately does not keep.
-    ///
-    /// # Safety
-    ///
     /// The old pointer is invalid once this succeeds. On failure it is untouched and still the caller's.
     /// @param block the existing allocation's address
     /// @param oldLayout the layout `block` was allocated with

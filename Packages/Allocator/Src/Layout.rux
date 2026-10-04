@@ -1,23 +1,18 @@
 // What an allocation is asked for: a size in bytes and an alignment the address must be a multiple of.
-//
 // A `Layout` exists so that the pair travels together and is checked once. Passing a size and an alignment as two
 // loose arguments is how an allocator ends up asked for an alignment that is not a power of two, or a size whose
 // rounding overflows — neither of which most allocators check, and both of which produce an allocation that is
 // smaller or less aligned than the caller believes.
-//
 // A `Layout` that exists is valid. `New` is the only way to build one and refuses what it cannot represent, so
 // nothing downstream has to check again.
-//
 // `ForValue<T>` and `ForArray<T>` describe storage without constructing a value and use the type's actual alignment.
 
 import Core::uint;
 import Memory::AlignUpChecked;
 
 /// A validated allocation request: a size, and the alignment its address must satisfy.
-///
 /// Copy and owns nothing. Every instance is valid, because `New` refuses to build an invalid one: the alignment is a
 /// power of two, and the size rounded up to that alignment does not pass the end of the address space.
-///
 /// A size of zero is valid and is not an allocation of nothing — see `Allocate` for what an allocator does with it.
 /// @see https://rux-lang.dev/docs/api/allocator/layout
 pub struct Layout {
@@ -29,7 +24,6 @@ pub struct Layout {
 
 extend Layout {
     /// A layout for one value of `T`, using its actual size and alignment.
-    ///
     /// No value is copied or consumed. Cannot fail, runs in constant time, and allocates nothing.
     /// @typeParam T the type to describe
     /// @returns `T`'s own size and alignment
@@ -39,7 +33,6 @@ extend Layout {
     }
 
     /// A layout for `count` consecutive values of `T`, or absent when the size would overflow.
-    ///
     /// No value is copied or consumed. A zero count describes empty storage at `T`'s alignment.
     /// Runs in constant time and allocates nothing.
     /// @typeParam T the element type
@@ -53,12 +46,10 @@ extend Layout {
     }
 
     /// A layout for `size` bytes at `alignment`, or nothing when the pair cannot be one.
-    ///
     /// `size` and `alignment` are read by value; the layout is returned by copy. Reports `none` when `alignment` is
     /// zero or not a power of two, and when rounding `size` up to `alignment` would pass the end of the address
     /// space — which is the case that turns into an allocation far smaller than the caller asked for if it is not
     /// caught here.
-    ///
     /// Runs in constant time and allocates nothing.
     /// @param size how many bytes are wanted
     /// @param alignment the boundary the address must be a multiple of
@@ -72,13 +63,10 @@ extend Layout {
     }
 
     /// A layout for `size` bytes at the alignment a machine word wants.
-    ///
     /// `size` is read by value. Reports `none` only when rounding `size` up would pass the end of the address space,
     /// since the alignment is known good.
-    ///
     /// This is the layout for storage whose contents are bytes rather than a typed value: an allocation aligned to a
     /// word suits anything the machine loads in one instruction.
-    ///
     /// Runs in constant time and allocates nothing.
     /// @param size how many bytes are wanted
     /// @returns a layout of that size at its natural alignment, or `none` when there is none
@@ -89,10 +77,8 @@ extend Layout {
 
 
     /// The size this layout occupies once rounded up to its own alignment.
-    ///
     /// `self` is borrowed. This is the stride between two of these laid out one after another, and is what an arena
     /// advances by. Cannot overflow, because `New` refused every size for which it would.
-    ///
     /// Runs in constant time and allocates nothing.
     /// @returns the size rounded up to a whole number of alignments
     /// @see https://rux-lang.dev/docs/api/allocator/layout/padded-size
@@ -103,9 +89,7 @@ extend Layout {
     }
 
     /// Whether `address` satisfies this layout's alignment.
-    ///
     /// `self` is borrowed and `address` is read by value and never dereferenced.
-    ///
     /// Cannot fail. Runs in constant time and allocates nothing.
     /// @param address the address to test
     /// @returns whether `address` meets this layout's alignment
@@ -115,7 +99,6 @@ extend Layout {
     }
 
     /// Whether two layouts ask for the same thing.
-    ///
     /// `self` is borrowed and `other` is read by value.
     /// @param other the layout to compare against
     /// @returns whether both the size and the alignment match
@@ -134,12 +117,9 @@ extend Layout {
 }
 
 /// The alignment a value of `size` bytes naturally wants.
-///
 /// `size` is read by value. Returns the largest power of two that divides a value of this size, capped at a machine
 /// word, which is what every supported target's ABI requires of an ordinary value.
-///
 /// A size of zero reports one, since a zero-sized value has nothing to align.
-///
 /// Runs in time proportional to the word size and allocates nothing.
 /// @param size the size to choose an alignment for
 /// @returns the largest useful power-of-two alignment for that size

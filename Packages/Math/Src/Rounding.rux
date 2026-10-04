@@ -11,7 +11,6 @@
 import Core::MaximumOf;
 
 /// Which way a value that falls between two integers should go.
-///
 /// `Copy`.
 /// @see https://rux-lang.dev/docs/api/math/roundingmode
 pub enum RoundingMode: int32 {
@@ -22,18 +21,15 @@ pub enum RoundingMode: int32 {
     /// Upward, toward positive infinity: `Ceil`.
     TowardPositive = 2,
     /// To the nearest, with a halfway value going away from zero: `Round`.
-    ///
     /// What most people mean by rounding, and what school teaches.
     ToNearestTiesAway = 3,
     /// To the nearest, with a halfway value going to the even neighbour.
-    ///
     /// IEEE 754's default, and the one that keeps a long run of roundings from drifting: ties away from zero rounds up
     /// half the time and down never.
     ToNearestTiesEven = 4
 }
 
 /// The nearest integer to `value`, with a halfway value going to the even neighbour.
-///
 /// `RoundTiesToEven(2.5)` is 2 and `RoundTiesToEven(3.5)` is 4, where `Round` gives 3 and 4. The sign of a zero is
 /// preserved, and a NaN or infinity passes through unchanged.
 /// @param value value to round
@@ -91,7 +87,6 @@ pub func RoundTo(value: float32, mode: RoundingMode) -> float32 {
 }
 
 /// `value` rounded in the named direction and converted to an integer, reporting whether it fits.
-///
 /// `sample` is read by value and only its type matters, exactly as `Core`'s `MaximumOf` reads one. Returns `true` when
 /// the rounded value is not representable in the integer type — because it is a NaN, an infinity, or simply out of
 /// range — and leaves `result` zero in that case. This is the only place a float becomes an integer, and it refuses

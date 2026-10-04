@@ -1,10 +1,8 @@
 // The raw system-call entry points, and the numbers that select a call.
-//
 // This is the whole of what this package rests on: every wrapper elsewhere is one of these seven functions with the
 // arguments named. A caller may use them directly for a call this package does not wrap, which is what they are
 // public for — the numbering is the architecture's, so a number from one architecture means something else on the
 // other, and `SysRead` and its relatives are what keeps that straight.
-//
 // A raw result is not yet an answer. It is either a value or a small negative error number, which `Errors::IsError`
 // and `Errors::Errno` are for.
 
@@ -15,7 +13,6 @@ import Core::{ #Error, #target };
 // architecture is guarded, because the call numbers and the entry points genuinely differ.
 
 // The call numbers, which differ by architecture: the two tables were assigned decades apart and agree on nothing.
-//
 // Only calls both architectures have are named. AArch64 came after the directory-relative interface and never got
 // `open`, `stat`, `unlink`, `mkdir`, `rename`, `dup2` or `pipe` — it has the `*at` forms alone. Naming those here
 // keeps one wrapper right on both, and `AtFdCwd` is what makes an ordinary path work through them.
@@ -106,11 +103,9 @@ when #target.arch {
 // Linux returns either a non-negative result or -errno from every system call,
 // on both architectures. What differs is where the call number and the
 // arguments go, so each architecture writes the whole wrapper.
-//
 // x86-64: Rux functions use the System V ABI, whose first three argument
 // registers the kernel keeps. The fourth argument moves from rcx to r10, and a
 // seventh function argument arrives at [rsp + 8], after the return address.
-//
 // AArch64: Rux functions use AAPCS64, whose first eight argument registers
 // cover even the widest wrapper. The kernel takes the call number in x8 and the
 // arguments in x0 through x5, so each wrapper moves the number aside and then
@@ -291,10 +286,8 @@ when #target.arch {
 }
 
 /// Widens a file descriptor to the register width a system call takes it in.
-///
 /// `fd` is read by value; the widened value is returned by copy. Sign extension is what matters: `-1` has to arrive
 /// as all ones rather than as a small positive number, which is how `mmap` is told it has no backing descriptor.
-///
 /// Cannot fail. Runs in constant time and allocates nothing.
 /// @param fd the descriptor to widen
 /// @returns it sign-extended, so a negative one stays negative

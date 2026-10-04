@@ -1,10 +1,8 @@
 // Text as the operating system stores it, kept lossless.
-//
 // A filename is not text. On the Unix systems it is bytes with two exclusions — no slash, no NUL — and nothing
 // obliges those bytes to be UTF-8. On Windows it is UTF-16 code units, and nothing obliges them to pair: names
 // with unpaired surrogates exist on real disks. A path type built on `String` would refuse those names, and a
 // program that cannot open a file because of its name is wrong in the way that loses data.
-//
 // So the native string stores exactly what the system does — bytes there, code units here — behind one alias,
 // and the conversions are asymmetric on purpose: UTF-8 in always succeeds, since valid text encodes into either
 // representation; UTF-8 out is fallible, since the system's names are under no obligation to be text at all.
@@ -26,7 +24,6 @@ else {
 }
 
 /// A borrowed run of native units.
-///
 /// `Copy`, owning nothing. The units it names must outlive it.
 /// @see https://rux-lang.dev/docs/api/path/os-string-view
 pub struct OsStringView {
@@ -72,7 +69,6 @@ extend OsStringView {
     }
 
     /// Whether two views hold the same units.
-    ///
     /// Unit equality and nothing smarter: no case folding, no normalization. Two names the filesystem treats as
     /// one are still two names here, because which names those are is the filesystem's opinion, not the string's.
     /// @param other the value to compare against
@@ -89,7 +85,6 @@ extend OsStringView {
     }
 
     /// This native text as UTF-8, or nothing where it is not text.
-    ///
     /// The fallible direction, and fallible for a different reason per platform: Unix bytes may simply not be
     /// UTF-8, and Windows units may hold an unpaired surrogate, which no UTF-8 sequence can spell. It fails with
     /// `InvalidUtf8` for both, because both mean the same thing to the caller — this name is not text, and a
@@ -135,7 +130,6 @@ extend OsStringView {
 }
 
 /// Native text that owns its units.
-///
 /// Copyable with value semantics: each copy owns an independent native-unit block.
 /// @see https://rux-lang.dev/docs/api/path/os-string
 pub struct OsString {
@@ -173,7 +167,6 @@ extend OsString {
     }
 
     /// An owning copy of what `view` spans, exactly as it stands.
-    ///
     /// This is the lossless direction: whatever the system handed over survives, valid text or not. It fails with
     /// `OutOfMemory` when the copy cannot be made.
     /// @param allocator where the storage comes from
@@ -241,12 +234,8 @@ extend OsString {
     }
 
     /// An owning native copy of UTF-8 text.
-    ///
     /// The direction that always succeeds: valid text encodes into either representation, byte for byte on the
     /// Unix systems and through UTF-16 on Windows. It fails only when the allocation does.
-    ///
-    /// # Safety
-    ///
     /// The bytes must be well-formed UTF-8, which everything in `Rux/Text` produces and vouches for.
     /// @param allocator where the storage comes from
     /// @param text the text to act on

@@ -59,7 +59,6 @@ func Main() -> int {
 
     // A call that fails reports through it. Which value it leaves is the platform's business; that it left one is
     // not, so only the clearing and the setting are checked.
-    //
     // The call is `malloc`, from the same runtime `errno` is read from. A stream call would not do on Windows, where
     // `C::StdIo` is still bound to the legacy runtime and sets an `errno` this one cannot see.
     let refused = malloc(18446744073709551615u64);

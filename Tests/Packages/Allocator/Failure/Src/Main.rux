@@ -4,7 +4,6 @@ import Core::{ Assert, Panic };
 // The phase gate for allocation: every site that can ask for storage is made to fail, and what happens next is
 // checked rather than assumed. Allocation failure is the path that never runs in testing and always runs in
 // production eventually, and the only way to know it works is to force it.
-//
 // The failing allocator counts what it hands out and what it takes back, so each case can also check the harder
 // question: that a failure left nothing behind. A partial construction that leaks is the failure mode worth catching
 // here, and it is invisible to any test that only looks at the error code.

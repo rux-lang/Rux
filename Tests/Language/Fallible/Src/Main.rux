@@ -1,11 +1,9 @@
 // Fallibles: `T ! E` is either a successful `T` or a failed `E`, and `! E` is exactly `() ! E`.
-//
 // Both channels are first-class data. `.Success(value)` and `.Failure(error)` build either one anywhere a value is
 // expected, `fail error;` leaves a function through its outer failure, and `return;` or falling off the end of a
 // function whose success is the unit succeeds with `()`. Channels never collapse: the same type on both sides stays two
 // distinguishable states, and a failed result nested inside a successful one is data, not a failure of the outer level.
 // Matching covers both channels with ordinary `.Success` and `.Failure` patterns.
-//
 // Every check that holds a tracked payload counts destructions, so whichever channel is active is destroyed exactly
 // once and the inactive one never.
 

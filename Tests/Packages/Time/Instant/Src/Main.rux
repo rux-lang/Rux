@@ -6,7 +6,6 @@ import Time::{ Duration, Instant, SleepFor, TimeError };
 // not values — readings never go backwards, a sleep takes at least what was asked, and the reversed subtraction
 // refuses rather than answering with a wildly large span. Nothing here asserts an upper bound on anything, because
 // a loaded machine is allowed to be slow and a test that fails under load is a test that lies.
-//
 // The presentation is the same kind of claim. An `Instant` implements `Debug` and deliberately does not implement
 // `Display`, because a monotonic reading has no text for a reader: it counts from an origin the system chose at
 // boot and means nothing in another process. That absence cannot be asserted from here — `is` is a static type

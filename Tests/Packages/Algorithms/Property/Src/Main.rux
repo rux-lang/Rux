@@ -6,7 +6,6 @@ import Core::{ Assert, Panic };
 // pseudorandom sequences, at many lengths. A hand-written case checks what its author thought of; this checks what
 // they did not, and the reference is written for obviousness rather than speed so that the two are unlikely to be
 // wrong in the same way.
-//
 // The generator is a fixed-seed xorshift, so a failure is reproducible: the same run produces the same sequences
 // every time, on every target.
 

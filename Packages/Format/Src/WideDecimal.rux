@@ -1,14 +1,11 @@
 // Decimal digits for a wide float, exactly.
-//
 // The shortest rendering that reads back as the same value is found the way Steele and White, and then Burger and
 // Dybvig, described it: keep the exact value as a ratio of big integers, keep the exact distance to each
 // neighbouring float beside it, and generate digits until the digits so far sit closer to the value than to either
 // neighbour. Nothing is approximated, which is why it is correct at every width the same way, and why the numbers
 // involved are as large as the exponent makes them.
-//
 // Fixed precision is the same machinery stopped at a chosen digit, with the remainder rounded to nearest and ties
 // to the even digit.
-//
 // Both generators can fail two ways, and they say which. The allocator can refuse the working storage, which is
 // the machine rather than the value and may go differently on a second attempt; or the caller's digit buffer can
 // be too small for what the value needs, which will go the same way every time. Reporting both as one used to

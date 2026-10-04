@@ -1,12 +1,10 @@
 // Sampling from a stream whose length is not known until it ends.
-//
 // The reservoir is the point: a caller that could hold the whole stream would shuffle it and take a prefix
 // instead. This keeps only the sample, so a stream of any length — a file being read, a query being scanned --
 // costs the memory of the answer rather than the memory of the input.
 
 
 /// A reservoir sample being built.
-///
 /// Offer every item of the stream in turn and the reservoir ends holding a uniformly chosen subset of whatever
 /// arrived, each subset of that size equally likely. The caller owns the storage, and its length is the sample
 /// size.
@@ -45,7 +43,6 @@ extend Reservoir<T> {
 }
 
 /// Offers `item` to `reservoir`.
-///
 /// Algorithm R: while the reservoir has room the item is kept outright, and afterwards the item replaces a
 /// uniformly chosen existing entry with probability equal to the sample size over the number seen. That is what
 /// keeps every subset equally likely at every moment, not merely at the end — so a stream can be cut short and

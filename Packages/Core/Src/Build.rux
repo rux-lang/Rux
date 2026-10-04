@@ -1,14 +1,11 @@
 // What the active build is doing, as ordinary values available while compiling.
-//
 // `#build` answers questions about the build rather than about the machine it targets, which is `#target`'s job: the
 // profile chosen, what the profile implies, what artifact is coming out, and when it was made. Reading one costs
 // nothing at run time, because the value is folded where it is written.
-//
 // The timestamp is fixed once per build rather than read per expression, so every use of it in one build agrees. That
 // makes it usable as a build identity and unusable as a clock.
 
 /// The high-level mode of the active build profile.
-///
 /// A profile is a name, and more than one profile may share a mode; this is the part a package can branch on without
 /// knowing which profiles a project defined.
 /// @see https://rux-lang.dev/docs/api/core/build-mode
@@ -44,7 +41,6 @@ pub enum OutputKind: uint8 {
 }
 
 /// Properties of the active build profile and its output.
-///
 /// Every field is fixed when compiling begins and is the same everywhere in one build. Reading one produces no
 /// runtime code, so a branch on a field is decided while compiling and the untaken side is not emitted.
 /// @see https://rux-lang.dev/docs/api/core/build
@@ -74,7 +70,6 @@ pub struct Build {
 }
 
 /// The active build, as a compile-time value.
-///
 /// Reading a field produces no runtime code. A `when` on one keeps only the branch that applies, so the untaken side
 /// is never resolved or type-checked and may name things this build does not have.
 /// @see https://rux-lang.dev/docs/api/core/build

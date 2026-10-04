@@ -1,12 +1,10 @@
 // What kind of character a scalar value is.
-//
 // Every answer is a binary search over the generated ranges, so a property costs a handful of comparisons and no
 // table costs more memory than its ranges. The category ordinals mirror `GeneralCategory` exactly; the table
 // stores numbers, and this enum is what the numbers mean.
 
 
 /// The Unicode general category, one per scalar value. `Copy`.
-///
 /// The ordinals match the generated table and must not be reordered: the table stores them as numbers.
 /// @see https://rux-lang.dev/docs/api/unicode/general-category
 pub enum GeneralCategory: int32 {
@@ -73,7 +71,6 @@ pub enum GeneralCategory: int32 {
 }
 
 /// The general category of `scalar`.
-///
 /// Runs in a handful of comparisons and allocates nothing.
 /// @param scalar the scalar value to classify
 /// @returns its general category
@@ -91,7 +88,6 @@ pub func CombiningClassOf(scalar: char32) -> uint32 {
 }
 
 /// Whether `scalar` is whitespace by Unicode's `White_Space` property.
-///
 /// A superset of ASCII's six: the no-break spaces, the typographic spaces and the line and paragraph separators
 /// are all here, which is what separates this from `Text`'s deliberately ASCII-only trimming.
 /// @param scalar the scalar value to test

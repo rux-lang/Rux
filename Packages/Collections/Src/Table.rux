@@ -1,29 +1,23 @@
 // The open-addressing kernel `HashMap` and `HashSet` are both built on, so the probe sequence, the displacement rule
 // and the deletion exist once rather than twice.
-//
 // **Robin Hood.** Every entry records how far it sits from the slot its hash names — its probe distance. An
 // insertion that meets an entry closer to home than itself takes the slot and carries that entry onward, so the
 // distances along a chain never decrease and the worst one stays near the average. That is what keeps a lookup
 // bounded even when a table is nearly full, where plain linear probing degrades into a long scan of somebody else's
 // chain.
-//
 // It also makes a miss cheap. A search that reaches a slot whose occupant is closer to home than the search has
 // travelled can stop there: the key it is looking for would have taken that slot on the way past. No tombstone, no
 // scan to the end of the chain.
-//
 // **Backward-shift deletion.** Removing an entry moves the following ones back one slot each, stopping at an empty
 // slot or one already at home. That leaves the table exactly as if the removed entry had never been inserted --
 // there are no tombstones here at all, so a table that is churned rather than grown does not slowly fill with them
 // and rehash for no reason.
-//
 // **Randomized hashing.** The hash a table uses is seeded, and the seed is a secret drawn from `Rux/Entropy`.
 // Without it, an adversary who chooses keys can compute a few thousand that collide and turn every lookup linear,
 // which is a denial of service against anything keying a table on input it did not write. The seeded hashers in
 // `Hashing` use `SipHash`, which is what makes guessing the seed the only way in.
-//
 // Occupancy lives in the distance byte rather than in the key, so there is no reserved or sentinel key: every
 // possible `K` is storable, including zero and `uint::Max` and any struct bit pattern.
-//
 // Internal to this package: the kernel, not something a caller reaches for.
 
 import Core::uint;
@@ -31,13 +25,11 @@ import Allocator::Allocator;
 import Entropy::NextUint64;
 
 /// The state byte of a slot that has never held an entry, and does not now.
-///
 /// Distances are stored one higher than they are, so zero can mean empty and nothing else has to.
 /// @see https://rux-lang.dev/docs/api/collections/slot-empty
 pub const SlotEmpty: uint8 = 0;
 
 /// The furthest an entry may sit from home before the table gives up and grows.
-///
 /// A byte holds the distance plus one, so 254 is what fits. Reaching it means the hash is doing nothing useful for
 /// these keys, and a table that grew would only spread the same collisions over more slots — so the insertion is
 /// refused rather than looped on.
@@ -45,13 +37,11 @@ pub const SlotEmpty: uint8 = 0;
 pub const MaximumProbeDistance: uint = 254;
 
 /// Eight slots is where a table starts.
-///
 /// Below that the load factor rounds away to nothing useful.
 /// @see https://rux-lang.dev/docs/api/collections/minimum-table-capacity
 pub const MinimumTableCapacity: uint = 8;
 
 /// A hash seed, drawn once and shared by every table that wants one.
-///
 /// Two words, which is what `SipHash` takes as a key. Drawing one per table costs a system call each; a program
 /// making many should draw one and hand it to all of them, which is what this being a value rather than a hidden
 /// global is for.
@@ -63,11 +53,9 @@ pub struct TableSeed {
 
 extend TableSeed {
     /// A seed drawn from the operating system.
-    ///
     /// Takes nothing. Falls back to a fixed pair of words when the system has no entropy to give, which keeps a
     /// table working on a system without a generator at the cost of the protection the seed exists for — a table
     /// keyed on adversarial input on such a system is as attackable as an unseeded one.
-    ///
     /// Runs in constant time and allocates nothing.
     /// @returns a seed drawn from the system, so two tables in one process iterate differently
     /// @see https://rux-lang.dev/docs/api/collections/table-seed/random
@@ -78,7 +66,6 @@ extend TableSeed {
     }
 
     /// A seed with the words a caller chose.
-    ///
     /// `low` and `high` are read by value. For a test that needs the same table twice, or a caller drawing one seed
     /// for many tables.
     /// @param low the first seed word
@@ -91,10 +78,8 @@ extend TableSeed {
 }
 
 /// The open-addressing table `HashMap` and `HashSet` are both built on.
-///
 /// Holds keys, values and one distance byte per slot in three parallel runs. A set instantiates the value type with
 /// something that occupies nothing worth reading, which is what lets one kernel serve both.
-///
 /// Move-only: it owns its storage and entries, prohibits copying, and destroys both with `~Table`.
 /// @typeParam K the key type
 /// @typeParam V the value type
@@ -121,7 +106,6 @@ extend Table<K, V> {
     func =(self: &var Table<K, V>, other: &Table<K, V>);
 
     /// An empty table that has not allocated anything.
-    ///
     /// `allocator` is borrowed for the call and kept; `seed` is read by value. Costs nothing: a table nothing is put
     /// into never allocates.
     /// @param allocator where the storage comes from
@@ -141,7 +125,6 @@ extend Table<K, V> {
     }
 
     /// How many entries the table holds.
-    ///
     /// `self` is borrowed.
     /// @returns how many entries it holds
     /// @see https://rux-lang.dev/docs/api/collections/table/length
@@ -150,7 +133,6 @@ extend Table<K, V> {
     }
 
     /// How many slots the table has.
-    ///
     /// `self` is borrowed. A power of two, or zero. Not how many entries fit: the load factor keeps a quarter of
     /// them free, because a table run fuller than that spends its time displacing entries rather than storing them.
     /// @returns how many slots it has
@@ -160,7 +142,6 @@ extend Table<K, V> {
     }
 
     /// Whether the table holds no entries.
-    ///
     /// `self` is borrowed.
     /// @returns whether it holds nothing
     /// @see https://rux-lang.dev/docs/api/collections/table/is-empty
@@ -169,7 +150,6 @@ extend Table<K, V> {
     }
 
     /// Whether the slot at `index` holds an entry.
-    ///
     /// `self` is borrowed. This is what an iteration over the slots asks of each one.
     /// @param index which one, counting from zero
     /// @returns whether that slot holds an entry
@@ -189,13 +169,10 @@ extend Table<K, V> {
     }
 
     /// The slot holding `key`, or `none` when the table does not have it.
-    ///
     /// `self` is borrowed; `key` is read by value; `hash` and `equals` decide identity and must be the same pair the
     /// table was filled with. The seed is handed to `hash`, so a table's hashes are its own.
-    ///
     /// Stops at the first slot whose occupant is closer to home than the search has travelled: the key would have
     /// displaced that occupant on its way past, so it cannot be further along.
-    ///
     /// Runs in constant expected time and allocates nothing.
     /// @param key the key to look up
     /// @param hash how a key is hashed, taking the key and the two seed words
@@ -221,7 +198,6 @@ extend Table<K, V> {
     }
 
     // Puts an entry into a table with room for it, displacing whatever is closer to home along the way.
-    //
     // Returns the slot the entry ended up in, or `none` when the probe ran further than a distance byte can hold.
     // The caller has already made room, so a refusal here means these keys collide badly enough that a larger table
     // would not help.
@@ -267,7 +243,6 @@ extend Table<K, V> {
     }
 
     // Takes the entry at `index` out and closes the gap behind it.
-    //
     // Every following entry that is not already at home moves back one slot, which leaves the table exactly as if
     // the removed entry had never been inserted. That is what a tombstone would have stood in for, and why there are
     // none here.
@@ -291,7 +266,6 @@ extend Table<K, V> {
     }
 
     /// The smallest power-of-two capacity that holds `length` entries without passing the three-quarter load factor.
-    ///
     /// `length` is read by value. Derived from the entry count rather than from the current capacity, so one rule
     /// covers growing and settling alike.
     /// @param length how many elements
@@ -310,10 +284,8 @@ extend Table<K, V> {
     }
 
     /// Rebuilds the table at `capacity` slots, reinserting every entry.
-    ///
     /// `self` is borrowed mutably; `hash` must be the one the table was filled with. A failure leaves the table
     /// exactly as it was: the new runs are taken and filled before the old ones are released.
-    ///
     /// Runs in time proportional to the capacity.
     /// @param capacity how many elements to make room for
     /// @param hash how a key is hashed, taking the key and the two seed words
@@ -371,7 +343,6 @@ extend Table<K, V> {
     }
 
     /// Makes sure one more entry will fit, growing the table when it will not.
-    ///
     /// `self` is borrowed mutably; `hash` must be the one the table was filled with.
     /// @param hash how a key is hashed, taking the key and the two seed words
     /// @returns nothing when the operation succeeded, or why it did not
@@ -384,7 +355,6 @@ extend Table<K, V> {
     }
 
     /// Makes room for `additional` more entries on top of those already present.
-    ///
     /// `self` is borrowed mutably; the length does not change. A failure leaves the table exactly as it was.
     /// @param additional how many more elements to make room for
     /// @param hash how a key is hashed, taking the key and the two seed words
@@ -399,7 +369,6 @@ extend Table<K, V> {
     }
 
     /// Releases the capacity the entry count does not need.
-    ///
     /// `self` is borrowed mutably. An empty table gives up its storage entirely. A failure leaves the table usable
     /// at its current capacity, since failing to hand memory back is never a reason to stop working.
     /// @param hash how a key is hashed, taking the key and the two seed words
@@ -416,7 +385,6 @@ extend Table<K, V> {
     }
 
     /// Destroys every entry, keeping the storage.
-    ///
     /// `self` is borrowed mutably. Runs in time proportional to the capacity.
     /// @see https://rux-lang.dev/docs/api/collections/table/clear
     pub func Clear(self: &var Table<K, V>) {
@@ -448,7 +416,6 @@ extend Table<K, V> {
     }
 
     /// Destroys every entry and releases the storage.
-    ///
     /// Runs when the table's life ends. The entries go first and the runs second, since one destroyed after its
     /// storage was released would be read from freed memory.
     /// @see https://rux-lang.dev/docs/api/collections/table/destructor

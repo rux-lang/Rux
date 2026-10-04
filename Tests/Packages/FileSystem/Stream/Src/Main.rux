@@ -1,12 +1,10 @@
 
 // A file is a stream with a position: written through the Writer everything already speaks, read back through
 // the Reader, measured, cut, and stacked under the buffered machinery that has no idea it left memory.
-//
 // Every case here that only needs a stream for the length of a call hands the file itself to the helper. That is
 // the checked way, and it is checked in a way the adapter is not: the compiler ends the borrow at the call, and it
 // refuses a file read through while a borrow of it is still live. The adapter cannot refuse anything, because it
 // holds an address.
-//
 // So the adapter appears exactly once below, under the buffered reader, which is the case it exists for: a value
 // that keeps its source past the call that made it. Binding the file itself into an interface value there would
 // move the file, since it owns its handle and prohibits copying, and there would be nothing left to close.

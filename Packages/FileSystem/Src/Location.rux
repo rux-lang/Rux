@@ -1,12 +1,10 @@
 // Where the process is, and what a path really refers to.
-//
 // Two operations that look alike and are not. `Absolute` is arithmetic: it joins a relative path onto the
 // working directory and simplifies the result lexically, touching no filesystem and answering for a path that
 // does not exist. `Canonicalize` asks the filesystem: every symbolic link is resolved, every component must
 // exist, and the answer is the one true name of an existing file. `Path::Normalize` already documented that its
 // `x/..` simplification is a lie in the presence of symbolic links — this is where the truth lives, and the
 // difference between the two is the whole reason both are offered.
-//
 // The working directory is process-wide state. Reading it is harmless; setting it reaches into every thread at
 // once and invalidates every relative path any of them was about to use, so `SetCurrentDirectory` exists for the
 // programs that genuinely need it and nothing in this package calls it.
@@ -26,7 +24,6 @@ when #target.os {
 }
 
 /// How many symbolic links one canonicalization will follow before giving up.
-///
 /// A link that points at itself, or at a chain that returns to it, would otherwise be followed forever. The
 /// limit is what every system uses for the same reason, and reaching it is reported as `LimitExceeded`.
 /// @see https://rux-lang.dev/docs/api/filesystem/symbolic-link-limit
@@ -60,7 +57,6 @@ pub func CurrentDirectory(allocator: Allocator) -> OsString ! IoError {
 }
 
 /// Makes `path` the process's working directory.
-///
 /// Process-wide and immediately visible to every thread, which invalidates every relative path any of them was
 /// about to resolve. Nothing in this package calls it.
 /// @param allocator where the storage comes from
@@ -84,7 +80,6 @@ pub func SetCurrentDirectory(allocator: Allocator, path: Path) -> ! IoError {
 }
 
 /// `path` made absolute against the working directory and simplified lexically.
-///
 /// Arithmetic, not a question for the filesystem: the path need not exist, nothing is opened, and no symbolic
 /// link is resolved — so a `..` that crosses one is simplified away as though it did not. `Canonicalize` is the
 /// operation that tells the truth about links, at the cost of requiring the file to be there.
@@ -108,7 +103,6 @@ pub func Absolute(allocator: Allocator, path: Path) -> PathBuffer ! IoError {
 
 when #target.os != .Windows {
     // The text a symbolic link at `path` holds, or `none` when it is not a link at all.
-    //
     // A name that is not a link is not an error: `EINVAL` from readlink means "that is an ordinary file", which
     // is the answer the walk below asks for at every component.
     func ReadLinkText(allocator: Allocator, path: Path) -> OsString? ! IoError {
@@ -164,7 +158,6 @@ when #target.os != .Windows {
 
 when #target.os != .Windows {
     // Walks `path`, appending each component to `resolved` and following any link it lands on.
-    //
     // Recursive, because a link's target is itself a path that must be walked the same way — and bounded by the
     // follow count rather than by the nesting, since it is the link chain that can loop.
     func ResolveInto(allocator: Allocator, path: Path, resolved: &var PathBuffer, followed: *var uint) -> ! IoError {
@@ -211,12 +204,10 @@ when #target.os != .Windows {
 }
 
 /// The one true name of the existing file `path` refers to.
-///
 /// Every symbolic link is resolved, every `.` and `..` is applied against what those links actually mean, and
 /// the result is absolute. Unlike `Absolute`, the file must exist: this is a question for the filesystem, and a
 /// name with nothing behind it has no true form. A link chain that returns to itself is `LimitExceeded` rather
 /// than a hang.
-///
 /// On Windows the answer arrives in the verbatim form and spelled as the filesystem stores it — the case the
 /// name actually has, short names expanded — because that is what the system reports, and rewriting it would be
 /// this package guessing.

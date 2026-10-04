@@ -1,10 +1,8 @@
 // The three integer widths past the machine word.
-//
 // A `uint512` in decimal is one hundred fifty-five digits, and its digit loop is the same division loop every
 // narrower width uses — the arithmetic itself is the compiler's, which lowers wide division natively. What differs
 // per width is only the type the loop runs in, so each width carries its loop and everything after the digits is
 // shared with the narrow widths through `WriteIntegerDigits`.
-//
 // The magnitude of a negative value is taken in the unsigned counterpart, for the reason the narrow widths do it:
 // the most negative value of any signed width has no positive counterpart to negate into, and two's complement in
 // the unsigned type is right for it and for every other value.
@@ -42,11 +40,8 @@ func WriteDigits128(writer: &var TextWriter, spec: FormatSpec, magnitude: uint12
 
 extend uint128 : Display {
     /// Writes this value's digits in the spec's base.
-    ///
     /// Allocates nothing: the digits go into a buffer on the stack — 128 bytes covers the binary rendering,
     /// which is the longest — and reach the writer one piece at a time.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
     /// @param writer the destination
     /// @param spec what the placeholder asked for
@@ -59,8 +54,6 @@ extend uint128 : Display {
 
 extend uint128 : Debug {
     /// The same digits.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
     /// @param writer the destination
     /// @param spec what the placeholder asked for
@@ -73,8 +66,6 @@ extend uint128 : Debug {
 
 extend int128 : Display {
     /// Writes this value's sign and digits in the spec's base.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
     /// @param writer the destination
     /// @param spec what the placeholder asked for
@@ -89,8 +80,6 @@ extend int128 : Display {
 
 extend int128 : Debug {
     /// The same sign and digits.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
     /// @param writer the destination
     /// @param spec what the placeholder asked for
@@ -132,11 +121,8 @@ func WriteDigits256(writer: &var TextWriter, spec: FormatSpec, magnitude: uint25
 
 extend uint256 : Display {
     /// Writes this value's digits in the spec's base.
-    ///
     /// Allocates nothing: the digits go into a buffer on the stack — 256 bytes covers the binary rendering,
     /// which is the longest — and reach the writer one piece at a time.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
     /// @param writer the destination
     /// @param spec what the placeholder asked for
@@ -149,8 +135,6 @@ extend uint256 : Display {
 
 extend uint256 : Debug {
     /// The same digits.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
     /// @param writer the destination
     /// @param spec what the placeholder asked for
@@ -163,8 +147,6 @@ extend uint256 : Debug {
 
 extend int256 : Display {
     /// Writes this value's sign and digits in the spec's base.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
     /// @param writer the destination
     /// @param spec what the placeholder asked for
@@ -179,8 +161,6 @@ extend int256 : Display {
 
 extend int256 : Debug {
     /// The same sign and digits.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
     /// @param writer the destination
     /// @param spec what the placeholder asked for
@@ -222,11 +202,8 @@ func WriteDigits512(writer: &var TextWriter, spec: FormatSpec, magnitude: uint51
 
 extend uint512 : Display {
     /// Writes this value's digits in the spec's base.
-    ///
     /// Allocates nothing: the digits go into a buffer on the stack — 512 bytes covers the binary rendering,
     /// which is the longest — and reach the writer one piece at a time.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
     /// @param writer the destination
     /// @param spec what the placeholder asked for
@@ -239,8 +216,6 @@ extend uint512 : Display {
 
 extend uint512 : Debug {
     /// The same digits.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
     /// @param writer the destination
     /// @param spec what the placeholder asked for
@@ -253,8 +228,6 @@ extend uint512 : Debug {
 
 extend int512 : Display {
     /// Writes this value's sign and digits in the spec's base.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
     /// @param writer the destination
     /// @param spec what the placeholder asked for
@@ -269,8 +242,6 @@ extend int512 : Display {
 
 extend int512 : Debug {
     /// The same sign and digits.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
     /// @param writer the destination
     /// @param spec what the placeholder asked for

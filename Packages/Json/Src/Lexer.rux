@@ -1,5 +1,4 @@
 // Turning JSON text into tokens, under limits a caller sets.
-//
 // The limits are the point of having a separate lexing stage at all. JSON is a recursive format read from
 // untrusted input more often than almost anything else, and every one of its failure modes is a resource
 // exhaustion rather than a parse error: a document of ten thousand open brackets exhausts a recursive parser's
@@ -7,7 +6,6 @@
 // hundred million elements exhausts memory while remaining perfectly well-formed. None of those is malformed
 // JSON. All of them are refusals a caller has to be able to configure, so the limits live in a value passed in
 // rather than in constants compiled here.
-//
 // The lexer never allocates. A string token points into the input and reports whether it needs unescaping, so a
 // document whose strings hold no escapes — which is most of them — is parsed without copying any of them.
 
@@ -74,7 +72,6 @@ pub enum JsonLexError: int32 {
 }
 
 /// What a caller will accept from a document.
-///
 /// Every field is a refusal a caller might need to make against untrusted input, and every default is generous
 /// enough for ordinary documents and far short of what exhausts a machine.
 /// @see https://rux-lang.dev/docs/api/json/json-limits
@@ -104,7 +101,6 @@ extend JsonLimits {
     }
 
     /// No limits at all, for input that is already trusted.
-    ///
     /// Named so that choosing it is visible: a document read from the network should never use this, and a
     /// reviewer should be able to find every place that did.
     /// @returns limits that refuse nothing, for input that is already trusted

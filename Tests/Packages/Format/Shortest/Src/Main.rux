@@ -5,24 +5,20 @@ import Text::{ FormatError, String, StringView };
 
 // The claim this file exists to check is one sentence: what is written reads back as the same bits, and nothing
 // shorter would.
-//
 // The first half is closure, and it is the only check that catches a renderer and a parser wrong in the same
 // direction — an exact expectation written by hand cannot, because the hand writes what it believes. Every value
 // below is rendered, read back, and compared as bits rather than as numbers, so a NaN or a signed zero is held to
 // the same standard as an ordinary value.
-//
 // The second half is the exact expectations, which come from somewhere other than this code: the structural values
 // whose decimal expansion is a matter of arithmetic rather than of trusting a tool, and the two that are famous
 // for showing whether a renderer is exact at all. `0.1` is not a tenth and never was, and a renderer that prints
 // its true expansion is right and useless; one that prints `0.1` has found the shortest decimal no other float is
 // closer to. `1/3` is the case where fifteen digits and sixteen differ, which is where the old fixed-digit engine
 // stopped being a round trip.
-//
 // The adjacent values are the hard ones. Two floats one bit apart must not render alike, or reading either back
 // gives the same value and one of them is lost. They are built by walking the bits rather than by arithmetic,
 // which is the only way to be sure they really are adjacent. That property is entirely the renderer's, so the
 // sweep across the exponent range checks it alongside closure rather than instead of it.
-//
 // Closure now holds across the whole range. It did not when the renderer landed: the reader was still the
 // approximate one, and it read back 1e300 as a different value than it was given, so the extremes had to be
 // asserted as *not* closing with the gap named. Those assertions are inverted here, which is what an exact reader

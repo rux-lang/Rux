@@ -1,5 +1,4 @@
 // uint256: four lanes of magnitude, with no sign bit anywhere.
-//
 // This width had no coverage of its own before: the shared wide-integer test named int128, int256, uint128 and
 // uint512 and skipped this one entirely. What it pins is unsigned behavior at four lanes — a carry propagating
 // through two lanes it neither starts nor ends in, wrapping at zero rather than at the middle of the range, and a

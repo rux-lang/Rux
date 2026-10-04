@@ -1,10 +1,8 @@
 // `union`: several members over one piece of storage.
-//
 // The previous case for this keyword constructed a union, returned one field and asserted nothing, so it would have
 // passed with the whole feature broken as long as the field read zero. What a union promises is exactly what that
 // did not check: every member starts at the same address, the whole occupies as much room as its largest member and
 // no more, and writing one member and reading another reinterprets the same bytes rather than converting them.
-//
 // That last property is the reason a union exists — it is how a float's bit pattern is examined without going
 // through memory by hand — and it is also why a union is unlike a `variant`: nothing records which member is live,
 // so reading the wrong one is not an error, it is a reinterpretation.

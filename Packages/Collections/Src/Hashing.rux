@@ -1,15 +1,12 @@
 // Ready-made hash and equality callbacks for the key types a table is usually keyed on.
-//
 // A table takes its hash as a function rather than through an interface, because Rux has no closures and an
 // interface value would have to be stored and dispatched through per lookup. The signature carries the table's seed
 // alongside the key, which is what makes the hashing randomized: two tables in one program hash the same key
 // differently, and neither is predictable to anyone who has not seen the seed.
-//
 // Every hash here is `SipHash`, which is the one in `Rux/Hash` designed for exactly this. An adversary who chooses
 // keys can find collisions in any of the others by hand, and a table full of colliding keys is a table whose every
 // lookup is a linear scan — a denial of service against anything keyed on input it did not write. `SipHash` makes
 // finding those collisions as hard as guessing the seed.
-//
 // A caller keying on a type not listed here writes the pair itself: a hash that reads the whole key and mixes the
 // seed in, and an equality that agrees with it. The one rule is the usual one — two keys that compare equal must
 // hash the same.
@@ -17,10 +14,8 @@
 import Hash::{ SipHash24, SipHash24Of, WriteUint64 };
 
 /// The seeded hash of a `uint`.
-///
 /// `value`, `low` and `high` are read by value. The seed is the table's, and two tables with different seeds hash
 /// the same value differently.
-///
 /// Cannot fail. Runs in constant time and allocates nothing.
 /// @param value the value to act on
 /// @param low the first seed word
@@ -94,10 +89,8 @@ pub func HashChar8(value: char8, low: uint64, high: uint64) -> uint64 {
 }
 
 /// The seeded hash of a run of characters, which is what a string key comes to.
-///
 /// `text` is borrowed and read. Two slices holding the same characters hash the same however they were built, which
 /// is what makes a text key usable at all.
-///
 /// Runs in time proportional to the length and allocates nothing.
 /// @param text the bytes to hash
 /// @param low the first seed word
@@ -163,7 +156,6 @@ pub func EqualsChar8(left: char8, right: char8) -> bool {
 }
 
 /// Whether two runs of characters hold the same characters.
-///
 /// Both are borrowed and read. Different lengths are never equal, and two empty slices are, whatever their data
 /// pointers hold.
 /// @param left one of the two values

@@ -1,15 +1,12 @@
 // BLAKE3: the compression function, the chunk state, and the tree that joins chunks together.
-//
 // BLAKE3 is a tree hash, and that is the whole of what makes it different. A message is cut into chunks of a
 // kibibyte; each chunk is compressed to a chaining value independently, and the chaining values are joined
 // pairwise up a binary tree until one remains. Nothing in that depends on the order the chunks are processed,
 // which is why the algorithm parallelizes — and it is also why the implementation is more intricate than a
 // sequential hash, since the tree has to be maintained rather than just a running state.
-//
 // The tree is kept as a stack of subtree chaining values, and the trick that keeps it small is arithmetic: after
 // finishing the chunk at index n, the number of subtrees to merge is the number of trailing one bits in n. That
 // single fact replaces any bookkeeping about which subtrees are complete.
-//
 // The flags carry the position information a tree hash needs and a sequential one does not. A chaining value
 // means nothing without knowing whether it came from the start of a chunk, the end of one, a parent node, or the
 // root — and mixing that into the compression is what stops one part of the tree being substituted for another.
@@ -68,7 +65,6 @@ func Blake3Round(state: *var uint32, message: *uint32) {
 }
 
 /// The compression function: sixteen words of state over seven rounds, producing sixteen words of output.
-///
 /// The first eight output words are the chaining value; all sixteen are used when the output is being extended.
 /// @param chaining the chaining value going in
 /// @param message the message to authenticate
@@ -130,7 +126,6 @@ pub func Blake3Compress(chaining: *uint32, message: *uint32, counter: uint64, bl
 }
 
 /// The state of one chunk being filled.
-///
 /// Structural `Copy`; used as an independent snapshot within the enclosing hasher.
 /// @see https://rux-lang.dev/docs/api/crypto/blake3-chunk
 pub struct Blake3Chunk {
@@ -193,7 +188,6 @@ extend Blake3Chunk {
     }
 
     /// Adds bytes to the chunk, compressing whole blocks as they complete.
-    ///
     /// A block is only compressed once the *next* byte arrives, never when it merely becomes full: the last
     /// block of a chunk carries the end flag, and which block is last is not known until the chunk stops
     /// growing. Compressing eagerly is the classic way to get the flags wrong.
@@ -225,7 +219,6 @@ extend Blake3Chunk {
     }
 
     /// The chunk's chaining value, with the end flag applied to its final block.
-    ///
     /// `extraFlags` carries the root flag when this chunk is the whole message.
     /// @param extraFlags the domain flags to add for this output
     /// @param into receives the output
@@ -251,7 +244,6 @@ extend Blake3Chunk {
 }
 
 /// An incremental BLAKE3 hash.
-///
 /// Structural `Copy`; copying takes an independent snapshot of the hash tree state.
 /// @see https://rux-lang.dev/docs/api/crypto/blake3
 pub struct Blake3 {
@@ -356,7 +348,6 @@ extend Blake3 : Digest {
     }
 
     /// Writes the root output into `into`, which may be any length.
-    ///
     /// BLAKE3's output is extendable like SHAKE's: the root compression repeats with an increasing counter to
     /// produce as many bytes as asked. Thirty-two is the usual choice and is what `DigestLength` reports.
     /// @param into receives the output

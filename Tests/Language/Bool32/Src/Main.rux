@@ -1,5 +1,4 @@
 // bool32: one of two values in four bytes.
-//
 // Boolean logic is pinned once in `Bool`; what belongs to a width is its storage, what a cast into it stores, and
 // whether conversion to another width preserves meaning. This is the width where a source whose low four bytes are
 // zero first exists without needing a wider source type than int64, so that is the cast worth writing down.

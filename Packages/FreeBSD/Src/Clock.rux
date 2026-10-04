@@ -1,8 +1,6 @@
 // Reading a clock, and waiting on one.
-//
 // `ClockMonotonic` counts forward from an arbitrary point and never jumps; `ClockRealtime` tracks wall time and can
 // move in either direction. A duration is measured with the first, a timestamp taken from the second.
-//
 // FreeBSD numbers its clocks differently from Linux — monotonic is 4 here and 1 there — which is why an identifier
 // must never be carried between the two packages.
 
@@ -17,11 +15,7 @@ pub const ClockRealtime: int32 = 0;
 pub const ClockMonotonic: int32 = 4;
 
 /// Reads `clockId` into `time`.
-///
 /// Returns zero, or a negative error number.
-///
-/// # Safety
-///
 /// `time` must be non-null and writable.
 /// @param clockId which clock to read
 /// @param time receives the reading
@@ -32,12 +26,8 @@ pub func ClockGetTime(clockId: int32, time: *var Timespec) -> int64 {
 }
 
 /// Suspends the caller for the requested duration.
-///
 /// `remaining` is written when a signal cut the wait short, and may be null. Returns zero, or a negative error
 /// number; `EINTR` with the unslept time in `remaining` is how a signal is reported.
-///
-/// # Safety
-///
 /// `request` must be non-null, and its nanoseconds must be under one second.
 /// @param request how long to wait
 /// @param remaining receives the unslept time when a signal cut the wait short, and may be null
@@ -48,7 +38,6 @@ pub func Nanosleep(request: *Timespec, remaining: *var Timespec) -> int64 {
 }
 
 /// `CLOCK_MONOTONIC_FAST`: like `ClockMonotonic`, read from a cached value rather than the hardware.
-///
 /// Cheaper and coarser. FreeBSD offers this pairing where Linux offers a coarse clock under a different number.
 /// @see https://rux-lang.dev/docs/api/freebsd/clock-monotonic-fast
 pub const ClockMonotonicFast: int32 = 12;
@@ -62,12 +51,8 @@ pub const ClockRealtimeFast: int32 = 10;
 pub const ClockProcessCpuTime: int32 = 15;
 
 /// Reads the resolution of `clockId` into `resolution`.
-///
 /// Returns zero, or a negative error number. The resolution is the granularity the clock advances by, not the cost
 /// of reading it and not a promise about accuracy.
-///
-/// # Safety
-///
 /// `resolution` must be non-null and writable.
 /// @param clockId which clock to describe
 /// @param resolution receives the granularity

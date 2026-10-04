@@ -1,11 +1,9 @@
 // `as`: the explicit conversion, and the one place a value is allowed to change meaning.
-//
 // The keyword appears throughout the language tests as a means to an end and had no case of its own. What belongs
 // here is the conversion rules themselves, and specifically the ones where `as` does something other than
 // reinterpret bits: a widening that sign-extends only when the source is signed, a narrowing that keeps the low
 // bits and nothing else, a float conversion that truncates toward zero rather than rounding, and a boolean cast
 // that asks whether the whole source is non-zero.
-//
 // Character conversions get their own section because the implicit rule and the explicit one differ. A character
 // widens implicitly only to a wider character carrying the same thing, so `char8` and `char16` — which hold one
 // code unit of an encoding — widen implicitly to nothing at all. `as` crosses those boundaries anyway, which is

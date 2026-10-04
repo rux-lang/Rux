@@ -5,19 +5,16 @@ import Io::{ ConsoleWriter, FromIoError, IoError, IoErrorKind, StreamWriter, ToI
 import Text::{ BufferWriter, Display, FormatError, FormatSpec, TextFailureKind, TextWriter, WriteBytes };
 
 // The one place a stream and the text protocols have to agree, checked from both sides.
-//
 // Neither error type can hold the other's failures, and pretending otherwise is how information gets lost. Going
 // out, everything a stream can report collapses to `WriterFailure`, because that is all `FormatError` can say about
 // a destination — and the loss is made good by the adapter, which keeps the original `IoError` in a slot the caller
 // holds. Coming back, a formatting failure has to arrive as something a stream's caller can act on, and the
 // distinction that must survive is the one that decides what to do next: a request that was wrong will be wrong
 // again, while a destination that failed might not be.
-//
 // The line rule is the third thing, and it is the one that was wrong. A line is a value and its terminator
 // together, so a value that could not be written must not be followed by a terminator. Every case below that writes
 // a line into a buffer too small for it checks the bytes rather than the return value, because the return value was
 // already right and the bytes were not: a failing line used to move the cursor anyway.
-//
 // A stream that refuses is a `Writer` this test supplies, since none of this can be forced through standard output.
 // Its state lives behind a pointer so that the copies an interface adapter makes all see the same stream.
 

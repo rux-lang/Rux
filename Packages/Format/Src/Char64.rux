@@ -1,5 +1,4 @@
 // A `char64` holds one Unicode scalar value in eight bytes, which is one to four bytes of UTF-8.
-//
 // The width is the whole difficulty. A scalar value stops at U+10FFFF and a `char64` has room for four billion
 // times that, so a cast can put a number in one that no character has. Checking after narrowing to `uint32` would
 // be worse than not checking: `0x100000041` narrows to `0x41`, which is a perfectly good `A`, and the wrong
@@ -10,11 +9,8 @@ import Text::{ Debug, Display, FormatError, FormatSpec, RejectStyle, TextWriter 
 
 extend char64 : Display {
     /// Writes this character, or the replacement character when the value is not one.
-    ///
     /// The value is checked at its own width first: a number past the last scalar would otherwise narrow into a
     /// character that exists, and be written as that one.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
     /// @param writer the destination
     /// @param spec what the placeholder asked for
@@ -30,8 +26,6 @@ extend char64 : Display {
 
 extend char64 : Debug {
     /// The same character, quoted, with a value that is not one preserved as its own number.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
     /// @param writer the destination
     /// @param spec what the placeholder asked for

@@ -1,15 +1,12 @@
 // MD5 and SHA-1, kept only for the formats and protocols that will not change.
-//
 // **Both are broken and neither should be chosen for anything new.** MD5 collisions can be produced in seconds
 // on a laptop, and have been used to forge certificates; SHA-1 collisions were demonstrated in 2017 and cost far
 // less now. Neither offers collision resistance, so neither can be used for a signature, a content address, a
 // deduplication key, or anything else where two different inputs producing one output is a problem.
-//
 // What they remain usable for is reading what already exists: a legacy file format, a protocol handshake that
 // cannot be renegotiated, a checksum in a system nobody will update. The names carry `Legacy` so that reaching
 // for one is a decision a reader can see, and so that a search for "Sha1" in a codebase finds every place the
 // decision was made.
-//
 // Neither is a `Digest` implementation, deliberately. A generic function taking any digest should not silently
 // accept these, and code that wants one must name it.
 
@@ -51,7 +48,6 @@ func Md5Rotate(value: uint32, amount: uint32) -> uint32 {
 }
 
 /// An incremental MD5. **Broken; see the note at the top of this file.**
-///
 /// Structural `Copy`; copying takes an independent snapshot of the digest state.
 /// @see https://rux-lang.dev/docs/api/crypto/legacy-md5
 pub struct LegacyMd5 {
@@ -157,7 +153,6 @@ extend LegacyMd5 {
     }
 
     /// Writes the sixteen-byte digest into `into`.
-    ///
     /// The length is appended little-endian, unlike the SHA family's big-endian count.
     /// @param into receives the output
     /// @see https://rux-lang.dev/docs/api/crypto/legacy-md5/finish
@@ -205,7 +200,6 @@ pub func LegacyMd5Of(bytes: char8[..], into: var char8[..]) {
 }
 
 /// An incremental SHA-1. **Broken for collision resistance; see the note at the top of this file.**
-///
 /// Structural `Copy`; copying takes an independent snapshot of the digest state.
 /// @see https://rux-lang.dev/docs/api/crypto/legacy-sha1
 pub struct LegacySha1 {

@@ -1,13 +1,11 @@
 // A strict parser is only worth having if it actually refuses things, so most of this test is refusals — the
 // forms that circulate widely and are not the standard's, each rejected with the reason that names what is
 // wrong rather than a single catch-all.
-//
 // Every refusal now also carries where, and the offset is the half that is easy to get wrong quietly. A reason
 // with a wrong offset still passes a test that only checks the reason, and still underlines the wrong character
 // in whatever reports it. So each case below names the exact byte, and the URN cases are the ones that decide the
 // convention: the offsets are into the text as given, so a digit inside a URN is numbered from the start of the
 // whole string and not from the value inside it.
-//
 // Writing has the mirror-image claim. The writers refuse a destination that is too small rather than filling what
 // fits, so the short-buffer cases below check two things together: that the call reported `InsufficientCapacity`,
 // and that the destination still holds the sentinel it was filled with beforehand. The second is the half that

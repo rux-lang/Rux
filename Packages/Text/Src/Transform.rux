@@ -1,9 +1,7 @@
 // Making new text out of old.
-//
 // Everything here allocates, because everything here produces text that did not exist before: joining two runs,
 // repeating one, replacing part of one, changing the case of one. That is what separates these from `Search`, whose
 // answers are all borrows of what was already there.
-//
 // The case operations are ASCII-only and say so in their names. Case in Unicode is not a per-character mapping: it
 // depends on the locale (a Turkish dotless i), on neighbours (a Greek final sigma), and it changes the length (a
 // German sharp s becomes two letters). Every one of those needs the tables, and a `ToUpper` that quietly did the
@@ -12,7 +10,6 @@
 import Allocator::Allocator;
 
 /// The text of `left` followed by the text of `right`.
-///
 /// Fails with what went wrong; no partial text comes back.
 /// @param allocator where the storage comes from
 /// @param left the first piece
@@ -28,7 +25,6 @@ pub func Concat(allocator: Allocator, left: StringView, right: StringView) -> St
 }
 
 /// The text of `view` written `count` times.
-///
 /// A `count` of zero gives empty text, which is what makes repeating agree with joining: repeating twice is the
 /// same as joining a thing to itself.
 /// @param allocator where the storage comes from
@@ -53,7 +49,6 @@ pub func Repeat(allocator: Allocator, view: StringView, count: uint) -> String !
 }
 
 /// The text of `view` with every occurrence of `needle` replaced by `replacement`.
-///
 /// Occurrences are found left to right and never overlap, and what is put in their place is not searched again --
 /// so replacing `a` with `aa` terminates rather than growing forever. An empty `needle` matches nothing, since the
 /// alternative is a replacement between every pair of characters and before and after every one of them.
@@ -99,7 +94,6 @@ pub func IsAsciiLetter(byte: char8) -> bool {
 }
 
 /// The text of `view` with every ASCII lower-case letter raised, and everything else left alone.
-///
 /// ASCII only: every byte above 0x7F passes through untouched, which is why this cannot change the length and
 /// cannot produce anything that is not UTF-8.
 /// @param allocator where the storage comes from

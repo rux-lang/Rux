@@ -1,14 +1,11 @@
 // Looking through text without copying any of it.
-//
 // Everything here answers about a `StringView` and gives back views, positions or booleans — never a new string.
 // That is the point: asking whether text starts with something, or where something occurs in it, or what it is
 // without its surrounding spaces, are all questions about bytes that already exist. A design that answered with
 // owning strings would allocate to answer a question, and a caller who only wanted to look would pay for a copy.
-//
 // The search is over bytes, and works out to a search over characters for free: UTF-8 is self-synchronising, so no
 // character's encoding is a suffix of another's and no byte of a multi-byte character can be mistaken for the start
 // of one. A match on bytes therefore always lands on a character boundary, and there is nothing extra to check.
-//
 // Case is not considered anywhere here. Two characters differing only in case are the same letter to a reader and
 // different bytes to a machine, and which pairs count is a Unicode question with a locale attached. `Transform` has
 // the ASCII-only answer, which is the one that is well defined without tables.
@@ -17,9 +14,7 @@ import Core::Iterator;
 
 extend StringView {
     /// Whether this view begins with `prefix`.
-    ///
     /// Every view begins with the empty one.
-    ///
     /// Runs in time proportional to the prefix and allocates nothing.
     /// @param prefix the text to look for at the start
     /// @returns whether the text begins with `prefix`
@@ -50,9 +45,7 @@ extend StringView {
     }
 
     /// The byte index where `needle` first occurs, or `none`.
-    ///
     /// The empty needle occurs at the start, which is what makes `IndexOf` agree with `StartsWith` for it.
-    ///
     /// Runs in time proportional to the product of the lengths in the worst case, which for the short needles this
     /// is used with is the same as proportional to the text.
     /// @param needle the text to look for
@@ -116,7 +109,6 @@ extend StringView {
     }
 
     /// This view without the ASCII whitespace at its start.
-    ///
     /// Borrows: what comes back names the same bytes, further in.
     /// @returns the text without its leading ASCII spaces
     /// @see https://rux-lang.dev/docs/api/text/string-view/trim-start
@@ -148,7 +140,6 @@ extend StringView {
     }
 
     /// A walk over the parts of this view between occurrences of `separator`.
-    ///
     /// `self` is borrowed and must outlive the walk, as must `separator`.
     /// @param separator the text that separates the pieces
     /// @returns a cursor over the pieces between separators
@@ -163,7 +154,6 @@ extend StringView {
 }
 
 /// Whether `byte` is ASCII whitespace: space, tab, newline, carriage return, form feed or vertical tab.
-///
 /// ASCII only, deliberately. Unicode calls a good many more characters whitespace, and which ones is a question for
 /// the tables; every one of them is multi-byte, so trimming by this rule never cuts a character in half.
 /// @param byte the byte
@@ -175,7 +165,6 @@ pub func IsAsciiSpace(byte: char8) -> bool {
 }
 
 /// A walk over the parts of a view between occurrences of a separator.
-///
 /// Every part is a borrow of the original, so splitting allocates nothing however many parts there are.
 /// @see https://rux-lang.dev/docs/api/text/split-iterator
 pub struct SplitIterator {
@@ -190,7 +179,6 @@ pub struct SplitIterator {
 
 extend SplitIterator : Iterator {
     /// The next part, or `none` when the walk is over.
-    ///
     /// Two adjacent separators give an empty part between them, and a separator at either end gives an empty part
     /// there — so the parts always number one more than the separators, and joining them back with the separator
     /// gives what was split. An empty separator gives the whole view as one part, since anything else would be an

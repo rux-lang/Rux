@@ -1,11 +1,9 @@
 // What a file is, when it was touched, and who may do what to it.
-//
 // The three systems disagree here more than anywhere else in this package, and the disagreement is reported
 // rather than papered over. Unix permissions are nine bits of owner/group/other; Windows has access-control
 // lists that the portable surface cannot express and one read-only attribute that it can. Rather than invent a
 // lowest common denominator and lie about it, `Permissions` carries both spellings, `Capabilities` says which
 // of them the running system actually honors, and a caller who cares can ask before it acts.
-//
 // Timestamps are read on every system and written where the system allows it. Creation time is the one field
 // with no universal answer — Linux's `stat` does not carry it — so it arrives as a presence flag beside the
 // value rather than as a zero that pretends to be a date.
@@ -42,7 +40,6 @@ pub enum FileKind: int32 {
 }
 
 /// Who may do what to a file, in both spellings the supported systems use.
-///
 /// `mode` is the Unix permission bits, the low nine of which are the owner/group/other triple. `readOnly` is
 /// Windows' one portable attribute. Both are always filled: on Windows the mode is synthesized from the
 /// attribute (`0o444` when read-only, `0o666` otherwise) so a program that reasons in Unix terms is not blocked,
@@ -141,7 +138,6 @@ when #target.os != .Windows {
     // structure as a type: the layouts differ per system and per architecture, and a wrong declaration would
     // read plausible garbage rather than fail, so the offsets are written down here where the reasoning is
     // visible and each one is named beside the field it belongs to.
-    //
     // Linux x86-64 (144 bytes): mode 24, nlink 16, size 48, atime 72, mtime 88, each time's nanoseconds eight
     // bytes past its seconds. Linux AArch64 (128 bytes) moves mode to 16 and nlink to 20 and narrows both to
     // four bytes, keeping size and the times where x86-64 has them. macOS (144 bytes, 64-bit inode) has mode at
@@ -356,7 +352,6 @@ when #target.os == .Windows {
 }
 
 /// Describes the file `path` names.
-///
 /// `followLinks` decides what a symbolic link at the end of the path means: following it describes the target,
 /// and not following it describes the link, which is the only way `SymbolicLink` is ever reported.
 /// @param allocator where the storage comes from
@@ -389,7 +384,6 @@ pub func MetadataOf(allocator: Allocator, path: Path, followLinks: bool) -> Meta
 
 extend File {
     /// Describes this open file.
-    ///
     /// Answers about the file the handle holds, so nothing can rename or replace the name out from under the
     /// query the way a path-based one can.
     /// @returns what the system knows about the open file
@@ -412,7 +406,6 @@ extend File {
 }
 
 /// Sets who may do what to the file `path` names.
-///
 /// On the Unix systems the mode bits are written as given. On Windows only the read-only attribute exists, so
 /// that alone is written and the rest of `permissions` is ignored — ask `CapabilitiesOfSystem` first if the
 /// difference matters. A symbolic link is always followed: its own bits mean nothing on any supported system.
@@ -451,7 +444,6 @@ pub func SetPermissions(allocator: Allocator, path: Path, permissions: Permissio
 }
 
 /// Sets the access and modification times of the file `path` names.
-///
 /// Creation time is not settable here: Windows would allow it and the Unix systems would not, and an operation
 /// that silently means different things on different systems is worse than one that is not offered.
 /// @param allocator where the storage comes from

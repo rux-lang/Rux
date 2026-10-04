@@ -1,5 +1,4 @@
 // The four wide IEEE formats, as values that carry their bits.
-//
 // `float80`, `float128`, `float256` and `float512` are reserved names the language does not yet implement: their
 // literals and constants reach code generation, but arithmetic on them does not exist, so the compiler keeps them
 // out of reach rather than let `a + b` compile into an integer addition of the bits. What formatting needs is none
@@ -7,7 +6,6 @@
 // fields, and turning them into decimal digits — or decimal digits back into them — is integer arithmetic all
 // the way down. So the values here are the bits, held in the integer width that fits, and every conversion below
 // reads and writes those fields directly.
-//
 // When the primitives arrive, `extend float128 : Display` is one delegation to `Float128::FromBits`.
 
 import Text::{ Debug, Display, FormatError, FormatSpec, TextFailureKind, TextWriter, WriteAligned };

@@ -1,9 +1,7 @@
 // Reading and writing through a file descriptor, and the three descriptors a process starts with.
-//
 // Each wrapper folds libSystem's `-1`-and-`errno` reporting into the one normalized value the Linux and FreeBSD
 // packages already use, so a caller reads all three the same way. A short count is not an error and not an end of
 // file — only a zero-length read means the source has ended.
-//
 // The descriptor constants are annotated `int32` rather than `FileDescriptor`, because a `const` cannot name a type
 // alias declared in another file of the package.
 
@@ -24,7 +22,6 @@ pub const StdOut: int32 = 1;
 pub const StdErr: int32 = 2;
 
 /// `AT_FDCWD`: resolve a relative path against the current directory rather than a descriptor.
-///
 /// Darwin spells this `-2`, where Linux and FreeBSD both use `-100`. Carrying the value between packages produces a
 /// descriptor number, not an error.
 /// @see https://rux-lang.dev/docs/api/macos/at-fd-cwd
@@ -87,12 +84,8 @@ pub const SeekEnd: int32 = 2;
 pub const RemoveDirectory: int32 = 0x0080;
 
 /// Reads up to `count` bytes from `fd` into `buffer`.
-///
 /// `buffer` is borrowed and written. Returns the number of bytes read, zero at end of file, or a negative error
 /// number. A short count is ordinary.
-///
-/// # Safety
-///
 /// `buffer` must be writable for `count` bytes.
 /// @param fd an open descriptor
 /// @param buffer receives the bytes
@@ -104,12 +97,8 @@ pub func Read(fd: FileDescriptor, buffer: *var opaque, count: uint) -> int64 {
 }
 
 /// Writes up to `count` bytes from `buffer` to `fd`.
-///
 /// `buffer` is borrowed and read. Returns the number of bytes written, or a negative error number. A short count is
 /// ordinary and the rest has to be written by calling again.
-///
-/// # Safety
-///
 /// `buffer` must be readable for `count` bytes.
 /// @param fd an open descriptor
 /// @param buffer the bytes to write
@@ -121,7 +110,6 @@ pub func Write(fd: FileDescriptor, buffer: *opaque, count: uint) -> int64 {
 }
 
 /// Closes `fd` and releases what the kernel held for it.
-///
 /// Returns zero, or a negative error number. A failure does not mean the descriptor is still open.
 /// @param fd an open descriptor
 /// @returns zero, or a negative error number
@@ -131,11 +119,7 @@ pub func Close(fd: FileDescriptor) -> int64 {
 }
 
 /// Opens `path` relative to `directoryFd` and returns a descriptor, or a negative error number.
-///
 /// `directoryFd` is `AtFdCwd` for an ordinary path. `mode` is read only when `OpenCreate` is set.
-///
-/// # Safety
-///
 /// `path` must be non-null and terminated. The mode is masked by the process umask.
 /// @param directoryFd the directory `path` is relative to, or `AtFdCwd` for an ordinary path
 /// @param path the path to open, as a null-terminated byte string
@@ -158,11 +142,7 @@ pub func Lseek(fd: FileDescriptor, offset: FileOffset, whence: int32) -> int64 {
 }
 
 /// Writes the current working directory's absolute path into `buffer`, NUL-terminated.
-///
 /// Returns zero, or a negative error number. `ERANGE` where the buffer is too small for the answer.
-///
-/// # Safety
-///
 /// `buffer` must be writable for `size` bytes.
 /// @param buffer receives the working directory as a null-terminated path
 /// @param size how many bytes `buffer` holds
@@ -174,7 +154,6 @@ pub func Getcwd(buffer: *var char8, size: uint) -> int64 {
 }
 
 /// Makes `path` the process's working directory.
-///
 /// Returns zero, or a negative error number. The change is process-wide and immediately visible to every thread.
 /// @param path the directory to move to
 /// @returns zero, or a negative error number
@@ -184,7 +163,6 @@ pub func Chdir(path: *char8) -> int64 {
 }
 
 /// Reads the text a symbolic link holds into `buffer`.
-///
 /// `directoryFd` is `AtFdCwd` for an ordinary path. Returns the number of bytes written, or a negative error
 /// number. The text is **not** NUL-terminated, and is silently truncated where it does not fit.
 /// @param directoryFd the directory `path` is relative to, or `AtFdCwd` for an ordinary path
@@ -202,11 +180,7 @@ pub func ReadlinkAt(directoryFd: FileDescriptor, path: *char8, buffer: *var char
 pub const SymlinkNoFollow: int32 = 0x0020;
 
 /// Fills `statBuffer` with what the kernel knows about the file behind `fd`.
-///
 /// Returns zero, or a negative error number.
-///
-/// # Safety
-///
 /// `statBuffer` must be writable for the whole of the 64-bit-inode `struct stat`, which is 144 bytes.
 /// @param fd an open descriptor
 /// @param statBuffer receives the architecture's `struct stat`
@@ -217,12 +191,8 @@ pub func Fstat(fd: FileDescriptor, statBuffer: *var opaque) -> int64 {
 }
 
 /// Fills `statBuffer` with what the kernel knows about the file `path` names.
-///
 /// `directoryFd` is `AtFdCwd` for an ordinary path. `flags` is zero to follow a symbolic link at the end of the
 /// path, or `SymlinkNoFollow` to describe the link itself. Returns zero, or a negative error number.
-///
-/// # Safety
-///
 /// `statBuffer` must be writable for the whole of the 64-bit-inode `struct stat`, which is 144 bytes and whose
 /// layout this package does not model.
 /// @param directoryFd the directory `path` is relative to, or `AtFdCwd` for an ordinary path
@@ -236,7 +206,6 @@ pub func FstatAt(directoryFd: FileDescriptor, path: *char8, statBuffer: *var opa
 }
 
 /// Sets the permission bits of the file `path` names.
-///
 /// `directoryFd` is `AtFdCwd` for an ordinary path. `flags` may carry `SymlinkNoFollow`. Returns zero, or a
 /// negative error number.
 /// @param directoryFd the directory `path` is relative to, or `AtFdCwd` for an ordinary path
@@ -250,7 +219,6 @@ pub func FchmodAt(directoryFd: FileDescriptor, path: *char8, mode: FileMode, fla
 }
 
 /// Sets the access and modification times of the file `path` names.
-///
 /// `times` is borrowed and holds two `timespec` values — access first, then modification — each a whole-second
 /// count and a nanosecond fraction, both 8 bytes. A null `times` sets both to now. `flags` may carry
 /// `SymlinkNoFollow`. Returns zero, or a negative error number.
@@ -265,7 +233,6 @@ pub func UtimensAt(directoryFd: FileDescriptor, path: *char8, times: *opaque, fl
 }
 
 /// Creates a hard link: `newPath` becomes a second name for the file `oldPath` names.
-///
 /// Returns zero, or a negative error number. `flags` is zero to leave a symbolic link at `oldPath` unfollowed,
 /// or `FollowSymlinks` to link what it points at.
 /// @param oldDirectoryFd the directory `oldPath` is relative to
@@ -285,7 +252,6 @@ pub func LinkAt(oldDirectoryFd: FileDescriptor, oldPath: *char8, newDirectoryFd:
 pub const FollowSymlinks: int32 = 0x0040;
 
 /// Creates a symbolic link at `linkPath` holding `target` as its text.
-///
 /// Returns zero, or a negative error number. The target is stored, not checked: a dangling link is created as
 /// readily as a good one, which is a property callers rely on.
 /// @param target the text the link will hold, which need not exist
@@ -299,7 +265,6 @@ pub func SymlinkAt(target: *char8, newDirectoryFd: FileDescriptor, linkPath: *ch
 
 /// Reads directory entries from `fd` into `buffer`, and returns the bytes filled, zero at the end, or a negative
 /// error number.
-///
 /// The buffer holds packed 64-bit-inode `dirent` records: the inode at offset 0 (8 bytes), a seek cookie at 8
 /// (8 bytes), the record's length at 16 (2 bytes), the name's length at 18 (2 bytes), the entry type at 20
 /// (1 byte), and the name from 21. The kernel writes as many whole records as fit.
@@ -314,11 +279,7 @@ pub func Getdirentries64(fd: FileDescriptor, buffer: *var opaque, count: uint, p
 }
 
 /// Flushes everything written to `fd` toward the storage device.
-///
 /// Returns zero, or a negative error number.
-///
-/// # Safety
-///
 /// This is weaker on Darwin than everywhere else: it hands the data to the device without waiting for the device to
 /// commit it, so a power failure can still lose a write this reported as flushed. `F_FULLFSYNC` through `fcntl` is
 /// what actually waits, and this package does not wrap it.
@@ -330,7 +291,6 @@ pub func Fsync(fd: FileDescriptor) -> int64 {
 }
 
 /// Sets the length of the file behind `fd` to `length`.
-///
 /// Growing creates a hole rather than allocating, so a later write into it can still fail with `ENOSPC`.
 /// @param fd an open descriptor
 /// @param length the size the file should have afterwards
@@ -341,11 +301,7 @@ pub func Ftruncate(fd: FileDescriptor, length: FileOffset) -> int64 {
 }
 
 /// Removes the name `path` from its directory.
-///
 /// `flags` is zero for a file or `RemoveDirectory` for an empty directory. Removing a name does not free the file.
-///
-/// # Safety
-///
 /// `path` must be non-null and terminated.
 /// @param directoryFd the directory `path` is relative to, or `AtFdCwd` for an ordinary path
 /// @param path the name to remove
@@ -357,11 +313,7 @@ pub func UnlinkAt(directoryFd: FileDescriptor, path: *char8, flags: int32) -> in
 }
 
 /// Creates a directory named `path` with permission bits `mode`.
-///
 /// Reports `EEXIST` when the name is taken.
-///
-/// # Safety
-///
 /// `path` must be non-null and terminated.
 /// @param directoryFd the directory `path` is relative to, or `AtFdCwd` for an ordinary path
 /// @param path the directory to create
@@ -373,11 +325,7 @@ pub func MkdirAt(directoryFd: FileDescriptor, path: *char8, mode: FileMode) -> i
 }
 
 /// Renames `oldPath` to `newPath`, each resolved against its own directory descriptor.
-///
 /// Within one file system this replaces any existing `newPath` atomically. Across file systems it reports `EXDEV`.
-///
-/// # Safety
-///
 /// Both paths must be non-null and terminated.
 /// @param oldDirectoryFd the directory `oldPath` is relative to
 /// @param oldPath the name to move
@@ -391,7 +339,6 @@ pub func RenameAt(oldDirectoryFd: FileDescriptor, oldPath: *char8, newDirectoryF
 }
 
 /// Makes `newFd` a copy of `oldFd`, closing whatever `newFd` was.
-///
 /// Returns `newFd`, or a negative error number.
 /// @param oldFd the descriptor to duplicate
 /// @param newFd the number the duplicate should have
@@ -402,12 +349,8 @@ pub func Dup2(oldFd: FileDescriptor, newFd: FileDescriptor) -> int64 {
 }
 
 /// Creates a pipe and writes its two descriptors into `descriptors`.
-///
 /// The reading end lands at index zero and the writing end at index one. Darwin has no `pipe2`, so close-on-exec has
 /// to be set afterwards through `fcntl` — which leaves a window another thread can execute through.
-///
-/// # Safety
-///
 /// `descriptors` must be writable for two `int32` values.
 /// @param descriptors receives the read end at index zero and the write end at index one
 /// @returns zero, or a negative error number

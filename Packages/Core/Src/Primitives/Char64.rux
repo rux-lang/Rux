@@ -1,5 +1,4 @@
 // `char64`: one Unicode scalar value, in eight bytes.
-//
 // The same repertoire `char32` holds, in twice the storage: the range stops at U+10FFFF and the surrogates are
 // rejected, because a scalar value is what this carries. There is no `c64` literal prefix.
 

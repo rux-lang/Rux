@@ -1,10 +1,8 @@
 // Version 7: a UUID whose leading bits are a timestamp, so sorting the identifiers sorts the events.
-//
 // The reason this version exists is databases. A version 4 UUID as a primary key scatters inserts across the
 // whole of a B-tree, so every insert dirties a different page and the index never stays in cache; a version 7
 // key appends, because its first six bytes are milliseconds since the Unix epoch, big-endian. The remaining
 // bits are random, which is what keeps it unguessable between milliseconds.
-//
 // Within one millisecond the ordering is not guaranteed by the format — two UUIDs made in the same millisecond
 // have random tails and could sort either way. `MonotonicUuid` fixes that for a caller who needs it, by
 // remembering the last value it produced and stepping the random part forward when the clock has not moved. It
@@ -16,7 +14,6 @@ import Entropy::{ EntropyError, Fill };
 import Time::Timestamp;
 
 /// A version 7 UUID: the current time in its leading bits, entropy in the rest.
-///
 /// Fails with why entropy was unavailable rather than producing a timestamp-shaped value with no randomness — which
 /// would be guessable and would look fine.
 /// @returns a version 7 value carrying the current time, or why entropy was unavailable
@@ -28,7 +25,6 @@ pub func TimeOrdered() -> Uuid ! EntropyError {
 }
 
 /// A version 7 UUID for a given millisecond, with entropy in the rest.
-///
 /// For reproducing an identifier from a recorded time, and for testing.
 /// @param milliseconds the timestamp to embed, in milliseconds since the Unix epoch
 /// @returns a version 7 value carrying `milliseconds`, or why entropy was unavailable
@@ -50,7 +46,6 @@ pub func TimeOrderedAt(milliseconds: uint64) -> Uuid ! EntropyError {
 }
 
 /// The millisecond a version 7 UUID carries.
-///
 /// Meaningless for any other version, which is why the version should be checked first.
 /// @param value the value to act on
 /// @returns the timestamp a version 7 value carries; meaningless for any other version
@@ -66,12 +61,10 @@ pub func MillisecondOf(value: &Uuid) -> uint64 {
 }
 
 /// A generator of version 7 UUIDs that are strictly increasing, even within one millisecond.
-///
 /// The format guarantees ordering only between milliseconds; two UUIDs made in the same one have random tails
 /// and may sort either way. This closes that by remembering the last value it produced: when the clock has not
 /// advanced, it increments the previous UUID instead of drawing a fresh one, so every value it returns is
 /// strictly greater than the last.
-///
 /// A caller owns one of these rather than sharing a global, so two components generating identifiers do not
 /// serialize against each other or interleave into one sequence.
 /// @see https://rux-lang.dev/docs/api/uuid/monotonic-uuid

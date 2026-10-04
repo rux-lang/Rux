@@ -1,16 +1,13 @@
 // Parsing the two values whose text is a word or a character rather than digits.
-//
 // A boolean is exactly `true` or `false` — not `True`, not `1`, not `yes`. Every widening of that set has to
 // choose which spellings count, and the choice differs by language and context; a caller wanting one applies it
 // before parsing, where the choice is visible.
-//
 // A character is exactly one scalar value's encoding, whole: an empty string is not a character, and neither are
 // two of them.
 
 import Text::{ DecodeAt, StringView };
 
 /// Parses `true` or `false`, exactly.
-///
 /// Reports `Empty` for no bytes and `InvalidCharacter` at the start for anything else, including a correct word
 /// with trailing bytes.
 /// @param str the text to parse
@@ -35,7 +32,6 @@ pub func ParseBool(str: StringView) -> bool ! ParseError {
 }
 
 /// Parses exactly one character.
-///
 /// Reports `Empty` for no bytes, and `InvalidCharacter` for bytes that are not one whole scalar value — ill-formed
 /// UTF-8 at zero, a second character at its own index.
 /// @param str the text to parse

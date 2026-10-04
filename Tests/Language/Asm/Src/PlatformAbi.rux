@@ -4,7 +4,6 @@ import Core::{ #target, Architecture, OperatingSystem };
 // argument registers the platform ABI names and the Linux getpid syscall,
 // neither of which means anything elsewhere. On every other system the check
 // trivially passes.
-//
 // Each architecture writes the whole check, because both halves of it differ:
 // x86-64 takes its arguments in rdi and rsi and asks the kernel for call 39
 // through `syscall`, and AArch64 takes them in x0 and x1 and asks for call 172

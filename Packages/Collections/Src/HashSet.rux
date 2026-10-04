@@ -1,18 +1,14 @@
 // A set of distinct values, in no particular order, with constant expected time for everything.
-//
 // The same `Table` kernel as `HashMap`, with nothing stored alongside each key. A set is a map whose values carry no
 // information, and saying so in the type rather than duplicating the probing is what keeps the two in step: a fix to
 // the displacement or the deletion is a fix to both.
-//
 // The hash and equality are supplied for the same reason they are there, and the seed is drawn the same way.
-//
 // A set owns its elements, so it prohibits copying and is move-only.
 
 import Allocator::Allocator;
 import Core::Iterator;
 
 /// A hash table of distinct values.
-///
 /// Move-only: it owns its elements and its storage.
 /// @typeParam T the element type
 /// @see https://rux-lang.dev/docs/api/collections/hash-set
@@ -88,9 +84,7 @@ extend HashSet<T> {
     }
 
     /// Whether `value` is in the set.
-    ///
     /// `self` is borrowed; `value` is read by value.
-    ///
     /// Runs in constant expected time and allocates nothing.
     /// @param value the value to act on
     /// @returns whether the value is present
@@ -100,10 +94,8 @@ extend HashSet<T> {
     }
 
     /// Adds `value` to the set, reporting whether it was not already there.
-    ///
     /// `self` is borrowed mutably; `value` is moved in when it is added and destroyed when it was already present --
     /// a set holds one of each, and the one it already had is the one it keeps.
-    ///
     /// A failure leaves the set exactly as it was.
     /// @param value the value to act on
     /// @returns whether the value was new rather than already present
@@ -117,7 +109,6 @@ extend HashSet<T> {
     }
 
     /// Takes `value` out of the set and hands it back.
-    ///
     /// `self` is borrowed mutably. The element is moved out rather than destroyed, so one that owns something leaves
     /// intact. Reports `none` when the set did not have it.
     /// @param value the value to act on
@@ -152,7 +143,6 @@ extend HashSet<T> {
     }
 
     /// Walks to the next occupied slot at or after `cursor`, reporting the element it holds.
-    ///
     /// `self` is borrowed; `cursor` is read and advanced past whatever is reported. The order is the table's, which
     /// is the seed's and not the insertion's, and nothing may be inserted or removed while a walk is in progress.
     /// @param cursor the position to resume from, advanced past what was read
@@ -176,12 +166,8 @@ extend HashSet<T> {
     }
 
     /// An iterator over the elements, by copy.
-    ///
     /// `self` is borrowed and must outlive the iterator. This is the method a `for` loop finds. The order is the
     /// table's, which is the seed's.
-    ///
-    /// # Safety
-    ///
     /// Nothing may be inserted or removed while the iterator is alive.
     /// @returns a cursor over the elements, in an order the seed decides
     /// @see https://rux-lang.dev/docs/api/collections/hash-set/iterate
@@ -195,7 +181,6 @@ extend HashSet<T> {
     }
 
     /// Takes the set apart into an iterator over its elements.
-    ///
     /// Consumes the set: it is moved into the iterator, and the storage goes with it. Whatever is not taken is
     /// destroyed when the iterator's life ends.
     /// @returns a cursor that consumes the set as it goes
@@ -223,13 +208,10 @@ extend HashSet<T> {
     }
 
     /// Whether every element of this set is also in `other`.
-    ///
     /// Both are borrowed. A set is a subset of itself, and the empty set is a subset of everything — there is no
     /// element of it to be missing.
-    ///
     /// `other` is asked about each of this set's elements, so it decides identity: two sets with different hashes
     /// for the same values would disagree, which is a caller error rather than something checkable here.
-    ///
     /// Allocates nothing. Runs in time proportional to this set's size.
     /// @param other the collection to compare or combine with
     /// @returns whether every element of this set is in `other`
@@ -252,7 +234,6 @@ extend HashSet<T> {
     }
 
     /// Whether every element of `other` is also in this set.
-    ///
     /// Both are borrowed. The mirror of `IsSubsetOf`, which is what it calls.
     /// @param other the collection to compare or combine with
     /// @returns whether every element of `other` is in this set
@@ -262,12 +243,9 @@ extend HashSet<T> {
     }
 
     /// Whether the two sets have no element in common.
-    ///
     /// Both are borrowed. Two empty sets are disjoint, and so is any set with an empty one.
-    ///
     /// Walks the smaller of the two, since an element of either that is in both would be found from whichever side
     /// it is looked for.
-    ///
     /// Allocates nothing.
     /// @param other the collection to compare or combine with
     /// @returns whether the two share no element
@@ -291,7 +269,6 @@ extend HashSet<T> {
     }
 
     /// Whether the two sets hold exactly the same elements.
-    ///
     /// Both are borrowed. Equal sizes and one containment, which together are containment both ways.
     /// @param other the collection to compare or combine with
     /// @returns whether both hold exactly the same elements
@@ -301,14 +278,11 @@ extend HashSet<T> {
     }
 
     /// Adds every element of `other` that this set does not already have.
-    ///
     /// `self` is borrowed mutably; `other` is borrowed and left alone. Elements are copied out of `other`, which is
     /// what makes this usable only where copying an element means what it says.
-    ///
     /// Room for the worst case is taken first, so this either adds every element or none: a failure part-way would
     /// leave a set that is neither what it was nor the union, and there is nothing useful a caller could do with
     /// that. Reserving more than it needs is the price, and it is given back by `ShrinkToFit`.
-    ///
     /// Runs in time proportional to `other`.
     /// @param other the collection to compare or combine with
     /// @returns nothing when the operation succeeded, or why it did not
@@ -333,10 +307,8 @@ extend HashSet<T> {
     }
 
     /// Removes every element this set has that `other` does not.
-    ///
     /// `self` is borrowed mutably; `other` is borrowed and left alone. Whatever leaves is destroyed, since nobody
     /// asked for it back.
-    ///
     /// Allocates nothing, so it cannot fail: a set only ever gets smaller here.
     /// @param other the collection to compare or combine with
     /// @see https://rux-lang.dev/docs/api/collections/hash-set/intersect-with
@@ -365,9 +337,7 @@ extend HashSet<T> {
     }
 
     /// Removes every element this set has that `other` also has.
-    ///
     /// `self` is borrowed mutably; `other` is borrowed and left alone. Whatever leaves is destroyed.
-    ///
     /// Allocates nothing, so it cannot fail.
     /// @param other the collection to compare or combine with
     /// @see https://rux-lang.dev/docs/api/collections/hash-set/subtract
@@ -392,10 +362,8 @@ extend HashSet<T> {
     }
 
     /// Keeps the elements that are in exactly one of the two sets.
-    ///
     /// `self` is borrowed mutably; `other` is borrowed and left alone. Elements shared by both leave and are
     /// destroyed; elements only `other` has are copied in.
-    ///
     /// Room for the worst case is taken first, for the same reason `UnionWith` takes it: a failure part-way would
     /// leave a set that is neither operand nor the answer.
     /// @param other the collection to compare or combine with
@@ -430,7 +398,6 @@ extend HashSet<T> {
     }
 
     /// An independent set holding a copy of every element of this one.
-    ///
     /// `self` is borrowed and left alone. The copy has its own storage from the same allocator and the same seed, so
     /// the two lay their elements out alike.
     /// @returns an independent copy
@@ -455,7 +422,6 @@ extend HashSet<T> {
 }
 
 /// An iterator over the elements of a set, by copy.
-///
 /// Borrows the set, so the set must outlive it and must not be inserted into or removed from while it is alive.
 /// @typeParam T the element type
 /// @see https://rux-lang.dev/docs/api/collections/hash-set-iterator
@@ -470,7 +436,6 @@ pub struct HashSetIterator<T> {
 
 extend HashSetIterator<T> : Iterator {
     /// The next element, or `none` once every slot has been looked at.
-    ///
     /// `self` is borrowed mutably and advanced. The element is a copy; a set of things that own something is walked
     /// with `TryNext` instead.
     /// @returns the next element, or `none` at the end
@@ -490,7 +455,6 @@ extend HashSetIterator<T> : Iterator {
 }
 
 /// An iterator that takes a set apart, yielding each element by value.
-///
 /// Move-only: it owns the storage the set owned. Whatever is left when its life ends is destroyed with it.
 /// @typeParam T the element type
 /// @see https://rux-lang.dev/docs/api/collections/hash-set-into-iterator
@@ -508,7 +472,6 @@ extend HashSetIntoIterator<T> {
 
 extend HashSetIntoIterator<T> : Iterator {
     /// The next element, moved out, or `none` once every slot has been looked at.
-    ///
     /// `self` is borrowed mutably and advanced. The slot is emptied as the element leaves, so what remains for the
     /// destructor is exactly what nobody took.
     /// @returns the next element, or `none` at the end

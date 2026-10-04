@@ -1,5 +1,4 @@
 // Reading decimal text into a wide float, exactly.
-//
 // The grammar is the one `ParseFloat64` accepts, so what one width reads the others read. The conversion is not
 // the narrow one: every digit of the input is kept as an integer, the value is formed as a ratio of two integers
 // — the digits against a power of ten — and the quotient is taken to three bits past the precision with a
@@ -9,7 +8,6 @@
 import Allocator::Allocator;
 
 /// Reads `str` as a value under `layout`, rounding to nearest with ties to even, and reports the bits.
-///
 /// Overflow is refused rather than rounded to infinity, as `ParseFloat64` refuses it; a value too small for the
 /// format becomes the signed zero. `NaN`, `Inf` and `-Inf` are read exactly as formatting writes them.
 /// @param allocator where the working storage comes from

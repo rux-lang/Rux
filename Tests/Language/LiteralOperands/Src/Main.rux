@@ -1,6 +1,5 @@
 // Unsuffixed integer literals as operands: they take the integer type beside them, so no suffix is needed to write
 // `year % 4 != 0` against an `int32` or `count > 0` against a `uint64`.
-//
 // The interesting values are the ones a narrower or signed reading would get wrong: an unsigned value whose top bit is
 // set must still compare above a small literal, and a signed one below zero must compare below it. A literal the
 // operand's type cannot hold, such as `-1` beside an unsigned value, is a compile-time error rather than a comparison

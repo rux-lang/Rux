@@ -1,5 +1,4 @@
 // What a platform failure means, translated in one place.
-//
 // Every operating system reports failure as a small integer whose meaning lives in its own header files, and a
 // program that switches on those numbers at each call site rewrites this table badly, several times, in
 // disagreement with itself. So the table is written once per platform, and everything in this package reports
@@ -11,7 +10,6 @@ import Core::{ #target };
 import Io::{ IoError, IoErrorKind };
 
 /// The meaning of a platform error code on the platform this program was compiled for.
-///
 /// Codes with no portable meaning translate to `Other`; the caller still has the raw code beside it.
 /// @param raw the platform's own error number or code
 /// @returns the kind this package gives that platform code

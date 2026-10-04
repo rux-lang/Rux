@@ -1,17 +1,14 @@
 // Where one user-perceived character ends and the next begins.
-//
 // A scalar value is not a character as a reader counts them: an e and its acute are two values and one thing on the
 // screen, a family emoji is seven values and one glyph, a Hangul syllable typed as jamo is three. The extended
 // grapheme cluster is Unicode's answer to "what does one arrow-key press cross", and these are the UAX #29 rules
 // that define it, the emoji and Indic conjunct rules included.
-//
 // The interface is one question: is there a boundary before position N. Everything else — counting clusters,
 // walking them — is a loop over that question, and the committed break vectors hold every rule to the standard's
 // own test file.
 
 
 /// The grapheme break class of a scalar value. `Copy`.
-///
 /// The ordinals match the generated table and must not be reordered.
 /// @see https://rux-lang.dev/docs/api/unicode/grapheme-break
 pub enum GraphemeBreak: int32 {
@@ -75,11 +72,9 @@ func IsConjunctExtend(scalar: char32) -> bool {
 }
 
 /// Whether a cluster boundary falls before `index` in `text`.
-///
 /// The ends count: position zero and the length are always boundaries, which is what makes "the clusters of a
 /// text" a partition of it. The rules between are UAX #29's, applied to the pair either side of the position with
 /// lookback where a rule reaches further — the emoji join, the flag pairs, and the Indic conjuncts.
-///
 /// Runs in time proportional to the lookback, which is the run of marks behind the position; allocates nothing.
 /// @param text the scalar values to examine
 /// @param index the position to test, in scalar values

@@ -1,11 +1,9 @@
 // What a JSON value is, and the one part of it the specification refuses to pin down.
-//
 // RFC 8259 says a number is a sequence of digits with an optional fraction and exponent, and then says
 // implementations may set whatever limits they like on range and precision. That is the whole of it: JSON has no
 // integer type, no float type, and no stated precision, so every parser decides for itself and they disagree.
 // A parser that turns everything into a double silently corrupts an identifier past 2^53 — which is how a
 // Twitter status id became a different status id in a great deal of software.
-//
 // So a number here keeps its text, and answers questions about itself from that. It reports whether it fits an
 // integer, whether it fits a float, and what it is exactly; a caller asks for the shape it needs and is told if
 // the value does not fit rather than being handed something close. The text is also what makes round-tripping
@@ -35,7 +33,6 @@ pub enum JsonKind: int32 {
 }
 
 /// A JSON number, held as the text it was written with.
-///
 /// JSON does not say what precision a number has, so nothing here decides on the caller's behalf. Ask for the
 /// shape wanted — `AsInt64`, `AsUint64`, `AsFloat64` — and each reports whether the value fits. Keeping the
 /// text is also what lets a document round-trip exactly, which a parser converting to a double cannot do.
@@ -66,7 +63,6 @@ extend JsonNumber {
     }
 
     /// The value as a signed integer, or `false` if it does not fit one.
-    ///
     /// A number with a fraction or an exponent does not fit, even when its value happens to be whole: `1.0` is
     /// not an integer in JSON's grammar and pretending otherwise loses the distinction a document was making.
     /// @param result receives the value when this reports true
@@ -87,7 +83,6 @@ extend JsonNumber {
     }
 
     /// The value as a float, or `false` if the text is not a number at all.
-    ///
     /// Succeeds for values a float cannot hold exactly, since that is what a float is for; a caller who needs
     /// exactness should ask for an integer or read the text.
     /// @param result receives the value when this reports true
@@ -129,11 +124,9 @@ pub struct JsonMember {
 }
 
 /// A JSON value: one of the six kinds, owning whatever it holds.
-///
 /// Move-only, because it owns strings and nested values. The allocator it was built with is carried along, so a
 /// subtree can be released without the caller having to remember where it came from — which is what makes a
 /// document assembled from several sources safe to take apart.
-///
 /// The tag is inspected with `Kind` and the payload read with the matching accessor; asking for the wrong one
 /// reports failure rather than reinterpreting the bytes.
 /// @see https://rux-lang.dev/docs/api/json/json-value
@@ -280,7 +273,6 @@ extend JsonValue {
     }
 
     /// Appends `value` to an array, taking ownership of it.
-    ///
     /// Reports `false` when this is not an array or the allocator refused; `value` is consumed either way, so
     /// a caller does not have to decide who owns it on failure.
     /// @param value the value to act on
@@ -292,7 +284,6 @@ extend JsonValue {
     }
 
     /// Appends a member to an object, taking ownership of both name and value.
-    ///
     /// The order members are added in is the order they are kept and written, which is what makes a document
     /// round-trip recognisably. Nothing here rejects a duplicate name — that policy lives in the parser, where
     /// the caller can choose it.
@@ -317,7 +308,6 @@ extend JsonValue {
     }
 
     /// The value of the member named `name`, borrowed, or null when there is none.
-    ///
     /// With duplicate names present — which only a permissive parser policy allows — this finds the first,
     /// since that is the one a reader encounters.
     /// @param name the member's name
@@ -346,10 +336,8 @@ extend JsonValue {
     }
 
     /// Removes the first member named `name`, if there is one.
-    ///
     /// Used by the duplicate-name policy that keeps the last occurrence: dropping the earlier one is what keeps
     /// the object a map rather than a list that happens to repeat itself.
-    ///
     /// The members after it are popped and pushed back rather than shifted, because shifting would move
     /// owning values around inside the vector, and a move out of a container is the one thing the ownership
     /// rules will not allow silently. Duplicates are rare enough that the cost never matters.
@@ -390,7 +378,6 @@ extend JsonValue {
     }
 
     /// Releases everything this value owns.
-    ///
     /// Written out rather than left to the compiler, because a value owns its strings and its children own
     /// theirs: the recursion here is the shape of the document, and stating it makes the ownership of a nested
     /// tree something a reader can check.

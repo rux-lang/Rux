@@ -1,28 +1,22 @@
 // Reading a calendar value out of text, and saying exactly what was wrong with it.
-//
 // The old parser answered `bool` and wrote through output slots, which made every failure the same failure. A
 // caller could not tell a typo from a February the thirtieth, and could not point at the character: both are
 // "false", and both leave the caller re-reading its own input to guess.
-//
 // So every parser here answers a `Result` and every failure carries a zero-based byte offset into the text it was
 // given. The categories are the ones a caller acts on differently. A malformed shape is the writer's mistake and
 // the offset is where the shape stopped matching. An invalid month, a nonexistent day and an out-of-range time are
 // well-formed text naming something that does not exist, which is a different mistake and usually a different
 // bug. An excessive fraction and an out-of-range offset are each a field that parsed and then would not fit.
-//
 // End of input is an offset like any other: it is the text's length, which is where the missing character would
 // have gone.
-//
 // The four entry points share their machinery rather than reimplementing it, so `ParseRfc3339` cannot disagree
 // with `ParseDate` about what a date is.
 
 import Text::ParseFailure;
 
 /// Why text could not be read as a calendar value.
-///
 /// Failure-only: every case is a failure, and each carries the zero-based UTF-8 byte offset into the text where it
 /// was found. Success is `Result::Success`.
-///
 /// Copy, carrying one offset.
 /// @see https://rux-lang.dev/docs/api/time/time-parse-error
 pub variant TimeParseError {
@@ -46,7 +40,6 @@ pub variant TimeParseError {
 
 extend TimeParseError : ParseFailure {
     /// Where in the input the failure was found.
-    ///
     /// Borrows the error. Cannot fail; runs in constant time and allocates nothing.
     /// @returns the zero-based UTF-8 byte offset, which is the text's length at end of input
     /// @see https://rux-lang.dev/docs/api/time/time-parse-error/offset
@@ -231,10 +224,7 @@ func AtEnd(reader: &Reader) -> ! TimeParseError {
 }
 
 /// Reads `YYYY-MM-DD`.
-///
 /// Strict: four year digits, two month digits, two day digits, dashes between, and nothing after.
-///
-/// # Failures
 /// Reports `InvalidSyntax` for a shape that does not match, `InvalidMonth` for a month outside 1 through 12, and
 /// `NonexistentDay` for a day the month does not have. Each carries the byte offset where it was found.
 /// @param text the text to read
@@ -248,8 +238,6 @@ pub func ParseDate(text: char8[..]) -> Date ! TimeParseError {
 }
 
 /// Reads `HH:MM:SS` with an optional fractional second.
-///
-/// # Failures
 /// Reports `InvalidSyntax` for a shape that does not match, `InvalidTime` for a field outside its range, and
 /// `ExcessiveFraction` for more fraction digits than a nanosecond holds. Second 60 folds rather than failing.
 /// @param text the text to read
@@ -263,12 +251,9 @@ pub func ParseTimeOfDay(text: char8[..]) -> TimeOfDay ! TimeParseError {
 }
 
 /// Reads `YYYY-MM-DDTHH:MM:SS[.fraction]`, with no offset.
-///
 /// The separator may be `T`, `t` or a space, which is as far as the RFC 3339 liberality goes. No offset is read,
 /// and one present is text after the value: a `DateTime` has nowhere to keep an offset, so accepting one would
 /// discard it silently. `ParseRfc3339` is what reads a moment that carries one.
-///
-/// # Failures
 /// The failures `ParseDate` and `ParseTimeOfDay` report, at their offsets within this text.
 /// @param text the text to read
 /// @returns the local date and time, or why the text is not one
@@ -283,13 +268,10 @@ pub func ParseDateTime(text: char8[..]) -> DateTime ! TimeParseError {
 }
 
 /// Reads `YYYY-MM-DDTHH:MM:SS[.fraction](Z|+HH:MM|-HH:MM)`.
-///
 /// The offset is required, which is what RFC 3339 requires and what makes the result a moment rather than a local
 /// reading. Second 60 folds to the last nanosecond of second 59, as this package's leap-second policy states;
 /// formatting never produces second 60, so the fold is one-way and the round trip is clean for every ordinary
 /// moment.
-///
-/// # Failures
 /// The failures the date, time and offset readers report, plus `InvalidSyntax` for text after the offset. Each
 /// carries the byte offset where it was found.
 /// @param text the text to read

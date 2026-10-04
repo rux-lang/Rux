@@ -1,10 +1,8 @@
 // Reading text out of a byte stream, a line at a time.
-//
 // A line ends at a line feed, and a carriage return immediately before it belongs to the ending, not the line --
 // that one rule is the whole of newline normalization, and it makes files from either lineage read the same. A
 // carriage return anywhere else is content: the platform that ended lines with it alone has been gone thirty
 // years, and treating every stray CR as an ending would corrupt honest text to accommodate a ghost.
-//
 // The bound is not advice. A caller reading lines from an untrusted stream names the longest line it will hold,
 // and a longer one is `LimitExceeded` rather than a slow exhaustion of memory: unbounded line reading from a
 // socket is how a peer that never sends a newline takes the process down.
@@ -13,11 +11,9 @@ import Core::Failed;
 import Text::{ DecodeAt, StringBuilder, Utf8Error, Validate };
 
 /// Appends the next line of `reader` to `builder`, without its ending.
-///
 /// A line ends at a line feed; a carriage return immediately before it is part of the ending. The last line of a
 /// stream needs no ending: what stands before the end is a line, and `EndOfStream` is reported only when the
 /// stream ends with nothing before it, so a caller loops until exactly that.
-///
 /// The line must be UTF-8 — `InvalidText` otherwise, including a sequence cut short by the end of the stream --
 /// and at most `limit` bytes, `LimitExceeded` otherwise. Only validated bytes ever reach the builder, and on
 /// either failure it is cleared and the offending line consumed through its ending, so the caller can report the

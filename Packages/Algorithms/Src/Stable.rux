@@ -1,33 +1,26 @@
 // Stable sorting: putting a sequence in order while leaving equal elements in the order they arrived.
-//
 // `Sort` is faster and needs no storage at all, and for most sequences the difference between equal elements is not
 // observable. It becomes observable the moment a second key is involved: sort a table by one column, then by
 // another, and only a stable sort leaves the first ordering intact within each group of the second. That is what
 // this is for, and it is the only reason to pay for it.
-//
 // The price is storage. A merge cannot be done in place without either quadratic movement or an amount of index
 // arithmetic that no one should maintain, so this asks the caller for scratch storage as long as the sequence and
 // merges into it. Asking rather than allocating is deliberate: this package allocates nothing anywhere, which is
 // what lets it be used where allocation is not available, and a caller who has a buffer already should not have a
 // second one taken behind their back.
-//
 // The sort is a bottom-up merge: insertion sort over short runs first, then merges of doubling width, alternating
 // between the sequence and the scratch so that nothing is copied merely to move it back. An odd number of merge
 // passes ends with the answer in the scratch, and only then is it copied home.
-//
 // Comparisons are O(n log n) for every input — there is no bad case here at all, unlike a quicksort — and the
 // movement is the same. What it costs over `Sort` is the storage and about a constant factor.
 
 import Core::{ Ordering };
 
 /// How much scratch storage a stable sort of `length` elements needs.
-///
 /// `length` is read by value. The answer is `length` itself: a merge writes its output somewhere other than either
 /// of the two runs it reads, and the last merge reads the whole sequence.
-///
 /// Written as a function rather than left to the reader so that a caller sizing a buffer does not have to know that,
 /// and so that it stays right if it ever stops being the whole length.
-///
 /// Cannot fail. Runs in constant time and allocates nothing.
 /// @param length how many elements are to be sorted
 /// @returns how many elements of working storage a stable sort of that length needs
@@ -37,15 +30,11 @@ pub func RequiredScratch(length: uint) -> uint {
 }
 
 /// Puts `items` into non-decreasing order, leaving equal elements in the order they were in.
-///
 /// `items` is borrowed mutably and rewritten; `scratch` is borrowed mutably and used as working storage, and what it
 /// holds afterwards is unspecified. Fewer than two elements are already sorted and need no scratch at all.
-///
 /// Reports false, changing nothing, when `scratch` is shorter than `RequiredScratch(items.length)`. That is the only
 /// way this fails.
-///
 /// Requires `<` on the element type, as a strict weak ordering.
-///
 /// Makes O(n log n) comparisons and moves for every input — there is no bad case — and allocates nothing.
 /// @typeParam T the element type
 /// @param items the sequence to work on
@@ -102,12 +91,9 @@ pub func StableSort<T>(items: var T[..], scratch: var T[..]) -> bool {
 }
 
 /// Puts `items` into the order `compare` describes, leaving equivalent elements in the order they were in.
-///
 /// `items` is borrowed mutably and rewritten; `scratch` is borrowed mutably and used as working storage, and what it
 /// holds afterwards is unspecified. `compare` is called O(n log n) times and must be a strict weak ordering.
-///
 /// Reports false, changing nothing, when `scratch` is shorter than `RequiredScratch(items.length)`.
-///
 /// Makes O(n log n) comparisons and moves for every input, and allocates nothing.
 /// @typeParam T the element type
 /// @param items the sequence to work on

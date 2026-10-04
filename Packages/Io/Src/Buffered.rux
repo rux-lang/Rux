@@ -1,11 +1,9 @@
 // Buffering: fewer, larger conversations with the machine.
-//
 // A system call costs the same for one byte as for four thousand, so a program that reads or writes in small
 // pieces pays the call's price per piece. The buffered reader and writer stand between, turning many small
 // operations into few large ones — and both step aside for operations already larger than the buffer, where
 // copying through it would only add work. They keep interface values because their streams must be stored;
 // call-time helpers elsewhere take borrowed interface references instead.
-//
 // The close contracts differ, and the difference is the design. A reader abandoned mid-buffer loses nothing
 // anybody asked for. A writer abandoned mid-buffer holds bytes the caller believes are written, so its destructor
 // flushes — but a destructor has nowhere to report failure, so the flush's outcome is discarded there. The
@@ -21,7 +19,6 @@ import Memory::Copy;
 pub const DefaultBufferCapacity: uint = 8192;
 
 /// A reader that fills a buffer in large reads and serves small ones from it.
-///
 /// Move-only: it owns its buffer. The reader it wraps is borrowed through the interface value and must outlive it.
 /// @see https://rux-lang.dev/docs/api/io/buffered-reader
 pub struct BufferedReader {
@@ -75,7 +72,6 @@ extend BufferedReader {
     }
 
     /// The unread bytes, borrowed, without consuming them.
-    ///
     /// What line reading is built from: look, decide, then `Consume` what was used.
     /// @returns the buffered bytes, borrowed and valid until the next fill
     /// @see https://rux-lang.dev/docs/api/io/buffered-reader/buffered
@@ -91,7 +87,6 @@ extend BufferedReader {
     }
 
     /// Refills an empty buffer from the source, retrying interruptions.
-    ///
     /// Reports what the source reported; `EndOfStream` when the source is done. A source that reports success
     /// while handing over nothing breaks the `Reader` contract, and is reported as the end rather than looped on.
     /// @returns success when at least one byte is buffered; `IsEnd` at the end of the source
@@ -162,7 +157,6 @@ extend BufferedReader {
 }
 
 /// A writer that gathers small writes into a buffer and sends it in one piece.
-///
 /// Move-only: it owns its buffer. Its destructor flushes as a safety net and discards the outcome, because a
 /// destructor has nowhere to report; the explicit `Flush` is where errors are seen, and the caller who cares
 /// calls it before letting go.
@@ -245,7 +239,6 @@ extend BufferedWriter {
     }
 
     /// Gives the buffer back without sending what it holds.
-    ///
     /// For the caller who has decided the bytes must not go — the one case where losing them is the point.
     /// @see https://rux-lang.dev/docs/api/io/buffered-writer/abandon
     pub func Abandon(self: &var BufferedWriter) {

@@ -7,12 +7,10 @@ func Main() -> int {
     // at load with STATUS_ENTRYPOINT_NOT_FOUND (0xC0000139). Re-enable the body
     // below once the intrinsics link. Until then this package builds and passes
     // as a placeholder so the coverage stays wired into the suite.
-    //
     // // This test package defines no configuration values, so an arbitrary name
     // // is absent and its lookup comes back empty.
     // Assert(!#config.Has("UNDEFINED_CONFIG_NAME"), "undefined name is absent");
     // Assert(#config.Get("UNDEFINED_CONFIG_NAME").length == 0, "undefined name is empty");
-    //
     // // Has and Get agree with each other: a name Has reports absent has nothing
     // // for Get to return.
     // let name = "ANOTHER_UNDEFINED_NAME";

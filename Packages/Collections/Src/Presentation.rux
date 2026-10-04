@@ -1,25 +1,20 @@
 // Showing what a sequential container holds, without disturbing it.
-//
 // A container cannot implement `Debug` itself: what a `Vector<T>` looks like is entirely a question about `T`, and
 // an interface implementation has nowhere to say "when the element can be shown". So these are handwritten
 // functions carrying the bound — `WriteVectorDebug<T: Debug>` — which is the shape the language does have. Each
 // instantiation resolves its element's `WriteDebug` at compile time; nothing is dispatched at run time.
-//
 // They borrow, and that is the whole design. A container owns its elements and hands out no copies of a move-only
 // one, so a diagnostic that took an element out to print it would be taking ownership of it — which is exactly what
 // a caller with a container they still need cannot afford. Every element here is shown through a borrow of it, so a
 // vector of a move-only type can be written as many times as wanted and still holds everything afterwards.
-//
 // A vector and an array are one run of elements, so both hand `Rux/Text` their slice and it does the rest. A deque
 // is the exception, and the reason is its shape rather than an oversight: its elements live in a ring, so a deque
 // that has wrapped holds them in two runs with a gap between. It writes them as one sequence — which is what they
 // are to a reader — by walking both runs inside one pair of brackets, which is the one thing the slice writer
 // cannot be asked to do.
-//
 // Maps and sets are here too, written `{key: value, key: value}` and `{element, element}` — braces rather than
 // brackets, because what a map holds is not a run of things and reading one as a sequence would be reading it
 // wrongly. The two kinds differ in exactly one respect, and it is the only interesting question they raise.
-//
 // An ordered map or set is written in key order, which is the order it keeps and the order every walk of it takes,
 // so its rendering is a fact about its contents and nothing else. A hash map or set is written in the order of its
 // table, which is a fact about the container rather than about what it holds: it follows from the seed drawn when
@@ -29,7 +24,6 @@
 // would need an ordering on the key that a hash container does not have and was built not to need, and inventing
 // one would make every hash container require something extra just so that its diagnostic looked tidy. A caller who
 // needs a stable order has an ordered map.
-//
 // `CollectionError` presents itself here as well, for the same reason the containers do — this package depends on
 // `Rux/Text` and Text does not depend on it, so this is the side of the edge the implementation can live on.
 // `Display` is the description a reader is shown and `Debug` names the case, exactly as for the errors Text
@@ -54,15 +48,11 @@ func WriteRun<T: Debug>(writer: &var TextWriter, items: T[..], spec: FormatSpec,
 }
 
 /// Writes a borrowed vector as `[first, second, third]`.
-///
 /// An empty vector is `[]`, and its capacity is not shown: the spare room past the length holds nothing, so it is
 /// not part of what the vector is. The vector and every element are borrowed, so this may be called on a vector of
 /// a move-only element type and the vector still holds all of them afterwards.
-///
 /// `spec` is handed to each element unchanged and means whatever that element type makes of it. The brackets and
 /// commas are punctuation and are never padded.
-///
-/// # Failures
 /// Reports whatever the writer or an element's implementation reported, stopping at the first refusal.
 /// @typeParam T the element type, which must know how to show itself
 /// @param writer the destination
@@ -76,13 +66,9 @@ pub func WriteVectorDebug<T: Debug>(writer: &var TextWriter, value: &Vector<T>,
 }
 
 /// Writes a borrowed array as `[first, second, third]`.
-///
 /// An empty array is `[]`. The array and every element are borrowed, so an array of a move-only element type is
 /// shown without disturbing one of them.
-///
 /// `spec` describes the elements, exactly as for a vector.
-///
-/// # Failures
 /// Reports whatever the writer or an element's implementation reported, stopping at the first refusal.
 /// @typeParam T the element type, which must know how to show itself
 /// @param writer the destination
@@ -96,17 +82,12 @@ pub func WriteArrayDebug<T: Debug>(writer: &var TextWriter, value: &Array<T>,
 }
 
 /// Writes a borrowed deque as `[front, ..., back]`, front element first.
-///
 /// The order is the deque's own — what `PopFront` would yield, in the order it would yield it — whether or not the
 /// ring has wrapped. A wrapped deque holds its elements in two runs, and both are walked inside one pair of
 /// brackets, so where the ring happens to be split is not visible in the output and does not need to be.
-///
 /// Nothing is rearranged to write it: this is the reason the deque is borrowed rather than borrowed mutably, since
 /// making the elements contiguous first would be a diagnostic quietly moving a caller's data around.
-///
 /// `spec` describes the elements, exactly as for a vector.
-///
-/// # Failures
 /// Reports whatever the writer or an element's implementation reported, stopping at the first refusal.
 /// @typeParam T the element type, which must know how to show itself
 /// @param writer the destination
@@ -127,19 +108,14 @@ pub func WriteDequeDebug<T: Debug>(writer: &var TextWriter, value: &Deque<T>,
 }
 
 /// Writes a borrowed hash map as `{key: value, key: value}`.
-///
 /// An empty map is `{}`. Braces rather than brackets, because a map is not a run of elements and reading its
 /// rendering as one would be reading it wrongly.
-///
 /// The order is the table's, which follows from the seed the map was made with and from every insertion and removal
 /// since — so it is not the insertion order, it does not hold between two maps with the same entries, and it changes
 /// between runs of the same program. Nothing here sorts, since that would need an ordering on the key that a hash
 /// map does not have. `TreeMap` is the container whose rendering is stable.
-///
 /// Every key and value is shown through a borrow of it, so a map of move-only entries is shown without taking one
 /// out. `spec` is handed to each of them unchanged.
-///
-/// # Failures
 /// Reports whatever the writer or an entry's implementation reported, stopping at the first refusal.
 /// @typeParam K the key type, which must know how to show itself
 /// @typeParam V the value type, which must know how to show itself
@@ -169,14 +145,10 @@ pub func WriteHashMapDebug<K: Debug, V: Debug>(writer: &var TextWriter, value: &
 }
 
 /// Writes a borrowed hash set as `{first, second, third}`.
-///
 /// An empty set is `{}`. The order is the table's and carries the same warning as a hash map's: it follows from the
 /// seed and from what the set has been through, so it is not the insertion order and does not hold between runs.
 /// `TreeSet` is the ordered one.
-///
 /// Every element is shown through a borrow of it, and `spec` is handed to each unchanged.
-///
-/// # Failures
 /// Reports whatever the writer or an element's implementation reported, stopping at the first refusal.
 /// @typeParam T the element type, which must know how to show itself
 /// @param writer the destination
@@ -203,15 +175,11 @@ pub func WriteHashSetDebug<T: Debug>(writer: &var TextWriter, value: &HashSet<T>
 }
 
 /// Writes a borrowed ordered map as `{key: value, key: value}`, in key order.
-///
 /// An empty map is `{}`. The order is the map's own — the order `Iterate` walks, the order `First` and `Last` name
 /// the ends of — so two maps holding the same entries render identically and one map renders identically every
 /// time. That is what makes an ordered map's rendering usable in an assertion where a hash map's is not.
-///
 /// The walk crosses every edge of the tree twice and allocates nothing, and nothing is taken out of the map: every
 /// key and value is shown through a borrow of the node holding it. `spec` is handed to each unchanged.
-///
-/// # Failures
 /// Reports whatever the writer or an entry's implementation reported, stopping at the first refusal.
 /// @typeParam K the key type, which must know how to show itself
 /// @typeParam V the value type, which must know how to show itself
@@ -239,13 +207,9 @@ pub func WriteTreeMapDebug<K: Debug, V: Debug>(writer: &var TextWriter, value: &
 }
 
 /// Writes a borrowed ordered set as `{first, second, third}`, in order.
-///
 /// An empty set is `{}`. The order is the set's own, so the rendering is stable between sets holding the same
 /// elements and between runs, unlike a hash set's.
-///
 /// Every element is shown through a borrow of the node holding it, and `spec` is handed to each unchanged.
-///
-/// # Failures
 /// Reports whatever the writer or an element's implementation reported, stopping at the first refusal.
 /// @typeParam T the element type, which must know how to show itself
 /// @param writer the destination
@@ -279,14 +243,10 @@ func AcceptsErrorSpec(spec: FormatSpec) -> ! FormatError {
 
 extend CollectionError : Display {
     /// Writes the description of why an operation did not happen, or `no error` for success.
-    ///
     /// The five cases stay distinguishable in words as they are in the type: a shortage of memory is not a size that
     /// cannot be named, and neither is a layout the allocator refuses outright. Those distinctions decide whether a
     /// caller retries, so a description that blurred them would send somebody to fix the wrong thing.
-    ///
     /// The descriptions are stable. They are not a parsing contract: a program branches on the case.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, and `UnsupportedRequest` for any style or precision.
     /// @param writer the destination
     /// @param spec what the placeholder asked for
@@ -306,8 +266,6 @@ extend CollectionError : Display {
 
 extend CollectionError : Debug {
     /// Names the case, qualified by its type: `CollectionError::OutOfMemory`.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, and `UnsupportedRequest` for any style or precision.
     /// @param writer the destination
     /// @param spec what the placeholder asked for

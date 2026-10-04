@@ -1,5 +1,4 @@
 // Loading a shared object at run time, and finding a symbol inside it.
-//
 // The entry points are libSystem's, like everything else on this system; there is no separate loader library to
 // link.
 
@@ -14,7 +13,6 @@ pub const RTLD_LAZY: int32 = 1;
 pub const RTLD_NOW: int32 = 2;
 
 /// `RTLD_LOCAL`: keep this object's symbols to itself, which is Darwin's default.
-///
 /// Darwin numbers this 4 and `RTLD_GLOBAL` 8, where both Linux and FreeBSD use 0 and 256. Carrying either value
 /// between packages selects the opposite of what was meant.
 /// @see https://rux-lang.dev/docs/api/macos/rtld-local

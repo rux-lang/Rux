@@ -1,5 +1,4 @@
 // What can go wrong in this package, and nothing else.
-//
 // Two things can, and they are different in kind. An allocation can fail, which says nothing about the text and
 // everything about the machine; and bytes can fail to be UTF-8, which says nothing about the machine and everything
 // about where the bytes came from. A caller handles those differently — one is retried or reported, the other means
@@ -8,7 +7,6 @@
 import Allocator::AllocError;
 
 /// What went wrong.
-///
 /// Every case is a failure. An operation that can fail returns its result, or nothing, through a native fallible
 /// `T ! TextError`, so success is the other channel rather than a case here.
 /// @see https://rux-lang.dev/docs/api/text/text-error
@@ -24,7 +22,6 @@ pub enum TextError: int32 {
 }
 
 /// The text error an allocator's failure becomes.
-///
 /// Everything an allocator can refuse is a failure to supply storage as far as text is concerned; the distinctions
 /// the allocator draws are about the request, and this package makes no requests a caller could have made
 /// differently.

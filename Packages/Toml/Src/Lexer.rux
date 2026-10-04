@@ -1,10 +1,8 @@
 // Turning TOML text into tokens, with the position of each one.
-//
 // TOML has more lexical surface than JSON and almost all of it is string and number forms. There are four ways
 // to write a string — basic, multi-line basic, literal, multi-line literal — and they differ in whether
 // escapes are honoured and whether newlines are allowed, which is exactly the sort of distinction an
 // implementation collapses and then surprises someone whose Windows path lost its backslashes.
-//
 // Spans are carried on every token because TOML is a configuration format, and a configuration error that does
 // not say where it is costs more than the parse itself. Every diagnostic this package produces can point at a
 // line and column because the token knew.
@@ -499,7 +497,6 @@ extend TomlLexer {
 }
 
 /// Decodes a text token's span into an owned string, honouring the escapes its form allows.
-///
 /// A literal string is copied unchanged — that is what makes it the right form for a Windows path — while a
 /// basic string has its escapes resolved, including the line-ending backslash that lets a multi-line string be
 /// wrapped in the source without the wrapping appearing in the value.

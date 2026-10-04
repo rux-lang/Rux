@@ -1,10 +1,8 @@
 // `extern`: declaring something this program did not compile.
-//
 // The keyword had no language test at all. It is exercised heavily through the C, Windows, Linux, macOS and FreeBSD
 // packages, but always as a means to an end — those cases fail when a binding is wrong, not when the declaration
 // form itself is. What belongs here is the form: which spellings of `#Link` exist, what a block applies to its
 // members, that a Rux name and an exported symbol can differ, and which shapes are declarable but not callable.
-//
 // Every function named below is in the platform's own C runtime, which is present wherever this test can run. They
 // are chosen for being universally exported and boring: `abs` and `strlen` do the same thing on all four systems.
 // `snprintf` deliberately does not appear — the standard has it, and the runtime this binds on Windows does not,
@@ -34,7 +32,6 @@ extern {
 }
 
 // The one-argument `#Link` on a single declaration, rather than on a block.
-//
 // `llabs` rather than `labs`, because C's `long` is 32 bits on Windows and 64 on the Unix systems, so no single Rux
 // width declares `labs` correctly everywhere. `long long` is 64 bits on all four. That difference is why the C
 // package has a `c_long` alias at all, and why a binding that guesses a width is a portability bug rather than a

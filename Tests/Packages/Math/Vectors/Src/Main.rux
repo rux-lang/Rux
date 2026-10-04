@@ -1,11 +1,9 @@
 // The reference vectors, and the ulp bounds measured against them.
-//
 // Everything else in this package's tests checks a function against an identity, a symmetry, or itself at
 // another argument. Those catch a great deal, and they cannot catch a function that is uniformly slightly
 // wrong — an identity holds just as well between two values that are both off by an ulp. This is the test
 // that cannot be satisfied that way: the answers come from outside, computed to 58 decimal digits and rounded
 // once, so the only way to pass is to be right.
-//
 // The measured bounds are asserted rather than merely reported, so a change that loosens the accuracy of any
 // of these functions fails here rather than going unnoticed.
 

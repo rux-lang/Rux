@@ -1,5 +1,4 @@
 // `char16`: one UTF-16 code unit.
-//
 // A code unit, not a character: every value that fits is valid, including a surrogate, which is exactly what a code
 // unit is. A scalar value outside the basic plane takes two of these.
 

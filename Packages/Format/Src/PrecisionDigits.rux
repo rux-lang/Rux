@@ -1,16 +1,13 @@
 // Exactly the digits a precision asks for, rounded to nearest with ties to even.
-//
 // The same exact ratio the shortest form is generated from, stopped on a digit count instead of on a distance to a
 // neighbour. That is Dragon4's fixed mode, and it matters that it is the same machinery: a fixed-precision
 // rendering produced by a different method could disagree with the shortest one about what the value is, and a
 // reader comparing `{}` against `{:.17}` would find two numbers.
-//
 // It also matters that the digits come out of the ratio one at a time rather than out of `significand * 10^P`.
 // Ten to the eleven hundredth is 3,654 bits and would not fit the workspace at any precision worth supporting;
 // the remainder of a division never exceeds its divisor, so generating a thousand digits costs a thousand
 // iterations and no extra room at all. That is why the precision bound in Docs/NarrowFloat.md is a bound on the
 // output rather than on the arithmetic.
-//
 // Rounding is where a fixed-precision renderer earns its keep. The tail past the last digit is still exactly held,
 // so "is it more than half" is a comparison rather than an estimate, and a tie is a tie rather than a value that
 // happened to land near one. Ties go to even, which is what reading the result back would do with it. A carry out
@@ -19,7 +16,6 @@
 
 
 /// The largest precision a narrow float renders at.
-///
 /// Eleven hundred, which is exactly enough rather than round: the smallest `float64` subnormal is `2^-1074` and
 /// its exact decimal has 1,074 fractional digits, the largest finite value has 309 integer ones, and no `float64`
 /// has anything to say past that. A request beyond this is refused rather than clamped, because a caller asking
@@ -84,13 +80,10 @@ func TakeDigit(state: &var Quotient) -> uint64 {
 
 /// Writes the digits of `significand * 2^exponent` down to the place `precision` names, rounded to nearest with
 /// ties to even.
-///
 /// The digits are the significant ones with no point and no sign, and `power` receives the exponent that places
 /// them: the value is `0.d1d2...dn * 10^power`, so the last digit written stands for `10^-precision`. A value
 /// small enough that nothing reaches that place produces no digits and a power of zero, which the caller writes
 /// as a zero and a tail of zeros.
-///
-/// # Failures
 /// Answers false when `precision` is past `MaximumPrecision`, when `into` is too short for the digits the value
 /// needs, or when the exact arithmetic could not run in the fixed workspace — which Docs/NarrowFloat.md proves the
 /// narrow widths do not reach.
@@ -172,12 +165,9 @@ pub func PrecisionDigits(significand: uint64, exponent: int, precision: uint, in
 }
 
 /// Writes a finite float in fixed notation with exactly `precision` digits after the decimal point.
-///
 /// Always fixed notation, because that is the only notation in which "digits after the decimal point" has one
 /// meaning. A large value therefore renders with every integer digit it has and then the fraction — which is what
 /// was asked for, and why the precision is bounded rather than the output.
-///
-/// # Failures
 /// Answers false when the precision is past `MaximumPrecision`, or when the exact arithmetic could not run in the
 /// fixed workspace. There is no fallback to another rendering: a refused request is refused.
 /// @param cursor the destination
@@ -243,11 +233,8 @@ pub func WritePrecisionFloat(cursor: &var ByteCursor, parts: FloatParts, precisi
 
 /// Renders `parts` under a specification that carries a precision, and applies the specification's sign, width,
 /// fill and alignment to the result.
-///
 /// The large fixed buffer a precision can need lives in this function rather than in the callers', so a
 /// placeholder with no precision never pays for it.
-///
-/// # Failures
 /// Reports `UnsupportedRequest` for a precision past `MaximumPrecision`, and whatever the writer reported
 /// otherwise. There is no fallback: a refused precision produces no output.
 /// @param writer the destination

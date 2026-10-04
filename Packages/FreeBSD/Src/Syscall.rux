@@ -1,11 +1,8 @@
 // The raw system-call entry points, and the numbers that select a call.
-//
 // Every wrapper elsewhere in this package is one of these seven functions with the arguments named. A caller may use
 // them directly for a call this package does not wrap, which is what they are public for.
-//
 // Unlike Linux, both supported architectures share one numbering: FreeBSD assigns a call its number once, in
 // `syscalls.master`, and every architecture uses it. What differs is only where the number and the arguments go.
-//
 // A raw result from these wrappers is already normalized to Linux's convention — a value, or a small negative error
 // number — which is what `Errors::IsError` and `Errors::Errno` read.
 
@@ -60,12 +57,10 @@ const SysSysctl: uint64 = 202;
 // result register. These wrappers return Linux-style -errno values for parity.
 // Where the call number and the arguments go differs, so each architecture
 // writes the whole wrapper.
-//
 // x86-64: Rux functions use the System V ABI, whose first three argument
 // registers the `syscall` instruction keeps. The fourth argument moves from rcx
 // to r10, and a seventh function argument arrives at [rsp + 8], after the
 // return address.
-//
 // AArch64: Rux functions use AAPCS64, whose first eight argument registers
 // cover even the widest wrapper. `svc #0` takes the call number in x8 and the
 // arguments in x0 through x5, so each wrapper moves the number aside and then
@@ -277,10 +272,8 @@ when #target.arch {
 }
 
 /// Widens a file descriptor to the register width a system call takes it in.
-///
 /// `fd` is read by value; the widened value is returned by copy. Sign extension is what matters: `-1` has to arrive
 /// as all ones rather than as a small positive number.
-///
 /// Cannot fail. Runs in constant time and allocates nothing.
 /// @param fd the descriptor to widen
 /// @returns it sign-extended, so a negative one stays negative

@@ -1,44 +1,36 @@
 // Why a request for unpredictable bytes did not produce them.
-//
 // Four systems report the failure four ways — a negative error number, an `NTSTATUS`, and on Darwin no failure at
 // all — and a caller asking for a key does not want to know which. What a caller does want to know is whether to
 // try again, whether the source exists on this system, and whether the buffer holds anything.
-//
 // One rule holds across every function in this package: a request either fills the whole buffer and succeeds, or
 // fails with one of these and leaves the buffer whatever it already held. There is no partial fill to inspect,
 // because a half-filled key is more dangerous than none at all — the first half looks exactly as random as a whole
 // one.
 
 /// Why unpredictable bytes could not be obtained.
-///
 /// Every case is a failure: nothing was written that a caller may rely on. A filled buffer is the success channel of
 /// the `! EntropyError` the fill returns.
 /// @see https://rux-lang.dev/docs/api/entropy/entropy-error
 pub enum EntropyError {
     /// This system has no entropy source this package can reach.
-    ///
     /// A kernel too old for its own generator reports this. It does not change while a program runs, so retrying is
     /// pointless.
     Unsupported,
     /// The source kept being interrupted, and the call gave up rather than looping forever.
-    ///
     /// Ordinary on a process taking signals steadily. Worth one more attempt; not worth an unbounded number.
     Interrupted,
     /// The source refused for a reason the system did not make actionable.
     Failed,
     /// The request was larger than the source accepts in one call.
-    ///
     /// Windows takes a 32-bit count, so a request above four gigabytes has no honest answer. Split it.
     TooLarge
 }
 
 extend EntropyError {
     /// Whether trying again might work.
-    ///
     /// `self` is borrowed. True for `Interrupted`, which says a signal arrived rather than that anything is wrong.
     /// False for everything else: a system with no source will not grow one, and a refusal repeated is still a
     /// refusal.
-    ///
     /// Cannot fail. Runs in constant time and allocates nothing.
     /// @returns whether asking again could succeed
     /// @see https://rux-lang.dev/docs/api/entropy/entropy-error/is-transient

@@ -1,5 +1,4 @@
 // The text of a `float64`.
-//
 // The shortest decimal that reads back as the same value, so 0.1 prints as "0.1" rather than as the seventeen
 // digits its binary value really is — and it is the shortest one exactly, found by the digit generator in
 // ShortestDigits.rux rather than by rounding to a fixed count and hoping. A precision in the placeholder asks for
@@ -48,11 +47,8 @@ pub func IsFinite(value: float64) -> bool {
 
 extend float64 : Display {
     /// Writes this value's decimal text.
-    ///
     /// Allocates nothing: the digits go into a buffer on the stack and reach the writer in one call. Fifty bytes is
     /// more than the longest rendering — sign, digits, point and exponent — can need.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
     /// @param writer the destination
     /// @param spec what the placeholder asked for
@@ -83,8 +79,6 @@ extend float64 : Display {
 
 extend float64 : Debug {
     /// The same text.
-    ///
-    /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
     /// @param writer the destination
     /// @param spec what the placeholder asked for

@@ -1,5 +1,4 @@
 // The coverage that is about the package as a whole rather than about one part of it.
-//
 // The differential check is the valuable one. The tree parser and the streaming reader are two independent
 // implementations of the same grammar, written separately, and requiring them to agree on every document is a
 // far stronger statement than either passing its own tests — a misreading would have to be made twice, the
@@ -236,7 +235,6 @@ func CheckRoundTrip(allocator: Allocator, text: char8[..], wrote: *var bool) {
 }
 
 // Requires a document to be refused, and nothing at all to come back with the refusal.
-//
 // That second half is the shape rather than a check: the outcome carries either a document or a failure, so a
 // refused parse cannot hand over a partial tree the way the old outcome-beside-a-value form could. What is left to
 // check is that whatever the parser built before it stopped was released rather than leaked, and the allocator

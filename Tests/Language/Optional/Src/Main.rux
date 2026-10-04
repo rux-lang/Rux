@@ -1,5 +1,4 @@
 // Optionals: `T?` is either a present `T` or absent, and `T??` keeps both levels.
-//
 // An optional never collapses: `none`, `.Some(none)`, and `.Some(.Some(value))` are three different `int32??` values,
 // each written directly. A plain value becomes present in an optional context, and an optional is matched with
 // `.Some(pattern)` or its suffix spelling `pattern?`, with `none`, or with a typed presence pattern. `value?` removes one

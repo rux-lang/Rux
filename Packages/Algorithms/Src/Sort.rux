@@ -1,28 +1,23 @@
 // Sorting: putting a sequence in order, in place, with no storage but its own.
-//
 // `Sort` is an introsort — quicksort with a three-way partition, falling back to heapsort once the recursion budget
 // is spent and to insertion sort on small partitions. Each part covers the others' weakness. Quicksort is the
 // fastest of the three on ordinary input and the only one that degrades to quadratic on input chosen to defeat its
 // pivot rule; heapsort never degrades and is slower on everything; insertion sort beats both below about sixteen
 // elements, where choosing a pivot costs more than the sorting does. The result has a genuine O(n log n) worst case
 // with no auxiliary storage, which no one of the three has alone.
-//
 // **The worst case, precisely.** Comparisons are O(n log n) for every input, with no exceptions and nothing
 // probabilistic about it: the depth budget is `2 * floor(log2 n)`, and a range still unsorted when it runs out is
 // handed to heapsort, which is O(n log n) unconditionally. Auxiliary storage is O(1) — one pivot and a few indices.
 // Stack depth is O(log n) frames, about sixty-four for any addressable length, because the recursive call always
 // takes the smaller side of a partition while the larger is handled by the loop. None of that depends on the input
 // being random, and there are no randomized pivots to make it depend on the run.
-//
 // **Sorting is not stable.** Equivalent elements may come out in a different order than they went in. It is
 // deterministic — the same input always gives the same output and the same number of comparisons — but a caller
 // who needs equal elements to keep their original order needs a stable sort, which needs somewhere to put things.
-//
 // The plain forms require `<` on the element type and nothing else, under the same strict-weak-ordering contract as
 // `Search`: equivalence is derived as neither element being less than the other, so a type that orders without
 // defining `==` sorts fine. The `By` forms take a three-way comparison instead, for a sequence ordered by something
 // other than its element type's own `<`.
-//
 // The `By` machinery below mirrors the operator-based helpers rather than sharing them. A generic function cannot be
 // used as a value in Rux, so the operator forms cannot pass `<` as a comparator into one shared implementation, and
 // threading a runtime flag instead would put a branch in the innermost comparison of every sort — the one place it
@@ -36,12 +31,9 @@ const InsertionSortThreshold: uint = 16;
 import Core::{ Ordering };
 
 /// Puts `items` into non-decreasing order.
-///
 /// `items` is borrowed mutably and rewritten. Fewer than two elements are already sorted, so the data pointer is
 /// never read in that case and an empty view is not a special case.
-///
 /// Requires `<` on the element type, as a strict weak ordering. Equal elements may be reordered: this is not stable.
-///
 /// Cannot fail. Makes O(n log n) comparisons for every input, uses O(1) storage beyond the sequence, and recurses
 /// O(log n) deep.
 /// @typeParam T the element type
@@ -64,15 +56,12 @@ pub func Sort<T>(items: var T[..]) {
 }
 
 /// Puts `items` into non-increasing order.
-///
 /// `items` is borrowed mutably and rewritten. An ascending sort followed by a reversal, rather than a mirrored copy
 /// of every helper below: threading a direction flag through the partition and both fallbacks would cost a branch in
 /// the innermost comparison, and duplicating the helpers would double the amount of subtle index arithmetic to
 /// maintain, all for one extra linear pass. Sorting is unstable in either direction, so reversing costs nothing in
 /// ordering either.
-///
 /// Requires `<` on the element type. Equal elements may be reordered.
-///
 /// Cannot fail. Makes O(n log n) comparisons and uses O(1) storage beyond the sequence.
 /// @typeParam T the element type
 /// @param items the sequence to work on
@@ -83,18 +72,14 @@ pub func SortDescending<T>(items: var T[..]) {
 }
 
 /// Puts the element that belongs at `n` in a fully sorted `items` at `n`, and partitions around it.
-///
 /// `items` is borrowed mutably and rewritten; `n` is read by value. Afterwards everything before `n` is at most the
 /// element at `n` and everything after is at least it. Neither side is ordered any further, which is the whole
 /// point: this is what to reach for when only one order statistic is wanted — a median, a percentile — because it
 /// is linear on average where a full sort is not.
-///
 /// Reports false, changing nothing, when `n` is not an index into `items`. That is the only way this fails.
-///
 /// Quickselect over the same partition `Sort` uses, but iterative: only one side of a partition can contain `n`, so
 /// there is nothing to recurse into and the stack stays flat. The same depth budget bounds the worst case at
 /// O(n log n), against O(n) on average.
-///
 /// Requires `<` on the element type. Equal elements may be reordered.
 /// @typeParam T the element type
 /// @param items the sequence to work on
@@ -148,17 +133,13 @@ pub func NthElement<T>(items: var T[..], n: uint) -> bool {
 }
 
 /// Puts the `count` smallest elements of `items` in order at its front.
-///
 /// `items` is borrowed mutably and rewritten; `count` is read by value. The first `count` positions hold the
 /// smallest elements in non-decreasing order, and the rest hold everything else in no particular order.
-///
 /// Reports false, changing nothing, when `count` is larger than the length. A `count` of zero succeeds and does
 /// nothing.
-///
 /// A max-heap over the first `count` elements, which each later element is compared against and displaces only if it
 /// is smaller: O(n log count) comparisons, against the O(n log n) a full sort would cost. That is worth having when
 /// `count` is much smaller than the length and not otherwise.
-///
 /// Requires `<` on the element type. Equal elements may be reordered.
 /// @typeParam T the element type
 /// @param items the sequence to work on
@@ -195,7 +176,6 @@ pub func PartialSort<T>(items: var T[..], count: uint) -> bool {
 }
 
 // Internal helper; not part of the package API.
-//
 // floor(log2(value)), and zero for both 0 and 1. A shift loop rather than a
 // call into Rux/Math, whose logarithms are floating-point only and would drag
 // a dependency and a rounding question into an integer budget.
@@ -219,7 +199,6 @@ func SwapAt<T>(data: *var T, first: uint, second: uint) {
 }
 
 // Internal helper; not part of the package API.
-//
 // The index of the median of three elements, using only `<`. Sampling three
 // positions rather than taking the first element is what keeps already-sorted
 // and reverse-sorted input off the quadratic path.
@@ -236,10 +215,8 @@ func MedianOfThree<T>(data: *T, first: uint, middle: uint, last: uint) -> uint {
 }
 
 // Internal helper; not part of the package API.
-//
 // Rearranges [low, high) into elements less than the pivot, then elements
 // equivalent to it, then elements greater, writing the two boundaries out.
-//
 // Three-way rather than two-way because the equivalent band is then excluded
 // from both recursions: an all-equal sequence becomes a single linear pass
 // instead of the quadratic behavior a two-way partition produces on it, and
@@ -301,7 +278,6 @@ pub func InsertionSortRange<T>(data: *var T, low: uint, high: uint) {
 }
 
 // Internal helper; not part of the package API.
-//
 // Restores the max-heap property at start within the first count elements of
 // the heap based at low. Iterative, so heapsort adds nothing to the stack.
 func SiftDown<T>(data: *var T, low: uint, start: uint, count: uint) {
@@ -325,7 +301,6 @@ func SiftDown<T>(data: *var T, low: uint, start: uint, count: uint) {
 }
 
 // Internal helper; not part of the package API.
-//
 // The fallback that bounds the worst case. O(n log n) whatever the input, and
 // O(1) space, at a larger constant factor than quicksort — which is why it is
 // reached only once the recursion budget is spent.
@@ -396,7 +371,6 @@ func IntroSortRange<T>(data: *var T, low: uint, high: uint, depth: uint) {
 // "does a come strictly before b" and must be a strict weak ordering, exactly
 // as `<` must be; equivalence is derived from it alone, so a comparator is
 // enough on its own and the element type need not define any operator.
-//
 // The machinery below mirrors the operator-based helpers rather than sharing
 // them. A generic function cannot be used as a value in Rux, so the operator
 // forms cannot simply pass `<` as a comparator to one shared implementation.
@@ -405,11 +379,9 @@ func IntroSortRange<T>(data: *var T, low: uint, high: uint, depth: uint) {
 // generic functions become usable as values, the two sets collapse into one.
 
 /// Puts `items` into the order `compare` describes, smallest first.
-///
 /// `items` is borrowed mutably and rewritten; `compare` is called O(n log n) times and must be a strict weak
 /// ordering, exactly as `<` must be. Equivalence is derived from it alone, so the element type need not define any
 /// operator at all.
-///
 /// Cannot fail. Makes O(n log n) comparisons for every input, uses O(1) storage beyond the sequence, and recurses
 /// O(log n) deep. Equal elements may be reordered: this is not stable.
 /// @typeParam T the element type
@@ -429,10 +401,8 @@ pub func SortBy<T>(items: var T[..], compare: func(T, T) -> Ordering) {
 }
 
 /// Puts `items` into the reverse of the order `compare` describes.
-///
 /// `items` is borrowed mutably and rewritten; `compare` is called O(n log n) times. An ascending sort followed by a
 /// reversal, for the same reason `SortDescending` is.
-///
 /// Cannot fail. Makes O(n log n) comparisons and uses O(1) storage beyond the sequence. Equal elements may be
 /// reordered.
 /// @typeParam T the element type
@@ -445,12 +415,9 @@ pub func SortDescendingBy<T>(items: var T[..], compare: func(T, T) -> Ordering) 
 }
 
 /// Puts the element that belongs at `n` under `compare` at `n`, and partitions around it.
-///
 /// `items` is borrowed mutably and rewritten; `n` is read by value; `compare` must be a strict weak ordering.
 /// Exactly `NthElement`, with the order supplied rather than taken from the element type.
-///
 /// Reports false, changing nothing, when `n` is not an index into `items`.
-///
 /// O(n) comparisons on average and O(n log n) at worst. Equivalent elements may be reordered.
 /// @typeParam T the element type
 /// @param items the sequence to work on
@@ -501,12 +468,9 @@ pub func NthElementBy<T>(items: var T[..], n: uint, compare: func(T, T) -> Order
 }
 
 /// Puts the `count` smallest elements of `items` under `compare` in order at its front.
-///
 /// `items` is borrowed mutably and rewritten; `count` is read by value; `compare` must be a strict weak ordering.
 /// Exactly `PartialSort`, with the order supplied rather than taken from the element type.
-///
 /// Reports false, changing nothing, when `count` is larger than the length.
-///
 /// O(n log count) comparisons. Equivalent elements may be reordered.
 /// @typeParam T the element type
 /// @param items the sequence to work on

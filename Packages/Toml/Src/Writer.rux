@@ -1,23 +1,18 @@
 // Writing a document back out, deterministically.
-//
 // The same tree always produces the same bytes. That is not an aesthetic preference: configuration files live in
 // version control, and a writer whose output depends on hash order or on how the tree was built produces a diff
 // every time it runs, which trains everyone to stop reading the diffs.
-//
 // So entries are written in the order the table holds them, keys are bare whenever TOML allows a bare key and
 // quoted otherwise, and strings are always basic strings. A writer that guessed between the four string forms
 // would produce output that changed shape when a value gained a backslash, which is the sort of churn nobody
 // asked for; a basic string is always valid and always round-trips.
-//
 // Tables are written as headers rather than inline, except inside an array where TOML offers no other spelling.
 // A document written, read and written again produces the same bytes the second time.
-//
 // What this cannot do is reproduce a file. The tree has no comments in it, no blank lines, and no memory of
 // whether a number was written in hexadecimal or a string in a literal form, so the output is the writer's
 // layout of the same values rather than the layout it was read from. That is fine for generating configuration
 // and for writing back a file this program owns; running it over a file someone else wrote and hand-formatted
 // will produce a diff of the whole file.
-//
 // Failures are the ones every writer in this workspace reports, so a document goes into anything a `TextWriter`
 // reaches with no translation at the seam. What the destination said travels unchanged: a buffer that is merely
 // full reports `InsufficientCapacity` and a stream that has died reports `WriterFailure`, where the status this
@@ -29,7 +24,6 @@ import Format::{ ByteCursor, ParseFloat64, WriteDecimal };
 import Text::{ FormatError, TextWriter };
 
 /// How long a table's header path may be, in bytes.
-///
 /// A header is written as text, so the path is assembled into a fixed buffer rather than a list of names, and this
 /// is that buffer. It is far past any path a person writes: reaching it takes a nesting of tables whose names add
 /// up to a kilobyte, which a document built in memory can do and one that was parsed effectively cannot.
@@ -384,17 +378,12 @@ func KeyIntoPath(path: &var TomlPath, name: char8[..]) -> ! FormatError {
 }
 
 /// Writes `table` as a TOML document.
-///
 /// The same tree always produces the same bytes, and a document written, read and written again produces the
 /// same bytes the second time — which is what makes this safe to run repeatedly over a file this program owns.
-///
 /// It is not safe in the sense of preserving one it does not: comments, blank lines, indentation and the
 /// spelling of a number are not in the tree, so they cannot come out of it. The output is these values laid out
 /// by this writer, which is an equivalent document and not the same file.
-///
 /// The document is borrowed and nothing is allocated: it writes itself into the destination as it is walked.
-///
-/// # Failures
 /// Reports whatever the destination reported, unchanged, so a buffer that is merely full stays distinguishable
 /// from a stream that has died — and stops at the first refusal rather than writing the rest of a document into a
 /// destination that has already said no. Reports `ValueOutOfRange` for a table whose header path is longer than

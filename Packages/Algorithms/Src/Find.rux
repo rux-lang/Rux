@@ -1,25 +1,19 @@
 // Linear queries over a sequence that is in no particular order.
-//
 // Everything here reads a `T[..]` and returns an answer about it. A search that found something answers with the
 // index it found, as an optional `uint?`, because "not found" is an ordinary outcome and a sentinel index is a bug
 // waiting for the one sequence long enough to reach it. An empty slice is not a special case anywhere: it contains
 // nothing, satisfies every universal claim, and matches no search.
-//
 // The value-based queries need `==` on the element type and nothing more, so a type with equality but no ordering
 // can use them. The predicate-based ones need nothing at all — the caller's function supplies the test — and the
 // ordered searches live in `Search`, which needs `<`.
-//
 // A predicate is an ordinary function value. Rux has no closures, so it carries no captured state: anything it needs
 // beyond the element has to be reachable from the function itself.
-//
 // Nothing here allocates, and nothing here writes. Every one of these is a single pass unless it says otherwise.
 
 import Core::Ordering;
 
 /// Whether any element of `items` equals `value`.
-///
 /// `items` is borrowed and read; `value` is read by value. An empty slice contains nothing, so this is false.
-///
 /// Cannot fail. Runs in time proportional to the length, stopping at the first match, and allocates nothing.
 /// @typeParam T the element type
 /// @param items the sequence to work on
@@ -31,9 +25,7 @@ pub func Contains<T>(items: T[..], value: T) -> bool {
 }
 
 /// How many elements of `items` equal `value`.
-///
 /// `items` is borrowed and read; `value` is read by value. An empty slice gives zero.
-///
 /// Cannot fail. Runs in time proportional to the length and allocates nothing.
 /// @typeParam T the element type
 /// @param items the sequence to work on
@@ -53,10 +45,8 @@ pub func Count<T>(items: T[..], value: T) -> uint {
 }
 
 /// The index of the first element of `items` equal to `value`.
-///
 /// `items` is borrowed and read; `value` is read by value. Reports `none` when no element matches, including for an
 /// empty slice.
-///
 /// Cannot fail. Runs in time proportional to the length, stopping at the first match, and allocates nothing.
 /// @typeParam T the element type
 /// @param items the sequence to work on
@@ -73,9 +63,7 @@ pub func IndexOf<T>(items: T[..], value: T) -> uint? {
 }
 
 /// The index of the last element of `items` equal to `value`.
-///
 /// `items` is borrowed and read; `value` is read by value. Reports `none` when no element matches.
-///
 /// Cannot fail. Runs in time proportional to the length, stopping at the first match from the end, and allocates
 /// nothing.
 /// @typeParam T the element type
@@ -93,10 +81,8 @@ pub func LastIndexOf<T>(items: T[..], value: T) -> uint? {
 }
 
 /// The index of the first element of `items` that `predicate` accepts.
-///
 /// `items` is borrowed and read; `predicate` is called once per element until it accepts one. Reports `none` when
 /// it accepts none.
-///
 /// Cannot fail. Runs in time proportional to the length and allocates nothing beyond whatever `predicate` does.
 /// @typeParam T the element type
 /// @param items the sequence to work on
@@ -113,10 +99,8 @@ pub func IndexWhere<T>(items: T[..], predicate: func(T) -> bool) -> uint? {
 }
 
 /// The index of the last element of `items` that `predicate` accepts.
-///
 /// `items` is borrowed and read; `predicate` is called once per element from the end until it accepts one. Reports
 /// `none` when it accepts none.
-///
 /// Cannot fail. Runs in time proportional to the length and allocates nothing beyond whatever `predicate` does.
 /// @typeParam T the element type
 /// @param items the sequence to work on
@@ -133,9 +117,7 @@ pub func LastIndexWhere<T>(items: T[..], predicate: func(T) -> bool) -> uint? {
 }
 
 /// How many elements of `items` the predicate accepts.
-///
 /// `items` is borrowed and read; `predicate` is called once per element. An empty slice gives zero.
-///
 /// Cannot fail. Runs in time proportional to the length and allocates nothing beyond whatever `predicate` does.
 /// @typeParam T the element type
 /// @param items the sequence to work on
@@ -155,10 +137,8 @@ pub func CountWhere<T>(items: T[..], predicate: func(T) -> bool) -> uint {
 }
 
 /// Whether `predicate` accepts every element of `items`.
-///
 /// `items` is borrowed and read. An empty slice satisfies this, as it satisfies every universal claim: there is no
 /// element that fails.
-///
 /// Cannot fail. Runs in time proportional to the length, stopping at the first rejection, and allocates nothing
 /// beyond whatever `predicate` does.
 /// @typeParam T the element type
@@ -176,9 +156,7 @@ pub func AllOf<T>(items: T[..], predicate: func(T) -> bool) -> bool {
 }
 
 /// Whether `predicate` accepts at least one element of `items`.
-///
 /// `items` is borrowed and read. An empty slice does not satisfy this: there is no element that passes.
-///
 /// Cannot fail. Runs in time proportional to the length, stopping at the first acceptance, and allocates nothing
 /// beyond whatever `predicate` does.
 /// @typeParam T the element type
@@ -191,9 +169,7 @@ pub func AnyOf<T>(items: T[..], predicate: func(T) -> bool) -> bool {
 }
 
 /// Whether `predicate` accepts no element of `items`.
-///
 /// `items` is borrowed and read. An empty slice satisfies this, for the same reason it satisfies `AllOf`.
-///
 /// Cannot fail. Runs in time proportional to the length, stopping at the first acceptance, and allocates nothing
 /// beyond whatever `predicate` does.
 /// @typeParam T the element type
@@ -206,11 +182,9 @@ pub func NoneOf<T>(items: T[..], predicate: func(T) -> bool) -> bool {
 }
 
 /// The index of the first position where `left` and `right` differ.
-///
 /// Both are borrowed and read. Reports `none` when neither runs out before a difference is found and the two are
 /// equal for their whole common length — so two slices of different lengths that agree on the shorter one report
 /// the shorter length, and two identical slices report `none`.
-///
 /// Cannot fail. Runs in time proportional to the shorter length and allocates nothing.
 /// @typeParam T the element type
 /// @param left one of the two sequences
@@ -229,10 +203,8 @@ pub func Mismatch<T>(left: T[..], right: T[..]) -> uint? {
 }
 
 /// Whether `left` and `right` hold the same elements in the same order.
-///
 /// Both are borrowed and read. Different lengths are never equal, and two empty slices are, whatever their data
 /// pointers hold.
-///
 /// Cannot fail. Runs in time proportional to the shorter length and allocates nothing.
 /// @typeParam T the element type
 /// @param left one of the two sequences
@@ -245,14 +217,11 @@ pub func SequenceEqual<T>(left: T[..], right: T[..]) -> bool {
 }
 
 /// How `left` orders against `right`, element by element.
-///
 /// Both are borrowed and read. The comparison is lexicographic, which is the order a dictionary uses: the first
 /// position where the two differ decides, and if neither differs before one runs out, the shorter is the smaller.
 /// Two equal-length slices that never differ are `Equal`.
-///
 /// Requires `<` and `==` on the element type. Use `CompareBy` where the element has no ordering of its own or the
 /// wanted order is not its own.
-///
 /// Cannot fail. Runs in time proportional to the shorter length and allocates nothing.
 /// @typeParam T the element type
 /// @param left one of the two sequences
@@ -273,11 +242,9 @@ pub func Compare<T>(left: T[..], right: T[..]) -> Ordering {
 }
 
 /// How `left` orders against `right`, with `compare` deciding each pair.
-///
 /// Both slices are borrowed and read; `compare` is called at most once per position of the shorter one. Lexicographic
 /// exactly as `Compare` is, and the way to order a sequence whose elements have no `<` of their own — or to order it
 /// by something other than their own.
-///
 /// Cannot fail. Runs in time proportional to the shorter length and allocates nothing beyond whatever `compare` does.
 /// @typeParam T the element type
 /// @param left one of the two sequences

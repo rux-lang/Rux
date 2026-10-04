@@ -1,11 +1,9 @@
 
 // The checks that are the same for every algorithm, applied to every algorithm.
-//
 // Each algorithm's own test carries its known-answer vectors, because those are specific to it. What this adds
 // is the two families of check that are worth running uniformly and are easy to leave out of one algorithm by
 // accident: the boundary behaviour, where a message length lands exactly on a block, a rate or a chunk, and the
 // differential behaviour, where one flipped input bit must change about half the output bits.
-//
 // The avalanche check is the one that catches a hash which is merely *shaped* correctly. An implementation with
 // a round loop that runs one iteration too few, or a schedule that never mixes the last word, still produces
 // deterministic output of the right length that passes every structural test — and shows up here immediately,

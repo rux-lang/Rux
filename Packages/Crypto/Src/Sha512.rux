@@ -1,9 +1,7 @@
 // SHA-512 and its three truncations, from FIPS 180-4.
-//
 // The same shape as SHA-256 one size up: sixty-four bit words, eighty rounds, blocks of a hundred and twenty
 // eight bytes, and a length count of a hundred and twenty eight bits. The rotation amounts and shift distances
 // differ, and so does everything derived from them; nothing here is SHA-256 with a wider type.
-//
 // Four functions share the compression: SHA-512 keeps all eight words, SHA-384 keeps six, and SHA-512/224 and
 // SHA-512/256 keep the first twenty-eight and thirty-two bytes. Each starts from a different initial state --
 // the truncations' states are themselves derived by hashing their own names, which is what stops any of them
@@ -68,7 +66,6 @@ func RotateRight64(value: uint64, amount: uint64) -> uint64 {
 }
 
 /// An incremental SHA-512, SHA-384, SHA-512/224 or SHA-512/256.
-///
 /// Structural `Copy`; copying takes an independent snapshot of the digest state.
 /// @see https://rux-lang.dev/docs/api/crypto/sha512
 pub struct Sha512 {
@@ -216,7 +213,6 @@ extend Sha512 : Digest {
     }
 
     /// Writes the digest into `into`.
-    ///
     /// The padding carries a hundred and twenty eight bit length, so the final block needs seventeen free bytes
     /// rather than nine; a block with fewer takes a whole further block.
     /// @param into receives the output

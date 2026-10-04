@@ -1,11 +1,9 @@
 // Uniform values in a range, without the bias the obvious methods introduce.
-//
 // `NextUint64() % bound` is the method everyone reaches for and it is not uniform unless `bound` divides 2^64.
 // With a bound of three, the words 0, 1, 2 map to 0, 1, 2 and so on, but the final partial block leaves one or
 // two extra chances at the low residues — a bias of about `bound / 2^64`, invisible for small bounds and
 // glaring for bounds near the width. `(NextFloat64() * bound) as uint64` is worse: it rounds, so it is biased
 // even for bounds that divide evenly, and it can return `bound` itself at the top.
-//
 // The method here is Lemire's. Multiply the word by the bound in double width; the high half is already the
 // answer, and the low half says which part of the block it came from. Only when the low half falls inside the
 // first `2^64 mod bound` values is the answer possibly from the short block, and only then is a word rejected
@@ -14,9 +12,7 @@
 import Math::{ IsInfinite, NextDown };
 
 /// A uniform value in `[0, bound)`.
-///
 /// A bound of zero has no values to choose from and gives zero, which is the only answer that is not a lie.
-///
 /// Runs in constant expected time; the loop below runs more than once with probability under `bound / 2^64`.
 /// @typeParam G the generator's type
 /// @param generator where the bits come from
@@ -40,7 +36,6 @@ pub func UniformBelow<G: RandomGenerator>(generator: &var G, bound: uint64) -> u
 }
 
 /// A uniform value in `[low, high]`, both ends included.
-///
 /// Inclusive because that is what a caller asking for a die roll or a random index into a known last element
 /// means. `low` above `high` is an empty range and gives `low`. The full range of the type is representable:
 /// a span of every value is a bound of 2^64, which does not fit in a `uint64`, and is handled as its own case
@@ -62,7 +57,6 @@ pub func UniformInRange<G: RandomGenerator>(generator: &var G, low: uint64, high
 }
 
 /// A uniform signed value in `[low, high]`, both ends included.
-///
 /// The span is computed in unsigned arithmetic, so a range crossing zero — or spanning the whole width, where
 /// the difference of the ends overflows a signed type — is ordinary rather than a special case.
 /// @typeParam G the generator's type
@@ -79,7 +73,6 @@ pub func UniformInSignedRange<G: RandomGenerator>(generator: &var G, low: int64,
 }
 
 /// A uniform `float64` in `[low, high)`.
-///
 /// The interval is half-open at the top, matching `NextFloat64`. A reversed pair gives `low`, and an interval so
 /// wide that its span overflows to an infinity gives values across the whole of it rather than a NaN.
 /// @typeParam G the generator's type

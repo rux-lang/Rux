@@ -1,8 +1,6 @@
 // The digit loop, written once.
-//
 // Every signed integer widens to `int64` on the way in and every unsigned one to `uint64`, neither of which loses
 // anything, so there is one loop rather than one per width.
-//
 // The digits go into a cursor over a stack buffer rather than into anything that allocates: a `uint64` is at most
 // twenty digits, which is known before the loop starts, so there is nothing to grow and nothing that can fail.
 
@@ -11,7 +9,6 @@
 pub const MaxDecimalDigits: uint = 20;
 
 /// Writes the decimal digits of an unsigned value.
-///
 /// A division loop produces them least significant first, so they land in a small buffer and go back reversed.
 /// @param cursor the buffer the digits are written into
 /// @param value the value to act on
@@ -39,7 +36,6 @@ pub func WriteUint(cursor: &var ByteCursor, value: uint64) {
 }
 
 /// Writes the sign, then the magnitude.
-///
 /// The magnitude is taken in `uint64` rather than by negating within `int64`, because the most negative `int64` has
 /// no positive counterpart there: negating it overflows straight back to itself. Two's complement gives the right
 /// answer for that value and for every other one.

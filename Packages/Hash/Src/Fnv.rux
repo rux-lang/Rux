@@ -1,19 +1,15 @@
 // FNV-1a, the hash to reach for when the input is short and the code must be obvious.
-//
 // Fowler-Noll-Vo is a byte at a time: exclusive-or the byte into the accumulator, then multiply by a prime chosen so
 // that every input byte reaches every output bit. There is no block buffer, no padding and no finalization, which is
 // why an implementation fits on a page and why hashing four bytes costs four multiplies rather than a round of
 // mixing that assumed sixteen.
-//
 // That simplicity is also its limit. FNV-1a has no key, its structure is public, and finding two inputs that collide
 // is a small computation — so it must not key a table whose contents an adversary chooses. `SipHash` is the answer
 // there. For a compile-time constant, a short identifier, or a checksum over data nobody is attacking, FNV-1a is
 // smaller and faster than anything that would replace it.
-//
 // Both widths are the standard ones: the 32-bit and 64-bit parameters from the FNV specification, unmodified. A hash
 // computed here will match any other correct implementation, which is what makes it worth naming an algorithm rather
 // than promising only "some hash".
-//
 // https://datatracker.ietf.org/doc/html/draft-eastlake-fnv-21
 
 import Core::MulWrapping;
@@ -36,7 +32,6 @@ pub const FnvOffsetBasis64: uint64 = 0xCBF29CE484222325;
 pub const FnvPrime64: uint64 = 0x100000001B3;
 
 /// FNV-1a over 32 bits, computed one byte at a time.
-///
 /// Copy, and holding only the accumulator, so passing one by value takes a snapshot of the hash so far — which is
 /// occasionally useful and never surprising, since there is nothing else in it.
 /// @see https://rux-lang.dev/docs/api/hash/fnv1a32
@@ -54,9 +49,7 @@ extend Fnv1a32 {
     }
 
     /// Puts the hasher back to where `Fnv1a32()` leaves one.
-    ///
     /// `self` is borrowed mutably. Everything written so far is forgotten.
-    ///
     /// Cannot fail. Runs in constant time and allocates nothing.
     /// @see https://rux-lang.dev/docs/api/hash/fnv1a32/reset
     pub func Reset(self: &var Fnv1a32) {
@@ -64,10 +57,8 @@ extend Fnv1a32 {
     }
 
     /// The 32-bit hash of everything written so far.
-    ///
     /// `self` is borrowed. This is the algorithm's own width; `Finish` widens it to 64 bits for the `Hasher`
     /// contract, which does not make it a 64-bit hash.
-    ///
     /// Cannot fail. Runs in constant time and allocates nothing.
     /// @returns the hash of everything written so far
     /// @see https://rux-lang.dev/docs/api/hash/fnv1a32/value
@@ -78,15 +69,10 @@ extend Fnv1a32 {
 
 extend Fnv1a32 : Hasher {
     /// Adds `length` bytes at `bytes` to the hash.
-    ///
     /// `bytes` is borrowed and read; `length` is read by value. A zero length changes nothing and is the one case in
     /// which `bytes` may be null. Splitting the same bytes across several writes gives the same answer as one write,
     /// because there is no block to align to.
-    ///
     /// Runs in time proportional to `length` and allocates nothing.
-    ///
-    /// # Safety
-    ///
     /// `bytes` must be readable for `length` bytes.
     /// @param bytes the bytes to absorb
     /// @param length how many bytes; zero absorbs nothing
@@ -102,11 +88,9 @@ extend Fnv1a32 : Hasher {
     }
 
     /// The hash of everything written so far, widened to 64 bits.
-    ///
     /// `self` is borrowed. The hasher stays usable: asking twice gives the same answer, and writing more continues
     /// from here. The upper 32 bits are always zero, which is what a 32-bit hash promoted to the contract looks
     /// like — use `Value` when the 32-bit answer is what is wanted.
-    ///
     /// Cannot fail. Runs in constant time and allocates nothing.
     /// @returns the hash of everything written since the last reset
     /// @see https://rux-lang.dev/docs/api/hash/fnv1a32/finish
@@ -116,7 +100,6 @@ extend Fnv1a32 : Hasher {
 }
 
 /// FNV-1a over 64 bits, computed one byte at a time.
-///
 /// The width to prefer: the same cost per byte as the 32-bit form on any 64-bit machine, and far enough from a
 /// birthday collision that an ordinary table will never see one by accident.
 /// Structural `Copy`; copying takes an independent snapshot of the accumulator.
@@ -135,9 +118,7 @@ extend Fnv1a64 {
     }
 
     /// Puts the hasher back to where `Fnv1a64()` leaves one.
-    ///
     /// `self` is borrowed mutably. Everything written so far is forgotten.
-    ///
     /// Cannot fail. Runs in constant time and allocates nothing.
     /// @see https://rux-lang.dev/docs/api/hash/fnv1a64/reset
     pub func Reset(self: &var Fnv1a64) {
@@ -147,14 +128,9 @@ extend Fnv1a64 {
 
 extend Fnv1a64 : Hasher {
     /// Adds `length` bytes at `bytes` to the hash.
-    ///
     /// `bytes` is borrowed and read; `length` is read by value. A zero length changes nothing and is the one case in
     /// which `bytes` may be null. Splitting the same bytes across several writes gives the same answer as one write.
-    ///
     /// Runs in time proportional to `length` and allocates nothing.
-    ///
-    /// # Safety
-    ///
     /// `bytes` must be readable for `length` bytes.
     /// @param bytes the bytes to absorb
     /// @param length how many bytes; zero absorbs nothing
@@ -170,10 +146,8 @@ extend Fnv1a64 : Hasher {
     }
 
     /// The hash of everything written so far.
-    ///
     /// `self` is borrowed. The hasher stays usable: asking twice gives the same answer, and writing more continues
     /// from here rather than starting over.
-    ///
     /// Cannot fail. Runs in constant time and allocates nothing.
     /// @returns the hash of everything written since the last reset
     /// @see https://rux-lang.dev/docs/api/hash/fnv1a64/finish
@@ -183,16 +157,10 @@ extend Fnv1a64 : Hasher {
 }
 
 /// The 32-bit FNV-1a hash of `length` bytes at `bytes`.
-///
 /// `bytes` is borrowed and read; `length` is read by value. A zero length gives the offset basis, and is the one
 /// case in which `bytes` may be null.
-///
 /// The one-shot form of making a hasher, writing once and finishing. Identical in result and cost.
-///
 /// Cannot fail. Runs in time proportional to `length` and allocates nothing.
-///
-/// # Safety
-///
 /// `bytes` must be readable for `length` bytes.
 /// @param bytes the bytes to hash
 /// @param length how many bytes
@@ -205,14 +173,9 @@ pub func Fnv1a32Of(bytes: *byte, length: uint) -> uint32 {
 }
 
 /// The 64-bit FNV-1a hash of `length` bytes at `bytes`.
-///
 /// `bytes` is borrowed and read; `length` is read by value. A zero length gives the offset basis, and is the one
 /// case in which `bytes` may be null.
-///
 /// Cannot fail. Runs in time proportional to `length` and allocates nothing.
-///
-/// # Safety
-///
 /// `bytes` must be readable for `length` bytes.
 /// @param bytes the bytes to hash
 /// @param length how many bytes

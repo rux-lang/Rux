@@ -1,17 +1,14 @@
 // The proleptic Gregorian calendar, extended backwards as if it had always been in force.
-//
 // A date is a year, a month and a day that actually exists: February 29th only in a leap year, the 31st only in
 // the months that have one. The conversion to and from a flat day count is the civil-calendar arithmetic that
 // treats March as the first month, which puts the leap day last and turns the month lengths into one formula --
 // the standard trick, worth having exactly once.
-//
 // Leap seconds are deliberately absent from `TimeOfDay`: a second is 0 to 59, and what to do about 23:59:60 is a
 // parsing policy decided where text comes in, not a representation question.
 
 import Core::{ AddChecked, MulChecked, Ordering };
 
 /// A calendar date that exists.
-///
 /// `Copy`. Only constructible through the fallible `New` factory, which lets everything downstream assume validity.
 /// @see https://rux-lang.dev/docs/api/time/date
 pub struct Date {
@@ -34,7 +31,6 @@ pub func IsLeapYear(year: int32) -> bool {
 }
 
 /// How many days `month` holds in `year`.
-///
 /// Zero for a month that does not exist, which is what lets `Date::New` use it as the validator.
 /// @param year the year, as a signed count from year zero
 /// @param month the month, 1 through 12
@@ -60,7 +56,6 @@ extend Date {
     }
 
     /// Days since 1970-01-01, negative before it.
-    ///
     /// The civil-calendar formula: the year is shifted so March opens it, which puts the leap day at the end where
     /// it cannot disturb the month arithmetic.
     /// @returns days since 1970-01-01, negative before it
@@ -79,7 +74,6 @@ extend Date {
     }
 
     /// The date `days` after 1970-01-01, negative before it.
-    ///
     /// The inverse of `DaysFromEpoch`, exactly: the pair round-trips every day of every representable year.
     /// @param days how many days
     /// @returns the date that many days after 1970-01-01
@@ -138,7 +132,6 @@ extend Date {
 }
 
 /// A time within a day, to the nanosecond.
-///
 /// `Copy`, and only constructible valid. The second stops at 59: leap seconds are a policy for the text boundary,
 /// not a representable value here.
 /// @see https://rux-lang.dev/docs/api/time/time-of-day
@@ -189,7 +182,6 @@ extend TimeOfDay {
 }
 
 /// A fixed shift from UTC, in whole minutes.
-///
 /// Fixed is the word doing the work: this names what an offset is at one moment, and never which zone produced it
 /// or when that zone changes its mind. Zone rules are a database with a release cycle, and belong to a later phase.
 /// @see https://rux-lang.dev/docs/api/time/utc-offset
@@ -207,7 +199,6 @@ extend UtcOffset {
     }
 
     /// The offset `hours` and `minutes` from UTC, when it is one an offset can be.
-    ///
     /// The two carry the same sign — minus five thirty is `Of(-5, -30)` — and the whole must stay within a day.
     /// Real offsets stop at eighteen hours, but text may carry any legal-looking one and refusing to represent it
     /// would turn parsing into policy.
@@ -231,7 +222,6 @@ extend UtcOffset {
 }
 
 /// A date and a time of day together, in some understood offset.
-///
 /// `Copy`. What offset the pair is in is the caller's knowledge, carried beside it where it matters — attaching
 /// one permanently would make every arithmetic answer depend on a field that is usually UTC anyway.
 /// @see https://rux-lang.dev/docs/api/time/date-time
@@ -244,7 +234,6 @@ pub struct DateTime {
 
 extend DateTime {
     /// The moment this date and time name in UTC, shifted by `offset`.
-    ///
     /// The shift subtracts: half past nine at plus two is half past seven in UTC. The range of a timestamp dwarfs
     /// the calendar's, so the conversion cannot overflow for any date `Date::New` accepts.
     /// @param offset the offset from UTC
@@ -282,7 +271,6 @@ extend DateTime {
     }
 
     /// Whether two pairs name the same date and time.
-    ///
     /// Same field values — two pairs in different offsets naming one moment are different here, which is what
     /// carrying the offset beside the pair means.
     /// @param other the value to compare against

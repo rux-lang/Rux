@@ -6,9 +6,7 @@ import Text::ParseFailure;
 // One grammar serves every width — sign, optional base prefix, digits — and the width's own bound is checked
 // last, so what is tested per width is the bound: the largest value in, one past it refused, and for the signed
 // widths the most negative value, which fits where its positive twin does not.
-//
 // The prefixes are exactly the ones formatting writes under `#`, so what one side prints the other reads.
-//
 // Every refusal also says where, and the offsets are the half that fails quietly: a reason with the wrong offset
 // still passes a check that only asks for the reason, and still underlines the wrong character in whatever reports
 // it. So the section at the bottom names the exact byte for each, including the two flavours of overflow, which

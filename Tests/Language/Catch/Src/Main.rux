@@ -1,10 +1,8 @@
 // `catch`: recovering from the failure of one fallible level.
-//
 // `outcome catch { arms }` evaluates its subject once. A success passes through unchanged, with every inner level it
 // holds, and a failure is matched by the arms, which see only the error payload and must cover all of it. Each arm
 // either recovers a value of the success type or leaves the function; an arm's own `fail` or `?` is an ordinary exit,
 // never caught again by the same `catch`. A block arm completes with `()`, which only a unit success can take.
-//
 // `catch` binds to the postfix expression right before it, so arithmetic around it needs no parentheses, and the value
 // it recovers continues a postfix chain. The subject is consumed: an error the arm binds belongs to the arm, and one it
 // does not bind is destroyed when the arm is chosen.

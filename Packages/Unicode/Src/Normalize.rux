@@ -1,15 +1,12 @@
 // The four normal forms, over scalar values.
-//
 // Normalization is what makes "the same text" a checkable claim: an e-with-acute is one scalar value or two, and a
 // comparison that has not normalized calls them different. NFD takes everything apart canonically and orders the
 // marks; NFC puts back together what has a composed form; the K forms do the same after compatibility
 // decomposition, which also flattens ligatures, width variants and the like — a bigger hammer, for callers who
 // mean "the same characters" more loosely.
-//
 // Everything works on slices of scalar values and writes into a caller's buffer, reporting the length or refusing
 // for want of room; nothing here allocates. Text-level normalization is a walk over a string's scalars into one of
 // these and back out through a builder, and belongs beside the text types rather than here.
-//
 // Hangul is arithmetic throughout: a syllable decomposes into its jamo and recomposes from them by formula, which
 // is why none of it is in the tables.
 
@@ -104,12 +101,8 @@ func CanonicalOrder(items: var char32[..], length: uint) {
 }
 
 /// Writes the canonical decomposition of `text` into `into`, marks in canonical order: NFD.
-///
 /// Reports the length through `written`, or `false` without a defined result when the room is short. The
 /// decompositions are fully expanded in the tables, so nothing recurses.
-///
-/// # Safety
-///
 /// `written` must be non-null and writable.
 /// @param text the scalar values to decompose
 /// @param into receives the decomposition
@@ -121,9 +114,6 @@ pub func DecomposeCanonical(text: char32[..], into: var char32[..], written: *va
 }
 
 /// Writes the compatibility decomposition of `text` into `into`, marks in canonical order: NFKD.
-///
-/// # Safety
-///
 /// `written` must be non-null and writable.
 /// @param text the scalar values to decompose
 /// @param into receives the decomposition
@@ -192,7 +182,6 @@ func ComposePair(starter: char32, following: char32, composed: *var char32) -> b
 }
 
 // The canonical composition pass, run over text that is already decomposed and ordered.
-//
 // Each mark composes with the nearest starter before it unless something blocks the way: another starter, or a
 // mark of the same or higher class. Two adjacent starters compose where a form exists, which is where Hangul LV
 // and LVT come from. This is the UAX #15 algorithm; the blocking rule is the whole of its subtlety, and the
@@ -240,9 +229,6 @@ func Compose(items: var char32[..], length: uint) -> uint {
 }
 
 /// Writes the NFC of `text` into `into`: canonical decomposition, canonical order, then composition.
-///
-/// # Safety
-///
 /// `written` must be non-null and writable.
 /// @param text the scalar values to normalize
 /// @param into receives the normalized form
@@ -257,9 +243,6 @@ pub func NormalizeCanonical(text: char32[..], into: var char32[..], written: *va
 }
 
 /// Writes the NFKC of `text` into `into`: compatibility decomposition, canonical order, then composition.
-///
-/// # Safety
-///
 /// `written` must be non-null and writable.
 /// @param text the scalar values to normalize
 /// @param into receives the normalized form

@@ -1,10 +1,8 @@
 // Parsing an integer of any width, in any of the four bases.
-//
 // One grammar serves every width: an optional sign, an optional base prefix — `0x`, `0o`, `0b`, exactly the
 // prefixes formatting writes under `#` — and digits of that base. The magnitude accumulates in `uint512`, the
 // widest integer there is, so one loop serves every width and overflow within the loop is impossible for any
 // narrower target; the width's own bound is checked once at the end, where the error can say which width refused.
-//
 // The bound is one larger for a negative value, because the most negative value of every signed width has no
 // positive counterpart: `-128` fits an `int8` whose largest value is `127`.
 
@@ -74,7 +72,6 @@ func ParseIntegerMagnitude(str: char8[..], magnitude: *var uint512,
 }
 
 /// Parses a `uint8`: an optional `+`, an optional base prefix, and digits.
-///
 /// Reports `Overflow` for a value the width cannot hold, `InvalidCharacter` at the first byte that is not
 /// part of the grammar — a `-` included, since no unsigned value is negative.
 /// @param str the text to parse
@@ -90,7 +87,6 @@ pub func ParseUint8(str: char8[..]) -> uint8 ! ParseError {
 }
 
 /// Parses an `int8`: an optional sign, an optional base prefix, and digits.
-///
 /// The negative bound is one larger than the positive one, because the most negative value has no positive
 /// counterpart: the value one past the largest positive fits only with its sign.
 /// @param str the text to parse
@@ -107,7 +103,6 @@ pub func ParseInt8(str: char8[..]) -> int8 ! ParseError {
 }
 
 /// Parses a `uint16`: an optional `+`, an optional base prefix, and digits.
-///
 /// Reports `Overflow` for a value the width cannot hold, `InvalidCharacter` at the first byte that is not
 /// part of the grammar — a `-` included, since no unsigned value is negative.
 /// @param str the text to parse
@@ -123,7 +118,6 @@ pub func ParseUint16(str: char8[..]) -> uint16 ! ParseError {
 }
 
 /// Parses an `int16`: an optional sign, an optional base prefix, and digits.
-///
 /// The negative bound is one larger than the positive one, because the most negative value has no positive
 /// counterpart: the value one past the largest positive fits only with its sign.
 /// @param str the text to parse
@@ -140,7 +134,6 @@ pub func ParseInt16(str: char8[..]) -> int16 ! ParseError {
 }
 
 /// Parses a `uint32`: an optional `+`, an optional base prefix, and digits.
-///
 /// Reports `Overflow` for a value the width cannot hold, `InvalidCharacter` at the first byte that is not
 /// part of the grammar — a `-` included, since no unsigned value is negative.
 /// @param str the text to parse
@@ -156,7 +149,6 @@ pub func ParseUint32(str: char8[..]) -> uint32 ! ParseError {
 }
 
 /// Parses an `int32`: an optional sign, an optional base prefix, and digits.
-///
 /// The negative bound is one larger than the positive one, because the most negative value has no positive
 /// counterpart: the value one past the largest positive fits only with its sign.
 /// @param str the text to parse
@@ -173,7 +165,6 @@ pub func ParseInt32(str: char8[..]) -> int32 ! ParseError {
 }
 
 /// Parses a `uint64`: an optional `+`, an optional base prefix, and digits.
-///
 /// Reports `Overflow` for a value the width cannot hold, `InvalidCharacter` at the first byte that is not
 /// part of the grammar — a `-` included, since no unsigned value is negative.
 /// @param str the text to parse
@@ -191,7 +182,6 @@ pub func ParseUint64(str: char8[..]) -> uint64 ! ParseError {
 }
 
 /// Parses an `int64`: an optional sign, an optional base prefix, and digits.
-///
 /// The negative bound is one larger than the positive one, because the most negative value has no positive
 /// counterpart: the value one past the largest positive fits only with its sign.
 /// @param str the text to parse
@@ -208,7 +198,6 @@ pub func ParseInt64(str: char8[..]) -> int64 ! ParseError {
 }
 
 /// Parses a `uint128`: an optional `+`, an optional base prefix, and digits.
-///
 /// Reports `Overflow` for a value the width cannot hold, `InvalidCharacter` at the first byte that is not
 /// part of the grammar — a `-` included, since no unsigned value is negative.
 /// @param str the text to parse
@@ -226,7 +215,6 @@ pub func ParseUint128(str: char8[..]) -> uint128 ! ParseError {
 }
 
 /// Parses an `int128`: an optional sign, an optional base prefix, and digits.
-///
 /// The negative bound is one larger than the positive one, because the most negative value has no positive
 /// counterpart: the value one past the largest positive fits only with its sign.
 /// @param str the text to parse
@@ -243,7 +231,6 @@ pub func ParseInt128(str: char8[..]) -> int128 ! ParseError {
 }
 
 /// Parses a `uint256`: an optional `+`, an optional base prefix, and digits.
-///
 /// Reports `Overflow` for a value the width cannot hold, `InvalidCharacter` at the first byte that is not
 /// part of the grammar — a `-` included, since no unsigned value is negative.
 /// @param str the text to parse
@@ -261,7 +248,6 @@ pub func ParseUint256(str: char8[..]) -> uint256 ! ParseError {
 }
 
 /// Parses an `int256`: an optional sign, an optional base prefix, and digits.
-///
 /// The negative bound is one larger than the positive one, because the most negative value has no positive
 /// counterpart: the value one past the largest positive fits only with its sign.
 /// @param str the text to parse
@@ -278,7 +264,6 @@ pub func ParseInt256(str: char8[..]) -> int256 ! ParseError {
 }
 
 /// Parses a `uint512`: an optional `+`, an optional base prefix, and digits.
-///
 /// Reports `Overflow` for a value the width cannot hold, `InvalidCharacter` at the first byte that is not
 /// part of the grammar — a `-` included, since no unsigned value is negative.
 /// @param str the text to parse
@@ -296,7 +281,6 @@ pub func ParseUint512(str: char8[..]) -> uint512 ! ParseError {
 }
 
 /// Parses an `int512`: an optional sign, an optional base prefix, and digits.
-///
 /// The negative bound is one larger than the positive one, because the most negative value has no positive
 /// counterpart: the value one past the largest positive fits only with its sign.
 /// @param str the text to parse

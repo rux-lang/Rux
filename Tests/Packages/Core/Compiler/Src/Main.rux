@@ -35,11 +35,9 @@ func Main() -> int {
     // compiler — calling it crashes at load with STATUS_ENTRYPOINT_NOT_FOUND
     // (0xC0000139). Re-enable these once the intrinsic links. Reading the plain
     // fields of #compiler above already works.
-    //
     // // A feature name the compiler does not recognize is reported absent rather
     // // than raising anything.
     // Assert(!#compiler.HasFeature("no-such-compiler-feature"), "unknown feature is absent");
-    //
     // // The query is a pure function of its argument: asking the same thing twice
     // // gives the same answer.
     // Assert(#compiler.HasFeature("no-such-compiler-feature")

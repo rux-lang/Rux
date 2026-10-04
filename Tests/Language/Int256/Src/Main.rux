@@ -1,5 +1,4 @@
 // int256: four lanes, and the first width that no ABI passes anywhere but in memory.
-//
 // int128 already established that arithmetic carries between lanes. What this width adds is distance: a carry has
 // to propagate through two lanes it does not start or end in, a shift by more than one lane width has to move whole
 // lanes as well as bits, and the value is large enough that the compiler cannot fall back on anything a register

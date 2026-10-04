@@ -1,13 +1,10 @@
 // Where text is assembled.
-//
 // A `String` is immutable, so building one a piece at a time through `String` alone would allocate and copy on every
 // step — quadratic work to produce a linear result. A builder keeps spare room and doubles it, so a sequence of
 // appends costs each byte a constant amount on average, and hands the block over at the end without copying it.
-//
 // The builder holds well-formed UTF-8 at every moment, not only at the end. That is why it accepts whole characters
 // and checked runs of bytes rather than arbitrary ones: a builder that could hold half a character would make
 // `View` a lie and `IntoString` a validation pass. Appending an incomplete sequence is refused rather than deferred.
-//
 // It prohibits copying and `~StringBuilder` gives its block back. `IntoString` transfers the block without copying;
 // after it the builder owns nothing and is ready to be used again.
 
@@ -16,13 +13,11 @@ import Core::MulChecked;
 import Memory::Copy;
 
 /// The room a builder takes when it first needs any.
-///
 /// Small enough that a builder for a short string wastes little, large enough that short strings never grow twice.
 /// @see https://rux-lang.dev/docs/api/text/minimum-builder-capacity
 pub const MinimumBuilderCapacity: uint = 16;
 
 /// A growable buffer of text.
-///
 /// Move-only: it explicitly prohibits copying and owns its block. Holds well-formed UTF-8 at every moment.
 /// @see https://rux-lang.dev/docs/api/text/string-builder
 pub struct StringBuilder {
@@ -41,9 +36,7 @@ extend StringBuilder {
     func =(self: &var StringBuilder, other: &StringBuilder);
 
     /// A builder that has allocated nothing.
-    ///
     /// `allocator` is borrowed for the call and kept.
-    ///
     /// Cannot fail. Runs in constant time and allocates nothing.
     /// @param allocator where the storage comes from
     /// @returns an empty builder that has taken no storage yet
@@ -53,7 +46,6 @@ extend StringBuilder {
     }
 
     /// A builder with room for `capacity` bytes already taken.
-    ///
     /// Worth using when the size is known or can be guessed well: appends that stay within the room never
     /// reallocate. Fails with `OutOfMemory` when the room cannot be had.
     /// @param allocator where the storage comes from
@@ -95,7 +87,6 @@ extend StringBuilder {
     }
 
     /// A view over what has been appended so far.
-    ///
     /// Free, and needs no checking: everything the builder accepts is whole characters, so what it holds is
     /// well-formed at every moment rather than only once it is finished.
     /// @returns a borrowed view of what has been appended
@@ -105,7 +96,6 @@ extend StringBuilder {
     }
 
     /// Makes sure there is room for `additional` more bytes.
-    ///
     /// Reports `OutOfMemory` when the room cannot be had and `LengthOverflow` when the size needed cannot be
     /// expressed, having in both cases changed nothing: a builder that fails to grow still holds what it held.
     /// @param additional how many more bytes to make room for
@@ -116,9 +106,6 @@ extend StringBuilder {
     }
 
     /// Appends bytes the caller vouches are UTF-8.
-    ///
-    /// # Safety
-    ///
     /// The bytes must be well-formed UTF-8 and must not end part-way through a character. The builder's promise
     /// that it holds text at every moment rests on this, and everything reading from it relies on that promise.
     /// @param bytes the bytes to act on
@@ -129,7 +116,6 @@ extend StringBuilder {
     }
 
     /// Appends what `view` spans.
-    ///
     /// The view was checked when it was made, so nothing is checked again.
     /// @param view the borrowed text to act on
     /// @returns nothing when the text was appended, or why not
@@ -139,7 +125,6 @@ extend StringBuilder {
     }
 
     /// Appends `text`.
-    ///
     /// Text was checked before it existed, so nothing is checked again and nothing can fail but the storage.
     /// @param text the text to act on
     /// @returns nothing when the text was appended, or why not
@@ -149,7 +134,6 @@ extend StringBuilder {
     }
 
     /// Appends `bytes` when they are UTF-8, and reports `InvalidUtf8` when they are not.
-    ///
     /// Costs a pass over the bytes. `Append` of a view costs none, which is the reason views exist.
     /// @param bytes the bytes to act on
     /// @returns nothing when the bytes were appended, after checking they are valid UTF-8, or why not
@@ -160,7 +144,6 @@ extend StringBuilder {
     }
 
     /// Appends one character.
-    ///
     /// Reports `InvalidUtf8` for a value that is not a scalar value — a surrogate half, or one past U+10FFFF --
     /// which is what keeps a builder from holding something that is not text.
     /// @param scalar the Unicode scalar value
@@ -175,7 +158,6 @@ extend StringBuilder {
     }
 
     /// Appends one ASCII byte.
-    ///
     /// Reports `InvalidUtf8` for a byte above 0x7F, since a single byte above that is never a whole character;
     /// `AppendScalar` is what appends one that takes more than a byte.
     /// @param byte the byte
@@ -189,7 +171,6 @@ extend StringBuilder {
     }
 
     /// Forgets everything appended, keeping the room.
-    ///
     /// The block is kept, so a builder used in a loop allocates once rather than once per pass.
     /// @see https://rux-lang.dev/docs/api/text/string-builder/clear
     pub func Clear(self: &var StringBuilder) {
@@ -211,7 +192,6 @@ extend StringBuilder {
     }
 
     /// A copy of what has been appended, as a string of its own.
-    ///
     /// The builder is untouched and may be appended to again. `IntoString` is what hands the block over instead of
     /// copying it, and is what to use when the builder is finished with.
     /// @returns a copy of what has been appended, leaving the builder as it was
@@ -221,11 +201,9 @@ extend StringBuilder {
     }
 
     /// Hands the block over as a string, leaving the builder owning nothing.
-    ///
     /// Copies nothing: the string that comes back is the builder's block, which is why the builder must give it up.
     /// The block usually has room to spare, and the string remembers how much so that the allocator gets back the
     /// layout it handed out.
-    ///
     /// Cannot fail. Runs in constant time and allocates nothing.
     /// @returns what has been appended, taking the builder's storage rather than copying
     /// @see https://rux-lang.dev/docs/api/text/string-builder/into-string
@@ -243,7 +221,6 @@ extend StringBuilder {
     }
 
     /// Gives the block back.
-    ///
     /// Runs when the builder dies. A builder whose block was handed over by `IntoString` owns nothing, so this is
     /// then a no-op rather than a second release.
     /// @see https://rux-lang.dev/docs/api/text/string-builder/destructor

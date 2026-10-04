@@ -1,10 +1,8 @@
 // What stands before a path's first real segment.
-//
 // The Unix systems have one answer: nothing, or the root. Windows has a family — a drive (`C:`), a UNC share
 // (`\server\share`), and the verbatim prefix (`\?\`) that turns parsing off for everything after it — and which
 // one a path carries changes what "absolute" means for it. `C:name` is neither relative nor absolute but
 // drive-relative, a shape only Windows has.
-//
 // Nothing here folds case. `C:` and `c:` are the same drive to the filesystem and different units to this layer,
 // exactly as two names differing in case are: which spellings the system treats as one is the system's opinion,
 // and a path library that imitates it bakes today's opinion into tomorrow's comparison.
@@ -25,7 +23,6 @@ pub enum PrefixKind: int32 {
 }
 
 /// How many units of `path` are prefix, and which kind, reported through `kind`.
-///
 /// Zero and `None` on the Unix systems always: a leading `//server` is just a path there, whatever tools make of
 /// it. On Windows the drive is two units, a share runs through the end of its share name, and the verbatim prefix
 /// covers its four units plus the drive or share inside it.
@@ -118,7 +115,6 @@ pub func HasRoot(path: Path) -> bool {
 }
 
 /// Whether `path` names one place regardless of any current directory.
-///
 /// On the Unix systems, rooted is absolute. On Windows a rooted drive (`C:\x`), a share and a verbatim path are
 /// absolute; `C:name` is drive-relative and `\name` drive-absent, and neither names one place on its own.
 /// @param path the path to act on

@@ -5,7 +5,6 @@ import Core::{ Assert, Panic };
 // What a `TreeMap` has that a `HashMap` does not is order, so that is what this leans on: the walk comes out sorted
 // whatever order the keys arrived in, the nearest key above or below a bound is found without a scan, and a range
 // hands back exactly what lies between two bounds.
-//
 // The keys arrive in a stride coprime with the count, so nothing about the insertion order helps the answers come
 // out sorted. Every question with an obvious edge is asked at that edge too: a floor below every key, a ceiling
 // above every key, a range that is empty because its bounds are the wrong way round.
