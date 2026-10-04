@@ -29,3 +29,7 @@ func Main() {
     // Values the operand's type holds are accepted at both of its ends.
     let inRange = count > 0 && narrow == 255 && narrow != 0;
 }
+
+func Unannotated() {
+    let tooWide = 1000000000000000000000;
+}

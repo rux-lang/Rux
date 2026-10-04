@@ -241,6 +241,14 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
         }
         TypeRef initializerType = letStatement->init ? CheckExpr(*letStatement->init) : TypeRef::MakeUnknown();
         TypeRef declarationType = letStatement->type ? annotatedType : initializerType;
+        // With nothing to give it a width, an unsuffixed literal is an `int`, so one too large for that is reported
+        // here rather than stored as whatever its low bits happen to be.
+        if (!letStatement->type && letStatement->init && IsUnsuffixedIntegerLiteral(*letStatement->init) &&
+            initializerType.kind == TypeRef::Kind::Int &&
+            !UnsuffixedIntegerLiteralFits(*letStatement->init, initializerType)) {
+            EmitError(letStatement->init->location, "integer literal is out of range for type 'int'", {},
+                      "annotate the binding with a wider type, or add a suffix such as 'i128'");
+        }
         // `none`, `.Success(v)`, and `.Failure(e)` leave a part of their type to the context, so a binding cannot take
         // its whole type from one of them.
         const bool incompleteNative = !letStatement->type && initializerType.MentionsIncompleteNative();

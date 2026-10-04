@@ -207,6 +207,15 @@ bool TypeRef::IsAssignableTo(const TypeRef &other) const noexcept {
     if (other.kind == Kind::UInt16 && kind == Kind::UInt8) {
         return true;
     }
+    // The same rule continues past 64 bits: an integer widens to any strictly wider integer of the same signedness,
+    // so an `int64` or an `int` reaches `int128` the way an `int32` reaches `int64`.
+    if (IsInteger() && other.IsInteger() && IsSigned() == other.IsSigned()) {
+        const auto bits = PrimitiveBits(kind, DefaultPointerSize * 8);
+        const auto otherBits = PrimitiveBits(other.kind, DefaultPointerSize * 8);
+        if (bits && otherBits && *bits < *otherBits) {
+            return true;
+        }
+    }
     // Numeric types must match exactly unless an explicit cast is used.
     if (IsNumeric() && other.IsNumeric()) {
         return false;

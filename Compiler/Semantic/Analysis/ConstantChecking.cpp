@@ -547,6 +547,11 @@ bool AnalysisContext::ConstantFitsTarget(std::int64_t value, const TypeRef &targ
     if (const auto range = SignedIntegerRange(target)) {
         return value >= range->first && value <= range->second;
     }
+    // A folded constant is a machine word, so every value fits a signed target wider than one, and every
+    // non-negative value an unsigned one: `let c: uint128 = 7 * 3;`.
+    if (const auto range = IntegerRange(target); range && range->first > 64) {
+        return range->second || value >= 0;
+    }
     return false;
 }
 

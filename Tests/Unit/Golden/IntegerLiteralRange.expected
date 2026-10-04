@@ -9,3 +9,4 @@
 25:26: error: integer literal is out of range for type 'uint64'
 26:34: error: integer literal is out of range for type 'uint8'
 27:26: error: integer literal is out of range for type 'uint8'
+34:19: error: integer literal is out of range for type 'int'

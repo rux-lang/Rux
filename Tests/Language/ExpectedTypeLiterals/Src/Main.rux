@@ -4,7 +4,7 @@
 // element, a range bound. Each case below writes its literals without a suffix and checks the value that arrived.
 
 import Core::Assert;
-import Core::{ char8, int128, int32, uint32, uint8 };
+import Core::{ char8, int128, int32, int64, uint128, uint32, uint8 };
 
 interface Shape {
     func Area() -> int32;
@@ -106,6 +106,18 @@ func Main() -> int {
         sum += value;
     }
     Assert(sum == 37, "both range forms take 'int32' bounds from the annotation");
+
+    // An operand literal wider than 64 bits takes the other operand's width before anything is computed.
+    let negative: int128 = -42;
+    Assert(negative * 1000000000000000000000 == -42000000000000000000000, "a wide literal multiplies at full width");
+    Assert(negative + 1000000000000000000000 == 999999999999999999958, "and adds at full width");
+    Assert(1000000000000000000000 > negative, "and compares at full width");
+
+    // Widening continues past 64 bits.
+    let narrow64: int64 = 5;
+    let widened: int128 = narrow64;
+    let folded: uint128 = 7 * 3;
+    Assert(widened == 5 && folded == 21, "an int64 widens to int128 and a folded constant fits uint128");
 
     return 0;
 }

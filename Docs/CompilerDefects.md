@@ -626,7 +626,9 @@ Defects in Packages/, found the same way.
 - **Reproducer:** `printf 'h\xc3\xa9llo\n' | rux run` in `Text/Input`.
 - **Expected:** `line 1 is "héllo", 6 bytes`.
 - **Actual:** the read fails; the lesson prints "the input could not be read" and exits with status 1.
-## D37. An unsuffixed literal wider than 64 bits silently becomes 0 when used as an operand
+## D37. An unsuffixed literal wider than 64 bits silently becomes 0 when used as an operand (fixed)
+
+**Fixed**; covered by `Tests/Language/ExpectedTypeLiterals` and the `IntegerLiteralRange` golden.
 
 ```rux
 import Core::int128;
@@ -648,7 +650,9 @@ func Main() -> int {
   the same literal is correct.
 - **Course workaround:** `Numbers/WideInteger` gives the literal an `i128` suffix.
 
-## D38. Implicit integer widening stops at 64 bits
+## D38. Implicit integer widening stops at 64 bits (fixed)
+
+**Fixed**; covered by `Tests/Language/ExpectedTypeLiterals`.
 
 - **Reproducers:**
   - `let y: int128 = x;` with `x: int64` gives `cannot assign 'int64' to 'int128'`.

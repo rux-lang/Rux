@@ -223,6 +223,21 @@ HirExprPtr AstToHirContext::LowerBasicExpr(const Expr &expression) {
                     return LowerExprAs(operand, otherType);
                 }
             }
+            // An unsuffixed integer operand takes the other operand's integer type, as analysis checked. Building it
+            // at that width keeps every bit of a literal wider than the default `int`; building it at `int` and
+            // widening afterwards would already have dropped them. A shift amount keeps its own type.
+            const bool shift = binary->op == TokenKind::LessLess || binary->op == TokenKind::GreaterGreater ||
+                               binary->op == TokenKind::GreaterGreaterGreater;
+            // A `null` operand carries no type fact, so the other operand's type is only looked up, not required. Only
+            // a literal analysis left at the default `int` is retyped; one it already typed keeps that type.
+            const TypeRef *ownFact = model.TryGetType(operand);
+            const bool defaultWidth = ownFact && ownFact->kind == TypeRef::Kind::Int;
+            if (const TypeRef *otherFact = model.TryGetType(other); !shift && defaultWidth && otherFact) {
+                const TypeRef otherType = SubstituteCurrentType(*otherFact);
+                if (otherType.IsInteger() && UnsuffixedIntegerLiteralFits(operand, otherType)) {
+                    return LowerExprAs(operand, otherType);
+                }
+            }
             return LowerExpr(operand);
         };
         // A native comparison has one type. An operand with no type of its own -- `none`, a native constructor, or an
