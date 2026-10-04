@@ -10,5 +10,5 @@
 100:20: error: type 'Plain' cannot be indexed
 100:5: warning: cannot infer type of 'rejected'
 104:13: error: cannot assign through the '[]' operator on 'ReadOnly'
-107:23: error: cannot slice value of type 'Vect'
+107:25: error: no '[]' on 'Vect' accepts an index of type 'int..int'
 107:5: warning: cannot infer type of 'spanned'

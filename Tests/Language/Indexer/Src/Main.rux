@@ -67,6 +67,11 @@ extend Grid {
     func []=(self: &var Grid, at: Coord, value: int32) {
         self.cells[at.row * 3 + at.column] = value;
     }
+
+    // A second read overload, separated by its tuple index type.
+    func [](self: &Grid, at: (uint, uint)) -> int32 {
+        return self.cells[at.0 * 3 + at.1];
+    }
 }
 
 // A generic receiver substitutes its type arguments into the operator's
@@ -134,6 +139,7 @@ func Main() -> int {
     Assert(grid[corner] == 8i32, "the indexer accepts a struct index");
     let origin = Coord { row: 0, column: 1 };
     Assert(grid[origin] == 1i32, "a struct index is an ordinary argument");
+    Assert(grid[(2, 2)] == 8i32, "an unsuffixed tuple index takes the overload's element types");
     var writable = Grid { cells: [0i32; 9] };
     writable[corner] = 5i32;
     Assert(writable[corner] == 5i32, "a struct index writes as well as reads");

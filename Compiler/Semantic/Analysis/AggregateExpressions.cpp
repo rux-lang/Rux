@@ -113,6 +113,38 @@ std::optional<TypeRef> AnalysisContext::ResolveIndexAssignment(const IndexExpr &
     return valueType;
 }
 
+std::optional<TypeRef> AnalysisContext::ResolveIndexOperator(const IndexExpr &index, const TypeRef &objectType,
+                                                             const TypeRef &indexType) {
+    const std::vector<const FuncDecl *> candidates = AccessibleMethodCandidates(objectType, "[]");
+    if (candidates.empty()) {
+        return std::nullopt;
+    }
+    std::vector<const FuncDecl *> matched;
+    for (const FuncDecl *candidate : candidates) {
+        const std::vector<TypeRef> parameterTypes = ResolveOperatorParameterTypes(objectType, *candidate);
+        if (parameterTypes.size() == 1 && candidate->returnType &&
+            (parameterTypes[0].IsUnknown() || CanAssignExprTo(*index.index, indexType, parameterTypes[0]))) {
+            matched.push_back(candidate);
+        }
+    }
+    if (matched.empty()) {
+        EmitError(index.index->location, std::format("no '[]' on '{}' accepts an index of type '{}'",
+                                                     objectType.ToString(), indexType.ToString()));
+        return TypeRef::MakeUnknown();
+    }
+    if (matched.size() > 1) {
+        EmitError(index.location,
+                  std::format("index of type '{}' matches {} '[]' overloads on '{}'", indexType.ToString(),
+                              matched.size(), objectType.ToString()),
+                  {"overloads of an index operator are separated by their index type"});
+        return TypeRef::MakeUnknown();
+    }
+    const FuncDecl *method = matched.front();
+    TypeRef returnType = ResolveOperatorReturnType(objectType, *method);
+    indexOperators.insert_or_assign(&index, ResolvedIndexOperator{method, objectType, indexType, returnType});
+    return returnType;
+}
+
 void AnalysisContext::FinishIndexedAssignment(const AssignExpr &assignment, const TypeRef &valueParameterType,
                                               const TypeRef &valueType) {
     if (valueParameterType.IsUnknown() || valueType.IsUnknown()) {
@@ -602,6 +634,15 @@ std::optional<TypeRef> AnalysisContext::CheckAggregateExpression(const Expr &exp
                 indexOperators.insert_or_assign(index,
                                                 ResolvedIndexOperator{method, objectType, indexType, returnType});
                 return returnType;
+            }
+            // The type-only lookup above cannot adapt an index whose type its context decides, such as the tuple
+            // literal in `grid[(1, 1)]`, so the declared operators are matched against the index expression itself,
+            // exactly as `[]=` is.
+            if (const auto resolved = ResolveIndexOperator(*index, objectType, indexType)) {
+                if (readsPlace && !resolved->IsUnknown()) {
+                    CheckBorrowedPlaceRead(*index->object, index->object->location);
+                }
+                return *resolved;
             }
         }
 

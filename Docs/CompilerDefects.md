@@ -479,7 +479,9 @@ func Main() -> int {
   'Square'`. This has the same cause as D2: an array literal ignores its declared element type.
 - **Course workaround:** `Interfaces/InterfaceValue` names each element as a `Shape` first.
 
-## D30. An unsuffixed tuple index argument is not adapted, and the `[]` diagnostic is misleading
+## D30. An unsuffixed tuple index argument is not adapted, and the `[]` diagnostic is misleading (fixed)
+
+**Fixed**; covered by the `IndexerOperator` golden and `Tests/Language/Indexer`.
 
 ```rux
 struct Grid { cells: int32[4]; }

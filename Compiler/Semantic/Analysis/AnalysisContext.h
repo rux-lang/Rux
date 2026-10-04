@@ -448,6 +448,10 @@ private:
     /// Resolve the `[]=` an index expression is being written through, returning the type the assigned value must
     /// have. Returns nothing when the receiver declares no `[]=` at all, which leaves the expression to be read
     /// through `[]` and rejected as a target like any other non-place.
+    /// The declared `[]` that accepts the index expression of `index`, recorded for lowering; nullopt when the type
+    /// declares none, and Unknown once a mismatch or an ambiguity is reported.
+    std::optional<TypeRef> ResolveIndexOperator(const IndexExpr &index, const TypeRef &objectType,
+                                                const TypeRef &indexType);
     [[nodiscard]] std::optional<TypeRef> ResolveIndexAssignment(const IndexExpr &index, const TypeRef &objectType,
                                                                 const TypeRef &indexType);
 
