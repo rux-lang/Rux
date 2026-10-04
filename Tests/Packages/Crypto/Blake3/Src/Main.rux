@@ -15,11 +15,11 @@ func TextBytes(text: char8[..]) -> char8[..] {
 func FromHex(text: char8[..], into: var char8[..]) {
     var index: uint = 0;
     while index < into.length {
-        var value = 0u8;
+        var value: uint8 = 0;
         var half: uint = 0;
         while half < 2u {
             let c = text.data[index * 2u + half] as uint8;
-            var digit = 0u8;
+            var digit: uint8 = 0;
             if c >= 0x30u8 && c <= 0x39u8 {
                 digit = c - 0x30u8;
             }

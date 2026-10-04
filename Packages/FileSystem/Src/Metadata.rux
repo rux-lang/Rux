@@ -157,7 +157,7 @@ when #target.os != .Windows {
     // bytes) has nlink at 16, mode at 24 as two bytes, the timespecs from 48, birth time at 96, size at 112.
 
     func ReadWordAt(buffer: *char8, offset: uint) -> uint64 {
-        var value = 0u64;
+        var value: uint64 = 0;
         var index: uint = 0;
         while index < 8u {
             value = value | ((buffer[offset + index] as uint8 as uint64) << (8u64 * index as uint64));
@@ -167,7 +167,7 @@ when #target.os != .Windows {
     }
 
     func ReadHalfAt(buffer: *char8, offset: uint) -> uint32 {
-        var value = 0u32;
+        var value: uint32 = 0;
         var index: uint = 0;
         while index < 4u {
             value = value | ((buffer[offset + index] as uint8 as uint32) << (8u32 * index as uint32));
@@ -300,7 +300,7 @@ when #target.os == .Windows {
     // link count at 40. FILETIME counts hundred-nanosecond ticks from 1601, so the epoch shift and the tick
     // width are the whole conversion — the same one `Time` performs for the clock.
     func ReadDwordAt(buffer: *char8, offset: uint) -> uint32 {
-        var value = 0u32;
+        var value: uint32 = 0;
         var index: uint = 0;
         while index < 4u {
             value = value | ((buffer[offset + index] as uint8 as uint32) << (8u32 * index as uint32));
@@ -320,7 +320,7 @@ when #target.os == .Windows {
 
     func FileTimeFromTimestamp(moment: Timestamp) -> FileTime {
         let shifted = moment.seconds + (FileTimeToUnixEpochSeconds as int64);
-        var ticks = 0u64;
+        var ticks: uint64 = 0;
         if shifted > 0 {
             ticks = (shifted as uint64) * 10000000u64 + (moment.nanoseconds as uint64) / 100u64;
         }

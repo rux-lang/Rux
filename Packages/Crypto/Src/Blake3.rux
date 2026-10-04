@@ -181,7 +181,7 @@ extend Blake3Chunk {
     func BlockWords(self: &Blake3Chunk, words: *var uint32) {
         var index: uint = 0;
         while index < 16u {
-            var word = 0u32;
+            var word: uint32 = 0;
             var part: uint = 0;
             while part < 4u {
                 let position = index * 4u + part;
@@ -238,7 +238,7 @@ extend Blake3Chunk {
         var words: uint32[16];
         var index: uint = 0;
         while index < 16u {
-            var word = 0u32;
+            var word: uint32 = 0;
             var part: uint = 0;
             while part < 4u {
                 let position = index * 4u + part;
@@ -372,9 +372,9 @@ extend Blake3 : Digest {
     pub func Finish(self: &var Blake3, into: var char8[..]) {
         var rootChaining: uint32[8];
         var rootMessage: uint32[16];
-        var rootCounter = 0u64;
-        var rootLength = 0u32;
-        var rootFlags = 0u32;
+        var rootCounter: uint64 = 0;
+        var rootLength: uint32 = 0;
+        var rootFlags: uint32 = 0;
         var index: uint = 0;
 
         if self.stackDepth == 0u {
@@ -386,7 +386,7 @@ extend Blake3 : Digest {
             }
             index = 0;
             while index < 16u {
-                var word = 0u32;
+                var word: uint32 = 0;
                 var part: uint = 0;
                 while part < 4u {
                     let position = index * 4u + part;
@@ -431,7 +431,7 @@ extend Blake3 : Digest {
 
         var rootWords: uint32[16];
         var written: uint = 0;
-        var block = 0u64;
+        var block: uint64 = 0;
         while written < into.length {
             Blake3Compress(@rootChaining[0], @rootMessage[0], rootCounter + block, rootLength,
                            rootFlags | Blake3Root, @rootWords[0]);

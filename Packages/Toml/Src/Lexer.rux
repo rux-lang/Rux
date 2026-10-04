@@ -247,7 +247,7 @@ extend TomlLexer {
                 if next == 0x75u8 || next == 0x55u8 || next == 0x78u8 {
                     // TOML 1.1 adds the two-digit escape, which names the same scalar values as the short form
                     // and spells the ones below 256 in half the characters.
-                    var digits = 8u;
+                    var digits: uint = 8;
                     if next == 0x75u8 {
                         digits = 4u;
                     }
@@ -556,7 +556,7 @@ pub func TomlDecodeText(allocator: Allocator, span: char8[..], form: TomlTextFor
         let kind = span.data[index] as uint8;
         index = index + 1u;
         if kind == 0x75u8 || kind == 0x55u8 || kind == 0x78u8 {
-            var digits = 8u;
+            var digits: uint = 8;
             if kind == 0x75u8 {
                 digits = 4u;
             }
@@ -616,11 +616,11 @@ pub func TomlDecodeText(allocator: Allocator, span: char8[..], form: TomlTextFor
 
 // A run of hexadecimal digits at `at`, as a value. The lexer has already established they are digits.
 func TomlHexRun(span: char8[..], at: uint, count: uint) -> uint32 {
-    var value = 0u32;
+    var value: uint32 = 0;
     var index: uint = 0;
     while index < count {
         let c = span.data[at + index] as uint8;
-        var digit = 0u32;
+        var digit: uint32 = 0;
         if c >= 0x30u8 && c <= 0x39u8 {
             digit = (c - 0x30u8) as uint32;
         }

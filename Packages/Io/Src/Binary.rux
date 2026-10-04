@@ -36,7 +36,7 @@ pub enum Endian: int32 {
 pub func ReadWord(reader: &var Reader, endian: Endian, width: uint) -> uint512 ! IoError {
     var bytes: char8[64];
     ReadExact(reader, (@bytes[0])[..width])?;
-    var word = 0u512;
+    var word: uint512 = 0;
     var index: uint = 0;
     while index < width {
         // Most significant first into the accumulator, so each step is one shift — which byte that is
@@ -399,7 +399,7 @@ pub func ReadFloat32(reader: &var Reader, endian: Endian) -> float32 ! IoError {
 /// @returns success when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/write-float32
 pub func WriteFloat32(writer: &var Writer, endian: Endian, value: float32) -> ! IoError {
-    var bits = 0u32;
+    var bits: uint32 = 0;
     var held = value;
     Copy(@bits as *var opaque, @held as *opaque, 4);
     return WriteUint32(writer, endian, bits);
@@ -426,7 +426,7 @@ pub func ReadFloat64(reader: &var Reader, endian: Endian) -> float64 ! IoError {
 /// @returns success when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/write-float64
 pub func WriteFloat64(writer: &var Writer, endian: Endian, value: float64) -> ! IoError {
-    var bits = 0u64;
+    var bits: uint64 = 0;
     var held = value;
     Copy(@bits as *var opaque, @held as *opaque, 8);
     return WriteUint64(writer, endian, bits);

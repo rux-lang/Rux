@@ -114,7 +114,7 @@ func Main() -> int {
 
     // The iteration protocol, driven by shape: a `for` over an iterable, and the
     // cursor advanced by hand.
-    var total = 0i32;
+    var total: int32 = 0;
     let span = Span { limit: 5i32 };
     for value in span {
         total += value;
@@ -122,8 +122,8 @@ func Main() -> int {
     Assert(total == 10i32, "A for loop reads an iterable to its end");
 
     var cursor = Counter { next: 0i32, limit: 3i32 };
-    var seen = 0i32;
-    var count = 0i32;
+    var seen: int32 = 0;
+    var count: int32 = 0;
     var item = cursor.Next();
     while item is int32 {
         seen += item ?? 0i32;
@@ -140,7 +140,7 @@ func Main() -> int {
 
     // A droppable value is move-only: passing it by value consumes it, and the
     // value that was moved into the call is the one that arrives.
-    var drops = 0i32;
+    var drops: int32 = 0;
     let guard = Guard { value: 5i32, drops: @drops };
     Assert(Spend(<-guard) == 5i32, "A droppable value is passed by consuming it");
     Assert(drops == 1i32, "The consumed value is destroyed in the callee");

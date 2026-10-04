@@ -104,7 +104,7 @@ func CheckBytes<T>(value: T, zero: T) -> int32 {
     // The two orders write the same bytes backwards from each other.
     var little: byte[64] = [0; 64];
     StoreLittleEndian<T>(value, @little[0]);
-    var index = 0u64;
+    var index: uint64 = 0;
     while index < sizeof(T) {
         if little[index] != buffer[sizeof(T) - index - 1u64] { return 3; }
         index = index + 1u64;

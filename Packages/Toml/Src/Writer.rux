@@ -147,7 +147,7 @@ func EmitFloat(writer: &var TextWriter, value: float64) -> ! FormatError {
     if value < -1.7976931348623157e308 { return Emit(writer, "-inf"); }
     var storage: char8[64];
     var length: uint = 0;
-    var significant = 15u;
+    var significant: uint = 15;
     while significant <= 17u {
         var cursor = ByteCursor((@storage[0])[..64]);
         WriteDecimal(cursor, value, significant);

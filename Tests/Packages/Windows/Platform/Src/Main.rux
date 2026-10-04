@@ -32,7 +32,7 @@ when #target.os == OperatingSystem::Windows {
         }
 
         // Changing protection writes back what it was, which is what the previous-protection argument is for.
-        var previous = 0u32;
+        var previous: uint32 = 0;
         if VirtualProtect(committed, Size, PAGE_NOACCESS, @previous) == 0 {
             return 4;
         }
@@ -69,20 +69,20 @@ when #target.os == OperatingSystem::Windows {
         }
 
         // The performance counter is monotonic and its frequency is fixed.
-        var frequency = 0i64;
+        var frequency: int64 = 0;
         if QueryPerformanceFrequency(@frequency) == 0 || frequency <= 0 {
             return 12;
         }
 
-        var first = 0i64;
+        var first: int64 = 0;
         if QueryPerformanceCounter(@first) == 0 {
             return 13;
         }
-        var spin = 0i64;
+        var spin: int64 = 0;
         while spin < 1000000 {
             spin = spin + 1;
         }
-        var later = 0i64;
+        var later: int64 = 0;
         if QueryPerformanceCounter(@later) == 0 {
             return 14;
         }

@@ -79,7 +79,7 @@ pub interface Digest {
 /// @see https://rux-lang.dev/docs/api/crypto/equal
 pub func Equal(left: char8[..], right: char8[..]) -> bool {
     if left.length != right.length { return false; }
-    var difference = 0u8;
+    var difference: uint8 = 0;
     var index: uint = 0;
     while index < left.length {
         // Or-ing the differences means every byte contributes and none of them can end the loop early.

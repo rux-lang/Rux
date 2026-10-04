@@ -23,8 +23,8 @@ func ModifyOwners(allocator: Allocator, destroyed: *var int32) {
         element.value = element.value + 7;
     }
     Assert(*destroyed == 0, "mutable iteration destroys no move-only elements");
-    var total = 0i64;
-    var tails = 0i64;
+    var total: int64 = 0;
+    var tails: int64 = 0;
     for element in vector.References() {
         total = total + element.value;
         tails = tails + element.tail;

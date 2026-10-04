@@ -367,7 +367,7 @@ extend JsonParser {
                 builder.AppendScalar(scalar as char32)?;
             }
             else {
-                var replacement = 0u8;
+                var replacement: uint8 = 0;
                 if kind == 0x62u8 {
                     replacement = 0x08u8;
                 }
@@ -396,11 +396,11 @@ extend JsonParser {
 
 // Four hexadecimal digits at `at`, as a value. The lexer has already established they are digits.
 func HexQuad(span: char8[..], at: uint) -> uint32 {
-    var value = 0u32;
+    var value: uint32 = 0;
     var index: uint = 0;
     while index < 4u {
         let c = span.data[at + index] as uint8;
-        var digit = 0u32;
+        var digit: uint32 = 0;
         if c >= 0x30u8 && c <= 0x39u8 {
             digit = (c - 0x30u8) as uint32;
         }

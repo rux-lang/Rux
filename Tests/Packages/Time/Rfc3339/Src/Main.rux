@@ -78,7 +78,7 @@ func HasFailure<T>(outcome: T ! TimeParseError, code: int, at: uint) -> bool {
 
 func PropagationCases() {
     let complete = "2024-02-29T12:34:56Z";
-    var length = 0u;
+    var length: uint = 0;
     while length < complete.length {
         Assert(FailsAt(complete.data[..length], 1, length) == 0,
                "every truncated prefix preserves the failing reader's end offset");

@@ -34,7 +34,7 @@ func Main() -> int {
 
     // The case where the modulo method is worst: a bound just over half the width, where it favours the low
     // half by a factor of two. The spread here would be about 2:1 if this used a remainder.
-    let halfish = 0x8000000000000001u64;
+    let halfish: uint64 = 0x8000000000000001;
     var lowHalf: uint = 0;
     var highHalf: uint = 0;
     draw = 0;

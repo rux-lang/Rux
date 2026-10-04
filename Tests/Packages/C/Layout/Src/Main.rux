@@ -63,7 +63,7 @@ func Main() -> int {
 
     // clock counts from somewhere and does not go backwards; the width is what the assertion above pinned.
     let first = clock();
-    var spin = 0i64;
+    var spin: int64 = 0;
     while spin < 2000000 {
         spin = spin + 1;
     }

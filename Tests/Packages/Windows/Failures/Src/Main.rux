@@ -30,7 +30,7 @@ when #target.os == OperatingSystem::Windows {
     /// exist to prevent, so this file does not quietly make it. Every name below is ASCII, which is why widening a
     /// byte at a time is enough here and is not a general conversion.
     func WriteWide(units: *var char16, name: char8[..]) {
-        var index = 0u;
+        var index: uint = 0;
         while index < name.length {
             units[index] = name[index] as uint8 as uint32 as char16;
             index = index + 1;

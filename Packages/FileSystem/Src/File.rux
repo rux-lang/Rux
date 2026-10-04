@@ -179,7 +179,7 @@ extend File {
         let native = NativePath(allocator, path)?;
         defer ReleaseNativePath(allocator, native, path.name.units.length);
         when #target.os == .Windows {
-            var access = 0u32;
+            var access: uint32 = 0;
             if options.read {
                 access = access | GENERIC_READ;
             }

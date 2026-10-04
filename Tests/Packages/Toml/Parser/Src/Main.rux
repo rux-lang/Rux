@@ -117,7 +117,7 @@ func Main() -> int {
     // The ordinary shapes, which have to work before the refusals mean anything.
     var simple = Accepts(allocator, "title = \"TOML\"\ncount = 3", "a key and a value");
     Assert((*simple.Find(View("title"))).AsText().Length() == 4u, "the string is there");
-    var counted = 0i64;
+    var counted: int64 = 0;
     Assert((*simple.Find(View("count"))).AsInteger(@counted) && counted == 3i64, "and so is the integer");
 
     // A table header puts the lines after it somewhere else.

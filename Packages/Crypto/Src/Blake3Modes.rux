@@ -22,7 +22,7 @@ const Blake3DeriveKeyMaterial: uint32 = 64;
 func Blake3KeyWords(key: char8[..], words: *var uint32) {
     var index: uint = 0;
     while index < 8u {
-        var word = 0u32;
+        var word: uint32 = 0;
         var part: uint = 0;
         while part < 4u {
             let position = index * 4u + part;

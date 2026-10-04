@@ -51,6 +51,12 @@ when #target.os {
 
 The packed form keeps a platform `when` block short enough to compare its arms at a glance. Arms with module names of different lengths can still break at different names, which is the cost of a rule that needs no judgment. `rux fmt` does not reflow import lists yet, and no checker enforces this rule, so it is applied by hand until the formatter owns it.
 
+## Integer literals
+
+A local declared from a lone integer literal takes its type from an annotation rather than from a literal suffix: `var value: uint32 = 0;`, not `var value = 0u32;`. The type then sits after the name, where every other declaration, parameter and field puts it, and the compiler still checks that the literal fits it.
+
+A literal beside a typed operand needs no suffix either, because it takes that operand's type: `year % 4 != 0` with an `int32` year. A suffix stays only where a literal has nothing else to take its type from, such as an argument that decides a generic type parameter. `Tests/Language` is exempt, since its tests exercise literal typing itself.
+
 ## Declaration documentation
 
 Maintained package APIs use `///` throughout.

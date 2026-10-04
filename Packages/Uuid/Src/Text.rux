@@ -134,7 +134,7 @@ pub func Parse(text: char8[..]) -> Uuid ! UuidParseError {
     var value = Uuid::Nil();
     var position: uint = 0;
     var byteIndex: uint = 0;
-    var pending = 0u8;
+    var pending: uint8 = 0;
     var haveHigh = false;
     while position < UuidTextLength {
         let at = start + position;

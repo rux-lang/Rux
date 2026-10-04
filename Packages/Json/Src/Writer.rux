@@ -92,7 +92,7 @@ pub func WriteEscaped(writer: &var TextWriter, text: char8[..]) -> ! FormatError
         }
         else if c == 0x08u8 || c == 0x0Cu8 || c == 0x0Au8 || c == 0x0Du8 || c == 0x09u8 {
             escape[0] = 0x5Cu8 as char8;
-            var letter = 0u8;
+            var letter: uint8 = 0;
             if c == 0x08u8 {
                 letter = 0x62u8;
             }

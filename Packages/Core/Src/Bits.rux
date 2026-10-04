@@ -81,8 +81,8 @@ pub func BitAt<T>(value: T, index: uint64) -> bool {
 /// @see https://rux-lang.dev/docs/api/core/count-ones
 pub func CountOnes<T>(value: T) -> uint32 {
     let bits = sizeof(T) * 8u64;
-    var count = 0u32;
-    var index = 0u64;
+    var count: uint32 = 0;
+    var index: uint64 = 0;
     while index < bits {
         if BitAt<T>(value, index) {
             count = count + 1u32;
@@ -117,7 +117,7 @@ pub func CountZeros<T>(value: T) -> uint32 {
 /// @returns how many clear bits precede the most significant set one
 /// @see https://rux-lang.dev/docs/api/core/leading-zeros
 pub func LeadingZeros<T>(value: T) -> uint32 {
-    var count = 0u32;
+    var count: uint32 = 0;
     var index = sizeof(T) * 8u64;
     while index > 0u64 {
         index = index - 1u64;
@@ -139,7 +139,7 @@ pub func LeadingZeros<T>(value: T) -> uint32 {
 /// @see https://rux-lang.dev/docs/api/core/trailing-zeros
 pub func TrailingZeros<T>(value: T) -> uint32 {
     let bits = sizeof(T) * 8u64;
-    var index = 0u64;
+    var index: uint64 = 0;
     while index < bits {
         if BitAt<T>(value, index) { return index as uint32; }
         index = index + 1u64;
@@ -158,7 +158,7 @@ pub func TrailingZeros<T>(value: T) -> uint32 {
 /// @returns how many set bits precede the most significant clear one
 /// @see https://rux-lang.dev/docs/api/core/leading-ones
 pub func LeadingOnes<T>(value: T) -> uint32 {
-    var count = 0u32;
+    var count: uint32 = 0;
     var index = sizeof(T) * 8u64;
     while index > 0u64 {
         index = index - 1u64;
@@ -180,7 +180,7 @@ pub func LeadingOnes<T>(value: T) -> uint32 {
 /// @see https://rux-lang.dev/docs/api/core/trailing-ones
 pub func TrailingOnes<T>(value: T) -> uint32 {
     let bits = sizeof(T) * 8u64;
-    var index = 0u64;
+    var index: uint64 = 0;
     while index < bits {
         if !BitAt<T>(value, index) { return index as uint32; }
         index = index + 1u64;
@@ -241,7 +241,7 @@ pub func ReverseBits<T>(value: T) -> T {
     let one = zero + 1;
     let bits = sizeof(T) * 8u64;
     var result = zero;
-    var index = 0u64;
+    var index: uint64 = 0;
     while index < bits {
         if BitAt<T>(value, index) {
             result = result | (one << (bits - index - 1u64));
@@ -269,7 +269,7 @@ pub func ReverseBytes<T>(value: T) -> T {
     // Ones in the lowest byte only, shifted down from all ones rather than written as 255, which `int8` cannot hold.
     let lowByte = ShiftRightLogical<T>(zero - 1, (bytes - 1u64) * 8u64);
     var result = zero;
-    var index = 0u64;
+    var index: uint64 = 0;
     while index < bytes {
         // Each byte is read out at the bottom, where nothing an arithmetic shift replicated can reach it, and put
         // back at the position mirroring the one it came from.

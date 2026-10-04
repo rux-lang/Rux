@@ -134,7 +134,7 @@ extend Sha512 {
         var schedule: uint64[80];
         var index: uint = 0;
         while index < 16u {
-            var word = 0u64;
+            var word: uint64 = 0;
             var part: uint = 0;
             while part < 8u {
                 word = (word << 8u64) | (block[index * 8u + part] as uint8 as uint64);

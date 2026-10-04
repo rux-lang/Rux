@@ -163,7 +163,7 @@ func RoundRatio(allocator: Allocator, digits: &var BigNat, decimalExponent: int,
              !divisor.Assign(denominator) {
         fail ParseError::OutOfMemory(where);
     }
-    var quotient = 0u512;
+    var quotient: uint512 = 0;
     var position = wanted;
     while position > 0u {
         position = position - 1u;

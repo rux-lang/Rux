@@ -40,7 +40,7 @@ func Rendered(reason: &TomlScalarError, into: var char8[..]) -> uint {
 }
 
 func Integer(text: char8[..]) -> int64 {
-    var value = 0i64;
+    var value: int64 = 0;
     value = TomlParseInteger(text) catch { else => Panic("a number that should parse") };
     return value;
 }

@@ -20,7 +20,7 @@
 /// @returns whether the target stores the least significant byte first
 /// @see https://rux-lang.dev/docs/api/core/target-is-little-endian
 pub func TargetIsLittleEndian() -> bool {
-    var probe = 1u16;
+    var probe: uint16 = 1;
     let raw = @probe as *byte;
     return raw[0] == 1;
 }
@@ -107,7 +107,7 @@ pub func StoreLittleEndian<T>(value: T, destination: *var byte) {
     // Reading the ordered value back as bytes is what makes this work at any width without knowing the type: the
     // reversal above has already put them in the order they are to be written.
     let source = @ordered as *byte;
-    var index = 0u64;
+    var index: uint64 = 0;
     while index < sizeof(T) {
         destination[index] = source[index];
         index = index + 1u64;
@@ -132,7 +132,7 @@ pub func StoreLittleEndian<T>(value: T, destination: *var byte) {
 pub func StoreBigEndian<T>(value: T, destination: *var byte) {
     var ordered = ToBigEndian<T>(value);
     let source = @ordered as *byte;
-    var index = 0u64;
+    var index: uint64 = 0;
     while index < sizeof(T) {
         destination[index] = source[index];
         index = index + 1u64;
@@ -158,7 +158,7 @@ pub func StoreBigEndian<T>(value: T, destination: *var byte) {
 /// @see https://rux-lang.dev/docs/api/core/load-little-endian
 pub func LoadLittleEndian<T>(source: *byte, destination: *var T) {
     let raw = destination as *var byte;
-    var index = 0u64;
+    var index: uint64 = 0;
     while index < sizeof(T) {
         raw[index] = source[index];
         index = index + 1u64;
@@ -184,7 +184,7 @@ pub func LoadLittleEndian<T>(source: *byte, destination: *var T) {
 /// @see https://rux-lang.dev/docs/api/core/load-big-endian
 pub func LoadBigEndian<T>(source: *byte, destination: *var T) {
     let raw = destination as *var byte;
-    var index = 0u64;
+    var index: uint64 = 0;
     while index < sizeof(T) {
         raw[index] = source[index];
         index = index + 1u64;

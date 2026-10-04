@@ -123,7 +123,7 @@ func Scale(state: &var Ratio, inclusive: bool, exponent10: *var int) -> bool {
 // One digit: the quotient of the numerator by the denominator, which the scaling guarantees is under ten, taken by
 // subtraction rather than by division because nine subtractions is the whole of it.
 func NextDigit(state: &var Ratio) -> uint64 {
-    var digit = 0u64;
+    var digit: uint64 = 0;
     while state.numerator.Compare(state.denominator) >= 0i32 {
         state.numerator.Subtract(state.denominator);
         digit = digit + 1u64;

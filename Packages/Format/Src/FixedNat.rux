@@ -85,7 +85,7 @@ func ScaleInPlace(value: &var FixedNat, factor: uint64, addend: uint64) -> bool 
 // Adds `other` into `value`, with the same part-written caveat as `ScaleInPlace`.
 func AddInPlace(value: &var FixedNat, other: &FixedNat) -> bool {
     let wider = value.length > other.length ? value.length : other.length;
-    var carry = 0u64;
+    var carry: uint64 = 0;
     var index: uint = 0;
     while index < wider {
         let mine = index < value.length ? value.limbs[index] : 0u64;
@@ -268,7 +268,7 @@ extend FixedNat {
         var index = needed;
         while index > 0u {
             index = index - 1u;
-            var value = 0u64;
+            var value: uint64 = 0;
             if index >= limbShift {
                 let source = index - limbShift;
                 if source < self.length {
@@ -315,7 +315,7 @@ extend FixedNat {
     /// @param other what to subtract
     /// @see https://rux-lang.dev/docs/api/format/fixed-nat/subtract
     pub func Subtract(self: &var FixedNat, other: &FixedNat) {
-        var borrow = 0u64;
+        var borrow: uint64 = 0;
         var index: uint = 0;
         while index < self.length {
             let theirs = index < other.length ? other.limbs[index] : 0u64;
@@ -355,7 +355,7 @@ extend FixedNat {
             remaining = remaining - 19u;
         }
         if remaining == 0u { return true; }
-        var factor = 1u64;
+        var factor: uint64 = 1;
         var step: uint = 0;
         while step < remaining {
             factor = factor * 10u64;

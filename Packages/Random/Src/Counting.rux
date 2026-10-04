@@ -26,8 +26,8 @@ pub func Binomial<G: RandomGenerator>(generator: &var G, trials: uint64, probabi
     if trials == 0u64 || !(probability > 0.0) { return 0u64; }
     if probability >= 1.0 { return trials; }
     if (trials as float64) <= DirectMethodLimit {
-        var successes = 0u64;
-        var trial = 0u64;
+        var successes: uint64 = 0;
+        var trial: uint64 = 0;
         while trial < trials {
             if Bernoulli<G>(generator, probability) {
                 successes = successes + 1u64;
@@ -60,7 +60,7 @@ pub func Binomial<G: RandomGenerator>(generator: &var G, trials: uint64, probabi
 pub func Poisson<G: RandomGenerator>(generator: &var G, mean: float64) -> uint64 {
     if !(mean > 0.0) { return 0u64; }
     var remaining = mean;
-    var count = 0u64;
+    var count: uint64 = 0;
     while remaining > DirectMethodLimit {
         // Seven eighths of the remaining mean, which keeps the shape large enough for the gamma draw to be
         // cheap and small enough that the overshoot is common rather than rare.
@@ -76,7 +76,7 @@ pub func Poisson<G: RandomGenerator>(generator: &var G, mean: float64) -> uint64
     // Knuth's method on what is left.
     let limit = Exp(0.0 - remaining);
     var product = 1.0;
-    var events = 0u64;
+    var events: uint64 = 0;
     var counting = true;
     while counting {
         product = product * NextFloat64<G>(generator);

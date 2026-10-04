@@ -55,10 +55,10 @@ func Main() -> int {
     Assert(*values == 1i32 && *(values + 4) == 5i32, "qsort ordered the whole array");
     Assert(*(values + 1) == 2i32 && *(values + 2) == 3i32 && *(values + 3) == 4i32, "including the middle");
 
-    var needle = 4i32;
+    var needle: int32 = 4;
     let hit = bsearch(@needle as *opaque, values as *opaque, 5u64, 4u64, CompareInt32);
     Assert(hit == (values + 3) as *opaque, "bsearch finds the element by the same ordering");
-    var missing = 9i32;
+    var missing: int32 = 9;
     Assert(bsearch(@missing as *opaque, values as *opaque, 5u64, 4u64, CompareInt32) == null,
            "and reports one that is not there as absent");
     free(values as *var opaque);

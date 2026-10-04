@@ -137,7 +137,7 @@ func Main() -> int {
     // Floats to integers: a fraction is a loss, and so is a magnitude the integer cannot hold.
     Assert(CheckExact<float64, int32>(2.0f64, 2i32, 0i32) == 0, "a float that is a whole number");
     Assert(CheckExact<float64, int32>(-2.0f64, -2i32, 0i32) == 0, "a negative whole number");
-    var truncated = 0i32;
+    var truncated: int32 = 0;
     Assert(ConvertChecked<float64, int32>(1.5f64, @truncated), "a fraction cannot be an integer");
     Assert(truncated == 1i32, "the truncated answer is written even so");
 
@@ -152,7 +152,7 @@ func Main() -> int {
     let one64 = 1.0f64;
     let infinity64 = one64 / zero64;
     let nan64 = zero64 / zero64;
-    var target = 0i32;
+    var target: int32 = 0;
     Assert(ConvertChecked<float64, int32>(nan64, @target), "a NaN is no integer");
     ConvertSaturating<float64, int32>(nan64, @target);
     Assert(target == 0i32, "a NaN has no nearest value and saturates to zero");

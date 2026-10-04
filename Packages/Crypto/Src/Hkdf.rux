@@ -70,7 +70,7 @@ pub func HkdfExpand<D: Digest>(prototype: D, key: char8[..], info: char8[..],
     var previous: char8[64];
     var previousLength: uint = 0;
     var written: uint = 0;
-    var counter = 1u8;
+    var counter: uint8 = 1;
     while written < into.length {
         var round = Hmac<D>(prototype, key);
         if previousLength > 0u {

@@ -5,7 +5,7 @@ import Text::{ BufferWriter, FormatSpec, WriteValue };
 
 func Same(left: char8[..], right: char8[..]) -> bool {
     if left.length != right.length { return false; }
-    var index = 0u;
+    var index: uint = 0;
     while index < left.length {
         if left[index] != right[index] { return false; }
         index += 1u;

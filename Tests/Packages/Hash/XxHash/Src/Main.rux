@@ -39,7 +39,7 @@ func Main() -> int {
     let pangram = TextBytes("The quick brown fox jumps over the lazy dog");
     let bytes = pangram.data as *byte;
     let length = pangram.length;
-    let expected = 0x0B242D361FDA71BCu64;
+    let expected: uint64 = 0x0B242D361FDA71BC;
 
     // Every possible split into two writes must agree with one write. This is what the pending block exists for, and
     // the boundaries either side of thirty-two bytes are where an off-by-one would live.

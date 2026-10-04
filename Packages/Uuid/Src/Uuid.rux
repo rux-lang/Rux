@@ -182,7 +182,7 @@ extend Uuid {
     /// @returns the value's hash
     /// @see https://rux-lang.dev/docs/api/uuid/uuid/hash
     pub func Hash(self: &Uuid) -> uint64 {
-        var accumulated = 0xCBF29CE484222325u64;
+        var accumulated: uint64 = 0xCBF29CE484222325;
         var index: uint = 0;
         while index < 16u {
             accumulated = accumulated ^ (self.bytes[index] as uint64);

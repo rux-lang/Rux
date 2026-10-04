@@ -171,7 +171,7 @@ func Main() -> int {
         var pieced = Blake3();
         var offset: uint = 0;
         while offset < length {
-            var step = 337u;
+            var step: uint = 337;
             if offset + step > length {
                 step = length - offset;
             }

@@ -189,7 +189,7 @@ pub func UnpackWide(bits: uint512, layout: &FloatLayout) -> UnpackedWide {
 /// @see https://rux-lang.dev/docs/api/format/pack-wide
 pub func PackWide(negative: bool, significand: uint512, exponent: int, layout: &FloatLayout) -> uint512 {
     let fieldBits = layout.SignificandFieldBits();
-    var bits = 0u512;
+    var bits: uint512 = 0;
     if negative {
         bits = 1u512 << (layout.bits - 1u);
     }

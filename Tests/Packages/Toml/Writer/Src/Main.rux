@@ -88,7 +88,7 @@ func Main() -> int {
     let written = Render(values, (@storage[0])[..4096]);
     var reread = Parsed(allocator, written, "and its output parses");
 
-    var readInteger = 0i64;
+    var readInteger: int64 = 0;
     Assert((*reread.Find(View("i"))).AsInteger(@readInteger) && readInteger == 42i64, "the integer survives");
     var readFloat = 0.0;
     Assert((*reread.Find(View("tiny"))).AsFloat(@readFloat) && readFloat == 0.1,

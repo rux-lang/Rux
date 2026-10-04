@@ -161,7 +161,7 @@ func ReadNarrowDecimal(digits: &FixedNat, exponent: int, truncated: bool, layout
     // Long division, leading bit first. The ratio is in [1, 2), so the first bit is always a one for a normal
     // value; a subnormal takes fewer bits and its leading ones fall off the top, which is exactly the precision it
     // has at that exponent.
-    var quotient = 0u64;
+    var quotient: uint64 = 0;
     var position = wanted;
     while position > 0u {
         position = position - 1u;
@@ -216,7 +216,7 @@ func ReadNarrowDecimal(digits: &FixedNat, exponent: int, truncated: bool, layout
 /// @returns the sixty-four bits of the value
 /// @see https://rux-lang.dev/docs/api/format/pack-float64
 func PackFloat64(significand: uint64, exponent: int, negative: bool) -> uint64 {
-    var bits = 0u64;
+    var bits: uint64 = 0;
     if significand != 0u64 {
         // A significand with its top bit set is normal, and the leading bit is implicit; anything narrower is a
         // subnormal and is stored as it stands with a zero exponent field.
@@ -240,7 +240,7 @@ func PackFloat64(significand: uint64, exponent: int, negative: bool) -> uint64 {
 /// @returns the thirty-two bits of the value
 /// @see https://rux-lang.dev/docs/api/format/pack-float32
 func PackFloat32(significand: uint64, exponent: int, negative: bool) -> uint32 {
-    var bits = 0u32;
+    var bits: uint32 = 0;
     if significand != 0u64 {
         if (significand >> 23u64) != 0u64 {
             let biased = ((exponent + 150) as uint32) & 0xFFu32;
@@ -298,7 +298,7 @@ pub func Float32FromBits(bits: uint32) -> float32 {
 /// @see https://rux-lang.dev/docs/api/format/exact-float64
 pub func ExactFloat64(digits: &FixedNat, exponent: int, truncated: bool, negative: bool, value: *var float64,
                       overflowed: *var bool) -> bool {
-    var significand = 0u64;
+    var significand: uint64 = 0;
     var binary: int = 0;
     if !ReadNarrowDecimal(digits, exponent, truncated, Float64Layout(), @significand, @binary, overflowed) {
         return false;
@@ -326,7 +326,7 @@ pub func ExactFloat64(digits: &FixedNat, exponent: int, truncated: bool, negativ
 /// @see https://rux-lang.dev/docs/api/format/exact-float32
 pub func ExactFloat32(digits: &FixedNat, exponent: int, truncated: bool, negative: bool, value: *var float32,
                       overflowed: *var bool) -> bool {
-    var significand = 0u64;
+    var significand: uint64 = 0;
     var binary: int = 0;
     if !ReadNarrowDecimal(digits, exponent, truncated, Float32Layout(), @significand, @binary, overflowed) {
         return false;

@@ -76,7 +76,7 @@ func PrepareQuotient(state: &var Quotient, significand: uint64, exponent: int, p
 // One digit off the front of the ratio, by subtraction: the scaling keeps the quotient under ten, so nine
 // subtractions is the whole of the division.
 func TakeDigit(state: &var Quotient) -> uint64 {
-    var digit = 0u64;
+    var digit: uint64 = 0;
     while state.numerator.Compare(state.denominator) >= 0i32 {
         state.numerator.Subtract(state.denominator);
         digit = digit + 1u64;

@@ -59,7 +59,7 @@ pub func TimeOrderedAt(milliseconds: uint64) -> Uuid ! EntropyError {
 /// @returns the timestamp a version 7 value carries; meaningless for any other version
 /// @see https://rux-lang.dev/docs/api/uuid/millisecond-of
 pub func MillisecondOf(value: &Uuid) -> uint64 {
-    var milliseconds = 0u64;
+    var milliseconds: uint64 = 0;
     var index: uint = 0;
     while index < 6u {
         milliseconds = (milliseconds << 8u64) | (value.bytes[index] as uint64);

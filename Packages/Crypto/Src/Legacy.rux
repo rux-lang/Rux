@@ -91,7 +91,7 @@ extend LegacyMd5 {
         var words: uint32[16];
         var index: uint = 0;
         while index < 16u {
-            var word = 0u32;
+            var word: uint32 = 0;
             var part: uint = 0;
             while part < 4u {
                 word = word | ((block[index * 4u + part] as uint8 as uint32) << ((part * 8u) as uint32));
@@ -108,7 +108,7 @@ extend LegacyMd5 {
 
         index = 0;
         while index < 64u {
-            var mixed = 0u32;
+            var mixed: uint32 = 0;
             var which: uint = 0;
             if index < 16u {
                 mixed = (b & c) | ((~b) & d);
@@ -270,8 +270,8 @@ extend LegacySha1 {
 
         index = 0;
         while index < 80u {
-            var mixed = 0u32;
-            var constant = 0u32;
+            var mixed: uint32 = 0;
+            var constant: uint32 = 0;
             if index < 20u {
                 mixed = (b & c) | ((~b) & d);
                 constant = 0x5A827999u32;

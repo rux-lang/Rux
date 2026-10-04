@@ -167,7 +167,7 @@ pub func WriteFormat(writer: &var TextWriter, format: char8[..], args: Display..
             index += 1u;
         } else {
             // Writers accept complete UTF-8 characters. Passing each byte through WriteAscii rejects valid text.
-            var width = 0u;
+            var width: uint = 0;
             let decoded = DecodeAt(format, index) catch { else => fail FormatError::TextFailure(TextFailureKind::InvalidUtf8) };
             width = decoded.width;
             WriteBytes(writer, (@format.data[index])[..width])?;

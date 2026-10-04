@@ -20,7 +20,7 @@ func Main() -> int {
     // Each kind reports itself, and answers only the accessor that matches.
     var integer = TomlValue::Integer(allocator, -17i64);
     Assert(integer.Kind() == TomlKind::Integer, "an integer knows what it is");
-    var readInteger = 0i64;
+    var readInteger: int64 = 0;
     Assert(integer.AsInteger(@readInteger) && readInteger == -17i64, "and gives back what it was made with");
     var readFloat = 0.0;
     Assert(!integer.AsFloat(@readFloat), "an integer is not a float, which TOML distinguishes and JSON does not");
