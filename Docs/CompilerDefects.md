@@ -1119,3 +1119,25 @@ func Main() -> int {
 - **Expected:** the temporary transfers into `c` without a copy, as `Docs/Language.md` says a fresh temporary does: `drop 1`, `assigned`, `drop 2`.
 - **Actual:** `copy 2`, `drop 1`, `assigned`, `drop 2`. The custom `=` copies the temporary, and the temporary itself is never destroyed.
 - **Notes:** found while fixing D57; the same happens when the target is written through `&var T`.
+
+## D62. A field written into a local that holds no value is never destroyed
+
+```rux
+struct Tracked { id: int; }
+extend Tracked { func ~Tracked(self: &var Tracked) { PrintLine("drop {}", self.id); } }
+struct Holder { t: Tracked; }
+
+func Main() -> int {
+    var empty: Holder;
+    empty.t <- Tracked { id: 1 };
+    var moved = Holder { t: Tracked { id: 2 } };
+    let taken <- moved;
+    moved.t <- Tracked { id: 3 };
+    PrintLine("end");
+    return 0;
+}
+```
+
+- **Expected:** either a compile error, because `empty` and `moved` hold no whole value for a field to belong to, or `drop 1` and `drop 3` along with `drop 2` when the scope ends.
+- **Actual:** `end`, then only `drop 2`. The values written into `empty.t` and `moved.t` are never destroyed.
+- **Notes:** found while fixing D60. Semantic analysis treats the whole local as initialized after a write to one of its parts, but lowering never sets the local's drop flag, so nothing destroys it. Writing into a `var` with no value, or into a moved-from local, should either be rejected or have its parts tracked.
