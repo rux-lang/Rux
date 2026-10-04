@@ -70,6 +70,13 @@ bool AnalysisContext::TypeImplementsInterface(const TypeRef &expressionType, con
     if (implements(expressionType)) {
         return true;
     }
+    // A writable view weakens to a read-only one, and an interface implemented for the read-only view is reached the
+    // same way: `var char8[..]` is passed where `Display` is wanted as its `char8[..]` would be.
+    if (expressionType.IsWritableSlice()) {
+        TypeRef readOnly = expressionType;
+        readOnly.inner.front().isMut = false;
+        return implements(readOnly);
+    }
     if (expressionType.kind == TypeRef::Kind::Int) {
         return implements(TypeRef::MakeInt64());
     }

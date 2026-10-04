@@ -53,6 +53,13 @@ extend Tiny64 : TinyValue {
     }
 }
 
+// Implemented for the read-only view; a writable view reaches it by weakening.
+extend char8[..] : TinyValue {
+    func Value(self: &char8[..]) -> int {
+        return self.length as int;
+    }
+}
+
 func SumTiny(args: TinyValue...) -> int {
     var sum: int = 0;
     for val in args {
@@ -85,6 +92,15 @@ func Main() -> int {
     }
     if SumTiny(tiny8, tiny16, tiny32, pair32, tiny64) != 248 {
         return 6;
+    }
+
+    var buffer: char8[4] = [c8'a', c8'b', c8'c', c8'd'];
+    if SumTiny(buffer[..3]) != 3 {
+        return 7;
+    }
+    let bytes = @buffer[0];
+    if SumTiny(bytes[..2], tiny8) != 10 {
+        return 8;
     }
 
     return 0;

@@ -493,6 +493,14 @@ std::optional<TypeRef> AstToHirContext::InterfaceImplementationType(const TypeRe
     if (hasVtable(expression)) {
         return expression;
     }
+    // A writable slice is viewed through the read-only slice's implementation, as analysis accepted it.
+    if (expression.IsWritableSlice()) {
+        TypeRef readOnly = expression;
+        readOnly.inner.front().isMut = false;
+        if (hasVtable(readOnly)) {
+            return readOnly;
+        }
+    }
     if (expression.kind == TypeRef::Kind::Int && hasVtable(TypeRef::MakeInt64())) {
         return TypeRef::MakeInt64();
     }

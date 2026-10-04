@@ -700,7 +700,9 @@ func Main() -> int {
 - The header comment in `Packages/Allocator/Src/Box.rux` says a failure is reported through an
   out-parameter, but `Create` returns `Box<T> ! AllocError`.
 - `Arena::BytesUsed` counts only the current block, which its documentation does not say.
-## D40. A writable slice is rejected by a variadic interface parameter
+## D40. A writable slice is rejected by a variadic interface parameter (fixed)
+
+**Fixed**; covered by `Tests/Language/VariadicInterface`.
 
 ```rux
 import Io::PrintLine;
@@ -813,7 +815,7 @@ re-enabled.
 - **Course workaround:** `Platform/AsmArm` writes `b.le`.
 
 Related to D40: a `var int[..]` view, or a `buffer[..n]` view taken from a `*var char8`, is
-refused by `PrintLine`'s `{}` arguments in the same way as a writable `char8[..]`.
+refused by `PrintLine`'s `{}` arguments in the same way as a writable `char8[..]`. **Fixed** for the `char8` views; covered by `Tests/Language/VariadicInterface`. A `var int[..]` is still refused because `int[..]` itself implements no `Display`, which is a package decision rather than this defect.
 
 Related to D2: an unsuffixed character array literal does not take its element type from the
 annotation. `var letters: char8[3] = ['a', 'b', 'c'];` gives `cannot assign 'char32[3]' to
