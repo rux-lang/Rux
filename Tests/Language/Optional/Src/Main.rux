@@ -86,6 +86,21 @@ func Unwrap(counter: *var Counter, value: Tracked?) -> int32 {
     return tracked.id;
 }
 
+// An array of optionals is viewed as a slice of them like any other array.
+func Present(values: int32?[..]) -> uint {
+    var count: uint = 0;
+    for value in values {
+        if value is int32 {
+            count += 1;
+        }
+    }
+    return count;
+}
+
+func Length<T>(values: T[..]) -> uint {
+    return values.length;
+}
+
 func Main() -> int {
     // Every optional state is constructed directly and stays distinct.
     Assert(Classify(Lookup(0i32)) == -2i32, "outer absence");
@@ -147,5 +162,9 @@ func Main() -> int {
     Assert(counter.count == 2i32, "which is destroyed once, with no fallback built");
     Assert(Unwrap(@counter, none) == 0i32, "the fallback for an absent owner");
     Assert(counter.count == 3i32, "the fallback is destroyed once");
+
+    let readings: int32?[4] = [3i32, none, 5i32, none];
+    Assert(Present(readings) == 2, "an optional array converts to an optional slice argument");
+    Assert(Length(readings) == 4, "and to a generic slice parameter");
     return 0;
 }

@@ -105,9 +105,15 @@ bool TypeRef::IsAssignableTo(const TypeRef &other) const noexcept {
     if (IsUnknown() || other.IsUnknown()) {
         return true;
     }
+    // A pointer, reference, or slice of native values converts by the view rules below, which compare the elements as
+    // they are: an `int32?[4]` array is viewed as an `int32?[..]` slice exactly as an `int32[4]` one is.
+    const bool viewConversion = (kind == Kind::Pointer && other.kind == Kind::Pointer) ||
+                                (kind == Kind::Reference && other.kind == Kind::Reference) ||
+                                (kind == Kind::Slice && other.kind == Kind::Slice) ||
+                                (kind == Kind::Array && other.kind == Kind::Slice);
     // A native sum, optional, or fallible on either side follows the native conversion rules: identity, injection,
     // subset widening, and the presence and success routes, accepted only when exactly one route applies.
-    if (MentionsNativeType(*this) || MentionsNativeType(other)) {
+    if (!viewConversion && (MentionsNativeType(*this) || MentionsNativeType(other))) {
         return ClassifyNativeConversion(*this, other).Accepted();
     }
     // A read-only pointer (*T) cannot be coerced into a writable one (*var T):

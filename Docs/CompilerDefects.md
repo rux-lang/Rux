@@ -414,7 +414,9 @@ func Main() -> int {
   Binding the tuple first (`let pair = (a, b); return pair;`) works.
 - **Course workaround:** `Generics/GenericOutcome` binds the tuple before returning it.
 
-## D25. An array of a native form does not convert to a slice argument
+## D25. An array of a native form does not convert to a slice argument (fixed)
+
+**Fixed**; covered by `Tests/Language/Optional`.
 
 ```rux
 func Plain(values: int32?[..]) -> uint { return values.length; }
