@@ -1,0 +1,17 @@
+// Modules whose paths start with their own package's name.
+
+module ModulePackagePrefix::Rectangle {
+    pub func Area(width: int, height: int) -> int {
+        return width * height;
+    }
+}
+
+module ModulePackagePrefix::Square {
+    pub func Area(side: int) -> int {
+        return side * side;
+    }
+
+    pub func Perimeter(side: int) -> int {
+        return 4 * side;
+    }
+}

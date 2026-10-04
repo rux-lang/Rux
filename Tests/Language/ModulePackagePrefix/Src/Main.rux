@@ -1,0 +1,19 @@
+// Module and item imports find a module that repeats the package name the same way, whether the import writes the
+// package name once or twice.
+
+import ModulePackagePrefix::Rectangle;
+import ModulePackagePrefix::ModulePackagePrefix::Square;
+import ModulePackagePrefix::Square::Perimeter;
+
+func Main() -> int {
+    if Rectangle::Area(3, 4) != 12 {
+        return 1;
+    }
+    if Square::Area(5) != 25 {
+        return 2;
+    }
+    if Perimeter(6) != 24 {
+        return 3;
+    }
+    return 0;
+}

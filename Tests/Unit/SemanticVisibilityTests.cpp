@@ -578,3 +578,44 @@ TEST_CASE("a grouped import of a private item is reported once, naming the packa
     REQUIRE_MESSAGE(diagnostics.size() == 1, Messages(diagnostics));
     CHECK_EQ(diagnostics[0].message, "function 'Clamp' is private to package 'Tally'");
 }
+
+TEST_CASE("a module path that repeats its package name resolves alike for item and module imports") {
+    const std::vector<Source> library = {{"shapes.rux", R"(
+        pub module Library::Rectangle {
+            pub func Area(width: int, height: int) -> int { return width * height; }
+        }
+        module Library::Sealed { pub func Marked() {} }
+    )"}};
+    for (const std::string_view import :
+         {"import Library::Rectangle;\nfunc Main() -> int { return Rectangle::Area(3, 4); }\n",
+          "import Library::Library::Rectangle;\nfunc Main() -> int { return Rectangle::Area(3, 4); }\n",
+          "import Library::Rectangle::Area;\nfunc Main() -> int { return Area(3, 4); }\n",
+          "import Library::Library::Rectangle::Area;\nfunc Main() -> int { return Area(3, 4); }\n"}) {
+        const auto diagnostics = AnalyzePackages({{"main.rux", std::string(import)}}, library);
+        CHECK_MESSAGE(diagnostics.empty(), import, ": ", Messages(diagnostics));
+    }
+
+    // The module's own package names it the same way.
+    const auto own = AnalyzePackages({{"shapes.rux", R"(
+        module Application::Rectangle {
+            pub func Area(width: int, height: int) -> int { return width * height; }
+        }
+    )"},
+                                      {"main.rux", R"(
+        import Application::Rectangle;
+        func Main() -> int { return Rectangle::Area(3, 4); }
+    )"}});
+    CHECK_MESSAGE(own.empty(), Messages(own));
+
+    // Each segment of the module path keeps its own visibility.
+    const auto sealed = AnalyzePackages({{"main.rux", "import Library::Sealed;\nfunc Main() {}\n"}}, library);
+    REQUIRE_MESSAGE(sealed.size() == 1, Messages(sealed));
+    CHECK_EQ(sealed[0].message, "module 'Sealed' is private to package 'Library'");
+
+    // A missing item points at an import the resolver accepts, spelled as the module was declared.
+    const auto missing = AnalyzePackages({{"main.rux", "import Library::Area;\nfunc Main() {}\n"}}, library);
+    REQUIRE_MESSAGE(missing.size() == 1, Messages(missing));
+    CHECK_EQ(missing[0].message, "name 'Area' was not found in package 'Library'");
+    REQUIRE(missing[0].help.has_value());
+    CHECK_EQ(*missing[0].help, "did you mean 'import Library::Rectangle::Area'?");
+}

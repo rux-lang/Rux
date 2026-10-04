@@ -1153,7 +1153,28 @@ private:
 
     static std::string ImportScopeDisplayName(const std::string &pkgName, const std::string &modulePath);
 
+    /// The module an import names: the package-relative `modulePath` in the imported package, else the non-empty
+    /// logical path, which repeats the package name, in the importing or the imported package. `ambiguousPackages`
+    /// lists every package offering the logical path when more than one does. Reports nothing.
+    struct ImportModuleLookup {
+        ImportScope scope;
+        std::vector<std::string> ambiguousPackages;
+    };
+
+    [[nodiscard]] ImportModuleLookup FindImportModule(const std::string &pkgName, const std::string &modulePath,
+                                                      const std::string &logicalModulePath) const;
+
+    /// The scope a single, grouped or glob import reads its items from, reporting a missing or ambiguous module.
     ImportScope ResolveImportScope(const UseDecl &d, const std::string &pkgName, const std::string &modulePath);
+
+    /// The module symbol at `path` within `package`, reached segment by segment from the package root, and the first
+    /// segment the current package may not name, if any. A package's own modules are always accessible to it.
+    struct ModuleWalk {
+        const Symbol *module = nullptr;
+        const Symbol *inaccessible = nullptr;
+    };
+
+    [[nodiscard]] ModuleWalk WalkModulePath(const std::string &package, const std::string &path) const;
 
     [[nodiscard]] const Symbol *InaccessibleModule(const std::string &package, const std::string &path) const;
 

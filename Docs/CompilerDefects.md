@@ -919,7 +919,9 @@ func Main() -> int {
 - **Actual:** 526 exports, including `Arena::Arena` and `BufferedReader::Read`, in a 1.11 MB DLL.
 - **Course workaround:** `Packages/SharedLibrary` has no dependencies.
 
-## D53. A module path that starts with its own package name resolves inconsistently
+## D53. A module path that starts with its own package name resolves inconsistently (fixed)
+
+**Fixed**; covered by `SemanticVisibilityTests.cpp` and `Tests/Language/ModulePackagePrefix`.
 
 - **Reproducer:** in package `Mod2`, declare `module Mod2::Rectangle { func Area(...) }`.
   - `import Mod2::Rectangle::Area;` works.

@@ -1,0 +1,11 @@
+[Manifest]
+Version = 1
+
+[Package]
+Name = "ModulePackagePrefix"
+Version = "0.1.0"
+Type = "Executable"
+Description = "Language test: ModulePackagePrefix"
+
+[Build]
+Output = "../../../Bin/Tests/Language"
