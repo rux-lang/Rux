@@ -949,3 +949,10 @@ func Main() -> int {
 manifest put `Authors` first. As a result, `rux fmt --check` fails on every course package. Either
 the formatter or the documented order should change. The course keeps its order until this is
 decided.
+
+## D55. A non-literal argument to `#config.Has` or `#config.Get` compiles and fails at load time
+
+- **Reproducer:** `let name = "ANOTHER_UNDEFINED_NAME";`, then `#config.Has(name)` in an executable.
+- **Expected:** a compile error, because Core documents the argument as a string literal resolved while compiling.
+- **Actual:** check and build pass, and the program exits 127 before `Main` runs.
+- **Found by:** re-enabling `Tests/Packages/Core/Config`, which now passes literals only.
