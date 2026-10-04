@@ -51,7 +51,7 @@ func Main() -> int {
     Assert(text != null as *char8, "the text allocation succeeds");
 
     Assert(strcpy(text, "hello".data) == text, "strcpy returns its destination");
-    Assert(strlen(text) == 5u64, "strlen counts up to the terminator");
+    Assert(strlen(text) == 5, "strlen counts up to the terminator");
     Assert(strcmp(text, "hello".data) == 0, "the copy compares equal");
     Assert(strcmp(text, "hellp".data) < 0, "and orders before a later string");
     Assert(strcmp("hellp".data, text) > 0, "the comparison is antisymmetric");
@@ -59,7 +59,7 @@ func Main() -> int {
     Assert(strncmp(text, "help".data, 4u64) != 0, "and sees the difference past it");
 
     Assert(strcat(text, " there".data) == text, "strcat returns its destination");
-    Assert(strlen(text) == 11u64, "the appended length is the sum");
+    Assert(strlen(text) == 11, "the appended length is the sum");
     Assert(strcmp(text, "hello there".data) == 0, "and the contents are both parts");
     strncat(text, "!!!!!".data, 2u64);
     Assert(strcmp(text, "hello there!!".data) == 0, "strncat takes only the count it was given");
@@ -81,8 +81,8 @@ func Main() -> int {
     Assert(strchr(text, 0i32) == text + 13, "the terminator itself is findable");
     Assert(strstr(text, "two".data) == text + 4, "strstr finds a substring");
     Assert(strstr(text, "four".data) == null, "and reports a missing one as absent");
-    Assert(strspn(text, "eno".data) == 3u64, "strspn measures the run drawn from the set");
-    Assert(strcspn(text, ",".data) == 3u64, "strcspn measures the run drawn from outside it");
+    Assert(strspn(text, "eno".data) == 3, "strspn measures the run drawn from the set");
+    Assert(strcspn(text, ",".data) == 3, "strcspn measures the run drawn from outside it");
     Assert(strpbrk(text, ",-".data) == text + 3, "strpbrk finds the first byte from the set");
 
     // strtok rewrites the string it walks, which is why it needs a writable copy.

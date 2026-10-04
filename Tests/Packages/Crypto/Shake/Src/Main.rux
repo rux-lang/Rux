@@ -16,10 +16,10 @@ func FromHex(text: char8[..], into: var char8[..]) {
     while index < into.length {
         var value: uint8 = 0;
         var half: uint = 0;
-        while half < 2u {
+        while half < 2 {
             let c = text.data[index * 2 + half] as uint8;
             var digit: uint8 = 0;
-            if c >= 0x30u8 && c <= 0x39u8 {
+            if c >= 0x30 && c <= 0x39 {
                 digit = c - 0x30;
             }
             else {
@@ -62,14 +62,14 @@ func Main() -> int {
     wholeState.Read((@whole[0])[..512]);
 
     var chunkSize: uint = 1;
-    while chunkSize <= 64u {
+    while chunkSize <= 64 {
         var pieced: char8[512];
         var piecedState = Shake::New128();
         piecedState.Update(TextBytes("continuity"));
         var taken: uint = 0;
-        while taken < 512u {
+        while taken < 512 {
             var step = chunkSize;
-            if taken + step > 512u {
+            if taken + step > 512 {
                 step = 512u - taken;
             }
             piecedState.Read((@pieced[taken])[..step]);
@@ -134,8 +134,8 @@ func Main() -> int {
     // The rates, which are what the security level buys.
     var narrow = Shake::New128();
     var wide = Shake::New256();
-    Assert(narrow.Rate() == 168u, "SHAKE128 has the larger rate, since its capacity is smaller");
-    Assert(wide.Rate() == 136u, "and SHAKE256 the smaller one");
+    Assert(narrow.Rate() == 168, "SHAKE128 has the larger rate, since its capacity is smaller");
+    Assert(wide.Rate() == 136, "and SHAKE256 the smaller one");
 
     return 0;
 }

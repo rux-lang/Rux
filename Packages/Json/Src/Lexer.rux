@@ -190,7 +190,7 @@ extend JsonLexer {
     func SkipWhitespace(self: &var JsonLexer) {
         while self.position < self.input.length {
             let c = self.input.data[self.position] as uint8;
-            if c != 0x20u8 && c != 0x09u8 && c != 0x0Du8 && c != 0x0Au8 { return; }
+            if c != 0x20 && c != 0x09 && c != 0x0D && c != 0x0A { return; }
             self.position = self.position + 1;
         }
     }
@@ -215,7 +215,7 @@ extend JsonLexer {
         var escaped = false;
         while self.position < self.input.length {
             let c = self.input.data[self.position] as uint8;
-            if c == 0x22u8 {
+            if c == 0x22 {
                 let end = self.position;
                 if end - start > self.limits.maximumTextBytes { return self.Fail(JsonLexError::TextTooLong); }
                 self.position = self.position + 1;
@@ -224,13 +224,13 @@ extend JsonLexer {
                     error: JsonLexError::None
                 };
             }
-            if c < 0x20u8 {
+            if c < 0x20 {
                 // JSON forbids a raw control character in a string; it must be escaped. Accepting one would let
                 // a document carry a byte that other parsers reject.
                 self.position = opening;
                 return self.Fail(JsonLexError::UnescapedControl);
             }
-            if c == 0x5Cu8 {
+            if c == 0x5C {
                 escaped = true;
                 self.position = self.position + 1;
                 if self.position >= self.input.length {
@@ -238,16 +238,16 @@ extend JsonLexer {
                     return self.Fail(JsonLexError::UnterminatedText);
                 }
                 let kind = self.input.data[self.position] as uint8;
-                if kind == 0x75u8 {
+                if kind == 0x75 {
                     if self.position + 4 >= self.input.length {
                         self.position = opening;
                         return self.Fail(JsonLexError::BadUnicodeEscape);
                     }
                     var digit: uint = 1;
-                    while digit <= 4u {
+                    while digit <= 4 {
                         let h = self.input.data[self.position + digit] as uint8;
-                        let isDigit = (h >= 0x30u8 && h <= 0x39u8) || (h >= 0x61u8 && h <= 0x66u8) ||
-                                      (h >= 0x41u8 && h <= 0x46u8);
+                        let isDigit = (h >= 0x30 && h <= 0x39) || (h >= 0x61 && h <= 0x66) ||
+                                      (h >= 0x41 && h <= 0x46);
                         if !isDigit {
                             self.position = opening;
                             return self.Fail(JsonLexError::BadUnicodeEscape);
@@ -256,8 +256,8 @@ extend JsonLexer {
                     }
                     self.position = self.position + 4;
                 }
-                else if kind != 0x22u8 && kind != 0x5Cu8 && kind != 0x2Fu8 && kind != 0x62u8 &&
-                        kind != 0x66u8 && kind != 0x6Eu8 && kind != 0x72u8 && kind != 0x74u8 {
+                else if kind != 0x22 && kind != 0x5C && kind != 0x2F && kind != 0x62 &&
+                        kind != 0x66 && kind != 0x6E && kind != 0x72 && kind != 0x74 {
                     // The eight escapes JSON defines and no others — notably not the hex, octal or
                     // line-continuation escapes that appear in JavaScript.
                     self.position = opening;
@@ -277,7 +277,7 @@ extend JsonLexer {
     // plus, a leading zero, a bare `.5`, a trailing `1.` and hexadecimal are all JavaScript and none are JSON.
     func LexNumber(self: &var JsonLexer) -> JsonToken {
         let start = self.position;
-        if self.position < self.input.length && (self.input.data[self.position] as uint8) == 0x2Du8 {
+        if self.position < self.input.length && (self.input.data[self.position] as uint8) == 0x2D {
             self.position = self.position + 1;
         }
         if self.position >= self.input.length {
@@ -285,21 +285,21 @@ extend JsonLexer {
             return self.Fail(JsonLexError::MalformedNumber);
         }
         let first = self.input.data[self.position] as uint8;
-        if first == 0x30u8 {
+        if first == 0x30 {
             self.position = self.position + 1;
             // A digit after a leading zero is forbidden, which rejects `01` and anything octal-looking.
             if self.position < self.input.length {
                 let next = self.input.data[self.position] as uint8;
-                if next >= 0x30u8 && next <= 0x39u8 {
+                if next >= 0x30 && next <= 0x39 {
                     self.position = start;
                     return self.Fail(JsonLexError::MalformedNumber);
                 }
             }
         }
-        else if first >= 0x31u8 && first <= 0x39u8 {
+        else if first >= 0x31 && first <= 0x39 {
             while self.position < self.input.length {
                 let d = self.input.data[self.position] as uint8;
-                if d < 0x30u8 || d > 0x39u8 { break; }
+                if d < 0x30 || d > 0x39 { break; }
                 self.position = self.position + 1;
             }
         }
@@ -308,16 +308,16 @@ extend JsonLexer {
             return self.Fail(JsonLexError::MalformedNumber);
         }
 
-        if self.position < self.input.length && (self.input.data[self.position] as uint8) == 0x2Eu8 {
+        if self.position < self.input.length && (self.input.data[self.position] as uint8) == 0x2E {
             self.position = self.position + 1;
             var digits: uint = 0;
             while self.position < self.input.length {
                 let d = self.input.data[self.position] as uint8;
-                if d < 0x30u8 || d > 0x39u8 { break; }
+                if d < 0x30 || d > 0x39 { break; }
                 digits = digits + 1;
                 self.position = self.position + 1;
             }
-            if digits == 0u {
+            if digits == 0 {
                 self.position = start;
                 return self.Fail(JsonLexError::MalformedNumber);
             }
@@ -325,22 +325,22 @@ extend JsonLexer {
 
         if self.position < self.input.length {
             let e = self.input.data[self.position] as uint8;
-            if e == 0x65u8 || e == 0x45u8 {
+            if e == 0x65 || e == 0x45 {
                 self.position = self.position + 1;
                 if self.position < self.input.length {
                     let sign = self.input.data[self.position] as uint8;
-                    if sign == 0x2Bu8 || sign == 0x2Du8 {
+                    if sign == 0x2B || sign == 0x2D {
                         self.position = self.position + 1;
                     }
                 }
                 var digits: uint = 0;
                 while self.position < self.input.length {
                     let d = self.input.data[self.position] as uint8;
-                    if d < 0x30u8 || d > 0x39u8 { break; }
+                    if d < 0x30 || d > 0x39 { break; }
                     digits = digits + 1;
                     self.position = self.position + 1;
                 }
-                if digits == 0u {
+                if digits == 0 {
                     self.position = start;
                     return self.Fail(JsonLexError::MalformedNumber);
                 }
@@ -368,14 +368,14 @@ extend JsonLexer {
             };
         }
         let c = self.input.data[self.position] as uint8;
-        if c == 0x7Bu8 { return self.Simple(JsonTokenKind::ObjectStart); }
-        if c == 0x7Du8 { return self.Simple(JsonTokenKind::ObjectEnd); }
-        if c == 0x5Bu8 { return self.Simple(JsonTokenKind::ArrayStart); }
-        if c == 0x5Du8 { return self.Simple(JsonTokenKind::ArrayEnd); }
-        if c == 0x3Au8 { return self.Simple(JsonTokenKind::Colon); }
-        if c == 0x2Cu8 { return self.Simple(JsonTokenKind::Comma); }
-        if c == 0x22u8 { return self.LexText(); }
-        if c == 0x2Du8 || (c >= 0x30u8 && c <= 0x39u8) { return self.LexNumber(); }
+        if c == 0x7B { return self.Simple(JsonTokenKind::ObjectStart); }
+        if c == 0x7D { return self.Simple(JsonTokenKind::ObjectEnd); }
+        if c == 0x5B { return self.Simple(JsonTokenKind::ArrayStart); }
+        if c == 0x5D { return self.Simple(JsonTokenKind::ArrayEnd); }
+        if c == 0x3A { return self.Simple(JsonTokenKind::Colon); }
+        if c == 0x2C { return self.Simple(JsonTokenKind::Comma); }
+        if c == 0x22 { return self.LexText(); }
+        if c == 0x2D || (c >= 0x30 && c <= 0x39) { return self.LexNumber(); }
         if self.MatchesWord("true") { return self.Word(JsonTokenKind::True, 4); }
         if self.MatchesWord("false") { return self.Word(JsonTokenKind::False, 5); }
         if self.MatchesWord("null") { return self.Word(JsonTokenKind::Null, 4); }

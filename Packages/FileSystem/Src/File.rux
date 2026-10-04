@@ -132,7 +132,7 @@ func NativePath(allocator: Allocator, path: Path) -> *var OsUnit ! IoError {
     while index < units.length {
         // An embedded NUL would silently truncate the name at the platform boundary: the file acted on would
         // not be the file named. Refused here on every platform.
-        if (units.data[index] as uint32) == 0u32 { fail IoError::Of(IoErrorKind::InvalidInput); }
+        if (units.data[index] as uint32) == 0 { fail IoError::Of(IoErrorKind::InvalidInput); }
         index = index + 1;
     }
     let layout = Layout::New((units.length + 1) * sizeof(OsUnit), alignof(OsUnit))

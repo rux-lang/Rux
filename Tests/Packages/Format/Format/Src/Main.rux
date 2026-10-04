@@ -177,7 +177,7 @@ func PropagationCases(allocator: Allocator) {
     var writer = BufferWriter((@room[0])[..64]);
     let sink: &var TextWriter = writer;
     let failed = WriteFormat(sink, "head {} tail", refusing);
-    Assert(Failed(failed) && calls == 2 && writer.Length() == 12u, "writer failure stops after the accepted prefix");
+    Assert(Failed(failed) && calls == 2 && writer.Length() == 12, "writer failure stops after the accepted prefix");
     let written = StringView::FromValidated(writer.Written());
     let wanted = StringView::FromValidated("head partial");
     Assert(written.Equals(wanted), "direct writing retains the exact bytes accepted before the refusal");
@@ -186,7 +186,7 @@ func PropagationCases(allocator: Allocator) {
     writer.Clear();
     let checked: &var TextWriter = writer;
     Assert(Failed(WriteFormat(checked, "prefix {} {:>>>}", refusing, 2)), "the whole pattern is validated first");
-    Assert(calls == 2 && writer.Length() == 0u, "late validation failure invokes no renderer and writes no prefix");
+    Assert(calls == 2 && writer.Length() == 0, "late validation failure invokes no renderer and writes no prefix");
     Assert(Matches(Render(counted, "é 😀 {{}} {}", 12), "é 😀 {} 12"), "successful Unicode rendering preserves its output");
     Assert(counts.live == 0 && counts.allocations == 6 && counts.releases == 6 && counts.invalidReleases == 0,
            "a successful returned string releases its transferred allocation once");
@@ -267,7 +267,7 @@ func Main() -> int {
     if !Matches(Render(allocator, "{} and {}", "text", 1), "text and 1") { return 71; }
 
     // A rendering that outgrows any up-front guess: one hundred units of sixteen bytes, plus the frame around them.
-    if RenderedLength(Render(allocator, "<{}>", Filler { count: 100 })) != 1602u { return 80; }
+    if RenderedLength(Render(allocator, "<{}>", Filler { count: 100 })) != 1602 { return 80; }
 
     // A destination that runs out of room reports it, and stops: what a refused write did not accept is not
     // written, and nothing after the failing placeholder is either.
@@ -282,17 +282,17 @@ func Main() -> int {
     if !capacity { return 90; }
     // The literal before the placeholder went in; the sixteen bytes the value wanted did not fit and so landed not
     // at all, and the text after it never ran.
-    if writer.Length() != 5u { return 91; }
+    if writer.Length() != 5 { return 91; }
 
     // A pattern that is wrong writes nothing at all, because it is checked before the first byte goes out.
     var second = BufferWriter((@room[0])[..8]);
     let other: &var TextWriter = second;
     if Succeeded(WriteFormat(other, "abc{", 1)) { return 92; }
-    if second.Length() != 0u { return 93; }
+    if second.Length() != 0 { return 93; }
     var third = BufferWriter((@room[0])[..8]);
     let last: &var TextWriter = third;
     if Succeeded(WriteFormat(last, "abc{}", 1, 2)) { return 94; }
-    if third.Length() != 0u { return 95; }
+    if third.Length() != 0 { return 95; }
 
     // A failed render gives its block back. Counted, because a leak leaves the same error behind as a clean
     // failure and is invisible to a check that only reads the result.

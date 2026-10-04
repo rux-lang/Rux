@@ -24,8 +24,8 @@ extend Tracked {
 func BoxAndDestroy(allocator: Allocator, destroyed: *var int32) -> ! AllocError {
     // A box accepts a move-only value.
     var boxed = Box::Create<Tracked>(allocator, Tracked { destroyed: destroyed, value: 91 })?;
-    Assert(boxed.Get().value == 91i32, "the box owns its value");
-    Assert(*destroyed == 0i32, "without destroying it during construction");
+    Assert(boxed.Get().value == 91, "the box owns its value");
+    Assert(*destroyed == 0, "without destroying it during construction");
 }
 
 func BoxAndTake(allocator: Allocator, destroyed: *var int32) -> ! AllocError {
@@ -33,7 +33,7 @@ func BoxAndTake(allocator: Allocator, destroyed: *var int32) -> ! AllocError {
     var taken = Tracked { destroyed: null, value: 0 };
     Assert(boxed.TryTake(@taken), "a move-only value can be taken from a box");
     Assert(boxed.IsEmpty(), "taking leaves its box empty");
-    Assert(taken.value == 27i32 && *destroyed == 0i32, "and transfers rather than destroys the value");
+    Assert(taken.value == 27 && *destroyed == 0, "and transfers rather than destroys the value");
 }
 
 func Main() -> ! AllocError {
@@ -78,9 +78,9 @@ func Main() -> ! AllocError {
 
     var destroyed: int32 = 0;
     BoxAndDestroy(allocator, @destroyed)?;
-    Assert(destroyed == 1i32, "destroying a box destroys its move-only value exactly once");
+    Assert(destroyed == 1, "destroying a box destroys its move-only value exactly once");
 
     destroyed = 0;
     BoxAndTake(allocator, @destroyed)?;
-    Assert(destroyed == 1i32, "a value taken from a box is destroyed by its new owner exactly once");
+    Assert(destroyed == 1, "a value taken from a box is destroyed by its new owner exactly once");
 }

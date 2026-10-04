@@ -75,13 +75,13 @@ func WriteFixed(writer: &var TextWriter, value: uint32, width: uint) -> ! Format
 // else is ambiguous without one. Year 0 exists here and is 1 BCE, which is the astronomical numbering the rest of
 // this package uses.
 func WriteYear(writer: &var TextWriter, year: int32) -> ! FormatError {
-    if year < 0i32 {
+    if year < 0 {
         WriteAscii(writer, c8'-')?;
         let magnitude = (0i32 - year) as uint32;
-        if magnitude > 9999u32 { return WriteWide(writer, magnitude); }
+        if magnitude > 9999 { return WriteWide(writer, magnitude); }
         return WriteFixed(writer, magnitude, 4);
     }
-    if year > 9999i32 {
+    if year > 9999 {
         WriteAscii(writer, c8'+')?;
         return WriteWide(writer, year as uint32);
     }
@@ -93,11 +93,11 @@ func WriteWide(writer: &var TextWriter, value: uint32) -> ! FormatError {
     var digits: char8[10];
     var count: uint = 0;
     var rest = value;
-    if rest == 0u32 {
+    if rest == 0 {
         digits[0] = c8'0';
         count = 1;
     }
-    while rest > 0u32 {
+    while rest > 0 {
         digits[count] = ((rest % 10) + 0x30) as char8;
         count = count + 1;
         rest = rest / 10;
@@ -129,14 +129,14 @@ func WriteFraction(writer: &var TextWriter, nanosecond: uint32, spec: FormatSpec
     var kept: uint = 9;
     if spec.HasPrecision() {
         kept = spec.Precision();
-        if kept > 9u { return .Failure(FormatError::UnsupportedRequest); }
-        if kept == 0u { return .Success(()); }
+        if kept > 9 { return .Failure(FormatError::UnsupportedRequest); }
+        if kept == 0 { return .Success(()); }
     }
     else {
         while kept > 0 && digits[kept - 1] == c8'0' {
             kept = kept - 1;
         }
-        if kept == 0u { return .Success(()); }
+        if kept == 0 { return .Success(()); }
     }
     WriteAscii(writer, c8'.')?;
     return WriteBytes(writer, (@digits[0])[..kept]);
@@ -252,8 +252,8 @@ extend UtcOffset : Display {
         RejectCalendarStyle(spec)?;
         if spec.HasPrecision() { return .Failure(FormatError::UnsupportedRequest); }
         let total = self.TotalSeconds();
-        if total == 0i32 { return WriteAscii(writer, c8'Z'); }
-        let negative = total < 0i32;
+        if total == 0 { return WriteAscii(writer, c8'Z'); }
+        let negative = total < 0;
         let magnitude = (negative ? 0i32 - total : total) as uint32;
         WriteAscii(writer, negative ? c8'-' : c8'+')?;
         WriteFixed(writer, magnitude / 3600, 2)?;
@@ -368,8 +368,8 @@ extend OffsetDateTime : Debug {
 // The offset part alone, without the precision check a bare `UtcOffset` applies, for the same reason as the date.
 func WriteOffsetOnly(writer: &var TextWriter, offset: UtcOffset) -> ! FormatError {
     let total = offset.TotalSeconds();
-    if total == 0i32 { return WriteAscii(writer, c8'Z'); }
-    let negative = total < 0i32;
+    if total == 0 { return WriteAscii(writer, c8'Z'); }
+    let negative = total < 0;
     let magnitude = (negative ? 0i32 - total : total) as uint32;
     WriteAscii(writer, negative ? c8'-' : c8'+')?;
     WriteFixed(writer, magnitude / 3600, 2)?;

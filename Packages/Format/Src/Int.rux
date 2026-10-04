@@ -24,7 +24,7 @@ extend int : Display {
         let wide = self as int64;
         // The magnitude is taken in uint64 rather than by negating in int64, because the most negative value has
         // no positive counterpart there.
-        let negative = wide < 0i64;
+        let negative = wide < 0;
         let magnitude = negative ? ~(wide as uint64) + 1u64 : wide as uint64;
         return WriteIntegerSpec(writer, spec, magnitude, negative);
     }

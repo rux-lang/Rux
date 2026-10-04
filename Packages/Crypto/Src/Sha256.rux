@@ -67,7 +67,7 @@ extend Sha256 {
     pub func Sha256() -> Sha256 {
         var buffer: char8[64];
         var index: uint = 0;
-        while index < 64u {
+        while index < 64 {
             buffer[index] = 0u8 as char8;
             index = index + 1;
         }
@@ -91,18 +91,18 @@ extend Sha256 {
     func Compress(self: &var Sha256, block: *char8) {
         var schedule: uint32[64];
         var index: uint = 0;
-        while index < 16u {
-            schedule[index] = ((block[index * 4] as uint8 as uint32) << 24u32) |
-                              ((block[index * 4 + 1] as uint8 as uint32) << 16u32) |
-                              ((block[index * 4 + 2] as uint8 as uint32) << 8u32) |
+        while index < 16 {
+            schedule[index] = ((block[index * 4] as uint8 as uint32) << 24) |
+                              ((block[index * 4 + 1] as uint8 as uint32) << 16) |
+                              ((block[index * 4 + 2] as uint8 as uint32) << 8) |
                               (block[index * 4 + 3] as uint8 as uint32);
             index = index + 1;
         }
-        while index < 64u {
+        while index < 64 {
             let previous = schedule[index - 15];
             let recent = schedule[index - 2];
-            let s0 = RotateRight32(previous, 7) ^ RotateRight32(previous, 18) ^ (previous >> 3u32);
-            let s1 = RotateRight32(recent, 17) ^ RotateRight32(recent, 19) ^ (recent >> 10u32);
+            let s0 = RotateRight32(previous, 7) ^ RotateRight32(previous, 18) ^ (previous >> 3);
+            let s1 = RotateRight32(recent, 17) ^ RotateRight32(recent, 19) ^ (recent >> 10);
             schedule[index] = schedule[index - 16] + s0 + schedule[index - 7] + s1;
             index = index + 1;
         }
@@ -117,7 +117,7 @@ extend Sha256 {
         var h = self.state[7];
 
         index = 0;
-        while index < 64u {
+        while index < 64 {
             let sigma1 = RotateRight32(e, 6) ^ RotateRight32(e, 11) ^ RotateRight32(e, 25);
             let choose = (e & f) ^ ((~e) & g);
             let temp1 = h + sigma1 + choose + Sha256RoundConstants[index] + schedule[index];
@@ -158,13 +158,13 @@ extend Sha256 : Digest {
         self.length = self.length + (bytes.length as uint64);
         var index: uint = 0;
         // Finish whatever partial block is already held before taking whole blocks directly.
-        if self.buffered > 0u {
-            while index < bytes.length && self.buffered < 64u {
+        if self.buffered > 0 {
+            while index < bytes.length && self.buffered < 64 {
                 self.buffer[self.buffered] = bytes[index];
                 self.buffered = self.buffered + 1;
                 index = index + 1;
             }
-            if self.buffered == 64u {
+            if self.buffered == 64 {
                 self.Compress(@self.buffer[0]);
                 self.buffered = 0;
             }
@@ -193,20 +193,20 @@ extend Sha256 : Digest {
         let bitLength = self.length * 8u64;
         self.buffer[self.buffered] = 0x80u8 as char8;
         self.buffered = self.buffered + 1u;
-        if self.buffered > 56u {
-            while self.buffered < 64u {
+        if self.buffered > 56 {
+            while self.buffered < 64 {
                 self.buffer[self.buffered] = 0u8 as char8;
                 self.buffered = self.buffered + 1u;
             }
             self.Compress(@self.buffer[0]);
             self.buffered = 0;
         }
-        while self.buffered < 56u {
+        while self.buffered < 56 {
             self.buffer[self.buffered] = 0u8 as char8;
             self.buffered = self.buffered + 1u;
         }
         var shift: uint = 0;
-        while shift < 8u {
+        while shift < 8 {
             self.buffer[56u + shift] = ((bitLength >> ((56u - shift * 8u) as uint64)) & 0xFFu64) as uint8 as char8;
             shift = shift + 1;
         }

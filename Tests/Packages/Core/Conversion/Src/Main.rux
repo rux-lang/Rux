@@ -139,7 +139,7 @@ func Main() -> int {
     Assert(CheckExact<float64, int32>(-2.0f64, -2i32, 0i32) == 0, "a negative whole number");
     var truncated: int32 = 0;
     Assert(ConvertChecked<float64, int32>(1.5f64, @truncated), "a fraction cannot be an integer");
-    Assert(truncated == 1i32, "the truncated answer is written even so");
+    Assert(truncated == 1, "the truncated answer is written even so");
 
     // Narrowing a float: exact when the value has room, lossy when it does not.
     var narrowed = 0.0f32;
@@ -155,10 +155,10 @@ func Main() -> int {
     var target: int32 = 0;
     Assert(ConvertChecked<float64, int32>(nan64, @target), "a NaN is no integer");
     ConvertSaturating<float64, int32>(nan64, @target);
-    Assert(target == 0i32, "a NaN has no nearest value and saturates to zero");
+    Assert(target == 0, "a NaN has no nearest value and saturates to zero");
     Assert(ConvertChecked<float64, int32>(infinity64, @target), "an infinity is no integer");
     ConvertSaturating<float64, int32>(infinity64, @target);
-    Assert(target == 2147483647i32, "an infinity saturates to the maximum");
+    Assert(target == 2147483647, "an infinity saturates to the maximum");
     ConvertSaturating<float64, int32>(zero64 - infinity64, @target);
     Assert(target == -2147483648i32, "a negative infinity saturates to the minimum");
 

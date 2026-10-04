@@ -156,7 +156,7 @@ pub func ReadDirectory(allocator: Allocator, path: Path) -> DirectoryIterator ! 
         var index: uint = 0;
         var length: uint = 0;
         while index < units.length {
-            if (units.data[index] as uint32) == 0u32 {
+            if (units.data[index] as uint32) == 0 {
                 borrowed.Deallocate(raw, patternLayout) catch { else => {} };
                 fail IoError::Of(IoErrorKind::InvalidInput);
             }
@@ -164,7 +164,7 @@ pub func ReadDirectory(allocator: Allocator, path: Path) -> DirectoryIterator ! 
             length = length + 1;
             index = index + 1;
         }
-        if length > 0 && pattern[length - 1] != 0x5Cu16 && pattern[length - 1] != 0x2Fu16 {
+        if length > 0 && pattern[length - 1] != 0x5C && pattern[length - 1] != 0x2F {
             pattern[length] = 0x5Cu16;
             length = length + 1;
         }
@@ -215,7 +215,7 @@ extend DirectoryIterator {
                 // The UTF-16 name starts at offset 44 of the record and ends at its NUL.
                 let start = (self.data as uint + 44u) as *var uint16;
                 var length: uint = 0;
-                while length < 260u && start[length] != 0 {
+                while length < 260 && start[length] != 0 {
                     length = length + 1;
                 }
                 if !IsDotEntry16(start, length) {
@@ -250,7 +250,7 @@ extend DirectoryIterator {
                     self.offset = 0;
                 }
                 let record = (self.data as uint + self.offset) as *var char8;
-                let reclen = ((record[16] as uint8 as uint) | ((record[17] as uint8 as uint) << 8u));
+                let reclen = ((record[16] as uint8 as uint) | ((record[17] as uint8 as uint) << 8));
                 if reclen == 0 || self.offset + reclen > self.length {
                     // A zero-length record would loop forever; a torn one reaches past the buffer. Either way
                     // the kernel and this code disagree about the layout, which is worth failing loudly over.
@@ -269,11 +269,11 @@ extend DirectoryIterator {
                 else {
                     when #target.os == .FreeBSD {
                         nameStart = 24;
-                        nameLength = (record[20] as uint8 as uint) | ((record[21] as uint8 as uint) << 8u);
+                        nameLength = (record[20] as uint8 as uint) | ((record[21] as uint8 as uint) << 8);
                     }
                     else {
                         nameStart = 21;
-                        nameLength = (record[18] as uint8 as uint) | ((record[19] as uint8 as uint) << 8u);
+                        nameLength = (record[18] as uint8 as uint) | ((record[19] as uint8 as uint) << 8);
                     }
                 }
                 let start = (record as uint + nameStart) as *var char8;
@@ -324,6 +324,6 @@ func IsDotEntry8(name: *char8, length: uint) -> bool {
 }
 
 func IsDotEntry16(name: *uint16, length: uint) -> bool {
-    if length == 1 { return name[0] == 0x2Eu16; }
-    return length == 2 && name[0] == 0x2Eu16 && name[1] == 0x2Eu16;
+    if length == 1 { return name[0] == 0x2E; }
+    return length == 2 && name[0] == 0x2E && name[1] == 0x2E;
 }

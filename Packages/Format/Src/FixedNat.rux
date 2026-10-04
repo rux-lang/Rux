@@ -55,7 +55,7 @@ pub struct FixedNat {
 
 // Drops the leading zero limbs, which is the invariant every operation restores before returning.
 func Normalize(value: &var FixedNat) {
-    while value.length > 0u && value.limbs[value.length - 1] == 0u64 {
+    while value.length > 0 && value.limbs[value.length - 1] == 0 {
         value.length = value.length - 1;
     }
 }
@@ -70,10 +70,10 @@ func ScaleInPlace(value: &var FixedNat, factor: uint64, addend: uint64) -> bool 
         // usual dance with halves.
         let wide = (value.limbs[index] as uint128) * (factor as uint128) + (carry as uint128);
         value.limbs[index] = (wide & 0xFFFFFFFFFFFFFFFF) as uint64;
-        carry = (wide >> 64u128) as uint64;
+        carry = (wide >> 64) as uint64;
         index = index + 1;
     }
-    if carry != 0u64 {
+    if carry != 0 {
         if value.length >= FixedNatLimbs { return false; }
         value.limbs[value.length] = carry;
         value.length = value.length + 1;
@@ -92,11 +92,11 @@ func AddInPlace(value: &var FixedNat, other: &FixedNat) -> bool {
         let theirs = index < other.length ? other.limbs[index] : 0u64;
         let sum = (mine as uint128) + (theirs as uint128) + (carry as uint128);
         value.limbs[index] = (sum & 0xFFFFFFFFFFFFFFFF) as uint64;
-        carry = (sum >> 64u128) as uint64;
+        carry = (sum >> 64) as uint64;
         index = index + 1;
     }
     value.length = wider;
-    if carry != 0u64 {
+    if carry != 0 {
         if value.length >= FixedNatLimbs { return false; }
         value.limbs[value.length] = carry;
         value.length = value.length + 1;
@@ -125,7 +125,7 @@ extend FixedNat {
     /// @see https://rux-lang.dev/docs/api/format/fixed-nat/from-uint64
     pub func FromUint64(initial: uint64) -> FixedNat {
         var made = FixedNat();
-        if initial != 0u64 {
+        if initial != 0 {
             made.limbs[0] = initial;
             made.length = 1;
         }
@@ -139,7 +139,7 @@ extend FixedNat {
     /// @returns true when no limb is in use
     /// @see https://rux-lang.dev/docs/api/format/fixed-nat/is-zero
     pub func IsZero(self: &FixedNat) -> bool {
-        return self.length == 0u;
+        return self.length == 0;
     }
 
     /// How many bits the value occupies, counting from its highest set bit.
@@ -149,13 +149,13 @@ extend FixedNat {
     /// @returns the position one past the highest set bit
     /// @see https://rux-lang.dev/docs/api/format/fixed-nat/bit-length
     pub func BitLength(self: &FixedNat) -> uint {
-        if self.length == 0u { return 0; }
+        if self.length == 0 { return 0; }
         let top = self.limbs[self.length - 1];
         var bits: uint = 0;
         var rest = top;
-        while rest > 0u64 {
+        while rest > 0 {
             bits = bits + 1;
-            rest = rest >> 1u64;
+            rest = rest >> 1;
         }
         return (self.length - 1) * 64 + bits;
     }
@@ -170,7 +170,7 @@ extend FixedNat {
     pub func Compare(self: &FixedNat, other: &FixedNat) -> int32 {
         if self.length != other.length { return self.length < other.length ? -1 : 1; }
         var index = self.length;
-        while index > 0u {
+        while index > 0 {
             index = index - 1;
             if self.limbs[index] != other.limbs[index] {
                 return self.limbs[index] < other.limbs[index] ? -1 : 1;
@@ -254,19 +254,19 @@ extend FixedNat {
     /// @returns true when the result fits
     /// @see https://rux-lang.dev/docs/api/format/fixed-nat/shift-left
     pub func ShiftLeft(self: &var FixedNat, bits: uint) -> bool {
-        if self.length == 0u || bits == 0u { return true; }
+        if self.length == 0 || bits == 0 { return true; }
         let limbShift = bits / 64u;
         let bitShift = bits % 64u;
         // The whole-limb part and the within-limb part are checked together, because a shift that fits one and not
         // the other is still a shift that does not fit.
         var needed = self.length + limbShift;
-        if bitShift != 0u && (self.limbs[self.length - 1u] >> ((64u - bitShift) as uint64)) != 0u64 {
+        if bitShift != 0 && (self.limbs[self.length - 1u] >> ((64u - bitShift) as uint64)) != 0 {
             needed = needed + 1u;
         }
         if needed > FixedNatLimbs { return false; }
 
         var index = needed;
-        while index > 0u {
+        while index > 0 {
             index = index - 1u;
             var value: uint64 = 0;
             if index >= limbShift {
@@ -274,7 +274,7 @@ extend FixedNat {
                 if source < self.length {
                     value = self.limbs[source] << (bitShift as uint64);
                 }
-                if bitShift != 0u && source > 0u && source - 1u < self.length {
+                if bitShift != 0 && source > 0 && source - 1u < self.length {
                     value = value | (self.limbs[source - 1u] >> ((64u - bitShift) as uint64));
                 }
             }
@@ -350,11 +350,11 @@ extend FixedNat {
     /// @see https://rux-lang.dev/docs/api/format/fixed-nat/multiply-power-of-ten
     pub func MultiplyPowerOfTen(self: &var FixedNat, power: uint) -> bool {
         var remaining = power;
-        while remaining >= 19u {
+        while remaining >= 19 {
             if !self.MultiplySmall(10000000000000000000) { return false; }
             remaining = remaining - 19;
         }
-        if remaining == 0u { return true; }
+        if remaining == 0 { return true; }
         var factor: uint64 = 1;
         var step: uint = 0;
         while step < remaining {
@@ -392,6 +392,6 @@ extend FixedNat {
     /// @returns the least significant limb, or zero
     /// @see https://rux-lang.dev/docs/api/format/fixed-nat/low64
     pub func Low64(self: &FixedNat) -> uint64 {
-        return self.length == 0u ? 0 : self.limbs[0];
+        return self.length == 0 ? 0 : self.limbs[0];
     }
 }

@@ -140,8 +140,8 @@ func StripUnderscores(text: char8[..], into: *var Stripped, at: *var uint) -> bo
     var index: uint = 0;
     while index < text.length {
         let c = text.data[index] as uint8;
-        if c == 0x5Fu8 {
-            if index == 0u || index + 1 == text.length {
+        if c == 0x5F {
+            if index == 0 || index + 1 == text.length {
                 *at = index;
                 return false;
             }
@@ -162,7 +162,7 @@ func StripUnderscores(text: char8[..], into: *var Stripped, at: *var uint) -> bo
 
 // Whether `c` is a digit in any base TOML writes, which is all an underscore's neighbours have to be.
 func IsBaseDigit(c: uint8) -> bool {
-    return (c >= 0x30u8 && c <= 0x39u8) || (c >= 0x61u8 && c <= 0x66u8) || (c >= 0x41u8 && c <= 0x46u8);
+    return (c >= 0x30 && c <= 0x39) || (c >= 0x61 && c <= 0x66) || (c >= 0x41 && c <= 0x46);
 }
 
 /// Reads an integer, in any of the four bases TOML writes.
@@ -180,7 +180,7 @@ func IsBaseDigit(c: uint8) -> bool {
 /// @returns the integer, or why it could not be read and where
 /// @see https://rux-lang.dev/docs/api/toml/parse-integer
 pub func TomlParseInteger(text: char8[..]) -> int64 ! TomlScalarError {
-    if text.length == 0u { return .Failure(TomlScalarError::Malformed(0)); }
+    if text.length == 0 { return .Failure(TomlScalarError::Malformed(0)); }
     if text.length > ScalarCapacity {
         fail TomlScalarError::TooLong(ScalarCapacity);
     }
@@ -192,9 +192,9 @@ pub func TomlParseInteger(text: char8[..]) -> int64 ! TomlScalarError {
     let digits = (@stripped.digits[0])[..stripped.length];
     var start: uint = 0;
     var signed = false;
-    if digits.length > 0u {
+    if digits.length > 0 {
         let sign = digits.data[0] as uint8;
-        if sign == 0x2Bu8 || sign == 0x2Du8 {
+        if sign == 0x2B || sign == 0x2D {
             signed = true;
             start = 1;
         }
@@ -203,9 +203,9 @@ pub func TomlParseInteger(text: char8[..]) -> int64 ! TomlScalarError {
         fail TomlScalarError::Malformed(stripped.Source(start));
     }
     var based = false;
-    if digits.length - start > 1u && (digits.data[start] as uint8) == 0x30u8 {
+    if digits.length - start > 1 && (digits.data[start] as uint8) == 0x30 {
         let mark = digits.data[start + 1] as uint8;
-        based = mark == 0x78u8 || mark == 0x6Fu8 || mark == 0x62u8;
+        based = mark == 0x78 || mark == 0x6F || mark == 0x62;
         // A sign on a based integer is a dialect the grammar does not offer; the sign is the character at fault.
         if based && signed {
             fail TomlScalarError::Malformed(stripped.Source(0));
@@ -235,19 +235,19 @@ pub func TomlParseInteger(text: char8[..]) -> int64 ! TomlScalarError {
 
 // The base a prefix letter names.
 func BaseOf(mark: uint8) -> uint8 {
-    if mark == 0x78u8 { return 16; }
-    if mark == 0x6Fu8 { return 8; }
+    if mark == 0x78 { return 16; }
+    if mark == 0x6F { return 8; }
     return 2;
 }
 
 // Whether `c` is a digit of `radix`. TOML writes hexadecimal in either case but nothing else above nine.
 func DigitFits(c: uint8, radix: uint8) -> bool {
-    if radix == 16u8 {
-        return (c >= 0x30u8 && c <= 0x39u8) || (c >= 0x61u8 && c <= 0x66u8) || (c >= 0x41u8 && c <= 0x46u8);
+    if radix == 16 {
+        return (c >= 0x30 && c <= 0x39) || (c >= 0x61 && c <= 0x66) || (c >= 0x41 && c <= 0x46);
     }
-    if radix == 8u8 { return c >= 0x30u8 && c <= 0x37u8; }
-    if radix == 2u8 { return c == 0x30u8 || c == 0x31u8; }
-    return c >= 0x30u8 && c <= 0x39u8;
+    if radix == 8 { return c >= 0x30 && c <= 0x37; }
+    if radix == 2 { return c == 0x30 || c == 0x31; }
+    return c >= 0x30 && c <= 0x39;
 }
 
 /// Reads a float, including the infinities and NaN that TOML can spell and JSON cannot.
@@ -264,7 +264,7 @@ func DigitFits(c: uint8, radix: uint8) -> bool {
 /// @returns the float, or why it could not be read and where
 /// @see https://rux-lang.dev/docs/api/toml/parse-float
 pub func TomlParseFloat(text: char8[..]) -> float64 ! TomlScalarError {
-    if text.length == 0u { return .Failure(TomlScalarError::Malformed(0)); }
+    if text.length == 0 { return .Failure(TomlScalarError::Malformed(0)); }
     if text.length > ScalarCapacity {
         fail TomlScalarError::TooLong(ScalarCapacity);
     }
@@ -277,8 +277,8 @@ pub func TomlParseFloat(text: char8[..]) -> float64 ! TomlScalarError {
     var start: uint = 0;
     var negative = false;
     let sign = digits.data[0] as uint8;
-    if sign == 0x2Bu8 || sign == 0x2Du8 {
-        negative = sign == 0x2Du8;
+    if sign == 0x2B || sign == 0x2D {
+        negative = sign == 0x2D;
         start = 1;
     }
     if start >= digits.length {
@@ -326,14 +326,14 @@ func CheckFloatShape(digits: char8[..], start: uint, at: *var uint) -> bool {
         index = index + 1;
     }
     *at = index;
-    if whole == 0u { return false; }
-    if whole > 1u && (digits.data[start] as uint8) == 0x30u8 {
+    if whole == 0 { return false; }
+    if whole > 1 && (digits.data[start] as uint8) == 0x30 {
         // The leading zero is the character at fault, not wherever the digits happened to stop.
         *at = start;
         return false;
     }
     var fraction = false;
-    if index < digits.length && (digits.data[index] as uint8) == 0x2Eu8 {
+    if index < digits.length && (digits.data[index] as uint8) == 0x2E {
         index = index + 1;
         var after: uint = 0;
         while index < digits.length && IsDecimal(digits.data[index] as uint8) {
@@ -341,18 +341,18 @@ func CheckFloatShape(digits: char8[..], start: uint, at: *var uint) -> bool {
             index = index + 1;
         }
         *at = index;
-        if after == 0u { return false; }
+        if after == 0 { return false; }
         fraction = true;
     }
     var exponent = false;
     if index < digits.length {
         let mark = digits.data[index] as uint8;
         *at = index;
-        if mark != 0x65u8 && mark != 0x45u8 { return false; }
+        if mark != 0x65 && mark != 0x45 { return false; }
         index = index + 1;
         if index < digits.length {
             let sign = digits.data[index] as uint8;
-            if sign == 0x2Bu8 || sign == 0x2Du8 {
+            if sign == 0x2B || sign == 0x2D {
                 index = index + 1;
             }
         }
@@ -362,7 +362,7 @@ func CheckFloatShape(digits: char8[..], start: uint, at: *var uint) -> bool {
             index = index + 1;
         }
         *at = index;
-        if after == 0u { return false; }
+        if after == 0 { return false; }
         exponent = true;
     }
     // Without one or the other it is an integer, and the caller has already decided which it is reading.
@@ -371,7 +371,7 @@ func CheckFloatShape(digits: char8[..], start: uint, at: *var uint) -> bool {
 }
 
 func IsDecimal(c: uint8) -> bool {
-    return c >= 0x30u8 && c <= 0x39u8;
+    return c >= 0x30 && c <= 0x39;
 }
 
 /// Which of the four date-time shapes a token turned out to be.
@@ -432,7 +432,7 @@ pub func TomlParseDateTime(text: char8[..]) -> TomlDateTime ! TomlScalarError {
         offset: UtcOffset::Utc()
     };
     var at: uint = 0;
-    if text.length >= 5u && (text.data[2] as uint8) == 0x3Au8 {
+    if text.length >= 5 && (text.data[2] as uint8) == 0x3A {
         var consumed: uint = 0;
         if !ReadTime(text, 0, @built.time, @consumed, @at) {
             fail TomlScalarError::Malformed(at);
@@ -443,15 +443,15 @@ pub func TomlParseDateTime(text: char8[..]) -> TomlDateTime ! TomlScalarError {
         built.shape = TomlDateTimeShape::TimeOnly;
         return built;
     }
-    if text.length < 10u {
+    if text.length < 10 {
         fail TomlScalarError::Malformed(text.length);
     }
     if !ReadDate(text, 0, @built.date, @at) {
         fail TomlScalarError::Malformed(at);
     }
-    if text.length == 10u { return .Success(built); }
+    if text.length == 10 { return .Success(built); }
     let separator = text.data[10] as uint8;
-    if separator != 0x54u8 && separator != 0x74u8 && separator != 0x20u8 {
+    if separator != 0x54 && separator != 0x74 && separator != 0x20 {
         fail TomlScalarError::Malformed(10);
     }
     var consumed: uint = 0;
@@ -485,11 +485,11 @@ func ReadDate(text: char8[..], at: uint, date: *var Date, stopped: *var uint) ->
     if !Digits(text, at + 5, 2, @month) { return false; }
     *stopped = at + 8;
     if !Digits(text, at + 8, 2, @day) { return false; }
-    if (text.data[at + 4] as uint8) != 0x2Du8 {
+    if (text.data[at + 4] as uint8) != 0x2D {
         *stopped = at + 4;
         return false;
     }
-    if (text.data[at + 7] as uint8) != 0x2Du8 {
+    if (text.data[at + 7] as uint8) != 0x2D {
         *stopped = at + 7;
         return false;
     }
@@ -521,39 +521,39 @@ func ReadTime(text: char8[..], at: uint, time: *var TimeOfDay, consumed: *var ui
     if !Digits(text, at, 2, @hour) { return false; }
     *stopped = at + 3;
     if !Digits(text, at + 3, 2, @minute) { return false; }
-    if (text.data[at + 2] as uint8) != 0x3Au8 {
+    if (text.data[at + 2] as uint8) != 0x3A {
         *stopped = at + 2;
         return false;
     }
     var index = at + 5;
-    if index < text.length && (text.data[index] as uint8) == 0x3Au8 {
+    if index < text.length && (text.data[index] as uint8) == 0x3A {
         *stopped = index + 1;
         if !Digits(text, index + 1, 2, @second) { return false; }
         index = index + 3;
     }
     var nanosecond: uint32 = 0;
-    if index < text.length && (text.data[index] as uint8) == 0x2Eu8 {
+    if index < text.length && (text.data[index] as uint8) == 0x2E {
         index = index + 1;
         var place: uint = 0;
         var scale: uint32 = 100000000;
         while index < text.length && IsDecimal(text.data[index] as uint8) {
             // Digits past the ninth are dropped rather than refused: they are more precision than a nanosecond
             // holds, and refusing a document over precision nobody can represent helps no one.
-            if place < 9u {
+            if place < 9 {
                 nanosecond = nanosecond + ((text.data[index] as uint8) - 0x30) as uint32 * scale;
                 scale = scale / 10;
             }
             place = place + 1;
             index = index + 1;
         }
-        if place == 0u {
+        if place == 0 {
             *stopped = index;
             return false;
         }
     }
     // Second sixty is a leap second, which the calendar does not represent; it folds to the last nanosecond of
     // fifty-nine, the same policy `Time` states for RFC 3339.
-    if second == 60u32 {
+    if second == 60 {
         second = 59;
         nanosecond = 999999999;
     }
@@ -571,12 +571,12 @@ func ReadTime(text: char8[..], at: uint, time: *var TimeOfDay, consumed: *var ui
 func ReadOffset(text: char8[..], at: uint, offset: *var UtcOffset, stopped: *var uint) -> bool {
     *stopped = at;
     let mark = text.data[at] as uint8;
-    if mark == 0x5Au8 || mark == 0x7Au8 {
+    if mark == 0x5A || mark == 0x7A {
         *offset = UtcOffset::Utc();
         *stopped = at + 1;
         return at + 1 == text.length;
     }
-    if mark != 0x2Bu8 && mark != 0x2Du8 { return false; }
+    if mark != 0x2B && mark != 0x2D { return false; }
     if at + 6 != text.length {
         *stopped = text.length;
         return false;
@@ -587,13 +587,13 @@ func ReadOffset(text: char8[..], at: uint, offset: *var UtcOffset, stopped: *var
     if !Digits(text, at + 1, 2, @hours) { return false; }
     *stopped = at + 4;
     if !Digits(text, at + 4, 2, @minutes) { return false; }
-    if (text.data[at + 3] as uint8) != 0x3Au8 {
+    if (text.data[at + 3] as uint8) != 0x3A {
         *stopped = at + 3;
         return false;
     }
     var signedHours = hours as int32;
     var signedMinutes = minutes as int32;
-    if mark == 0x2Du8 {
+    if mark == 0x2D {
         signedHours = -signedHours;
         signedMinutes = -signedMinutes;
     }

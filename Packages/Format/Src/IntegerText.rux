@@ -102,13 +102,13 @@ pub func WriteIntegerSpec(writer: &var TextWriter, spec: FormatSpec, magnitude: 
     }
     let letter = spec.Base() == FormatBase::UpperHex ? 0x37u64 : 0x57u64;
     var rest = magnitude;
-    if rest == 0u64 {
+    if rest == 0 {
         digits[0] = c8'0';
         count = 1;
     }
-    while rest > 0u64 {
+    while rest > 0 {
         let digit = rest % radix;
-        digits[count] = (digit < 10u64 ? digit + 0x30 : digit + letter) as char8;
+        digits[count] = (digit < 10 ? digit + 0x30 : digit + letter) as char8;
         count = count + 1;
         rest = rest / radix;
     }

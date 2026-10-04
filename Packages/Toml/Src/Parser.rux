@@ -450,7 +450,7 @@ extend TomlParser {
             }
             return TomlValue::FromString(self.allocator, decoded);
         }
-        if token.kind == TomlTokenKind::Boolean { return TomlValue::Boolean(self.allocator, span.length == 4u); }
+        if token.kind == TomlTokenKind::Boolean { return TomlValue::Boolean(self.allocator, span.length == 4); }
         if token.kind == TomlTokenKind::Integer {
             return match TomlParseInteger(span) {
                 .Success(value) => TomlValue::Integer(self.allocator, value),
@@ -712,7 +712,7 @@ extend TomlParser {
             parts.Clear();
             return null;
         }
-        if parts.Length() == 0u {
+        if parts.Length() == 0 {
             self.Stop(TomlStop::Unexpected);
             parts.Clear();
             return null;
@@ -767,7 +767,7 @@ extend TomlParser {
             return (*target).FindMutable(name);
         }
         if existing.kind == TomlKind::Array {
-            if !existing.tableArray || (*existing).Length() == 0u {
+            if !existing.tableArray || (*existing).Length() == 0 {
                 self.Stop(TomlStop::NotATableArray);
                 return null;
             }

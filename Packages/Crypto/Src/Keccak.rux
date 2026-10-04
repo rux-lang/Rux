@@ -35,7 +35,7 @@ const KeccakRotations: uint64[25] = [
 ];
 
 func RotateLeftLane(value: uint64, amount: uint64) -> uint64 {
-    if amount == 0u64 { return value; }
+    if amount == 0 { return value; }
     return (value << amount) | (value >> (64u64 - amount));
 }
 
@@ -49,22 +49,22 @@ func RotateLeftLane(value: uint64, amount: uint64) -> uint64 {
 /// @see https://rux-lang.dev/docs/api/crypto/keccak-permute
 pub func KeccakPermute(lanes: *var uint64) {
     var round: uint = 0;
-    while round < 24u {
+    while round < 24 {
         // Theta: exclusive-or each column together, then mix each with the rotated neighbouring column.
         var parity: uint64[5];
         var x: uint = 0;
-        while x < 5u {
+        while x < 5 {
             parity[x] = lanes[x] ^ lanes[x + 5u] ^ lanes[x + 10u] ^ lanes[x + 15u] ^ lanes[x + 20u];
             x = x + 1;
         }
         var mixed: uint64[5];
         x = 0;
-        while x < 5u {
+        while x < 5 {
             mixed[x] = parity[(x + 4u) % 5u] ^ RotateLeftLane(parity[(x + 1u) % 5u], 1u64);
             x = x + 1;
         }
         var index: uint = 0;
-        while index < 25u {
+        while index < 25 {
             lanes[index] = lanes[index] ^ mixed[index % 5u];
             index = index + 1;
         }
@@ -72,9 +72,9 @@ pub func KeccakPermute(lanes: *var uint64) {
         // Rho and pi together: each lane is rotated by its offset and moved to its new position.
         var moved: uint64[25];
         var y: uint = 0;
-        while y < 5u {
+        while y < 5 {
             x = 0;
-            while x < 5u {
+            while x < 5 {
                 let source = x + 5u * y;
                 let target = y + 5u * ((2u * x + 3u * y) % 5u);
                 moved[target] = RotateLeftLane(lanes[source], KeccakRotations[source]);
@@ -85,9 +85,9 @@ pub func KeccakPermute(lanes: *var uint64) {
 
         // Chi: the only non-linear step, applied along each row.
         y = 0;
-        while y < 5u {
+        while y < 5 {
             x = 0;
-            while x < 5u {
+            while x < 5 {
                 let a = moved[x + 5u * y];
                 let b = moved[(x + 1u) % 5u + 5u * y];
                 let c = moved[(x + 2u) % 5u + 5u * y];
@@ -125,7 +125,7 @@ extend Sha3 {
     func Start(outputLength: uint, domain: uint8) -> Sha3 {
         var digest: Sha3;
         var index: uint = 0;
-        while index < 25u {
+        while index < 25 {
             digest.lanes[index] = 0u64;
             index = index + 1;
         }
@@ -212,7 +212,7 @@ extend Sha3 : Digest {
 
         var written: uint = 0;
         while written < self.outputLength {
-            if written > 0u && written % self.rate == 0u {
+            if written > 0 && written % self.rate == 0 {
                 // A digest longer than the rate would need more squeezing. None of the four SHA-3 sizes does,
                 // but the loop is written so it would be right if one did.
                 KeccakPermute(@self.lanes[0]);

@@ -14,15 +14,15 @@ func Main() -> int {
     // Bernoulli: the rate comes out right, and the two saturating ends are absolute rather than merely likely.
     var heads: uint = 0;
     var draw: uint = 0;
-    while draw < 40000u {
+    while draw < 40000 {
         if Bernoulli<Xoshiro256>(generator, 0.25) {
             heads = heads + 1;
         }
         draw = draw + 1;
     }
-    Assert(heads > 9600u && heads < 10400u, "a quarter-probability coin comes up true about a quarter of the time");
+    Assert(heads > 9600 && heads < 10400, "a quarter-probability coin comes up true about a quarter of the time");
     draw = 0;
-    while draw < 1000u {
+    while draw < 1000 {
         Assert(!Bernoulli<Xoshiro256>(generator, 0.0), "a probability of zero never comes up true");
         Assert(Bernoulli<Xoshiro256>(generator, 1.0), "and one of one always does");
         Assert(!Bernoulli<Xoshiro256>(generator, -0.5), "a probability below zero behaves like zero");
@@ -37,7 +37,7 @@ func Main() -> int {
     var totalSquares = 0.0;
     var smallest = 1.0e300;
     draw = 0;
-    while draw < 200000u {
+    while draw < 200000 {
         let value = Exponential<Xoshiro256>(generator);
         Assert(IsFinite(value), "an exponential draw is always finite, however the uniform draw landed");
         Assert(value >= 0.0, "and never negative");
@@ -58,7 +58,7 @@ func Main() -> int {
     // Scaling by a rate scales the mean the other way, and a rate that makes no sense gives zero.
     total = 0.0;
     draw = 0;
-    while draw < 100000u {
+    while draw < 100000 {
         total = total + ExponentialWithRate<Xoshiro256>(generator, 4.0);
         draw = draw + 1;
     }
@@ -72,7 +72,7 @@ func Main() -> int {
     var aboveZero: uint = 0;
     var beyondTwo: uint = 0;
     draw = 0;
-    while draw < 200000u {
+    while draw < 200000 {
         let value = Normal<Xoshiro256>(generator);
         Assert(IsFinite(value), "a normal draw is always finite");
         total = total + value;
@@ -89,16 +89,16 @@ func Main() -> int {
     let normalVariance = totalSquares / count - normalMean * normalMean;
     Assert(Abs(normalMean) < 0.02, "the standard normal has mean zero");
     Assert(Abs(normalVariance - 1.0) < 0.03, "and variance one");
-    Assert(aboveZero > 98000u && aboveZero < 102000u, "it is symmetric about zero");
+    Assert(aboveZero > 98000 && aboveZero < 102000, "it is symmetric about zero");
     // The true proportion beyond two standard deviations is about 4.55 percent.
-    Assert(beyondTwo > 8300u && beyondTwo < 9900u, "and its tails have about the weight they should");
+    Assert(beyondTwo > 8300 && beyondTwo < 9900, "and its tails have about the weight they should");
 
     // The pair gives two usable values, not one value twice.
     var first = 0.0;
     var second = 0.0;
     var differed: uint = 0;
     draw = 0;
-    while draw < 1000u {
+    while draw < 1000 {
         NormalPair<Xoshiro256>(generator, @first, @second);
         Assert(IsFinite(first) && IsFinite(second), "both values of a pair are finite");
         if first != second {
@@ -106,13 +106,13 @@ func Main() -> int {
         }
         draw = draw + 1;
     }
-    Assert(differed == 1000u, "and the two are independent draws rather than the same one returned twice");
+    Assert(differed == 1000, "and the two are independent draws rather than the same one returned twice");
 
     // Shifting and scaling.
     total = 0.0;
     totalSquares = 0.0;
     draw = 0;
-    while draw < 100000u {
+    while draw < 100000 {
         let value = NormalWith<Xoshiro256>(generator, 5.0, 2.0);
         total = total + value;
         totalSquares = totalSquares + value * value;

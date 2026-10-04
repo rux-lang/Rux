@@ -36,11 +36,11 @@ func WriteCount(writer: &var TextWriter, value: uint) -> ! FormatError {
     var digits: char8[20];
     var count: uint = 0;
     var rest = value;
-    if rest == 0u {
+    if rest == 0 {
         digits[0] = c8'0';
         count = 1;
     }
-    while rest > 0u {
+    while rest > 0 {
         digits[count] = ((rest % 10) + 0x30) as char8;
         count = count + 1;
         rest = rest / 10;

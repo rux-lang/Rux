@@ -109,11 +109,11 @@ func Main() -> int {
     let moment = plain catch {
         else => OffsetDateTime(DateTime { date: Date::FromEpochDays(0), time: TimeOfDay::Midnight() }, UtcOffset::Utc())
     };
-    Assert(moment.dateTime.date.year == 2024i32 && moment.dateTime.date.month == 2u8 &&
-           moment.dateTime.date.day == 29u8, "a leap day in a leap year is a day");
-    Assert(moment.dateTime.time.hour == 12u8 && moment.dateTime.time.minute == 30u8 &&
-           moment.dateTime.time.second == 45u8, "and the time is what was written");
-    Assert(moment.offset.TotalSeconds() == 0i32, "and Z is UTC");
+    Assert(moment.dateTime.date.year == 2024 && moment.dateTime.date.month == 2 &&
+           moment.dateTime.date.day == 29, "a leap day in a leap year is a day");
+    Assert(moment.dateTime.time.hour == 12 && moment.dateTime.time.minute == 30 &&
+           moment.dateTime.time.second == 45, "and the time is what was written");
+    Assert(moment.offset.TotalSeconds() == 0, "and Z is UTC");
 
     Assert(Succeeded(ParseRfc3339("2024-02-29t12:30:45.5z")), "the lower-case letters parse too");
     Assert(Succeeded(ParseRfc3339("2024-02-29 12:30:45.123456789+05:30")), "a space separator parses");
@@ -126,7 +126,7 @@ func Main() -> int {
     let folded = leap catch {
         else => OffsetDateTime(DateTime { date: Date::FromEpochDays(0), time: TimeOfDay::Midnight() }, UtcOffset::Utc())
     };
-    Assert(folded.dateTime.time.second == 59u8 && folded.dateTime.time.nanosecond == 999999999u32,
+    Assert(folded.dateTime.time.second == 59 && folded.dateTime.time.nanosecond == 999999999,
            "and folds to the last nanosecond of second 59");
 
     // A syntax failure points at the byte where the shape stopped matching.

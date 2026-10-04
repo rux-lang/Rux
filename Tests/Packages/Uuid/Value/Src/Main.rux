@@ -16,7 +16,7 @@ func Main() -> int {
     // Round-tripping bytes.
     var raw: byte[16];
     var index: uint = 0;
-    while index < 16u {
+    while index < 16 {
         raw[index] = (index * 17) as byte;
         index = index + 1;
     }
@@ -24,7 +24,7 @@ func Main() -> int {
     var value = Uuid::FromBytes(rawBytes);
     let readBack = value.Bytes();
     index = 0;
-    while index < 16u {
+    while index < 16 {
         Assert(readBack.data[index] == raw[index], "the bytes come back in the order they went in");
         index = index + 1;
     }
@@ -40,7 +40,7 @@ func Main() -> int {
     var partial = Uuid::FromBytes(shortBytes);
     let partialBytes = partial.Bytes();
     Assert(partialBytes.data[3] == raw[3], "the bytes given are kept");
-    Assert(partialBytes.data[4] == 0u8, "and the rest are zero");
+    Assert(partialBytes.data[4] == 0, "and the rest are zero");
 
     // Ordering follows the bytes, most significant first — which is what makes a time-ordered UUID sort by
     // time. A comparison that started anywhere else would pass an equality test and fail this.
@@ -57,7 +57,7 @@ func Main() -> int {
 
     // Every byte position affects the order, so none is being skipped.
     index = 0;
-    while index < 16u {
+    while index < 16 {
         var stepped = Uuid::Nil();
         stepped.bytes[index] = 1;
         Assert(stepped.Compare(nil) == Ordering::Greater, "every byte position participates in the ordering");
@@ -68,16 +68,16 @@ func Main() -> int {
     // Hashing spreads: sixteen values differing in one byte each must give sixteen distinct hashes.
     var hashes: uint64[16];
     index = 0;
-    while index < 16u {
+    while index < 16 {
         var stepped = Uuid::Nil();
         stepped.bytes[index] = 0xAB;
         hashes[index] = stepped.Hash();
         index = index + 1;
     }
     var first: uint = 0;
-    while first < 16u {
+    while first < 16 {
         var second = first + 1;
-        while second < 16u {
+        while second < 16 {
             Assert(hashes[first] != hashes[second], "values differing in one byte hash differently");
             second = second + 1;
         }
@@ -89,11 +89,11 @@ func Main() -> int {
     var structured = Uuid::Nil();
     structured.bytes[6] = 0x4F;
     structured.bytes[8] = 0xA0;
-    Assert(structured.Version() == 4u8, "the version comes from the high nibble of the seventh byte");
+    Assert(structured.Version() == 4, "the version comes from the high nibble of the seventh byte");
     Assert(structured.Variant() == UuidVariant::Standard, "and the variant from the high bits of the ninth");
 
     structured.bytes[6] = 0x7C;
-    Assert(structured.Version() == 7u8, "a version 7 UUID reports seven");
+    Assert(structured.Version() == 7, "a version 7 UUID reports seven");
 
     // The variant encoding is variable-length, so each of its four cases has its own bit pattern.
     structured.bytes[8] = 0x00;

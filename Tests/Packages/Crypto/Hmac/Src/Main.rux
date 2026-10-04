@@ -16,10 +16,10 @@ func FromHex(text: char8[..], into: var char8[..]) {
     while index < into.length {
         var value: uint8 = 0;
         var half: uint = 0;
-        while half < 2u {
+        while half < 2 {
             let c = text.data[index * 2 + half] as uint8;
             var digit: uint8 = 0;
-            if c >= 0x30u8 && c <= 0x39u8 {
+            if c >= 0x30 && c <= 0x39 {
                 digit = c - 0x30;
             }
             else {
@@ -47,7 +47,7 @@ func Main() -> int {
     // RFC 4231 case 1: a twenty-byte key of 0x0b, message "Hi There".
     var key: char8[200];
     var index: uint = 0;
-    while index < 20u {
+    while index < 20 {
         key[index] = 0x0Bu8 as char8;
         index = index + 1;
     }
@@ -72,7 +72,7 @@ func Main() -> int {
     // and so is replaced by its own digest. This is the case that separates a correct implementation from one
     // that pads a long key instead of hashing it.
     index = 0;
-    while index < 131u {
+    while index < 131 {
         key[index] = 0xAAu8 as char8;
         index = index + 1;
     }
@@ -94,7 +94,7 @@ func Main() -> int {
     // key, because both are replaced by the same digest.
     var stretched: char8[300];
     index = 0;
-    while index < 300u {
+    while index < 300 {
         stretched[index] = 0xAAu8 as char8;
         index = index + 1;
     }
@@ -121,7 +121,7 @@ func Main() -> int {
     // The incremental contract, over a message spanning several blocks.
     var message: char8[500];
     index = 0;
-    while index < 500u {
+    while index < 500 {
         message[index] = ((index % 251) as uint8) as char8;
         index = index + 1;
     }
@@ -130,7 +130,7 @@ func Main() -> int {
     HmacOf<Sha256>(Sha256(), shortKey, whole, (@oneShot[0])[..32]);
     let oneShotBytes = (@oneShot[0])[..32];
     var split: uint = 0;
-    while split <= 500u {
+    while split <= 500 {
         var state = Hmac<Sha256>(Sha256(), shortKey);
         let first = (@message[0])[..split];
         state.Update(first);
@@ -154,7 +154,7 @@ func Main() -> int {
     // The tag length follows the digest.
     var narrow = Hmac<Sha256>(Sha256(), shortKey);
     var wide = Hmac<Sha512>(Sha512(), shortKey);
-    Assert(narrow.TagLength() == 32u && wide.TagLength() == 64u, "the tag is as long as the digest under it");
+    Assert(narrow.TagLength() == 32 && wide.TagLength() == 64, "the tag is as long as the digest under it");
 
     return 0;
 }

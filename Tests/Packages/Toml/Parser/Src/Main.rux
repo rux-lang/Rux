@@ -54,7 +54,7 @@ func Refuses(allocator: Allocator, text: char8[..], expected: char8[..]) -> bool
 func Allowed(allocator: Allocator, text: char8[..]) -> bool {
     let outcome = TomlParse(allocator, text);
     var storage: char8[128];
-    return Refusal(outcome, (@storage[0])[..128]) == 0u;
+    return Refusal(outcome, (@storage[0])[..128]) == 0;
 }
 
 // The whole rendering, position and all.
@@ -116,9 +116,9 @@ func Main() -> int {
     let allocator: Allocator = system;
     // The ordinary shapes, which have to work before the refusals mean anything.
     var simple = Accepts(allocator, "title = \"TOML\"\ncount = 3", "a key and a value");
-    Assert((*simple.Find(View("title"))).AsText().Length() == 4u, "the string is there");
+    Assert((*simple.Find(View("title"))).AsText().Length() == 4, "the string is there");
     var counted: int64 = 0;
-    Assert((*simple.Find(View("count"))).AsInteger(@counted) && counted == 3i64, "and so is the integer");
+    Assert((*simple.Find(View("count"))).AsInteger(@counted) && counted == 3, "and so is the integer");
 
     // A table header puts the lines after it somewhere else.
     var tabled = Accepts(allocator, "[server]\nhost = \"local\"\nport = 80", "a table header");
@@ -134,14 +134,14 @@ func Main() -> int {
     // A dotted key does the same inside one line.
     var dotted = Accepts(allocator, "fruit.apple.colour = \"red\"\nfruit.apple.taste = \"sweet\"",
                          "dotted keys");
-    Assert((*(*dotted.Find(View("fruit"))).Find(View("apple"))).Length() == 2u,
+    Assert((*(*dotted.Find(View("fruit"))).Find(View("apple"))).Length() == 2,
            "and two of them may build the same table");
 
     // Inline tables and arrays.
     var inline = Accepts(allocator, "point = { x = 1, y = 2 }", "an inline table");
-    Assert((*inline.Find(View("point"))).Length() == 2u, "holds its entries");
+    Assert((*inline.Find(View("point"))).Length() == 2, "holds its entries");
     var array = Accepts(allocator, "ports = [ 8001, 8002,\n  8003 ]", "an array");
-    Assert((*array.Find(View("ports"))).Length() == 3u, "spanning lines, with the newlines ignored inside it");
+    Assert((*array.Find(View("ports"))).Length() == 3, "spanning lines, with the newlines ignored inside it");
     var mixed = Accepts(allocator, "values = [ 1, \"two\", 3.0, true ]", "an array of mixed kinds");
     Assert((*(*mixed.Find(View("values"))).At(1)).Kind() == TomlKind::Text,
            "which TOML permits, unlike its ancestors");
@@ -149,15 +149,15 @@ func Main() -> int {
     // TOML 1.1 allows a newline and a trailing comma inside an inline table, which 1.0 did not.
     var spread = Accepts(allocator, "point = {\n  x = 1,\n  y = 2,\n}",
                          "an inline table spread over lines, which is TOML 1.1");
-    Assert((*spread.Find(View("point"))).Length() == 2u, "and holds what it was given");
+    Assert((*spread.Find(View("point"))).Length() == 2, "and holds what it was given");
 
     // An array of tables appends an element per header.
     var products = Accepts(allocator,
                            "[[product]]\nname = \"hammer\"\n[[product]]\nname = \"nail\"",
                            "an array of tables");
     Assert((*products.Find(View("product"))).Kind() == TomlKind::Array, "is an array");
-    Assert((*products.Find(View("product"))).Length() == 2u, "with one element per header");
-    Assert((*(*(*products.Find(View("product"))).At(1)).Find(View("name"))).AsText().Length() == 4u,
+    Assert((*products.Find(View("product"))).Length() == 2, "with one element per header");
+    Assert((*(*(*products.Find(View("product"))).At(1)).Find(View("name"))).AsText().Length() == 4,
            "each holding the lines that followed it");
 
     // A header may descend through the most recent element of an array of tables.
@@ -251,24 +251,24 @@ func Main() -> int {
 
     Assert(Refuses(tracked, "a = \"one\"\nb = \"two\"\na = \"three\"", "TomlParseError::DuplicateKey"),
            "a document that fails on its last line is refused");
-    Assert(state.live == 0i32, "and everything the partial document held is released");
+    Assert(state.live == 0, "and everything the partial document held is released");
 
     Assert(Refuses(tracked, "[t]\nx = \"a\"\ny = \"b\"\nport = 010",
                    "TomlParseError::BadValue(TomlScalarError::Malformed(0))"),
            "a document with a bad value after good ones is refused");
-    Assert(state.live == 0i32, "and so is everything that one held");
+    Assert(state.live == 0, "and so is everything that one held");
 
     Assert(Refuses(tracked, "a = { b = \"deep\", c = [\"x\", \"y\"] }\na.d = 1",
                    "TomlParseError::ExtendedInlineTable"),
            "a nested document that fails is refused");
-    Assert(state.live == 0i32, "including every level of it");
+    Assert(state.live == 0, "including every level of it");
 
     // The same document without its last line parses and takes storage, so the counts above are measuring
     // cleanup rather than a parser that never allocated.
     var whileHeld: int32 = 0;
     ParseAndDrop(tracked, "a = \"one\"\nb = \"two\"", @state, @whileHeld);
-    Assert(whileHeld > 0i32, "a whole document takes storage");
-    Assert(state.live == 0i32, "which comes back when the document's life ends");
+    Assert(whileHeld > 0, "a whole document takes storage");
+    Assert(state.live == 0, "which comes back when the document's life ends");
 
     return 0;
 }

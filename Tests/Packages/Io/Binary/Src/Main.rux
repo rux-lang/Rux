@@ -73,25 +73,25 @@ func Main() -> int {
     var golden = MemoryState { room: (@goldenStorage[0])[..256], length: 0, offset: 0 };
     WriteUint32(golden, Endian::Big, 0x12345678) catch { else => Panic("big writes") };
     WriteUint32(golden, Endian::Little, 0x12345678) catch { else => Panic("and little writes") };
-    Assert(ByteAt(golden, 0) == 0x12u8 && ByteAt(golden, 1) == 0x34u8 &&
-           ByteAt(golden, 2) == 0x56u8 && ByteAt(golden, 3) == 0x78u8,
+    Assert(ByteAt(golden, 0) == 0x12 && ByteAt(golden, 1) == 0x34 &&
+           ByteAt(golden, 2) == 0x56 && ByteAt(golden, 3) == 0x78,
            "big-endian puts the most significant byte first");
-    Assert(ByteAt(golden, 4) == 0x78u8 && ByteAt(golden, 5) == 0x56u8 &&
-           ByteAt(golden, 6) == 0x34u8 && ByteAt(golden, 7) == 0x12u8,
+    Assert(ByteAt(golden, 4) == 0x78 && ByteAt(golden, 5) == 0x56 &&
+           ByteAt(golden, 6) == 0x34 && ByteAt(golden, 7) == 0x12,
            "and little-endian mirrors it");
 
     // The IEEE 754 pattern of 1.0, byte for byte, in network order.
     var floatsStorage: char8[256];
     var floats = MemoryState { room: (@floatsStorage[0])[..256], length: 0, offset: 0 };
     WriteFloat64(floats, Endian::Big, 1.0) catch { else => Panic("the float writes") };
-    Assert(ByteAt(floats, 0) == 0x3Fu8 && ByteAt(floats, 1) == 0xF0u8 && ByteAt(floats, 2) == 0u8 &&
-           ByteAt(floats, 7) == 0u8, "as the bit pattern its specification names");
+    Assert(ByteAt(floats, 0) == 0x3F && ByteAt(floats, 1) == 0xF0 && ByteAt(floats, 2) == 0 &&
+           ByteAt(floats, 7) == 0, "as the bit pattern its specification names");
 
     // A mixed record round-trips through both orders, each value read back where it was written.
     var recordStorage: char8[256];
     var record = MemoryState { room: (@recordStorage[0])[..256], length: 0, offset: 0 };
     let wideValue = (0x0123456789ABCDEFu512 << 64u512) | 0xFEDCBA9876543210u512;
-    let hugeValue = (wideValue << 256u512) | (wideValue << 128u512) | wideValue;
+    let hugeValue = (wideValue << 256) | (wideValue << 128) | wideValue;
     var order = Endian::Big;
     var pass: uint = 0;
     while pass < 2 {
@@ -108,10 +108,10 @@ func Main() -> int {
         WriteFloat32(record, order, -2.5f32) catch { else => Panic("f32 writes") };
         WriteFloat64(record, order, 6.02214076e23) catch { else => Panic("f64 writes") };
 
-        Assert(Expect(ReadUint8(record, order), "u8 reads") == 0xABu8, "u8 returns");
-        Assert(Expect(ReadUint16(record, order), "u16 reads") == 0xBEEFu16, "u16 returns");
-        Assert(Expect(ReadUint32(record, order), "u32 reads") == 0xDEADBEEFu32, "u32 returns");
-        Assert(Expect(ReadUint64(record, order), "u64 reads") == 0x0123456789ABCDEFu64, "u64 returns");
+        Assert(Expect(ReadUint8(record, order), "u8 reads") == 0xAB, "u8 returns");
+        Assert(Expect(ReadUint16(record, order), "u16 reads") == 0xBEEF, "u16 returns");
+        Assert(Expect(ReadUint32(record, order), "u32 reads") == 0xDEADBEEF, "u32 returns");
+        Assert(Expect(ReadUint64(record, order), "u64 reads") == 0x0123456789ABCDEF, "u64 returns");
         Assert(Expect(ReadUint128(record, order), "u128 reads") == (wideValue as uint128), "u128 returns");
         Assert(Expect(ReadUint256(record, order), "u256 reads") == ((hugeValue as uint256) | 1),
                "u256 returns");

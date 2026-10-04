@@ -74,20 +74,20 @@ func Main() -> int {
         else => Panic("the reader starts")
     };
     Assert(reader.Next() == JsonEvent::ObjectStart, "the object opens");
-    Assert(reader.Depth() == 1u, "and the depth follows");
+    Assert(reader.Depth() == 1, "and the depth follows");
     Assert(reader.Next() == JsonEvent::Name, "a member name arrives");
-    Assert(reader.Text().length == 4u, "with its text");
+    Assert(reader.Text().length == 4, "with its text");
     Assert(reader.Next() == JsonEvent::Number, "then its value");
-    Assert(reader.Text().length == 2u, "as a number, text intact across the reads");
+    Assert(reader.Text().length == 2, "as a number, text intact across the reads");
     Assert(reader.Next() == JsonEvent::Name, "a second name");
     Assert(reader.Next() == JsonEvent::ArrayStart, "opening an array");
-    Assert(reader.Depth() == 2u, "nested one deeper");
+    Assert(reader.Depth() == 2, "nested one deeper");
     Assert(reader.Next() == JsonEvent::True, "a literal");
     Assert(reader.Next() == JsonEvent::Null, "another");
     Assert(reader.Next() == JsonEvent::Text, "and a string");
     Assert(reader.Next() == JsonEvent::ArrayEnd, "the array closes");
     Assert(reader.Next() == JsonEvent::ObjectEnd, "the object closes");
-    Assert(reader.Depth() == 0u, "back to the top");
+    Assert(reader.Depth() == 0, "back to the top");
     Assert(reader.Next() == JsonEvent::End, "and the document ends");
     Assert(!(reader.Failure() is JsonParseError), "with nothing wrong");
     reader.Release();
@@ -99,24 +99,24 @@ func Main() -> int {
     big[written] = 0x5Bu8 as char8;
     written = written + 1u;
     var record: uint = 0;
-    while record < 10000u {
-        if record > 0u {
+    while record < 10000 {
+        if record > 0 {
             big[written] = 0x2Cu8 as char8;
             written = written + 1u;
         }
         var digits = record;
         var scratch: char8[8];
         var count: uint = 0;
-        if digits == 0u {
+        if digits == 0 {
             scratch[0] = 0x30u8 as char8;
             count = 1;
         }
-        while digits > 0u {
+        while digits > 0 {
             scratch[count] = ((0x30u8 + (digits % 10u) as uint8)) as char8;
             count = count + 1u;
             digits = digits / 10u;
         }
-        while count > 0u {
+        while count > 0 {
             count = count - 1u;
             big[written] = scratch[count];
             written = written + 1u;
@@ -138,7 +138,7 @@ func Main() -> int {
         seen = seen + 1u;
         event = bigReader.Next();
     }
-    Assert(seen == 10000u, "every record arrives as an event");
+    Assert(seen == 10000, "every record arrives as an event");
     Assert(event == JsonEvent::ArrayEnd, "and the array closes");
     Assert(bigReader.Next() == JsonEvent::End, "leaving the document finished");
     Assert(!(bigReader.Failure() is JsonParseError), "with nothing wrong");

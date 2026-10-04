@@ -162,7 +162,7 @@ pub func WriteFormat(writer: &var TextWriter, format: char8[..], args: Display..
             index = found.after;
             continue;
         }
-        if (ch as uint32) < 0x80u32 {
+        if (ch as uint32) < 0x80 {
             WriteAscii(writer, ch)?;
             index += 1;
         } else {

@@ -17,10 +17,10 @@ func FromHex(text: char8[..], into: var char8[..]) {
     while index < into.length {
         var value: uint8 = 0;
         var half: uint = 0;
-        while half < 2u {
+        while half < 2 {
             let c = text.data[index * 2 + half] as uint8;
             var digit: uint8 = 0;
-            if c >= 0x30u8 && c <= 0x39u8 {
+            if c >= 0x30 && c <= 0x39 {
                 digit = c - 0x30;
             }
             else {
@@ -49,7 +49,7 @@ func Main() -> int {
     // trailing-ones rule performs, and the root flag that only the final join carries.
     var message: char8[5000];
     var index: uint = 0;
-    while index < 5000u {
+    while index < 5000 {
         message[index] = ((index % 251) as uint8) as char8;
         index = index + 1;
     }
@@ -57,11 +57,11 @@ func Main() -> int {
     // Every length around each of the first four chunk boundaries, fed in one call and in two.
     let boundaries: uint[5] = [0, 1024, 2048, 3072, 4096];
     var which: uint = 0;
-    while which < 5u {
+    while which < 5 {
         var offset: uint = 0;
-        while offset <= 4u {
+        while offset <= 4 {
             let base = boundaries[which];
-            if base + offset <= 5000u && base + offset >= 2u {
+            if base + offset <= 5000 && base + offset >= 2 {
                 let length = base + offset - 2;
                 var oneShot: char8[32];
                 let whole = (@message[0])[..length];
@@ -71,7 +71,7 @@ func Main() -> int {
                 // A handful of splits rather than all of them, since the lengths here are large.
                 let splits: uint[6] = [0, 1, 63, 64, 1023, 1024];
                 var s: uint = 0;
-                while s < 6u {
+                while s < 6 {
                     let split = splits[s] <= length ? splits[s] : length;
                     var incremental = Blake3();
                     let first = (@message[0])[..split];
@@ -94,7 +94,7 @@ func Main() -> int {
     // Byte-at-a-time across two chunk boundaries, which drives the chunk state through every flag transition.
     var byteAtATime = Blake3();
     index = 0;
-    while index < 2500u {
+    while index < 2500 {
         let single = (@message[index])[..1];
         byteAtATime.Update(single);
         index = index + 1;
@@ -112,7 +112,7 @@ func Main() -> int {
     // exactly what a mishandled flag would collapse.
     var altered: char8[5000];
     index = 0;
-    while index < 5000u {
+    while index < 5000 {
         altered[index] = message[index];
         index = index + 1;
     }
@@ -138,7 +138,7 @@ func Main() -> int {
            "a short output is the start of a long one");
 
     var sizes = Blake3();
-    Assert(sizes.DigestLength() == 32u && sizes.BlockLength() == 64u, "BLAKE3 reports its conventional sizes");
+    Assert(sizes.DigestLength() == 32 && sizes.BlockLength() == 64, "BLAKE3 reports its conventional sizes");
 
     return 0;
 }

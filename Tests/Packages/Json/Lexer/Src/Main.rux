@@ -62,7 +62,7 @@ func Main() -> int {
     var stringLexer = JsonLexer("\"plain\"", JsonLimits::Default());
     let plain = stringLexer.Next();
     Assert(plain.kind == JsonTokenKind::Text, "a string lexes");
-    Assert(plain.start == 1u && plain.end == 6u, "with a span excluding the quotes");
+    Assert(plain.start == 1 && plain.end == 6, "with a span excluding the quotes");
     Assert(!plain.escaped, "and is marked as needing no unescaping, so it can be used in place");
 
     var escapedLexer = JsonLexer("\"a\\nb\"", JsonLimits::Default());

@@ -73,7 +73,7 @@ func Same(actual: char8[..], expected: char8[..]) -> bool {
 func Untouched(room: char8[..]) -> bool {
     var index: uint = 0;
     while index < room.length {
-        if (room.data[index] as uint8) != 0x3Fu8 { return false; }
+        if (room.data[index] as uint8) != 0x3F { return false; }
         index = index + 1;
     }
     return true;
@@ -126,7 +126,7 @@ func RefusedBySpec(value: Uuid, spec: FormatSpec) -> bool {
         .Failure(error) => error,
         .Success(_) => return false
     };
-    if writer.Length() != 0u { return false; }
+    if writer.Length() != 0 { return false; }
     return match reported {
         .UnsupportedRequest => true,
         else => false
@@ -139,11 +139,11 @@ func Main() -> int {
     // The canonical form round-trips.
     Assert(Accepts(canonical), "the canonical form parses");
     var value = Parsed(canonical);
-    Assert(value.Version() == 1u8, "and its version is read from the right nibble");
+    Assert(value.Version() == 1, "and its version is read from the right nibble");
     var text: char8[64];
     Assert(Succeeded(Format(value, (@text[0])[..36])), "and writes back into a destination of exactly its length");
     var index: uint = 0;
-    while index < 36u {
+    while index < 36 {
         Assert(text[index] == canonical.data[index], "and it formats back to exactly what was parsed");
         index = index + 1;
     }
@@ -155,8 +155,8 @@ func Main() -> int {
 
     var upperText: char8[64];
     Assert(Succeeded(FormatUpper(value, (@upperText[0])[..36])), "the upper-case form writes");
-    Assert((upperText[0] as uint8) == 0x46u8, "the upper-case form writes upper-case digits");
-    Assert((upperText[8] as uint8) == 0x2Du8, "and keeps the hyphens");
+    Assert((upperText[0] as uint8) == 0x46, "the upper-case form writes upper-case digits");
+    Assert((upperText[8] as uint8) == 0x2D, "and keeps the hyphens");
     Assert(Parsed((@upperText[0])[..36]).Equals(value), "and parses back to the same value");
 
     // The URN form, in both cases of its prefix.
@@ -221,7 +221,7 @@ func Main() -> int {
     // fail while still producing something that looks like a UUID.
     var probe = Uuid::Nil();
     index = 0;
-    while index < 16u {
+    while index < 16 {
         probe = Uuid::Nil();
         probe.bytes[index] = 0x9C;
         Assert(Succeeded(Format(probe, (@text[0])[..36])), "every byte position writes");
@@ -235,7 +235,7 @@ func Main() -> int {
     // would leave a string that is not a UUID where a caller may go on to read one.
     var room: char8[64];
     index = 0;
-    while index < 64u {
+    while index < 64 {
         room[index] = 0x3Fu8 as char8;
         index = index + 1;
     }
@@ -261,8 +261,8 @@ func Main() -> int {
 
     // The two lengths are constants a caller can size a destination from, and they are the lengths the writers
     // actually require.
-    Assert(UuidTextLength == 36u, "the canonical length is thirty-six");
-    Assert(UuidUrnLength == 45u, "and the URN length is that plus the prefix");
+    Assert(UuidTextLength == 36, "the canonical length is thirty-six");
+    Assert(UuidUrnLength == 45, "and the URN length is that plus the prefix");
 
     // Presentation: the default is the canonical lower-case form, and the URN form is a style.
     let plain = FormatSpec::Plain();

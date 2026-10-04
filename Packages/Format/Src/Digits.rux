@@ -19,7 +19,7 @@ pub const MaxDecimalDigits: uint = 20;
 /// @param value the value to act on
 /// @see https://rux-lang.dev/docs/api/format/write-uint
 pub func WriteUint(cursor: &var ByteCursor, value: uint64) {
-    if value == 0u64 {
+    if value == 0 {
         cursor.Push(c8'0');
         return;
     }
@@ -27,7 +27,7 @@ pub func WriteUint(cursor: &var ByteCursor, value: uint64) {
     var digits: char8[20];
     var length: uint = 0;
     var rest = value;
-    while rest > 0u64 {
+    while rest > 0 {
         digits[length] = (rest % 10 + 48) as char8;
         length++;
         rest /= 10;
@@ -50,7 +50,7 @@ pub func WriteUint(cursor: &var ByteCursor, value: uint64) {
 /// @param value the value to act on
 /// @see https://rux-lang.dev/docs/api/format/write-int
 pub func WriteInt(cursor: &var ByteCursor, value: int64) {
-    if value < 0i64 {
+    if value < 0 {
         cursor.Push(c8'-');
         WriteUint(cursor, ~(value as uint64) + 1);
         return;

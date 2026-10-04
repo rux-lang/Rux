@@ -32,11 +32,11 @@ func Main() -> int {
     };
     var exact: uint64 = 0;
     Assert((*large.AsNumber()).AsUint64(@exact), "and reads back as an unsigned integer");
-    Assert(exact == 9007199254740993u64,
+    Assert(exact == 9007199254740993,
            "exactly -- one past two to the fifty-third, which a double would have rounded away");
     var asFloat = 0.0;
     Assert((*large.AsNumber()).AsFloat64(@asFloat), "it also reads as a float");
-    Assert((asFloat as uint64) != 9007199254740993u64,
+    Assert((asFloat as uint64) != 9007199254740993,
            "and that reading loses the last digit, which is why the exact one is offered separately");
 
     var written = JsonValue::Number(allocator, "1.2000") catch { else => Panic("1.2000 is stored") };
@@ -76,20 +76,20 @@ func Main() -> int {
 
     // Arrays own their elements and keep their order.
     var array = JsonValue::Array(allocator);
-    Assert(array.Kind() == JsonKind::Array && array.Length() == 0u, "a new array is empty");
+    Assert(array.Kind() == JsonKind::Array && array.Length() == 0, "a new array is empty");
     var index: uint = 0;
-    while index < 5u {
-        var element = JsonValue::Boolean(allocator, (index % 2) == 0u);
+    while index < 5 {
+        var element = JsonValue::Boolean(allocator, (index % 2) == 0);
         Assert(array.Push(<-element), "elements append");
         index = index + 1;
     }
-    Assert(array.Length() == 5u, "and the array grows");
+    Assert(array.Length() == 5, "and the array grows");
     index = 0;
-    while index < 5u {
+    while index < 5 {
         let element = array.At(index);
         Assert(element != null, "every index is reachable");
         var value = false;
-        Assert((*element).AsBoolean(@value) && value == ((index % 2) == 0u),
+        Assert((*element).AsBoolean(@value) && value == ((index % 2) == 0),
                "and the elements are in the order they were added");
         index = index + 1;
     }
@@ -97,7 +97,7 @@ func Main() -> int {
 
     // Objects keep insertion order, which is what lets a document be written back recognisably.
     var object = JsonValue::Object(allocator);
-    Assert(object.Kind() == JsonKind::Object && object.Length() == 0u, "a new object is empty");
+    Assert(object.Kind() == JsonKind::Object && object.Length() == 0, "a new object is empty");
     var zetaName = String::FromBytes(allocator, "zeta") catch { else => Panic("a name is built") };
     var zetaValue = JsonValue::Number(allocator, "1") catch { else => Panic("1 is stored") };
     Assert(object.Insert(zetaName, <-zetaValue), "a member inserts");
@@ -107,7 +107,7 @@ func Main() -> int {
     var muName = String::FromBytes(allocator, "mu") catch { else => Panic("a name is built") };
     var muValue = JsonValue::Text(allocator, "found") catch { else => Panic("a string is stored") };
     Assert(object.Insert(muName, <-muValue), "and a third");
-    Assert(object.Length() == 3u, "and the object grows");
+    Assert(object.Length() == 3, "and the object grows");
 
     let firstMember = object.MemberAt(0);
     let zeta = View("zeta");
@@ -130,7 +130,7 @@ func Main() -> int {
     // Wrong-kind accessors report failure rather than reinterpreting.
     Assert(array.At(0) != null && object.At(0) == null, "indexing works on arrays and not on objects");
     Assert(object.MemberAt(0) != null && array.MemberAt(0) == null, "and members the other way round");
-    Assert(nullValue.Length() == 0u && text.Length() == 0u, "a scalar has no length");
+    Assert(nullValue.Length() == 0 && text.Length() == 0, "a scalar has no length");
     var pushRefused = JsonValue::Null(allocator);
     Assert(!nullValue.Push(<-pushRefused), "pushing into a scalar is refused rather than ignored");
 

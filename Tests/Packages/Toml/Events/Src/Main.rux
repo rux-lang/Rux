@@ -58,9 +58,9 @@ func Main() -> int {
     var pair = TomlEventReader("title = \"TOML\"");
     Assert(pair.Next() == TomlEvent::KeyStart, "a pair begins with its key");
     Assert(pair.Next() == TomlEvent::KeyPart, "whose one part follows");
-    Assert(pair.Span().length == 5u, "spanning the key as written");
+    Assert(pair.Span().length == 5, "spanning the key as written");
     Assert(pair.Next() == TomlEvent::Text, "then the value");
-    Assert(pair.Span().length == 4u, "spanning the string without its quotes");
+    Assert(pair.Span().length == 4, "spanning the string without its quotes");
     Assert(pair.Next() == TomlEvent::End, "and then the document is finished");
 
     // A dotted key arrives as one part per name.
@@ -85,10 +85,10 @@ func Main() -> int {
     nested.Next();
     nested.Next();
     Assert(nested.Next() == TomlEvent::ArrayStart, "an array opens");
-    Assert(nested.Depth() == 1u, "one deep");
+    Assert(nested.Depth() == 1, "one deep");
     Assert(nested.Next() == TomlEvent::Integer, "its first element");
     Assert(nested.Next() == TomlEvent::ArrayStart, "then an array inside it");
-    Assert(nested.Depth() == 2u, "two deep");
+    Assert(nested.Depth() == 2, "two deep");
     Assert(nested.Next() == TomlEvent::Integer, "holding one element");
     Assert(nested.Next() == TomlEvent::ArrayEnd, "which closes");
     Assert(nested.Next() == TomlEvent::InlineTableStart, "then an inline table");
@@ -97,7 +97,7 @@ func Main() -> int {
     Assert(nested.Next() == TomlEvent::Integer, "and a value");
     Assert(nested.Next() == TomlEvent::InlineTableEnd, "before it closes");
     Assert(nested.Next() == TomlEvent::ArrayEnd, "and then the outer array does");
-    Assert(nested.Depth() == 0u, "leaving nothing open");
+    Assert(nested.Depth() == 0, "leaving nothing open");
     Assert(nested.Next() == TomlEvent::End, "at the end of the document");
 
     // Locations, because a streaming reader that could not point at a line would leave the caller counting
@@ -108,18 +108,18 @@ func Main() -> int {
     located.Next();
     let second = located.Next();
     Assert(second == TomlEvent::KeyStart, "the second pair begins");
-    Assert(located.Line() == 3u, "on the third line, blank lines counted");
-    Assert(located.Column() == 1u, "at the first column");
+    Assert(located.Line() == 3, "on the third line, blank lines counted");
+    Assert(located.Column() == 1, "at the first column");
 
     // Text arrives as written, so a caller skipping a field pays nothing for its escapes.
     var raw = TomlEventReader("a = \"x\\ty\"");
     raw.Next();
     raw.Next();
     Assert(raw.Next() == TomlEvent::Text, "a string with an escape in it");
-    Assert(raw.Span().length == 4u, "spans the four bytes it was written with, unresolved");
+    Assert(raw.Span().length == 4, "spans the four bytes it was written with, unresolved");
 
     // A whole document streams in order, and the count is what the shape says.
-    Assert(Shape("[a]\nx = 1\ny = [1, 2]") == 12u,
+    Assert(Shape("[a]\nx = 1\ny = [1, 2]") == 12,
            "a header, its two pairs and their values arrive as twelve events");
 
     // Structure is still checked, because a reader that accepted malformed input would push the problem onto
@@ -136,7 +136,7 @@ func Main() -> int {
     // What streaming cannot do, stated rather than pretended: a table defined twice needs the set of tables
     // already seen, which is the tree this reader exists to avoid building.
     var quiet: char8[96];
-    Assert(FailsWith("[a]\n[a]", (@quiet[0])[..96]) == 0u,
+    Assert(FailsWith("[a]\n[a]", (@quiet[0])[..96]) == 0,
            "a redefinition streams without complaint, and the parser is what refuses it");
 
     return 0;

@@ -15,10 +15,10 @@ func FromHex(text: char8[..], into: var char8[..]) {
     while index < into.length {
         var value: uint8 = 0;
         var half: uint = 0;
-        while half < 2u {
+        while half < 2 {
             let c = text.data[index * 2 + half] as uint8;
             var digit: uint8 = 0;
-            if c >= 0x30u8 && c <= 0x39u8 {
+            if c >= 0x30 && c <= 0x39 {
                 digit = c - 0x30;
             }
             else {
@@ -77,12 +77,12 @@ func Main() -> int {
     // Both are incremental, and both agree with their one-shot forms at every split.
     var message: char8[200];
     var index: uint = 0;
-    while index < 200u {
+    while index < 200 {
         message[index] = ((index % 251) as uint8) as char8;
         index = index + 1;
     }
     var length: uint = 0;
-    while length <= 200u {
+    while length <= 200 {
         let whole = (@message[0])[..length];
         var md5OneShot: char8[16];
         LegacyMd5Of(whole, (@md5OneShot[0])[..16]);

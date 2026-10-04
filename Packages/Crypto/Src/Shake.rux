@@ -36,7 +36,7 @@ extend Shake {
     func Start(rate: uint) -> Shake {
         var state: Shake;
         var index: uint = 0;
-        while index < 25u {
+        while index < 25 {
             state.lanes[index] = 0;
             index = index + 1;
         }

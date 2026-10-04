@@ -89,7 +89,7 @@ func Main() -> int {
     var reread = Parsed(allocator, written, "and its output parses");
 
     var readInteger: int64 = 0;
-    Assert((*reread.Find(View("i"))).AsInteger(@readInteger) && readInteger == 42i64, "the integer survives");
+    Assert((*reread.Find(View("i"))).AsInteger(@readInteger) && readInteger == 42, "the integer survives");
     var readFloat = 0.0;
     Assert((*reread.Find(View("tiny"))).AsFloat(@readFloat) && readFloat == 0.1,
            "and a float comes back as exactly the same float, not merely a close one");
@@ -158,12 +158,12 @@ func Main() -> int {
                        "str = \"a \\\"quoted\\\" word, a \\t tab and a \\u00E9 escape.\"",
                        "the combined document parses");
     let wholeOnce = Render(whole, (@storage[0])[..4096]);
-    Assert(wholeOnce.length == 53u, "and renders to the length the escapes add up to");
+    Assert(wholeOnce.length == 53, "and renders to the length the escapes add up to");
     Assert(Same(wholeOnce, "str = \"a \\\"quoted\\\" word, a \\t tab and a \u{E9} escape.\"\n"),
            "with each byte where it belongs");
     var wholeAgain = Parsed(allocator, wholeOnce, "its output parses");
     let wholeTwice = Render(wholeAgain, (@second[0])[..4096]);
-    Assert(wholeTwice.length == 53u, "to the same length");
+    Assert(wholeTwice.length == 53, "to the same length");
     Assert(Same(wholeOnce, wholeTwice), "and the same bytes");
 
     // The loss the README describes, pinned here so the documentation cannot drift away from the code.
@@ -187,7 +187,7 @@ func Main() -> int {
     let overflowed = TomlWriteDocument(smallSink, bounded);
     let full = FormatError::InsufficientCapacity;
     Assert(SameFailure(overflowed, full), "a destination without room reports being full, not merely failing");
-    Assert(small.Length() <= 8u, "having written no more than it had");
+    Assert(small.Length() <= 8, "having written no more than it had");
 
     // And the same document goes out whole when there is room, so the case above is about the bound rather than
     // about a writer that refuses everything.
@@ -196,7 +196,7 @@ func Main() -> int {
     let roomySink: &var TextWriter = roomy;
     Assert(Succeeded(TomlWriteDocument(roomySink, bounded)),
            "the same document writes whole into a destination that has room");
-    Assert(roomy.Length() == 23u, "all twenty-three bytes of it");
+    Assert(roomy.Length() == 23, "all twenty-three bytes of it");
 
     return 0;
 }

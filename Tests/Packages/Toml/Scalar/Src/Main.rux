@@ -112,17 +112,17 @@ func MomentRefused(text: char8[..], expected: char8[..]) -> bool {
 
 func Main() -> int {
     // Integers, in the four bases TOML writes.
-    Assert(Integer("42") == 42i64, "a decimal integer");
+    Assert(Integer("42") == 42, "a decimal integer");
     Assert(Integer("-17") == -17i64, "a negative one");
-    Assert(Integer("+99") == 99i64, "an explicitly positive one");
-    Assert(Integer("0") == 0i64, "zero");
-    Assert(Integer("-0") == 0i64, "and negative zero, which is the same integer");
-    Assert(Integer("1_000_000") == 1000000i64, "underscores between digits are separators");
-    Assert(Integer("0xDEADBEEF") == 3735928559i64, "hexadecimal");
-    Assert(Integer("0xdead_beef") == 3735928559i64, "in either case, with separators");
-    Assert(Integer("0o755") == 493i64, "octal");
-    Assert(Integer("0b1101") == 13i64, "and binary");
-    Assert(Integer("9223372036854775807") == 9223372036854775807i64, "the largest integer TOML promises");
+    Assert(Integer("+99") == 99, "an explicitly positive one");
+    Assert(Integer("0") == 0, "zero");
+    Assert(Integer("-0") == 0, "and negative zero, which is the same integer");
+    Assert(Integer("1_000_000") == 1000000, "underscores between digits are separators");
+    Assert(Integer("0xDEADBEEF") == 3735928559, "hexadecimal");
+    Assert(Integer("0xdead_beef") == 3735928559, "in either case, with separators");
+    Assert(Integer("0o755") == 493, "octal");
+    Assert(Integer("0b1101") == 13, "and binary");
+    Assert(Integer("9223372036854775807") == 9223372036854775807, "the largest integer TOML promises");
     Assert(Integer("-9223372036854775808") == -9223372036854775808i64, "and the most negative");
 
     // The refusals. Each is a form some reader accepts and some does not.
@@ -190,9 +190,9 @@ func Main() -> int {
     Assert(Moment("1979-05-27T07:32:00Z").shape == TomlDateTimeShape::Offset,
            "an offset date-time");
     let utc = Moment("1979-05-27T07:32:00Z");
-    Assert(utc.date.year == 1979 && utc.date.month == 5u8 && utc.date.day == 27u8, "with its date read");
-    Assert(utc.time.hour == 7u8 && utc.time.minute == 32u8, "and its time");
-    Assert(utc.offset.TotalSeconds() == 0i32, "and Z meaning UTC");
+    Assert(utc.date.year == 1979 && utc.date.month == 5 && utc.date.day == 27, "with its date read");
+    Assert(utc.time.hour == 7 && utc.time.minute == 32, "and its time");
+    Assert(utc.offset.TotalSeconds() == 0, "and Z meaning UTC");
 
     Assert(Moment("1979-05-27T00:32:00-07:00").shape == TomlDateTimeShape::Offset,
            "an offset date-time west of UTC");
@@ -200,7 +200,7 @@ func Main() -> int {
            "whose offset is negative, sign carried onto both parts");
 
     Assert(Moment("1979-05-27T00:32:00.999999-07:00").shape == TomlDateTimeShape::Offset, "one with a fraction");
-    Assert(Moment("1979-05-27T00:32:00.999999-07:00").time.nanosecond == 999999000u32,
+    Assert(Moment("1979-05-27T00:32:00.999999-07:00").time.nanosecond == 999999000,
            "which is read as nanoseconds, not as digits");
 
     Assert(Moment("1979-05-27 07:32:00").shape == TomlDateTimeShape::Local,
@@ -219,7 +219,7 @@ func Main() -> int {
     Assert(Moment("1979-05-27T23:59:60Z").shape == TomlDateTimeShape::Offset,
            "second sixty is accepted");
     let folded = Moment("1979-05-27T23:59:60Z");
-    Assert(folded.time.second == 59u8 && folded.time.nanosecond == 999999999u32,
+    Assert(folded.time.second == 59 && folded.time.nanosecond == 999999999,
            "and folded rather than represented");
 
     // Refusals. Four correct digit pairs are not a date if the calendar has no such day.
@@ -256,7 +256,7 @@ func Main() -> int {
     // day rather than an instant.
     let brief = Moment("07:32");
     Assert(brief.shape == TomlDateTimeShape::TimeOnly, "a time without seconds");
-    Assert(brief.time.second == 0u8, "whose seconds are zero, since that is what the shorter text names");
+    Assert(brief.time.second == 0, "whose seconds are zero, since that is what the shorter text names");
     Assert(Moment("1979-05-27T07:32Z").shape == TomlDateTimeShape::Offset,
            "and a date-time written the same way");
     Assert(MomentFails("07:3"),

@@ -17,10 +17,10 @@ func FromHex(text: char8[..], into: var char8[..]) {
     while index * 2 + 1 < text.length + 1 && index < into.length {
         var value: uint8 = 0;
         var half: uint = 0;
-        while half < 2u {
+        while half < 2 {
             let c = text.data[index * 2 + half] as uint8;
             var digit: uint8 = 0;
-            if c >= 0x30u8 && c <= 0x39u8 {
+            if c >= 0x30 && c <= 0x39 {
                 digit = c - 0x30;
             }
             else {
@@ -82,12 +82,12 @@ func Main() -> int {
     // The incremental promise: every split of every length up to two hundred agrees with the one-shot answer.
     var message: char8[200];
     var index: uint = 0;
-    while index < 200u {
+    while index < 200 {
         message[index] = ((index % 251) as uint8) as char8;
         index = index + 1;
     }
     var length: uint = 0;
-    while length <= 200u {
+    while length <= 200 {
         let whole = (@message[0])[..length];
         var oneShot: char8[32];
         let oneShotRoom = (@oneShot[0])[..32];
@@ -114,7 +114,7 @@ func Main() -> int {
     // Feeding one byte at a time, which exercises the buffering path on every block boundary.
     var byteAtATime = Sha256();
     index = 0;
-    while index < 200u {
+    while index < 200 {
         let single = (@message[index])[..1];
         byteAtATime.Update(single);
         index = index + 1;
@@ -167,9 +167,9 @@ func Main() -> int {
 
     // The reported lengths.
     var lengths = Sha256();
-    Assert(lengths.DigestLength() == 32u && lengths.BlockLength() == 64u, "SHA-256 reports its own sizes");
+    Assert(lengths.DigestLength() == 32 && lengths.BlockLength() == 64, "SHA-256 reports its own sizes");
     var narrowLengths = Sha256::New224();
-    Assert(narrowLengths.DigestLength() == 28u, "and SHA-224 reports its shorter digest");
+    Assert(narrowLengths.DigestLength() == 28, "and SHA-224 reports its shorter digest");
 
     return 0;
 }

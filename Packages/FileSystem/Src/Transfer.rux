@@ -100,7 +100,7 @@ pub func CreateSymbolicLink(allocator: Allocator, target: Path, link: Path, targ
         if targetIsDirectory {
             flags = flags | SYMBOLIC_LINK_FLAG_DIRECTORY;
         }
-        if CreateSymbolicLinkW(linkNative as *char16, targetNative as *char16, flags) == 0u8 {
+        if CreateSymbolicLinkW(linkNative as *char16, targetNative as *char16, flags) == 0 {
             fail TranslateNative(GetLastError() as int32);
         }
     }

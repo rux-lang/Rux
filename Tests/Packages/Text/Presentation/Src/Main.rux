@@ -118,7 +118,7 @@ func Main() -> int {
     let styled: &var TextWriter = writer;
     let shown: Display = hello;
     Assert(Failed(shown.WriteDisplay(styled, Spec("iso8601"))), "a style on text is refused");
-    Assert(writer.Length() == 0u, "and nothing was written before the refusal");
+    Assert(writer.Length() == 0, "and nothing was written before the refusal");
 
     // A String presents as the view it spans, and is untouched by having been rendered.
     var system = SystemAllocator();
@@ -126,6 +126,6 @@ func Main() -> int {
     let owned = String::FromBytes(allocator, "owned") catch { else => Panic("the owned string is built") };
     Assert(Shown(owned.View(), plain, "owned"), "an owned string displays its text");
     Assert(Inspected(owned.View(), plain, "\"owned\""), "and inspects quoted");
-    Assert(owned.Length() == 5u, "and is unchanged by either");
+    Assert(owned.Length() == 5, "and is unchanged by either");
     return 0;
 }

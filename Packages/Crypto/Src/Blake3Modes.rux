@@ -21,10 +21,10 @@ const Blake3DeriveKeyMaterial: uint32 = 64;
 // The thirty-two byte key, read as eight little-endian words.
 func Blake3KeyWords(key: char8[..], words: *var uint32) {
     var index: uint = 0;
-    while index < 8u {
+    while index < 8 {
         var word: uint32 = 0;
         var part: uint = 0;
-        while part < 4u {
+        while part < 4 {
             let position = index * 4 + part;
             let value = position < key.length ? (key.data[position] as uint8) : 0u8;
             word = word | ((value as uint32) << ((part * 8) as uint32));

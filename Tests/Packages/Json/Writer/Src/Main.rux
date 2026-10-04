@@ -138,7 +138,7 @@ func Main() -> int {
     let overflowed = WriteValue(boundedSink, wholeDocument, JsonStyle::Compact());
     let full = FormatError::InsufficientCapacity;
     Assert(SameFailure(overflowed, full), "a destination without room reports being full, not merely failing");
-    Assert(bounded.Length() <= 8u, "having written no more than it had");
+    Assert(bounded.Length() <= 8, "having written no more than it had");
 
     // And the whole document goes out when there is room, so the check above is about the bound rather than about
     // a writer that refuses everything.
@@ -147,7 +147,7 @@ func Main() -> int {
     let roomySink: &var TextWriter = roomy;
     Assert(Succeeded(WriteValue(roomySink, wholeDocument, JsonStyle::Compact())),
            "the same document writes whole into a destination that has room");
-    Assert(roomy.Length() == 26u, "all twenty-six bytes of it");
+    Assert(roomy.Length() == 26, "all twenty-six bytes of it");
 
     return 0;
 }

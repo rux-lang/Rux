@@ -46,7 +46,7 @@ when #target.os == OperatingSystem::Windows {
         // forward.
         Assert(InvalidHandleValue != 0, "the invalid-handle sentinel is not null");
         Assert(InvalidHandleValue == 0xFFFFFFFFFFFFFFFF, "the invalid-handle sentinel is all ones");
-        Assert(InvalidHandleValue > 0xFFFFFFFFu64, "and it is wider than a Win32 code, which cannot collide with it");
+        Assert(InvalidHandleValue > 0xFFFFFFFF, "and it is wider than a Win32 code, which cannot collide with it");
         Assert((INVALID_FILE_ATTRIBUTES as uint64) != InvalidHandleValue,
                "the attribute sentinel is a third value again, all ones in thirty-two bits");
 

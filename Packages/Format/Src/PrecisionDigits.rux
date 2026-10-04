@@ -54,7 +54,7 @@ func PrepareQuotient(state: &var Quotient, significand: uint64, exponent: int, p
     }
 
     var scaled: int = 0;
-    while state.numerator.Compare(state.denominator) >= 0i32 {
+    while state.numerator.Compare(state.denominator) >= 0 {
         if !state.denominator.MultiplySmall(10) { return false; }
         scaled = scaled + 1;
     }
@@ -63,7 +63,7 @@ func PrepareQuotient(state: &var Quotient, significand: uint64, exponent: int, p
     var reach = FixedNat();
     reach.Assign(state.numerator);
     if !reach.MultiplySmall(10) { return false; }
-    while reach.Compare(state.denominator) < 0i32 {
+    while reach.Compare(state.denominator) < 0 {
         if !state.numerator.MultiplySmall(10) { return false; }
         scaled = scaled - 1;
         reach.Assign(state.numerator);
@@ -77,7 +77,7 @@ func PrepareQuotient(state: &var Quotient, significand: uint64, exponent: int, p
 // subtractions is the whole of the division.
 func TakeDigit(state: &var Quotient) -> uint64 {
     var digit: uint64 = 0;
-    while state.numerator.Compare(state.denominator) >= 0i32 {
+    while state.numerator.Compare(state.denominator) >= 0 {
         state.numerator.Subtract(state.denominator);
         digit = digit + 1;
     }
@@ -109,7 +109,7 @@ pub func PrecisionDigits(significand: uint64, exponent: int, precision: uint, in
                          power: *var int) -> bool {
     *count = 0;
     *power = 0;
-    if precision > MaximumPrecision || significand == 0u64 { return false; }
+    if precision > MaximumPrecision || significand == 0 { return false; }
 
     var state = Quotient { numerator: FixedNat(), denominator: FixedNat() };
     var scaled: int = 0;
@@ -136,15 +136,15 @@ pub func PrecisionDigits(significand: uint64, exponent: int, precision: uint, in
     twice.Assign(state.numerator);
     if !twice.ShiftLeft(1) { return false; }
     let order = twice.Compare(state.denominator);
-    var roundUp = order > 0i32;
-    if order == 0i32 && produced > 0u {
-        roundUp = ((into.data[produced - 1] as uint32) - 0x30) % 2 == 1u32;
+    var roundUp = order > 0;
+    if order == 0 && produced > 0 {
+        roundUp = ((into.data[produced - 1] as uint32) - 0x30) % 2 == 1;
     }
 
     if roundUp {
         var index = produced;
         var carry = true;
-        while carry && index > 0u {
+        while carry && index > 0 {
             index = index - 1;
             if into.data[index] == c8'9' {
                 into.data[index] = c8'0';
@@ -159,7 +159,7 @@ pub func PrecisionDigits(significand: uint64, exponent: int, precision: uint, in
             // above them. 9.99 at one decimal is 10.0.
             if produced + 1 > into.length { return false; }
             var back = produced;
-            while back > 0u {
+            while back > 0 {
                 into.data[back] = into.data[back - 1];
                 back = back - 1;
             }
@@ -192,9 +192,9 @@ pub func PrecisionDigits(significand: uint64, exponent: int, precision: uint, in
 pub func WritePrecisionFloat(cursor: &var ByteCursor, parts: FloatParts, precision: uint) -> bool {
     if precision > MaximumPrecision { return false; }
     if parts.negative { cursor.Push(c8'-'); }
-    if parts.significand == 0u64 {
+    if parts.significand == 0 {
         cursor.Push(c8'0');
-        if precision > 0u {
+        if precision > 0 {
             cursor.Push(c8'.');
             var zeros: uint = 0;
             while zeros < precision {
@@ -225,7 +225,7 @@ pub func WritePrecisionFloat(cursor: &var ByteCursor, parts: FloatParts, precisi
             index = index + 1;
         }
     }
-    if precision == 0u { return true; }
+    if precision == 0 { return true; }
 
     cursor.Push(c8'.');
     // The fraction opens with a zero for every place between the point and the first digit, then the digits that

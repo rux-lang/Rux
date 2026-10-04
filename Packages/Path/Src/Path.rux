@@ -20,7 +20,7 @@ import Core::{ #target };
 /// @see https://rux-lang.dev/docs/api/path/is-separator
 pub func IsSeparator(unit: OsUnit) -> bool {
     when #target.os == .Windows {
-        return unit == 0x2Fu16 || unit == 0x5Cu16;
+        return unit == 0x2F || unit == 0x5C;
     }
     else {
         return unit == c8'/';

@@ -76,9 +76,9 @@ func ReferenceSort(data: *var int32, length: uint) {
 // becoming a flaky test.
 func NextRandom(state: *var uint64) -> uint64 {
     var x = *state;
-    x = x ^ (x >> 12u64);
-    x = x ^ (x << 25u64);
-    x = x ^ (x >> 27u64);
+    x = x ^ (x >> 12);
+    x = x ^ (x << 25);
+    x = x ^ (x >> 27);
     *state = x;
     return x * 2685821657736338717;
 }
@@ -226,12 +226,12 @@ func Main() -> int {
     // Signed and unsigned limits sort as ordinary values.
     var signed: int32[5] = [0, 2147483647, -2147483648, -1, 1];
     Sort<int32>(Viewed<int32>(@signed[0], 5));
-    if signed[0] != -2147483648i32 || signed[4] != 2147483647i32 { return 220; }
+    if signed[0] != -2147483648i32 || signed[4] != 2147483647 { return 220; }
     if !Sorted<int32>(@signed[0], 5) { return 221; }
 
     var unsigned: uint32[5] = [7, 0, 4294967295, 1, 4294967294];
     Sort<uint32>(Viewed<uint32>(@unsigned[0], 5));
-    if unsigned[0] != 0u32 || unsigned[4] != 4294967295u32 { return 222; }
+    if unsigned[0] != 0 || unsigned[4] != 4294967295 { return 222; }
     if !Sorted<uint32>(@unsigned[0], 5) { return 223; }
 
     // A user struct ordered by key alone. Sorting is unstable, so the test

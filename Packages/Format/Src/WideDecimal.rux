@@ -37,7 +37,7 @@ func ShortestWideDigits(allocator: Allocator, value: &UnpackedWide, layout: &Flo
     // A value at the bottom of its binade has a closer neighbour below than above, so the two margins differ; the
     // doubling keeps every quantity an integer.
     let lonely = f == leading && e > layout.MinimumExponent();
-    let even = (f & 1u512) == 0u512;
+    let even = (f & 1u512) == 0;
 
     var r = BigNat(allocator);
     var s = BigNat(allocator);
@@ -66,7 +66,7 @@ func ShortestWideDigits(allocator: Allocator, value: &UnpackedWide, layout: &Flo
     // estimate missed.
     let magnitude = (e as int64) + (BitLengthOf(f) as int64) - 1i64;
     var k = ((magnitude * 30103i64) / 100000i64) as int + 1;
-    if magnitude < 0i64 {
+    if magnitude < 0 {
         k = k - 1;
     }
     if k >= 0 {
@@ -114,7 +114,7 @@ func ShortestWideDigits(allocator: Allocator, value: &UnpackedWide, layout: &Flo
             // to the even digit so that the choice is at least a rule.
             if !tmp.Assign(r) || !tmp.ShiftLeft(1u) { return false; }
             let order = tmp.Compare(s);
-            if order > 0i32 || (order == 0i32 && (digit & 1u) == 1u) {
+            if order > 0 || (order == 0 && (digit & 1u) == 1) {
                 digit = digit + 1u;
             }
         }
@@ -135,8 +135,8 @@ func ShortestWideDigits(allocator: Allocator, value: &UnpackedWide, layout: &Flo
 func BitLengthOf(value: uint512) -> uint {
     var rest = value;
     var bits: uint = 0;
-    while rest != 0u512 {
-        rest = rest >> 1u;
+    while rest != 0 {
+        rest = rest >> 1;
         bits = bits + 1;
     }
     return bits;
@@ -163,7 +163,7 @@ func FixedWideDigits(allocator: Allocator, value: &UnpackedWide, layout: &FloatL
     }
     let magnitude = (value.exponent as int64) + (BitLengthOf(value.significand) as int64) - 1;
     var k = ((magnitude * 30103) / 100000) as int + 1;
-    if magnitude < 0i64 {
+    if magnitude < 0 {
         k = k - 1;
     }
     if k >= 0 {
@@ -176,13 +176,13 @@ func FixedWideDigits(allocator: Allocator, value: &UnpackedWide, layout: &FloatL
         return false;
     }
     // Settle on r/s in [1/10, 1), so that the value is 0.d1d2... times ten to the k.
-    while r.Compare(s) >= 0i32 {
+    while r.Compare(s) >= 0 {
         if !s.MultiplySmall(10) { return false; }
         k = k + 1;
     }
     while true {
         if !tmp.Assign(r) || !tmp.MultiplySmall(10) { return false; }
-        if tmp.Compare(s) >= 0i32 { break; }
+        if tmp.Compare(s) >= 0 { break; }
         if !r.MultiplySmall(10) { return false; }
         k = k - 1;
     }
@@ -198,7 +198,7 @@ func FixedWideDigits(allocator: Allocator, value: &UnpackedWide, layout: &FloatL
     if wanted == 0 {
         // Between a tenth and one unit in the last place: it is that unit, or nothing.
         if !tmp.Assign(r) || !tmp.ShiftLeft(1) { return false; }
-        if tmp.Compare(s) > 0i32 {
+        if tmp.Compare(s) > 0 {
             digits.data[0] = c8'1';
             *count = 1;
             *exponent10 = 0 - fraction as int;
@@ -224,11 +224,11 @@ func FixedWideDigits(allocator: Allocator, value: &UnpackedWide, layout: &FloatL
     // the even digit.
     if !tmp.Assign(r) || !tmp.ShiftLeft(1) { return false; }
     let order = tmp.Compare(s);
-    let lastOdd = ((digits.data[needed - 1] as uint8) & 1) == 1u8;
-    if order > 0i32 || (order == 0i32 && lastOdd) {
+    let lastOdd = ((digits.data[needed - 1] as uint8) & 1) == 1;
+    if order > 0 || (order == 0 && lastOdd) {
         var index = needed;
         var carried = true;
-        while carried && index > 0u {
+        while carried && index > 0 {
             index = index - 1;
             if digits.data[index] == c8'9' {
                 digits.data[index] = c8'0';
@@ -241,7 +241,7 @@ func FixedWideDigits(allocator: Allocator, value: &UnpackedWide, layout: &FloatL
         if carried {
             // The carry ran off the front: the value became the next power of ten, one digit longer.
             var shift = needed;
-            while shift > 0u {
+            while shift > 0 {
                 digits.data[shift] = digits.data[shift - 1];
                 shift = shift - 1;
             }

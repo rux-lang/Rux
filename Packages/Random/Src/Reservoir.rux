@@ -62,7 +62,7 @@ extend Reservoir<T> {
 /// @param item the item being offered
 /// @see https://rux-lang.dev/docs/api/random/offer
 pub func Offer<G: RandomGenerator, T>(generator: &var G, reservoir: &var Reservoir<T>, item: T) {
-    if reservoir.room.length == 0u {
+    if reservoir.room.length == 0 {
         reservoir.seen = reservoir.seen + 1u;
         return;
     }

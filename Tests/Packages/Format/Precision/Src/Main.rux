@@ -106,7 +106,7 @@ func Main() -> int {
 
     // The bound, and the absence of a fallback. The old engine answered a precision it could not reach with the
     // shortest form instead, which is the behaviour these two cases exist to keep out.
-    Assert(MaximumPrecision == 1100u, "the supported precision is eleven hundred digits");
+    Assert(MaximumPrecision == 1100, "the supported precision is eleven hundred digits");
     Assert(Succeeded(Render(allocator, "{:.1100}", 1.0)), "the bound itself is supported");
     Assert(Refused(Render(allocator, "{:.1101}", 1.0)), "one past it is refused");
     Assert(Refused(Render(allocator, "{:.2000}", 3.14159)), "and so is a request well past it");

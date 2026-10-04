@@ -49,9 +49,9 @@ func Main() -> int {
 
     // A full write reports success and nothing more.
     Assert(FailureCode(writer.Write("abc")) == 0, "a write that fits succeeds");
-    Assert(writer.Length() == 3u, "and its bytes landed");
+    Assert(writer.Length() == 3, "and its bytes landed");
     Assert(Same(writer.Written(), "abc"), "in order");
-    Assert(writer.Remaining() == 13u, "leaving the rest of the room");
+    Assert(writer.Remaining() == 13, "leaving the rest of the room");
 
     // Writes concatenate.
     Assert(FailureCode(writer.Write("de")) == 0, "a second write succeeds");
@@ -60,24 +60,24 @@ func Main() -> int {
     // A run that does not fit is refused whole. This is the promise worth checking: after the refusal the buffer is
     // exactly what it was, so nothing partial has to be undone.
     Assert(FailureCode(writer.Write("0123456789ab")) == 1, "a run past the end reports InsufficientCapacity");
-    Assert(writer.Length() == 5u, "and the buffer is unchanged");
+    Assert(writer.Length() == 5, "and the buffer is unchanged");
     Assert(Same(writer.Written(), "abcde"), "with no prefix of the refused run left behind");
 
     // A run that fits exactly is not a run that does not fit.
-    Assert(writer.Remaining() == 11u, "eleven bytes remain");
+    Assert(writer.Remaining() == 11, "eleven bytes remain");
     Assert(FailureCode(writer.Write("01234567890")) == 0, "a run filling the room exactly succeeds");
-    Assert(writer.Remaining() == 0u, "leaving none");
+    Assert(writer.Remaining() == 0, "leaving none");
     Assert(Same(writer.Written(), "abcde01234567890"), "and the whole run landed");
 
     // A full buffer refuses more, and still accepts nothing.
     Assert(FailureCode(writer.Write("x")) == 1, "a full buffer refuses one more byte");
-    Assert(writer.Length() == 16u, "and stays full rather than growing");
+    Assert(writer.Length() == 16, "and stays full rather than growing");
     // An empty write is not a write past the end, even at capacity.
     Assert(FailureCode(writer.Write("")) == 0, "an empty run succeeds even with no room");
 
     // Clearing keeps the room and drops the text.
     writer.Clear();
-    Assert(writer.Length() == 0u && writer.Remaining() == 16u, "clearing returns the whole room");
+    Assert(writer.Length() == 0 && writer.Remaining() == 16, "clearing returns the whole room");
     Assert(Same(writer.Written(), ""), "and reports no text");
 
     // Bytes that are not UTF-8 are refused, and refused whole. 0xC3 opens a two-byte sequence that never arrives.
@@ -85,7 +85,7 @@ func Main() -> int {
     invalid[0] = 0xC3u8 as char8;
     invalid[1] = 0x28u8 as char8;
     Assert(FailureCode(writer.Write((@invalid[0])[..2])) == 2, "invalid UTF-8 reports TextFailure(InvalidUtf8)");
-    Assert(writer.Length() == 0u, "and nothing landed");
+    Assert(writer.Length() == 0, "and nothing landed");
 
     // A lone continuation byte, and a truncated sequence, are refused the same way.
     var lone: char8[1];
@@ -94,18 +94,18 @@ func Main() -> int {
     var truncated: char8[1];
     truncated[0] = 0xE2u8 as char8;
     Assert(FailureCode(writer.Write((@truncated[0])[..1])) == 2, "nor is a sequence that runs out");
-    Assert(writer.Length() == 0u, "and neither left anything behind");
+    Assert(writer.Length() == 0, "and neither left anything behind");
 
     // Multi-byte text is text, and its bytes are not split.
     Assert(FailureCode(writer.Write("héllo")) == 0, "a multi-byte run succeeds");
-    Assert(writer.Length() == 6u, "occupying six bytes for five characters");
+    Assert(writer.Length() == 6, "occupying six bytes for five characters");
 
     // Capacity is decided before validity, so a run that is both too long and invalid reports the former: reading a
     // run that cannot land is work with no answer to give.
     writer.Clear();
     var long: char8[20];
     var fill: uint = 0;
-    while fill < 20u {
+    while fill < 20 {
         long[fill] = 0x80u8 as char8;
         fill = fill + 1;
     }
@@ -131,7 +131,7 @@ func Main() -> int {
     var small = BufferWriter((@tiny[0])[..2]);
     Assert(FailureCode(WriteScalar(small, 0x20ACu32 as char32)) == 1,
            "a three-byte character into two bytes is a capacity failure, not an encoding one");
-    Assert(small.Length() == 0u, "and the buffer is untouched");
+    Assert(small.Length() == 0, "and the buffer is untouched");
 
     // StringBuilder is the growing writer, so it refuses neither of the above; what it can refuse is allocation,
     // which cannot be provoked here. What is checked is that it accepts and concatenates through the same contract.
@@ -140,11 +140,11 @@ func Main() -> int {
     var builder = StringBuilder(allocator);
     Assert(FailureCode(builder.Write("grows")) == 0, "a builder accepts a write");
     Assert(FailureCode(WriteBytes(builder, " and grows")) == 0, "and another through the helper");
-    Assert(builder.Length() == 15u, "concatenating both");
+    Assert(builder.Length() == 15, "concatenating both");
 
     // It validates too: a builder that accepted these would stop holding text.
     Assert(FailureCode(builder.Write((@invalid[0])[..2])) == 2, "a builder refuses bytes that are not text");
-    Assert(builder.Length() == 15u, "and is unchanged by the refusal");
+    Assert(builder.Length() == 15, "and is unchanged by the refusal");
 
     return 0;
 }

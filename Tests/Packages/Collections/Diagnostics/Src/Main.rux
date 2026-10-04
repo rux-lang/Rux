@@ -182,7 +182,7 @@ func Main() -> int {
     // separator fewer than there are entries, and each entry exactly once.
     var hashed = HashMap<int32, int32>(allocator, HashInt32, EqualsInt32);
     var empty: char8[64];
-    Assert(RenderHashMap(hashed, (@empty[0])[..64]) == 2u, "an empty hash map is two braces");
+    Assert(RenderHashMap(hashed, (@empty[0])[..64]) == 2, "an empty hash map is two braces");
     Assert(Same((@empty[0])[..2], "{}"), "and they are the right two");
 
     hashed.Insert(1i32, 10i32) catch { else => Panic("filled") };
@@ -193,10 +193,10 @@ func Main() -> int {
     let length = RenderHashMap(hashed, (@storage[0])[..128]);
     let shown = (@storage[0])[..length];
     Assert(shown.data[0] == c8'{' && shown.data[length - 1] == c8'}', "a hash map is written in braces");
-    Assert(Occurrences(shown, ", ") == 2u, "with one separator fewer than it has entries");
-    Assert(Occurrences(shown, "1: 10") == 1u, "and each entry exactly once");
-    Assert(Occurrences(shown, "2: 20") == 1u, "each");
-    Assert(Occurrences(shown, "3: 30") == 1u, "of them");
+    Assert(Occurrences(shown, ", ") == 2, "with one separator fewer than it has entries");
+    Assert(Occurrences(shown, "1: 10") == 1, "and each entry exactly once");
+    Assert(Occurrences(shown, "2: 20") == 1, "each");
+    Assert(Occurrences(shown, "3: 30") == 1, "of them");
     Assert(length == 2u + 5u + 5u + 5u + 4u, "and nothing else at all");
 
     // The rendering is stable for as long as the map is: showing the same map twice gives the same text, which is
@@ -214,22 +214,22 @@ func Main() -> int {
                                                                          0xFEDCBA9876543210u64),
                                                  HashInt32, EqualsInt32);
     var key: int32 = 1i32;
-    while key <= 9i32 {
+    while key <= 9 {
         seeded.Insert(key, key) catch { else => Panic("filled past one growth") };
         key = key + 1i32;
     }
     var seededStorage: char8[128];
     let seededLength = RenderHashMap(seeded, (@seededStorage[0])[..128]);
     let seededShown = (@seededStorage[0])[..seededLength];
-    Assert(Occurrences(seededShown, ", ") == 8u, "nine entries carry eight separators");
+    Assert(Occurrences(seededShown, ", ") == 8, "nine entries carry eight separators");
     key = 1i32;
     var entry: char8[8];
-    while key <= 9i32 {
+    while key <= 9 {
         entry[0] = (key as uint + 0x30u) as char8;
         entry[1] = c8':';
         entry[2] = c8' ';
         entry[3] = (key as uint + 0x30u) as char8;
-        Assert(Occurrences(seededShown, (@entry[0])[..4]) == 1u, "and each of the nine appears exactly once");
+        Assert(Occurrences(seededShown, (@entry[0])[..4]) == 1, "and each of the nine appears exactly once");
         key = key + 1i32;
     }
     Assert(seededLength == 2u + 9u * 4u + 8u * 2u, "with nothing else in the rendering at all");
@@ -237,16 +237,16 @@ func Main() -> int {
     // A hash set answers the same way.
     var members = HashSet<int32>(allocator, HashInt32, EqualsInt32);
     var setStorage: char8[64];
-    Assert(RenderHashSet(members, (@setStorage[0])[..64]) == 2u, "an empty hash set is two braces");
+    Assert(RenderHashSet(members, (@setStorage[0])[..64]) == 2, "an empty hash set is two braces");
     Assert(members.Insert(11i32) catch { else => Panic("filled") }, "filled");
     Assert(members.Insert(22i32) catch { else => Panic("filled") }, "filled");
     let setLength = RenderHashSet(members, (@setStorage[0])[..64]);
     let setShown = (@setStorage[0])[..setLength];
     Assert(setShown.data[0] == c8'{' && setShown.data[setLength - 1] == c8'}', "a hash set is written in braces");
-    Assert(Occurrences(setShown, ", ") == 1u, "with one separator between its two elements");
-    Assert(Occurrences(setShown, "11") == 1u, "and each element exactly once");
-    Assert(Occurrences(setShown, "22") == 1u, "each of them");
-    Assert(setLength == 8u, "and nothing else");
+    Assert(Occurrences(setShown, ", ") == 1, "with one separator between its two elements");
+    Assert(Occurrences(setShown, "11") == 1, "and each element exactly once");
+    Assert(Occurrences(setShown, "22") == 1, "each of them");
+    Assert(setLength == 8, "and nothing else");
 
     // Showing a map takes nothing out of it, which is the property that matters for an entry type that cannot be
     // copied: a walk that yielded entries by value could not have been used here at all.
@@ -259,11 +259,11 @@ func Main() -> int {
     var ownedWriter = BufferWriter((@ownedStorage[0])[..128]);
     let ownedSink: &var TextWriter = ownedWriter;
     Assert(Succeeded(WriteTreeMapDebug<int32, Tracked>(ownedSink, owning, plain)), "a move-only map is shown");
-    Assert(destroyed == 0i32, "and nothing was destroyed to show it");
+    Assert(destroyed == 0, "and nothing was destroyed to show it");
     Assert(Succeeded(WriteTreeMapDebug<int32, Tracked>(ownedSink, owning, plain)), "so it can be shown again");
-    Assert(destroyed == 0i32, "still destroying nothing");
+    Assert(destroyed == 0, "still destroying nothing");
     Assert(Same(ownedWriter.Written(), "{1: T(1), 2: T(2)}{1: T(1), 2: T(2)}"), "twice, identically");
-    Assert(owning.Length() == 2u, "and the map still holds both entries");
+    Assert(owning.Length() == 2, "and the map still holds both entries");
 
     // A destination that runs out of room reports it and stops.
     var small: char8[6];
@@ -284,7 +284,7 @@ func Main() -> int {
         .Failure(reason) => match reason { .InsufficientCapacity => true, else => false }
     };
     Assert(alsoOverflowed, "and so does a hash map");
-    Assert(tighter.Length() <= 6u, "having written no more than it had");
+    Assert(tighter.Length() <= 6, "having written no more than it had");
 
     // The error describes itself, and the four cases stay distinguishable in words as they are in the type.
     Assert(ShownError(CollectionError::OutOfMemory, plain, "out of memory"), "a shortage of memory");
@@ -314,7 +314,7 @@ func Main() -> int {
         .Failure(reason) => match reason { .UnsupportedRequest => true, else => false }
     };
     Assert(unsupported, "a precision is refused rather than applied");
-    Assert(refusalWriter.Length() == 0u, "and nothing was written before refusing");
+    Assert(refusalWriter.Length() == 0, "and nothing was written before refusing");
 
     return 0;
 }

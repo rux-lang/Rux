@@ -42,11 +42,11 @@ pub func TemporaryDirectory(allocator: Allocator) -> PathBuffer ! IoError {
     when #target.os == .Windows {
         var units: OsUnit[512];
         let written = GetTempPathW(512, @units[0] as *var char16);
-        if written == 0u32 { fail TranslateNative(GetLastError() as int32); }
-        if written > 512u32 { fail IoError::Of(IoErrorKind::LimitExceeded); }
+        if written == 0 { fail TranslateNative(GetLastError() as int32); }
+        if written > 512 { fail IoError::Of(IoErrorKind::LimitExceeded); }
         // The reported path ends in a separator; the buffer holds names, so it is dropped here.
         var length = written as uint;
-        while length > 1u && IsSeparator(units[length - 1]) {
+        while length > 1 && IsSeparator(units[length - 1]) {
             length = length - 1;
         }
         let view = OsStringView::FromUnits((@units[0])[..length]);
@@ -68,14 +68,14 @@ func RandomName(allocator: Allocator, prefix: char8[..]) -> OsString ! IoError {
     let bits = NextUint64() catch { else => fail IoError::Of(IoErrorKind::Other) };
     var text: char8[64];
     var length: uint = 0;
-    while length < prefix.length && length < 40u {
+    while length < prefix.length && length < 40 {
         text[length] = prefix.data[length];
         length = length + 1;
     }
     var digit: uint = 0;
-    while digit < 16u {
+    while digit < 16 {
         let nibble = ((bits >> ((60u64 - 4u64 * digit as uint64))) & 0xFu64) as uint32;
-        text[length] = (nibble < 10u32 ? (0x30u32 + nibble) : (0x57u32 + nibble)) as uint8 as char8;
+        text[length] = (nibble < 10 ? (0x30u32 + nibble) : (0x57u32 + nibble)) as uint8 as char8;
         length = length + 1;
         digit = digit + 1;
     }

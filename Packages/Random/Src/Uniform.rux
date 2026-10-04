@@ -25,7 +25,7 @@ import Math::{ IsInfinite, NextDown };
 /// @returns a value in `[0, bound)`, each equally likely and with no modulo bias
 /// @see https://rux-lang.dev/docs/api/random/uniform-below
 pub func UniformBelow<G: RandomGenerator>(generator: &var G, bound: uint64) -> uint64 {
-    if bound == 0u64 { return 0u64; }
+    if bound == 0 { return 0u64; }
     var product = (generator.NextUint64() as uint128) * (bound as uint128);
     var low = product as uint64;
     if low < bound {
@@ -37,7 +37,7 @@ pub func UniformBelow<G: RandomGenerator>(generator: &var G, bound: uint64) -> u
             low = product as uint64;
         }
     }
-    return (product >> 64u128) as uint64;
+    return (product >> 64) as uint64;
 }
 
 /// A uniform value in `[low, high]`, both ends included.

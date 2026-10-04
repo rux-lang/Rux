@@ -83,7 +83,7 @@ extend PathBuffer {
         if wanted < required {
             wanted = required;
         }
-        if wanted < 16u {
+        if wanted < 16 {
             wanted = 16;
         }
         let unitSize = sizeof(OsUnit) as uint;

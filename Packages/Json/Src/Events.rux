@@ -156,7 +156,7 @@ extend JsonEventReader {
     // Drops what has been consumed and pulls more, growing only if the buffer is genuinely full. This is what
     // keeps memory proportional to the largest token rather than to the document.
     func Refill(self: &var JsonEventReader) -> bool {
-        if self.position > 0u {
+        if self.position > 0 {
             var moved: uint = 0;
             while self.position + moved < self.filled {
                 self.data[moved] = self.data[self.position + moved];
@@ -203,7 +203,7 @@ extend JsonEventReader {
             }
         };
         self.filled = self.filled + read;
-        return read > 0u;
+        return read > 0;
     }
 
     /// Gives the buffer back.
@@ -238,7 +238,7 @@ extend JsonEventReader {
     func SkipWhitespace(self: &var JsonEventReader) {
         while self.Available() {
             let c = self.data[self.position] as uint8;
-            if c != 0x20u8 && c != 0x09u8 && c != 0x0Du8 && c != 0x0Au8 { return; }
+            if c != 0x20 && c != 0x09 && c != 0x0D && c != 0x0A { return; }
             self.position = self.position + 1;
         }
     }
@@ -272,12 +272,12 @@ extend JsonEventReader {
             }
             let c = self.data[index] as uint8;
             if isText {
-                if c == 0x5Cu8 {
+                if c == 0x5C {
                     escaped = true;
                     index = index + 2;
                     continue;
                 }
-                if c == 0x22u8 {
+                if c == 0x22 {
                     self.tokenStart = start + 1;
                     self.tokenEnd = index;
                     self.tokenEscaped = escaped;
@@ -289,15 +289,15 @@ extend JsonEventReader {
                     }
                     return true;
                 }
-                if c < 0x20u8 {
+                if c < 0x20 {
                     self.stop = JsonStop::Lexical;
                     self.lexical = JsonLexError::UnescapedControl;
                     return false;
                 }
             }
             else {
-                let ends = c == 0x2Cu8 || c == 0x5Du8 || c == 0x7Du8 || c == 0x20u8 || c == 0x09u8 ||
-                           c == 0x0Du8 || c == 0x0Au8;
+                let ends = c == 0x2C || c == 0x5D || c == 0x7D || c == 0x20 || c == 0x09 ||
+                           c == 0x0D || c == 0x0A;
                 if ends { break; }
             }
             index = index + 1;
@@ -312,7 +312,7 @@ extend JsonEventReader {
 
 extend JsonEventReader {
     func PushContainer(self: &var JsonEventReader, isObject: bool) -> bool {
-        if self.depth >= self.limits.maximumDepth || self.depth >= 1024u {
+        if self.depth >= self.limits.maximumDepth || self.depth >= 1024 {
             self.stop = JsonStop::TooDeep;
             return false;
         }
@@ -329,9 +329,9 @@ extend JsonEventReader {
     }
 
     func InObject(self: &JsonEventReader) -> bool {
-        if self.depth == 0u { return false; }
+        if self.depth == 0 { return false; }
         let index = self.depth - 1u;
-        return (self.stack[index / 64u] & (1u64 << ((index % 64u) as uint64))) != 0u64;
+        return (self.stack[index / 64u] & (1u64 << ((index % 64u) as uint64))) != 0;
     }
 
     func Matches(self: &var JsonEventReader, word: char8[..]) -> bool {
@@ -360,33 +360,33 @@ extend JsonEventReader {
         // Skip a separator, whichever kind is due here.
         while self.position < self.filled {
             let c = self.data[self.position] as uint8;
-            if c != 0x2Cu8 && c != 0x3Au8 { break; }
+            if c != 0x2C && c != 0x3A { break; }
             self.position = self.position + 1;
             self.SkipWhitespace();
         }
         if !self.Available() {
-            if self.depth > 0u {
+            if self.depth > 0 {
                 self.stop = JsonStop::Truncated;
                 return JsonEvent::Error;
             }
             return JsonEvent::End;
         }
         let c = self.data[self.position] as uint8;
-        if c == 0x7Bu8 {
+        if c == 0x7B {
             self.position = self.position + 1;
             if !self.PushContainer(true) { return JsonEvent::Error; }
             self.expectingValue = false;
             return JsonEvent::ObjectStart;
         }
-        if c == 0x5Bu8 {
+        if c == 0x5B {
             self.position = self.position + 1;
             if !self.PushContainer(false) { return JsonEvent::Error; }
             self.expectingValue = true;
             return JsonEvent::ArrayStart;
         }
-        if c == 0x7Du8 || c == 0x5Du8 {
-            let wantsObject = c == 0x7Du8;
-            if self.depth == 0u || self.InObject() != wantsObject {
+        if c == 0x7D || c == 0x5D {
+            let wantsObject = c == 0x7D;
+            if self.depth == 0 || self.InObject() != wantsObject {
                 // A brace closing a bracket, or a closer with nothing open. A streaming reader that let this
                 // through would push the problem onto every caller.
                 self.stop = JsonStop::Unexpected;
@@ -397,7 +397,7 @@ extend JsonEventReader {
             self.expectingValue = !self.InObject();
             return wantsObject ? JsonEvent::ObjectEnd : JsonEvent::ArrayEnd;
         }
-        if c == 0x22u8 {
+        if c == 0x22 {
             let isName = self.InObject() && !self.expectingValue;
             if !self.ScanWhile(true) { return JsonEvent::Error; }
             if isName {
@@ -408,7 +408,7 @@ extend JsonEventReader {
             return JsonEvent::Text;
         }
         self.expectingValue = !self.InObject();
-        if c == 0x2Du8 || (c >= 0x30u8 && c <= 0x39u8) {
+        if c == 0x2D || (c >= 0x30 && c <= 0x39) {
             if !self.ScanWhile(false) { return JsonEvent::Error; }
             return JsonEvent::Number;
         }

@@ -91,7 +91,7 @@ func Main() -> int {
     var kept32 = Fnv1a32();
     kept32.Write(bytes, 6);
     Assert(kept32.Value() == 0xBF9CF968, "the 32-bit hasher reports its own width");
-    Assert(kept32.Finish() == 0xBF9CF968u64, "and widens it without changing it");
+    Assert(kept32.Finish() == 0xBF9CF968, "and widens it without changing it");
     kept32.Reset();
     Assert(kept32.Value() == FnvOffsetBasis32, "and resets to the 32-bit offset basis");
 

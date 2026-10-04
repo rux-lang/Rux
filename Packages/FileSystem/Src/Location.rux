@@ -44,8 +44,8 @@ pub func CurrentDirectory(allocator: Allocator) -> OsString ! IoError {
         // The length is reported without the terminator, and a length larger than the buffer means the answer
         // did not fit rather than that anything failed.
         let written = GetCurrentDirectoryW(4096, @units[0] as *var char16);
-        if written == 0u32 { fail TranslateNative(GetLastError() as int32); }
-        if written > 4096u32 { fail IoError::Of(IoErrorKind::LimitExceeded); }
+        if written == 0 { fail TranslateNative(GetLastError() as int32); }
+        if written > 4096 { fail IoError::Of(IoErrorKind::LimitExceeded); }
         let view = OsStringView::FromUnits((@units[0])[..written as uint]);
         return OsString::FromView(allocator, view) catch { else => fail IoError::Of(IoErrorKind::Other) };
     }
@@ -53,7 +53,7 @@ pub func CurrentDirectory(allocator: Allocator) -> OsString ! IoError {
         let outcome = Getcwd(@units[0], 4096);
         if outcome < 0 { fail TranslateNative((0i64 - outcome) as int32); }
         var length: uint = 0;
-        while length < 4096u && units[length] != (0u8 as char8) {
+        while length < 4096 && units[length] != (0u8 as char8) {
             length = length + 1;
         }
         let view = OsStringView::FromUnits((@units[0])[..length]);
@@ -128,7 +128,7 @@ when #target.os != .Windows {
             }
             fail TranslateNative(raw);
         }
-        if written as uint >= 4096u {
+        if written as uint >= 4096 {
             // readlink truncates silently, so a full buffer cannot be told from a perfect fit.
             fail IoError::Of(IoErrorKind::LimitExceeded);
         }
@@ -241,8 +241,8 @@ pub func Canonicalize(allocator: Allocator, path: Path) -> PathBuffer ! IoError 
         let written = GetFinalPathNameByHandleW(handle, @units[0] as *var char16, 4096, 0);
         let raw = GetLastError() as int32;
         CloseHandle(handle);
-        if written == 0u32 { fail TranslateNative(raw); }
-        if written >= 4096u32 { fail IoError::Of(IoErrorKind::LimitExceeded); }
+        if written == 0 { fail TranslateNative(raw); }
+        if written >= 4096 { fail IoError::Of(IoErrorKind::LimitExceeded); }
         let view = OsStringView::FromUnits((@units[0])[..written as uint]);
         return PathBuffer::FromPath(allocator, Path::FromView(view)) catch {
             else => fail IoError::Of(IoErrorKind::Other)

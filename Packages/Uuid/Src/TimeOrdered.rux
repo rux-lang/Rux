@@ -41,7 +41,7 @@ pub func TimeOrderedAt(milliseconds: uint64) -> Uuid ! EntropyError {
     var value = Uuid::FromBytes((@bytes[0])[..16]);
     // Six bytes of milliseconds, most significant first — which is what makes byte order equal time order.
     var index: uint = 0;
-    while index < 6u {
+    while index < 6 {
         let shift = ((5u - index) * 8) as uint64;
         value.bytes[index] = ((milliseconds >> shift) & 0xFF) as byte;
         index = index + 1;
@@ -61,8 +61,8 @@ pub func TimeOrderedAt(milliseconds: uint64) -> Uuid ! EntropyError {
 pub func MillisecondOf(value: &Uuid) -> uint64 {
     var milliseconds: uint64 = 0;
     var index: uint = 0;
-    while index < 6u {
-        milliseconds = (milliseconds << 8u64) | (value.bytes[index] as uint64);
+    while index < 6 {
+        milliseconds = (milliseconds << 8) | (value.bytes[index] as uint64);
         index = index + 1;
     }
     return milliseconds;
@@ -116,10 +116,10 @@ extend MonotonicUuid {
         }
         var stepped = self.previous;
         var index: uint = 16;
-        while index > 6u {
+        while index > 6 {
             index = index - 1;
             let octet = stepped.bytes[index];
-            if octet != 0xFFu8 {
+            if octet != 0xFF {
                 stepped.bytes[index] = octet + 1;
                 self.previous = stepped;
                 return stepped;

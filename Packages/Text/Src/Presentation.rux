@@ -114,9 +114,9 @@ pub func WriteEscaped(writer: &var TextWriter, text: char8[..]) -> ! FormatError
         let code = byte as uint32;
         // A C1 control is the second byte of a two-byte sequence whose first is 0xC2, so it is found by looking at
         // the pair rather than at one byte; every other escape is a single ASCII byte.
-        let isC1 = code == 0xC2u32 && index + 1 < text.length &&
-                   (text.data[index + 1] as uint32) >= 0x80u32 && (text.data[index + 1] as uint32) <= 0x9Fu32;
-        let escapes = byte == c8'"' || byte == c8'\\' || code < 0x20u32 || code == 0x7Fu32 || isC1;
+        let isC1 = code == 0xC2 && index + 1 < text.length &&
+                   (text.data[index + 1] as uint32) >= 0x80 && (text.data[index + 1] as uint32) <= 0x9F;
+        let escapes = byte == c8'"' || byte == c8'\\' || code < 0x20 || code == 0x7F || isC1;
         if escapes {
             if index > runStart {
                 WriteBytes(writer, (@text.data[runStart])[..index - runStart])?;
@@ -140,10 +140,10 @@ pub func WriteEscaped(writer: &var TextWriter, text: char8[..]) -> ! FormatError
 func WriteEscapeFor(writer: &var TextWriter, byte: char8, scalar: uint32) -> ! FormatError {
     if byte == c8'"' { return WriteBytes(writer, "\\\""); }
     if byte == c8'\\' { return WriteBytes(writer, "\\\\"); }
-    if scalar == 0x0Au32 { return WriteBytes(writer, "\\n"); }
-    if scalar == 0x0Du32 { return WriteBytes(writer, "\\r"); }
-    if scalar == 0x09u32 { return WriteBytes(writer, "\\t"); }
-    if scalar == 0x00u32 { return WriteBytes(writer, "\\0"); }
+    if scalar == 0x0A { return WriteBytes(writer, "\\n"); }
+    if scalar == 0x0D { return WriteBytes(writer, "\\r"); }
+    if scalar == 0x09 { return WriteBytes(writer, "\\t"); }
+    if scalar == 0x00 { return WriteBytes(writer, "\\0"); }
     WriteBytes(writer, "\\u{")?;
     WriteHex(writer, scalar)?;
     return WriteAscii(writer, c8'}');
@@ -154,13 +154,13 @@ func WriteHex(writer: &var TextWriter, value: uint32) -> ! FormatError {
     var digits: char8[8];
     var count: uint = 0;
     var rest = value;
-    if rest == 0u32 {
+    if rest == 0 {
         digits[0] = c8'0';
         count = 1;
     }
-    while rest > 0u32 {
+    while rest > 0 {
         let digit = rest % 16;
-        digits[count] = (digit < 10u32 ? digit + 0x30 : digit + 0x57) as char8;
+        digits[count] = (digit < 10 ? digit + 0x30 : digit + 0x57) as char8;
         count = count + 1;
         rest = rest / 16;
     }

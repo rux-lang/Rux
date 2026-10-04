@@ -42,7 +42,7 @@ pub func ReadWord(reader: &var Reader, endian: Endian, width: uint) -> uint512 !
         // Most significant first into the accumulator, so each step is one shift — which byte that is
         // is the only place the order matters.
         let at = endian == Endian::Big ? index : width - 1 - index;
-        word = (word << 8u512) | ((bytes[at] as uint8) as uint512);
+        word = (word << 8) | ((bytes[at] as uint8) as uint512);
         index = index + 1;
     }
     return word;
@@ -64,7 +64,7 @@ pub func WriteWord(writer: &var Writer, endian: Endian, width: uint, value: uint
         // Least significant out of the accumulator, placed at whichever end the order says it lives.
         let at = endian == Endian::Little ? index : width - 1 - index;
         bytes[at] = ((word & 0xFF) as uint8) as char8;
-        word = word >> 8u512;
+        word = word >> 8;
         index = index + 1;
     }
     return WriteAll(writer, bytes[0..width]);

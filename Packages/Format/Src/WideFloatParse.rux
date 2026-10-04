@@ -19,7 +19,7 @@ import Allocator::Allocator;
 /// @returns the bit pattern, or the failure and where it was found
 /// @see https://rux-lang.dev/docs/api/format/parse-wide-float
 pub func ParseWideFloat(allocator: Allocator, str: char8[..], layout: &FloatLayout) -> uint512 ! ParseError {
-    if str.length == 0u { fail ParseError::Empty; }
+    if str.length == 0 { fail ParseError::Empty; }
     var index: uint = 0;
     var negative = false;
     if str[index] == c8'+' || str[index] == c8'-' {
@@ -47,7 +47,7 @@ pub func ParseWideFloat(allocator: Allocator, str: char8[..], layout: &FloatLayo
             if afterPoint {
                 decimalExponent = decimalExponent - 1;
             }
-            if digit != 0u64 || significant > 0u {
+            if digit != 0 || significant > 0 {
                 if !digits.MultiplySmall(10) || !digits.AddSmall(digit) {
                     fail ParseError::OutOfMemory(index);
                 }
@@ -63,7 +63,7 @@ pub func ParseWideFloat(allocator: Allocator, str: char8[..], layout: &FloatLayo
         }
         break;
     }
-    if digitCount == 0u { fail ParseError::InvalidCharacter(index); }
+    if digitCount == 0 { fail ParseError::InvalidCharacter(index); }
     if index < str.length && (str[index] == c8'e' || str[index] == c8'E') {
         let marker = index;
         index = index + 1;
@@ -127,7 +127,7 @@ func RoundRatio(allocator: Allocator, digits: &var BigNat, decimalExponent: int,
         if !scratch.Assign(denominator) || !scratch.ShiftLeft(exponent as uint) {
             fail ParseError::OutOfMemory(where);
         }
-        if numerator.Compare(scratch) < 0i32 {
+        if numerator.Compare(scratch) < 0 {
             exponent = exponent - 1;
         }
     }
@@ -135,7 +135,7 @@ func RoundRatio(allocator: Allocator, digits: &var BigNat, decimalExponent: int,
         if !scratch.Assign(numerator) || !scratch.ShiftLeft((0 - exponent) as uint) {
             fail ParseError::OutOfMemory(where);
         }
-        if scratch.Compare(denominator) < 0i32 {
+        if scratch.Compare(denominator) < 0 {
             exponent = exponent - 1;
         }
     }
@@ -165,13 +165,13 @@ func RoundRatio(allocator: Allocator, digits: &var BigNat, decimalExponent: int,
     }
     var quotient: uint512 = 0;
     var position = wanted;
-    while position > 0u {
+    while position > 0 {
         position = position - 1u;
-        if remainder.Compare(divisor) >= 0i32 {
+        if remainder.Compare(divisor) >= 0 {
             quotient = quotient | (1u512 << position);
             remainder.Subtract(divisor);
         }
-        if position > 0u && !remainder.ShiftLeft(1u) {
+        if position > 0 && !remainder.ShiftLeft(1u) {
             fail ParseError::OutOfMemory(where);
         }
     }
@@ -180,9 +180,9 @@ func RoundRatio(allocator: Allocator, digits: &var BigNat, decimalExponent: int,
     }
 
     // Round to nearest, ties to even, on the three low bits.
-    var significand = quotient >> 3u;
+    var significand = quotient >> 3;
     let low = quotient & 7u512;
-    if low > 4u512 || (low == 4u512 && (significand & 1u512) == 1u512) {
+    if low > 4 || (low == 4 && (significand & 1u512) == 1) {
         significand = significand + 1u512;
     }
     if exponent < lowest {
@@ -195,7 +195,7 @@ func RoundRatio(allocator: Allocator, digits: &var BigNat, decimalExponent: int,
                                                               layout);
     }
     if significand == (1u512 << precision) {
-        significand = significand >> 1u;
+        significand = significand >> 1;
         exponent = exponent + 1;
         if exponent > layout.bias { fail ParseError::Overflow(where); }
     }

@@ -25,12 +25,12 @@ func DecodeUtf16(units: char16[..], index: uint, scalar: *var uint32, width: *va
     let unit = units.data[index] as uint32;
     *scalar = unit;
     *width = 1;
-    if unit < 0xD800u32 || unit > 0xDFFFu32 { return true; }
-    if unit >= 0xDC00u32 { return false; }
+    if unit < 0xD800 || unit > 0xDFFF { return true; }
+    if unit >= 0xDC00 { return false; }
     if index + 1 >= units.length { return false; }
     let low = units.data[index + 1] as uint32;
-    if low < 0xDC00u32 || low > 0xDFFFu32 { return false; }
-    *scalar = 0x10000u32 + ((unit - 0xD800u32) << 10u32) + (low - 0xDC00u32);
+    if low < 0xDC00 || low > 0xDFFF { return false; }
+    *scalar = 0x10000u32 + ((unit - 0xD800u32) << 10) + (low - 0xDC00u32);
     *width = 2;
     return true;
 }

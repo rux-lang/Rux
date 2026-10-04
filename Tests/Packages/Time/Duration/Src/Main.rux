@@ -12,27 +12,27 @@ func Main() -> int {
 
     // Constructors normalize, negative counts included.
     let plain = Duration::FromSeconds(5i64);
-    Assert(plain.WholeSeconds() == 5i64 && plain.SubsecondNanoseconds() == 0u32, "whole seconds carry no fraction");
+    Assert(plain.WholeSeconds() == 5 && plain.SubsecondNanoseconds() == 0, "whole seconds carry no fraction");
     var copied = plain;
     copied.seconds = 8i64;
-    Assert(plain.WholeSeconds() == 5i64 && copied.WholeSeconds() == 8i64,
+    Assert(plain.WholeSeconds() == 5 && copied.WholeSeconds() == 8,
            "copying a duration produces an independent value");
     let millis = Duration::FromMilliseconds(1500i64);
-    Assert(millis.WholeSeconds() == 1i64 && millis.SubsecondNanoseconds() == 500000000u32,
+    Assert(millis.WholeSeconds() == 1 && millis.SubsecondNanoseconds() == 500000000,
            "fifteen hundred milliseconds is one and a half seconds");
     let negative = Duration::FromMilliseconds(-1500i64);
-    Assert(negative.WholeSeconds() == -2i64 && negative.SubsecondNanoseconds() == 500000000u32,
+    Assert(negative.WholeSeconds() == -2i64 && negative.SubsecondNanoseconds() == 500000000,
            "minus fifteen hundred is seconds -2 and half a billion up");
     Assert(negative.IsNegative(), "and it knows its sign");
     let tiny = Duration::FromNanoseconds(-1i64);
-    Assert(tiny.WholeSeconds() == -1i64 && tiny.SubsecondNanoseconds() == 999999999u32,
+    Assert(tiny.WholeSeconds() == -1i64 && tiny.SubsecondNanoseconds() == 999999999,
            "minus one nanosecond normalizes the same way");
     let hour = (Duration::FromHours(1i64) ?? Duration::Zero());
-    Assert(hour.WholeSeconds() == 3600i64, "an hour is thirty-six hundred seconds");
+    Assert(hour.WholeSeconds() == 3600, "an hour is thirty-six hundred seconds");
     Assert(!(Duration::FromHours(9223372036854775807i64) is Duration), "and an impossible count of them refuses");
 
     // The conversions truncate toward zero and refuse past the range.
-    Assert((millis.TotalMilliseconds() ?? 0i64) == 1500i64, "the milliseconds come back out");
+    Assert((millis.TotalMilliseconds() ?? 0i64) == 1500, "the milliseconds come back out");
     Assert((negative.TotalMilliseconds() ?? 0i64) == -1500i64, "negative ones too");
     Assert((tiny.TotalNanoseconds() ?? 0i64) == -1i64, "and a single negative nanosecond");
     let vast = Duration::FromSeconds(9223372036854775807i64);
@@ -41,13 +41,13 @@ func Main() -> int {
 
     // Addition carries, subtraction borrows, and both keep the fraction in range.
     let sum = (millis.Plus(Duration::FromMilliseconds(700i64)) ?? Duration::Zero());
-    Assert(sum.WholeSeconds() == 2i64 && sum.SubsecondNanoseconds() == 200000000u32,
+    Assert(sum.WholeSeconds() == 2 && sum.SubsecondNanoseconds() == 200000000,
            "one and a half plus seven tenths carries into the seconds");
     let difference = (millis.Minus(Duration::FromMilliseconds(700i64)) ?? Duration::Zero());
-    Assert(difference.WholeSeconds() == 0i64 && difference.SubsecondNanoseconds() == 800000000u32,
+    Assert(difference.WholeSeconds() == 0 && difference.SubsecondNanoseconds() == 800000000,
            "and less seven tenths borrows back");
     let crossing = (zero.Minus(Duration::FromMilliseconds(300i64)) ?? Duration::FromSeconds(99i64));
-    Assert(crossing.WholeSeconds() == -1i64 && crossing.SubsecondNanoseconds() == 700000000u32,
+    Assert(crossing.WholeSeconds() == -1i64 && crossing.SubsecondNanoseconds() == 700000000,
            "subtracting through zero lands normalized");
     let back = (crossing.Plus(Duration::FromMilliseconds(300i64)) ?? Duration::FromSeconds(99i64));
     Assert(back.IsZero(), "and adding it back returns exactly to zero");
@@ -63,10 +63,10 @@ func Main() -> int {
 
     // Scaling, both signs, with the fraction's carry.
     let scaled = (millis.Times(3i64) ?? Duration::Zero());
-    Assert(scaled.WholeSeconds() == 4i64 && scaled.SubsecondNanoseconds() == 500000000u32,
+    Assert(scaled.WholeSeconds() == 4 && scaled.SubsecondNanoseconds() == 500000000,
            "three times one and a half is four and a half");
     let flipped = (millis.Times(-2i64) ?? Duration::Zero());
-    Assert(flipped.WholeSeconds() == -3i64 && flipped.SubsecondNanoseconds() == 0u32,
+    Assert(flipped.WholeSeconds() == -3i64 && flipped.SubsecondNanoseconds() == 0,
            "minus two times one and a half is minus three");
     Assert(!(vast.Times(2i64) is Duration), "and a scale past the range refuses");
 

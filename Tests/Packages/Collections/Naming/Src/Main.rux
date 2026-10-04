@@ -21,7 +21,7 @@ func Main() -> int {
     var system = SystemAllocator();
     let allocator: Allocator = system;
 
-    Assert(HashInt32(21, 0, 0) == 42u64, "a call resolves to this program's own declaration");
+    Assert(HashInt32(21, 0, 0) == 42, "a call resolves to this program's own declaration");
 
     // The same name handed over as a value, which is where it used to go wrong. The set is built on it, so every
     // insertion and every lookup runs through whichever function the reference resolved to.

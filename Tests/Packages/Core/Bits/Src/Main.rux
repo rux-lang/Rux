@@ -15,11 +15,11 @@ func CheckWidth<T>(zero: T, one: T, allOnes: T) -> int32 {
     if bits != sizeof(T) * 8 { return 1; }
 
     // Counting, at both ends of the range.
-    if CountOnes<T>(zero) != 0u32 { return 2; }
+    if CountOnes<T>(zero) != 0 { return 2; }
     if CountOnes<T>(allOnes) != bits as uint32 { return 3; }
-    if CountOnes<T>(one) != 1u32 { return 4; }
+    if CountOnes<T>(one) != 1 { return 4; }
     if CountZeros<T>(zero) != bits as uint32 { return 5; }
-    if CountZeros<T>(allOnes) != 0u32 { return 6; }
+    if CountZeros<T>(allOnes) != 0 { return 6; }
 
     // A value with no set bit has every bit leading and trailing it.
     if LeadingZeros<T>(zero) != bits as uint32 { return 7; }
@@ -28,13 +28,13 @@ func CheckWidth<T>(zero: T, one: T, allOnes: T) -> int32 {
     if TrailingOnes<T>(allOnes) != bits as uint32 { return 10; }
 
     // One at the bottom: nothing below it, everything but one bit above it.
-    if TrailingZeros<T>(one) != 0u32 { return 11; }
+    if TrailingZeros<T>(one) != 0 { return 11; }
     if LeadingZeros<T>(one) != bits as uint32 - 1 { return 12; }
-    if TrailingOnes<T>(one) != 1u32 { return 13; }
-    if LeadingOnes<T>(one) != 0u32 { return 14; }
+    if TrailingOnes<T>(one) != 1 { return 13; }
+    if LeadingOnes<T>(one) != 0 { return 14; }
 
     // Two is one bit up, whatever the width.
-    if TrailingZeros<T>(two) != 1u32 { return 15; }
+    if TrailingZeros<T>(two) != 1 { return 15; }
     if LeadingZeros<T>(two) != bits as uint32 - 2 { return 16; }
 
     // Reading individual bits, including past the end.
@@ -66,7 +66,7 @@ func CheckWidth<T>(zero: T, one: T, allOnes: T) -> int32 {
     if ReverseBytes<T>(zero) != zero { return 36; }
 
     // A byte reversal moves the lowest byte to the highest place; at one byte wide there is nothing to move.
-    if bits == 8u64 {
+    if bits == 8 {
         if ReverseBytes<T>(one) != one { return 37; }
     }
     else {
@@ -78,7 +78,7 @@ func CheckWidth<T>(zero: T, one: T, allOnes: T) -> int32 {
     if !IsPowerOfTwo<T>(one) { return 40; }
     if !IsPowerOfTwo<T>(two) { return 41; }
     if IsPowerOfTwo<T>(one + two) { return 42; }
-    if bits > 8u64 && !IsPowerOfTwo<T>(one << (bits - 1)) { return 43; }
+    if bits > 8 && !IsPowerOfTwo<T>(one << (bits - 1)) { return 43; }
 
     // Converting to a named order and back is the identity, whichever order this target has.
     if FromLittleEndian<T>(ToLittleEndian<T>(two)) != two { return 44; }
@@ -147,15 +147,15 @@ func Main() -> int {
     }
 
     // Known answers, so a rule that is self-consistent at every width but wrong is still caught.
-    Assert(CountOnes<uint32>(0xF0F0F0F0u32) == 16u32, "counting set bits");
-    Assert(LeadingZeros<uint32>(0x00FF0000u32) == 8u32, "counting the clear bits above the highest set one");
-    Assert(TrailingZeros<uint32>(0x00FF0000u32) == 16u32, "counting the clear bits below the lowest set one");
-    Assert(ReverseBytes<uint32>(0x01020304u32) == 0x04030201u32, "reversing bytes");
-    Assert(ReverseBits<uint8>(0b1000_0001u8) == 0b1000_0001u8, "reversing a palindrome leaves it alone");
-    Assert(ReverseBits<uint8>(0b1100_0000u8) == 0b0000_0011u8, "reversing bits");
-    Assert(RotateLeft<uint8>(0b1000_0001u8, 1u64) == 0b0000_0011u8, "rotating past the top wraps to the bottom");
-    Assert(RotateRight<uint8>(0b1000_0001u8, 1u64) == 0b1100_0000u8, "rotating past the bottom wraps to the top");
-    Assert(ShiftRightLogical<int8>(-1i8, 4u64) == 15i8, "a logical shift brings zeros in, not sign bits");
+    Assert(CountOnes<uint32>(0xF0F0F0F0u32) == 16, "counting set bits");
+    Assert(LeadingZeros<uint32>(0x00FF0000u32) == 8, "counting the clear bits above the highest set one");
+    Assert(TrailingZeros<uint32>(0x00FF0000u32) == 16, "counting the clear bits below the lowest set one");
+    Assert(ReverseBytes<uint32>(0x01020304u32) == 0x04030201, "reversing bytes");
+    Assert(ReverseBits<uint8>(0b1000_0001u8) == 0b1000_0001, "reversing a palindrome leaves it alone");
+    Assert(ReverseBits<uint8>(0b1100_0000u8) == 0b0000_0011, "reversing bits");
+    Assert(RotateLeft<uint8>(0b1000_0001u8, 1u64) == 0b0000_0011, "rotating past the top wraps to the bottom");
+    Assert(RotateRight<uint8>(0b1000_0001u8, 1u64) == 0b1100_0000, "rotating past the bottom wraps to the top");
+    Assert(ShiftRightLogical<int8>(-1i8, 4u64) == 15, "a logical shift brings zeros in, not sign bits");
     Assert(-1i8 >> 4 == -1i8, "an ordinary shift still copies the sign bit down");
 
     Assert(CheckBytes<uint16>(0x0102u16, 0u16) == 0, "byte conversion at 16 bits");

@@ -41,10 +41,10 @@ func Close(actual: float64, expected: float64) -> bool {
         }
     }
     var gap = BitsOf(actual) - BitsOf(expected);
-    if gap < 0i64 {
+    if gap < 0 {
         gap = -gap;
     }
-    return gap <= 1i64;
+    return gap <= 1;
 }
 
 func Main() -> int {

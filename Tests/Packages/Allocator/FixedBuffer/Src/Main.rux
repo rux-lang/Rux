@@ -38,7 +38,7 @@ func Main() -> ! AllocError {
     let secondBytes = second as *var uint64;
     *firstBytes = 0x0123456789ABCDEF;
     *secondBytes = 0xFEDCBA9876543210;
-    Assert(*firstBytes == 0x0123456789ABCDEFu64, "the first allocation keeps its bytes");
+    Assert(*firstBytes == 0x0123456789ABCDEF, "the first allocation keeps its bytes");
     Assert(*secondBytes == 0xFEDCBA9876543210u64, "and so does the second");
 
     // A stricter alignment is honoured, and the padding it needs is counted as used.

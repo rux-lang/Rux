@@ -21,136 +21,136 @@ func TextBytes(text: char8[..]) -> char8[..] {
 // Documents TOML 1.1 accepts. Each is one feature of the grammar, and a reader that refuses any of them is
 // refusing a document someone is entitled to write.
 func Valid(index: uint) -> char8[..] {
-    if index == 0u {
+    if index == 0 {
         return "key = \"value\"";
     }
-    if index == 1u {
+    if index == 1 {
         return "bare_key = 1";
     }
-    if index == 2u {
+    if index == 2 {
         return "bare-key = 1";
     }
-    if index == 3u {
+    if index == 3 {
         return "1234 = 1";
     }
-    if index == 4u {
+    if index == 4 {
         return "\"127.0.0.1\" = 1";
     }
-    if index == 5u {
+    if index == 5 {
         return "\"key\" = 1";
     }
-    if index == 6u {
+    if index == 6 {
         return "'quoted \"value\"' = 1";
     }
-    if index == 7u {
+    if index == 7 {
         return "\"\" = \"blank\"";
     }
-    if index == 8u {
+    if index == 8 {
         return "name = \"Orange\"\nphysical.colour = \"orange\"\nphysical.shape = \"round\"";
     }
-    if index == 9u {
+    if index == 9 {
         return "str = \"a \\\"quoted\\\" word, a \\t tab and a \\u00E9 escape.\"";
     }
-    if index == 10u {
+    if index == 10 {
         return "str1 = \"\"\"\nRoses are red\nViolets are blue\"\"\"";
     }
-    if index == 11u {
+    if index == 11 {
         return "str2 = \"\"\"\\\n  The quick brown \\\n  fox jumps over \\\n  the lazy dog.\\\n  \"\"\"";
     }
-    if index == 12u {
+    if index == 12 {
         return "winpath = 'C:\\Users\\nodejs\\templates'";
     }
-    if index == 13u {
+    if index == 13 {
         return "regex = '<\\i\\c*\\s*>'";
     }
-    if index == 14u {
+    if index == 14 {
         return "re = '''I [dw]on't need \\d{2} apples'''";
     }
-    if index == 15u {
+    if index == 15 {
         return "int1 = +99\nint2 = 42\nint3 = 0\nint4 = -17";
     }
-    if index == 16u {
+    if index == 16 {
         return "int5 = 1_000\nint6 = 5_349_221\nint7 = 53_49_221";
     }
-    if index == 17u {
+    if index == 17 {
         return "hex1 = 0xDEADBEEF\nhex2 = 0xdeadbeef\nhex3 = 0xdead_beef";
     }
-    if index == 18u {
+    if index == 18 {
         return "oct1 = 0o01234567\noct2 = 0o755\nbin1 = 0b11010110";
     }
-    if index == 19u {
+    if index == 19 {
         return "flt1 = +1.0\nflt2 = 3.1415\nflt3 = -0.01\nflt4 = 5e+22\nflt5 = 1e06\nflt6 = -2E-2\nflt7 = 6.626e-34";
     }
-    if index == 20u {
+    if index == 20 {
         return "flt8 = 224_617.445_991_228";
     }
-    if index == 21u {
+    if index == 21 {
         return "sf1 = inf\nsf2 = +inf\nsf3 = -inf\nsf4 = nan\nsf5 = +nan\nsf6 = -nan";
     }
-    if index == 22u {
+    if index == 22 {
         return "bool1 = true\nbool2 = false";
     }
-    if index == 23u {
+    if index == 23 {
         return "odt1 = 1979-05-27T07:32:00Z\nodt2 = 1979-05-27T00:32:00-07:00\nodt3 = 1979-05-27T00:32:00.999999-07:00";
     }
-    if index == 24u {
+    if index == 24 {
         return "ldt1 = 1979-05-27T07:32:00\nldt2 = 1979-05-27T00:32:00.999999";
     }
-    if index == 25u {
+    if index == 25 {
         return "ld1 = 1979-05-27\nlt1 = 07:32:00\nlt2 = 00:32:00.999999";
     }
-    if index == 26u {
+    if index == 26 {
         return "integers = [ 1, 2, 3 ]\ncolours = [ \"red\", \"yellow\" ]\nnested = [ [ 1, 2 ], [3, 4, 5] ]";
     }
-    if index == 27u {
+    if index == 27 {
         return "contributors = [\n  \"Foo <f@e.com>\",\n  { name = \"Baz\" },\n]";
     }
-    if index == 28u {
+    if index == 28 {
         return "[table-1]\nkey1 = \"some string\"\nkey2 = 123\n\n[table-2]\nkey1 = \"another string\"\nkey2 = 456";
     }
-    if index == 29u {
+    if index == 29 {
         return "[dog.\"tater.man\"]\ntype.name = \"pug\"";
     }
-    if index == 30u {
+    if index == 30 {
         return "[a.b.c]\n[a]\nkey = 1";
     }
-    if index == 31u {
+    if index == 31 {
         return "name = { first = \"Tom\", last = \"Preston-Werner\" }";
     }
-    if index == 32u {
+    if index == 32 {
         return "point = {\n  x = 1,\n  y = 2,\n}";
     }
-    if index == 33u {
+    if index == 33 {
         return "[[products]]\nname = \"Hammer\"\nsku = 738594937\n\n[[products]]\n\n[[products]]\nname = \"Nail\"";
     }
-    if index == 34u {
+    if index == 34 {
         return "[[fruits]]\nname = \"apple\"\n\n[fruits.skin]\ncolour = \"red\"\n\n[[fruits.kinds]]\nn = 1";
     }
-    if index == 35u {
+    if index == 35 {
         return "# just a comment\n";
     }
-    if index == 36u {
+    if index == 36 {
         return "";
     }
-    if index == 37u {
+    if index == 37 {
         return "key = \"value\" # a trailing comment";
     }
-    if index == 38u {
+    if index == 38 {
         return "esc = \"\\e[1m\"";
     }
-    if index == 39u {
+    if index == 39 {
         return "hex = \"\\x41\\x42\"";
     }
-    if index == 40u {
+    if index == 40 {
         return "short = 07:32\nshortdt = 1979-05-27T07:32Z";
     }
-    if index == 41u {
+    if index == 41 {
         return "a = [1, 2,]";
     }
-    if index == 42u {
+    if index == 42 {
         return "empty_array = []\nempty_table = {}";
     }
-    if index == 43u {
+    if index == 43 {
         return "\n\n\n";
     }
     return "";
@@ -161,130 +161,130 @@ const ValidCount: uint = 44;
 // Documents TOML refuses. Each is a form some reader accepts and some does not, which is exactly the set that
 // makes one document mean two things.
 func Invalid(index: uint) -> char8[..] {
-    if index == 0u {
+    if index == 0 {
         return "key = # no value";
     }
-    if index == 1u {
+    if index == 1 {
         return "a = 1\na = 2";
     }
-    if index == 2u {
+    if index == 2 {
         return "[a]\n[a]";
     }
-    if index == 3u {
+    if index == 3 {
         return "a = { b = 1 }\n[a.c]";
     }
-    if index == 4u {
+    if index == 4 {
         return "a = { b = 1 }\na.c = 2";
     }
-    if index == 5u {
+    if index == 5 {
         return "[t]\na.b = 1\n[t.a]";
     }
-    if index == 6u {
+    if index == 6 {
         return "a = 1\n[a]";
     }
-    if index == 7u {
+    if index == 7 {
         return "a = 1\na.b = 2";
     }
-    if index == 8u {
+    if index == 8 {
         return "a = [1, 2]\n[[a]]";
     }
-    if index == 9u {
+    if index == 9 {
         return "[[a]]\n[a]";
     }
-    if index == 10u {
+    if index == 10 {
         return "a = 010";
     }
-    if index == 11u {
+    if index == 11 {
         return "a = 0x";
     }
-    if index == 12u {
+    if index == 12 {
         return "a = +0x1";
     }
-    if index == 13u {
+    if index == 13 {
         return "a = 1__0";
     }
-    if index == 14u {
+    if index == 14 {
         return "a = _1";
     }
-    if index == 15u {
+    if index == 15 {
         return "a = 1_";
     }
-    if index == 16u {
+    if index == 16 {
         return "a = 0b102";
     }
-    if index == 17u {
+    if index == 17 {
         return "a = .7";
     }
-    if index == 18u {
+    if index == 18 {
         return "a = 7.";
     }
-    if index == 19u {
+    if index == 19 {
         return "a = 1e";
     }
-    if index == 20u {
+    if index == 20 {
         return "a = 3.e2";
     }
-    if index == 21u {
+    if index == 21 {
         return "a = 01.5";
     }
-    if index == 22u {
+    if index == 22 {
         return "a = 1979-02-30";
     }
-    if index == 23u {
+    if index == 23 {
         return "a = 1979-13-01";
     }
-    if index == 24u {
+    if index == 24 {
         return "a = 2023-02-29";
     }
-    if index == 25u {
+    if index == 25 {
         return "a = 1979-05-27T25:00:00Z";
     }
-    if index == 26u {
+    if index == 26 {
         return "a = \"unterminated";
     }
-    if index == 27u {
+    if index == 27 {
         return "a = \"bad\\q\"";
     }
-    if index == 28u {
+    if index == 28 {
         return "a = \"\\u12\"";
     }
-    if index == 29u {
+    if index == 29 {
         return "a = 1 b = 2";
     }
-    if index == 30u {
+    if index == 30 {
         return "[a";
     }
-    if index == 31u {
+    if index == 31 {
         return "a = [1, 2";
     }
-    if index == 32u {
+    if index == 32 {
         return "a = { b = 1";
     }
-    if index == 33u {
+    if index == 33 {
         return "a = [1}";
     }
-    if index == 34u {
+    if index == 34 {
         return "= 1";
     }
-    if index == 35u {
+    if index == 35 {
         return "a";
     }
-    if index == 36u {
+    if index == 36 {
         return "a = \"\"\"not closed";
     }
-    if index == 37u {
+    if index == 37 {
         return "a = 'not closed";
     }
-    if index == 38u {
+    if index == 38 {
         return "a = tru";
     }
-    if index == 39u {
+    if index == 39 {
         return "[]\na = 1";
     }
-    if index == 40u {
+    if index == 40 {
         return "a = 9223372036854775808";
     }
-    if index == 41u {
+    if index == 41 {
         return "a = 1979-05-27T07:32:00+07";
     }
     return "a = 1";
@@ -294,671 +294,671 @@ const InvalidCount: uint = 42;
 
 // The index a failing vector sits at, so a refusal names the document rather than the loop.
 func Label(index: uint) -> char8[..] {
-    if index == 0u {
+    if index == 0 {
         return "vector 0";
     }
-    if index == 1u {
+    if index == 1 {
         return "vector 1";
     }
-    if index == 2u {
+    if index == 2 {
         return "vector 2";
     }
-    if index == 3u {
+    if index == 3 {
         return "vector 3";
     }
-    if index == 4u {
+    if index == 4 {
         return "vector 4";
     }
-    if index == 5u {
+    if index == 5 {
         return "vector 5";
     }
-    if index == 6u {
+    if index == 6 {
         return "vector 6";
     }
-    if index == 7u {
+    if index == 7 {
         return "vector 7";
     }
-    if index == 8u {
+    if index == 8 {
         return "vector 8";
     }
-    if index == 9u {
+    if index == 9 {
         return "vector 9";
     }
-    if index == 10u {
+    if index == 10 {
         return "vector 10";
     }
-    if index == 11u {
+    if index == 11 {
         return "vector 11";
     }
-    if index == 12u {
+    if index == 12 {
         return "vector 12";
     }
-    if index == 13u {
+    if index == 13 {
         return "vector 13";
     }
-    if index == 14u {
+    if index == 14 {
         return "vector 14";
     }
-    if index == 15u {
+    if index == 15 {
         return "vector 15";
     }
-    if index == 16u {
+    if index == 16 {
         return "vector 16";
     }
-    if index == 17u {
+    if index == 17 {
         return "vector 17";
     }
-    if index == 18u {
+    if index == 18 {
         return "vector 18";
     }
-    if index == 19u {
+    if index == 19 {
         return "vector 19";
     }
-    if index == 20u {
+    if index == 20 {
         return "vector 20";
     }
-    if index == 21u {
+    if index == 21 {
         return "vector 21";
     }
-    if index == 22u {
+    if index == 22 {
         return "vector 22";
     }
-    if index == 23u {
+    if index == 23 {
         return "vector 23";
     }
-    if index == 24u {
+    if index == 24 {
         return "vector 24";
     }
-    if index == 25u {
+    if index == 25 {
         return "vector 25";
     }
-    if index == 26u {
+    if index == 26 {
         return "vector 26";
     }
-    if index == 27u {
+    if index == 27 {
         return "vector 27";
     }
-    if index == 28u {
+    if index == 28 {
         return "vector 28";
     }
-    if index == 29u {
+    if index == 29 {
         return "vector 29";
     }
-    if index == 30u {
+    if index == 30 {
         return "vector 30";
     }
-    if index == 31u {
+    if index == 31 {
         return "vector 31";
     }
-    if index == 32u {
+    if index == 32 {
         return "vector 32";
     }
-    if index == 33u {
+    if index == 33 {
         return "vector 33";
     }
-    if index == 34u {
+    if index == 34 {
         return "vector 34";
     }
-    if index == 35u {
+    if index == 35 {
         return "vector 35";
     }
-    if index == 36u {
+    if index == 36 {
         return "vector 36";
     }
-    if index == 37u {
+    if index == 37 {
         return "vector 37";
     }
-    if index == 38u {
+    if index == 38 {
         return "vector 38";
     }
-    if index == 39u {
+    if index == 39 {
         return "vector 39";
     }
-    if index == 40u {
+    if index == 40 {
         return "vector 40";
     }
-    if index == 41u {
+    if index == 41 {
         return "vector 41";
     }
-    if index == 42u {
+    if index == 42 {
         return "vector 42";
     }
-    if index == 43u {
+    if index == 43 {
         return "vector 43";
     }
     return "vector past the end";
 }
 
 func Reparsed(index: uint) -> char8[..] {
-    if index == 0u {
+    if index == 0 {
         return "rewritten vector 0";
     }
-    if index == 1u {
+    if index == 1 {
         return "rewritten vector 1";
     }
-    if index == 2u {
+    if index == 2 {
         return "rewritten vector 2";
     }
-    if index == 3u {
+    if index == 3 {
         return "rewritten vector 3";
     }
-    if index == 4u {
+    if index == 4 {
         return "rewritten vector 4";
     }
-    if index == 5u {
+    if index == 5 {
         return "rewritten vector 5";
     }
-    if index == 6u {
+    if index == 6 {
         return "rewritten vector 6";
     }
-    if index == 7u {
+    if index == 7 {
         return "rewritten vector 7";
     }
-    if index == 8u {
+    if index == 8 {
         return "rewritten vector 8";
     }
-    if index == 9u {
+    if index == 9 {
         return "rewritten vector 9";
     }
-    if index == 10u {
+    if index == 10 {
         return "rewritten vector 10";
     }
-    if index == 11u {
+    if index == 11 {
         return "rewritten vector 11";
     }
-    if index == 12u {
+    if index == 12 {
         return "rewritten vector 12";
     }
-    if index == 13u {
+    if index == 13 {
         return "rewritten vector 13";
     }
-    if index == 14u {
+    if index == 14 {
         return "rewritten vector 14";
     }
-    if index == 15u {
+    if index == 15 {
         return "rewritten vector 15";
     }
-    if index == 16u {
+    if index == 16 {
         return "rewritten vector 16";
     }
-    if index == 17u {
+    if index == 17 {
         return "rewritten vector 17";
     }
-    if index == 18u {
+    if index == 18 {
         return "rewritten vector 18";
     }
-    if index == 19u {
+    if index == 19 {
         return "rewritten vector 19";
     }
-    if index == 20u {
+    if index == 20 {
         return "rewritten vector 20";
     }
-    if index == 21u {
+    if index == 21 {
         return "rewritten vector 21";
     }
-    if index == 22u {
+    if index == 22 {
         return "rewritten vector 22";
     }
-    if index == 23u {
+    if index == 23 {
         return "rewritten vector 23";
     }
-    if index == 24u {
+    if index == 24 {
         return "rewritten vector 24";
     }
-    if index == 25u {
+    if index == 25 {
         return "rewritten vector 25";
     }
-    if index == 26u {
+    if index == 26 {
         return "rewritten vector 26";
     }
-    if index == 27u {
+    if index == 27 {
         return "rewritten vector 27";
     }
-    if index == 28u {
+    if index == 28 {
         return "rewritten vector 28";
     }
-    if index == 29u {
+    if index == 29 {
         return "rewritten vector 29";
     }
-    if index == 30u {
+    if index == 30 {
         return "rewritten vector 30";
     }
-    if index == 31u {
+    if index == 31 {
         return "rewritten vector 31";
     }
-    if index == 32u {
+    if index == 32 {
         return "rewritten vector 32";
     }
-    if index == 33u {
+    if index == 33 {
         return "rewritten vector 33";
     }
-    if index == 34u {
+    if index == 34 {
         return "rewritten vector 34";
     }
-    if index == 35u {
+    if index == 35 {
         return "rewritten vector 35";
     }
-    if index == 36u {
+    if index == 36 {
         return "rewritten vector 36";
     }
-    if index == 37u {
+    if index == 37 {
         return "rewritten vector 37";
     }
-    if index == 38u {
+    if index == 38 {
         return "rewritten vector 38";
     }
-    if index == 39u {
+    if index == 39 {
         return "rewritten vector 39";
     }
-    if index == 40u {
+    if index == 40 {
         return "rewritten vector 40";
     }
-    if index == 41u {
+    if index == 41 {
         return "rewritten vector 41";
     }
-    if index == 42u {
+    if index == 42 {
         return "rewritten vector 42";
     }
-    if index == 43u {
+    if index == 43 {
         return "rewritten vector 43";
     }
     return "rewritten vector past the end";
 }
 func Fixed(index: uint) -> char8[..] {
-    if index == 0u {
+    if index == 0 {
         return "fixed point of vector 0";
     }
-    if index == 1u {
+    if index == 1 {
         return "fixed point of vector 1";
     }
-    if index == 2u {
+    if index == 2 {
         return "fixed point of vector 2";
     }
-    if index == 3u {
+    if index == 3 {
         return "fixed point of vector 3";
     }
-    if index == 4u {
+    if index == 4 {
         return "fixed point of vector 4";
     }
-    if index == 5u {
+    if index == 5 {
         return "fixed point of vector 5";
     }
-    if index == 6u {
+    if index == 6 {
         return "fixed point of vector 6";
     }
-    if index == 7u {
+    if index == 7 {
         return "fixed point of vector 7";
     }
-    if index == 8u {
+    if index == 8 {
         return "fixed point of vector 8";
     }
-    if index == 9u {
+    if index == 9 {
         return "fixed point of vector 9";
     }
-    if index == 10u {
+    if index == 10 {
         return "fixed point of vector 10";
     }
-    if index == 11u {
+    if index == 11 {
         return "fixed point of vector 11";
     }
-    if index == 12u {
+    if index == 12 {
         return "fixed point of vector 12";
     }
-    if index == 13u {
+    if index == 13 {
         return "fixed point of vector 13";
     }
-    if index == 14u {
+    if index == 14 {
         return "fixed point of vector 14";
     }
-    if index == 15u {
+    if index == 15 {
         return "fixed point of vector 15";
     }
-    if index == 16u {
+    if index == 16 {
         return "fixed point of vector 16";
     }
-    if index == 17u {
+    if index == 17 {
         return "fixed point of vector 17";
     }
-    if index == 18u {
+    if index == 18 {
         return "fixed point of vector 18";
     }
-    if index == 19u {
+    if index == 19 {
         return "fixed point of vector 19";
     }
-    if index == 20u {
+    if index == 20 {
         return "fixed point of vector 20";
     }
-    if index == 21u {
+    if index == 21 {
         return "fixed point of vector 21";
     }
-    if index == 22u {
+    if index == 22 {
         return "fixed point of vector 22";
     }
-    if index == 23u {
+    if index == 23 {
         return "fixed point of vector 23";
     }
-    if index == 24u {
+    if index == 24 {
         return "fixed point of vector 24";
     }
-    if index == 25u {
+    if index == 25 {
         return "fixed point of vector 25";
     }
-    if index == 26u {
+    if index == 26 {
         return "fixed point of vector 26";
     }
-    if index == 27u {
+    if index == 27 {
         return "fixed point of vector 27";
     }
-    if index == 28u {
+    if index == 28 {
         return "fixed point of vector 28";
     }
-    if index == 29u {
+    if index == 29 {
         return "fixed point of vector 29";
     }
-    if index == 30u {
+    if index == 30 {
         return "fixed point of vector 30";
     }
-    if index == 31u {
+    if index == 31 {
         return "fixed point of vector 31";
     }
-    if index == 32u {
+    if index == 32 {
         return "fixed point of vector 32";
     }
-    if index == 33u {
+    if index == 33 {
         return "fixed point of vector 33";
     }
-    if index == 34u {
+    if index == 34 {
         return "fixed point of vector 34";
     }
-    if index == 35u {
+    if index == 35 {
         return "fixed point of vector 35";
     }
-    if index == 36u {
+    if index == 36 {
         return "fixed point of vector 36";
     }
-    if index == 37u {
+    if index == 37 {
         return "fixed point of vector 37";
     }
-    if index == 38u {
+    if index == 38 {
         return "fixed point of vector 38";
     }
-    if index == 39u {
+    if index == 39 {
         return "fixed point of vector 39";
     }
-    if index == 40u {
+    if index == 40 {
         return "fixed point of vector 40";
     }
-    if index == 41u {
+    if index == 41 {
         return "fixed point of vector 41";
     }
-    if index == 42u {
+    if index == 42 {
         return "fixed point of vector 42";
     }
-    if index == 43u {
+    if index == 43 {
         return "fixed point of vector 43";
     }
     return "fixed point of vector past the end";
 }
 func Refusal(index: uint) -> char8[..] {
-    if index == 0u {
+    if index == 0 {
         return "invalid vector 0";
     }
-    if index == 1u {
+    if index == 1 {
         return "invalid vector 1";
     }
-    if index == 2u {
+    if index == 2 {
         return "invalid vector 2";
     }
-    if index == 3u {
+    if index == 3 {
         return "invalid vector 3";
     }
-    if index == 4u {
+    if index == 4 {
         return "invalid vector 4";
     }
-    if index == 5u {
+    if index == 5 {
         return "invalid vector 5";
     }
-    if index == 6u {
+    if index == 6 {
         return "invalid vector 6";
     }
-    if index == 7u {
+    if index == 7 {
         return "invalid vector 7";
     }
-    if index == 8u {
+    if index == 8 {
         return "invalid vector 8";
     }
-    if index == 9u {
+    if index == 9 {
         return "invalid vector 9";
     }
-    if index == 10u {
+    if index == 10 {
         return "invalid vector 10";
     }
-    if index == 11u {
+    if index == 11 {
         return "invalid vector 11";
     }
-    if index == 12u {
+    if index == 12 {
         return "invalid vector 12";
     }
-    if index == 13u {
+    if index == 13 {
         return "invalid vector 13";
     }
-    if index == 14u {
+    if index == 14 {
         return "invalid vector 14";
     }
-    if index == 15u {
+    if index == 15 {
         return "invalid vector 15";
     }
-    if index == 16u {
+    if index == 16 {
         return "invalid vector 16";
     }
-    if index == 17u {
+    if index == 17 {
         return "invalid vector 17";
     }
-    if index == 18u {
+    if index == 18 {
         return "invalid vector 18";
     }
-    if index == 19u {
+    if index == 19 {
         return "invalid vector 19";
     }
-    if index == 20u {
+    if index == 20 {
         return "invalid vector 20";
     }
-    if index == 21u {
+    if index == 21 {
         return "invalid vector 21";
     }
-    if index == 22u {
+    if index == 22 {
         return "invalid vector 22";
     }
-    if index == 23u {
+    if index == 23 {
         return "invalid vector 23";
     }
-    if index == 24u {
+    if index == 24 {
         return "invalid vector 24";
     }
-    if index == 25u {
+    if index == 25 {
         return "invalid vector 25";
     }
-    if index == 26u {
+    if index == 26 {
         return "invalid vector 26";
     }
-    if index == 27u {
+    if index == 27 {
         return "invalid vector 27";
     }
-    if index == 28u {
+    if index == 28 {
         return "invalid vector 28";
     }
-    if index == 29u {
+    if index == 29 {
         return "invalid vector 29";
     }
-    if index == 30u {
+    if index == 30 {
         return "invalid vector 30";
     }
-    if index == 31u {
+    if index == 31 {
         return "invalid vector 31";
     }
-    if index == 32u {
+    if index == 32 {
         return "invalid vector 32";
     }
-    if index == 33u {
+    if index == 33 {
         return "invalid vector 33";
     }
-    if index == 34u {
+    if index == 34 {
         return "invalid vector 34";
     }
-    if index == 35u {
+    if index == 35 {
         return "invalid vector 35";
     }
-    if index == 36u {
+    if index == 36 {
         return "invalid vector 36";
     }
-    if index == 37u {
+    if index == 37 {
         return "invalid vector 37";
     }
-    if index == 38u {
+    if index == 38 {
         return "invalid vector 38";
     }
-    if index == 39u {
+    if index == 39 {
         return "invalid vector 39";
     }
-    if index == 40u {
+    if index == 40 {
         return "invalid vector 40";
     }
-    if index == 41u {
+    if index == 41 {
         return "invalid vector 41";
     }
     return "invalid vector past the end";
 }
 func Differential(index: uint) -> char8[..] {
-    if index == 0u {
+    if index == 0 {
         return "differential vector 0";
     }
-    if index == 1u {
+    if index == 1 {
         return "differential vector 1";
     }
-    if index == 2u {
+    if index == 2 {
         return "differential vector 2";
     }
-    if index == 3u {
+    if index == 3 {
         return "differential vector 3";
     }
-    if index == 4u {
+    if index == 4 {
         return "differential vector 4";
     }
-    if index == 5u {
+    if index == 5 {
         return "differential vector 5";
     }
-    if index == 6u {
+    if index == 6 {
         return "differential vector 6";
     }
-    if index == 7u {
+    if index == 7 {
         return "differential vector 7";
     }
-    if index == 8u {
+    if index == 8 {
         return "differential vector 8";
     }
-    if index == 9u {
+    if index == 9 {
         return "differential vector 9";
     }
-    if index == 10u {
+    if index == 10 {
         return "differential vector 10";
     }
-    if index == 11u {
+    if index == 11 {
         return "differential vector 11";
     }
-    if index == 12u {
+    if index == 12 {
         return "differential vector 12";
     }
-    if index == 13u {
+    if index == 13 {
         return "differential vector 13";
     }
-    if index == 14u {
+    if index == 14 {
         return "differential vector 14";
     }
-    if index == 15u {
+    if index == 15 {
         return "differential vector 15";
     }
-    if index == 16u {
+    if index == 16 {
         return "differential vector 16";
     }
-    if index == 17u {
+    if index == 17 {
         return "differential vector 17";
     }
-    if index == 18u {
+    if index == 18 {
         return "differential vector 18";
     }
-    if index == 19u {
+    if index == 19 {
         return "differential vector 19";
     }
-    if index == 20u {
+    if index == 20 {
         return "differential vector 20";
     }
-    if index == 21u {
+    if index == 21 {
         return "differential vector 21";
     }
-    if index == 22u {
+    if index == 22 {
         return "differential vector 22";
     }
-    if index == 23u {
+    if index == 23 {
         return "differential vector 23";
     }
-    if index == 24u {
+    if index == 24 {
         return "differential vector 24";
     }
-    if index == 25u {
+    if index == 25 {
         return "differential vector 25";
     }
-    if index == 26u {
+    if index == 26 {
         return "differential vector 26";
     }
-    if index == 27u {
+    if index == 27 {
         return "differential vector 27";
     }
-    if index == 28u {
+    if index == 28 {
         return "differential vector 28";
     }
-    if index == 29u {
+    if index == 29 {
         return "differential vector 29";
     }
-    if index == 30u {
+    if index == 30 {
         return "differential vector 30";
     }
-    if index == 31u {
+    if index == 31 {
         return "differential vector 31";
     }
-    if index == 32u {
+    if index == 32 {
         return "differential vector 32";
     }
-    if index == 33u {
+    if index == 33 {
         return "differential vector 33";
     }
-    if index == 34u {
+    if index == 34 {
         return "differential vector 34";
     }
-    if index == 35u {
+    if index == 35 {
         return "differential vector 35";
     }
-    if index == 36u {
+    if index == 36 {
         return "differential vector 36";
     }
-    if index == 37u {
+    if index == 37 {
         return "differential vector 37";
     }
-    if index == 38u {
+    if index == 38 {
         return "differential vector 38";
     }
-    if index == 39u {
+    if index == 39 {
         return "differential vector 39";
     }
-    if index == 40u {
+    if index == 40 {
         return "differential vector 40";
     }
-    if index == 41u {
+    if index == 41 {
         return "differential vector 41";
     }
-    if index == 42u {
+    if index == 42 {
         return "differential vector 42";
     }
-    if index == 43u {
+    if index == 43 {
         return "differential vector 43";
     }
     return "differential vector past the end";
@@ -1051,7 +1051,7 @@ func Refused(outcome: &(TomlValue ! TomlParseFailure)) -> bool {
 func Positioned(outcome: &(TomlValue ! TomlParseFailure)) -> bool {
     return match outcome {
         .Success(_) => false,
-        .Failure(failure) => failure.line > 0u && failure.column > 0u && failure.Offset() < 0xFFFFFFFFu
+        .Failure(failure) => failure.line > 0 && failure.column > 0 && failure.Offset() < 0xFFFFFFFF
     };
 }
 

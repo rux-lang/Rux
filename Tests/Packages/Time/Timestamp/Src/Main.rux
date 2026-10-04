@@ -7,12 +7,12 @@ import Time::{ Duration, Timestamp };
 
 func Main() -> int {
     let epoch = Timestamp::Epoch();
-    Assert(epoch.UnixSeconds() == 0i64 && epoch.SubsecondNanoseconds() == 0u32, "the epoch is zero exactly");
+    Assert(epoch.UnixSeconds() == 0 && epoch.SubsecondNanoseconds() == 0, "the epoch is zero exactly");
 
     let now = Timestamp::Now();
-    Assert(now.UnixSeconds() > 1577836800i64, "now is after the start of 2020");
-    Assert(now.UnixSeconds() < 4102444800i64, "and before the start of 2100");
-    Assert(now.SubsecondNanoseconds() < 1000000000u32, "with the fraction in range");
+    Assert(now.UnixSeconds() > 1577836800, "now is after the start of 2020");
+    Assert(now.UnixSeconds() < 4102444800, "and before the start of 2100");
+    Assert(now.SubsecondNanoseconds() < 1000000000, "with the fraction in range");
     Assert(now.Compare(epoch) == Ordering::Greater, "and later than the epoch");
 
     // The distance from the epoch is the seconds themselves.
@@ -30,10 +30,10 @@ func Main() -> int {
     let early = Timestamp::FromUnixSeconds(-1);
     Assert(early.Compare(epoch) == Ordering::Less, "a moment before the epoch is negative seconds");
     let shifted = (early.Plus(Duration::FromMilliseconds(1500)) ?? epoch);
-    Assert(shifted.UnixSeconds() == 0i64 && shifted.SubsecondNanoseconds() == 500000000u32,
+    Assert(shifted.UnixSeconds() == 0 && shifted.SubsecondNanoseconds() == 500000000,
            "shifting across the epoch normalizes");
     let moved = (now.Plus(Duration::FromSeconds(3600)) ?? epoch);
-    Assert((moved.Since(now) ?? Duration::Zero()).WholeSeconds() == 3600i64,
+    Assert((moved.Since(now) ?? Duration::Zero()).WholeSeconds() == 3600,
            "an hour forward is an hour apart");
     Assert(!(now.Plus(Duration::FromSeconds(9223372036854775807)) is Timestamp), "and the far edge refuses");
 

@@ -25,7 +25,7 @@ func Check(value: char16, length: uint, bytes: uint64, code: int) -> int {
     var packed: uint64 = 0;
     var index: uint = 0;
     while index < actual.length {
-        packed = (packed << 8u64) | (actual.data[index] as uint64);
+        packed = (packed << 8) | (actual.data[index] as uint64);
         index = index + 1;
     }
     return packed == bytes ? 0 : code;

@@ -71,15 +71,15 @@ func WriteHexDigits(writer: &var TextWriter, value: uint64, count: uint) -> ! Fo
 /// @returns success when the whole escape was accepted
 /// @see https://rux-lang.dev/docs/api/format/write-invalid-escape
 pub func WriteInvalidEscape(writer: &var TextWriter, value: uint64) -> ! FormatError {
-    if value <= 0xFFu64 {
+    if value <= 0xFF {
         WriteBytes(writer, "\\x{")?;
         WriteHexDigits(writer, value, 2)?;
         return WriteBytes(writer, "}");
     }
     WriteBytes(writer, "\\u{")?;
     var digits: uint = 4;
-    if value > 0xFFFFu64 { digits = 8; }
-    if value > 0xFFFFFFFFu64 { digits = 16; }
+    if value > 0xFFFF { digits = 8; }
+    if value > 0xFFFFFFFF { digits = 16; }
     WriteHexDigits(writer, value, digits)?;
     return WriteBytes(writer, "}");
 }
@@ -124,14 +124,14 @@ pub func WriteCharacterDebug(writer: &var TextWriter, value: uint64, whole: bool
 /// @returns success when the whole character was accepted
 /// @see https://rux-lang.dev/docs/api/format/write-escaped-scalar
 pub func WriteEscapedScalar(writer: &var TextWriter, scalar: uint32) -> ! FormatError {
-    if scalar == 0x27u32 { return WriteBytes(writer, "\\'"); }
-    if scalar == 0x22u32 { return WriteBytes(writer, "\\\""); }
-    if scalar == 0x5Cu32 { return WriteBytes(writer, "\\\\"); }
-    if scalar == 0x0Au32 { return WriteBytes(writer, "\\n"); }
-    if scalar == 0x0Du32 { return WriteBytes(writer, "\\r"); }
-    if scalar == 0x09u32 { return WriteBytes(writer, "\\t"); }
-    if scalar == 0x00u32 { return WriteBytes(writer, "\\0"); }
-    if scalar < 0x20u32 || scalar == 0x7Fu32 || (scalar >= 0x80u32 && scalar <= 0x9Fu32) {
+    if scalar == 0x27 { return WriteBytes(writer, "\\'"); }
+    if scalar == 0x22 { return WriteBytes(writer, "\\\""); }
+    if scalar == 0x5C { return WriteBytes(writer, "\\\\"); }
+    if scalar == 0x0A { return WriteBytes(writer, "\\n"); }
+    if scalar == 0x0D { return WriteBytes(writer, "\\r"); }
+    if scalar == 0x09 { return WriteBytes(writer, "\\t"); }
+    if scalar == 0x00 { return WriteBytes(writer, "\\0"); }
+    if scalar < 0x20 || scalar == 0x7F || (scalar >= 0x80 && scalar <= 0x9F) {
         return WriteInvalidEscape(writer, scalar as uint64);
     }
     return WriteScalar(writer, scalar as char32);

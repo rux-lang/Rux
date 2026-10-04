@@ -54,7 +54,7 @@ extend Uuid {
     pub func Max() -> Uuid {
         var value = Uuid::Nil();
         var index: uint = 0;
-        while index < 16u {
+        while index < 16 {
             value.bytes[index] = 0xFF;
             index = index + 1;
         }
@@ -72,7 +72,7 @@ extend Uuid {
     pub func FromBytes(bytes: byte[..]) -> Uuid {
         var value = Uuid::Nil();
         var index: uint = 0;
-        while index < 16u && index < bytes.length {
+        while index < 16 && index < bytes.length {
             value.bytes[index] = bytes.data[index];
             index = index + 1;
         }
@@ -93,7 +93,7 @@ extend Uuid {
     /// @see https://rux-lang.dev/docs/api/uuid/uuid/is-nil
     pub func IsNil(self: &Uuid) -> bool {
         var index: uint = 0;
-        while index < 16u {
+        while index < 16 {
             if self.bytes[index] != 0 { return false; }
             index = index + 1;
         }
@@ -106,7 +106,7 @@ extend Uuid {
     /// @see https://rux-lang.dev/docs/api/uuid/uuid/is-max
     pub func IsMax(self: &Uuid) -> bool {
         var index: uint = 0;
-        while index < 16u {
+        while index < 16 {
             if self.bytes[index] != 0xFF { return false; }
             index = index + 1;
         }
@@ -121,7 +121,7 @@ extend Uuid {
     /// @returns the version nibble, 0 through 15; a value this package did not make may hold anything
     /// @see https://rux-lang.dev/docs/api/uuid/uuid/version
     pub func Version(self: &Uuid) -> uint8 {
-        return (self.bytes[6] >> 4u8) & 0x0F;
+        return (self.bytes[6] >> 4) & 0x0F;
     }
 
     /// The variant, from the high bits of the ninth byte.
@@ -133,9 +133,9 @@ extend Uuid {
     /// @see https://rux-lang.dev/docs/api/uuid/uuid/variant
     pub func Variant(self: &Uuid) -> UuidVariant {
         let octet = self.bytes[8];
-        if (octet & 0x80) == 0u8 { return UuidVariant::NetworkComputingSystem; }
-        if (octet & 0x40) == 0u8 { return UuidVariant::Standard; }
-        if (octet & 0x20) == 0u8 { return UuidVariant::Microsoft; }
+        if (octet & 0x80) == 0 { return UuidVariant::NetworkComputingSystem; }
+        if (octet & 0x40) == 0 { return UuidVariant::Standard; }
+        if (octet & 0x20) == 0 { return UuidVariant::Microsoft; }
         return UuidVariant::Future;
     }
 }
@@ -148,7 +148,7 @@ extend Uuid {
     /// @see https://rux-lang.dev/docs/api/uuid/uuid/equals
     pub func Equals(self: &Uuid, other: &Uuid) -> bool {
         var index: uint = 0;
-        while index < 16u {
+        while index < 16 {
             if self.bytes[index] != other.bytes[index] { return false; }
             index = index + 1;
         }
@@ -166,7 +166,7 @@ extend Uuid {
     /// @see https://rux-lang.dev/docs/api/uuid/uuid/compare
     pub func Compare(self: &Uuid, other: &Uuid) -> Ordering {
         var index: uint = 0;
-        while index < 16u {
+        while index < 16 {
             if self.bytes[index] < other.bytes[index] { return Ordering::Less; }
             if self.bytes[index] > other.bytes[index] { return Ordering::Greater; }
             index = index + 1;
@@ -184,7 +184,7 @@ extend Uuid {
     pub func Hash(self: &Uuid) -> uint64 {
         var accumulated: uint64 = 0xCBF29CE484222325;
         var index: uint = 0;
-        while index < 16u {
+        while index < 16 {
             accumulated = accumulated ^ (self.bytes[index] as uint64);
             accumulated = accumulated * 0x100000001B3;
             index = index + 1;

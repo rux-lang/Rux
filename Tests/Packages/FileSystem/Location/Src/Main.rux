@@ -38,7 +38,7 @@ func EndsWith(buffer: *PathBuffer, tail: char8[..]) -> bool {
         let mine = units.data[units.length - tail.length + index] as uint32;
         let theirs = tail.data[index] as uint8 as uint32;
         // Separators compare equal whichever way they lean, since the system chooses which it writes.
-        let sameSeparator = (mine == 0x5Cu32 || mine == 0x2Fu32) && (theirs == 0x5Cu32 || theirs == 0x2Fu32);
+        let sameSeparator = (mine == 0x5C || mine == 0x2F) && (theirs == 0x5C || theirs == 0x2F);
         if mine != theirs && !sameSeparator {
             return false;
         }

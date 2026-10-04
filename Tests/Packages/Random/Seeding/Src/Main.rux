@@ -14,38 +14,38 @@ func Main() -> ! EntropyError {
     var second = XoshiroFromEntropy()?;
     var agreements: uint = 0;
     var index: uint = 0;
-    while index < 16u {
+    while index < 16 {
         if first.NextUint64() == second.NextUint64() {
             agreements = agreements + 1;
         }
         index = index + 1;
     }
-    Assert(agreements == 0u, "two entropy-seeded generators do not produce the same words");
+    Assert(agreements == 0, "two entropy-seeded generators do not produce the same words");
 
     var pcgFirst = PcgFromEntropy()?;
     var pcgSecond = PcgFromEntropy()?;
     agreements = 0;
     index = 0;
-    while index < 16u {
+    while index < 16 {
         if pcgFirst.NextUint64() == pcgSecond.NextUint64() {
             agreements = agreements + 1;
         }
         index = index + 1;
     }
-    Assert(agreements == 0u, "and two of those differ as well");
+    Assert(agreements == 0, "and two of those differ as well");
 
     // The parallel shape: one entropy seed per worker with its own stream.
     var workerZero = PcgFromEntropyWithStream(0)?;
     var workerOne = PcgFromEntropyWithStream(1)?;
     agreements = 0;
     index = 0;
-    while index < 16u {
+    while index < 16 {
         if workerZero.NextUint64() == workerOne.NextUint64() {
             agreements = agreements + 1;
         }
         index = index + 1;
     }
-    Assert(agreements == 0u, "and two workers on different streams do not collide");
+    Assert(agreements == 0, "and two workers on different streams do not collide");
 
     // Independence: generators are values, so drawing from one cannot disturb another. This is what a shared
     // global generator would take away, and the reason there is not one.
@@ -53,7 +53,7 @@ func Main() -> ! EntropyError {
     var right = Xoshiro256(77);
     var expected: uint64[8];
     index = 0;
-    while index < 8u {
+    while index < 8 {
         expected[index] = left.NextUint64();
         index = index + 1;
     }
@@ -61,9 +61,9 @@ func Main() -> ! EntropyError {
     var noise = Xoshiro256(1234);
     var noisePcg = Pcg64Dxsm(4321);
     index = 0;
-    while index < 8u {
+    while index < 8 {
         var burst: uint = 0;
-        while burst < 50u {
+        while burst < 50 {
             noise.NextUint64();
             noisePcg.NextUint64();
             burst = burst + 1;

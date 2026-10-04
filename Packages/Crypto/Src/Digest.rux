@@ -86,7 +86,7 @@ pub func Equal(left: char8[..], right: char8[..]) -> bool {
         difference = difference | ((left[index] as uint8) ^ (right[index] as uint8));
         index = index + 1;
     }
-    return difference == 0u8;
+    return difference == 0;
 }
 
 // A barrier the optimizer cannot see through. It is handed the address, does nothing, and returns — but since
@@ -121,7 +121,7 @@ pub func Wipe(bytes: var char8[..]) {
         bytes[index] = 0u8 as char8;
         index = index + 1;
     }
-    if bytes.length > 0u {
+    if bytes.length > 0 {
         Retain(@bytes[0] as *var opaque);
     }
 }

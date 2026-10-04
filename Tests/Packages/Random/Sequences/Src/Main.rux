@@ -12,15 +12,15 @@ func Main() -> int {
     var xoshiro = Xoshiro256(42);
     var xoshiroWords: uint64[8];
     var index: uint = 0;
-    while index < 8u {
+    while index < 8 {
         xoshiroWords[index] = xoshiro.NextUint64();
         index = index + 1;
     }
     // Every word distinct, which a stuck or short-cycling generator would fail immediately.
     var outer: uint = 0;
-    while outer < 8u {
+    while outer < 8 {
         var inner = outer + 1;
-        while inner < 8u {
+        while inner < 8 {
             Assert(xoshiroWords[outer] != xoshiroWords[inner], "the words of a short run are all distinct");
             inner = inner + 1;
         }
@@ -30,7 +30,7 @@ func Main() -> int {
     // Reproducibility: the same seed replays exactly.
     var replay = Xoshiro256(42);
     index = 0;
-    while index < 8u {
+    while index < 8 {
         Assert(replay.NextUint64() == xoshiroWords[index], "the sequence replays from the same seed");
         index = index + 1;
     }
@@ -40,7 +40,7 @@ func Main() -> int {
     var zeroed = Xoshiro256::FromState(zeroState);
     let firstFromZero = zeroed.NextUint64();
     let secondFromZero = zeroed.NextUint64();
-    Assert(firstFromZero != 0u64 || secondFromZero != 0u64,
+    Assert(firstFromZero != 0 || secondFromZero != 0,
            "an all-zero state is replaced rather than accepted, since it maps to itself forever");
 
     // A state given directly is used as given, so a stream recorded elsewhere can be resumed.
@@ -48,7 +48,7 @@ func Main() -> int {
     var restored = Xoshiro256::FromState(knownState);
     var alsoRestored = Xoshiro256::FromState(knownState);
     index = 0;
-    while index < 16u {
+    while index < 16 {
         Assert(restored.NextUint64() == alsoRestored.NextUint64(), "a state given directly replays exactly");
         index = index + 1;
     }
@@ -60,14 +60,14 @@ func Main() -> int {
     var pcg = Pcg64Dxsm(42);
     var pcgWords: uint64[8];
     index = 0;
-    while index < 8u {
+    while index < 8 {
         pcgWords[index] = pcg.NextUint64();
         index = index + 1;
     }
     outer = 0;
-    while outer < 8u {
+    while outer < 8 {
         var inner = outer + 1;
-        while inner < 8u {
+        while inner < 8 {
             Assert(pcgWords[outer] != pcgWords[inner], "its words are all distinct too");
             inner = inner + 1;
         }
@@ -75,7 +75,7 @@ func Main() -> int {
     }
     var pcgReplay = Pcg64Dxsm(42);
     index = 0;
-    while index < 8u {
+    while index < 8 {
         Assert(pcgReplay.NextUint64() == pcgWords[index], "and its sequence replays from the same seed");
         index = index + 1;
     }
@@ -90,7 +90,7 @@ func Main() -> int {
     var streamTwo = Pcg64Dxsm::WithStream(7, 2);
     var collisions: uint = 0;
     index = 0;
-    while index < 64u {
+    while index < 64 {
         let a = streamZero.NextUint64();
         let b = streamOne.NextUint64();
         let c = streamTwo.NextUint64();
@@ -99,7 +99,7 @@ func Main() -> int {
         }
         index = index + 1;
     }
-    Assert(collisions == 0u, "three streams of one seed never coincide across a run");
+    Assert(collisions == 0, "three streams of one seed never coincide across a run");
     var sameStream = Pcg64Dxsm::WithStream(7, 1);
     var alsoSameStream = Pcg64Dxsm::WithStream(7, 1);
     Assert(sameStream.NextUint64() == alsoSameStream.NextUint64(), "while the same stream replays exactly");
@@ -109,16 +109,16 @@ func Main() -> int {
     var counted = Xoshiro256(2024);
     var setCounts: uint[64];
     var position: uint = 0;
-    while position < 64u {
+    while position < 64 {
         setCounts[position] = 0;
         position = position + 1;
     }
     var draw: uint = 0;
-    while draw < 4000u {
+    while draw < 4000 {
         let word = counted.NextUint64();
         position = 0;
-        while position < 64u {
-            if ((word >> (position as uint64)) & 1) != 0u64 {
+        while position < 64 {
+            if ((word >> (position as uint64)) & 1) != 0 {
                 setCounts[position] = setCounts[position] + 1;
             }
             position = position + 1;
@@ -126,24 +126,24 @@ func Main() -> int {
         draw = draw + 1;
     }
     position = 0;
-    while position < 64u {
-        Assert(setCounts[position] > 1800u && setCounts[position] < 2200u,
+    while position < 64 {
+        Assert(setCounts[position] > 1800 && setCounts[position] < 2200,
                "every bit position is set about half the time");
         position = position + 1;
     }
 
     var pcgCounted = Pcg64Dxsm(2024);
     position = 0;
-    while position < 64u {
+    while position < 64 {
         setCounts[position] = 0;
         position = position + 1;
     }
     draw = 0;
-    while draw < 4000u {
+    while draw < 4000 {
         let word = pcgCounted.NextUint64();
         position = 0;
-        while position < 64u {
-            if ((word >> (position as uint64)) & 1) != 0u64 {
+        while position < 64 {
+            if ((word >> (position as uint64)) & 1) != 0 {
                 setCounts[position] = setCounts[position] + 1;
             }
             position = position + 1;
@@ -151,8 +151,8 @@ func Main() -> int {
         draw = draw + 1;
     }
     position = 0;
-    while position < 64u {
-        Assert(setCounts[position] > 1800u && setCounts[position] < 2200u,
+    while position < 64 {
+        Assert(setCounts[position] > 1800 && setCounts[position] < 2200,
                "and the same holds for the other generator");
         position = position + 1;
     }

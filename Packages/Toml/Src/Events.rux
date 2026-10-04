@@ -216,12 +216,12 @@ extend TomlEventReader {
     // Whether the innermost open container is an inline table. The stack is a single word, one bit per
     // container, which is also why the depth limit here is sixty-four.
     func InsideInlineTable(self: &TomlEventReader) -> bool {
-        if self.depth == 0u { return false; }
-        return (self.containers >> ((self.depth - 1) as uint64) & 1) == 1u64;
+        if self.depth == 0 { return false; }
+        return (self.containers >> ((self.depth - 1) as uint64) & 1) == 1;
     }
 
     func OpenContainer(self: &var TomlEventReader, inlineTable: bool) -> bool {
-        if self.depth >= 64u { return false; }
+        if self.depth >= 64 { return false; }
         if inlineTable {
             self.containers = self.containers | (1u64 << (self.depth as uint64));
         }
@@ -233,7 +233,7 @@ extend TomlEventReader {
     }
 
     func CloseContainer(self: &var TomlEventReader) {
-        if self.depth > 0u {
+        if self.depth > 0 {
             self.depth = self.depth - 1;
         }
     }
@@ -344,13 +344,13 @@ extend TomlEventReader {
 
 extend TomlEventReader {
     func NextValue(self: &var TomlEventReader) -> TomlEvent {
-        if self.depth > 0u {
+        if self.depth > 0 {
             self.SkipNewlines();
         }
         if self.ahead.kind == TomlTokenKind::Error { return self.Fail(TomlStop::Lexical); }
         if self.ahead.kind == TomlTokenKind::End { return self.Fail(TomlStop::Truncated); }
         // An empty array, or one whose last element was followed by a comma.
-        if self.ahead.kind == TomlTokenKind::RightBracket && self.depth > 0u && !self.InsideInlineTable() {
+        if self.ahead.kind == TomlTokenKind::RightBracket && self.depth > 0 && !self.InsideInlineTable() {
             self.current = self.Advance();
             self.CloseContainer();
             self.state = TomlEventState::AfterValue;
@@ -398,7 +398,7 @@ extend TomlEventReader {
 
     func NextAfterValue(self: &var TomlEventReader) -> TomlEvent {
         // At the top level a value ends its line, and nothing else may share it.
-        if self.depth == 0u {
+        if self.depth == 0 {
             if self.ahead.kind != TomlTokenKind::Newline && self.ahead.kind != TomlTokenKind::End {
                 return self.Fail(TomlStop::Unexpected);
             }

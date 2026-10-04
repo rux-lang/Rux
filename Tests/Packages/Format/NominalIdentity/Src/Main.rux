@@ -7,6 +7,6 @@ func Main() -> int {
     let valid = match parsed { .Success(value) => value, .Failure(error) => false };
     if !valid || !Failed(ParseBool("")) || !Failed(ParseBool("false!")) { return 1; }
     let payload = match local { .Local(value) => value };
-    if payload != 1234567890123u64 { return 2; }
+    if payload != 1234567890123 { return 2; }
     return 0;
 }

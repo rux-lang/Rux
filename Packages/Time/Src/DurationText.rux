@@ -21,12 +21,12 @@ import Text::{ Debug, Display, FormatError, FormatSpec, TextWriter, WriteAscii, 
 func Magnitude(value: &Duration, whole: *var uint64, fraction: *var uint32) -> bool {
     let seconds = value.WholeSeconds();
     let nanoseconds = value.SubsecondNanoseconds();
-    if seconds >= 0i64 {
+    if seconds >= 0 {
         *whole = seconds as uint64;
         *fraction = nanoseconds;
         return false;
     }
-    if nanoseconds == 0u32 {
+    if nanoseconds == 0 {
         *whole = ~(seconds as uint64) + 1u64;
         *fraction = 0u32;
         return true;
@@ -42,11 +42,11 @@ func WriteUnsigned(writer: &var TextWriter, value: uint64) -> ! FormatError {
     var digits: char8[20];
     var count: uint = 0;
     var rest = value;
-    if rest == 0u64 {
+    if rest == 0 {
         digits[0] = c8'0';
         count = 1;
     }
-    while rest > 0u64 {
+    while rest > 0 {
         digits[count] = ((rest % 10) + 0x30) as char8;
         count = count + 1;
         rest = rest / 10;
@@ -73,14 +73,14 @@ func WriteSecondsFraction(writer: &var TextWriter, fraction: uint32, spec: Forma
     var kept: uint = 9;
     if spec.HasPrecision() {
         kept = spec.Precision();
-        if kept > 9u { return .Failure(FormatError::UnsupportedRequest); }
-        if kept == 0u { return .Success(()); }
+        if kept > 9 { return .Failure(FormatError::UnsupportedRequest); }
+        if kept == 0 { return .Success(()); }
     }
     else {
         while kept > 0 && digits[kept - 1] == c8'0' {
             kept = kept - 1;
         }
-        if kept == 0u { return .Success(()); }
+        if kept == 0 { return .Success(()); }
     }
     WriteAscii(writer, c8'.')?;
     return WriteBytes(writer, (@digits[0])[..kept]);
@@ -174,7 +174,7 @@ pub func ParseDuration(text: char8[..]) -> Duration ! TimeParseError {
         taken = taken + 1;
         at = at + 1;
     }
-    if taken == 0u {
+    if taken == 0 {
         fail TimeParseError::InvalidSyntax(at);
     }
 
@@ -185,7 +185,7 @@ pub func ParseDuration(text: char8[..]) -> Duration ! TimeParseError {
         var scale: uint32 = 100000000u32;
         var digits: uint = 0;
         while at < text.length && text.data[at] >= c8'0' && text.data[at] <= c8'9' {
-            if digits == 9u {
+            if digits == 9 {
                 fail TimeParseError::ExcessiveFraction(at);
             }
             fraction = fraction + (((text.data[at] as uint32) - 0x30u32) * scale);
@@ -193,7 +193,7 @@ pub func ParseDuration(text: char8[..]) -> Duration ! TimeParseError {
             digits = digits + 1;
             at = at + 1;
         }
-        if digits == 0u {
+        if digits == 0 {
             fail TimeParseError::InvalidSyntax(firstDigit);
         }
     }
@@ -208,20 +208,20 @@ pub func ParseDuration(text: char8[..]) -> Duration ! TimeParseError {
 
     // Back to the normalized representation, which is the inverse of what Magnitude does.
     if !negative {
-        if whole > 9223372036854775807u64 {
+        if whole > 9223372036854775807 {
             fail TimeParseError::InvalidSyntax(0);
         }
         return
             (Duration::FromSeconds(whole as int64).Plus(Duration::FromNanoseconds(fraction as int64)) ?? Duration::Zero());
     }
-    if fraction == 0u32 {
+    if fraction == 0 {
         if whole > 9223372036854775808u64 {
             fail TimeParseError::InvalidSyntax(0);
         }
         return
             Duration { seconds: (~whole + 1u64) as int64, nanoseconds: 0u32 };
     }
-    if whole > 9223372036854775807u64 {
+    if whole > 9223372036854775807 {
         fail TimeParseError::InvalidSyntax(0);
     }
     // -whole.fraction is stored as seconds = -(whole + 1), nanoseconds = 1e9 - fraction.

@@ -319,12 +319,12 @@ extend JsonParser {
         var index: uint = 0;
         while index < span.length {
             let c = span.data[index] as uint8;
-            if c != 0x5Cu8 {
+            if c != 0x5C {
                 // The run up to the next escape goes in one piece. Byte at a time would split a multi-byte
                 // scalar across two appends, and a builder that validates what it is given refuses half of one
                 // — so an accented letter beside an escape would quietly disappear.
                 var run = index;
-                while run < span.length && (span.data[run] as uint8) != 0x5Cu8 {
+                while run < span.length && (span.data[run] as uint8) != 0x5C {
                     run = run + 1;
                 }
                 builder.AppendBytes((@span.data[index])[..run - index])?;
@@ -334,19 +334,19 @@ extend JsonParser {
             index = index + 1;
             let kind = span.data[index] as uint8;
             index = index + 1;
-            if kind == 0x75u8 {
+            if kind == 0x75 {
                 var scalar = HexQuad(span, index);
                 let escapeAt = index - 2u;
                 index = index + 4u;
-                if scalar >= 0xD800u32 && scalar <= 0xDBFFu32 {
+                if scalar >= 0xD800 && scalar <= 0xDBFF {
                     // A high surrogate must be followed by its low partner; JSON's escapes are UTF-16, so this
                     // is the one place a JSON string is not simply a sequence of scalar values.
                     var paired = false;
-                    if index + 6u <= span.length && (span.data[index] as uint8) == 0x5Cu8 &&
-                        (span.data[index + 1u] as uint8) == 0x75u8 {
+                    if index + 6u <= span.length && (span.data[index] as uint8) == 0x5C &&
+                        (span.data[index + 1u] as uint8) == 0x75 {
                         let low = HexQuad(span, index + 2u);
-                        if low >= 0xDC00u32 && low <= 0xDFFFu32 {
-                            scalar = 0x10000u32 + ((scalar - 0xD800u32) << 10u32) + (low - 0xDC00u32);
+                        if low >= 0xDC00 && low <= 0xDFFF {
+                            scalar = 0x10000u32 + ((scalar - 0xD800u32) << 10) + (low - 0xDC00u32);
                             index = index + 6u;
                             paired = true;
                         }
@@ -359,7 +359,7 @@ extend JsonParser {
                         return builder.IntoString();
                     }
                 }
-                else if scalar >= 0xDC00u32 && scalar <= 0xDFFFu32 {
+                else if scalar >= 0xDC00 && scalar <= 0xDFFF {
                     // A low surrogate with nothing before it. The same half a character, from the other end.
                     self.Fail(JsonStop::BadSurrogate, token.start + escapeAt);
                     return builder.IntoString();
@@ -368,19 +368,19 @@ extend JsonParser {
             }
             else {
                 var replacement: uint8 = 0;
-                if kind == 0x62u8 {
+                if kind == 0x62 {
                     replacement = 0x08u8;
                 }
-                else if kind == 0x66u8 {
+                else if kind == 0x66 {
                     replacement = 0x0Cu8;
                 }
-                else if kind == 0x6Eu8 {
+                else if kind == 0x6E {
                     replacement = 0x0Au8;
                 }
-                else if kind == 0x72u8 {
+                else if kind == 0x72 {
                     replacement = 0x0Du8;
                 }
-                else if kind == 0x74u8 {
+                else if kind == 0x74 {
                     replacement = 0x09u8;
                 }
                 else {
@@ -398,13 +398,13 @@ extend JsonParser {
 func HexQuad(span: char8[..], at: uint) -> uint32 {
     var value: uint32 = 0;
     var index: uint = 0;
-    while index < 4u {
+    while index < 4 {
         let c = span.data[at + index] as uint8;
         var digit: uint32 = 0;
-        if c >= 0x30u8 && c <= 0x39u8 {
+        if c >= 0x30 && c <= 0x39 {
             digit = (c - 0x30) as uint32;
         }
-        else if c >= 0x61u8 && c <= 0x66u8 {
+        else if c >= 0x61 && c <= 0x66 {
             digit = (c - 0x61 + 10) as uint32;
         }
         else {

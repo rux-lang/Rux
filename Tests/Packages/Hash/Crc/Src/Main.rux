@@ -100,7 +100,7 @@ func Main() -> int {
     Assert(kept.Value() == partial, "reading the value twice gives the same answer");
     kept.Write(bytes + 4, 5);
     Assert(kept.Value() == 0xCBF43926, "and writing afterwards continues from there");
-    Assert(kept.Finish() == 0xCBF43926u64, "the widened form is the same value");
+    Assert(kept.Finish() == 0xCBF43926, "the widened form is the same value");
 
     // A reset really starts over.
     kept.Reset();
@@ -110,7 +110,7 @@ func Main() -> int {
 
     // Both types are usable through the bound, which is what puts them in generic code.
     var bounded = Crc32c();
-    Assert(HashBytes<Crc32c>(bounded, bytes, 9) == 0xE3069283u64, "a CRC is usable through the hashing bound");
+    Assert(HashBytes<Crc32c>(bounded, bytes, 9) == 0xE3069283, "a CRC is usable through the hashing bound");
 
     // A single-bit change must change the checksum. That is the property a CRC exists for, and the one a broken
     // table would most plausibly still fail.

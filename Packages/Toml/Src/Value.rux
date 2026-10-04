@@ -478,7 +478,7 @@ extend TomlValue {
     /// @see https://rux-lang.dev/docs/api/toml/value/destructor
     func ~TomlValue(self: &var TomlValue) {
         self.text.Clear();
-        while self.elements.Length() > 0u {
+        while self.elements.Length() > 0 {
             var element = TomlValue::Table(self.allocator);
             if !self.elements.TryPop(@element) { break; }
         }

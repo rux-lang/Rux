@@ -13,7 +13,7 @@ func Main() -> int {
     // The values every logarithm must get exactly right.
     Assert(Log(1.0) == 0.0, "the natural logarithm of one is exactly zero");
     Assert(Log2(1.0) == 0.0 && Log10(1.0) == 0.0, "as are the other two");
-    Assert(UlpDistance(Log(E), 1.0) <= 1u64, "the logarithm of e is one");
+    Assert(UlpDistance(Log(E), 1.0) <= 1, "the logarithm of e is one");
     Assert(Log(0.0) == -infinity && Log(-0.0) == -infinity, "the logarithm of either zero is negative infinity");
     Assert(IsNan(Log(-1.0)), "a negative argument has no real logarithm");
     Assert(Log(infinity) == infinity, "an infinite argument gives infinity");
@@ -22,7 +22,7 @@ func Main() -> int {
     // Base two, exact on every power of two the type holds — including the subnormals, where the argument has
     // fewer significant bits but the answer is still a whole number.
     var power: int64 = -1074;
-    while power <= 1023i64 {
+    while power <= 1023 {
         Assert(Log2(ScaleByPowerOfTwo(1.0, power)) == (power as float64),
                "the base-two logarithm of a power of two is that power exactly");
         power = power + 1;
@@ -31,7 +31,7 @@ func Main() -> int {
     // Base ten, exact on the powers of ten that are exactly representable.
     var ten = 1.0;
     var decade: uint = 0;
-    while decade <= 22u {
+    while decade <= 22 {
         Assert(Log10(ten) == (decade as float64), "the base-ten logarithm of a power of ten is that power");
         ten = ten * 10.0;
         decade = decade + 1;
@@ -39,10 +39,10 @@ func Main() -> int {
 
     // Inverses, across a wide spread of arguments and both directions.
     var probe: uint = 1;
-    while probe < 300u {
+    while probe < 300 {
         let value = (probe as float64) * 0.813;
-        Assert(UlpDistance(Exp(Log(value)), value) <= 4u64, "exp undoes log");
-        Assert(UlpDistance(Log2(ScaleByPowerOfTwo(value, 0)) * 0.6931471805599453, Log(value)) <= 8u64,
+        Assert(UlpDistance(Exp(Log(value)), value) <= 4, "exp undoes log");
+        Assert(UlpDistance(Log2(ScaleByPowerOfTwo(value, 0)) * 0.6931471805599453, Log(value)) <= 8,
                "and the two bases agree up to their scaling factor");
         probe = probe + 1;
     }
@@ -59,17 +59,17 @@ func Main() -> int {
 
     // Away from zero it agrees with the naive form, where the sum is harmless.
     var away: uint = 1;
-    while away < 200u {
+    while away < 200 {
         let value = (away as float64) * 0.53;
-        Assert(UlpDistance(Log1p(value), Log(1.0 + value)) <= 8u64,
+        Assert(UlpDistance(Log1p(value), Log(1.0 + value)) <= 8,
                "log1p agrees with the naive form where the naive form is sound");
         away = away + 1;
     }
     // And below zero, down toward the pole.
     var below: uint = 1;
-    while below < 90u {
+    while below < 90 {
         let value = 0.0 - (below as float64) * 0.011;
-        Assert(UlpDistance(Log1p(value), Log(1.0 + value)) <= 8u64, "including for negative arguments");
+        Assert(UlpDistance(Log1p(value), Log(1.0 + value)) <= 8, "including for negative arguments");
         below = below + 1;
     }
 
@@ -81,9 +81,9 @@ func Main() -> int {
 
     // Expm1 and Log1p are inverses exactly where both are worth having.
     var pair: uint = 1;
-    while pair < 200u {
+    while pair < 200 {
         let value = (pair as float64) * 1.0e-6;
-        Assert(UlpDistance(Log1p(Expm1(value)), value) <= 4u64, "log1p undoes expm1 near zero");
+        Assert(UlpDistance(Log1p(Expm1(value)), value) <= 4, "log1p undoes expm1 near zero");
         pair = pair + 1;
     }
 

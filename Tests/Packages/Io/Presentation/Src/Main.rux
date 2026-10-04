@@ -155,7 +155,7 @@ func Main() -> int {
            "and a bounded destination that filled met its bound");
 
     // No platform code is invented, because none applies: `raw` is errno or the Win32 code and a caller looks it up.
-    Assert(ToIoError(unsupported).raw == 0i32, "no platform code is invented for a request");
+    Assert(ToIoError(unsupported).raw == 0, "no platform code is invented for a request");
 
     // A stream that refuses records its own failure where the caller can read it, and reports the one case the
     // protocol has to the formatter. Both halves, at once.
@@ -170,14 +170,14 @@ func Main() -> int {
     let refused = writer.Write("hello");
     Assert(IsWriterFailure(refused), "the formatter is told the destination failed");
     Assert(Holds(failure, IoErrorKind::StorageFull), "and the caller is told what it was");
-    Assert(state.length == 0u, "with nothing written");
-    Assert(state.calls == 1u, "the stream having been asked once");
+    Assert(state.length == 0, "with nothing written");
+    Assert(state.calls == 1, "the stream having been asked once");
 
     // Once a failure is recorded the stream is not touched again, which is what stops a value that is part-way
     // through rendering from going on writing into a destination that has already said no.
     let again = writer.Write("more");
     Assert(IsWriterFailure(again), "a later write is refused too");
-    Assert(state.calls == 1u, "without asking the stream a second time");
+    Assert(state.calls == 1, "without asking the stream a second time");
     Assert(Holds(failure, IoErrorKind::StorageFull), "and the first failure is the one kept");
 
     // A healthy stream takes the bytes, and a value writes itself into it. This is the thing that could not be done
@@ -198,9 +198,9 @@ func Main() -> int {
 
     // The value was borrowed, not taken. This is what the bound buys over an interface parameter: binding a
     // move-only value to a `Display` transfers ownership of it, so the value would have been gone after one line.
-    Assert(destroyed == 0i32, "writing a value destroys nothing");
+    Assert(destroyed == 0, "writing a value destroys nothing");
     Assert(Succeeded(WriteValueLine(out, value)), "so the same value goes out again");
-    Assert(destroyed == 0i32, "still destroying nothing");
+    Assert(destroyed == 0, "still destroying nothing");
     Assert(Same((@second.written[0])[..second.length], "owned-7\nowned-7\n"), "identically");
 
     // The line rule, on a healthy destination and a value that refuses: no newline follows a value that did not go
@@ -215,14 +215,14 @@ func Main() -> int {
 
     var bad = Refuses {};
     Assert(IsUnsupported(WriteValueLine(third_out, bad)), "a value that refuses reports its own failure");
-    Assert(third.length == 0u, "and no newline follows it");
+    Assert(third.length == 0, "and no newline follows it");
     Assert(!(third_failure is IoError), "the destination being blameless");
 
     // The same rule for a pattern. Each of the two ways a pattern can be wrong leaves no terminator behind.
     Assert(Failed(WriteFormatLine(third_out, "abc{")), "a pattern that does not parse is refused");
-    Assert(third.length == 0u, "with no newline after it");
+    Assert(third.length == 0, "with no newline after it");
     Assert(Failed(WriteFormatLine(third_out, "a {} b {}", 1i32)), "and so is one short of arguments");
-    Assert(third.length == 0u, "also leaving nothing");
+    Assert(third.length == 0, "also leaving nothing");
 
     // And a pattern that is right does write its line, so the rule is not simply never writing one.
     Assert(Succeeded(WriteFormatLine(third_out, "n={}", 42i32)), "a pattern that is right writes its line");

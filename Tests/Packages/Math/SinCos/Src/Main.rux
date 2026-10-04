@@ -23,7 +23,7 @@ func Main() -> int {
 
     // Symmetries, across a spread of arguments: sine is odd, cosine even, tangent odd.
     var step: uint = 1;
-    while step < 300u {
+    while step < 300 {
         let angle = (step as float64) * 0.037;
         Assert(Sin(0.0 - angle) == 0.0 - Sin(angle), "sine is odd");
         Assert(Cos(0.0 - angle) == Cos(angle), "cosine is even");
@@ -33,17 +33,17 @@ func Main() -> int {
     }
 
     // The quarter-turn values, to the accuracy the arguments themselves allow.
-    Assert(UlpDistance(Sin(Pi * 0.5), 1.0) <= 1u64, "the sine of a quarter turn is one");
+    Assert(UlpDistance(Sin(Pi * 0.5), 1.0) <= 1, "the sine of a quarter turn is one");
     Assert(Abs(Cos(Pi * 0.5)) < 1.0e-16, "and the cosine there is zero to the precision of the argument");
     Assert(Abs(Sin(Pi)) < 1.0e-15, "the sine of a half turn is zero to the same standard");
-    Assert(UlpDistance(Cos(Pi), -1.0) <= 1u64, "and the cosine there is minus one");
-    Assert(UlpDistance(Sin(Pi * 0.25), 0.7071067811865476) <= 2u64, "an eighth turn gives the expected root");
-    Assert(UlpDistance(Tan(Pi * 0.25), 1.0) <= 2u64, "and its tangent is one");
+    Assert(UlpDistance(Cos(Pi), -1.0) <= 1, "and the cosine there is minus one");
+    Assert(UlpDistance(Sin(Pi * 0.25), 0.7071067811865476) <= 2, "an eighth turn gives the expected root");
+    Assert(UlpDistance(Tan(Pi * 0.25), 1.0) <= 2, "and its tangent is one");
 
     // The combined pair agrees with the separate functions exactly — bit for bit, not approximately, since it
     // runs the same kernels on the same reduction.
     var probe: uint = 0;
-    while probe < 400u {
+    while probe < 400 {
         let angle = -60.0 + (probe as float64) * 0.31;
         let (sine, cosine) = SinCos(angle);
         Assert(sine == Sin(angle), "the combined sine is the separate sine, bit for bit");
@@ -53,7 +53,7 @@ func Main() -> int {
 
     // Including at the arguments where the reduction does the most work.
     var power: int64 = 0;
-    while power <= 1020i64 {
+    while power <= 1020 {
         let angle = ScaleByPowerOfTwo(1.0, power);
         let (sine, cosine) = SinCos(angle);
         Assert(sine == Sin(angle) && cosine == Cos(angle), "the pair agrees at every power of two as well");

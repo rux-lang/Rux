@@ -71,7 +71,7 @@ func WriteRaw(handle: RawStream, console: bool, bytes: char8[..]) -> uint ! IoEr
         var offset: uint = 0;
         while offset < bytes.length {
             var chunk = bytes.length - offset;
-            if chunk > 1024u {
+            if chunk > 1024 {
                 chunk = 1024u;
                 var backedOff = chunk;
                 while backedOff > 0 && !IsBoundary(bytes, offset + backedOff) {
@@ -170,7 +170,7 @@ extend StandardIn : Reader {
         var served: uint = 0;
         while self.pendingCount > 0 && served < into.length {
             into[served] = (self.pending & 0xFFu64) as uint8 as char8;
-            self.pending = self.pending >> 8u64;
+            self.pending = self.pending >> 8;
             self.pendingCount = self.pendingCount - 1;
             served = served + 1;
         }
@@ -222,7 +222,7 @@ when #target.os == .Windows {
             if ask == 0 {
                 ask = 1;
             }
-            if ask > 256u {
+            if ask > 256 {
                 ask = 256;
             }
             var read: uint32 = 0;
@@ -232,12 +232,12 @@ when #target.os == .Windows {
             }
             var total = base + read as uint;
             // Nothing at all, or Ctrl-Z at the start of a line, is how a console says the input is over.
-            if total == 0 || (wide[0] as uint16) == 0x1Au16 {
+            if total == 0 || (wide[0] as uint16) == 0x1A {
                 if served > 0 { return served; }
                 fail IoError::Of(IoErrorKind::EndOfStream);
             }
             let last = wide[total - 1] as uint16;
-            if last >= 0xD800u16 && last <= 0xDBFFu16 {
+            if last >= 0xD800 && last <= 0xDBFF {
                 self.heldUnit = last;
                 self.hasHeldUnit = true;
                 total = total - 1;

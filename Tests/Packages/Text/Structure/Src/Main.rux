@@ -62,7 +62,7 @@ extend Spy : Debug {
 
 // A decimal count, written here because this package converts no numbers and depends on nothing that does.
 func WriteNumber(writer: &var TextWriter, value: uint) -> ! FormatError {
-    if value >= 10u {
+    if value >= 10 {
         WriteNumber(writer, value / 10)?;
     }
     return WriteAscii(writer, ((value % 10) + 0x30) as char8);
@@ -155,9 +155,9 @@ func Main() -> int {
     var storage: char8[128];
     var writer = BufferWriter((@storage[0])[..128]);
     Assert(Succeeded(WriteOptionalDebug<Tracked>(writer, held, plain)), "a move-only payload is shown");
-    Assert(destroyed == 0i32, "and nothing was destroyed to show it");
+    Assert(destroyed == 0, "and nothing was destroyed to show it");
     Assert(Succeeded(WriteOptionalDebug<Tracked>(writer, held, plain)), "so it can be shown again");
-    Assert(destroyed == 0i32, "still destroying nothing");
+    Assert(destroyed == 0, "still destroying nothing");
     Assert(held is Tracked, "and the optional still holds its value");
     Assert(Same(writer.Written(), "Some(T(7))Some(T(7))"), "twice, identically");
 
@@ -169,7 +169,7 @@ func Main() -> int {
     let runSink: &var TextWriter = runWriter;
     Assert(Succeeded(WriteSliceDebug<Tracked>(runSink, elements[..], plain)), "a move-only run is shown");
     Assert(Same(runWriter.Written(), "[T(0), T(12), T(345)]"), "in order, each through a borrow");
-    Assert(destroyed == 0i32, "and not one of them was destroyed");
+    Assert(destroyed == 0, "and not one of them was destroyed");
 
     // A refused write stops the rendering where it was refused. Eleven bytes holds `[T(0), T(12)` up to the point
     // the third element needs room, so what appears is the prefix that fit and nothing after it.
@@ -182,8 +182,8 @@ func Main() -> int {
         .Failure(reason) => match reason { .InsufficientCapacity => true, else => false }
     };
     Assert(overflowed, "a destination without room reports it");
-    Assert(tight.Length() <= 11u, "having written no more than it had");
-    Assert(destroyed == 0i32, "and a failed rendering destroys nothing either");
+    Assert(tight.Length() <= 11, "having written no more than it had");
+    Assert(destroyed == 0, "and a failed rendering destroys nothing either");
 
     return 0;
 }

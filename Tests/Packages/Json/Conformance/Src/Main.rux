@@ -186,11 +186,11 @@ func Main() -> int {
     // reason the depth check happens before the descent.
     var nest: char8[600];
     var index: uint = 0;
-    while index < 300u {
+    while index < 300 {
         nest[index] = 0x5Bu8 as char8;
         index = index + 1;
     }
-    while index < 600u {
+    while index < 600 {
         nest[index] = 0x5Du8 as char8;
         index = index + 1;
     }

@@ -76,7 +76,7 @@ func RefusedWith(value: Timestamp, spec: FormatSpec, expected: FormatError, writ
 func RefusedBeforeOutput(value: Timestamp, spec: FormatSpec, expected: FormatError) -> bool {
     var written: uint = 0;
     if !RefusedWith(value, spec, expected, @written) { return false; }
-    return written == 0u;
+    return written == 0;
 }
 
 // Whether the RFC 3339 text of `value` reads back as the same moment.
@@ -129,7 +129,7 @@ func Main() -> int {
     // The stored fields really are what the comment claims, so the hard case is exercised rather than assumed.
     let beforeEpoch = At(-1, 500000000);
     Assert(beforeEpoch.UnixSeconds() == -1i64, "half a second before the epoch stores seconds as -1");
-    Assert(beforeEpoch.SubsecondNanoseconds() == 500000000u32, "and a positive fraction of half a second");
+    Assert(beforeEpoch.SubsecondNanoseconds() == 500000000, "and a positive fraction of half a second");
 
     // A style is refused rather than ignored, including the one that belongs to the neighbouring type. The style is
     // checked before anything is rendered, so these leave the destination untouched as well.

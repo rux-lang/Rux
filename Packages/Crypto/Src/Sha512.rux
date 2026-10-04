@@ -90,7 +90,7 @@ extend Sha512 {
     func Start(initial: uint64[8], outputLength: uint) -> Sha512 {
         var buffer: char8[128];
         var index: uint = 0;
-        while index < 128u {
+        while index < 128 {
             buffer[index] = 0u8 as char8;
             index = index + 1;
         }
@@ -133,21 +133,21 @@ extend Sha512 {
     func Compress(self: &var Sha512, block: *char8) {
         var schedule: uint64[80];
         var index: uint = 0;
-        while index < 16u {
+        while index < 16 {
             var word: uint64 = 0;
             var part: uint = 0;
-            while part < 8u {
-                word = (word << 8u64) | (block[index * 8 + part] as uint8 as uint64);
+            while part < 8 {
+                word = (word << 8) | (block[index * 8 + part] as uint8 as uint64);
                 part = part + 1;
             }
             schedule[index] = word;
             index = index + 1;
         }
-        while index < 80u {
+        while index < 80 {
             let previous = schedule[index - 15];
             let recent = schedule[index - 2];
-            let s0 = RotateRight64(previous, 1) ^ RotateRight64(previous, 8) ^ (previous >> 7u64);
-            let s1 = RotateRight64(recent, 19) ^ RotateRight64(recent, 61) ^ (recent >> 6u64);
+            let s0 = RotateRight64(previous, 1) ^ RotateRight64(previous, 8) ^ (previous >> 7);
+            let s1 = RotateRight64(recent, 19) ^ RotateRight64(recent, 61) ^ (recent >> 6);
             schedule[index] = schedule[index - 16] + s0 + schedule[index - 7] + s1;
             index = index + 1;
         }
@@ -162,7 +162,7 @@ extend Sha512 {
         var h = self.state[7];
 
         index = 0;
-        while index < 80u {
+        while index < 80 {
             let sigma1 = RotateRight64(e, 14) ^ RotateRight64(e, 18) ^ RotateRight64(e, 41);
             let choose = (e & f) ^ ((~e) & g);
             let temp1 = h + sigma1 + choose + Sha512RoundConstants[index] + schedule[index];
@@ -199,13 +199,13 @@ extend Sha512 : Digest {
     pub func Update(self: &var Sha512, bytes: char8[..]) {
         self.length = self.length + (bytes.length as uint64);
         var index: uint = 0;
-        if self.buffered > 0u {
-            while index < bytes.length && self.buffered < 128u {
+        if self.buffered > 0 {
+            while index < bytes.length && self.buffered < 128 {
                 self.buffer[self.buffered] = bytes[index];
                 self.buffered = self.buffered + 1;
                 index = index + 1;
             }
-            if self.buffered == 128u {
+            if self.buffered == 128 {
                 self.Compress(@self.buffer[0]);
                 self.buffered = 0;
             }
@@ -232,26 +232,26 @@ extend Sha512 : Digest {
         let bitLength = self.length * 8u64;
         self.buffer[self.buffered] = 0x80u8 as char8;
         self.buffered = self.buffered + 1u;
-        if self.buffered > 112u {
-            while self.buffered < 128u {
+        if self.buffered > 112 {
+            while self.buffered < 128 {
                 self.buffer[self.buffered] = 0u8 as char8;
                 self.buffered = self.buffered + 1u;
             }
             self.Compress(@self.buffer[0]);
             self.buffered = 0;
         }
-        while self.buffered < 112u {
+        while self.buffered < 112 {
             self.buffer[self.buffered] = 0u8 as char8;
             self.buffered = self.buffered + 1u;
         }
         // The high half of the length is zero for any message a machine can hold.
         var shift: uint = 0;
-        while shift < 8u {
+        while shift < 8 {
             self.buffer[112u + shift] = 0u8 as char8;
             shift = shift + 1;
         }
         shift = 0;
-        while shift < 8u {
+        while shift < 8 {
             self.buffer[120u + shift] =
                 ((bitLength >> ((56u - shift * 8u) as uint64)) & 0xFFu64) as uint8 as char8;
             shift = shift + 1;

@@ -12,8 +12,8 @@ func Main() -> int {
     // produces, and they are the reason this generator can be used for seeding at all.
     var mixer = SplitMix64(0);
     Assert(mixer.NextUint64() == 0xE220A8397B1DCDAFu64, "the first word of the zero-seeded sequence");
-    Assert(mixer.NextUint64() == 0x6E789E6AA1B965F4u64, "the second");
-    Assert(mixer.NextUint64() == 0x06C45D188009454Fu64, "the third");
+    Assert(mixer.NextUint64() == 0x6E789E6AA1B965F4, "the second");
+    Assert(mixer.NextUint64() == 0x06C45D188009454F, "the third");
     Assert(mixer.NextUint64() == 0xF88BB8A8724C81ECu64, "and the fourth");
 
     // Every seed gives the full period, so no seed is a bad one — including the one people reach for first.
@@ -26,7 +26,7 @@ func Main() -> int {
     var first = SplitMix64(12345);
     var second = SplitMix64(12345);
     var index: uint = 0;
-    while index < 200u {
+    while index < 200 {
         Assert(first.NextUint64() == second.NextUint64(), "two generators from one seed agree at every step");
         index = index + 1;
     }
@@ -67,7 +67,7 @@ func Main() -> int {
     var paired = SplitMix64(31);
     let high = paired.NextUint64();
     let low = paired.NextUint64();
-    let expected128 = ((high as uint128) << 64u128) | (low as uint128);
+    let expected128 = ((high as uint128) << 64) | (low as uint128);
     Assert(NextUint128<SplitMix64>(wide128) == expected128,
            "a 128-bit draw is two words with the first as the high half");
 
@@ -79,7 +79,7 @@ func Main() -> int {
     FillBytes<SplitMix64>(filler, room);
     var word = reference.NextUint64();
     Assert(storage[0] == (word & 0xFF) as uint8 as char8, "the first byte is the first word's lowest");
-    Assert(storage[7] == ((word >> 56u64) & 0xFF) as uint8 as char8, "the eighth is its highest");
+    Assert(storage[7] == ((word >> 56) & 0xFF) as uint8 as char8, "the eighth is its highest");
     // Twenty bytes is three words: two whole and one partial, whose top four bytes are dropped.
     reference.NextUint64();
     let third = reference.NextUint64();
@@ -99,7 +99,7 @@ func Main() -> int {
     var sawSmall = false;
     var sawLarge = false;
     var draw: uint = 0;
-    while draw < 5000u {
+    while draw < 5000 {
         let value = NextFloat64<SplitMix64>(floats);
         Assert(value >= 0.0 && value < 1.0, "a float64 draw is in the half-open unit interval");
         if value < 0.01 {
@@ -114,7 +114,7 @@ func Main() -> int {
 
     var narrowFloats = SplitMix64(99);
     draw = 0;
-    while draw < 2000u {
+    while draw < 2000 {
         let value = NextFloat32<SplitMix64>(narrowFloats);
         Assert(value >= 0.0f32 && value < 1.0f32, "a float32 draw is in the half-open unit interval too");
         draw = draw + 1;

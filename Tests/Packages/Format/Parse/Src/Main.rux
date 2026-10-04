@@ -81,7 +81,7 @@ func FailedAtFloat(outcome: float64 ! ParseError, code: int, at: uint) -> bool {
 func Main() -> int {
     // The grammar itself, at one width.
     match ParseInt64("42") {
-        .Success(value) => { if value != 42i64 { return 1; } },
+        .Success(value) => { if value != 42 { return 1; } },
         .Failure(_) => { return 2; }
     }
     match ParseInt64("-42") {
@@ -89,19 +89,19 @@ func Main() -> int {
         .Failure(_) => { return 4; }
     }
     match ParseInt64("+42") {
-        .Success(value) => { if value != 42i64 { return 5; } },
+        .Success(value) => { if value != 42 { return 5; } },
         .Failure(_) => { return 6; }
     }
     match ParseUint64("0xff") {
-        .Success(value) => { if value != 255u64 { return 7; } },
+        .Success(value) => { if value != 255 { return 7; } },
         .Failure(_) => { return 8; }
     }
     match ParseUint64("0b101") {
-        .Success(value) => { if value != 5u64 { return 9; } },
+        .Success(value) => { if value != 5 { return 9; } },
         .Failure(_) => { return 10; }
     }
     match ParseUint64("0o10") {
-        .Success(value) => { if value != 8u64 { return 11; } },
+        .Success(value) => { if value != 8 { return 11; } },
         .Failure(_) => { return 12; }
     }
     match ParseInt64("-0x10") {
@@ -120,7 +120,7 @@ func Main() -> int {
 
     // The bounds, narrow and wide: the largest in, one past it out.
     match ParseInt8("127") {
-        .Success(value) => { if value != 127i8 { return 30; } },
+        .Success(value) => { if value != 127 { return 30; } },
         .Failure(_) => { return 31; }
     }
     if Succeeded(ParseInt8("128")) { return 32; }
@@ -130,20 +130,20 @@ func Main() -> int {
     }
     if Succeeded(ParseInt8("-129")) { return 35; }
     match ParseUint8("255") {
-        .Success(value) => { if value != 255u8 { return 36; } },
+        .Success(value) => { if value != 255 { return 36; } },
         .Failure(_) => { return 37; }
     }
     if Succeeded(ParseUint8("256")) { return 38; }
 
     match ParseUint128("340282366920938463463374607431768211455") {
         .Success(value) => {
-            if (value % 10) != 5u128 { return 40; }
+            if (value % 10) != 5 { return 40; }
         },
         .Failure(_) => { return 41; }
     }
     if Succeeded(ParseUint128("340282366920938463463374607431768211456")) { return 42; }
     match ParseInt128("-170141183460469231731687303715884105728") {
-        .Success(value) => { if value >= 0i128 { return 43; } },
+        .Success(value) => { if value >= 0 { return 43; } },
         .Failure(_) => { return 44; }
     }
     if Succeeded(ParseInt128("170141183460469231731687303715884105728")) { return 45; }
@@ -223,7 +223,7 @@ func Main() -> int {
         .Failure(_) => { return 101; }
     }
     match ParseUint64("0xff") {
-        .Success(value) => { if value != 255u64 { return 102; } },
+        .Success(value) => { if value != 255 { return 102; } },
         .Failure(_) => { return 103; }
     }
     match ParseFloat64("2.5") {
@@ -235,7 +235,7 @@ func Main() -> int {
         .Failure(_) => { return 107; }
     }
     match ParseChar("\u{20AC}") {
-        .Success(value) => { if value as uint32 != 0x20ACu32 { return 108; } },
+        .Success(value) => { if value as uint32 != 0x20AC { return 108; } },
         .Failure(_) => { return 109; }
     }
     if Succeeded(ParseInt64("nope")) { return 110; }

@@ -58,7 +58,7 @@ extern {
 /// @returns whether the whole buffer was filled; there is no partial success
 /// @see https://rux-lang.dev/docs/api/windows/get-random
 pub func GetRandom(buffer: *var opaque, length: uint) -> bool {
-    if length > 4294967295u64 { return false; }
+    if length > 4294967295 { return false; }
     let status = BCryptGenRandom(null, buffer, length as uint32, BCRYPT_USE_SYSTEM_PREFERRED_RNG);
     return status == STATUS_SUCCESS;
 }

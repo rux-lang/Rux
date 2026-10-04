@@ -36,8 +36,8 @@ func Main() -> int {
 
     var text = TomlValue::Text(allocator, "hello") catch { else => Panic("a string value is made") };
     Assert(text.Kind() == TomlKind::Text, "a string");
-    Assert(text.AsText().Length() == 5u, "of the length it was given");
-    Assert(integer.AsText().Length() == 0u, "while a non-string reports an empty view rather than its bytes");
+    Assert(text.AsText().Length() == 5, "of the length it was given");
+    Assert(integer.AsText().Length() == 0, "while a non-string reports an empty view rather than its bytes");
 
     // The four date-time kinds differ in which parts they have, and that is the whole point of having four.
     let date = (Date::New(1979, 5, 27) ?? Date { year: 1970, month: 1, day: 1 });
@@ -53,8 +53,8 @@ func Main() -> int {
     Assert(!wall.AsOffset(@readOffset), "a local date-time deliberately has none");
     var readDate = Date { year: 1970, month: 1, day: 1 };
     var readTime = TimeOfDay { hour: 0, minute: 0, second: 0, nanosecond: 0 };
-    Assert(wall.AsDate(@readDate) && readDate.day == 27u8, "but it does have a date");
-    Assert(wall.AsTime(@readTime) && readTime.hour == 7u8, "and a time");
+    Assert(wall.AsDate(@readDate) && readDate.day == 27, "but it does have a date");
+    Assert(wall.AsTime(@readTime) && readTime.hour == 7, "and a time");
 
     var justDate = TomlValue::LocalDate(allocator, date);
     Assert(!justDate.AsTime(@readTime), "a local date has no time");
@@ -70,8 +70,8 @@ func Main() -> int {
     table.Insert(apple, TomlValue::Integer(allocator, 2));
     var middle = String::FromBytes(allocator, "middle") catch { else => Panic("the key is made") };
     table.Insert(middle, TomlValue::Integer(allocator, 3));
-    Assert(table.Length() == 3u, "a table holds what it was given");
-    Assert(table.EntryAt(0).key.View().Length() == 5u, "the first entry is the first one added");
+    Assert(table.Length() == 3, "a table holds what it was given");
+    Assert(table.EntryAt(0).key.View().Length() == 5, "the first entry is the first one added");
     var firstKey = table.EntryAt(0).key.View();
     Assert(firstKey.Bytes().data[0] == c8'z', "which is zebra, not apple");
     Assert(table.EntryAt(2).key.View().Bytes().data[0] == c8'm', "and the last is the last added");
@@ -80,7 +80,7 @@ func Main() -> int {
     // Lookup finds by key, and reports absence rather than inventing an empty value.
     var found = table.Find(View("apple"));
     Assert(found != null, "a key that is there is found");
-    Assert((*found).AsInteger(@readInteger) && readInteger == 2i64, "with the value it was stored with");
+    Assert((*found).AsInteger(@readInteger) && readInteger == 2, "with the value it was stored with");
     Assert(table.Find(View("pear")) == null, "and a key that is not there is not");
 
     // An array keeps its order too, and a borrowed element can be modified in place — which is how an array of
@@ -88,11 +88,11 @@ func Main() -> int {
     var array = TomlValue::Array(allocator);
     array.Push(TomlValue::Integer(allocator, 10));
     array.Push(TomlValue::Integer(allocator, 20));
-    Assert(array.Length() == 2u, "an array holds what it was given");
-    Assert((*array.At(1)).AsInteger(@readInteger) && readInteger == 20i64, "in order");
+    Assert(array.Length() == 2, "an array holds what it was given");
+    Assert((*array.At(1)).AsInteger(@readInteger) && readInteger == 20, "in order");
     var element = array.AtMutable(0);
     element.integer = 11;
-    Assert((*array.At(0)).AsInteger(@readInteger) && readInteger == 11i64,
+    Assert((*array.At(0)).AsInteger(@readInteger) && readInteger == 11,
            "and an element can be edited in place");
 
     // The kinds do not answer each other's questions.
@@ -113,7 +113,7 @@ func Main() -> int {
     inner.Insert(nestedKey, <-nested);
     var innerKey = String::FromBytes(allocator, "inner") catch { else => Panic("the key is made") };
     outer.Insert(innerKey, <-inner);
-    Assert((*(*outer.Find(View("inner"))).Find(View("list"))).Length() == 2u,
+    Assert((*(*outer.Find(View("inner"))).Find(View("list"))).Length() == 2,
            "a nested tree is reachable all the way down");
 
     return 0;

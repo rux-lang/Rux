@@ -15,7 +15,7 @@ func Main() -> int {
     var key: char8[32];
     var otherKey: char8[32];
     var index: uint = 0;
-    while index < 32u {
+    while index < 32 {
         key[index] = (index as uint8) as char8;
         otherKey[index] = (index as uint8) as char8;
         index = index + 1;
@@ -52,7 +52,7 @@ func Main() -> int {
     // Keyed hashing across a chunk boundary, so the key reaches the tree rather than only the first block.
     var long: char8[3000];
     index = 0;
-    while index < 3000u {
+    while index < 3000 {
         long[index] = ((index % 251) as uint8) as char8;
         index = index + 1;
     }
@@ -66,7 +66,7 @@ func Main() -> int {
            "the key still separates a multi-chunk message");
     var longIncremental = Blake3::NewKeyed(keyBytes);
     index = 0;
-    while index < 3000u {
+    while index < 3000 {
         let single = (@long[index])[..1];
         longIncremental.Update(single);
         index = index + 1;

@@ -47,7 +47,7 @@ func Main() -> int {
 
     // Ordinary values, where accuracy rather than a table is the question.
     Assert(Pow(2.0, 10.0) == 1024.0, "an exact power comes out exact");
-    Assert(UlpDistance(Pow(2.0, 0.5), 1.4142135623730951) <= 1u64, "and a half power is the square root");
+    Assert(UlpDistance(Pow(2.0, 0.5), 1.4142135623730951) <= 1, "and a half power is the square root");
 
     // Integer powers, which is where exactness is the point.
     Assert(PowInteger(2.0, 0i64) == 1.0 && PowInteger(0.0, 0i64) == 1.0, "the empty product is one");
@@ -61,7 +61,7 @@ func Main() -> int {
 
     // Every power of two the type holds, exactly — something the logarithm-and-exponential route cannot promise.
     var power: int64 = -1000;
-    while power <= 1000i64 {
+    while power <= 1000 {
         Assert(PowInteger(2.0, power) == Pow(2.0, power as float64),
                "integer and general powers agree on the powers of two");
         power = power + 1i64;
@@ -69,7 +69,7 @@ func Main() -> int {
 
     // Where the two differ: a cube of ten is exact one way and not necessarily the other.
     Assert(PowInteger(10.0, 3i64) == 1000.0, "an integer power of ten is exact");
-    Assert(UlpDistance(Pow(10.0, 3.0), 1000.0) <= 1u64, "while the general power is merely within a ulp");
+    Assert(UlpDistance(Pow(10.0, 3.0), 1000.0) <= 1, "while the general power is merely within a ulp");
 
     // Saturation at both ends.
     Assert(PowInteger(2.0, 2000i64) == infinity, "a power past the top saturates");

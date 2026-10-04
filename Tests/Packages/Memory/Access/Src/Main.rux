@@ -51,7 +51,7 @@ func Main() -> int {
     StoreUnaligned<uint32>(odd as *var opaque, @written);
     var recovered: uint32 = 0;
     LoadUnaligned<uint32>(odd as *opaque, @recovered);
-    Assert(recovered == 0x01020304u32, "a value survives a round trip at an unaligned address");
+    Assert(recovered == 0x01020304, "a value survives a round trip at an unaligned address");
     Assert(!IsPointerAligned(odd as *opaque, 4), "and the address really was unaligned");
 
     // Byte order, written and read at that same unaligned address.
@@ -60,19 +60,19 @@ func Main() -> int {
     Assert(*(odd + 3) == 0x01 as byte, "and the most significant last");
     recovered = 0;
     LoadLittleEndian<uint32>(odd as *opaque, @recovered);
-    Assert(recovered == 0x01020304u32, "which reads back as the value it started as");
+    Assert(recovered == 0x01020304, "which reads back as the value it started as");
 
     StoreBigEndian<uint32>(odd as *var opaque, @written);
     Assert(*odd == 0x01 as byte, "big-endian puts the most significant byte first");
     Assert(*(odd + 3) == 0x04 as byte, "and the least significant last");
     recovered = 0;
     LoadBigEndian<uint32>(odd as *opaque, @recovered);
-    Assert(recovered == 0x01020304u32, "which also reads back as itself");
+    Assert(recovered == 0x01020304, "which also reads back as itself");
 
     // Reading one order through the other gives the reversed value, which is what proves the two differ at all.
     recovered = 0;
     LoadLittleEndian<uint32>(odd as *opaque, @recovered);
-    Assert(recovered == 0x04030201u32, "a big-endian pattern read as little-endian is byte-reversed");
+    Assert(recovered == 0x04030201, "a big-endian pattern read as little-endian is byte-reversed");
 
     // Reversing a run of bytes in place.
     var index: uint = 0;

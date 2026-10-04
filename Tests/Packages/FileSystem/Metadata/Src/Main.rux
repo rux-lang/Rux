@@ -48,13 +48,13 @@ func Main() -> int ! IoError {
     WriteAll(written, TextBytes("0123456789"))?;
     let openMetadata = written.Metadata()?;
     Assert(openMetadata.kind == FileKind::File, "as a file");
-    Assert(openMetadata.size == 10u64, "of the length just written");
+    Assert(openMetadata.size == 10, "of the length just written");
     written.Close()?;
 
     // The same answers through the path.
     let byPath = MetadataOf(allocator, file, true)?;
-    Assert(byPath.kind == FileKind::File && byPath.size == 10u64, "identically");
-    Assert(byPath.linkCount >= 1u64, "with at least the one name it was made under");
+    Assert(byPath.kind == FileKind::File && byPath.size == 10, "identically");
+    Assert(byPath.linkCount >= 1, "with at least the one name it was made under");
 
     // A directory is a directory, and asking about a name that is not there is NotFound.
     let dirMetadata = MetadataOf(allocator, dir, true)?;
@@ -72,8 +72,8 @@ func Main() -> int ! IoError {
     let moment = Timestamp::FromUnixSeconds(1000000000);
     SetTimes(allocator, file, moment, moment, true)?;
     let retimed = MetadataOf(allocator, file, true)?;
-    Assert(retimed.modified.UnixSeconds() == 1000000000i64, "the modification time is the one written");
-    Assert(retimed.accessed.UnixSeconds() == 1000000000i64, "and so is the access time");
+    Assert(retimed.modified.UnixSeconds() == 1000000000, "the modification time is the one written");
+    Assert(retimed.accessed.UnixSeconds() == 1000000000, "and so is the access time");
 
     // Read-only is the one permission every supported system records: setting and clearing it round trips. An
     // ordinary writer is refused, while a privileged Unix process may validly bypass the mode bits.
@@ -102,12 +102,12 @@ func Main() -> int ! IoError {
         // Where the mode is the system's own, an exact triple survives the round trip.
         SetPermissions(allocator, file, Permissions::FromMode(0x1A4))?;
         let moded = MetadataOf(allocator, file, true)?;
-        Assert(moded.permissions.mode == 0x1A4u32, "and reads back bit for bit");
+        Assert(moded.permissions.mode == 0x1A4, "and reads back bit for bit");
     }
     else {
         // Where it is not, the mode is synthesized and says so by being one of exactly two values.
-        Assert(unlocked.permissions.mode == 0x1B6u32, "a synthesized writable mode is the documented one");
-        Assert(locked.permissions.mode == 0x124u32, "and a synthesized read-only mode is the other");
+        Assert(unlocked.permissions.mode == 0x1B6, "a synthesized writable mode is the documented one");
+        Assert(locked.permissions.mode == 0x124, "and a synthesized read-only mode is the other");
     }
 
     DeleteFile(allocator, file)?;

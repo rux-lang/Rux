@@ -47,8 +47,8 @@ func Main() -> ! AllocError {
     let secondBytes = second as *var uint64;
     *firstBytes = 0x1111111111111111;
     *secondBytes = 0x2222222222222222;
-    Assert(*firstBytes == 0x1111111111111111u64, "the first allocation keeps its bytes");
-    Assert(*secondBytes == 0x2222222222222222u64, "and so does the second");
+    Assert(*firstBytes == 0x1111111111111111, "the first allocation keeps its bytes");
+    Assert(*secondBytes == 0x2222222222222222, "and so does the second");
 
     // Exhausting the block takes another, larger one.
     let blocksBefore = arena.BlockCount();

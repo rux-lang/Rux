@@ -13,11 +13,11 @@ func Main() -> int {
     Assert(IsLeapYear(2000), "unless it divides four hundred");
     Assert(IsLeapYear(0), "and year zero, which exists here, is");
 
-    Assert(DaysInMonth(2024, 2) == 29u8, "February has the leap day");
-    Assert(DaysInMonth(2023, 2) == 28u8, "or not");
-    Assert(DaysInMonth(2024, 4) == 30u8, "April has thirty");
-    Assert(DaysInMonth(2024, 12) == 31u8, "December thirty-one");
-    Assert(DaysInMonth(2024, 13) == 0u8, "and a thirteenth month has none at all");
+    Assert(DaysInMonth(2024, 2) == 29, "February has the leap day");
+    Assert(DaysInMonth(2023, 2) == 28, "or not");
+    Assert(DaysInMonth(2024, 4) == 30, "April has thirty");
+    Assert(DaysInMonth(2024, 12) == 31, "December thirty-one");
+    Assert(DaysInMonth(2024, 13) == 0, "and a thirteenth month has none at all");
 
     // Construction refuses what does not exist.
     Assert((Date::New(2024, 2, 29) is Date), "the leap day exists in a leap year");
@@ -27,30 +27,30 @@ func Main() -> int {
 
     // The epoch conversion, at the values everyone can check.
     let epochDay = (Date::New(1970, 1, 1) ?? Date::FromEpochDays(999));
-    Assert(epochDay.DaysFromEpoch() == 0i64, "the epoch is day zero");
+    Assert(epochDay.DaysFromEpoch() == 0, "the epoch is day zero");
     let mille = (Date::New(2000, 3, 1) ?? epochDay);
-    Assert(mille.DaysFromEpoch() == 11017i64, "March the first 2000 is day 11017");
+    Assert(mille.DaysFromEpoch() == 11017, "March the first 2000 is day 11017");
     let early = (Date::New(1969, 12, 31) ?? epochDay);
     Assert(early.DaysFromEpoch() == -1i64, "the day before the epoch is minus one");
 
     // Round trips across the awkward boundaries: the leap day, a century year, both signs.
     var probe: int64 = -1000;
-    while probe < 1000i64 {
+    while probe < 1000 {
         let landed = Date::FromEpochDays(probe * 731);
         Assert(landed.DaysFromEpoch() == probe * 731, "every day count round-trips through its date");
         probe = probe + 1;
     }
 
     // Known weekdays: the epoch was a Thursday, and the millennium a Saturday.
-    Assert(epochDay.DayOfWeek() == 4u8, "the first of January 1970 was a Thursday");
+    Assert(epochDay.DayOfWeek() == 4, "the first of January 1970 was a Thursday");
     let millennium = (Date::New(2000, 1, 1) ?? epochDay);
-    Assert(millennium.DayOfWeek() == 6u8, "the first of January 2000 a Saturday");
+    Assert(millennium.DayOfWeek() == 6, "the first of January 2000 a Saturday");
     let past = (Date::New(1969, 12, 31) ?? epochDay);
-    Assert(past.DayOfWeek() == 3u8, "and the day before the epoch a Wednesday");
+    Assert(past.DayOfWeek() == 3, "and the day before the epoch a Wednesday");
 
-    Assert(millennium.DayOfYear() == 1u16, "the first of January is day one");
+    Assert(millennium.DayOfYear() == 1, "the first of January is day one");
     let yearEnd = (Date::New(2024, 12, 31) ?? epochDay);
-    Assert(yearEnd.DayOfYear() == 366u16, "and a leap year ends on day 366");
+    Assert(yearEnd.DayOfYear() == 366, "and a leap year ends on day 366");
 
     Assert(early.Compare(epochDay) == Ordering::Less, "an earlier date orders earlier");
     Assert(epochDay.Equals((Date::New(1970, 1, 1) ?? early)), "and a date equals itself");
@@ -61,7 +61,7 @@ func Main() -> int {
     Assert(!(TimeOfDay::New(23, 59, 60, 0) is TimeOfDay), "and neither does the leap second, by policy");
 
     // Offsets carry their sign whole.
-    Assert((UtcOffset::Of(5, 30) ?? UtcOffset::Utc()).TotalSeconds() == 19800i32, "plus five thirty");
+    Assert((UtcOffset::Of(5, 30) ?? UtcOffset::Utc()).TotalSeconds() == 19800, "plus five thirty");
     Assert((UtcOffset::Of(-5, -30) ?? UtcOffset::Utc()).TotalSeconds() == -19800i32, "and its mirror");
     Assert(!(UtcOffset::Of(5, -30) is UtcOffset), "a torn sign is refused");
     Assert(!(UtcOffset::Of(24, 0) is UtcOffset), "and a day-long offset");
@@ -72,15 +72,15 @@ func Main() -> int {
         time: (TimeOfDay::New(12, 30, 45, 500000000) ?? TimeOfDay::Midnight())
     };
     let stamp = moment.ToTimestamp(UtcOffset::Utc());
-    Assert(stamp.UnixSeconds() == 946729845i64, "half past noon on the millennium is 946729845");
-    Assert(stamp.SubsecondNanoseconds() == 500000000u32, "with the fraction riding along");
+    Assert(stamp.UnixSeconds() == 946729845, "half past noon on the millennium is 946729845");
+    Assert(stamp.SubsecondNanoseconds() == 500000000, "with the fraction riding along");
 
     let back = DateTime::FromTimestamp(stamp, UtcOffset::Utc());
     Assert(back.Equals(moment), "and the conversion round-trips");
 
     // The same moment in another offset is another pair of fields naming it.
     let eastern = DateTime::FromTimestamp(stamp, (UtcOffset::Of(5, 30) ?? UtcOffset::Utc()));
-    Assert(eastern.time.hour == 18u8 && eastern.time.minute == 0u8, "half past noon UTC is six at plus five thirty");
+    Assert(eastern.time.hour == 18 && eastern.time.minute == 0, "half past noon UTC is six at plus five thirty");
     Assert(eastern.ToTimestamp((UtcOffset::Of(5, 30) ?? UtcOffset::Utc())).Equals(stamp),
            "and names the same moment back");
 
@@ -89,7 +89,7 @@ func Main() -> int {
     let lastMoment = DateTime::FromTimestamp(older, UtcOffset::Utc());
     Assert(lastMoment.date.Equals((Date::New(1969, 12, 31) ?? epochDay)),
            "one second before the epoch is New Year's Eve 1969");
-    Assert(lastMoment.time.hour == 23u8 && lastMoment.time.second == 59u8, "at the last second of the day");
+    Assert(lastMoment.time.hour == 23 && lastMoment.time.second == 59, "at the last second of the day");
 
     // The arithmetic, with its stated clamps: days are exact, months and years clamp to the month's end.
     let base = (Date::New(2024, 1, 31) ?? epochDay);
@@ -120,9 +120,9 @@ func Main() -> int {
     Assert(!(epochDay.PlusDays(9223372036854775807) is Date), "and a day count past the range refuses");
 
     let gap = (Date::New(2024, 3, 1) ?? epochDay);
-    Assert(gap.DaysSince((Date::New(2024, 2, 1) ?? epochDay)) == 29i64,
+    Assert(gap.DaysSince((Date::New(2024, 2, 1) ?? epochDay)) == 29,
            "February 2024 was twenty-nine days long");
-    Assert(epochDay.DaysSince(gap) < 0i64, "and the distance is signed");
+    Assert(epochDay.DaysSince(gap) < 0, "and the distance is signed");
 
     return 0;
 }

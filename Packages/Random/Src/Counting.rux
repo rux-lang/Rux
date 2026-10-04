@@ -23,7 +23,7 @@ import Math::{ Exp, Floor, Log };
 /// @returns how many of `trials` succeeded
 /// @see https://rux-lang.dev/docs/api/random/binomial
 pub func Binomial<G: RandomGenerator>(generator: &var G, trials: uint64, probability: float64) -> uint64 {
-    if trials == 0u64 || !(probability > 0.0) { return 0u64; }
+    if trials == 0 || !(probability > 0.0) { return 0u64; }
     if probability >= 1.0 { return trials; }
     if (trials as float64) <= DirectMethodLimit {
         var successes: uint64 = 0;

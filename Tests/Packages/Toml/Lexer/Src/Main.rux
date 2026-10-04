@@ -94,13 +94,13 @@ func Main() -> int {
     Assert(FirstKind("6.626e-34") == TomlTokenKind::Float, "and both together");
     // A sign at the start belongs to the number, so it must not end the run of digits the point follows.
     Assert(FirstKind("-0.01") == TomlTokenKind::Float, "a signed fractional float is one token");
-    Assert(FirstToken("-0.01").end == 5u, "spanning all of it, not stopping at the point");
+    Assert(FirstToken("-0.01").end == 5, "spanning all of it, not stopping at the point");
     Assert(FirstKind("+1.0") == TomlTokenKind::Float, "and so is a positive one");
     // An underscore between digits separates them rather than ending the number.
     Assert(FirstKind("224_617.445_991_228") == TomlTokenKind::Float, "a float with separators");
-    Assert(FirstToken("224_617.445_991_228").end == 19u, "spanning all of it");
+    Assert(FirstToken("224_617.445_991_228").end == 19, "spanning all of it");
     // One at the start begins a bare key, and a dot after that key is the dotted-key separator.
-    Assert(FirstToken("_key.rest").end == 4u, "a bare key stops at the dot that follows it");
+    Assert(FirstToken("_key.rest").end == 4, "a bare key stops at the dot that follows it");
     Assert(FirstKind("inf") == TomlTokenKind::Float, "infinity is a float TOML can write");
     Assert(FirstKind("-inf") == TomlTokenKind::Float, "in both directions");
     Assert(FirstKind("nan") == TomlTokenKind::Float, "and so is NaN");
@@ -115,7 +115,7 @@ func Main() -> int {
            "and one written with a space, which TOML allows");
     Assert(FirstKind("1979-05-27T00:32:00.999999-07:00") == TomlTokenKind::DateTime,
            "one carrying a fraction and an offset");
-    Assert(FirstToken("1979-05-27T00:32:00.999999-07:00").end == 32u, "as a single token, fraction included");
+    Assert(FirstToken("1979-05-27T00:32:00.999999-07:00").end == 32, "as a single token, fraction included");
     Assert(FirstKind("00:32:00.999999") == TomlTokenKind::DateTime, "and a local time with a fraction");
     Assert(FirstKind("1979") == TomlTokenKind::Integer, "a bare year is still an integer");
 
@@ -125,7 +125,7 @@ func Main() -> int {
     var basic = FirstToken("\"hello\"");
     Assert(basic.kind == TomlTokenKind::Text, "a basic string");
     Assert(basic.form == TomlTextForm::Basic, "in the basic form");
-    Assert(basic.start == 1u && basic.end == 6u, "and its span excludes the quotes");
+    Assert(basic.start == 1 && basic.end == 6, "and its span excludes the quotes");
 
     var literal = FirstToken("'C:\\windows'");
     Assert(literal.form == TomlTextForm::Literal, "a literal string");
@@ -187,14 +187,14 @@ func Main() -> int {
 
     // Spans and positions, because a configuration error that cannot point at itself costs more than the parse.
     var document = TomlLexer("alpha = 1\nbeta = 2");
-    Assert(document.Next().line == 1u, "the first key is on line one");
+    Assert(document.Next().line == 1, "the first key is on line one");
     document.Next();
     document.Next();
     document.Next();
     let second = document.Next();
     Assert(second.kind == TomlTokenKind::BareKey, "the second key follows the newline");
-    Assert(second.line == 2u, "on line two");
-    Assert(second.column == 1u, "at the first column");
+    Assert(second.line == 2, "on line two");
+    Assert(second.column == 1, "at the first column");
 
     return 0;
 }

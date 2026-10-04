@@ -39,7 +39,7 @@ func ParseIntegerMagnitude(str: char8[..], magnitude: *var uint512,
             radix = 2;
             index += 2;
         }
-        if radix != 10u512 && index == str.length {
+        if radix != 10 && index == str.length {
             fail ParseError::InvalidCharacter(index - 1);
         }
     }
@@ -86,7 +86,7 @@ pub func ParseUint8(str: char8[..]) -> uint8 ! ParseError {
     var negative = false;
     ParseIntegerMagnitude(str, @magnitude, @negative)?;
     if negative { fail ParseError::InvalidCharacter(0); }
-    if magnitude > 255u512 { fail ParseError::Overflow(str.length); }
+    if magnitude > 255 { fail ParseError::Overflow(str.length); }
     return magnitude as uint8;
 }
 
@@ -121,7 +121,7 @@ pub func ParseUint16(str: char8[..]) -> uint16 ! ParseError {
     var negative = false;
     ParseIntegerMagnitude(str, @magnitude, @negative)?;
     if negative { fail ParseError::InvalidCharacter(0); }
-    if magnitude > 65535u512 { fail ParseError::Overflow(str.length); }
+    if magnitude > 65535 { fail ParseError::Overflow(str.length); }
     return magnitude as uint16;
 }
 
@@ -156,7 +156,7 @@ pub func ParseUint32(str: char8[..]) -> uint32 ! ParseError {
     var negative = false;
     ParseIntegerMagnitude(str, @magnitude, @negative)?;
     if negative { fail ParseError::InvalidCharacter(0); }
-    if magnitude > 4294967295u512 { fail ParseError::Overflow(str.length); }
+    if magnitude > 4294967295 { fail ParseError::Overflow(str.length); }
     return magnitude as uint32;
 }
 

@@ -28,7 +28,7 @@ func Main() -> int {
     var awayTotal = 0.0;
     var evenTotal = 0.0;
     var index: uint = 0;
-    while index < 8u {
+    while index < 8 {
         let value = (index as float64) + 0.5;
         awayTotal = awayTotal + Round(value);
         evenTotal = evenTotal + RoundTiesToEven(value);
@@ -57,17 +57,17 @@ func Main() -> int {
 
     // Conversion to an integer, which is where a value can fail to exist.
     var small: int8 = 0;
-    Assert(!ToIntegerChecked<int8>(2.5, 0, RoundingMode::ToNearestTiesEven, @small) && small == 2i8,
+    Assert(!ToIntegerChecked<int8>(2.5, 0, RoundingMode::ToNearestTiesEven, @small) && small == 2,
            "a value in range converts under the named mode");
-    Assert(!ToIntegerChecked<int8>(2.5, 0, RoundingMode::ToNearestTiesAway, @small) && small == 3i8,
+    Assert(!ToIntegerChecked<int8>(2.5, 0, RoundingMode::ToNearestTiesAway, @small) && small == 3,
            "and the mode is honoured");
     Assert(!ToIntegerChecked<int8>(-128.0, 0, RoundingMode::TowardZero, @small) && small == -128i8,
            "the most negative value is in range");
-    Assert(!ToIntegerChecked<int8>(127.0, 0, RoundingMode::TowardZero, @small) && small == 127i8,
+    Assert(!ToIntegerChecked<int8>(127.0, 0, RoundingMode::TowardZero, @small) && small == 127,
            "and so is the largest");
     Assert(ToIntegerChecked<int8>(128.0, 0, RoundingMode::TowardZero, @small),
            "one past the largest is refused rather than saturated");
-    Assert(small == 0i8, "and the result is left at zero");
+    Assert(small == 0, "and the result is left at zero");
     Assert(ToIntegerChecked<int8>(-129.0, 0, RoundingMode::TowardZero, @small), "as is one below the smallest");
     Assert(ToIntegerChecked<int8>(notANumber, 0, RoundingMode::TowardZero, @small), "a NaN is not an integer");
     Assert(ToIntegerChecked<int8>(infinity, 0, RoundingMode::TowardZero, @small), "and neither is an infinity");
@@ -75,15 +75,15 @@ func Main() -> int {
     // Rounding decides whether a value is in range at all: 127.5 is not, until it rounds down.
     Assert(ToIntegerChecked<int8>(127.5, 0, RoundingMode::ToNearestTiesAway, @small),
            "a value rounding past the maximum is refused");
-    Assert(!ToIntegerChecked<int8>(127.5, 0, RoundingMode::TowardZero, @small) && small == 127i8,
+    Assert(!ToIntegerChecked<int8>(127.5, 0, RoundingMode::TowardZero, @small) && small == 127,
            "while the same value truncating into range is not");
 
     // Unsigned types reject everything below zero, which a signed one accepts.
     var byte: uint8 = 0;
-    Assert(!ToIntegerChecked<uint8>(255.0, 0, RoundingMode::TowardZero, @byte) && byte == 255u8,
+    Assert(!ToIntegerChecked<uint8>(255.0, 0, RoundingMode::TowardZero, @byte) && byte == 255,
            "an unsigned maximum converts");
     Assert(ToIntegerChecked<uint8>(-1.0, 0, RoundingMode::TowardZero, @byte), "and a negative value does not");
-    Assert(!ToIntegerChecked<uint8>(-0.4, 0, RoundingMode::TowardZero, @byte) && byte == 0u8,
+    Assert(!ToIntegerChecked<uint8>(-0.4, 0, RoundingMode::TowardZero, @byte) && byte == 0,
            "though one that truncates to zero does");
 
     // A width where the limits are not exactly representable as floats is still bounded correctly.

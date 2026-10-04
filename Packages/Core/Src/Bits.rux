@@ -41,7 +41,7 @@ pub func BitWidthOf<T>(sample: T) -> uint64 {
 /// @see https://rux-lang.dev/docs/api/core/shift-right-logical
 pub func ShiftRightLogical<T>(value: T, amount: uint64) -> T {
     let zero = value - value;
-    if amount == 0u64 { return value; }
+    if amount == 0 { return value; }
     let bits = sizeof(T) * 8;
     if amount >= bits { return zero; }
     // Every bit the shift kept lives below `bits - amount`, so a mask of that many ones drops whatever an arithmetic
@@ -119,7 +119,7 @@ pub func CountZeros<T>(value: T) -> uint32 {
 pub func LeadingZeros<T>(value: T) -> uint32 {
     var count: uint32 = 0;
     var index = sizeof(T) * 8u64;
-    while index > 0u64 {
+    while index > 0 {
         index = index - 1u64;
         if BitAt<T>(value, index) { return count; }
         count = count + 1u32;
@@ -160,7 +160,7 @@ pub func TrailingZeros<T>(value: T) -> uint32 {
 pub func LeadingOnes<T>(value: T) -> uint32 {
     var count: uint32 = 0;
     var index = sizeof(T) * 8u64;
-    while index > 0u64 {
+    while index > 0 {
         index = index - 1u64;
         if !BitAt<T>(value, index) { return count; }
         count = count + 1u32;
@@ -203,7 +203,7 @@ pub func TrailingOnes<T>(value: T) -> uint32 {
 pub func RotateLeft<T>(value: T, amount: uint64) -> T {
     let bits = sizeof(T) * 8u64;
     let shift = amount % bits;
-    if shift == 0u64 { return value; }
+    if shift == 0 { return value; }
     // The bits that ran off the top are exactly the ones a logical shift of the complementary distance keeps.
     return (value << shift) | ShiftRightLogical<T>(value, bits - shift);
 }
@@ -222,7 +222,7 @@ pub func RotateLeft<T>(value: T, amount: uint64) -> T {
 pub func RotateRight<T>(value: T, amount: uint64) -> T {
     let bits = sizeof(T) * 8u64;
     let shift = amount % bits;
-    if shift == 0u64 { return value; }
+    if shift == 0 { return value; }
     return ShiftRightLogical<T>(value, shift) | (value << (bits - shift));
 }
 
@@ -265,7 +265,7 @@ pub func ReverseBits<T>(value: T) -> T {
 pub func ReverseBytes<T>(value: T) -> T {
     let zero = value - value;
     let bytes = sizeof(T);
-    if bytes <= 1u64 { return value; }
+    if bytes <= 1 { return value; }
     // Ones in the lowest byte only, shifted down from all ones rather than written as 255, which `int8` cannot hold.
     let lowByte = ShiftRightLogical<T>(zero - 1, (bytes - 1u64) * 8u64);
     var result = zero;
@@ -292,5 +292,5 @@ pub func ReverseBytes<T>(value: T) -> T {
 /// @returns whether exactly one bit is set; false for zero
 /// @see https://rux-lang.dev/docs/api/core/is-power-of-two
 pub func IsPowerOfTwo<T>(value: T) -> bool {
-    return CountOnes<T>(value) == 1u32;
+    return CountOnes<T>(value) == 1;
 }

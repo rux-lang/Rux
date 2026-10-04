@@ -81,10 +81,10 @@ func Main() -> int {
            "and a signed zero keeps its sign");
 
     // Exponents, including the two answers that are not exponents.
-    Assert(ExponentOf(1.0) == 0i64, "one lies in the binade starting at two to the zeroth");
-    Assert(ExponentOf(2.0) == 1i64 && ExponentOf(3.999) == 1i64, "and the whole binade shares an exponent");
+    Assert(ExponentOf(1.0) == 0, "one lies in the binade starting at two to the zeroth");
+    Assert(ExponentOf(2.0) == 1 && ExponentOf(3.999) == 1, "and the whole binade shares an exponent");
     Assert(ExponentOf(0.5) == -1i64, "below one the exponent is negative");
-    Assert(ExponentOf(-8.0) == 3i64, "the sign does not affect it");
+    Assert(ExponentOf(-8.0) == 3, "the sign does not affect it");
     Assert(ExponentOf(smallestSubnormal) == -1074i64, "the relationship holds into the subnormals");
     Assert(ExponentOf(0.0) == NoExponent, "zero has no exponent");
     Assert(ExponentOf(infinity) == IndeterminateExponent && ExponentOf(notANumber) == IndeterminateExponent,
@@ -93,14 +93,14 @@ func Main() -> int {
     // Decomposition, and the identity that defines it.
     var power: int64 = 0;
     let fraction = Decompose(12.0, @power);
-    Assert(fraction == 0.75 && power == 4i64, "twelve decomposes to three quarters times sixteen");
+    Assert(fraction == 0.75 && power == 4, "twelve decomposes to three quarters times sixteen");
     Assert(ScaleByPowerOfTwo(fraction, power) == 12.0, "and rebuilds exactly");
     let negativeFraction = Decompose(-12.0, @power);
-    Assert(negativeFraction == -0.75 && power == 4i64, "the sign stays with the fraction");
+    Assert(negativeFraction == -0.75 && power == 4, "the sign stays with the fraction");
     let subnormalFraction = Decompose(smallestSubnormal, @power);
     Assert(subnormalFraction == 0.5 && power == -1073i64, "a subnormal decomposes without losing precision");
     Assert(ScaleByPowerOfTwo(subnormalFraction, power) == smallestSubnormal, "and rebuilds exactly too");
-    Assert(Decompose(0.0, @power) == 0.0 && power == 0i64, "zero decomposes to itself");
+    Assert(Decompose(0.0, @power) == 0.0 && power == 0, "zero decomposes to itself");
 
     // Integral and fractional parts, which must sum back exactly.
     var whole = 0.0;

@@ -81,15 +81,15 @@ extend UuidParseError : ParseFailure {
 
 // The value of one hexadecimal digit, or sixteen for anything else.
 func HexValue(c: uint8) -> uint8 {
-    if c >= 0x30u8 && c <= 0x39u8 { return c - 0x30; }
-    if c >= 0x61u8 && c <= 0x66u8 { return c - 0x61 + 10; }
-    if c >= 0x41u8 && c <= 0x46u8 { return c - 0x41 + 10; }
+    if c >= 0x30 && c <= 0x39 { return c - 0x30; }
+    if c >= 0x61 && c <= 0x66 { return c - 0x61 + 10; }
+    if c >= 0x41 && c <= 0x46 { return c - 0x41 + 10; }
     return 16;
 }
 
 // Where the four hyphens belong in the canonical form.
 func IsHyphenPosition(index: uint) -> bool {
-    return index == 8u || index == 13u || index == 18u || index == 23u;
+    return index == 8 || index == 13 || index == 18 || index == 23;
 }
 
 /// Reads a UUID from its canonical or URN text form.
@@ -112,9 +112,9 @@ pub func Parse(text: char8[..]) -> Uuid ! UuidParseError {
     if text.length == UuidUrnLength {
         let prefix = "urn:uuid:";
         var index: uint = 0;
-        while index < 9u {
+        while index < 9 {
             var mine = text.data[index] as uint8;
-            if mine >= 0x41u8 && mine <= 0x5Au8 {
+            if mine >= 0x41 && mine <= 0x5A {
                 mine = mine + 32;
             }
             if mine != (prefix.data[index] as uint8) {
@@ -140,22 +140,22 @@ pub func Parse(text: char8[..]) -> Uuid ! UuidParseError {
         let at = start + position;
         let c = text.data[at] as uint8;
         if IsHyphenPosition(position) {
-            if c != 0x2Du8 {
+            if c != 0x2D {
                 fail UuidParseError::Misplaced(at);
             }
         }
         else {
             let digit = HexValue(c);
-            if digit == 16u8 {
+            if digit == 16 {
                 // A hyphen where a digit belongs is a misplacement rather than a bad character, which is a more
                 // useful thing to be told: the digits are right and the grouping is not.
-                if c == 0x2Du8 {
+                if c == 0x2D {
                     fail UuidParseError::Misplaced(at);
                 }
                 fail UuidParseError::NotHexadecimal(at);
             }
             if haveHigh {
-                value.bytes[byteIndex] = (pending << 4u8) | digit;
+                value.bytes[byteIndex] = (pending << 4) | digit;
                 byteIndex = byteIndex + 1;
                 haveHigh = false;
             }
@@ -242,7 +242,7 @@ pub func FormatUpper(value: &Uuid, into: var char8[..]) -> ! FormatError {
     var index: uint = 0;
     while index < UuidTextLength {
         let c = into.data[index] as uint8;
-        if c >= 0x61u8 && c <= 0x7Au8 {
+        if c >= 0x61 && c <= 0x7A {
             into.data[index] = (c - 32) as char8;
         }
         index = index + 1;
@@ -264,7 +264,7 @@ pub func FormatUrn(value: &Uuid, into: var char8[..]) -> ! FormatError {
     if into.length < UuidUrnLength { return .Failure(FormatError::InsufficientCapacity); }
     let prefix = "urn:uuid:";
     var index: uint = 0;
-    while index < 9u {
+    while index < 9 {
         into.data[index] = prefix.data[index];
         index = index + 1;
     }

@@ -132,12 +132,12 @@ func Main() -> int {
 
     // The limits themselves, read from the compiler rather than derived, are the
     // ones every width's arithmetic wraps around.
-    Assert(uint8::Max + 1 == 0u8, "uint8 wraps at its maximum");
-    Assert(uint128::Max + 1 == 0u128, "uint128 wraps at its maximum");
-    Assert(uint512::Max + 1 == 0u512, "uint512 wraps at its maximum");
+    Assert(uint8::Max + 1 == 0, "uint8 wraps at its maximum");
+    Assert(uint128::Max + 1 == 0, "uint128 wraps at its maximum");
+    Assert(uint512::Max + 1 == 0, "uint512 wraps at its maximum");
     Assert(int128::Max + 1 == int128::Min, "int128 wraps from its maximum to its minimum");
     Assert(int512::Max + 1 == int512::Min, "int512 wraps from its maximum to its minimum");
-    Assert(uint256::Min == 0u256, "an unsigned minimum is zero");
+    Assert(uint256::Min == 0, "an unsigned minimum is zero");
     Assert(int256::Bits == 256, "a width reports its own size in bits");
     Assert(int256::Bytes == 32, "a width reports its own size in bytes");
 

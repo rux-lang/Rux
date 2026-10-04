@@ -27,13 +27,13 @@ func WriteDigits128(writer: &var TextWriter, spec: FormatSpec, magnitude: uint12
     }
     let letter = spec.Base() == FormatBase::UpperHex ? 0x37u64 : 0x57u64;
     var rest = magnitude;
-    if rest == 0u128 {
+    if rest == 0 {
         digits[0] = c8'0';
         count = 1;
     }
-    while rest > 0u128 {
+    while rest > 0 {
         let digit = (rest % radix) as uint64;
-        digits[count] = (digit < 10u64 ? digit + 0x30 : digit + letter) as char8;
+        digits[count] = (digit < 10 ? digit + 0x30 : digit + letter) as char8;
         count = count + 1;
         rest = rest / radix;
     }
@@ -84,7 +84,7 @@ extend int128 : Display {
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/int128/write-display
     pub func WriteDisplay(self: &int128, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
-        let negative = self < 0i128;
+        let negative = self < 0;
         let magnitude = negative ? ~(self as uint128) + 1u128 : self as uint128;
         return WriteDigits128(writer, spec, magnitude, negative);
     }
@@ -121,13 +121,13 @@ func WriteDigits256(writer: &var TextWriter, spec: FormatSpec, magnitude: uint25
     }
     let letter = spec.Base() == FormatBase::UpperHex ? 0x37u64 : 0x57u64;
     var rest = magnitude;
-    if rest == 0u256 {
+    if rest == 0 {
         digits[0] = c8'0';
         count = 1;
     }
-    while rest > 0u256 {
+    while rest > 0 {
         let digit = (rest % radix) as uint64;
-        digits[count] = (digit < 10u64 ? digit + 0x30 : digit + letter) as char8;
+        digits[count] = (digit < 10 ? digit + 0x30 : digit + letter) as char8;
         count = count + 1;
         rest = rest / radix;
     }
@@ -178,7 +178,7 @@ extend int256 : Display {
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/int256/write-display
     pub func WriteDisplay(self: &int256, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
-        let negative = self < 0i256;
+        let negative = self < 0;
         let magnitude = negative ? ~(self as uint256) + 1u256 : self as uint256;
         return WriteDigits256(writer, spec, magnitude, negative);
     }
@@ -215,13 +215,13 @@ func WriteDigits512(writer: &var TextWriter, spec: FormatSpec, magnitude: uint51
     }
     let letter = spec.Base() == FormatBase::UpperHex ? 0x37u64 : 0x57u64;
     var rest = magnitude;
-    if rest == 0u512 {
+    if rest == 0 {
         digits[0] = c8'0';
         count = 1;
     }
-    while rest > 0u512 {
+    while rest > 0 {
         let digit = (rest % radix) as uint64;
-        digits[count] = (digit < 10u64 ? digit + 0x30 : digit + letter) as char8;
+        digits[count] = (digit < 10 ? digit + 0x30 : digit + letter) as char8;
         count = count + 1;
         rest = rest / radix;
     }
@@ -272,7 +272,7 @@ extend int512 : Display {
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/int512/write-display
     pub func WriteDisplay(self: &int512, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
-        let negative = self < 0i512;
+        let negative = self < 0;
         let magnitude = negative ? ~(self as uint512) + 1u512 : self as uint512;
         return WriteDigits512(writer, spec, magnitude, negative);
     }

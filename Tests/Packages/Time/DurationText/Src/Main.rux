@@ -82,7 +82,7 @@ func Main() -> int {
     // The stored fields really are what the comment claims, so the test is testing the hard case.
     let negative = Of(-1, -500000000);
     Assert(negative.WholeSeconds() == -2i64, "minus one and a half stores seconds as -2");
-    Assert(negative.SubsecondNanoseconds() == 500000000u32, "and a positive fraction of half a second");
+    Assert(negative.SubsecondNanoseconds() == 500000000, "and a positive fraction of half a second");
 
     // Precision names exactly that many digits and truncates.
     Assert(Shown(Of(1, 250000000), Spec(".3"), "1.250s"), "a precision pads where trimming would not");

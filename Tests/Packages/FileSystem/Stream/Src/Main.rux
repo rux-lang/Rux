@@ -46,7 +46,7 @@ func Main() -> int ! IoError {
     Assert(written.IsOpen(), "the scratch file opens for writing");
     WriteAll(written, TextBytes("0123456789"))?;
     written.Sync()?;
-    Assert(written.Size()? == 10u64, "ten bytes long, measured while open");
+    Assert(written.Size()? == 10, "ten bytes long, measured while open");
     written.Close()?;
 
     // Read it back: from the start, from the end, from the middle.
@@ -57,12 +57,12 @@ func Main() -> int ! IoError {
     ReadExact(reading, head)?;
     Assert(storage[0] == c8'0' && storage[3] == c8'3', "and are the first four");
 
-    Assert(reading.Seek(SeekFrom::End, -4)? == 6u64, "four back from the end is position six");
+    Assert(reading.Seek(SeekFrom::End, -4)? == 6, "four back from the end is position six");
     ReadExact(reading, head)?;
     Assert(storage[0] == c8'6' && storage[3] == c8'9', "and are the last four");
     let room = (@storage[0])[..4];
     Assert(Refusal(reading.Read(room)).IsEnd(), "past them is the end");
-    Assert(reading.Seek(SeekFrom::Current, 0)? == 10u64, "and the position says so");
+    Assert(reading.Seek(SeekFrom::Current, 0)? == 10, "and the position says so");
     reading.Close()?;
 
     // Cutting the file discards the tail and nothing else.
@@ -71,15 +71,15 @@ func Main() -> int ! IoError {
     var cutting = File::Open(allocator, scratch, cutOptions)?;
     Assert(cutting.IsOpen(), "it reopens for cutting");
     cutting.SetLength(4)?;
-    Assert(cutting.Size()? == 4u64, "four bytes remain");
+    Assert(cutting.Size()? == 4, "four bytes remain");
     cutting.Close()?;
 
     // Appended writes land at the end no matter where the position was seeked.
     var appending = File::Open(allocator, scratch, OpenOptions::Appending())?;
     Assert(appending.IsOpen(), "it reopens for appending");
-    Assert(appending.Seek(SeekFrom::Start, 0)? == 0u64, "the position moves to the start");
+    Assert(appending.Seek(SeekFrom::Start, 0)? == 0, "the position moves to the start");
     WriteAll(appending, TextBytes("XY"))?;
-    Assert(appending.Size()? == 6u64, "at the end, not the position");
+    Assert(appending.Size()? == 6, "at the end, not the position");
     appending.Close()?;
 
     // The buffered machinery stacks on a file without knowing it left memory.
@@ -130,7 +130,7 @@ func Main() -> int ! IoError {
     Assert(shared.IsOpen(), "a file opens for writing");
     var held: Writer = shared.Stream();
     WriteAll(held, TextBytes("abcd"))?;
-    Assert(shared.Size()? == 4u64, "and the file itself measures them");
+    Assert(shared.Size()? == 4, "and the file itself measures them");
     shared.Close()?;
 
     return 0;

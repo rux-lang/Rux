@@ -134,7 +134,7 @@ pub func ScanDecimal(str: char8[..], reading: *var DecimalReading) -> ! ParseErr
             if afterDecimalPoint {
                 reading.exponent = reading.exponent - 1;
             }
-            if digit != 0u64 || significant {
+            if digit != 0 || significant {
                 significant = true;
                 if reading.significant < RetainedDecimalDigits {
                     if !reading.digits.MultiplyAddSmall(10, digit) {
@@ -143,7 +143,7 @@ pub func ScanDecimal(str: char8[..], reading: *var DecimalReading) -> ! ParseErr
                     reading.significant = reading.significant + 1;
                 }
                 else {
-                    if digit != 0u64 { reading.truncated = true; }
+                    if digit != 0 { reading.truncated = true; }
                     reading.exponent = reading.exponent + 1;
                 }
             }
@@ -157,7 +157,7 @@ pub func ScanDecimal(str: char8[..], reading: *var DecimalReading) -> ! ParseErr
         }
         break;
     }
-    if digitCount == 0u { fail ParseError::InvalidCharacter(index); }
+    if digitCount == 0 { fail ParseError::InvalidCharacter(index); }
 
     if index < str.length && (str[index] == c8'e' || str[index] == c8'E') {
         index++;

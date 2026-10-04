@@ -99,7 +99,7 @@ func Main() -> int {
     var numbers = Vector<int32>(allocator);
     Assert(ShownVector(numbers, plain, "[]"), "an empty vector shows as empty");
     var value: int32 = 1;
-    while value <= 3i32 {
+    while value <= 3 {
         numbers.Push(value * 10) catch { else => Panic("filled") };
         value = value + 1;
     }
@@ -107,7 +107,7 @@ func Main() -> int {
 
     // Capacity is not part of what a vector holds, so reserving room changes nothing about what it shows.
     numbers.Reserve(1000) catch { else => Panic("room is taken") };
-    Assert(numbers.Capacity() >= 1003u, "and the vector is much larger than its length");
+    Assert(numbers.Capacity() >= 1003, "and the vector is much larger than its length");
     Assert(ShownVector(numbers, plain, "[10, 20, 30]"), "but shows exactly what it holds");
 
     // The specification reaches the elements, which is where a base or a width means something.
@@ -146,7 +146,7 @@ func Main() -> int {
     var destroyed: int32 = 0;
     var owned = Vector<Tracked>(allocator);
     var tag: int32 = 0;
-    while tag < 3i32 {
+    while tag < 3 {
         owned.Push(Tracked { counter: @destroyed, tag: tag }) catch { else => Panic("filled") };
         tag = tag + 1;
     }
@@ -155,11 +155,11 @@ func Main() -> int {
     var writer = BufferWriter((@storage[0])[..128]);
     let sink: &var TextWriter = writer;
     Assert(Succeeded(WriteVectorDebug<Tracked>(sink, owned, plain)), "a move-only vector is shown");
-    Assert(destroyed == 0i32, "and nothing was destroyed to show it");
+    Assert(destroyed == 0, "and nothing was destroyed to show it");
     Assert(Succeeded(WriteVectorDebug<Tracked>(sink, owned, plain)), "so it can be shown again");
-    Assert(destroyed == 0i32, "still destroying nothing");
+    Assert(destroyed == 0, "still destroying nothing");
     Assert(Same(writer.Written(), "[T(0), T(1), T(2)][T(0), T(1), T(2)]"), "twice, identically");
-    Assert(owned.Length() == 3u, "and the vector still holds every element");
+    Assert(owned.Length() == 3, "and the vector still holds every element");
 
     // The same for a deque of them, including the wrapped case, since that is where a writer walking the wrong run
     // would read an element the deque does not hold.
@@ -174,7 +174,7 @@ func Main() -> int {
     let ringSink: &var TextWriter = ringWriter;
     Assert(Succeeded(WriteDequeDebug<Tracked>(ringSink, ring, plain)), "a wrapped move-only deque is shown");
     Assert(Same(ringWriter.Written(), "[T(0), T(1), T(2)]"), "front to back across the split");
-    Assert(destroyed == 0i32, "and destroyed none of them");
+    Assert(destroyed == 0, "and destroyed none of them");
 
     // A destination that runs out of room reports it and stops, rather than losing its tail quietly.
     var small: char8[6];
@@ -186,9 +186,9 @@ func Main() -> int {
         .Failure(reason) => match reason { .InsufficientCapacity => true, else => false }
     };
     Assert(overflowed, "a destination without room reports it");
-    Assert(tight.Length() <= 6u, "having written no more than it had");
-    Assert(destroyed == 0i32, "and a failed rendering destroys nothing either");
-    Assert(owned.Length() == 3u, "leaving the vector as it was");
+    Assert(tight.Length() <= 6, "having written no more than it had");
+    Assert(destroyed == 0, "and a failed rendering destroys nothing either");
+    Assert(owned.Length() == 3, "leaving the vector as it was");
 
     return 0;
 }

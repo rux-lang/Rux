@@ -15,10 +15,10 @@ func FromHex(text: char8[..], into: var char8[..]) {
     while index < into.length {
         var value: uint8 = 0;
         var half: uint = 0;
-        while half < 2u {
+        while half < 2 {
             let c = text.data[index * 2 + half] as uint8;
             var digit: uint8 = 0;
-            if c >= 0x30u8 && c <= 0x39u8 {
+            if c >= 0x30 && c <= 0x39 {
                 digit = c - 0x30;
             }
             else {
@@ -80,12 +80,12 @@ func Main() -> int {
     // boundary, including the one-free-byte padding case.
     var message: char8[400];
     var index: uint = 0;
-    while index < 400u {
+    while index < 400 {
         message[index] = ((index % 251) as uint8) as char8;
         index = index + 1;
     }
     var length: uint = 0;
-    while length <= 300u {
+    while length <= 300 {
         var oneShot: char8[32];
         let messageBytes = (@message[0])[..length];
         Sha3Of256(messageBytes, (@oneShot[0])[..32]);
@@ -109,9 +109,9 @@ func Main() -> int {
     // The rates, which are the only structural difference between the four sizes.
     var narrow = Sha3::New224();
     var wide = Sha3::New512();
-    Assert(narrow.BlockLength() == 144u, "SHA3-224 absorbs a hundred and forty four bytes at a time");
-    Assert(wide.BlockLength() == 72u, "and SHA3-512 only seventy two, since its capacity is larger");
-    Assert(narrow.DigestLength() == 28u && wide.DigestLength() == 64u, "each reports its own digest length");
+    Assert(narrow.BlockLength() == 144, "SHA3-224 absorbs a hundred and forty four bytes at a time");
+    Assert(wide.BlockLength() == 72, "and SHA3-512 only seventy two, since its capacity is larger");
+    Assert(narrow.DigestLength() == 28 && wide.DigestLength() == 64, "each reports its own digest length");
 
     return 0;
 }

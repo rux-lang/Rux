@@ -64,7 +64,7 @@ extend Permissions {
     /// @returns permissions carrying those bits
     /// @see https://rux-lang.dev/docs/api/filesystem/permissions/from-mode
     pub func FromMode(mode: uint32) -> Permissions {
-        return Permissions { mode: mode & 0xFFF, readOnly: (mode & 0x80) == 0u32 };
+        return Permissions { mode: mode & 0xFFF, readOnly: (mode & 0x80) == 0 };
     }
 
     /// Permissions from the read-only flag alone, with the mode synthesized from it.
@@ -159,7 +159,7 @@ when #target.os != .Windows {
     func ReadWordAt(buffer: *char8, offset: uint) -> uint64 {
         var value: uint64 = 0;
         var index: uint = 0;
-        while index < 8u {
+        while index < 8 {
             value = value | ((buffer[offset + index] as uint8 as uint64) << (8u64 * index as uint64));
             index = index + 1;
         }
@@ -169,7 +169,7 @@ when #target.os != .Windows {
     func ReadHalfAt(buffer: *char8, offset: uint) -> uint32 {
         var value: uint32 = 0;
         var index: uint = 0;
-        while index < 4u {
+        while index < 4 {
             value = value | ((buffer[offset + index] as uint8 as uint32) << (8u32 * index as uint32));
             index = index + 1;
         }
@@ -177,7 +177,7 @@ when #target.os != .Windows {
     }
 
     func ReadShortAt(buffer: *char8, offset: uint) -> uint32 {
-        return (buffer[offset] as uint8 as uint32) | ((buffer[offset + 1] as uint8 as uint32) << 8u32);
+        return (buffer[offset] as uint8 as uint32) | ((buffer[offset + 1] as uint8 as uint32) << 8);
     }
 
     func StatMode(buffer: *char8) -> uint32 {
@@ -250,7 +250,7 @@ when #target.os != .Windows {
     func StatTimeAt(buffer: *char8, offset: uint) -> Timestamp {
         let seconds = ReadWordAt(buffer, offset) as int64;
         var fraction = ReadWordAt(buffer, offset + 8);
-        if fraction >= 1000000000u64 {
+        if fraction >= 1000000000 {
             // A filesystem that never recorded a fraction can leave the field as anything; a value outside the
             // range would break Timestamp's own invariant, so it is dropped rather than carried inward.
             fraction = 0;
@@ -260,9 +260,9 @@ when #target.os != .Windows {
 
     func KindOfMode(mode: uint32) -> FileKind {
         let masked = mode & 0xF000;
-        if masked == 0x8000u32 { return FileKind::File; }
-        if masked == 0x4000u32 { return FileKind::Directory; }
-        if masked == 0xA000u32 { return FileKind::SymbolicLink; }
+        if masked == 0x8000 { return FileKind::File; }
+        if masked == 0x4000 { return FileKind::Directory; }
+        if masked == 0xA000 { return FileKind::SymbolicLink; }
         return FileKind::Other;
     }
 
@@ -302,7 +302,7 @@ when #target.os == .Windows {
     func ReadDwordAt(buffer: *char8, offset: uint) -> uint32 {
         var value: uint32 = 0;
         var index: uint = 0;
-        while index < 4u {
+        while index < 4 {
             value = value | ((buffer[offset + index] as uint8 as uint32) << (8u32 * index as uint32));
             index = index + 1;
         }
@@ -312,7 +312,7 @@ when #target.os == .Windows {
     func TimestampFromFileTimeAt(buffer: *char8, offset: uint) -> Timestamp {
         let low = ReadDwordAt(buffer, offset) as uint64;
         let high = ReadDwordAt(buffer, offset + 4) as uint64;
-        let ticks = (high << 32u64) | low;
+        let ticks = (high << 32) | low;
         let seconds = (ticks / 10000000) as int64 - (FileTimeToUnixEpochSeconds as int64);
         let rest = (ticks % 10000000) as uint32;
         return Timestamp { seconds: seconds, nanoseconds: rest * 100 };
@@ -325,12 +325,12 @@ when #target.os == .Windows {
             ticks = (shifted as uint64) * 10000000 + (moment.nanoseconds as uint64) / 100;
         }
         return FileTime { lowDateTime: (ticks & 0xFFFFFFFF) as uint32,
-                          highDateTime: (ticks >> 32u64) as uint32 };
+                          highDateTime: (ticks >> 32) as uint32 };
     }
 
     func KindOfAttributes(attributes: uint32) -> FileKind {
-        if (attributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0u32 { return FileKind::SymbolicLink; }
-        if (attributes & FILE_ATTRIBUTE_DIRECTORY) != 0u32 { return FileKind::Directory; }
+        if (attributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0 { return FileKind::SymbolicLink; }
+        if (attributes & FILE_ATTRIBUTE_DIRECTORY) != 0 { return FileKind::Directory; }
         return FileKind::File;
     }
 
@@ -340,9 +340,9 @@ when #target.os == .Windows {
         let low = ReadDwordAt(buffer, 36) as uint64;
         return Metadata {
             kind: KindOfAttributes(attributes),
-            size: (high << 32u64) | low,
+            size: (high << 32) | low,
             linkCount: ReadDwordAt(buffer, 40) as uint64,
-            permissions: Permissions::FromReadOnly((attributes & FILE_ATTRIBUTE_READONLY) != 0u32),
+            permissions: Permissions::FromReadOnly((attributes & FILE_ATTRIBUTE_READONLY) != 0),
             accessed: TimestampFromFileTimeAt(buffer, 12),
             modified: TimestampFromFileTimeAt(buffer, 20),
             created: TimestampFromFileTimeAt(buffer, 4),
@@ -445,7 +445,7 @@ pub func SetPermissions(allocator: Allocator, path: Path, permissions: Permissio
             if permissions.readOnly {
                 wanted = wanted | FILE_ATTRIBUTE_READONLY;
             }
-            if wanted == 0u32 {
+            if wanted == 0 {
                 wanted = FILE_ATTRIBUTE_NORMAL;
             }
             if SetFileAttributesW(native as *char16, wanted) == 0 {
@@ -526,7 +526,7 @@ when #target.os != .Windows {
         let seconds = moment.seconds as uint64;
         let fraction = moment.nanoseconds as uint64;
         var index: uint = 0;
-        while index < 8u {
+        while index < 8 {
             buffer[offset + index] = ((seconds >> (8u64 * index as uint64)) & 0xFFu64) as uint8 as char8;
             buffer[offset + 8u + index] = ((fraction >> (8u64 * index as uint64)) & 0xFFu64) as uint8 as char8;
             index = index + 1;

@@ -12,9 +12,9 @@ func Main() -> ! EntropyError {
     // Version 4: well-formed, and distinct across many draws.
     var previous = Uuid::Nil();
     var draw: uint = 0;
-    while draw < 500u {
+    while draw < 500 {
         var value = Random()?;
-        Assert(value.Version() == 4u8, "a random UUID reports version four");
+        Assert(value.Version() == 4, "a random UUID reports version four");
         Assert(value.Variant() == UuidVariant::Standard, "and the standard variant");
         Assert(!value.IsNil() && !value.IsMax(), "and is neither sentinel");
         Assert(!value.Equals(previous), "and differs from the one before it");
@@ -26,26 +26,26 @@ func Main() -> ! EntropyError {
     // happens to carry other values still produces a well-formed version 4 UUID.
     var raw: byte[16];
     var index: uint = 0;
-    while index < 16u {
+    while index < 16 {
         raw[index] = 0xFF;
         index = index + 1;
     }
     var forced = RandomFromBytes((@raw[0])[..16]);
-    Assert(forced.Version() == 4u8 && forced.Variant() == UuidVariant::Standard,
+    Assert(forced.Version() == 4 && forced.Variant() == UuidVariant::Standard,
            "the version and variant are set whatever the supplied bytes said");
     index = 0;
-    while index < 16u {
+    while index < 16 {
         raw[index] = 0;
         index = index + 1;
     }
     var forcedZero = RandomFromBytes((@raw[0])[..16]);
-    Assert(forcedZero.Version() == 4u8 && forcedZero.Variant() == UuidVariant::Standard, "from either extreme");
+    Assert(forcedZero.Version() == 4 && forcedZero.Variant() == UuidVariant::Standard, "from either extreme");
 
     // Version 7: well-formed, carrying the millisecond it was given.
     var timed = TimeOrderedAt(1724300000000)?;
-    Assert(timed.Version() == 7u8, "reporting version seven");
+    Assert(timed.Version() == 7, "reporting version seven");
     Assert(timed.Variant() == UuidVariant::Standard, "and the standard variant");
-    Assert(MillisecondOf(timed) == 1724300000000u64, "and carrying the millisecond it was made for");
+    Assert(MillisecondOf(timed) == 1724300000000, "and carrying the millisecond it was made for");
 
     // The property version 7 exists for: later times sort above earlier ones, by the ordinary byte comparison.
     var earlier = TimeOrderedAt(1000000000000)?;
@@ -58,7 +58,7 @@ func Main() -> ! EntropyError {
     // Across a long run of increasing timestamps, the ordering never breaks.
     var step: uint = 0;
     var lastTimed = TimeOrderedAt(1)?;
-    while step < 300u {
+    while step < 300 {
         let moment = (2u + step) as uint64;
         var current = TimeOrderedAt(moment)?;
         Assert(lastTimed.Compare(current) == Ordering::Less, "byte order follows time over a long run");
@@ -70,13 +70,13 @@ func Main() -> ! EntropyError {
     // generator exists to fix.
     var monotonic = MonotonicUuid();
     var lastValue = monotonic.Next()?;
-    Assert(lastValue.Version() == 7u8, "which is a version seven UUID");
+    Assert(lastValue.Version() == 7, "which is a version seven UUID");
     var round: uint = 0;
-    while round < 2000u {
+    while round < 2000 {
         var next = monotonic.Next()?;
         Assert(lastValue.Compare(next) == Ordering::Less,
                "each strictly greater than the last, even within one millisecond");
-        Assert(next.Version() == 7u8 && next.Variant() == UuidVariant::Standard,
+        Assert(next.Version() == 7 && next.Variant() == UuidVariant::Standard,
                "and every one stays well-formed, however far a carry travelled");
         lastValue = next;
         round = round + 1;
@@ -88,7 +88,7 @@ func Main() -> ! EntropyError {
     var firstLast = first.Next()?;
     var secondLast = second.Next()?;
     round = 0;
-    while round < 200u {
+    while round < 200 {
         var firstNext = first.Next()?;
         var secondNext = second.Next()?;
         Assert(firstLast.Compare(firstNext) == Ordering::Less, "each generator increases on its own");
@@ -101,18 +101,18 @@ func Main() -> ! EntropyError {
     // The GUID conversion swaps the first three fields and is its own inverse.
     var value = Uuid::Nil();
     index = 0;
-    while index < 16u {
+    while index < 16 {
         value.bytes[index] = (index + 1) as byte;
         index = index + 1;
     }
     var swapped = SwapGuidOrder(value);
     let swappedBytes = swapped.Bytes();
-    Assert(swappedBytes.data[0] == 4u8, "the first field is reversed");
-    Assert(swappedBytes.data[3] == 1u8, "end for end");
-    Assert(swappedBytes.data[4] == 6u8, "the second field too");
-    Assert(swappedBytes.data[6] == 8u8, "and the third");
+    Assert(swappedBytes.data[0] == 4, "the first field is reversed");
+    Assert(swappedBytes.data[3] == 1, "end for end");
+    Assert(swappedBytes.data[4] == 6, "the second field too");
+    Assert(swappedBytes.data[6] == 8, "and the third");
     index = 8;
-    while index < 16u {
+    while index < 16 {
         Assert(swappedBytes.data[index] == (index + 1) as byte,
                "while the last eight bytes are a byte array in both layouts and are untouched");
         index = index + 1;

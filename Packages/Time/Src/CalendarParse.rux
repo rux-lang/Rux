@@ -125,7 +125,7 @@ func ReadDate(reader: &var Reader) -> Date ! TimeParseError {
     Literal(reader, c8'-')?;
     let monthAt = reader.at;
     let month = Digits(reader, 2)?;
-    if month < 1u32 || month > 12u32 {
+    if month < 1 || month > 12 {
         fail TimeParseError::InvalidMonth(monthAt);
     }
     Literal(reader, c8'-')?;
@@ -143,19 +143,19 @@ func ReadDate(reader: &var Reader) -> Date ! TimeParseError {
 func ReadTime(reader: &var Reader) -> TimeOfDay ! TimeParseError {
     let hourAt = reader.at;
     let hour = Digits(reader, 2)?;
-    if hour > 23u32 {
+    if hour > 23 {
         fail TimeParseError::InvalidTime(hourAt);
     }
     Literal(reader, c8':')?;
     let minuteAt = reader.at;
     let minute = Digits(reader, 2)?;
-    if minute > 59u32 {
+    if minute > 59 {
         fail TimeParseError::InvalidTime(minuteAt);
     }
     Literal(reader, c8':')?;
     let secondAt = reader.at;
     var second = Digits(reader, 2)?;
-    if second > 60u32 {
+    if second > 60 {
         fail TimeParseError::InvalidTime(secondAt);
     }
 
@@ -166,7 +166,7 @@ func ReadTime(reader: &var Reader) -> TimeOfDay ! TimeParseError {
         var scale: uint32 = 100000000;
         var taken: uint = 0;
         while reader.at < reader.text.length && IsDigit(reader.text.data[reader.at]) {
-            if taken == 9u {
+            if taken == 9 {
                 fail TimeParseError::ExcessiveFraction(reader.at);
             }
             nanosecond = nanosecond + ((reader.text.data[reader.at] as uint32) - 0x30) * scale;
@@ -174,7 +174,7 @@ func ReadTime(reader: &var Reader) -> TimeOfDay ! TimeParseError {
             taken = taken + 1;
             reader.at = reader.at + 1;
         }
-        if taken == 0u {
+        if taken == 0 {
             fail TimeParseError::InvalidSyntax(firstDigit);
         }
     }
@@ -182,7 +182,7 @@ func ReadTime(reader: &var Reader) -> TimeOfDay ! TimeParseError {
     // The fold: second 60 becomes the last representable nanosecond of 59. A leap second is real, and a
     // representation carrying it would make every consumer handle a sixtieth second that happens a few times a
     // decade; this keeps ordering within the minute and loses under a nanosecond.
-    if second == 60u32 {
+    if second == 60 {
         second = 59;
         nanosecond = 999999999;
     }

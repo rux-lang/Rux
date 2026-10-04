@@ -84,7 +84,7 @@ func Main() -> int {
     Assert(Same(Render(0xBFFF0000000000000000000000000000u512, b128, plain, room), "-1.0"), "minus one");
     Assert(Same(Render(0x3FFE8000000000000000000000000000u512, b128, plain, room), "0.75"), "three quarters");
     Assert(Same(Render(0u512, b128, plain, room), "0.0"), "zero");
-    Assert(Same(Render(1u512 << 127u, b128, plain, room), "-0.0"), "negative zero keeps its sign");
+    Assert(Same(Render(1u512 << 127, b128, plain, room), "-0.0"), "negative zero keeps its sign");
     Assert(Same(Render(0x7FFF0000000000000000000000000000u512, b128, plain, room), "Inf"), "infinity");
     Assert(Same(Render(0xFFFF0000000000000000000000000000u512, b128, plain, room), "-Inf"), "negative infinity");
     Assert(Same(Render(0x7FFF8000000000000000000000000000u512, b128, plain, room), "NaN"), "not a number");
@@ -123,7 +123,7 @@ func Main() -> int {
     // A huge value to a fixed precision is every one of its integer digits: the largest float128 has 4933 of
     // them, and writing them exactly is what the allocator is for.
     let largest = Render(Bits("1.189731495357231765085759326628007e4932", b128), b128, Precision(1u), room);
-    Assert(largest.length == 4935u, "the largest float128 to one place is 4933 digits, a point and one more");
+    Assert(largest.length == 4935, "the largest float128 to one place is 4933 digits, a point and one more");
     Assert(StartsWith(largest, "11897314953572317650857593266280070"), "beginning with the digits it has");
 
     // The reference vectors: every bit pattern renders to exactly the text the compiler computed, and every text
@@ -200,8 +200,8 @@ func Main() -> int {
     Assert(Refused("1e5000", b80), "and the same for float80");
     Assert(Refused("1e80000", b256), "and float256");
     Assert(Refused("1e2000000", b512), "and float512");
-    Assert(Bits("1e-9999", b128) == 0u512, "below the smallest subnormal reads as zero");
-    Assert(Bits("-1e-9999", b128) == (1u512 << 127u), "with its sign kept");
+    Assert(Bits("1e-9999", b128) == 0, "below the smallest subnormal reads as zero");
+    Assert(Bits("-1e-9999", b128) == (1u512 << 127), "with its sign kept");
     Assert(Bits("NaN", b128) == 0x7FFF8000000000000000000000000000u512, "NaN as formatting spells it");
     Assert(Bits("-Inf", b128) == 0xFFFF0000000000000000000000000000u512, "and the infinities");
 
@@ -226,7 +226,7 @@ func Main() -> int {
     let value = ParseFloat256(allocator, "2.5") catch { else => Panic("the typed entry point reads") };
     Assert(value.IsFinite() && !value.IsNegative() && !value.IsNan(), "and answers the questions a caller asks");
     let tiny = ParseFloat80(allocator, "1e-4940") catch { else => Panic("a float80 subnormal reads") };
-    Assert(tiny.IsFinite() && tiny.Bits() != 0u128, "a float80 subnormal reads as itself");
+    Assert(tiny.IsFinite() && tiny.Bits() != 0, "a float80 subnormal reads as itself");
     let widest = ParseFloat512(allocator, "Inf") catch { else => Panic("an infinity reads") };
     Assert(widest.IsInfinite(), "and the widest width reads an infinity");
     let failure = match ParseFloat128(allocator, "1e5000") {

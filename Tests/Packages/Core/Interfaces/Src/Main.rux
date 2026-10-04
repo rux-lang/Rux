@@ -119,7 +119,7 @@ func Main() -> int {
     for value in span {
         total += value;
     }
-    Assert(total == 10i32, "A for loop reads an iterable to its end");
+    Assert(total == 10, "A for loop reads an iterable to its end");
 
     var cursor = Counter { next: 0, limit: 3 };
     var seen: int32 = 0;
@@ -130,8 +130,8 @@ func Main() -> int {
         count += 1;
         item = cursor.Next();
     }
-    Assert(seen == 3i32, "Advancing by hand yields every item");
-    Assert(count == 3i32, "Advancing by hand stops at the end");
+    Assert(seen == 3, "Advancing by hand yields every item");
+    Assert(count == 3, "Advancing by hand stops at the end");
     Assert(!(cursor.Next() is int32), "An exhausted iterator keeps reporting the end");
 
     // An empty sequence reports the end immediately.
@@ -142,15 +142,15 @@ func Main() -> int {
     // value that was moved into the call is the one that arrives.
     var drops: int32 = 0;
     let guard = Guard { value: 5, drops: @drops };
-    Assert(Spend(<-guard) == 5i32, "A droppable value is passed by consuming it");
-    Assert(drops == 1i32, "The consumed value is destroyed in the callee");
+    Assert(Spend(<-guard) == 5, "A droppable value is passed by consuming it");
+    Assert(drops == 1, "The consumed value is destroyed in the callee");
 
     // Reinitializing after a complete move gives a fresh value to consume.
     var reused = Guard { value: 7, drops: @drops };
-    Assert(Spend(<-reused) == 7i32, "A move-only value can be consumed once");
+    Assert(Spend(<-reused) == 7, "A move-only value can be consumed once");
     reused <- Guard { value: 11, drops: @drops };
-    Assert(Spend(<-reused) == 11i32, "And consumed again after being reinitialized");
-    Assert(drops == 3i32, "Each owned value is destroyed exactly once");
+    Assert(Spend(<-reused) == 11, "And consumed again after being reinitialized");
+    Assert(drops == 3, "Each owned value is destroyed exactly once");
 
     return 0;
 }

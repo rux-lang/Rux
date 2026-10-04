@@ -24,11 +24,11 @@ func Main() -> int {
     Assert(CategoryOf(0x10FFFFu32 as char32) == GeneralCategory::Unassigned, "and so is the very last one");
     Assert(CategoryOf(0xE000u32 as char32) == GeneralCategory::PrivateUse, "private use is Co");
 
-    Assert(CombiningClassOf(0x41u32 as char32) == 0u32, "a letter reorders with nothing");
-    Assert(CombiningClassOf(0x301u32 as char32) == 230u32, "the acute is class 230");
-    Assert(CombiningClassOf(0x334u32 as char32) == 1u32, "an overlay is class 1");
-    Assert(CombiningClassOf(0x3099u32 as char32) == 8u32, "the kana voicing mark is class 8");
-    Assert(CombiningClassOf(0x5B4u32 as char32) == 14u32, "a Hebrew point carries its fixed class");
+    Assert(CombiningClassOf(0x41u32 as char32) == 0, "a letter reorders with nothing");
+    Assert(CombiningClassOf(0x301u32 as char32) == 230, "the acute is class 230");
+    Assert(CombiningClassOf(0x334u32 as char32) == 1, "an overlay is class 1");
+    Assert(CombiningClassOf(0x3099u32 as char32) == 8, "the kana voicing mark is class 8");
+    Assert(CombiningClassOf(0x5B4u32 as char32) == 14, "a Hebrew point carries its fixed class");
 
     Assert(IsWhiteSpace(0x20u32 as char32), "the space is whitespace");
     Assert(IsWhiteSpace(0x09u32 as char32), "and the tab");

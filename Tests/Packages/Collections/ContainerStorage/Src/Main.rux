@@ -111,7 +111,7 @@ func RefuseWhileHolding(state: *var StorageState, counter: *var int32, afterRefu
     let allocator: Allocator = guarded;
     var vector = Vector<Counted>(allocator);
     var index: uint = 0;
-    while index < 4u {
+    while index < 4 {
         vector.Push(Counted { counter: counter, tag: index as int32 }) catch { else => Panic("filled") };
         index++;
     }
@@ -120,7 +120,7 @@ func RefuseWhileHolding(state: *var StorageState, counter: *var int32, afterRefu
     Assert(Refusal(vector.Reserve(4096)) == CollectionError::OutOfMemory,
            "a growth the allocator refuses is reported");
     state.refusing = false;
-    Assert(vector.Length() == 4u, "with every element still held");
+    Assert(vector.Length() == 4, "with every element still held");
     *afterRefusal = *counter;
 }
 
@@ -142,37 +142,37 @@ func Main() -> int {
     var empties = Vector<Nothing>(plain);
     Assert(empties.IsEmpty(), "a vector of nothing starts empty");
     var pushed: uint = 0;
-    while pushed < 5u {
+    while pushed < 5 {
         empties.Push(Nothing {}) catch { else => Panic("an element occupying nothing still goes in") };
         pushed++;
     }
-    Assert(empties.Length() == 5u, "and the length counts them");
-    Assert(empties.Capacity() >= 5u, "with capacity to hold them");
+    Assert(empties.Length() == 5, "and the length counts them");
+    Assert(empties.Capacity() >= 5, "with capacity to hold them");
     Assert(empties.AsSlice().data != null, "the run has an address");
     Assert(!IsEmptyBlock(empties.AsSlice().data as *var opaque),
            "and a real one rather than the address a zero-sized request answers with");
-    Assert(empties.AsSlice().length == 5u, "spanning every element");
+    Assert(empties.AsSlice().length == 5, "spanning every element");
     var walked: uint = 0;
     for item in empties.Iterate() {
         walked++;
     }
-    Assert(walked == 5u, "and iteration yields each of them");
+    Assert(walked == 5, "and iteration yields each of them");
     var taken = Nothing {};
     Assert(empties.TryPop(@taken), "one comes back off the end");
-    Assert(empties.Length() == 4u, "leaving one fewer");
+    Assert(empties.Length() == 4, "leaving one fewer");
     empties.Clear();
     Assert(empties.IsEmpty(), "and clearing leaves none");
 
     // The same element through the other two containers, since the plumbing is shared and a byte apiece is what all
     // three depend on for their indexing to land anywhere.
     var markers = Array::Filled<Nothing>(plain, 6, Nothing {}) catch { else => Panic("an array of nothing is built") };
-    Assert(markers.Length() == 6u, "holding the length it was asked for");
+    Assert(markers.Length() == 6, "holding the length it was asked for");
     Assert(!IsEmptyBlock(markers.AsSlice().data as *var opaque), "on a real address");
 
     var ring = Deque<Nothing>(plain);
     ring.PushBack(Nothing {}) catch { else => Panic("a deque of nothing takes one at the back") };
     ring.PushFront(Nothing {}) catch { else => Panic("and one at the front") };
-    Assert(ring.Length() == 2u, "counting both");
+    Assert(ring.Length() == 2, "counting both");
     Assert(ring.PopFront() is Nothing && ring.PopBack() is Nothing, "and gives both back");
     Assert(ring.IsEmpty(), "leaving none");
 
@@ -183,21 +183,21 @@ func Main() -> int {
 
     Assert(Refusal(Vector::WithCapacity<int64>(hostile, 16)) == CollectionError::OutOfMemory,
            "asking a refusing allocator for capacity fails");
-    Assert(state.requests == 1i32, "having actually asked");
+    Assert(state.requests == 1, "having actually asked");
     // A container with no block yet meets the same refusal on its first growth.
     var reserved = Vector<int64>(hostile);
-    Assert(reserved.IsEmpty() && reserved.Capacity() == 0u, "a container holding nothing");
+    Assert(reserved.IsEmpty() && reserved.Capacity() == 0, "a container holding nothing");
     Assert(reserved.AsSlice().data == null, "with no block");
     Assert(Refusal(reserved.Push(1)) == CollectionError::OutOfMemory, "which still cannot grow");
     Assert(reserved.IsEmpty(), "and is still empty afterwards");
-    Assert(state.live == 0i32, "nothing was handed out, so nothing is out");
+    Assert(state.live == 0, "nothing was handed out, so nothing is out");
 
     // The second site: a reallocation, where the container already has a block and elements in it. This is the one
     // that matters — the failed call must leave the old block valid, because it is the only pointer to them.
     state.refusing = false;
     var populated = Vector<int64>(hostile);
     var value: int64 = 0;
-    while value < 8i64 {
+    while value < 8 {
         populated.Push(value) catch { else => Panic("a vector fills while the allocator is willing") };
         value = value + 1;
     }
@@ -239,59 +239,59 @@ func Main() -> int {
     state.refusing = true;
     Assert(Refusal(queue.Reserve(8192)) == CollectionError::OutOfMemory, "and reports a refused reservation too");
     Assert(queue.Capacity() == queueCapacity, "at the capacity it had");
-    Assert(queue.Length() == 1u && queue.Get(0) == .Some(7), "still holding what it held");
+    Assert(queue.Length() == 1 && queue.Get(0) == .Some(7), "still holding what it held");
     state.refusing = false;
 
     // Everything held is destroyed exactly once. `Clear` destroys what it drops, and nothing before that.
     var tally: int32 = 0;
     var counted = Vector<Counted>(plain);
     var tag: int32 = 0;
-    while tag < 6i32 {
+    while tag < 6 {
         counted.Push(Counted { counter: @tally, tag: tag }) catch { else => Panic("counted elements go in") };
         tag = tag + 1;
     }
-    Assert(tally == 0i32, "nothing is destroyed while it is held");
+    Assert(tally == 0, "nothing is destroyed while it is held");
     counted.Clear();
-    Assert(tally == 6i32, "and clearing destroys every element exactly once");
-    Assert(counted.Capacity() >= 6u, "keeping the storage, which holds nothing now");
+    Assert(tally == 6, "and clearing destroys every element exactly once");
+    Assert(counted.Capacity() >= 6, "keeping the storage, which holds nothing now");
 
     // `Truncate` destroys exactly what it drops and leaves the rest alive.
     tally = 0;
     tag = 0;
-    while tag < 6i32 {
+    while tag < 6 {
         counted.Push(Counted { counter: @tally, tag: tag }) catch { else => Panic("refilled") };
         tag = tag + 1;
     }
     counted.Truncate(2);
-    Assert(tally == 4i32, "truncating destroys the four it dropped");
-    Assert(counted.Length() == 2u, "and keeps the two it did not");
+    Assert(tally == 4, "truncating destroys the four it dropped");
+    Assert(counted.Length() == 2, "and keeps the two it did not");
     counted.Clear();
-    Assert(tally == 6i32, "which are destroyed in their turn, once each");
+    Assert(tally == 6, "which are destroyed in their turn, once each");
 
     // The vector's own destruction destroys what it still holds, once each, and gives the block back.
     var dropped: int32 = 0;
     var held: int32 = -1;
     FillAndDrop(plain, @dropped, 9, @held);
-    Assert(held == 0i32, "nothing is destroyed while the vector holds it");
-    Assert(dropped == 9i32, "and the vector's destruction destroys all nine, once each");
+    Assert(held == 0, "nothing is destroyed while the vector holds it");
+    Assert(dropped == 9, "and the vector's destruction destroys all nine, once each");
 
     // A refused growth destroys nothing: the elements are still held, so they are still alive. Getting this wrong is
     // how a failure path leaks or double-destroys, and neither shows in the error the caller reads.
     var survivors: int32 = 0;
     var atRefusal: int32 = -1;
     RefuseWhileHolding(@state, @survivors, @atRefusal);
-    Assert(atRefusal == 0i32, "a refused growth destroys none of what is held");
-    Assert(survivors == 4i32, "and they are each destroyed exactly once when the vector finally goes");
+    Assert(atRefusal == 0, "a refused growth destroys none of what is held");
+    Assert(survivors == 4, "and they are each destroyed exactly once when the vector finally goes");
 
     // Every block the guarded allocator handed out has come back. This is the question no amount of reading a
     // container's own answers can settle, and the reason the counting is in the allocator rather than the test.
     populated.Clear();
     populated.ShrinkToFit() catch { else => Panic("the storage goes back when it is asked for") };
-    Assert(populated.Capacity() == 0u, "leaving a vector as cheap as a new one");
+    Assert(populated.Capacity() == 0, "leaving a vector as cheap as a new one");
     queue.Clear();
     queue.ShrinkToFit() catch { else => Panic("and the deque's too") };
-    Assert(state.live == 0i32, "and every block the allocator handed out has been given back");
-    Assert(state.requests > 0i32, "having been asked for a good many");
+    Assert(state.live == 0, "and every block the allocator handed out has been given back");
+    Assert(state.requests > 0, "having been asked for a good many");
 
     return 0;
 }

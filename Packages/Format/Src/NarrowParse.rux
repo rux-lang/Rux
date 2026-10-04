@@ -104,12 +104,12 @@ func ReadNarrowDecimal(digits: &FixedNat, exponent: int, truncated: bool, layout
     if binade >= 0 {
         probe.Assign(state.denominator);
         if !probe.ShiftLeft(binade as uint) { return false; }
-        if state.numerator.Compare(probe) < 0i32 { binade = binade - 1; }
+        if state.numerator.Compare(probe) < 0 { binade = binade - 1; }
     }
     else {
         probe.Assign(state.numerator);
         if !probe.ShiftLeft((0 - binade) as uint) { return false; }
-        if probe.Compare(state.denominator) < 0i32 { binade = binade - 1; }
+        if probe.Compare(state.denominator) < 0 { binade = binade - 1; }
     }
 
     // Past the largest finite value of the format, which is refused rather than rounded to an infinity: that would
@@ -149,7 +149,7 @@ func ReadNarrowDecimal(digits: &FixedNat, exponent: int, truncated: bool, layout
         if available <= 0 {
             // The value is under the smallest subnormal but at least half of it, so the whole question is which
             // side of half it falls. Half exactly is a tie, and zero is the even neighbour.
-            if remainder.Compare(divisor) > 0i32 || state.sticky {
+            if remainder.Compare(divisor) > 0 || state.sticky {
                 *significand = 1;
                 *binaryExponent = layout.minimumExponent;
             }
@@ -163,13 +163,13 @@ func ReadNarrowDecimal(digits: &FixedNat, exponent: int, truncated: bool, layout
     // has at that exponent.
     var quotient: uint64 = 0;
     var position = wanted;
-    while position > 0u {
+    while position > 0 {
         position = position - 1u;
-        if remainder.Compare(divisor) >= 0i32 {
+        if remainder.Compare(divisor) >= 0 {
             quotient = quotient | (1u64 << (position as uint64));
             remainder.Subtract(divisor);
         }
-        if position > 0u && !remainder.ShiftLeft(1u) { return false; }
+        if position > 0 && !remainder.ShiftLeft(1u) { return false; }
     }
 
     // Round to nearest with ties to even, on what the division left. Twice the remainder against the divisor is
@@ -179,9 +179,9 @@ func ReadNarrowDecimal(digits: &FixedNat, exponent: int, truncated: bool, layout
     twice.Assign(remainder);
     if !twice.ShiftLeft(1u) { return false; }
     let order = twice.Compare(divisor);
-    var roundUp = order > 0i32;
-    if order == 0i32 {
-        roundUp = state.sticky || (quotient & 1u64) == 1u64;
+    var roundUp = order > 0;
+    if order == 0 {
+        roundUp = state.sticky || (quotient & 1u64) == 1;
     }
     if roundUp {
         quotient = quotient + 1u64;
@@ -194,7 +194,7 @@ func ReadNarrowDecimal(digits: &FixedNat, exponent: int, truncated: bool, layout
                 return true;
             }
             // The carry filled the significand, so it steps up a binade and loses its last bit.
-            quotient = quotient >> 1u64;
+            quotient = quotient >> 1;
             scale = scale + 1;
             if scale > layout.maximumExponent {
                 *overflowed = true;
@@ -202,7 +202,7 @@ func ReadNarrowDecimal(digits: &FixedNat, exponent: int, truncated: bool, layout
             }
         }
     }
-    if quotient == 0u64 { return true; }
+    if quotient == 0 { return true; }
     *significand = quotient;
     *binaryExponent = scale;
     return true;
@@ -217,12 +217,12 @@ func ReadNarrowDecimal(digits: &FixedNat, exponent: int, truncated: bool, layout
 /// @see https://rux-lang.dev/docs/api/format/pack-float64
 func PackFloat64(significand: uint64, exponent: int, negative: bool) -> uint64 {
     var bits: uint64 = 0;
-    if significand != 0u64 {
+    if significand != 0 {
         // A significand with its top bit set is normal, and the leading bit is implicit; anything narrower is a
         // subnormal and is stored as it stands with a zero exponent field.
-        if (significand >> 52u64) != 0u64 {
+        if (significand >> 52) != 0 {
             let biased = ((exponent + 1075) as uint64) & 0x7FF;
-            bits = (biased << 52u64) | (significand & 0xFFFFFFFFFFFFF);
+            bits = (biased << 52) | (significand & 0xFFFFFFFFFFFFF);
         }
         else {
             bits = significand;
@@ -241,10 +241,10 @@ func PackFloat64(significand: uint64, exponent: int, negative: bool) -> uint64 {
 /// @see https://rux-lang.dev/docs/api/format/pack-float32
 func PackFloat32(significand: uint64, exponent: int, negative: bool) -> uint32 {
     var bits: uint32 = 0;
-    if significand != 0u64 {
-        if (significand >> 23u64) != 0u64 {
+    if significand != 0 {
+        if (significand >> 23) != 0 {
             let biased = ((exponent + 150) as uint32) & 0xFF;
-            bits = (biased << 23u32) | ((significand as uint32) & 0x7FFFFF);
+            bits = (biased << 23) | ((significand as uint32) & 0x7FFFFF);
         }
         else {
             bits = significand as uint32;

@@ -132,7 +132,7 @@ pub struct UnpackedWide {
 /// @see https://rux-lang.dev/docs/api/format/unpack-wide
 pub func UnpackWide(bits: uint512, layout: &FloatLayout) -> UnpackedWide {
     let fieldBits = layout.SignificandFieldBits();
-    let negative = ((bits >> (layout.bits - 1u)) & 1u512) == 1u512;
+    let negative = ((bits >> (layout.bits - 1u)) & 1u512) == 1;
     let exponentField = ((bits >> fieldBits) & ((1u512 << layout.exponentBits) - 1u512)) as uint64;
     let field = bits & ((1u512 << fieldBits) - 1u512);
     let maximumField = (1u64 << (layout.exponentBits as uint64)) - 1u64;
@@ -143,17 +143,17 @@ pub func UnpackWide(bits: uint512, layout: &FloatLayout) -> UnpackedWide {
         let integerBit = (field >> (layout.precision - 1u)) & 1u512;
         let fraction = field & ((1u512 << (layout.precision - 1u)) - 1u512);
         if exponentField == maximumField {
-            result.class = fraction == 0u512 && integerBit == 1u512 ? WideClass::Infinity : WideClass::NaN;
+            result.class = fraction == 0 && integerBit == 1 ? WideClass::Infinity : WideClass::NaN;
             return result;
         }
-        if exponentField == 0u64 {
-            if field == 0u512 { return result; }
+        if exponentField == 0 {
+            if field == 0 { return result; }
             result.class = WideClass::Subnormal;
             result.significand = field;
             result.exponent = layout.MinimumExponent();
             return result;
         }
-        if integerBit == 0u512 {
+        if integerBit == 0 {
             result.class = WideClass::NaN;
             return result;
         }
@@ -163,11 +163,11 @@ pub func UnpackWide(bits: uint512, layout: &FloatLayout) -> UnpackedWide {
         return result;
     }
     if exponentField == maximumField {
-        result.class = field == 0u512 ? WideClass::Infinity : WideClass::NaN;
+        result.class = field == 0 ? WideClass::Infinity : WideClass::NaN;
         return result;
     }
-    if exponentField == 0u64 {
-        if field == 0u512 { return result; }
+    if exponentField == 0 {
+        if field == 0 { return result; }
         result.class = WideClass::Subnormal;
         result.significand = field;
         result.exponent = layout.MinimumExponent();
@@ -193,7 +193,7 @@ pub func PackWide(negative: bool, significand: uint512, exponent: int, layout: &
     if negative {
         bits = 1u512 << (layout.bits - 1u);
     }
-    if significand == 0u512 { return bits; }
+    if significand == 0 { return bits; }
     let leading = 1u512 << (layout.precision - 1u);
     if significand < leading {
         // Subnormal: the exponent field is zero and the field is the significand as it stands.

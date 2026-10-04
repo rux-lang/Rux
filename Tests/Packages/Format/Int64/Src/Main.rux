@@ -86,9 +86,9 @@ func CheckParseOverloads() -> int {
         .Success(parsedValue) => { value = parsedValue; },
         .Failure(_) => { return 121; }
     }
-    if value != 456i64 { return 122; }
+    if value != 456 { return 122; }
     if Succeeded(ParseInt64("invalid")) { return 123; }
-    if value != 456i64 { return 124; }
+    if value != 456 { return 124; }
 
     text = StringView::FromBytes("-789") ?? StringView();
     match ParseInt64(text) {

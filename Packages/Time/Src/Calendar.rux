@@ -30,9 +30,9 @@ pub struct Date {
 /// @returns whether that year has 366 days under the proleptic Gregorian calendar
 /// @see https://rux-lang.dev/docs/api/time/is-leap-year
 pub func IsLeapYear(year: int32) -> bool {
-    if year % 4 != 0i32 { return false; }
-    if year % 100 != 0i32 { return true; }
-    return year % 400 == 0i32;
+    if year % 4 != 0 { return false; }
+    if year % 100 != 0 { return true; }
+    return year % 400 == 0;
 }
 
 /// How many days `month` holds in `year`.
@@ -44,9 +44,9 @@ pub func IsLeapYear(year: int32) -> bool {
 /// @returns how many days that month has in that year
 /// @see https://rux-lang.dev/docs/api/time/days-in-month
 pub func DaysInMonth(year: int32, month: uint8) -> uint8 {
-    if month == 2u8 { return IsLeapYear(year) ? 29 : 28; }
-    if month == 4u8 || month == 6u8 || month == 9u8 || month == 11u8 { return 30; }
-    if month >= 1u8 && month <= 12u8 { return 31; }
+    if month == 2 { return IsLeapYear(year) ? 29 : 28; }
+    if month == 4 || month == 6 || month == 9 || month == 11 { return 30; }
+    if month >= 1 && month <= 12 { return 31; }
     return 0;
 }
 
@@ -59,7 +59,7 @@ extend Date {
     /// @returns the date, or `None` when the components do not name one
     /// @see https://rux-lang.dev/docs/api/time/date/new
     pub func New(year: int32, month: uint8, day: uint8) -> Date? {
-        if day < 1u8 || day > DaysInMonth(year, month) { return none; }
+        if day < 1 || day > DaysInMonth(year, month) { return none; }
         return Date { year: year, month: month, day: day };
     }
 
@@ -72,7 +72,7 @@ extend Date {
     /// @see https://rux-lang.dev/docs/api/time/date/days-from-epoch
     pub func DaysFromEpoch(self: &Date) -> int64 {
         var year = self.year as int64;
-        if self.month <= 2u8 {
+        if self.month <= 2 {
             year = year - 1;
         }
         let era = (year >= 0i64 ? year : year - 399i64) / 400i64;
@@ -174,7 +174,7 @@ extend TimeOfDay {
     /// @returns the time, or `None` when the components do not name one
     /// @see https://rux-lang.dev/docs/api/time/time-of-day/new
     pub func New(hour: uint8, minute: uint8, second: uint8, nanosecond: uint32) -> TimeOfDay? {
-        if hour > 23u8 || minute > 59u8 || second > 59u8 || nanosecond > 999999999u32 {
+        if hour > 23 || minute > 59 || second > 59 || nanosecond > 999999999 {
             return none;
         }
         return .Some(TimeOfDay {
@@ -233,9 +233,9 @@ extend UtcOffset {
     /// @returns the offset, or `None` when it is outside the range UTC offsets take
     /// @see https://rux-lang.dev/docs/api/time/utc-offset/of
     pub func Of(hours: int32, minutes: int32) -> UtcOffset? {
-        if hours > 23i32 || hours < -23i32 || minutes > 59i32 || minutes < -59i32 { return none; }
-        if hours > 0i32 && minutes < 0i32 { return none; }
-        if hours < 0i32 && minutes > 0i32 { return none; }
+        if hours > 23 || hours < -23i32 || minutes > 59 || minutes < -59i32 { return none; }
+        if hours > 0 && minutes < 0 { return none; }
+        if hours < 0 && minutes > 0 { return none; }
         return UtcOffset { seconds: hours * 3600 + minutes * 60 };
     }
 
@@ -287,7 +287,7 @@ extend DateTime {
         let shifted = moment.UnixSeconds() + (offset.TotalSeconds() as int64);
         var days = shifted / 86400;
         var secondOfDay = shifted % 86400;
-        if secondOfDay < 0i64 {
+        if secondOfDay < 0 {
             days = days - 1;
             secondOfDay = secondOfDay + 86400;
         }

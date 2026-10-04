@@ -16,10 +16,10 @@ func FromHex(text: char8[..], into: var char8[..]) {
     while index < into.length {
         var value: uint8 = 0;
         var half: uint = 0;
-        while half < 2u {
+        while half < 2 {
             let c = text.data[index * 2 + half] as uint8;
             var digit: uint8 = 0;
-            if c >= 0x30u8 && c <= 0x39u8 {
+            if c >= 0x30 && c <= 0x39 {
                 digit = c - 0x30;
             }
             else {
@@ -94,12 +94,12 @@ func Main() -> int {
     // The incremental contract, across every split of every length that spans the block and padding boundaries.
     var message: char8[300];
     var index: uint = 0;
-    while index < 300u {
+    while index < 300 {
         message[index] = ((index % 251) as uint8) as char8;
         index = index + 1;
     }
     var length: uint = 0;
-    while length <= 300u {
+    while length <= 300 {
         var oneShot: char8[64];
         Sha512Of((@message[0])[..length], (@oneShot[0])[..64]);
         let oneShotBytes = (@oneShot[0])[..64];
@@ -119,9 +119,9 @@ func Main() -> int {
 
     // The reported sizes.
     var sizes = Sha512();
-    Assert(sizes.DigestLength() == 64u && sizes.BlockLength() == 128u, "SHA-512 reports its own sizes");
+    Assert(sizes.DigestLength() == 64 && sizes.BlockLength() == 128, "SHA-512 reports its own sizes");
     var shortSizes = Sha512::NewTrunc224();
-    Assert(shortSizes.DigestLength() == 28u && shortSizes.BlockLength() == 128u,
+    Assert(shortSizes.DigestLength() == 28 && shortSizes.BlockLength() == 128,
            "and a truncation reports its shorter digest with the same block");
 
     return 0;

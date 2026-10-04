@@ -270,7 +270,7 @@ func AlignOf(byte: char8, align: *var FormatAlign) -> bool {
 // the placeholder before the parser ever saw it, so accepting one here would describe input that cannot occur.
 func IsFillByte(byte: char8) -> bool {
     let code = byte as uint32;
-    if code < 0x20u32 || code > 0x7Eu32 { return false; }
+    if code < 0x20 || code > 0x7E { return false; }
     return byte != c8'{' && byte != c8'}';
 }
 

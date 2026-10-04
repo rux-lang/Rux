@@ -60,9 +60,9 @@ func ReferenceSort(data: *var int32, length: uint) {
 
 func NextRandom(state: *var uint64) -> uint64 {
     var x = *state;
-    x = x ^ (x >> 12u64);
-    x = x ^ (x << 25u64);
-    x = x ^ (x >> 27u64);
+    x = x ^ (x >> 12);
+    x = x ^ (x << 25);
+    x = x ^ (x >> 27);
     *state = x;
     return x * 2685821657736338717;
 }

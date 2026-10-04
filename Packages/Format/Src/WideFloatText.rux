@@ -65,7 +65,7 @@ pub func WriteWideFloat(allocator: Allocator, writer: &var TextWriter, spec: For
         }
     }
     var rendered = cursor.Written();
-    if spec.ShowsSign() && rendered.length > 0u && rendered.data[0] != c8'-' {
+    if spec.ShowsSign() && rendered.length > 0 && rendered.data[0] != c8'-' {
         storage[1] = c8'+';
         rendered = (@storage[1])[..rendered.length + 1];
     }
@@ -82,7 +82,7 @@ func WriteWidePrecision(allocator: Allocator, writer: &var TextWriter, spec: For
     let textRoom = digitRoom + fraction + 8u;
     let empty = Layout { size: 0, alignment: 1 };
     let blockLayout = Layout::New(digitRoom + textRoom, 1u) ?? (empty);
-    if blockLayout.size == 0u { return .Failure(FormatError::TextFailure(TextFailureKind::LengthOverflow)); }
+    if blockLayout.size == 0 { return .Failure(FormatError::TextFailure(TextFailureKind::LengthOverflow)); }
     let block = allocator.Allocate(blockLayout) catch { else => return .Failure(FormatError::TextFailure(TextFailureKind::OutOfMemory)) };
     let digits = block as *var char8;
     let text = digits + digitRoom;
@@ -108,7 +108,7 @@ func WriteWidePrecision(allocator: Allocator, writer: &var TextWriter, spec: For
             cursor.Push(c8'-');
         }
         // The digits before the point, or a lone zero when there are none.
-        if count == 0u || exponent10 < 0 {
+        if count == 0 || exponent10 < 0 {
             cursor.Push(c8'0');
         }
         else {
@@ -118,12 +118,12 @@ func WriteWidePrecision(allocator: Allocator, writer: &var TextWriter, spec: For
                 index = index + 1u;
             }
         }
-        if fraction > 0u {
+        if fraction > 0 {
             cursor.Push(c8'.');
             var place: uint = 0;
             while place < fraction {
                 let position = exponent10 + 1 + place as int;
-                if count == 0u || position < 0 || position >= count as int {
+                if count == 0 || position < 0 || position >= count as int {
                     cursor.Push(c8'0');
                 }
                 else {
@@ -133,7 +133,7 @@ func WriteWidePrecision(allocator: Allocator, writer: &var TextWriter, spec: For
             }
         }
         var rendered = cursor.Written();
-        if spec.ShowsSign() && rendered.length > 0u && rendered.data[0] != c8'-' {
+        if spec.ShowsSign() && rendered.length > 0 && rendered.data[0] != c8'-' {
             text[0] = c8'+';
             rendered = (text)[..rendered.length + 1u];
         }

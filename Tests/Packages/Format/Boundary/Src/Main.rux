@@ -98,7 +98,7 @@ func Main() -> int {
     writer.Clear();
     let styled: &var TextWriter = writer;
     Assert(Failed(Render(asDisplay, Spec("iso8601"), styled)), "an unsupported style is refused");
-    Assert(writer.Length() == 0u, "and nothing was written first");
+    Assert(writer.Length() == 0, "and nothing was written first");
 
     // Variadically, which erases the type entirely: what arrives is a list of interface values, and every one of
     // them has to find its implementation with nothing left of where it came from.

@@ -46,16 +46,16 @@ func Main() -> int {
 
     // An unsigned alias must not be signed, and the other way round: the widths above pass either way.
     let unsignedMax: c_uint = 4294967295u32;
-    Assert(unsignedMax > 0u32, "unsigned int holds its whole range");
+    Assert(unsignedMax > 0, "unsigned int holds its whole range");
     let negative: c_int = -1i32;
-    Assert(negative < 0i32, "int is signed");
+    Assert(negative < 0, "int is signed");
 
     // errno is reached through the platform's own accessor, and the address is stable within a thread.
     Assert(ErrnoLocation() != null, "the errno accessor reports an address");
     Assert(ErrnoLocation() == ErrnoLocation(), "the address is the same one every time");
 
     *ErrnoLocation() = 0i32;
-    Assert(Errno() == 0i32, "errno reads what was written through its address");
+    Assert(Errno() == 0, "errno reads what was written through its address");
 
     // A call that fails reports through it. Which value it leaves is the platform's business; that it left one is
     // not, so only the clearing and the setting are checked.
@@ -64,10 +64,10 @@ func Main() -> int {
     // `C::StdIo` is still bound to the legacy runtime and sets an `errno` this one cannot see.
     let refused = malloc(18446744073709551615u64);
     Assert(refused == null, "an allocation of the whole address space is refused");
-    Assert(Errno() != 0i32, "a failing call sets errno");
+    Assert(Errno() != 0, "a failing call sets errno");
 
     // The three values C itself mandates.
-    Assert(EDOM != 0i32 && ERANGE != 0i32 && EILSEQ != 0i32, "the standard error numbers are defined");
+    Assert(EDOM != 0 && ERANGE != 0 && EILSEQ != 0, "the standard error numbers are defined");
     Assert(EDOM != ERANGE && ERANGE != EILSEQ && EDOM != EILSEQ, "and are distinct from one another");
 
     // A stream is its own type: it is produced as a `*FILE` and consumed as one, and a `*opaque` would have compiled
@@ -101,13 +101,13 @@ func Main() -> int {
     // Writing and reading go through the area that was named, and do not disturb the reading of the other. On a
     // target where both name one storage this is trivially true; where they do not, it is the whole point.
     *ErrnoLocationFor(CRuntimeArea::Streams) = 0i32;
-    Assert(ErrnoFor(CRuntimeArea::Streams) == 0i32, "the stream area reads what was written to it");
+    Assert(ErrnoFor(CRuntimeArea::Streams) == 0, "the stream area reads what was written to it");
 
     // A failing call from the general area reports through the general area. Which number is the platform's
     // business; that it is not zero is not.
     *ErrnoLocationFor(CRuntimeArea::General) = 0i32;
     Assert(malloc(18446744073709551615u64) == null, "an impossible allocation is refused");
-    Assert(ErrnoFor(CRuntimeArea::General) != 0i32, "and reports through the area its module is bound to");
+    Assert(ErrnoFor(CRuntimeArea::General) != 0, "and reports through the area its module is bound to");
 
     // The rule a caller should actually follow after a stream call: read the return value. `fopen` on Windows
     // reports its failure as a null `FILE*` and sets no errno in either runtime, so a program that consulted errno

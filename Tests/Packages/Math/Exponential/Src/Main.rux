@@ -13,7 +13,7 @@ func Main() -> int {
     // The values that must be exact.
     Assert(Exp(0.0) == 1.0, "the exponential of zero is exactly one");
     Assert(Exp(-0.0) == 1.0, "from either zero");
-    Assert(UlpDistance(Exp(1.0), E) <= 1u64, "and the exponential of one is e");
+    Assert(UlpDistance(Exp(1.0), E) <= 1, "and the exponential of one is e");
 
     // Boundaries: overflow to infinity, underflow to zero, and the specials.
     Assert(Exp(infinity) == infinity, "an infinite argument gives infinity");
@@ -26,31 +26,31 @@ func Main() -> int {
     // The range reduction, checked by an identity it cannot satisfy by accident: exp(a) * exp(b) == exp(a + b),
     // walked across many multiples of ln 2 so every reduction path is taken.
     var step: uint = 0;
-    while step < 60u {
+    while step < 60 {
         let argument = -30.0 + (step as float64);
         let doubled = Exp(argument) * Exp(argument);
-        Assert(UlpDistance(doubled, Exp(argument + argument)) <= 4u64,
+        Assert(UlpDistance(doubled, Exp(argument + argument)) <= 4,
                "the exponential of a sum matches the product across the reduction");
         step = step + 1;
     }
 
     // And by round-tripping through the logarithm, which is a different code path entirely.
     var probe: uint = 1;
-    while probe < 200u {
+    while probe < 200 {
         let value = (probe as float64) * 0.37;
-        Assert(UlpDistance(Log(Exp(value)), value) <= 4u64, "the logarithm undoes the exponential");
+        Assert(UlpDistance(Log(Exp(value)), value) <= 4, "the logarithm undoes the exponential");
         probe = probe + 1;
     }
 
     // Base two, which is exact for integer arguments — the reason it exists rather than being exp(x * ln 2),
     // since ln 2 is not representable and that product would round before the exponential ever ran.
     var power: int64 = -1000;
-    while power <= 1000i64 {
+    while power <= 1000 {
         Assert(Exp2(power as float64) == ScaleByPowerOfTwo(1.0, power), "two to an integer power is exact");
         power = power + 1;
     }
     // A half power is the square root of two, which is not representable, so squaring it back rounds twice.
-    Assert(UlpDistance(Exp2(0.5) * Exp2(0.5), 2.0) <= 2u64, "and a half power squares back to within two ulps");
+    Assert(UlpDistance(Exp2(0.5) * Exp2(0.5), 2.0) <= 2, "and a half power squares back to within two ulps");
     Assert(Exp2(1024.0) == infinity, "past the top it saturates");
     Assert(Exp2(-1075.0) == 0.0, "and past the bottom it vanishes");
     Assert(IsNan(Exp2(notANumber)), "a NaN stays a NaN here too");
@@ -67,9 +67,9 @@ func Main() -> int {
 
     // Away from zero it agrees with exp minus one, where that subtraction is harmless.
     var away: uint = 1;
-    while away < 100u {
+    while away < 100 {
         let value = (away as float64) * 0.11;
-        Assert(UlpDistance(Expm1(value), Exp(value) - 1.0) <= 8u64,
+        Assert(UlpDistance(Expm1(value), Exp(value) - 1.0) <= 8,
                "expm1 agrees with the naive form where the naive form is sound");
         away = away + 1;
     }

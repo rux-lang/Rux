@@ -103,7 +103,7 @@ extend Duration {
         let perSecond = (NanosecondsPerSecond / scale) as int64;
         var seconds = count / perSecond;
         var rest = count % perSecond;
-        if rest < 0i64 {
+        if rest < 0 {
             seconds = seconds - 1;
             rest = rest + perSecond;
         }
@@ -117,7 +117,7 @@ extend Duration {
     /// @returns whether the span is exactly zero
     /// @see https://rux-lang.dev/docs/api/time/duration/is-zero
     pub func IsZero(self: &Duration) -> bool {
-        return self.seconds == 0i64 && self.nanoseconds == 0u32;
+        return self.seconds == 0 && self.nanoseconds == 0;
     }
 
     /// Whether this span is negative.
@@ -127,7 +127,7 @@ extend Duration {
     /// @returns whether the span runs backwards
     /// @see https://rux-lang.dev/docs/api/time/duration/is-negative
     pub func IsNegative(self: &Duration) -> bool {
-        return self.seconds < 0i64;
+        return self.seconds < 0;
     }
 
     /// The whole seconds, rounded toward negative infinity.

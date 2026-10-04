@@ -26,9 +26,9 @@ func BitsDiffering(left: char8[..], right: char8[..]) -> uint {
     var index: uint = 0;
     while index < left.length && index < right.length {
         var difference = (left.data[index] as uint8) ^ (right.data[index] as uint8);
-        while difference != 0u8 {
+        while difference != 0 {
             count = count + (difference & 1) as uint;
-            difference = difference >> 1u8;
+            difference = difference >> 1;
         }
         index = index + 1;
     }
@@ -40,7 +40,7 @@ func BitsDiffering(left: char8[..], right: char8[..]) -> uint {
 func CheckAvalanche(digestLength: uint, which: uint, what: char8[..]) {
     var message: char8[64];
     var index: uint = 0;
-    while index < 64u {
+    while index < 64 {
         message[index] = ((index * 7u) as uint8) as char8;
         index = index + 1;
     }
@@ -73,37 +73,37 @@ func CheckAvalanche(digestLength: uint, which: uint, what: char8[..]) {
         Assert(differing * 4u > totalBits && differing * 4u < totalBits * 3u, what);
         position = position + 1;
     }
-    Assert(worstLow > 0u, "and no flipped bit leaves the output unchanged");
+    Assert(worstLow > 0, "and no flipped bit leaves the output unchanged");
     Assert(worstHigh < totalBits, "nor inverts it entirely");
 }
 
 // Dispatches to one of the algorithms by index, since they do not share an interface uniformly.
 func HashWith(which: uint, message: char8[..], into: var char8[..]) {
-    if which == 0u {
+    if which == 0 {
         Sha256Of(message, into);
     }
-    else if which == 1u {
+    else if which == 1 {
         Sha512Of(message, into);
     }
-    else if which == 2u {
+    else if which == 2 {
         Sha3Of256(message, into);
     }
-    else if which == 3u {
+    else if which == 3 {
         Blake3Of(message, into);
     }
-    else if which == 4u {
+    else if which == 4 {
         Shake128Of(message, into);
     }
-    else if which == 5u {
+    else if which == 5 {
         Sha224Of(message, into);
     }
-    else if which == 6u {
+    else if which == 6 {
         Sha384Of(message, into);
     }
-    else if which == 7u {
+    else if which == 7 {
         Sha3Of512(message, into);
     }
-    else if which == 8u {
+    else if which == 8 {
         LegacySha1Of(message, into);
     }
     else {
@@ -130,15 +130,15 @@ func Main() -> int {
     let boundaries: uint[14] = [55, 56, 63, 64, 65, 71, 72, 111, 112, 127, 128, 135, 136, 143];
     var message: char8[2100];
     var index: uint = 0;
-    while index < 2100u {
+    while index < 2100 {
         message[index] = ((index % 251) as uint8) as char8;
         index = index + 1;
     }
 
     var which: uint = 0;
-    while which < 10u {
+    while which < 10 {
         var lengthIndex: uint = 0;
-        while lengthIndex < 14u {
+        while lengthIndex < 14 {
             let length = boundaries[lengthIndex];
             let whole = (@message[0])[..length];
             var oneShot: char8[64];
@@ -163,7 +163,7 @@ func Main() -> int {
     // The extendable outputs and BLAKE3's chunk boundary, which no other algorithm has.
     let chunkLengths: uint[6] = [1023, 1024, 1025, 2047, 2048, 2049];
     var chunkIndex: uint = 0;
-    while chunkIndex < 6u {
+    while chunkIndex < 6 {
         let length = chunkLengths[chunkIndex];
         let whole = (@message[0])[..length];
         var direct: char8[32];
@@ -196,14 +196,14 @@ func Main() -> int {
     // was wired to another.
     var digests: char8[320];
     which = 0;
-    while which < 10u {
+    while which < 10 {
         HashWith(which, "the same message", (@digests[which * 32])[..16]);
         which = which + 1;
     }
     var first: uint = 0;
-    while first < 10u {
+    while first < 10 {
         var second = first + 1;
-        while second < 10u {
+        while second < 10 {
             Assert(!Equal((@digests[first * 32])[..16],
                           (@digests[second * 32])[..16]),
                    "no two algorithms produce the same digest for one message");

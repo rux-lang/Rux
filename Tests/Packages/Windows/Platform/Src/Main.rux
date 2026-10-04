@@ -103,7 +103,7 @@ when #target.os == OperatingSystem::Windows {
             return 17;
         }
         let unixSeconds = ticks / FileTimeTicksPerSecond - FileTimeToUnixEpochSeconds;
-        if unixSeconds < 1700000000u64 || unixSeconds > 4000000000u64 {
+        if unixSeconds < 1700000000 || unixSeconds > 4000000000 {
             return 18;
         }
 
@@ -119,7 +119,7 @@ when #target.os == OperatingSystem::Windows {
             'a' as char16, 't' as char16, 'h' as char16, '-' as char16, '2' as char16, 'f' as char16,
             '8' as char16, 'c' as char16, '1' as char16, 'e' as char16, '\0' as char16, '\0' as char16
         ];
-        if GetFileAttributesW(@path[0]) != 0xFFFFFFFFu32 {
+        if GetFileAttributesW(@path[0]) != 0xFFFFFFFF {
             return 19;
         }
 

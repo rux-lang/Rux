@@ -121,25 +121,25 @@ func Main() -> int {
 
     // Containers.
     var array = Accepts(allocator, "[1,2,3]", "an array parses");
-    Assert(array.Kind() == JsonKind::Array && array.Length() == 3u, "with three elements");
+    Assert(array.Kind() == JsonKind::Array && array.Length() == 3, "with three elements");
     var empty = Accepts(allocator, "[]", "an empty array parses");
-    Assert(empty.Length() == 0u, "with none");
+    Assert(empty.Length() == 0, "with none");
     var object = Accepts(allocator, "{\"a\":1,\"b\":2}", "an object parses");
-    Assert(object.Kind() == JsonKind::Object && object.Length() == 2u, "with two members");
+    Assert(object.Kind() == JsonKind::Object && object.Length() == 2, "with two members");
     let a = View("a");
     Assert(object.Find(a) != null, "which are findable by name");
     var emptyObject = Accepts(allocator, "{}", "an empty object parses");
-    Assert(emptyObject.Length() == 0u, "with none");
+    Assert(emptyObject.Length() == 0, "with none");
     var nested = Accepts(allocator, "{\"a\":{\"b\":[1,{\"c\":null}]}}", "a nested document parses");
-    Assert(nested.Length() == 1u, "and holds its structure");
+    Assert(nested.Length() == 1, "and holds its structure");
 
     // Escapes are resolved, including the surrogate pairs JSON inherits from UTF-16.
     var escaped = Accepts(allocator, "\"a\\nb\"", "a string with escapes parses");
-    Assert(escaped.AsText().Length() == 3u, "and its escapes become the bytes they name");
+    Assert(escaped.AsText().Length() == 3, "and its escapes become the bytes they name");
     var unicode = Accepts(allocator, "\"\\u0041\"", "a unicode escape parses");
-    Assert(unicode.AsText().Length() == 1u, "into one byte for an ASCII scalar");
+    Assert(unicode.AsText().Length() == 1, "into one byte for an ASCII scalar");
     var astral = Accepts(allocator, "\"\\ud83d\\ude00\"", "a surrogate pair parses");
-    Assert(astral.AsText().Length() == 4u, "into the four UTF-8 bytes of one astral character");
+    Assert(astral.AsText().Length() == 4, "into the four UTF-8 bytes of one astral character");
 
     // Half a pair is half a character, and JSON's escapes are the one place a JSON string is not simply scalar
     // values. This used to be handed to the string builder, which refused it as invalid text, and the parser
@@ -174,26 +174,26 @@ func Main() -> int {
     var keepFirstParser = JsonParser(allocator, "{\"a\":1,\"a\":2}", JsonLimits::Default());
     keepFirstParser.SetDuplicatePolicy(DuplicateKeyPolicy::KeepFirst);
     var keptFirst = Built(allocator, keepFirstParser, "keeping the first accepts the document");
-    Assert(keptFirst.Length() == 1u, "and leaves one member");
+    Assert(keptFirst.Length() == 1, "and leaves one member");
     let nameA = View("a");
     var firstValue: int64 = 0;
-    Assert((*(*keptFirst.Find(nameA)).AsNumber()).AsInt64(@firstValue) && firstValue == 1i64,
+    Assert((*(*keptFirst.Find(nameA)).AsNumber()).AsInt64(@firstValue) && firstValue == 1,
            "which holds the first value");
 
     var keepLastParser = JsonParser(allocator, "{\"a\":1,\"a\":2}", JsonLimits::Default());
     keepLastParser.SetDuplicatePolicy(DuplicateKeyPolicy::KeepLast);
     var keptLast = Built(allocator, keepLastParser, "keeping the last accepts it too");
-    Assert(keptLast.Length() == 1u, "and also leaves one member");
+    Assert(keptLast.Length() == 1, "and also leaves one member");
     var lastValue: int64 = 0;
-    Assert((*(*keptLast.Find(nameA)).AsNumber()).AsInt64(@lastValue) && lastValue == 2i64,
+    Assert((*(*keptLast.Find(nameA)).AsNumber()).AsInt64(@lastValue) && lastValue == 2,
            "which holds the last value");
 
     var keepAllParser = JsonParser(allocator, "{\"a\":1,\"a\":2}", JsonLimits::Default());
     keepAllParser.SetDuplicatePolicy(DuplicateKeyPolicy::KeepAll);
     var keptAll = Built(allocator, keepAllParser, "keeping all accepts it");
-    Assert(keptAll.Length() == 2u, "and keeps both members, so the document is preserved exactly");
+    Assert(keptAll.Length() == 2, "and keeps both members, so the document is preserved exactly");
     var foundValue: int64 = 0;
-    Assert((*(*keptAll.Find(nameA)).AsNumber()).AsInt64(@foundValue) && foundValue == 1i64,
+    Assert((*(*keptAll.Find(nameA)).AsNumber()).AsInt64(@foundValue) && foundValue == 1,
            "with lookup finding the first, which is what a reader encounters");
 
     // Insertion order is kept, which is what lets a document be written back recognisably.
@@ -232,7 +232,7 @@ func Main() -> int {
     // The same choices through the one-call form, which is what most callers will reach for.
     let directAll = ParseWith(allocator, "{\"a\":1,\"a\":2}", JsonLimits::Default(), DuplicateKeyPolicy::KeepAll)
         catch { else => Panic("the one-call form honours a chosen policy") };
-    Assert(directAll.Length() == 2u, "the one-call form honours a chosen policy");
+    Assert(directAll.Length() == 2, "the one-call form honours a chosen policy");
     let directRejectOutcome = ParseWith(allocator, "{\"a\":1,\"a\":2}", JsonLimits::Default(),
                                         DuplicateKeyPolicy::Reject);
     Assert(Refusal(directRejectOutcome, "JsonParseError::DuplicateName(12)"),
@@ -249,22 +249,22 @@ func Main() -> int {
 
     Refuses(counted, "[1,2,\"three\",", "JsonParseError::Truncated(13)",
             "an array that fails partway through is refused");
-    Assert(state.live == 0i32, "and everything the partial array held is released");
+    Assert(state.live == 0, "and everything the partial array held is released");
 
     Refuses(counted, "{\"a\":[1,2],\"b\":\"x\",\"a\":3}", "JsonParseError::DuplicateName(24)",
             "an object with a duplicate name is refused");
-    Assert(state.live == 0i32, "and everything the partial object held is released");
+    Assert(state.live == 0, "and everything the partial object held is released");
 
     Refuses(counted, "[[[\"deep\",1,2],3],", "JsonParseError::Truncated(18)",
             "a nested document that fails is refused");
-    Assert(state.live == 0i32, "and every level of it is released");
+    Assert(state.live == 0, "and every level of it is released");
 
     // A document that parses and is then dropped ends at the same count, so the check above is measuring cleanup
     // rather than a parser that never allocated.
     var whileHeld: int32 = 0;
     ParseAndDrop(counted, "[1,2,\"three\"]", @state, @whileHeld);
-    Assert(whileHeld > 0i32, "and the same document, whole, takes storage");
-    Assert(state.live == 0i32, "which comes back when the document's life ends");
+    Assert(whileHeld > 0, "and the same document, whole, takes storage");
+    Assert(state.live == 0, "which comes back when the document's life ends");
 
     // Insertion order survives everything, including a document whose names are already sorted the other way.
     var reversed = Accepts(allocator, "{\"three\":3,\"two\":2,\"one\":1}", "a reverse-sorted object parses");
@@ -280,6 +280,6 @@ func Main() -> int {
     // builder being fed one byte at a time, which refused half of a multi-byte scalar and dropped it.
     var accented = Accepts(allocator, "\"caf\u{E9}\\ttab\"",
                            "a string with an escape and an accent");
-    Assert(accented.AsText().Length() == 9u, "keeps the accent as well as the escape");
+    Assert(accented.AsText().Length() == 9, "keeps the accent as well as the escape");
     return 0;
 }

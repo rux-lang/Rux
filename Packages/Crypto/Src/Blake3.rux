@@ -82,7 +82,7 @@ pub func Blake3Compress(chaining: *uint32, message: *uint32, counter: uint64, bl
                     into: *var uint32) {
     var state: uint32[16];
     var index: uint = 0;
-    while index < 8u {
+    while index < 8 {
         state[index] = chaining[index];
         index = index + 1;
     }
@@ -91,29 +91,29 @@ pub func Blake3Compress(chaining: *uint32, message: *uint32, counter: uint64, bl
     state[10] = Blake3InitialValue[2];
     state[11] = Blake3InitialValue[3];
     state[12] = (counter & 0xFFFFFFFF) as uint32;
-    state[13] = ((counter >> 32u64) & 0xFFFFFFFF) as uint32;
+    state[13] = ((counter >> 32) & 0xFFFFFFFF) as uint32;
     state[14] = blockLength;
     state[15] = flags;
 
     var words: uint32[16];
     index = 0;
-    while index < 16u {
+    while index < 16 {
         words[index] = message[index];
         index = index + 1;
     }
 
     var round: uint = 0;
-    while round < 7u {
+    while round < 7 {
         Blake3Round(@state[0], @words[0]);
-        if round < 6u {
+        if round < 6 {
             var permuted: uint32[16];
             index = 0;
-            while index < 16u {
+            while index < 16 {
                 permuted[index] = words[Blake3Permutation[index]];
                 index = index + 1;
             }
             index = 0;
-            while index < 16u {
+            while index < 16 {
                 words[index] = permuted[index];
                 index = index + 1;
             }
@@ -123,7 +123,7 @@ pub func Blake3Compress(chaining: *uint32, message: *uint32, counter: uint64, bl
 
     // The feed-forward: the second half is folded into the first, which is what makes the compression one-way.
     index = 0;
-    while index < 8u {
+    while index < 8 {
         into[index] = state[index] ^ state[index + 8];
         into[index + 8] = state[index + 8] ^ chaining[index];
         index = index + 1;
@@ -154,7 +154,7 @@ extend Blake3Chunk {
     func Blake3Chunk(key: uint32[8], counter: uint64, flags: uint32) -> Blake3Chunk {
         var block: char8[64];
         var index: uint = 0;
-        while index < 64u {
+        while index < 64 {
             block[index] = 0u8 as char8;
             index = index + 1;
         }
@@ -170,7 +170,7 @@ extend Blake3Chunk {
 
     // The start flag applies only to the first block of the chunk.
     func StartFlag(self: &Blake3Chunk) -> uint32 {
-        return self.blocksCompressed == 0u ? Blake3ChunkStart : 0;
+        return self.blocksCompressed == 0 ? Blake3ChunkStart : 0;
     }
 
     func Length(self: &Blake3Chunk) -> uint {
@@ -180,10 +180,10 @@ extend Blake3Chunk {
     // Reads the current block as sixteen little-endian words, zero-padded.
     func BlockWords(self: &Blake3Chunk, words: *var uint32) {
         var index: uint = 0;
-        while index < 16u {
+        while index < 16 {
             var word: uint32 = 0;
             var part: uint = 0;
-            while part < 4u {
+            while part < 4 {
                 let position = index * 4 + part;
                 let value = position < self.blockLength ? (self.block[position] as uint8) : 0u8;
                 word = word | ((value as uint32) << ((part * 8) as uint32));
@@ -213,7 +213,7 @@ extend Blake3Chunk {
                 Blake3Compress(@self.chaining[0], @words[0], self.counter, Blake3BlockLength as uint32,
                                self.flags | self.StartFlag(), @output[0]);
                 var copy: uint = 0;
-                while copy < 8u {
+                while copy < 8 {
                     self.chaining[copy] = output[copy];
                     copy = copy + 1;
                 }
@@ -237,10 +237,10 @@ extend Blake3Chunk {
     pub func Output(self: &Blake3Chunk, extraFlags: uint32, into: *var uint32) {
         var words: uint32[16];
         var index: uint = 0;
-        while index < 16u {
+        while index < 16 {
             var word: uint32 = 0;
             var part: uint = 0;
-            while part < 4u {
+            while part < 4 {
                 let position = index * 4 + part;
                 let value = position < self.blockLength ? (self.block[position] as uint8) : 0u8;
                 word = word | ((value as uint32) << ((part * 8) as uint32));
@@ -276,7 +276,7 @@ extend Blake3 {
     func Start(key: uint32[8], flags: uint32) -> Blake3 {
         var stack: uint32[512];
         var index: uint = 0;
-        while index < 512u {
+        while index < 512 {
             stack[index] = 0;
             index = index + 1;
         }
@@ -301,7 +301,7 @@ extend Blake3 {
     func JoinParent(self: &Blake3, left: *uint32, right: *uint32, extraFlags: uint32, into: *var uint32) {
         var words: uint32[16];
         var index: uint = 0;
-        while index < 8u {
+        while index < 8 {
             words[index] = left[index];
             words[index + 8] = right[index];
             index = index + 1;
@@ -316,24 +316,24 @@ extend Blake3 {
     func PushChunk(self: &var Blake3, chaining: *uint32, chunkIndex: uint64) {
         var carried: uint32[8];
         var index: uint = 0;
-        while index < 8u {
+        while index < 8 {
             carried[index] = chaining[index];
             index = index + 1;
         }
         var remaining = chunkIndex;
-        while (remaining & 1) != 0u64 {
+        while (remaining & 1) != 0 {
             self.stackDepth = self.stackDepth - 1;
             var joined: uint32[16];
             self.JoinParent(@self.stack[self.stackDepth * 8], @carried[0], 0, @joined[0]);
             index = 0;
-            while index < 8u {
+            while index < 8 {
                 carried[index] = joined[index];
                 index = index + 1;
             }
-            remaining = remaining >> 1u64;
+            remaining = remaining >> 1;
         }
         index = 0;
-        while index < 8u {
+        while index < 8 {
             self.stack[self.stackDepth * 8 + index] = carried[index];
             index = index + 1;
         }
@@ -377,18 +377,18 @@ extend Blake3 : Digest {
         var rootFlags: uint32 = 0;
         var index: uint = 0;
 
-        if self.stackDepth == 0u {
+        if self.stackDepth == 0 {
             // One chunk is the whole message, so that chunk's final block is the root compression.
             index = 0;
-            while index < 8u {
+            while index < 8 {
                 rootChaining[index] = self.chunk.chaining[index];
                 index = index + 1;
             }
             index = 0;
-            while index < 16u {
+            while index < 16 {
                 var word: uint32 = 0;
                 var part: uint = 0;
-                while part < 4u {
+                while part < 4 {
                     let position = index * 4 + part;
                     let value = position < self.chunk.blockLength ? (self.chunk.block[position] as uint8) : 0u8;
                     word = word | ((value as uint32) << ((part * 8) as uint32));
@@ -407,18 +407,18 @@ extend Blake3 : Digest {
             var carried: uint32[16];
             self.chunk.Output(0, @carried[0]);
             var depth = self.stackDepth;
-            while depth > 1u {
+            while depth > 1 {
                 depth = depth - 1;
                 var joined: uint32[16];
                 self.JoinParent(@self.stack[depth * 8], @carried[0], 0, @joined[0]);
                 index = 0;
-                while index < 16u {
+                while index < 16 {
                     carried[index] = joined[index];
                     index = index + 1;
                 }
             }
             index = 0;
-            while index < 8u {
+            while index < 8 {
                 rootChaining[index] = self.key[index];
                 rootMessage[index] = self.stack[index];
                 rootMessage[index + 8] = carried[index];
@@ -436,9 +436,9 @@ extend Blake3 : Digest {
             Blake3Compress(@rootChaining[0], @rootMessage[0], rootCounter + block, rootLength,
                            rootFlags | Blake3Root, @rootWords[0]);
             index = 0;
-            while index < 16u && written < into.length {
+            while index < 16 && written < into.length {
                 var part: uint = 0;
-                while part < 4u && written < into.length {
+                while part < 4 && written < into.length {
                     into[written] =
                         ((rootWords[index] >> ((part * 8) as uint32)) & 0xFF) as uint8 as char8;
                     written = written + 1;

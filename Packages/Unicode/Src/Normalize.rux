@@ -33,7 +33,7 @@ func DecomposeHangul(offset: uint32, into: var char32[..], at: uint, written: *v
     let lead = HangulLeadBase + offset / (HangulVowelCount * HangulTrailCount);
     let vowel = HangulVowelBase + (offset % (HangulVowelCount * HangulTrailCount)) / HangulTrailCount;
     let trail = offset % HangulTrailCount;
-    let needed: uint = trail == 0u32 ? 2 : 3;
+    let needed: uint = trail == 0 ? 2 : 3;
     if at + needed > into.length { return false; }
     into[at] = lead as char32;
     into[at + 1] = vowel as char32;
@@ -166,7 +166,7 @@ func ComposePair(starter: char32, following: char32, composed: *var char32) -> b
         return true;
     }
     if first >= HangulBase && first < HangulBase + HangulSyllableCount &&
-       (first - HangulBase) % HangulTrailCount == 0u32 && second > HangulTrailBase &&
+       (first - HangulBase) % HangulTrailCount == 0 && second > HangulTrailBase &&
        second < HangulTrailBase + HangulTrailCount {
         *composed = (first + (second - HangulTrailBase)) as char32;
         return true;
@@ -204,7 +204,7 @@ func Compose(items: var char32[..], length: uint) -> uint {
     if length == 0 { return 0; }
     var result: uint = 1;
     var starterAt: uint = 0;
-    var haveStarter = CombiningClassOf(items.data[0]) == 0u32;
+    var haveStarter = CombiningClassOf(items.data[0]) == 0;
     // The class of the last kept character: what a new mark must exceed to reach the starter behind it.
     var lastClass = CombiningClassOf(items.data[0]);
 
@@ -214,13 +214,13 @@ func Compose(items: var char32[..], length: uint) -> uint {
         let currentClass = CombiningClassOf(current);
         var composed = 0u32 as char32;
 
-        if haveStarter && lastClass < currentClass && currentClass != 0u32 &&
+        if haveStarter && lastClass < currentClass && currentClass != 0 &&
            ComposePair(items.data[starterAt], current, @composed) {
             // An unblocked mark reaches its starter; the classes of what stands between are unchanged.
             items.data[starterAt] = composed;
         }
-        else if currentClass == 0u32 {
-            if haveStarter && lastClass == 0u32 && ComposePair(items.data[starterAt], current, @composed) {
+        else if currentClass == 0 {
+            if haveStarter && lastClass == 0 && ComposePair(items.data[starterAt], current, @composed) {
                 // Two adjacent starters with a composed form, which is Hangul's L+V and LV+T.
                 items.data[starterAt] = composed;
             }

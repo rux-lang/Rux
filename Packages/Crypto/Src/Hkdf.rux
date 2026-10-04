@@ -34,7 +34,7 @@ pub const HkdfMaximumBlocks: uint = 255;
 pub func HkdfExtract<D: Digest>(prototype: D, salt: char8[..], material: char8[..], into: var char8[..]) {
     var probe = prototype;
     let digestLength = probe.DigestLength();
-    if salt.length > 0u {
+    if salt.length > 0 {
         HmacOf<D>(prototype, salt, material, into);
         return;
     }
@@ -73,7 +73,7 @@ pub func HkdfExpand<D: Digest>(prototype: D, key: char8[..], info: char8[..],
     var counter: uint8 = 1;
     while written < into.length {
         var round = Hmac<D>(prototype, key);
-        if previousLength > 0u {
+        if previousLength > 0 {
             // Every block after the first is chained from the one before it.
             round.Update((@previous[0])[..previousLength]);
         }
