@@ -78,6 +78,29 @@ func LeaveOrStop(day: uint) -> int32 {
     }
 }
 
+// A match that produces a view may still have an arm that never produces one.
+func DayName(day: uint) -> char8[..] {
+    return match day {
+        0 => "Monday",
+        1 => "Tuesday",
+        else => Panic("out of range")
+    };
+}
+
+interface Measured {
+    func Size() -> int32;
+}
+
+struct Box {
+    side: int32;
+}
+
+extend Box : Measured {
+    func Size(self: &Box) -> int32 {
+        return self.side * self.side;
+    }
+}
+
 // A guard applies to the whole pattern before it, a range included.
 func Bucket(value: int32, small: bool) -> int32 {
     return match value {
@@ -125,6 +148,16 @@ func Main() -> int {
     // Arms that return, or call a function that never returns, satisfy the function's result.
     Assert(Leave(0) == 10i32 && Leave(3) == 11i32, "every arm returns");
     Assert(LeaveOrStop(0) == 1i32, "an arm that panics need not produce a value");
+
+    // A slice or interface result with a diverging arm.
+    Assert(DayName(0).length == 6 && DayName(1).length == 7, "a view-typed match keeps its producing arms");
+    let box = Box { side: 3i32 };
+    let present = true;
+    let measured: Measured = match present {
+        true => box,
+        false => Panic("nothing to measure")
+    };
+    Assert(measured.Size() == 9i32, "an interface-typed match keeps its producing arm");
 
     // A guard after a range pattern guards the range.
     Assert(Bucket(5i32, true) == 1i32, "a guarded range takes its arm when the guard holds");

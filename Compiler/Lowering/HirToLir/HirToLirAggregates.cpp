@@ -587,6 +587,10 @@ void HirToLirContext::StoreExprValueIntoSlot(const HirExpr &expr, LirReg slot, c
     }
     if (IsViewType(type)) {
         const LirReg src = LowerLValue(expr);
+        // A diverging arm, such as a call to `Panic`, produced no view to copy.
+        if (IsTerminated()) {
+            return;
+        }
         CopySliceValue(src, slot, type);
         return;
     }
@@ -599,6 +603,9 @@ void HirToLirContext::StoreExprValueIntoSlot(const HirExpr &expr, LirReg slot, c
     if (IsInterfaceType(type)) {
         // Copy the 16-byte fat pointer {data, vtable} field by field.
         const LirReg srcBase = LowerExpr(expr); // returns fat-ptr address
+        if (IsTerminated()) {
+            return;
+        }
         const TypeRef ptrType = TypeRef::MakePointer(TypeRef::MakeOpaque());
         LirReg i0 = EmitConst("0", TypeRef::MakeUInt64());
         LirReg srcData = EmitIndexPtr(srcBase, i0, TypeRef::MakeUInt64());

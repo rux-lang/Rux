@@ -66,7 +66,9 @@ func Main() -> int {
   the placeholder `A`.
 - **Course workaround:** `SumTypes/Is` quotes only the error line.
 
-## D4. A slice-typed `match` expression with a diverging arm produces invalid LIR
+## D4. A slice-typed `match` expression with a diverging arm produces invalid LIR (fixed)
+
+**Fixed**; covered by `Tests/Language/Match`.
 
 ```rux
 import Core::Panic;

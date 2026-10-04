@@ -883,6 +883,11 @@ LirReg HirToLirContext::LowerLValue(const HirExpr &expr) {
     }
     // Non-addressable fallback: spill to a temp slot.
     LirReg val = LowerExpr(expr);
+    // A call that never returns, such as `Panic`, closes its block: there is no value to spill, and the caller sees
+    // the terminated block and stores nothing either.
+    if (IsTerminated()) {
+        return val;
+    }
     LirReg slot = EmitAlloca(expr.type);
     EmitStore(val, slot, expr.type);
     return slot;
