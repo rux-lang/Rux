@@ -117,6 +117,12 @@ private:
     ParsedAttrs ParseAttrs();
     static std::string DecodeStringLiteralText(const std::string &text);
     void ParseAttributeCall(ParsedAttrs &attrs);
+    /// Parses one `#Name()` attribute written before a parameter, with the current token on its '#'. `#Format()` is
+    /// the only parameter attribute.
+    void ParseParameterAttribute(Param &parameter);
+    /// Checks where `#Format()` was written in one parameter list: once, on a parameter that is neither the receiver
+    /// nor variadic, in a list whose last parameter is variadic.
+    void ValidateFormatParameters(const std::vector<Param> &params);
     DeclPtr ApplyAttrs(DeclPtr decl, ParsedAttrs &attrs);
     DeclPtr ParseExternDecl(bool isPublic, ParsedAttrs &attrs);
     DeclPtr ParseIntrinsicDecl(bool isPublic, ParsedAttrs &attrs, SourceLocation intrinsicLoc);

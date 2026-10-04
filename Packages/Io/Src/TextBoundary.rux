@@ -190,13 +190,14 @@ pub func WriteValueLine<T: Display>(writer: &var TextWriter, value: &T) -> ! For
 /// does not match and a destination that refused all leave no terminator behind. Nothing is allocated: the
 /// arguments write themselves as they are reached. They arrive as interface values, which is what a variadic can
 /// carry, so a move-only argument goes through `WriteValueLine` instead of through a placeholder.
-/// Reports the formatting failure when there is one, without attempting the newline. Otherwise reports whatever the
-/// newline's write reported.
+/// A literal `format` has its placeholders counted against the arguments while compiling, since it is marked
+/// `#Format()`. Reports the formatting failure when there is one, without attempting the newline. Otherwise reports
+/// whatever the newline's write reported.
 /// @param writer the destination
 /// @param format the pattern, whose placeholders are filled from the arguments that follow it
 /// @returns success when the whole line was accepted
 /// @see https://rux-lang.dev/docs/api/io/write-format-line
-pub func WriteFormatLine(writer: &var TextWriter, format: char8[..],
+pub func WriteFormatLine(writer: &var TextWriter, #Format() format: char8[..],
                          args: Display...) -> ! FormatError {
     WriteFormat(writer, format, args...)?;
     return writer.Write("\n");

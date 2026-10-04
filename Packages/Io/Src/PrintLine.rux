@@ -32,9 +32,12 @@ pub func PrintLine(value: String) -> IoError? {
     return Terminate(Print(value));
 }
 
-/// Provides the public `PrintLine` operation.
-/// @param value the value to write
-/// @returns the failure, or `none` when the whole value was written
+/// Writes text to standard output verbatim, then a newline.
+/// The text is not a pattern: with no arguments after it nothing is substituted and no brace is special, so
+/// `PrintLine("{{}}")` prints `{{}}`. Only the overload that takes arguments reads `{{` and `}}` as escapes.
+/// The newline is written only when the text was.
+/// @param value the text to write
+/// @returns the failure, or `none` when the whole line was written
 /// @see https://rux-lang.dev/docs/api/io/print-line
 pub func PrintLine(value: char8[..]) -> IoError? {
     return Terminate(Print(value));
@@ -48,11 +51,14 @@ pub func PrintLine(value: StringView) -> IoError? {
     return Terminate(Print(value));
 }
 
-/// Provides the public `PrintLine` operation.
-/// @param format the format string, with `{}` for each argument
-/// @returns the failure, or `none` when the whole value was written
+/// Writes `format` with each placeholder replaced by the next argument, then a newline.
+/// A placeholder is `{}` or `{:spec}`, and `{{` and `}}` write a literal brace. `format` is marked `#Format()`, so a
+/// string literal passed for it has its placeholders counted against the arguments while compiling, and a mismatch is
+/// a compile error. The newline is written only when the whole pattern was.
+/// @param format the format string, with a placeholder for each argument
+/// @returns the failure, or `none` when the whole line was written
 /// @see https://rux-lang.dev/docs/api/io/print-line
-pub func PrintLine(format: char8[..], args: Display...) -> IoError? {
+pub func PrintLine(#Format() format: char8[..], args: Display...) -> IoError? {
     return Terminate(Print(format, args...));
 }
 

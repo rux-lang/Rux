@@ -1,0 +1,7 @@
+8:12: error: '#Format' parameter 'format' has type 'int32', but a format string must be 'char8[..]'
+16:10: error: format string has 2 placeholders, but 1 argument was provided
+17:10: error: format string has 1 placeholder, but 2 arguments were provided
+18:10: error: format string has 1 placeholder, but 0 arguments were provided
+19:14: error: format string has 2 placeholders, but 1 argument was provided
+20:10: error: format string has 3 placeholders, but 2 arguments were provided
+21:17: error: format string has 3 placeholders, but 2 arguments were provided

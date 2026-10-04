@@ -644,6 +644,12 @@ struct Param {
     TypeExprPtr type;
     bool isVariadic = false; // for extern ...
     std::optional<ExprPtr> defaultValue;
+    /// Written `#Format()` before the name: this parameter is the format string whose placeholders the variadic
+    /// arguments after it fill. A call that passes a string literal here has its placeholders counted against those
+    /// arguments while compiling. The attribute is all the compiler knows; it recognizes no package by name.
+    bool isFormat = false;
+    /// Where the `#Format()` attribute was written, when `isFormat` is set.
+    SourceLocation formatLocation;
 
     /// The method receiver, written `self: T`, `self: *T` or `self: *var T`. A first parameter spelled this way is what
     /// makes a `func` inside an `extend` block a method rather than an associated function.

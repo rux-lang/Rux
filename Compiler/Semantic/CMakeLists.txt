@@ -33,6 +33,7 @@ rux_add_component(RuxSemantic
     Analysis/Constraints.cpp
     Analysis/MoveState.cpp
     Analysis/DropGlue.cpp
+    Analysis/FormatArguments.cpp
     Analysis/FunctionSignatures.cpp
     Analysis/Iteration.cpp
     Analysis/Statements.cpp

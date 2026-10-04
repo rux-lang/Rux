@@ -305,6 +305,70 @@ void Parser::ParseAttributeCall(ParsedAttrs &attrs) {
     ExpectBefore(TokenKind::RightParen, "')' to close the attribute call");
 }
 
+void Parser::ParseParameterAttribute(Param &parameter) {
+    const SourceLocation attributeLoc = Advance().location; // consume '#'
+    const SourceLocation nameLoc = CurrentLocation();
+    const std::string name = Advance().text;
+    if (name != "Format") {
+        EmitError(nameLoc, std::format("unknown parameter attribute '#{}'", name),
+                  "a parameter accepts only '#Format()', which marks a format string");
+        if (Match(TokenKind::LeftParen)) {
+            while (!Check(TokenKind::RightParen) && !IsAtEnd()) {
+                Advance();
+            }
+            ExpectBefore(TokenKind::RightParen, "')' to close the attribute call");
+        }
+        return;
+    }
+
+    ExpectBefore(TokenKind::LeftParen, "'(' after '#Format'");
+    if (parameter.isFormat) {
+        EmitError(nameLoc, "duplicate '#Format' attribute");
+    }
+    parameter.isFormat = true;
+    parameter.formatLocation = attributeLoc;
+    if (!Check(TokenKind::RightParen)) {
+        EmitError(CurrentLocation(), "'#Format' does not accept arguments");
+        while (!Check(TokenKind::RightParen) && !IsAtEnd()) {
+            Advance();
+        }
+    }
+    ExpectBefore(TokenKind::RightParen, "')' to close the attribute call");
+}
+
+void Parser::ValidateFormatParameters(const std::vector<Param> &params) {
+    const Param *format = nullptr;
+    for (const Param &parameter : params) {
+        if (!parameter.isFormat) {
+            continue;
+        }
+        if (parameter.IsReceiver()) {
+            EmitError(parameter.formatLocation, "'#Format' cannot be applied to the receiver 'self'");
+            continue;
+        }
+        if (parameter.isVariadic) {
+            EmitError(parameter.formatLocation,
+                      std::format("'#Format' cannot be applied to variadic parameter '{}'", parameter.name),
+                      "apply it to the format string before the variadic parameter");
+            continue;
+        }
+        if (format) {
+            EmitError(parameter.formatLocation,
+                      std::format("'#Format' is already applied to parameter '{}'", format->name),
+                      "a function has at most one format string");
+            continue;
+        }
+        format = &parameter;
+    }
+    // The placeholders are counted against the arguments a variadic parameter collects, so without one there is
+    // nothing to count them against.
+    if (format && (params.empty() || !params.back().isVariadic || params.back().name == "...")) {
+        EmitError(format->formatLocation,
+                  std::format("'#Format' parameter '{}' must be followed by a variadic parameter", format->name),
+                  "declare the arguments the placeholders take as the last parameter, as in 'args: Display...'");
+    }
+}
+
 /// Parses the attributes that precede a declaration. A declaration may carry any number of `#Name(...)` calls. The
 /// removed `#{...}` metadata form is consumed only for recovery and always produces an error.
 Parser::ParsedAttrs Parser::ParseAttrs() {

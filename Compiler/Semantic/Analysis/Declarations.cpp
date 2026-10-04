@@ -88,6 +88,15 @@ void AnalysisContext::CheckFuncDecl(const FuncDecl &d, bool isMethod) {
         if (sym.type.kind != TypeRef::Kind::Reference) {
             ValidateStoredType(sym.type, param.location, "function parameter");
         }
+        // A format string's placeholders are counted in the bytes of a UTF-8 literal, so the attribute belongs only
+        // on the parameter type such a literal is passed as.
+        if (param.isFormat && !param.isVariadic && !sym.type.IsUnknown() &&
+            !(sym.type.IsSlice() && !sym.type.inner.empty() && sym.type.inner.front().kind == TypeRef::Kind::Char8 &&
+              !sym.type.inner.front().isMut)) {
+            EmitError(param.formatLocation,
+                      std::format("'#Format' parameter '{}' has type '{}', but a format string must be 'char8[..]'",
+                                  param.name, sym.type.ToString()));
+        }
         sym.isMut = false;
         DefineTrackedLocal(std::move(sym), true);
         if (param.defaultValue) {

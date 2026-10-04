@@ -155,6 +155,9 @@ DeclPtr Parser::ParseDecl() {
 
 Param Parser::ParseParam(const bool allowVariadic) {
     Param parameter;
+    while (Check(TokenKind::Hash) && Peek(1).Is(TokenKind::Ident)) {
+        ParseParameterAttribute(parameter);
+    }
     parameter.location = CurrentLocation();
 
     if (allowVariadic && Check(TokenKind::DotDotDot)) {
@@ -227,6 +230,7 @@ std::vector<Param> Parser::ParseParamList(const bool allowVariadic) {
         }
         EmitExpected(CurrentLocation(), "',' between parameters", "separate adjacent parameters with ','");
     }
+    ValidateFormatParameters(params);
     return params;
 }
 

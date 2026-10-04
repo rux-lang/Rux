@@ -392,6 +392,8 @@ func Main() -> int {
 - **`Io` placeholders.** `PrintLine("{{}}")` with no arguments prints `{{}}` literally, but with
   arguments `{{` collapses to `{`. A placeholder count mismatch, such as `PrintLine("{} {}", 1)`,
   prints nothing; the failure is reported only through the returned `IoError?`.
+  **Fixed**; covered by the `FormatPlaceholders` and `FormatAttributeDeclarations` goldens,
+  `ParserDiagnosticsTests.cpp`, `ParserDumpTests.cpp` and `SemanticTypeCallDiagnosticsTests.cpp`.
 - **`///` inside a function body** is refused with `expected an expression before '/// …'`. A
   diagnostic saying documentation comments attach only to declarations would be clearer.
   **Fixed**; covered by the `DocumentationInBlock` golden.

@@ -251,6 +251,9 @@ void DeclarationPrinter::PrintFuncDecl(const FuncDecl &decl) {
             out << "...";
             continue;
         }
+        if (parameter.isFormat) {
+            out << "#Format() ";
+        }
         out << parameter.name << ": " << TypeString(parameter.type.get());
     }
     out << ')';

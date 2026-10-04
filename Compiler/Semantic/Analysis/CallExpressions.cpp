@@ -317,6 +317,7 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
             if (callAccepted) {
                 const std::vector<TypeRef> parameterTypes(funcType.inner.begin(), funcType.inner.begin() + paramCount);
                 ConsumeCallArguments(*e, argTypes, &parameterTypes);
+                CheckFormatArguments(*e, *decl, false);
             }
             RecordFunctionBinding(*e, *decl, ResolvedCallableBinding::DispatchKind::Direct, substitutions);
             return funcType.inner.empty() ? TypeRef::MakeUnknown() : funcType.inner.back();
@@ -620,6 +621,7 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
 
             if (callAccepted) {
                 ConsumeCallArguments(*e, argTypes, &paramTypes);
+                CheckFormatArguments(*e, *method, true);
             }
             RecordFunctionBinding(*e, *method, ResolvedCallableBinding::DispatchKind::Interface, {}, receiverType);
             return ResolveInterfaceMethodReturnType(*method, receiverType);
@@ -881,6 +883,9 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
                     for (std::size_t i = 0; i < count; ++i) {
                         substitutions.emplace(decl->typeParams[i].name, ResolveType(*e->typeArgs[i]));
                     }
+                }
+                if (arityOk) {
+                    CheckFormatArguments(*e, *decl, false);
                 }
                 RecordFunctionBinding(*e, *decl, ResolvedCallableBinding::DispatchKind::Direct,
                                       std::move(substitutions));

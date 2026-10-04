@@ -227,6 +227,16 @@ When several overloads accept a call, declaration order never decides it. An ove
 
 Members are always named through their value, such as `self.length`; a receiver never enables implicit field lookup. `Self` remains available only where an interface must name the unknown concrete implementing type.
 
+### Attributes
+
+An attribute is a `#Name(...)` call written before what it describes. Before a declaration, `#Abi(.Win64)` selects a calling convention, `#Link("library")` describes how an extern declaration is imported, `#NoReturn()` marks a function that never returns to its caller, `#Allow("naming.type")` suppresses one lint rule for that declaration, and `#Error("message")` and `#Warn("message")` report at each use. `#Format()` is the one attribute written before a parameter:
+
+```rux
+pub func PrintLine(#Format() format: char8[..], args: Display...) -> IoError?
+```
+
+It marks a format string: a `char8[..]` parameter followed by a variadic parameter whose arguments fill its placeholders. When a call passes a string literal for it, the compiler counts the literal's placeholders — `{}` and `{:spec}`, with `{{` and `}}` as literal braces — against the variadic arguments, and a mismatch is an error such as `format string has 2 placeholders, but 1 argument was provided`. A format that is not a literal, a spread argument, and a pattern that is itself malformed are left to the formatter's run-time check. The attribute is all the compiler knows: it recognizes no package or function by name, so any function taking a format string can declare one. `#Format()` takes no arguments, appears at most once per parameter list, and cannot be applied to the receiver or to the variadic parameter itself.
+
 ## Values, References, and Raw Pointers
 
 The five storage-facing type forms are:

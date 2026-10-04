@@ -1,0 +1,10 @@
+// Where '#Format()' may be written: once, on a parameter followed by a variadic one, and with no arguments.
+func Twice(#Format() first: char8[..], #Format() second: char8[..], values: int32...) {}
+
+func Alone(#Format() format: char8[..]) {}
+
+func OnVariadic(format: char8[..], #Format() values: int32...) {}
+
+func WithArgument(#Format(1) format: char8[..], values: int32...) {}
+
+func Unknown(#Shape() format: char8[..], values: int32...) {}

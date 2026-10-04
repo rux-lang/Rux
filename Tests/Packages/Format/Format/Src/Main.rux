@@ -118,6 +118,13 @@ func InvalidAt(outcome: String ! FormatError, at: uint) -> bool {
     };
 }
 
+// A pattern the compiler cannot see as a literal. A literal passed for a `#Format()` parameter has its placeholders
+// counted while compiling, so a mismatch is a compile error; the run-time failure is reached through a pattern known
+// only when the program runs, which is what this stands for.
+func Pattern(text: char8[..]) -> char8[..] {
+    return text;
+}
+
 // Consumes the outcome and reports whether it failed with `ArgumentCountMismatch(expected, supplied)`.
 func MismatchOf(outcome: String ! FormatError, expected: uint, supplied: uint) -> bool {
     return match <-outcome {
@@ -159,7 +166,7 @@ func PropagationCases(allocator: Allocator) {
     Assert(InvalidAt(Render(counted, "é 😀 {} {:>>>}", 1, 2), 15), "embedded specification positions count UTF-8 bytes");
     Assert(InvalidAt(Render(counted, "é 😀 {} {bad}", 1, 2), 12), "a malformed later placeholder retains its absolute byte offset");
     Assert(InvalidAt(Render(counted, "é {} tail {", 1), 11), "an unterminated later placeholder points at its opening byte");
-    Assert(MismatchOf(Render(counted, "é {} {} {}", 1), 3, 1), "both words of argument-count failures survive Render");
+    Assert(MismatchOf(Render(counted, Pattern("é {} {} {}"), 1), 3, 1), "both words of argument-count failures survive Render");
     Assert(counts.live == 0 && counts.allocations == 4 && counts.releases == 4 && counts.invalidReleases == 0,
            "each validation failure releases its reserved builder once");
 
@@ -215,11 +222,11 @@ func Main() -> int {
 
     // The argument count has to match the placeholder count exactly, in both directions, and the failure carries
     // both numbers — expected first, supplied second — because which way the mismatch runs is what a caller fixes.
-    if !MismatchOf(Render(allocator, "{}", 1, 2), 1, 2) { return 30; }
-    if !MismatchOf(Render(allocator, "[{}][{}]", 1), 2, 1) { return 31; }
-    if !MismatchOf(Render(allocator, "{}"), 1, 0) { return 32; }
-    if !MismatchOf(Render(allocator, "none", 1), 0, 1) { return 33; }
-    if !MismatchOf(Render(allocator, "{{}} {}", 1, 2), 1, 2) { return 34; }
+    if !MismatchOf(Render(allocator, Pattern("{}"), 1, 2), 1, 2) { return 30; }
+    if !MismatchOf(Render(allocator, Pattern("[{}][{}]"), 1), 2, 1) { return 31; }
+    if !MismatchOf(Render(allocator, Pattern("{}")), 1, 0) { return 32; }
+    if !MismatchOf(Render(allocator, Pattern("none"), 1), 0, 1) { return 33; }
+    if !MismatchOf(Render(allocator, Pattern("{{}} {}"), 1, 2), 1, 2) { return 34; }
 
     // Escaped braces are the only way to write one, and a lone brace of either kind is now a refusal rather than
     // literal text. The offset is the brace itself: that is where the pattern went wrong, not where the scan
@@ -288,7 +295,7 @@ func Main() -> int {
     if second.Length() != 0 { return 93; }
     var third = BufferWriter((@room[0])[..8]);
     let last: &var TextWriter = third;
-    if Succeeded(WriteFormat(last, "abc{}", 1, 2)) { return 94; }
+    if Succeeded(WriteFormat(last, Pattern("abc{}"), 1, 2)) { return 94; }
     if third.Length() != 0 { return 95; }
 
     // A failed render gives its block back. Counted, because a leak leaves the same error behind as a clean
@@ -300,7 +307,7 @@ func Main() -> int {
     if counts.live != 0 { return 101; }
     if !InvalidAt(Render(counted, "abcdefghijklmnop {", 1), 17) { return 102; }
     if counts.live != 0 { return 103; }
-    if !MismatchOf(Render(counted, "abcdefghijklmnop {}", 1, 2), 1, 2) { return 104; }
+    if !MismatchOf(Render(counted, Pattern("abcdefghijklmnop {}"), 1, 2), 1, 2) { return 104; }
     if counts.live != 0 { return 105; }
 
     return 0;

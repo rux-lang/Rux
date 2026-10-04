@@ -899,6 +899,10 @@ private:
                                std::unordered_map<std::string, TypeRef> substitutions = {},
                                std::optional<TypeRef> receiverType = std::nullopt);
     void RecordExternBinding(const CallExpr &call, const ExternFuncDecl &declaration);
+    /// Counts the placeholders of a string literal passed for a `#Format()` parameter against the arguments the
+    /// declaration's variadic parameter collects, and reports a mismatch. A spread argument, a format that is not a
+    /// literal, and a malformed pattern are left to the run-time check.
+    void CheckFormatArguments(const CallExpr &call, const FuncDecl &declaration, bool isMethod);
     /// The element type the destination of `array` fixes, when it fixes one its elements can be converted to.
     [[nodiscard]] std::optional<TypeRef> ExpectedArrayElementType(const ArrayExpr &array) const;
     /// The type arguments of a generic variant case written without them, when its destination names an instantiation

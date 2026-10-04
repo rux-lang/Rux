@@ -122,6 +122,12 @@ func Holds(slot: IoError?, kind: IoErrorKind) -> bool {
     };
 }
 
+// A pattern the compiler cannot see as a literal. A literal passed for a `#Format()` parameter has its placeholders
+// counted while compiling, so a run-time count mismatch is reached through a pattern known only when the program runs.
+func Pattern(text: char8[..]) -> char8[..] {
+    return text;
+}
+
 func Main() -> int {
     // Going out: success is the formatter's success value, and every failure is the one case the protocol has.
     Assert(Succeeded(FromIoError(.Success(()))), "a stream that took the bytes reports success");
@@ -218,7 +224,7 @@ func Main() -> int {
     // The same rule for a pattern. Each of the two ways a pattern can be wrong leaves no terminator behind.
     Assert(Failed(WriteFormatLine(third_out, "abc{")), "a pattern that does not parse is refused");
     Assert(third.length == 0, "with no newline after it");
-    Assert(Failed(WriteFormatLine(third_out, "a {} b {}", 1i32)), "and so is one short of arguments");
+    Assert(Failed(WriteFormatLine(third_out, Pattern("a {} b {}"), 1i32)), "and so is one short of arguments");
     Assert(third.length == 0, "also leaving nothing");
 
     // And a pattern that is right does write its line, so the rule is not simply never writing one.

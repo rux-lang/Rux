@@ -107,7 +107,9 @@ func ValidatePattern(format: char8[..]) -> uint ! FormatError {
 /// `ParseFormatSpec` for the grammar. `{{` and `}}` stand for a literal brace, and are the only way to write one.
 /// The pattern is checked before any of it is written, so a pattern that is wrong produces no output rather than a
 /// prefix of one. What is checked is the pattern and the argument count, both of which are known at the call site;
-/// a value's own rendering can still fail partway, and what it managed to write stays written.
+/// a value's own rendering can still fail partway, and what it managed to write stays written. `format` is marked
+/// `#Format()`, so when it is a string literal the compiler counts its placeholders against the arguments and a
+/// mismatch is reported while compiling rather than as `ArgumentCountMismatch`.
 /// Reports `InvalidSpecification` with the byte offset into `format` for a specification that does not parse, a
 /// brace the grammar does not allow, or a placeholder with no closing brace; `ArgumentCountMismatch` with the
 /// placeholders counted and the arguments supplied when the two differ; and otherwise whatever the destination or
@@ -117,7 +119,7 @@ func ValidatePattern(format: char8[..]) -> uint ! FormatError {
 /// @param format the pattern to write
 /// @returns success when the whole pattern and every argument were accepted
 /// @see https://rux-lang.dev/docs/api/format/write-format
-pub func WriteFormat(writer: &var TextWriter, format: char8[..], args: Display...) -> ! FormatError {
+pub func WriteFormat(writer: &var TextWriter, #Format() format: char8[..], args: Display...) -> ! FormatError {
     let expected = ValidatePattern(format)?;
     if expected != args.length {
         fail FormatError::ArgumentCountMismatch(expected, args.length);
@@ -179,7 +181,7 @@ pub func WriteFormat(writer: &var TextWriter, format: char8[..], args: Display..
 /// @param format the pattern to render
 /// @returns the rendered string, or why it could not be produced
 /// @see https://rux-lang.dev/docs/api/format/render
-pub func Render(allocator: Allocator, format: char8[..], args: Display...) -> String ! FormatError {
+pub func Render(allocator: Allocator, #Format() format: char8[..], args: Display...) -> String ! FormatError {
     var builder = StringBuilder(allocator);
     builder.Reserve(format.length + args.length * 8)? else (e => FromTextError(e));
     let sink: &var TextWriter = builder;

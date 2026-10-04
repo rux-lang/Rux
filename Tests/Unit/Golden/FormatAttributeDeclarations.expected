@@ -1,0 +1,5 @@
+2:40: error: '#Format' is already applied to parameter 'first'
+4:12: error: '#Format' parameter 'format' must be followed by a variadic parameter
+6:36: error: '#Format' cannot be applied to variadic parameter 'values'
+8:27: error: '#Format' does not accept arguments
+10:15: error: unknown parameter attribute '#Shape'

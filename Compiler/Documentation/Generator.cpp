@@ -438,7 +438,7 @@ std::string FunctionSignature(const FuncDecl &function) {
         if (parameter.isVariadic)
             text += "...";
         else
-            text += parameter.name + ": " + TypeText(parameter.type.get());
+            text += (parameter.isFormat ? "#Format() " : "") + parameter.name + ": " + TypeText(parameter.type.get());
     }
     text += ')';
     if (function.returnType)

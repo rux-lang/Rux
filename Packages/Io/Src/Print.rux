@@ -85,12 +85,15 @@ pub func Print(value: char8[..]) -> IoError? {
 }
 
 /// Writes `format` to standard output with each `{}` replaced by the next argument.
-/// Allocates nothing: the arguments write themselves to the stream as they are reached. Failures report as
-/// `PrintValue`'s do.
-/// @param format the format string, with `{}` for each argument
+/// A placeholder is `{}` or `{:spec}`, and `{{` and `}}` write a literal brace. `format` is marked `#Format()`, so a
+/// string literal passed for it has its placeholders counted against the arguments while compiling, and a mismatch is
+/// a compile error; a pattern only known at run time that does not match reports through the returned failure and
+/// prints nothing. Allocates nothing: the arguments write themselves to the stream as they are reached. Failures
+/// report as `PrintValue`'s do.
+/// @param format the format string, with a placeholder for each argument
 /// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print-format
-pub func Print(format: char8[..], args: Display...) -> IoError? {
+pub func Print(#Format() format: char8[..], args: Display...) -> IoError? {
     var failure: IoError? = none;
     var sink = ConsoleWriter(@failure);
     let writer: &var TextWriter = sink;

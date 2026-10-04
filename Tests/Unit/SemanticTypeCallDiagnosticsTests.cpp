@@ -1,6 +1,7 @@
 #include "Lexer/Lexer.h"
 #include "Lowering/AstToHir/AstToHir.h"
 #include "Semantic/SemanticAnalyzer.h"
+#include "SemanticTestSupport.h"
 #include "Syntax/Parser/Parser.h"
 
 #include <algorithm>
@@ -477,4 +478,74 @@ TEST_CASE("a cast between two concrete types is still rejected where it is writt
 
     REQUIRE_EQ(diagnostics.size(), 1);
     CHECK_EQ(diagnostics[0].message, "cannot cast value of type 'Point' to 'int32'");
+}
+
+TEST_CASE("a literal format string is counted against the variadic arguments after it") {
+    const auto diagnostics = AnalyzeSource(R"(
+        func Show(#Format() format: char8[..], values: int32...) {}
+        func Main() {
+            let one = 1i32;
+            Show("{} {}", one);
+            Show("{}", one, one);
+            Show("{} {:>4} {{}} }}", one, one);
+        }
+    )");
+
+    REQUIRE_EQ(diagnostics.size(), 2);
+    CHECK_EQ(diagnostics[0].message, "format string has 2 placeholders, but 1 argument was provided");
+    CHECK_EQ(diagnostics[0].location.line, 5);
+    CHECK_EQ(diagnostics[0].location.column, 18);
+    REQUIRE_FALSE(diagnostics[0].notes.empty());
+    CHECK(diagnostics[0].notes.front().contains("format parameter 'format' of 'Show' declared at"));
+    REQUIRE(diagnostics[0].help.has_value());
+    CHECK_EQ(*diagnostics[0].help, "pass one argument for each '{}' placeholder");
+    CHECK_EQ(diagnostics[1].message, "format string has 1 placeholder, but 2 arguments were provided");
+}
+
+TEST_CASE("a format string the compiler cannot count is left to the run-time check") {
+    const auto diagnostics = AnalyzeSource(R"(
+        func Show(#Format() format: char8[..], values: int32...) {}
+        func Plain(format: char8[..], values: int32...) {}
+        func Main() {
+            let one = 1i32;
+            let pattern = "{} {}";
+            Show(pattern, one);
+            let values: int32[2] = [1i32, 2i32];
+            Show("{}", values[..]...);
+            Show("{0} {name}", one);
+            Show("{", one);
+            Plain("{} {}", one);
+            Show("\u{7B}\u{7D}", one);
+        }
+    )");
+
+    CHECK(diagnostics.empty());
+}
+
+TEST_CASE("the format check follows the attribute across packages, not a package name") {
+    const std::string dependency = R"(
+        pub func Say(#Format() format: char8[..], values: int32...) {}
+        pub func Echo(format: char8[..], values: int32...) {}
+    )";
+    const auto imported = Rux::Testing::SemanticTestSupport::AnalyzeWithDep(R"(
+        import Talk::{ Echo, Say };
+        func Main() -> int {
+            Say("{} {} {}", 1i32, 2i32);
+            Echo("{} {} {}", 1i32, 2i32);
+            return 0;
+        }
+    )",
+                                                                            "Talk", dependency);
+    REQUIRE_EQ(imported.size(), 1);
+    CHECK_EQ(imported[0].message, "format string has 3 placeholders, but 2 arguments were provided");
+}
+
+TEST_CASE("a format parameter must be a UTF-8 string slice") {
+    const auto diagnostics = AnalyzeSource(R"(
+        func Show(#Format() format: int32, values: int32...) {}
+    )");
+
+    REQUIRE_EQ(diagnostics.size(), 1);
+    CHECK_EQ(diagnostics[0].message,
+             "'#Format' parameter 'format' has type 'int32', but a format string must be 'char8[..]'");
 }

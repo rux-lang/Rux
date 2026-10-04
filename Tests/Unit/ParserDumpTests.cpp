@@ -697,3 +697,23 @@ func Main() -> int {
 )";
     CHECK_EQ(output, expected);
 }
+
+TEST_CASE("AST dumps keep the format attribute on its parameter") {
+    constexpr std::string_view source = "func Show(#Format() format: char8[..], values: int32...) {}\n";
+
+    Lexer lexer(std::string(source), "format-dump.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+    Parser parser(std::move(lexed.tokens), "format-dump.rux");
+    auto parsed = parser.Parse();
+    REQUIRE_FALSE(parsed.HasErrors());
+
+    const auto path = std::filesystem::temp_directory_path() / "rux-parser-format-dump.ast";
+    REQUIRE(Parser::DumpAst(parsed, path));
+    std::ifstream input(path);
+    const std::string output{std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
+    input.close();
+    std::filesystem::remove(path);
+
+    CHECK(output.contains("FuncDecl 'Show' (#Format() format: char8[..], ...)"));
+}
