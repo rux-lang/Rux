@@ -222,6 +222,11 @@ const std::unordered_map<std::string, ResolvedTypeLayout> &SemanticModel::TypeLa
     return facts.typeLayouts;
 }
 
+const TypeRef *SemanticModel::TryGetAggregateEqualityOperandType(const BinaryExpr &expression) const noexcept {
+    const auto fact = facts.aggregateEqualityOperandTypes.find(&expression);
+    return fact == facts.aggregateEqualityOperandTypes.end() ? nullptr : &fact->second;
+}
+
 const bool *SemanticModel::TryGetAggregateEquality(const BinaryExpr &expression) const noexcept {
     const auto fact = facts.aggregateEqualities.find(&expression);
     return fact == facts.aggregateEqualities.end() ? nullptr : &fact->second;

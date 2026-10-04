@@ -361,6 +361,23 @@ bool AnalysisContext::DefaultLiteralReachesNative(const TypeRef &argument, const
     if (argument.MentionsIncompleteNative()) {
         return true;
     }
+    // A tuple literal reaches a tuple parameter element by element, so `Where((3, 0))` finds `Where(p: (int32,
+    // int32))` although its elements carry the default `int`; whether each element fits is the argument's own check.
+    if (argument.kind == TypeRef::Kind::Tuple && parameter.kind == TypeRef::Kind::Tuple &&
+        argument.inner.size() == parameter.inner.size()) {
+        for (std::size_t index = 0; index < argument.inner.size(); ++index) {
+            const TypeRef &element = argument.inner[index];
+            const TypeRef &expected = parameter.inner[index];
+            const bool reaches = element.IsAssignableTo(expected) ||
+                                 (element.kind == TypeRef::Kind::Int && expected.IsInteger()) ||
+                                 (element.kind == TypeRef::Kind::Float64 && expected.IsFloat()) ||
+                                 DefaultLiteralReachesNative(element, expected);
+            if (!reaches) {
+                return false;
+            }
+        }
+        return true;
+    }
     // An unsuffixed literal carries its default width until a destination gives it one. A native parameter does so the
     // way the conversion rules do: through presence and success levels, then to the one member of its literal kind.
     // The argument's own check still rejects a value that does not fit, or an argument that is no literal at all.

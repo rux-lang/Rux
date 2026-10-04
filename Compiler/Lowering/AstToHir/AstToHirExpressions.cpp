@@ -262,6 +262,22 @@ HirExprPtr AstToHirContext::LowerBasicExpr(const Expr &expression) {
                 }
             }
         }
+        // A tuple literal compared with a typed tuple is built as that tuple's type, as analysis decided.
+        if (const TypeRef *operandFact = model.TryGetAggregateEqualityOperandType(*binary)) {
+            const TypeRef compared = SubstituteCurrentType(*operandFact);
+            const bool *negated = model.TryGetAggregateEquality(*binary);
+            const VariantEqualityPayload *plan = model.TryGetAggregateEqualityPlan(compared);
+            if (negated && plan) {
+                auto lowered = std::make_unique<HirAggregateEqualityExpr>();
+                lowered->location = binary->location;
+                lowered->type = TypeRef::MakeBool();
+                lowered->plan = LowerVariantEqualityPayload(*plan);
+                lowered->left = LowerExprAs(*binary->left, compared);
+                lowered->right = LowerExprAs(*binary->right, compared);
+                lowered->negated = *negated;
+                return lowered;
+            }
+        }
         HirExprPtr left = lowerOperand(*binary->left, *binary->right);
         HirExprPtr right = lowerOperand(*binary->right, *binary->left);
         if (const bool *negated = model.TryGetAggregateEquality(*binary)) {

@@ -145,7 +145,9 @@ func Main() -> int {
 - **Expected:** a panic-style message naming the division by zero, as a failed `Assert` gives.
 - **Actual:** the process exits with code 127 and prints nothing.
 - **Course workaround:** `Operators/Logical` guards the division with `items != 0 && ...`.
-## D9. A tuple literal with unsuffixed integers compares unequal to an equal typed tuple
+## D9. A tuple literal with unsuffixed integers compares unequal to an equal typed tuple (fixed)
+
+**Fixed**; covered by `Tests/Language/ExpectedTypeLiterals`.
 
 ```rux
 import Io::PrintLine;
@@ -339,7 +341,7 @@ let r = match b { true => 10i32 };
 
 Related to D1: an unsuffixed tuple literal passed as an argument is not adapted either.
 `Where((3, 0))` with `Where(p: (int32, int32))` gives `no matching overload for 'Where' with
-argument types ((int, int))`.
+argument types ((int, int))`. **Fixed**; covered by `Tests/Language/ExpectedTypeLiterals`.
 ## D22. A `const` initializer that is not a compile-time value is accepted and re-evaluated at run time
 
 ```rux

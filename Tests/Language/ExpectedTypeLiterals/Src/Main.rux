@@ -42,6 +42,14 @@ struct Palette {
     letters: char8[2];
 }
 
+func Where(point: (int32, int32)) -> int32 {
+    return point.0 * 10 + point.1;
+}
+
+func Where(flags: (bool, bool)) -> int32 {
+    return flags.0 ? 1 : 0;
+}
+
 func Pick(flag: bool) -> int32 {
     return match flag { true => 0, false => 4 };
 }
@@ -78,6 +86,14 @@ func Main() -> int {
     Assert(letters[0] as uint32 == 97 && letters[2] as uint32 == 99, "a character literal takes 'char8'");
     let palette = Palette { letters: ['x', 'y'] };
     Assert(palette.letters[1] as uint32 == 121, "a field's declared type reaches its array literal");
+
+    // A tuple literal takes the element types of the tuple it is compared with or passed as.
+    let pair: (int32, bool) = (3, true);
+    Assert(pair == (3, true), "a tuple literal compares at the typed tuple's widths");
+    let point: (int32, int32) = (3, 4);
+    Assert(point == (3, 4) && (3, 5) != point, "on either side of the comparison");
+    Assert(Where((3, 0)) == 30, "a tuple literal argument finds the tuple parameter");
+    Assert(Where((true, false)) == 1, "and overloads are still separated by element type");
 
     return 0;
 }

@@ -301,6 +301,9 @@ struct SemanticFacts {
     std::unordered_map<std::string, VariantEqualityPlan> variantEqualityPlans;
     // An expression records only whether to negate; each concrete instantiation owns its element recipe.
     std::unordered_map<const BinaryExpr *, bool> aggregateEqualities;
+    /// The one type both operands of a structural tuple comparison are built as, when one operand is a literal that
+    /// takes the other's type, as in `pair == (3, true)`.
+    std::unordered_map<const BinaryExpr *, TypeRef> aggregateEqualityOperandTypes;
     std::unordered_map<std::string, VariantEqualityPayload> aggregateEqualityPlans;
     std::unordered_map<const Expr *, ValueConsumption> valueConsumptions;
     std::unordered_map<const Expr *, ValueCopy> valueCopies;
@@ -370,6 +373,7 @@ struct SemanticModel {
     [[nodiscard]] const ResolvedVariantEquality *TryGetVariantEquality(const BinaryExpr &expression) const noexcept;
     [[nodiscard]] const VariantEqualityPlan *TryGetVariantEqualityPlan(const TypeRef &type) const noexcept;
     [[nodiscard]] const bool *TryGetAggregateEquality(const BinaryExpr &expression) const noexcept;
+    [[nodiscard]] const TypeRef *TryGetAggregateEqualityOperandType(const BinaryExpr &expression) const noexcept;
     [[nodiscard]] const VariantEqualityPayload *TryGetAggregateEqualityPlan(const TypeRef &type) const noexcept;
 
     /// Returns null for Copy expressions and expressions that are only borrowed or observed.

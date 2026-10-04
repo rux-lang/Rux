@@ -880,19 +880,43 @@ TypeRef AnalysisContext::CheckBinary(const TokenKind op, const TypeRef &leftType
             }
             return TypeRef::MakeBool();
         }
-        if (left.kind == TypeRef::Kind::Tuple && left == right) {
+        if (left.kind == TypeRef::Kind::Tuple && right.kind == TypeRef::Kind::Tuple) {
+            // Two tuples compare as one type. A tuple literal has no type of its own beyond its elements' defaults,
+            // so `pair == (3, true)` builds the literal as the other operand's type, the way a scalar literal is.
+            TypeRef compared = left;
+            if (left != right) {
+                if (dynamic_cast<const TupleExpr *>(&rightExpression) &&
+                    CanAssignExprTo(rightExpression, right, left)) {
+                    compared = left;
+                }
+                else if (dynamic_cast<const TupleExpr *>(&leftExpression) &&
+                         CanAssignExprTo(leftExpression, left, right)) {
+                    compared = right;
+                }
+                else {
+                    EmitError(location,
+                              std::format("operator '{}' cannot compare left operand '{}' with right operand '{}'",
+                                          operatorName, left.ToString(), right.ToString()),
+                              {"two tuples compare as one type"});
+                    return TypeRef::MakeBool();
+                }
+            }
             if (operation != TK::Equal && operation != TK::BangEqual) {
                 EmitError(location,
-                          std::format("operator '{}' is not defined for tuple '{}'", operatorName, left.ToString()),
+                          std::format("operator '{}' is not defined for tuple '{}'", operatorName, compared.ToString()),
                           {"tuples have structural equality but no built-in ordering"});
                 return TypeRef::MakeBool();
             }
             VariantEqualityPayload plan;
-            plan.type = left;
+            plan.type = compared;
             std::unordered_set<std::string> activeTypes;
-            if (BuildVariantEqualityPayload(plan, location, left.ToString(), {}, {}, activeTypes) && binaryExpression) {
+            if (BuildVariantEqualityPayload(plan, location, compared.ToString(), {}, {}, activeTypes) &&
+                binaryExpression) {
                 aggregateEqualities.insert_or_assign(binaryExpression, operation == TK::BangEqual);
-                aggregateEqualityPlans.insert_or_assign(left.ToString(), std::move(plan));
+                if (left != right) {
+                    aggregateEqualityOperandTypes.insert_or_assign(binaryExpression, compared);
+                }
+                aggregateEqualityPlans.insert_or_assign(compared.ToString(), std::move(plan));
             }
             return TypeRef::MakeBool();
         }
