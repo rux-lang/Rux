@@ -1,0 +1,115 @@
+// Discarding a whole value with `let _`.
+// `_` names nothing, so `let _ <- value;` and `let _ = value;` keep nothing: the value is destroyed at the statement,
+// before the next one runs, like a temporary nobody kept. A copy discarded this way leaves its source with its owner.
+// Each tracked value appends its id to a log as it is destroyed and each check appends a 0 where it stands, so the log
+// is the exact order of events.
+
+import Core::Assert;
+
+struct Log {
+    count: int32;
+    order: int64;
+}
+
+struct Tracked {
+    log: *var Log;
+    id: int32;
+}
+
+extend Tracked {
+    func =(self: &var Tracked, other: &Tracked) {
+        self.log = other.log;
+        self.id = other.id + 5;
+    }
+
+    func ~Tracked(self: &var Tracked) {
+        self.log.count = self.log.count + 1;
+        self.log.order = self.log.order * 10 + (self.id as int64);
+    }
+}
+
+// A move-only structure with a destructor of its own, discarded whole.
+struct Handle {
+    log: *var Log;
+    id: int32;
+}
+
+extend Handle {
+    func ~Handle(self: &var Handle) {
+        self.log.count = self.log.count + 1;
+        self.log.order = self.log.order * 10 + (self.id as int64);
+    }
+}
+
+func Mark(log: *var Log) {
+    log.order = log.order * 10;
+}
+
+func Track(log: *var Log, id: int32) -> Tracked {
+    return Tracked { log: log, id: id };
+}
+
+func DiscardsMoved(log: *var Log) {
+    let tracked = Track(log, 1);
+    let _ <- tracked;
+    Mark(log);
+}
+
+func DiscardsTemporary(log: *var Log) {
+    let _ = Track(log, 2);
+    Mark(log);
+}
+
+// The copy is discarded at once; the source stays with its owner until the end of the scope.
+func DiscardsCopy(log: *var Log) {
+    let tracked = Track(log, 3);
+    let _ = tracked;
+    Mark(log);
+    Assert(tracked.id == 3, "the source of a discarded copy is unchanged");
+}
+
+func DiscardsHandle(log: *var Log) {
+    let handle = Handle { log: log, id: 4 };
+    let _ <- handle;
+    Mark(log);
+}
+
+func DiscardsAnnotated(log: *var Log) {
+    let _: Tracked = Track(log, 2);
+    let _: int32 = 7i32;
+    Mark(log);
+}
+
+// Each `_` discards its own value, so a second one is not a redeclaration.
+func DiscardsRepeatedly(log: *var Log) {
+    let _ = Track(log, 1);
+    let _ = Track(log, 2);
+    Mark(log);
+}
+
+func Main() -> int {
+    var log = Log { count: 0, order: 0 };
+    DiscardsMoved(@log);
+    Assert(log.count == 1 && log.order == 10, "a moved value is destroyed at 'let _'");
+
+    log = Log { count: 0, order: 0 };
+    DiscardsTemporary(@log);
+    Assert(log.count == 1 && log.order == 20, "a temporary is destroyed at 'let _'");
+
+    log = Log { count: 0, order: 0 };
+    DiscardsCopy(@log);
+    Assert(log.count == 2 && log.order == 803, "a discarded copy is destroyed at 'let _', its source at scope end");
+
+    log = Log { count: 0, order: 0 };
+    DiscardsHandle(@log);
+    Assert(log.count == 1 && log.order == 40, "a value whose type declares a destructor is destroyed at 'let _'");
+
+    log = Log { count: 0, order: 0 };
+    DiscardsAnnotated(@log);
+    Assert(log.count == 1 && log.order == 20, "an annotated 'let _' discards too");
+
+    log = Log { count: 0, order: 0 };
+    DiscardsRepeatedly(@log);
+    Assert(log.count == 2 && log.order == 120, "every 'let _' discards its own value");
+    return 0;
+}

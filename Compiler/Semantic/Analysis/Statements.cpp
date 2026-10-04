@@ -138,6 +138,11 @@ void AnalysisContext::EmitWarning(const SourceLocation location, std::string mes
 }
 
 void AnalysisContext::EmitUndefinedName(const SourceLocation location, const std::string &name) const {
+    if (name == "_") {
+        EmitError(location, "cannot read '_', because it discards the value it binds", {},
+                  "bind the value to a name to read it later");
+        return;
+    }
     std::optional<std::string> help;
     if (const Symbol *suggestion = currentScope->Suggest(name)) {
         help = std::format("did you mean '{}'?", suggestion->name);
@@ -167,20 +172,12 @@ void AnalysisContext::CheckUnreadFallibleLocals() {
         if (local.scope != currentScope) {
             return false;
         }
+        // A named local that is never read is a likely mistake rather than a certain one; `let _ = outcome;`, which
+        // certainly discards, is reported where it is written.
         if (!readSymbols.contains(local.symbol)) {
-            // Binding a fallible to `_` discards it as surely as an expression statement does; a named local that is
-            // never read is a likely mistake rather than a certain one.
-            if (local.symbol->name == "_") {
-                EmitError(local.symbol->location,
-                          std::format("fallible result of type '{}' is discarded", local.symbol->type.ToString()),
-                          {"binding a fallible to '_' does not handle its failure"},
-                          "propagate it with '?', recover with 'catch', or match both '.Success' and '.Failure'");
-            }
-            else {
-                EmitWarning(
-                    local.symbol->location,
-                    std::format("fallible local '{}' is never read; its failure is never handled", local.symbol->name));
-            }
+            EmitWarning(
+                local.symbol->location,
+                std::format("fallible local '{}' is never read; its failure is never handled", local.symbol->name));
         }
         return true;
     });
@@ -282,8 +279,9 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
         const bool incompleteNative = !letStatement->type && initializerType.MentionsIncompleteNative();
         if (incompleteNative) {
             const bool isNone = initializerType.IsNoneValue();
+            const bool discarded = dynamic_cast<const WildcardPattern *>(letStatement->pattern.get()) != nullptr;
             EmitError(letStatement->location,
-                      std::format("cannot infer the type of '{}' from {}", letStatement->name,
+                      std::format("cannot infer the type of '{}' from {}", discarded ? "_" : letStatement->name,
                                   isNone ? "'none'" : "a native constructor with an unknown channel"),
                       {},
                       isNone ? "annotate the optional type, as in 'let value: int32? = none;'"
@@ -366,6 +364,13 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
         }
 
         if (letStatement->pattern) {
+            // `_` names nothing, so binding a fallible to it discards it as surely as an expression statement does.
+            if (dynamic_cast<const WildcardPattern *>(letStatement->pattern.get()) && declarationType.IsFallible()) {
+                EmitError(letStatement->location,
+                          std::format("fallible result of type '{}' is discarded", declarationType.ToString()),
+                          {"binding a fallible to '_' does not handle its failure"},
+                          "propagate it with '?', recover with 'catch', or match both '.Success' and '.Failure'");
+            }
             CheckLetPattern(*letStatement->pattern, declarationType, letStatement->isMut);
             return;
         }

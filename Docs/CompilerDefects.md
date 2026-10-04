@@ -1033,7 +1033,9 @@ func Replace(p: &var Pair) {
 - **Actual:** `cannot modify immutable variable 'p'` with the help `declare 'p' with 'var' to make it mutable`, which is wrong for a parameter, followed by `cannot assign 'Pair' to '&var Pair'`.
 - **Workaround:** assign the fields one by one, `p.a = 3i32; p.b = 4i32;`.
 
-## D58. `let _ <- value;` keeps the value until the end of the scope
+## D58. `let _ <- value;` keeps the value until the end of the scope (fixed)
+
+**Fixed**; covered by `Tests/Language/LetDiscard`, the `LetDiscardRead` golden, and the `FallibleDiscard` golden.
 
 ```rux
 let tag = Tag { id: 1 };

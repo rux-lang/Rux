@@ -1,0 +1,18 @@
+// `_` discards the value it binds and names nothing, so it cannot be read after `let _`, nor its fields reached.
+
+struct Point { x: int32; y: int32; }
+
+func Read() -> int32 {
+    let _ = 5i32;
+    return _;
+}
+
+func Field() -> int32 {
+    let _ = Point { x: 1i32, y: 2i32 };
+    return _.x;
+}
+
+func Annotated() -> int32 {
+    let _: int32 = 3i32;
+    return _ + 1i32;
+}

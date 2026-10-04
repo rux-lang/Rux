@@ -1,0 +1,3 @@
+7:12: error: cannot read '_', because it discards the value it binds
+12:12: error: cannot read '_', because it discards the value it binds
+17:12: error: cannot read '_', because it discards the value it binds

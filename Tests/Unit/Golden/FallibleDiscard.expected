@@ -1,7 +1,7 @@
 26:5: error: fallible result of type '! IoError' is discarded
 27:5: error: constructed fallible value is discarded
+28:5: error: fallible result of type '! IoError' is discarded
 31:5: error: fallible result of type '! ParseError' is discarded
 32:5: error: fallible result of type '! ParseError' is discarded
-28:5: error: fallible result of type '! IoError' is discarded
 29:5: warning: fallible local 'unread' is never read; its failure is never handled
 37:21: error: fallible result of type '! IoError' is discarded

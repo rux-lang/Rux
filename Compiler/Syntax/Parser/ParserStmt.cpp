@@ -173,7 +173,13 @@ std::unique_ptr<LetStmt> Parser::ParseLetStmt() {
     if (!s->isMut) {
         Expect(TokenKind::LetKeyword, "expected 'let' or 'var'");
     }
-    if (Check(TokenKind::Ident) && !Peek(1).Is(TokenKind::LeftBrace) && !Peek(1).Is(TokenKind::ColonColon)) {
+    // `_` names nothing: it is the wildcard pattern, which discards the value, even with a type annotation after it.
+    if (Check(TokenKind::Ident) && Peek().text == "_") {
+        auto wildcard = std::make_unique<WildcardPattern>();
+        wildcard->location = Advance().location;
+        s->pattern = std::move(wildcard);
+    }
+    else if (Check(TokenKind::Ident) && !Peek(1).Is(TokenKind::LeftBrace) && !Peek(1).Is(TokenKind::ColonColon)) {
         s->name = Advance().text;
     }
     else if (CheckAny({TokenKind::NoneKeyword, TokenKind::CatchKeyword, TokenKind::FailKeyword})) {
