@@ -53,7 +53,10 @@ pub variant JsonParseError {
     OutOfMemory(uint),
     /// A `\u` escape naming half of a surrogate pair with no valid partner. JSON's escapes are UTF-16, and a lone
     /// surrogate is not a character; the offset is the escape that has no partner.
-    BadSurrogate(uint)
+    BadSurrogate(uint),
+    /// The stream a `JsonEventReader` reads from failed with something other than its end. Only a streaming reader
+    /// reports this; the source's own `IoError` is kept on the reader, through `JsonEventReader::SourceError`.
+    Source(uint)
 }
 
 extend JsonParseError : ParseFailure {
@@ -71,7 +74,8 @@ extend JsonParseError : ParseFailure {
             .TooDeep(at) => at,
             .TooManyEntries(at) => at,
             .OutOfMemory(at) => at,
-            .BadSurrogate(at) => at
+            .BadSurrogate(at) => at,
+            .Source(at) => at
         };
     }
 }
@@ -116,7 +120,8 @@ extend JsonParseError : Display {
             .TooDeep(_) => WriteBytes(writer, "containers nested deeper than the limit allows"),
             .TooManyEntries(_) => WriteBytes(writer, "container holding more entries than the limit allows"),
             .OutOfMemory(_) => WriteBytes(writer, "out of memory"),
-            .BadSurrogate(_) => WriteBytes(writer, "escape naming half of a surrogate pair with no partner")
+            .BadSurrogate(_) => WriteBytes(writer, "escape naming half of a surrogate pair with no partner"),
+            .Source(_) => WriteBytes(writer, "source the document was read from failed")
         };
     }
 }
@@ -171,7 +176,8 @@ extend JsonParseError : Debug {
             .TooDeep(at) => WriteCase(writer, "TooDeep", at),
             .TooManyEntries(at) => WriteCase(writer, "TooManyEntries", at),
             .OutOfMemory(at) => WriteCase(writer, "OutOfMemory", at),
-            .BadSurrogate(at) => WriteCase(writer, "BadSurrogate", at)
+            .BadSurrogate(at) => WriteCase(writer, "BadSurrogate", at),
+            .Source(at) => WriteCase(writer, "Source", at)
         };
     }
 }
@@ -198,7 +204,8 @@ enum JsonStop: int32 {
     TooDeep = 6,
     TooManyEntries = 7,
     OutOfMemory = 8,
-    BadSurrogate = 9
+    BadSurrogate = 9,
+    Source = 10
 }
 
 /// A parser over a document.
@@ -594,6 +601,7 @@ func BuiltFailure(stop: JsonStop, lexical: JsonLexError, position: uint) -> Json
         .TooManyEntries => JsonParseError::TooManyEntries(position),
         .OutOfMemory => JsonParseError::OutOfMemory(position),
         .BadSurrogate => JsonParseError::BadSurrogate(position),
+        .Source => JsonParseError::Source(position),
         // A parser that has not stopped has no failure; callers reach this only through `Failure`, which asks
         // first, so naming a case here is naming one that cannot arrive.
         .None => JsonParseError::OutOfMemory(position)

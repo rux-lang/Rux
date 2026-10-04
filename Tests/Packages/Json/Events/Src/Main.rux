@@ -42,6 +42,30 @@ extend SliceHandle : Reader {
     }
 }
 
+// A reader that serves its slice four bytes at a time and then, instead of ending, fails as a broken stream does.
+struct BrokenHandle {
+    state: *var SliceState;
+}
+
+extend BrokenHandle : Reader {
+    func Read(self: &var BrokenHandle, into: var char8[..]) -> uint ! IoError {
+        let state = self.state;
+        let remaining = state.bytes.length - state.offset;
+        if remaining == 0 { fail IoError { kind: IoErrorKind::PermissionDenied, raw: 13 }; }
+        var give = remaining < state.step ? remaining : state.step;
+        if into.length < give {
+            give = into.length;
+        }
+        var index: uint = 0;
+        while index < give {
+            into.data[index] = state.bytes.data[state.offset + index];
+            index = index + 1;
+        }
+        state.offset = state.offset + give;
+        return give;
+    }
+}
+
 // Whether a reader stopped for the named reason. The rendering carries the position too, which is checked by the
 // parser test against exact documents; here what matters is that a streaming reader reports the same cases a
 // whole-document parse does, and that it reports them through the same positioned failure rather than through a
@@ -168,6 +192,54 @@ func Main() -> int {
     Assert(deep.Next() == JsonEvent::Error, "and the third is refused");
     Assert(StoppedAt(deep.Failure(), "JsonParseError::TooDeep"), "for being too deep");
     deep.Release();
+
+    // A failure is positioned in the document rather than in the buffer, however many refills dropped the bytes
+    // before it: the brace is byte 14 of the document, though only byte 2 of the last read.
+    var offsetState = SliceState { bytes: TextBytes("[1, 2, 3, 4, 5}"), offset: 0, step: 4 };
+    let offsetHandle: Reader = SliceHandle { state: @offsetState };
+    var offsets = JsonEventReader::New(allocator, offsetHandle, JsonLimits::Default()) catch {
+        else => Panic("the reader starts")
+    };
+    Assert(offsets.Next() == JsonEvent::ArrayStart, "the array opens");
+    var numbers: uint = 0;
+    var afterNumbers = offsets.Next();
+    while afterNumbers == JsonEvent::Number {
+        numbers = numbers + 1;
+        afterNumbers = offsets.Next();
+    }
+    Assert(numbers == 5 && afterNumbers == JsonEvent::Error, "five numbers arrive before the brace is refused");
+    Assert(StoppedAt(offsets.Failure(), "JsonParseError::Unexpected"), "as a structural mistake");
+    let misplaced = offsets.Failure() ?? Panic("the reader reports why it stopped");
+    Assert(misplaced.Offset() == 14, "at the brace's offset in the document");
+    Assert(!(offsets.SourceError() is IoError), "and the source did not fail");
+    offsets.Release();
+
+    // A source that breaks is reported as itself, not as a byte the lexer did not expect.
+    var brokenState = SliceState { bytes: TextBytes("[1, 2"), offset: 0, step: 4 };
+    let brokenHandle: Reader = BrokenHandle { state: @brokenState };
+    var broken = JsonEventReader::New(allocator, brokenHandle, JsonLimits::Default()) catch {
+        else => Panic("the reader starts")
+    };
+    Assert(broken.Next() == JsonEvent::ArrayStart, "the array opens");
+    Assert(broken.Next() == JsonEvent::Number, "and its first number arrives");
+    Assert(broken.Next() == JsonEvent::Error, "then the broken source stops the reader");
+    Assert(StoppedAt(broken.Failure(), "JsonParseError::Source"), "as a source failure");
+    let stopped = broken.Failure() ?? Panic("the reader reports why it stopped");
+    Assert(stopped.Offset() == 4, "positioned where the unfinished token starts");
+    let reported = broken.SourceError() ?? Panic("the source's own failure is kept");
+    Assert(reported.kind == IoErrorKind::PermissionDenied && reported.raw == 13, "exactly as the source reported it");
+    Assert(broken.Next() == JsonEvent::Error, "and the reader stays stopped");
+    broken.Release();
+
+    // One that breaks before the first byte is an error too, not an empty document.
+    var silentState = SliceState { bytes: TextBytes(""), offset: 0, step: 4 };
+    let silentHandle: Reader = BrokenHandle { state: @silentState };
+    var silent = JsonEventReader::New(allocator, silentHandle, JsonLimits::Default()) catch {
+        else => Panic("the reader starts")
+    };
+    Assert(silent.Next() == JsonEvent::Error, "a source broken from the start is not an empty document");
+    Assert(StoppedAt(silent.Failure(), "JsonParseError::Source"), "and is reported as the source failing");
+    silent.Release();
 
     return 0;
 }

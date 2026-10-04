@@ -750,7 +750,9 @@ func Main() -> int {
   requires 'Display'`. The `var T[..]` → `T[..]` conversion is not considered before the interface
   conversion.
 - **Course workaround:** `Files/File` and `Files/AtomicFile` bind a read-only view first.
-## P6. `JsonEventReader::Failure()` reports an offset within the buffer, not within the document
+## P6. `JsonEventReader::Failure()` reports an offset within the buffer, not within the document (fixed)
+
+**Fixed**; covered by `Tests/Packages/Json/Events`. A failing source is now reported as `JsonParseError::Source`, with its `IoError` on `JsonEventReader::SourceError`.
 
 - **Where:** `Packages/Json/Src/Events.rux`. `Refill` resets `position` to 0 whenever it drops
   consumed bytes, and `Failure()` builds its offset from `position`.
