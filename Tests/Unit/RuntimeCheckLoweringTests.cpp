@@ -286,3 +286,130 @@ TEST_CASE("AArch64 emits the division checks as runtime failures") {
         CHECK_FALSE(objects.empty());
     }
 }
+
+TEST_CASE("an array or slice index outside its elements stops the program with a panic") {
+    CheckTrapsOnHost(R"(func Main() -> int {
+    let primes: int32[4] = [2, 3, 5, 7];
+    var i: uint = 3;
+    i += 3;
+    return primes[i] as int;
+}
+)",
+                     Report("index out of range", "Main", 5, 18));
+
+    CheckTrapsOnHost(R"(func Read(values: int32[..], at: int32) -> int32 {
+    return values[at];
+}
+
+func Main() -> int {
+    let primes: int32[4] = [2, 3, 5, 7];
+    return Read(primes[..], -1) as int;
+}
+)",
+                     Report("index out of range", "Read", 2, 18));
+
+    CheckTrapsOnHost(R"(func Write(values: &var int32[3], at: uint) {
+    values[at] = 9;
+}
+
+func Main() -> int {
+    var slots: int32[3] = [0, 0, 0];
+    Write(slots, 3);
+    return slots[0] as int;
+}
+)",
+                     Report("index out of range", "Write", 2, 11));
+
+    CheckTrapsOnHost(R"(func Read(values: int32[..], at: int128) -> int32 {
+    return values[at];
+}
+
+func Main() -> int {
+    let primes: int32[4] = [2, 3, 5, 7];
+    return Read(primes[..], 18446744073709551616i128) as int;
+}
+)",
+                     Report("index out of range", "Read", 2, 18));
+}
+
+TEST_CASE("a slice range outside its collection stops the program with a panic") {
+    constexpr std::string_view slicing = R"(func Window(values: int32[..], first: int, last: int) -> int32[..] {
+    return values[first..last];
+}
+
+func Through(values: int32[..], first: int, last: int) -> int32[..] {
+    return values[first..=last];
+}
+
+func Main() -> int {
+    let primes: int32[4] = [2, 3, 5, 7];
+    let view = primes[..];
+)";
+    CheckTrapsOnHost(std::string(slicing) + "    return Window(view, 1, 5).length as int;\n}\n",
+                     Report("index out of range", "Window", 2, 18));
+    CheckTrapsOnHost(std::string(slicing) + "    return Window(view, 3, 2).length as int;\n}\n",
+                     Report("index out of range", "Window", 2, 18));
+    CheckTrapsOnHost(std::string(slicing) + "    return Through(view, 0, 4).length as int;\n}\n",
+                     Report("index out of range", "Through", 6, 18));
+    CheckTrapsOnHost(std::string(slicing) + "    return Through(view, -1, -1).length as int;\n}\n",
+                     Report("index out of range", "Through", 6, 18));
+    CheckTrapsOnHost(R"(func Main() -> int {
+    var numbers: int32[3] = [1, 2, 3];
+    var end: uint = 4;
+    return numbers[1..end].length as int;
+}
+)",
+                     Report("index out of range", "Main", 4, 19));
+}
+
+TEST_CASE("checked indexing reads and writes every element it names") {
+    CheckRunsOnHost(R"(func Sum(values: int32[..]) -> int32 {
+    var total: int32 = 0;
+    for i in 0..values.length {
+        total += values[i];
+    }
+    return total;
+}
+
+func Main() -> int {
+    var primes: int32[4] = [2, 3, 5, 7];
+    var last: int8 = 3;
+    primes[last] += 1;
+    let empty = primes[4..];
+    let tail = primes[2..=3];
+    let whole = primes[0..4];
+    if empty.length != 0 || Sum(tail) != 13 || Sum(whole) != 18 || Sum(primes[..]) != 18 {
+        return 1;
+    }
+    return 42;
+}
+)",
+                    42);
+}
+
+TEST_CASE("pointer indexing stays unchecked and proven indexes lose their checks") {
+    const LirPackage debug = CompileChecks(R"(func Through(values: *int32, at: uint) -> int32 {
+    return values[at];
+}
+
+func Literal(values: &int32[4]) -> int32 {
+    return values[3];
+}
+
+func Variable(values: &int32[4], at: uint) -> int32 {
+    return values[at];
+}
+)",
+                                           BuildProfile::Debug);
+    CHECK(Traps(debug, "Through", "index out of range").empty());
+    CHECK(Traps(debug, "Literal", "index out of range").empty());
+    CHECK_EQ(Traps(debug, "Variable", "index out of range").size(), 1);
+
+    const LirPackage release = CompileChecks(R"(func Pick(values: &int32[4]) -> int32 {
+    let k: int = 2;
+    return values[k];
+}
+)",
+                                             BuildProfile::Release);
+    CHECK(Traps(release, "Pick", "index out of range").empty());
+}

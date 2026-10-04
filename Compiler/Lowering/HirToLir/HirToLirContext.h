@@ -35,6 +35,14 @@ private:
         std::uint32_t continueTarget;
     };
 
+    /// Where the elements of an indexed collection start and how many there are. A raw pointer has no length.
+    struct IndexedStorage {
+        LirReg data = LirNoReg;
+        LirReg length = LirNoReg;
+        /// The extent of a fixed array, which its type states.
+        std::optional<std::uint64_t> constantLength;
+    };
+
     struct PendingPartialCleanup {
         std::string glueSymbol;
         LirReg address = LirNoReg;
@@ -204,7 +212,11 @@ private:
     LirReg LowerInterfaceCall(const HirInterfaceCallExpr &expression);
     LirReg LowerCall(const HirCallExpr &expression);
     LirReg LowerArgument(const HirExpr &argument);
-    LirReg LowerSliceDataPtr(const HirExpr &object, const TypeRef &elementType);
+    IndexedStorage LowerIndexedStorage(const HirExpr &object, const TypeRef &elementType);
+    /// Traps unless `index` names an element of `storage`; a raw pointer is not checked.
+    void EmitIndexCheck(LirReg index, const HirExpr &indexExpr, const IndexedStorage &storage,
+                        const SourceLocation &location);
+    LirReg LowerElementPtr(const HirIndexExpr &expression);
     LirReg LowerRangeIndex(const HirIndexExpr &expression);
     LirReg LowerLValue(const HirExpr &expression);
 

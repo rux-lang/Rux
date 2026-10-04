@@ -523,6 +523,8 @@ The fallback transfer is conditional, so `ownedFallback` is possibly moved after
 
 ## Indexing
 
+Built-in indexing of an array or a slice is bounds-checked on every target and in every build profile. `a[i]`, as a read, a write, or a compound assignment, stops the program with `Panic: index out of range`, followed by the function, file, line, and column of the subscript, unless `i` names an element; a negative index is never in range. A range subscript is checked the same way: `a[start..end]` requires `start <= end <= a.length`, and an inclusive end must be below the length. A constant index into a fixed array is checked when the program is compiled instead, so `primes[7]` on an `int32[4]` is an error. Indexing or slicing a raw pointer is not checked, because a pointer carries no length; the caller vouches for what it addresses. A release build removes a check it proves always passes.
+
 A type indexes itself by declaring the indexing operators in an `extend` block, the same way it declares `==` or `<`. `[]` reads one element and `[]=` writes one:
 
 ```rux

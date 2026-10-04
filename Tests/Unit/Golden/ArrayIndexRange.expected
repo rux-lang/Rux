@@ -1,0 +1,4 @@
+7:11: error: index 2 is out of range for an array of 2 elements
+9:26: error: index 4 is out of range for an array of 4 elements
+10:25: error: index -1 is out of range for an array of 4 elements
+11:25: error: index 0 is out of range for an array of 0 elements

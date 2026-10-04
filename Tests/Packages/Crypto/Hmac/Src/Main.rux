@@ -134,7 +134,7 @@ func Main() -> int {
         var state = Hmac<Sha256>(Sha256(), shortKey);
         let first = (@message[0])[..split];
         state.Update(first);
-        let second = (@message[split])[..500u - split];
+        let second = message[split..];
         state.Update(second);
         var got: char8[32];
         state.Finish((@got[0])[..32]);

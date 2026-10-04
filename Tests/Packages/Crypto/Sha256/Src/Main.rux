@@ -99,7 +99,7 @@ func Main() -> int {
             var digest = Sha256();
             let first = (@message[0])[..split];
             digest.Update(first);
-            let second = (@message[split])[..length - split];
+            let second = message[split..length];
             digest.Update(second);
             var got: char8[32];
             let gotRoom = (@got[0])[..32];

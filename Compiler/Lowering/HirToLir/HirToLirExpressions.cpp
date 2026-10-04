@@ -2,6 +2,7 @@
 
 #include "Lowering/HirToLir/HirToLirContext.h"
 
+#include <algorithm>
 #include <cassert>
 #include <cstdint>
 #include <format>
@@ -200,9 +201,7 @@ LirReg HirToLirContext::LowerExprValue(const HirExpr &expr) {
         if (e->index->type.IsRange()) {
             return LowerRangeIndex(*e);
         }
-        LirReg idx = LowerExpr(*e->index);
-        LirReg sliceBase = LowerSliceDataPtr(*e->object, e->type);
-        LirReg ptr = EmitIndexPtr(sliceBase, idx, e->type);
+        const LirReg ptr = LowerElementPtr(*e);
         if (IsInterfaceType(e->type)) {
             return ptr;
         }
@@ -801,16 +800,67 @@ LirReg HirToLirContext::LowerCall(const HirCallExpr &e) {
     return dst;
 }
 
-LirReg HirToLirContext::LowerSliceDataPtr(const HirExpr &object, const TypeRef &elemType) {
-    if (IsArrayType(object.type)) {
-        return LowerLValue(object);
+HirToLirContext::IndexedStorage HirToLirContext::LowerIndexedStorage(const HirExpr &object,
+                                                                     const TypeRef &elementType) {
+    const TypeRef dataType = TypeRef::MakePointer(elementType);
+    const TypeRef lengthType = TypeRef::MakeUInt64();
+    const bool viaReference = object.type.kind == TypeRef::Kind::Reference && !object.type.inner.empty();
+    const TypeRef &valueType = viaReference ? object.type.inner.front() : object.type;
+    IndexedStorage storage;
+    if (IsArrayType(valueType)) {
+        storage.data = viaReference ? LowerExpr(object) : LowerLValue(object);
+        storage.constantLength = valueType.arrayLength.value_or(0);
+        storage.length = EmitConst(std::to_string(*storage.constantLength), lengthType);
     }
-    if (!IsViewType(object.type)) {
-        return LowerExpr(object);
+    else if (IsViewType(valueType)) {
+        const LirReg view = viaReference ? LowerExpr(object) : LowerLValue(object);
+        storage.data = EmitLoad(EmitFieldPtr(view, "data", dataType), dataType);
+        storage.length = EmitLoad(EmitFieldPtr(view, "length", lengthType), lengthType);
     }
-    LirReg slicePtr = LowerLValue(object);
-    LirReg dataField = EmitFieldPtr(slicePtr, "data", TypeRef::MakePointer(elemType));
-    return EmitLoad(dataField, TypeRef::MakePointer(elemType));
+    else {
+        // A raw pointer is the data itself and carries no length, so what it addresses is the caller's to vouch for.
+        storage.data = LowerExpr(object);
+    }
+    return storage;
+}
+
+void HirToLirContext::EmitIndexCheck(const LirReg index, const HirExpr &indexExpr, const IndexedStorage &storage,
+                                     const SourceLocation &location) {
+    if (storage.length == LirNoReg) {
+        return;
+    }
+    // Semantic analysis already rejected a literal index past a fixed array's end, so one that reached here is in it.
+    if (const auto *literal = dynamic_cast<const HirLiteralExpr *>(&indexExpr); literal && storage.constantLength) {
+        const std::string_view digits = literal->value;
+        if (!digits.empty() && digits.size() <= 18 &&
+            std::ranges::all_of(digits, [](const char c) { return c >= '0' && c <= '9'; }) &&
+            std::stoull(std::string(digits)) < *storage.constantLength) {
+            return;
+        }
+    }
+    const TypeRef lengthType = TypeRef::MakeUInt64();
+    const TypeRef &indexType = indexExpr.type;
+    if (indexType.SizeInBytes().value_or(8) <= 8) {
+        // A negative index widens to a value no length reaches, so one unsigned comparison covers both ends.
+        const LirReg unsignedIndex = EmitCastIfNeeded(index, indexType, lengthType);
+        EmitTrapUnless(EmitBinary(LirOpcode::CmpLt, unsignedIndex, storage.length, TypeRef::MakeBool()),
+                       "index out of range", location);
+        return;
+    }
+    if (indexType.IsSigned()) {
+        EmitTrapUnless(EmitBinary(LirOpcode::CmpGe, index, EmitConst("0", indexType), TypeRef::MakeBool()),
+                       "index out of range", location);
+    }
+    const LirReg wideLength = EmitCastIfNeeded(storage.length, lengthType, indexType);
+    EmitTrapUnless(EmitBinary(LirOpcode::CmpLt, index, wideLength, TypeRef::MakeBool()), "index out of range",
+                   location);
+}
+
+LirReg HirToLirContext::LowerElementPtr(const HirIndexExpr &expression) {
+    const LirReg index = LowerExpr(*expression.index);
+    const IndexedStorage storage = LowerIndexedStorage(*expression.object, expression.type);
+    EmitIndexCheck(index, *expression.index, storage, expression.location);
+    return EmitIndexPtr(storage.data, index, expression.type);
 }
 
 LirReg HirToLirContext::LowerRangeIndex(const HirIndexExpr &e) {
@@ -818,30 +868,12 @@ LirReg HirToLirContext::LowerRangeIndex(const HirIndexExpr &e) {
     const TypeRef dataType = TypeRef::MakePointer(elemType);
     const TypeRef indexType = TypeRef::MakeUInt64();
 
-    // Evaluate the collection once and obtain its data pointer and length.
-    LirReg data;
-    LirReg collectionLength;
-    const TypeRef &collectionType = e.object->type.kind == TypeRef::Kind::Reference && !e.object->type.inner.empty()
-                                      ? e.object->type.inner.front()
-                                      : e.object->type;
-    if (IsArrayType(collectionType)) {
-        data = e.object->type.kind == TypeRef::Kind::Reference ? LowerExpr(*e.object) : LowerLValue(*e.object);
-        collectionLength = EmitConst(std::to_string(collectionType.arrayLength.value_or(0)), indexType);
-    }
-    else if (collectionType.kind == TypeRef::Kind::Pointer) {
-        // A pointer is the data itself and has no length of its own. Semantic analysis accepts a range of a pointer
-        // only with an end bound, so the length here is never what the slice runs to.
-        data = LowerExpr(*e.object);
-        collectionLength = EmitConst("0", indexType);
-    }
-    else {
-        const LirReg objectSlot =
-            e.object->type.kind == TypeRef::Kind::Reference ? LowerExpr(*e.object) : LowerLValue(*e.object);
-        const LirReg dataField = EmitFieldPtr(objectSlot, "data", dataType);
-        data = EmitLoad(dataField, dataType);
-        const LirReg lengthField = EmitFieldPtr(objectSlot, "length", indexType);
-        collectionLength = EmitLoad(lengthField, indexType);
-    }
+    // Evaluate the collection once and obtain its data pointer and length. A pointer has no length of its own;
+    // semantic analysis accepts a range of one only with an end bound, so its slice never runs to a length, and
+    // nothing about it is checked.
+    const IndexedStorage storage = LowerIndexedStorage(*e.object, elemType);
+    const LirReg data = storage.data;
+    const LirReg collectionLength = storage.length;
 
     const TypeRef &rangeType = e.index->type;
     LirReg rangeSlot = LirNoReg;
@@ -866,9 +898,19 @@ LirReg HirToLirContext::LowerRangeIndex(const HirIndexExpr &e) {
         const TypeRef boundType = rangeType.inner.empty() ? indexType : rangeType.inner[0];
         const LirReg endField = EmitFieldPtr(rangeSlot, "end", boundType);
         end = EmitCastIfNeeded(EmitLoad(endField, boundType), boundType, indexType);
+        if (collectionLength != LirNoReg) {
+            // An inclusive end is checked before it is made exclusive, so the last representable index cannot wrap
+            // to an empty slice. A negative bound widens past every length and fails the same comparison.
+            const LirOpcode fits = rangeType.IsInclusiveRange() ? LirOpcode::CmpLt : LirOpcode::CmpLe;
+            EmitTrapUnless(EmitBinary(fits, end, collectionLength, TypeRef::MakeBool()), "index out of range",
+                           e.location);
+        }
         if (rangeType.IsInclusiveRange()) {
             end = EmitBinary(LirOpcode::Add, end, EmitConst("1", indexType), indexType);
         }
+    }
+    if (collectionLength != LirNoReg) {
+        EmitTrapUnless(EmitBinary(LirOpcode::CmpLe, start, end, TypeRef::MakeBool()), "index out of range", e.location);
     }
 
     const LirReg sliceData = EmitIndexPtr(data, start, elemType);
@@ -949,9 +991,7 @@ LirReg HirToLirContext::LowerLValue(const HirExpr &expr) {
         if (e->index->type.IsRange()) {
             return LowerRangeIndex(*e);
         }
-        LirReg idx = LowerExpr(*e->index);
-        LirReg sliceBase = LowerSliceDataPtr(*e->object, e->type);
-        return EmitIndexPtr(sliceBase, idx, e->type);
+        return LowerElementPtr(*e);
     }
     if (auto *e = dynamic_cast<const HirUnaryExpr *>(&expr)) {
         if (e->op == TokenKind::Star) {

@@ -130,8 +130,9 @@ TEST_CASE("a string's members read the same two fields a slice's do") {
             }
         }
     }
-    // The literal's own two stores, then the reads of each member, then the data pointer the index goes through.
-    CHECK_EQ(fields, std::vector<std::string>{"data", "length", "data", "length", "data"});
+    // The literal's own two stores, then the reads of each member, then the data pointer and the length the checked
+    // index goes through, and last the two fields of the message its failure path reports.
+    CHECK_EQ(fields, std::vector<std::string>{"data", "length", "data", "length", "data", "length", "data", "length"});
 }
 
 TEST_CASE("weakening a returned view preserves its aggregate representation") {

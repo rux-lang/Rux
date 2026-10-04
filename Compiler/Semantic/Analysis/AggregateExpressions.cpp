@@ -741,6 +741,20 @@ std::optional<TypeRef> AnalysisContext::CheckAggregateExpression(const Expr &exp
             return TypeRef::MakeUnknown();
         }
         if (builtinElementType) {
+            // A fixed array's extent is known here, so a constant index past it is reported now rather than left to
+            // the run-time check every other index of an array or slice receives.
+            if (objectValueType.kind == TypeRef::Kind::Array && objectValueType.arrayLength) {
+                const std::uint64_t length = *objectValueType.arrayLength;
+                if (const auto constant = EvalConstInt(*index->index);
+                    constant && (*constant < 0 || static_cast<std::uint64_t>(*constant) >= length)) {
+                    EmitError(index->index->location,
+                              std::format("index {} is out of range for an array of {} element{}", *constant, length,
+                                          length == 1 ? "" : "s"),
+                              {},
+                              length == 0 ? std::string("an empty array has no element to index")
+                                          : std::format("valid indexes are 0 through {}", length - 1));
+                }
+            }
             return *builtinElementType;
         }
         if (!objectType.IsUnknown()) {

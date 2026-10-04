@@ -1,0 +1,14 @@
+// A constant index into a fixed array must name one of its elements; any other index is checked when it runs.
+func Main() -> int {
+    let primes: int32[4] = [2, 3, 5, 7];
+    let empty: int32[0] = [];
+    let view: int32[..] = primes[..];
+    var place: int32[2] = [0, 0];
+    place[2] = 1;
+    let last = primes[3];
+    let ahead = primes[1 + 3];
+    let behind = primes[-1];
+    let nothing = empty[0];
+    let unchecked = view[9];
+    return (last + ahead + behind + nothing + unchecked) as int;
+}

@@ -592,7 +592,9 @@ PrintLine("{}", passes);
 
 Related to D19: a match expression over an integer without `else` (`match n { 1 => 10, 3 => 30 }`)
 compiles and yields `0` for an unmatched value. With text arms it yields an empty string.
-## D35. Inline array indexing is not bounds-checked, and the language reference does not say so
+## D35. Inline array indexing is not bounds-checked, and the language reference does not say so (fixed)
+
+**Fixed**; covered by `RuntimeCheckLoweringTests.cpp` and the `ArrayIndexRange` golden.
 
 - **Reproducer:** `let primes: int32[4] = [2, 3, 5, 7]; var i: uint = 3; i += 3;`, then
   `PrintLine("{}", primes[i]);`.
