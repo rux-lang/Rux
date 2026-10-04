@@ -237,6 +237,11 @@ private:
     [[nodiscard]] bool RejectImplicitMove(const Expr &expression, const TypeRef &type, ValueConsumptionKind kind,
                                           SourceLocation location);
     void ConsumeValue(const Expr &expression, const TypeRef &type, ValueConsumptionKind kind, SourceLocation location);
+    /// Whether an assigned `T` value is a fresh temporary — a call result, literal, constructor call, or the value a
+    /// conditional or `match` produces — or a value handed over with `<-`, rather than a named place, borrowed storage,
+    /// or a reference. Such a source transfers into its destination as it stands, so no copy is recorded for it.
+    [[nodiscard]] bool IsFreshTemporarySource(const Expr &expression, const TypeRef &type,
+                                              const TypeRef &targetType) const;
     void ConsumeExplicitValue(const Expr &expression, const TypeRef &type, SourceLocation location);
     void ConsumeRecordedValue(const Expr &expression, ValueConsumptionKind kind, SourceLocation location);
     [[nodiscard]] std::vector<TypeRef> CheckCallArgumentValues(const CallExpr &call);

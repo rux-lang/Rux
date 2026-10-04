@@ -1094,7 +1094,9 @@ func Main() -> int {
 - **Actual:** `replaced`, then `drop 2`; the old field value is never destroyed.
 - **Notes:** found while fixing D57. AST→HIR already emits an overwrite cleanup for the place, but HIR→LIR's `EmitCleanup` (`Compiler/Lowering/HirToLir/HirToLirDrop.cpp`) looks the target up in `locals` and does nothing for a field. D57 enabled the place drop only for writes through a `&var` reference. A raw-pointer write into uninitialized storage (as in `Collections`) takes the same path and must not destroy anything, so the two need telling apart before the drop is enabled for every place.
 
-## D61. Assigning a fresh temporary calls the custom `=` and leaks the temporary
+## D61. Assigning a fresh temporary calls the custom `=` and leaks the temporary (fixed)
+
+**Fixed**; covered by `Tests/Language/TemporaryAssignment`, `MoveConsumptionTests.cpp`, and `MoveLifecycleTests.cpp`.
 
 ```rux
 struct Counted { id: int; }

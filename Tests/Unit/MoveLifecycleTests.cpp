@@ -218,6 +218,56 @@ TEST_CASE("cross-source copy assignment constructs scratch before replacing the 
     CHECK_EQ(LirCallCount(RequireLirFunction(lir, "Replace"), copy->plan.customCallee), 1);
 }
 
+TEST_CASE("copy assignment installs a fresh temporary without calling the custom copy") {
+    const std::string source = R"(
+
+        struct Cell { value: int32; }
+        extend Cell {
+            func ~Cell(self: &var Cell) {}
+            func =(self: &var Cell, other: &Cell) {
+                self.value = other.value;
+            }
+        }
+
+        func Make(value: int32) -> Cell { return Cell { value: value }; }
+
+        func Replace(named: Cell, slot: &var Cell) {
+            var item = Make(0);
+            item = Make(1);
+            item = named;
+            slot = Cell { value: 2 };
+            slot = named;
+        }
+    )";
+
+    const HirPackage hir = LowerConsumptionHir(source);
+    const HirFunc &replace = RequireFunction(hir, "Replace");
+    REQUIRE(replace.body.has_value());
+    std::vector<const HirAssignExpr *> assignments;
+    for (const HirStmtPtr &statement : replace.body->stmts) {
+        if (const auto *expression = dynamic_cast<const HirExprStmt *>(statement.get())) {
+            if (const auto *assignment = dynamic_cast<const HirAssignExpr *>(expression->expr.get())) {
+                REQUIRE(assignment->overwriteCleanup.has_value());
+                assignments.push_back(assignment);
+            }
+        }
+    }
+    REQUIRE_EQ(assignments.size(), 4);
+
+    CHECK(dynamic_cast<const HirCopyExpr *>(assignments[0]->value.get()) == nullptr);
+    CHECK(dynamic_cast<const HirCopyExpr *>(assignments[2]->value.get()) == nullptr);
+    CHECK(assignments[2]->overwriteCleanup->destroysTarget);
+    const auto *namedCopy = dynamic_cast<const HirCopyExpr *>(assignments[1]->value.get());
+    REQUIRE(namedCopy != nullptr);
+    REQUIRE(dynamic_cast<const HirCopyExpr *>(assignments[3]->value.get()) != nullptr);
+    CHECK_EQ(namedCopy->plan.kind, HirCopyPlan::Kind::Custom);
+    const std::string copySymbol = namedCopy->plan.customCallee;
+    CHECK_FALSE(copySymbol.empty());
+
+    const LirPackage lir = LowerConsumptionLir(source);
+    CHECK_EQ(LirCallCount(RequireLirFunction(lir, "Replace"), copySymbol), 2);
+}
+
 TEST_CASE("generated variant copies recursively copy the active owning payload") {
     const std::string source = R"(
 

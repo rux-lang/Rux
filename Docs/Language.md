@@ -425,7 +425,7 @@ extend Pinned {
 
 The canonical copy prohibition is `func =(self: &var T, other: &T);`. The canonical move prohibition is `func <-(self: &var T, other: T);`. Bodyless ordinary functions in interfaces remain interface requirements rather than prohibitions.
 
-A custom `=` writes a new state into compiler-provided scratch storage and cannot consume its source. Copy assignment first produces that new state, then destroys the old destination and installs the result. A custom `<-` consumes its source under the same source-invalidating rule as a generated move. Resource-owning types must explicitly prohibit copying unless they implement a real independent copy.
+A custom `=` writes a new state into compiler-provided scratch storage and cannot consume its source. Copy assignment first produces that new state, then destroys the old destination and installs the result. Only a source that keeps its value — a named place, borrowed storage, or a reference — is copied: `=` from a fresh temporary such as `value = MakeValue();`, or from a source handed over with `<-`, calls no `=`: the old destination is destroyed and the value transfers in exactly as it would initialize a binding, so it is destroyed once, with its new owner. A custom `<-` consumes its source under the same source-invalidating rule as a generated move. Resource-owning types must explicitly prohibit copying unless they implement a real independent copy.
 
 ## Construction and Initialization
 

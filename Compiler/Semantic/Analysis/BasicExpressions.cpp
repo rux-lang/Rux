@@ -414,9 +414,14 @@ std::optional<TypeRef> AnalysisContext::CheckBasicExpression(const Expr &express
                               "use '<-' if ownership should move instead");
                     return TypeRef::MakeOpaque();
                 }
-                valueCopies.insert_or_assign(
-                    assignment->value.get(),
-                    ValueCopy{ValueConsumptionKind::Assignment, target, copyOperation, assignment->location});
+                // Only a source that stays with another owner — a named place, borrowed storage, or a reference — is
+                // copied. A fresh temporary has no other owner, so it transfers into the target as it stands, the way
+                // it initializes a binding; copying it would leave the temporary itself with no owner to destroy it.
+                if (!IsFreshTemporarySource(*assignment->value, value, target)) {
+                    valueCopies.insert_or_assign(
+                        assignment->value.get(),
+                        ValueCopy{ValueConsumptionKind::Assignment, target, copyOperation, assignment->location});
+                }
                 MarkTrackedAssignment(*assignment->target, assignment->location);
                 return TypeRef::MakeOpaque();
             }

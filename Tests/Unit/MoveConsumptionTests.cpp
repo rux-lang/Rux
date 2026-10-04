@@ -555,6 +555,75 @@ TEST_CASE("a by-value match owns the copy it makes of a named copyable subject")
     CHECK_FALSE(model.IsOwnedMatchSubject(subjectOf(9)));
 }
 
+TEST_CASE("copy assignment copies a source that stays with its owner and transfers a fresh temporary") {
+    // A custom `=` copies a named place, borrowed storage, or a reference, all of which keep their value. A fresh
+    // temporary and a value handed over with `<-` have no other owner, so no copy is recorded and the value transfers
+    // into the target as it stands, whether the target is a local or a referent written through `&var`.
+    Lexer lexer(R"(
+        struct Counted { id: int32; }
+        extend Counted {
+            func Counted(id: int32) -> Counted { return Counted { id: id }; }
+            func =(self: &var Counted, other: &Counted) { self.id = other.id; }
+            func ~Counted(self: &var Counted) {}
+        }
+        struct Holder { item: Counted; }
+        func Make(id: int32) -> Counted { return Counted { id: id }; }
+
+        func Assign(flag: bool, which: int32, named: Counted, holder: Holder, pointer: *Counted, reference: &Counted,
+                    slot: &var Counted) {
+            var item = Make(0);
+            var moved = Make(9);
+            item = Make(1);
+            item = Counted { id: 2 };
+            item = Counted(3);
+            item = flag ? Make(4) : Make(5);
+            item = match which { 6 => Make(6), else => Make(7) };
+            item = <-moved;
+            slot = Make(8);
+            item = named;
+            item = holder.item;
+            item = *pointer;
+            item = reference;
+            slot = named;
+        }
+    )",
+                "assignment_copy.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+    Parser parser(std::move(lexed.tokens), "assignment_copy.rux");
+    auto parsed = parser.Parse();
+    REQUIRE_FALSE(parsed.HasErrors());
+
+    SemanticAnalyzer analyzer({&parsed.module}, {}, "test", "Windows");
+    const SemanticModel model = analyzer.Analyze();
+    REQUIRE_FALSE(model.HasErrors());
+
+    const auto *function = dynamic_cast<const FuncDecl *>(parsed.module.items[4].get());
+    REQUIRE(function != nullptr);
+    REQUIRE(function->body != nullptr);
+    REQUIRE_EQ(function->body->stmts.size(), 14);
+    const auto valueOf = [&](const std::size_t index) -> const Expr & {
+        const auto *statement = dynamic_cast<const ExprStmt *>(function->body->stmts[index].get());
+        REQUIRE(statement != nullptr);
+        const auto *assignment = dynamic_cast<const AssignExpr *>(statement->expr.get());
+        REQUIRE(assignment != nullptr);
+        CHECK_EQ(assignment->op, TokenKind::Assign);
+        return *assignment->value;
+    };
+
+    for (std::size_t index = 2; index <= 8; ++index) {
+        CAPTURE(index);
+        CHECK(model.TryGetCopy(valueOf(index)) == nullptr);
+    }
+    for (std::size_t index = 9; index <= 13; ++index) {
+        CAPTURE(index);
+        const ValueCopy *copy = model.TryGetCopy(valueOf(index));
+        REQUIRE(copy != nullptr);
+        CHECK_EQ(copy->kind, ValueConsumptionKind::Assignment);
+        CHECK(copy->customOperation != nullptr);
+    }
+}
+
 TEST_CASE("rejected by-value contexts do not move their operands") {
     const std::vector<SemanticDiagnostic> diagnostics = AnalyzeConsumptionDiagnostics(R"(
         struct Handle { value: int32; }

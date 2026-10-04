@@ -705,6 +705,19 @@ void AnalysisContext::ConsumeValue(const Expr &expression, const TypeRef &type, 
     }
 }
 
+bool AnalysisContext::IsFreshTemporarySource(const Expr &expression, const TypeRef &type,
+                                             const TypeRef &targetType) const {
+    if (type.IsUnknown() || type.kind == TypeRef::Kind::Reference || !(type == targetType)) {
+        return false;
+    }
+    // `<-value` records its own transfer, which leaves nothing for a copy to read afterwards.
+    if (dynamic_cast<const MoveExpr *>(&expression)) {
+        return true;
+    }
+    const MovePlace place = AnalyzeMovePlace(expression);
+    return !place.IsNamedStorage() && !place.IsBorrowedStorage();
+}
+
 void AnalysisContext::ConsumeExplicitValue(const Expr &expression, const TypeRef &type, const SourceLocation location) {
     if (!trackedFlowReachable || type.IsUnknown()) {
         return;

@@ -1,0 +1,283 @@
+// Assigning a fresh temporary to a type with a custom `=`.
+// A fresh temporary — a call result, a literal, a constructor call, or the value a conditional or `match` produces —
+// has no other owner, so `=` transfers it into the destination as it stands: the custom `=` is not called, the old
+// value is destroyed, and the temporary is destroyed once, with its new owner. A named or borrowed source is still
+// copied through the custom `=`. A copy gets the id of its source plus 10, and each tracked value appends its id to a
+// log as it is destroyed, while each check appends 00 where it stands, so the log is the exact order of events.
+
+import Core::Assert;
+
+struct Log {
+    copies: int32;
+    drops: int32;
+    order: int64;
+}
+
+struct Tracked {
+    log: *var Log;
+    id: int32;
+}
+
+extend Tracked {
+    func Tracked(log: *var Log, id: int32) -> Tracked {
+        return Tracked { log: log, id: id };
+    }
+
+    func =(self: &var Tracked, other: &Tracked) {
+        self.log = other.log;
+        self.id = other.id + 10;
+        self.log.copies = self.log.copies + 1;
+    }
+
+    func ~Tracked(self: &var Tracked) {
+        self.log.drops = self.log.drops + 1;
+        self.log.order = self.log.order * 100 + (self.id as int64);
+    }
+
+    func Renew(self: &var Tracked, id: int32) {
+        self = Track(self.log, id);
+    }
+}
+
+// Destroyed like `Tracked`, but copied by the generated `=`.
+struct Plain {
+    log: *var Log;
+    id: int32;
+}
+
+extend Plain {
+    func ~Plain(self: &var Plain) {
+        self.log.drops = self.log.drops + 1;
+        self.log.order = self.log.order * 100 + (self.id as int64);
+    }
+}
+
+struct Holder {
+    item: Tracked;
+    count: int32;
+}
+
+func Mark(log: *var Log) {
+    log.order = log.order * 100;
+}
+
+func Track(log: *var Log, id: int32) -> Tracked {
+    return Tracked { log: log, id: id };
+}
+
+func MakePlain(log: *var Log, id: int32) -> Plain {
+    return Plain { log: log, id: id };
+}
+
+func Reset(log: *var Log) {
+    log.copies = 0;
+    log.drops = 0;
+    log.order = 1;
+}
+
+func CallIntoLocal(log: *var Log) {
+    var item = Track(log, 1i32);
+    item = Track(log, 2i32);
+    Mark(log);
+    Assert(item.id == 2i32, "the call result is installed as it stands");
+}
+
+func LiteralIntoLocal(log: *var Log) {
+    var item = Track(log, 1i32);
+    item = Tracked { log: log, id: 2i32 };
+    Mark(log);
+    Assert(item.id == 2i32, "the literal is installed as it stands");
+}
+
+func ConstructorIntoLocal(log: *var Log) {
+    var item = Track(log, 1i32);
+    item = Tracked(log, 2i32);
+    Mark(log);
+    Assert(item.id == 2i32, "the constructed value is installed as it stands");
+}
+
+func ConditionalIntoLocal(log: *var Log, pick: bool) {
+    var item = Track(log, 1i32);
+    item = pick ? Track(log, 2i32) : Track(log, 3i32);
+    Mark(log);
+    Assert(item.id == 2i32, "the conditional's value is installed as it stands");
+}
+
+func MatchIntoLocal(log: *var Log, which: int32) {
+    var item = Track(log, 1i32);
+    item = match which {
+        2 => Track(log, 2i32),
+        else => Track(log, 3i32)
+    };
+    Mark(log);
+    Assert(item.id == 2i32, "the match's value is installed as it stands");
+}
+
+// The arm copies its named source once; the value the conditional produces is then a temporary.
+func ConditionalOfNamed(log: *var Log, pick: bool) {
+    var item = Track(log, 1i32);
+    let source = Track(log, 2i32);
+    item = pick ? source : source;
+    Mark(log);
+    Assert(item.id == 12i32 && source.id == 2i32, "the arm copies its source once");
+}
+
+func IntoUninitialized(log: *var Log) {
+    var item: Tracked;
+    item = Track(log, 2i32);
+    Mark(log);
+    Assert(item.id == 2i32, "a temporary initializes storage as it stands");
+}
+
+func Replace(slot: &var Tracked, log: *var Log) {
+    slot = Track(log, 2i32);
+}
+
+func ThroughReference(log: *var Log) {
+    var item = Track(log, 1i32);
+    Replace(item, log);
+    Mark(log);
+    Assert(item.id == 2i32, "a temporary written through '&var' is installed as it stands");
+}
+
+func ThroughReceiver(log: *var Log) {
+    var item = Track(log, 1i32);
+    item.Renew(2i32);
+    Mark(log);
+    Assert(item.id == 2i32, "a temporary written through 'self' is installed as it stands");
+}
+
+// Whether the old field or element is destroyed at the write is D60's concern; the checks below look only at the
+// temporary, which must be installed without a copy and destroyed once, with its new owner.
+func IntoField(log: *var Log) {
+    var holder = Holder { item: Track(log, 1i32), count: 0i32 };
+    holder.item = Track(log, 2i32);
+    Mark(log);
+    Assert(holder.item.id == 2i32, "a temporary assigned to a field is installed as it stands");
+}
+
+func IntoElement(log: *var Log) {
+    var items = [Track(log, 1i32), Track(log, 3i32)];
+    items[0] = Track(log, 2i32);
+    Mark(log);
+    Assert(items[0].id == 2i32, "a temporary assigned to an element is installed as it stands");
+}
+
+func TupleIntoLocal(log: *var Log) {
+    var pair = (Track(log, 1i32), 1i32);
+    pair = (Track(log, 2i32), 2i32);
+    Mark(log);
+    Assert(pair.0.id == 2i32 && pair.1 == 2i32, "a tuple literal is installed as it stands");
+}
+
+func MovedSource(log: *var Log) {
+    var item = Track(log, 1i32);
+    var source = Track(log, 2i32);
+    item = <-source;
+    Mark(log);
+    Assert(item.id == 2i32, "a source handed over with '<-' is installed as it stands");
+}
+
+func NamedSource(log: *var Log) {
+    var item = Track(log, 1i32);
+    let source = Track(log, 2i32);
+    item = source;
+    Mark(log);
+    Assert(item.id == 12i32 && source.id == 2i32, "a named source is copied through the custom '='");
+}
+
+func FieldSource(log: *var Log) {
+    var item = Track(log, 1i32);
+    let holder = Holder { item: Track(log, 2i32), count: 0i32 };
+    item = holder.item;
+    Mark(log);
+    Assert(item.id == 12i32 && holder.item.id == 2i32, "a field source is copied through the custom '='");
+}
+
+func DereferencedSource(log: *var Log) {
+    var item = Track(log, 1i32);
+    var source = Track(log, 2i32);
+    let pointer = @source;
+    item = *pointer;
+    Mark(log);
+    Assert(item.id == 12i32 && source.id == 2i32, "a dereferenced source is copied through the custom '='");
+}
+
+func GeneratedCopy(log: *var Log) {
+    var plain = MakePlain(log, 1i32);
+    plain = MakePlain(log, 2i32);
+    Mark(log);
+    Assert(plain.id == 2i32, "a temporary with a generated '=' is installed as it stands");
+}
+
+func Main() -> int {
+    var log = Log { copies: 0i32, drops: 0i32, order: 1i64 };
+
+    CallIntoLocal(@log);
+    Assert(log.copies == 0i32 && log.drops == 2i32 && log.order == 1010002i64, "a call result is not copied");
+
+    Reset(@log);
+    LiteralIntoLocal(@log);
+    Assert(log.copies == 0i32 && log.drops == 2i32 && log.order == 1010002i64, "a literal is not copied");
+
+    Reset(@log);
+    ConstructorIntoLocal(@log);
+    Assert(log.copies == 0i32 && log.drops == 2i32 && log.order == 1010002i64, "a constructed value is not copied");
+
+    Reset(@log);
+    ConditionalIntoLocal(@log, true);
+    Assert(log.copies == 0i32 && log.drops == 2i32 && log.order == 1010002i64, "a conditional's value is not copied");
+
+    Reset(@log);
+    MatchIntoLocal(@log, 2i32);
+    Assert(log.copies == 0i32 && log.drops == 2i32 && log.order == 1010002i64, "a match's value is not copied");
+
+    Reset(@log);
+    ConditionalOfNamed(@log, true);
+    Assert(log.copies == 1i32 && log.drops == 3i32 && log.order == 101000212i64, "a conditional arm copies once");
+
+    Reset(@log);
+    IntoUninitialized(@log);
+    Assert(log.copies == 0i32 && log.drops == 1i32 && log.order == 10002i64, "initializing storage copies nothing");
+
+    Reset(@log);
+    ThroughReference(@log);
+    Assert(log.copies == 0i32 && log.drops == 2i32 && log.order == 1010002i64, "a write through '&var' copies nothing");
+
+    Reset(@log);
+    ThroughReceiver(@log);
+    Assert(log.copies == 0i32 && log.drops == 2i32 && log.order == 1010002i64, "a write through 'self' copies nothing");
+
+    Reset(@log);
+    IntoField(@log);
+    Assert(log.copies == 0i32 && log.order % 10000i64 == 2i64, "a temporary assigned to a field is not copied");
+
+    Reset(@log);
+    IntoElement(@log);
+    Assert(log.copies == 0i32 && log.order % 1000000i64 == 302i64, "a temporary assigned to an element is not copied");
+
+    Reset(@log);
+    TupleIntoLocal(@log);
+    Assert(log.copies == 0i32 && log.drops == 2i32 && log.order == 1010002i64, "a tuple literal is not copied");
+
+    Reset(@log);
+    MovedSource(@log);
+    Assert(log.copies == 0i32 && log.drops == 2i32 && log.order == 1010002i64, "a moved source is not copied");
+
+    Reset(@log);
+    NamedSource(@log);
+    Assert(log.copies == 1i32 && log.drops == 3i32 && log.order == 101000212i64, "a named source is copied");
+
+    Reset(@log);
+    FieldSource(@log);
+    Assert(log.copies == 1i32 && log.drops == 3i32 && log.order == 101000212i64, "a field source is copied");
+
+    Reset(@log);
+    DereferencedSource(@log);
+    Assert(log.copies == 1i32 && log.drops == 3i32 && log.order == 101000212i64, "a dereferenced source is copied");
+
+    Reset(@log);
+    GeneratedCopy(@log);
+    Assert(log.copies == 0i32 && log.drops == 2i32 && log.order == 1010002i64, "a generated '=' copies nothing");
+    return 0;
+}
