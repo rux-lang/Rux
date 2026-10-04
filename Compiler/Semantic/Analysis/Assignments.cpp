@@ -155,6 +155,25 @@ bool AnalysisContext::CanAssignExprTo(const Expr &expr, const TypeRef &exprType,
         return true;
     }
 
+    // A range literal is contextually typed bound by bound, like a tuple, so `let r: int32..int32 = 1..5;` gives
+    // each unsuffixed bound the annotation's element type. The shape (which bounds exist, inclusive or not) must match.
+    if (const auto *range = dynamic_cast<const RangeExpr *>(&expr);
+        range && exprType.IsRange() && targetType.IsRange() && exprType.kind == targetType.kind &&
+        !targetType.inner.empty()) {
+        const TypeRef &element = targetType.inner.front();
+        for (const Expr *bound : {range->lo.get(), range->hi.get()}) {
+            if (!bound) {
+                continue;
+            }
+            const auto checked = expressionTypes.find(bound);
+            const TypeRef boundType = checked != expressionTypes.end() ? checked->second : CheckExpr(*bound);
+            if (!CanAssignExprTo(*bound, boundType, element)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     if (targetType.IsInteger() && IsUnsuffixedIntegerLiteral(expr)) {
         return UnsuffixedIntegerLiteralFits(expr, targetType);
     }

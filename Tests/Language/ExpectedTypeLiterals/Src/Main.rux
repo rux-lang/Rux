@@ -95,5 +95,17 @@ func Main() -> int {
     Assert(Where((3, 0)) == 30, "a tuple literal argument finds the tuple parameter");
     Assert(Where((true, false)) == 1, "and overloads are still separated by element type");
 
+    // Range bounds take an annotated range's element type.
+    let half: int32..int32 = 1..5;
+    let closed: int32..=int32 = 2..=7;
+    var sum: int32 = 0;
+    for value in half {
+        sum += value;
+    }
+    for value in closed {
+        sum += value;
+    }
+    Assert(sum == 37, "both range forms take 'int32' bounds from the annotation");
+
     return 0;
 }

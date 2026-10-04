@@ -544,7 +544,9 @@ PrintLine("{}", passes);
   forever.
 - **Course workaround:** no lesson iterates up to a type's maximum.
 
-## D33. A range annotation with a narrower integer type rejects unsuffixed literals
+## D33. A range annotation with a narrower integer type rejects unsuffixed literals (fixed)
+
+**Fixed**; covered by `Tests/Language/ExpectedTypeLiterals`.
 
 - **Reproducer:** `let r: int32..int32 = 1..5;`.
 - **Expected:** accepted, with the literals taking `int32` from the annotation.

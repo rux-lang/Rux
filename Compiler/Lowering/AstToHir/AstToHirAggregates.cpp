@@ -555,6 +555,22 @@ HirExprPtr AstToHirContext::LowerExprAs(const Expr &expression, const TypeRef &t
         return CompilerLiteral(expression.location, targetType, "0");
     }
 
+    // A range literal accepted against a range type builds each bound at that type's element type.
+    if (const auto *range = dynamic_cast<const RangeExpr *>(&expression);
+        range && targetType.IsRange() && !targetType.inner.empty()) {
+        auto lowered = std::make_unique<HirRangeExpr>();
+        lowered->location = range->location;
+        lowered->inclusive = range->inclusive;
+        if (range->lo) {
+            lowered->lo = LowerExprAs(*range->lo, targetType.inner.front());
+        }
+        if (range->hi) {
+            lowered->hi = LowerExprAs(*range->hi, targetType.inner.front());
+        }
+        lowered->type = targetType;
+        return lowered;
+    }
+
     // Analysis accepted an unprefixed character literal at the expected width, so it is that width's code unit.
     if (const auto *literal = dynamic_cast<const LiteralExpr *>(&expression);
         literal && literal->token.kind == TokenKind::CharLiteral && literal->token.text.starts_with('\'') &&
