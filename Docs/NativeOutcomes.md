@@ -151,7 +151,6 @@ Pitfalls:
 - A named move-only value as a `match` or `catch` subject is written `<-name`.
 - A block arm `{ ... }` completes with `()`, so it is valid only for a unit success unless it ends by leaving.
 - A helper taking `&(T ! E)` needs a place to borrow from: call it on a named local, or take the fallible by value.
-- `import Core::#target;` does not parse; write `import Core::{ #target };`.
 
 ## Regression Coverage
 

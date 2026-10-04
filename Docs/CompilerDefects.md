@@ -691,13 +691,6 @@ documents in lessons are therefore built line by line with a `StringBuilder`.
 - **Course impact:** `CompileTime/BuildMode` uses the `when` form, and breaks if the leak is
   closed without making the field `pub`.
 
-## D42. A single-item import of a `#` name does not parse
-
-- **Reproducer:** `import Core::#source;`.
-- **Expected:** accepted, the same as `import Core::{ #source };`.
-- **Actual:** `expected a module path segment after '::' before '#'`, followed by three cascading
-  errors. `Docs/NativeOutcomes.md` lists this as a pitfall; it would be better fixed.
-
 ## D43. `#source.column` reports the column of `.column`, not of the expression
 
 - **Reproducer:** `    let column = #source.column;`, where the `#` is at column 18.

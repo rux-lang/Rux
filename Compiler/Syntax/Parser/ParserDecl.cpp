@@ -529,6 +529,12 @@ std::unique_ptr<UseDecl> Parser::ParseUseDecl(const bool requireSemicolon) {
                 decl->kind = UseDecl::Kind::Glob;
                 break;
             }
+            // An intrinsic value is imported by its '#'-prefixed name, which ends the path.
+            if (Check(TokenKind::Hash) && Peek(1).Is(TokenKind::Ident)) {
+                Advance(); // consume '#'
+                decl->path.push_back("#" + Advance().text);
+                break;
+            }
             decl->path.push_back(ExpectBefore(TokenKind::Ident, "a module path segment after '::'").text);
         }
         else {

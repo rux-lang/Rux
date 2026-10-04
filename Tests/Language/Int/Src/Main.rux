@@ -7,7 +7,7 @@
 // Both currently supported architectures are 64-bit, and none of these assertions says so.
 
 import Core::Assert;
-import Core::{ #target };
+import Core::#target;
 import Core::{ int, int64, uint };
 
 func Echo(value: int) -> int {
