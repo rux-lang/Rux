@@ -170,7 +170,7 @@ extend SipHash24 {
             keyHigh: high,
             state: SipState::FromKey(low, high),
             total: 0,
-            pending: [0, 0, 0, 0, 0, 0, 0, 0],
+            pending: [0; 8],
             buffered: 0
         };
     }

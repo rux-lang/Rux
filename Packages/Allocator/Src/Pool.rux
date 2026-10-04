@@ -112,7 +112,7 @@ extend Pool {
         let blocks = blocksPerChunk == 0 ? DefaultPoolBlocksPerChunk : blocksPerChunk;
         return Pool {
             backing: backing,
-            free: [0, 0, 0, 0, 0],
+            free: [0; 5],
             chunks: null,
             blocksPerChunk: blocks,
             live: 0,

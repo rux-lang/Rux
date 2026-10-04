@@ -19,7 +19,7 @@ func Cleared() -> uint64 {
 }
 
 func Partial() -> uint64 {
-    var secret: uint8[4] = [9u8, 9u8, 9u8, 9u8];
+    var secret: uint8[4] = [9u8; 4];
     Zeroize(@secret[0], 2u64);
     return Sum(@secret[0], 4u64);
 }

@@ -59,7 +59,7 @@ when #target.os == OperatingSystem::macOS {
         }
 
         // The entropy source cannot fail and has no count to check, so what is checked is that it wrote something.
-        var seed: uint64[4] = [0, 0, 0, 0];
+        var seed: uint64[4] = [0; 4];
         GetRandom(@seed[0] as *var opaque, 32);
         if seed[0] == 0 && seed[1] == 0 && seed[2] == 0 && seed[3] == 0 {
             return 10;

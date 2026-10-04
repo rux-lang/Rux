@@ -103,7 +103,7 @@ extend JsonEventReader {
     pub func New(allocator: Allocator, source: Reader, limits: JsonLimits) -> JsonEventReader ! IoError {
         var reader = JsonEventReader {
             source: source, data: null, capacity: 0, filled: 0, position: 0, exhausted: false,
-            allocator: allocator, limits: limits, stack: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            allocator: allocator, limits: limits, stack: [0; 16],
             depth: 0, tokenStart: 0, tokenEnd: 0, tokenEscaped: false,
             stop: JsonStop::None, lexical: JsonLexError::None, expectingValue: true
         };

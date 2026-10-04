@@ -108,7 +108,7 @@ func Main() -> int {
     Assert(vect.Sum(3) == 33, "a method reads through its own indexer");
 
     // Writing goes through `[]=`, and `[]` reads back what it wrote.
-    var mutable = Vect { data: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] };
+    var mutable = Vect { data: [0; 10] };
     mutable[2] = 7;
     Assert(mutable[2] == 7, "the setter writes the element the getter reads");
     Assert(mutable[3] == 0, "the setter writes nothing else");
@@ -135,7 +135,7 @@ func Main() -> int {
     Assert(grid[corner] == 8i32, "the indexer accepts a struct index");
     let origin = Coord { row: 0, column: 1 };
     Assert(grid[origin] == 1i32, "a struct index is an ordinary argument");
-    var writable = Grid { cells: [0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32, 0i32] };
+    var writable = Grid { cells: [0i32; 9] };
     writable[corner] = 5i32;
     Assert(writable[corner] == 5i32, "a struct index writes as well as reads");
 
@@ -143,7 +143,7 @@ func Main() -> int {
     let boxed = Box<int32> { items: [3i32, 5i32, 8i32, 13i32] };
     Assert(boxed[1] == 5i32, "a generic indexer substitutes its element type");
     Assert(boxed[3] == 13i32, "a generic indexer indexes its whole extent");
-    var writableBox = Box<int32> { items: [0i32, 0i32, 0i32, 0i32] };
+    var writableBox = Box<int32> { items: [0i32; 4] };
     writableBox[2] = 17i32;
     Assert(writableBox[2] == 17i32, "a generic setter substitutes its element type");
 

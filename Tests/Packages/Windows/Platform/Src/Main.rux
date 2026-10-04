@@ -43,7 +43,7 @@ when #target.os == OperatingSystem::Windows {
         }
 
         // The entropy source fills the whole buffer or fails; there is no short count.
-        var seed: uint64[4] = [0, 0, 0, 0];
+        var seed: uint64[4] = [0; 4];
         if !GetRandom(@seed[0] as *var opaque, 32) {
             return 7;
         }
@@ -52,7 +52,7 @@ when #target.os == OperatingSystem::Windows {
         }
 
         // A second draw must not repeat the first, which is the cheapest check that this is a generator at all.
-        var second: uint64[4] = [0, 0, 0, 0];
+        var second: uint64[4] = [0; 4];
         if !GetRandom(@second[0] as *var opaque, 32) {
             return 9;
         }

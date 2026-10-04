@@ -35,7 +35,7 @@ extend Xoshiro256 {
     /// @see https://rux-lang.dev/docs/api/random/xoshiro256/new
     pub func Xoshiro256(seed: uint64) -> Xoshiro256 {
         var mixer = SplitMix64(seed);
-        var generator = Xoshiro256 { state: [0, 0, 0, 0] };
+        var generator = Xoshiro256 { state: [0; 4] };
         var index: uint = 0;
         while index < 4u {
             generator.state[index] = mixer.NextUint64();

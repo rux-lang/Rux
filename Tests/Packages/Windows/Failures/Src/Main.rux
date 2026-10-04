@@ -148,7 +148,7 @@ when #target.os == OperatingSystem::Windows {
         let beforeSuccess = GetLastError();
         Assert(beforeSuccess == ERROR_INVALID_HANDLE, "the standing Win32 code is INVALID_HANDLE");
 
-        var seed: uint64[4] = [0, 0, 0, 0];
+        var seed: uint64[4] = [0; 4];
         Assert(GetRandom(@seed[0] as *var opaque, 32), "the generator succeeds while that code stands");
         Assert(GetLastError() == beforeSuccess,
                "and a SUCCESSFUL draw leaves the stale Win32 code untouched, so GetLastError says nothing about it");

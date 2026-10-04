@@ -36,7 +36,7 @@ func Main() -> int {
     }
 
     // The all-zero state is the one state outside the cycle, and seeding refuses to leave a generator there.
-    let zeroState: uint64[4] = [0, 0, 0, 0];
+    let zeroState: uint64[4] = [0; 4];
     var zeroed = Xoshiro256::FromState(zeroState);
     let firstFromZero = zeroed.NextUint64();
     let secondFromZero = zeroed.NextUint64();

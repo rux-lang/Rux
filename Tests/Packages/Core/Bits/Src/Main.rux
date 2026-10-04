@@ -85,10 +85,7 @@ func CheckWidth<T>(zero: T, one: T, allOnes: T) -> int32 {
 }
 
 func CheckBytes<T>(value: T, zero: T) -> int32 {
-    var buffer: byte[64] = [
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
-    ];
+    var buffer: byte[64] = [0; 64];
     var restored = zero;
 
     // A round trip through bytes gives back the value, in either order.
@@ -102,10 +99,7 @@ func CheckBytes<T>(value: T, zero: T) -> int32 {
     if restored != value { return 2; }
 
     // The two orders write the same bytes backwards from each other.
-    var little: byte[64] = [
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-        0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
-    ];
+    var little: byte[64] = [0; 64];
     StoreLittleEndian<T>(value, @little[0]);
     var index = 0u64;
     while index < sizeof(T) {

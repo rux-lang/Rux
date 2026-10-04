@@ -148,7 +148,7 @@ func Main() -> int {
 
     // Transform writes into a separate destination.
     var source: int32[4] = [1, 2, 3, 4];
-    var doubled: int32[4] = [0, 0, 0, 0];
+    var doubled: int32[4] = [0; 4];
     if !Transform<int32, int32>(Ints(@doubled[0], 4), ReadInts(@source[0], 4), Double) { return 80; }
     if doubled[0] != 2 || doubled[3] != 8 { return 81; }
     if source[0] != 1 || source[3] != 4 { return 82; }
@@ -166,7 +166,7 @@ func Main() -> int {
     var records: Record[3] = [Record { key: 5, origin: 0 },
                               Record { key: 6, origin: 1 },
                               Record { key: 7, origin: 2 }];
-    var keys: int32[3] = [0, 0, 0];
+    var keys: int32[3] = [0; 3];
     if !Transform<Record, int32>(Ints(@keys[0], 3), ReadRecords(@records[0], 3), KeyOf) { return 88; }
     if keys[0] != 5 || keys[2] != 7 { return 89; }
 

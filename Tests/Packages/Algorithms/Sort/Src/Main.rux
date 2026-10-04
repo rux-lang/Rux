@@ -250,7 +250,7 @@ func Main() -> int {
     if ranked[5].key != 3 { return 233; }
 
     // Every origin 0..5 appears exactly once among the sorted records.
-    var seen: int32[6] = [0, 0, 0, 0, 0, 0];
+    var seen: int32[6] = [0; 6];
     i = 0;
     while i < 6 {
         let origin = ranked[i].origin;

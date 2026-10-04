@@ -204,8 +204,7 @@ extend XxHash64 {
             third: seed,
             fourth: seed - XxPrime1,
             total: 0,
-            pending: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            pending: [0; 32],
             buffered: 0
         };
     }
