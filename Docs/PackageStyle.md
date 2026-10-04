@@ -23,6 +23,7 @@ Three tools run before this checker and own rules it does not repeat.
 ## File headers and spacing
 
 - Every maintained package source begins with an ordinary `//` header, placed before imports and attributes.
+- Comments are compact: neither the header nor any other `//` comment contains an empty `//` line. Its paragraphs run on from line to line, as documentation prose does; a list keeps one item per line. The tests under `Tests/Packages` and `Tests/Language` follow the same comment style, except `Tests/Language/Comments`, which exercises the comment forms themselves.
 - The header explains the file's responsibility and any non-obvious ownership, representation or platform constraint. It is not a restatement of the file name.
 - Extended design discussion belongs in the package README, not in a routine source file. Do not write migration history into a file that will outlive the migration.
 - One blank line separates the header from the imports, and the imports from the first declaration.
@@ -79,7 +80,7 @@ Maintained package APIs use `///` throughout.
 | Public `const` or type alias     | Meaning and units or value contract, or the reason the alias exists                                        |
 | Destructor                       | Cleanup behavior and retained unsafe assumptions; never `@returns`                                         |
 
-A summary must say something. A restatement of the declaration's own name is not a summary: `/// Reads a byte.` on `func ReadByte()` conveys nothing the signature did not.
+The summary is the first sentence, so it is one complete sentence that stands alone; avoid abbreviations such as "e.g." in it, since the period would end it early. A summary must say something. A restatement of the declaration's own name is not a summary: `/// Reads a byte.` on `func ReadByte()` conveys nothing the signature did not.
 
 ### Structured tags
 
@@ -90,11 +91,10 @@ Tags form one terminal block at the end of the documentation, in this order:
 3. `@returns`
 4. `@see`
 
-The block follows the prose directly, with no empty `///` line before it: a tag is recognized by its leading `@`, so a separator would only spend a line. The one empty line that matters comes after the summary when more prose follows, because the summary is the first paragraph and a Markdown paragraph ends only at an empty line. Within the tag block, prose does not resume; anything after the first tag is part of it.
+The block follows the prose directly, with no empty `///` line before it: a tag is recognized by its leading `@`, so a separator would only spend a line. The summary needs no empty line after it either, because it is the first sentence rather than the first paragraph; further prose continues on the next line, as "Compact prose" below describes. Within the tag block, prose does not resume; anything after the first tag is part of it.
 
 ```rux
 /// The clock, read now.
-///
 /// Cannot fail on any supported system: the monotonic clock exists from boot and needs no permission.
 /// @returns the monotonic clock, read now
 /// @see https://rux-lang.dev/docs/api/time/instant/now
@@ -107,13 +107,15 @@ The block follows the prose directly, with no empty `///` line before it: a tag 
 
 A bare URL written as prose is not a structured reference. `@see` is what gives a URL a defined documentation role, and it is what the generator renders into a See Also section. An unresolved external `@see` target may still render as code text rather than a live link; adopting the tag does not promise otherwise.
 
-### Sections
+### Compact prose
 
-Three prose headings have a fixed meaning inside declaration documentation.
+Declaration documentation has no empty `///` lines and no section headings. The summary sentence comes first, and the rest of the prose continues on the following lines as one paragraph. What a section heading used to mark is written into that prose instead, and still has to be there:
 
-- `# Safety` — obligations the language does not enforce: stored-address lifetime, alignment, nullability and invalidation.
-- `# Failures` — recoverable failures, and the partial-output or partial-state guarantee that accompanies each.
-- `# Panics` — used only where termination is actually possible.
+- obligations the language does not enforce: stored-address lifetime, alignment, nullability and invalidation;
+- recoverable failures, and the partial-output or partial-state guarantee that accompanies each;
+- termination, only where it is actually possible.
+
+A list or a fenced code block may still appear where the content is genuinely a list or code; the generator ends the paragraph before it without an empty line. Empty lines inside a fenced block are part of the code.
 
 ## Prose conventions
 

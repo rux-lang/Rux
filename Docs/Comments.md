@@ -25,16 +25,16 @@ An unterminated block is a language error at its opening delimiter. The lexer st
 
 ## Writing Documentation
 
+The first sentence is the summary that tools show on its own. It ends at the first `.`, `!` or `?` followed by whitespace, so it may wrap across lines and needs no empty line after it; a period inside a code span or a number such as `0.5` does not end it, but an abbreviation followed by a space does, so a summary avoids them. Prose with no sentence end before its first empty line is summarized by that whole paragraph.
+
 Use one documentation form consistently within a short API description. Adjacent line and block documentation may be mixed when a generated or migrated source file needs it; they normalize into one Markdown value.
 
 ```rux
 /// Parses one value.
-///
-/// # Failures
-/// Returns an error when `input` is malformed.
-/// @param input Source text.
-/// @returns The parsed value.
-func Parse(input: String) -> Value;
+/// Fails with `ParseError` when `input` is malformed, and produces no value at all.
+/// @param input the source text
+/// @returns the parsed value, or why `input` is not one
+func Parse(input: String) -> Value ! ParseError;
 ```
 
 Block documentation is equivalent. `rux fmt` indents multiline content by four spaces without a star margin:
@@ -42,15 +42,16 @@ Block documentation is equivalent. `rux fmt` indents multiline content by four s
 ```rux
 /**
     Parses one value.
-    @param input Source text.
-    @returns The parsed value.
+    Fails with `ParseError` when `input` is malformed, and produces no value at all.
+    @param input the source text
+    @returns the parsed value, or why `input` is not one
 */
-func Parse(input: String) -> Value;
+func Parse(input: String) -> Value ! ParseError;
 ```
 
 Documentation content is normalized to LF Markdown. A line comment loses `///` and one optional following space. A block loses boundary-only lines, common indentation, and one aligned `*` margin plus its optional space. Meaningful blank lines, authored wrapping, nested Markdown indentation, and fenced code are preserved.
 
-The safe Markdown surface includes paragraphs, emphasis, strong text, code spans, lists, fenced code, links using safe schemes, and headings. Prefer item-local headings such as `# Safety`, `# Failures`, and `# Panics`; generated pages lower them beneath the declaration heading without changing their relationship.
+The safe Markdown surface includes paragraphs, emphasis, strong text, code spans, lists, fenced code, links using safe schemes, and headings. Generated pages lower a heading beneath the declaration heading without changing their relationship. A heading, a list item or a code fence ends the paragraph before it without an empty line; only two prose paragraphs need one between them. First-party packages write compact prose with no headings and no empty lines, as `Docs/PackageStyle.md` describes.
 
 ## Attachment
 

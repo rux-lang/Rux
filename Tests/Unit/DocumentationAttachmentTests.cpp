@@ -43,6 +43,30 @@ TEST_CASE("Syntax documentation exposes presence emptiness and a summary") {
     CHECK_FALSE(tagsOnly.Present());
 }
 
+TEST_CASE("A documentation summary is the first sentence") {
+    const auto summaryOf = [](std::string markdown) {
+        Syntax::Documentation documentation;
+        documentation.markdown = std::move(markdown);
+        return std::string(documentation.Summary());
+    };
+
+    // The details may follow on the next line, with no empty line between them.
+    CHECK_EQ(summaryOf("Computes the absolute value of `x`.\nThis clears the sign bit."),
+             "Computes the absolute value of `x`.");
+    CHECK_EQ(summaryOf("Is it full? Then it refuses."), "Is it full?");
+    CHECK_EQ(summaryOf("Stop now! Nothing follows."), "Stop now!");
+
+    // A period inside a code span, inside a number, or not followed by whitespace does not end the sentence.
+    CHECK_EQ(summaryOf("Calls `a. b` once. Then returns."), "Calls `a. b` once.");
+    CHECK_EQ(summaryOf("Rounds to 0.5 steps. Then stops."), "Rounds to 0.5 steps.");
+    CHECK_EQ(summaryOf("Reads `Path.Join` results.\nMore."), "Reads `Path.Join` results.");
+
+    // Prose with no sentence end before its first empty line is summarized by that paragraph.
+    CHECK_EQ(summaryOf("A heading-like line\n\nThen prose."), "A heading-like line");
+    CHECK_EQ(summaryOf("No closing punctuation"), "No closing punctuation");
+    CHECK_EQ(summaryOf("Ends the paragraph.\n\nNext paragraph."), "Ends the paragraph.");
+}
+
 TEST_CASE("Adjacent line and block documentation attach as one source-aware value") {
     auto parsed = ParseDocumentationSource("/// First line.\n"
                                            "/**\n"
