@@ -1,0 +1,52 @@
+// An inclusive range may end at its type's maximum. The loop visits that last value once and stops, rather than
+// stepping past it and wrapping around to the minimum. Each loop also carries a guard, so a regression fails the test
+// instead of hanging it.
+
+import Core::Assert;
+import Core::{ int8, int64, uint64, uint8 };
+
+func Main() -> int {
+    let start: uint8 = 250;
+    var passes = 0;
+    var last: uint8 = 0;
+    for v in start..=255 {
+        passes += 1;
+        last = v;
+        if passes > 10 { break; }
+    }
+    Assert(passes == 6, "250..=255 visits six values");
+    Assert(last == 255u8, "and the last of them is the maximum");
+
+    var signed = 0;
+    var total = 0;
+    for v in 120i8..=127i8 {
+        signed += 1;
+        total += v as int;
+        if signed > 20 { break; }
+    }
+    Assert(signed == 8, "a signed range up to its maximum visits each value once");
+    Assert(total == 988, "and visits each of them in order");
+
+    var single = 0;
+    for v in uint64::Max..=uint64::Max {
+        single += 1;
+        Assert(v == uint64::Max, "a one-value range at the maximum holds that value");
+        if single > 2 { break; }
+    }
+    Assert(single == 1, "a one-value range at the maximum runs once");
+
+    var skipped = 0;
+    for v in 5i64..=4i64 {
+        skipped += 1;
+        if v > 100i64 || skipped > 2 { break; }
+    }
+    Assert(skipped == 0, "an inclusive range whose start is past its end runs no iterations");
+
+    var bottom = 0;
+    for v in int8::Min..=-126i8 {
+        bottom += 1;
+        if v > 0i8 || bottom > 5 { break; }
+    }
+    Assert(bottom == 3, "a range starting at the minimum is unaffected");
+    return 0;
+}

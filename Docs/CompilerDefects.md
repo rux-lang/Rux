@@ -562,7 +562,9 @@ func Main() -> int {
   (0xC0000005).
 - **Course workaround:** `ControlFlow/Ternary` states the same-type rule but quotes no diagnostic.
 
-## D32. An inclusive range that ends at its type's maximum never terminates
+## D32. An inclusive range that ends at its type's maximum never terminates (fixed)
+
+**Fixed**; covered by `Tests/Language/InclusiveRangeEnd`.
 
 ```rux
 let start: uint8 = 250;

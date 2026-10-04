@@ -376,7 +376,7 @@ Range expressions and annotations use the same punctuation family. Bounds in a t
 | `..=4`     | `..=int`    | `.end`           |
 | `..`       | `..`        | none             |
 
-Range members are compiler-owned and need no import. Inclusive ranges include their final bound; ordinary two-sided ranges exclude it. The full range selects an entire array or slice. A pointer requires an explicit end.
+Range members are compiler-owned and need no import. Inclusive ranges include their final bound; ordinary two-sided ranges exclude it. A `for` over an inclusive range visits its end last and stops there, even when the end is its type's maximum, so `for v in start..=255` over `uint8` never wraps around; a range whose start is past its end visits nothing. The full range selects an entire array or slice. A pointer requires an explicit end.
 
 Concrete extensions such as `extend int[..]` and `extend char8[..]` have separate method sets. Generic slice extensions such as `extend T[..]` are rejected; generic reusable algorithms remain ordinary functions.
 

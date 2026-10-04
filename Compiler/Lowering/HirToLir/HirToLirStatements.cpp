@@ -342,6 +342,15 @@ void HirToLirContext::LowerFor(const HirForStmt &s) {
         }
         SetBlock(stepBlock);
         LirReg iCur = EmitLoad(slot, elemType);
+        if (s.iterable->type.IsInclusiveRange()) {
+            // An inclusive range may end at its type's maximum, where stepping past the end would wrap around to the
+            // minimum and pass the condition again. The step therefore leaves once the variable has reached the end,
+            // before incrementing it, and the condition above is only ever asked of a variable that did not wrap.
+            const std::uint32_t advanceBlock = NewBlock("for.advance");
+            const LirReg hiStepVal = EmitLoad(hiPtr, elemType);
+            Branch(EmitBinary(LirOpcode::CmpLt, iCur, hiStepVal, TypeRef::MakeBool()), advanceBlock, afterBlock);
+            SetBlock(advanceBlock);
+        }
         LirReg one = EmitConst("1", elemType);
         LirReg iNext = EmitBinary(LirOpcode::Add, iCur, one, elemType);
         EmitStore(iNext, slot, elemType);
