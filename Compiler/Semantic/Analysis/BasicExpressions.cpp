@@ -373,6 +373,9 @@ std::optional<TypeRef> AnalysisContext::CheckBasicExpression(const Expr &express
             isAssignable = CheckAssignableTarget(*assignment->target, target, OperatorName(assignment->op));
         }
         checkingPlainAssignmentTarget = savedAssignmentTarget;
+        if (isAssignable && simpleAssignment && target.kind != TypeRef::Kind::Reference) {
+            RecordPlaceReplacement(*assignment, writtenReference != nullptr);
+        }
         if (isAssignable && !simpleAssignment && !target.IsUnknown() && !value.IsUnknown()) {
             const TypeRef result = CheckBinary(assignment->op, target, value, *assignment->target, *assignment->value,
                                                assignment->location);
@@ -1521,5 +1524,52 @@ bool AnalysisContext::CheckReferenceWrite(const Expr &target, const Symbol &refe
     CheckBorrowedMutation(target, target.location);
     referenceWrites.insert(&target);
     return true;
+}
+
+void AnalysisContext::RecordPlaceReplacement(const AssignExpr &assignment, const bool wholeReferent) {
+    // A referent is the caller's live value, so replacing it whole always finds an old value to destroy.
+    if (wholeReferent) {
+        placeReplacements.insert_or_assign(&assignment, PlaceReplacement{});
+        return;
+    }
+    // Walk out from the place through the projections that stay inside one value — a field, a tuple element, a
+    // built-in array element — to the storage they are part of. That storage decides whether the place already holds
+    // a value: a reference or a slice addresses initialized values, and a raw pointer may address storage that is
+    // still to be initialized, which the write then initializes rather than replaces.
+    const Expr *place = assignment.target.get();
+    while (true) {
+        const Expr *object = nullptr;
+        if (const auto *field = dynamic_cast<const FieldExpr *>(place)) {
+            object = field->object.get();
+        }
+        else if (const auto *index = dynamic_cast<const IndexExpr *>(place); index && !IsIndexOperatorCall(*index)) {
+            object = index->object.get();
+        }
+        if (!object) {
+            break;
+        }
+        const auto objectType = expressionTypes.find(object);
+        if (objectType == expressionTypes.end() || objectType->second.kind == TypeRef::Kind::Pointer) {
+            return;
+        }
+        if (objectType->second.kind == TypeRef::Kind::Reference || SliceElementType(objectType->second)) {
+            placeReplacements.insert_or_assign(&assignment, PlaceReplacement{});
+            return;
+        }
+        place = object;
+    }
+    // A binding written whole is destroyed and marked live by its own cleanup. A part of one holds a value exactly
+    // while the binding owns its value, which only lowering's record of that binding can tell: a `var` declared without
+    // a value, or one moved from, owns nothing, and its parts are initialized rather than replaced.
+    if (place == assignment.target.get()) {
+        return;
+    }
+    const auto *identifier = dynamic_cast<const IdentExpr *>(place);
+    if (!identifier) {
+        return;
+    }
+    if (const Symbol *symbol = currentScope->Lookup(identifier->name); symbol && symbol->kind == Symbol::Kind::Var) {
+        placeReplacements.insert_or_assign(&assignment, PlaceReplacement{identifier});
+    }
 }
 } // namespace Rux::SemanticDetail

@@ -617,9 +617,7 @@ LirReg HirToLirContext::LowerAssign(const HirAssignExpr &e) {
         // The old value has no binding to name it, only the place the store addresses, so that one address is both
         // destroyed and written.
         targetAddress = LowerLValue(*e.target);
-        if (!e.overwriteCleanup->glueSymbol.empty() && !IsTerminated()) {
-            EmitDropGlueCall(e.overwriteCleanup->glueSymbol, targetAddress);
-        }
+        EmitPlaceCleanup(*e.overwriteCleanup, targetAddress);
     }
     else if (e.overwriteCleanup) {
         EmitCleanup(*e.overwriteCleanup);

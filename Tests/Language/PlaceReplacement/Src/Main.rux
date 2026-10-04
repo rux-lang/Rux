@@ -1,0 +1,243 @@
+// Replacing a droppable value that lives inside another one.
+// `=` and `<-` into a field, a tuple element, or an array or slice element replace the value already there, exactly
+// as an assignment to a `var` local does: the new value is produced first — by a custom `=` when it copies — then the
+// old value is destroyed once, then the new one is installed. That holds however the place is reached: from a local,
+// through a `&var` parameter, receiver, or alias, or inside a generic body. A write through a raw pointer initializes
+// storage that may hold nothing yet, so it destroys nothing. Each tracked value appends its id to a log as it is
+// destroyed or copied, and each check appends a 0 where it stands, so the log is the exact order of events.
+
+import Core::Assert;
+import Memory::{ Alloc, Free };
+
+struct Log {
+    count: int32;
+    order: int64;
+}
+
+// Destroyed with its id appended to the log.
+struct Tracked {
+    log: *var Log;
+    id: int32;
+}
+
+extend Tracked {
+    func ~Tracked(self: &var Tracked) {
+        self.log.count = self.log.count + 1;
+        self.log.order = self.log.order * 10 + (self.id as int64);
+    }
+}
+
+// Destroyed with its id appended to the log, and copied by its own '=' with a 9 appended.
+struct Copied {
+    log: *var Log;
+    id: int32;
+}
+
+extend Copied {
+    func =(self: &var Copied, other: &Copied) {
+        other.log.order = other.log.order * 10 + 9;
+        self.log = other.log;
+        self.id = other.id;
+    }
+
+    func ~Copied(self: &var Copied) {
+        self.log.count = self.log.count + 1;
+        self.log.order = self.log.order * 10 + (self.id as int64);
+    }
+}
+
+struct Holder {
+    tracked: Tracked;
+    count: int32;
+}
+
+extend Holder {
+    func Replace(self: &var Holder, id: int32) { self.tracked <- Tracked { log: self.tracked.log, id: id }; }
+}
+
+struct Outer {
+    holder: Holder;
+}
+
+struct CopyHolder {
+    copied: Copied;
+}
+
+struct Box<T> {
+    value: T;
+}
+
+func Mark(log: *var Log) {
+    log.order = log.order * 10;
+}
+
+func Reset(log: *var Log) {
+    log.count = 0i32;
+    log.order = 0i64;
+}
+
+func Make(log: *var Log, id: int32) -> Tracked {
+    return Tracked { log: log, id: id };
+}
+
+func FieldMove(log: *var Log) {
+    var holder = Holder { tracked: Make(log, 1i32), count: 0i32 };
+    holder.tracked <- Make(log, 2i32);
+    Mark(log);
+    Assert(holder.tracked.id == 2i32, "the moved value is installed in the field");
+}
+
+func FieldCopy(log: *var Log) {
+    var holder = CopyHolder { copied: Copied { log: log, id: 1i32 } };
+    let source = Copied { log: log, id: 2i32 };
+    holder.copied = source;
+    Mark(log);
+    Assert(holder.copied.id == 2i32 && source.id == 2i32, "the copy is installed and its source kept");
+}
+
+func NestedField(log: *var Log) {
+    var outer = Outer { holder: Holder { tracked: Make(log, 1i32), count: 0i32 } };
+    outer.holder.tracked <- Make(log, 2i32);
+    Mark(log);
+}
+
+func TupleElement(log: *var Log) {
+    var tuple = (Make(log, 1i32), 7);
+    tuple.0 <- Make(log, 2i32);
+    Mark(log);
+    Assert(tuple.1 == 7, "the other element is untouched");
+}
+
+func ArrayElement(log: *var Log) {
+    var items = [Make(log, 1i32), Make(log, 2i32)];
+    var index: uint = 1;
+    items[index] <- Make(log, 3i32);
+    items[0] <- Make(log, 4i32);
+    Mark(log);
+}
+
+func SliceElement(log: *var Log) {
+    var items = [Make(log, 1i32), Make(log, 2i32)];
+    let view: var Tracked[..] = items[..];
+    view[1] <- Make(log, 3i32);
+    Mark(log);
+}
+
+func ThroughParameter(holder: &var Holder, log: *var Log) {
+    holder.tracked <- Make(log, 2i32);
+}
+
+func ReferenceField(log: *var Log) {
+    var holder = Holder { tracked: Make(log, 1i32), count: 0i32 };
+    ThroughParameter(holder, log);
+    Mark(log);
+    holder.Replace(3i32);
+    Mark(log);
+    let alias: &var Holder = holder;
+    alias.tracked <- Make(log, 4i32);
+    Mark(log);
+}
+
+func PutValue<T>(box: &var Box<T>, value: T) {
+    box.value <- value;
+}
+
+func GenericField(log: *var Log) {
+    var box = Box<Tracked> { value: Make(log, 1i32) };
+    PutValue(box, Make(log, 2i32));
+    Mark(log);
+}
+
+func Repeated(log: *var Log) {
+    var holder = Holder { tracked: Make(log, 1i32), count: 0i32 };
+    var id = 2i32;
+    while id <= 4i32 {
+        holder.tracked <- Make(log, id);
+        id++;
+    }
+    Mark(log);
+}
+
+func RepeatedCopies(log: *var Log) {
+    var holder = CopyHolder { copied: Copied { log: log, id: 1i32 } };
+    let source = Copied { log: log, id: 2i32 };
+    var round = 0;
+    while round < 2 {
+        holder.copied = source;
+        round++;
+    }
+    Mark(log);
+}
+
+// A raw pointer may address storage nothing has initialized yet, so writing through it destroys nothing.
+func RawInitialization(log: *var Log) {
+    let block = Alloc(sizeof(Tracked) * 2) as *var Tracked;
+    *block <- Make(log, 1i32);
+    block[1] <- Make(log, 2i32);
+    *(block + 1) <- Make(log, 3i32);
+    let holders = Alloc(sizeof(Holder)) as *var Holder;
+    holders.tracked <- Make(log, 4i32);
+    Mark(log);
+    Assert(log.count == 0i32, "a raw-pointer write destroys nothing");
+    Assert(block[1].id == 3i32 && holders.tracked.id == 4i32, "a raw-pointer write stores the value");
+    Free(holders as *var opaque);
+    Free(block as *var opaque);
+}
+
+// A local declared without a value owns nothing, so writing one of its parts destroys nothing.
+func UninitializedOwner(log: *var Log) {
+    var holder: Holder;
+    holder.tracked <- Make(log, 1i32);
+    Assert(log.count == 0i32, "a part of storage that holds no value is initialized, not replaced");
+}
+
+func Main() -> int {
+    var log = Log { count: 0i32, order: 0i64 };
+
+    FieldMove(@log);
+    Assert(log.count == 2i32 && log.order == 102i64, "a field's old value is destroyed at the write");
+
+    Reset(@log);
+    FieldCopy(@log);
+    Assert(log.count == 3i32 && log.order == 91022i64, "a custom '=' copies first, then the old field is destroyed");
+
+    Reset(@log);
+    NestedField(@log);
+    Assert(log.count == 2i32 && log.order == 102i64, "a nested field's old value is destroyed at the write");
+
+    Reset(@log);
+    TupleElement(@log);
+    Assert(log.count == 2i32 && log.order == 102i64, "a tuple element's old value is destroyed at the write");
+
+    Reset(@log);
+    ArrayElement(@log);
+    Assert(log.count == 4i32 && log.order == 21034i64, "an array element's old value is destroyed at the write");
+
+    Reset(@log);
+    SliceElement(@log);
+    Assert(log.count == 3i32 && log.order == 2031i64, "a slice element's old value is destroyed at the write");
+
+    Reset(@log);
+    ReferenceField(@log);
+    Assert(log.count == 4i32 && log.order == 1020304i64, "a field reached through a reference is replaced");
+
+    Reset(@log);
+    GenericField(@log);
+    Assert(log.count == 2i32 && log.order == 102i64, "a generic field's old value is destroyed at the write");
+
+    Reset(@log);
+    Repeated(@log);
+    Assert(log.count == 4i32 && log.order == 12304i64, "each overwrite in a loop destroys the value before it");
+
+    Reset(@log);
+    RepeatedCopies(@log);
+    Assert(log.count == 4i32 && log.order == 9192022i64, "each copy in a loop destroys the value before it");
+
+    Reset(@log);
+    RawInitialization(@log);
+    Assert(log.count == 0i32 && log.order == 0i64, "values written through a raw pointer are left to their owner");
+
+    Reset(@log);
+    UninitializedOwner(@log);
+    return 0;
+}

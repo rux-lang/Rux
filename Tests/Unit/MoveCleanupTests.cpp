@@ -1,5 +1,9 @@
 #include "MoveConsumptionTestSupport.h"
 
+#include <algorithm>
+#include <cstddef>
+#include <string_view>
+
 using namespace Rux;
 using namespace Rux::Testing::MoveConsumptionTestSupport;
 
@@ -213,6 +217,11 @@ TEST_CASE("move assignment schedules conditional destruction before replacing dr
     REQUIRE(fieldAssignment->overwriteCleanup.has_value());
     CHECK_EQ(fieldAssignment->overwriteCleanup->bindingId, 0);
     CHECK_EQ(fieldAssignment->overwriteCleanup->type, TypeRef::MakeNamed("Handle"));
+    // The old field value lives where the store goes, and exists only while `target` owns its value.
+    const auto *owner = dynamic_cast<const HirLetStmt *>(replaceField.body->stmts[0].get());
+    REQUIRE(owner != nullptr);
+    CHECK(fieldAssignment->overwriteCleanup->destroysTarget);
+    CHECK_EQ(fieldAssignment->overwriteCleanup->ownerBindingId, owner->bindingId);
 
     const HirFunc &initialize = RequireFunction(package, "Initialize");
     REQUIRE(initialize.body.has_value());
@@ -282,4 +291,146 @@ TEST_CASE("aggregate initialization records reverse rollback prefixes for comple
     CHECK_EQ(tuple->failureCleanups[2][0].ordinal, 0);
     REQUIRE_EQ(choice->failureCleanups[1].size(), 1);
     CHECK_EQ(choice->failureCleanups[1][0].kind, HirPartialDropAction::Kind::EnumPayload);
+}
+
+namespace {
+constexpr const char *kPlaceReplacementSource = R"(
+    struct Handle { value: int32; }
+    extend Handle {
+        func =(self: &var Handle, other: &Handle);
+        func ~Handle(self: &var Handle) {}
+    }
+    struct Owner { handle: Handle; pair: (Handle, int32); items: Handle[2]; }
+    struct Grid { cell: Handle; }
+    extend Grid {
+        func []=(self: &var Grid, index: uint, value: Handle) {}
+    }
+
+    func Local(owner: Owner, a: Handle, b: Handle, c: Handle) {
+        var target <- owner;
+        target.handle <- a;
+        target.pair.0 <- b;
+        target.items[1] <- c;
+    }
+    func Borrowed(owner: &var Owner, a: Handle) { owner.handle <- a; }
+    func Viewed(items: var Handle[..], a: Handle) { items[0] <- a; }
+    func Raw(slot: *var Owner, a: Handle) { slot.handle <- a; }
+    func RawElements(slots: *var Handle, a: Handle, b: Handle) {
+        slots[1] <- a;
+        *slots <- b;
+    }
+    func Whole(a: Handle, b: Handle) {
+        var target <- a;
+        target <- b;
+    }
+    func Indexer(grid: &var Grid, a: Handle) { grid[0] <- a; }
+)";
+
+const FuncDecl &RequireFuncDecl(const Module &module, const std::string_view name) {
+    for (const auto &item : module.items) {
+        if (const auto *function = dynamic_cast<const FuncDecl *>(item.get()); function && function->name == name) {
+            REQUIRE(function->body != nullptr);
+            return *function;
+        }
+    }
+    FAIL("missing function " << name);
+    throw std::runtime_error("missing function");
+}
+
+std::vector<const AssignExpr *> Assignments(const FuncDecl &function) {
+    std::vector<const AssignExpr *> assignments;
+    for (const auto &statement : function.body->stmts) {
+        if (const auto *expression = dynamic_cast<const ExprStmt *>(statement.get())) {
+            if (const auto *assignment = dynamic_cast<const AssignExpr *>(expression->expr.get())) {
+                assignments.push_back(assignment);
+            }
+        }
+    }
+    return assignments;
+}
+
+bool HasBlockLabelled(const LirFunc &function, const std::string_view prefix) {
+    return std::ranges::any_of(function.blocks, [&](const LirBlock &block) { return block.label.starts_with(prefix); });
+}
+} // namespace
+
+TEST_CASE("analysis records which assignments replace a value at a place and who owns it") {
+    Lexer lexer(kPlaceReplacementSource, "place_replacement.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+    Parser parser(std::move(lexed.tokens), "place_replacement.rux");
+    auto parsed = parser.Parse();
+    REQUIRE_FALSE(parsed.HasErrors());
+    SemanticAnalyzer analyzer({&parsed.module}, {}, "test", CompileTimeContext{});
+    const SemanticModel model = analyzer.Analyze();
+    REQUIRE_FALSE(model.HasErrors());
+
+    // Every part of a local is owned by that local, however deep the projection.
+    const std::vector<const AssignExpr *> local = Assignments(RequireFuncDecl(parsed.module, "Local"));
+    REQUIRE_EQ(local.size(), 3);
+    for (const AssignExpr *assignment : local) {
+        const PlaceReplacement *replacement = model.TryGetPlaceReplacement(*assignment);
+        REQUIRE(replacement != nullptr);
+        const auto *owner = dynamic_cast<const IdentExpr *>(replacement->owner);
+        REQUIRE(owner != nullptr);
+        CHECK_EQ(owner->name, "target");
+    }
+
+    // A reference or a slice always addresses a live value, so the replacement depends on no owner.
+    for (const std::string_view name : {"Borrowed", "Viewed"}) {
+        const std::vector<const AssignExpr *> assignments = Assignments(RequireFuncDecl(parsed.module, name));
+        REQUIRE_EQ(assignments.size(), 1);
+        const PlaceReplacement *replacement = model.TryGetPlaceReplacement(*assignments.front());
+        REQUIRE(replacement != nullptr);
+        CHECK(replacement->owner == nullptr);
+    }
+
+    // A raw pointer may address storage that holds nothing yet, a binding written whole has its own cleanup, and an
+    // indexing operator is a call: none of them replaces a value at a place.
+    for (const std::string_view name : {"Raw", "RawElements", "Whole", "Indexer"}) {
+        const std::vector<const AssignExpr *> assignments = Assignments(RequireFuncDecl(parsed.module, name));
+        CHECK_FALSE(assignments.empty());
+        for (const AssignExpr *assignment : assignments) {
+            CHECK_MESSAGE(model.TryGetPlaceReplacement(*assignment) == nullptr, name);
+        }
+    }
+}
+
+TEST_CASE("a replaced place is destroyed before the store, guarded by its owner's drop flag") {
+    const HirPackage hir = LowerConsumptionHir(kPlaceReplacementSource);
+    const HirFunc &local = RequireFunction(hir, "Local");
+    REQUIRE(local.body.has_value());
+    const auto *owner = dynamic_cast<const HirLetStmt *>(local.body->stmts[0].get());
+    REQUIRE(owner != nullptr);
+    for (std::size_t index = 1; index <= 3; ++index) {
+        const auto *statement = dynamic_cast<const HirExprStmt *>(local.body->stmts[index].get());
+        REQUIRE(statement != nullptr);
+        const auto *assignment = dynamic_cast<const HirAssignExpr *>(statement->expr.get());
+        REQUIRE(assignment != nullptr);
+        REQUIRE(assignment->overwriteCleanup.has_value());
+        CHECK(assignment->overwriteCleanup->destroysTarget);
+        CHECK_EQ(assignment->overwriteCleanup->bindingId, 0);
+        CHECK_EQ(assignment->overwriteCleanup->ownerBindingId, owner->bindingId);
+        CHECK_EQ(assignment->overwriteCleanup->glueSymbol, "__rux_drop__Handle");
+    }
+
+    const HirFunc &raw = RequireFunction(hir, "Raw");
+    REQUIRE(raw.body.has_value());
+    const auto *rawStatement = dynamic_cast<const HirExprStmt *>(raw.body->stmts[0].get());
+    REQUIRE(rawStatement != nullptr);
+    const auto *rawAssignment = dynamic_cast<const HirAssignExpr *>(rawStatement->expr.get());
+    REQUIRE(rawAssignment != nullptr);
+    CHECK_FALSE(rawAssignment->overwriteCleanup.has_value());
+
+    const LirPackage lir = LowerConsumptionLir(kPlaceReplacementSource);
+    // Each part of a local is destroyed only while the local owns its value.
+    CHECK(HasBlockLabelled(RequireLirFunction(lir, "Local"), "replace.live"));
+    // Through a reference or a slice the old value is always there, so it is destroyed unconditionally: one call more
+    // than the raw-pointer write, which destroys nothing and shares only the moved parameter's guarded cleanup.
+    const std::size_t rawCalls = LirCallCount(RequireLirFunction(lir, "Raw"), "__rux_drop__Handle");
+    CHECK_EQ(LirCallCount(RequireLirFunction(lir, "Borrowed"), "__rux_drop__Handle"), rawCalls + 1);
+    CHECK_EQ(LirCallCount(RequireLirFunction(lir, "Viewed"), "__rux_drop__Handle"), rawCalls + 1);
+    CHECK_FALSE(HasBlockLabelled(RequireLirFunction(lir, "Borrowed"), "replace.live"));
+    CHECK_FALSE(HasBlockLabelled(RequireLirFunction(lir, "Raw"), "replace.live"));
+    CHECK_EQ(LirCallCount(RequireLirFunction(lir, "RawElements"), "__rux_drop__Handle"), 2 * rawCalls);
 }

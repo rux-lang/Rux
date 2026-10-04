@@ -38,9 +38,13 @@ struct HirDropAction {
     /// Declaration site retained for cleanup diagnostics and later drop-glue lowering.
     SourceLocation origin;
     /// Set on an assignment's overwrite action when the old value lives at the place the assignment stores to rather
-    /// than in a binding: a referent replaced whole through `&var T`, which is always initialized. The value at that
-    /// address is destroyed unconditionally, after the new value exists and before it is stored.
+    /// than in a binding: a referent replaced whole through `&var T`, or a field or element of a value. The value at
+    /// that address is destroyed after the new value exists and before it is stored.
     bool destroysTarget = false;
+    /// With `destroysTarget`, the binding whose value contains the place, or zero when the place is reached through a
+    /// reference or a slice and is always initialized. The place holds a value only while that binding's drop flag is
+    /// set, so the destruction is conditional on it; the store leaves the flag as it was.
+    std::uint64_t ownerBindingId = 0;
 };
 
 /// A completed subobject that must be destroyed if evaluation of a later aggregate component exits early.

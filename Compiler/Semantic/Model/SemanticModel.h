@@ -275,6 +275,14 @@ struct EvaluatedAssociatedConstant {
     std::string literal;
 };
 
+/// Where the old value an assignment replaces lives, and so whether it is certain to be there.
+struct PlaceReplacement {
+    /// The name of the local whose storage contains the place, when the place is part of a value a binding owns: the
+    /// old value exists exactly while that binding owns its value. Null when the place is reached through a reference
+    /// or a slice, whose referent is always initialized.
+    const Expr *owner = nullptr;
+};
+
 struct SemanticFacts {
     std::unordered_map<const TypeExpr *, const Decl *> intrinsicTypeBindings;
     std::unordered_map<const Expr *, const ConstDecl *> associatedConstants;
@@ -287,6 +295,11 @@ struct SemanticFacts {
     /// reference to a Copy primitive scalar, and a `=` or `<-` that replaces any other referent whole. The store
     /// reaches the referent rather than the binding. The name's type still describes its reference.
     std::unordered_set<const Expr *> referenceWrites;
+    /// Accepted `=` and `<-` assignments that replace a value already living at a place no binding names, keyed by the
+    /// assignment: a referent written whole through `&var T`, and a field, tuple element, or built-in array or slice
+    /// element reached from a local, a reference, or a slice. A write whose place is reached through a raw pointer is
+    /// absent, because the storage it addresses may not hold a value yet.
+    std::unordered_map<const Expr *, PlaceReplacement> placeReplacements;
     /// The one accepted route of each implicit conversion into a native type, outermost level first, keyed by the
     /// converted expression. Lowering builds the destination value from it instead of choosing a route again.
     std::unordered_map<const Expr *, std::vector<NativeConversionStep>> nativeConversions;
@@ -368,6 +381,9 @@ struct SemanticModel {
     [[nodiscard]] const TypeRef *TryGetType(const Expr &expression) const noexcept;
     [[nodiscard]] bool HasBorrowedScalarRead(const Expr &expression) const noexcept;
     [[nodiscard]] bool HasReferenceWrite(const Expr &expression) const noexcept;
+    /// Returns null when `assignment` replaces no value at a place, either because it writes a binding, whose own
+    /// cleanup covers it, or because it initializes storage reached through a raw pointer.
+    [[nodiscard]] const PlaceReplacement *TryGetPlaceReplacement(const Expr &assignment) const noexcept;
     /// Returns null when `expression` reaches its destination without a native conversion.
     [[nodiscard]] const std::vector<NativeConversionStep> *
     TryGetNativeConversion(const Expr &expression) const noexcept;

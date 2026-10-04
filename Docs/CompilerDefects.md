@@ -1075,7 +1075,9 @@ func Main() -> int {
 - **Actual:** `copy 7` twice and `drop 7` twice, so one copy is never destroyed.
 - **Notes:** found while reading the pattern lowering for D18; the variant path appears to share the cause. A subject written with `<-` is destroyed correctly.
 
-## D60. Overwriting a droppable field never destroys the old value
+## D60. Overwriting a droppable field never destroys the old value (fixed)
+
+**Fixed**; covered by `Tests/Language/PlaceReplacement` and `MoveCleanupTests.cpp`.
 
 ```rux
 struct Tracked { id: int; }

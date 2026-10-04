@@ -118,7 +118,10 @@ protected:
     void AppendCurrentScopeCleanups(HirBlock &block) const;
     [[nodiscard]] std::uint64_t BindingId(const HirExpr &expression) const;
     [[nodiscard]] std::uint64_t ConsumedBindingId(const HirExpr &expression) const;
-    [[nodiscard]] std::optional<HirDropAction> OverwriteCleanup(const HirExpr &target, SourceLocation origin) const;
+    /// What a `=` or `<-` `assignment` to the lowered `target` destroys before it stores: the binding it writes whole,
+    /// or the value semantic analysis recorded at the place it writes. Null when it replaces nothing.
+    [[nodiscard]] std::optional<HirDropAction> OverwriteCleanup(const AssignExpr &assignment,
+                                                                const HirExpr &target) const;
     [[nodiscard]] std::optional<HirPartialDropAction>
     PartialCleanup(HirPartialDropAction::Kind kind, const TypeRef &type, std::size_t ordinal, std::string name,
                    SourceLocation origin, CaseTypeForm form = CaseTypeForm::Enumeration) const;

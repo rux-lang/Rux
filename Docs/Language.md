@@ -410,6 +410,8 @@ Consume(MakeValue());    // direct temporary transfer
 
 Copying never invalidates its source. Moving invalidates the source, suppresses its later destruction, and makes every subsequent read a compile error. Assignment to a live destination releases that destination's old state at the operation's defined replacement point. Initializing previously uninitialized storage performs no prior destruction.
 
+A field, a tuple element, and an element of an array or a slice are destinations like any other: `holder.item <- value`, `pair.0 = other`, and `items[i] <- value` produce the new value, destroy the value the place held, and install the new one, whether the place is part of a local, nested inside further fields and elements, or reached through a `&var` parameter, receiver, or alias, or through a slice. A part of a local holds a value only while the local owns one, so writing into a local declared without a value, or one moved from, destroys nothing. A write through a raw pointer — `*p <- value`, `p[i] = value`, or a field reached through `*var T` — initializes the storage it addresses and destroys nothing, because a pointer cannot tell whether that storage holds a value yet; code that replaces a value through a pointer destroys or moves out the old one first. A `v[i] = x` that calls a declared `[]=` is a method call, and what it replaces is up to that method.
+
 Copy and move capabilities are structural. An absent special operation asks the compiler to generate the operation when every field supports it. A declaration with a body supplies a custom implementation. A canonical declaration without a body prohibits that compiler-generated operation:
 
 ```rux

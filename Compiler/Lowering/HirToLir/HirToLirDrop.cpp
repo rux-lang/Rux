@@ -322,6 +322,29 @@ void HirToLirContext::EmitCleanup(const HirDropAction &action) {
     SetBlock(afterBlock);
 }
 
+/// The destruction of the value an assignment replaces at `address`, a place no binding names.
+///
+/// A place reached through a reference or a slice always holds a value. A part of a binding's value holds one only
+/// while that binding owns its value, so the owner's drop flag guards the destruction; the flag itself is left alone,
+/// because replacing one part neither gives the binding its value nor takes it away.
+void HirToLirContext::EmitPlaceCleanup(const HirDropAction &action, const LirReg address) {
+    if (action.glueSymbol.empty() || IsTerminated()) {
+        return;
+    }
+    if (action.ownerBindingId == 0) {
+        EmitDropGlueCall(action.glueSymbol, address);
+        return;
+    }
+    const LirReg slot = DropFlagSlot(action.ownerBindingId);
+    const std::uint32_t dropBlock = NewBlock("replace.live");
+    const std::uint32_t afterBlock = NewBlock("replace.done");
+    Branch(EmitLoad(slot, TypeRef::MakeBool()), dropBlock, afterBlock);
+    SetBlock(dropBlock);
+    EmitDropGlueCall(action.glueSymbol, address);
+    Jump(afterBlock);
+    SetBlock(afterBlock);
+}
+
 void HirToLirContext::EmitCleanups(const std::vector<HirDropAction> &actions) {
     for (const HirDropAction &action : actions) {
         EmitCleanup(action);

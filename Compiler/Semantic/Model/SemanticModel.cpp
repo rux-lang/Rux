@@ -172,6 +172,11 @@ bool SemanticModel::HasReferenceWrite(const Expr &expression) const noexcept {
     return facts.referenceWrites.contains(&expression);
 }
 
+const PlaceReplacement *SemanticModel::TryGetPlaceReplacement(const Expr &assignment) const noexcept {
+    const auto found = facts.placeReplacements.find(&assignment);
+    return found == facts.placeReplacements.end() ? nullptr : &found->second;
+}
+
 const std::vector<NativeConversionStep> *SemanticModel::TryGetNativeConversion(const Expr &expression) const noexcept {
     const auto found = facts.nativeConversions.find(&expression);
     return found == facts.nativeConversions.end() ? nullptr : &found->second;

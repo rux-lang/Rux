@@ -250,16 +250,30 @@ std::uint64_t AstToHirContext::ConsumedBindingId(const HirExpr &expression) cons
     return BindingId(expression);
 }
 
-std::optional<HirDropAction> AstToHirContext::OverwriteCleanup(const HirExpr &target, SourceLocation origin) const {
+std::optional<HirDropAction> AstToHirContext::OverwriteCleanup(const AssignExpr &assignment,
+                                                               const HirExpr &target) const {
     const std::uint64_t bindingId = BindingId(target);
     if (const std::optional<HirDropAction> action = cleanupPlanner.ActionFor(bindingId)) {
         return action;
     }
-    const DropGluePlan *glue = model.TryGetDropGlue(target.type);
+    // Any other place holds an old value only where analysis found one; a place reached through a raw pointer is
+    // initialized by the write and has nothing to destroy.
+    const PlaceReplacement *replacement = model.TryGetPlaceReplacement(assignment);
+    const DropGluePlan *glue = replacement ? model.TryGetDropGlue(target.type) : nullptr;
     if (!glue) {
         return std::nullopt;
     }
-    return HirDropAction{0, "<place>", target.type, glue->symbol, origin};
+    HirDropAction action{0, "<place>", target.type, glue->symbol, assignment.location};
+    action.destroysTarget = true;
+    if (const auto *owner = dynamic_cast<const IdentExpr *>(replacement->owner)) {
+        const HirSymbol *symbol = currentScope->Lookup(owner->name);
+        // A value with a droppable part is droppable itself, so its binding always has a drop flag to consult.
+        if (!symbol || symbol->kind != HirSymbol::Kind::Var || symbol->bindingId == 0) {
+            return std::nullopt;
+        }
+        action.ownerBindingId = symbol->bindingId;
+    }
+    return action;
 }
 
 std::optional<HirPartialDropAction> AstToHirContext::PartialCleanup(const HirPartialDropAction::Kind kind,

@@ -169,6 +169,7 @@ private:
     void MarkBindingLive(std::uint64_t bindingId, bool live);
     void ClearConsumedBinding(const HirExpr &expression);
     void EmitCleanup(const HirDropAction &action);
+    void EmitPlaceCleanup(const HirDropAction &action, LirReg address);
     void EmitCleanups(const std::vector<HirDropAction> &actions);
     void PushPartialCleanupFrame(const std::vector<HirFailureCleanup> &cleanups, std::size_t component,
                                  LirReg aggregateSlot);

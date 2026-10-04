@@ -493,6 +493,7 @@ private:
     std::unordered_map<const Expr *, TypeRef> &expressionTypes;
     std::unordered_set<const Expr *> &borrowedScalarReads;
     std::unordered_set<const Expr *> &referenceWrites;
+    std::unordered_map<const Expr *, PlaceReplacement> &placeReplacements;
     std::unordered_map<const Expr *, std::vector<NativeConversionStep>> &nativeConversions;
     std::unordered_map<const TypeExpr *, const Decl *> &intrinsicTypeBindings;
     std::unordered_map<const Expr *, const ConstDecl *> &associatedConstants;
@@ -975,6 +976,11 @@ private:
     /// Accepts a write through the reference `target` names and records it for lowering. Returns false after reporting
     /// a write through an immutable reference.
     [[nodiscard]] bool CheckReferenceWrite(const Expr &target, const Symbol &reference);
+    /// Records whether the accepted `=` or `<-` `assignment` replaces a value that already lives at its place, and who
+    /// owns that value, so lowering destroys it before installing the new one. `wholeReferent` is set for a referent
+    /// written whole through `&var T`. A binding written whole is left to its own cleanup, and a place reached through
+    /// a raw pointer may hold no value yet, so neither is recorded.
+    void RecordPlaceReplacement(const AssignExpr &assignment, bool wholeReferent);
     void CheckMutability(const Expr &target);
     /// The fix offered for writing the immutable `binding`: declaring a local with `var`, or for a parameter, which
     /// has no `var` form, taking it by `&var T` instead. Null when no declaration would make the write legal.

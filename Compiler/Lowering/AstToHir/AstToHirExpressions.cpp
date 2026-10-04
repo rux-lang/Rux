@@ -337,12 +337,7 @@ HirExprPtr AstToHirContext::LowerBasicExpr(const Expr &expression) {
         lowered->target = LowerExpr(*assignment->target);
         lowered->value = LowerExprAs(*assignment->value, lowered->target->type);
         if (assignment->op == TokenKind::Assign || assignment->op == TokenKind::MoveArrow) {
-            lowered->overwriteCleanup = OverwriteCleanup(*lowered->target, assignment->location);
-            // A referent replaced through `&var T` is the caller's live value, so its old state is destroyed where the
-            // new one is stored, exactly as a `var` local's would be.
-            if (lowered->overwriteCleanup && model.HasReferenceWrite(*assignment->target)) {
-                lowered->overwriteCleanup->destroysTarget = true;
-            }
+            lowered->overwriteCleanup = OverwriteCleanup(*assignment, *lowered->target);
         }
         // Assignment's semantic result is opaque because it is not a value,
         // while HIR needs the checked place type to select the store width.
