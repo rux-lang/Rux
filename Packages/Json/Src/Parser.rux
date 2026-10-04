@@ -392,31 +392,7 @@ extend JsonParser {
         }
         return builder.IntoString();
     }
-}
 
-// Four hexadecimal digits at `at`, as a value. The lexer has already established they are digits.
-func HexQuad(span: char8[..], at: uint) -> uint32 {
-    var value: uint32 = 0;
-    var index: uint = 0;
-    while index < 4 {
-        let c = span.data[at + index] as uint8;
-        var digit: uint32 = 0;
-        if c >= 0x30 && c <= 0x39 {
-            digit = (c - 0x30) as uint32;
-        }
-        else if c >= 0x61 && c <= 0x66 {
-            digit = (c - 0x61 + 10) as uint32;
-        }
-        else {
-            digit = (c - 0x41 + 10) as uint32;
-        }
-        value = value * 16 + digit;
-        index = index + 1;
-    }
-    return value;
-}
-
-extend JsonParser {
     // One value, whatever kind the next token opens.
     func ParseValue(self: &var JsonParser, token: JsonToken) -> JsonValue {
         if token.kind == JsonTokenKind::Error { return self.StopLexical(token); }
@@ -488,9 +464,7 @@ extend JsonParser {
         }
         return <-array;
     }
-}
 
-extend JsonParser {
     func ParseObject(self: &var JsonParser) -> JsonValue {
         if self.depth >= self.limits.maximumDepth { return self.Stop(JsonStop::TooDeep); }
         self.depth = self.depth + 1;
@@ -608,6 +582,28 @@ extend JsonParser {
         }
         return <-value;
     }
+}
+
+// Four hexadecimal digits at `at`, as a value. The lexer has already established they are digits.
+func HexQuad(span: char8[..], at: uint) -> uint32 {
+    var value: uint32 = 0;
+    var index: uint = 0;
+    while index < 4 {
+        let c = span.data[at + index] as uint8;
+        var digit: uint32 = 0;
+        if c >= 0x30 && c <= 0x39 {
+            digit = (c - 0x30) as uint32;
+        }
+        else if c >= 0x61 && c <= 0x66 {
+            digit = (c - 0x61 + 10) as uint32;
+        }
+        else {
+            digit = (c - 0x41 + 10) as uint32;
+        }
+        value = value * 16 + digit;
+        index = index + 1;
+    }
+    return value;
 }
 
 // The public failure, built from the parts the parser tracked. One place, so every entry point positions a failure

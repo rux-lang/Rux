@@ -138,9 +138,7 @@ extend Uuid {
         if (octet & 0x20) == 0 { return UuidVariant::Microsoft; }
         return UuidVariant::Future;
     }
-}
 
-extend Uuid {
     /// Whether two UUIDs are the same.
     ///
     /// @param other the value to compare against

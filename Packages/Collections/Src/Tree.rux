@@ -642,9 +642,7 @@ extend Tree<K, V> {
         self.root = null;
         self.length = 0;
     }
-}
 
-extend Tree<K, V> {
     /// Destroys every entry and gives every node back.
     ///
     /// Runs when the tree dies. Never called directly; a tree is move-only, so there is exactly one of these per

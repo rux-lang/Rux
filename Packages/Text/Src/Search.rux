@@ -119,22 +119,7 @@ extend StringView {
     pub func Contains(self: &StringView, needle: StringView) -> bool {
         return self.IndexOf(needle) != none;
     }
-}
 
-/// Whether `byte` is ASCII whitespace: space, tab, newline, carriage return, form feed or vertical tab.
-///
-/// ASCII only, deliberately. Unicode calls a good many more characters whitespace, and which ones is a question for
-/// the tables; every one of them is multi-byte, so trimming by this rule never cuts a character in half.
-///
-/// @param byte the byte
-/// @returns whether the byte is one of ASCII's five space characters
-/// @see https://rux-lang.dev/docs/api/text/is-ascii-space
-pub func IsAsciiSpace(byte: char8) -> bool {
-    let value = byte as uint32;
-    return value == 0x20 || (value >= 0x09 && value <= 0x0D);
-}
-
-extend StringView {
     /// This view without the ASCII whitespace at its start.
     ///
     /// Borrows: what comes back names the same bytes, further in.
@@ -169,6 +154,34 @@ extend StringView {
         let front = self.TrimStart();
         return front.TrimEnd();
     }
+
+    /// A walk over the parts of this view between occurrences of `separator`.
+    ///
+    /// `self` is borrowed and must outlive the walk, as must `separator`.
+    ///
+    /// @param separator the text that separates the pieces
+    /// @returns a cursor over the pieces between separators
+    /// @see https://rux-lang.dev/docs/api/text/string-view/split
+    pub func Split(self: &StringView, separator: StringView) -> SplitIterator {
+        return SplitIterator {
+            rest: StringView::FromValidated(self.bytes),
+            separator: separator,
+            finished: false
+        };
+    }
+}
+
+/// Whether `byte` is ASCII whitespace: space, tab, newline, carriage return, form feed or vertical tab.
+///
+/// ASCII only, deliberately. Unicode calls a good many more characters whitespace, and which ones is a question for
+/// the tables; every one of them is multi-byte, so trimming by this rule never cuts a character in half.
+///
+/// @param byte the byte
+/// @returns whether the byte is one of ASCII's five space characters
+/// @see https://rux-lang.dev/docs/api/text/is-ascii-space
+pub func IsAsciiSpace(byte: char8) -> bool {
+    let value = byte as uint32;
+    return value == 0x20 || (value >= 0x09 && value <= 0x0D);
 }
 
 /// A walk over the parts of a view between occurrences of a separator.
@@ -186,7 +199,7 @@ pub struct SplitIterator {
     finished: bool;
 }
 
-extend SplitIterator {
+extend SplitIterator : Iterator {
     /// The next part, or `none` when the walk is over.
     ///
     /// Two adjacent separators give an empty part between them, and a separator at either end gives an empty part
@@ -212,24 +225,5 @@ extend SplitIterator {
         let after = at + self.separator.bytes.length;
         self.rest = self.rest.Part(after, self.rest.bytes.length) ?? StringView();
         return part;
-    }
-}
-
-extend SplitIterator : Iterator {}
-
-extend StringView {
-    /// A walk over the parts of this view between occurrences of `separator`.
-    ///
-    /// `self` is borrowed and must outlive the walk, as must `separator`.
-    ///
-    /// @param separator the text that separates the pieces
-    /// @returns a cursor over the pieces between separators
-    /// @see https://rux-lang.dev/docs/api/text/string-view/split
-    pub func Split(self: &StringView, separator: StringView) -> SplitIterator {
-        return SplitIterator {
-            rest: StringView::FromValidated(self.bytes),
-            separator: separator,
-            finished: false
-        };
     }
 }

@@ -114,9 +114,7 @@ extend Box<T> {
         self.pointer = null;
         return true;
     }
-}
 
-extend Box<T> {
     /// Destroys the value and releases its storage, if the box still holds any.
     ///
     /// Runs when the box's life ends, and does nothing for a box whose value was taken out. A box that was moved

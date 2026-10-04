@@ -173,9 +173,7 @@ extend BigNat {
         }
         return 0;
     }
-}
 
-extend BigNat {
     /// Multiplies this by 2^`bits` in place.
     ///
     /// @param bits the value's bit pattern
@@ -308,9 +306,7 @@ extend BigNat {
         }
         self.Trim();
     }
-}
 
-extend BigNat {
     /// Sets this to `left` times `right`. Neither operand may be this.
     ///
     /// @param left one factor
@@ -360,9 +356,7 @@ extend BigNat {
         }
         return digit;
     }
-}
 
-extend BigNat {
     /// Gives the limbs back.
     ///
     /// @see https://rux-lang.dev/docs/api/format/big-nat/destructor

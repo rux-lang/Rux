@@ -132,9 +132,7 @@ extend String {
     pub func FromView(allocator: Allocator, view: StringView) -> String ! TextError {
         return String::FromValidated(allocator, view.bytes);
     }
-}
 
-extend String {
     /// How many bytes the text spans.
     ///
     /// Not how many characters: that is `ScalarCount`, and it costs a pass.
@@ -280,9 +278,7 @@ extend String {
         owned.length = 0;
         owned.capacity = 0;
     }
-}
 
-extend String {
     /// Gives the block back.
     ///
     /// Runs when the string dies. Copies have independent blocks, so each destructor releases exactly its own.

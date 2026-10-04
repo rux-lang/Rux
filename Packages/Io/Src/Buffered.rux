@@ -162,9 +162,7 @@ extend BufferedReader {
         self.start = 0;
         self.end = 0;
     }
-}
 
-extend BufferedReader {
     /// Gives the buffer back. Unread buffered bytes are abandoned, which loses nothing anybody asked for.
     ///
     /// @see https://rux-lang.dev/docs/api/io/buffered-reader/destructor
@@ -277,9 +275,7 @@ extend BufferedWriter {
         self.capacity = 0;
         self.length = 0;
     }
-}
 
-extend BufferedWriter {
     /// Flushes as a safety net — the outcome has nowhere to go, so a caller who cares flushed already — then
     /// gives the buffer back.
     ///

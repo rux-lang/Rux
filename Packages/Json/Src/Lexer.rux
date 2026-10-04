@@ -204,9 +204,7 @@ extend JsonLexer {
         }
         return true;
     }
-}
 
-extend JsonLexer {
     // A string, from its opening quote to its closing one. The span excludes both quotes.
     func LexText(self: &var JsonLexer) -> JsonToken {
         let opening = self.position;
@@ -269,9 +267,7 @@ extend JsonLexer {
         self.position = opening;
         return self.Fail(JsonLexError::UnterminatedText);
     }
-}
 
-extend JsonLexer {
     // A number. JSON's grammar is precise here: an optional minus, an integer part with no leading zero, an
     // optional fraction with at least one digit, and an optional exponent with at least one digit. A leading
     // plus, a leading zero, a bare `.5`, a trailing `1.` and hexadecimal are all JavaScript and none are JSON.
@@ -351,9 +347,7 @@ extend JsonLexer {
             error: JsonLexError::None
         };
     }
-}
 
-extend JsonLexer {
     /// The next token.
     ///
     /// @returns the next token, or the end-of-input token

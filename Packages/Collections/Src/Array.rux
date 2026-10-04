@@ -84,9 +84,7 @@ extend Array<T> {
         }
         return Array<T> { data: data, length: items.length, allocator: allocator };
     }
-}
 
-extend Array<T> {
     /// An independent array holding a copy of every element of this one.
     ///
     /// `self` is borrowed and left alone. The copy has its own storage from the same allocator, so both are released
@@ -233,9 +231,7 @@ extend Array<T> {
     pub func MutableReferences(self: &var Array<T>) -> MutableReferenceIterator<T> {
         return MutableReferenceIterator<T>(self.AsMutableSlice());
     }
-}
 
-extend Array<T> {
     /// Destroys every element and releases the storage.
     ///
     /// Runs when the array's life ends. Elements go first and the block second, which is the only order that works:

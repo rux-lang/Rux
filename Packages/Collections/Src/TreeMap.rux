@@ -182,9 +182,7 @@ extend TreeMap<K, V> {
     pub func Clear(self: &var TreeMap<K, V>) {
         self.tree.Clear();
     }
-}
 
-extend TreeMap<K, V> {
     // The entry a node holds, or `none` for a node that is not there. Every ordered query ends in one of these, and
     // writing it once keeps the null check off each of them.
     func EntryOf(node: *var TreeNode<K, V>) -> KeyValue<K, V>? {
@@ -258,8 +256,68 @@ extend TreeMap<K, V> {
         }
         return TreeMap::EntryOf<K, V>(best);
     }
-}
 
+    /// A walk over this map, smallest key first, leaving it untouched.
+    ///
+    /// `self` is borrowed and must outlive the walk, which must not run across an insertion or a removal.
+    ///
+    /// @returns a cursor over the entries in key order
+    /// @see https://rux-lang.dev/docs/api/collections/tree-map/iterate
+    pub func Iterate(self: &TreeMap<K, V>) -> TreeMapIterator<K, V> {
+        return TreeMapIterator<K, V> { next: Tree::Minimum<K, V>(self.tree.root) };
+    }
+
+    /// A walk over the entries whose keys are at or above `start` and below `end`.
+    ///
+    /// Half-open, so `Range(a, b)` and `Range(b, c)` together give exactly `Range(a, c)` with nothing repeated and
+    /// nothing missed. A range whose `end` is not above its `start` hands back nothing.
+    ///
+    /// Starting costs a descent rather than a walk from the smallest key, so a small range out of a large map is
+    /// cheap.
+    ///
+    /// @param start the first element, inclusive
+    /// @param end the element one past the last, exclusive
+    /// @returns a cursor over the entries whose keys fall in `[start, end)`
+    /// @see https://rux-lang.dev/docs/api/collections/tree-map/range
+    pub func Range(self: &TreeMap<K, V>, start: K, end: K) -> TreeMapRangeIterator<K, V> {
+        var first: *var TreeNode<K, V> = null;
+        var walk = self.tree.root;
+        while walk != null {
+            let order = self.compare(start, walk.key);
+            if order.IsEqual() {
+                first = walk;
+                walk = null;
+            }
+            else if order.IsLess() {
+                first = walk;
+                walk = walk.left;
+            }
+            else {
+                walk = walk.right;
+            }
+        }
+        return TreeMapRangeIterator<K, V> { next: first, end: end, compare: self.compare };
+    }
+
+    /// A walk that consumes this map, smallest key first.
+    ///
+    /// Takes ownership; the map is gone afterwards.
+    ///
+    /// @returns a cursor that consumes the map as it goes, in key order
+    /// @see https://rux-lang.dev/docs/api/collections/tree-map/into-iterator
+    pub func IntoIterator(self: TreeMap<K, V>) -> TreeMapIntoIterator<K, V> {
+        // Into a local first, and emptied before it goes out of scope: the receiver is a live binding until the
+        // function ends, and a map left holding the nodes would have its destructor free the very nodes the iterator
+        // was handed.
+        var map <- self;
+        let taken = TreeMapIntoIterator<K, V> {
+            tree: Tree<K, V> { root: map.tree.root, length: map.tree.length, allocator: map.tree.allocator }
+        };
+        map.tree.root = null;
+        map.tree.length = 0;
+        return <-taken;
+    }
+}
 
 /// A walk over a borrowed map, smallest key first.
 ///
@@ -349,68 +407,5 @@ extend TreeMapIntoIterator<K, V> {
         if node == null { return none; }
         let entry = self.tree.Detach(node);
         return .Some(<-entry);
-    }
-}
-
-extend TreeMap<K, V> {
-    /// A walk over this map, smallest key first, leaving it untouched.
-    ///
-    /// `self` is borrowed and must outlive the walk, which must not run across an insertion or a removal.
-    ///
-    /// @returns a cursor over the entries in key order
-    /// @see https://rux-lang.dev/docs/api/collections/tree-map/iterate
-    pub func Iterate(self: &TreeMap<K, V>) -> TreeMapIterator<K, V> {
-        return TreeMapIterator<K, V> { next: Tree::Minimum<K, V>(self.tree.root) };
-    }
-
-    /// A walk over the entries whose keys are at or above `start` and below `end`.
-    ///
-    /// Half-open, so `Range(a, b)` and `Range(b, c)` together give exactly `Range(a, c)` with nothing repeated and
-    /// nothing missed. A range whose `end` is not above its `start` hands back nothing.
-    ///
-    /// Starting costs a descent rather than a walk from the smallest key, so a small range out of a large map is
-    /// cheap.
-    ///
-    /// @param start the first element, inclusive
-    /// @param end the element one past the last, exclusive
-    /// @returns a cursor over the entries whose keys fall in `[start, end)`
-    /// @see https://rux-lang.dev/docs/api/collections/tree-map/range
-    pub func Range(self: &TreeMap<K, V>, start: K, end: K) -> TreeMapRangeIterator<K, V> {
-        var first: *var TreeNode<K, V> = null;
-        var walk = self.tree.root;
-        while walk != null {
-            let order = self.compare(start, walk.key);
-            if order.IsEqual() {
-                first = walk;
-                walk = null;
-            }
-            else if order.IsLess() {
-                first = walk;
-                walk = walk.left;
-            }
-            else {
-                walk = walk.right;
-            }
-        }
-        return TreeMapRangeIterator<K, V> { next: first, end: end, compare: self.compare };
-    }
-
-    /// A walk that consumes this map, smallest key first.
-    ///
-    /// Takes ownership; the map is gone afterwards.
-    ///
-    /// @returns a cursor that consumes the map as it goes, in key order
-    /// @see https://rux-lang.dev/docs/api/collections/tree-map/into-iterator
-    pub func IntoIterator(self: TreeMap<K, V>) -> TreeMapIntoIterator<K, V> {
-        // Into a local first, and emptied before it goes out of scope: the receiver is a live binding until the
-        // function ends, and a map left holding the nodes would have its destructor free the very nodes the iterator
-        // was handed.
-        var map <- self;
-        let taken = TreeMapIntoIterator<K, V> {
-            tree: Tree<K, V> { root: map.tree.root, length: map.tree.length, allocator: map.tree.allocator }
-        };
-        map.tree.root = null;
-        map.tree.length = 0;
-        return <-taken;
     }
 }

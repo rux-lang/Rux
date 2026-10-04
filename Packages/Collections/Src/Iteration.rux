@@ -53,7 +53,9 @@ extend ValueIterator<T> {
     pub func ValueIterator(items: T[..]) -> ValueIterator<T> {
         return ValueIterator<T> { data: items.data, length: items.length, position: 0 };
     }
+}
 
+extend ValueIterator<T> : Iterator {
     /// The next element, or `none` once the run is exhausted.
     ///
     /// `self` is borrowed mutably and advanced. An exhausted iterator keeps reporting `none`.
@@ -69,8 +71,6 @@ extend ValueIterator<T> {
         return .Some(value);
     }
 }
-
-extend ValueIterator<T> : Iterator {}
 
 /// An iterator that yields a pointer to each element of a run.
 ///
@@ -106,7 +106,9 @@ extend ReferenceIterator<T> {
     pub func ReferenceIterator(items: T[..]) -> ReferenceIterator<T> {
         return ReferenceIterator<T> { data: items.data, length: items.length, position: 0 };
     }
+}
 
+extend ReferenceIterator<T> : Iterator {
     /// A pointer to the next element, or `none` once the run is exhausted.
     ///
     /// `self` is borrowed mutably and advanced. The pointer borrows the element and takes ownership of nothing.
@@ -122,8 +124,6 @@ extend ReferenceIterator<T> {
         return .Some(element);
     }
 }
-
-extend ReferenceIterator<T> : Iterator {}
 
 /// An iterator that yields a writable pointer to each element of a run.
 ///
@@ -156,7 +156,9 @@ extend MutableReferenceIterator<T> {
     pub func MutableReferenceIterator(items: var T[..]) -> MutableReferenceIterator<T> {
         return MutableReferenceIterator<T> { data: items.data, length: items.length, position: 0 };
     }
+}
 
+extend MutableReferenceIterator<T> : Iterator {
     /// The next writable element pointer, or `none` once exhausted.
     ///
     /// Advances the cursor without copying, moving, or destroying an element. An exhausted cursor stays exhausted.
@@ -171,5 +173,3 @@ extend MutableReferenceIterator<T> {
         return .Some(element);
     }
 }
-
-extend MutableReferenceIterator<T> : Iterator {}

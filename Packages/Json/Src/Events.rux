@@ -224,9 +224,7 @@ extend JsonEventReader {
     func ~JsonEventReader(self: &var JsonEventReader) {
         self.Release();
     }
-}
 
-extend JsonEventReader {
     // Ensures at least one unread byte is available, pulling more if needed.
     func Available(self: &var JsonEventReader) -> bool {
         while self.position >= self.filled {
@@ -308,9 +306,7 @@ extend JsonEventReader {
         self.position = index;
         return true;
     }
-}
 
-extend JsonEventReader {
     func PushContainer(self: &var JsonEventReader, isObject: bool) -> bool {
         if self.depth >= self.limits.maximumDepth || self.depth >= 1024 {
             self.stop = JsonStop::TooDeep;

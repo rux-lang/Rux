@@ -188,91 +188,7 @@ extend HashSet<T> {
         *cursor = index;
         return false;
     }
-}
 
-/// An iterator over the elements of a set, by copy.
-///
-/// Borrows the set, so the set must outlive it and must not be inserted into or removed from while it is alive.
-///
-/// @typeParam T the element type
-/// @see https://rux-lang.dev/docs/api/collections/hash-set-iterator
-pub struct HashSetIterator<T> {
-    /// Raw borrowed table storage. Kept raw because references cannot be fields.
-    keys: *T;
-    states: *uint8;
-    capacity: uint;
-    /// The slot to look at next.
-    cursor: uint;
-}
-
-extend HashSetIterator<T> {
-    /// The next element, or `none` once every slot has been looked at.
-    ///
-    /// `self` is borrowed mutably and advanced. The element is a copy; a set of things that own something is walked
-    /// with `TryNext` instead.
-    ///
-    /// @returns the next element, or `none` at the end
-    /// @see https://rux-lang.dev/docs/api/collections/hash-set-iterator/next
-    pub func Next(self: &var HashSetIterator<T>) -> T? {
-        var index = self.cursor;
-        while index < self.capacity {
-            if self.states[index] != SlotEmpty {
-                self.cursor = index + 1;
-                return .Some(self.keys[index]);
-            }
-            index++;
-        }
-        self.cursor = index;
-        return none;
-    }
-}
-
-extend HashSetIterator<T> : Iterator {}
-
-/// An iterator that takes a set apart, yielding each element by value.
-///
-/// Move-only: it owns the storage the set owned. Whatever is left when its life ends is destroyed with it.
-///
-/// @typeParam T the element type
-/// @see https://rux-lang.dev/docs/api/collections/hash-set-into-iterator
-pub struct HashSetIntoIterator<T> {
-    /// The table taken from the set.
-    table: Table<T, ()>;
-    /// The slot to look at next.
-    cursor: uint;
-}
-
-extend HashSetIntoIterator<T> {
-    /// Copying a consuming iterator would give two owners of its table.
-    func =(self: &var HashSetIntoIterator<T>, other: &HashSetIntoIterator<T>);
-
-    /// The next element, moved out, or `none` once every slot has been looked at.
-    ///
-    /// `self` is borrowed mutably and advanced. The slot is emptied as the element leaves, so what remains for the
-    /// destructor is exactly what nobody took.
-    ///
-    /// @returns the next element, or `none` at the end
-    /// @see https://rux-lang.dev/docs/api/collections/hash-set-into-iterator/next
-    pub func Next(self: &var HashSetIntoIterator<T>) -> T? {
-        var index = self.cursor;
-        while index < self.table.Capacity() {
-            if self.table.IsOccupied(index) {
-                let taken <- self.table.keys[index];
-                self.table.states[index] = SlotEmpty;
-                self.table.length = self.table.length - 1;
-                self.cursor = index + 1;
-                return .Some(<-taken);
-            }
-            index++;
-        }
-        self.cursor = index;
-        return none;
-    }
-}
-
-extend HashSetIntoIterator<T> : Iterator {}
-
-extend HashSet<T> {
     /// An iterator over the elements, by copy.
     ///
     /// `self` is borrowed and must outlive the iterator. This is the method a `for` loop finds. The order is the
@@ -321,9 +237,7 @@ extend HashSet<T> {
         set.table.capacity = 0;
         return <-taken;
     }
-}
 
-extend HashSet<T> {
     /// Whether every element of this set is also in `other`.
     ///
     /// Both are borrowed. A set is a subset of itself, and the empty set is a subset of everything — there is no
@@ -405,9 +319,7 @@ extend HashSet<T> {
     pub func Equals(self: &HashSet<T>, other: &HashSet<T>) -> bool {
         return self.Length() == other.Length() && self.IsSubsetOf(other);
     }
-}
 
-extend HashSet<T> {
     /// Adds every element of `other` that this set does not already have.
     ///
     /// `self` is borrowed mutably; `other` is borrowed and left alone. Elements are copied out of `other`, which is
@@ -564,5 +476,85 @@ extend HashSet<T> {
             }
         }
         return <-copy;
+    }
+}
+
+/// An iterator over the elements of a set, by copy.
+///
+/// Borrows the set, so the set must outlive it and must not be inserted into or removed from while it is alive.
+///
+/// @typeParam T the element type
+/// @see https://rux-lang.dev/docs/api/collections/hash-set-iterator
+pub struct HashSetIterator<T> {
+    /// Raw borrowed table storage. Kept raw because references cannot be fields.
+    keys: *T;
+    states: *uint8;
+    capacity: uint;
+    /// The slot to look at next.
+    cursor: uint;
+}
+
+extend HashSetIterator<T> : Iterator {
+    /// The next element, or `none` once every slot has been looked at.
+    ///
+    /// `self` is borrowed mutably and advanced. The element is a copy; a set of things that own something is walked
+    /// with `TryNext` instead.
+    ///
+    /// @returns the next element, or `none` at the end
+    /// @see https://rux-lang.dev/docs/api/collections/hash-set-iterator/next
+    pub func Next(self: &var HashSetIterator<T>) -> T? {
+        var index = self.cursor;
+        while index < self.capacity {
+            if self.states[index] != SlotEmpty {
+                self.cursor = index + 1;
+                return .Some(self.keys[index]);
+            }
+            index++;
+        }
+        self.cursor = index;
+        return none;
+    }
+}
+
+/// An iterator that takes a set apart, yielding each element by value.
+///
+/// Move-only: it owns the storage the set owned. Whatever is left when its life ends is destroyed with it.
+///
+/// @typeParam T the element type
+/// @see https://rux-lang.dev/docs/api/collections/hash-set-into-iterator
+pub struct HashSetIntoIterator<T> {
+    /// The table taken from the set.
+    table: Table<T, ()>;
+    /// The slot to look at next.
+    cursor: uint;
+}
+
+extend HashSetIntoIterator<T> {
+    /// Copying a consuming iterator would give two owners of its table.
+    func =(self: &var HashSetIntoIterator<T>, other: &HashSetIntoIterator<T>);
+}
+
+extend HashSetIntoIterator<T> : Iterator {
+    /// The next element, moved out, or `none` once every slot has been looked at.
+    ///
+    /// `self` is borrowed mutably and advanced. The slot is emptied as the element leaves, so what remains for the
+    /// destructor is exactly what nobody took.
+    ///
+    /// @returns the next element, or `none` at the end
+    /// @see https://rux-lang.dev/docs/api/collections/hash-set-into-iterator/next
+    pub func Next(self: &var HashSetIntoIterator<T>) -> T? {
+        var index = self.cursor;
+        while index < self.table.Capacity() {
+            if self.table.IsOccupied(index) {
+                let taken <- self.table.keys[index];
+                self.table.states[index] = SlotEmpty;
+                self.table.length = self.table.length - 1;
+                self.cursor = index + 1;
+                return .Some(<-taken);
+            }
+            index++;
+        }
+        self.cursor = index;
+        return none;
     }
 }

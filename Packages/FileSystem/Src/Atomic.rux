@@ -92,36 +92,7 @@ extend AtomicWrite {
     pub func Target(self: &AtomicWrite) -> Path {
         return self.target.AsPath();
     }
-}
 
-extend AtomicWrite : Writer {
-    /// Writes into the partial file.
-    ///
-    /// Writing to a replacement is what the type is for, so it is a `Writer` itself rather than something a caller
-    /// reaches a stream out of: `let sink: &var Writer = replacement;` borrows it, and nothing has to be kept alive
-    /// beside it.
-    ///
-    /// One attempt, partial on purpose, exactly as the underlying file's is; `WriteAll` does the looping.
-    ///
-    /// @param bytes the run to write
-    /// @returns how much of it the file took
-    /// @see https://rux-lang.dev/docs/api/filesystem/atomic-write/write
-    pub func Write(self: &var AtomicWrite, bytes: char8[..]) -> uint ! IoError {
-        return self.scratch.file.Write(bytes);
-    }
-
-    /// Flushes the partial file, which holds nothing back.
-    ///
-    /// `Commit` is what makes the contents durable, and it syncs before it renames.
-    ///
-    /// @returns what the file reported
-    /// @see https://rux-lang.dev/docs/api/filesystem/atomic-write/flush
-    pub func Flush(self: &var AtomicWrite) -> ! IoError {
-        return self.scratch.file.Flush();
-    }
-}
-
-extend AtomicWrite {
     /// Forces the contents to the device and moves them onto the target.
     ///
     /// The sync happens **before** the rename, so the final name can never point at contents that never
@@ -175,6 +146,33 @@ extend AtomicWrite {
     func ~AtomicWrite(self: &var AtomicWrite) {
         self.pending = false;
         self.target.Release();
+    }
+}
+
+extend AtomicWrite : Writer {
+    /// Writes into the partial file.
+    ///
+    /// Writing to a replacement is what the type is for, so it is a `Writer` itself rather than something a caller
+    /// reaches a stream out of: `let sink: &var Writer = replacement;` borrows it, and nothing has to be kept alive
+    /// beside it.
+    ///
+    /// One attempt, partial on purpose, exactly as the underlying file's is; `WriteAll` does the looping.
+    ///
+    /// @param bytes the run to write
+    /// @returns how much of it the file took
+    /// @see https://rux-lang.dev/docs/api/filesystem/atomic-write/write
+    pub func Write(self: &var AtomicWrite, bytes: char8[..]) -> uint ! IoError {
+        return self.scratch.file.Write(bytes);
+    }
+
+    /// Flushes the partial file, which holds nothing back.
+    ///
+    /// `Commit` is what makes the contents durable, and it syncs before it renames.
+    ///
+    /// @returns what the file reported
+    /// @see https://rux-lang.dev/docs/api/filesystem/atomic-write/flush
+    pub func Flush(self: &var AtomicWrite) -> ! IoError {
+        return self.scratch.file.Flush();
     }
 }
 

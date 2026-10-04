@@ -181,6 +181,16 @@ extend StringView {
         if self.bytes.length > other.bytes.length { return Ordering::Greater; }
         return Ordering::Equal;
     }
+
+    /// A walk over this view's scalar values.
+    ///
+    /// `self` is borrowed and must outlive the walk.
+    ///
+    /// @returns a cursor over the text's scalar values
+    /// @see https://rux-lang.dev/docs/api/text/string-view/scalars
+    pub func Scalars(self: &StringView) -> ScalarIterator {
+        return ScalarIterator { bytes: self.bytes, cursor: 0 };
+    }
 }
 
 /// A walk over the scalar values of a view, first to last.
@@ -193,7 +203,7 @@ pub struct ScalarIterator {
     cursor: uint;
 }
 
-extend ScalarIterator {
+extend ScalarIterator : Iterator {
     /// The next scalar value, or `none` at the end.
     ///
     /// Bytes that are not well-formed end the walk rather than being reported: a view is validated when it is made,
@@ -216,19 +226,5 @@ extend ScalarIterator {
         }
         self.cursor = self.cursor + width;
         return scalar;
-    }
-}
-
-extend ScalarIterator : Iterator {}
-
-extend StringView {
-    /// A walk over this view's scalar values.
-    ///
-    /// `self` is borrowed and must outlive the walk.
-    ///
-    /// @returns a cursor over the text's scalar values
-    /// @see https://rux-lang.dev/docs/api/text/string-view/scalars
-    pub func Scalars(self: &StringView) -> ScalarIterator {
-        return ScalarIterator { bytes: self.bytes, cursor: 0 };
     }
 }

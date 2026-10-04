@@ -96,6 +96,52 @@ extend OsStringView {
         }
         return true;
     }
+
+    /// This native text as UTF-8, or nothing where it is not text.
+    ///
+    /// The fallible direction, and fallible for a different reason per platform: Unix bytes may simply not be
+    /// UTF-8, and Windows units may hold an unpaired surrogate, which no UTF-8 sequence can spell. It fails with
+    /// `InvalidUtf8` for both, because both mean the same thing to the caller — this name is not text, and a
+    /// program that must show it anyway shows it lossily by its own policy, knowingly.
+    ///
+    /// @param allocator where the storage comes from
+    /// @returns the units converted to text, or a failure when they are not valid in it
+    /// @see https://rux-lang.dev/docs/api/path/os-string-view/to-text
+    pub func ToText(self: &OsStringView, allocator: Allocator) -> String ! TextError {
+        when #target.os == .Windows {
+            // Two passes: measure the UTF-8, refusing unpaired surrogates on the way, then build through the
+            // checked builder so the promise chain stays intact.
+            let units = self.units;
+            var needed: uint = 0;
+            var index: uint = 0;
+            while index < units.length {
+                var scalar: uint32 = 0;
+                var width: uint = 0;
+                if !DecodeUnit(units, index, @scalar, @width) {
+                    fail TextError::InvalidUtf8;
+                }
+                needed = needed + Utf8Width(scalar);
+                index = index + width;
+            }
+
+            var builder = StringBuilder::WithCapacity(allocator, needed)?;
+            index = 0;
+            while index < units.length {
+                var scalar: uint32 = 0;
+                var width: uint = 0;
+                if !DecodeUnit(units, index, @scalar, @width) {
+                    fail TextError::InvalidUtf8;
+                }
+                builder.AppendScalar(scalar as char32)?;
+                index = index + width;
+            }
+            return builder.IntoString();
+        }
+        else {
+            // Bytes: the check is the conversion.
+            return String::FromBytes(allocator, self.units);
+        }
+    }
 }
 
 /// Native text that owns its units.
@@ -205,18 +251,14 @@ extend OsString {
         self.data = null;
         self.length = 0;
     }
-}
 
-extend OsString {
     /// Gives the block back.
     ///
     /// @see https://rux-lang.dev/docs/api/path/os-string/destructor
     func ~OsString(self: &var OsString) {
         self.Clear();
     }
-}
 
-extend OsString {
     /// An owning native copy of UTF-8 text.
     ///
     /// The direction that always succeeds: valid text encodes into either representation, byte for byte on the
@@ -296,54 +338,6 @@ extend OsString {
         else {
             // Bytes are bytes: the copy is the conversion.
             return OsString::FromView(allocator, OsStringView { units: text });
-        }
-    }
-}
-
-extend OsStringView {
-    /// This native text as UTF-8, or nothing where it is not text.
-    ///
-    /// The fallible direction, and fallible for a different reason per platform: Unix bytes may simply not be
-    /// UTF-8, and Windows units may hold an unpaired surrogate, which no UTF-8 sequence can spell. It fails with
-    /// `InvalidUtf8` for both, because both mean the same thing to the caller — this name is not text, and a
-    /// program that must show it anyway shows it lossily by its own policy, knowingly.
-    ///
-    /// @param allocator where the storage comes from
-    /// @returns the units converted to text, or a failure when they are not valid in it
-    /// @see https://rux-lang.dev/docs/api/path/os-string-view/to-text
-    pub func ToText(self: &OsStringView, allocator: Allocator) -> String ! TextError {
-        when #target.os == .Windows {
-            // Two passes: measure the UTF-8, refusing unpaired surrogates on the way, then build through the
-            // checked builder so the promise chain stays intact.
-            let units = self.units;
-            var needed: uint = 0;
-            var index: uint = 0;
-            while index < units.length {
-                var scalar: uint32 = 0;
-                var width: uint = 0;
-                if !DecodeUnit(units, index, @scalar, @width) {
-                    fail TextError::InvalidUtf8;
-                }
-                needed = needed + Utf8Width(scalar);
-                index = index + width;
-            }
-
-            var builder = StringBuilder::WithCapacity(allocator, needed)?;
-            index = 0;
-            while index < units.length {
-                var scalar: uint32 = 0;
-                var width: uint = 0;
-                if !DecodeUnit(units, index, @scalar, @width) {
-                    fail TextError::InvalidUtf8;
-                }
-                builder.AppendScalar(scalar as char32)?;
-                index = index + width;
-            }
-            return builder.IntoString();
-        }
-        else {
-            // Bytes: the check is the conversion.
-            return String::FromBytes(allocator, self.units);
         }
     }
 }

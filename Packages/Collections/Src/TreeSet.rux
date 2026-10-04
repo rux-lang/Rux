@@ -118,9 +118,7 @@ extend TreeSet<T> {
     pub func Clear(self: &var TreeSet<T>) {
         self.tree.Clear();
     }
-}
 
-extend TreeSet<T> {
     /// The smallest element, or `none` for an empty set.
     ///
     /// Runs in time proportional to the height and allocates nothing.
@@ -166,99 +164,7 @@ extend TreeSet<T> {
         if node == null { return none; }
         return .Some(node.key);
     }
-}
 
-/// A walk over a borrowed set, smallest element first.
-///
-/// @typeParam T the element type
-/// @see https://rux-lang.dev/docs/api/collections/tree-set-iterator
-pub struct TreeSetIterator<T> {
-    /// The node to hand back next, or null when the walk is done.
-    next: *var TreeNode<T, ()>;
-}
-
-extend TreeSetIterator<T> {
-    /// The next element in order, or `none` when there are no more.
-    ///
-    /// Runs in constant amortized time: a whole walk crosses every edge of the tree exactly twice.
-    ///
-    /// @returns the next element in order, or `none` at the end
-    /// @see https://rux-lang.dev/docs/api/collections/tree-set-iterator/next
-    pub func Next(self: &var TreeSetIterator<T>) -> T? {
-        let node = self.next;
-        if node == null { return none; }
-        self.next = Tree::Successor<T, ()>(node);
-        return .Some(node.key);
-    }
-}
-
-extend TreeSetIterator<T> : Iterator {}
-
-/// A walk over a borrowed set that stops at a bound.
-///
-/// @typeParam T the element type
-/// @see https://rux-lang.dev/docs/api/collections/tree-set-range-iterator
-pub struct TreeSetRangeIterator<T> {
-    /// The node to hand back next, or null when the walk is done.
-    next: *var TreeNode<T, ()>;
-    /// The first element the walk will not hand back.
-    end: T;
-    /// The order the set is kept in, so the walk knows where to stop.
-    compare: func(T, T) -> Ordering;
-}
-
-extend TreeSetRangeIterator<T> {
-    /// The next element below the bound, or `none` once the walk reaches it.
-    ///
-    /// @returns the next element in order, or `none` at the end
-    /// @see https://rux-lang.dev/docs/api/collections/tree-set-range-iterator/next
-    pub func Next(self: &var TreeSetRangeIterator<T>) -> T? {
-        let node = self.next;
-        if node == null { return none; }
-        if !self.compare(node.key, self.end).IsLess() {
-            self.next = null;
-            return none;
-        }
-        self.next = Tree::Successor<T, ()>(node);
-        return .Some(node.key);
-    }
-}
-
-extend TreeSetRangeIterator<T> : Iterator {}
-
-/// A walk that consumes the set, smallest element first.
-///
-/// Owns the nodes, and destroys whatever is left in them when it dies — so a walk stopped part-way destroys the
-/// rest exactly once, and nothing already handed out is destroyed twice.
-///
-/// @typeParam T the element type
-/// @see https://rux-lang.dev/docs/api/collections/tree-set-into-iterator
-pub struct TreeSetIntoIterator<T> {
-    /// What is left of the set.
-    tree: Tree<T, ()>;
-}
-
-extend TreeSetIntoIterator<T> {
-    /// Copying a consuming iterator would give two owners of its nodes.
-    func =(self: &var TreeSetIntoIterator<T>, other: &TreeSetIntoIterator<T>);
-
-    /// The next element in order, or `none` when there are no more.
-    ///
-    /// Takes the smallest element out of the tree rather than reading past it, which is what makes it the caller's.
-    ///
-    /// @returns the next element in order, or `none` at the end
-    /// @see https://rux-lang.dev/docs/api/collections/tree-set-into-iterator/next
-    pub func Next(self: &var TreeSetIntoIterator<T>) -> T? {
-        let node = Tree::Minimum<T, ()>(self.tree.root);
-        if node == null { return none; }
-        let entry = self.tree.Detach(node);
-        return .Some(entry.key);
-    }
-}
-
-extend TreeSetIntoIterator<T> : Iterator {}
-
-extend TreeSet<T> {
     /// A walk over this set, smallest element first, leaving it untouched.
     ///
     /// `self` is borrowed and must outlive the walk, which must not run across an insertion or a removal.
@@ -304,9 +210,7 @@ extend TreeSet<T> {
         set.tree.length = 0;
         return <-taken;
     }
-}
 
-extend TreeSet<T> {
     /// Whether every element of this set is in `other`.
     ///
     /// The empty set is a subset of everything, including itself. Allocates nothing and cannot fail.
@@ -378,9 +282,7 @@ extend TreeSet<T> {
     pub func Equals(self: &TreeSet<T>, other: &TreeSet<T>) -> bool {
         return self.Length() == other.Length() && self.IsSubsetOf(other);
     }
-}
 
-extend TreeSet<T> {
     /// Adds every element of `other` that is not already here.
     ///
     /// Reports `OutOfMemory` if a node cannot be allocated, having added what it managed to before that — unlike
@@ -504,5 +406,91 @@ extend TreeSet<T> {
         var copy = TreeSet<T>(self.tree.allocator, self.compare);
         copy.UnionWith(self)?;
         return <-copy;
+    }
+}
+
+/// A walk over a borrowed set, smallest element first.
+///
+/// @typeParam T the element type
+/// @see https://rux-lang.dev/docs/api/collections/tree-set-iterator
+pub struct TreeSetIterator<T> {
+    /// The node to hand back next, or null when the walk is done.
+    next: *var TreeNode<T, ()>;
+}
+
+extend TreeSetIterator<T> : Iterator {
+    /// The next element in order, or `none` when there are no more.
+    ///
+    /// Runs in constant amortized time: a whole walk crosses every edge of the tree exactly twice.
+    ///
+    /// @returns the next element in order, or `none` at the end
+    /// @see https://rux-lang.dev/docs/api/collections/tree-set-iterator/next
+    pub func Next(self: &var TreeSetIterator<T>) -> T? {
+        let node = self.next;
+        if node == null { return none; }
+        self.next = Tree::Successor<T, ()>(node);
+        return .Some(node.key);
+    }
+}
+
+/// A walk over a borrowed set that stops at a bound.
+///
+/// @typeParam T the element type
+/// @see https://rux-lang.dev/docs/api/collections/tree-set-range-iterator
+pub struct TreeSetRangeIterator<T> {
+    /// The node to hand back next, or null when the walk is done.
+    next: *var TreeNode<T, ()>;
+    /// The first element the walk will not hand back.
+    end: T;
+    /// The order the set is kept in, so the walk knows where to stop.
+    compare: func(T, T) -> Ordering;
+}
+
+extend TreeSetRangeIterator<T> : Iterator {
+    /// The next element below the bound, or `none` once the walk reaches it.
+    ///
+    /// @returns the next element in order, or `none` at the end
+    /// @see https://rux-lang.dev/docs/api/collections/tree-set-range-iterator/next
+    pub func Next(self: &var TreeSetRangeIterator<T>) -> T? {
+        let node = self.next;
+        if node == null { return none; }
+        if !self.compare(node.key, self.end).IsLess() {
+            self.next = null;
+            return none;
+        }
+        self.next = Tree::Successor<T, ()>(node);
+        return .Some(node.key);
+    }
+}
+
+/// A walk that consumes the set, smallest element first.
+///
+/// Owns the nodes, and destroys whatever is left in them when it dies — so a walk stopped part-way destroys the
+/// rest exactly once, and nothing already handed out is destroyed twice.
+///
+/// @typeParam T the element type
+/// @see https://rux-lang.dev/docs/api/collections/tree-set-into-iterator
+pub struct TreeSetIntoIterator<T> {
+    /// What is left of the set.
+    tree: Tree<T, ()>;
+}
+
+extend TreeSetIntoIterator<T> {
+    /// Copying a consuming iterator would give two owners of its nodes.
+    func =(self: &var TreeSetIntoIterator<T>, other: &TreeSetIntoIterator<T>);
+}
+
+extend TreeSetIntoIterator<T> : Iterator {
+    /// The next element in order, or `none` when there are no more.
+    ///
+    /// Takes the smallest element out of the tree rather than reading past it, which is what makes it the caller's.
+    ///
+    /// @returns the next element in order, or `none` at the end
+    /// @see https://rux-lang.dev/docs/api/collections/tree-set-into-iterator/next
+    pub func Next(self: &var TreeSetIntoIterator<T>) -> T? {
+        let node = Tree::Minimum<T, ()>(self.tree.root);
+        if node == null { return none; }
+        let entry = self.tree.Detach(node);
+        return .Some(entry.key);
     }
 }

@@ -51,6 +51,10 @@ when #target.os {
 
 The packed form keeps a platform `when` block short enough to compare its arms at a glance. Arms with module names of different lengths can still break at different names, which is the cost of a rule that needs no judgment. `rux fmt` does not reflow import lists yet, and no checker enforces this rule, so it is applied by hand until the formatter owns it.
 
+## Extend blocks
+
+A type's own members live in one `extend Type { ... }` block per file, ordered by topic. A block boundary is kept only where it means something: each interface conformance is its own block holding the methods that carry that interface, so `Next` sits in `extend MyCursor : Iterator { ... }` even though `Iterator` declares no members, and a block with a different header, such as a constrained one, stays separate. Members that belong together are grouped by order and, where a group needs naming, by a `//` comment inside the block rather than by a closing and reopening of the block.
+
 ## Integer literals
 
 A local declared from a lone integer literal takes its type from an annotation rather than from a literal suffix: `var value: uint32 = 0;`, not `var value = 0u32;`. The type then sits after the name, where every other declaration, parameter and field puts it, and the compiler still checks that the literal fits it.

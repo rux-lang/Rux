@@ -301,9 +301,7 @@ extend JsonValue {
         if self.kind == JsonKind::Object { return self.members.Length(); }
         return 0;
     }
-}
 
-extend JsonValue {
     /// Appends `value` to an array, taking ownership of it.
     ///
     /// Reports `false` when this is not an array or the allocator refused; `value` is consumed either way, so
@@ -374,9 +372,7 @@ extend JsonValue {
         let slice = self.members.AsSlice();
         return @slice.data[index];
     }
-}
 
-extend JsonValue {
     /// Removes the first member named `name`, if there is one.
     ///
     /// Used by the duplicate-name policy that keeps the last occurrence: dropping the earlier one is what keeps
@@ -421,9 +417,7 @@ extend JsonValue {
         }
         return true;
     }
-}
 
-extend JsonValue {
     /// Releases everything this value owns.
     ///
     /// Written out rather than left to the compiler, because a value owns its strings and its children own

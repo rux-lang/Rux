@@ -249,9 +249,7 @@ extend Pool {
         self.chunkCount = self.chunkCount + 1;
         self.CarveChunk(chunk);
     }
-}
 
-extend Pool {
     /// Gives every chunk back to the backing allocator.
     ///
     /// Runs when the pool's life ends. Every pooled pointer the pool handed out becomes invalid. Blocks that went to

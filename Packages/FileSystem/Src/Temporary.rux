@@ -173,6 +173,22 @@ extend TemporaryFile {
         self.owned = false;
         return self.file.Close();
     }
+
+    /// Closes and deletes with the outcome discarded: the safety net, not the contract.
+    ///
+    /// A destructor has nowhere to report a failed deletion, so a caller who needs to know calls `Close`. What
+    /// this guarantees is that a temporary file is never left behind by an early return or a failure path, which
+    /// is the reason the type exists.
+    ///
+    /// @see https://rux-lang.dev/docs/api/filesystem/temporary-file/destructor
+    func ~TemporaryFile(self: &var TemporaryFile) {
+        self.file.Close() catch { else => {} };
+        if self.owned {
+            self.owned = false;
+            DeleteFile(self.path.allocator, self.path.AsPath()) catch { else => {} };
+        }
+        self.path.Release();
+    }
 }
 
 /// A temporary directory that owns its name.
@@ -253,27 +269,7 @@ extend TemporaryDirectoryHandle {
     pub func Keep(self: &var TemporaryDirectoryHandle) {
         self.owned = false;
     }
-}
 
-extend TemporaryFile {
-    /// Closes and deletes with the outcome discarded: the safety net, not the contract.
-    ///
-    /// A destructor has nowhere to report a failed deletion, so a caller who needs to know calls `Close`. What
-    /// this guarantees is that a temporary file is never left behind by an early return or a failure path, which
-    /// is the reason the type exists.
-    ///
-    /// @see https://rux-lang.dev/docs/api/filesystem/temporary-file/destructor
-    func ~TemporaryFile(self: &var TemporaryFile) {
-        self.file.Close() catch { else => {} };
-        if self.owned {
-            self.owned = false;
-            DeleteFile(self.path.allocator, self.path.AsPath()) catch { else => {} };
-        }
-        self.path.Release();
-    }
-}
-
-extend TemporaryDirectoryHandle {
     /// Removes the directory with the outcome discarded: the safety net, not the contract.
     ///
     /// @see https://rux-lang.dev/docs/api/filesystem/temporary-directory-handle/destructor

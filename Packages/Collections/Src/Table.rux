@@ -232,9 +232,7 @@ extend Table<K, V> {
         }
         return none;
     }
-}
 
-extend Table<K, V> {
     // Puts an entry into a table with room for it, displacing whatever is closer to home along the way.
     //
     // Returns the slot the entry ended up in, or `none` when the probe ran further than a distance byte can hold.
@@ -304,9 +302,7 @@ extend Table<K, V> {
         self.states[hole] = SlotEmpty;
         self.length = self.length - 1;
     }
-}
 
-extend Table<K, V> {
     /// The smallest power-of-two capacity that holds `length` entries without passing the three-quarter load factor.
     ///
     /// `length` is read by value. Derived from the entry count rather than from the current capacity, so one rule
@@ -388,9 +384,7 @@ extend Table<K, V> {
         }
         return;
     }
-}
 
-extend Table<K, V> {
     /// Makes sure one more entry will fit, growing the table when it will not.
     ///
     /// `self` is borrowed mutably; `hash` must be the one the table was filled with.
@@ -471,9 +465,7 @@ extend Table<K, V> {
         self.capacity = 0;
         self.length = 0;
     }
-}
 
-extend Table<K, V> {
     /// Destroys every entry and releases the storage.
     ///
     /// Runs when the table's life ends. The entries go first and the runs second, since one destroyed after its

@@ -184,9 +184,7 @@ extend TomlEventReader {
     pub func Depth(self: &TomlEventReader) -> uint {
         return self.depth;
     }
-}
 
-extend TomlEventReader {
     func Advance(self: &var TomlEventReader) -> TomlToken {
         let token = self.ahead;
         if token.kind != TomlTokenKind::End {
@@ -259,9 +257,7 @@ extend TomlEventReader {
         self.current = self.Advance();
         return true;
     }
-}
 
-extend TomlEventReader {
     /// The next event, or `End` when the document is finished.
     ///
     /// After an `Error` every later call returns `End`: everything past a refusal would be read from a position
@@ -340,9 +336,7 @@ extend TomlEventReader {
         self.state = TomlEventState::Value;
         return TomlEvent::KeyPart;
     }
-}
 
-extend TomlEventReader {
     func NextValue(self: &var TomlEventReader) -> TomlEvent {
         if self.depth > 0 {
             self.SkipNewlines();

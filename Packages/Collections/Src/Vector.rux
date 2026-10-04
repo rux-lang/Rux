@@ -119,9 +119,7 @@ extend Vector<T> {
     pub func Clone(self: &Vector<T>) -> Vector<T> ! CollectionError {
         return Vector::FromSlice<T>(self.allocator, self.AsSlice());
     }
-}
 
-extend Vector<T> {
     /// How many elements the vector holds.
     ///
     /// `self` is borrowed.
@@ -246,9 +244,7 @@ extend Vector<T> {
         }
         self.length = length;
     }
-}
 
-extend Vector<T> {
     /// Destroys every element and releases the storage.
     ///
     /// Runs when the vector's life ends. The spare capacity past the length holds nothing and is not touched; the
@@ -264,9 +260,7 @@ extend Vector<T> {
             self.capacity = 0;
         }
     }
-}
 
-extend Vector<T> {
     /// Appends one element, growing the storage when it is full.
     ///
     /// `self` is borrowed mutably; `value` is read by value and moved into the vector. A failure leaves the vector
@@ -435,9 +429,7 @@ extend Vector<T> {
     pub func MutableReferences(self: &var Vector<T>) -> MutableReferenceIterator<T> {
         return MutableReferenceIterator<T>(self.AsMutableSlice());
     }
-}
 
-extend Vector<T> {
     /// Inserts `value` at `index`, moving everything from there on one place along.
     ///
     /// `self` is borrowed mutably; `value` is moved in. An `index` equal to the length appends, which is what makes
@@ -577,76 +569,7 @@ extend Vector<T> {
         }
         return (@self.data[start])[..taken];
     }
-}
 
-/// An iterator that takes a vector apart, yielding each element by value.
-///
-/// Move-only: it owns the storage the vector owned, prohibits copying, and destroys it with `~VectorIntoIterator`.
-/// This is how a vector of elements that
-/// own something is emptied into somewhere else — each element is moved out rather than copied, and whatever is
-/// left when the iterator's life ends is destroyed with it.
-///
-/// @typeParam T the element type
-/// @see https://rux-lang.dev/docs/api/collections/vector-into-iterator
-pub struct VectorIntoIterator<T> {
-    /// The storage taken from the vector.
-    data: *var T;
-    /// How many elements it holds.
-    length: uint;
-    /// How many the storage could hold, kept so the block is released with the layout it was taken under.
-    capacity: uint;
-    /// How many have been yielded.
-    position: uint;
-    /// Where the storage goes back to.
-    allocator: Allocator;
-}
-
-extend VectorIntoIterator<T> {
-    /// Copying a consuming iterator would give two owners of its storage.
-    func =(self: &var VectorIntoIterator<T>, other: &VectorIntoIterator<T>);
-
-    /// The next element, moved out, or `none` once every element has been yielded.
-    ///
-    /// `self` is borrowed mutably and advanced. The element is moved rather than copied, so it is the caller's to
-    /// keep or destroy; an exhausted iterator keeps reporting `none`.
-    ///
-    /// Cannot fail. Runs in constant time and allocates nothing.
-    ///
-    /// @returns the next element, or `none` at the end
-    /// @see https://rux-lang.dev/docs/api/collections/vector-into-iterator/next
-    pub func Next(self: &var VectorIntoIterator<T>) -> T? {
-        if self.position >= self.length { return none; }
-        let taken <- self.data[self.position];
-        self.position = self.position + 1;
-        return .Some(<-taken);
-    }
-}
-
-extend VectorIntoIterator<T> : Iterator {}
-
-extend VectorIntoIterator<T> {
-    /// Destroys whatever was not yielded and releases the storage.
-    ///
-    /// Runs when the iterator's life ends. Everything already yielded belongs to whoever took it and is not touched
-    /// here, which is what makes stopping part-way through safe.
-    ///
-    /// @see https://rux-lang.dev/docs/api/collections/vector-into-iterator/destructor
-    func ~VectorIntoIterator(self: &var VectorIntoIterator<T>) {
-        var index = self.position;
-        while index < self.length {
-            let taken <- self.data[index];
-            index++;
-        }
-        if self.data != null {
-            ReleaseBlock<T>(self.allocator, self.data, self.capacity);
-            self.data = null;
-        }
-        self.length = 0;
-        self.position = 0;
-    }
-}
-
-extend Vector<T> {
     /// Takes the vector apart into an iterator over its elements.
     ///
     /// Consumes the vector: it is moved into the iterator, and the storage goes with it, so nothing is copied and
@@ -709,5 +632,70 @@ extend Vector<T> {
         vector.length = 0;
         vector.capacity = 0;
         return <-taken;
+    }
+}
+
+/// An iterator that takes a vector apart, yielding each element by value.
+///
+/// Move-only: it owns the storage the vector owned, prohibits copying, and destroys it with `~VectorIntoIterator`.
+/// This is how a vector of elements that
+/// own something is emptied into somewhere else — each element is moved out rather than copied, and whatever is
+/// left when the iterator's life ends is destroyed with it.
+///
+/// @typeParam T the element type
+/// @see https://rux-lang.dev/docs/api/collections/vector-into-iterator
+pub struct VectorIntoIterator<T> {
+    /// The storage taken from the vector.
+    data: *var T;
+    /// How many elements it holds.
+    length: uint;
+    /// How many the storage could hold, kept so the block is released with the layout it was taken under.
+    capacity: uint;
+    /// How many have been yielded.
+    position: uint;
+    /// Where the storage goes back to.
+    allocator: Allocator;
+}
+
+extend VectorIntoIterator<T> {
+    /// Copying a consuming iterator would give two owners of its storage.
+    func =(self: &var VectorIntoIterator<T>, other: &VectorIntoIterator<T>);
+
+    /// Destroys whatever was not yielded and releases the storage.
+    ///
+    /// Runs when the iterator's life ends. Everything already yielded belongs to whoever took it and is not touched
+    /// here, which is what makes stopping part-way through safe.
+    ///
+    /// @see https://rux-lang.dev/docs/api/collections/vector-into-iterator/destructor
+    func ~VectorIntoIterator(self: &var VectorIntoIterator<T>) {
+        var index = self.position;
+        while index < self.length {
+            let taken <- self.data[index];
+            index++;
+        }
+        if self.data != null {
+            ReleaseBlock<T>(self.allocator, self.data, self.capacity);
+            self.data = null;
+        }
+        self.length = 0;
+        self.position = 0;
+    }
+}
+
+extend VectorIntoIterator<T> : Iterator {
+    /// The next element, moved out, or `none` once every element has been yielded.
+    ///
+    /// `self` is borrowed mutably and advanced. The element is moved rather than copied, so it is the caller's to
+    /// keep or destroy; an exhausted iterator keeps reporting `none`.
+    ///
+    /// Cannot fail. Runs in constant time and allocates nothing.
+    ///
+    /// @returns the next element, or `none` at the end
+    /// @see https://rux-lang.dev/docs/api/collections/vector-into-iterator/next
+    pub func Next(self: &var VectorIntoIterator<T>) -> T? {
+        if self.position >= self.length { return none; }
+        let taken <- self.data[self.position];
+        self.position = self.position + 1;
+        return .Some(<-taken);
     }
 }

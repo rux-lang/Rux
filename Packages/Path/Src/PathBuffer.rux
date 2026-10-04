@@ -150,6 +150,13 @@ extend PathBuffer {
         self.length = 0;
         self.capacity = 0;
     }
+
+    /// Gives the block back.
+    ///
+    /// @see https://rux-lang.dev/docs/api/path/path-buffer/destructor
+    func ~PathBuffer(self: &var PathBuffer) {
+        self.Release();
+    }
 }
 
 /// A fresh buffer holding `base` with `segment` pushed onto it.
@@ -253,13 +260,4 @@ func IsDot(segment: OsStringView) -> bool {
 func IsDoubleDot(segment: OsStringView) -> bool {
     let units = segment.Units();
     return units.length == 2 && (units.data[0] as uint32) == 0x2E && (units.data[1] as uint32) == 0x2E;
-}
-
-extend PathBuffer {
-    /// Gives the block back.
-    ///
-    /// @see https://rux-lang.dev/docs/api/path/path-buffer/destructor
-    func ~PathBuffer(self: &var PathBuffer) {
-        self.Release();
-    }
 }

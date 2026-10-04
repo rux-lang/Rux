@@ -204,9 +204,7 @@ extend Arena {
         self.lastAllocation = aligned;
         return aligned;
     }
-}
 
-extend Arena {
     /// Gives every block back to the backing allocator.
     ///
     /// Runs when the arena's life ends. Every pointer the arena handed out becomes invalid.

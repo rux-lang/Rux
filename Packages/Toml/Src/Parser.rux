@@ -427,9 +427,7 @@ extend TomlParser {
             self.Advance();
         }
     }
-}
 
-extend TomlParser {
     // One value, whichever kind the token announces. A scalar's text is read here rather than in the lexer,
     // because only here is it known which of the two number kinds or four date kinds was meant.
     func ParseValue(self: &var TomlParser) -> TomlValue {
@@ -523,9 +521,7 @@ extend TomlParser {
         self.depth = self.depth - 1;
         return <-array;
     }
-}
 
-extend TomlParser {
     // An inline table. TOML 1.1 allows newlines and a trailing comma inside one, which 1.0 did not; a document
     // using either is refused by an older reader, and that is worth knowing before writing one.
     func ParseInlineTable(self: &var TomlParser) -> TomlValue {
@@ -619,9 +615,7 @@ extend TomlParser {
         }
         return true;
     }
-}
 
-extend TomlParser {
     // A key and its value, written into `into`. A dotted key creates the tables it passes through, and those
     // tables are closed when the line ends — which is why they are marked as dotted rather than merely made.
     func ParseKeyValue(self: &var TomlParser, into: *var TomlValue) {
@@ -696,9 +690,7 @@ extend TomlParser {
         }
         return existing;
     }
-}
 
-extend TomlParser {
     // A `[name]` or `[[name]]` header, returning the table that the lines after it belong to.
     func ParseHeader(self: &var TomlParser, root: *var TomlValue) -> *var TomlValue {
         self.Advance();
@@ -852,9 +844,7 @@ extend TomlParser {
         }
         return (*existing).AtMutable((*existing).Length() - 1);
     }
-}
 
-extend TomlParser {
     /// Reads the whole document into a table.
     ///
     /// On failure the table holds whatever had been read before the refusal, and `Outcome` says what stopped it

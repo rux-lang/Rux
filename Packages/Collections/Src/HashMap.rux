@@ -179,9 +179,7 @@ extend HashMap<K, V> {
         *value = @self.table.values[slot];
         return true;
     }
-}
 
-extend HashMap<K, V> {
     /// Stores `value` under `key`, replacing whatever was there.
     ///
     /// `self` is borrowed mutably; both are moved in. A key already present keeps its stored key and takes the new
@@ -297,24 +295,7 @@ extend HashMap<K, V> {
         *cursor = index;
         return false;
     }
-}
 
-/// One entry of a map, as a value a caller can hold.
-///
-/// What a walk yields and what a consuming iteration hands back. Two fields rather than a pair, because `entry.key`
-/// says which is which and `entry.0` does not.
-///
-/// @typeParam K the key type
-/// @typeParam V the value type
-/// @see https://rux-lang.dev/docs/api/collections/key-value
-pub struct KeyValue<K, V> {
-    /// The key the entry was stored under.
-    pub key: K;
-    /// The value stored under it.
-    pub value: V;
-}
-
-extend HashMap<K, V> {
     /// Points `existing` at the value stored under `key`, inserting `value` first when there is none.
     ///
     /// `self` is borrowed mutably; `key` and `value` are moved in only when there was no entry, and destroyed
@@ -411,98 +392,7 @@ extend HashMap<K, V> {
         self.table.Vacate(slot);
         return KeyValue<K, V> { key: <-takenKey, value: <-takenValue };
     }
-}
 
-/// An iterator over the entries of a map, by copy.
-///
-/// Borrows the map, so the map must outlive it and must not be inserted into or removed from while it is alive:
-/// either moves entries between slots, and this walks slots.
-///
-/// @typeParam K the key type
-/// @typeParam V the value type
-/// @see https://rux-lang.dev/docs/api/collections/hash-map-iterator
-pub struct HashMapIterator<K, V> {
-    /// Raw borrowed table storage. Kept raw because references cannot be fields.
-    keys: *K;
-    values: *V;
-    states: *uint8;
-    capacity: uint;
-    /// The slot to look at next.
-    cursor: uint;
-}
-
-extend HashMapIterator<K, V> {
-    /// The next entry, or `none` once every slot has been looked at.
-    ///
-    /// `self` is borrowed mutably and advanced. The key and value are copies; a map of things that own something is
-    /// walked with `TryNextEntry` and a pointer instead.
-    ///
-    /// @returns the next entry, or `none` at the end
-    /// @see https://rux-lang.dev/docs/api/collections/hash-map-iterator/next
-    pub func Next(self: &var HashMapIterator<K, V>) -> KeyValue<K, V>? {
-        var index = self.cursor;
-        while index < self.capacity {
-            if self.states[index] != SlotEmpty {
-                self.cursor = index + 1;
-                return .Some(
-                    KeyValue<K, V> { key: self.keys[index], value: self.values[index] });
-            }
-            index++;
-        }
-        self.cursor = index;
-        return none;
-    }
-}
-
-extend HashMapIterator<K, V> : Iterator {}
-
-/// An iterator that takes a map apart, yielding each entry by value.
-///
-/// Move-only: it owns the storage the map owned. Whatever is left when its life ends is destroyed with it, which is
-/// what makes stopping part-way safe.
-///
-/// @typeParam K the key type
-/// @typeParam V the value type
-/// @see https://rux-lang.dev/docs/api/collections/hash-map-into-iterator
-pub struct HashMapIntoIterator<K, V> {
-    /// The table taken from the map.
-    table: Table<K, V>;
-    /// The slot to look at next.
-    cursor: uint;
-}
-
-extend HashMapIntoIterator<K, V> {
-    /// Copying a consuming iterator would give two owners of its table.
-    func =(self: &var HashMapIntoIterator<K, V>, other: &HashMapIntoIterator<K, V>);
-
-    /// The next entry, moved out, or `none` once every slot has been looked at.
-    ///
-    /// `self` is borrowed mutably and advanced. The slot is emptied as the entry leaves, so what remains for the
-    /// destructor is exactly what nobody took.
-    ///
-    /// @returns the next entry, or `none` at the end
-    /// @see https://rux-lang.dev/docs/api/collections/hash-map-into-iterator/next
-    pub func Next(self: &var HashMapIntoIterator<K, V>) -> KeyValue<K, V>? {
-        var index = self.cursor;
-        while index < self.table.Capacity() {
-            if self.table.IsOccupied(index) {
-                let takenKey <- self.table.keys[index];
-                let takenValue <- self.table.values[index];
-                self.table.states[index] = SlotEmpty;
-                self.table.length = self.table.length - 1;
-                self.cursor = index + 1;
-                return KeyValue<K, V> { key: <-takenKey, value: <-takenValue };
-            }
-            index++;
-        }
-        self.cursor = index;
-        return none;
-    }
-}
-
-extend HashMapIntoIterator<K, V> : Iterator {}
-
-extend HashMap<K, V> {
     /// An iterator over the entries, by copy.
     ///
     /// `self` is borrowed and must outlive the iterator. This is the method a `for` loop finds. The order is the
@@ -557,5 +447,107 @@ extend HashMap<K, V> {
         map.table.length = 0;
         map.table.capacity = 0;
         return <-taken;
+    }
+}
+
+/// One entry of a map, as a value a caller can hold.
+///
+/// What a walk yields and what a consuming iteration hands back. Two fields rather than a pair, because `entry.key`
+/// says which is which and `entry.0` does not.
+///
+/// @typeParam K the key type
+/// @typeParam V the value type
+/// @see https://rux-lang.dev/docs/api/collections/key-value
+pub struct KeyValue<K, V> {
+    /// The key the entry was stored under.
+    pub key: K;
+    /// The value stored under it.
+    pub value: V;
+}
+
+/// An iterator over the entries of a map, by copy.
+///
+/// Borrows the map, so the map must outlive it and must not be inserted into or removed from while it is alive:
+/// either moves entries between slots, and this walks slots.
+///
+/// @typeParam K the key type
+/// @typeParam V the value type
+/// @see https://rux-lang.dev/docs/api/collections/hash-map-iterator
+pub struct HashMapIterator<K, V> {
+    /// Raw borrowed table storage. Kept raw because references cannot be fields.
+    keys: *K;
+    values: *V;
+    states: *uint8;
+    capacity: uint;
+    /// The slot to look at next.
+    cursor: uint;
+}
+
+extend HashMapIterator<K, V> : Iterator {
+    /// The next entry, or `none` once every slot has been looked at.
+    ///
+    /// `self` is borrowed mutably and advanced. The key and value are copies; a map of things that own something is
+    /// walked with `TryNextEntry` and a pointer instead.
+    ///
+    /// @returns the next entry, or `none` at the end
+    /// @see https://rux-lang.dev/docs/api/collections/hash-map-iterator/next
+    pub func Next(self: &var HashMapIterator<K, V>) -> KeyValue<K, V>? {
+        var index = self.cursor;
+        while index < self.capacity {
+            if self.states[index] != SlotEmpty {
+                self.cursor = index + 1;
+                return .Some(
+                    KeyValue<K, V> { key: self.keys[index], value: self.values[index] });
+            }
+            index++;
+        }
+        self.cursor = index;
+        return none;
+    }
+}
+
+/// An iterator that takes a map apart, yielding each entry by value.
+///
+/// Move-only: it owns the storage the map owned. Whatever is left when its life ends is destroyed with it, which is
+/// what makes stopping part-way safe.
+///
+/// @typeParam K the key type
+/// @typeParam V the value type
+/// @see https://rux-lang.dev/docs/api/collections/hash-map-into-iterator
+pub struct HashMapIntoIterator<K, V> {
+    /// The table taken from the map.
+    table: Table<K, V>;
+    /// The slot to look at next.
+    cursor: uint;
+}
+
+extend HashMapIntoIterator<K, V> {
+    /// Copying a consuming iterator would give two owners of its table.
+    func =(self: &var HashMapIntoIterator<K, V>, other: &HashMapIntoIterator<K, V>);
+}
+
+extend HashMapIntoIterator<K, V> : Iterator {
+    /// The next entry, moved out, or `none` once every slot has been looked at.
+    ///
+    /// `self` is borrowed mutably and advanced. The slot is emptied as the entry leaves, so what remains for the
+    /// destructor is exactly what nobody took.
+    ///
+    /// @returns the next entry, or `none` at the end
+    /// @see https://rux-lang.dev/docs/api/collections/hash-map-into-iterator/next
+    pub func Next(self: &var HashMapIntoIterator<K, V>) -> KeyValue<K, V>? {
+        var index = self.cursor;
+        while index < self.table.Capacity() {
+            if self.table.IsOccupied(index) {
+                let takenKey <- self.table.keys[index];
+                let takenValue <- self.table.values[index];
+                self.table.states[index] = SlotEmpty;
+                self.table.length = self.table.length - 1;
+                self.cursor = index + 1;
+                return KeyValue<K, V> { key: <-takenKey, value: <-takenValue };
+            }
+            index++;
+        }
+        self.cursor = index;
+        return none;
     }
 }

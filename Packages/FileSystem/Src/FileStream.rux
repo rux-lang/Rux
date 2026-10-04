@@ -198,6 +198,21 @@ extend File {
             if result < 0 { fail TranslateNative((0i64 - result) as int32); }
         }
     }
+
+    /// A stored borrow of this file, for a value that must keep a stream beyond one call.
+    ///
+    /// For anything that only needs a stream for the duration of a call, borrow the file directly as
+    /// `let sink: &var Writer = file;` instead: that is checked, and this is not.
+    ///
+    /// # Safety
+    ///
+    /// The file must outlive the result and must not be moved while it exists. See `FileStream`.
+    ///
+    /// @returns a stream over this file, holding its address, which is what makes it storable
+    /// @see https://rux-lang.dev/docs/api/filesystem/file/stream
+    pub func Stream(self: *var File) -> FileStream {
+        return FileStream { file: self };
+    }
 }
 
 /// A stored borrow of an open file that speaks the stream interfaces.
@@ -231,23 +246,6 @@ extend File {
 pub struct FileStream {
     /// The file being borrowed. Private, so `File::Stream` is the only way to make one.
     file: *var File;
-}
-
-extend File {
-    /// A stored borrow of this file, for a value that must keep a stream beyond one call.
-    ///
-    /// For anything that only needs a stream for the duration of a call, borrow the file directly as
-    /// `let sink: &var Writer = file;` instead: that is checked, and this is not.
-    ///
-    /// # Safety
-    ///
-    /// The file must outlive the result and must not be moved while it exists. See `FileStream`.
-    ///
-    /// @returns a stream over this file, holding its address, which is what makes it storable
-    /// @see https://rux-lang.dev/docs/api/filesystem/file/stream
-    pub func Stream(self: *var File) -> FileStream {
-        return FileStream { file: self };
-    }
 }
 
 extend FileStream : Reader {

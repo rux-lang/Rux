@@ -124,41 +124,7 @@ extend StringBuilder {
     pub func Reserve(self: &var StringBuilder, additional: uint) -> ! TextError {
         return ReserveBuilderStorage(@self.data, self.length, @self.capacity, self.allocator, additional);
     }
-}
 
-// Shared by the safe receiver and the deliberately raw stored-writer adapter. Only field addresses cross this
-// boundary; the owning builder itself remains non-copyable and all public owner operations use references.
-func ReserveBuilderStorage(data: *var *var char8, length: uint, capacity: *var uint, allocator: Allocator,
-                           additional: uint) -> ! TextError {
-        if additional == 0 { return; }
-        if additional > 0xFFFFFFFFFFFFFFFFu - length { fail TextError::LengthOverflow; }
-        let required = length + additional;
-        if required <= *capacity { return; }
-
-        // Doubling is what makes a run of appends linear rather than quadratic; asking for exactly what is needed
-        // would reallocate on nearly every one. Where doubling is not enough, or would overflow, take the
-        // requirement itself.
-        var doubled: uint = 0;
-        var wanted = required;
-        if MulChecked<uint>(*capacity, 2, @doubled) && doubled > required {
-            wanted = doubled;
-        }
-        if wanted < MinimumBuilderCapacity {
-            wanted = MinimumBuilderCapacity;
-        }
-
-        let layout = Layout::New(wanted, 1) ?? fail TextError::LengthOverflow;
-        let want = layout;
-        var borrowed = allocator;
-        let have = Layout::New(*capacity, 1) ?? Layout { size: *capacity, alignment: 1 };
-        let placed = *data == null ? borrowed.Allocate(want) : borrowed.Reallocate(*data as *var opaque, have, want);
-        let block = placed catch { error => fail FromAllocError(error) };
-        *data = block as *var char8;
-        *capacity = wanted;
-        return;
-}
-
-extend StringBuilder {
     /// Appends bytes the caller vouches are UTF-8.
     ///
     /// # Safety
@@ -295,17 +261,7 @@ extend StringBuilder {
         self.capacity = 0;
         return <-taken;
     }
-}
 
-func AppendBuilderStorage(data: *var *var char8, length: *var uint, capacity: *var uint, allocator: Allocator,
-                          bytes: char8[..]) -> ! TextError {
-    if bytes.length == 0 { return; }
-    ReserveBuilderStorage(data, *length, capacity, allocator, bytes.length)?;
-    Copy(@(*data)[*length] as *var opaque, bytes.data as *opaque, bytes.length);
-    *length = *length + bytes.length;
-}
-
-extend StringBuilder {
     /// Gives the block back.
     ///
     /// Runs when the builder dies. A builder whose block was handed over by `IntoString` owns nothing, so this is
@@ -315,4 +271,44 @@ extend StringBuilder {
     func ~StringBuilder(self: &var StringBuilder) {
         self.Release();
     }
+}
+
+// Shared by the safe receiver and the deliberately raw stored-writer adapter. Only field addresses cross this
+// boundary; the owning builder itself remains non-copyable and all public owner operations use references.
+func ReserveBuilderStorage(data: *var *var char8, length: uint, capacity: *var uint, allocator: Allocator,
+                           additional: uint) -> ! TextError {
+        if additional == 0 { return; }
+        if additional > 0xFFFFFFFFFFFFFFFFu - length { fail TextError::LengthOverflow; }
+        let required = length + additional;
+        if required <= *capacity { return; }
+
+        // Doubling is what makes a run of appends linear rather than quadratic; asking for exactly what is needed
+        // would reallocate on nearly every one. Where doubling is not enough, or would overflow, take the
+        // requirement itself.
+        var doubled: uint = 0;
+        var wanted = required;
+        if MulChecked<uint>(*capacity, 2, @doubled) && doubled > required {
+            wanted = doubled;
+        }
+        if wanted < MinimumBuilderCapacity {
+            wanted = MinimumBuilderCapacity;
+        }
+
+        let layout = Layout::New(wanted, 1) ?? fail TextError::LengthOverflow;
+        let want = layout;
+        var borrowed = allocator;
+        let have = Layout::New(*capacity, 1) ?? Layout { size: *capacity, alignment: 1 };
+        let placed = *data == null ? borrowed.Allocate(want) : borrowed.Reallocate(*data as *var opaque, have, want);
+        let block = placed catch { error => fail FromAllocError(error) };
+        *data = block as *var char8;
+        *capacity = wanted;
+        return;
+}
+
+func AppendBuilderStorage(data: *var *var char8, length: *var uint, capacity: *var uint, allocator: Allocator,
+                          bytes: char8[..]) -> ! TextError {
+    if bytes.length == 0 { return; }
+    ReserveBuilderStorage(data, *length, capacity, allocator, bytes.length)?;
+    Copy(@(*data)[*length] as *var opaque, bytes.data as *opaque, bytes.length);
+    *length = *length + bytes.length;
 }
