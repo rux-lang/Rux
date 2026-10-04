@@ -72,7 +72,11 @@ struct HirPattern {
 };
 
 // _
-struct HirWildcardPattern : HirPattern {};
+struct HirWildcardPattern : HirPattern {
+    /// In a destructuring `let`, the drop glue of the part this wildcard discards, which is destroyed where it is
+    /// matched because nothing else owns it; empty when the part needs no destruction or the pattern owns nothing.
+    std::string discardGlue;
+};
 
 // 42, "str", true
 struct HirLiteralPattern : HirPattern {
@@ -122,6 +126,8 @@ struct HirStructPatternField {
 struct HirStructPattern : HirPattern {
     std::string typeName;
     TypeRef resolvedType;
+    /// Every field of the matched structure: the ones written, in source order, then the omitted ones as wildcards, so
+    /// a pattern over a consumed subject accounts for each part it leaves unbound.
     std::vector<HirStructPatternField> fields;
 };
 

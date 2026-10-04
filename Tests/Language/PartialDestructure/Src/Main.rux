@@ -1,0 +1,195 @@
+// Destroying the parts a moving destructure does not bind.
+// A destructure that takes its value over owns every part of it. A part it binds to a name belongs to that binding;
+// a part bound to `_`, or left out of a structure pattern, belongs to nobody, so it is destroyed on the spot — at the
+// `let`, or at the top of the match arm — like a temporary nobody kept. Each tracked value appends its id to a log as
+// it is destroyed and each check appends a 0 where it stands, so the log is the exact order of events.
+
+import Core::Assert;
+
+struct Log {
+    count: int32;
+    order: int64;
+}
+
+struct Tracked {
+    log: *var Log;
+    id: int32;
+}
+
+extend Tracked {
+    func =(self: &var Tracked, other: &Tracked);
+
+    func ~Tracked(self: &var Tracked) {
+        self.log.count = self.log.count + 1;
+        self.log.order = self.log.order * 10 + (self.id as int64);
+    }
+}
+
+// No destructor of its own, so a moving pattern may take its fields apart.
+struct Parcel {
+    label: Tracked;
+    contents: Tracked;
+}
+
+func Mark(log: *var Log) {
+    log.order = log.order * 10;
+}
+
+func Track(log: *var Log, id: int32) -> Tracked {
+    return Tracked { log: log, id: id };
+}
+
+func MakePair(log: *var Log) -> (Tracked, Tracked) {
+    return (Track(log, 1), Track(log, 2));
+}
+
+func LetDiscardsFirst(log: *var Log) {
+    let pair = (Track(log, 1), Track(log, 2));
+    let (_, second) <- pair;
+    Mark(log);
+    Assert(second.id == 2, "the bound element is the second one");
+}
+
+func LetDiscardsBoth(log: *var Log) {
+    let pair = (Track(log, 1), Track(log, 2));
+    let (_, _) <- pair;
+    Mark(log);
+}
+
+func LetDiscardsNested(log: *var Log) {
+    let nested = ((Track(log, 1), Track(log, 2)), Track(log, 3));
+    let ((first, _), _) <- nested;
+    Mark(log);
+    Assert(first.id == 1, "the nested bound element is the first one");
+}
+
+func LetDiscardsFromTemporary(log: *var Log) {
+    let (_, second) = MakePair(log);
+    Mark(log);
+    Assert(second.id == 2, "the bound element of a temporary is the second one");
+}
+
+func MatchDiscardsFirst(log: *var Log) {
+    let pair = (Track(log, 1), Track(log, 2));
+    match <-pair {
+        (_, second) => {
+            Mark(log);
+            Assert(second.id == 2, "the arm binds the second element");
+        }
+    }
+}
+
+func MatchBindsEveryField(log: *var Log) {
+    let parcel = Parcel { label: Track(log, 1), contents: Track(log, 2) };
+    match <-parcel {
+        Parcel { label: label, contents: contents } => {
+            Mark(log);
+            Assert(label.id == 1 && contents.id == 2, "the arm binds both fields");
+        }
+    }
+}
+
+func MatchOmitsField(log: *var Log) {
+    let parcel = Parcel { label: Track(log, 1), contents: Track(log, 2) };
+    match <-parcel {
+        Parcel { label: label } => {
+            Mark(log);
+            Assert(label.id == 1, "the arm binds the label");
+        }
+    }
+}
+
+// The first arm tests the first element and fails, so only the arm that is taken destroys anything.
+func MatchAfterRefutedArm(log: *var Log) {
+    let pair = (Track(log, 1), Track(log, 2));
+    match <-pair {
+        (Tracked { id: 9 }, second) => {
+            Assert(second.id < 0, "an arm whose test failed was taken");
+        },
+        (Tracked { id: 1 }, second) => {
+            Mark(log);
+            Assert(second.id == 2, "the second arm binds the second element");
+        },
+        (first, second) => {
+            Assert(first.id < 0 && second.id < 0, "the catch-all arm was taken");
+        }
+    }
+}
+
+// An arm that binds nothing leaves the whole subject to be destroyed as one value.
+func MatchArmBindsNothing(log: *var Log) {
+    let pair = (Track(log, 1), Track(log, 2));
+    match <-pair {
+        (Tracked { id: 1 }, _) => {
+            Mark(log);
+        },
+        (first, second) => {
+            Assert(first.id < 0 && second.id < 0, "the binding arm was taken");
+        }
+    }
+}
+
+func MatchTemporary(log: *var Log) -> int32 {
+    return match MakePair(log) { (_, second) => second.id };
+}
+
+// A match that takes nothing leaves its subject with its owner, which destroys it at the end of its scope.
+func MatchKeepsSubject(log: *var Log) {
+    let pair = (Track(log, 1), Track(log, 2));
+    match pair {
+        (Tracked { id: 1 }, _) => {
+            Mark(log);
+        },
+        else => {
+            Assert(false, "the first element did not match");
+        }
+    }
+}
+
+func Main() -> int {
+    var log = Log { count: 0, order: 0 };
+
+    LetDiscardsFirst(@log);
+    Assert(log.count == 2 && log.order == 102, "a discarded tuple element is destroyed at the destructure");
+
+    log = Log { count: 0, order: 0 };
+    LetDiscardsBoth(@log);
+    Assert(log.count == 2 && log.order == 120, "every discarded element is destroyed, in pattern order");
+
+    log = Log { count: 0, order: 0 };
+    LetDiscardsNested(@log);
+    Assert(log.count == 3 && log.order == 2301, "discarded nested elements are destroyed at the destructure");
+
+    log = Log { count: 0, order: 0 };
+    LetDiscardsFromTemporary(@log);
+    Assert(log.count == 2 && log.order == 102, "a discarded element of a temporary is destroyed at the destructure");
+
+    log = Log { count: 0, order: 0 };
+    MatchDiscardsFirst(@log);
+    Assert(log.count == 2 && log.order == 102, "a discarded element is destroyed at the top of the arm");
+
+    log = Log { count: 0, order: 0 };
+    MatchBindsEveryField(@log);
+    Assert(log.count == 2 && log.order == 21, "bound fields are destroyed when the arm ends");
+
+    log = Log { count: 0, order: 0 };
+    MatchOmitsField(@log);
+    Assert(log.count == 2 && log.order == 201, "an omitted field is destroyed at the top of the arm");
+
+    log = Log { count: 0, order: 0 };
+    MatchAfterRefutedArm(@log);
+    Assert(log.count == 2 && log.order == 102, "a refuted arm destroys nothing");
+
+    log = Log { count: 0, order: 0 };
+    MatchArmBindsNothing(@log);
+    Assert(log.count == 2 && log.order == 210, "an arm that binds nothing destroys the whole subject");
+
+    log = Log { count: 0, order: 0 };
+    Assert(MatchTemporary(@log) == 2, "the arm reads the second element of a temporary");
+    Assert(log.count == 2 && log.order == 12, "a temporary subject loses its discarded element at the arm");
+
+    log = Log { count: 0, order: 0 };
+    MatchKeepsSubject(@log);
+    Assert(log.count == 2 && log.order == 21, "a match that binds nothing destroys nothing itself");
+    return 0;
+}

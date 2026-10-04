@@ -3,6 +3,7 @@
 
 #include "Lexer/Lexer.h"
 #include "Semantic/Analysis/AnalysisContext.h"
+#include "Types/NominalName.h"
 
 #include <algorithm>
 #include <cassert>
@@ -568,6 +569,7 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
         const PatternBorrow armBorrow = IsNativeMatchSubject(subjectType)
                                           ? MatchSubjectBorrow(*matchStatement->subject, expressionType)
                                           : PatternBorrow::Owned;
+        const bool armsTakeParts = MatchSubjectHandedOver(*matchStatement->subject);
         const TrackedFlow matchEntry = SaveTrackedFlow();
         std::vector<TrackedFlow> exits;
         std::vector<const Pattern *> patterns;
@@ -578,7 +580,9 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
             RestoreTrackedFlow(matchEntry);
             PushScope();
             const PatternBorrow savedBorrow = std::exchange(currentPatternBorrow, armBorrow);
+            const bool savedTakesParts = std::exchange(currentPatternTakesParts, armsTakeParts);
             CheckPattern(*arm.pattern, subjectType);
+            currentPatternTakesParts = savedTakesParts;
             currentPatternBorrow = savedBorrow;
             // A bare-expression arm of a match statement is an expression statement: its value is discarded.
             const TypeRef armType = CheckExpr(*arm.body);
@@ -949,6 +953,17 @@ void AnalysisContext::CheckPattern(const Pattern &pattern, const TypeRef &subjec
                                               BaseTypeName(subjectType.name) != structPattern->typeName)) {
             EmitError(structPattern->location, std::format("struct pattern '{}' cannot match value of type '{}'",
                                                            structPattern->typeName, subjectType.ToString()));
+        }
+        else if (currentPatternTakesParts && PatternBindsValue(*structPattern) &&
+                 TypeHasDirectDestructor(declaration->first)) {
+            // The destructor runs on the whole value, so once a part is taken out there is nothing left to run it on.
+            const std::string destructor = "~" + UnqualifiedNominalName(declaration->first);
+            EmitError(
+                structPattern->location,
+                std::format("cannot split '{}' with a moving pattern, because it declares destructor '{}'",
+                            structPattern->typeName, destructor),
+                {std::format("'{}' runs on the whole value, so no part of it can be taken out on its own", destructor)},
+                "bind the whole value and read its fields, or match a value that stays with its owner");
         }
         // A field of a generic structure has the type its declaration names with the subject's type arguments in place.
         std::unordered_map<std::string, TypeRef> substitutions;

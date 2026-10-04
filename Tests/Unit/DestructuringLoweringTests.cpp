@@ -1,5 +1,6 @@
-// What tuple and structure patterns lower to: each part carries the type it has inside the subject, and refutable
-// parts branch out before any binding is set.
+// What tuple and structure patterns lower to: each part carries the type it has inside the subject, an omitted field
+// is spelled as a wildcard, refutable parts branch out before any binding is set, and a part a moving destructure
+// leaves unbound is destroyed where it is discarded.
 
 #include "CodeGen/AArch64/RcuEmitter.h"
 #include "CodeGen/X86_64/RcuEmitter.h"
@@ -93,12 +94,38 @@ const std::vector<HirMatchArm> &ReturnedMatchArms(const HirFunc &function) {
     throw std::runtime_error("no returned match");
 }
 
+/// The pattern of the first destructuring `let` in a function.
+const HirPattern &LetPattern(const HirFunc &function) {
+    REQUIRE(function.body.has_value());
+    for (const auto &statement : function.body->stmts) {
+        if (const auto *let = dynamic_cast<const HirLetStmt *>(statement.get()); let && let->pattern) {
+            return *let->pattern;
+        }
+    }
+    FAIL("no destructuring let");
+    throw std::runtime_error("no destructuring let");
+}
+
 bool StartsWith(const std::string &text, const std::string &prefix) {
     return text.rfind(prefix, 0) == 0;
 }
+
+bool CallsGlue(const LirBlock &block) {
+    return std::ranges::any_of(block.instrs, [](const LirInstr &instruction) {
+        return instruction.op == LirOpcode::Call && StartsWith(instruction.strArg, "__rux_drop__");
+    });
+}
+
+constexpr const char *kTag = R"(
+    struct Tag { id: int32; }
+    extend Tag {
+        func =(self: &var Tag, other: &Tag);
+        func ~Tag(self: &var Tag) {}
+    }
+)";
 } // namespace
 
-TEST_CASE("structure pattern fields carry their substituted types") {
+TEST_CASE("structure pattern fields carry their substituted types and omitted fields become wildcards") {
     const std::string source = R"(
         struct Pair<T> { first: T; second: T; tag: uint8; }
         func Second(pair: Pair<int64>) -> int64 {
@@ -113,7 +140,7 @@ TEST_CASE("structure pattern fields carry their substituted types") {
     REQUIRE_EQ(arms.size(), 2);
     const auto *literal = dynamic_cast<const HirStructPattern *>(arms[0].pattern.get());
     REQUIRE(literal != nullptr);
-    REQUIRE_EQ(literal->fields.size(), 2);
+    REQUIRE_EQ(literal->fields.size(), 3);
     CHECK_EQ(literal->fields[0].name, "second");
     CHECK_EQ(literal->fields[0].type, TypeRef::MakeInt64());
     // A literal is compared at the width of the field it stands in, not at its own default type.
@@ -123,6 +150,9 @@ TEST_CASE("structure pattern fields carry their substituted types") {
     const auto *one = dynamic_cast<const HirLiteralPattern *>(literal->fields[1].pattern.get());
     REQUIRE(one != nullptr);
     CHECK_EQ(one->type, TypeRef::MakeUInt8());
+    CHECK_EQ(literal->fields[2].name, "first");
+    CHECK_EQ(literal->fields[2].type, TypeRef::MakeInt64());
+    CHECK(dynamic_cast<const HirWildcardPattern *>(literal->fields[2].pattern.get()) != nullptr);
 
     const auto *bound = dynamic_cast<const HirStructPattern *>(arms[1].pattern.get());
     REQUIRE(bound != nullptr);
@@ -158,4 +188,46 @@ TEST_CASE("a refutable tuple element branches out before the bindings are set") 
     const LirBlock &matched = function.blocks[test->term->trueTarget];
     CHECK(std::ranges::any_of(matched.instrs,
                               [](const LirInstr &instruction) { return instruction.op == LirOpcode::Store; }));
+}
+
+TEST_CASE("a destructuring let records the drop glue of each droppable part it discards") {
+    const std::string source = std::string(kTag) + R"(
+        func Keep(pair: (Tag, int32, Tag)) -> int32 {
+            let (_, _, kept) <- pair;
+            return kept.id;
+        }
+    )";
+    const HirPackage package = LowerSource(source);
+    const auto *tuple = dynamic_cast<const HirTuplePattern *>(&LetPattern(RequireFunction(package, "Keep")));
+    REQUIRE(tuple != nullptr);
+    REQUIRE_EQ(tuple->elements.size(), 3);
+    const auto *droppable = dynamic_cast<const HirWildcardPattern *>(tuple->elements[0].get());
+    REQUIRE(droppable != nullptr);
+    CHECK(StartsWith(droppable->discardGlue, "__rux_drop__"));
+    const auto *scalar = dynamic_cast<const HirWildcardPattern *>(tuple->elements[1].get());
+    REQUIRE(scalar != nullptr);
+    CHECK(scalar->discardGlue.empty());
+
+    const LirPackage lir = LowerToLir(LowerSource(source));
+    CHECK(CallsGlue(RequireFunction(lir, "Keep").blocks.front()));
+}
+
+TEST_CASE("an arm over a consumed tuple destroys the elements it leaves unbound") {
+    const LirPackage lir = LowerToLir(LowerSource(std::string(kTag) + R"(
+        func Second(pair: (Tag, Tag)) -> int32 {
+            return match <-pair { (_, second) => second.id };
+        }
+        func Borrowed(pair: &(Tag, Tag)) -> int32 {
+            return match pair { (_, second) => second.id };
+        }
+    )"));
+    const LirFunc &consumed = RequireFunction(lir, "Second");
+    const auto arm = std::ranges::find_if(
+        consumed.blocks, [](const LirBlock &block) { return StartsWith(block.label, "match.expr.store.arm0"); });
+    REQUIRE(arm != consumed.blocks.end());
+    CHECK(CallsGlue(*arm));
+
+    // A borrowed subject keeps every element, so its arm destroys nothing.
+    const LirFunc &borrowed = RequireFunction(lir, "Borrowed");
+    CHECK_FALSE(std::ranges::any_of(borrowed.blocks, CallsGlue));
 }

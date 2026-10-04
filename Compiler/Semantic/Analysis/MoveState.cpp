@@ -325,6 +325,12 @@ void AnalysisContext::ConsumeMatchSubject(const Expr &subject, const TypeRef &su
     ConsumeValue(subject, subjectType, ValueConsumptionKind::MatchSubject, location);
 }
 
+bool AnalysisContext::MatchSubjectHandedOver(const Expr &subject) const {
+    // `<-value` records its transfer on the moved operand rather than on itself.
+    const auto *move = dynamic_cast<const MoveExpr *>(&subject);
+    return valueConsumptions.contains(move ? move->operand.get() : &subject);
+}
+
 template void AnalysisContext::ConsumeMatchSubject<MatchExpr::Arm>(const Expr &, const TypeRef &,
                                                                    const std::vector<MatchExpr::Arm> &, SourceLocation);
 template void AnalysisContext::ConsumeMatchSubject<MatchStmt::Arm>(const Expr &, const TypeRef &,
@@ -366,6 +372,7 @@ TypeRef AnalysisContext::CheckMatchExpression(const MatchExpr &expression) {
                                       ? MatchSubjectBorrow(*expression.subject, expressionType)
                                       : PatternBorrow::Owned;
 
+    const bool armsTakeParts = MatchSubjectHandedOver(*expression.subject);
     const TrackedFlow matchEntry = SaveTrackedFlow();
     std::vector<TrackedFlow> exits;
     std::vector<const Pattern *> patterns;
@@ -391,7 +398,9 @@ TypeRef AnalysisContext::CheckMatchExpression(const MatchExpr &expression) {
         RestoreTrackedFlow(matchEntry);
         PushScope();
         const PatternBorrow savedBorrow = std::exchange(currentPatternBorrow, armBorrow);
+        const bool savedTakesParts = std::exchange(currentPatternTakesParts, armsTakeParts);
         CheckPattern(*arm.pattern, subjectType);
+        currentPatternTakesParts = savedTakesParts;
         currentPatternBorrow = savedBorrow;
         // A diverging arm, such as `return` or a call to `Panic`, leaves the match and never decides its type.
         const TypeRef checkedArm = CheckExpr(*arm.body);

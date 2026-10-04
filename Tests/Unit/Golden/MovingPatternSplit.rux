@@ -1,0 +1,44 @@
+struct Handle { code: int32; }
+
+extend Handle {
+    func =(self: &var Handle, other: &Handle);
+    func ~Handle(self: &var Handle) {}
+}
+
+struct Holder { handle: Handle; extra: int32; }
+
+func MakeHandle() -> Handle {
+    return Handle { code: 1 };
+}
+
+func Fails() -> int32 ! Handle {
+    fail Handle { code: 2 };
+}
+
+func SplitNamed(handle: Handle) -> int32 {
+    return match <-handle { Handle { code: code } => code };
+}
+
+func SplitTemporary() -> int32 {
+    return match MakeHandle() { Handle { code: code } => code };
+}
+
+func SplitTupleMember(pair: (Handle, int32)) -> int32 {
+    return match <-pair { (Handle { code: code }, extra) => code + extra };
+}
+
+func SplitCaught() -> int32 {
+    return Fails() catch { Handle { code: code } => code };
+}
+
+func TestWithoutSplitting(pair: (Handle, int32)) -> int32 {
+    return match <-pair { (Handle { code: 1 }, extra) => extra, (_, extra) => -extra };
+}
+
+func ReadBorrowed(handle: &Handle) -> int32 {
+    return match handle { Handle { code: code } => code };
+}
+
+func SplitHolder(holder: Holder) -> int32 {
+    return match <-holder { Holder { handle: handle, extra: extra } => extra };
+}

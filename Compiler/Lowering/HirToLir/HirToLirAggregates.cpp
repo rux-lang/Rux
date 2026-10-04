@@ -285,6 +285,12 @@ void HirToLirContext::EmitDestructuringChecks(const HirPattern &pattern, const L
     const LirReg base = EmitCast(address, TypeRef::MakePointer(TypeRef::MakeChar8()), TypeRef::MakePointer(type));
     for (const Part &part : parts) {
         const LirReg partAddress = EmitFieldPtr(base, part.field, part.type);
+        // Over a consumed subject, a part the arm matches without binding has no other owner left.
+        std::vector<std::pair<LirReg, TypeRef>> *const residual = residualPayloads;
+        if (residual && !PatternBindsAnything(*part.pattern)) {
+            residual->emplace_back(partAddress, part.type);
+            residualPayloads = nullptr;
+        }
         if (const auto *binding = dynamic_cast<const HirBindingPattern *>(part.pattern)) {
             bindings.push_back({binding, partAddress, part.type});
         }
@@ -302,6 +308,7 @@ void HirToLirContext::EmitDestructuringChecks(const HirPattern &pattern, const L
             Branch(matched, next, *mismatch);
             SetBlock(next);
         }
+        residualPayloads = residual;
     }
 }
 
@@ -391,7 +398,10 @@ void HirToLirContext::EmitUnmatchedTrap(const std::optional<std::uint32_t> block
 ///
 /// Returns a bool register: 1 if the pattern matches `subjectVal`. Side-effects: binds pattern variables into locals.
 void HirToLirContext::BindLetPattern(const HirPattern &pat, LirReg subjectPtr, const TypeRef &subjectType) {
-    if (dynamic_cast<const HirWildcardPattern *>(&pat)) {
+    if (const auto *wildcard = dynamic_cast<const HirWildcardPattern *>(&pat)) {
+        if (!wildcard->discardGlue.empty()) {
+            EmitDropGlueCall(wildcard->discardGlue, subjectPtr);
+        }
         return;
     }
 

@@ -245,6 +245,8 @@ private:
     template <typename Arm>
     void ConsumeMatchSubject(const Expr &subject, const TypeRef &subjectType, const std::vector<Arm> &arms,
                              SourceLocation location);
+    /// Whether a checked match subject was handed over to the arms, so each arm owns what it binds.
+    [[nodiscard]] bool MatchSubjectHandedOver(const Expr &subject) const;
     void ConsumeMethodReceiver(const CallExpr &call, const Expr &receiver, const TypeRef &receiverType,
                                const FuncDecl &method);
 
@@ -511,6 +513,9 @@ private:
     std::unordered_map<const Pattern *, PatternBindingMode> &patternBindingModes;
 
     PatternBorrow currentPatternBorrow = PatternBorrow::Owned;
+    /// Whether the arm whose pattern is being checked owns what it binds: its match subject was handed over, or it is a
+    /// `catch` arm taking the error. A structure pattern binding a part there takes the value apart.
+    bool currentPatternTakesParts = false;
 
     /// A `let` holding a native fallible, checked for a read when its scope ends.
     struct FallibleLocal {

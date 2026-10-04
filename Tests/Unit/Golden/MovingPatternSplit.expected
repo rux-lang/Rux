@@ -1,0 +1,4 @@
+19:29: error: cannot split 'Handle' with a moving pattern, because it declares destructor '~Handle'
+23:33: error: cannot split 'Handle' with a moving pattern, because it declares destructor '~Handle'
+27:28: error: cannot split 'Handle' with a moving pattern, because it declares destructor '~Handle'
+31:28: error: cannot split 'Handle' with a moving pattern, because it declares destructor '~Handle'

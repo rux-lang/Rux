@@ -145,7 +145,7 @@ HirStmtPtr AstToHirContext::LowerStmt(const Stmt &stmt) {
         }
         lowered->type = explicitType ? *explicitType : (lowered->init ? lowered->init->type : TypeRef::MakeUnknown());
         if (statement->pattern) {
-            lowered->pattern = LowerLetPattern(*statement->pattern, lowered->type, statement->isMut);
+            lowered->pattern = LowerLetPattern(*statement->pattern, lowered->type, statement->isMut, true);
             return lowered;
         }
 
@@ -341,10 +341,16 @@ HirStmtPtr AstToHirContext::LowerStmt(const Stmt &stmt) {
     return lowered;
 }
 
-HirPatternPtr AstToHirContext::LowerLetPattern(const Pattern &pattern, const TypeRef &type, bool isMutable) {
+HirPatternPtr AstToHirContext::LowerLetPattern(const Pattern &pattern, const TypeRef &type, bool isMutable,
+                                               const bool discardsParts) {
     if (dynamic_cast<const WildcardPattern *>(&pattern)) {
         auto lowered = std::make_unique<HirWildcardPattern>();
         lowered->location = pattern.location;
+        // The destructure owns its whole initializer, so a part bound to nobody has no other owner left and is
+        // destroyed here, like a temporary nobody kept.
+        if (const DropGluePlan *glue = discardsParts ? model.TryGetDropGlue(type) : nullptr) {
+            lowered->discardGlue = glue->symbol;
+        }
         return lowered;
     }
     if (const auto *identifier = dynamic_cast<const IdentPattern *>(&pattern)) {
@@ -376,7 +382,7 @@ HirPatternPtr AstToHirContext::LowerLetPattern(const Pattern &pattern, const Typ
             if (type.kind == TypeRef::Kind::Tuple && i < type.inner.size()) {
                 elementType = type.inner[i];
             }
-            lowered->elements.push_back(LowerLetPattern(*tuple->elements[i], elementType, isMutable));
+            lowered->elements.push_back(LowerLetPattern(*tuple->elements[i], elementType, isMutable, discardsParts));
         }
         return lowered;
     }
@@ -550,6 +556,23 @@ HirPatternPtr AstToHirContext::LowerPattern(const Pattern &pattern, const TypeRe
             loweredField.type = StructFieldType(subjectType, field.name);
             loweredField.pattern = LowerPattern(*field.pattern, loweredField.type);
             lowered->fields.push_back(std::move(loweredField));
+        }
+        // A field the pattern leaves out is still part of what it matches; spelled as a wildcard, it is destroyed with
+        // the other unbound parts when the arm takes over a consumed subject.
+        if (const auto declaration = structDecls.find(lowered->typeName); declaration != structDecls.end()) {
+            for (const auto &field : declaration->second->fields) {
+                if (std::ranges::any_of(structPattern->fields,
+                                        [&](const auto &written) { return written.name == field.name; })) {
+                    continue;
+                }
+                HirStructPatternField omitted;
+                omitted.name = field.name;
+                omitted.type = StructFieldType(subjectType, field.name);
+                auto wildcard = std::make_unique<HirWildcardPattern>();
+                wildcard->location = structPattern->location;
+                omitted.pattern = std::move(wildcard);
+                lowered->fields.push_back(std::move(omitted));
+            }
         }
         return lowered;
     }

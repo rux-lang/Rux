@@ -131,7 +131,10 @@ protected:
     [[nodiscard]] HirBlock LowerBlock(const Block &block);
     [[nodiscard]] HirStmtPtr LowerStmt(const Stmt &stmt);
     [[nodiscard]] HirStmtPtr LowerFunctionReturn(HirExprPtr value, SourceLocation location);
-    [[nodiscard]] HirPatternPtr LowerLetPattern(const Pattern &pattern, const TypeRef &type, bool isMutable);
+    /// A binding pattern of `type`. A destructuring `let` passes `discardsParts`: it owns the whole initializer, so a
+    /// part it binds to `_` is destroyed where it is discarded.
+    [[nodiscard]] HirPatternPtr LowerLetPattern(const Pattern &pattern, const TypeRef &type, bool isMutable,
+                                                bool discardsParts = false);
 
     /// Whether a binding a pattern makes owns what it binds, and so is destroyed when its scope ends.
     ///

@@ -4,6 +4,7 @@
 #include "Semantic/Analysis/AnalysisContext.h"
 
 #include <format>
+#include <utility>
 
 namespace Rux::SemanticDetail {
 namespace {
@@ -168,7 +169,9 @@ TypeRef AnalysisContext::CheckCatchExpression(const CatchExpr &expression) {
     for (const auto &arm : expression.arms) {
         RestoreTrackedFlow(entry);
         PushScope();
+        const bool savedTakesParts = std::exchange(currentPatternTakesParts, true);
         CheckPattern(*arm.pattern, error);
+        currentPatternTakesParts = savedTakesParts;
         if (errorProperties.IsResolved() && !errorProperties.IsMovable() && PatternBindsValue(*arm.pattern)) {
             EmitError(arm.pattern->location,
                       std::format("'catch' cannot bind error payload '{}' by value because moving it is prohibited",

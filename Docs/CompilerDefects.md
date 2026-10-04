@@ -612,7 +612,10 @@ compiles and yields `0` for an unmatched value. With text arms it yields an empt
 - **Actual:** the program reads whatever memory follows the array, prints it, and exits 0. A
   constant out-of-range index (`primes[7]`) is not diagnosed at compile time either.
 - **Course impact:** `Sequences/Array` and `Collections/DynamicArray` warn about it.
-## D36. A tuple element bound to `_` in a moving destructure is never destroyed
+## D36. A tuple element bound to `_` in a moving destructure is never destroyed (fixed)
+
+**Fixed**; covered by `Tests/Language/PartialDestructure`, the `MovingPatternSplit` golden, and
+`DestructuringLoweringTests.cpp`.
 
 ```rux
 import Io::PrintLine;
@@ -636,11 +639,16 @@ func Main() -> int {
 Related to D18: with a move-only subject, the struct pattern in
 `match <-parcel { Parcel { label: l, contents: c } => ... }` binds zeroed values, and neither field
 is ever destroyed. A plain struct pattern also binds wrong values: it gives `3 0` for
-`Point { x: 3, y: 4 }`.
+`Point { x: 3, y: 4 }`. **Fixed**; covered by `Tests/Language/PartialDestructure` and
+`Tests/Language/TupleStructPatterns`.
 
 Related language gap, not a defect: every partial move is rejected (`cannot move field '1' out
 of droppable value 'parcel'`), and a struct cannot be destructured in `let`. A struct with
-move-only fields therefore has no way to hand out a single field.
+move-only fields therefore has no way to hand out a single field. Since D36, a moving `match`
+pattern may split a struct that declares no `~T` of its own, destroying the fields it leaves
+unbound at the top of the arm; a struct that declares `~T` cannot be split by a moving pattern
+(`cannot split 'T' with a moving pattern, because it declares destructor '~T'`). Struct
+destructuring in `let` remains open.
 # Standard package defects
 
 Defects in Packages/, found the same way.
