@@ -717,7 +717,9 @@ func Main() -> int {
 - **Course workaround:** `Memory/OptionalPointer` goes through a binding,
   `let p: *int = null; let q: (*int)? = p;`, which builds and yields a present optional.
 
-## P5. Stale package documentation
+## P5. Stale package documentation (fixed)
+
+**Fixed**; covered by `Tests/Packages/Allocator/Arena` and `PackageDocumentationStyleTests.cpp`. `BytesUsed` now sums every block.
 
 - The header comment in `Packages/Allocator/Src/Box.rux` says a failure is reported through an
   out-parameter, but `Create` returns `Box<T> ! AllocError`.

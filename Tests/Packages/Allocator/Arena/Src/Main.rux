@@ -54,12 +54,16 @@ func Main() -> ! AllocError {
     let blocksBefore = arena.BlockCount();
     var filler: *var opaque = null;
     var taken: uint = 0;
+    var usedBeforeFiller: uint = 0;
     while arena.BlockCount() == blocksBefore {
+        usedBeforeFiller = arena.BytesUsed();
         filler = allocator.Allocate(small)?;
         taken = taken + 1;
         Assert(taken < 64, "and the block is exhausted in a bounded number of requests");
     }
     Assert(arena.BlockCount() == blocksBefore + 1, "which takes exactly one more block");
+    // The count covers every block, not only the current one; the tail the full block was left with is not counted.
+    Assert(arena.BytesUsed() == usedBeforeFiller + 32, "and the bytes handed out of both blocks are counted");
 
     // A request larger than a whole block gets a block of its own rather than failing.
     let huge = Layout::New(8192, 8) ?? zero;

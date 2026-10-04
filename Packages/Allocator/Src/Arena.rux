@@ -113,13 +113,21 @@ extend Arena {
         self.blocks = 1;
     }
 
-    /// How many payload bytes the arena has handed out of its current block.
-    /// `self` is borrowed. Counts the current block only, since earlier blocks are full by construction; it is a
-    /// measure for a test rather than an accounting of the whole arena.
-    /// @returns how many payload bytes the current block has handed out
+    /// How many payload bytes the arena has handed out, summed over every block it holds.
+    /// `self` is borrowed. Alignment padding between allocations counts as used. The tail a block was left with when
+    /// a request did not fit in it and the arena moved on to a new block is not counted: nothing was handed out of
+    /// it, and nothing will be until a `Reset`. Runs in time proportional to the number of blocks and allocates
+    /// nothing.
+    /// @returns how many payload bytes the arena's blocks have handed out
     /// @see https://rux-lang.dev/docs/api/allocator/arena/bytes-used
     pub func BytesUsed(self: &Arena) -> uint {
-        return self.current == null ? 0 : self.current.used;
+        var total: uint = 0;
+        var block = self.current;
+        while block != null {
+            total = total + block.used;
+            block = block.previous;
+        }
+        return total;
     }
 
     /// How many blocks the arena holds.
