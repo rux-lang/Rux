@@ -278,6 +278,13 @@ std::optional<TypeRef> AnalysisContext::CheckBasicExpression(const Expr &express
         indexAssignmentTarget = savedAssignmentIndex;
         checkingPlainAssignmentTarget = savedAssignmentTarget;
         TypeRef value = CheckExpr(*assignment->value);
+        // `a = b = 7` reads as a chain, but the inner assignment is a statement-like expression with no value.
+        if (const auto *inner = dynamic_cast<const AssignExpr *>(assignment->value.get())) {
+            EmitError(inner->location, "an assignment produces no value and cannot be chained", {},
+                      "assign each target in its own statement");
+            checkingPlainAssignmentTarget = savedAssignmentTarget;
+            return TypeRef::MakeOpaque();
+        }
         checkingPlainAssignmentTarget = simpleAssignment;
         if (const auto *indexTarget = dynamic_cast<const IndexExpr *>(assignment->target.get());
             indexTarget && indexAssignments.contains(indexTarget)) {

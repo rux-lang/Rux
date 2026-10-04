@@ -98,21 +98,6 @@ func Main() -> int {
   `'int ! DigitError | RangeError'`. Without the parentheses, it reads as a different grouping.
 - Using a unit function without `#NoReturn` as a match arm reports `expected 'int', found
   'opaque'`. The found type should read `()`.
-## D7. Chained assignment reports an internal "opaque" type
-
-```rux
-func Main() -> int {
-    var a: int32 = 1;
-    var b: int32 = 2;
-    a = b = 7;
-    return 0;
-}
-```
-
-- **Expected:** an error saying that an assignment produces no value and cannot be chained.
-- **Actual:** `cannot assign 'opaque' to 'int32'`. The diagnostic names an internal type, as in
-  D6.
-
 ## D8. Integer division by zero ends the program silently with exit code 127
 
 - **Reproducer:** `var d = 0; let q = 10 / d;`, executed at run time.

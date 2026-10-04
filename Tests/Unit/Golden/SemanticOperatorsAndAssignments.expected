@@ -5,3 +5,4 @@
 11:5: error: cannot modify data through read-only pointer '*int'
 12:5: error: cannot modify constant 'Limit'
 13:8: error: operator '=' requires an assignable target, but its left operand has type 'int'
+16:20: error: an assignment produces no value and cannot be chained
