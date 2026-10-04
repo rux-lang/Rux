@@ -66,8 +66,15 @@ void HirToLirContext::StoreEnumConstructIntoSlot(const HirEnumConstructExpr &e, 
         // A zero-sized payload has no data bytes to write, and the unit value has nothing to evaluate either.
         const auto *unit = dynamic_cast<const HirTupleExpr *>(payloadExpr.get());
         if (size != 0 || !unit || !unit->elements.empty()) {
-            const LirReg payload = LowerExpr(*payloadExpr);
-            if (size != 0) {
+            LirReg payload = LowerExpr(*payloadExpr);
+            // A tuple or array literal lowers to the address of the storage it was built in, not to its value, so the
+            // value is loaded from there before it is stored as the payload.
+            const bool builtAtAddress = dynamic_cast<const HirTupleExpr *>(payloadExpr.get()) ||
+                                        dynamic_cast<const HirArrayExpr *>(payloadExpr.get());
+            if (size != 0 && builtAtAddress && !IsTerminated()) {
+                payload = EmitLoad(payload, payloadExpr->type);
+            }
+            if (size != 0 && !IsTerminated()) {
                 EmitStore(payload, payloadSlot, payloadExpr->type);
             }
         }
