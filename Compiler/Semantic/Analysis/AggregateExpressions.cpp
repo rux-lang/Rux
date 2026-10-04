@@ -459,6 +459,12 @@ void AnalysisContext::CheckStructInitExpression(const StructInitExpr &expression
                       "struct initializer for '{}' requires {} type argument{}, but {} provided", expression.typeName,
                       declaration.typeParams.size(), declaration.typeParams.size() == 1 ? "" : "s",
                       expression.typeArgs.size() == 1 ? "1 was" : std::format("{} were", expression.typeArgs.size())));
+        // Without its type arguments no field type can be resolved, so the values are only checked for their own
+        // errors rather than against field types that would each report the missing parameters again.
+        for (const auto &field : expression.fields) {
+            CheckExpr(*field.value);
+        }
+        return;
     }
 
     const auto substitutions = StructTypeSubstitutions(declaration, expression.typeArgs);
@@ -786,6 +792,11 @@ std::optional<TypeRef> AnalysisContext::CheckAggregateExpression(const Expr &exp
         CheckStructInitExpression(*initializer);
         if (const auto [enumDecl, variant] = LookupEnumVariantInitializer(initializer->typeName); enumDecl && variant) {
             return EnumType(*enumDecl);
+        }
+        // A generic struct written without its type arguments has no type to name; its error is already reported.
+        if (const auto structure = structDecls.find(NominalTypeName(initializer->typeName));
+            structure != structDecls.end() && initializer->typeArgs.size() != structure->second->typeParams.size()) {
+            return TypeRef::MakeUnknown();
         }
         const std::string typeName = GenericStructInitName(*initializer);
         TypeRef type = ParseTypeRefFromString(typeName);

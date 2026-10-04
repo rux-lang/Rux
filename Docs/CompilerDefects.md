@@ -433,7 +433,9 @@ func Main() -> int {
   - `.Exact(7)` gives `'.Exact' must be written in full`.
 - **Course workaround:** `Generics/GenericType` writes `Reading::Exact<int32>(7)`.
 
-## D27. A missing type argument on a generic struct literal produces a cascade of errors
+## D27. A missing type argument on a generic struct literal produces a cascade of errors (fixed)
+
+**Fixed**; covered by the `GenericStructTypeArguments` golden.
 
 - **Reproducer:** `struct Pair<T> { first: T; second: T; }`, then
   `let p = Pair { first: "l", second: "r" };`.

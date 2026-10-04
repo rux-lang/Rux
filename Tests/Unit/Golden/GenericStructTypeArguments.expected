@@ -1,0 +1,3 @@
+8:16: error: struct initializer for 'Pair' requires 1 type argument, but 0 were provided
+8:5: warning: cannot infer type of 'pair'
+9:5: warning: cannot infer type of 'first'

@@ -1,0 +1,11 @@
+// A generic struct literal without its type arguments reports that once, not once per field and use.
+struct Pair<T> {
+    first: T;
+    second: T;
+}
+
+func Main() -> int {
+    let pair = Pair { first: "l", second: "r" };
+    let first = pair.first;
+    return 0;
+}
