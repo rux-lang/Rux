@@ -888,7 +888,9 @@ func Main() -> int {
   from its root.
 - **Course workaround:** `Check.ps1` checks each workspace member from its own directory.
 
-## D50. `rux build` and `rux run` at a workspace root print an empty package name and fail
+## D50. `rux build` and `rux run` at a workspace root print an empty package name and fail (fixed)
+
+**Fixed**; covered by `CliWorkspaceProcessTests.cpp`.
 
 - **Actual:** `Compiling  v (Debug, Windows x86-64)`, followed by `source directory '…\Src' does
   not exist`.

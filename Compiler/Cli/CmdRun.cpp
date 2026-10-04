@@ -68,6 +68,37 @@ int Cli::RunRun(std::span<const std::string_view> args, const GlobalOptions &opt
     if (!manifest) {
         return 1;
     }
+    if (manifest->IsWorkspace()) {
+        // A workspace has no entry point of its own; name the commands that run each of its executable members.
+        std::vector<std::string> commands;
+        for (const auto &member : LoadWorkspaceMembers(*manifestPath, *manifest)) {
+            if (!member.manifest || member.manifest->package.type != ManifestPackageType::Executable)
+                continue;
+            std::error_code error;
+            auto shown = std::filesystem::proximate(member.manifestPath, error);
+            if (error)
+                shown = member.manifestPath;
+            commands.push_back(
+                std::format("'rux --manifest {} run{}'", shown.generic_string(), isRelease ? " --release" : ""));
+        }
+        tool.Error(std::format("manifest '{}' is a workspace and has nothing to run", manifestPath->string()));
+        tool.Note("a workspace declares member packages and has no entry point of its own");
+        if (commands.empty()) {
+            tool.Note("none of its members is an executable package");
+            tool.Help("check its members with 'rux check'");
+        }
+        else {
+            std::string choices;
+            for (std::size_t index = 0; index < commands.size(); ++index) {
+                if (index > 0)
+                    choices += index + 1 == commands.size() ? " or " : ", ";
+                choices += commands[index];
+            }
+            tool.Help((commands.size() == 1 ? "run its executable member with " : "run an executable member with ") +
+                      choices);
+        }
+        return 1;
+    }
     const std::string packageName(manifest->package.name.Text());
     if (manifest->package.type != ManifestPackageType::Executable) {
         if (manifest->package.type == ManifestPackageType::SourceLibrary) {

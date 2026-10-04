@@ -60,7 +60,7 @@ void InstallIo() {
                   "pub module Api {\n    pub func Status() -> int {\n        return 0;\n    }\n}\n");
 }
 
-/// The D49 reproducer: App and Greeter are members, and both use `Rux/Io`, which no member supplies.
+/// A user workspace: App and Greeter are members, and both use `Rux/Io`, which no member supplies.
 void WriteGreeterWorkspace(const WorkspaceFixture &workspace) {
     workspace.Workspace("\"App\", \"Greeter\"");
     workspace.Package("Greeter", "Greeter", "SourceLibrary", "Io = { Namespace = \"Rux\", Version = \"*\" }\n",
@@ -118,4 +118,95 @@ TEST_CASE("workspace check refuses a package of its own namespace that no member
     CHECK(checked.output.contains(
         "error: package 'Acme/Missing' is not a workspace member, but the workspace owns namespace 'Acme'"));
     CHECK(checked.output.contains("help: add the package to [Workspace].Packages or use a local Path dependency"));
+}
+
+TEST_CASE("workspace build compiles every member that produces an artifact") {
+    const ScopedCliPackageCache cache;
+    InstallIo();
+    const WorkspaceFixture workspace("build");
+    WriteGreeterWorkspace(workspace);
+
+    const auto built =
+        Run(std::array<std::string_view, 4>{"--manifest", workspace.Manifest(), "--color=never", "build"});
+    CAPTURE(built.output);
+    CHECK(built.exitCode == 0);
+    CHECK(built.output.contains("Compiling workspace (Debug, " +
+                                Driver::TargetDisplayName(Rux::Target::TargetTriple::Host()) + ")"));
+    CHECK(built.output.contains("Compiling App v0.1.0 (Debug, "));
+    CHECK_FALSE(built.output.contains("Compiling  v"));
+    CHECK_FALSE(built.output.contains("Compiling Greeter"));
+    CHECK(built.output.contains("Output: " + (std::filesystem::path("App") / "Bin" / "Debug").string()));
+    CHECK(built.output.contains("Built 1 package in "));
+    CHECK(built.output.contains("(1 succeeded, 0 failed)"));
+
+    // A member that fails to compile fails the build without hiding the members that succeed.
+    workspace.Workspace("\"App\", \"Greeter\", \"Broken\"");
+    workspace.Package("Broken", "Broken", "Executable", "", "Main.rux", "func Main() -> int {\n    return true;\n}\n");
+    const auto failed =
+        Run(std::array<std::string_view, 4>{"--manifest", workspace.Manifest(), "--color=never", "build"});
+    CAPTURE(failed.output);
+    CHECK(failed.exitCode == 1);
+    CHECK(failed.output.contains("Built App (Debug, "));
+    CHECK(failed.output.contains("Failed 2 packages in "));
+    CHECK(failed.output.contains("(1 succeeded, 1 failed)"));
+}
+
+TEST_CASE("workspace build reports a workspace of source libraries as having nothing to build") {
+    const WorkspaceFixture workspace("libraries");
+    workspace.Workspace("\"Greeter\"");
+    workspace.Package("Greeter", "Greeter", "SourceLibrary", "", "Api.rux", "pub module Greet {}\n");
+
+    const auto built =
+        Run(std::array<std::string_view, 4>{"--manifest", workspace.Manifest(), "--color=never", "build"});
+    CAPTURE(built.output);
+    CHECK(built.exitCode == 1);
+    CHECK(built.output.contains("has no member to build"));
+    CHECK(built.output.contains(
+        "note: a source library is compiled into the packages that depend on it and builds nothing alone"));
+    CHECK(built.output.contains("help: check the members with 'rux check'"));
+    CHECK_FALSE(built.output.contains("does not exist"));
+}
+
+TEST_CASE("workspace run has nothing to run and names its executable members") {
+    const ScopedCliPackageCache cache;
+    InstallIo();
+    const WorkspaceFixture workspace("run");
+    WriteGreeterWorkspace(workspace);
+
+    const auto ran = Run(std::array<std::string_view, 4>{"--manifest", workspace.Manifest(), "--color=never", "run"});
+    CAPTURE(ran.output);
+    CHECK(ran.exitCode == 1);
+    CHECK(ran.output.contains("error: manifest '" + workspace.Manifest() + "' is a workspace and has nothing to run"));
+    CHECK(ran.output.contains("note: a workspace declares member packages and has no entry point of its own"));
+    CHECK(ran.output.contains("help: run its executable member with 'rux --manifest "));
+    CHECK(ran.output.contains("App/Rux.toml run'"));
+    CHECK_FALSE(ran.output.contains("Greeter/Rux.toml"));
+    CHECK_FALSE(ran.output.contains("Compiling"));
+}
+
+TEST_CASE("workspace fmt formats the root manifest and every member's manifest and sources") {
+    const WorkspaceFixture workspace("fmt");
+    workspace.Workspace("\"App\", \"Greeter\"");
+    workspace.Package("Greeter", "Greeter", "SourceLibrary", "", "Api.rux", "pub module Greet {}  \r\n");
+    workspace.Package("App", "App", "Executable", "", "Main.rux", "func Main() -> int {\n    return 0;\n}\n");
+    const auto source = workspace.root / "Greeter" / "Src" / "Api.rux";
+
+    const auto unformatted =
+        Run(std::array<std::string_view, 5>{"--manifest", workspace.Manifest(), "--color=never", "fmt", "--check"});
+    CAPTURE(unformatted.output);
+    CHECK(unformatted.exitCode == 1);
+    CHECK(unformatted.output.contains("source file '" + source.string() + "' is not formatted"));
+    CHECK_FALSE(unformatted.output.contains("no source files were examined"));
+
+    const auto formatted =
+        Run(std::array<std::string_view, 4>{"--manifest", workspace.Manifest(), "--color=never", "fmt"});
+    CAPTURE(formatted.output);
+    CHECK(formatted.exitCode == 0);
+    CHECK(ReadTextFile(source) == "pub module Greet {}\n");
+
+    const auto checked =
+        Run(std::array<std::string_view, 5>{"--manifest", workspace.Manifest(), "--color=never", "fmt", "--check"});
+    CAPTURE(checked.output);
+    CHECK(checked.exitCode == 0);
+    CHECK(checked.output.contains("Checked 5 files in "));
 }
