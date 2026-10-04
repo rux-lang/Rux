@@ -57,7 +57,7 @@ func WriteRaw(handle: RawStream, console: bool, bytes: char8[..]) -> uint ! IoEr
     if bytes.length == 0 { return 0; }
     when #target.os == .Windows {
         if !console {
-            let count = bytes.length > 0x100000u ? 0x100000u32 : bytes.length as uint32;
+            let count = bytes.length > 0x100000 ? 0x100000u32 : bytes.length as uint32;
             var written: uint32 = 0;
             if !WriteFile(handle, bytes.data as *opaque, count, @written, null) {
                 fail PlatformFailure(GetLastError() as int32);
@@ -72,7 +72,7 @@ func WriteRaw(handle: RawStream, console: bool, bytes: char8[..]) -> uint ! IoEr
         while offset < bytes.length {
             var chunk = bytes.length - offset;
             if chunk > 1024 {
-                chunk = 1024u;
+                chunk = 1024;
                 var backedOff = chunk;
                 while backedOff > 0 && !IsBoundary(bytes, offset + backedOff) {
                     backedOff = backedOff - 1;
@@ -107,7 +107,7 @@ func WriteRaw(handle: RawStream, console: bool, bytes: char8[..]) -> uint ! IoEr
     }
     else {
         let result = Write(handle, bytes.data as *opaque, bytes.length);
-        if result < 0 { fail PlatformFailure((0i64 - result) as int32); }
+        if result < 0 { fail PlatformFailure((0 - result) as int32); }
         return result as uint;
     }
 }
@@ -176,7 +176,7 @@ extend StandardIn : Reader {
             if self.console { return self.ReadConsole(into, served); }
             var read: uint32 = 0;
             let room = into.length - served;
-            let count = room > 0x100000u ? 0x100000u32 : room as uint32;
+            let count = room > 0x100000 ? 0x100000u32 : room as uint32;
             if !ReadFile(self.handle, @into[served] as *var opaque, count, @read, null) {
                 let raw = GetLastError() as int32;
                 if served > 0 { return served; }
@@ -192,7 +192,7 @@ extend StandardIn : Reader {
             let result = Read(self.handle, @into[served] as *var opaque, into.length - served);
             if result < 0 {
                 if served > 0 { return served; }
-                fail PlatformFailure((0i64 - result) as int32);
+                fail PlatformFailure((0 - result) as int32);
             }
             let total = served + result as uint;
             if total == 0 { fail IoError::Of(IoErrorKind::EndOfStream); }
@@ -215,7 +215,7 @@ when #target.os == .Windows {
                 base = 1;
             }
             let room = into.length - served;
-            var ask = room / 3u;
+            var ask = room / 3;
             if ask == 0 {
                 ask = 1;
             }
@@ -257,7 +257,7 @@ when #target.os == .Windows {
             // What did not fit waits, in order, for the next read.
             var shift: uint = 0;
             while index < converted as uint {
-                self.pending = self.pending | ((text[index] as uint8 as uint64) << (8u64 * shift as uint64));
+                self.pending = self.pending | ((text[index] as uint8 as uint64) << (8 * shift as uint64));
                 self.pendingCount = self.pendingCount + 1;
                 index = index + 1;
                 shift = shift + 1;

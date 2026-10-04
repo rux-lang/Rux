@@ -42,7 +42,7 @@ pub func Rename(allocator: Allocator, from: Path, to: Path) -> ! IoError {
     else {
         let result = RenameAt(AtFdCwd, fromNative as *char8, AtFdCwd, toNative as *char8);
         if result < 0 {
-            fail TranslateNative((0i64 - result) as int32);
+            fail TranslateNative((0 - result) as int32);
         }
     }
 }
@@ -70,7 +70,7 @@ pub func CreateHardLink(allocator: Allocator, existing: Path, link: Path) -> ! I
     else {
         let result = LinkAt(AtFdCwd, existingNative as *char8, AtFdCwd, linkNative as *char8, 0);
         if result < 0 {
-            fail TranslateNative((0i64 - result) as int32);
+            fail TranslateNative((0 - result) as int32);
         }
     }
 }
@@ -104,7 +104,7 @@ pub func CreateSymbolicLink(allocator: Allocator, target: Path, link: Path, targ
     else {
         let result = SymlinkAt(targetNative as *char8, AtFdCwd, linkNative as *char8);
         if result < 0 {
-            fail TranslateNative((0i64 - result) as int32);
+            fail TranslateNative((0 - result) as int32);
         }
     }
 }

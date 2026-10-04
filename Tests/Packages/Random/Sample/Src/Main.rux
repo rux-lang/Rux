@@ -7,7 +7,7 @@ import Math::Abs;
 import Random::{ ChooseIndex, Offer, RandomGenerator, Reservoir, Shuffle, WeightedIndex, Xoshiro256 };
 
 func Main() -> int {
-    var generator = Xoshiro256(8675309u64);
+    var generator = Xoshiro256(8675309);
 
     // A shuffle is a permutation: every element still present, exactly once.
     var items: uint64[16];
@@ -59,7 +59,7 @@ func Main() -> int {
         index = 0;
         while index < 8 {
             let value = small[index] as uint;
-            landings[value * 8u + index] = landings[value * 8u + index] + 1;
+            landings[value * 8 + index] = landings[value * 8 + index] + 1;
             index = index + 1;
         }
         run = run + 1;
@@ -89,7 +89,7 @@ func Main() -> int {
     }
     run = 0;
     while run < 50000 {
-        let value = ChooseIndex<Xoshiro256>(generator, 5u);
+        let value = ChooseIndex<Xoshiro256>(generator, 5);
         Assert(value < 5, "a chosen index is in range");
         chosen[value] = chosen[value] + 1;
         run = run + 1;
@@ -99,7 +99,7 @@ func Main() -> int {
         Assert(chosen[index] > 9500 && chosen[index] < 10500, "and every index comes up about equally often");
         index = index + 1;
     }
-    Assert(ChooseIndex<Xoshiro256>(generator, 0u) == 0, "an empty collection has no index to choose");
+    Assert(ChooseIndex<Xoshiro256>(generator, 0) == 0, "an empty collection has no index to choose");
 
     // Weighted choice: the proportions come out as given, a zero weight is never chosen, and a negative one is
     // ignored rather than subtracted.
@@ -162,7 +162,7 @@ func Main() -> int {
             let value = sample[index] as uint;
             Assert(value < 20, "every sampled value came from the stream");
             reservoirCounts[value] = reservoirCounts[value] + 1;
-            var other = index + 1u;
+            var other = index + 1;
             while other < 4 {
                 Assert(sample[index] != sample[other], "and the sample holds no duplicates");
                 other = other + 1;
@@ -185,7 +185,7 @@ func Main() -> int {
     var shortReservoir = Reservoir<uint64>(shortRoom);
     index = 0;
     while index < 3 {
-        Offer<Xoshiro256, uint64>(generator, shortReservoir, (100u + index) as uint64);
+        Offer<Xoshiro256, uint64>(generator, shortReservoir, (100 + index) as uint64);
         index = index + 1;
     }
     Assert(shortReservoir.Length() == 3, "a short stream fills the reservoir only as far as it goes");
@@ -195,7 +195,7 @@ func Main() -> int {
     // A reservoir with no room accepts the stream and keeps nothing.
     let noRoom = (@shortSample[0])[..0];
     var emptyReservoir = Reservoir<uint64>(noRoom);
-    Offer<Xoshiro256, uint64>(generator, emptyReservoir, 7u64);
+    Offer<Xoshiro256, uint64>(generator, emptyReservoir, 7);
     Assert(emptyReservoir.Length() == 0 && emptyReservoir.Seen() == 1,
            "a reservoir with no room still counts what it was offered");
 

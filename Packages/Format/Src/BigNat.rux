@@ -171,28 +171,28 @@ extend BigNat {
     /// @see https://rux-lang.dev/docs/api/format/big-nat/shift-left
     func ShiftLeft(self: &var BigNat, bits: uint) -> bool {
         if self.length == 0 || bits == 0 { return true; }
-        let limbShift = bits / 64u;
-        let bitShift = bits % 64u;
-        let newLength = self.length + limbShift + 1u;
+        let limbShift = bits / 64;
+        let bitShift = bits % 64;
+        let newLength = self.length + limbShift + 1;
         if !self.Reserve(newLength) { return false; }
         // From the top down, so nothing is overwritten before it has been read.
-        self.limbs[newLength - 1u] = 0u64;
+        self.limbs[newLength - 1] = 0;
         var index = self.length;
         while index > 0 {
-            index = index - 1u;
+            index = index - 1;
             let limb = self.limbs[index];
             if bitShift == 0 {
                 self.limbs[index + limbShift] = limb;
             }
             else {
-                self.limbs[index + limbShift + 1u] = self.limbs[index + limbShift + 1u] | (limb >> (64u - bitShift));
+                self.limbs[index + limbShift + 1] = self.limbs[index + limbShift + 1] | (limb >> (64 - bitShift));
                 self.limbs[index + limbShift] = limb << bitShift;
             }
         }
         index = 0;
         while index < limbShift {
-            self.limbs[index] = 0u64;
-            index = index + 1u;
+            self.limbs[index] = 0;
+            index = index + 1;
         }
         self.length = newLength;
         self.Trim();
@@ -255,8 +255,8 @@ extend BigNat {
         var carry: uint64 = 0;
         var index: uint = 0;
         while index < longest {
-            let left = index < self.length ? self.limbs[index] : 0u64;
-            let right = index < other.length ? other.limbs[index] : 0u64;
+            let left = index < self.length ? self.limbs[index] : 0;
+            let right = index < other.length ? other.limbs[index] : 0;
             let sum = (left as uint128) + (right as uint128) + (carry as uint128);
             self.limbs[index] = sum as uint64;
             carry = (sum >> 64) as uint64;

@@ -49,7 +49,7 @@ pub func CurrentDirectory(allocator: Allocator) -> OsString ! IoError {
     }
     else {
         let outcome = Getcwd(@units[0], 4096);
-        if outcome < 0 { fail TranslateNative((0i64 - outcome) as int32); }
+        if outcome < 0 { fail TranslateNative((0 - outcome) as int32); }
         var length: uint = 0;
         while length < 4096 && units[length] != (0u8 as char8) {
             length = length + 1;
@@ -78,7 +78,7 @@ pub func SetCurrentDirectory(allocator: Allocator, path: Path) -> ! IoError {
     else {
         let result = Chdir(native as *char8);
         if result < 0 {
-            fail TranslateNative((0i64 - result) as int32);
+            fail TranslateNative((0 - result) as int32);
         }
     }
 }

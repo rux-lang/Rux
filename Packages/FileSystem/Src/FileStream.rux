@@ -34,7 +34,7 @@ extend File : Reader {
         if !self.open { fail ClosedFile(); }
         if into.length == 0 { return 0; }
         when #target.os == .Windows {
-            let count = into.length > 0x40000000u ? 0x40000000u32 : into.length as uint32;
+            let count = into.length > 0x40000000 ? 0x40000000u32 : into.length as uint32;
             var read: uint32 = 0;
             if !ReadFile(self.handle, into.data as *var opaque, count, @read, null) {
                 let raw = GetLastError() as int32;
@@ -47,7 +47,7 @@ extend File : Reader {
         }
         else {
             let result = Read(self.handle, into.data as *var opaque, into.length);
-            if result < 0 { fail TranslateNative((0i64 - result) as int32); }
+            if result < 0 { fail TranslateNative((0 - result) as int32); }
             if result == 0 { fail IoError::Of(IoErrorKind::EndOfStream); }
             return result as uint;
         }
@@ -63,7 +63,7 @@ extend File : Writer {
         if !self.open { fail ClosedFile(); }
         if bytes.length == 0 { return 0; }
         when #target.os == .Windows {
-            let count = bytes.length > 0x40000000u ? 0x40000000u32 : bytes.length as uint32;
+            let count = bytes.length > 0x40000000 ? 0x40000000u32 : bytes.length as uint32;
             var written: uint32 = 0;
             if !WriteFile(self.handle, bytes.data as *opaque, count, @written, null) {
                 fail TranslateNative(GetLastError() as int32);
@@ -113,7 +113,7 @@ extend File : Seeker {
                 whence = SeekEnd;
             }
             let landed = Lseek(self.handle, offset, whence);
-            if landed < 0 { fail TranslateNative((0i64 - landed) as int32); }
+            if landed < 0 { fail TranslateNative((0 - landed) as int32); }
             return landed as uint64;
         }
     }
@@ -133,7 +133,7 @@ extend File {
         }
         else {
             let result = Fsync(self.handle);
-            if result < 0 { fail TranslateNative((0i64 - result) as int32); }
+            if result < 0 { fail TranslateNative((0 - result) as int32); }
         }
     }
 
@@ -153,11 +153,11 @@ extend File {
         }
         else {
             let held = Lseek(self.handle, 0, SeekCurrent);
-            if held < 0 { fail TranslateNative((0i64 - held) as int32); }
+            if held < 0 { fail TranslateNative((0 - held) as int32); }
             let end = Lseek(self.handle, 0, SeekEnd);
-            if end < 0 { fail TranslateNative((0i64 - end) as int32); }
+            if end < 0 { fail TranslateNative((0 - end) as int32); }
             let back = Lseek(self.handle, held, SeekSet);
-            if back < 0 { fail TranslateNative((0i64 - back) as int32); }
+            if back < 0 { fail TranslateNative((0 - back) as int32); }
             return end as uint64;
         }
     }
@@ -188,7 +188,7 @@ extend File {
         }
         else {
             let result = Ftruncate(self.handle, length as int64);
-            if result < 0 { fail TranslateNative((0i64 - result) as int32); }
+            if result < 0 { fail TranslateNative((0 - result) as int32); }
         }
     }
 

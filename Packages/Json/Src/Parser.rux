@@ -327,18 +327,18 @@ extend JsonParser {
             index = index + 1;
             if kind == 0x75 {
                 var scalar = HexQuad(span, index);
-                let escapeAt = index - 2u;
-                index = index + 4u;
+                let escapeAt = index - 2;
+                index = index + 4;
                 if scalar >= 0xD800 && scalar <= 0xDBFF {
                     // A high surrogate must be followed by its low partner; JSON's escapes are UTF-16, so this
                     // is the one place a JSON string is not simply a sequence of scalar values.
                     var paired = false;
-                    if index + 6u <= span.length && (span.data[index] as uint8) == 0x5C &&
-                        (span.data[index + 1u] as uint8) == 0x75 {
-                        let low = HexQuad(span, index + 2u);
+                    if index + 6 <= span.length && (span.data[index] as uint8) == 0x5C &&
+                        (span.data[index + 1] as uint8) == 0x75 {
+                        let low = HexQuad(span, index + 2);
                         if low >= 0xDC00 && low <= 0xDFFF {
-                            scalar = 0x10000u32 + ((scalar - 0xD800u32) << 10) + (low - 0xDC00u32);
-                            index = index + 6u;
+                            scalar = 0x10000 + ((scalar - 0xD800) << 10) + (low - 0xDC00);
+                            index = index + 6;
                             paired = true;
                         }
                     }
@@ -360,19 +360,19 @@ extend JsonParser {
             else {
                 var replacement: uint8 = 0;
                 if kind == 0x62 {
-                    replacement = 0x08u8;
+                    replacement = 0x08;
                 }
                 else if kind == 0x66 {
-                    replacement = 0x0Cu8;
+                    replacement = 0x0C;
                 }
                 else if kind == 0x6E {
-                    replacement = 0x0Au8;
+                    replacement = 0x0A;
                 }
                 else if kind == 0x72 {
-                    replacement = 0x0Du8;
+                    replacement = 0x0D;
                 }
                 else if kind == 0x74 {
-                    replacement = 0x09u8;
+                    replacement = 0x09;
                 }
                 else {
                     // The quote, backslash and solidus all stand for themselves.

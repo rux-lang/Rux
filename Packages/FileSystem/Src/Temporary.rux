@@ -72,8 +72,8 @@ func RandomName(allocator: Allocator, prefix: char8[..]) -> OsString ! IoError {
     }
     var digit: uint = 0;
     while digit < 16 {
-        let nibble = ((bits >> ((60u64 - 4u64 * digit as uint64))) & 0xFu64) as uint32;
-        text[length] = (nibble < 10 ? (0x30u32 + nibble) : (0x57u32 + nibble)) as uint8 as char8;
+        let nibble = ((bits >> ((60 - 4 * digit as uint64))) & 0xF) as uint32;
+        text[length] = (nibble < 10 ? (0x30 + nibble) : (0x57 + nibble)) as uint8 as char8;
         length = length + 1;
         digit = digit + 1;
     }

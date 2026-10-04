@@ -128,7 +128,7 @@ func EmitBasicString(writer: &var TextWriter, text: char8[..]) -> ! FormatError 
 }
 
 func HexDigit(value: uint8) -> uint8 {
-    return value < 10 ? 0x30u8 + value : 0x41u8 + value - 10u8;
+    return value < 10 ? 0x30 + value : 0x41 + value - 10;
 }
 
 // A key, bare where TOML allows it and quoted where it does not.
@@ -180,7 +180,7 @@ func EmitInteger(writer: &var TextWriter, value: int64) -> ! FormatError {
     var length: uint = 0;
     var negative = value < 0;
     // The most negative integer has no positive counterpart, so the magnitude is taken unsigned.
-    var rest = negative ? (~(value as uint64) + 1u64) : value as uint64;
+    var rest = negative ? (~(value as uint64) + 1) : value as uint64;
     if rest == 0 {
         storage[0] = c8'0';
         length = 1;
@@ -242,7 +242,7 @@ func EmitDateTime(writer: &var TextWriter, value: &TomlValue) -> ! FormatError {
     if kind != TomlKind::OffsetDateTime { return .Success(()); }
     let seconds = value.offset.TotalSeconds();
     if seconds == 0 { return EmitByte(writer, 0x5A); }
-    let magnitude = seconds < 0i32 ? -seconds : seconds;
+    let magnitude = seconds < 0 ? -seconds : seconds;
     EmitByte(writer, seconds < 0 ? 0x2D : 0x2B)?;
     EmitPadded(writer, (magnitude / 3600) as uint32, 2)?;
     EmitByte(writer, 0x3A)?;

@@ -58,7 +58,7 @@ extend BufferedReader {
             end: 0,
             allocator: allocator
         };
-        let wanted = capacity == 0u ? DefaultBufferCapacity : capacity;
+        let wanted = capacity == 0 ? DefaultBufferCapacity : capacity;
         let layout = Layout::New(wanted, 1) ?? Layout { size: wanted, alignment: 1 };
         var borrowed = allocator;
         let block = borrowed.Allocate(layout) catch { else => fail IoError::Of(IoErrorKind::Other) };
@@ -192,7 +192,7 @@ extend BufferedWriter {
     /// @see https://rux-lang.dev/docs/api/io/buffered-writer/new
     pub func New(allocator: Allocator, sink: Writer, capacity: uint) -> BufferedWriter ! IoError {
         var writer = BufferedWriter { sink: sink, data: null, capacity: 0, length: 0, allocator: allocator };
-        let wanted = capacity == 0u ? DefaultBufferCapacity : capacity;
+        let wanted = capacity == 0 ? DefaultBufferCapacity : capacity;
         let layout = Layout::New(wanted, 1) ?? Layout { size: wanted, alignment: 1 };
         var borrowed = allocator;
         let block = borrowed.Allocate(layout) catch { else => fail IoError::Of(IoErrorKind::Other) };

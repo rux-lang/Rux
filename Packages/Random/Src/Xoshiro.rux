@@ -18,7 +18,7 @@ pub struct Xoshiro256 {
 
 // A rotation, which the language spells as two shifts.
 func RotateLeft64(value: uint64, amount: uint64) -> uint64 {
-    return (value << amount) | (value >> (64u64 - amount));
+    return (value << amount) | (value >> (64 - amount));
 }
 
 extend Xoshiro256 {

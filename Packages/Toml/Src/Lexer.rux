@@ -179,26 +179,26 @@ extend TomlLexer {
     func LexText(self: &var TomlLexer, quote: uint8) -> TomlToken {
         let opening = self.position;
         var multiline = false;
-        if self.At(1u) == quote && self.At(2u) == quote {
+        if self.At(1) == quote && self.At(2) == quote {
             multiline = true;
-            self.position = self.position + 3u;
+            self.position = self.position + 3;
         }
         else {
-            self.position = self.position + 1u;
+            self.position = self.position + 1;
         }
         // A multi-line string ignores a newline immediately after its opening delimiter, which is what lets the
         // content start on the next line without gaining a leading blank.
         if multiline && self.position < self.input.length {
             if (self.input.data[self.position] as uint8) == 0x0D &&
-                self.position + 1u < self.input.length &&
-                (self.input.data[self.position + 1u] as uint8) == 0x0A {
-                self.position = self.position + 2u;
-                self.line = self.line + 1u;
+                self.position + 1 < self.input.length &&
+                (self.input.data[self.position + 1] as uint8) == 0x0A {
+                self.position = self.position + 2;
+                self.line = self.line + 1;
                 self.lineStart = self.position;
             }
             else if (self.input.data[self.position] as uint8) == 0x0A {
-                self.position = self.position + 1u;
-                self.line = self.line + 1u;
+                self.position = self.position + 1;
+                self.line = self.line + 1;
                 self.lineStart = self.position;
             }
         }
@@ -211,14 +211,14 @@ extend TomlLexer {
                     let token = self.Make(TomlTokenKind::Text, escapes ? TomlTextForm::Basic
                                                                        : TomlTextForm::Literal,
                                           start, self.position);
-                    self.position = self.position + 1u;
+                    self.position = self.position + 1;
                     return token;
                 }
-                if self.At(1u) == quote && self.At(2u) == quote {
+                if self.At(1) == quote && self.At(2) == quote {
                     let token = self.Make(TomlTokenKind::Text, escapes ? TomlTextForm::MultiLineBasic
                                                                        : TomlTextForm::MultiLineLiteral,
                                           start, self.position);
-                    self.position = self.position + 3u;
+                    self.position = self.position + 3;
                     return token;
                 }
             }
@@ -228,49 +228,49 @@ extend TomlLexer {
                     // an unterminated one, because it says what the writer probably meant to do.
                     return self.Fail(TomlLexError::NewlineInText);
                 }
-                self.line = self.line + 1u;
-                self.lineStart = self.position + 1u;
+                self.line = self.line + 1;
+                self.lineStart = self.position + 1;
             }
             else if c < 0x20 && c != 0x09 {
                 return self.Fail(TomlLexError::UnescapedControl);
             }
             if escapes && c == 0x5C {
-                let next = self.At(1u);
+                let next = self.At(1);
                 if next == 0x75 || next == 0x55 || next == 0x78 {
                     // TOML 1.1 adds the two-digit escape, which names the same scalar values as the short form
                     // and spells the ones below 256 in half the characters.
                     var digits: uint = 8;
                     if next == 0x75 {
-                        digits = 4u;
+                        digits = 4;
                     }
                     else if next == 0x78 {
-                        digits = 2u;
+                        digits = 2;
                     }
                     var digit: uint = 1;
                     while digit <= digits {
-                        let h = self.At(1u + digit);
+                        let h = self.At(1 + digit);
                         let isDigit = (h >= 0x30 && h <= 0x39) || (h >= 0x61 && h <= 0x66) ||
                                       (h >= 0x41 && h <= 0x46);
                         if !isDigit { return self.Fail(TomlLexError::BadUnicodeEscape); }
-                        digit = digit + 1u;
+                        digit = digit + 1;
                     }
-                    self.position = self.position + 1u + digits;
+                    self.position = self.position + 1 + digits;
                 }
                 else if next == 0x22 || next == 0x5C || next == 0x62 || next == 0x66 ||
                         next == 0x6E || next == 0x72 || next == 0x74 || next == 0x65 {
                     // TOML 1.1 adds \e for escape to the set JSON defines.
-                    self.position = self.position + 1u;
+                    self.position = self.position + 1;
                 }
                 else if multiline && (next == 0x0A || next == 0x20 || next == 0x09 || next == 0x0D) {
                     // A line-ending backslash in a multi-line string swallows the whitespace that follows it,
                     // which is how a long string is wrapped without gaining the wrapping.
-                    self.position = self.position + 1u;
+                    self.position = self.position + 1;
                 }
                 else {
                     return self.Fail(TomlLexError::BadEscape);
                 }
             }
-            self.position = self.position + 1u;
+            self.position = self.position + 1;
         }
         self.position = opening;
         return self.Fail(TomlLexError::UnterminatedText);

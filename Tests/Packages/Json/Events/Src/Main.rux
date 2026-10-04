@@ -97,12 +97,12 @@ func Main() -> int {
     var big: char8[120000];
     var written: uint = 0;
     big[written] = 0x5Bu8 as char8;
-    written = written + 1u;
+    written = written + 1;
     var record: uint = 0;
     while record < 10000 {
         if record > 0 {
             big[written] = 0x2Cu8 as char8;
-            written = written + 1u;
+            written = written + 1;
         }
         var digits = record;
         var scratch: char8[8];
@@ -112,19 +112,19 @@ func Main() -> int {
             count = 1;
         }
         while digits > 0 {
-            scratch[count] = ((0x30u8 + (digits % 10u) as uint8)) as char8;
-            count = count + 1u;
-            digits = digits / 10u;
+            scratch[count] = ((0x30 + (digits % 10) as uint8)) as char8;
+            count = count + 1;
+            digits = digits / 10;
         }
         while count > 0 {
-            count = count - 1u;
+            count = count - 1;
             big[written] = scratch[count];
-            written = written + 1u;
+            written = written + 1;
         }
-        record = record + 1u;
+        record = record + 1;
     }
     big[written] = 0x5Du8 as char8;
-    written = written + 1u;
+    written = written + 1;
 
     var bigState = SliceState { bytes: (@big[0])[..written], offset: 0, step: 4 };
     let bigHandle: Reader = SliceHandle { state: @bigState };
@@ -135,7 +135,7 @@ func Main() -> int {
     var seen: uint = 0;
     var event = bigReader.Next();
     while event == JsonEvent::Number {
-        seen = seen + 1u;
+        seen = seen + 1;
         event = bigReader.Next();
     }
     Assert(seen == 10000, "every record arrives as an event");

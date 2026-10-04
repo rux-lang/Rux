@@ -227,12 +227,12 @@ pub func WritePrecisionFloat(cursor: &var ByteCursor, parts: FloatParts, precisi
     // The fraction opens with a zero for every place between the point and the first digit, then the digits that
     // fall below the point, then zeros for any place the value did not reach.
     var written: uint = 0;
-    var leading = power < 0 ? (0 - power) as uint : 0u;
+    var leading = power < 0 ? (0 - power) as uint : 0;
     while written < leading && written < precision {
         cursor.Push(c8'0');
         written = written + 1;
     }
-    var from = power > 0 ? (power as uint) : 0u;
+    var from = power > 0 ? (power as uint) : 0;
     while written < precision {
         cursor.Push(from < count ? digits[from] : c8'0');
         from = from + 1;

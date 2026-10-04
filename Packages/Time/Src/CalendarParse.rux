@@ -206,14 +206,14 @@ func ReadOffset(reader: &var Reader) -> UtcOffset ! TimeParseError {
         fail TimeParseError::InvalidSyntax(reader.at);
     }
     reader.at = reader.at + 1;
-    let hours = Digits(reader, 2u)?;
+    let hours = Digits(reader, 2)?;
     Literal(reader, c8':')?;
-    let minutes = Digits(reader, 2u)?;
+    let minutes = Digits(reader, 2)?;
     var signedHours = hours as int32;
     var signedMinutes = minutes as int32;
     if mark == c8'-' {
-        signedHours = 0i32 - signedHours;
-        signedMinutes = 0i32 - signedMinutes;
+        signedHours = 0 - signedHours;
+        signedMinutes = 0 - signedMinutes;
     }
     let made = UtcOffset::Of(signedHours, signedMinutes);
     if made == none {

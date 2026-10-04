@@ -104,7 +104,7 @@ func Scale(state: &var Ratio, inclusive: bool, exponent10: *var int) -> bool {
     reach.Assign(state.numerator);
     if !reach.Add(state.upperGap) { return false; }
     if !reach.MultiplySmall(10) { return false; }
-    var short = inclusive ? reach.Compare(state.denominator) < 0i32 : reach.Compare(state.denominator) <= 0i32;
+    var short = inclusive ? reach.Compare(state.denominator) < 0 : reach.Compare(state.denominator) <= 0;
     while short {
         if !state.numerator.MultiplySmall(10) { return false; }
         if !state.upperGap.MultiplySmall(10) { return false; }
@@ -183,7 +183,7 @@ pub func ShortestDigits(significand: uint64, exponent: int, atBinadeBottom: bool
         // Below the lower gap: what is left is nearer this value than the neighbour under it, so stopping here
         // still reads back correctly. Above the upper gap: the same on the other side, and the digit rounds up.
         let order = state.numerator.Compare(state.lowerGap);
-        let low = inclusive ? order <= 0i32 : order < 0i32;
+        let low = inclusive ? order <= 0 : order < 0;
         let high = SumExceeds(state.numerator, state.upperGap, state.denominator, inclusive);
         if !low && !high {
             into.data[written] = (digit + 0x30) as char8;

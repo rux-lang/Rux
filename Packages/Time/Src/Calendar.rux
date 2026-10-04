@@ -70,9 +70,9 @@ extend Date {
         if self.month <= 2 {
             year = year - 1;
         }
-        let era = (year >= 0i64 ? year : year - 399i64) / 400i64;
+        let era = (year >= 0 ? year : year - 399) / 400;
         let yearOfEra = year - era * 400;
-        let shiftedMonth = (self.month as int64) + (self.month > 2u8 ? -3i64 : 9i64);
+        let shiftedMonth = (self.month as int64) + (self.month > 2 ? -3i64 : 9i64);
         let dayOfYear = (153i64 * shiftedMonth + 2) / 5 + (self.day as int64) - 1;
         let dayOfEra = yearOfEra * 365 + yearOfEra / 4 - yearOfEra / 100 + dayOfYear;
         return era * 146097 + dayOfEra - 719468;
@@ -85,16 +85,16 @@ extend Date {
     /// @returns the date that many days after 1970-01-01
     /// @see https://rux-lang.dev/docs/api/time/date/from-epoch-days
     pub func FromEpochDays(days: int64) -> Date {
-        let shifted = days + 719468i64;
-        let era = (shifted >= 0i64 ? shifted : shifted - 146096i64) / 146097i64;
-        let dayOfEra = shifted - era * 146097i64;
-        let yearOfEra = (dayOfEra - dayOfEra / 1460i64 + dayOfEra / 36524i64 - dayOfEra / 146096i64) / 365i64;
-        let year = yearOfEra + era * 400i64;
-        let dayOfYear = dayOfEra - (365i64 * yearOfEra + yearOfEra / 4i64 - yearOfEra / 100i64);
-        let shiftedMonth = (5i64 * dayOfYear + 2i64) / 153i64;
-        let day = dayOfYear - (153i64 * shiftedMonth + 2i64) / 5i64 + 1i64;
-        let month = shiftedMonth + (shiftedMonth < 10i64 ? 3i64 : -9i64);
-        let finalYear = month <= 2i64 ? year + 1i64 : year;
+        let shifted = days + 719468;
+        let era = (shifted >= 0 ? shifted : shifted - 146096) / 146097;
+        let dayOfEra = shifted - era * 146097;
+        let yearOfEra = (dayOfEra - dayOfEra / 1460 + dayOfEra / 36524 - dayOfEra / 146096) / 365;
+        let year = yearOfEra + era * 400;
+        let dayOfYear = dayOfEra - (365 * yearOfEra + yearOfEra / 4 - yearOfEra / 100);
+        let shiftedMonth = (5 * dayOfYear + 2) / 153;
+        let day = dayOfYear - (153 * shiftedMonth + 2) / 5 + 1;
+        let month = shiftedMonth < 10 ? shiftedMonth + 3 : shiftedMonth - 9;
+        let finalYear = month <= 2 ? year + 1 : year;
         return Date { year: finalYear as int32, month: month as uint8, day: day as uint8 };
     }
 

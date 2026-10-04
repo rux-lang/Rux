@@ -96,7 +96,7 @@ func Main() -> int {
 
     // The length limit: 255 blocks is the most the one-byte counter can address.
     var large: char8[300];
-    let atLimit = (@large[0])[..255u * 32u > 300u ? 300u : 255u * 32u];
+    let atLimit = (@large[0])[..255u * 32u > 300 ? 300u : 255u * 32u];
     Assert(HkdfExpand<Sha256>(Sha256(), keyBytes, infoBytes, atLimit), "a request within the limit is met");
     // A request past the limit cannot be expressed in this buffer, so the limit is checked by arithmetic
     // instead: the function must refuse anything longer than 255 digests.

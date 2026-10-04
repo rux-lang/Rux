@@ -211,11 +211,11 @@ pub func TomlParseInteger(text: char8[..]) -> int64 ! TomlScalarError {
             fail TomlScalarError::Malformed(stripped.Source(start));
         }
     }
-    var index = based ? start + 2u : start;
+    var index = based ? start + 2 : start;
     if index >= digits.length {
         fail TomlScalarError::Malformed(stripped.Source(index));
     }
-    let radix = based ? BaseOf(digits.data[start + 1u] as uint8) : 10u8;
+    let radix = based ? BaseOf(digits.data[start + 1] as uint8) : 10;
     while index < digits.length {
         if !DigitFits(digits.data[index] as uint8, radix) {
             fail TomlScalarError::Malformed(stripped.Source(index));

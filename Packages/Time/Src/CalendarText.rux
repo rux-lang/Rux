@@ -246,7 +246,7 @@ extend UtcOffset : Display {
         let total = self.TotalSeconds();
         if total == 0 { return WriteAscii(writer, c8'Z'); }
         let negative = total < 0;
-        let magnitude = (negative ? 0i32 - total : total) as uint32;
+        let magnitude = (negative ? 0 - total : total) as uint32;
         WriteAscii(writer, negative ? c8'-' : c8'+')?;
         WriteFixed(writer, magnitude / 3600, 2)?;
         WriteAscii(writer, c8':')?;
@@ -357,7 +357,7 @@ func WriteOffsetOnly(writer: &var TextWriter, offset: UtcOffset) -> ! FormatErro
     let total = offset.TotalSeconds();
     if total == 0 { return WriteAscii(writer, c8'Z'); }
     let negative = total < 0;
-    let magnitude = (negative ? 0i32 - total : total) as uint32;
+    let magnitude = (negative ? 0 - total : total) as uint32;
     WriteAscii(writer, negative ? c8'-' : c8'+')?;
     WriteFixed(writer, magnitude / 3600, 2)?;
     WriteAscii(writer, c8':')?;

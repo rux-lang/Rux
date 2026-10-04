@@ -168,7 +168,7 @@ func WriteNewlineAndIndent(writer: &var TextWriter, style: JsonStyle, level: uin
     }
     var remaining = style.indent * level;
     while remaining > 0 {
-        let step = remaining < 64u ? remaining : 64u;
+        let step = remaining < 64 ? remaining : 64;
         WriteJsonBytes(writer, spaces[0..step])?;
         remaining = remaining - step;
     }

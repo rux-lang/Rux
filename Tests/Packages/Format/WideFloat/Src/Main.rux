@@ -52,7 +52,7 @@ func Precision(places: uint) -> FormatSpec {
     var spec = FormatSpec::Plain();
     var text: char8[2];
     text[0] = c8'.';
-    text[1] = (0x30u + places) as char8;
+    text[1] = (0x30 + places) as char8;
     spec = ParseFormatSpec((@text[0])[..2]) catch { else => Panic("the precision spec parses") };
     return spec;
 }

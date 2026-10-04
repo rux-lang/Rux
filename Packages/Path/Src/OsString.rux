@@ -276,7 +276,7 @@ extend OsString {
             }
 
             if needed == 0 { return OsString(allocator); }
-            let bytes = needed * 2u;
+            let bytes = needed * 2;
             let layout = Layout::New(bytes, 2);
             var borrowed = allocator;
             let block = borrowed.Allocate((layout ?? Layout { size: bytes, alignment: 2 })) catch {

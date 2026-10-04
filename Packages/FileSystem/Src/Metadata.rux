@@ -152,7 +152,7 @@ when #target.os != .Windows {
         var value: uint64 = 0;
         var index: uint = 0;
         while index < 8 {
-            value = value | ((buffer[offset + index] as uint8 as uint64) << (8u64 * index as uint64));
+            value = value | ((buffer[offset + index] as uint8 as uint64) << (8 * index as uint64));
             index = index + 1;
         }
         return value;
@@ -162,7 +162,7 @@ when #target.os != .Windows {
         var value: uint32 = 0;
         var index: uint = 0;
         while index < 4 {
-            value = value | ((buffer[offset + index] as uint8 as uint32) << (8u32 * index as uint32));
+            value = value | ((buffer[offset + index] as uint8 as uint32) << (8 * index as uint32));
             index = index + 1;
         }
         return value;
@@ -295,7 +295,7 @@ when #target.os == .Windows {
         var value: uint32 = 0;
         var index: uint = 0;
         while index < 4 {
-            value = value | ((buffer[offset + index] as uint8 as uint32) << (8u32 * index as uint32));
+            value = value | ((buffer[offset + index] as uint8 as uint32) << (8 * index as uint32));
             index = index + 1;
         }
         return value;
@@ -405,7 +405,7 @@ extend File {
         }
         else {
             let outcome = Fstat(self.handle, @buffer[0] as *var opaque);
-            if outcome < 0 { fail TranslateNative((0i64 - outcome) as int32); }
+            if outcome < 0 { fail TranslateNative((0 - outcome) as int32); }
             return MetadataFromStat(@buffer[0]);
         }
     }
@@ -443,9 +443,9 @@ pub func SetPermissions(allocator: Allocator, path: Path, permissions: Permissio
         }
     }
     else {
-        let result = FchmodAt(AtFdCwd, native as *char8, (permissions.mode & 0xFFFu32) as uint16, 0);
+        let result = FchmodAt(AtFdCwd, native as *char8, (permissions.mode & 0xFFF) as uint16, 0);
         if result < 0 {
-            fail TranslateNative((0i64 - result) as int32);
+            fail TranslateNative((0 - result) as int32);
         }
     }
 }
@@ -515,8 +515,8 @@ when #target.os != .Windows {
         let fraction = moment.nanoseconds as uint64;
         var index: uint = 0;
         while index < 8 {
-            buffer[offset + index] = ((seconds >> (8u64 * index as uint64)) & 0xFFu64) as uint8 as char8;
-            buffer[offset + 8u + index] = ((fraction >> (8u64 * index as uint64)) & 0xFFu64) as uint8 as char8;
+            buffer[offset + index] = ((seconds >> (8 * index as uint64)) & 0xFF) as uint8 as char8;
+            buffer[offset + 8 + index] = ((fraction >> (8 * index as uint64)) & 0xFF) as uint8 as char8;
             index = index + 1;
         }
     }

@@ -257,7 +257,7 @@ extend StringBuilder {
 func ReserveBuilderStorage(data: *var *var char8, length: uint, capacity: *var uint, allocator: Allocator,
                            additional: uint) -> ! TextError {
         if additional == 0 { return; }
-        if additional > 0xFFFFFFFFFFFFFFFFu - length { fail TextError::LengthOverflow; }
+        if additional > 0xFFFFFFFFFFFFFFFF - length { fail TextError::LengthOverflow; }
         let required = length + additional;
         if required <= *capacity { return; }
 

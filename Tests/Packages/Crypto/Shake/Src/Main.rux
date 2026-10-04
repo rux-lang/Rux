@@ -70,7 +70,7 @@ func Main() -> int {
         while taken < 512 {
             var step = chunkSize;
             if taken + step > 512 {
-                step = 512u - taken;
+                step = 512 - taken;
             }
             piecedState.Read((@pieced[taken])[..step]);
             taken = taken + step;

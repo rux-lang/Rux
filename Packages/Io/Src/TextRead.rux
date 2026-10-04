@@ -75,7 +75,7 @@ pub func ReadTextLine(reader: &var BufferedReader, builder: &var StringBuilder, 
                 joined[at] = carry[at];
                 at = at + 1;
             }
-            let borrowed = held.length < 4u ? held.length : 4u;
+            let borrowed = held.length < 4 ? held.length : 4;
             var extra: uint = 0;
             while extra < borrowed {
                 joined[carryLength + extra] = held.data[extra];

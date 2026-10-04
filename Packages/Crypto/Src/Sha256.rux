@@ -38,7 +38,7 @@ const Sha224InitialState: uint32[8] = [
 ];
 
 func RotateRight32(value: uint32, amount: uint32) -> uint32 {
-    return (value >> amount) | (value << (32u32 - amount));
+    return (value >> amount) | (value << (32 - amount));
 }
 
 /// An incremental SHA-256 or SHA-224.
@@ -185,34 +185,34 @@ extend Sha256 : Digest {
     /// @param into receives the output
     /// @see https://rux-lang.dev/docs/api/crypto/sha256/finish
     pub func Finish(self: &var Sha256, into: var char8[..]) {
-        let bitLength = self.length * 8u64;
+        let bitLength = self.length * 8;
         self.buffer[self.buffered] = 0x80u8 as char8;
-        self.buffered = self.buffered + 1u;
+        self.buffered = self.buffered + 1;
         if self.buffered > 56 {
             while self.buffered < 64 {
                 self.buffer[self.buffered] = 0u8 as char8;
-                self.buffered = self.buffered + 1u;
+                self.buffered = self.buffered + 1;
             }
             self.Compress(@self.buffer[0]);
             self.buffered = 0;
         }
         while self.buffered < 56 {
             self.buffer[self.buffered] = 0u8 as char8;
-            self.buffered = self.buffered + 1u;
+            self.buffered = self.buffered + 1;
         }
         var shift: uint = 0;
         while shift < 8 {
-            self.buffer[56u + shift] = ((bitLength >> ((56u - shift * 8u) as uint64)) & 0xFFu64) as uint8 as char8;
+            self.buffer[56 + shift] = ((bitLength >> ((56 - shift * 8) as uint64)) & 0xFF) as uint8 as char8;
             shift = shift + 1;
         }
         self.Compress(@self.buffer[0]);
 
         var index: uint = 0;
         while index < self.outputLength {
-            let word = self.state[index / 4u];
-            let byteShift = (3u - (index % 4u)) * 8u;
+            let word = self.state[index / 4];
+            let byteShift = (3u - (index % 4)) * 8;
             if index < into.length {
-                into[index] = ((word >> (byteShift as uint32)) & 0xFFu32) as uint8 as char8;
+                into[index] = ((word >> (byteShift as uint32)) & 0xFF) as uint8 as char8;
             }
             index = index + 1;
         }

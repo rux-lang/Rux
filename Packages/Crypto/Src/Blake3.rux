@@ -40,7 +40,7 @@ const Blake3Parent: uint32 = 4;
 const Blake3Root: uint32 = 8;
 
 func Blake3Rotate(value: uint32, amount: uint32) -> uint32 {
-    return (value >> amount) | (value << (32u32 - amount));
+    return (value >> amount) | (value << (32 - amount));
 }
 
 // The mixing function, applied to four words of the state with two message words.
@@ -183,7 +183,7 @@ extend Blake3Chunk {
             var part: uint = 0;
             while part < 4 {
                 let position = index * 4 + part;
-                let value = position < self.blockLength ? (self.block[position] as uint8) : 0u8;
+                let value = position < self.blockLength ? (self.block[position] as uint8) : 0;
                 word = word | ((value as uint32) << ((part * 8) as uint32));
                 part = part + 1;
             }
@@ -238,7 +238,7 @@ extend Blake3Chunk {
             var part: uint = 0;
             while part < 4 {
                 let position = index * 4 + part;
-                let value = position < self.blockLength ? (self.block[position] as uint8) : 0u8;
+                let value = position < self.blockLength ? (self.block[position] as uint8) : 0;
                 word = word | ((value as uint32) << ((part * 8) as uint32));
                 part = part + 1;
             }
@@ -382,7 +382,7 @@ extend Blake3 : Digest {
                 var part: uint = 0;
                 while part < 4 {
                     let position = index * 4 + part;
-                    let value = position < self.chunk.blockLength ? (self.chunk.block[position] as uint8) : 0u8;
+                    let value = position < self.chunk.blockLength ? (self.chunk.block[position] as uint8) : 0;
                     word = word | ((value as uint32) << ((part * 8) as uint32));
                     part = part + 1;
                 }

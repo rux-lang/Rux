@@ -38,7 +38,7 @@ pub func MakeDirectory(allocator: Allocator, path: Path) -> ! IoError {
         // Read, write and search for everyone, cut down by the process umask.
         let result = MkdirAt(AtFdCwd, native as *char8, 511);
         if result < 0 {
-            fail TranslateNative((0i64 - result) as int32);
+            fail TranslateNative((0 - result) as int32);
         }
     }
 }
@@ -59,7 +59,7 @@ pub func DeleteDirectory(allocator: Allocator, path: Path) -> ! IoError {
     else {
         let result = UnlinkAt(AtFdCwd, native as *char8, RemoveDirectory);
         if result < 0 {
-            fail TranslateNative((0i64 - result) as int32);
+            fail TranslateNative((0 - result) as int32);
         }
     }
 }
@@ -80,7 +80,7 @@ pub func DeleteFile(allocator: Allocator, path: Path) -> ! IoError {
     else {
         let result = UnlinkAt(AtFdCwd, native as *char8, 0);
         if result < 0 {
-            fail TranslateNative((0i64 - result) as int32);
+            fail TranslateNative((0 - result) as int32);
         }
     }
 }
@@ -160,10 +160,10 @@ pub func ReadDirectory(allocator: Allocator, path: Path) -> DirectoryIterator ! 
             index = index + 1;
         }
         if length > 0 && pattern[length - 1] != 0x5C && pattern[length - 1] != 0x2F {
-            pattern[length] = 0x5Cu16;
+            pattern[length] = 0x5C;
             length = length + 1;
         }
-        pattern[length] = 0x2Au16;
+        pattern[length] = 0x2A;
         pattern[length + 1] = 0;
         let found = FindFirstFileW(pattern as *char16, iterator.data as *var opaque);
         borrowed.Deallocate(raw, patternLayout) catch { else => {} };
@@ -177,7 +177,7 @@ pub func ReadDirectory(allocator: Allocator, path: Path) -> DirectoryIterator ! 
         let native = NativePath(allocator, path)?;
         let opened = OpenAt(AtFdCwd, native as *char8, OpenReadOnly | OpenDirectory, 0);
         ReleaseNativePath(allocator, native, path.name.units.length);
-        if opened < 0 { fail TranslateNative((0i64 - opened) as int32); }
+        if opened < 0 { fail TranslateNative((0 - opened) as int32); }
         iterator.handle = opened as int32;
         iterator.open = true;
         return <-iterator;
@@ -207,7 +207,7 @@ extend DirectoryIterator {
                 }
                 self.pending = false;
                 // The UTF-16 name starts at offset 44 of the record and ends at its NUL.
-                let start = (self.data as uint + 44u) as *var uint16;
+                let start = (self.data as uint + 44) as *var uint16;
                 var length: uint = 0;
                 while length < 260 && start[length] != 0 {
                     length = length + 1;
@@ -238,7 +238,7 @@ extend DirectoryIterator {
                                                      @position);
                         }
                     }
-                    if filled < 0 { fail TranslateNative((0i64 - filled) as int32); }
+                    if filled < 0 { fail TranslateNative((0 - filled) as int32); }
                     if filled == 0 { return none; }
                     self.length = filled as uint;
                     self.offset = 0;

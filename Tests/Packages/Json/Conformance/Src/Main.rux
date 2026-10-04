@@ -32,7 +32,7 @@ extend SliceHandle : Reader {
         let state = self.state;
         let remaining = state.bytes.length - state.offset;
         if remaining == 0 { fail IoError::Of(IoErrorKind::EndOfStream); }
-        var give = remaining < 7u ? remaining : 7u;
+        var give = remaining < 7 ? remaining : 7;
         if into.length < give {
             give = into.length;
         }

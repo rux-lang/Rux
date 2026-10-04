@@ -191,7 +191,7 @@ func WriteCanonicalInto(value: &Uuid, into: var char8[..]) {
         }
         else {
             let octet = value.bytes[byteIndex / 2];
-            let nibble = (byteIndex % 2u) == 0u ? (octet >> 4u8) : (octet & 0x0Fu8);
+            let nibble = (byteIndex % 2) == 0 ? (octet >> 4) : (octet & 0x0F);
             into.data[position] = digits.data[nibble as uint];
             byteIndex = byteIndex + 1;
         }

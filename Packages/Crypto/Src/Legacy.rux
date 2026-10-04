@@ -47,7 +47,7 @@ const Md5Shifts: uint32[64] = [
 ];
 
 func Md5Rotate(value: uint32, amount: uint32) -> uint32 {
-    return (value << amount) | (value >> (32u32 - amount));
+    return (value << amount) | (value >> (32 - amount));
 }
 
 /// An incremental MD5. **Broken; see the note at the top of this file.**
@@ -92,7 +92,7 @@ extend LegacyMd5 {
             var word: uint32 = 0;
             var part: uint = 0;
             while part < 4 {
-                word = word | ((block[index * 4u + part] as uint8 as uint32) << ((part * 8u) as uint32));
+                word = word | ((block[index * 4 + part] as uint8 as uint32) << ((part * 8) as uint32));
                 part = part + 1;
             }
             words[index] = word;
@@ -114,15 +114,15 @@ extend LegacyMd5 {
             }
             else if index < 32 {
                 mixed = (d & b) | ((~d) & c);
-                which = (5u * index + 1u) % 16u;
+                which = (5 * index + 1) % 16;
             }
             else if index < 48 {
                 mixed = b ^ c ^ d;
-                which = (3u * index + 5u) % 16u;
+                which = (3 * index + 5) % 16;
             }
             else {
                 mixed = c ^ (b | (~d));
-                which = (7u * index) % 16u;
+                which = (7 * index) % 16;
             }
             let temp = d;
             d = c;
@@ -162,32 +162,32 @@ extend LegacyMd5 {
     /// @param into receives the output
     /// @see https://rux-lang.dev/docs/api/crypto/legacy-md5/finish
     pub func Finish(self: &var LegacyMd5, into: var char8[..]) {
-        let bitLength = self.length * 8u64;
+        let bitLength = self.length * 8;
         self.buffer[self.buffered] = 0x80u8 as char8;
-        self.buffered = self.buffered + 1u;
+        self.buffered = self.buffered + 1;
         if self.buffered > 56 {
             while self.buffered < 64 {
                 self.buffer[self.buffered] = 0u8 as char8;
-                self.buffered = self.buffered + 1u;
+                self.buffered = self.buffered + 1;
             }
             self.Compress(@self.buffer[0]);
             self.buffered = 0;
         }
         while self.buffered < 56 {
             self.buffer[self.buffered] = 0u8 as char8;
-            self.buffered = self.buffered + 1u;
+            self.buffered = self.buffered + 1;
         }
         var shift: uint = 0;
         while shift < 8 {
-            self.buffer[56u + shift] = ((bitLength >> ((shift * 8u) as uint64)) & 0xFFu64) as uint8 as char8;
+            self.buffer[56 + shift] = ((bitLength >> ((shift * 8) as uint64)) & 0xFF) as uint8 as char8;
             shift = shift + 1;
         }
         self.Compress(@self.buffer[0]);
 
         var index: uint = 0;
         while index < 16 && index < into.length {
-            let word = self.state[index / 4u];
-            into[index] = ((word >> (((index % 4u) * 8u) as uint32)) & 0xFFu32) as uint8 as char8;
+            let word = self.state[index / 4];
+            into[index] = ((word >> (((index % 4) * 8) as uint32)) & 0xFF) as uint8 as char8;
             index = index + 1;
         }
         self.buffered = 0;
@@ -242,16 +242,16 @@ extend LegacySha1 {
         var schedule: uint32[80];
         var index: uint = 0;
         while index < 16 {
-            schedule[index] = ((block[index * 4u] as uint8 as uint32) << 24) |
-                              ((block[index * 4u + 1u] as uint8 as uint32) << 16) |
-                              ((block[index * 4u + 2u] as uint8 as uint32) << 8) |
-                              (block[index * 4u + 3u] as uint8 as uint32);
+            schedule[index] = ((block[index * 4] as uint8 as uint32) << 24) |
+                              ((block[index * 4 + 1] as uint8 as uint32) << 16) |
+                              ((block[index * 4 + 2] as uint8 as uint32) << 8) |
+                              (block[index * 4 + 3] as uint8 as uint32);
             index = index + 1;
         }
         while index < 80 {
-            let mixed = schedule[index - 3u] ^ schedule[index - 8u] ^ schedule[index - 14u] ^ schedule[index - 16u];
+            let mixed = schedule[index - 3] ^ schedule[index - 8] ^ schedule[index - 14] ^ schedule[index - 16];
             // The rotation here is the one difference from SHA-0, and the only reason SHA-1 outlived it.
-            schedule[index] = Md5Rotate(mixed, 1u32);
+            schedule[index] = Md5Rotate(mixed, 1);
             index = index + 1;
         }
 
@@ -267,24 +267,24 @@ extend LegacySha1 {
             var constant: uint32 = 0;
             if index < 20 {
                 mixed = (b & c) | ((~b) & d);
-                constant = 0x5A827999u32;
+                constant = 0x5A827999;
             }
             else if index < 40 {
                 mixed = b ^ c ^ d;
-                constant = 0x6ED9EBA1u32;
+                constant = 0x6ED9EBA1;
             }
             else if index < 60 {
                 mixed = (b & c) | (b & d) | (c & d);
-                constant = 0x8F1BBCDCu32;
+                constant = 0x8F1BBCDC;
             }
             else {
                 mixed = b ^ c ^ d;
-                constant = 0xCA62C1D6u32;
+                constant = 0xCA62C1D6;
             }
-            let temp = Md5Rotate(a, 5u32) + mixed + e + constant + schedule[index];
+            let temp = Md5Rotate(a, 5) + mixed + e + constant + schedule[index];
             e = d;
             d = c;
-            c = Md5Rotate(b, 30u32);
+            c = Md5Rotate(b, 30);
             b = a;
             a = temp;
             index = index + 1;
@@ -318,33 +318,33 @@ extend LegacySha1 {
     /// @param into receives the output
     /// @see https://rux-lang.dev/docs/api/crypto/legacy-sha1/finish
     pub func Finish(self: &var LegacySha1, into: var char8[..]) {
-        let bitLength = self.length * 8u64;
+        let bitLength = self.length * 8;
         self.buffer[self.buffered] = 0x80u8 as char8;
-        self.buffered = self.buffered + 1u;
+        self.buffered = self.buffered + 1;
         if self.buffered > 56 {
             while self.buffered < 64 {
                 self.buffer[self.buffered] = 0u8 as char8;
-                self.buffered = self.buffered + 1u;
+                self.buffered = self.buffered + 1;
             }
             self.Compress(@self.buffer[0]);
             self.buffered = 0;
         }
         while self.buffered < 56 {
             self.buffer[self.buffered] = 0u8 as char8;
-            self.buffered = self.buffered + 1u;
+            self.buffered = self.buffered + 1;
         }
         var shift: uint = 0;
         while shift < 8 {
-            self.buffer[56u + shift] = ((bitLength >> ((56u - shift * 8u) as uint64)) & 0xFFu64) as uint8 as char8;
+            self.buffer[56 + shift] = ((bitLength >> ((56 - shift * 8) as uint64)) & 0xFF) as uint8 as char8;
             shift = shift + 1;
         }
         self.Compress(@self.buffer[0]);
 
         var index: uint = 0;
         while index < 20 && index < into.length {
-            let word = self.state[index / 4u];
-            let byteShift = ((3u - (index % 4u)) * 8u) as uint32;
-            into[index] = ((word >> byteShift) & 0xFFu32) as uint8 as char8;
+            let word = self.state[index / 4];
+            let byteShift = ((3u - (index % 4)) * 8) as uint32;
+            into[index] = ((word >> byteShift) & 0xFF) as uint8 as char8;
             index = index + 1;
         }
         self.buffered = 0;

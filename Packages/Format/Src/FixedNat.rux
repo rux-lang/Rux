@@ -85,8 +85,8 @@ func AddInPlace(value: &var FixedNat, other: &FixedNat) -> bool {
     var carry: uint64 = 0;
     var index: uint = 0;
     while index < wider {
-        let mine = index < value.length ? value.limbs[index] : 0u64;
-        let theirs = index < other.length ? other.limbs[index] : 0u64;
+        let mine = index < value.length ? value.limbs[index] : 0;
+        let theirs = index < other.length ? other.limbs[index] : 0;
         let sum = (mine as uint128) + (theirs as uint128) + (carry as uint128);
         value.limbs[index] = (sum & 0xFFFFFFFFFFFFFFFF) as uint64;
         carry = (sum >> 64) as uint64;
@@ -242,27 +242,27 @@ extend FixedNat {
     /// @see https://rux-lang.dev/docs/api/format/fixed-nat/shift-left
     pub func ShiftLeft(self: &var FixedNat, bits: uint) -> bool {
         if self.length == 0 || bits == 0 { return true; }
-        let limbShift = bits / 64u;
-        let bitShift = bits % 64u;
+        let limbShift = bits / 64;
+        let bitShift = bits % 64;
         // The whole-limb part and the within-limb part are checked together, because a shift that fits one and not
         // the other is still a shift that does not fit.
         var needed = self.length + limbShift;
-        if bitShift != 0 && (self.limbs[self.length - 1u] >> ((64u - bitShift) as uint64)) != 0 {
-            needed = needed + 1u;
+        if bitShift != 0 && (self.limbs[self.length - 1] >> ((64 - bitShift) as uint64)) != 0 {
+            needed = needed + 1;
         }
         if needed > FixedNatLimbs { return false; }
 
         var index = needed;
         while index > 0 {
-            index = index - 1u;
+            index = index - 1;
             var value: uint64 = 0;
             if index >= limbShift {
                 let source = index - limbShift;
                 if source < self.length {
                     value = self.limbs[source] << (bitShift as uint64);
                 }
-                if bitShift != 0 && source > 0 && source - 1u < self.length {
-                    value = value | (self.limbs[source - 1u] >> ((64u - bitShift) as uint64));
+                if bitShift != 0 && source > 0 && source - 1 < self.length {
+                    value = value | (self.limbs[source - 1] >> ((64 - bitShift) as uint64));
                 }
             }
             self.limbs[index] = value;
@@ -303,7 +303,7 @@ extend FixedNat {
         var borrow: uint64 = 0;
         var index: uint = 0;
         while index < self.length {
-            let theirs = index < other.length ? other.limbs[index] : 0u64;
+            let theirs = index < other.length ? other.limbs[index] : 0;
             let mine = self.limbs[index] as uint128;
             let taken = (theirs as uint128) + (borrow as uint128);
             if mine >= taken {

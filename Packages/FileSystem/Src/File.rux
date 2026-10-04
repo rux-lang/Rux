@@ -228,7 +228,7 @@ extend File {
             // Read and write for everyone, cut down by the process umask — the ordinary permissions an
             // ordinary file is born with.
             let opened = OpenAt(AtFdCwd, native as *char8, flags, 438);
-            if opened < 0 { fail TranslateNative((0i64 - opened) as int32); }
+            if opened < 0 { fail TranslateNative((0 - opened) as int32); }
             return File { handle: opened as int32, open: true };
         }
     }
@@ -254,7 +254,7 @@ extend File {
         }
         else {
             let result = Close(self.handle);
-            if result < 0 { fail TranslateNative((0i64 - result) as int32); }
+            if result < 0 { fail TranslateNative((0 - result) as int32); }
         }
     }
     /// Closes with the outcome discarded: the safety net, not the contract.
