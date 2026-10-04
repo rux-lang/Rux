@@ -132,7 +132,7 @@ TEST_CASE("AArch64 RCU emitter emits every word of a function reading a field of
 
     CheckFunctionImage(objects.front(), "Second",
                        {
-                           0xA9B97BFD, // stp x29, x30, [sp, #-112]!
+                           0xA9BB7BFD, // stp x29, x30, [sp, #-80]!
                            0x910003FD, // mov x29, sp
                            0xA90153B3, // stp x19, x20, [x29, #16]
                            0xF90013B5, // str x21, [x29, #32]
@@ -148,7 +148,7 @@ TEST_CASE("AArch64 RCU emitter emits every word of a function reading a field of
                            0xAA1303E0, // mov x0, x19
                            0xA94153B3, // ldp x19, x20, [x29, #16]
                            0xF94013B5, // ldr x21, [x29, #32]
-                           0xA8C77BFD, // ldp x29, x30, [sp], #112
+                           0xA8C57BFD, // ldp x29, x30, [sp], #80
                            0xD65F03C0, // ret
                        });
 }
@@ -169,7 +169,7 @@ TEST_CASE("AArch64 RCU emitter emits every word of a function multiplying and ad
 
     CheckFunctionImage(objects.front(), "Combine",
                        {
-                           0xA9B77BFD, // stp x29, x30, [sp, #-144]!
+                           0xA9B87BFD, // stp x29, x30, [sp, #-128]!
                            0x910003FD, // mov x29, sp
                            0xA90153B3, // stp x19, x20, [x29, #16]
                            0xA9025BB5, // stp x21, x22, [x29, #32]
@@ -187,7 +187,7 @@ TEST_CASE("AArch64 RCU emitter emits every word of a function multiplying and ad
                            0xAA1403E0, // mov x0, x20
                            0xA94153B3, // ldp x19, x20, [x29, #16]
                            0xA9425BB5, // ldp x21, x22, [x29, #32]
-                           0xA8C97BFD, // ldp x29, x30, [sp], #144
+                           0xA8C87BFD, // ldp x29, x30, [sp], #128
                            0xD65F03C0, // ret
                        });
 }
@@ -213,7 +213,7 @@ TEST_CASE("AArch64 RCU emitter emits every word of a function comparing and bran
 
     CheckFunctionImage(objects.front(), "Clamp",
                        {
-                           0xA9BB7BFD, // stp  x29, x30, [sp, #-80]!
+                           0xA9BC7BFD, // stp  x29, x30, [sp, #-64]!
                            0x910003FD, // mov  x29, sp
                            0xF9000BA0, // str  x0, [x29, #16]
                            0x910083A9, // add  x9, x29, #32
@@ -236,14 +236,14 @@ TEST_CASE("AArch64 RCU emitter emits every word of a function comparing and bran
                            0x14000007, // b    +28              — the `if` body
                            0xF9400FAA, // ldr  x10, [x29, #24]
                            0xF9400149, // ldr  x9, [x10]
-                           0xF90023A9, // str  x9, [x29, #64]
-                           0xF94023A0, // ldr  x0, [x29, #64]
-                           0xA8C57BFD, // ldp  x29, x30, [sp], #80
+                           0xF90017A9, // str  x9, [x29, #40]
+                           0xF94017A0, // ldr  x0, [x29, #40]
+                           0xA8C47BFD, // ldp  x29, x30, [sp], #64
                            0xD65F03C0, // ret
                            0xD2800149, // mov  x9, #10
-                           0xF90027A9, // str  x9, [x29, #72]
-                           0xF94027A0, // ldr  x0, [x29, #72]
-                           0xA8C57BFD, // ldp  x29, x30, [sp], #80
+                           0xF90017A9, // str  x9, [x29, #40]
+                           0xF94017A0, // ldr  x0, [x29, #40]
+                           0xA8C47BFD, // ldp  x29, x30, [sp], #64
                            0xD65F03C0, // ret
                        });
 }
@@ -308,7 +308,7 @@ TEST_CASE("AArch64 RCU emitter emits every word of a function taking a float pai
 
     CheckFunctionImage(objects.front(), "Sum",
                        {
-                           0xA9B77BFD, // stp  x29, x30, [sp, #-144]!
+                           0xA9B87BFD, // stp  x29, x30, [sp, #-128]!
                            0x910003FD, // mov  x29, sp
                            0xA90153B3, // stp  x19, x20, [x29, #16]
                            0x6D0227A8, // stp  d8, d9, [x29, #32]
@@ -328,7 +328,7 @@ TEST_CASE("AArch64 RCU emitter emits every word of a function taking a float pai
                            0xA94153B3, // ldp  x19, x20, [x29, #16]
                            0x6D4227A8, // ldp  d8, d9, [x29, #32]
                            0xFD401BAA, // ldr  d10, [x29, #48]
-                           0xA8C97BFD, // ldp  x29, x30, [sp], #144
+                           0xA8C87BFD, // ldp  x29, x30, [sp], #128
                            0xD65F03C0, // ret
                        });
 }
@@ -387,7 +387,7 @@ TEST_CASE("AArch64 RCU emitter emits every word of a function whose values live 
 
     CheckFunctionImage(objects.front(), "Twice",
                        {
-                           0xA9B77BFD, // stp x29, x30, [sp, #-144]!
+                           0xA9B97BFD, // stp x29, x30, [sp, #-112]!
                            0x910003FD, // mov x29, sp
                            0xA90153B3, // stp x19, x20, [x29, #16]
                            0xA9025BB5, // stp x21, x22, [x29, #32]
@@ -411,7 +411,7 @@ TEST_CASE("AArch64 RCU emitter emits every word of a function whose values live 
                            0xAA1503E0, // mov x0, x21
                            0xA94153B3, // ldp x19, x20, [x29, #16]
                            0xA9425BB5, // ldp x21, x22, [x29, #32]
-                           0xA8C97BFD, // ldp x29, x30, [sp], #144
+                           0xA8C77BFD, // ldp x29, x30, [sp], #112
                            0xD65F03C0, // ret
                        });
 

@@ -444,6 +444,7 @@ Introduces compile-time programming (`when`, `intrinsic`, `#`-prefixed compiler 
 
 ### Fixed
 
+- **Frame slot reuse** — both back ends gave every intermediate value and every temporary its own stack storage for the whole function, so a function that built many native values had a frame as large as everything it ever computed, paid once per level in a recursive function. The frame planners now compute liveness over the control-flow graph and let values that are never live together share a slot. The data of a local or temporary is shared the same way when its address never leaves the function's own loads and stores. Frames in the Json parser are two to six times smaller.
 - **No-return calls as values** — a `Panic` or other no-return call used as the value of a `match` arm, a `catch` arm, or a conditional arm no longer produces invalid compiler IR when the result is stored.
 - **Payloads of non-binding match arms** — matching an owned variant or native value in an arm that binds nothing, such as `_` or `else`, now destroys the payload it consumed instead of leaking it.
 - **Inline slice arguments** — conditional slices retain both their data pointer and length through interface conversion, variadic calls, and returns. Empty, nested, and repeated choices evaluate only their selected arms; borrowed slice consumers also execute their element loops. The final package audit removes obsolete interface-conversion, overload-collision, and signed-literal workarounds.

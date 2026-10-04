@@ -40,6 +40,7 @@ set(RUX_TEST_SOURCES
     BuildPlanTests.cpp
     BuildReportTests.cpp
     CheckedLirBuilderTests.cpp
+    CodegenFrameSlotSharingTests.cpp
     CodegenTests.cpp
     ChecksumTests.cpp
     CliContractTests.cpp

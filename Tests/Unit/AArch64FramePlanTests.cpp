@@ -145,3 +145,31 @@ TEST_CASE("AArch64 frame plan keeps HFA results in registers on every OS profile
         CHECK_EQ(plan.FrameSize(), 48);
     }
 }
+
+TEST_CASE("AArch64 frame plan gives values that are never live together one slot") {
+    // %0 = c; %1 = %0 + %0; %2 = c; %3 = %2 + %2; return %3. The first pair is dead before the second is written.
+    const auto add = [](const LirReg dst, const LirReg source) {
+        LirInstr instruction = Define(dst);
+        instruction.op = LirOpcode::Add;
+        instruction.strArg.clear();
+        instruction.srcs = {source, source};
+        return instruction;
+    };
+    LirFunc function;
+    function.name = "Chain";
+    function.returnType = TypeRef::MakeInt64();
+    LirBlock block;
+    block.instrs = {Define(0), add(1, 0), Define(2), add(3, 2)};
+    block.term.emplace();
+    block.term->kind = LirTermKind::Return;
+    block.term->retVal = 3;
+    block.term->retType = TypeRef::MakeInt64();
+    function.blocks.push_back(std::move(block));
+
+    const AArch64FramePlan plan = PlanAArch64Frame(function, {}, {}, {}, Target::OS::Linux);
+
+    CHECK_EQ(plan.SlotOffsets().at(0), plan.SlotOffsets().at(2));
+    CHECK_EQ(plan.SlotOffsets().at(1), plan.SlotOffsets().at(3));
+    // A result is written while its operand is still being read, so the two never share.
+    CHECK_NE(plan.SlotOffsets().at(0), plan.SlotOffsets().at(1));
+}

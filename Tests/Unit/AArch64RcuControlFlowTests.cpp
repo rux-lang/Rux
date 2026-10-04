@@ -94,8 +94,9 @@ TEST_CASE("AArch64 RCU emitter widens a conditional branch that cannot reach its
     // it reaches a megabyte of code. Nothing a program is likely to contain puts
     // a block further away than that, and this is what a program that does gets:
     // enough instructions between the branch and the block it skips to that the
-    // short form has no encoding at all.
-    constexpr std::uint32_t kFiller = 100000;
+    // short form has no encoding at all. The filler values are never read, so they
+    // share one frame slot and each costs two instructions.
+    constexpr std::uint32_t kFiller = 150000;
     LirFunc func;
     func.name = "Main";
     func.isPublic = true;

@@ -444,25 +444,21 @@ TEST_CASE("AArch64 RCU emitter copies a byte-aligned aggregate a chunk at a time
 }
 
 TEST_CASE("AArch64 RCU emitter reaches a slot past the addressing range through a scratch register") {
-    // Enough locals to put the last one past the 32 KiB a scaled doubleword
-    // offset reaches, so neither immediate form of LDR can name it.
-    // The last of them is an aggregate, which no register holds: every scalar
-    // above it lives in the frame only because the allocation ran out of
-    // registers, and the copy is what reaches its slot at a displacement.
-    std::string body;
-    for (int i = 0; i < 4200; ++i) {
-        body += std::format("    var v{}: int = {};\n", i, i);
-    }
-    const auto package = CompileToAArch64Lir(std::format(R"(
-        struct Pair {{ first: int; second: int; }}
+    // A local large enough to put the ones after it past the 32 KiB a scaled
+    // doubleword offset reaches, so neither immediate form of LDR can name them.
+    // It has to be one local: many small ones that are never live together
+    // share their frame storage. The last local is an aggregate, which no
+    // register holds, and the copy is what reaches its slot at a displacement.
+    const auto package = CompileToAArch64Lir(R"(
+        struct Pair { first: int; second: int; }
 
-        func Main() -> int {{
-{}            var pair = Pair {{first: 1, second: 2}};
+        func Main() -> int {
+            var filler: int[4200] = [0; 4200];
+            var pair = Pair {first: 1, second: 2};
             var copy = pair;
-            return copy.second;
-        }}
-    )",
-                                                         body));
+            return copy.second + filler[0];
+        }
+    )");
 
     AArch64RcuEmitter emitter(package, "test");
     const auto objects = emitter.Generate();

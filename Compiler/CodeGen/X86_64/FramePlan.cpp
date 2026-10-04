@@ -1,5 +1,6 @@
 #include "CodeGen/X86_64/FramePlan.h"
 
+#include "CodeGen/FrameSlotSharing.h"
 #include "CodeGen/LinearScan.h"
 #include "Target/CallingConvention.h"
 
@@ -201,6 +202,16 @@ private:
     }
 
     void PlanInstructions() {
+        // Results that are never live together share a slot; its region is placed where its first member is defined.
+        const FrameSlotSharing sharing =
+            ShareFrameSlots(func, [&](const LirInstr &instruction) { return SlotSize(instruction.type); });
+        std::vector<std::int32_t> sharedOffsets(sharing.slotSizes.size(), -1);
+        // The same for the data of allocas only this function can reach.
+        const FrameSlotSharing dataSharing = ShareAllocaData(func, [&](const LirInstr &instruction) {
+            const int size = AllocaSize(instruction);
+            return size > 0 ? size : 8;
+        });
+        std::vector<std::int32_t> sharedDataOffsets(dataSharing.slotSizes.size(), -1);
         for (std::uint32_t blockIndex = 0; blockIndex < func.blocks.size(); ++blockIndex) {
             for (const auto &instruction : func.blocks[blockIndex].instrs) {
                 if (instruction.op == LirOpcode::Phi) {
@@ -214,13 +225,30 @@ private:
 
                 if (instruction.op == LirOpcode::Alloca) {
                     AllocateSlot(instruction.dst, 8);
+                    plan.registerTypes[instruction.dst] = TypeRef::MakePointer(instruction.type);
+                    if (const auto shared = dataSharing.slotOf.find(instruction.dst);
+                        shared != dataSharing.slotOf.end()) {
+                        std::int32_t &offset = sharedDataOffsets[shared->second];
+                        if (offset < 0) {
+                            offset = AllocateRegion(dataSharing.slotSizes[shared->second]);
+                        }
+                        plan.allocaDataOffsets[instruction.dst] = offset;
+                        continue;
+                    }
                     const int dataSize = AllocaSize(instruction);
                     plan.allocaDataOffsets[instruction.dst] = AllocateRegion(dataSize > 0 ? dataSize : 8);
-                    plan.registerTypes[instruction.dst] = TypeRef::MakePointer(instruction.type);
                     continue;
                 }
 
                 plan.registerTypes[instruction.dst] = instruction.type;
+                if (const auto shared = sharing.slotOf.find(instruction.dst); shared != sharing.slotOf.end()) {
+                    std::int32_t &offset = sharedOffsets[shared->second];
+                    if (offset < 0) {
+                        offset = AllocateRegion(sharing.slotSizes[shared->second]);
+                    }
+                    plan.slotOffsets.try_emplace(instruction.dst, offset);
+                    continue;
+                }
                 AllocateSlot(instruction.dst, SlotSize(instruction.type));
             }
         }
