@@ -338,13 +338,18 @@ HirExprPtr AstToHirContext::LowerBasicExpr(const Expr &expression) {
         lowered->value = LowerExprAs(*assignment->value, lowered->target->type);
         if (assignment->op == TokenKind::Assign || assignment->op == TokenKind::MoveArrow) {
             lowered->overwriteCleanup = OverwriteCleanup(*lowered->target, assignment->location);
+            // A referent replaced through `&var T` is the caller's live value, so its old state is destroyed where the
+            // new one is stored, exactly as a `var` local's would be.
+            if (lowered->overwriteCleanup && model.HasReferenceWrite(*assignment->target)) {
+                lowered->overwriteCleanup->destroysTarget = true;
+            }
         }
         // Assignment's semantic result is opaque because it is not a value,
         // while HIR needs the checked place type to select the store width.
         static_cast<void>(ResolvedExpressionType(*assignment));
         // A write through a reference stores its referent, which the dereferenced target already carries.
-        lowered->type = model.HasBorrowedScalarWrite(*assignment->target) ? lowered->target->type
-                                                                          : ResolvedExpressionType(*assignment->target);
+        lowered->type = model.HasReferenceWrite(*assignment->target) ? lowered->target->type
+                                                                     : ResolvedExpressionType(*assignment->target);
         return lowered;
     }
 

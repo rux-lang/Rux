@@ -473,7 +473,7 @@ HirExprPtr AstToHirContext::LowerExpr(const Expr &expr) {
         if (lowered) {
             // A read loads the referent and a write stores to it, so both reach it through the same dereference: as
             // an assignment target the dereference is the place the store addresses.
-            if ((model.HasBorrowedScalarRead(expr) || model.HasBorrowedScalarWrite(expr)) &&
+            if ((model.HasBorrowedScalarRead(expr) || model.HasReferenceWrite(expr)) &&
                 lowered->type.kind == TypeRef::Kind::Reference) {
                 auto read = std::make_unique<HirUnaryExpr>();
                 read->location = lowered->location;

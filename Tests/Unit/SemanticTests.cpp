@@ -39,8 +39,10 @@ TEST_CASE("function parameters are immutable") {
     )");
 
     REQUIRE_EQ(diagnostics.size(), 2);
-    CHECK_EQ(diagnostics[0].message, "cannot modify immutable variable 'x'");
-    CHECK_EQ(diagnostics[1].message, "cannot modify immutable variable 'ptr'");
+    // A parameter has no `var` form, so the fix offered is a reference parameter or a local, never `var`.
+    CHECK_EQ(diagnostics[0].message, "cannot modify parameter 'x'");
+    CHECK_EQ(diagnostics[0].help, "take 'x' as '&var int' to change the caller's value, or move it into a 'var' local");
+    CHECK_EQ(diagnostics[1].message, "cannot modify parameter 'ptr'");
 }
 
 TEST_CASE("pointer binding mutability is independent of pointee mutability") {

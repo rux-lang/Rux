@@ -37,6 +37,10 @@ struct HirDropAction {
     std::string glueSymbol;
     /// Declaration site retained for cleanup diagnostics and later drop-glue lowering.
     SourceLocation origin;
+    /// Set on an assignment's overwrite action when the old value lives at the place the assignment stores to rather
+    /// than in a binding: a referent replaced whole through `&var T`, which is always initialized. The value at that
+    /// address is destroyed unconditionally, after the new value exists and before it is stored.
+    bool destroysTarget = false;
 };
 
 /// A completed subobject that must be destroyed if evaluation of a later aggregate component exits early.

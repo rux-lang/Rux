@@ -21,8 +21,8 @@ extend Counter {
         self.value += amount;
     }
 
-    // A copy the method does not own: a receiver taken by value is immutable
-    // until the declaration says `var`, like every other parameter.
+    // A receiver taken by value is immutable like every other parameter; a
+    // method that changes the caller's value takes `self: &var Counter`.
     func Doubled(self: Counter) -> Counter {
         self.value *= 2;
         return self;

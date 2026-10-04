@@ -612,7 +612,16 @@ LirReg HirToLirContext::LowerAssign(const HirAssignExpr &e) {
     }
     // Whatever the target held is destroyed once the new value exists and before it is stored, so an assignment from
     // a value the target itself owns part of still reads live storage. The store below then re-establishes ownership.
-    if (e.overwriteCleanup) {
+    LirReg targetAddress = LirNoReg;
+    if (e.overwriteCleanup && e.overwriteCleanup->destroysTarget) {
+        // The old value has no binding to name it, only the place the store addresses, so that one address is both
+        // destroyed and written.
+        targetAddress = LowerLValue(*e.target);
+        if (!e.overwriteCleanup->glueSymbol.empty() && !IsTerminated()) {
+            EmitDropGlueCall(e.overwriteCleanup->glueSymbol, targetAddress);
+        }
+    }
+    else if (e.overwriteCleanup) {
         EmitCleanup(*e.overwriteCleanup);
     }
     if (!simpleAssignment) {
@@ -640,7 +649,7 @@ LirReg HirToLirContext::LowerAssign(const HirAssignExpr &e) {
     else {
         val = EmitCastIfNeeded(val, e.value->type, e.type);
     }
-    const LirReg ptr = LowerLValue(*e.target);
+    const LirReg ptr = targetAddress != LirNoReg ? targetAddress : LowerLValue(*e.target);
     EmitStore(val, ptr, e.type, e.isVolatile);
     if (e.overwriteCleanup) {
         MarkBindingLive(e.overwriteCleanup->bindingId, true);

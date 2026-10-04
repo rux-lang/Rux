@@ -233,8 +233,8 @@ std::optional<TypeRef> AnalysisContext::CheckBasicExpression(const Expr &express
         TypeRef operandType = CheckExpr(*unary->operand);
         checkingPlainAssignmentTarget = savedAssignmentTarget;
         if (unary->op == TokenKind::PlusPlus || unary->op == TokenKind::MinusMinus) {
-            if (const Symbol *reference = ScalarReferenceWriteTarget(*unary->operand, false)) {
-                const bool writable = CheckScalarReferenceWrite(*unary->operand, *reference);
+            if (const Symbol *reference = ReferenceWriteTarget(*unary->operand, false, false)) {
+                const bool writable = CheckReferenceWrite(*unary->operand, *reference);
                 operandType = ScalarReferent(operandType);
                 if (!writable) {
                     return operandType;
@@ -291,8 +291,8 @@ std::optional<TypeRef> AnalysisContext::CheckBasicExpression(const Expr &express
     if (const auto *postfix = dynamic_cast<const PostfixExpr *>(&expression)) {
         TypeRef operandType = CheckExpr(*postfix->operand);
         bool isAssignable = false;
-        if (const Symbol *reference = ScalarReferenceWriteTarget(*postfix->operand, false)) {
-            isAssignable = CheckScalarReferenceWrite(*postfix->operand, *reference);
+        if (const Symbol *reference = ReferenceWriteTarget(*postfix->operand, false, false)) {
+            isAssignable = CheckReferenceWrite(*postfix->operand, *reference);
             operandType = ScalarReferent(operandType);
         }
         else {
@@ -339,7 +339,7 @@ std::optional<TypeRef> AnalysisContext::CheckBasicExpression(const Expr &express
         const bool simpleAssignment = assignment->op == TokenKind::Assign || assignment->op == TokenKind::MoveArrow;
         // A write through a reference reads the reference itself, so its name is checked as a use rather than as a
         // place the assignment initializes.
-        const Symbol *writtenReference = ScalarReferenceWriteTarget(*assignment->target, simpleAssignment);
+        const Symbol *writtenReference = ReferenceWriteTarget(*assignment->target, simpleAssignment, simpleAssignment);
         checkingPlainAssignmentTarget = simpleAssignment && !writtenReference;
         // A plain assignment whose target is an index may be a call to `[]=` rather than a store. Naming the exact
         // node lets the target check resolve the setter while it already holds the object and index types, so
@@ -366,7 +366,7 @@ std::optional<TypeRef> AnalysisContext::CheckBasicExpression(const Expr &express
         }
         bool isAssignable = false;
         if (writtenReference) {
-            isAssignable = CheckScalarReferenceWrite(*assignment->target, *writtenReference);
+            isAssignable = CheckReferenceWrite(*assignment->target, *writtenReference);
             target = ScalarReferent(target);
         }
         else {
@@ -424,7 +424,7 @@ std::optional<TypeRef> AnalysisContext::CheckBasicExpression(const Expr &express
             const bool compatible = !nullReference && (target.IsUnknown() || value.IsUnknown() ||
                                                        CanAssignExprTo(*assignment->value, value, target));
             const Symbol *rebound = !compatible && !nullReference && simpleAssignment
-                                      ? ScalarReferenceWriteTarget(*assignment->target, false)
+                                      ? ReferenceWriteTarget(*assignment->target, true, false)
                                       : nullptr;
             if (rebound && !value.IsUnknown() && CanAssignExprTo(*assignment->value, value, ScalarReferent(target))) {
                 EmitError(assignment->location,
@@ -1342,6 +1342,23 @@ bool AnalysisContext::PlaceIsWritable(const Expr &place, const TypeRef &placeTyp
     return !PlaceIsImmutable(place);
 }
 
+std::optional<std::string> AnalysisContext::ImmutableBindingHelp(const Symbol &binding) {
+    if (!binding.isParameter) {
+        return std::format("declare '{}' with 'var' to make it mutable", binding.name);
+    }
+    // A parameter has no `var` form. A reference parameter already writes its referent with `=` and `<-`, so a write
+    // still refused here is one no declaration would make legal.
+    if (binding.type.kind == TypeRef::Kind::Reference || binding.type.IsUnknown()) {
+        return std::nullopt;
+    }
+    const std::string writable = std::format("&var {}", binding.type.ToString());
+    if (binding.name == "self") {
+        return std::format("take the receiver as 'self: {}' to change the caller's value", writable);
+    }
+    return std::format("take '{}' as '{}' to change the caller's value, or move it into a 'var' local", binding.name,
+                       writable);
+}
+
 void AnalysisContext::CheckMutability(const Expr &target) {
     if (const auto *identifier = dynamic_cast<const IdentExpr *>(&target)) {
         const Symbol *symbol = currentScope->Lookup(identifier->name);
@@ -1353,8 +1370,14 @@ void AnalysisContext::CheckMutability(const Expr &target) {
             return;
         }
         if (symbol->kind == Symbol::Kind::Var && !symbol->isMut) {
-            EmitError(target.location, std::format("cannot modify immutable variable '{}'", identifier->name), {},
-                      std::format("declare '{}' with 'var' to make it mutable", identifier->name));
+            if (symbol->isParameter) {
+                EmitError(target.location, std::format("cannot modify parameter '{}'", identifier->name),
+                          {"a parameter is immutable"}, ImmutableBindingHelp(*symbol));
+            }
+            else {
+                EmitError(target.location, std::format("cannot modify immutable variable '{}'", identifier->name), {},
+                          ImmutableBindingHelp(*symbol));
+            }
         }
     }
     else if (const auto *unary = dynamic_cast<const UnaryExpr *>(&target); unary && unary->op == TokenKind::Star) {
@@ -1366,8 +1389,8 @@ void AnalysisContext::CheckMutability(const Expr &target) {
     }
     else if (dynamic_cast<const SelfExpr *>(&target)) {
         if (const Symbol *symbol = currentScope->Lookup("self"); symbol && !symbol->isMut) {
-            EmitError(target.location, "cannot modify immutable receiver 'self'", {},
-                      "declare the receiver with 'var' to make it mutable");
+            EmitError(target.location, "cannot modify immutable receiver 'self'", {"a receiver is immutable"},
+                      ImmutableBindingHelp(*symbol));
         }
     }
     else if (const auto *field = dynamic_cast<const FieldExpr *>(&target)) {
@@ -1454,7 +1477,7 @@ bool AnalysisContext::CheckAssignableTarget(const Expr &target, const TypeRef &t
     return true;
 }
 
-const Symbol *AnalysisContext::ScalarReferenceWriteTarget(const Expr &target, const bool rebinds) const {
+const Symbol *AnalysisContext::ReferenceWriteTarget(const Expr &target, const bool replaces, const bool rebinds) const {
     const Symbol *symbol = nullptr;
     if (const auto *identifier = dynamic_cast<const IdentExpr *>(&target)) {
         symbol = currentScope->Lookup(identifier->name);
@@ -1467,7 +1490,12 @@ const Symbol *AnalysisContext::ScalarReferenceWriteTarget(const Expr &target, co
         return nullptr;
     }
     const TypeRef &referent = symbol->type.inner.front();
-    if (!referent.IsNumeric() && !referent.IsBool() && !referent.IsChar()) {
+    const bool scalar = referent.IsNumeric() || referent.IsBool() || referent.IsChar();
+    // `=` and `<-` replace the referent whole, so any value type can be written that way; an operator that reads the
+    // old value first is defined for scalars only. An interface view's referent is a value of a type the view does not
+    // know, so there is nothing of a known type to replace.
+    const bool interfaceView = referent.kind == TypeRef::Kind::Named && interfaceDecls.contains(referent.name);
+    if (!scalar && (!replaces || interfaceView || referent.IsUnknown())) {
         return nullptr;
     }
     // `alias = other` points a `var alias: &var T` at other storage, so only a binding that cannot be rebound — a
@@ -1475,7 +1503,7 @@ const Symbol *AnalysisContext::ScalarReferenceWriteTarget(const Expr &target, co
     return rebinds && symbol->isMut ? nullptr : symbol;
 }
 
-bool AnalysisContext::CheckScalarReferenceWrite(const Expr &target, const Symbol &reference) {
+bool AnalysisContext::CheckReferenceWrite(const Expr &target, const Symbol &reference) {
     if (!reference.type.inner.front().isMut) {
         TypeRef writable = reference.type;
         writable.inner.front().isMut = true;
@@ -1486,7 +1514,7 @@ bool AnalysisContext::CheckScalarReferenceWrite(const Expr &target, const Symbol
         return false;
     }
     CheckBorrowedMutation(target, target.location);
-    borrowedScalarWrites.insert(&target);
+    referenceWrites.insert(&target);
     return true;
 }
 } // namespace Rux::SemanticDetail

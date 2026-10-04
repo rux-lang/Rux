@@ -168,8 +168,8 @@ bool SemanticModel::HasBorrowedScalarRead(const Expr &expression) const noexcept
     return facts.borrowedScalarReads.contains(&expression);
 }
 
-bool SemanticModel::HasBorrowedScalarWrite(const Expr &expression) const noexcept {
-    return facts.borrowedScalarWrites.contains(&expression);
+bool SemanticModel::HasReferenceWrite(const Expr &expression) const noexcept {
+    return facts.referenceWrites.contains(&expression);
 }
 
 const std::vector<NativeConversionStep> *SemanticModel::TryGetNativeConversion(const Expr &expression) const noexcept {

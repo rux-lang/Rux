@@ -41,6 +41,7 @@ TypeRef AnalysisContext::DeclareReceiver(const FuncDecl &declaration, const bool
         self.location = receiver ? receiver->location : declaration.location;
         self.type = currentSelfType.IsUnknown() ? TypeRef::MakeNamed("self") : currentSelfType;
         self.isMut = false;
+        self.isParameter = true;
         DefineTrackedLocal(std::move(self), true);
     }
     return savedSelfType;
@@ -179,12 +180,12 @@ bool AnalysisContext::CheckWritableReceiver(const CallExpr &call, const Expr &re
         return true;
     }
     const auto *identifier = dynamic_cast<const IdentExpr *>(&receiver);
+    const Symbol *binding = identifier ? currentScope->Lookup(identifier->name) : nullptr;
     EmitError(call.location,
               identifier ? std::format("cannot call '{}' on immutable '{}'", methodName, identifier->name)
                          : std::format("cannot call '{}' on an immutable receiver", methodName),
               {std::format("'{}' declares a writable receiver '{}'", methodName, declared)},
-              identifier ? std::format("declare '{}' with 'var' to make it mutable", identifier->name)
-                         : std::optional<std::string>{});
+              binding ? ImmutableBindingHelp(*binding) : std::optional<std::string>{});
     return false;
 }
 

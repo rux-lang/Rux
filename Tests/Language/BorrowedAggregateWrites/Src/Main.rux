@@ -1,0 +1,168 @@
+// Replacing a whole value through a mutable reference.
+// `=` and `<-` through a parameter, receiver, or `let` alias of type `&var T` store into the caller's value, for a
+// struct, tuple, array, or generic referent alike. The assignment follows the rules for `T` that an assignment to a
+// `var` local of type `T` follows: a custom `=` produces the new state, the old value is destroyed, and the result is
+// installed; a move-only value needs `<-`. Each tracked value appends its id to a log as it is destroyed or copied, and
+// each check appends a 0 where it stands, so the log is the exact order of events.
+
+import Core::Assert;
+
+struct Pair {
+    a: int32;
+    b: int32;
+}
+
+extend Pair {
+    func Clear(self: &var Pair) { self = Pair { a: 0i32, b: 0i32 }; }
+}
+
+struct Log {
+    count: int32;
+    order: int64;
+}
+
+// Destroyed with its id appended to the log.
+struct Tracked {
+    log: *var Log;
+    id: int32;
+}
+
+extend Tracked {
+    func ~Tracked(self: &var Tracked) {
+        self.log.count = self.log.count + 1;
+        self.log.order = self.log.order * 10 + (self.id as int64);
+    }
+}
+
+// Destroyed with its id appended to the log, and copied by its own '=' with a 9 appended.
+struct Copied {
+    log: *var Log;
+    id: int32;
+}
+
+extend Copied {
+    func =(self: &var Copied, other: &Copied) {
+        other.log.order = other.log.order * 10 + 9;
+        self.log = other.log;
+        self.id = other.id;
+    }
+
+    func ~Copied(self: &var Copied) {
+        self.log.count = self.log.count + 1;
+        self.log.order = self.log.order * 10 + (self.id as int64);
+    }
+}
+
+// Move-only: copying is prohibited, so it can only be handed over with `<-`.
+struct Token {
+    log: *var Log;
+    id: int32;
+}
+
+extend Token {
+    func =(self: &var Token, other: &Token);
+
+    func ~Token(self: &var Token) {
+        self.log.count = self.log.count + 1;
+        self.log.order = self.log.order * 10 + (self.id as int64);
+    }
+}
+
+struct Holder {
+    pair: (int32, bool);
+    values: int32[2];
+}
+
+func Mark(log: *var Log) {
+    log.order = log.order * 10;
+}
+
+func ReplacePair(pair: &var Pair) { pair = Pair { a: 3i32, b: 4i32 }; }
+func SwapPair(pair: &var (int32, int32)) { pair = (pair.1, pair.0); }
+func ReplaceTuple(tuple: &var (int32, bool)) { tuple = (9i32, true); }
+func ReplaceArray(values: &var int32[3]) { values = [7i32, 8i32, 9i32]; }
+func ReplaceNarrowArray(values: &var int32[2]) { values = [5i32, 6i32]; }
+func ReplaceTracked(slot: &var Tracked, log: *var Log) { slot = Tracked { log: log, id: 2i32 }; }
+func CopyInto(slot: &var Copied, source: &Copied) { slot = source; }
+func MoveInto(slot: &var Token, token: Token) { slot <- token; }
+func Put<T>(slot: &var T, value: T) { slot <- value; }
+
+func ReplaceInScope(log: *var Log) {
+    var tracked = Tracked { log: log, id: 1i32 };
+    ReplaceTracked(tracked, log);
+    Mark(log);
+    Assert(tracked.id == 2i32, "the new value is installed in the caller's binding");
+}
+
+func CopyInScope(log: *var Log) {
+    var slot = Copied { log: log, id: 1i32 };
+    let source = Copied { log: log, id: 2i32 };
+    CopyInto(slot, source);
+    Mark(log);
+    Assert(slot.id == 2i32 && source.id == 2i32, "the custom copy is installed and its source kept");
+}
+
+func MoveInScope(log: *var Log) {
+    var slot = Token { log: log, id: 1i32 };
+    MoveInto(slot, Token { log: log, id: 2i32 });
+    Mark(log);
+    Assert(slot.id == 2i32, "the moved value is installed in the caller's binding");
+}
+
+func GenericInScope(log: *var Log) {
+    var slot = Tracked { log: log, id: 1i32 };
+    Put(slot, Tracked { log: log, id: 2i32 });
+    Mark(log);
+    Assert(slot.id == 2i32, "a generic write installs the new value");
+}
+
+func Main() -> int {
+    var pair = Pair { a: 1i32, b: 2i32 };
+    ReplacePair(pair);
+    Assert(pair.a == 3i32 && pair.b == 4i32, "a struct is replaced through a parameter");
+    let alias: &var Pair = pair;
+    alias = Pair { a: 5i32, b: 6i32 };
+    Assert(pair.a == 5i32 && pair.b == 6i32, "a struct is replaced through a 'let' alias");
+    pair.Clear();
+    Assert(pair.a == 0i32 && pair.b == 0i32, "a struct is replaced through 'self: &var T'");
+
+    var swapped = (1i32, 2i32);
+    SwapPair(swapped);
+    Assert(swapped.0 == 2i32 && swapped.1 == 1i32, "the new value reads the old one before it is stored");
+    var tuple = (1i32, false);
+    ReplaceTuple(tuple);
+    Assert(tuple.0 == 9i32 && tuple.1, "a tuple is replaced through a reference");
+    var values = [1i32, 2i32, 3i32];
+    ReplaceArray(values);
+    Assert(values[0] == 7i32 && values[1] == 8i32 && values[2] == 9i32, "an array is replaced through a reference");
+
+    var holder = Holder { pair: (1i32, false), values: [1i32, 2i32] };
+    ReplaceTuple(holder.pair);
+    ReplaceNarrowArray(holder.values);
+    Assert(holder.pair.0 == 9i32 && holder.pair.1, "a tuple field is replaced through a reference");
+    Assert(holder.values[0] == 5i32 && holder.values[1] == 6i32, "an array field is replaced through a reference");
+
+    var number = 1;
+    Put(number, 5);
+    Assert(number == 5, "a generic write stores a scalar");
+    var generic = Pair { a: 1i32, b: 1i32 };
+    Put(generic, Pair { a: 8i32, b: 9i32 });
+    Assert(generic.a == 8i32 && generic.b == 9i32, "a generic write stores a struct");
+
+    var log = Log { count: 0i32, order: 0i64 };
+    ReplaceInScope(@log);
+    Assert(log.count == 2i32 && log.order == 102i64, "the old value is destroyed at the write, the new one at scope end");
+
+    log = Log { count: 0i32, order: 0i64 };
+    CopyInScope(@log);
+    Assert(log.count == 3i32 && log.order == 91022i64, "a custom '=' copies first, then the old value is destroyed");
+
+    log = Log { count: 0i32, order: 0i64 };
+    MoveInScope(@log);
+    Assert(log.count == 2i32 && log.order == 102i64, "a moved value replaces the old one, which is destroyed once");
+
+    log = Log { count: 0i32, order: 0i64 };
+    GenericInScope(@log);
+    Assert(log.count == 2i32 && log.order == 102i64, "a generic write destroys the old value once");
+    return 0;
+}

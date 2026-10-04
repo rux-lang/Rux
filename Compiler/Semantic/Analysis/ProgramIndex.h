@@ -29,6 +29,9 @@ struct Symbol {
     SourceLocation location;
     TypeRef type;
     bool isMut = false;
+    /// A function parameter or method receiver. It is always immutable, and unlike a `let` it has no spelling that
+    /// would make it otherwise, so a diagnostic about writing it cannot suggest declaring it with `var`.
+    bool isParameter = false;
     /// A binding that views several members of a borrowed sum: it can be inspected and copied, but its tags belong
     /// to the subject, so it is never borrowed, addressed, or moved.
     bool isSubsetView = false;

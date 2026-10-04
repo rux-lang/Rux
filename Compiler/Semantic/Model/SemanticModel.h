@@ -283,9 +283,10 @@ struct SemanticFacts {
     std::unordered_map<const Expr *, TypeRef> expressionTypes;
     /// Accepted implicit loads of Copy primitive scalars. The expression's type still describes its reference.
     std::unordered_set<const Expr *> borrowedScalarReads;
-    /// Names of references to Copy primitive scalars that an assignment, compound assignment, `++`, or `--` writes
-    /// through: the store reaches the referent rather than the binding. The name's type still describes its reference.
-    std::unordered_set<const Expr *> borrowedScalarWrites;
+    /// Names of references written through rather than rebound: an assignment, compound assignment, `++`, or `--` of a
+    /// reference to a Copy primitive scalar, and a `=` or `<-` that replaces any other referent whole. The store
+    /// reaches the referent rather than the binding. The name's type still describes its reference.
+    std::unordered_set<const Expr *> referenceWrites;
     /// The one accepted route of each implicit conversion into a native type, outermost level first, keyed by the
     /// converted expression. Lowering builds the destination value from it instead of choosing a route again.
     std::unordered_map<const Expr *, std::vector<NativeConversionStep>> nativeConversions;
@@ -363,7 +364,7 @@ struct SemanticModel {
     /// lifetime of this model.
     [[nodiscard]] const TypeRef *TryGetType(const Expr &expression) const noexcept;
     [[nodiscard]] bool HasBorrowedScalarRead(const Expr &expression) const noexcept;
-    [[nodiscard]] bool HasBorrowedScalarWrite(const Expr &expression) const noexcept;
+    [[nodiscard]] bool HasReferenceWrite(const Expr &expression) const noexcept;
     /// Returns null when `expression` reaches its destination without a native conversion.
     [[nodiscard]] const std::vector<NativeConversionStep> *
     TryGetNativeConversion(const Expr &expression) const noexcept;

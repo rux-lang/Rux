@@ -114,7 +114,7 @@ TEST_CASE("borrowed scalar writes store through the reference in HIR") {
     SemanticAnalyzer analyzer({&parsed.module}, {}, "test", CompileTimeContext{});
     const SemanticModel model = analyzer.Analyze();
     REQUIRE_FALSE(model.HasErrors());
-    CHECK(model.HasBorrowedScalarWrite(*assignment->target));
+    CHECK(model.HasReferenceWrite(*assignment->target));
     CHECK_FALSE(model.HasBorrowedScalarRead(*assignment->target));
     REQUIRE(model.TryGetType(*assignment->target) != nullptr);
     CHECK_EQ(model.TryGetType(*assignment->target)->kind, TypeRef::Kind::Reference);
@@ -160,6 +160,87 @@ TEST_CASE("a write through a reference names the reference and its writable spel
     CHECK_EQ(errors[1].help, "write 'count' in place of '*count', as in 'count += 1'");
     CHECK_EQ(errors[2].message, "cannot assign 'int' to '&var int'");
     CHECK_EQ(errors[2].help, "declare 'alias' with 'let' to write through it");
+}
+
+TEST_CASE("a whole value written through a reference replaces the referent and destroys the old one") {
+    Lexer lexer(R"(
+        struct Handle { value: int32; }
+        extend Handle { func ~Handle(self: &var Handle) {} }
+        func Replace(slot: &var Handle) {
+            slot = Handle { value: 2i32 };
+        }
+    )",
+                "aggregate-write.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+    Parser parser(std::move(lexed.tokens), "aggregate-write.rux");
+    auto parsed = parser.Parse();
+    REQUIRE_FALSE(parsed.HasErrors());
+    const auto *function = dynamic_cast<const FuncDecl *>(parsed.module.items.back().get());
+    REQUIRE(function != nullptr);
+    REQUIRE(function->body != nullptr);
+    const auto *statement = dynamic_cast<const ExprStmt *>(function->body->stmts[0].get());
+    REQUIRE(statement != nullptr);
+    const auto *assignment = dynamic_cast<const AssignExpr *>(statement->expr.get());
+    REQUIRE(assignment != nullptr);
+    SemanticAnalyzer analyzer({&parsed.module}, {}, "test", CompileTimeContext{});
+    const SemanticModel model = analyzer.Analyze();
+    REQUIRE_FALSE(model.HasErrors());
+    CHECK(model.HasReferenceWrite(*assignment->target));
+    REQUIRE(model.TryGetType(*assignment->target) != nullptr);
+    CHECK_EQ(model.TryGetType(*assignment->target)->kind, TypeRef::Kind::Reference);
+
+    HirPackage hir = AstToHirLowering(model).Generate();
+    REQUIRE_EQ(hir.modules.size(), 1);
+    const auto replace = std::ranges::find(hir.modules.front().funcs, "Replace", &HirFunc::name);
+    REQUIRE(replace != hir.modules.front().funcs.end());
+    REQUIRE(replace->body.has_value());
+    const auto *loweredStatement = dynamic_cast<const HirExprStmt *>(replace->body->stmts[0].get());
+    REQUIRE(loweredStatement != nullptr);
+    const auto *store = dynamic_cast<const HirAssignExpr *>(loweredStatement->expr.get());
+    REQUIRE(store != nullptr);
+    CHECK_EQ(store->type.ToString(), "Handle");
+    const auto *place = dynamic_cast<const HirUnaryExpr *>(store->target.get());
+    REQUIRE(place != nullptr);
+    CHECK_EQ(place->op, TokenKind::Star);
+    // The referent is the caller's live value, so the store destroys it where it stands rather than through a binding.
+    REQUIRE(store->overwriteCleanup.has_value());
+    CHECK(store->overwriteCleanup->destroysTarget);
+    CHECK_EQ(store->overwriteCleanup->bindingId, 0);
+    CHECK_EQ(store->overwriteCleanup->glueSymbol, "__rux_drop__Handle");
+    HirToLirLowering lowering(std::move(hir), CompileTimeContext{}.target);
+    const auto lir = lowering.Generate();
+    REQUIRE(lowering.Diagnostics().empty());
+    CHECK_FALSE(lir.modules.empty());
+}
+
+TEST_CASE("a write to a parameter never suggests declaring it with 'var'") {
+    const auto diagnostics = AnalyzeReferences(R"(
+        struct Pair { a: int32; b: int32; }
+        extend Pair {
+            func Reset(self: &var Pair) { self = Pair { a: 0i32, b: 0i32 }; }
+            func Cleared(self: Pair) -> Pair {
+                self = Pair { a: 0i32, b: 0i32 };
+                return self;
+            }
+        }
+        func Observe(pair: &Pair) { pair = Pair { a: 1i32, b: 2i32 }; }
+        func Local(pair: Pair) { pair = Pair { a: 1i32, b: 2i32 }; }
+        func Call(pair: Pair) { pair.Reset(); }
+    )");
+    std::vector<SemanticDiagnostic> errors;
+    std::ranges::copy_if(diagnostics, std::back_inserter(errors), [](const SemanticDiagnostic &diagnostic) {
+        return diagnostic.severity == Diagnostic::Severity::Error;
+    });
+    REQUIRE_EQ(errors.size(), 4);
+    CHECK_EQ(errors[0].message, "cannot modify immutable receiver 'self'");
+    CHECK_EQ(errors[0].help, "take the receiver as 'self: &var Pair' to change the caller's value");
+    CHECK_EQ(errors[1].message, "cannot modify 'pair' through immutable reference '&Pair'");
+    CHECK_EQ(errors[1].help, "declare 'pair' as '&var Pair' to write through it");
+    CHECK_EQ(errors[2].message, "cannot modify parameter 'pair'");
+    CHECK_EQ(errors[2].help, "take 'pair' as '&var Pair' to change the caller's value, or move it into a 'var' local");
+    CHECK_EQ(errors[3].message, "cannot call 'Reset' on immutable 'pair'");
+    CHECK_EQ(errors[3].help, "take 'pair' as '&var Pair' to change the caller's value, or move it into a 'var' local");
 }
 
 TEST_CASE("borrowed scalar reads do not copy aggregates or stored pointers") {

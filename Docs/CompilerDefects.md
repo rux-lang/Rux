@@ -1019,7 +1019,9 @@ func Main() -> int {
 - **Actual:** `unsupported pattern in let binding`.
 - **Notes:** a moving `match` can now split a struct that declares no `~T` (D36), so `let` is the remaining gap. A struct with move-only fields still has no direct way to hand out one field.
 
-## D57. A whole struct cannot be written through `&var T`
+## D57. A whole struct cannot be written through `&var T` (fixed)
+
+**Fixed**; covered by `Tests/Language/BorrowedAggregateWrites`, the `BorrowedAggregateWrite` golden, and `ReferenceTypeTests.cpp`.
 
 ```rux
 struct Pair { a: int32; b: int32; }

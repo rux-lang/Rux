@@ -1,0 +1,51 @@
+// A whole value is written through '&var T' with '=' or '<-' under the rules
+// for 'T'; '&T' refuses it, a parameter is never rebound, and a write is an
+// exclusive access.
+struct Pair {
+    a: int32;
+    b: int32;
+}
+
+struct Token {
+    id: int32;
+}
+
+extend Token {
+    func =(self: &var Token, other: &Token);
+}
+
+func Observe(pair: &Pair) {
+    pair = Pair { a: 1i32, b: 2i32 };
+}
+
+func CopyMoveOnly(slot: &var Token, token: Token) {
+    slot = token;
+}
+
+func Copy<T>(slot: &var T, value: T) {
+    slot = value;
+}
+
+func CopyGeneric(slot: &var Token, token: Token) {
+    Copy(slot, <-token);
+}
+
+func Rebind(pair: &var Pair) {
+    // A 'var' reference binding is rebound by '=', so a struct is not a reference.
+    var alias: &var Pair = pair;
+    alias = Pair { a: 1i32, b: 2i32 };
+}
+
+func Conflict(pair: &var Pair) {
+    let shared: &Pair = pair;
+    pair = Pair { a: 1i32, b: 2i32 };
+    let a = shared.a;
+}
+
+func Local(pair: Pair) {
+    pair = Pair { a: 1i32, b: 2i32 };
+}
+
+func Main() -> int {
+    return 0;
+}

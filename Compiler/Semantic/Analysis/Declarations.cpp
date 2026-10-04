@@ -98,6 +98,7 @@ void AnalysisContext::CheckFuncDecl(const FuncDecl &d, bool isMethod) {
                                   param.name, sym.type.ToString()));
         }
         sym.isMut = false;
+        sym.isParameter = true;
         DefineTrackedLocal(std::move(sym), true);
         if (param.defaultValue) {
             TypeRef paramType = ResolveType(*param.type);

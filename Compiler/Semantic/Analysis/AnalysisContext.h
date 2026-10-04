@@ -488,7 +488,7 @@ private:
     const PackageImportBindings &imports;
     std::unordered_map<const Expr *, TypeRef> &expressionTypes;
     std::unordered_set<const Expr *> &borrowedScalarReads;
-    std::unordered_set<const Expr *> &borrowedScalarWrites;
+    std::unordered_set<const Expr *> &referenceWrites;
     std::unordered_map<const Expr *, std::vector<NativeConversionStep>> &nativeConversions;
     std::unordered_map<const TypeExpr *, const Decl *> &intrinsicTypeBindings;
     std::unordered_map<const Expr *, const ConstDecl *> &associatedConstants;
@@ -962,13 +962,17 @@ private:
     [[nodiscard]] bool CheckAssignableTarget(const Expr &target, const TypeRef &targetType,
                                              std::string_view operatorName);
     /// The reference binding a write to `target` stores through, or null when `target` is not a name bound to a
-    /// reference to a Copy primitive scalar. `rebinds` is set for a plain assignment, which points a `var` reference
-    /// binding at other storage rather than writing through it.
-    [[nodiscard]] const Symbol *ScalarReferenceWriteTarget(const Expr &target, bool rebinds) const;
+    /// reference the write can reach through. `replaces` is set for `=` and `<-`, which replace a referent of any
+    /// concrete or generic type whole; other writes reach only a Copy primitive scalar. `rebinds` is set for a plain
+    /// assignment, which points a `var` reference binding at other storage rather than writing through it.
+    [[nodiscard]] const Symbol *ReferenceWriteTarget(const Expr &target, bool replaces, bool rebinds) const;
     /// Accepts a write through the reference `target` names and records it for lowering. Returns false after reporting
     /// a write through an immutable reference.
-    [[nodiscard]] bool CheckScalarReferenceWrite(const Expr &target, const Symbol &reference);
+    [[nodiscard]] bool CheckReferenceWrite(const Expr &target, const Symbol &reference);
     void CheckMutability(const Expr &target);
+    /// The fix offered for writing the immutable `binding`: declaring a local with `var`, or for a parameter, which
+    /// has no `var` form, taking it by `&var T` instead. Null when no declaration would make the write legal.
+    [[nodiscard]] static std::optional<std::string> ImmutableBindingHelp(const Symbol &binding);
     [[nodiscard]] bool CheckReceiverMutability(const CallExpr &call, const Expr &receiver, const TypeRef &receiverType,
                                                const FuncDecl &method);
     /// The check `CheckReceiverMutability` applies once a method is known to write through `declared`: a reference or
