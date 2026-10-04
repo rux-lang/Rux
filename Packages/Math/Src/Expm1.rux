@@ -5,14 +5,13 @@
 // error stays at one ulp as the argument approaches zero. That is the whole reason the function exists, and
 // it is what `Log1p` is the inverse of.
 
-/**
-    Computes `Exp(x) - 1` without losing precision near zero. The error is at most one ulp and remains small relative to
-    the result as `x` approaches zero. A signed zero returns itself, positive infinity returns positive infinity,
-    negative infinity returns `-1.0`, and a NaN remains a NaN.
-    @param x Exponent.
-    @returns `e` raised to `x`, minus one.
-    @see https://rux-lang.dev/docs/api/math/expm1
-*/
+/// Computes `Exp(x) - 1` without losing precision near zero.
+///
+/// The error is at most one ulp and remains small relative to the result as `x` approaches zero. A signed zero returns
+/// itself, positive infinity returns positive infinity, negative infinity returns `-1.0`, and a NaN remains a NaN.
+/// @param x exponent
+/// @returns `e` raised to `x`, minus one
+/// @see https://rux-lang.dev/docs/api/math/expm1
 pub func Expm1(x: float64) -> float64 {
     let q1 = -3.33333333333331316428e-02;
     let q2 = 1.58730158725481460165e-03;
@@ -109,12 +108,10 @@ pub func Expm1(x: float64) -> float64 {
     return y * twopk;
 }
 
-/**
-    Computes `Exp(x) - 1` at `float32` precision without losing precision near zero.
-    @param x Exponent.
-    @returns `e` raised to `x`, minus one.
-    @see https://rux-lang.dev/docs/api/math/expm1
-*/
+/// Computes `Exp(x) - 1` at `float32` precision without losing precision near zero.
+/// @param x exponent
+/// @returns `e` raised to `x`, minus one
+/// @see https://rux-lang.dev/docs/api/math/expm1
 pub func Expm1(x: float32) -> float32 {
     return Expm1(x as float64) as float32;
 }

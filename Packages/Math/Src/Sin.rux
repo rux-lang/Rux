@@ -6,14 +6,13 @@
 
 import Core::float64;
 
-/**
-    Computes the sine of `x`, where `x` is in radians. The error is at most one ulp for every finite argument. Exact
-    argument reduction keeps a large angle no less accurate than a small one. A signed zero returns itself; an infinity
-    returns a NaN, and a NaN remains a NaN.
-    @param x Angle in radians.
-    @returns The sine of `x`, in `[-1, 1]`, or a NaN when `x` is not finite.
-    @see https://rux-lang.dev/docs/api/math/sin
-*/
+/// Computes the sine of `x`, where `x` is in radians.
+///
+/// The error is at most one ulp for every finite argument. Exact argument reduction keeps a large angle no less
+/// accurate than a small one. A signed zero returns itself; an infinity returns a NaN, and a NaN remains a NaN.
+/// @param x angle in radians
+/// @returns the sine of `x`, in `[-1, 1]`, or a NaN when `x` is not finite
+/// @see https://rux-lang.dev/docs/api/math/sin
 pub func Sin(x: float64) -> float64 {
     // NaN is the only value that differs from itself, and it propagates.
     if IsNan(x) { return x; }
@@ -43,12 +42,10 @@ pub func Sin(x: float64) -> float64 {
     return negative ? -result : result;
 }
 
-/**
-    Computes the sine of `x` at `float32` precision, where `x` is in radians.
-    @param x Angle in radians.
-    @returns The sine of `x`, in `[-1, 1]`, or a NaN when `x` is not finite.
-    @see https://rux-lang.dev/docs/api/math/sin
-*/
+/// Computes the sine of `x` at `float32` precision, where `x` is in radians.
+/// @param x angle in radians
+/// @returns the sine of `x`, in `[-1, 1]`, or a NaN when `x` is not finite
+/// @see https://rux-lang.dev/docs/api/math/sin
 pub func Sin(x: float32) -> float32 {
     return Sin(x as float64) as float32;
 }

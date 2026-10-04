@@ -6,14 +6,13 @@
 
 import Core::float64;
 
-/**
-    Computes the cotangent of `x`, where `x` is in radians. The reciprocal is computed directly instead of as
-    `1 / Tan(x)`, avoiding a second rounding near a pole. A signed zero maps to an infinity with the same sign; an
-    infinite input returns a NaN, and a NaN remains a NaN.
-    @param x Angle in radians.
-    @returns The cotangent of `x`, or a NaN when `x` is not finite.
-    @see https://rux-lang.dev/docs/api/math/cotan
-*/
+/// Computes the cotangent of `x`, where `x` is in radians.
+///
+/// The reciprocal is computed directly instead of as `1 / Tan(x)`, avoiding a second rounding near a pole. A signed
+/// zero maps to an infinity with the same sign; an infinite input returns a NaN, and a NaN remains a NaN.
+/// @param x angle in radians
+/// @returns the cotangent of `x`, or a NaN when `x` is not finite
+/// @see https://rux-lang.dev/docs/api/math/cotan
 pub func Cotan(x: float64) -> float64 {
     // NaN is the only value that differs from itself, and it propagates.
     if IsNan(x) { return x; }
@@ -39,13 +38,12 @@ pub func Cotan(x: float64) -> float64 {
     return negative ? -result : result;
 }
 
-/**
-    Computes the cotangent of `x` at `float32` precision, where `x` is in radians. The wide computation carries more
-    precision than the result requires before being rounded to `float32`.
-    @param x Angle in radians.
-    @returns The cotangent of `x`, or a NaN when `x` is not finite.
-    @see https://rux-lang.dev/docs/api/math/cotan
-*/
+/// Computes the cotangent of `x` at `float32` precision, where `x` is in radians.
+///
+/// The wide computation carries more precision than the result requires before being rounded to `float32`.
+/// @param x angle in radians
+/// @returns the cotangent of `x`, or a NaN when `x` is not finite
+/// @see https://rux-lang.dev/docs/api/math/cotan
 pub func Cotan(x: float32) -> float32 {
     return Cotan(x as float64) as float32;
 }

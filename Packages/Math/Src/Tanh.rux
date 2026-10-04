@@ -4,13 +4,13 @@
 // middle; and `±1` at the top, where the true value is within an ulp of it. Odd and bounded, so a signed zero
 // returns itself and the infinities return `-1` and `1` exactly.
 
-/**
-    Computes the hyperbolic tangent of `x`. The result lies in `[-1, 1]`. A signed zero returns itself, infinities map
-    to the matching endpoint, and a NaN remains a NaN.
-    @param x Hyperbolic angle.
-    @returns The hyperbolic tangent of `x`.
-    @see https://rux-lang.dev/docs/api/math/tanh
-*/
+/// Computes the hyperbolic tangent of `x`.
+///
+/// The result lies in `[-1, 1]`. A signed zero returns itself, infinities map to the matching endpoint, and a NaN
+/// remains a NaN.
+/// @param x hyperbolic angle
+/// @returns the hyperbolic tangent of `x`
+/// @see https://rux-lang.dev/docs/api/math/tanh
 pub func Tanh(x: float64) -> float64 {
     if IsNan(x) { return x; }
     let negative = SignBit(x);
@@ -28,12 +28,10 @@ pub func Tanh(x: float64) -> float64 {
     return negative ? -y : y;
 }
 
-/**
-    Computes the hyperbolic tangent of `x` at `float32` precision.
-    @param x Hyperbolic angle.
-    @returns The hyperbolic tangent of `x`.
-    @see https://rux-lang.dev/docs/api/math/tanh
-*/
+/// Computes the hyperbolic tangent of `x` at `float32` precision.
+/// @param x hyperbolic angle
+/// @returns the hyperbolic tangent of `x`
+/// @see https://rux-lang.dev/docs/api/math/tanh
 pub func Tanh(x: float32) -> float32 {
     return Tanh(x as float64) as float32;
 }

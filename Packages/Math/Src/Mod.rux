@@ -4,16 +4,15 @@
 // is the true remainder rather than the nearest representable one. The sign follows the dividend, as C's
 // `fmod` does. A zero divisor or an infinite dividend has no remainder and gives a NaN.
 
-/**
-    Computes the floating-point remainder of `x / y`, with the sign of `x`. The result is `x - n * y`, where `n` is
-    `x / y` truncated toward zero. Its magnitude is less than `|y|`. A zero divisor, an infinite dividend, or a NaN
-    operand returns a NaN; an infinite divisor returns `x`. The significands are reduced with integer long division so
-    the intermediate product cannot discard the remainder.
-    @param x Dividend.
-    @param y Divisor.
-    @returns The exact remainder, or a NaN when no remainder is defined.
-    @see https://rux-lang.dev/docs/api/math/mod
-*/
+/// Computes the floating-point remainder of `x / y`, with the sign of `x`.
+///
+/// The result is `x - n * y`, where `n` is `x / y` truncated toward zero. Its magnitude is less than `|y|`. A zero
+/// divisor, an infinite dividend, or a NaN operand returns a NaN; an infinite divisor returns `x`. The significands are
+/// reduced with integer long division so the intermediate product cannot discard the remainder.
+/// @param x dividend
+/// @param y divisor
+/// @returns the exact remainder, or a NaN when no remainder is defined
+/// @see https://rux-lang.dev/docs/api/math/mod
 pub func Mod(x: float64, y: float64) -> float64 {
     var uxi = FloatBits(x);
     let uyi = FloatBits(y);
@@ -90,14 +89,14 @@ pub func Mod(x: float64, y: float64) -> float64 {
     return FromBits(uxi | sx);
 }
 
-/**
-    Computes the floating-point remainder of `x / y` at `float32` precision, with the sign of `x`. The exact remainder
-    of two `float32` values is representable as `float32`, so the wide computation narrows without losing information.
-    @param x Dividend.
-    @param y Divisor.
-    @returns The exact remainder, or a NaN when no remainder is defined.
-    @see https://rux-lang.dev/docs/api/math/mod
-*/
+/// Computes the floating-point remainder of `x / y` at `float32` precision, with the sign of `x`.
+///
+/// The exact remainder of two `float32` values is representable as `float32`, so the wide computation narrows without
+/// losing information.
+/// @param x dividend
+/// @param y divisor
+/// @returns the exact remainder, or a NaN when no remainder is defined
+/// @see https://rux-lang.dev/docs/api/math/mod
 pub func Mod(x: float32, y: float32) -> float32 {
     return Mod(x as float64, y as float64) as float32;
 }

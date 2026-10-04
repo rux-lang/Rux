@@ -4,13 +4,13 @@
 // sign is carried through rather than being a special case. A bit-pattern estimate seeds two Newton steps.
 // Error at most one ulp.
 
-/**
-    Computes the real cube root of `x`. The error is at most one ulp. Negative inputs produce negative roots, a signed
-    zero or infinity returns itself, and a NaN remains a NaN.
-    @param x Value whose cube root is computed.
-    @returns The real cube root of `x`.
-    @see https://rux-lang.dev/docs/api/math/cbrt
-*/
+/// Computes the real cube root of `x`.
+///
+/// The error is at most one ulp. Negative inputs produce negative roots, a signed zero or infinity returns itself, and
+/// a NaN remains a NaN.
+/// @param x value whose cube root is computed
+/// @returns the real cube root of `x`
+/// @see https://rux-lang.dev/docs/api/math/cbrt
 pub func Cbrt(x: float64) -> float64 {
     // 1023 - 1023/3 - 0.03306235651, in the top 20 bits of the significand.
     let b1: uint64 = 715094163;
@@ -54,12 +54,10 @@ pub func Cbrt(x: float64) -> float64 {
     return t + t * r;
 }
 
-/**
-    Computes the real cube root of `x` at `float32` precision.
-    @param x Value whose cube root is computed.
-    @returns The real cube root of `x`.
-    @see https://rux-lang.dev/docs/api/math/cbrt
-*/
+/// Computes the real cube root of `x` at `float32` precision.
+/// @param x value whose cube root is computed
+/// @returns the real cube root of `x`
+/// @see https://rux-lang.dev/docs/api/math/cbrt
 pub func Cbrt(x: float32) -> float32 {
     return Cbrt(x as float64) as float32;
 }

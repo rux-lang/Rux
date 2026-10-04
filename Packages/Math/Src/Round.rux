@@ -4,15 +4,14 @@
 // cases to even, which `RoundTiesToEven` in `Rounding.rux` provides. Both return a float rather than an
 // integer, because the answer is not always representable as one.
 
-/**
-    Rounds `x` to the nearest integral value, with halfway cases away from zero. Thus `Round(2.5)` is `3.0` and
-    `Round(-2.5)` is `-3.0`. The sign of zero is preserved, and a NaN or infinity passes through unchanged. The
-    fractional part is compared directly instead of adding one half, which avoids prematurely rounding the largest
-    representable value below `0.5` up to `1.0`.
-    @param x Value to round.
-    @returns The nearest integral value.
-    @see https://rux-lang.dev/docs/api/math/round
-*/
+/// Rounds `x` to the nearest integral value, with halfway cases away from zero.
+///
+/// Thus `Round(2.5)` is `3.0` and `Round(-2.5)` is `-3.0`. The sign of zero is preserved, and a NaN or infinity passes
+/// through unchanged. The fractional part is compared directly instead of adding one half, which avoids prematurely
+/// rounding the largest representable value below `0.5` up to `1.0`.
+/// @param x value to round
+/// @returns the nearest integral value
+/// @see https://rux-lang.dev/docs/api/math/round
 pub func Round(x: float64) -> float64 {
     let t = Trunc(x);
     let frac = x - t;
@@ -22,12 +21,10 @@ pub func Round(x: float64) -> float64 {
     return t;
 }
 
-/**
-    Rounds `x` to the nearest integral value at `float32` precision, with halfway cases away from zero.
-    @param x Value to round.
-    @returns The nearest integral value.
-    @see https://rux-lang.dev/docs/api/math/round
-*/
+/// Rounds `x` to the nearest integral value at `float32` precision, with halfway cases away from zero.
+/// @param x value to round
+/// @returns the nearest integral value
+/// @see https://rux-lang.dev/docs/api/math/round
 pub func Round(x: float32) -> float32 {
     return Round(x as float64) as float32;
 }

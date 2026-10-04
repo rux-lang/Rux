@@ -156,14 +156,14 @@ func Pow2(pHigh: float64, pLow: float64, z: float64) -> float64 {
     before 2^z is taken. The special cases come first and there are many, because x^y has an answer for almost every
     pair - including several where one argument is a NaN.
 */
-/**
-    Raises `x` to the power `y`. The error is at most one ulp. A negative base requires an integer exponent; otherwise
-    the result is a NaN. `PowInteger` is both faster and able to preserve exact results when the exponent is an integer.
-    @param x Base.
-    @param y Exponent.
-    @returns `x` raised to `y`.
-    @see https://rux-lang.dev/docs/api/math/pow
-*/
+/// Raises `x` to the power `y`.
+///
+/// The error is at most one ulp. A negative base requires an integer exponent; otherwise the result is a NaN.
+/// `PowInteger` is both faster and able to preserve exact results when the exponent is an integer.
+/// @param x base
+/// @param y exponent
+/// @returns `x` raised to `y`
+/// @see https://rux-lang.dev/docs/api/math/pow
 pub func Pow(x: float64, y: float64) -> float64 {
     let ovt = 8.008566259537294e-17; // 1024 - log2(overflow + half an ulp)
     let huge = 1.0e300;
@@ -323,13 +323,11 @@ pub func Pow(x: float64, y: float64) -> float64 {
     return s * Pow2(pHigh, pLow, z);
 }
 
-/**
-    Raises `x` to the power `y` at `float32` precision.
-    @param x Base.
-    @param y Exponent.
-    @returns `x` raised to `y`.
-    @see https://rux-lang.dev/docs/api/math/pow
-*/
+/// Raises `x` to the power `y` at `float32` precision.
+/// @param x base
+/// @param y exponent
+/// @returns `x` raised to `y`
+/// @see https://rux-lang.dev/docs/api/math/pow
 pub func Pow(x: float32, y: float32) -> float32 {
     return Pow(x as float64, y as float64) as float32;
 }

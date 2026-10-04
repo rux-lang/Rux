@@ -14,13 +14,12 @@ import Core::float64;
     which two independent reductions of the same argument do anyway but only because they are deterministic.
 */
 
-/**
-    Computes the sine and cosine of `angle` from one argument reduction. Returns `(sine, cosine)`. Equivalent to calling
-    `Sin` and `Cos` separately, at roughly half the cost.
-    @param angle Angle in radians.
-    @returns `(sine, cosine)` for `angle`.
-    @see https://rux-lang.dev/docs/api/math/sincos
-*/
+/// Computes the sine and cosine of `angle` from one argument reduction.
+///
+/// Returns `(sine, cosine)`. Equivalent to calling `Sin` and `Cos` separately, at roughly half the cost.
+/// @param angle angle in radians
+/// @returns `(sine, cosine)` for `angle`
+/// @see https://rux-lang.dev/docs/api/math/sincos
 pub func SinCos(angle: float64) -> (float64, float64) {
     // NaN propagates into both.
     if IsNan(angle) { return (angle, angle); }
@@ -62,12 +61,12 @@ pub func SinCos(angle: float64) -> (float64, float64) {
     return (negative ? -sineOfMagnitude : sineOfMagnitude, cosineValue);
 }
 
-/**
-    Computes the sine and cosine of `angle` at `float32` precision. Returns `(sine, cosine)`.
-    @param angle Angle in radians.
-    @returns `(sine, cosine)` for `angle`.
-    @see https://rux-lang.dev/docs/api/math/sincos
-*/
+/// Computes the sine and cosine of `angle` at `float32` precision.
+///
+/// Returns `(sine, cosine)`.
+/// @param angle angle in radians
+/// @returns `(sine, cosine)` for `angle`
+/// @see https://rux-lang.dev/docs/api/math/sincos
 pub func SinCos(angle: float32) -> (float32, float32) {
     let (wideSine, wideCosine) = SinCos(angle as float64);
     return (wideSine as float32, wideCosine as float32);

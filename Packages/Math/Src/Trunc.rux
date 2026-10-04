@@ -4,13 +4,12 @@
 // including those larger than any integer type could hold. The sign is kept, so a value strictly between
 // negative one and zero becomes `-0.0`.
 
-/**
-    Rounds `x` toward zero to an integral value. The sign of zero is preserved, so `Trunc(-0.4)` is `-0.0`. A NaN or
-    infinity passes through unchanged.
-    @param x Value to truncate.
-    @returns The integral part of `x`.
-    @see https://rux-lang.dev/docs/api/math/trunc
-*/
+/// Rounds `x` toward zero to an integral value.
+///
+/// The sign of zero is preserved, so `Trunc(-0.4)` is `-0.0`. A NaN or infinity passes through unchanged.
+/// @param x value to truncate
+/// @returns the integral part of `x`
+/// @see https://rux-lang.dev/docs/api/math/trunc
 pub func Trunc(x: float64) -> float64 {
     let bits = FloatBits(x);
     let e = (((bits >> 52) & 0x7FF) as int64) - 1023;
@@ -25,13 +24,12 @@ pub func Trunc(x: float64) -> float64 {
     return FromBits(bits & ~mask);
 }
 
-/**
-    Rounds `x` toward zero to an integral value at `float32` precision. The wide result is exactly representable at the
-    input width, so narrowing it back to `float32` loses nothing.
-    @param x Value to truncate.
-    @returns The integral part of `x`.
-    @see https://rux-lang.dev/docs/api/math/trunc
-*/
+/// Rounds `x` toward zero to an integral value at `float32` precision.
+///
+/// The wide result is exactly representable at the input width, so narrowing it back to `float32` loses nothing.
+/// @param x value to truncate
+/// @returns the integral part of `x`
+/// @see https://rux-lang.dev/docs/api/math/trunc
 pub func Trunc(x: float32) -> float32 {
     return Trunc(x as float64) as float32;
 }

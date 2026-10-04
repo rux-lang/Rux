@@ -4,12 +4,12 @@
 // everything there; further out the subtraction is harmless and only the growing term survives at the top. Odd,
 // so a signed zero returns itself and each infinity returns itself.
 
-/**
-    Computes the hyperbolic sine of `x`. A signed zero or infinity returns itself, and a NaN remains a NaN.
-    @param x Hyperbolic angle.
-    @returns The hyperbolic sine of `x`.
-    @see https://rux-lang.dev/docs/api/math/sinh
-*/
+/// Computes the hyperbolic sine of `x`.
+///
+/// A signed zero or infinity returns itself, and a NaN remains a NaN.
+/// @param x hyperbolic angle
+/// @returns the hyperbolic sine of `x`
+/// @see https://rux-lang.dev/docs/api/math/sinh
 pub func Sinh(x: float64) -> float64 {
     let overflow = 710.4758600739439; // ln(2 * maxfloat)
     if IsNan(x) { return x; }
@@ -34,12 +34,10 @@ pub func Sinh(x: float64) -> float64 {
     return negative ? -y : y;
 }
 
-/**
-    Computes the hyperbolic sine of `x` at `float32` precision.
-    @param x Hyperbolic angle.
-    @returns The hyperbolic sine of `x`.
-    @see https://rux-lang.dev/docs/api/math/sinh
-*/
+/// Computes the hyperbolic sine of `x` at `float32` precision.
+/// @param x hyperbolic angle
+/// @returns the hyperbolic sine of `x`
+/// @see https://rux-lang.dev/docs/api/math/sinh
 pub func Sinh(x: float32) -> float32 {
     return Sinh(x as float64) as float32;
 }
