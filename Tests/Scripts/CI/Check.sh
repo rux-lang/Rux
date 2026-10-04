@@ -291,7 +291,7 @@ check_linux_archive_extraction() {
     # but the stub must shrug off the resulting SIGPIPE or tar reports it.
     printf '#!/bin/sh\ntrap "" PIPE\ncat 2>/dev/null\nexit 0\n' >"$fixture_root/bin/unzstd"
     chmod +x "$fixture_root/bin/unzstd"
-    sed -n '/^tar --use-compress-program=unzstd -tf /,/^rm -f "\$llvm_archive"/p' \
+    sed -n '/^tar --use-compress-program="unzstd[^"]*" -tf /,/^rm -f "\$llvm_archive"/p' \
         "$scripts/Toolchain/PackLinux.sh" >"$archive_fixture/extract.sh"
     [ -s "$archive_fixture/extract.sh" ] || fail 'no Linux extraction commands found'
     (

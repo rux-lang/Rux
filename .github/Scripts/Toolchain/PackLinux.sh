@@ -110,8 +110,10 @@ llvm_archive=$(fetch "$LLVM_BASE_URL/$llvm_asset" "$llvm_sha")
 # so its members are listed once and only the ones Rux needs are extracted:
 # the compiler under every spelling the archive gives it, the two analysis
 # tools, llvm-size, and the resource directory, without which clang-tidy
-# cannot parse a translation unit.
-tar --use-compress-program=unzstd -tf "$llvm_archive" >"$work/members"
+# cannot parse a translation unit. Releases since 23.1.2 are compressed with a
+# 1 GiB long-distance window, past zstd's default 128 MiB decoding limit, so
+# --long=31 raises that limit to the format's maximum.
+tar --use-compress-program="unzstd --long=31" -tf "$llvm_archive" >"$work/members"
 llvm_top=$(head -1 "$work/members" | cut -d/ -f1)
 [ -n "$llvm_top" ] || die "could not read the top-level directory of '$llvm_asset'"
 grep -E "^$llvm_top/(bin/(clang|clang-[0-9]+|clang\\+\\+|clang-format|clang-tidy|llvm-size)$|lib/clang/$llvm_major/(include|lib)/)" \
@@ -119,7 +121,7 @@ grep -E "^$llvm_top/(bin/(clang|clang-[0-9]+|clang\\+\\+|clang-format|clang-tidy
     die "'$llvm_asset' has none of the expected members"
 # Every selected child is listed explicitly. Recursive directory matching
 # consumes those children early and GNU tar then reports them as missing.
-tar --use-compress-program=unzstd -xf "$llvm_archive" -C "$work/llvm" \
+tar --use-compress-program="unzstd --long=31" -xf "$llvm_archive" -C "$work/llvm" \
     --no-recursion --strip-components=1 -T "$work/selected"
 rm -f "$llvm_archive"
 llvm=$work/llvm
