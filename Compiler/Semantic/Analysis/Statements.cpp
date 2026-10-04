@@ -565,7 +565,15 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
             coveredAll = coveredAll || PatternMatchesEveryValue(*arm.pattern);
         }
         ValidateMatchPatterns(patterns, subjectType);
-        if (!MatchPatternsAreExhaustive(patterns, subjectType)) {
+        // A statement may leave values unmatched by design; one that covers its subject records so, because a value
+        // outside the subject's cases then has nowhere to go. A native subject's tag is the compiler's own and never
+        // holds anything else.
+        if (MatchPatternsAreExhaustive(patterns, subjectType)) {
+            if (!IsNativeMatchSubject(subjectType)) {
+                exhaustiveMatchStatements.insert(matchStatement);
+            }
+        }
+        else {
             exits.push_back(matchEntry);
         }
         MergeTrackedFlows(exits);

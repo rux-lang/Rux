@@ -413,3 +413,77 @@ func Variable(values: &int32[4], at: uint) -> int32 {
                                              BuildProfile::Release);
     CHECK(Traps(release, "Pick", "index out of range").empty());
 }
+
+TEST_CASE("a value no arm of an exhaustive match takes stops the program with a panic") {
+    constexpr std::string_view status = R"(enum Status: uint16 { Ok = 200, NotFound = 404 }
+
+func Code(status: Status) -> int {
+    return match status { .Ok => 1, .NotFound => 2 };
+}
+
+func Visit(status: Status) -> int {
+    var seen = 0;
+    match status {
+        .Ok => { seen = 1; },
+        .NotFound => { seen = 2; }
+    }
+    return seen;
+}
+
+func Main() -> int {
+    let code: uint16 = 418;
+)";
+    CheckTrapsOnHost(std::string(status) + "    return Code(code as Status);\n}\n",
+                     Report("no match arm matched value of 'Status'", "Code", 4, 12));
+    CheckTrapsOnHost(std::string(status) + "    return Visit(code as Status);\n}\n",
+                     Report("no match arm matched value of 'Status'", "Visit", 9, 5));
+    CheckRunsOnHost(std::string(status) +
+                        "    return Code(200u16 as Status) * 10 + Visit(404u16 as Status) + 30 + 0 * code as int;\n}\n",
+                    42);
+}
+
+TEST_CASE("only an exhaustive match whose last arm can fail carries the unmatched trap") {
+    const LirPackage package = CompileChecks(R"(enum Status: uint16 { Ok = 200, NotFound = 404 }
+
+func Covered(status: Status) -> int {
+    return match status { .Ok => 1, .NotFound => 2 };
+}
+
+func Defaulted(status: Status) -> int {
+    return match status { .Ok => 1, else => 2 };
+}
+
+func Flag(flag: bool) -> int {
+    return match flag { true => 1, false => 2 };
+}
+
+func Partial(n: int) {
+    match n {
+        1 => {}
+    }
+}
+
+func Present(value: int?) -> int {
+    return match value { .Some(v) => v, none => 0 };
+}
+)",
+                                             BuildProfile::Debug);
+    constexpr std::string_view statusTrap = "no match arm matched value of 'Status'";
+    CHECK_EQ(Traps(package, "Covered", statusTrap).size(), 1);
+    CHECK(Traps(package, "Defaulted", statusTrap).empty());
+    CHECK_EQ(Traps(package, "Flag", "no match arm matched value of 'bool8'").size(), 1);
+    for (const std::string_view function : {"Partial", "Present"}) {
+        for (const auto &module : package.modules) {
+            for (const auto &func : module.funcs) {
+                if (func.name != function) {
+                    continue;
+                }
+                for (const auto &block : func.blocks) {
+                    for (const auto &instruction : block.instrs) {
+                        CHECK(instruction.op != LirOpcode::Panic);
+                    }
+                }
+            }
+        }
+    }
+}

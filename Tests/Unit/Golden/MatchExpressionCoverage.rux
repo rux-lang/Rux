@@ -1,0 +1,20 @@
+// A match expression must produce a value for every value of a bool or integer subject; a statement need not.
+func Main() -> int {
+    let flag = false;
+    let n: int32 = 2;
+    let missingFalse = match flag { true => 10i32 };
+    let missingTrue = match flag { false => 10i32 };
+    let guarded = match flag { true => 1i32, false if n > 0 => 2i32 };
+    let both = match flag { true => 1i32, false => 2i32 };
+    let partial = match n { 1 => 10i32, 3 => 30i32 };
+    let ranged = match n { 0..=9 => 1i32 };
+    let covered = match n { 1 => 10i32, else => 0i32 };
+    let bound = match n { value => value };
+    match n {
+        1 => {}
+    }
+    match flag {
+        true => {}
+    }
+    return (missingFalse + missingTrue + guarded + both + partial + ranged + covered + bound) as int;
+}

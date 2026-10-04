@@ -94,6 +94,8 @@ func Days(month: Month) -> int32 {
 }
 ```
 
+A `match` expression must produce a value for every value of its subject: it names every member of an enum, both `true` and `false` of a bool, and, because an integer's values are not listed one by one, ends an integer match with an `else` arm or a binding. A match statement on an enum names every member too, while one on a bool or an integer may leave values unmatched, and those values skip it. Converting an integer to an enum with `as` is unchecked, so it can produce a value that is no member at all. An exhaustive match without an `else` arm that meets such a value stops the program with `Panic: no match arm matched value of 'Month'` and the location of the `match`, instead of taking an arm or falling through; check an untrusted integer before converting it.
+
 `variant` is a closed tagged union. A case may be unit-like, carry positional values, or carry named fields, and the declaration may be generic. Its tag is private: source cannot choose a base type or assign case discriminants.
 
 ```rux

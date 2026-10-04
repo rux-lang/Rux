@@ -985,6 +985,7 @@ HirExprPtr AstToHirContext::LowerAggregateExpr(const Expr &expression) {
         auto lowered = std::make_unique<HirMatchExpr>();
         lowered->location = match->location;
         lowered->type = ResolvedExpressionType(*match);
+        lowered->exhaustive = model.IsExhaustiveMatch(*match);
         lowered->subject = LowerMatchSubject(*match->subject);
         // As in the statement form: an arm's bindings own what they took only if the subject was handed over.
         const bool armsOwnPayload = lowered->subject->consumption.has_value();

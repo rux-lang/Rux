@@ -311,6 +311,14 @@ const ResolvedIteration *SemanticModel::TryGetIteration(const ForStmt &statement
     return iteration == facts.iterations.end() ? nullptr : &iteration->second;
 }
 
+bool SemanticModel::IsExhaustiveMatch(const MatchExpr &expression) const noexcept {
+    return facts.exhaustiveMatchExpressions.contains(&expression);
+}
+
+bool SemanticModel::IsExhaustiveMatch(const MatchStmt &statement) const noexcept {
+    return facts.exhaustiveMatchStatements.contains(&statement);
+}
+
 const ResolvedTypeLayout *SemanticModel::TryGetLayout(const TypeRef &type) const noexcept {
     const auto layout = facts.typeLayouts.find(type.ToString());
     return layout == facts.typeLayouts.end() ? nullptr : &layout->second;

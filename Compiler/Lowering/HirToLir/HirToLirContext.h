@@ -173,6 +173,9 @@ private:
     void LowerLoop(const HirLoopStmt &statement);
     void LowerFor(const HirForStmt &statement);
     void LowerMatch(const HirMatchStmt &statement);
+    [[nodiscard]] std::optional<std::uint32_t> UnmatchedBlock(bool exhaustive, const std::vector<HirMatchArm> &arms);
+    /// Fills the block `UnmatchedBlock` opened, if any, with the trap for a value no arm of the match took.
+    void EmitUnmatchedTrap(std::optional<std::uint32_t> block, const HirExpr &subject, const SourceLocation &location);
 
     void StoreEnumConstructIntoSlot(const HirEnumConstructExpr &expression, LirReg slot);
     void BindLetPattern(const HirPattern &pattern, LirReg subjectPtr, const TypeRef &subjectType);

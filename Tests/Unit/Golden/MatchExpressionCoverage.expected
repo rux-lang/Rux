@@ -1,0 +1,5 @@
+5:24: error: match on 'bool8' is not exhaustive; missing false
+6:23: error: match on 'bool8' is not exhaustive; missing true
+7:19: error: match on 'bool8' is not exhaustive; missing false
+9:19: error: match on 'int32' is not exhaustive; its arms do not cover every value
+10:18: error: match on 'int32' is not exhaustive; its arms do not cover every value

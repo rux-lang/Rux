@@ -233,11 +233,13 @@ void HirToLirContext::LowerMatch(const HirMatchStmt &s) {
         SetBlock(mergeBlock);
         return;
     }
+    const std::optional<std::uint32_t> unmatchedBlock = UnmatchedBlock(s.exhaustive, s.arms);
     for (std::size_t i = 0; i < s.arms.size(); ++i) {
         const auto &arm = s.arms[i];
         const bool isLast = (i + 1 == s.arms.size());
         std::uint32_t bodyBlock = NewBlock(std::format("match.arm{}", i));
-        std::uint32_t nextBlock = isLast ? mergeBlock : NewBlock(std::format("match.next{}", i));
+        std::uint32_t nextBlock =
+            isLast ? unmatchedBlock.value_or(mergeBlock) : NewBlock(std::format("match.next{}", i));
         std::vector<std::pair<LirReg, TypeRef>> residual;
         LirReg matched = LowerArmPattern(*arm.pattern, subjectVal, s.subject->type, subjectPayload, subjectSlot,
                                          s.subject->consumption.has_value(), residual);
@@ -254,7 +256,31 @@ void HirToLirContext::LowerMatch(const HirMatchStmt &s) {
             SetBlock(nextBlock);
         }
     }
+    EmitUnmatchedTrap(unmatchedBlock, *s.subject, s.location);
     SetBlock(mergeBlock);
+}
+
+/// The block an exhaustive match's last refutable arm falls to, or nothing when that edge reaches the merge as usual.
+/// An irrefutable last arm never falls through, so it needs no trap.
+std::optional<std::uint32_t> HirToLirContext::UnmatchedBlock(const bool exhaustive,
+                                                             const std::vector<HirMatchArm> &arms) {
+    if (!exhaustive || arms.empty()) {
+        return std::nullopt;
+    }
+    const HirPattern &last = *arms.back().pattern;
+    if (dynamic_cast<const HirWildcardPattern *>(&last) || dynamic_cast<const HirBindingPattern *>(&last)) {
+        return std::nullopt;
+    }
+    return NewBlock("match.unmatched");
+}
+
+void HirToLirContext::EmitUnmatchedTrap(const std::optional<std::uint32_t> block, const HirExpr &subject,
+                                        const SourceLocation &location) {
+    if (!block) {
+        return;
+    }
+    SetBlock(*block);
+    EmitRuntimeTrap(std::format("no match arm matched value of '{}'", subject.type.ToString()), location);
 }
 
 /// Pattern lowering.
@@ -916,11 +942,13 @@ void HirToLirContext::StoreMatchInit(const HirMatchExpr &e, LirReg slot, const T
         return;
     }
 
+    const std::optional<std::uint32_t> unmatchedBlock = UnmatchedBlock(e.exhaustive, e.arms);
     for (std::size_t i = 0; i < e.arms.size(); ++i) {
         const auto &arm = e.arms[i];
         const bool isLast = (i + 1 == e.arms.size());
         const std::uint32_t bodyBlock = NewBlock(std::format("match.expr.store.arm{}", i));
-        const std::uint32_t nextBlock = isLast ? mergeBlock : NewBlock(std::format("match.expr.store.next{}", i));
+        const std::uint32_t nextBlock =
+            isLast ? unmatchedBlock.value_or(mergeBlock) : NewBlock(std::format("match.expr.store.next{}", i));
         std::vector<std::pair<LirReg, TypeRef>> residual;
         const LirReg matched = LowerArmPattern(*arm.pattern, subjectVal, e.subject->type, subjectPayload, subjectSlot,
                                                e.subject->consumption.has_value(), residual);
@@ -937,6 +965,7 @@ void HirToLirContext::StoreMatchInit(const HirMatchExpr &e, LirReg slot, const T
         }
     }
 
+    EmitUnmatchedTrap(unmatchedBlock, *e.subject, e.location);
     SetBlock(mergeBlock);
 }
 

@@ -432,6 +432,9 @@ struct HirMatchArm {
 struct HirMatchExpr : HirExpr {
     HirExprPtr subject;
     std::vector<HirMatchArm> arms;
+    /// Semantic analysis accepted the arms as covering every value of the subject's type, so a value that still
+    /// matches none of them, such as an integer converted to an enum with `as`, stops the program.
+    bool exhaustive = false;
 };
 
 struct HirEnumConstructExpr : HirExpr {
@@ -522,6 +525,9 @@ struct HirForStmt : HirStmt {
 struct HirMatchStmt : HirStmt {
     HirExprPtr subject;
     std::vector<HirMatchArm> arms;
+    /// As for `HirMatchExpr`: set when the arms cover every value, and a value none of them matches then stops the
+    /// program instead of falling past the statement.
+    bool exhaustive = false;
 };
 
 /// A nested scope, which source has no syntax for. A desugaring that needs a binding of its own -- the iterator a `for`

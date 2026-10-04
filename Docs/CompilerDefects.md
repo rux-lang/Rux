@@ -267,7 +267,9 @@ func Main() -> int { var n = 4; Bump(n); return n; }
   - `Tests/Language/BorrowedScalars` covers reading a borrowed scalar only.
 - **Course workaround:** `Types/MutableReference` demonstrates `&var` with structs and arrays only.
 
-## D16. A `match` on an enum value outside its cases silently yields a zero value
+## D16. A `match` on an enum value outside its cases silently yields a zero value (fixed)
+
+**Fixed**; covered by `RuntimeCheckLoweringTests.cpp`.
 
 ```rux
 import Io::PrintLine;
@@ -322,7 +324,9 @@ func Main() -> int {
   Destructuring with `let (x, y) = pair;` is correct, because it goes through `BindLetPattern`.
 - **Course impact:** lesson 7.3 `TuplePattern` is blocked until this is fixed.
 
-## D19. A non-exhaustive `match` expression on `bool` or an integer compiles
+## D19. A non-exhaustive `match` expression on `bool` or an integer compiles (fixed)
+
+**Fixed**; covered by the `MatchExpressionCoverage` golden.
 
 ```rux
 let b = false;
@@ -591,7 +595,7 @@ PrintLine("{}", passes);
 - **Actual:** accepted silently.
 
 Related to D19: a match expression over an integer without `else` (`match n { 1 => 10, 3 => 30 }`)
-compiles and yields `0` for an unmatched value. With text arms it yields an empty string.
+compiles and yields `0` for an unmatched value. With text arms it yields an empty string. **Fixed**; covered by the `MatchExpressionCoverage` golden.
 ## D35. Inline array indexing is not bounds-checked, and the language reference does not say so (fixed)
 
 **Fixed**; covered by `RuntimeCheckLoweringTests.cpp` and the `ArrayIndexRange` golden.

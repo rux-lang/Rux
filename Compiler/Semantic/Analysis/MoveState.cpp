@@ -330,6 +330,31 @@ template void AnalysisContext::ConsumeMatchSubject<MatchExpr::Arm>(const Expr &,
 template void AnalysisContext::ConsumeMatchSubject<MatchStmt::Arm>(const Expr &, const TypeRef &,
                                                                    const std::vector<MatchStmt::Arm> &, SourceLocation);
 
+void AnalysisContext::ReportNonExhaustiveMatchExpression(const MatchExpr &expression,
+                                                         const std::vector<const Pattern *> &patterns,
+                                                         const TypeRef &subjectType) {
+    if (subjectType.IsBool()) {
+        bool hasTrue = false;
+        bool hasFalse = false;
+        for (const Pattern *pattern : patterns) {
+            const auto *literal = dynamic_cast<const LiteralPattern *>(pattern);
+            hasTrue = hasTrue || (literal && literal->value.text == "true");
+            hasFalse = hasFalse || (literal && literal->value.text == "false");
+        }
+        const std::string missing = !hasTrue && !hasFalse ? "true, false" : !hasTrue ? "true" : "false";
+        EmitError(expression.location,
+                  std::format("match on '{}' is not exhaustive; missing {}", subjectType.ToString(), missing), {},
+                  std::format("add an arm for {}, or an 'else' arm", missing));
+        return;
+    }
+    if (subjectType.IsInteger()) {
+        EmitError(
+            expression.location,
+            std::format("match on '{}' is not exhaustive; its arms do not cover every value", subjectType.ToString()),
+            {}, "add an 'else' arm");
+    }
+}
+
 TypeRef AnalysisContext::CheckMatchExpression(const MatchExpr &expression) {
     const TypeRef expressionType = CheckExpr(*expression.subject);
     const TypeRef subjectType = expressionType.kind == TypeRef::Kind::Reference && !expressionType.inner.empty()
@@ -407,7 +432,16 @@ TypeRef AnalysisContext::CheckMatchExpression(const MatchExpr &expression) {
         acceptedArms.push_back({arm.body.get(), armType, arm.location});
     }
     ValidateMatchPatterns(patterns, subjectType);
-    if (!MatchPatternsAreExhaustive(patterns, subjectType)) {
+    if (MatchPatternsAreExhaustive(patterns, subjectType)) {
+        // A native subject's tag is the compiler's own and never holds a value outside its members.
+        if (!IsNativeMatchSubject(subjectType)) {
+            exhaustiveMatchExpressions.insert(&expression);
+        }
+    }
+    else {
+        // An expression has to produce a value whatever the subject holds. Enums and native subjects report their
+        // missing cases through pattern validation; a bool or an integer has its own values to name here.
+        ReportNonExhaustiveMatchExpression(expression, patterns, subjectType);
         exits.push_back(matchEntry);
     }
     MergeTrackedFlows(exits);

@@ -324,6 +324,9 @@ struct SemanticFacts {
     std::unordered_map<const IndexExpr *, ResolvedIndexOperator> indexOperators;
     std::unordered_map<const IndexExpr *, ResolvedIndexAssignment> indexAssignments;
     std::unordered_map<const ForStmt *, ResolvedIteration> iterations;
+    /// Every accepted `match` whose arms cover each value of its subject's type, so no value can leave it unmatched.
+    std::unordered_set<const MatchExpr *> exhaustiveMatchExpressions;
+    std::unordered_set<const MatchStmt *> exhaustiveMatchStatements;
     std::unordered_map<std::string, ResolvedTypeLayout> typeLayouts;
     std::unordered_map<std::string, TypeProperties> typeProperties;
     std::unordered_map<std::string, DropGluePlan> dropGluePlans;
@@ -430,6 +433,11 @@ struct SemanticModel {
 
     /// Returns null for a `for` loop whose subject analysis rejected as not iterable.
     [[nodiscard]] const ResolvedIteration *TryGetIteration(const ForStmt &statement) const noexcept;
+
+    /// Whether analysis accepted this `match` as covering every value of its subject's type. A value outside those
+    /// the type declares, such as an integer converted to an enum with `as`, then has no arm to fall to.
+    [[nodiscard]] bool IsExhaustiveMatch(const MatchExpr &expression) const noexcept;
+    [[nodiscard]] bool IsExhaustiveMatch(const MatchStmt &statement) const noexcept;
 
     /// Returns null when the type is unresolved, unsized, recursive, or was not validated in this analysis.
     /// Type-expression queries first use the resolved type fact for that AST node.

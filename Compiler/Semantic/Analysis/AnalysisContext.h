@@ -285,6 +285,9 @@ private:
     void CheckPattern(const Pattern &pattern, const TypeRef &subjectType = TypeRef::MakeUnknown());
     void ValidateMatchPatterns(const std::vector<const Pattern *> &patterns, const TypeRef &subjectType);
     void ValidateMatchPatterns(const MatchExpr &expression, const TypeRef &subjectType);
+    /// Reports a match expression on a bool or an integer that leaves some value without an arm.
+    void ReportNonExhaustiveMatchExpression(const MatchExpr &expression, const std::vector<const Pattern *> &patterns,
+                                            const TypeRef &subjectType);
     [[nodiscard]] bool MatchPatternsAreExhaustive(const std::vector<const Pattern *> &patterns,
                                                   const TypeRef &subjectType) const;
 
@@ -566,6 +569,9 @@ private:
     const IndexExpr *indexAssignmentTarget = nullptr;
     /// One entry per accepted `for`, so lowering drives the subject the way analysis decided it is driven.
     std::unordered_map<const ForStmt *, ResolvedIteration> &iterations;
+    /// One entry per accepted `match` that covers its subject, so lowering stops a value no arm matches.
+    std::unordered_set<const MatchExpr *> &exhaustiveMatchExpressions;
+    std::unordered_set<const MatchStmt *> &exhaustiveMatchStatements;
     std::unordered_map<const TypeQueryExpr *, std::uint64_t> &typeQueryValues;
 
     SemanticProgramIndex programIndex;
