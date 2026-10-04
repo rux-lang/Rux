@@ -1134,16 +1134,7 @@ bool AnalysisContext::PatternContains(const Pattern &pattern, const Pattern &tar
 
 void AnalysisContext::ValidateDeferredPatternChecks(const FuncDecl &declaration,
                                                     const std::unordered_map<std::string, TypeRef> &substitutions) {
-    std::vector<std::string> names;
-    for (const auto &[name, type] : substitutions) {
-        names.push_back(std::format("{} = {}", name, type.ToString()));
-    }
-    std::ranges::sort(names);
-    std::string arguments;
-    for (const std::string &name : names) {
-        arguments += (arguments.empty() ? "" : ", ") + name;
-    }
-    const std::string note = std::format("in '{}' instantiated with {}", declaration.name, arguments);
+    const std::string note = InstantiationNote(declaration, substitutions);
     const auto emit = [&](PatternIssue issue) {
         EmitError(issue.location, std::move(issue.message), {note}, std::move(issue.help));
     };

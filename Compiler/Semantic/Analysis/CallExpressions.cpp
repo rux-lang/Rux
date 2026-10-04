@@ -239,7 +239,8 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
             }
             CheckTypeArgumentConstraints(decl->typeParams, substitutions, e->location,
                                          std::format("function '{}'", ident->name));
-            QueueGenericInstantiation(*decl, substitutions);
+            QueueGenericInstantiation(*decl, substitutions,
+                                      expression.callee ? expression.callee->location : expression.location);
             TypeRef funcType = MakeFuncTypeWithSubstitution(decl->params, decl->returnType, substitutions,
                                                             TypeParameterNames(decl->typeParams));
             const std::size_t paramCount =
@@ -418,7 +419,8 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
             }
 
             const auto substitutions = MethodTypeSubstitutions(constructedType);
-            QueueGenericInstantiation(*constructor, substitutions);
+            QueueGenericInstantiation(*constructor, substitutions,
+                                      expression.callee ? expression.callee->location : expression.location);
             const TypeRef functionType = AssociatedFunctionType(constructedType, *constructor);
             const std::size_t parameterCount = functionType.inner.size() - 1;
             const std::vector<TypeRef> parameterTypes(functionType.inner.begin(),
@@ -489,7 +491,8 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
             // the parameters stand for.
             CheckTypeArgumentConstraints(method->typeParams, methodSubstitutions, e->location,
                                          std::format("method '{}'", method->name));
-            QueueGenericInstantiation(*method, methodSubstitutions);
+            QueueGenericInstantiation(*method, methodSubstitutions,
+                                      expression.callee ? expression.callee->location : expression.location);
 
             if (argTypes.size() != paramTypes.size()) {
                 callAccepted = false;
@@ -730,7 +733,8 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
                     // call, exactly as a method is by its receiver's.
                     CheckTypeArgumentConstraints(method->typeParams, methodSubstitutions, e->location,
                                                  std::format("method '{}'", method->name));
-                    QueueGenericInstantiation(*method, methodSubstitutions);
+                    QueueGenericInstantiation(*method, methodSubstitutions,
+                                              expression.callee ? expression.callee->location : expression.location);
                     bool callAccepted = argTypes.size() == paramTypes.size();
                     if (argTypes.size() != paramTypes.size()) {
                         emitArityError(std::format("{}::{}", path->segments[0], methodName), paramTypes.size(),

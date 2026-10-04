@@ -388,7 +388,9 @@ TEST_CASE("arms that collapse together are reported where they are instantiated"
     REQUIRE_EQ(errors.size(), 1);
     CHECK(errors.front().message.contains("match arm is unreachable"));
     REQUIRE_EQ(errors.front().notes.size(), 1);
-    CHECK_EQ(errors.front().notes.front(), "in 'Pair' instantiated with T = int32, U = int32");
+    // The note names the instantiation and the call that made it.
+    CHECK(errors.front().notes.front().starts_with("in 'Pair' instantiated with T = int32, U = int32 by the call at "));
+    CHECK(errors.front().notes.front().ends_with(":10:24"));
 
     // An annotation that is no member of the written subject can become one after substitution, and the reverse.
     CHECK(Errors(R"(

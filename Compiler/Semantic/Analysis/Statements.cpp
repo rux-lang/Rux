@@ -88,6 +88,14 @@ bool CasePatternCoversCase(const EnumPattern &pattern, const EnumDecl::Variant &
 
 void AnalysisContext::EmitError(const SourceLocation location, std::string message, std::vector<std::string> notes,
                                 std::optional<std::string> help) const {
+    // An error found while re-checking an instantiated generic body is about that instantiation, which the body's
+    // own location does not show.
+    if (activeInstantiation) {
+        std::string note = InstantiationNote(*activeInstantiation->decl, activeInstantiation->substitutions);
+        if (std::ranges::find(notes, note) == notes.end()) {
+            notes.push_back(std::move(note));
+        }
+    }
     diags.push_back({SemanticDiagnostic::Severity::Error,
                      currentFile,
                      location,

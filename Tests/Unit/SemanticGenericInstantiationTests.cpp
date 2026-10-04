@@ -249,3 +249,24 @@ TEST_CASE("nested contextual ternaries accept wide unsigned and signed literal b
     )");
     CHECK(diagnostics.empty());
 }
+
+TEST_CASE("an error in an instantiated generic body names the call that instantiated it") {
+    const auto diagnostics = AnalyzeSource(R"(
+struct P { value: int32; }
+func Larger<T>(first: T, second: T) -> T {
+    if first > second { return first; }
+    return second;
+}
+func Main() -> int {
+    let a = P { value: 1i32 };
+    let b = P { value: 2i32 };
+    let c = Larger(a, b);
+    return 0;
+}
+)");
+    REQUIRE_EQ(diagnostics.size(), 1);
+    CHECK_EQ(diagnostics[0].message, "operator '>' is not defined for 'P'");
+    CHECK(std::ranges::find(diagnostics[0].notes,
+                            "in 'Larger' instantiated with T = P by the call at 'instantiation.rux':10:13") !=
+          diagnostics[0].notes.end());
+}

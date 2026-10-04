@@ -211,7 +211,9 @@ func Main() -> int {
 - **Expected:** an ambiguous-call error, or a documented preference for the exact-arity overload.
 - **Actual:** prints `3`. Swapping the two declarations prints `2`.
 
-## D13. An error inside a generic body does not name the instantiating call
+## D13. An error inside a generic body does not name the instantiating call (fixed)
+
+**Fixed**; covered by `SemanticGenericInstantiationTests.cpp` and `NativePatternSemanticsTests.cpp`.
 
 - **Reproducer:** a `func Larger<T>(first: T, second: T) -> T` whose body uses `>`, called with a
   struct that defines no `>`.

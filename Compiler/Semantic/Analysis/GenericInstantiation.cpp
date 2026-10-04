@@ -22,7 +22,12 @@ namespace Rux::SemanticDetail {
 using Layout::AlignUp;
 
 void AnalysisContext::QueueGenericInstantiation(const FuncDecl &decl,
-                                                const std::unordered_map<std::string, TypeRef> &substitutions) {
+                                                const std::unordered_map<std::string, TypeRef> &substitutions,
+                                                const std::optional<SourceLocation> site) {
+    std::optional<InstantiationSite> recordedSite;
+    if (site) {
+        recordedSite = InstantiationSite{currentFile, *site};
+    }
     if (substitutions.empty()) {
         return;
     }
@@ -39,11 +44,30 @@ void AnalysisContext::QueueGenericInstantiation(const FuncDecl &decl,
     });
     if (!isConcrete) {
         if (currentFunctionDecl) {
-            deferredGenericCalls[currentFunctionDecl].push_back({&decl, substitutions});
+            deferredGenericCalls[currentFunctionDecl].push_back({&decl, substitutions, recordedSite});
         }
         return;
     }
-    pendingGenericInstantiations.push_back({&decl, substitutions});
+    pendingGenericInstantiations.push_back({&decl, substitutions, recordedSite});
+}
+
+std::string AnalysisContext::InstantiationNote(const FuncDecl &declaration,
+                                               const std::unordered_map<std::string, TypeRef> &substitutions) const {
+    std::vector<std::string> names;
+    for (const auto &[name, type] : substitutions) {
+        names.push_back(std::format("{} = {}", name, type.ToString()));
+    }
+    std::ranges::sort(names);
+    std::string arguments;
+    for (const std::string &name : names) {
+        arguments += (arguments.empty() ? "" : ", ") + name;
+    }
+    std::string note = std::format("in '{}' instantiated with {}", declaration.name, arguments);
+    if (activeInstantiation && activeInstantiation->decl == &declaration && activeInstantiation->site) {
+        const InstantiationSite &site = *activeInstantiation->site;
+        note += std::format(" by the call at '{}':{}:{}", site.file, site.location.line, site.location.column);
+    }
+    return note;
 }
 
 void AnalysisContext::QueueDropMethodInstantiations() {
@@ -154,15 +178,19 @@ void AnalysisContext::ValidatePendingGenericInstantiations() {
             }
         }
 
+        const PendingGenericInstantiation *savedInstantiation = std::exchange(activeInstantiation, &instantiation);
         ValidateDeferredBasicExpressionChecks(*instantiation.decl, instantiation.substitutions);
         ValidateDeferredPatternChecks(*instantiation.decl, instantiation.substitutions);
+        activeInstantiation = savedInstantiation;
         if (const auto it = deferredGenericCalls.find(instantiation.decl); it != deferredGenericCalls.end()) {
             for (const DeferredGenericCall &call : it->second) {
                 std::unordered_map<std::string, TypeRef> substitutions;
                 for (const auto &[param, type] : call.substitutions) {
                     substitutions.emplace(param, SubstituteTypeParameters(type, instantiation.substitutions));
                 }
-                QueueGenericInstantiation(*call.callee, substitutions);
+                QueueGenericInstantiation(*call.callee, substitutions,
+                                          call.site ? std::optional<SourceLocation>(call.site->location)
+                                                    : std::nullopt);
             }
         }
 

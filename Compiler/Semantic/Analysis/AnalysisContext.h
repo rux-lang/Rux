@@ -781,8 +781,14 @@ private:
     [[nodiscard]] const FuncDecl *LookupFunctionOverload(const Symbol &symbol,
                                                          const std::vector<TypeRef> &argumentTypes,
                                                          const std::vector<TypeExprPtr> &typeArguments);
+    /// Queue a body to re-check with concrete type arguments. `site` is the call that supplies them, which an error
+    /// found in the instantiated body names.
     void QueueGenericInstantiation(const FuncDecl &declaration,
-                                   const std::unordered_map<std::string, TypeRef> &substitutions);
+                                   const std::unordered_map<std::string, TypeRef> &substitutions,
+                                   std::optional<SourceLocation> site = std::nullopt);
+    /// The note an error inside an instantiated generic body carries: the instantiation and the call that caused it.
+    [[nodiscard]] std::string InstantiationNote(const FuncDecl &declaration,
+                                                const std::unordered_map<std::string, TypeRef> &substitutions) const;
     [[nodiscard]] const FuncDecl *LookupMethod(const TypeRef &receiverType, const std::string &methodName,
                                                const std::vector<TypeRef> &argumentTypes = {},
                                                bool requireAccessible = true);
@@ -892,15 +898,26 @@ private:
     /// which takes none.
     [[nodiscard]] std::optional<TypeRef> ResolveMethodReceiverType(const TypeRef &receiverType, const FuncDecl &method);
 
+    /// Where a call supplied a generic function's type arguments.
+    struct InstantiationSite {
+        std::string file;
+        SourceLocation location;
+    };
+
     struct DeferredGenericCall {
         const FuncDecl *callee;
         std::unordered_map<std::string, TypeRef> substitutions;
+        std::optional<InstantiationSite> site;
     };
 
     struct PendingGenericInstantiation {
         const FuncDecl *decl;
         std::unordered_map<std::string, TypeRef> substitutions;
+        std::optional<InstantiationSite> site;
     };
+
+    /// The instantiation whose body is being re-checked, so errors found there can say what caused it.
+    const PendingGenericInstantiation *activeInstantiation = nullptr;
 
     /// An enum a generic body composes out of its own parameters -- `Option<V>` written inside a container -- noted
     /// against the function that writes it, so it can be composed again where the parameters are finally types.
