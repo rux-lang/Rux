@@ -35,8 +35,11 @@ func Main() -> int {
     }
     Assert(single == 1, "a one-value range at the maximum runs once");
 
+    // The bounds are runtime values: a constant range whose start is past its end is rejected while compiling.
+    let high: int64 = 5;
+    let low: int64 = 4;
     var skipped = 0;
-    for v in 5i64..=4i64 {
+    for v in high..=low {
         skipped += 1;
         if v > 100i64 || skipped > 2 { break; }
     }
