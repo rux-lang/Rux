@@ -996,3 +996,73 @@ decided.
 - **Expected:** a compile error, because Core documents the argument as a string literal resolved while compiling.
 - **Actual:** check and build pass, and the program exits 127 before `Main` runs.
 - **Found by:** re-enabling `Tests/Packages/Core/Config`, which now passes literals only.
+
+# Follow-ups found while fixing
+
+Open items found while fixing the entries above. Each reproducer was checked against `dev` at the commit that records it.
+
+## D56. A struct cannot be destructured in `let`
+
+```rux
+struct Point { x: int32; y: int32; }
+
+func Main() -> int {
+    let p = Point { x: 1i32, y: 2i32 };
+    let Point { x: a, y: b } <- p;
+    return 0;
+}
+```
+
+- **Expected:** `a` and `b` bind the fields, the way a struct pattern binds them in a `match` arm.
+- **Actual:** `unsupported pattern in let binding`.
+- **Notes:** a moving `match` can now split a struct that declares no `~T` (D36), so `let` is the remaining gap. A struct with move-only fields still has no direct way to hand out one field.
+
+## D57. A whole struct cannot be written through `&var T`
+
+```rux
+struct Pair { a: int32; b: int32; }
+
+func Replace(p: &var Pair) {
+    p = Pair { a: 3i32, b: 4i32 };
+}
+```
+
+- **Expected:** the assignment replaces the caller's value, as a scalar written through `&var T` now does (D15), destroying the old value first if `Pair` is droppable.
+- **Actual:** `cannot modify immutable variable 'p'` with the help `declare 'p' with 'var' to make it mutable`, which is wrong for a parameter, followed by `cannot assign 'Pair' to '&var Pair'`.
+- **Workaround:** assign the fields one by one, `p.a = 3i32; p.b = 4i32;`.
+
+## D58. `let _ <- value;` keeps the value until the end of the scope
+
+```rux
+let tag = Tag { id: 1 };
+let _ <- tag;
+PrintLine("after discard");
+```
+
+- **Expected:** `_` discards, so `~Tag` runs at the statement, before `after discard`, as it does for a `_` part of a destructure (D36).
+- **Actual:** `after discard`, then `drop 1`: `_` is an ordinary binding named `_`, destroyed at the end of the scope.
+
+## D59. Matching a copyable, droppable value by value never destroys one copy
+
+```rux
+struct Counted { id: int; }
+
+extend Counted {
+    func =(self: &var Counted, other: &Counted) { self.id = other.id; PrintLine("copy {}", other.id); }
+    func ~Counted(self: &var Counted) { PrintLine("drop {}", self.id); }
+}
+
+func Main() -> int {
+    let value = Counted { id: 7 };
+    let tuple = (value, 1);
+    match tuple {
+        (c, n) => PrintLine("matched {} {}", c.id, n)
+    }
+    PrintLine("end");
+    return 0;
+}
+```
+
+- **Expected:** one `drop 7` for every live value: the original and each copy made of it.
+- **Actual:** `copy 7` twice and `drop 7` twice, so one copy is never destroyed.
+- **Notes:** found while reading the pattern lowering for D18; the variant path appears to share the cause. A subject written with `<-` is destroyed correctly.
