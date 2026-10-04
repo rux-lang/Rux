@@ -223,7 +223,7 @@ func Main() -> int {
     index = 0;
     while index < 16u {
         probe = Uuid::Nil();
-        probe.bytes[index] = 0x9Cu8 as char8;
+        probe.bytes[index] = 0x9C;
         Assert(Succeeded(Format(probe, (@text[0])[..36])), "every byte position writes");
         Assert(Accepts((@text[0])[..36]) && Parsed((@text[0])[..36]).Equals(probe),
                "every byte position survives the text round trip");

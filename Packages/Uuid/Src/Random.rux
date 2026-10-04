@@ -22,12 +22,12 @@ import Entropy::{ EntropyError, Fill };
 /// @returns a version 4 value drawn from the system's generator, or why entropy was unavailable
 /// @see https://rux-lang.dev/docs/api/uuid/random
 pub func Random() -> Uuid ! EntropyError {
-    var bytes: char8[16];
+    var bytes: byte[16];
     Fill(@bytes[0] as *var opaque, 16u)?;
     var value = Uuid::FromBytes((@bytes[0])[..16]);
     // Version 4 in the high nibble of byte six, and the standard variant in the top bits of byte eight.
-    value.bytes[6] = (((value.bytes[6] as uint8) & 0x0Fu8) | 0x40u8) as char8;
-    value.bytes[8] = (((value.bytes[8] as uint8) & 0x3Fu8) | 0x80u8) as char8;
+    value.bytes[6] = (value.bytes[6] & 0x0Fu8) | 0x40u8;
+    value.bytes[8] = (value.bytes[8] & 0x3Fu8) | 0x80u8;
     return value;
 }
 
@@ -40,10 +40,10 @@ pub func Random() -> Uuid ! EntropyError {
 /// @param bytes sixteen bytes to take as the value, in big-endian order
 /// @returns those bytes with the version and variant fields set for version 4
 /// @see https://rux-lang.dev/docs/api/uuid/random-from-bytes
-pub func RandomFromBytes(bytes: char8[..]) -> Uuid {
+pub func RandomFromBytes(bytes: byte[..]) -> Uuid {
     var value = Uuid::FromBytes(bytes);
-    value.bytes[6] = (((value.bytes[6] as uint8) & 0x0Fu8) | 0x40u8) as char8;
-    value.bytes[8] = (((value.bytes[8] as uint8) & 0x3Fu8) | 0x80u8) as char8;
+    value.bytes[6] = (value.bytes[6] & 0x0Fu8) | 0x40u8;
+    value.bytes[8] = (value.bytes[8] & 0x3Fu8) | 0x80u8;
     return value;
 }
 

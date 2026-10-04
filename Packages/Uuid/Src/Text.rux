@@ -155,7 +155,7 @@ pub func Parse(text: char8[..]) -> Uuid ! UuidParseError {
                 fail UuidParseError::NotHexadecimal(at);
             }
             if haveHigh {
-                value.bytes[byteIndex] = ((pending << 4u8) | digit) as char8;
+                value.bytes[byteIndex] = (pending << 4u8) | digit;
                 byteIndex = byteIndex + 1u;
                 haveHigh = false;
             }
@@ -196,7 +196,7 @@ func WriteCanonicalInto(value: &Uuid, into: var char8[..]) {
             into.data[position] = 0x2Du8 as char8;
         }
         else {
-            let octet = value.bytes[byteIndex / 2u] as uint8;
+            let octet = value.bytes[byteIndex / 2u];
             let nibble = (byteIndex % 2u) == 0u ? (octet >> 4u8) : (octet & 0x0Fu8);
             into.data[position] = digits.data[nibble as uint];
             byteIndex = byteIndex + 1u;

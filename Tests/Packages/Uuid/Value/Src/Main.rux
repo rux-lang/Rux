@@ -14,10 +14,10 @@ func Main() -> int {
     Assert(nil.Compare(max) == Ordering::Less, "and nil sorts below max");
 
     // Round-tripping bytes.
-    var raw: char8[16];
+    var raw: byte[16];
     var index: uint = 0;
     while index < 16u {
-        raw[index] = ((index * 17u) as uint8) as char8;
+        raw[index] = (index * 17u) as byte;
         index = index + 1;
     }
     let rawBytes = (@raw[0])[..16];
@@ -31,7 +31,7 @@ func Main() -> int {
     Assert(!value.IsNil() && !value.IsMax(), "and an ordinary value is neither sentinel");
 
     var copied = value;
-    copied.bytes[0] = 0xFFu8 as char8;
+    copied.bytes[0] = 0xFF;
     Assert(value.bytes[0] == raw[0] && copied.bytes[0] != value.bytes[0],
            "copying a UUID produces an independent value");
 
@@ -40,16 +40,16 @@ func Main() -> int {
     var partial = Uuid::FromBytes(shortBytes);
     let partialBytes = partial.Bytes();
     Assert(partialBytes.data[3] == raw[3], "the bytes given are kept");
-    Assert((partialBytes.data[4] as uint8) == 0u8, "and the rest are zero");
+    Assert(partialBytes.data[4] == 0u8, "and the rest are zero");
 
     // Ordering follows the bytes, most significant first — which is what makes a time-ordered UUID sort by
     // time. A comparison that started anywhere else would pass an equality test and fail this.
     var lower = Uuid::Nil();
     var higher = Uuid::Nil();
-    higher.bytes[0] = 1u8 as char8;
+    higher.bytes[0] = 1;
     Assert(lower.Compare(higher) == Ordering::Less, "a difference in the first byte decides the order");
     var lateDifference = Uuid::Nil();
-    lateDifference.bytes[15] = 1u8 as char8;
+    lateDifference.bytes[15] = 1;
     Assert(lower.Compare(lateDifference) == Ordering::Less, "as does one in the last");
     Assert(higher.Compare(lateDifference) == Ordering::Greater,
            "and the earlier byte outweighs the later one, which is what byte order means");
@@ -59,7 +59,7 @@ func Main() -> int {
     index = 0;
     while index < 16u {
         var stepped = Uuid::Nil();
-        stepped.bytes[index] = 1u8 as char8;
+        stepped.bytes[index] = 1;
         Assert(stepped.Compare(nil) == Ordering::Greater, "every byte position participates in the ordering");
         Assert(!stepped.Equals(nil), "and in equality");
         index = index + 1;
@@ -70,7 +70,7 @@ func Main() -> int {
     index = 0;
     while index < 16u {
         var stepped = Uuid::Nil();
-        stepped.bytes[index] = 0xABu8 as char8;
+        stepped.bytes[index] = 0xAB;
         hashes[index] = stepped.Hash();
         index = index + 1;
     }
@@ -87,22 +87,22 @@ func Main() -> int {
 
     // Version and variant, read from the two bytes that carry them.
     var structured = Uuid::Nil();
-    structured.bytes[6] = 0x4Fu8 as char8;
-    structured.bytes[8] = 0xA0u8 as char8;
+    structured.bytes[6] = 0x4F;
+    structured.bytes[8] = 0xA0;
     Assert(structured.Version() == 4u8, "the version comes from the high nibble of the seventh byte");
     Assert(structured.Variant() == UuidVariant::Standard, "and the variant from the high bits of the ninth");
 
-    structured.bytes[6] = 0x7Cu8 as char8;
+    structured.bytes[6] = 0x7C;
     Assert(structured.Version() == 7u8, "a version 7 UUID reports seven");
 
     // The variant encoding is variable-length, so each of its four cases has its own bit pattern.
-    structured.bytes[8] = 0x00u8 as char8;
+    structured.bytes[8] = 0x00;
     Assert(structured.Variant() == UuidVariant::NetworkComputingSystem, "a leading zero is the oldest layout");
-    structured.bytes[8] = 0xBFu8 as char8;
+    structured.bytes[8] = 0xBF;
     Assert(structured.Variant() == UuidVariant::Standard, "ten is the standard one, across its whole range");
-    structured.bytes[8] = 0xC0u8 as char8;
+    structured.bytes[8] = 0xC0;
     Assert(structured.Variant() == UuidVariant::Microsoft, "one-one-zero is Microsoft's");
-    structured.bytes[8] = 0xE0u8 as char8;
+    structured.bytes[8] = 0xE0;
     Assert(structured.Variant() == UuidVariant::Future, "and one-one-one is reserved");
 
     // The nil UUID's variant is the oldest layout rather than the standard one, which surprises people and is
