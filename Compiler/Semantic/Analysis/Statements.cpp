@@ -435,12 +435,8 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
         }
 
         const TrackedFlow loopEntry = SaveTrackedFlow();
-        BeginTrackedLoop(whileStatement->label);
-        ++loopDepth;
-        CheckBlock(*whileStatement->body);
-        --loopDepth;
+        TrackedLoop loop = CheckTrackedLoopBody(*whileStatement->body, whileStatement->label);
         const TrackedFlow bodyExit = SaveTrackedFlow();
-        TrackedLoop loop = EndTrackedLoop();
         const auto *literal = dynamic_cast<const LiteralExpr *>(whileStatement->condition.get());
         const bool alwaysTrue =
             literal && literal->token.kind == TokenKind::BoolLiteral && literal->token.text == "true";
@@ -465,12 +461,8 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
         }
 
         const TrackedFlow loopEntry = SaveTrackedFlow();
-        BeginTrackedLoop(doWhileStatement->label);
-        ++loopDepth;
-        CheckBlock(*doWhileStatement->body);
-        --loopDepth;
+        TrackedLoop loop = CheckTrackedLoopBody(*doWhileStatement->body, doWhileStatement->label);
         const TrackedFlow bodyExit = SaveTrackedFlow();
-        TrackedLoop loop = EndTrackedLoop();
         std::vector<TrackedFlow> iterationExits = loop.continues;
         iterationExits.push_back(bodyExit);
         MergeTrackedFlows(iterationExits);
@@ -507,11 +499,7 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
         if (!loopStatement->label.empty()) {
             EnterLoopLabel(loopStatement->label, loopStatement->location);
         }
-        BeginTrackedLoop(loopStatement->label);
-        ++loopDepth;
-        CheckBlock(*loopStatement->body);
-        --loopDepth;
-        TrackedLoop loop = EndTrackedLoop();
+        TrackedLoop loop = CheckTrackedLoopBody(*loopStatement->body, loopStatement->label);
         MergeTrackedFlows(loop.breaks);
         if (!loopStatement->label.empty()) {
             ExitLoopLabel(loopStatement->label);
@@ -538,6 +526,7 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
                                         outerVariable->isMut && !elementType.IsUnknown() &&
                                         outerVariable->type == elementType;
         PushScope();
+        const Symbol *loopVariable = reuseOuterVariable ? outerVariable : nullptr;
         if (!reuseOuterVariable) {
             Symbol variable;
             variable.kind = Symbol::Kind::Var;
@@ -545,16 +534,12 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
             variable.location = forStatement->location;
             variable.type = elementType;
             variable.isMut = false;
-            DefineTrackedLocal(std::move(variable), true);
+            loopVariable = DefineTrackedLocal(std::move(variable), true);
         }
         if (!forStatement->label.empty()) {
             EnterLoopLabel(forStatement->label, forStatement->location);
         }
-        BeginTrackedLoop(forStatement->label);
-        ++loopDepth;
-        CheckBlock(*forStatement->body);
-        --loopDepth;
-        TrackedLoop loop = EndTrackedLoop();
+        TrackedLoop loop = CheckTrackedLoopBody(*forStatement->body, forStatement->label, loopVariable);
         if (!forStatement->label.empty()) {
             ExitLoopLabel(forStatement->label);
         }

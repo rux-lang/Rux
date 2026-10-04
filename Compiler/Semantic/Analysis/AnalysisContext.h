@@ -280,6 +280,12 @@ private:
 
     void BeginTrackedLoop(std::string_view label);
     [[nodiscard]] TrackedLoop EndTrackedLoop();
+    /// Checks a loop body and returns its loop record, leaving the flow at the end of the body. A pass that leaves an
+    /// outer local less available than it entered sends that state round the back edge, so the body is checked again
+    /// from the merged state and a use only a later pass reaches is reported. `rebound` is a `for` variable, which
+    /// every pass binds afresh.
+    [[nodiscard]] TrackedLoop CheckTrackedLoopBody(const Block &body, std::string_view label,
+                                                   const Symbol *rebound = nullptr);
     void RecordTrackedLoopExit(std::string_view label, bool isContinue);
     [[nodiscard]] TypeRef CheckShortCircuitExpression(const BinaryExpr &expression);
     [[nodiscard]] TypeRef CheckTernaryExpression(const TernaryExpr &expression);
@@ -601,6 +607,8 @@ private:
     bool currentFunctionNoReturn = false;
     int loopDepth = 0;
     std::unordered_multiset<std::string> activeLabels;
+    /// For each loop being checked, innermost last, the expressions its body has recorded types for.
+    std::vector<std::vector<const Expr *>> loopCheckedExpressions;
     /// The parameters of the function whose default value is being checked, none of which a default may read.
     std::unordered_set<std::string> defaultValueParameters;
     bool inImpl = false;

@@ -1144,7 +1144,9 @@ func Main() -> int {
 - **Actual:** `end`, then only `drop 2`. The values written into `empty.t` and `moved.t` are never destroyed.
 - **Notes:** found while fixing D60. Semantic analysis treats the whole local as initialized after a write to one of its parts, but lowering never sets the local's drop flag, so nothing destroys it. Writing into a `var` with no value, or into a moved-from local, should either be rejected or have its parts tracked. Resolved by rejecting it: writing a part of a local that is not definitely initialized, or taking its writable address, is an error when the local's type needs destruction (`cannot write field 't' of 'empty', which holds no value`); a type with nothing to destroy keeps being initialized part by part. A fixed array with droppable elements declared without a value had the same leak — Semantic tracked every fixed array as initialized from its declaration so fill loops would pass — and is now tracked like any other local declared without a value.
 
-## D63. A move inside a loop body is not seen by the loop's next pass
+## D63. A move inside a loop body is not seen by the loop's next pass (fixed)
+
+**Fixed**; covered by the `LoopMoves` golden.
 
 ```rux
 struct Tracked { id: int; }

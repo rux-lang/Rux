@@ -1,0 +1,8 @@
+19:18: error: value 'held' may have been moved on some control-flow paths
+20:16: error: value 'held' may have been moved on some control-flow paths
+27:16: error: value 'held' may have been moved on some control-flow paths
+34:16: error: value 'held' may have been moved on some control-flow paths
+41:16: error: value 'held' may have been moved on some control-flow paths
+49:20: error: value 'held' may have been moved on some control-flow paths
+52:18: error: value 'held' may have been moved on some control-flow paths
+59:25: error: value 'next' may have been moved on some control-flow paths

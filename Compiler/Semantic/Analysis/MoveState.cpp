@@ -200,6 +200,84 @@ AnalysisContext::TrackedLoop AnalysisContext::EndTrackedLoop() {
     return loop;
 }
 
+AnalysisContext::TrackedLoop AnalysisContext::CheckTrackedLoopBody(const Block &body, const std::string_view label,
+                                                                   const Symbol *rebound) {
+    const TrackedFlow entry = SaveTrackedFlow();
+    // The expressions a pass records, so a second pass can check them afresh rather than reuse their recorded types.
+    loopCheckedExpressions.emplace_back();
+    const auto checkPass = [&]() {
+        BeginTrackedLoop(label);
+        ++loopDepth;
+        CheckBlock(body);
+        --loopDepth;
+        return EndTrackedLoop();
+    };
+    TrackedLoop loop = checkPass();
+    std::vector<const Expr *> checked = std::move(loopCheckedExpressions.back());
+    loopCheckedExpressions.pop_back();
+    // An enclosing loop's second pass has to forget these too.
+    if (!loopCheckedExpressions.empty()) {
+        loopCheckedExpressions.back().insert(loopCheckedExpressions.back().end(), checked.begin(), checked.end());
+    }
+    if (!entry.reachable) {
+        return loop;
+    }
+
+    // The next pass starts from the end of this one, or from any `continue`, as well as from the loop's entry.
+    std::vector<MoveStateTracker::Snapshot> heads = {entry.states};
+    if (trackedFlowReachable) {
+        heads.push_back(MoveStateTracker::Project(moveStates.Save(), loop.shape));
+    }
+    for (const TrackedFlow &next : loop.continues) {
+        if (next.reachable) {
+            heads.push_back(next.states);
+        }
+    }
+    MoveStateTracker::Snapshot head = MoveStateTracker::Merge(heads);
+    if (rebound) {
+        const auto identity = MoveStateTracker::Local(rebound);
+        const auto atHead = std::ranges::find(head.entries, identity, &MoveStateTracker::SnapshotEntry::identity);
+        const auto atEntry =
+            std::ranges::find(entry.states.entries, identity, &MoveStateTracker::SnapshotEntry::identity);
+        if (atHead != head.entries.end() && atEntry != entry.states.entries.end()) {
+            atHead->record = atEntry->record;
+        }
+    }
+    const bool worsened = std::ranges::any_of(entry.states.entries, [&](const MoveStateTracker::SnapshotEntry &before) {
+        const auto after = std::ranges::find(head.entries, before.identity, &MoveStateTracker::SnapshotEntry::identity);
+        // Only a local the loop entered with a value and a later pass may find without one is new: anything already
+        // unavailable on entry was reported by the first pass.
+        return before.record.state == MoveStateTracker::State::Initialized && after != head.entries.end() &&
+               after->record.state != MoveStateTracker::State::Initialized;
+    });
+    if (!worsened) {
+        return loop;
+    }
+
+    // A local only an earlier pass moved is used again by this one. The first check already reported everything else
+    // in the body, so only what the merged state adds is kept.
+    const std::size_t before = diags.size();
+    TrackedFlow merged = entry;
+    merged.states = head;
+    RestoreTrackedFlow(merged);
+    for (const Expr *expression : checked) {
+        expressionTypes.erase(expression);
+    }
+    TrackedLoop second = checkPass();
+    const auto repeated = [&](const SemanticDiagnostic &diagnostic) {
+        return std::ranges::any_of(
+            diags.begin(), diags.begin() + static_cast<std::ptrdiff_t>(before), [&](const SemanticDiagnostic &earlier) {
+                return earlier.sourceName == diagnostic.sourceName &&
+                       earlier.location.line == diagnostic.location.line &&
+                       earlier.location.column == diagnostic.location.column && earlier.message == diagnostic.message;
+            });
+    };
+    const auto removed =
+        std::ranges::remove_if(diags.begin() + static_cast<std::ptrdiff_t>(before), diags.end(), repeated);
+    diags.erase(removed.begin(), removed.end());
+    return second;
+}
+
 void AnalysisContext::RecordTrackedLoopExit(const std::string_view label, const bool isContinue) {
     auto target = trackedLoops.rbegin();
     if (!label.empty()) {
@@ -501,6 +579,9 @@ void AnalysisContext::RecordCheckedExpression(const Expr &expression, const Type
         return;
     }
     expressionTypes.insert_or_assign(&expression, type);
+    if (!loopCheckedExpressions.empty()) {
+        loopCheckedExpressions.back().push_back(&expression);
+    }
     if (!dynamic_cast<const IdentExpr *>(&expression)) {
         moveStates.Declare(MoveStateTracker::Temporary(&expression), MoveStateTracker::State::Initialized,
                            expression.location);
