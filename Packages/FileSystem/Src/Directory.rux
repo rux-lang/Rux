@@ -17,17 +17,8 @@ when #target.os {
                               RemoveDirectory, UnlinkAt },
     .macOS => import macOS::{ AtFdCwd, Close, Getdirentries64, MkdirAt, OpenAt, OpenDirectory, OpenReadOnly,
                               RemoveDirectory, UnlinkAt },
-    .Windows => import Windows::{
-        CreateDirectoryW,
-        DeleteFileW,
-        ERROR_NO_MORE_FILES,
-        FindClose,
-        FindFirstFileW,
-        FindNextFileW,
-        GetLastError,
-        InvalidHandleValue,
-        RemoveDirectoryW
-    }
+    .Windows => import Windows::{ CreateDirectoryW, DeleteFileW, ERROR_NO_MORE_FILES, FindClose, FindFirstFileW,
+                                  FindNextFileW, GetLastError, InvalidHandleValue, RemoveDirectoryW }
 }
 
 /// Creates the directory `path` names. Its parent must already exist; `AlreadyExists` if the name is taken.

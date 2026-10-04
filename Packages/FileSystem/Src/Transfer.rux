@@ -15,16 +15,9 @@ when #target.os {
     .FreeBSD => import FreeBSD::{ AtFdCwd, LinkAt, RenameAt, SymlinkAt },
     .Linux => import Linux::{ AtFdCwd, LinkAt, RenameAt, SymlinkAt },
     .macOS => import macOS::{ AtFdCwd, LinkAt, RenameAt, SymlinkAt },
-    .Windows => import Windows::{
-        CopyFileW,
-        CreateHardLinkW,
-        CreateSymbolicLinkW,
-        GetLastError,
-        MOVEFILE_REPLACE_EXISTING,
-        MoveFileExW,
-        SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE,
-        SYMBOLIC_LINK_FLAG_DIRECTORY
-    }
+    .Windows => import Windows::{ CopyFileW, CreateHardLinkW, CreateSymbolicLinkW, GetLastError,
+                                  MOVEFILE_REPLACE_EXISTING, MoveFileExW, SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE,
+                                  SYMBOLIC_LINK_FLAG_DIRECTORY }
 }
 
 /// Renames `from` to `to`, moving it between directories if the paths differ there.

@@ -16,15 +16,8 @@ when #target.os {
     .FreeBSD => import FreeBSD::{ Fsync, Ftruncate, Lseek, Read, SeekCurrent, SeekEnd, SeekSet, Write },
     .Linux => import Linux::{ Fsync, Ftruncate, Lseek, Read, SeekCurrent, SeekEnd, SeekSet, Write },
     .macOS => import macOS::{ Fsync, Ftruncate, Lseek, Read, SeekCurrent, SeekEnd, SeekSet, Write },
-    .Windows => import Windows::{
-        FlushFileBuffers,
-        GetFileSizeEx,
-        GetLastError,
-        ReadFile,
-        SetEndOfFile,
-        SetFilePointerEx,
-        WriteFile
-    }
+    .Windows => import Windows::{ FlushFileBuffers, GetFileSizeEx, GetLastError, ReadFile, SetEndOfFile,
+                                  SetFilePointerEx, WriteFile }
 }
 
 // The one closed-handle answer, so every operation refuses the same way.

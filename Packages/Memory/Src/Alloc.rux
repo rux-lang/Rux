@@ -12,18 +12,10 @@
 import Core::{ #target, #Error };
 
 when #target.os {
-    .FreeBSD => import FreeBSD::{
-        IsError, Mmap, MapAnonymous, MapPrivate, ProtectionRead, ProtectionWrite
-    },
-    .Linux => import Linux::{
-        IsError, Mmap, MapAnonymous, MapPrivate, ProtectionRead, ProtectionWrite
-    },
-    .macOS => import macOS::{
-        IsError, Mmap, MapAnonymous, MapPrivate, ProtectionRead, ProtectionWrite
-    },
-    .Windows => import Windows::{
-        GetProcessHeap, HeapAlloc
-    }
+    .FreeBSD => import FreeBSD::{ IsError, MapAnonymous, MapPrivate, Mmap, ProtectionRead, ProtectionWrite },
+    .Linux => import Linux::{ IsError, MapAnonymous, MapPrivate, Mmap, ProtectionRead, ProtectionWrite },
+    .macOS => import macOS::{ IsError, MapAnonymous, MapPrivate, Mmap, ProtectionRead, ProtectionWrite },
+    .Windows => import Windows::{ GetProcessHeap, HeapAlloc }
 }
 
 /// Allocates `size` uninitialized bytes.

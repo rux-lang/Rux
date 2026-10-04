@@ -30,6 +30,27 @@ Three tools run before this checker and own rules it does not repeat.
 - Files use LF line endings.
 - Generated files keep their generated-data notice and provenance. When header output changes, change the generator that produces it; never hand-edit a generated file and never reflow its data tables.
 
+## Imports
+
+A multi-name import list is laid out by one mechanical rule, so that any two authors produce the same text:
+
+1. Names are in ASCII order: upper case before lower case, and a `#` name such as `#target` before both.
+2. The list stays on one line when the whole line fits in 120 columns.
+3. Otherwise each line takes as many names as fit in 120 columns, breaking only after a comma, and every continuation line starts in the column just after `{ `.
+4. The closing ` }` follows the last name on its line, never on a line of its own.
+5. Break points are not chosen by hand; the rule decides them.
+
+```rux
+when #target.os {
+    .Linux => import Linux::{ AtFdCwd, Close, Getdents64, MkdirAt, OpenAt, OpenDirectory, OpenReadOnly,
+                              RemoveDirectory, UnlinkAt },
+    .Windows => import Windows::{ CreateDirectoryW, DeleteFileW, ERROR_NO_MORE_FILES, FindClose, FindFirstFileW,
+                                  FindNextFileW, GetLastError, InvalidHandleValue, RemoveDirectoryW }
+}
+```
+
+The packed form keeps a platform `when` block short enough to compare its arms at a glance. Arms with module names of different lengths can still break at different names, which is the cost of a rule that needs no judgment. `rux fmt` does not reflow import lists yet, and no checker enforces this rule, so it is applied by hand until the formatter owns it.
+
 ## Declaration documentation
 
 Maintained package APIs use `///` throughout.

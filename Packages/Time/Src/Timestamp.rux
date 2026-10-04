@@ -16,13 +16,8 @@ when #target.os {
     .FreeBSD => import FreeBSD::{ ClockGetTime, ClockRealtime, Timespec },
     .Linux => import Linux::{ ClockGetTime, ClockRealtime, Timespec },
     .macOS => import macOS::{ ClockGetTime, ClockRealtime, Timespec },
-    .Windows => import Windows::{
-        FileTime,
-        FileTimeTicks,
-        FileTimeTicksPerSecond,
-        FileTimeToUnixEpochSeconds,
-        GetSystemTimePreciseAsFileTime
-    },
+    .Windows => import Windows::{ FileTime, FileTimeTicks, FileTimeTicksPerSecond, FileTimeToUnixEpochSeconds,
+                                  GetSystemTimePreciseAsFileTime },
     else => #Error("Unsupported operating system")
 }
 

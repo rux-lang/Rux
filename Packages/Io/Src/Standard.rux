@@ -14,21 +14,9 @@ when #target.os {
     .FreeBSD => import FreeBSD::{ Read, StdErr, StdIn, StdOut, Write },
     .Linux => import Linux::{ Read, StdErr, StdIn, StdOut, Write },
     .macOS => import macOS::{ Read, StdErr, StdIn, StdOut, Write },
-    .Windows => import Windows::{
-        CodePage,
-        GetConsoleMode,
-        GetLastError,
-        GetStdHandle,
-        MultiByteToWideChar,
-        ReadConsoleW,
-        ReadFile,
-        StdErrorHandle,
-        StdInputHandle,
-        StdOutputHandle,
-        WideCharToMultiByte,
-        WriteConsoleW,
-        WriteFile
-    }
+    .Windows => import Windows::{ CodePage, GetConsoleMode, GetLastError, GetStdHandle, MultiByteToWideChar,
+                                  ReadConsoleW, ReadFile, StdErrorHandle, StdInputHandle, StdOutputHandle,
+                                  WideCharToMultiByte, WriteConsoleW, WriteFile }
 }
 
 when #target.os == .Windows {
