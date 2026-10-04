@@ -102,7 +102,7 @@ pub extern {
     /// @see https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-findclose
     func FindClose(findFile: *opaque) -> bool32;
 
-    /// Searches a directory for a file or subdirectory with a name that matches a specific name (or partial name.
+    /// Searches a directory for a file or subdirectory with a name that matches a specific name (or partial name
     /// if wildcards are used).
     /// @param fileName the path, as a null-terminated string
     /// @param findFileData receives the entry's record
@@ -113,7 +113,7 @@ pub extern {
         findFileData: *Win32FindDataA
     ) -> *opaque;
 
-    /// Continues a file search from a previous call to the FindFirstFile, FindFirstFileEx, or.
+    /// Continues a file search from a previous call to the FindFirstFile, FindFirstFileEx, or
     /// FindFirstFileTransacted functions.
     /// @param findFile a search handle from the matching `FindFirstFile`
     /// @param findFileData receives the entry's record
