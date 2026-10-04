@@ -48,6 +48,13 @@ private:
         LirReg address = LirNoReg;
     };
 
+    /// A binding inside a tuple or structure pattern, set only once every refutable part of the pattern has matched.
+    struct PendingPatternBinding {
+        const HirBindingPattern *pattern = nullptr;
+        LirReg address = LirNoReg;
+        TypeRef type;
+    };
+
     std::unordered_map<std::string, const HirInterface *> interfacesByName;
     const std::unordered_map<std::string, HirTypeLayout> *typeLayouts = nullptr;
     std::unordered_map<std::string, TypeRef> enumTagTypes;
@@ -195,6 +202,18 @@ private:
                            std::vector<std::pair<LirReg, TypeRef>> &residual);
     void EmitResidualDrops(const std::vector<std::pair<LirReg, TypeRef>> &residual);
     LirReg LowerNativeSubsetPattern(const HirNativeSubsetPattern &pattern, LirReg subjectValue, LirReg subjectSlot);
+    /// Whether some arm takes its subject apart with a tuple or structure pattern, which reads the parts in place.
+    [[nodiscard]] static bool ArmsDestructure(const std::vector<HirMatchArm> &arms);
+    /// The value a match over storage at `slot` compares against: the tag of an addressable variant, else the value.
+    [[nodiscard]] LirReg MatchSubjectValue(LirReg slot, const TypeRef &type);
+    /// A tuple or structure pattern: every refutable part is tested first, leaving on the first mismatch, and the
+    /// bindings are set only once all of them matched.
+    LirReg LowerDestructuringPattern(const HirPattern &pattern, LirReg subjectValue, const TypeRef &subjectType,
+                                     LirReg subjectSlot);
+    /// Tests the parts of the tuple or structure at `address`, branching to `mismatch` (created on first use) when
+    /// one fails, and collects the bindings to set afterwards.
+    void EmitDestructuringChecks(const HirPattern &pattern, LirReg address, const TypeRef &type,
+                                 std::optional<std::uint32_t> &mismatch, std::vector<PendingPatternBinding> &bindings);
     LirReg LowerExpr(const HirExpr &expression);
     LirReg LowerExprValue(const HirExpr &expression);
     LirReg LowerPostfix(const HirPostfixExpr &expression);

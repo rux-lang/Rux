@@ -32,9 +32,24 @@ std::string PatternKey(const Pattern &pattern) {
     if (const auto *tuple = dynamic_cast<const TuplePattern *>(&pattern)) {
         std::string key = "tuple:(";
         for (const auto &element : tuple->elements) {
-            key += PatternKey(*element) + ",";
+            const std::string elementKey = PatternKey(*element);
+            if (elementKey.empty()) {
+                return {};
+            }
+            key += elementKey + ",";
         }
         return key + ")";
+    }
+    if (const auto *structure = dynamic_cast<const StructPattern *>(&pattern)) {
+        std::string key = "struct:" + structure->typeName + "{";
+        for (const auto &field : structure->fields) {
+            const std::string fieldKey = PatternKey(*field.pattern);
+            if (fieldKey.empty()) {
+                return {};
+            }
+            key += field.name + ":" + fieldKey + ",";
+        }
+        return key + "}";
     }
     if (const auto *enumerator = dynamic_cast<const EnumPattern *>(&pattern)) {
         std::string key = "enum:";
@@ -65,8 +80,20 @@ std::string PatternKey(const Pattern &pattern) {
 /// Whether the pattern is irrefutable, which makes any arm after it unreachable and completes an exhaustiveness check
 /// whatever the subject type is.
 bool PatternMatchesEveryValue(const Pattern &pattern) {
-    return dynamic_cast<const WildcardPattern *>(&pattern) != nullptr ||
-           dynamic_cast<const IdentPattern *>(&pattern) != nullptr;
+    if (dynamic_cast<const WildcardPattern *>(&pattern) || dynamic_cast<const IdentPattern *>(&pattern)) {
+        return true;
+    }
+    // A tuple or structure pattern takes its subject apart without testing it when every part it names is irrefutable.
+    if (const auto *tuple = dynamic_cast<const TuplePattern *>(&pattern)) {
+        return std::ranges::all_of(tuple->elements,
+                                   [](const PatternPtr &element) { return PatternMatchesEveryValue(*element); });
+    }
+    if (const auto *structure = dynamic_cast<const StructPattern *>(&pattern)) {
+        return std::ranges::all_of(structure->fields, [](const StructPattern::Field &field) {
+            return PatternMatchesEveryValue(*field.pattern);
+        });
+    }
+    return false;
 }
 
 /// Whether a case pattern accounts for one case, including its payload. Exhaustiveness is decided case by case, so an
@@ -923,6 +950,15 @@ void AnalysisContext::CheckPattern(const Pattern &pattern, const TypeRef &subjec
             EmitError(structPattern->location, std::format("struct pattern '{}' cannot match value of type '{}'",
                                                            structPattern->typeName, subjectType.ToString()));
         }
+        // A field of a generic structure has the type its declaration names with the subject's type arguments in place.
+        std::unordered_map<std::string, TypeRef> substitutions;
+        if (declaration != structDecls.end() && subjectType.kind == TypeRef::Kind::Named) {
+            const auto typeArguments = ParseTypeArgsFromTypeName(subjectType.name);
+            const auto &parameters = declaration->second->typeParams;
+            for (std::size_t index = 0; index < std::min(parameters.size(), typeArguments.size()); ++index) {
+                substitutions.emplace(parameters[index].name, typeArguments[index]);
+            }
+        }
         std::unordered_set<std::string> fieldNames;
         for (const auto &field : structPattern->fields) {
             if (!fieldNames.insert(field.name).second) {
@@ -939,7 +975,8 @@ void AnalysisContext::CheckPattern(const Pattern &pattern, const TypeRef &subjec
                               std::format("struct '{}' has no field '{}'", structPattern->typeName, field.name));
                 }
             }
-            CheckPattern(*field.pattern, matchedField ? ResolveType(*matchedField->type) : TypeRef::MakeUnknown());
+            CheckPattern(*field.pattern, matchedField ? ResolveTypeWithSubstitution(*matchedField->type, substitutions)
+                                                      : TypeRef::MakeUnknown());
         }
     }
     else if (const auto *enumPattern = dynamic_cast<const EnumPattern *>(&pattern)) {
@@ -1022,11 +1059,10 @@ void AnalysisContext::CheckPattern(const Pattern &pattern, const TypeRef &subjec
                                           ResolvedCasePattern{resolved->declaration, resolved->selectedCase,
                                                               resolved->form, subjectType, substitutions});
         }
-        // A payload binds like a `let`, but it sits inside a match arm, so a refutable sub-pattern such as a literal
-        // or a range is checked as a match pattern rather than refused as an unsupported binding.
+        // A payload binds like a `let`, but it sits inside a match arm, so a refutable sub-pattern such as a literal,
+        // a range or a tuple holding one is checked as a match pattern rather than refused as an unsupported binding.
         const auto checkPayload = [&](const Pattern &payload, const TypeRef &type) {
-            if (dynamic_cast<const IdentPattern *>(&payload) || dynamic_cast<const WildcardPattern *>(&payload) ||
-                dynamic_cast<const TuplePattern *>(&payload)) {
+            if (dynamic_cast<const IdentPattern *>(&payload) || dynamic_cast<const WildcardPattern *>(&payload)) {
                 CheckLetPattern(payload, type, false);
             }
             else {

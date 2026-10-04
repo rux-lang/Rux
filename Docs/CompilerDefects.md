@@ -300,7 +300,9 @@ func Main() -> int {
 - **Actual:** `'.South' must be written in full, as in 'Enum::South'`.
 - **Expected:** the help names the real type, `Direction::South`. Ideally the expected type
   would let `.South` resolve on its own, as `.Some` and `.Success` do.
-## D18. Tuple and struct patterns in `match` always match and never set their bindings
+## D18. Tuple and struct patterns in `match` always match and never set their bindings (fixed)
+
+**Fixed**; covered by `Tests/Language/TupleStructPatterns` and `DestructuringLoweringTests.cpp`.
 
 ```rux
 import Io::PrintLine;

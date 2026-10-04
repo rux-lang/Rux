@@ -60,6 +60,7 @@ set(RUX_TEST_SOURCES
     ConditionalEvaluationTests.cpp
     ConditionalFoldingTests.cpp
     CredentialsTests.cpp
+    DestructuringLoweringTests.cpp
     DiagnosticsTests.cpp
     DocumentationAttachmentTests.cpp
     DocumentationCommentTests.cpp

@@ -1,0 +1,184 @@
+// Tuple and structure patterns in `match`: a pattern that takes its subject apart has to test every part it names and
+// then give each binding the part it names.
+// Both used to match unconditionally and leave their bindings unset, so `(0, 0)` took any pair and `(a, b) => a + b`
+// added whatever the binding slots held. Every check below would pass for one of those wrong answers if the arms were
+// tried in a different order, so each match also has an arm that must not be taken.
+
+import Core::Assert;
+
+struct Point {
+    x: int32;
+    y: int32;
+}
+
+struct Line {
+    from: Point;
+    to: Point;
+}
+
+struct Reading {
+    code: uint8;
+    level: int16;
+    mark: char32;
+    scale: float64;
+}
+
+struct Pair<T> {
+    first: T;
+    second: T;
+}
+
+variant Shape {
+    Dot(Point),
+    Segment(Point, Point),
+    Labeled(int32, (int32, int32))
+}
+
+func Classify(pair: (int32, int32)) -> int32 {
+    return match pair {
+        (0, 0) => 0,
+        (x, 0) => 100 + x,
+        (0, y) => 200 + y,
+        (a, b) if a == b => 300 + a,
+        (a, b) => a * 10 + b
+    };
+}
+
+func Nested(value: ((int32, int32), int32)) -> int32 {
+    return match value {
+        ((1, a), 2) => a,
+        ((b, 5), c) => b + c,
+        ((_, _), d) => -d
+    };
+}
+
+// A statement match, with fields written out of declaration order, omitted, and guarded.
+func Quadrant(point: Point) -> int32 {
+    match point {
+        Point { x: 0, y: 0 } => {
+            return 0;
+        },
+        Point { x: 0, y: y } => {
+            return y;
+        },
+        Point { y: 0, x: x } => {
+            return 10 * x;
+        },
+        Point { x: a, y: b } if a > b => {
+            return a - b;
+        },
+        Point { y: 7 } => {
+            return 77;
+        },
+        else => {
+            return -1;
+        }
+    }
+}
+
+func Span(line: Line) -> int32 {
+    return match line {
+        Line { from: Point { x: 0, y: 0 }, to: Point { x: x, y: y } } => x + y,
+        Line { from: Point { x: a, y: _ }, to: Point { x: b, y: _ } } => b - a
+    };
+}
+
+// Literals compare at the width of the field they match, not at their own default type.
+func Grade(reading: Reading) -> int32 {
+    return match reading {
+        Reading { code: 255, level: -2, mark: 'a', scale: _ } => 1,
+        Reading { code: 7, level: level, mark: mark, scale: scale } => (level as int32) + (mark as int32) + (scale as int32),
+        else => 0
+    };
+}
+
+func Measure(shape: Shape) -> int32 {
+    return match shape {
+        .Dot(Point { x: 0, y: y }) => y,
+        .Dot(Point { x: x, y: _ }) => x,
+        .Segment(Point { x: a, y: _ }, Point { x: b, y: _ }) => b - a,
+        .Labeled(n, (0, w)) => n + w,
+        .Labeled(n, (h, w)) => n * h * w
+    };
+}
+
+func Pick(held: (int32, bool)?) -> int32 {
+    return match held {
+        .Some((n, true)) => n,
+        .Some((n, false)) => -n,
+        none => 0
+    };
+}
+
+func Larger(pair: Pair<int64>) -> int64 {
+    return match pair {
+        Pair { first: a, second: b } if a > b => a,
+        Pair { first: _, second: b } => b
+    };
+}
+
+func MakePoint(x: int32, y: int32) -> Point {
+    return Point { x: x, y: y };
+}
+
+func Main() -> int {
+    // The reproducer: a pair that is neither the origin nor on the x axis, and a sum over both elements.
+    let pair: (int32, int32) = (1, 2);
+    let label = match pair { (0, 0) => 0, (x, 0) => x, else => -1 };
+    Assert(label == -1, "a tuple pattern with literal elements matched a pair it does not describe");
+    let sum = match pair { (a, b) => a + b };
+    Assert(sum == 3, "tuple pattern bindings did not hold the elements");
+
+    Assert(Classify((0, 0)) == 0, "origin");
+    Assert(Classify((4, 0)) == 104, "first element bound beside a literal");
+    Assert(Classify((0, 6)) == 206, "second element bound beside a literal");
+    Assert(Classify((7, 7)) == 307, "a guard reads the bindings of its own tuple pattern");
+    Assert(Classify((2, 3)) == 23, "the last arm binds both elements");
+
+    Assert(Nested(((1, 9), 2)) == 9, "nested tuple with literals and a binding");
+    Assert(Nested(((3, 5), 4)) == 7, "nested tuple matched on its inner literal");
+    Assert(Nested(((3, 6), 4)) == -4, "nested wildcards with an outer binding");
+
+    Assert(Quadrant(Point { x: 0, y: 0 }) == 0, "structure pattern with literal fields");
+    Assert(Quadrant(Point { x: 0, y: 5 }) == 5, "structure field bound beside a literal");
+    Assert(Quadrant(Point { x: 3, y: 0 }) == 30, "fields written out of declaration order");
+    Assert(Quadrant(Point { x: 9, y: 4 }) == 5, "a guard reads the bindings of its structure pattern");
+    Assert(Quadrant(Point { x: 1, y: 7 }) == 77, "an omitted field matches anything");
+    Assert(Quadrant(Point { x: 1, y: 4 }) == -1, "no structure arm matches");
+    Assert(Quadrant(MakePoint(0, 8)) == 8, "a call result is matched in place");
+
+    Assert(Span(Line { from: Point { x: 0, y: 0 }, to: Point { x: 3, y: 4 } }) == 7, "nested structure pattern");
+    Assert(Span(Line { from: Point { x: 1, y: 2 }, to: Point { x: 8, y: 9 } }) == 7, "nested structure bindings");
+
+    Assert(Grade(Reading { code: 255, level: -2, mark: 'a', scale: 1.0 }) == 1, "narrow literal fields");
+    Assert(Grade(Reading { code: 7, level: -3, mark: 'b', scale: 2.5 }) == 97, "narrow fields bound");
+    Assert(Grade(Reading { code: 255, level: -2, mark: 'b', scale: 1.0 }) == 0, "one narrow literal field differs");
+
+    Assert(Measure(Shape::Dot(Point { x: 0, y: 3 })) == 3, "structure pattern inside a payload");
+    Assert(Measure(Shape::Dot(Point { x: 5, y: 3 })) == 5, "structure payload bound");
+    Assert(Measure(Shape::Segment(Point { x: 2, y: 0 }, Point { x: 9, y: 0 })) == 7, "two structure payloads");
+    Assert(Measure(Shape::Labeled(4, (0, 6))) == 10, "tuple payload with a literal element");
+    Assert(Measure(Shape::Labeled(2, (3, 4))) == 24, "tuple payload bound");
+
+    let yes: (int32, bool)? = .Some((5i32, true));
+    let no: (int32, bool)? = .Some((5i32, false));
+    Assert(Pick(yes) == 5, "tuple inside an optional, matched on its bool element");
+    Assert(Pick(no) == -5, "tuple inside an optional, second arm");
+    Assert(Pick(none) == 0, "absent optional");
+
+    Assert(Larger(Pair<int64> { first: 9, second: 4 }) == 9, "generic structure pattern with a guard");
+    Assert(Larger(Pair<int64> { first: 1, second: 4 }) == 4, "generic structure field bound");
+
+    // A tuple built on the spot is matched as a statement.
+    var taken = 0i32;
+    match (Classify((1, 1)), 2i32) {
+        (301, k) => {
+            taken = k;
+        },
+        else => {
+            taken = -1;
+        }
+    }
+    Assert(taken == 2, "a temporary tuple subject matched as a statement");
+    return 0;
+}

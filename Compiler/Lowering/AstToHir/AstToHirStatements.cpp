@@ -362,6 +362,9 @@ HirPatternPtr AstToHirContext::LowerLetPattern(const Pattern &pattern, const Typ
             symbol.bindingId = RegisterCleanupBinding(symbol.name, symbol.type, identifier->location);
         }
         lowered->bindingId = symbol.bindingId;
+        // Inside the payload of a borrowed native subject, a binding names the payload where it lies.
+        const PatternBindingMode *mode = model.TryGetPatternBindingMode(pattern);
+        lowered->alias = mode && *mode == PatternBindingMode::Alias;
         Define(std::move(symbol));
         return lowered;
     }
@@ -377,7 +380,7 @@ HirPatternPtr AstToHirContext::LowerLetPattern(const Pattern &pattern, const Typ
         }
         return lowered;
     }
-    return LowerPattern(pattern);
+    return LowerPattern(pattern, type);
 }
 
 HirPatternPtr AstToHirContext::LowerPattern(const Pattern &pattern, const TypeRef &subjectType) {
@@ -393,6 +396,14 @@ HirPatternPtr AstToHirContext::LowerPattern(const Pattern &pattern, const TypeRe
         auto lowered = std::make_unique<HirLiteralPattern>();
         lowered->location = literal->location;
         lowered->type = LiteralType(literal->value);
+        // A literal is compared at the width of what it matches, which inside a tuple or a structure is the element's
+        // own type rather than the literal's default.
+        const bool sameFamily = (lowered->type.IsInteger() && subjectType.IsInteger()) ||
+                                (lowered->type.IsFloat() && subjectType.IsFloat()) ||
+                                (lowered->type.IsChar() && subjectType.IsChar());
+        if (sameFamily) {
+            lowered->type = subjectType;
+        }
         if (literal->value.kind == TokenKind::IntLiteral || literal->value.kind == TokenKind::FloatLiteral) {
             lowered->value = StripNumericLiteralSuffix(literal->value.text);
         }
@@ -536,7 +547,8 @@ HirPatternPtr AstToHirContext::LowerPattern(const Pattern &pattern, const TypeRe
         for (const auto &field : structPattern->fields) {
             HirStructPatternField loweredField;
             loweredField.name = field.name;
-            loweredField.pattern = LowerPattern(*field.pattern);
+            loweredField.type = StructFieldType(subjectType, field.name);
+            loweredField.pattern = LowerPattern(*field.pattern, loweredField.type);
             lowered->fields.push_back(std::move(loweredField));
         }
         return lowered;

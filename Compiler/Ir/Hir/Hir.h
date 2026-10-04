@@ -114,6 +114,8 @@ struct HirEnumPattern : HirPattern {
 // Point { x: 0, y: 0 }
 struct HirStructPatternField {
     std::string name;
+    /// The field's type in the matched structure, with the subject's type arguments substituted.
+    TypeRef type;
     HirPatternPtr pattern;
 };
 
