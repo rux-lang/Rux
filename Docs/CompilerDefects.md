@@ -267,7 +267,9 @@ func Main() -> int {
 - **Course workaround:** `Types/EnumValue` checks the code before converting with `as`, and warns
   about the unchecked conversion.
 
-## D17. The help text for a shorthand enum case names a placeholder type
+## D17. The help text for a shorthand enum case names a placeholder type (fixed)
+
+**Fixed**; covered by the `EnumShorthand` and `When` goldens and `ConditionalEvaluationTests.cpp`.
 
 - **Reproducer:** `enum Direction { North, South }`, then
   `func Flip(d: Direction) -> Direction { return match d { .North => .South, .South => .North }; }`.

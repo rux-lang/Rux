@@ -248,8 +248,39 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
 
     if (const auto *e = dynamic_cast<const EnumShorthandExpr *>(&expr)) {
         // The bare `.Variant` shorthand is not part of the language; the
-        // variant must always be written out in full.
-        EmitError(e->location, std::format("'.{}' must be written in full, as in 'Enum::{}'", e->variant, e->variant));
+        // variant must always be written out in full. The message names the
+        // enums and variants in scope that declare a case of that name.
+        std::vector<std::string> owners;
+        for (const auto &[key, declaration] : enumDecls) {
+            if (!declaration || std::ranges::none_of(declaration->variants, [&](const EnumDecl::Variant &variant) {
+                    return variant.name == e->variant;
+                })) {
+                continue;
+            }
+            const Symbol *symbol = currentScope->Lookup(declaration->name);
+            if (symbol && symbol->kind == Symbol::Kind::Type) {
+                owners.push_back(declaration->name);
+            }
+        }
+        std::ranges::sort(owners);
+        owners.erase(std::ranges::unique(owners).begin(), owners.end());
+        if (owners.size() == 1) {
+            EmitError(e->location, std::format("'.{}' must be written in full, as in '{}::{}'", e->variant,
+                                               owners.front(), e->variant));
+        }
+        else if (owners.empty()) {
+            EmitError(e->location,
+                      std::format("'.{}' must be written in full, with the name of its enum or variant", e->variant));
+        }
+        else {
+            std::vector<std::string> notes;
+            for (const std::string &owner : owners) {
+                notes.push_back(std::format("'{}::{}' is in scope", owner, e->variant));
+            }
+            EmitError(e->location,
+                      std::format("'.{}' must be written in full, with the name of its enum or variant", e->variant),
+                      std::move(notes));
+        }
         return TypeRef::MakeUnknown();
     }
 

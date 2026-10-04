@@ -2,5 +2,5 @@
 11:10: error: 'when' condition must have type 'bool', but found 'signed integer'
 16:10: error: 'Missing' is not a compile-time constant
 22:10: error: unknown identifier '#target'
-27:17: error: '.Three' must be written in full, as in 'Enum::Three'
+27:17: error: '.Three' must be written in full, with the name of its enum or variant
 27:5: warning: cannot infer type of 'level'

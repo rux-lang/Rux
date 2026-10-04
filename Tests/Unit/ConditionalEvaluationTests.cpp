@@ -164,7 +164,7 @@ func Do() -> Mode {
 )");
     const auto model = Analyze(parsed.module);
     REQUIRE(model.HasErrors());
-    CHECK(model.diagnostics[0].message == "'.Fast' must be written in full, as in 'Enum::Fast'");
+    CHECK(model.diagnostics[0].message == "'.Fast' must be written in full, as in 'Mode::Fast'");
 }
 
 TEST_CASE("compile-time evaluation accepts scalar enums and rejects variants") {
