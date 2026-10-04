@@ -47,6 +47,15 @@ func Describe(value: int32) -> int32 {
     };
 }
 
+// A guard applies to the whole pattern before it, a range included.
+func Bucket(value: int32, small: bool) -> int32 {
+    return match value {
+        1..=9 if small => 1i32,
+        1..=9 => 2i32,
+        else => 3i32
+    };
+}
+
 // A match whose arms leave part of their type open takes it from where the value goes. `none` says nothing about
 // what would have been present, so the return type completes it, whichever arm comes first.
 func Positive(value: int32) -> int32? {
@@ -74,6 +83,11 @@ func Main() -> int {
     Assert(Opposite(Direction::East) == Direction::West, "and so does the next");
     Assert(Opposite(Direction::South) == Direction::North, "and the third");
     Assert(Opposite(Direction::West) == Direction::East, "and the fourth");
+
+    // A guard after a range pattern guards the range.
+    Assert(Bucket(5i32, true) == 1i32, "a guarded range takes its arm when the guard holds");
+    Assert(Bucket(5i32, false) == 2i32, "and falls to the next arm when it does not");
+    Assert(Bucket(12i32, true) == 3i32, "a value outside the range never reaches the guard");
 
     // A variant's payload binds in the arm that matched, and only there.
     let empty = Shape::Empty;

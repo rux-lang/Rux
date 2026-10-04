@@ -1141,17 +1141,6 @@ PatternPtr Parser::ParsePatternImpl() {
     // Presence suffix: `value?` is `.Some(value)`, and `value??` peels two levels.
     inner = ParsePresenceSuffix(std::move(inner));
 
-    // Guard: pattern if condition
-    if (Match(TokenKind::IfKeyword)) {
-        const auto loc = Previous().location;
-        auto guard = ParseRequiredExpr("after 'if' in the pattern guard");
-        auto p = std::make_unique<GuardedPattern>();
-        p->location = loc;
-        p->inner = std::move(inner);
-        p->guard = std::move(guard);
-        return p;
-    }
-
     // Range pattern: lo..hi or lo...hi or lo..=hi
     if (Check(TokenKind::DotDot) || Check(TokenKind::DotDotDot) || Check(TokenKind::DotDotEqual)) {
         const bool incl = Peek().kind == TokenKind::DotDotDot || Peek().kind == TokenKind::DotDotEqual;
@@ -1174,6 +1163,17 @@ PatternPtr Parser::ParsePatternImpl() {
         p->inclusive = incl;
         p->lo = std::move(inner);
         p->hi = std::move(hi);
+        inner = std::move(p);
+    }
+
+    // Guard: pattern if condition, after any range so that `1..=9 if flag` guards the whole range.
+    if (Match(TokenKind::IfKeyword)) {
+        const auto loc = Previous().location;
+        auto guard = ParseRequiredExpr("after 'if' in the pattern guard");
+        auto p = std::make_unique<GuardedPattern>();
+        p->location = loc;
+        p->inner = std::move(inner);
+        p->guard = std::move(guard);
         return p;
     }
 

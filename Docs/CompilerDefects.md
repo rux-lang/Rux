@@ -292,13 +292,6 @@ let r = match b { true => 10i32 };
 - **Course workaround:** `Patterns/Exhaustive` always writes `else` and does not claim that the
   compiler checks integer matches.
 
-## D20. A guard after a range pattern does not parse
-
-- **Reproducer:** `match n { 1..=9 if flag => "a", else => "b" }`.
-- **Actual:** `expected '=>' after the match arm pattern before 'if'`, followed by cascading errors.
-- **Notes:** `ParsePatternImpl` in `Compiler/Syntax/Parser/ParserExpr.cpp` checks for a guard
-  before it parses the range.
-
 ## D21. A literal inside a variant field pattern reports the wrong construct
 
 - **Reproducer:** `.Circle { radius: 0 } => ...` as a match arm.
