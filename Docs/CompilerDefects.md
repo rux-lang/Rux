@@ -1143,3 +1143,23 @@ func Main() -> int {
 - **Expected:** either a compile error, because `empty` and `moved` hold no whole value for a field to belong to, or `drop 1` and `drop 3` along with `drop 2` when the scope ends.
 - **Actual:** `end`, then only `drop 2`. The values written into `empty.t` and `moved.t` are never destroyed.
 - **Notes:** found while fixing D60. Semantic analysis treats the whole local as initialized after a write to one of its parts, but lowering never sets the local's drop flag, so nothing destroys it. Writing into a `var` with no value, or into a moved-from local, should either be rejected or have its parts tracked. Resolved by rejecting it: writing a part of a local that is not definitely initialized, or taking its writable address, is an error when the local's type needs destruction (`cannot write field 't' of 'empty', which holds no value`); a type with nothing to destroy keeps being initialized part by part. A fixed array with droppable elements declared without a value had the same leak — Semantic tracked every fixed array as initialized from its declaration so fill loops would pass — and is now tracked like any other local declared without a value.
+
+## D63. A move inside a loop body is not seen by the loop's next pass
+
+```rux
+struct Tracked { id: int; }
+extend Tracked { func ~Tracked(self: &var Tracked) { PrintLine("drop {}", self.id); } }
+
+func Main() -> int {
+    var moved = Tracked { id: 1 };
+    for i in 0..2 {
+        PrintLine("{}", moved.id);
+        let taken <- moved;
+    }
+    return 0;
+}
+```
+
+- **Expected:** an error at `moved.id` and at `<-moved`, because the second pass reads and moves a value the first pass already moved out.
+- **Actual:** compiles and prints `1`, `drop 1`, `1`, `drop 1`: the moved-out value is read again and destroyed twice.
+- **Notes:** found while fixing D62. A loop body is checked once, from the state it is entered with, so a move later in the body never reaches the next pass. A move before the loop is caught. The same gap lets a part write before an in-loop move through the D62 check.
