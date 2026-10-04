@@ -223,6 +223,8 @@ The removed `var value: T` parameter form is an error. A function that needs mut
 
 A parameter's default value is evaluated where the call is written, in the caller's scope, each time the argument is omitted. It therefore cannot read any parameter of its own function, `self` included: `func C(x: int, y: int = x)` is an error. An overload that passes the value, `func C(x: int) -> int { return C(x, x); }`, gives the same call.
 
+When several overloads accept a call, declaration order never decides it. An overload that is no worse for any argument and better for one wins: an argument of exactly the parameter's type is better than one differing only in a view's writability, which is better than one reached through a borrow or a scalar read, which is better than any other conversion. Among overloads still tied, the one the arguments fill without a default value wins, so `D(2)` calls `func D(x: int)` rather than `func D(x: int, y: int = 1)`, and then a function that is not generic wins over a generic one. Overloads still tied after that make the call ambiguous, which is an error.
+
 Members are always named through their value, such as `self.length`; a receiver never enables implicit field lookup. `Self` remains available only where an interface must name the unknown concrete implementing type.
 
 ## Values, References, and Raw Pointers

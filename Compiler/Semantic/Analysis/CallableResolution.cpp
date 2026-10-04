@@ -237,6 +237,7 @@ std::vector<TypeRef> AnalysisContext::ResolveInterfaceMethodParamTypes(const Fun
 
 const FuncDecl *AnalysisContext::LookupFunctionOverload(const Symbol &sym, const std::vector<TypeRef> &argTypes,
                                                         const std::vector<TypeExprPtr> &typeArgs) {
+    ambiguousOverloads.clear();
     if (sym.kind != Symbol::Kind::Func || sym.funcOverloads.empty()) {
         return nullptr;
     }
@@ -287,6 +288,8 @@ const FuncDecl *AnalysisContext::LookupFunctionOverload(const Symbol &sym, const
     }
     for (const bool allowVariadic : {false, true}) {
         for (const bool exactOnly : {true, false}) {
+            // Every overload this pass accepts is collected, so that declaration order never decides the call.
+            std::vector<OverloadMatch> matches;
             for (const auto *decl : sym.funcOverloads) {
                 if (!typeArgs.empty() && typeArgs.size() != decl->typeParams.size()) {
                     continue;
@@ -347,11 +350,118 @@ const FuncDecl *AnalysisContext::LookupFunctionOverload(const Symbol &sym, const
                     }
                 }
                 if (match) {
-                    return decl;
+                    matches.push_back({decl, std::vector<TypeRef>(funcType.inner.begin(), funcType.inner.end() - 1)});
                 }
+            }
+            if (const FuncDecl *selected = SelectOverload(matches, argTypes)) {
+                return selected;
+            }
+            if (!matches.empty()) {
+                return nullptr;
             }
         }
     }
+    return nullptr;
+}
+
+const FuncDecl *AnalysisContext::SelectOverload(const std::vector<OverloadMatch> &matches,
+                                                const std::vector<TypeRef> &argumentTypes) {
+    if (matches.empty()) {
+        return nullptr;
+    }
+    // How far an argument is from a parameter: the same type; the same type differing only in a view's writability;
+    // the same type reached through a borrow or a scalar read; or another type it converts to. An overload no worse on
+    // any argument and better on one is more specific, so an `&float32` argument selects the `float32` overload over
+    // the `float64` one it would also widen to, and an `&var int32` the `&int32` overload over the `int32` one.
+    const auto cost = [](const TypeRef &argument, const TypeRef &parameter) {
+        if (argument == parameter) {
+            return 0;
+        }
+        const auto readOnly = [](TypeRef type) {
+            type.isMut = false;
+            if (!type.inner.empty() &&
+                (type.kind == TypeRef::Kind::Reference || type.kind == TypeRef::Kind::Pointer || type.IsSlice())) {
+                type.inner.front().isMut = false;
+            }
+            return type;
+        };
+        if (readOnly(argument) == readOnly(parameter)) {
+            return 1;
+        }
+        const auto referent = [&](const TypeRef &type) {
+            return type.kind == TypeRef::Kind::Reference && !type.inner.empty() ? readOnly(type.inner.front())
+                                                                                : readOnly(type);
+        };
+        return referent(argument) == referent(parameter) ? 2 : 3;
+    };
+    const auto noWorse = [&](const OverloadMatch &left, const OverloadMatch &right, bool &better) {
+        better = false;
+        const std::size_t count =
+            std::min({argumentTypes.size(), left.parameterTypes.size(), right.parameterTypes.size()});
+        for (std::size_t index = 0; index < count; ++index) {
+            const int leftCost = cost(argumentTypes[index], left.parameterTypes[index]);
+            const int rightCost = cost(argumentTypes[index], right.parameterTypes[index]);
+            if (leftCost > rightCost) {
+                return false;
+            }
+            better = better || leftCost < rightCost;
+        }
+        return true;
+    };
+    std::vector<const FuncDecl *> mostSpecific;
+    for (const OverloadMatch &candidate : matches) {
+        // One declaration reached through two imports is one candidate.
+        if (std::ranges::contains(mostSpecific, candidate.decl)) {
+            continue;
+        }
+        const bool dominated = std::ranges::any_of(matches, [&](const OverloadMatch &other) {
+            bool better = false;
+            return &other != &candidate && noWorse(other, candidate, better) && better;
+        });
+        if (!dominated) {
+            mostSpecific.push_back(candidate.decl);
+        }
+    }
+    const std::size_t argumentCount = argumentTypes.size();
+    const std::vector<const FuncDecl *> &tied = mostSpecific;
+    if (tied.size() == 1) {
+        return tied.front();
+    }
+    // Among overloads that accept the call equally well, the one the arguments fill without a default value wins, so
+    // `D(2)` calls `D(x)` rather than `D(x, y = 1)`; then a function that is not generic wins over one that is.
+    const auto needsDefault = [&](const FuncDecl *decl) {
+        std::size_t fixed = 0;
+        for (const Param &parameter : decl->params) {
+            if (!parameter.isVariadic && !parameter.IsReceiver()) {
+                ++fixed;
+            }
+        }
+        return fixed > argumentCount;
+    };
+    std::vector<const FuncDecl *> preferred;
+    for (const FuncDecl *decl : tied) {
+        if (!needsDefault(decl)) {
+            preferred.push_back(decl);
+        }
+    }
+    if (preferred.empty()) {
+        preferred = tied;
+    }
+    if (preferred.size() > 1) {
+        std::vector<const FuncDecl *> concrete;
+        for (const FuncDecl *decl : preferred) {
+            if (decl->typeParams.empty()) {
+                concrete.push_back(decl);
+            }
+        }
+        if (!concrete.empty()) {
+            preferred = std::move(concrete);
+        }
+    }
+    if (preferred.size() == 1) {
+        return preferred.front();
+    }
+    ambiguousOverloads = preferred;
     return nullptr;
 }
 

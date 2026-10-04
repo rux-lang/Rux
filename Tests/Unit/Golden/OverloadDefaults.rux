@@ -1,0 +1,12 @@
+// Two overloads that both need a default value to accept a call tie, and the call is ambiguous.
+func Pad(text: int, width: int = 8) -> int {
+    return text + width;
+}
+
+func Pad(text: int, fill: bool = true) -> int {
+    return text;
+}
+
+func Main() -> int {
+    return Pad(1);
+}

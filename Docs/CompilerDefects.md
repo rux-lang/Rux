@@ -202,7 +202,9 @@ func Main() -> int {
 - **Expected:** a compile error, because a default cannot refer to another parameter, or `4`.
 - **Actual:** prints a garbage value such as `5260204362093136202` and exits 0.
 
-## D12. An overload with a default argument makes a call ambiguous, and declaration order decides
+## D12. An overload with a default argument makes a call ambiguous, and declaration order decides (fixed)
+
+**Fixed**; covered by `Tests/Language/Functions` and the `OverloadDefaults` golden.
 
 ```rux
 import Io::PrintLine;

@@ -784,6 +784,18 @@ private:
     TypeRef CheckExpr(const Expr &expression);
     [[nodiscard]] TypeRef ReadBorrowedScalar(const Expr &expression, const TypeRef &type);
     void EmitDiagnosticIntrinsic(const std::string &intrinsicName, const CallExpr &call);
+
+    /// The one overload of `matches` that a call with `argumentTypes` selects, or null when none does; when
+    /// several tie, they are left in `ambiguousOverloads`.
+    struct OverloadMatch {
+        const FuncDecl *decl;
+        std::vector<TypeRef> parameterTypes;
+    };
+
+    const FuncDecl *SelectOverload(const std::vector<OverloadMatch> &matches,
+                                   const std::vector<TypeRef> &argumentTypes);
+    /// The overloads the last `LookupFunctionOverload` found equally good, when it selected none for that reason.
+    std::vector<const FuncDecl *> ambiguousOverloads;
     [[nodiscard]] const FuncDecl *LookupFunctionOverload(const Symbol &symbol,
                                                          const std::vector<TypeRef> &argumentTypes,
                                                          const std::vector<TypeExprPtr> &typeArguments);

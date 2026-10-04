@@ -156,6 +156,18 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
         if (Symbol *sym = currentScope->Lookup(ident->name);
             sym && sym->kind == Symbol::Kind::Func && !sym->funcOverloads.empty()) {
             const FuncDecl *decl = LookupFunctionOverload(*sym, argTypes, e->typeArgs);
+            if (!decl && !ambiguousOverloads.empty()) {
+                std::vector<std::string> notes;
+                for (const FuncDecl *candidate : ambiguousOverloads) {
+                    notes.push_back(declarationNote(*candidate, false));
+                }
+                EmitError(e->location,
+                          std::format("call to '{}' is ambiguous: {} overloads accept argument types ({})", ident->name,
+                                      ambiguousOverloads.size(), ArgumentTypes(argTypes)),
+                          std::move(notes),
+                          "rename one of the overloads, or remove a default value that makes them overlap");
+                return TypeRef::MakeUnknown();
+            }
             if (!decl) {
                 if (sym->funcOverloads.size() != 1) {
                     emitOverloadError(ident->name, argTypes, sym->funcOverloads);
