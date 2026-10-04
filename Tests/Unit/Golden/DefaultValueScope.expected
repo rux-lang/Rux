@@ -1,0 +1,3 @@
+4:30: error: a default value cannot refer to parameter 'x'
+17:44: error: a default value cannot refer to parameter 'self'
+23:39: error: a default value cannot refer to parameter 'factor'

@@ -27,6 +27,11 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
     }
 
     if (auto *e = dynamic_cast<const IdentExpr *>(&expr)) {
+        if (defaultValueParameters.contains(e->name)) {
+            EmitError(e->location, std::format("a default value cannot refer to parameter '{}'", e->name), {},
+                      "add an overload without this parameter that passes the value it should default to");
+            return TypeRef::MakeUnknown();
+        }
         Symbol *sym = currentScope->Lookup(e->name);
         if (sym) {
             if (sym->kind == Symbol::Kind::Const && sym->declaration) {
@@ -39,6 +44,10 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
     }
 
     if (dynamic_cast<const SelfExpr *>(&expr)) {
+        if (defaultValueParameters.contains("self")) {
+            EmitError(expr.location, "a default value cannot refer to parameter 'self'");
+            return TypeRef::MakeUnknown();
+        }
         if (!inImpl) {
             EmitError(expr.location, "'self' used outside of an extend block");
         }

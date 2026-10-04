@@ -92,7 +92,7 @@ void AnalysisContext::CheckFuncDecl(const FuncDecl &d, bool isMethod) {
         DefineTrackedLocal(std::move(sym), true);
         if (param.defaultValue) {
             TypeRef paramType = ResolveType(*param.type);
-            TypeRef defaultType = CheckExpr(**param.defaultValue);
+            TypeRef defaultType = CheckDefaultValue(**param.defaultValue, d.params);
             if (!defaultType.IsUnknown() && !paramType.IsUnknown() &&
                 !CanAssignExprTo(**param.defaultValue, defaultType, paramType)) {
                 EmitError(param.location,
@@ -267,7 +267,7 @@ void AnalysisContext::CheckInterfaceDecl(const InterfaceDecl &d) {
             }
             if (p.defaultValue) {
                 seenDefault = true;
-                const TypeRef defaultType = CheckExpr(**p.defaultValue);
+                const TypeRef defaultType = CheckDefaultValue(**p.defaultValue, method->params);
                 if (!defaultType.IsUnknown() && !parameterType.IsUnknown() &&
                     !CanAssignExprTo(**p.defaultValue, defaultType, parameterType)) {
                     EmitError(p.location, AssignmentErrorMessage(
@@ -285,6 +285,19 @@ void AnalysisContext::CheckInterfaceDecl(const InterfaceDecl &d) {
         }
     }
     restore();
+}
+
+TypeRef AnalysisContext::CheckDefaultValue(const Expr &value, const std::vector<Param> &parameters) {
+    // A default is evaluated where the call is written, in the caller's scope, so no parameter of the callee exists
+    // there to be read. Naming one is reported rather than resolved to whatever the caller has under that name.
+    std::unordered_set<std::string> names;
+    for (const Param &parameter : parameters) {
+        names.insert(parameter.name);
+    }
+    const auto saved = std::exchange(defaultValueParameters, std::move(names));
+    const TypeRef type = CheckExpr(value);
+    defaultValueParameters = saved;
+    return type;
 }
 
 void AnalysisContext::CheckImplDecl(const ImplDecl &d) {

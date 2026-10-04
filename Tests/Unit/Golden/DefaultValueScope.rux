@@ -1,0 +1,24 @@
+// A default value is evaluated at the call, so it may not read a parameter of the function it belongs to.
+const Base: int = 3;
+
+func Repeat(x: int, y: int = x) -> int {
+    return x + y;
+}
+
+func Offset(x: int, y: int = Base + 1) -> int {
+    return x + y;
+}
+
+struct Counter {
+    value: int;
+}
+
+extend Counter {
+    func Add(self: &Counter, amount: int = self.value) -> int {
+        return self.value + amount;
+    }
+}
+
+interface Scaled {
+    func Scale(factor: int, by: int = factor) -> int;
+}

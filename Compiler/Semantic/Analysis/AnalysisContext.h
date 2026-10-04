@@ -567,6 +567,8 @@ private:
     bool currentFunctionNoReturn = false;
     int loopDepth = 0;
     std::unordered_multiset<std::string> activeLabels;
+    /// The parameters of the function whose default value is being checked, none of which a default may read.
+    std::unordered_set<std::string> defaultValueParameters;
     bool inImpl = false;
     TypeRef currentSelfType = TypeRef::MakeUnknown();
     /// The extend block a method is being checked in, and the type it extends. A method's declared receiver has to name
@@ -1110,6 +1112,8 @@ private:
 
     void CheckInterfaceDecl(const InterfaceDecl &d);
 
+    /// Check a parameter's default value, which is evaluated at the call and so may not read any of `parameters`.
+    TypeRef CheckDefaultValue(const Expr &value, const std::vector<Param> &parameters);
     void CheckImplDecl(const ImplDecl &d);
     [[nodiscard]] std::string UndefinedSliceElement(const ImplDecl &d) const;
 

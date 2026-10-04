@@ -182,7 +182,9 @@ PrintLine("{}", nested.0.1);
   lexer reads `0.1` as a float literal. `(nested.0).1` works.
 - **Course workaround:** `Sequences/Tuple` binds the inner tuple first.
 
-## D11. A default argument that names an earlier parameter reads uninitialised memory
+## D11. A default argument that names an earlier parameter reads uninitialised memory (fixed)
+
+**Fixed**; covered by the `DefaultValueScope` golden.
 
 ```rux
 import Io::PrintLine;

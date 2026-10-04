@@ -221,6 +221,8 @@ func Consume(self: Buffer)
 
 The removed `var value: T` parameter form is an error. A function that needs mutable local storage moves the parameter into a local with `var local <- value`; a function that mutates caller-owned storage instead accepts `value: &var T`.
 
+A parameter's default value is evaluated where the call is written, in the caller's scope, each time the argument is omitted. It therefore cannot read any parameter of its own function, `self` included: `func C(x: int, y: int = x)` is an error. An overload that passes the value, `func C(x: int) -> int { return C(x, x); }`, gives the same call.
+
 Members are always named through their value, such as `self.length`; a receiver never enables implicit field lookup. `Self` remains available only where an interface must name the unknown concrete implementing type.
 
 ## Values, References, and Raw Pointers
