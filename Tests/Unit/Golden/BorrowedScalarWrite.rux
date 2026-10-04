@@ -1,0 +1,30 @@
+// A write through '&var T' reaches the caller's scalar; '&T' refuses it, and a
+// reference is never dereferenced with '*'.
+func Bump(count: &var int) {
+    count += 1;
+    count = count * 2;
+    count++;
+}
+
+func Observe(count: &int) {
+    count += 1;
+    count = 3;
+    count--;
+}
+
+func Pointerlike(count: &var int) {
+    *count += 1;
+}
+
+func Main() -> int {
+    var total = 4;
+    Bump(total);
+    // A 'var' reference binding is rebound by '=', so a scalar is not a reference.
+    var rebound: &var int = total;
+    rebound = 5;
+    // Writes are exclusive accesses: the shared borrow is still live below.
+    let shared: &int = total;
+    let alias: &var int = total;
+    alias += 1;
+    return shared;
+}

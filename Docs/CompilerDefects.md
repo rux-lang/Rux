@@ -244,7 +244,9 @@ func Main() -> int {
   'int32[..]'`.
 - **Notes:** this may be by design; it is recorded so that it can be decided.
 - **Course workaround:** `Sequences/Variadic` writes `scores[..]...`.
-## D15. A scalar cannot be written through `&var T`
+## D15. A scalar cannot be written through `&var T` (fixed)
+
+**Fixed**; covered by `Tests/Language/BorrowedScalarWrites`, the `BorrowedScalarWrite` golden, and `ReferenceTypeTests.cpp`.
 
 ```rux
 func Bump(count: &var int) { count += 1; }

@@ -471,7 +471,10 @@ HirExprPtr AstToHirContext::LowerVariantEquality(const BinaryExpr &expression, H
 HirExprPtr AstToHirContext::LowerExpr(const Expr &expr) {
     const auto finish = [&](HirExprPtr lowered) {
         if (lowered) {
-            if (model.HasBorrowedScalarRead(expr) && lowered->type.kind == TypeRef::Kind::Reference) {
+            // A read loads the referent and a write stores to it, so both reach it through the same dereference: as
+            // an assignment target the dereference is the place the store addresses.
+            if ((model.HasBorrowedScalarRead(expr) || model.HasBorrowedScalarWrite(expr)) &&
+                lowered->type.kind == TypeRef::Kind::Reference) {
                 auto read = std::make_unique<HirUnaryExpr>();
                 read->location = lowered->location;
                 read->op = TokenKind::Star;

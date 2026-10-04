@@ -12,6 +12,16 @@
 
 namespace Rux::SemanticDetail {
 namespace {
+/// The value a write through a reference to a scalar stores: the referent, read as a plain value.
+TypeRef ScalarReferent(const TypeRef &reference) {
+    if (reference.kind != TypeRef::Kind::Reference || reference.inner.empty()) {
+        return reference;
+    }
+    TypeRef referent = reference.inner.front();
+    referent.isMut = false;
+    return referent;
+}
+
 std::string_view OperatorName(const TokenKind op) noexcept {
     using TK = TokenKind;
     switch (op) {
@@ -198,7 +208,14 @@ std::optional<TypeRef> AnalysisContext::CheckBasicExpression(const Expr &express
         TypeRef operandType = CheckExpr(*unary->operand);
         checkingPlainAssignmentTarget = savedAssignmentTarget;
         if (unary->op == TokenKind::PlusPlus || unary->op == TokenKind::MinusMinus) {
-            if (!CheckAssignableTarget(*unary->operand, operandType, OperatorName(unary->op))) {
+            if (const Symbol *reference = ScalarReferenceWriteTarget(*unary->operand, false)) {
+                const bool writable = CheckScalarReferenceWrite(*unary->operand, *reference);
+                operandType = ScalarReferent(operandType);
+                if (!writable) {
+                    return operandType;
+                }
+            }
+            else if (!CheckAssignableTarget(*unary->operand, operandType, OperatorName(unary->op))) {
                 return operandType;
             }
         }
@@ -211,6 +228,26 @@ std::optional<TypeRef> AnalysisContext::CheckBasicExpression(const Expr &express
                 MarkTrackedAssignment(*unary->operand, unary->location);
             }
             return TypeRef::MakePointer(std::move(operandType));
+        }
+        if (unary->op == TokenKind::Star && operandType.kind == TypeRef::Kind::Reference &&
+            !operandType.inner.empty()) {
+            // A reference already reads and writes its referent, so the operator is only ever a leftover from pointer
+            // code. Naming the operand without it is the whole fix, and the referent type keeps the rest of the
+            // expression from failing twice.
+            const auto *name = dynamic_cast<const IdentExpr *>(unary->operand.get());
+            const bool receiver = dynamic_cast<const SelfExpr *>(unary->operand.get()) != nullptr;
+            const std::string spelled = name ? name->name : receiver ? "self" : "";
+            std::string help = "remove the '*'";
+            if (!spelled.empty()) {
+                help = std::format("write '{}' in place of '*{}'", spelled, spelled);
+                if (operandType.inner.front().IsNumeric()) {
+                    help += std::format(", as in '{} += 1'", spelled);
+                }
+            }
+            EmitError(unary->location,
+                      std::format("operator '*' requires a pointer operand, but found '{}'", operandType.ToString()),
+                      {"a reference reads and writes its referent without '*'"}, help);
+            return ScalarReferent(operandType);
         }
         if (unary->op == TokenKind::Plus || unary->op == TokenKind::Minus || unary->op == TokenKind::Bang ||
             unary->op == TokenKind::Tilde) {
@@ -228,7 +265,14 @@ std::optional<TypeRef> AnalysisContext::CheckBasicExpression(const Expr &express
     }
     if (const auto *postfix = dynamic_cast<const PostfixExpr *>(&expression)) {
         TypeRef operandType = CheckExpr(*postfix->operand);
-        const bool isAssignable = CheckAssignableTarget(*postfix->operand, operandType, OperatorName(postfix->op));
+        bool isAssignable = false;
+        if (const Symbol *reference = ScalarReferenceWriteTarget(*postfix->operand, false)) {
+            isAssignable = CheckScalarReferenceWrite(*postfix->operand, *reference);
+            operandType = ScalarReferent(operandType);
+        }
+        else {
+            isAssignable = CheckAssignableTarget(*postfix->operand, operandType, OperatorName(postfix->op));
+        }
         if (isAssignable && !operandType.IsUnknown() && !operandType.IsNumeric()) {
             EmitError(postfix->location, std::format("operator '{}' requires a numeric operand, but found '{}'",
                                                      OperatorName(postfix->op), operandType.ToString()));
@@ -268,7 +312,10 @@ std::optional<TypeRef> AnalysisContext::CheckBasicExpression(const Expr &express
     if (const auto *assignment = dynamic_cast<const AssignExpr *>(&expression)) {
         const bool savedAssignmentTarget = checkingPlainAssignmentTarget;
         const bool simpleAssignment = assignment->op == TokenKind::Assign || assignment->op == TokenKind::MoveArrow;
-        checkingPlainAssignmentTarget = simpleAssignment;
+        // A write through a reference reads the reference itself, so its name is checked as a use rather than as a
+        // place the assignment initializes.
+        const Symbol *writtenReference = ScalarReferenceWriteTarget(*assignment->target, simpleAssignment);
+        checkingPlainAssignmentTarget = simpleAssignment && !writtenReference;
         // A plain assignment whose target is an index may be a call to `[]=` rather than a store. Naming the exact
         // node lets the target check resolve the setter while it already holds the object and index types, so
         // neither is checked twice, and leaves every other index in the expression a read.
@@ -285,14 +332,21 @@ std::optional<TypeRef> AnalysisContext::CheckBasicExpression(const Expr &express
             checkingPlainAssignmentTarget = savedAssignmentTarget;
             return TypeRef::MakeOpaque();
         }
-        checkingPlainAssignmentTarget = simpleAssignment;
+        checkingPlainAssignmentTarget = simpleAssignment && !writtenReference;
         if (const auto *indexTarget = dynamic_cast<const IndexExpr *>(assignment->target.get());
             indexTarget && indexAssignments.contains(indexTarget)) {
             FinishIndexedAssignment(*assignment, target, value);
             checkingPlainAssignmentTarget = savedAssignmentTarget;
             return TypeRef::MakeOpaque();
         }
-        const bool isAssignable = CheckAssignableTarget(*assignment->target, target, OperatorName(assignment->op));
+        bool isAssignable = false;
+        if (writtenReference) {
+            isAssignable = CheckScalarReferenceWrite(*assignment->target, *writtenReference);
+            target = ScalarReferent(target);
+        }
+        else {
+            isAssignable = CheckAssignableTarget(*assignment->target, target, OperatorName(assignment->op));
+        }
         checkingPlainAssignmentTarget = savedAssignmentTarget;
         if (isAssignable && !simpleAssignment && !target.IsUnknown() && !value.IsUnknown()) {
             const TypeRef result = CheckBinary(assignment->op, target, value, *assignment->target, *assignment->value,
@@ -344,7 +398,16 @@ std::optional<TypeRef> AnalysisContext::CheckBasicExpression(const Expr &express
             const bool nullReference = target.kind == TypeRef::Kind::Reference && IsNullLiteral(*assignment->value);
             const bool compatible = !nullReference && (target.IsUnknown() || value.IsUnknown() ||
                                                        CanAssignExprTo(*assignment->value, value, target));
-            if (!compatible) {
+            const Symbol *rebound = !compatible && !nullReference && simpleAssignment
+                                      ? ScalarReferenceWriteTarget(*assignment->target, false)
+                                      : nullptr;
+            if (rebound && !value.IsUnknown() && CanAssignExprTo(*assignment->value, value, ScalarReferent(target))) {
+                EmitError(assignment->location,
+                          std::format("cannot assign '{}' to '{}'", value.DisplayString(), target.ToString()),
+                          {std::format("'=' points the 'var' reference '{}' at other storage", rebound->name)},
+                          std::format("declare '{}' with 'let' to write through it", rebound->name));
+            }
+            else if (!compatible) {
                 EmitError(assignment->location,
                           AssignmentErrorMessage(
                               *assignment->value, target,
@@ -367,7 +430,9 @@ std::optional<TypeRef> AnalysisContext::CheckBasicExpression(const Expr &express
                 else if (target.kind != TypeRef::Kind::Reference) {
                     ConsumeValue(*assignment->value, value, ValueConsumptionKind::Assignment, assignment->location);
                 }
-                MarkTrackedAssignment(*assignment->target, assignment->location);
+                if (!writtenReference) {
+                    MarkTrackedAssignment(*assignment->target, assignment->location);
+                }
                 if (!explicitMove && target.kind == TypeRef::Kind::Reference) {
                     RegisterReferenceAssignment(*assignment->target, *assignment->value, target);
                 }
@@ -1361,6 +1426,42 @@ bool AnalysisContext::CheckAssignableTarget(const Expr &target, const TypeRef &t
     }
     CheckBorrowedMutation(target, target.location);
     CheckMutability(target);
+    return true;
+}
+
+const Symbol *AnalysisContext::ScalarReferenceWriteTarget(const Expr &target, const bool rebinds) const {
+    const Symbol *symbol = nullptr;
+    if (const auto *identifier = dynamic_cast<const IdentExpr *>(&target)) {
+        symbol = currentScope->Lookup(identifier->name);
+    }
+    else if (dynamic_cast<const SelfExpr *>(&target)) {
+        symbol = currentScope->Lookup("self");
+    }
+    if (!symbol || symbol->kind != Symbol::Kind::Var || symbol->type.kind != TypeRef::Kind::Reference ||
+        symbol->type.inner.empty()) {
+        return nullptr;
+    }
+    const TypeRef &referent = symbol->type.inner.front();
+    if (!referent.IsNumeric() && !referent.IsBool() && !referent.IsChar()) {
+        return nullptr;
+    }
+    // `alias = other` points a `var alias: &var T` at other storage, so only a binding that cannot be rebound — a
+    // parameter, a receiver, or a `let` alias — reads a plain assignment as a write through it.
+    return rebinds && symbol->isMut ? nullptr : symbol;
+}
+
+bool AnalysisContext::CheckScalarReferenceWrite(const Expr &target, const Symbol &reference) {
+    if (!reference.type.inner.front().isMut) {
+        TypeRef writable = reference.type;
+        writable.inner.front().isMut = true;
+        EmitError(target.location,
+                  std::format("cannot modify '{}' through immutable reference '{}'", reference.name,
+                              reference.type.ToString()),
+                  {}, std::format("declare '{}' as '{}' to write through it", reference.name, writable.ToString()));
+        return false;
+    }
+    CheckBorrowedMutation(target, target.location);
+    borrowedScalarWrites.insert(&target);
     return true;
 }
 } // namespace Rux::SemanticDetail

@@ -9,7 +9,9 @@
 #include "Semantic/SemanticAnalyzer.h"
 #include "Syntax/Parser/Parser.h"
 
+#include <algorithm>
 #include <doctest.h>
+#include <iterator>
 #include <ranges>
 #include <string>
 #include <utility>
@@ -88,6 +90,76 @@ TEST_CASE("borrowed scalar reads retain reference types in semantic facts and lo
     const auto lir = lowering.Generate();
     REQUIRE(lowering.Diagnostics().empty());
     CHECK_FALSE(lir.modules.empty());
+}
+
+TEST_CASE("borrowed scalar writes store through the reference in HIR") {
+    Lexer lexer(R"(
+        func Bump(count: &var int64) {
+            count += 2i64;
+        }
+    )",
+                "scalar-write.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+    Parser parser(std::move(lexed.tokens), "scalar-write.rux");
+    auto parsed = parser.Parse();
+    REQUIRE_FALSE(parsed.HasErrors());
+    const auto *function = dynamic_cast<const FuncDecl *>(parsed.module.items.front().get());
+    REQUIRE(function != nullptr);
+    REQUIRE(function->body != nullptr);
+    const auto *statement = dynamic_cast<const ExprStmt *>(function->body->stmts[0].get());
+    REQUIRE(statement != nullptr);
+    const auto *assignment = dynamic_cast<const AssignExpr *>(statement->expr.get());
+    REQUIRE(assignment != nullptr);
+    SemanticAnalyzer analyzer({&parsed.module}, {}, "test", CompileTimeContext{});
+    const SemanticModel model = analyzer.Analyze();
+    REQUIRE_FALSE(model.HasErrors());
+    CHECK(model.HasBorrowedScalarWrite(*assignment->target));
+    CHECK_FALSE(model.HasBorrowedScalarRead(*assignment->target));
+    REQUIRE(model.TryGetType(*assignment->target) != nullptr);
+    CHECK_EQ(model.TryGetType(*assignment->target)->kind, TypeRef::Kind::Reference);
+
+    HirPackage hir = AstToHirLowering(model).Generate();
+    REQUIRE_EQ(hir.modules.size(), 1);
+    REQUIRE_EQ(hir.modules.front().funcs.size(), 1);
+    const HirFunc &bump = hir.modules.front().funcs.front();
+    REQUIRE(bump.body.has_value());
+    const auto *loweredStatement = dynamic_cast<const HirExprStmt *>(bump.body->stmts[0].get());
+    REQUIRE(loweredStatement != nullptr);
+    const auto *store = dynamic_cast<const HirAssignExpr *>(loweredStatement->expr.get());
+    REQUIRE(store != nullptr);
+    CHECK_EQ(store->type.ToString(), "int64");
+    const auto *place = dynamic_cast<const HirUnaryExpr *>(store->target.get());
+    REQUIRE(place != nullptr);
+    CHECK_EQ(place->op, TokenKind::Star);
+    CHECK_EQ(place->operand->type.kind, TypeRef::Kind::Reference);
+    HirToLirLowering lowering(std::move(hir), CompileTimeContext{}.target);
+    const auto lir = lowering.Generate();
+    REQUIRE(lowering.Diagnostics().empty());
+    CHECK_FALSE(lir.modules.empty());
+}
+
+TEST_CASE("a write through a reference names the reference and its writable spelling") {
+    const auto diagnostics = AnalyzeReferences(R"(
+        func Observe(count: &int) { count += 1; }
+        func Pointerlike(count: &var int) { *count += 1; }
+        func Rebound() {
+            var total = 1;
+            var alias: &var int = total;
+            alias = 2;
+        }
+    )");
+    std::vector<SemanticDiagnostic> errors;
+    std::ranges::copy_if(diagnostics, std::back_inserter(errors), [](const SemanticDiagnostic &diagnostic) {
+        return diagnostic.severity == Diagnostic::Severity::Error;
+    });
+    REQUIRE_EQ(errors.size(), 3);
+    CHECK_EQ(errors[0].message, "cannot modify 'count' through immutable reference '&int'");
+    CHECK_EQ(errors[0].help, "declare 'count' as '&var int' to write through it");
+    CHECK_EQ(errors[1].message, "operator '*' requires a pointer operand, but found '&var int'");
+    CHECK_EQ(errors[1].help, "write 'count' in place of '*count', as in 'count += 1'");
+    CHECK_EQ(errors[2].message, "cannot assign 'int' to '&var int'");
+    CHECK_EQ(errors[2].help, "declare 'alias' with 'let' to write through it");
 }
 
 TEST_CASE("borrowed scalar reads do not copy aggregates or stored pointers") {

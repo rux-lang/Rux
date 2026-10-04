@@ -479,6 +479,7 @@ private:
     const PackageImportBindings &imports;
     std::unordered_map<const Expr *, TypeRef> &expressionTypes;
     std::unordered_set<const Expr *> &borrowedScalarReads;
+    std::unordered_set<const Expr *> &borrowedScalarWrites;
     std::unordered_map<const Expr *, std::vector<NativeConversionStep>> &nativeConversions;
     std::unordered_map<const TypeExpr *, const Decl *> &intrinsicTypeBindings;
     std::unordered_map<const Expr *, const ConstDecl *> &associatedConstants;
@@ -921,6 +922,13 @@ private:
     [[nodiscard]] bool PlaceIsWritable(const Expr &place, const TypeRef &placeType);
     [[nodiscard]] bool CheckAssignableTarget(const Expr &target, const TypeRef &targetType,
                                              std::string_view operatorName);
+    /// The reference binding a write to `target` stores through, or null when `target` is not a name bound to a
+    /// reference to a Copy primitive scalar. `rebinds` is set for a plain assignment, which points a `var` reference
+    /// binding at other storage rather than writing through it.
+    [[nodiscard]] const Symbol *ScalarReferenceWriteTarget(const Expr &target, bool rebinds) const;
+    /// Accepts a write through the reference `target` names and records it for lowering. Returns false after reporting
+    /// a write through an immutable reference.
+    [[nodiscard]] bool CheckScalarReferenceWrite(const Expr &target, const Symbol &reference);
     void CheckMutability(const Expr &target);
     [[nodiscard]] bool CheckReceiverMutability(const CallExpr &call, const Expr &receiver, const TypeRef &receiverType,
                                                const FuncDecl &method);

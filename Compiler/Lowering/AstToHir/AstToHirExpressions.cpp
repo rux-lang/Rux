@@ -342,7 +342,9 @@ HirExprPtr AstToHirContext::LowerBasicExpr(const Expr &expression) {
         // Assignment's semantic result is opaque because it is not a value,
         // while HIR needs the checked place type to select the store width.
         static_cast<void>(ResolvedExpressionType(*assignment));
-        lowered->type = ResolvedExpressionType(*assignment->target);
+        // A write through a reference stores its referent, which the dereferenced target already carries.
+        lowered->type = model.HasBorrowedScalarWrite(*assignment->target) ? lowered->target->type
+                                                                          : ResolvedExpressionType(*assignment->target);
         return lowered;
     }
 
