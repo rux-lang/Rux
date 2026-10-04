@@ -680,8 +680,29 @@ bool AssemblyInstructionPrinter::EmitArithmetic(const LirInstr &instruction) {
         const bool destinationFloat = IsFloat(destinationType);
         LoadA(instruction.srcs[0], sourceType);
         if (sourceFloat && !destinationFloat) {
-            modulePrinter.TextInstruction(sourceType.kind == TypeRef::Kind::Float32 ? "cvttss2si rax, xmm0"
-                                                                                    : "cvttsd2si rax, xmm0");
+            const bool single = sourceType.kind == TypeRef::Kind::Float32;
+            const std::string_view truncate = single ? "cvttss2si rax, xmm0" : "cvttsd2si rax, xmm0";
+            if (destinationType.IsInteger() && !destinationType.IsSigned() && SizeOf(destinationType) == 8) {
+                // As in the binary emitter: a value of 2^63 or more is reduced below it and its top bit restored.
+                const std::string bound = single ? modulePrinter.InternFloat32("9223372036854775808.0")
+                                                 : modulePrinter.InternFloat64("9223372036854775808.0");
+                const std::string large = modulePrinter.CreateLocalLabel("u64.large");
+                const std::string done = modulePrinter.CreateLocalLabel("u64.done");
+                modulePrinter.TextInstruction(single ? std::format("movss   xmm1, dword [rel {}]", bound)
+                                                     : std::format("movsd   xmm1, qword [rel {}]", bound));
+                modulePrinter.TextInstruction(single ? "ucomiss xmm0, xmm1" : "ucomisd xmm0, xmm1");
+                modulePrinter.TextInstruction(std::format("jae     {}", large));
+                modulePrinter.TextInstruction(truncate);
+                modulePrinter.TextInstruction(std::format("jmp     {}", done));
+                modulePrinter.TextLabel(large);
+                modulePrinter.TextInstruction(single ? "subss   xmm0, xmm1" : "subsd   xmm0, xmm1");
+                modulePrinter.TextInstruction(truncate);
+                modulePrinter.TextInstruction("btc     rax, 63");
+                modulePrinter.TextLabel(done);
+            }
+            else {
+                modulePrinter.TextInstruction(truncate);
+            }
         }
         else if (!sourceFloat && destinationFloat) {
             modulePrinter.TextInstruction(destinationType.kind == TypeRef::Kind::Float32 ? "cvtsi2ss  xmm0, rax"

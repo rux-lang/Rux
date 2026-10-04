@@ -1,0 +1,73 @@
+// Converting a float to an integer with `as` truncates toward zero while the value fits, saturates to the target's
+// minimum or maximum when it does not, and turns a NaN into zero. The rule is the same on every target, whatever the
+// hardware conversion would answer, and the same whether the compiler folds the conversion or it runs.
+// Each value is checked twice: once as a constant the compiler can fold, and once read out of an array inside a loop,
+// where nothing about it is known until it runs.
+
+import Core::Assert;
+import Core::{ float32, float64, int128, int16, int256, int32, int64, int8, uint128, uint16, uint32, uint64, uint8 };
+
+func Main() -> int {
+    let nan = 0.0f64 / 0.0f64;
+    let infinity = 1.0f64 / 0.0f64;
+
+    // Folded: in range, out of range on both sides, infinite, and NaN.
+    Assert(-7.9f64 as int32 == -7i32, "a value in range truncates toward zero");
+    Assert(1e20f64 as int32 == int32::Max, "a value above the range saturates to the maximum");
+    Assert(-1e20f64 as int32 == int32::Min, "a value below the range saturates to the minimum");
+    Assert(1e20f64 as int64 == int64::Max, "the same at 64 bits");
+    Assert(-1e20f64 as int64 == int64::Min, "and below it");
+    Assert(infinity as int16 == int16::Max, "infinity saturates");
+    Assert(nan as int64 == 0i64, "a NaN becomes zero");
+    Assert(300.0f64 as uint8 == uint8::Max, "an unsigned target saturates at its maximum");
+    Assert(-2.5f64 as uint8 == 0u8, "and at zero below");
+    Assert(-300.0f64 as int8 == int8::Min, "a narrow signed target saturates at its minimum");
+
+    // At run time, the same answers.
+    let values: float64[10] = [-7.9f64, 1e20f64, -1e20f64, 0.0f64, 1e19f64, 3.5e9f64, -2.5f64, 300.0f64, 0.0f64,
+                               0.0f64];
+    var samples: float64[10] = values;
+    samples[3] = nan;
+    samples[8] = infinity;
+    samples[9] = -infinity;
+    let toInt32: int32[10] = [-7i32, int32::Max, int32::Min, 0i32, int32::Max, int32::Max, -2i32, 300i32, int32::Max,
+                              int32::Min];
+    let toInt64: int64[10] = [-7i64, int64::Max, int64::Min, 0i64, int64::Max, 3500000000i64, -2i64, 300i64,
+                              int64::Max, int64::Min];
+    let toUInt64: uint64[10] = [0u64, uint64::Max, 0u64, 0u64, 10000000000000000000u64, 3500000000u64, 0u64, 300u64,
+                                uint64::Max, 0u64];
+    let toUInt32: uint32[10] = [0u32, uint32::Max, 0u32, 0u32, uint32::Max, 3500000000u32, 0u32, 300u32, uint32::Max,
+                                0u32];
+    let toInt8: int8[10] = [-7i8, int8::Max, int8::Min, 0i8, int8::Max, int8::Max, -2i8, int8::Max, int8::Max,
+                            int8::Min];
+    let toUInt16: uint16[10] = [0u16, uint16::Max, 0u16, 0u16, uint16::Max, uint16::Max, 0u16, 300u16, uint16::Max,
+                                0u16];
+    for i in 0..10 {
+        let value = samples[i];
+        Assert(value as int32 == toInt32[i], "int32 conversion");
+        Assert(value as int64 == toInt64[i], "int64 conversion");
+        Assert(value as uint64 == toUInt64[i], "uint64 conversion");
+        Assert(value as uint32 == toUInt32[i], "uint32 conversion");
+        Assert(value as int8 == toInt8[i], "int8 conversion");
+        Assert(value as uint16 == toUInt16[i], "uint16 conversion");
+        Assert((value as float32) as int64 == toInt64[i] || i == 4 || i == 5, "float32 source conversion");
+    }
+
+    // A wide target takes a value of 2^63 or more whole, and saturates past its own range.
+    var big = 1e20f64;
+    Assert(big as int128 == 100000000000000000000i128, "a large value converts exactly to a wide target");
+    Assert(-big as int128 == -100000000000000000000i128, "and a large negative one");
+    Assert(big as uint128 == 100000000000000000000u128, "and to a wide unsigned target");
+    Assert(1e40f64 as int128 == int128::Max, "a wide target saturates at its maximum");
+    var tooBig = 1e40f64;
+    Assert(tooBig as int128 == int128::Max, "at run time too");
+    Assert(-tooBig as int128 == int128::Min, "and at its minimum");
+    Assert(-tooBig as uint128 == 0u128, "and an unsigned wide target at zero");
+    var single = 3.0e38f32;
+    Assert(single as uint128 == 300000000549775575777803994281145270272u128, "a float32 converts exactly too");
+    Assert(single as int256 == 300000000549775575777803994281145270272i256, "to every wide width");
+    var nanAtRunTime = nan;
+    Assert(nanAtRunTime as int128 == 0i128, "a NaN becomes zero at every width");
+    Assert(nanAtRunTime != nanAtRunTime, "a NaN is unequal to itself");
+    return 0;
+}

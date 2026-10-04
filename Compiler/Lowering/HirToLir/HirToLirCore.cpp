@@ -409,7 +409,13 @@ LirReg HirToLirContext::EmitCast(LirReg src, const TypeRef &fromType, TypeRef to
         const LirReg tested = EmitBinary(LirOpcode::CmpNe, src, zero, TypeRef::MakeBool());
         return TypeRef::MakeBool() == toType ? tested : EmitWidenBool(tested, toType);
     }
+    if (fromType.IsFloat() && toType.IsInteger()) {
+        return EmitFloatToInteger(src, fromType, toType);
+    }
+    return EmitConversion(src, fromType, std::move(toType));
+}
 
+LirReg HirToLirContext::EmitConversion(const LirReg src, const TypeRef &fromType, TypeRef toType) {
     LirReg dst = NewReg();
     LirInstr i;
     i.dst = dst;
@@ -419,6 +425,173 @@ LirReg HirToLirContext::EmitCast(LirReg src, const TypeRef &fromType, TypeRef to
     i.strArg = fromType.ToString();
     Emit(std::move(i));
     return dst;
+}
+
+namespace {
+/// The exact decimal spelling of 2^exponent, which every float literal reader rounds to the power itself.
+std::string PowerOfTwoDecimal(const std::uint32_t exponent) {
+    std::string digits = "1"; // least significant digit first
+    for (std::uint32_t step = 0; step < exponent; ++step) {
+        int carry = 0;
+        for (char &digit : digits) {
+            const int doubled = (digit - '0') * 2 + carry;
+            digit = static_cast<char>('0' + doubled % 10);
+            carry = doubled / 10;
+        }
+        if (carry != 0) {
+            digits.push_back(static_cast<char>('0' + carry));
+        }
+    }
+    return {digits.rbegin(), digits.rend()};
+}
+
+/// The largest finite value of a hardware float type, exactly.
+std::string LargestFinite(const TypeRef &floatType) {
+    return floatType.kind == TypeRef::Kind::Float32
+             ? "340282346638528859811704183484516925440.0"
+             : "179769313486231570814527423731704356798070567525844996598917476803157260780028538760589558632766878"
+               "17154045895351438246423432132688946418276846754670353751698604991057655128207624549009038932894407586"
+               "85084551339423045832369032229481658085593321233482747978262041447231687381771809192998812504040261841"
+               "24858368.0";
+}
+
+/// The bits of a float type's significand field, which an exponent-and-significand decomposition reads.
+std::uint32_t SignificandFieldBits(const TypeRef &floatType) {
+    return floatType.kind == TypeRef::Kind::Float32 ? 23 : 52;
+}
+} // namespace
+
+/// Converts a float to an integer by the language rule: toward zero when the value fits, the type's minimum or maximum
+/// when it does not, and zero for a NaN, identically on every target. The hardware conversions disagree outside the
+/// range — x86-64 answers with the most negative 64-bit value, AArch64 saturates at 32 or 64 bits — so the range is
+/// settled here and each back end only converts values it can represent. A value of 2^63 or more in magnitude is
+/// assembled from its exponent and significand, which is how an integer wider than 64 bits receives it.
+LirReg HirToLirContext::EmitFloatToInteger(const LirReg value, const TypeRef &fromType, const TypeRef &toType) {
+    const TypeRef boolType = TypeRef::MakeBool();
+    const std::uint32_t width = static_cast<std::uint32_t>(toType.SizeInBytes().value_or(8) * 8);
+    const bool isSigned = toType.IsSigned();
+    const std::uint32_t magnitudeBits = isSigned ? width - 1 : width;
+    const std::uint32_t floatMaxExponent = fromType.kind == TypeRef::Kind::Float32 ? 127 : 1023;
+    const LirReg result = EmitAlloca(toType);
+    const std::uint32_t done = NewBlock("ftoi.done");
+
+    const auto storeConstant = [&](const std::string &literal) {
+        EmitStore(EmitConst(literal, toType), result, toType);
+        Jump(done);
+    };
+    const auto branchTo = [&](const LirReg condition, const std::string_view label, const std::string &literal) {
+        const std::uint32_t taken = NewBlock(std::string(label));
+        const std::uint32_t next = NewBlock("ftoi.next");
+        Branch(condition, taken, next);
+        SetBlock(taken);
+        storeConstant(literal);
+        SetBlock(next);
+    };
+
+    // A NaN is the one value unequal to itself.
+    branchTo(EmitBinary(LirOpcode::CmpNe, value, value, boolType), "ftoi.nan", "0");
+
+    // Below the range: at or under the minimum for a signed type, at or under -1 for an unsigned one, whose fraction
+    // above -1 truncates to zero anyway. A bound past the float's own range leaves only the infinity beyond it.
+    const std::string minimum = isSigned ? "-" + PowerOfTwoDecimal(width - 1) : "0";
+    LirReg below = LirNoReg;
+    if (!isSigned) {
+        below = EmitBinary(LirOpcode::CmpLe, value, EmitConst("-1.0", fromType), boolType);
+    }
+    else if (width - 1 <= floatMaxExponent) {
+        below = EmitBinary(LirOpcode::CmpLe, value, EmitConst("-" + PowerOfTwoDecimal(width - 1) + ".0", fromType),
+                           boolType);
+    }
+    else {
+        below = EmitBinary(LirOpcode::CmpLt, value, EmitConst("-" + LargestFinite(fromType), fromType), boolType);
+    }
+    branchTo(below, "ftoi.min", minimum);
+
+    // At or above 2^magnitudeBits nothing fits; the maximum is one less.
+    const std::string maximum = [&] {
+        std::string bound = PowerOfTwoDecimal(magnitudeBits);
+        for (auto digit = bound.rbegin(); digit != bound.rend(); ++digit) {
+            if (*digit != '0') {
+                --*digit;
+                break;
+            }
+            *digit = '9';
+        }
+        return bound;
+    }();
+    const LirReg above =
+        magnitudeBits <= floatMaxExponent
+            ? EmitBinary(LirOpcode::CmpGe, value, EmitConst(PowerOfTwoDecimal(magnitudeBits) + ".0", fromType),
+                         boolType)
+            : EmitBinary(LirOpcode::CmpGt, value, EmitConst(LargestFinite(fromType), fromType), boolType);
+    branchTo(above, "ftoi.max", maximum);
+
+    // Every target converts an in-range value of up to 64 bits directly. A wider target takes a value within 2^63 of
+    // zero through a signed 64-bit integer and assembles a larger one.
+    if (width <= 64) {
+        EmitStore(EmitConversion(value, fromType, toType), result, toType);
+        Jump(done);
+        SetBlock(done);
+        return EmitLoad(result, toType);
+    }
+    const TypeRef int64Type = TypeRef::MakeInt64();
+    const TypeRef uint64Type = TypeRef::MakeUInt64();
+    const std::uint32_t small = NewBlock("ftoi.small");
+    const std::uint32_t large = NewBlock("ftoi.large");
+    const std::string twoTo63 = PowerOfTwoDecimal(63) + ".0";
+    if (isSigned) {
+        const std::uint32_t lowerCheck = NewBlock("ftoi.lower");
+        Branch(EmitBinary(LirOpcode::CmpLt, value, EmitConst(twoTo63, fromType), boolType), lowerCheck, large);
+        SetBlock(lowerCheck);
+        Branch(EmitBinary(LirOpcode::CmpGt, value, EmitConst("-" + twoTo63, fromType), boolType), small, large);
+    }
+    else {
+        Branch(EmitBinary(LirOpcode::CmpLt, value, EmitConst(twoTo63, fromType), boolType), small, large);
+    }
+
+    SetBlock(small);
+    const LirReg narrow = EmitConversion(value, fromType, int64Type);
+    EmitStore(EmitConversion(narrow, int64Type, toType), result, toType);
+    Jump(done);
+
+    // The value is an integer of at least 2^63 in magnitude: its significand, with the hidden bit restored, shifted
+    // left by what the exponent says is above the significand's lowest bit.
+    SetBlock(large);
+    const LirReg spill = EmitAlloca(fromType);
+    EmitStore(value, spill, fromType);
+    const bool single = fromType.kind == TypeRef::Kind::Float32;
+    const TypeRef bitsType = single ? TypeRef::MakeUInt32() : uint64Type;
+    const LirReg rawBits = EmitLoad(spill, bitsType);
+    const LirReg bits = single ? EmitConversion(rawBits, bitsType, uint64Type) : rawBits;
+    const std::uint32_t fieldBits = SignificandFieldBits(fromType);
+    const std::uint64_t fieldMask = (std::uint64_t{1} << fieldBits) - 1;
+    const LirReg biased = EmitBinary(
+        LirOpcode::And, EmitBinary(LirOpcode::Lshr, bits, EmitConst(std::to_string(fieldBits), uint64Type), uint64Type),
+        EmitConst(single ? "255" : "2047", uint64Type), uint64Type);
+    const LirReg significand = EmitBinary(
+        LirOpcode::Or, EmitBinary(LirOpcode::And, bits, EmitConst(std::to_string(fieldMask), uint64Type), uint64Type),
+        EmitConst(std::to_string(fieldMask + 1), uint64Type), uint64Type);
+    const std::uint64_t bias = (single ? 127 : 1023) + fieldBits;
+    const LirReg shift = EmitBinary(LirOpcode::Sub, biased, EmitConst(std::to_string(bias), uint64Type), uint64Type);
+    const LirReg widened = toType == uint64Type ? significand : EmitConversion(significand, uint64Type, toType);
+    const LirReg magnitude = EmitBinary(LirOpcode::Shl, widened, shift, toType);
+    if (!isSigned) {
+        EmitStore(magnitude, result, toType);
+        Jump(done);
+    }
+    else {
+        const std::uint32_t negative = NewBlock("ftoi.negative");
+        const std::uint32_t positive = NewBlock("ftoi.positive");
+        Branch(EmitBinary(LirOpcode::CmpLt, value, EmitConst("0.0", fromType), boolType), negative, positive);
+        SetBlock(negative);
+        EmitStore(EmitUnary(LirOpcode::Neg, magnitude, toType), result, toType);
+        Jump(done);
+        SetBlock(positive);
+        EmitStore(magnitude, result, toType);
+        Jump(done);
+    }
+    SetBlock(done);
+    return EmitLoad(result, toType);
 }
 
 /// Restate an already-normalized `bool8` at a wider bool's storage.

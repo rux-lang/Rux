@@ -117,6 +117,9 @@ private:
     [[nodiscard]] LirReg EmitBinary(LirOpcode op, LirReg left, LirReg right, TypeRef type);
     [[nodiscard]] LirReg EmitUnary(LirOpcode op, LirReg source, const TypeRef &type);
     [[nodiscard]] LirReg EmitCast(LirReg source, const TypeRef &fromType, TypeRef toType);
+    /// One `cast` instruction, with none of the language rules `EmitCast` applies on top of it.
+    [[nodiscard]] LirReg EmitConversion(LirReg source, const TypeRef &fromType, TypeRef toType);
+    [[nodiscard]] LirReg EmitFloatToInteger(LirReg value, const TypeRef &fromType, const TypeRef &toType);
     [[nodiscard]] LirReg EmitWidenBool(LirReg source, const TypeRef &toType);
     [[nodiscard]] static bool IsScalar(const TypeRef &type);
     [[nodiscard]] static bool IsComparison(TokenKind op);

@@ -487,3 +487,50 @@ func Present(value: int?) -> int {
         }
     }
 }
+
+TEST_CASE("saturating float conversions run on the host and emit on AArch64") {
+    constexpr std::string_view conversions = R"(func ToInt32(value: float64) -> int32 {
+    return value as int32;
+}
+
+func ToUInt64(value: float64) -> uint64 {
+    return value as uint64;
+}
+
+func ToInt128(value: float32) -> int128 {
+    return value as int128;
+}
+
+func ToUInt8(value: float32) -> uint8 {
+    return value as uint8;
+}
+)";
+    CheckRunsOnHost(std::string(conversions) + R"(
+func Main() -> int {
+    if ToInt32(1e20) != 2147483647i32 || ToInt32(-1e20) != -2147483647i32 - 1 || ToInt32(0.0 / 0.0) != 0i32 {
+        return 1;
+    }
+    if ToUInt64(1e19) != 10000000000000000000u64 || ToUInt64(-5.0) != 0u64 || ToUInt64(1e30) != 18446744073709551615u64 {
+        return 2;
+    }
+    if ToInt128(-1e20f32) != -100000002004087734272i128 || ToUInt8(300.0f32) != 255u8 || ToUInt8(-0.5f32) != 0u8 {
+        return 3;
+    }
+    return 42;
+}
+)",
+                    42);
+
+    for (const Target::OS os : {Target::OS::Linux, Target::OS::MacOS, Target::OS::Windows}) {
+        const auto triple = Target::TargetTriple::From(os, Target::Arch::AArch64);
+        REQUIRE(triple.has_value());
+        for (const BuildProfile profile : {BuildProfile::Debug, BuildProfile::Release}) {
+            const LirPackage package = CompileChecks(conversions, profile, *triple);
+            AArch64RcuEmitter emitter(package, "RuntimeCheckTest", os);
+            const auto objects = emitter.Generate();
+            CAPTURE(emitter.Diagnostics().empty() ? std::string{} : emitter.Diagnostics().front().message);
+            CHECK(emitter.Diagnostics().empty());
+            CHECK_FALSE(objects.empty());
+        }
+    }
+}

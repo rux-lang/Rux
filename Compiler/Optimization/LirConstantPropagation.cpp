@@ -217,7 +217,7 @@ std::optional<TokenKind> BinaryToken(const LirOpcode opcode) {
 }
 
 std::optional<KnownValue> Evaluate(const LirInstr &instruction, const Values &values, const LiveEdges &edges,
-                                   const BlockIndex blockIndex) {
+                                   const BlockIndex blockIndex, const std::unordered_set<LirReg> &floatRegisters) {
     if (instruction.op == LirOpcode::Const) {
         if (auto value = ParseConstant(instruction.strArg, instruction.type)) {
             return KnownValue{std::move(value), std::nullopt};
@@ -280,8 +280,11 @@ std::optional<KnownValue> Evaluate(const LirInstr &instruction, const Values &va
         const LirReg leftReg = left.copy ? *left.copy : instruction.srcs[0];
         const LirReg rightReg = right.copy ? *right.copy : instruction.srcs[1];
 
-        // Self-identity & idempotence on same operand (for integers / booleans)
-        if (sameOperand && (instruction.type.IsInteger() || instruction.type.IsBool())) {
+        // Self-identity & idempotence on same operand (for integers / booleans). A comparison's own type is always a
+        // bool, so its operands are asked separately: a NaN is unequal to itself, which `x != x` is how one is found.
+        const bool floatOperand =
+            floatRegisters.contains(instruction.srcs[0]) || floatRegisters.contains(instruction.srcs[1]);
+        if (sameOperand && !floatOperand && (instruction.type.IsInteger() || instruction.type.IsBool())) {
             switch (instruction.op) {
             case LirOpcode::Sub:
             case LirOpcode::Xor:
@@ -401,9 +404,20 @@ std::optional<KnownValue> Evaluate(const LirInstr &instruction, const Values &va
 Values Analyze(const LirFunc &function) {
     Values values;
     std::size_t definitions = function.params.size();
+    std::unordered_set<LirReg> floatRegisters;
+    for (const auto &parameter : function.params) {
+        if (parameter.type.IsFloat()) {
+            floatRegisters.insert(parameter.reg);
+        }
+    }
     for (const auto &block : function.blocks) {
         definitions += std::ranges::count_if(block.instrs,
                                              [](const LirInstr &instruction) { return instruction.dst != LirNoReg; });
+        for (const auto &instruction : block.instrs) {
+            if (instruction.dst != LirNoReg && instruction.type.IsFloat()) {
+                floatRegisters.insert(instruction.dst);
+            }
+        }
     }
 
     for (std::size_t iteration = 0; iteration <= definitions; ++iteration) {
@@ -414,7 +428,7 @@ Values Analyze(const LirFunc &function) {
                 if (instruction.dst == LirNoReg) {
                     continue;
                 }
-                const auto evaluated = Evaluate(instruction, values, edges, blockIndex);
+                const auto evaluated = Evaluate(instruction, values, edges, blockIndex, floatRegisters);
                 const auto previous = values.find(instruction.dst);
                 if (evaluated && (previous == values.end() || !SameValue(previous->second, *evaluated))) {
                     values[instruction.dst] = *evaluated;

@@ -353,10 +353,23 @@ std::optional<TypedConstant> CastConstant(const TypedConstant &value, const Type
         return Make(targetType, converted.Bits());
     }
     if (value.GetKind() == TypedConstant::Kind::Floating) {
-        const FloatToIntegerResult converted =
-            FloatToInteger(FloatEncoding::FromBits(FormatOf(value), value.Bits()), target->width,
-                           target->kind == TypedConstant::Kind::SignedInteger);
-        return converted.HasValue() ? std::optional{Make(targetType, converted.value)} : std::nullopt;
+        const bool targetSigned = target->kind == TypedConstant::Kind::SignedInteger;
+        const FloatEncoding encoding = FloatEncoding::FromBits(FormatOf(value), value.Bits());
+        const FloatToIntegerResult converted = FloatToInteger(encoding, target->width, targetSigned);
+        if (converted.HasValue()) {
+            return Make(targetType, converted.value);
+        }
+        // Outside the range the conversion saturates, and a NaN becomes zero, as it does at run time.
+        const FloatClass classification = encoding.Classify();
+        if (classification != FloatClass::Infinity && classification != FloatClass::Normal &&
+            classification != FloatClass::Subnormal) {
+            return Make(targetType, WideInteger::Zero(target->width));
+        }
+        if (encoding.IsNegative()) {
+            return Make(targetType, targetSigned ? WideInteger::MinMagnitude(target->width, true).Negated()
+                                                 : WideInteger::Zero(target->width));
+        }
+        return Make(targetType, WideInteger::MaxValue(target->width, targetSigned));
     }
     const bool sourceSigned = value.GetKind() == TypedConstant::Kind::SignedInteger;
     return Make(targetType, value.Bits().ConvertedWrapping(target->width, sourceSigned));

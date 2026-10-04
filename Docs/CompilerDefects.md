@@ -410,7 +410,7 @@ func Main() -> int {
   diagnostic saying documentation comments attach only to declarations would be clearer.
   **Fixed**; covered by the `DocumentationInBlock` golden.
 - **Out-of-range float-to-integer conversion is unspecified in `Docs/Language.md`.**
-  `1e20 as int32` gives `0`, while `1e20 as int64` gives `int64::Min`.
+  `1e20 as int32` gives `0`, while `1e20 as int64` gives `int64::Min`. **Fixed**; covered by `Tests/Language/FloatToInteger` and `RuntimeCheckLoweringTests.cpp`.
 ## D24. A tuple literal converted into an optional, fallible or sum holds garbage (fixed)
 
 **Fixed**; covered by `Tests/Language/NativeOutcomes`.

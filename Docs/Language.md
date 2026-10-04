@@ -20,6 +20,10 @@ Struct literals can appear inside parenthesized expressions and call arguments w
 
 Integer `/` and `%`, and the compound `/=` and `%=`, stop the program when the divisor is zero, on every target and in every build profile. The report has the shape a `Panic` call prints — `Panic: division by zero` followed by the function, file, line, and column of the operator — and nothing is unwound. A signed division whose quotient does not fit its type, the type's minimum divided by `-1`, stops the same way with `Panic: division overflow`; the matching `%` is held to the same rule, because the machine instruction that computes it fails on the same operands. A divisor written as a nonzero literal needs no zero check, a release build removes a check whose operands it knows to pass, and constant folding never folds a division by zero away.
 
+## Float to Integer Conversion
+
+`value as T` from a float to an integer type truncates toward zero while the result fits `T`. A value beyond the range saturates: one above `T::Max`, including positive infinity, becomes `T::Max`, and one below `T::Min`, including negative infinity, becomes `T::Min`, so a negative value converts to `0` for an unsigned `T`. A NaN converts to `0`. The rule is the same for every integer width, on every target, and whether the compiler folds the conversion or it runs, so `1e20 as int32` is `int32::Max` and `1e20 as uint128` is exactly `100000000000000000000`. Integer-to-integer `as` still keeps the low bits without saturating.
+
 ## Return and Deferred Cleanup
 
 A `return expr;` evaluates and preserves `expr` exactly once before running deferred statements. The accepted copy or move into the return value happens during this evaluation. Later changes to source locals do not change the captured value, including fields of an aggregate; a returned pointer still points to its original storage.

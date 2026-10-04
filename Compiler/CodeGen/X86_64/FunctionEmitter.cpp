@@ -707,7 +707,35 @@ bool X86_64FunctionEmitter::EmitArithmetic(const LirInstr &instruction) {
         const bool sourceFloat = IsFloat(sourceType);
         const bool destinationFloat = IsFloat(destinationType);
         if (sourceFloat && !destinationFloat) {
-            sourceType.kind == TypeRef::Kind::Float32 ? encoder.CvttsssiRaxXmm0() : encoder.CvttsdsiRaxXmm0();
+            const bool single = sourceType.kind == TypeRef::Kind::Float32;
+            const auto truncate = [&] { single ? encoder.CvttsssiRaxXmm0() : encoder.CvttsdsiRaxXmm0(); };
+            if (destinationType.IsInteger() && !destinationType.IsSigned() && SizeOf(destinationType) == 8) {
+                // The truncating conversion produces a signed 64-bit integer, so an unsigned value of 2^63 or more is
+                // brought below 2^63 first and its top bit restored afterwards. Lowering has already settled what
+                // lies outside the unsigned range.
+                std::uint32_t relocationOffset;
+                const std::uint32_t symbol = single ? hooks.InternFloat32Literal("9223372036854775808.0")
+                                                    : hooks.InternFloat64Literal("9223372036854775808.0");
+                single ? encoder.MovssXmm1Rip(relocationOffset) : encoder.MovsdXmm1Rip(relocationOffset);
+                hooks.AddTextRelocation(relocationOffset, symbol);
+                single ? encoder.UcomissXmm01() : encoder.UcomisdXmm01();
+                const std::uint32_t large = JumpIf(0x83); // jae
+                truncate();
+                std::uint32_t done;
+                encoder.Jmp(done);
+                PatchHere(large);
+                single ? encoder.SubssXmm01() : encoder.SubsdXmm01();
+                truncate();
+                encoder.Byte(0x48);
+                encoder.Byte(0x0F);
+                encoder.Byte(0xBA);
+                encoder.Byte(0xF8);
+                encoder.Byte(0x3F); // btc rax, 63
+                PatchHere(done);
+            }
+            else {
+                truncate();
+            }
         }
         else if (!sourceFloat && destinationFloat) {
             destinationType.kind == TypeRef::Kind::Float32 ? encoder.Cvtsi2ssXmm0Rax() : encoder.Cvtsi2sdXmm0Rax();
