@@ -832,7 +832,7 @@ the start of the call. **Fixed**; covered by `ConditionalFoldingTests.cpp`.
 
 **Stale test:** the TODO in `Tests/Packages/Core/Config/Src/Main.rux` says `#config.Has` and
 `#config.Get` crash with 0xC0000139. They now work in executables, so that test body can be
-re-enabled.
+re-enabled. **Fixed**; covered by `Tests/Packages/Core/Config`.
 ## D47. The AArch64 assembler rejects the `ble` spelling of `b.le` (fixed)
 
 **Fixed**; covered by `AArch64AssemblerTests.cpp`, `AsmParserTests.cpp` and `Tests/Language/AsmAArch64`.
