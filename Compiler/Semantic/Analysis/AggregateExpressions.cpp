@@ -239,6 +239,28 @@ std::optional<TypeRef> AnalysisContext::IndexElementType(const TypeRef &type) {
     return std::nullopt;
 }
 
+std::optional<TypeRef> AnalysisContext::ExpectedArrayElementType(const ArrayExpr &array) const {
+    const auto expected = expectedExpressionTypes.find(&array);
+    if (expected == expectedExpressionTypes.end() || array.elements.empty()) {
+        return std::nullopt;
+    }
+    const TypeRef &type = expected->second;
+    std::optional<TypeRef> element;
+    if (type.kind == TypeRef::Kind::Array && type.arrayLength == array.elements.size() && !type.inner.empty()) {
+        element = type.inner.front();
+    }
+    else if (const auto sliceElement = SliceElementType(type)) {
+        element = *sliceElement;
+        element->isMut = false;
+    }
+    // Only a destination that can tell the elements apart from each other is worth checking against: a type
+    // parameter or an unresolved element still takes its type from the elements.
+    if (!element || element->IsUnknown() || MentionsTypeParameter(*element)) {
+        return std::nullopt;
+    }
+    return element;
+}
+
 std::string AnalysisContext::GenericStructInitName(const StructInitExpr &expression) {
     std::string name = NominalTypeName(expression.typeName);
     if (!expression.typeArgs.empty()) {
@@ -509,6 +531,15 @@ void AnalysisContext::CheckStructInitExpression(const StructInitExpr &expression
 
     std::unordered_map<std::string, SourceLocation> initialized;
     for (const auto &field : expression.fields) {
+        // A field's declared type is what its value is checked against, so it is known before the value is checked.
+        std::optional<TypeRef> declaredFieldType;
+        if (const auto declared = fields.find(field.name);
+            declared != fields.end() && IsMemberAccessible(declaration, declared->second->isPublic)) {
+            declaredFieldType = ResolveTypeWithSubstitution(*declared->second->type, substitutions);
+            if (!declaredFieldType->IsUnknown()) {
+                expectedExpressionTypes.insert_or_assign(field.value.get(), *declaredFieldType);
+            }
+        }
         const TypeRef valueType = CheckExpr(*field.value);
         if (const auto [first, inserted] = initialized.emplace(field.name, field.location); !inserted) {
             EmitError(field.location,
@@ -536,7 +567,9 @@ void AnalysisContext::CheckStructInitExpression(const StructInitExpr &expression
             continue;
         }
 
-        const TypeRef fieldType = ResolveTypeWithSubstitution(*expectedField->second->type, substitutions);
+        const TypeRef fieldType = declaredFieldType
+                                    ? *declaredFieldType
+                                    : ResolveTypeWithSubstitution(*expectedField->second->type, substitutions);
         if (!valueType.IsUnknown() && !fieldType.IsUnknown() && !CanAssignExprTo(*field.value, valueType, fieldType)) {
             EmitError(field.location,
                       AssignmentErrorMessage(
@@ -845,6 +878,33 @@ std::optional<TypeRef> AnalysisContext::CheckAggregateExpression(const Expr &exp
     }
 
     if (const auto *array = dynamic_cast<const ArrayExpr *>(&expression)) {
+        // An array literal whose destination fixes the element type converts each element to it, so the elements
+        // of `let values: (int32 | bool)[2] = [1i32, true]` need not agree with each other, only with the annotation.
+        if (const std::optional<TypeRef> expectedElement = ExpectedArrayElementType(*array)) {
+            bool allAccepted = true;
+            for (std::size_t index = 0; index < array->elements.size(); ++index) {
+                const auto &element = array->elements[index];
+                const TypeRef type = ReadBorrowedScalar(*element, CheckExpr(*element));
+                if (type.IsUnknown()) {
+                    continue;
+                }
+                if (!type.IsIncompleteNative() && !CanAssignExprTo(*element, type, *expectedElement)) {
+                    EmitError(element->location,
+                              std::format("array element {} has type '{}', but the array's element type is '{}'",
+                                          index + 1, type.DisplayString(), expectedElement->ToString()));
+                    allAccepted = false;
+                    continue;
+                }
+                ConsumeValue(*element, type, ValueConsumptionKind::Aggregate, element->location);
+            }
+            // A refused element was reported against the declared type, which is the whole of the problem.
+            if (!allAccepted) {
+                return TypeRef::MakeUnknown();
+            }
+            TypeRef arrayType = TypeRef::MakeArray(*expectedElement, array->elements.size());
+            ValidateStoredType(arrayType, array->location, "array value");
+            return arrayType;
+        }
         TypeRef elementType = TypeRef::MakeUnknown();
         std::size_t inferredFrom = 0;
         const Expr *inferredExpression = nullptr;

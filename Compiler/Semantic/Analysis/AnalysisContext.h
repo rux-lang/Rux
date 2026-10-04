@@ -545,6 +545,9 @@ private:
     /// One entry per accepted index expression that resolved to a declared `[]`, so lowering calls the operator
     /// without resolving it again and analysis knows the expression is a call rather than a place.
     std::unordered_map<const IndexExpr *, ResolvedIndexOperator> &indexOperators;
+    /// The type a destination expects of an expression it is about to check, recorded before the check for the
+    /// expressions whose parts take their type from it, such as the elements of an array literal.
+    std::unordered_map<const Expr *, TypeRef> expectedExpressionTypes;
     /// One entry per accepted index expression assigned through a declared `[]=`, for the same two reasons.
     std::unordered_map<const IndexExpr *, ResolvedIndexAssignment> &indexAssignments;
     /// The index expression currently being checked as the direct target of a plain assignment, if any. The setter is
@@ -881,6 +884,8 @@ private:
                                std::unordered_map<std::string, TypeRef> substitutions = {},
                                std::optional<TypeRef> receiverType = std::nullopt);
     void RecordExternBinding(const CallExpr &call, const ExternFuncDecl &declaration);
+    /// The element type the destination of `array` fixes, when it fixes one its elements can be converted to.
+    [[nodiscard]] std::optional<TypeRef> ExpectedArrayElementType(const ArrayExpr &array) const;
     [[nodiscard]] std::string GenericStructInitName(const StructInitExpr &expression);
     [[nodiscard]] std::pair<const EnumDecl *, const EnumDecl::Variant *>
     LookupEnumVariantInitializer(const std::string &typeName) const;

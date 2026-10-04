@@ -4,6 +4,7 @@
 #include "Semantic/Conditional/ConditionalCompilation.h"
 #include "Target/Layout.h"
 #include "Target/Target.h"
+#include "Types/PrimitiveCatalog.h"
 #include "Types/Type.h"
 
 #include <algorithm>
@@ -35,6 +36,29 @@ TypeRef AnalysisContext::ReadBorrowedScalar(const Expr &expression, const TypeRe
     borrowedScalarReads.insert(&expression);
     return value;
 }
+
+namespace {
+bool IsUnprefixedCharLiteral(const Expr &expression) {
+    const auto *literal = dynamic_cast<const LiteralExpr *>(&expression);
+    return literal && literal->token.kind == TokenKind::CharLiteral && literal->token.text.starts_with('\'');
+}
+
+bool UnprefixedCharLiteralFits(const Expr &expression, const TypeRef &target) {
+    const auto *literal = dynamic_cast<const LiteralExpr *>(&expression);
+    const std::optional<std::uint32_t> codePoint =
+        literal ? Lexer::DecodeCharLiteralCodePoint(literal->token.text) : std::nullopt;
+    if (!codePoint) {
+        return false;
+    }
+    if (target.kind == TypeRef::Kind::Char8) {
+        return *codePoint <= 0x7F;
+    }
+    if (target.kind == TypeRef::Kind::Char16) {
+        return *codePoint <= 0xFFFF && !IsSurrogate(*codePoint);
+    }
+    return IsValidCharacterValue(target.kind, *codePoint);
+}
+} // namespace
 
 bool AnalysisContext::CanAssignExprTo(const Expr &expr, const TypeRef &exprType, const TypeRef &targetType) {
     if (const auto *construct = dynamic_cast<const NativeConstructExpr *>(&expr)) {
@@ -133,6 +157,12 @@ bool AnalysisContext::CanAssignExprTo(const Expr &expr, const TypeRef &exprType,
 
     if (targetType.IsInteger() && IsUnsuffixedIntegerLiteral(expr)) {
         return UnsuffixedIntegerLiteralFits(expr, targetType);
+    }
+
+    // An unprefixed character literal takes the character width its destination expects, when its one character is
+    // one code unit of that width: `'a'` is a `char8`, but `'é'` needs two UTF-8 units and stays a `char32`.
+    if (targetType.IsChar() && IsUnprefixedCharLiteral(expr)) {
+        return UnprefixedCharLiteralFits(expr, targetType);
     }
 
     // A constant integer expression (e.g. 10 + 2 * (5 - 3)) coerces to

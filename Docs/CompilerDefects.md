@@ -29,7 +29,9 @@ func Main() -> int {
   literal arms are still typed as `int` before the expected type is consulted.
 - **Course workaround:** `SumTypes/SubsetPattern` returns `int` instead of `int32`.
 
-## D2. An array literal does not convert its elements to a declared sum element type
+## D2. An array literal does not convert its elements to a declared sum element type (fixed)
+
+**Fixed**; covered by `Tests/Language/ExpectedTypeLiterals` and the `ArrayElementTypes` golden.
 
 ```rux
 func Main() -> int {
@@ -475,7 +477,9 @@ func Main() -> int {
   `let g: Gauge = knob; g.Adjust(1);` is accepted too, but changes only the copy.
 - **Course workaround:** `Interfaces/InterfaceParameter` uses `&var Gauge` for the mutating case.
 
-## D29. An array literal does not convert its elements to a declared interface element type
+## D29. An array literal does not convert its elements to a declared interface element type (fixed)
+
+**Fixed**; covered by `Tests/Language/ExpectedTypeLiterals`.
 
 - **Reproducer:** two structs implementing `Shape`, then `let shapes: Shape[2] = [square, circle];`.
 - **Expected:** each element is converted to `Shape`.
@@ -803,7 +807,7 @@ refused by `PrintLine`'s `{}` arguments in the same way as a writable `char8[..]
 
 Related to D2: an unsuffixed character array literal does not take its element type from the
 annotation. `var letters: char8[3] = ['a', 'b', 'c'];` gives `cannot assign 'char32[3]' to
-'char8[3]'`, so each element needs a `c8` prefix.
+'char8[3]'`, so each element needs a `c8` prefix. **Fixed**; covered by `Tests/Language/ExpectedTypeLiterals`.
 ## D48. A named `const` is rejected as an array length or repeat count
 
 ```rux

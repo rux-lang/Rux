@@ -1,0 +1,3 @@
+4:36: error: array element 2 has type 'char8[..]', but the array's element type is 'int32'
+5:29: error: array element 2 has type 'bool8', but element 1 established element type 'int32'
+6:32: error: array element 2 has type 'char32', but the array's element type is 'char8'

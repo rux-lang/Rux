@@ -555,6 +555,13 @@ HirExprPtr AstToHirContext::LowerExprAs(const Expr &expression, const TypeRef &t
         return CompilerLiteral(expression.location, targetType, "0");
     }
 
+    // Analysis accepted an unprefixed character literal at the expected width, so it is that width's code unit.
+    if (const auto *literal = dynamic_cast<const LiteralExpr *>(&expression);
+        literal && literal->token.kind == TokenKind::CharLiteral && literal->token.text.starts_with('\'') &&
+        targetType.IsChar()) {
+        return CompilerLiteral(expression.location, targetType, DecodeCharLiteral(literal->token.text));
+    }
+
     if (const auto *array = dynamic_cast<const ArrayExpr *>(&expression);
         array && targetType.kind == TypeRef::Kind::Array && targetType.arrayLength && !targetType.inner.empty()) {
         auto lowered = std::make_unique<HirArrayExpr>();

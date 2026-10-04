@@ -233,8 +233,14 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
             dynamic_cast<const ReferenceTypeExpr *>(letStatement->type->get())) {
             RejectSubsetViewUse(*letStatement->init, letStatement->location, "be stored as a reference");
         }
+        // The annotation is resolved first so that an initializer whose parts take their type from it, such as the
+        // elements of an array literal, is checked against it.
+        const TypeRef annotatedType = letStatement->type ? ResolveType(**letStatement->type) : TypeRef::MakeUnknown();
+        if (letStatement->init && !annotatedType.IsUnknown()) {
+            expectedExpressionTypes.insert_or_assign(letStatement->init.get(), annotatedType);
+        }
         TypeRef initializerType = letStatement->init ? CheckExpr(*letStatement->init) : TypeRef::MakeUnknown();
-        TypeRef declarationType = letStatement->type ? ResolveType(**letStatement->type) : initializerType;
+        TypeRef declarationType = letStatement->type ? annotatedType : initializerType;
         // `none`, `.Success(v)`, and `.Failure(e)` leave a part of their type to the context, so a binding cannot take
         // its whole type from one of them.
         const bool incompleteNative = !letStatement->type && initializerType.MentionsIncompleteNative();
@@ -583,6 +589,9 @@ void AnalysisContext::CheckReturn(const Expr *value, const SourceLocation locati
     }
     bool returnAccepted = false;
     if (value) {
+        if (!currentReturnType.IsUnknown() && !currentReturnType.IsOpaque()) {
+            expectedExpressionTypes.insert_or_assign(value, currentReturnType);
+        }
         TypeRef valueType = CheckExpr(*value);
         if (valueType.kind == TypeRef::Kind::Reference && !valueType.CanReadScalarTo(currentReturnType)) {
             EmitError(location,
