@@ -9,6 +9,25 @@
 #include <utility>
 
 namespace Rux::AstToHirDetail {
+namespace {
+/// Whether a `let` pattern binds a name anywhere. Semantic analysis admits only names, `_`, tuples and structures
+/// there.
+bool LetPatternBindsName(const Pattern &pattern) {
+    if (dynamic_cast<const IdentPattern *>(&pattern)) {
+        return true;
+    }
+    if (const auto *tuple = dynamic_cast<const TuplePattern *>(&pattern)) {
+        return std::ranges::any_of(tuple->elements,
+                                   [](const PatternPtr &element) { return LetPatternBindsName(*element); });
+    }
+    if (const auto *structure = dynamic_cast<const StructPattern *>(&pattern)) {
+        return std::ranges::any_of(
+            structure->fields, [](const StructPattern::Field &field) { return LetPatternBindsName(*field.pattern); });
+    }
+    return false;
+}
+} // namespace
+
 bool AstToHirContext::IsDiagnosticIntrinsicCall(const Expr &expression) const {
     const auto *call = dynamic_cast<const CallExpr *>(&expression);
     if (!call) {
@@ -383,6 +402,53 @@ HirPatternPtr AstToHirContext::LowerLetPattern(const Pattern &pattern, const Typ
                 elementType = type.inner[i];
             }
             lowered->elements.push_back(LowerLetPattern(*tuple->elements[i], elementType, isMutable, discardsParts));
+        }
+        return lowered;
+    }
+    // Inside a case payload a structure pattern may test its fields, so only a destructuring `let`, where every part is
+    // irrefutable, takes one apart here.
+    const auto *structPattern = discardsParts ? dynamic_cast<const StructPattern *>(&pattern) : nullptr;
+    if (structPattern) {
+        // A structure pattern that binds nothing takes nothing out, so the value is discarded whole and a destructor
+        // its type declares runs on it.
+        if (!LetPatternBindsName(*structPattern)) {
+            auto lowered = std::make_unique<HirWildcardPattern>();
+            lowered->location = structPattern->location;
+            if (const DropGluePlan *glue = model.TryGetDropGlue(type)) {
+                lowered->discardGlue = glue->symbol;
+            }
+            return lowered;
+        }
+        auto lowered = std::make_unique<HirStructPattern>();
+        lowered->location = structPattern->location;
+        lowered->typeName = NamedBaseTypeName(type);
+        lowered->resolvedType = type;
+        for (const auto &field : structPattern->fields) {
+            HirStructPatternField loweredField;
+            loweredField.name = field.name;
+            loweredField.type = StructFieldType(type, field.name);
+            loweredField.pattern = LowerLetPattern(*field.pattern, loweredField.type, isMutable, true);
+            lowered->fields.push_back(std::move(loweredField));
+        }
+        // A field the pattern leaves out has no owner once the value is taken apart, so it is discarded like a field
+        // bound to `_`, after the written ones.
+        if (const auto declaration = structDecls.find(lowered->typeName); declaration != structDecls.end()) {
+            for (const auto &field : declaration->second->fields) {
+                if (std::ranges::any_of(structPattern->fields,
+                                        [&](const auto &written) { return written.name == field.name; })) {
+                    continue;
+                }
+                HirStructPatternField omitted;
+                omitted.name = field.name;
+                omitted.type = StructFieldType(type, field.name);
+                auto wildcard = std::make_unique<HirWildcardPattern>();
+                wildcard->location = structPattern->location;
+                if (const DropGluePlan *glue = model.TryGetDropGlue(omitted.type)) {
+                    wildcard->discardGlue = glue->symbol;
+                }
+                omitted.pattern = std::move(wildcard);
+                lowered->fields.push_back(std::move(omitted));
+            }
         }
         return lowered;
     }

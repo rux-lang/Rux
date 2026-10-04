@@ -132,7 +132,7 @@ protected:
     [[nodiscard]] HirStmtPtr LowerStmt(const Stmt &stmt);
     [[nodiscard]] HirStmtPtr LowerFunctionReturn(HirExprPtr value, SourceLocation location);
     /// A binding pattern of `type`. A destructuring `let` passes `discardsParts`: it owns the whole initializer, so a
-    /// part it binds to `_` is destroyed where it is discarded.
+    /// part it binds to `_`, or a structure field it leaves out, is destroyed where it is discarded.
     [[nodiscard]] HirPatternPtr LowerLetPattern(const Pattern &pattern, const TypeRef &type, bool isMutable,
                                                 bool discardsParts = false);
 

@@ -26,7 +26,8 @@ void HirToLirContext::LowerStmt(const HirStmt &stmt) {
         else {
             MarkBindingLive(s->bindingId, false);
         }
-        if (s->pattern) {
+        // An initializer that left the function, such as a call to `Panic`, leaves nothing to take apart.
+        if (s->pattern && !IsTerminated()) {
             BindLetPattern(*s->pattern, slot, s->type);
         }
         return;

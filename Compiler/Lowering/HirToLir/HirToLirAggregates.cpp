@@ -424,6 +424,15 @@ void HirToLirContext::BindLetPattern(const HirPattern &pat, LirReg subjectPtr, c
             LirReg elemPtr = EmitFieldPtr(subjectPtr, std::to_string(i), elemType);
             BindLetPattern(*p->elements[i], elemPtr, elemType);
         }
+        return;
+    }
+
+    // Each field carries its own type, substituted for a generic structure, and the omitted ones follow as wildcards.
+    if (const auto *p = dynamic_cast<const HirStructPattern *>(&pat)) {
+        for (const HirStructPatternField &field : p->fields) {
+            const LirReg fieldPtr = EmitFieldPtr(subjectPtr, field.name, field.type);
+            BindLetPattern(*field.pattern, fieldPtr, field.type);
+        }
     }
 }
 

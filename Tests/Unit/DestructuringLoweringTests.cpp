@@ -212,6 +212,47 @@ TEST_CASE("a destructuring let records the drop glue of each droppable part it d
     CHECK(CallsGlue(RequireFunction(lir, "Keep").blocks.front()));
 }
 
+TEST_CASE("a structure pattern in let binds substituted fields and discards the ones it leaves unbound") {
+    const std::string source = std::string(kTag) + R"(
+        struct Parcel<T> { label: Tag; contents: T; count: int32; }
+        func Keep(parcel: Parcel<Tag>) -> int32 {
+            let Parcel { contents: kept, label: _ } <- parcel;
+            return kept.id;
+        }
+        func Whole(tag: Tag) {
+            let Tag { id: _ } <- tag;
+        }
+    )";
+    const HirPackage package = LowerSource(source);
+    const auto *structure = dynamic_cast<const HirStructPattern *>(&LetPattern(RequireFunction(package, "Keep")));
+    REQUIRE(structure != nullptr);
+    // The written fields come first, in source order, then the omitted ones as wildcards.
+    REQUIRE_EQ(structure->fields.size(), 3);
+    CHECK_EQ(structure->fields[0].name, "contents");
+    const auto *kept = dynamic_cast<const HirBindingPattern *>(structure->fields[0].pattern.get());
+    REQUIRE(kept != nullptr);
+    // `contents: T` is read as `Tag`, the type the `label` field declares.
+    CHECK_EQ(structure->fields[0].type, structure->fields[1].type);
+    CHECK_EQ(kept->type, structure->fields[1].type);
+    CHECK_EQ(structure->fields[1].name, "label");
+    const auto *label = dynamic_cast<const HirWildcardPattern *>(structure->fields[1].pattern.get());
+    REQUIRE(label != nullptr);
+    CHECK(StartsWith(label->discardGlue, "__rux_drop__"));
+    CHECK_EQ(structure->fields[2].name, "count");
+    const auto *count = dynamic_cast<const HirWildcardPattern *>(structure->fields[2].pattern.get());
+    REQUIRE(count != nullptr);
+    CHECK(count->discardGlue.empty());
+
+    // A pattern that binds nothing discards the value whole, so the destructor its type declares still runs.
+    const auto *whole = dynamic_cast<const HirWildcardPattern *>(&LetPattern(RequireFunction(package, "Whole")));
+    REQUIRE(whole != nullptr);
+    CHECK(StartsWith(whole->discardGlue, "__rux_drop__"));
+
+    const LirPackage lir = LowerToLir(LowerSource(source));
+    CHECK(CallsGlue(RequireFunction(lir, "Keep").blocks.front()));
+    CHECK(CallsGlue(RequireFunction(lir, "Whole").blocks.front()));
+}
+
 TEST_CASE("an arm over a consumed tuple destroys the elements it leaves unbound") {
     const LirPackage lir = LowerToLir(LowerSource(std::string(kTag) + R"(
         func Second(pair: (Tag, Tag)) -> int32 {

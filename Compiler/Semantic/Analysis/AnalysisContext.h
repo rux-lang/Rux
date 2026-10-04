@@ -800,6 +800,12 @@ private:
     void EnterLoopLabel(const std::string &label, SourceLocation location);
     void ExitLoopLabel(const std::string &label);
     void CheckLetPattern(const Pattern &pattern, const TypeRef &type, bool isMutable);
+    /// Checks a structure pattern against `subjectType` without its field patterns: the structure it names, that a
+    /// pattern taking its value apart (`takesParts`) does not split one whose destructor runs on the whole, and that
+    /// every field it writes exists, is written once, and is visible here. Returns the type of each written field, in
+    /// source order, with a generic subject's type arguments in place, or unknown where it could not be resolved.
+    [[nodiscard]] std::vector<TypeRef> CheckStructPatternShape(const StructPattern &pattern, const TypeRef &subjectType,
+                                                               bool takesParts);
     TypeRef ResolveType(const TypeExpr &expression);
     /// The target layout of a written type, or nothing when it has none: recursive, unsized, or not yet validated.
     [[nodiscard]] std::optional<ResolvedTypeLayout> LayoutOfTypeExpression(const TypeExpr &expression);

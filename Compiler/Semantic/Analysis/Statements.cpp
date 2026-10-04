@@ -792,10 +792,80 @@ void AnalysisContext::CheckLetPattern(const Pattern &pattern, const TypeRef &typ
             CheckLetPattern(*tuplePattern->elements[index], TypeRef::MakeUnknown(), isMutable);
         }
     }
+    else if (const auto *structPattern = dynamic_cast<const StructPattern *>(&pattern)) {
+        // A destructuring `let` owns its whole initializer, so a structure pattern in it always takes the value apart.
+        const std::vector<TypeRef> fieldTypes = CheckStructPatternShape(*structPattern, type, true);
+        for (std::size_t index = 0; index < structPattern->fields.size(); ++index) {
+            CheckLetPattern(*structPattern->fields[index].pattern, fieldTypes[index], isMutable);
+        }
+    }
     else {
-        EmitError(pattern.location, "unsupported pattern in let binding");
+        // Nothing follows a `let` that could take the values its pattern refuses, so every part has to match.
+        EmitError(pattern.location, "refutable pattern in 'let' binding",
+                  {"a 'let' pattern must match every value, so each part is a name, '_', a tuple, or a structure"},
+                  "test the value with 'match' instead");
         CheckPattern(pattern, type);
     }
+}
+
+std::vector<TypeRef> AnalysisContext::CheckStructPatternShape(const StructPattern &pattern, const TypeRef &subjectType,
+                                                              const bool takesParts) {
+    const auto declaration = structDecls.find(NominalTypeName(pattern.typeName));
+    if (!currentScope->Lookup(pattern.typeName) || declaration == structDecls.end()) {
+        EmitError(pattern.location, std::format("unknown type '{}' in struct pattern", pattern.typeName));
+    }
+    // A generic structure built from an initializer carries its package-qualified identity, so the subject may spell
+    // the structure either way.
+    else if (!subjectType.IsUnknown() && (subjectType.kind != TypeRef::Kind::Named ||
+                                          (BaseTypeName(subjectType.name) != pattern.typeName &&
+                                           NominalTypeName(BaseTypeName(subjectType.name)) != declaration->first))) {
+        EmitError(pattern.location, std::format("struct pattern '{}' cannot match value of type '{}'", pattern.typeName,
+                                                subjectType.ToString()));
+    }
+    else if (takesParts && PatternBindsValue(pattern) && TypeHasDirectDestructor(declaration->first)) {
+        // The destructor runs on the whole value, so once a part is taken out there is nothing left to run it on.
+        const std::string destructor = "~" + UnqualifiedNominalName(declaration->first);
+        EmitError(
+            pattern.location,
+            std::format("cannot split '{}' with a moving pattern, because it declares destructor '{}'",
+                        pattern.typeName, destructor),
+            {std::format("'{}' runs on the whole value, so no part of it can be taken out on its own", destructor)},
+            "bind the whole value and read its fields, or match a value that stays with its owner");
+    }
+    // A field of a generic structure has the type its declaration names with the subject's type arguments in place.
+    std::unordered_map<std::string, TypeRef> substitutions;
+    if (declaration != structDecls.end() && subjectType.kind == TypeRef::Kind::Named) {
+        const auto typeArguments = ParseTypeArgsFromTypeName(subjectType.name);
+        const auto &parameters = declaration->second->typeParams;
+        for (std::size_t index = 0; index < std::min(parameters.size(), typeArguments.size()); ++index) {
+            substitutions.emplace(parameters[index].name, typeArguments[index]);
+        }
+    }
+    std::vector<TypeRef> fieldTypes;
+    fieldTypes.reserve(pattern.fields.size());
+    std::unordered_set<std::string> fieldNames;
+    for (const auto &field : pattern.fields) {
+        if (!fieldNames.insert(field.name).second) {
+            EmitError(field.location, std::format("duplicate field '{}' in struct pattern", field.name));
+        }
+        const StructDecl::Field *matchedField = nullptr;
+        if (declaration != structDecls.end()) {
+            const auto found = std::ranges::find(declaration->second->fields, field.name, &StructDecl::Field::name);
+            if (found == declaration->second->fields.end()) {
+                EmitError(field.location, std::format("struct '{}' has no field '{}'", pattern.typeName, field.name));
+            }
+            // A pattern reads the field it names, so it is held to the same visibility as reading or initializing it.
+            else if (!IsMemberAccessible(*declaration->second, found->isPublic)) {
+                EmitPrivateMemberError(field.location, *declaration->second, "struct field", field.name);
+            }
+            else {
+                matchedField = &*found;
+            }
+        }
+        fieldTypes.push_back(matchedField ? ResolveTypeWithSubstitution(*matchedField->type, substitutions)
+                                          : TypeRef::MakeUnknown());
+    }
+    return fieldTypes;
 }
 
 void AnalysisContext::CheckPattern(const Pattern &pattern, const TypeRef &subjectType) {
@@ -944,54 +1014,10 @@ void AnalysisContext::CheckPattern(const Pattern &pattern, const TypeRef &subjec
         }
     }
     else if (const auto *structPattern = dynamic_cast<const StructPattern *>(&pattern)) {
-        const auto declaration = structDecls.find(NominalTypeName(structPattern->typeName));
-        if (!currentScope->Lookup(structPattern->typeName) || declaration == structDecls.end()) {
-            EmitError(structPattern->location,
-                      std::format("unknown type '{}' in struct pattern", structPattern->typeName));
-        }
-        else if (!subjectType.IsUnknown() && (subjectType.kind != TypeRef::Kind::Named ||
-                                              BaseTypeName(subjectType.name) != structPattern->typeName)) {
-            EmitError(structPattern->location, std::format("struct pattern '{}' cannot match value of type '{}'",
-                                                           structPattern->typeName, subjectType.ToString()));
-        }
-        else if (currentPatternTakesParts && PatternBindsValue(*structPattern) &&
-                 TypeHasDirectDestructor(declaration->first)) {
-            // The destructor runs on the whole value, so once a part is taken out there is nothing left to run it on.
-            const std::string destructor = "~" + UnqualifiedNominalName(declaration->first);
-            EmitError(
-                structPattern->location,
-                std::format("cannot split '{}' with a moving pattern, because it declares destructor '{}'",
-                            structPattern->typeName, destructor),
-                {std::format("'{}' runs on the whole value, so no part of it can be taken out on its own", destructor)},
-                "bind the whole value and read its fields, or match a value that stays with its owner");
-        }
-        // A field of a generic structure has the type its declaration names with the subject's type arguments in place.
-        std::unordered_map<std::string, TypeRef> substitutions;
-        if (declaration != structDecls.end() && subjectType.kind == TypeRef::Kind::Named) {
-            const auto typeArguments = ParseTypeArgsFromTypeName(subjectType.name);
-            const auto &parameters = declaration->second->typeParams;
-            for (std::size_t index = 0; index < std::min(parameters.size(), typeArguments.size()); ++index) {
-                substitutions.emplace(parameters[index].name, typeArguments[index]);
-            }
-        }
-        std::unordered_set<std::string> fieldNames;
-        for (const auto &field : structPattern->fields) {
-            if (!fieldNames.insert(field.name).second) {
-                EmitError(field.location, std::format("duplicate field '{}' in struct pattern", field.name));
-            }
-            const StructDecl::Field *matchedField = nullptr;
-            if (declaration != structDecls.end()) {
-                const auto found = std::ranges::find(declaration->second->fields, field.name, &StructDecl::Field::name);
-                if (found != declaration->second->fields.end()) {
-                    matchedField = &*found;
-                }
-                else {
-                    EmitError(field.location,
-                              std::format("struct '{}' has no field '{}'", structPattern->typeName, field.name));
-                }
-            }
-            CheckPattern(*field.pattern, matchedField ? ResolveTypeWithSubstitution(*matchedField->type, substitutions)
-                                                      : TypeRef::MakeUnknown());
+        const std::vector<TypeRef> fieldTypes =
+            CheckStructPatternShape(*structPattern, subjectType, currentPatternTakesParts);
+        for (std::size_t index = 0; index < structPattern->fields.size(); ++index) {
+            CheckPattern(*structPattern->fields[index].pattern, fieldTypes[index]);
         }
     }
     else if (const auto *enumPattern = dynamic_cast<const EnumPattern *>(&pattern)) {

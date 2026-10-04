@@ -271,6 +271,34 @@ TEST_CASE("generic instantiations enforce operator visibility from the generic p
     CHECK_MESSAGE(HasMessage(rejected, "operator '<' is not defined for 'Ranked'"), Messages(rejected));
 }
 
+TEST_CASE("a structure pattern names only the fields visible across packages") {
+    const std::string dependency = R"(
+        pub struct Secret { pub value: int; hidden: int; }
+        pub func Seed() -> Secret { return Secret { value: 1, hidden: 2 }; }
+    )";
+
+    const auto letPattern = AnalyzePackages(
+        {{"main.rux", "import Library::{Secret, Seed};\nfunc Main() -> int { let Secret { hidden: h } = Seed(); "
+                      "return h; }"}},
+        {{"api.rux", dependency}});
+    CHECK_MESSAGE(HasMessage(letPattern, "struct field 'hidden' is private to package 'Library'"),
+                  Messages(letPattern));
+
+    const auto matchPattern = AnalyzePackages(
+        {{"main.rux", "import Library::{Secret, Seed};\nfunc Main() -> int { return match Seed() { Secret { hidden: h "
+                      "} => h }; }"}},
+        {{"api.rux", dependency}});
+    CHECK_MESSAGE(HasMessage(matchPattern, "struct field 'hidden' is private to package 'Library'"),
+                  Messages(matchPattern));
+
+    // A public field may be named, and the private one left out of the pattern.
+    const auto accepted = AnalyzePackages(
+        {{"main.rux", "import Library::{Secret, Seed};\nfunc Main() -> int { let Secret { value: v } = Seed(); "
+                      "return v; }"}},
+        {{"api.rux", dependency}});
+    CHECK_MESSAGE(!HasMessage(accepted, "is private"), Messages(accepted));
+}
+
 TEST_CASE("private fields methods constructors associated functions and operators are rejected across packages") {
     const std::string dependency = R"(
         pub struct Secret { pub value: int; hidden: int; }

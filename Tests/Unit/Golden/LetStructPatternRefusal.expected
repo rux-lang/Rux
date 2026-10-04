@@ -1,0 +1,8 @@
+14:20: error: refutable pattern in 'let' binding
+15:21: error: refutable pattern in 'let' binding
+16:21: error: refutable pattern in 'let' binding
+21:9: error: cannot split 'Handle' with a moving pattern, because it declares destructor '~Handle'
+26:9: error: cannot split 'Handle' with a moving pattern, because it declares destructor '~Handle'
+31:10: error: cannot split 'Handle' with a moving pattern, because it declares destructor '~Handle'
+41:17: error: struct 'Point' has no field 'z'
+42:9: error: struct pattern 'Handle' cannot match value of type 'Point'

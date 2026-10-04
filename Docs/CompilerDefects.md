@@ -647,8 +647,8 @@ of droppable value 'parcel'`), and a struct cannot be destructured in `let`. A s
 move-only fields therefore has no way to hand out a single field. Since D36, a moving `match`
 pattern may split a struct that declares no `~T` of its own, destroying the fields it leaves
 unbound at the top of the arm; a struct that declares `~T` cannot be split by a moving pattern
-(`cannot split 'T' with a moving pattern, because it declares destructor '~T'`). Struct
-destructuring in `let` remains open.
+(`cannot split 'T' with a moving pattern, because it declares destructor '~T'`). Since D56,
+a struct can be destructured in `let` under the same rule.
 # Standard package defects
 
 Defects in Packages/, found the same way.
@@ -1001,7 +1001,9 @@ decided.
 
 Open items found while fixing the entries above. Each reproducer was checked against `dev` at the commit that records it.
 
-## D56. A struct cannot be destructured in `let`
+## D56. A struct cannot be destructured in `let` (fixed)
+
+**Fixed**; covered by `Tests/Language/LetStructPattern`, the `LetStructPatternRefusal` golden, `DestructuringLoweringTests.cpp`, and `SemanticVisibilityTests.cpp`.
 
 ```rux
 struct Point { x: int32; y: int32; }
