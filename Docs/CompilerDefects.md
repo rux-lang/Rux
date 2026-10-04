@@ -911,7 +911,9 @@ func Main() -> int {
 - **Course workaround:** `Packages/Tooling` tests a dependency-free library, and reports failure
   through exit codes instead of `Assert`.
 
-## D52. A shared library exports every public function of its dependencies
+## D52. A shared library exports every public function of its dependencies (fixed)
+
+**Fixed**; covered by `RcuLinkGraphTests.cpp`, `LirReachabilityTests.cpp` and `CompilerDriverTargetTests.cpp`.
 
 - **Reproducer:** a `Type = "SharedLibrary"` package with an `Io` dependency and two `pub func`
   declarations. Build it, then run `llvm-readobj --coff-exports` on the DLL.

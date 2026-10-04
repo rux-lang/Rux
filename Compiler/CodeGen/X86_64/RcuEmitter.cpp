@@ -49,7 +49,7 @@ void X86_64ModuleEmitter::GenAsmFunc(const LirFunc &func) {
     const uint32_t symIdx = funcSyms.contains(func.name)
                               ? funcSyms.at(func.name)
                               : DeclareSymbol(func.name, func.returnType.ToString(), RcuSymKind::Func,
-                                              func.isPublic ? RcuSymVis::Global : RcuSymVis::Local);
+                                              RcuSymVis::ForDefinition(func.isPublic, func.isExported));
     funcSyms[func.name] = symIdx;
     if (!moduleBuilder.BeginFunction(symIdx)) {
         return;
@@ -90,7 +90,7 @@ void X86_64ModuleEmitter::GenFunc(const LirFunc &func) {
     const uint32_t symIdx = funcSyms.contains(func.name)
                               ? funcSyms.at(func.name)
                               : DeclareSymbol(func.name, func.returnType.ToString(), RcuSymKind::Func,
-                                              func.isPublic ? RcuSymVis::Global : RcuSymVis::Local);
+                                              RcuSymVis::ForDefinition(func.isPublic, func.isExported));
     funcSyms[func.name] = symIdx;
     if (!moduleBuilder.BeginFunction(symIdx)) {
         activeCallEmitter = nullptr;

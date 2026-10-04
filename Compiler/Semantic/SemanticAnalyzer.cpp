@@ -86,6 +86,7 @@ SemanticModel SemanticAnalyzer::Analyze() {
         {constModules, deps, packageName, diags, symbols, compileTimeContext, imports}, facts);
     analyzer.Run();
     facts.effectiveVisibilities = analyzer.EffectiveVisibilities();
+    facts.exportedDeclarations = analyzer.ExportedDeclarations();
     std::vector<const Module *> orderedModules;
     for (const auto &dep : deps) {
         for (const auto &entry : dep.modules) {

@@ -84,6 +84,14 @@ TEST_CASE("compiler driver builds a Windows AArch64 executable") {
 TEST_CASE("compiler driver builds a Windows AArch64 shared library and import library through the arm64 alias") {
     DependencyFixture fixture;
     fixture.SetApplicationType(ManifestPackageType::SharedLibrary);
+    // A library exports its own public functions, so the import library has one to describe.
+    fixture.SetApplicationSource(R"(
+import Dependency::Api::Answer;
+
+pub func Exported() -> int {
+    return Answer();
+}
+)");
     std::vector<Diagnostic> diagnostics;
     auto options = fixture.Options(false, diagnostics);
     options.target = *Target::TargetTriple::Parse("windows-arm64");
@@ -293,6 +301,53 @@ TEST_CASE("compiler driver builds a FreeBSD AArch64 executable with target-condi
     CHECK(std::ranges::all_of(relocations, [](const Testing::ElfImage::Rela &relocation) {
         return relocation.type == 1026; // R_AARCH64_JUMP_SLOT
     }));
+}
+
+TEST_CASE("a shared library exports its own public functions but not its dependencies'") {
+    // The dependency is compiled into the library, so its public `Answer` is linkable inside the image. Only the
+    // library's own `pub` functions form its interface, in both profiles.
+    DependencyFixture fixture;
+    fixture.SetApplicationType(ManifestPackageType::SharedLibrary);
+    fixture.SetApplicationSource(R"(
+import Dependency::Api::Answer;
+
+pub func Exported() -> int {
+    return Answer();
+}
+
+func Hidden() -> int {
+    return Answer() + 1;
+}
+
+pub module Nested {
+    pub func Also() -> int {
+        return 2;
+    }
+}
+)");
+    for (const BuildProfile profile : {BuildProfile::Debug, BuildProfile::Release}) {
+        std::vector<Diagnostic> diagnostics;
+        auto options = fixture.Options(false, diagnostics);
+        options.target = *Target::TargetTriple::Parse("freebsd-aarch64");
+        options.profile = profile;
+
+        const auto result = CompilerDriver(std::move(options)).Compile();
+
+        CAPTURE(diagnostics.empty() ? std::string{} : diagnostics.front().message);
+        REQUIRE(result.ok);
+        const auto image = ReadFreeBSDAArch64Image(result.primaryArtifactPath);
+        std::vector<std::string> exported;
+        for (const auto &symbol : image.DynamicSymbols()) {
+            if (symbol.sectionIndex != 0)
+                exported.push_back(symbol.name);
+        }
+        std::ranges::sort(exported);
+        CAPTURE(exported.size());
+        REQUIRE(exported.size() == 2);
+        CHECK(exported[0].ends_with("Also"));
+        CHECK(exported[1] == "Exported");
+        CHECK_FALSE(std::ranges::any_of(exported, [](const std::string &name) { return name.contains("Answer"); }));
+    }
 }
 
 TEST_CASE("compiler driver canonicalizes FreeBSD ARM64 as AArch64 and builds a shared library") {

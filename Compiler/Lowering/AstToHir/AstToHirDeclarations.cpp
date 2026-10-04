@@ -300,6 +300,7 @@ HirFunc AstToHirContext::LowerFunc(const FuncDecl &d, bool isMethod,
     // A generic source declaration is public API, but each concrete instantiation is emitted into the object that
     // needs it. Keeping those copies local avoids exporting the same monomorphized symbol from several objects.
     hf.isPublic = model.IsEffectivelyPublic(d) && substitutions.empty();
+    hf.isExported = hf.isPublic && model.IsExported(d);
     hf.isAsm = d.isAsm;
     hf.isNoReturn = d.isNoReturn;
     hf.asmBody = d.asmBody;
@@ -523,6 +524,7 @@ HirConst AstToHirContext::LowerConst(const ConstDecl &d) {
         hc.name = identity->linkerName;
     }
     hc.isPublic = model.IsEffectivelyPublic(d);
+    hc.isExported = hc.isPublic && model.IsExported(d);
     const std::optional<TypeRef> explicitType =
         d.type ? std::optional<TypeRef>(ResolveType(*d.type->get())) : std::nullopt;
     hc.value = explicitType ? LowerExprAs(*d.value, *explicitType) : LowerExpr(*d.value);
@@ -556,6 +558,7 @@ HirExternVar AstToHirContext::LowerExternVar(const ExternVarDecl &d) {
     HirExternVar hev;
     hev.name = d.name;
     hev.isPublic = model.IsEffectivelyPublic(d);
+    hev.isExported = hev.isPublic && model.IsExported(d);
     hev.type = ResolveType(*d.type);
     hev.location = d.location;
     return hev;

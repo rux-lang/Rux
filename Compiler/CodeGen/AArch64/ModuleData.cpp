@@ -18,7 +18,7 @@ void AArch64ModuleEmitter::PredeclareFunctions() {
             continue;
         }
         funcSyms[func.name] = DeclareSymbol(func.name, func.returnType.ToString(), RcuSymKind::Func,
-                                            func.isPublic ? RcuSymVis::Global : RcuSymVis::Local);
+                                            RcuSymVis::ForDefinition(func.isPublic, func.isExported));
     }
 }
 
@@ -131,7 +131,7 @@ void AArch64ModuleEmitter::EmitConstSlice(const LirConstDecl &c) {
 
     dataSyms[c.name] =
         DefineDataSymbol(c.name, c.type.ToString(), RcuSymKind::Const,
-                         c.isPublic ? RcuSymVis::Global : RcuSymVis::Local, RcuModuleSection::RoData, headerOff, 16);
+                         RcuSymVis::ForDefinition(c.isPublic, c.isExported), RcuModuleSection::RoData, headerOff, 16);
 }
 
 void AArch64ModuleEmitter::GenModule() {

@@ -119,12 +119,12 @@ private:
         for (std::size_t moduleIndex = 0; moduleIndex < package.modules.size(); ++moduleIndex) {
             const auto &module = package.modules[moduleIndex];
             for (std::size_t functionIndex = 0; functionIndex < module.funcs.size(); ++functionIndex) {
-                if (module.funcs[functionIndex].isPublic) {
+                if (module.funcs[functionIndex].isExported) {
                     Add({LirDeclarationKind::Function, moduleIndex, functionIndex});
                 }
             }
             for (std::size_t constantIndex = 0; constantIndex < module.consts.size(); ++constantIndex) {
-                if (module.consts[constantIndex].isPublic) {
+                if (module.consts[constantIndex].isExported) {
                     Add({LirDeclarationKind::Constant, moduleIndex, constantIndex});
                 }
             }
@@ -132,7 +132,7 @@ private:
                 Add({LirDeclarationKind::Vtable, moduleIndex, vtableIndex});
             }
             for (std::size_t variableIndex = 0; variableIndex < module.externVars.size(); ++variableIndex) {
-                if (module.externVars[variableIndex].isPublic) {
+                if (module.externVars[variableIndex].isExported) {
                     Add({LirDeclarationKind::ExternVariable, moduleIndex, variableIndex});
                 }
             }

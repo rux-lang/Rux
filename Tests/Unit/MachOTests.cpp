@@ -292,8 +292,8 @@ TEST_CASE("Mach-O reader reports the x86-64 dylib structure") {
     data.alignment = 8;
     data.data = {0x2A, 0, 0, 0};
     library.sections.push_back(std::move(data));
-    library.symbols.push_back({"Answer", "int", 0, 6, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
-    library.symbols.push_back({"Value", "int", 0, 4, RCU_DATA_IDX, RcuSymKind::Data, RcuSymVis::Global});
+    library.symbols.push_back({"Answer", "int", 0, 6, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Exported});
+    library.symbols.push_back({"Value", "int", 0, 4, RCU_DATA_IDX, RcuSymKind::Data, RcuSymVis::Exported});
 
     const MachOImage image = LinkAndRead(std::move(library), ArtifactKind::SharedLibrary,
                                          std::filesystem::temp_directory_path() / "librux-macho-reader-test.dylib");
@@ -725,17 +725,17 @@ TEST_CASE("Mach-O links signed AArch64 dylibs with exports imports and rebases")
     data.data[8] = 42;
     data.relocs.push_back({0, 0, RcuRelType::Abs64, 0});
     publicObject.sections.push_back(std::move(data));
-    publicObject.symbols.push_back({"Answer", "int", 0, 12, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
+    publicObject.symbols.push_back({"Answer", "int", 0, 12, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Exported});
     publicObject.symbols.push_back({"Helper", "", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternFunc, RcuSymVis::Global});
     publicObject.symbols.push_back(
         {"puts", "libSystem.B.dylib", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternFunc, RcuSymVis::Global});
-    publicObject.symbols.push_back({"AnswerPointer", "", 0, 8, RCU_DATA_IDX, RcuSymKind::Data, RcuSymVis::Global});
-    publicObject.symbols.push_back({"Value", "int", 8, 8, RCU_DATA_IDX, RcuSymKind::Data, RcuSymVis::Global});
+    publicObject.symbols.push_back({"AnswerPointer", "", 0, 8, RCU_DATA_IDX, RcuSymKind::Data, RcuSymVis::Exported});
+    publicObject.symbols.push_back({"Value", "int", 8, 8, RCU_DATA_IDX, RcuSymKind::Data, RcuSymVis::Exported});
 
     RcuFile helperObject;
     helperObject.arch = RcuArch::AArch64;
     helperObject.sections.push_back(TextSection({0xC0, 0x03, 0x5F, 0xD6}));
-    helperObject.symbols.push_back({"Helper", "int", 0, 4, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
+    helperObject.symbols.push_back({"Helper", "int", 0, 4, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Exported});
 
     const std::vector<RcuFile> objects{publicObject, helperObject};
     const auto temporary = std::filesystem::temp_directory_path();

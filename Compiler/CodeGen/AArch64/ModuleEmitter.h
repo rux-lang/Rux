@@ -790,9 +790,9 @@ private:
             AppendConstElement(element, c.elementType);
         }
 
-        dataSyms[c.name] = DefineDataSymbol(c.name, c.type.ToString(), RcuSymKind::Const,
-                                            c.isPublic ? RcuSymVis::Global : RcuSymVis::Local, RcuModuleSection::RoData,
-                                            arrayOff, static_cast<std::uint32_t>(RodataData().size()) - arrayOff);
+        dataSyms[c.name] = DefineDataSymbol(
+            c.name, c.type.ToString(), RcuSymKind::Const, RcuSymVis::ForDefinition(c.isPublic, c.isExported),
+            RcuModuleSection::RoData, arrayOff, static_cast<std::uint32_t>(RodataData().size()) - arrayOff);
     }
 
     // A scalar constant is inlined at every use, so its symbol exists only for
@@ -803,7 +803,7 @@ private:
         DataData().insert(DataData().end(), 8, 0);
         dataSyms[c.name] =
             DefineDataSymbol(c.name, c.type.ToString(), RcuSymKind::Const,
-                             c.isPublic ? RcuSymVis::Global : RcuSymVis::Local, RcuModuleSection::Data, offset, 8);
+                             RcuSymVis::ForDefinition(c.isPublic, c.isExported), RcuModuleSection::Data, offset, 8);
     }
 
     void GenModule();

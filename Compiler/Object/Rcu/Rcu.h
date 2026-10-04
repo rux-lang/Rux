@@ -43,10 +43,23 @@ constexpr uint8_t ExternFunc = 6;
 constexpr uint8_t ExternData = 7;
 } // namespace RcuSymKind
 
+// Symbol binding. Global and Weak definitions are linkable across the objects of one artifact; Exported is a Global
+// definition that a library artifact also publishes as part of its interface.
 namespace RcuSymVis {
 constexpr uint8_t Local = 0;
 constexpr uint8_t Global = 1;
 constexpr uint8_t Weak = 2;
+constexpr uint8_t Exported = 3;
+
+/// Whether a symbol with this visibility binds strongly across objects.
+[[nodiscard]] constexpr bool IsGlobal(const uint8_t visibility) noexcept {
+    return visibility == Global || visibility == Exported;
+}
+
+/// The visibility of a definition: object-local, linkable across objects, or also exported from a library.
+[[nodiscard]] constexpr uint8_t ForDefinition(const bool isPublic, const bool isExported) noexcept {
+    return isExported ? Exported : isPublic ? Global : Local;
+}
 } // namespace RcuSymVis
 
 // Machine architecture an object was compiled for, stored in byte 6 of the

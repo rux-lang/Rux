@@ -627,6 +627,7 @@ LirModule HirToLirContext::LowerModule(const HirModule &mod) {
         LirConstDecl cd;
         cd.name = c.name;
         cd.isPublic = c.isPublic;
+        cd.isExported = c.isExported;
         cd.type = c.type;
         cd.value = PrintConstExpr(*c.value);
         CollectConstContents(c, cd);
@@ -636,7 +637,7 @@ LirModule HirToLirContext::LowerModule(const HirModule &mod) {
         lm.typeAliases.push_back({ta.name, ta.isPublic, ta.type});
     }
     for (const auto &ev : mod.externVars) {
-        lm.externVars.push_back({ev.name, ev.isPublic, ev.type});
+        lm.externVars.push_back({ev.name, ev.isPublic, ev.type, ev.isExported});
     }
     for (const auto &ef : mod.externFuncs) {
         LirFunc lf;
@@ -756,6 +757,7 @@ LirFunc HirToLirContext::LowerFunc(const HirFunc &hf, const std::string_view nam
     LirFunc lf;
     lf.name = nameOverride.empty() ? hf.name : std::string(nameOverride);
     lf.isPublic = hf.isPublic;
+    lf.isExported = hf.isExported;
     lf.isExtern = false;
     lf.isNoReturn = hf.isNoReturn;
     lf.callConv = hf.callConv;

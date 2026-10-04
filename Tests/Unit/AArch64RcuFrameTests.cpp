@@ -78,7 +78,7 @@ TEST_CASE("AArch64 RCU emitter predeclares every function before emitting bodies
     REQUIRE(second != object.symbols.end());
     CHECK_EQ(first->sectionIdx, RCU_TEXT_IDX);
     CHECK_EQ(second->sectionIdx, RCU_TEXT_IDX);
-    CHECK_EQ(first->visibility, RcuSymVis::Global);
+    CHECK_EQ(first->visibility, RcuSymVis::Exported);
     CHECK_EQ(second->visibility, RcuSymVis::Local);
     CHECK_EQ(first->value, 0);
     CHECK_EQ(second->value, first->size);

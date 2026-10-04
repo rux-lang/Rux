@@ -108,9 +108,10 @@ public:
                 break;
             default:;
             }
-            const char *visStr = s.visibility == RcuSymVis::Global ? "GLOBAL"
-                               : s.visibility == RcuSymVis::Weak   ? "WEAK"
-                                                                   : "LOCAL";
+            const char *visStr = s.visibility == RcuSymVis::Exported ? "EXPORT"
+                               : s.visibility == RcuSymVis::Global   ? "GLOBAL"
+                               : s.visibility == RcuSymVis::Weak     ? "WEAK"
+                                                                     : "LOCAL";
 
             out << std::format("  [{:3}]  {:<24}  {:>20}  size={:<6}  {:<8}  {:<6}", i, s.name, secStr, s.size, kindStr,
                                visStr);

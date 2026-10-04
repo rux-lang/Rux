@@ -177,6 +177,15 @@ std::unordered_map<const Decl *, bool> AnalysisContext::EffectiveVisibilities() 
     return result;
 }
 
+std::unordered_set<const Decl *> AnalysisContext::ExportedDeclarations() const {
+    std::unordered_set<const Decl *> result;
+    for (const auto &[declaration, info] : declarationInfos) {
+        if (info.isEffectivelyPublic && info.ownerPackage == packageName)
+            result.insert(declaration);
+    }
+    return result;
+}
+
 bool AnalysisContext::MentionsTypeParameter(const TypeRef &type) const {
     if (type.kind == TypeRef::Kind::TypeParam) {
         return true;

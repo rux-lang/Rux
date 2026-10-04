@@ -225,6 +225,8 @@ struct LirFunc {
     std::string name;
     std::string dll; // non-empty for extern declarations
     bool isPublic = false;
+    /// Public and owned by the package being compiled: a library artifact exports it and keeps it reachable.
+    bool isExported = false;
     bool isExtern = false;
     bool isNoReturn = false;
     bool isVariadic = false; // C-style variadic extern declaration
@@ -282,6 +284,8 @@ struct LirUnionDecl {
 struct LirConstDecl {
     std::string name;
     bool isPublic = false;
+    /// Public and owned by the package being compiled: a library artifact exports it and keeps it reachable.
+    bool isExported = false;
     TypeRef type;
     std::string value; // printed literal of the constant expression
 
@@ -304,6 +308,8 @@ struct LirExternVar {
     std::string name;
     bool isPublic = false;
     TypeRef type;
+    /// Public and owned by the package being compiled: a library artifact keeps it reachable.
+    bool isExported = false;
 };
 
 // Module / Package

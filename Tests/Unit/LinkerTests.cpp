@@ -247,7 +247,7 @@ TEST_CASE("ELF shared linker emits ET_DYN exports without an executable entry") 
     data.data.resize(8);
     data.relocs.push_back({0, 0, RcuRelType::Abs64, 0});
     library.sections.push_back(std::move(data));
-    library.symbols.push_back({"Answer", "int", 0, 6, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
+    library.symbols.push_back({"Answer", "int", 0, 6, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Exported});
 
     const auto output = std::filesystem::temp_directory_path() / "librux-linker-test.so";
     std::error_code ec;

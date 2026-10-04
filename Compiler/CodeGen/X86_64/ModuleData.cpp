@@ -183,7 +183,7 @@ void X86_64ModuleEmitter::EmitConstSlice(const LirConstDecl &c) {
 
     dataSyms[c.name] =
         DefineDataSymbol(c.name, c.type.ToString(), RcuSymKind::Const,
-                         c.isPublic ? RcuSymVis::Global : RcuSymVis::Local, RcuModuleSection::RoData, headerOff, 16);
+                         RcuSymVis::ForDefinition(c.isPublic, c.isExported), RcuModuleSection::RoData, headerOff, 16);
 }
 
 void X86_64ModuleEmitter::EmitConstArray(const LirConstDecl &c) {
@@ -195,7 +195,7 @@ void X86_64ModuleEmitter::EmitConstArray(const LirConstDecl &c) {
 
     dataSyms[c.name] =
         DefineDataSymbol(c.name, c.type.ToString(), RcuSymKind::Const,
-                         c.isPublic ? RcuSymVis::Global : RcuSymVis::Local, RcuModuleSection::RoData, arrayOff,
+                         RcuSymVis::ForDefinition(c.isPublic, c.isExported), RcuModuleSection::RoData, arrayOff,
                          static_cast<uint32_t>(c.elements.size() * static_cast<std::size_t>(elemSize)));
 }
 
@@ -226,7 +226,7 @@ void X86_64ModuleEmitter::GenModule() {
         }
         dataSyms[c.name] =
             DefineDataSymbol(c.name, c.type.ToString(), RcuSymKind::Const,
-                             c.isPublic ? RcuSymVis::Global : RcuSymVis::Local, RcuModuleSection::Data, offset, 8);
+                             RcuSymVis::ForDefinition(c.isPublic, c.isExported), RcuModuleSection::Data, offset, 8);
     }
     EmitVtables();
     // Functions

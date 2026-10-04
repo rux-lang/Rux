@@ -47,6 +47,8 @@ public:
 
     void Run();
     [[nodiscard]] std::unordered_map<const Decl *, bool> EffectiveVisibilities() const;
+    /// The effectively public declarations the package being compiled owns itself.
+    [[nodiscard]] std::unordered_set<const Decl *> ExportedDeclarations() const;
 
 private:
     void EmitError(SourceLocation location, std::string message, std::vector<std::string> notes = {},

@@ -310,6 +310,8 @@ struct SemanticFacts {
     std::unordered_map<const CallExpr *, ResolvedCallableBinding> callableBindings;
     std::unordered_map<const LetStmt *, ResolvedDefaultConstructor> defaultConstructors;
     std::unordered_map<const Decl *, bool> effectiveVisibilities;
+    /// Effectively public declarations owned by the package being compiled, rather than by one of its dependencies.
+    std::unordered_set<const Decl *> exportedDeclarations;
     std::unordered_map<const Decl *, ResolvedSymbolIdentity> symbolIdentities;
     std::unordered_map<const ImplDecl *, ResolvedVtableIdentity> vtableIdentities;
     std::unordered_map<std::string, ResolvedConstraintWitness> constraintWitnesses;
@@ -391,6 +393,11 @@ struct SemanticModel {
 
     /// Whether a declaration is public after every containing module and owning type has capped its visibility.
     [[nodiscard]] bool IsEffectivelyPublic(const Decl &declaration) const noexcept;
+
+    /// Whether a library artifact exports the declaration: it is effectively public and owned by the package being
+    /// compiled. A dependency's public declaration is compiled into the same artifact and stays linkable across its
+    /// objects, but is not part of the artifact's interface.
+    [[nodiscard]] bool IsExported(const Decl &declaration) const noexcept;
 
     /// Returns null for declarations that do not emit/import a symbol and for nodes outside the analyzed modules.
     [[nodiscard]] const ResolvedSymbolIdentity *TryGetSymbolIdentity(const Decl &declaration) const noexcept;

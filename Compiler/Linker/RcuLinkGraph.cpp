@@ -239,7 +239,7 @@ RcuLinkGraph RcuLinkGraph::Build(const std::span<const RcuFile> objects, const s
             }
             const RcuSymbolLocation location{objectIndex, symbolIndex};
             graph.definitions.push_back({symbol.name, location, symbol.kind, symbol.visibility});
-            if (symbol.visibility == RcuSymVis::Global) {
+            if (RcuSymVis::IsGlobal(symbol.visibility)) {
                 const auto [existing, inserted] = strongDefinitions.emplace(symbol.name, location);
                 if (!inserted) {
                     RcuLinkDiagnostic diagnostic = Diagnostic(RcuLinkDiagnosticKind::DuplicateDefinition, symbol.name);
@@ -254,9 +254,9 @@ RcuLinkGraph RcuLinkGraph::Build(const std::span<const RcuFile> objects, const s
             }
             const auto existing = definitionsByName.find(symbol.name);
             if (existing == definitionsByName.end() ||
-                (objects[existing->second.objectIndex].symbols[existing->second.symbolIndex].visibility !=
-                     RcuSymVis::Global &&
-                 symbol.visibility == RcuSymVis::Global)) {
+                (!RcuSymVis::IsGlobal(
+                     objects[existing->second.objectIndex].symbols[existing->second.symbolIndex].visibility) &&
+                 RcuSymVis::IsGlobal(symbol.visibility))) {
                 definitionsByName[symbol.name] = location;
             }
         }
@@ -272,8 +272,10 @@ RcuLinkGraph RcuLinkGraph::Build(const std::span<const RcuFile> objects, const s
     std::ranges::sort(graph.namedDefinitions, {}, &RcuLinkDefinition::name);
 
     if (artifactKind != ArtifactKind::Executable) {
+        // A library exports only its own interface. A dependency's public definitions are compiled into the same
+        // objects and stay linkable across them, but they are Global rather than Exported.
         for (const RcuLinkDefinition &definition : graph.namedDefinitions) {
-            if (definition.visibility != RcuSymVis::Local) {
+            if (definition.visibility == RcuSymVis::Exported) {
                 graph.exportRoots.push_back(definition.location);
             }
         }

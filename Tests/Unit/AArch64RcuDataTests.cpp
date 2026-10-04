@@ -259,7 +259,7 @@ TEST_CASE("AArch64 RCU emitter gives a scalar constant a symbol in the data sect
     REQUIRE(limit != nullptr);
     CHECK_EQ(limit->sectionIdx, RCU_DATA_IDX);
     CHECK_EQ(limit->size, 8);
-    CHECK_EQ(limit->visibility, RcuSymVis::Global);
+    CHECK_EQ(limit->visibility, RcuSymVis::Exported);
     // The value is inlined at every use, so what stands behind the symbol is
     // storage to take the address of rather than the number itself.
     CHECK_EQ(object.sections[RCU_DATA_IDX].data.size(), 8);

@@ -680,7 +680,7 @@ TEST_CASE("PE linker eight-byte aligns Windows AArch64 thunk tables across DLL g
     libraryText.alignment = 4;
     AppendWord(libraryText.data, 0xD65F03C0); // ret
     library.sections.push_back(std::move(libraryText));
-    library.symbols.push_back({"Imported", "int", 0, 4, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
+    library.symbols.push_back({"Imported", "int", 0, 4, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Exported});
 
     Linker libraryLinker({std::move(library)}, importedLibrary.stem().string(), {}, ArtifactKind::SharedLibrary,
                          Target::OS::Windows, Target::Arch::AArch64);
@@ -758,7 +758,7 @@ TEST_CASE("PE linker emits Windows AArch64 DLL entries exports and import librar
         AppendWord(text.data, 0x52800540); // Exported: mov w0, #42
         AppendWord(text.data, 0xD65F03C0); // ret
         library.symbols.push_back(
-            {"Exported", "int", exportedOffset, 8, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global});
+            {"Exported", "int", exportedOffset, 8, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Exported});
         library.sections.push_back(std::move(text));
 
         const auto output = PeTestPath(".dll");

@@ -185,7 +185,7 @@ private:
                 continue;
             }
             funcSyms[func.name] = DeclareSymbol(func.name, func.returnType.ToString(), RcuSymKind::Func,
-                                                func.isPublic ? RcuSymVis::Global : RcuSymVis::Local);
+                                                RcuSymVis::ForDefinition(func.isPublic, func.isExported));
         }
     }
 

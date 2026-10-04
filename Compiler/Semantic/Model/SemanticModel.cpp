@@ -262,6 +262,10 @@ bool SemanticModel::IsEffectivelyPublic(const Decl &declaration) const noexcept 
     return visibility != facts.effectiveVisibilities.end() && visibility->second;
 }
 
+bool SemanticModel::IsExported(const Decl &declaration) const noexcept {
+    return facts.exportedDeclarations.contains(&declaration);
+}
+
 const ResolvedSymbolIdentity *SemanticModel::TryGetSymbolIdentity(const Decl &declaration) const noexcept {
     const auto identity = facts.symbolIdentities.find(&declaration);
     return identity == facts.symbolIdentities.end() ? nullptr : &identity->second;

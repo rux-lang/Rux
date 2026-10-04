@@ -667,10 +667,10 @@ TEST_SUITE("FreeBSD AArch64 ELF shared") {
         library.sections.push_back(Section(".bss", RcuSecType::Bss,
                                            RcuSecFlag::Alloc | RcuSecFlag::Read | RcuSecFlag::Write, 16,
                                            std::vector<std::uint8_t>(16)));
-        library.symbols = {{"Answer", "int", 0, 8, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global},
-                           {"Counter", "int", 0, 8, RCU_DATA_IDX, RcuSymKind::Data, RcuSymVis::Global},
+        library.symbols = {{"Answer", "int", 0, 8, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Exported},
+                           {"Counter", "int", 0, 8, RCU_DATA_IDX, RcuSymKind::Data, RcuSymVis::Exported},
                            {"Hidden", "int", 4, 4, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Local},
-                           {"Zeroes", "int", 0, 16, RCU_BSS_IDX, RcuSymKind::Data, RcuSymVis::Global}};
+                           {"Zeroes", "int", 0, 16, RCU_BSS_IDX, RcuSymKind::Data, RcuSymVis::Exported}};
 
         const ElfImage image = LinkSharedImage({std::move(library)},
                                                std::filesystem::temp_directory_path() / "libFreeBsdAArch64Answers.so");
@@ -743,7 +743,7 @@ TEST_SUITE("FreeBSD AArch64 ELF shared") {
                                 std::vector<std::uint8_t>(8));
         pointers.relocs.push_back({0, 1, RcuRelType::Abs64, 0}); // pointer to Worker
         caller.sections.push_back(std::move(pointers));
-        caller.symbols = {{"CallWorker", "int", 0, 16, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global},
+        caller.symbols = {{"CallWorker", "int", 0, 16, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Exported},
                           {"Worker", "int", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternFunc, RcuSymVis::Global},
                           {"State", "int", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternData, RcuSymVis::Global}};
 
@@ -755,8 +755,8 @@ TEST_SUITE("FreeBSD AArch64 ELF shared") {
         definitions.sections.push_back(Section(".data", RcuSecType::Data,
                                                RcuSecFlag::Alloc | RcuSecFlag::Read | RcuSecFlag::Write, 8,
                                                {42, 0, 0, 0, 0, 0, 0, 0}));
-        definitions.symbols = {{"Worker", "int", 0, 4, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global},
-                               {"State", "int", 0, 8, RCU_DATA_IDX, RcuSymKind::Data, RcuSymVis::Global}};
+        definitions.symbols = {{"Worker", "int", 0, 4, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Exported},
+                               {"State", "int", 0, 8, RCU_DATA_IDX, RcuSymKind::Data, RcuSymVis::Exported}};
 
         const ElfImage image =
             LinkSharedImage({std::move(caller), std::move(definitions)},
@@ -799,10 +799,10 @@ TEST_SUITE("FreeBSD AArch64 ELF shared") {
                             std::vector<std::uint8_t>(8));
         slot.relocs.push_back({0, 1, RcuRelType::Abs64, 0}); // function pointer to puts
         library.sections.push_back(std::move(slot));
-        library.symbols = {{"Invoke", "int", 0, 12, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Global},
+        library.symbols = {{"Invoke", "int", 0, 12, RCU_TEXT_IDX, RcuSymKind::Func, RcuSymVis::Exported},
                            {"puts", "", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternFunc, RcuSymVis::Global},
                            {"Compress", "libz.so.6", 0, 0, RCU_SEC_EXTERNAL, RcuSymKind::ExternFunc, RcuSymVis::Global},
-                           {"PutsSlot", "pointer", 0, 8, RCU_DATA_IDX, RcuSymKind::Data, RcuSymVis::Global}};
+                           {"PutsSlot", "pointer", 0, 8, RCU_DATA_IDX, RcuSymKind::Data, RcuSymVis::Exported}};
 
         const ElfImage image = LinkSharedImage({std::move(library)},
                                                std::filesystem::temp_directory_path() / "libFreeBsdAArch64Imports.so");

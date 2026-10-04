@@ -571,6 +571,8 @@ struct HirParam {
 struct HirFunc {
     std::string name;
     bool isPublic = false;
+    /// Public and owned by the package being compiled, so a library artifact exports it.
+    bool isExported = false;
     bool isAsm = false;
     bool isNoReturn = false;
     CallingConvention callConv = CallingConvention::Default;
@@ -661,6 +663,8 @@ struct HirImplBlock {
 struct HirConst {
     std::string name;
     bool isPublic = false;
+    /// Public and owned by the package being compiled, so a library artifact exports it.
+    bool isExported = false;
     TypeRef type;
     HirExprPtr value;
     SourceLocation location;
@@ -685,6 +689,8 @@ struct HirExternFunc {
 struct HirExternVar {
     std::string name;
     bool isPublic = false;
+    /// Public and owned by the package being compiled, so a library artifact keeps it.
+    bool isExported = false;
     TypeRef type;
     SourceLocation location;
 };

@@ -67,20 +67,26 @@ TEST_CASE("executable LIR reachability follows package-wide code and data edges 
     CHECK(result.ReachableDeclarations().size() == 7);
 }
 
-TEST_CASE("library LIR reachability roots public code and data for both artifact kinds") {
+TEST_CASE("library LIR reachability roots exported code and data for both artifact kinds") {
     LirModule module;
     module.name = "Library";
-    module.funcs.resize(5);
+    module.funcs.resize(6);
     module.funcs[0].name = "PublicApi";
     module.funcs[0].isPublic = true;
+    module.funcs[0].isExported = true;
     module.funcs[0].blocks.resize(1);
     module.funcs[1].name = "PrivateHelper";
     module.funcs[2].name = "DeadFunction";
     module.funcs[3].name = "PublicExtern";
     module.funcs[3].isPublic = true;
+    module.funcs[3].isExported = true;
     module.funcs[3].isExtern = true;
     module.funcs[3].blocks.resize(1);
     module.funcs[4].name = "Widget::Render";
+    // A dependency's public function is compiled into the library but is not part of its interface.
+    module.funcs[5].name = "Dependency::Api";
+    module.funcs[5].isPublic = true;
+    module.funcs[5].blocks.resize(1);
 
     LirInstr helperCall;
     helperCall.op = LirOpcode::Call;
@@ -99,11 +105,12 @@ TEST_CASE("library LIR reachability roots public code and data for both artifact
     module.consts.resize(3);
     module.consts[0].name = "PublicData";
     module.consts[0].isPublic = true;
+    module.consts[0].isExported = true;
     module.consts[0].value = "PrivateData";
     module.consts[1].name = "PrivateData";
     module.consts[2].name = "DeadData";
     module.vtables.push_back({"__vtable__Widget__Render", {"Widget::Render"}});
-    module.externVars = {{"PublicVariable", true, TypeRef::MakeInt32()},
+    module.externVars = {{"PublicVariable", true, TypeRef::MakeInt32(), true},
                          {"PrivateVariable", false, TypeRef::MakeInt32()},
                          {"UnusedVariable", false, TypeRef::MakeInt32()}};
 
@@ -120,6 +127,7 @@ TEST_CASE("library LIR reachability roots public code and data for both artifact
     CHECK_FALSE(shared.IsReachable(Id{Kind::Function, 0, 2}));
     CHECK(shared.IsReachable(Id{Kind::Function, 0, 3}));
     CHECK(shared.IsReachable(Id{Kind::Function, 0, 4}));
+    CHECK_FALSE(shared.IsReachable(Id{Kind::Function, 0, 5}));
     CHECK(shared.IsReachable(Id{Kind::Constant, 0, 0}));
     CHECK(shared.IsReachable(Id{Kind::Constant, 0, 1}));
     CHECK_FALSE(shared.IsReachable(Id{Kind::Constant, 0, 2}));
@@ -215,20 +223,23 @@ TEST_CASE("Release prunes unreachable declarations deterministically while Debug
     CHECK(declarationNames(secondReleasePackage) == declarationNames(firstReleasePackage));
 }
 
-TEST_CASE("Release library pruning preserves public APIs and their private dependencies") {
+TEST_CASE("Release library pruning preserves exported APIs and their private dependencies") {
     LirModule module;
     module.name = "Library";
     module.funcs.push_back(ReturningFunction("PublicApi"));
     module.funcs.back().isPublic = true;
+    module.funcs.back().isExported = true;
     module.funcs.push_back(ReturningFunction("PrivateHelper"));
     module.funcs.push_back(ReturningFunction("DeadPrivate"));
     module.funcs.push_back(ExternFunction("PublicExtern", true));
+    module.funcs.back().isExported = true;
     LirInstr call;
     call.op = LirOpcode::Call;
     call.strArg = "PrivateHelper";
     module.funcs[0].blocks[0].instrs.push_back(std::move(call));
     module.consts = {Constant("PublicData", true), Constant("DeadData")};
-    module.externVars = {{"PublicVariable", true, TypeRef::MakeInt32()},
+    module.consts.front().isExported = true;
+    module.externVars = {{"PublicVariable", true, TypeRef::MakeInt32(), true},
                          {"UnusedVariable", false, TypeRef::MakeInt32()}};
 
     LirPackage package;

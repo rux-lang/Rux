@@ -934,6 +934,7 @@ HirFunc AstToHirContext::FallibleEntryWrapper(const HirFunc &body) {
     HirFunc entry;
     entry.name = body.name;
     entry.isPublic = body.isPublic;
+    entry.isExported = body.isExported;
     entry.callConv = body.callConv;
     entry.params = body.params;
     for (HirParam &parameter : entry.params) {
