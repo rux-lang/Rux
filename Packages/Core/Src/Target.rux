@@ -120,7 +120,7 @@ pub struct Target {
     /// The processor architecture.
     pub arch: Architecture;
     /// The calling and layout conventions the target's code follows.
-    abi: ApplicationBinaryInterface;
+    pub abi: ApplicationBinaryInterface;
     /// The order the target stores a multi-byte value's bytes in.
     pub endian: Endianness;
     /// How many bits a pointer occupies.

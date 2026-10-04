@@ -1,5 +1,5 @@
-import Core::{ #target, Architecture, Assert, DataModel, Endianness, ObjectFormat, OperatingSystem };
-// TargetFeature is imported by the commented-out HasFeature check at the end.
+import Core::{ #target, ApplicationBinaryInterface, Architecture, Assert, DataModel, Endianness, ObjectFormat };
+import Core::{ OperatingSystem, TargetFeature };
 
 func Main() -> int {
     // The #target is fully identified: OS, architecture, data model and object
@@ -21,12 +21,15 @@ func Main() -> int {
         || #target.arch == Architecture::X86_64;
     Assert(is64, "the target architecture is one of the two supported 64-bit sets");
 
-    // TODO: the Target.HasFeature intrinsic is not yet implemented in the
-    // compiler — calling it crashes at load with STATUS_ENTRYPOINT_NOT_FOUND
-    // (0xC0000139). Re-enable this (and the TargetFeature import) once it links.
-    // The field-and-architecture invariants above already work.
-    // // The feature query is callable and a pure function of its argument.
-    // Assert(#target.HasFeature(TargetFeature::SSE2) == #target.HasFeature(TargetFeature::SSE2),
-    //     "HasFeature deterministic");
+    // The ABI is readable like every other field, and follows the operating system and architecture.
+    Assert(#target.abi != ApplicationBinaryInterface::Unknown, "abi");
+    if #target.arch == Architecture::X86_64 {
+        let windows = #target.os == OperatingSystem::Windows;
+        Assert(windows == (#target.abi == ApplicationBinaryInterface::WindowsX64), "the x86-64 ABI follows the OS");
+    }
+
+    // The feature query is answered while compiling and is a pure function of its argument.
+    Assert(#target.HasFeature(TargetFeature::SSE2) == #target.HasFeature(TargetFeature::SSE2),
+           "HasFeature deterministic");
     return 0;
 }
