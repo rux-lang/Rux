@@ -540,7 +540,9 @@ PrintLine("{}", passes);
   same way.
 - **Course workaround:** the lessons use `int` bounds, or typed variables as the bounds.
 
-## D34. A nested loop may reuse its enclosing loop's label without a diagnostic
+## D34. A nested loop may reuse its enclosing loop's label without a diagnostic (fixed)
+
+**Fixed**; covered by the `LoopLabels` golden.
 
 - **Reproducer:** `outer: for i in 0..3 { outer: for j in 0..3 { break outer; } }`.
 - **Expected:** an error or a warning that the inner label shadows the outer one.

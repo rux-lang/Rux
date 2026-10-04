@@ -1,0 +1,10 @@
+// A loop label may not reuse the label of a loop around it, and the outer label survives the inner loop.
+func Main() -> int {
+    outer: for i in 0..3 {
+        outer: for j in 0..3 {
+            break outer;
+        }
+        continue outer;
+    }
+    return 0;
+}

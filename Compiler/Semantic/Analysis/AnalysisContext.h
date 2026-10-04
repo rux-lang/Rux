@@ -556,7 +556,7 @@ private:
     TypeRef currentReturnType = TypeRef::MakeOpaque();
     bool currentFunctionNoReturn = false;
     int loopDepth = 0;
-    std::unordered_set<std::string> activeLabels;
+    std::unordered_multiset<std::string> activeLabels;
     bool inImpl = false;
     TypeRef currentSelfType = TypeRef::MakeUnknown();
     /// The extend block a method is being checked in, and the type it extends. A method's declared receiver has to name
@@ -758,6 +758,10 @@ private:
     void IndexDeclarations();
     void CollectModule(const Module &module);
     void CheckStatement(const Stmt &statement);
+    /// Make `label` the target of `break label` and `continue label` inside a loop, reporting a reuse of an enclosing
+    /// loop's label.
+    void EnterLoopLabel(const std::string &label, SourceLocation location);
+    void ExitLoopLabel(const std::string &label);
     void CheckLetPattern(const Pattern &pattern, const TypeRef &type, bool isMutable);
     TypeRef ResolveType(const TypeExpr &expression);
     /// The target layout of a written type, or nothing when it has none: recursive, unsized, or not yet validated.

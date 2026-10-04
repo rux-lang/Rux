@@ -362,7 +362,7 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
     }
     else if (const auto *whileStatement = dynamic_cast<const WhileStmt *>(&statement)) {
         if (!whileStatement->label.empty()) {
-            activeLabels.insert(whileStatement->label);
+            EnterLoopLabel(whileStatement->label, whileStatement->location);
         }
 
         TypeRef condition = ReadBorrowedScalar(*whileStatement->condition, CheckExpr(*whileStatement->condition));
@@ -393,12 +393,12 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
         }
         MergeTrackedFlows(exits);
         if (!whileStatement->label.empty()) {
-            activeLabels.erase(whileStatement->label);
+            ExitLoopLabel(whileStatement->label);
         }
     }
     else if (const auto *doWhileStatement = dynamic_cast<const DoWhileStmt *>(&statement)) {
         if (!doWhileStatement->label.empty()) {
-            activeLabels.insert(doWhileStatement->label);
+            EnterLoopLabel(doWhileStatement->label, doWhileStatement->location);
         }
 
         const TrackedFlow loopEntry = SaveTrackedFlow();
@@ -437,12 +437,12 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
         MergeTrackedFlows(exits);
 
         if (!doWhileStatement->label.empty()) {
-            activeLabels.erase(doWhileStatement->label);
+            ExitLoopLabel(doWhileStatement->label);
         }
     }
     else if (const auto *loopStatement = dynamic_cast<const LoopStmt *>(&statement)) {
         if (!loopStatement->label.empty()) {
-            activeLabels.insert(loopStatement->label);
+            EnterLoopLabel(loopStatement->label, loopStatement->location);
         }
         BeginTrackedLoop(loopStatement->label);
         ++loopDepth;
@@ -451,7 +451,7 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
         TrackedLoop loop = EndTrackedLoop();
         MergeTrackedFlows(loop.breaks);
         if (!loopStatement->label.empty()) {
-            activeLabels.erase(loopStatement->label);
+            ExitLoopLabel(loopStatement->label);
         }
     }
     else if (const auto *forStatement = dynamic_cast<const ForStmt *>(&statement)) {
@@ -485,7 +485,7 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
             DefineTrackedLocal(std::move(variable), true);
         }
         if (!forStatement->label.empty()) {
-            activeLabels.insert(forStatement->label);
+            EnterLoopLabel(forStatement->label, forStatement->location);
         }
         BeginTrackedLoop(forStatement->label);
         ++loopDepth;
@@ -493,7 +493,7 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
         --loopDepth;
         TrackedLoop loop = EndTrackedLoop();
         if (!forStatement->label.empty()) {
-            activeLabels.erase(forStatement->label);
+            ExitLoopLabel(forStatement->label);
         }
         PopScope();
         const TrackedFlow bodyExit = SaveTrackedFlow();
@@ -659,6 +659,21 @@ bool AnalysisContext::IsDivergingExpression(const Expr &expression) const {
     return symbol &&
            (symbol->intrinsicName == "Panic" ||
             std::ranges::any_of(symbol->funcOverloads, [](const FuncDecl *function) { return function->isNoReturn; }));
+}
+
+void AnalysisContext::EnterLoopLabel(const std::string &label, const SourceLocation location) {
+    if (activeLabels.contains(label)) {
+        EmitError(location, std::format("loop label '{}' shadows an enclosing loop label", label), {},
+                  "give the inner loop a different label");
+    }
+    activeLabels.insert(label);
+}
+
+void AnalysisContext::ExitLoopLabel(const std::string &label) {
+    // Labels are counted, so leaving an inner loop that reused a name keeps the enclosing loop's label active.
+    if (const auto found = activeLabels.find(label); found != activeLabels.end()) {
+        activeLabels.erase(found);
+    }
 }
 
 void AnalysisContext::CheckLetPattern(const Pattern &pattern, const TypeRef &type, const bool isMutable) {
