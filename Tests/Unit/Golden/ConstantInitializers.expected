@@ -1,0 +1,5 @@
+12:18: error: call to 'Seven' is not a compile-time value
+20:26: error: 'counter' is not a compile-time constant
+21:27: error: 'parameter' is not a compile-time constant
+22:37: error: call to 'Seven' is not a compile-time value
+27:5: error: cannot assign 'int[17]' to 'int[9]'

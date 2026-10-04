@@ -1,6 +1,6 @@
 import Core::{ #compiler, Assert, SemanticVersion };
 
-const MinimumCompiler = SemanticVersion(0, 0, 0);
+const MinimumCompiler = SemanticVersion { major: 0, minor: 0, patch: 0 };
 
 func Main() -> int {
     // The compiler always reports a structured semantic version.

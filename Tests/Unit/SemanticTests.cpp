@@ -280,6 +280,91 @@ const Zeros: uint8[4] = [0; 4];
     CHECK_EQ(nonConstant.front().message, "array repeat count must be a non-negative compile-time integer");
 }
 
+TEST_CASE("constant initializers are compile-time values") {
+    CHECK(AnalyzeSource(R"(
+        struct Point { x: int; y: int; }
+        enum Color: uint8 { Red = 0, Green = 1 }
+        const Base: uint = 4;
+        const Derived = (Base * 2u + 1u) as int;
+        const Size = sizeof(int);
+        const Origin = Point { x: 0, y: Derived };
+        const Favorite = Color::Green;
+        const Flag = Base > 2u && !(Size == 0u);
+
+        func Main() {
+            const Local = Derived - 1;
+            const Again = Local * 2;
+            let sum = Local + Again + Origin.y;
+        }
+    )")
+              .empty());
+
+    const auto diagnostics = AnalyzeSource(R"(
+        func Seven() -> int { return 7; }
+        const FromCall = Seven();
+
+        func Main(parameter: int) {
+            var counter = 1;
+            counter = 5;
+            const FromVariable = counter;
+            const FromParameter = parameter + 1;
+            const Address = @counter;
+        }
+    )");
+    REQUIRE_EQ(diagnostics.size(), 4);
+    CHECK_EQ(diagnostics[0].message, "call to 'Seven' is not a compile-time value");
+    CHECK_EQ(diagnostics[1].message, "'counter' is not a compile-time constant");
+    CHECK_EQ(diagnostics[2].message, "'parameter' is not a compile-time constant");
+    CHECK_EQ(diagnostics[3].message, "a reference or an address is not a compile-time value");
+}
+
+TEST_CASE("a named constant sizes an array, counts a repeat, and bounds a range") {
+    CHECK(AnalyzeSource(R"(
+        const Limit: uint = 100;
+        const Half = Limit / 2u;
+        module Sizes {
+            pub const Small = 3;
+        }
+        struct Table { cells: int[Sizes::Small]; }
+
+        func Main() {
+            var flags: bool[Limit] = [false; Limit];
+            const Local = 2;
+            let mixed: int[Local + Half] = [0; Half + Local];
+            let table = Table { cells: [1; Sizes::Small] };
+            let viaCast: uint8[Local as uint] = [0u8; 2];
+        }
+    )")
+              .empty());
+
+    const auto mismatched = AnalyzeSource(R"(
+        const Limit = 4;
+        func Main() { let values: int[Limit] = [0; Limit + 1]; }
+    )");
+    REQUIRE_EQ(mismatched.size(), 1);
+    CHECK(mismatched.front().message.contains("cannot assign 'int[5]' to 'int[4]'"));
+
+    const auto reversed = AnalyzeSource(R"(
+        const High = 9;
+        func Main() { for i in High..1 {} }
+    )");
+    REQUIRE_EQ(reversed.size(), 1);
+    CHECK_EQ(reversed.front().message, "range start cannot be greater than its end");
+
+    // A cycle stops folding rather than recursing forever, and is reported once by the declaration check.
+    const auto cyclic = AnalyzeSource(R"(
+        const First = Second;
+        const Second = First;
+        func Main() { let values: int[First] = [0; 1]; }
+    )");
+    CHECK(std::ranges::any_of(cyclic, [](const SemanticDiagnostic &diagnostic) {
+        return diagnostic.message.contains("cyclic initializer");
+    }));
+    CHECK(std::ranges::any_of(cyclic, [](const SemanticDiagnostic &diagnostic) {
+        return diagnostic.message == "array length must be a non-negative compile-time integer";
+    }));
+}
+
 TEST_CASE("array repeat expressions require copyable elements") {
     const auto diagnostics = AnalyzeSource(R"(
         struct Owner { value: int; }

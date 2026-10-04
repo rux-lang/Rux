@@ -219,6 +219,8 @@ func Clear(self: &var Buffer)
 func Consume(self: Buffer)
 ```
 
+A `const` initializer, at module level or inside a function, is computed by the compiler once: it may use literals, operators, casts, `sizeof` and `alignof`, compile-time intrinsics such as `#target`, other constants, and struct, array, tuple, and case values built from them. A call or a variable is a run-time value, so `const FromCall = Seven();` and `const C = v;` are rejected with `call to 'Seven' is not a compile-time value` and `'v' is not a compile-time constant`; use `let` for a value computed at run time. An integer constant is a compile-time integer wherever one is required, so `var flags: bool[Limit] = [false; Limit];` sizes and fills an array from `const Limit: uint = 100;`.
+
 The removed `var value: T` parameter form is an error. A function that needs mutable local storage moves the parameter into a local with `var local <- value`; a function that mutates caller-owned storage instead accepts `value: &var T`.
 
 A parameter's default value is evaluated where the call is written, in the caller's scope, each time the argument is omitted. It therefore cannot read any parameter of its own function, `self` included: `func C(x: int, y: int = x)` is an error. An overload that passes the value, `func C(x: int) -> int { return C(x, x); }`, gives the same call.

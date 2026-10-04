@@ -445,32 +445,20 @@ std::string AnalysisContext::AssignmentErrorMessage(const Expr &expr, const Type
     return fallback;
 }
 
-// Folds a compile-time-constant integer expression (unsuffixed integer
-// literals combined with the integer operators) to its int64 value,
-// using the same two's-complement wrapping the generated code produces
-// at run time, so the folded value always matches what the program
-// computes. Returns nullopt when the expression is not such a constant,
-// so callers fall back to ordinary type checking. Division/modulo by
-// zero AnalysisContext::and the INT64_MIN / -1 overflow are left unfolded AnalysisContext::and keep their
-// runtime behavior; '**' is not folded (it lowers to a runtime helper
-// call).
-std::optional<std::int64_t> AnalysisContext::EvalConstInt(const Expr &expr) {
+namespace {
+using FoldedInteger = std::optional<std::int64_t>;
+
+/// Folds the integer operators over the leaves `leaf` accepts, with the two's-complement wrapping the generated code
+/// produces at run time, so the folded value always matches what the program computes. Division or modulo by zero,
+/// the INT64_MIN / -1 overflow, and out-of-range shifts are left unfolded so they keep their run-time behavior; '**'
+/// is not folded, since it lowers to a run-time helper call.
+template <typename Leaf>
+FoldedInteger FoldIntegerExpression(const Expr &expr, const Leaf &leaf) {
     using I = std::int64_t;
     using U = std::uint64_t;
 
-    if (const auto *lit = dynamic_cast<const LiteralExpr *>(&expr)) {
-        if (lit->token.kind != TokenKind::IntLiteral || !NumericLiteralSuffix(lit->token.text).empty()) {
-            return std::nullopt;
-        }
-        const auto v = ParseUnsuffixedIntegerLiteral(lit->token);
-        if (!v || *v > static_cast<U>(std::numeric_limits<I>::max())) {
-            return std::nullopt;
-        }
-        return static_cast<I>(*v);
-    }
-
     if (const auto *un = dynamic_cast<const UnaryExpr *>(&expr)) {
-        const auto v = EvalConstInt(*un->operand);
+        const auto v = FoldIntegerExpression(*un->operand, leaf);
         if (!v) {
             return std::nullopt;
         }
@@ -487,8 +475,8 @@ std::optional<std::int64_t> AnalysisContext::EvalConstInt(const Expr &expr) {
     }
 
     if (const auto *bin = dynamic_cast<const BinaryExpr *>(&expr)) {
-        const auto l = EvalConstInt(*bin->left);
-        const auto r = EvalConstInt(*bin->right);
+        const auto l = FoldIntegerExpression(*bin->left, leaf);
+        const auto r = FoldIntegerExpression(*bin->right, leaf);
         if (!l || !r) {
             return std::nullopt;
         }
@@ -537,7 +525,91 @@ std::optional<std::int64_t> AnalysisContext::EvalConstInt(const Expr &expr) {
         }
     }
 
-    return std::nullopt;
+    return leaf(expr);
+}
+
+FoldedInteger WordValue(const std::optional<std::uint64_t> value) {
+    if (!value || *value > static_cast<std::uint64_t>(std::numeric_limits<std::int64_t>::max())) {
+        return std::nullopt;
+    }
+    return static_cast<std::int64_t>(*value);
+}
+} // namespace
+
+// Folds a compile-time-constant integer expression (unsuffixed integer literals combined with the integer operators)
+// to its int64 value. Returns nullopt when the expression is not such a constant, so callers fall back to ordinary type
+// checking.
+std::optional<std::int64_t> AnalysisContext::EvalConstInt(const Expr &expr) {
+    return FoldIntegerExpression(expr, [](const Expr &leaf) -> FoldedInteger {
+        const auto *literal = dynamic_cast<const LiteralExpr *>(&leaf);
+        if (!literal || literal->token.kind != TokenKind::IntLiteral ||
+            !NumericLiteralSuffix(literal->token.text).empty()) {
+            return std::nullopt;
+        }
+        return WordValue(ParseUnsuffixedIntegerLiteral(literal->token));
+    });
+}
+
+std::optional<std::int64_t> AnalysisContext::EvalConstInteger(const Expr &expr) const {
+    std::unordered_set<const ConstDecl *> active;
+    return EvalConstInteger(expr, *currentScope, active);
+}
+
+std::optional<std::int64_t> AnalysisContext::EvalConstInteger(const Expr &expr, Scope &scope,
+                                                              std::unordered_set<const ConstDecl *> &active) const {
+    // A named constant folds its own initializer in the scope that declared it, and its value must fit the type it
+    // was declared with. A constant reached again while it is being folded has a cyclic initializer, which checking
+    // the declaration reports; here it is simply not a value.
+    const auto constant = [&](const Symbol *symbol) -> FoldedInteger {
+        if (!symbol || symbol->kind != Symbol::Kind::Const || !symbol->intrinsicName.empty()) {
+            return std::nullopt;
+        }
+        const auto *declaration = dynamic_cast<const ConstDecl *>(symbol->declaration);
+        if (!declaration || !declaration->value || !active.insert(declaration).second) {
+            return std::nullopt;
+        }
+        const auto owner = declarationInfos.find(declaration);
+        Scope &ownerScope = owner != declarationInfos.end() && owner->second.scope ? *owner->second.scope : scope;
+        const FoldedInteger value = EvalConstInteger(*declaration->value, ownerScope, active);
+        active.erase(declaration);
+        if (!value ||
+            (!symbol->type.IsUnknown() && !(symbol->type.IsInteger() && ConstantFitsTarget(*value, symbol->type)))) {
+            return std::nullopt;
+        }
+        return value;
+    };
+    return FoldIntegerExpression(expr, [&](const Expr &leaf) -> FoldedInteger {
+        if (const auto *literal = dynamic_cast<const LiteralExpr *>(&leaf)) {
+            return literal->token.kind == TokenKind::IntLiteral ? WordValue(ParseIntegerLiteralValue(literal->token))
+                                                                : std::nullopt;
+        }
+        if (const auto *identifier = dynamic_cast<const IdentExpr *>(&leaf)) {
+            return constant(scope.Lookup(identifier->name));
+        }
+        if (const auto *path = dynamic_cast<const PathExpr *>(&leaf); path && path->segments.size() >= 2) {
+            const Symbol *current = scope.Lookup(path->segments[0]);
+            for (std::size_t i = 1; current && i < path->segments.size(); ++i) {
+                if (current->kind != Symbol::Kind::Module || !current->moduleScope) {
+                    return std::nullopt;
+                }
+                current = current->moduleScope->LookupLocal(path->segments[i]);
+                if (current && !IsAccessible(*current)) {
+                    return std::nullopt;
+                }
+            }
+            return constant(current);
+        }
+        if (const auto *cast = dynamic_cast<const CastExpr *>(&leaf)) {
+            const auto *named = dynamic_cast<const NamedTypeExpr *>(cast->type.get());
+            const auto type = named ? PrimitiveTypeFromName(named->name) : std::nullopt;
+            const FoldedInteger value = EvalConstInteger(*cast->operand, scope, active);
+            if (!type || !type->IsInteger() || !value || !ConstantFitsTarget(*value, *type)) {
+                return std::nullopt;
+            }
+            return value;
+        }
+        return std::nullopt;
+    });
 }
 
 bool AnalysisContext::ConstantFitsTarget(std::int64_t value, const TypeRef &target) const {

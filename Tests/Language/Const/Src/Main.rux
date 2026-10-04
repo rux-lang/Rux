@@ -14,6 +14,11 @@ const SMALL: uint8[3] = [1u8, 2u8, 255u8];
 const NAMED: uint32[2] = [SCALAR, 7u32];
 const TEXT: char8[..] = "abc";
 
+// A named constant is a compile-time integer, so it can size an array, count a
+// repeat, and feed another constant.
+const LIMIT: uint = 100;
+const HALF = LIMIT / 2u;
+
 func Sum(values: uint32[..]) -> uint32 {
     var total: uint32 = 0;
     for value in values {
@@ -88,6 +93,18 @@ func Main() -> int {
     }
     if total != iterated {
         return 15;
+    }
+
+    // A named constant sizes an array and counts its repeat.
+    var flags: bool[LIMIT] = [false; LIMIT];
+    flags[LIMIT - 1] = true;
+    if flags.length != 100 || !flags[99] || flags[0] {
+        return 16;
+    }
+    const EXTRA = 3;
+    let halves: uint8[HALF + EXTRA] = [7u8; EXTRA + HALF];
+    if halves.length != 53 || halves[52] != 7u8 {
+        return 17;
     }
 
     return 0;

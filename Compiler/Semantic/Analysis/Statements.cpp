@@ -583,6 +583,9 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
         CheckLoopExit(true, continueStatement->label, statement.location);
     }
     else if (const auto *declarationStatement = dynamic_cast<const DeclStmt *>(&statement)) {
+        if (const auto *constant = dynamic_cast<const ConstDecl *>(declarationStatement->decl.get())) {
+            localConstants.insert(constant);
+        }
         programIndex.CollectDeclaration(
             *declarationStatement->decl, *currentScope, currentFile,
             [this](const TypeExpr &type) { return ResolveType(type); }, &currentPackage);

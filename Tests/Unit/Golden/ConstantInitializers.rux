@@ -1,0 +1,29 @@
+struct Point {
+    x: int;
+    y: int;
+}
+
+func Seven() -> int {
+    return 7;
+}
+
+// A constant is computed by the compiler, so a call that runs at run time is
+// not one, whether at module level or inside a function.
+const FromCall = Seven();
+const Limit: uint = 4;
+const Origin = Point { x: 0, y: 0 };
+const Area = Limit * Limit + 1;
+
+func Use(parameter: int) -> int {
+    var counter = 1;
+    counter = 5;
+    const FromVariable = counter;
+    const FromParameter = parameter + 1;
+    const Nested = (Limit as int) + Seven();
+    const Fine = Limit * 2;
+
+    // A named constant may size an array and count a repeat.
+    var flags: bool[Limit] = [false; Limit];
+    let wider: int[Fine + 1] = [0; Area];
+    return FromVariable + FromParameter + Nested;
+}

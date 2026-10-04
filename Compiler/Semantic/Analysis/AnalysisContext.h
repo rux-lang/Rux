@@ -604,6 +604,8 @@ private:
     std::unordered_set<const Decl *> reportedPrivateApiDeclarations;
     std::unordered_map<const ConstDecl *, TypeRef> checkedConstantTypes;
     std::unordered_set<const ConstDecl *> checkingConstants;
+    /// Constants declared by a statement inside a function body rather than at module level.
+    std::unordered_set<const ConstDecl *> localConstants;
     Scope *currentScope;
     MoveStateTracker moveStates;
     std::vector<MoveStateTracker> savedMoveStates;
@@ -1100,6 +1102,16 @@ private:
     // call).
     static std::optional<std::int64_t> EvalConstInt(const Expr &expr);
 
+    /// Folds an integer the compiler must know, such as an array length or a repeat count: the operators
+    /// `EvalConstInt` folds over integer literals of any suffix, integer casts, and named constants, each read through
+    /// its own initializer and held to its declared type.
+    ///
+    /// @param expression the expression to fold, resolved in the current scope
+    /// @returns the value, or nullopt when the expression is not a compile-time integer
+    [[nodiscard]] std::optional<std::int64_t> EvalConstInteger(const Expr &expression) const;
+    [[nodiscard]] std::optional<std::int64_t> EvalConstInteger(const Expr &expression, Scope &scope,
+                                                               std::unordered_set<const ConstDecl *> &active) const;
+
     bool ConstantFitsTarget(std::int64_t value, const TypeRef &target) const;
 
     static std::optional<std::uint64_t> EvalConstCharCastValue(const Expr &expr);
@@ -1171,6 +1183,13 @@ private:
     bool IsConstArrayElement(const Expr &e) const;
 
     void CheckConstDecl(const ConstDecl &d);
+    /// Whether `expression` is a value the compiler computes, as a `const` initializer must be: literals, operators,
+    /// casts, type queries, compile-time intrinsics, other constants, and aggregates and cases built from them.
+    ///
+    /// @param expression the checked initializer, or one part of it
+    /// @param constant the constant it initializes, named in the help
+    /// @returns false after reporting the first part computed at run time
+    bool CheckCompileTimeInitializer(const Expr &expression, const ConstDecl &constant);
     [[nodiscard]] TypeRef CheckNamedConstant(const ConstDecl &declaration);
 
     static std::string JoinPathSegments(const std::vector<std::string> &path, std::size_t first,

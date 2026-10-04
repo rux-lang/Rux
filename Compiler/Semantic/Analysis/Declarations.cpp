@@ -499,6 +499,123 @@ bool AnalysisContext::IsConstArrayElement(const Expr &e) const {
     return false;
 }
 
+// A constant is computed by the compiler and stands for that one value at every use, so nothing in its initializer may
+// depend on the running program: a call runs code, and a variable holds a value only once the program runs.
+bool AnalysisContext::CheckCompileTimeInitializer(const Expr &expression, const ConstDecl &constant) {
+    const auto reject = [&](const Expr &part, std::string message) {
+        std::string help = localConstants.contains(&constant)
+                             ? std::format("declare '{}' with 'let' to compute it at run time", constant.name)
+                             : std::string("initialize a constant from literals, operators, casts, and other "
+                                           "constants");
+        EmitError(part.location, std::move(message), {}, std::move(help));
+        return false;
+    };
+    const auto check = [&](const Expr *part) { return !part || CheckCompileTimeInitializer(*part, constant); };
+    const auto checkAll = [&](const std::vector<ExprPtr> &parts) {
+        return std::ranges::all_of(parts, [&](const ExprPtr &part) { return check(part.get()); });
+    };
+    const auto isRuntimeSymbol = [](const Symbol *symbol) { return symbol && symbol->kind == Symbol::Kind::Var; };
+
+    if (dynamic_cast<const LiteralExpr *>(&expression) || dynamic_cast<const TypeQueryExpr *>(&expression) ||
+        dynamic_cast<const IntrinsicExpr *>(&expression) || dynamic_cast<const EnumShorthandExpr *>(&expression) ||
+        dynamic_cast<const NoneExpr *>(&expression)) {
+        return true;
+    }
+    if (const auto *identifier = dynamic_cast<const IdentExpr *>(&expression)) {
+        if (isRuntimeSymbol(currentScope->Lookup(identifier->name))) {
+            return reject(expression, std::format("'{}' is not a compile-time constant", identifier->name));
+        }
+        return true;
+    }
+    if (const auto *path = dynamic_cast<const PathExpr *>(&expression)) {
+        // Associated constants, cases, and functions are all compile-time; only a module path can reach a variable.
+        const Symbol *current = path->segments.empty() ? nullptr : currentScope->Lookup(path->segments[0]);
+        for (std::size_t i = 1; current && i < path->segments.size(); ++i) {
+            current = current->kind == Symbol::Kind::Module && current->moduleScope
+                        ? current->moduleScope->LookupLocal(path->segments[i])
+                        : nullptr;
+        }
+        if (isRuntimeSymbol(current)) {
+            return reject(expression, std::format("'{}' is not a compile-time constant",
+                                                  JoinPathSegments(path->segments, 0, path->segments.size())));
+        }
+        return true;
+    }
+    if (const auto *unary = dynamic_cast<const UnaryExpr *>(&expression)) {
+        if (unary->op != TokenKind::Minus && unary->op != TokenKind::Plus && unary->op != TokenKind::Tilde &&
+            unary->op != TokenKind::Bang) {
+            return reject(expression, "a reference or an address is not a compile-time value");
+        }
+        return check(unary->operand.get());
+    }
+    if (const auto *binary = dynamic_cast<const BinaryExpr *>(&expression)) {
+        return check(binary->left.get()) && check(binary->right.get());
+    }
+    if (const auto *ternary = dynamic_cast<const TernaryExpr *>(&expression)) {
+        return check(ternary->condition.get()) && check(ternary->thenExpr.get()) && check(ternary->elseExpr.get());
+    }
+    if (const auto *cast = dynamic_cast<const CastExpr *>(&expression)) {
+        return check(cast->operand.get());
+    }
+    if (const auto *test = dynamic_cast<const IsExpr *>(&expression)) {
+        return check(test->operand.get());
+    }
+    if (const auto *range = dynamic_cast<const RangeExpr *>(&expression)) {
+        return check(range->lo.get()) && check(range->hi.get());
+    }
+    if (const auto *field = dynamic_cast<const FieldExpr *>(&expression)) {
+        return check(field->object.get());
+    }
+    if (const auto *index = dynamic_cast<const IndexExpr *>(&expression)) {
+        if (IsIndexOperatorCall(*index)) {
+            return reject(expression, "a call to an index operator is not a compile-time value");
+        }
+        return check(index->object.get()) && check(index->index.get());
+    }
+    if (const auto *initializer = dynamic_cast<const StructInitExpr *>(&expression)) {
+        return std::ranges::all_of(initializer->fields,
+                                   [&](const StructInitExpr::Field &field) { return check(field.value.get()); });
+    }
+    if (const auto *array = dynamic_cast<const ArrayExpr *>(&expression)) {
+        return checkAll(array->elements);
+    }
+    if (const auto *repeat = dynamic_cast<const ArrayRepeatExpr *>(&expression)) {
+        return check(repeat->value.get());
+    }
+    if (const auto *tuple = dynamic_cast<const TupleExpr *>(&expression)) {
+        return checkAll(tuple->elements);
+    }
+    if (const auto *construct = dynamic_cast<const NativeConstructExpr *>(&expression)) {
+        return check(construct->operand.get());
+    }
+    if (const auto *call = dynamic_cast<const CallExpr *>(&expression)) {
+        // A case with a payload is constructed, not called, and a method of a compiler-supplied value such as
+        // `#config.Get` is answered while compiling.
+        bool compileTime = dynamic_cast<const EnumShorthandExpr *>(call->callee.get()) != nullptr;
+        std::string callee = "the function";
+        if (const auto *path = dynamic_cast<const PathExpr *>(call->callee.get())) {
+            const Symbol *first = path->segments.empty() ? nullptr : currentScope->Lookup(path->segments[0]);
+            compileTime = path->segments.size() == 2 && first && first->kind == Symbol::Kind::Type &&
+                          LookupCase(first->name, path->segments[1]).has_value();
+            callee = std::format("'{}'", JoinPathSegments(path->segments, 0, path->segments.size()));
+        }
+        else if (const auto *identifier = dynamic_cast<const IdentExpr *>(call->callee.get())) {
+            callee = std::format("'{}'", identifier->name);
+        }
+        else if (const auto *method = dynamic_cast<const FieldExpr *>(call->callee.get())) {
+            const auto *object = dynamic_cast<const IdentExpr *>(method->object.get());
+            const Symbol *root = object ? currentScope->Lookup(object->name) : nullptr;
+            compileTime = root && root->kind == Symbol::Kind::Const && !root->intrinsicName.empty();
+            callee = std::format("'{}'", method->field);
+        }
+        if (!compileTime) {
+            return reject(*call->callee, std::format("call to {} is not a compile-time value", callee));
+        }
+        return checkAll(call->args);
+    }
+    return reject(expression, "expression is not a compile-time value");
+}
+
 TypeRef AnalysisContext::CheckNamedConstant(const ConstDecl &declaration) {
     if (const auto checked = checkedConstantTypes.find(&declaration); checked != checkedConstantTypes.end()) {
         return checked->second;
@@ -564,7 +681,8 @@ void AnalysisContext::CheckConstDecl(const ConstDecl &d) {
                                          std::format("cannot assign '{}' to constant of type '{}'",
                                                      valueType.DisplayString(), constType.ToString())));
     }
-    if (constType.IsSlice() || constType.kind == TypeRef::Kind::Array) {
+    const bool compileTime = valueType.IsUnknown() || CheckCompileTimeInitializer(*d.value, d);
+    if (compileTime && (constType.IsSlice() || constType.kind == TypeRef::Kind::Array)) {
         const auto *array = dynamic_cast<const ArrayExpr *>(d.value.get());
         const auto *repeat = dynamic_cast<const ArrayRepeatExpr *>(d.value.get());
         const bool isText = dynamic_cast<const LiteralExpr *>(d.value.get()) != nullptr;

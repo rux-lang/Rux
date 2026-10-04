@@ -354,7 +354,9 @@ let r = match b { true => 10i32 };
 Related to D1: an unsuffixed tuple literal passed as an argument is not adapted either.
 `Where((3, 0))` with `Where(p: (int32, int32))` gives `no matching overload for 'Where' with
 argument types ((int, int))`. **Fixed**; covered by `Tests/Language/ExpectedTypeLiterals`.
-## D22. A `const` initializer that is not a compile-time value is accepted and re-evaluated at run time
+## D22. A `const` initializer that is not a compile-time value is accepted and re-evaluated at run time (fixed)
+
+**Fixed**; covered by `SemanticTests.cpp` and the `ConstantInitializers` golden.
 
 ```rux
 import Io::PrintLine;
@@ -854,7 +856,9 @@ refused by `PrintLine`'s `{}` arguments in the same way as a writable `char8[..]
 Related to D2: an unsuffixed character array literal does not take its element type from the
 annotation. `var letters: char8[3] = ['a', 'b', 'c'];` gives `cannot assign 'char32[3]' to
 'char8[3]'`, so each element needs a `c8` prefix. **Fixed**; covered by `Tests/Language/ExpectedTypeLiterals`.
-## D48. A named `const` is rejected as an array length or repeat count
+## D48. A named `const` is rejected as an array length or repeat count (fixed)
+
+**Fixed**; covered by `Tests/Language/Const`, `SemanticTests.cpp`, and the `ConstantInitializers` golden.
 
 ```rux
 import Io::PrintLine;

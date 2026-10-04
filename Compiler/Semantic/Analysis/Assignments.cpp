@@ -363,7 +363,7 @@ bool AnalysisContext::CanConvertToNativeType(const Expr &expr, const TypeRef &ex
 }
 
 std::optional<std::uint64_t> AnalysisContext::EvalArrayLength(const Expr &expr) const {
-    const auto value = EvalConstInt(expr);
+    const auto value = EvalConstInteger(expr);
     if (!value || *value < 0) {
         return std::nullopt;
     }

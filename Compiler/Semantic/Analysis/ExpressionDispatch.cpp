@@ -308,8 +308,8 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
             EmitError(e->location, "range bounds must be numeric");
         }
         if (e->lo && e->hi) {
-            const auto start = EvalConstInt(*e->lo);
-            const auto end = EvalConstInt(*e->hi);
+            const auto start = EvalConstInteger(*e->lo);
+            const auto end = EvalConstInteger(*e->hi);
             if (start && end && *start > *end) {
                 EmitError(e->location, "range start cannot be greater than its end");
             }

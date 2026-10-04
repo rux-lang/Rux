@@ -967,7 +967,7 @@ TEST_CASE("configuration and compiler feature intrinsics are queryable") {
     auto parsed = ParseSource(R"(
 import Core::{ #config, #compiler, #source, SemanticVersion };
 
-const FutureCompiler = SemanticVersion(1, 2, 4);
+const FutureCompiler = SemanticVersion { major: 1, minor: 2, patch: 4 };
 
 func Selected() -> int {
     when #config.Has("sqlite") &&
