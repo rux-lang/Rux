@@ -462,6 +462,99 @@ TEST_CASE("an explicit move into a match consumes its subject") {
     CHECK(model.TryGetConsumption(subjectOf(5)) == nullptr);
 }
 
+TEST_CASE("a by-value match owns the copy it makes of a named copyable subject") {
+    // The copy is a value nobody else holds, so the arms own it as they own a subject handed over with `<-`: what they
+    // bind is destroyed with the binding and what they leave is destroyed by the arm. A subject that stays with its
+    // owner, because nothing is bound from it or it is read through a borrow, is neither copied nor owned.
+    Lexer lexer(R"(
+        struct Counted { id: int32; }
+        extend Counted {
+            func =(self: &var Counted, other: &Counted) { self.id = other.id; }
+            func ~Counted(self: &var Counted) {}
+        }
+        variant Held { Full(Counted), Empty }
+
+        func Make() -> Held { return Held::Empty; }
+
+        func Copied(held: Held) {
+            match held {
+                .Full(item) => {},
+                .Empty => {}
+            }
+        }
+
+        func LookOnly(held: Held) {
+            match held {
+                .Full(_) => {},
+                .Empty => {}
+            }
+        }
+
+        func Temporary() {
+            match Make() {
+                .Full(item) => {},
+                .Empty => {}
+            }
+        }
+
+        func Moved(held: Held) {
+            match <-held {
+                .Full(_) => {},
+                .Empty => {}
+            }
+        }
+
+        func Borrowed(held: *Held) {
+            match *held {
+                .Full(item) => {},
+                .Empty => {}
+            }
+        }
+
+        func Referenced(held: &Held) {
+            match held {
+                .Full(item) => {},
+                .Empty => {}
+            }
+        }
+    )",
+                "match_copy.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+    Parser parser(std::move(lexed.tokens), "match_copy.rux");
+    auto parsed = parser.Parse();
+    REQUIRE_FALSE(parsed.HasErrors());
+
+    SemanticAnalyzer analyzer({&parsed.module}, {}, "test", "Windows");
+    const SemanticModel model = analyzer.Analyze();
+    REQUIRE_FALSE(model.HasErrors());
+
+    const auto subjectOf = [&](const std::size_t item) -> const Expr & {
+        const auto *function = dynamic_cast<const FuncDecl *>(parsed.module.items[item].get());
+        REQUIRE(function != nullptr);
+        const auto *statement = dynamic_cast<const MatchStmt *>(function->body->stmts[0].get());
+        REQUIRE(statement != nullptr);
+        return *statement->subject;
+    };
+
+    const ValueCopy *copy = model.TryGetCopy(subjectOf(4));
+    REQUIRE(copy != nullptr);
+    CHECK_EQ(copy->kind, ValueConsumptionKind::MatchSubject);
+    CHECK(model.IsOwnedMatchSubject(subjectOf(4)));
+
+    CHECK(model.TryGetCopy(subjectOf(5)) == nullptr);
+    CHECK_FALSE(model.IsOwnedMatchSubject(subjectOf(5)));
+
+    CHECK(model.TryGetCopy(subjectOf(6)) == nullptr);
+    CHECK(model.IsOwnedMatchSubject(subjectOf(6)));
+
+    CHECK(model.IsOwnedMatchSubject(subjectOf(7)));
+
+    CHECK(model.TryGetCopy(subjectOf(8)) == nullptr);
+    CHECK_FALSE(model.IsOwnedMatchSubject(subjectOf(8)));
+    CHECK_FALSE(model.IsOwnedMatchSubject(subjectOf(9)));
+}
+
 TEST_CASE("rejected by-value contexts do not move their operands") {
     const std::vector<SemanticDiagnostic> diagnostics = AnalyzeConsumptionDiagnostics(R"(
         struct Handle { value: int32; }

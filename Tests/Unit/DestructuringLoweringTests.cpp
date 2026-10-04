@@ -272,3 +272,94 @@ TEST_CASE("an arm over a consumed tuple destroys the elements it leaves unbound"
     const LirFunc &borrowed = RequireFunction(lir, "Borrowed");
     CHECK_FALSE(std::ranges::any_of(borrowed.blocks, CallsGlue));
 }
+
+namespace {
+constexpr const char *kCounted = R"(
+    struct Counted { id: int32; }
+    extend Counted {
+        func =(self: &var Counted, other: &Counted) { self.id = other.id; }
+        func ~Counted(self: &var Counted) {}
+    }
+)";
+} // namespace
+
+TEST_CASE("a by-value match of a named copyable value takes the copy it makes") {
+    const std::string source = std::string(kCounted) + R"(
+        func First(pair: (Counted, int32)) -> int32 {
+            return match pair { (item, _) => item.id };
+        }
+        func Count(pair: (Counted, int32)) -> int32 {
+            return match pair { (_, count) => count };
+        }
+        func Look(pair: (Counted, int32)) -> int32 {
+            return match pair { (_, 2) => 1i32, else => 0i32 };
+        }
+    )";
+    const HirPackage package = LowerSource(source);
+    const auto subjectOf = [&](const std::string &name) -> const HirExpr & {
+        const HirFunc &function = RequireFunction(package, name);
+        for (const auto &statement : function.body->stmts) {
+            if (const auto *returned = dynamic_cast<const HirReturnStmt *>(statement.get());
+                returned && returned->value) {
+                const auto *match = dynamic_cast<const HirMatchExpr *>(returned->value->get());
+                REQUIRE(match != nullptr);
+                return *match->subject;
+            }
+        }
+        FAIL("no returned match");
+        throw std::runtime_error("no returned match");
+    };
+
+    // The arms own the copy, so the binding is destroyed with its arm.
+    const HirExpr &copied = subjectOf("First");
+    CHECK(dynamic_cast<const HirCopyExpr *>(&copied) != nullptr);
+    REQUIRE(copied.consumption.has_value());
+    CHECK_EQ(*copied.consumption, ValueConsumptionKind::MatchSubject);
+    const auto &arms = ReturnedMatchArms(RequireFunction(package, "First"));
+    REQUIRE_EQ(arms.size(), 1);
+    CHECK_EQ(arms.front().cleanups.size(), 1);
+
+    // Nothing is bound from the subject, so it stays with its owner: no copy, nothing owned.
+    const HirExpr &kept = subjectOf("Look");
+    CHECK(dynamic_cast<const HirCopyExpr *>(&kept) == nullptr);
+    CHECK_FALSE(kept.consumption.has_value());
+
+    // The element an arm leaves is destroyed at the top of that arm.
+    const LirPackage lir = LowerToLir(LowerSource(source));
+    const LirFunc &count = RequireFunction(lir, "Count");
+    const auto arm = std::ranges::find_if(
+        count.blocks, [](const LirBlock &block) { return StartsWith(block.label, "match.expr.store.arm0"); });
+    REQUIRE(arm != count.blocks.end());
+    CHECK(CallsGlue(*arm));
+}
+
+TEST_CASE("a match destroys an owned subject that no arm takes") {
+    const LirPackage lir = LowerToLir(LowerSource(std::string(kCounted) + R"(
+        func Guarded(pair: (Counted, int32)) {
+            match pair {
+                (item, count) if count > 5 => {}
+            }
+        }
+        func Moved(pair: (Counted, int32)) {
+            match <-pair {
+                (item, 7) => {}
+            }
+        }
+        func Covered(pair: (Counted, int32)) {
+            match pair {
+                (item, count) => {}
+            }
+        }
+    )"));
+    for (const char *name : {"Guarded", "Moved"}) {
+        const LirFunc &function = RequireFunction(lir, name);
+        const auto untaken = std::ranges::find_if(
+            function.blocks, [](const LirBlock &block) { return StartsWith(block.label, "match.untaken"); });
+        REQUIRE_MESSAGE(untaken != function.blocks.end(), name);
+        CHECK_MESSAGE(CallsGlue(*untaken), name);
+    }
+    // A last arm that takes every value leaves nothing untaken.
+    const LirFunc &covered = RequireFunction(lir, "Covered");
+    CHECK_FALSE(std::ranges::any_of(covered.blocks,
+                                    [](const LirBlock &block) { return StartsWith(block.label, "match.untaken"); }));
+}

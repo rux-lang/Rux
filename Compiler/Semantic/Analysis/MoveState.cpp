@@ -309,31 +309,42 @@ bool PatternBindsValue(const Pattern &pattern) {
 /// option it does not own must stay legal -- so only a subject that is a value in its own right is consumed. Called
 /// before the arms are walked rather than after: each arm starts from the flow saved at the match and their exits
 /// are merged over it, so a move recorded afterwards would be merged away.
+///
+/// The arms own the subject they are handed: one transferred with `<-`, a temporary nobody else holds, or — for a
+/// named copyable subject — the copy the match makes of it, which is a temporary of its own. Each arm then owns what
+/// it binds and destroys what it leaves, so every value the match creates is destroyed exactly once.
 template <typename Arm>
-void AnalysisContext::ConsumeMatchSubject(const Expr &subject, const TypeRef &subjectType, const std::vector<Arm> &arms,
+bool AnalysisContext::ConsumeMatchSubject(const Expr &subject, const TypeRef &subjectType, const std::vector<Arm> &arms,
                                           const SourceLocation location) {
+    // `<-value` records its transfer on the moved operand rather than on itself.
+    if (const auto *move = dynamic_cast<const MoveExpr *>(&subject)) {
+        const bool handedOver = valueConsumptions.contains(move->operand.get());
+        if (handedOver) {
+            ownedMatchSubjects.insert(&subject);
+        }
+        return handedOver;
+    }
     const MovePlace place = AnalyzeMovePlace(subject);
-    if (place.IsBorrowedStorage()) {
-        return;
+    if (subjectType.kind == TypeRef::Kind::Reference || place.IsBorrowedStorage()) {
+        return false;
     }
     // A named subject that no arm takes anything from stays with its owner; a temporary has no other owner, so its
     // match takes it whole and destroys whatever the selected arm leaves.
     if (!std::ranges::any_of(arms, [](const Arm &arm) { return PatternBindsValue(*arm.pattern); }) &&
         place.IsNamedStorage()) {
-        return;
+        return false;
+    }
+    if (!trackedFlowReachable) {
+        return false;
     }
     ConsumeValue(subject, subjectType, ValueConsumptionKind::MatchSubject, location);
+    ownedMatchSubjects.insert(&subject);
+    return true;
 }
 
-bool AnalysisContext::MatchSubjectHandedOver(const Expr &subject) const {
-    // `<-value` records its transfer on the moved operand rather than on itself.
-    const auto *move = dynamic_cast<const MoveExpr *>(&subject);
-    return valueConsumptions.contains(move ? move->operand.get() : &subject);
-}
-
-template void AnalysisContext::ConsumeMatchSubject<MatchExpr::Arm>(const Expr &, const TypeRef &,
+template bool AnalysisContext::ConsumeMatchSubject<MatchExpr::Arm>(const Expr &, const TypeRef &,
                                                                    const std::vector<MatchExpr::Arm> &, SourceLocation);
-template void AnalysisContext::ConsumeMatchSubject<MatchStmt::Arm>(const Expr &, const TypeRef &,
+template bool AnalysisContext::ConsumeMatchSubject<MatchStmt::Arm>(const Expr &, const TypeRef &,
                                                                    const std::vector<MatchStmt::Arm> &, SourceLocation);
 
 void AnalysisContext::ReportNonExhaustiveMatchExpression(const MatchExpr &expression,
@@ -367,12 +378,12 @@ TypeRef AnalysisContext::CheckMatchExpression(const MatchExpr &expression) {
                                   ? expressionType.inner.front()
                                   : expressionType;
 
-    ConsumeMatchSubject(*expression.subject, expressionType, expression.arms, expression.location);
+    const bool armsTakeParts =
+        ConsumeMatchSubject(*expression.subject, expressionType, expression.arms, expression.location);
     const PatternBorrow armBorrow = IsNativeMatchSubject(subjectType)
                                       ? MatchSubjectBorrow(*expression.subject, expressionType)
                                       : PatternBorrow::Owned;
 
-    const bool armsTakeParts = MatchSubjectHandedOver(*expression.subject);
     const TrackedFlow matchEntry = SaveTrackedFlow();
     std::vector<TrackedFlow> exits;
     std::vector<const Pattern *> patterns;

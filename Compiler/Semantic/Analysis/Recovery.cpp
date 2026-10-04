@@ -161,6 +161,10 @@ TypeRef AnalysisContext::CheckCatchExpression(const CatchExpr &expression) {
     const TypeRef &error = subjectType.FallibleError();
     // The subject is evaluated and handed over once; the success passes through it and every arm takes the error.
     ConsumeValue(*expression.subject, subjectType, ValueConsumptionKind::CatchSubject, expression.subject->location);
+    // Its arms own what they are handed, whether that is the subject itself or, for a named copyable subject, the copy.
+    if (trackedFlowReachable) {
+        ownedMatchSubjects.insert(expression.subject.get());
+    }
 
     const TrackedFlow entry = SaveTrackedFlow();
     std::vector<TrackedFlow> exits = {entry};

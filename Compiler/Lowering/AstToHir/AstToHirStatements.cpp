@@ -276,9 +276,9 @@ HirStmtPtr AstToHirContext::LowerStmt(const Stmt &stmt) {
         lowered->location = statement->location;
         lowered->exhaustive = model.IsExhaustiveMatch(*statement);
         lowered->subject = LowerMatchSubject(*statement->subject);
-        // An arm's bindings own what they took only if the subject was handed over. Matching a subject that is
-        // borrowed copies the payload out of something that still owns it, and destroying both is the double
-        // destruction this is here to avoid.
+        // An arm's bindings own what they took only if the match owns its subject: one handed over, a temporary, or
+        // the copy a by-value match makes. Matching a borrowed subject reads the payload out of something that still
+        // owns it, and destroying both is the double destruction this is here to avoid.
         const bool armsOwnPayload = lowered->subject->consumption.has_value();
         for (const auto &arm : statement->arms) {
             HirMatchArm loweredArm;

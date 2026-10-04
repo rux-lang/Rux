@@ -42,3 +42,18 @@ func ReadBorrowed(handle: &Handle) -> int32 {
 func SplitHolder(holder: Holder) -> int32 {
     return match <-holder { Holder { handle: handle, extra: extra } => extra };
 }
+
+struct Counter { count: int32; }
+
+extend Counter {
+    func =(self: &var Counter, other: &Counter) { self.count = other.count; }
+    func ~Counter(self: &var Counter) {}
+}
+
+func SplitCopied(counter: Counter) -> int32 {
+    return match counter { Counter { count: count } => count };
+}
+
+func ReadCopied(counter: Counter) -> int32 {
+    return match counter { whole => whole.count };
+}

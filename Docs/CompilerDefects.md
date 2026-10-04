@@ -1048,7 +1048,9 @@ PrintLine("after discard");
 - **Expected:** `_` discards, so `~Tag` runs at the statement, before `after discard`, as it does for a `_` part of a destructure (D36).
 - **Actual:** `after discard`, then `drop 1`: `_` is an ordinary binding named `_`, destroyed at the end of the scope.
 
-## D59. Matching a copyable, droppable value by value never destroys one copy
+## D59. Matching a copyable, droppable value by value never destroys one copy (fixed)
+
+**Fixed**; covered by `Tests/Language/MatchSubjectCopies`, the `MovingPatternSplit` golden, `MoveConsumptionTests.cpp`, and `DestructuringLoweringTests.cpp`.
 
 ```rux
 struct Counted { id: int; }

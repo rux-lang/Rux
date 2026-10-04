@@ -201,6 +201,17 @@ private:
                            const std::vector<LirReg> *enumPayload, LirReg subjectSlot, bool consumed,
                            std::vector<std::pair<LirReg, TypeRef>> &residual);
     void EmitResidualDrops(const std::vector<std::pair<LirReg, TypeRef>> &residual);
+    /// Whether a match owns a subject that has to be destroyed. Such a subject is matched in storage of its own, so an
+    /// arm that binds nothing, or a value no arm takes, can be destroyed whole.
+    [[nodiscard]] bool OwnsDroppableSubject(const HirExpr &subject) const;
+    /// The block a match's last arm falls to when it can leave its owned, droppable subject untaken, or nothing.
+    [[nodiscard]] std::optional<std::uint32_t>
+    UntakenSubjectBlock(const HirExpr &subject, const std::vector<HirMatchArm> &arms, LirReg subjectSlot);
+    /// Whether a pattern matches every value of its subject: a wildcard, a binding, or a tuple or structure of those.
+    [[nodiscard]] static bool PatternTakesEveryValue(const HirPattern &pattern);
+    /// Destroys a subject no arm took, then continues at the match's merge.
+    void EmitUntakenSubjectDrop(std::optional<std::uint32_t> block, const HirExpr &subject, LirReg subjectSlot,
+                                std::uint32_t mergeBlock);
     LirReg LowerNativeSubsetPattern(const HirNativeSubsetPattern &pattern, LirReg subjectValue, LirReg subjectSlot);
     /// Whether some arm takes its subject apart with a tuple or structure pattern, which reads the parts in place.
     [[nodiscard]] static bool ArmsDestructure(const std::vector<HirMatchArm> &arms);

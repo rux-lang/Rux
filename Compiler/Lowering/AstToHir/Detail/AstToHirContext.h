@@ -138,9 +138,9 @@ protected:
 
     /// Whether a binding a pattern makes owns what it binds, and so is destroyed when its scope ends.
     ///
-    /// A `let` always owns: the initializer was handed over. A match arm owns only when the subject was handed over
-    /// too -- matching a borrowed subject copies the payload out of something that still owns it, and destroying
-    /// both copies is exactly the double destruction this exists to avoid.
+    /// A `let` always owns: the initializer was handed over. A match arm owns only when its match owns the subject —
+    /// one handed over, a temporary, or the copy a by-value match makes. Matching a borrowed subject reads the payload
+    /// out of something that still owns it, and destroying both is exactly the double destruction this avoids.
     bool patternBindingsOwnPayload = true;
     [[nodiscard]] HirPatternPtr LowerPattern(const Pattern &pattern,
                                              const TypeRef &subjectType = TypeRef::MakeUnknown());
@@ -225,7 +225,8 @@ protected:
     [[nodiscard]] HirStmtPtr LowerIteratorFor(const ForStmt &statement, const ResolvedIteration &fact);
     [[nodiscard]] HirExprPtr LowerConventionCall(const FuncDecl &method, HirExprPtr receiver, SourceLocation location);
     [[nodiscard]] HirExprPtr LowerAggregateExpr(const Expr &expression);
-    [[nodiscard]] HirExprPtr LowerMatchSubject(const Expr &expression);
+    [[nodiscard]] HirExprPtr LowerMatchSubject(const Expr &expression,
+                                               ValueConsumptionKind kind = ValueConsumptionKind::MatchSubject);
     [[nodiscard]] HirExprPtr LowerCallExpr(const CallExpr &expression);
     [[nodiscard]] HirExprPtr LowerExprAs(const Expr &expression, const TypeRef &targetType);
     [[nodiscard]] std::unique_ptr<HirArrayExpr>

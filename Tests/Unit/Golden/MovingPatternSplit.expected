@@ -2,3 +2,4 @@
 23:33: error: cannot split 'Handle' with a moving pattern, because it declares destructor '~Handle'
 27:28: error: cannot split 'Handle' with a moving pattern, because it declares destructor '~Handle'
 31:28: error: cannot split 'Handle' with a moving pattern, because it declares destructor '~Handle'
+54:28: error: cannot split 'Counter' with a moving pattern, because it declares destructor '~Counter'

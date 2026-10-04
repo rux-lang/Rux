@@ -570,11 +570,11 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
         const TypeRef subjectType = expressionType.kind == TypeRef::Kind::Reference && !expressionType.inner.empty()
                                       ? expressionType.inner.front()
                                       : expressionType;
-        ConsumeMatchSubject(*matchStatement->subject, expressionType, matchStatement->arms, matchStatement->location);
+        const bool armsTakeParts = ConsumeMatchSubject(*matchStatement->subject, expressionType, matchStatement->arms,
+                                                       matchStatement->location);
         const PatternBorrow armBorrow = IsNativeMatchSubject(subjectType)
                                           ? MatchSubjectBorrow(*matchStatement->subject, expressionType)
                                           : PatternBorrow::Owned;
-        const bool armsTakeParts = MatchSubjectHandedOver(*matchStatement->subject);
         const TrackedFlow matchEntry = SaveTrackedFlow();
         std::vector<TrackedFlow> exits;
         std::vector<const Pattern *> patterns;

@@ -328,6 +328,9 @@ struct SemanticFacts {
     /// Every accepted `match` whose arms cover each value of its subject's type, so no value can leave it unmatched.
     std::unordered_set<const MatchExpr *> exhaustiveMatchExpressions;
     std::unordered_set<const MatchStmt *> exhaustiveMatchStatements;
+    /// Every accepted `match` or `catch` subject whose arms own it: one handed over with `<-`, a temporary, or the
+    /// copy a by-value match makes of a named copyable value. An arm owns what it binds and destroys what it leaves.
+    std::unordered_set<const Expr *> ownedMatchSubjects;
     std::unordered_map<std::string, ResolvedTypeLayout> typeLayouts;
     std::unordered_map<std::string, TypeProperties> typeProperties;
     std::unordered_map<std::string, DropGluePlan> dropGluePlans;
@@ -439,6 +442,9 @@ struct SemanticModel {
     /// the type declares, such as an integer converted to an enum with `as`, then has no arm to fall to.
     [[nodiscard]] bool IsExhaustiveMatch(const MatchExpr &expression) const noexcept;
     [[nodiscard]] bool IsExhaustiveMatch(const MatchStmt &statement) const noexcept;
+    /// Whether the arms of the `match` or `catch` that reads `subject` own it, so lowering gives each binding its
+    /// cleanup and destroys whatever the selected arm leaves; a subject left with its owner or borrowed answers false.
+    [[nodiscard]] bool IsOwnedMatchSubject(const Expr &subject) const noexcept;
 
     /// Returns null when the type is unresolved, unsized, recursive, or was not validated in this analysis.
     /// Type-expression queries first use the resolved type fact for that AST node.

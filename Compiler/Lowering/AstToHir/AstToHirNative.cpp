@@ -745,7 +745,7 @@ HirExprPtr AstToHirContext::LowerCatch(const CatchExpr &expression) {
     auto lowered = std::make_unique<HirMatchExpr>();
     lowered->location = location;
     lowered->type = ResolvedExpressionType(expression);
-    lowered->subject = LowerMatchSubject(*expression.subject);
+    lowered->subject = LowerMatchSubject(*expression.subject, ValueConsumptionKind::CatchSubject);
     const TypeRef subjectType = lowered->subject->type;
     const TypeRef &success = subjectType.FallibleSuccess();
     const TypeRef &error = subjectType.FallibleError();

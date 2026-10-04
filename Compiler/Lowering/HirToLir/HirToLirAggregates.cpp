@@ -147,6 +147,50 @@ void HirToLirContext::EmitResidualDrops(const std::vector<std::pair<LirReg, Type
     }
 }
 
+bool HirToLirContext::OwnsDroppableSubject(const HirExpr &subject) const {
+    return subject.consumption.has_value() && dropGlueSymbols.contains(subject.type.ToString());
+}
+
+std::optional<std::uint32_t> HirToLirContext::UntakenSubjectBlock(const HirExpr &subject,
+                                                                  const std::vector<HirMatchArm> &arms,
+                                                                  const LirReg subjectSlot) {
+    if (arms.empty() || subjectSlot == LirNoReg || !OwnsDroppableSubject(subject)) {
+        return std::nullopt;
+    }
+    // An irrefutable last arm always takes the subject. Any other — a guard, a literal, a case — can let it pass, and
+    // a subject no arm took has nobody left to destroy it but the match.
+    if (PatternTakesEveryValue(*arms.back().pattern)) {
+        return std::nullopt;
+    }
+    return NewBlock("match.untaken");
+}
+
+bool HirToLirContext::PatternTakesEveryValue(const HirPattern &pattern) {
+    if (dynamic_cast<const HirWildcardPattern *>(&pattern) || dynamic_cast<const HirBindingPattern *>(&pattern)) {
+        return true;
+    }
+    if (const auto *tuple = dynamic_cast<const HirTuplePattern *>(&pattern)) {
+        return std::ranges::all_of(tuple->elements,
+                                   [](const HirPatternPtr &element) { return PatternTakesEveryValue(*element); });
+    }
+    if (const auto *structure = dynamic_cast<const HirStructPattern *>(&pattern)) {
+        return std::ranges::all_of(structure->fields, [](const HirStructPatternField &field) {
+            return PatternTakesEveryValue(*field.pattern);
+        });
+    }
+    return false;
+}
+
+void HirToLirContext::EmitUntakenSubjectDrop(const std::optional<std::uint32_t> block, const HirExpr &subject,
+                                             const LirReg subjectSlot, const std::uint32_t mergeBlock) {
+    if (!block) {
+        return;
+    }
+    SetBlock(*block);
+    EmitResidualDrops({{subjectSlot, subject.type}});
+    Jump(mergeBlock);
+}
+
 LirReg HirToLirContext::LowerNativeSubsetPattern(const HirNativeSubsetPattern &pattern, const LirReg subjectVal,
                                                  const LirReg subjectSlot) {
     const TypeRef tagType = TypeRef::MakeInt64();
@@ -326,7 +370,8 @@ void HirToLirContext::LowerMatch(const HirMatchStmt &s) {
             }
         }
     }
-    const bool inPlace = IsAggregateEnumType(s.subject->type) || ArmsDestructure(s.arms);
+    const bool inPlace =
+        IsAggregateEnumType(s.subject->type) || ArmsDestructure(s.arms) || OwnsDroppableSubject(*s.subject);
     if (subjectSlot == LirNoReg && inPlace) {
         subjectSlot = EmitAlloca(s.subject->type);
         StoreExprIntoSlot(*s.subject, subjectSlot, s.subject->type);
@@ -345,12 +390,14 @@ void HirToLirContext::LowerMatch(const HirMatchStmt &s) {
         return;
     }
     const std::optional<std::uint32_t> unmatchedBlock = UnmatchedBlock(s.exhaustive, s.arms);
+    const std::optional<std::uint32_t> untakenBlock =
+        unmatchedBlock ? std::nullopt : UntakenSubjectBlock(*s.subject, s.arms, subjectSlot);
     for (std::size_t i = 0; i < s.arms.size(); ++i) {
         const auto &arm = s.arms[i];
         const bool isLast = (i + 1 == s.arms.size());
         std::uint32_t bodyBlock = NewBlock(std::format("match.arm{}", i));
-        std::uint32_t nextBlock =
-            isLast ? unmatchedBlock.value_or(mergeBlock) : NewBlock(std::format("match.next{}", i));
+        std::uint32_t nextBlock = isLast ? unmatchedBlock.value_or(untakenBlock.value_or(mergeBlock))
+                                         : NewBlock(std::format("match.next{}", i));
         std::vector<std::pair<LirReg, TypeRef>> residual;
         LirReg matched = LowerArmPattern(*arm.pattern, subjectVal, s.subject->type, subjectPayload, subjectSlot,
                                          s.subject->consumption.has_value(), residual);
@@ -368,6 +415,7 @@ void HirToLirContext::LowerMatch(const HirMatchStmt &s) {
         }
     }
     EmitUnmatchedTrap(unmatchedBlock, *s.subject, s.location);
+    EmitUntakenSubjectDrop(untakenBlock, *s.subject, subjectSlot, mergeBlock);
     SetBlock(mergeBlock);
 }
 
@@ -1035,7 +1083,8 @@ void HirToLirContext::StoreMatchInit(const HirMatchExpr &e, LirReg slot, const T
             }
         }
     }
-    const bool inPlace = IsAggregateEnumType(e.subject->type) || ArmsDestructure(e.arms);
+    const bool inPlace =
+        IsAggregateEnumType(e.subject->type) || ArmsDestructure(e.arms) || OwnsDroppableSubject(*e.subject);
     if (subjectSlot == LirNoReg && inPlace) {
         subjectSlot = EmitAlloca(e.subject->type);
         StoreExprIntoSlot(*e.subject, subjectSlot, e.subject->type);
@@ -1053,12 +1102,14 @@ void HirToLirContext::StoreMatchInit(const HirMatchExpr &e, LirReg slot, const T
     }
 
     const std::optional<std::uint32_t> unmatchedBlock = UnmatchedBlock(e.exhaustive, e.arms);
+    const std::optional<std::uint32_t> untakenBlock =
+        unmatchedBlock ? std::nullopt : UntakenSubjectBlock(*e.subject, e.arms, subjectSlot);
     for (std::size_t i = 0; i < e.arms.size(); ++i) {
         const auto &arm = e.arms[i];
         const bool isLast = (i + 1 == e.arms.size());
         const std::uint32_t bodyBlock = NewBlock(std::format("match.expr.store.arm{}", i));
-        const std::uint32_t nextBlock =
-            isLast ? unmatchedBlock.value_or(mergeBlock) : NewBlock(std::format("match.expr.store.next{}", i));
+        const std::uint32_t nextBlock = isLast ? unmatchedBlock.value_or(untakenBlock.value_or(mergeBlock))
+                                               : NewBlock(std::format("match.expr.store.next{}", i));
         std::vector<std::pair<LirReg, TypeRef>> residual;
         const LirReg matched = LowerArmPattern(*arm.pattern, subjectVal, e.subject->type, subjectPayload, subjectSlot,
                                                e.subject->consumption.has_value(), residual);
@@ -1076,6 +1127,7 @@ void HirToLirContext::StoreMatchInit(const HirMatchExpr &e, LirReg slot, const T
     }
 
     EmitUnmatchedTrap(unmatchedBlock, *e.subject, e.location);
+    EmitUntakenSubjectDrop(untakenBlock, *e.subject, subjectSlot, mergeBlock);
     SetBlock(mergeBlock);
 }
 

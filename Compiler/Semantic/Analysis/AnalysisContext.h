@@ -242,11 +242,10 @@ private:
     [[nodiscard]] std::vector<TypeRef> CheckCallArgumentValues(const CallExpr &call);
     void ConsumeCallArguments(const CallExpr &call, const std::vector<TypeRef> &argumentTypes,
                               const std::vector<TypeRef> *parameterTypes = nullptr);
+    /// Consumes a match subject the arms take from and records whether they own it, which is what the result says.
     template <typename Arm>
-    void ConsumeMatchSubject(const Expr &subject, const TypeRef &subjectType, const std::vector<Arm> &arms,
+    bool ConsumeMatchSubject(const Expr &subject, const TypeRef &subjectType, const std::vector<Arm> &arms,
                              SourceLocation location);
-    /// Whether a checked match subject was handed over to the arms, so each arm owns what it binds.
-    [[nodiscard]] bool MatchSubjectHandedOver(const Expr &subject) const;
     void ConsumeMethodReceiver(const CallExpr &call, const Expr &receiver, const TypeRef &receiverType,
                                const FuncDecl &method);
 
@@ -513,7 +512,7 @@ private:
     std::unordered_map<const Pattern *, PatternBindingMode> &patternBindingModes;
 
     PatternBorrow currentPatternBorrow = PatternBorrow::Owned;
-    /// Whether the arm whose pattern is being checked owns what it binds: its match subject was handed over, or it is a
+    /// Whether the arm whose pattern is being checked owns what it binds: its match owns its subject, or it is a
     /// `catch` arm taking the error. A structure pattern binding a part there takes the value apart.
     bool currentPatternTakesParts = false;
 
@@ -577,6 +576,8 @@ private:
     /// One entry per accepted `match` that covers its subject, so lowering stops a value no arm matches.
     std::unordered_set<const MatchExpr *> &exhaustiveMatchExpressions;
     std::unordered_set<const MatchStmt *> &exhaustiveMatchStatements;
+    /// One entry per `match` or `catch` subject whose arms own it, so lowering destroys exactly what they own.
+    std::unordered_set<const Expr *> &ownedMatchSubjects;
     std::unordered_map<const TypeQueryExpr *, std::uint64_t> &typeQueryValues;
 
     SemanticProgramIndex programIndex;

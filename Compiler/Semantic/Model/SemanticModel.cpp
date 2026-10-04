@@ -319,6 +319,10 @@ bool SemanticModel::IsExhaustiveMatch(const MatchStmt &statement) const noexcept
     return facts.exhaustiveMatchStatements.contains(&statement);
 }
 
+bool SemanticModel::IsOwnedMatchSubject(const Expr &subject) const noexcept {
+    return facts.ownedMatchSubjects.contains(&subject);
+}
+
 const ResolvedTypeLayout *SemanticModel::TryGetLayout(const TypeRef &type) const noexcept {
     const auto layout = facts.typeLayouts.find(type.ToString());
     return layout == facts.typeLayouts.end() ? nullptr : &layout->second;

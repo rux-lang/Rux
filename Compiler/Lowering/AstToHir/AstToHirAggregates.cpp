@@ -89,9 +89,27 @@ bool CompilerHasFeature(const std::string_view feature) {
 }
 } // namespace
 
-HirExprPtr AstToHirContext::LowerMatchSubject(const Expr &expression) {
+HirExprPtr AstToHirContext::LowerMatchSubject(const Expr &expression, const ValueConsumptionKind kind) {
     HirExprPtr lowered = LowerExpr(expression);
     if (lowered->type.kind != TypeRef::Kind::Reference || lowered->type.inner.empty()) {
+        // The arms own a subject analysis handed them. A transfer already says so; a temporary, or the copy a by-value
+        // match makes of a named copyable value, is marked here, which is what gives the bindings their cleanups and
+        // the arms the duty to destroy what they leave.
+        if (lowered->consumption || !model.IsOwnedMatchSubject(expression)) {
+            return lowered;
+        }
+        // A copy whose plan is a plain load would leave the subject reading the named storage itself, and the arms
+        // would destroy parts its owner still holds. A droppable value gets storage of its own.
+        if (const ValueCopy *copy = model.TryGetCopy(expression);
+            copy && !dynamic_cast<const HirCopyExpr *>(lowered.get()) && model.TryGetDropGlue(lowered->type)) {
+            auto copied = std::make_unique<HirCopyExpr>();
+            copied->location = lowered->location;
+            copied->type = lowered->type;
+            copied->plan.type = lowered->type;
+            copied->value = std::move(lowered);
+            lowered = std::move(copied);
+        }
+        lowered->consumption = kind;
         return lowered;
     }
 
@@ -987,7 +1005,7 @@ HirExprPtr AstToHirContext::LowerAggregateExpr(const Expr &expression) {
         lowered->type = ResolvedExpressionType(*match);
         lowered->exhaustive = model.IsExhaustiveMatch(*match);
         lowered->subject = LowerMatchSubject(*match->subject);
-        // As in the statement form: an arm's bindings own what they took only if the subject was handed over.
+        // As in the statement form: an arm's bindings own what they took only if the match owns its subject.
         const bool armsOwnPayload = lowered->subject->consumption.has_value();
         for (const auto &arm : match->arms) {
             HirMatchArm loweredArm;
