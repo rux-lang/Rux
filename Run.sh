@@ -25,6 +25,7 @@ shard_index=0
 shard_count=1
 no_pch=false
 osx_architecture=
+no_tests=false
 
 usage() {
     printf '%s\n' \
@@ -51,7 +52,9 @@ usage() {
         '  --fix-formatting               Format sources instead of checking them (test)' \
         '  --skip-build                   Reuse the existing build and executables (test)' \
         '  --clang-tidy                   Add the clang-tidy pass (test)' \
-        '  --no-pch                       Configure without precompiled headers (build, test)' \n        '  --osx-architecture ARCH        Build for this macOS architecture (build, test; default: the host)' \
+        '  --no-pch                       Configure without precompiled headers (build, test)' \
+        '  --no-tests                     Build the compiler without the C++ unit tests (build)' \
+        '  --osx-architecture ARCH        Build for this macOS architecture (build, test; default: the host)' \
         '  --shard-count N                Split the analysis into N disjoint shards (tidy; default: 1)' \
         '  --shard-index N                Analyze shard N of --shard-count, counting from zero (tidy)' \
         '  -h, --help                     Show this help' \
@@ -70,7 +73,7 @@ require_value() {
 # Options each command accepts, used to reject an option the command ignores.
 command_options() {
     case $1 in
-    build) printf '%s' '--configuration --build-directory --compiler --jobs --no-pch --osx-architecture' ;;
+    build) printf '%s' '--configuration --build-directory --compiler --jobs --no-pch --no-tests --osx-architecture' ;;
     test) printf '%s' '--configuration --build-directory --compiler --rux-executable --target --fix-formatting --skip-build --clang-tidy --jobs --no-pch --osx-architecture' ;;
     format) printf '%s' '--rux-executable --check --jobs' ;;
     tidy) printf '%s' '--build-directory --jobs --shard-index --shard-count' ;;
@@ -173,6 +176,11 @@ while [ "$#" -gt 0 ]; do
     --no-pch)
         require_option "$1"
         no_pch=true
+        shift
+        ;;
+    --no-tests)
+        require_option "$1"
+        no_tests=true
         shift
         ;;
     --osx-architecture)
@@ -302,8 +310,15 @@ run_build() {
         -DCMAKE_BUILD_TYPE="$configuration" \
         -DCMAKE_CXX_COMPILER="$compiler_path" \
         -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
-        -DRUX_WERROR=ON \
-        -DRUX_BUILD_TESTS=ON
+        -DRUX_WERROR=ON
+    # A cross-build cannot run the unit tests it would compile, so --no-tests
+    # leaves them out; the option is always passed so that a reused build
+    # directory follows the request rather than its cache.
+    if [ "$no_tests" = true ]; then
+        set -- "$@" -DRUX_BUILD_TESTS=OFF
+    else
+        set -- "$@" -DRUX_BUILD_TESTS=ON
+    fi
     [ "$no_pch" != true ] || set -- "$@" -DRUX_USE_PCH=OFF
     # The macOS SDK is universal, so one host builds either architecture; CI uses
     # this to build the x86-64 compiler on an AArch64 runner and test it under
@@ -313,7 +328,11 @@ run_build() {
     step "Configuring $configuration build"
     run_filtered cmake "$configure_report_program" cmake "$@"
 
-    step "Building compiler and unit tests"
+    if [ "$no_tests" = true ]; then
+        step "Building compiler"
+    else
+        step "Building compiler and unit tests"
+    fi
     if [ -n "$jobs" ]; then
         run_filtered cmake "$build_report_program" cmake --build "$build_path" --config "$configuration" --parallel "$jobs"
     else

@@ -64,6 +64,10 @@ PowerShell 7 because it analyzes files in parallel.
 Configures without precompiled headers, for build and test. CI uses this because
 a compilation cache and precompiled headers defeat each other.
 
+.PARAMETER NoTests
+Builds the compiler without the C++ unit tests, for build. A cross-build uses
+this because it cannot run the tests it would compile.
+
 .PARAMETER OsxArchitecture
 Builds for this macOS architecture, for build and test. The macOS SDK is
 universal, so one host builds either architecture.
@@ -121,6 +125,8 @@ param(
 
     [switch]$NoPch,
 
+    [switch]$NoTests,
+
     [string]$OsxArchitecture,
 
     [ValidateRange(0, 2147483646)]
@@ -146,7 +152,7 @@ $policyChecks = @(
 
 # Options each command accepts, used to reject an option the command ignores.
 $commandOptions = @{
-    build  = @("Configuration", "BuildDirectory", "Compiler", "Jobs", "NoPch", "OsxArchitecture")
+    build  = @("Configuration", "BuildDirectory", "Compiler", "Jobs", "NoPch", "NoTests", "OsxArchitecture")
     test   = @("Configuration", "BuildDirectory", "Compiler", "RuxExecutable", "Target",
         "FixFormatting", "SkipBuild", "ClangTidy", "Jobs", "NoPch", "OsxArchitecture")
     format = @("RuxExecutable", "Check", "Jobs")
@@ -182,6 +188,7 @@ function Show-Usage {
     Write-Host "  -SkipBuild                    Reuse the existing build and executables (test)"
     Write-Host "  -ClangTidy                    Add the clang-tidy pass (test)"
     Write-Host "  -NoPch                        Configure without precompiled headers (build, test)"
+    Write-Host "  -NoTests                      Build the compiler without the C++ unit tests (build)"
     Write-Host "  -OsxArchitecture ARCH         Build for this macOS architecture (build, test; default: the host)"
     Write-Host "  -ShardCount N                 Split the analysis into N disjoint shards (tidy; default: 1)"
     Write-Host "  -ShardIndex N                 Analyze shard N of -ShardCount, counting from zero (tidy)"
@@ -460,9 +467,17 @@ function Invoke-Build {
     }
     $configureArguments.AddRange([string[]]@(
             "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
-            "-DRUX_WERROR=ON",
-            "-DRUX_BUILD_TESTS=ON"
+            "-DRUX_WERROR=ON"
         ))
+    # A cross-build cannot run the unit tests it would compile, so -NoTests
+    # leaves them out; the option is always passed so that a reused build
+    # directory follows the request rather than its cache.
+    if ($NoTests) {
+        $configureArguments.Add("-DRUX_BUILD_TESTS=OFF")
+    }
+    else {
+        $configureArguments.Add("-DRUX_BUILD_TESTS=ON")
+    }
     # Leaving RUX_USE_PCH unset keeps the platform default; -NoPch is how CI
     # turns it off, because a compilation cache and precompiled headers defeat
     # each other.
@@ -518,7 +533,12 @@ function Invoke-Build {
     Write-Step "Configuring $Configuration build"
     Invoke-Filtered -FilePath $cmake -Name "cmake" -Filter $configureFilter -ArgumentList $configureArguments
 
-    Write-Step "Building compiler and unit tests"
+    if ($NoTests) {
+        Write-Step "Building compiler"
+    }
+    else {
+        Write-Step "Building compiler and unit tests"
+    }
     $buildArguments = @("--build", $buildPath, "--config", $Configuration)
     if ($script:PSBoundParameters.ContainsKey("Jobs")) { $buildArguments += @("--parallel", "$Jobs") }
     Invoke-Filtered -FilePath $cmake -Name "cmake" -Filter $buildFilter -ArgumentList $buildArguments
@@ -810,7 +830,7 @@ if ($Command -eq "help") {
 }
 
 $allOptions = @("Configuration", "BuildDirectory", "Compiler", "RuxExecutable", "Target",
-    "Check", "FixFormatting", "SkipBuild", "ClangTidy", "Jobs", "NoPch", "OsxArchitecture",
+    "Check", "FixFormatting", "SkipBuild", "ClangTidy", "Jobs", "NoPch", "NoTests", "OsxArchitecture",
     "ShardIndex", "ShardCount")
 foreach ($name in $PSBoundParameters.Keys) {
     if ($allOptions -notcontains $name) {
