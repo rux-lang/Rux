@@ -433,6 +433,8 @@ extend JsonParser {
 
     // The scalar cases live in their own functions so that what they hold while building a value stays out of the
     // frame `ParseValue` and `ParseArray` recurse through: every byte of that frame is paid once per nesting level.
+    // The compiler gives every native temporary its own stack slot and never reuses one, so keeping them inline grew
+    // that frame by about 9 KB a level. Fold these back in only once the frame planners share slots.
     func ParseNumber(self: &var JsonParser, token: JsonToken) -> JsonValue {
         let span = (@self.input.data[token.start])[..token.end - token.start];
         return JsonValue::Number(self.allocator, span) catch { else => self.Stop(JsonStop::OutOfMemory) };

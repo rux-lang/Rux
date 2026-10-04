@@ -1,0 +1,39 @@
+func Mismatch(value: int32) -> int32? {
+    return match value {
+        0 => .Some(1i32),
+        else => .Some(true)
+    };
+}
+
+func Late(value: int32) -> int32? {
+    return match value {
+        0 => .Failure(true),
+        1 => none,
+        else => .Some(1i32)
+    };
+}
+
+func Refused(value: int32) -> int32? {
+    return match value {
+        0 => none,
+        else => .Failure(true)
+    };
+}
+
+func Open(value: int32) {
+    let open = match value {
+        0 => .Success(1i32),
+        else => .Failure(true)
+    };
+}
+
+func Accepted(value: int32) -> int32? {
+    let annotated: int32? = match value {
+        0 => none,
+        else => .Some(value)
+    };
+    return match value {
+        0 => none,
+        else => annotated
+    };
+}

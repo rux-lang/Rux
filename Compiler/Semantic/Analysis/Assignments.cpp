@@ -143,12 +143,46 @@ bool AnalysisContext::CanAssignExprTo(const Expr &expr, const TypeRef &exprType,
         }
     }
 
+    // An arm that was already checked keeps its recorded type: checking it again would run outside the scope of the
+    // bindings it was checked under, and would track its moves a second time.
+    const auto checkedType = [&](const Expr &arm) {
+        const auto checked = expressionTypes.find(&arm);
+        return checked != expressionTypes.end() ? checked->second : CheckExpr(arm);
+    };
+
     if (const auto *ternary = dynamic_cast<const TernaryExpr *>(&expr)) {
-        const TypeRef thenType = CheckExpr(*ternary->thenExpr);
-        const TypeRef elseType = CheckExpr(*ternary->elseExpr);
+        const TypeRef thenType = checkedType(*ternary->thenExpr);
+        const TypeRef elseType = checkedType(*ternary->elseExpr);
         if (CanAssignExprTo(*ternary->thenExpr, thenType, targetType) &&
             CanAssignExprTo(*ternary->elseExpr, elseType, targetType)) {
             return true;
+        }
+    }
+
+    // A match reaches a native expected type arm by arm, the way a ternary does, so `none` in one arm and `.Some(v)`
+    // in another both take the expected type. The match then has that type: converting its provisional type as a
+    // whole would treat an open `opaque?` as absence whichever arm ran.
+    if (const auto *match = dynamic_cast<const MatchExpr *>(&expr);
+        match && !targetType.IsUnknown() && (MentionsNativeType(targetType) || exprType.MentionsIncompleteNative())) {
+        bool accepted = true;
+        for (const auto &arm : match->arms) {
+            if (IsDivergingExpression(*arm.body)) {
+                continue;
+            }
+            const auto checked = expressionTypes.find(arm.body.get());
+            if (checked == expressionTypes.end() || !CanAssignExprTo(*arm.body, checked->second, targetType)) {
+                accepted = false;
+                break;
+            }
+        }
+        if (accepted) {
+            expressionTypes.insert_or_assign(&expr, targetType);
+            nativeConversions.erase(&expr);
+            return true;
+        }
+        // An open match has no type of its own to convert, so an arm the expected type refuses refuses the match.
+        if (exprType.MentionsIncompleteNative()) {
+            return false;
         }
     }
 

@@ -43,24 +43,23 @@ Compiler component ownership is described in [Architecture](Docs/Architecture.md
 
 For anything beyond the quick start, see the detailed guides:
 
-| Guide                                             | What it covers                                                  |
-| ------------------------------------------------- | --------------------------------------------------------------- |
-| [Comments and Documentation](Docs/Comments.md)    | Comment syntax, doc attachment, tags, formatting, and tooling   |
-| [Language Ownership](Docs/Language.md)            | Values, references, copy, move, construction, and destruction   |
-| [Native Outcomes](Docs/NativeOutcomes.md)         | Sums, optionals, fallibles: design decisions and migration      |
-| [Compiler Defects](Docs/CompilerDefects.md)       | Known compiler bugs and the workarounds code relies on          |
-| [Development Workflow](Docs/Workflow.md)          | Day-to-day loop: build, change, test, format, commit            |
-| [Compiler Architecture](Docs/Architecture.md)     | Component ownership, dependency direction, compilation pipeline |
-| [Package Builds](Docs/Builds.md)                  | Profiles, targets, artifact paths, and the 16-cell build matrix |
-| [Rux.toml Manifest](Docs/Manifest.md)             | Versioned package, workspace and dependency contract            |
-| [First-Party Packages](Docs/Packages.md)          | Package status, layout, dependencies, and centralized tests     |
-| [Package Acceptance](Docs/PackageAcceptance.md)   | What is on record for the packages, and what is still missing   |
-| [Narrow Float Conversion](Docs/NarrowFloat.md)    | The algorithm, workspace bound, precision and reference vectors  |
-| [Cryptographic Review](Docs/CryptoReview.md)      | What an independent reviewer of `Rux/Crypto` needs first        |
-| [Branch Architecture](Docs/Branches.md)           | What `main` and `dev` are for, naming, protection rules         |
-| [Pull Request Lifecycle](Docs/PullRequest.md)     | From opening a PR to merge: review, CI gates, etiquette         |
-| [CI/CD Flow](Docs/CI-CD.md)                       | The per-OS build/test workflows that run on every push and PR   |
-| [Release Pipeline](Docs/Release.md)               | How a dispatched run becomes a multi-platform release           |
+| Guide                                           | What it covers                                                  |
+| ----------------------------------------------- | --------------------------------------------------------------- |
+| [Comments and Documentation](Docs/Comments.md)  | Comment syntax, doc attachment, tags, formatting, and tooling   |
+| [Language Ownership](Docs/Language.md)          | Values, references, copy, move, construction, and destruction   |
+| [Native Outcomes](Docs/NativeOutcomes.md)       | Sums, optionals, fallibles: design decisions and migration      |
+| [Development Workflow](Docs/Workflow.md)        | Day-to-day loop: build, change, test, format, commit            |
+| [Compiler Architecture](Docs/Architecture.md)   | Component ownership, dependency direction, compilation pipeline |
+| [Package Builds](Docs/Builds.md)                | Profiles, targets, artifact paths, and the 16-cell build matrix |
+| [Rux.toml Manifest](Docs/Manifest.md)           | Versioned package, workspace and dependency contract            |
+| [First-Party Packages](Docs/Packages.md)        | Package status, layout, dependencies, and centralized tests     |
+| [Package Acceptance](Docs/PackageAcceptance.md) | What is on record for the packages, and what is still missing   |
+| [Narrow Float Conversion](Docs/NarrowFloat.md)  | The algorithm, workspace bound, precision and reference vectors |
+| [Cryptographic Review](Docs/CryptoReview.md)    | What an independent reviewer of `Rux/Crypto` needs first        |
+| [Branch Architecture](Docs/Branches.md)         | What `main` and `dev` are for, naming, protection rules         |
+| [Pull Request Lifecycle](Docs/PullRequest.md)   | From opening a PR to merge: review, CI gates, etiquette         |
+| [CI/CD Flow](Docs/CI-CD.md)                     | The per-OS build/test workflows that run on every push and PR   |
+| [Release Pipeline](Docs/Release.md)             | How a dispatched run becomes a multi-platform release           |
 
 ## Code Style
 

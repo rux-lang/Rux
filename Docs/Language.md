@@ -8,6 +8,8 @@ The design favors locally visible ownership effects, explicit signatures, and se
 
 A typed integer initializer, assignment, return, call argument, or aggregate element supplies the required type to both arms of `condition ? first : second`. Unsuffixed integer literals must fit that type; nested conditional arms receive the same context. Each selected arm is materialized at the required width before the values merge, including integers wider than one machine word. The condition runs once and only the selected arm is evaluated.
 
+A `match` expression passes a native expected type to its arms the same way. `none`, `.Success(value)`, and `.Failure(error)` leave part of their type open, so an arm written with one of them takes the optional or fallible type of the annotation, return type, or parameter the match is used for, whichever arm comes first. With no expected type, the first arm whose type is complete decides the match and the open arms before it are checked against that type; a match whose arms are all open needs an annotation. Arms whose types are complete must still agree with each other.
+
 Generic function calls may omit type arguments when the argument types determine them, including parameters behind references, pointers, slices, and named generic types. Explicit type arguments remain available and required when no argument determines a parameter. Inference does not relax mutable-borrow or argument-type requirements.
 
 Struct literals can appear inside parenthesized expressions and call arguments within conditions. An ordinary unparenthesized condition still leaves its following brace to the statement body.

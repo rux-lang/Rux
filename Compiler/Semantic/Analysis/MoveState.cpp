@@ -321,6 +321,21 @@ TypeRef AnalysisContext::CheckMatchExpression(const MatchExpr &expression) {
     TypeRef resultType = TypeRef::MakeUnknown();
     bool coveredAll = false;
 
+    // Arms accepted while the result was still incomplete, such as a leading `none`. A later arm that completes the
+    // type has to accept them too.
+    struct AcceptedArm {
+        const Expr *body;
+        TypeRef type;
+        SourceLocation location;
+    };
+
+    std::vector<AcceptedArm> acceptedArms;
+    const auto reportMismatch = [&](const Expr &body, const TypeRef &armType, const SourceLocation location) {
+        EmitError(location, AssignmentErrorMessage(body, resultType,
+                                                   std::format("match arm type mismatch: expected '{}', found '{}'",
+                                                               resultType.ToString(), armType.ToString())));
+    };
+
     for (const auto &arm : expression.arms) {
         RestoreTrackedFlow(matchEntry);
         PushScope();
@@ -339,15 +354,31 @@ TypeRef AnalysisContext::CheckMatchExpression(const MatchExpr &expression) {
         coveredAll = coveredAll || dynamic_cast<const WildcardPattern *>(arm.pattern.get()) != nullptr ||
                      dynamic_cast<const IdentPattern *>(arm.pattern.get()) != nullptr;
 
+        if (armType.IsUnknown()) {
+            continue;
+        }
         if (resultType.IsUnknown()) {
             resultType = armType;
         }
-        else if (!armType.IsUnknown() && !CanAssignExprTo(*arm.body, armType, resultType)) {
-            EmitError(arm.location,
-                      AssignmentErrorMessage(*arm.body, resultType,
-                                             std::format("match arm type mismatch: expected '{}', found '{}'",
-                                                         resultType.ToString(), armType.ToString())));
+        else if (CanAssignExprTo(*arm.body, armType, resultType)) {
+            // The arm fits the type the earlier arms settled on.
         }
+        else if (resultType.MentionsIncompleteNative() && !armType.MentionsIncompleteNative()) {
+            // `none`, `.Success(v)` and `.Failure(e)` leave part of their type open, so the first arm that has a whole
+            // type decides the match, and the open arms before it are checked against that type.
+            resultType = armType;
+            for (const AcceptedArm &earlier : acceptedArms) {
+                if (!CanAssignExprTo(*earlier.body, earlier.type, resultType)) {
+                    reportMismatch(*earlier.body, earlier.type, earlier.location);
+                }
+            }
+        }
+        else if (!resultType.MentionsIncompleteNative() && !armType.MentionsIncompleteNative()) {
+            reportMismatch(*arm.body, armType, arm.location);
+        }
+        // Otherwise no arm so far has a whole type, as with `.Success(v)` beside `.Failure(e)`. The match keeps its
+        // open type and the expected type of its context checks every arm.
+        acceptedArms.push_back({arm.body.get(), armType, arm.location});
     }
     ValidateMatchPatterns(patterns, subjectType);
     if (!MatchPatternsAreExhaustive(patterns, subjectType)) {

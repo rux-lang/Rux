@@ -153,8 +153,6 @@ Pitfalls:
 - A helper taking `&(T ! E)` needs a place to borrow from: call it on a named local, or take the fallible by value.
 - `import Core::#target;` does not parse; write `import Core::{ #target };`.
 
-Known compiler defects met during the migration are recorded in [Compiler Defects](CompilerDefects.md).
-
 ## Regression Coverage
 
 The executable fixtures `Tests/Language/SumType`, `Fallible`, `Optional`, `None`, `OptionalIteration`, `Fail`, `Catch`, `ErrorMapping`, `GenericSum`, and `NativeOutcomes` exercise the forms end to end; `NativeOutcomes` is the reference for the target idioms. The `NativeOutcomeSpellings`, `NativeOutcomeMisuse`, and `FallibleDiscard` goldens pin the rejected spellings, and the `Native*` unit tests cover each compiler stage. Changing any decision above means updating the affected fixtures and goldens in the same change.

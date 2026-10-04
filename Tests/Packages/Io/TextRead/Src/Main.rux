@@ -56,8 +56,8 @@ func CheckBytes(allocator: Allocator, bytes: char8[..], step: uint, limit: uint,
     var reader = BufferedReader::New(allocator, source, 16) catch { else => Panic("the reader takes its buffer") };
     var builder = StringBuilder(allocator);
     let reported: IoErrorKind? = match ReadTextLine(reader, builder, limit) {
-        .Failure(error) => .Some(error.kind),
-        .Success(_) => none
+        .Success(_) => none,
+        .Failure(error) => .Some(error.kind)
     };
     Assert(reported == expectedKind, "the outcome names the reason");
     let line = builder.IntoString();

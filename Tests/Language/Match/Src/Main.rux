@@ -49,6 +49,27 @@ func Describe(value: int32) -> int32 {
     };
 }
 
+// A match whose arms leave part of their type open takes it from where the value goes. `none` says nothing about
+// what would have been present, so the return type completes it, whichever arm comes first.
+func Positive(value: int32) -> int32? {
+    return match value {
+        0 => none,
+        else => .Some(value)
+    };
+}
+
+// `.Success` and `.Failure` each leave the other channel open, so no arm here has a whole type of its own.
+func Checked(value: int32) -> int32 ! bool {
+    return match value {
+        0 => .Failure(true),
+        else => .Success(value)
+    };
+}
+
+func OrZero(value: int32?) -> int32 {
+    return value ?? 0i32;
+}
+
 func Main() -> int {
     // Every member of a closed enum, with no else. A match over all four needs no default.
     Assert(Opposite(Direction::North) == Direction::South, "an enum member selects its arm");
@@ -163,5 +184,31 @@ func Main() -> int {
         else => false
     };
     Assert(computed, "the subject may be computed");
+
+    // The arms of a match expression are typed by what the match is for. A leading `none` waits for the return type,
+    // an annotation, a parameter, or the first arm that has a whole type.
+    Assert(Positive(0i32) == none, "a leading none arm takes the returned optional type");
+    Assert(OrZero(Positive(6i32)) == 6i32, "and the arm after it is present in that type");
+    Assert((Checked(4i32) catch { else => -1i32 }) == 4i32, "a success arm takes the returned fallible type");
+    Assert((Checked(0i32) catch { else => -1i32 }) == -1i32, "and so does a failure arm");
+
+    let subject = 3i32;
+    let annotated: int8? = match subject {
+        0 => none,
+        3 => .Some(7),
+        else => 9
+    };
+    Assert((annotated ?? 0i8) == 7i8, "an annotation types every arm, literals included");
+    let joined = match subject {
+        0 => none,
+        else => .Some(subject)
+    };
+    Assert(OrZero(joined) == 3i32, "with no annotation the first whole arm types the match");
+    Assert(OrZero(match subject { 3 => none, else => .Some(subject) }) == 0i32, "a parameter types an argument match");
+    let nested: int32? = match subject {
+        3 => subject > 0i32 ? none : .Some(1i32),
+        else => .Some(subject)
+    };
+    Assert(nested == none, "a ternary arm is typed the same way");
     return 0;
 }

@@ -182,3 +182,76 @@ TEST_CASE("forwarding versus nesting is an ambiguity the source must resolve") {
     CHECK_EQ(routeOfReturn("Nest"), std::vector{Kind::Success, Kind::Identity});
     CHECK_EQ(routeOfReturn("Forward"), std::vector{Kind::WidenFallible});
 }
+
+TEST_CASE("a match takes a native expected type arm by arm") {
+    const auto analyzed = Analyze(R"(
+        struct E {}
+        func Take(value: int32?) {}
+        func Returned(value: int32) -> int32? {
+            return match value { 0 => none, else => .Some(value) };
+        }
+        func Failed(value: int32, error: E) -> int32 ! E {
+            return match value { 0 => .Success(value), else => .Failure(error) };
+        }
+        func Use(value: int32) {
+            let annotated: int32? = match value { 0 => none, else => .Some(value) };
+            let joined = match value { 0 => none, else => .Some(value) };
+            let narrow: int8? = match value { 0 => none, 1 => .Some(7), else => 9 };
+            Take(match value { 0 => none, else => .Some(value) });
+        }
+    )");
+    CHECK(analyzed->model.diagnostics.empty());
+    const auto typeOf = [&](const Expr &expr) {
+        const TypeRef *type = analyzed->model.TryGetType(expr);
+        REQUIRE(type != nullptr);
+        return type->ToString();
+    };
+    const auto returned = [&](const std::string_view name) -> const Expr & {
+        const auto *statement = dynamic_cast<const ReturnStmt *>(Function(*analyzed, name).body->stmts.front().get());
+        REQUIRE(statement != nullptr);
+        return **statement->value;
+    };
+    const FuncDecl &use = Function(*analyzed, "Use");
+    const auto *call = dynamic_cast<const ExprStmt *>(use.body->stmts.at(3).get());
+    REQUIRE(call != nullptr);
+    const auto *take = dynamic_cast<const CallExpr *>(call->expr.get());
+    REQUIRE(take != nullptr);
+
+    // The match holds the expected type, and no conversion of the match as a whole is recorded: converting an open
+    // `opaque?` would make every arm absent.
+    const std::vector<const Expr *> matches{&returned("Returned"), &Initializer(use, 0), &Initializer(use, 1),
+                                            take->args.front().get()};
+    for (const Expr *match : matches) {
+        CHECK_EQ(typeOf(*match), "int32?");
+        CHECK(RouteOf(*analyzed, *match).empty());
+    }
+    CHECK_EQ(typeOf(returned("Failed")), "int32 ! E");
+    CHECK(RouteOf(*analyzed, returned("Failed")).empty());
+    CHECK_EQ(typeOf(Initializer(use, 2)), "int8?");
+
+    // A plain arm still converts on its own route.
+    const auto *narrow = dynamic_cast<const MatchExpr *>(&Initializer(use, 2));
+    REQUIRE(narrow != nullptr);
+    CHECK_EQ(RouteOf(*analyzed, *narrow->arms.at(2).body), std::vector{Kind::Presence, Kind::Identity});
+}
+
+TEST_CASE("a match arm its expected type refuses is reported") {
+    const auto analyzed = Analyze(R"(
+        func Mismatch(value: int32) -> int32? {
+            return match value { 0 => .Some(1i32), else => .Some(true) };
+        }
+        func Late(value: int32) -> int32? {
+            return match value { 0 => .Failure(true), 1 => none, else => .Some(1i32) };
+        }
+        func Refused(value: int32) -> int32? {
+            return match value { 0 => none, else => .Failure(true) };
+        }
+        func Open(value: int32) {
+            let open = match value { 0 => .Success(1i32), else => .Failure(true) };
+        }
+    )");
+    CHECK(Reports(*analyzed, "match arm type mismatch: expected 'int32?', found 'bool8?'"));
+    CHECK(Reports(*analyzed, "'.Failure(...)' constructs a native fallible, but the expected type is 'int32?'"));
+    CHECK(Reports(*analyzed, "'return' value must have type 'int32?', but found 'opaque?'"));
+    CHECK(Reports(*analyzed, "cannot infer the type of 'open' from a native constructor with an unknown channel"));
+}
