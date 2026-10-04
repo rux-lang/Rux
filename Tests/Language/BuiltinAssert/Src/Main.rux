@@ -14,5 +14,19 @@ func Main() -> int {
     } else {
         DebugAssert(MustNotRun(), "DebugAssert does not evaluate arguments in release builds");
     }
+
+    // The same public fields read as values agree with the branch taken above.
+    let assertions = #build.debugAssertions;
+    let information = #build.debugInfo;
+    when #build.debugAssertions {
+        Assert(assertions, "debugAssertions reads true where the when took its true branch");
+    } else {
+        Assert(!assertions, "debugAssertions reads false where the when took its false branch");
+    }
+    when #build.debugInfo {
+        Assert(information, "debugInfo reads true where the when took its true branch");
+    } else {
+        Assert(!information, "debugInfo reads false where the when took its false branch");
+    }
     return 0;
 }

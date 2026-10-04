@@ -428,6 +428,7 @@ void ConditionalEvaluator::Impl::CollectCompileTimeDecls(const std::vector<DeclP
             if (!constDecl->intrinsicName.empty()) {
                 localIntrinsics.insert(constDecl->name);
                 intrinsicBindings[constDecl->name] = constDecl->intrinsicName;
+                externalIntrinsicTypes.erase(constDecl->name);
             }
             RegisterConstantImpl(*constDecl);
         }
@@ -458,6 +459,7 @@ void ConditionalEvaluator::Impl::SetRuxImportsForModule(const Module &module) {
     associatedDeclarations.clear();
     importedConstants.clear();
     intrinsicBindings.clear();
+    externalIntrinsicTypes.clear();
     CollectRuxImports(module.items);
     for (const Module *local : localModules) {
         for (const auto &declaration : local->items) {
@@ -547,6 +549,27 @@ std::optional<std::string_view> ConditionalEvaluator::Impl::CompilerParamRoot(co
     }
     const auto binding = intrinsicBindings.find(ident->name);
     return binding == intrinsicBindings.end() ? std::nullopt : std::optional<std::string_view>(binding->second);
+}
+
+/// Whether a condition may read `field` of the compiler-supplied value `root`. A field another package declared without
+/// `pub` is refused here exactly as it is when the same field is read as a value.
+bool ConditionalEvaluator::Impl::CompilerParamFieldIsAccessible(const Expr &root, const std::string_view field,
+                                                                const SourceLocation location) {
+    const auto *identifier = dynamic_cast<const IdentExpr *>(&root);
+    const auto type = identifier ? externalIntrinsicTypes.find(identifier->name) : externalIntrinsicTypes.end();
+    if (type == externalIntrinsicTypes.end()) {
+        return true;
+    }
+    const auto &fields = type->second->fields;
+    const auto declared =
+        std::ranges::find_if(fields, [&](const StructDecl::Field &candidate) { return candidate.name == field; });
+    if (declared == fields.end() || declared->isPublic) {
+        return true;
+    }
+    EmitError(location,
+              std::format("struct field '{}' is private to the package that declares '{}'", field, type->second->name));
+    reportedError = true;
+    return false;
 }
 
 std::optional<CompileTimeValue> ConditionalEvaluator::Impl::EvalCompilerParamField(const std::string_view root,
@@ -859,6 +882,9 @@ std::optional<CompileTimeValue> ConditionalEvaluator::Impl::Eval(const Expr &exp
                 if (ident && !RequireRuxImport(ident->name, ident->location)) {
                     return std::nullopt;
                 }
+                if (!CompilerParamFieldIsAccessible(*version->object, version->field, version->location)) {
+                    return std::nullopt;
+                }
                 const ParsedSemanticVersion parsed =
                     ParseSemanticVersion(context.buildInfo.CompilerVersion()).value_or(ParsedSemanticVersion{});
                 if (e->field == "major")
@@ -872,6 +898,9 @@ std::optional<CompileTimeValue> ConditionalEvaluator::Impl::Eval(const Expr &exp
         if (const auto root = CompilerParamRoot(*e->object)) {
             const auto *ident = dynamic_cast<const IdentExpr *>(e->object.get());
             if (ident && !RequireRuxImport(ident->name, ident->location)) {
+                return std::nullopt;
+            }
+            if (!CompilerParamFieldIsAccessible(*e->object, e->field, e->location)) {
                 return std::nullopt;
             }
             return EvalCompilerParamField(*root, e->field, e->object->location);

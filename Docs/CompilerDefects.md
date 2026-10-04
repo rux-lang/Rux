@@ -778,7 +778,9 @@ func Main() -> int {
 
 Language note: a string literal cannot span lines, and literals cannot be concatenated. Multi-line
 documents in lessons are therefore built line by line with a `StringBuilder`.
-## D41. A `when` condition can read a Core field that is private when read as a value
+## D41. A `when` condition can read a Core field that is private when read as a value (fixed)
+
+**Fixed**; covered by `Tests/Language/BuiltinAssert` and `ConditionalEvaluationTests.cpp`.
 
 - **Reproducer:** `import Core::{ #build };`, then compare two forms:
   - `PrintLine("{}", #build.debugAssertions);` is rejected.

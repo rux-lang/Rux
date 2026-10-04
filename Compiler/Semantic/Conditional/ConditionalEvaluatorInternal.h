@@ -55,6 +55,9 @@ private:
     std::unordered_map<std::string, ConstantBinding> associatedDeclarations;
     std::unordered_map<std::string, ConstantBinding> importedConstants;
     std::unordered_map<std::string, std::string> intrinsicBindings;
+    /// The struct an intrinsic value imported from another package was declared with, keyed by the value's name. Its
+    /// private fields stay private to that package in a condition just as they are when read as a value.
+    std::unordered_map<std::string, const StructDecl *> externalIntrinsicTypes;
     std::unordered_set<const ConstDecl *> activeAssociatedConstants;
     std::unordered_set<const Decl *> activeTypeAliases;
     void ImportDeclarations(const UseDecl &use);
@@ -90,6 +93,8 @@ private:
     [[nodiscard]] std::optional<std::string> IntrinsicArgument(const IntrinsicExpr &expr, bool allowEnum = false);
     [[nodiscard]] bool TargetHasFeature(std::string_view name) const;
     [[nodiscard]] std::optional<std::string_view> CompilerParamRoot(const Expr &expr) const;
+    [[nodiscard]] bool CompilerParamFieldIsAccessible(const Expr &root, std::string_view field,
+                                                      SourceLocation location);
     [[nodiscard]] std::optional<Value> EvalCompilerParamField(std::string_view root, std::string_view field,
                                                               SourceLocation location);
     [[nodiscard]] std::optional<ParsedSemanticVersion> EvalSemanticVersion(const Expr &expr);

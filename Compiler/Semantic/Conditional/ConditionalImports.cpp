@@ -12,6 +12,27 @@ void ConditionalEvaluator::Impl::BindImportedDeclaration(const Decl &declaration
         if (!constant->intrinsicName.empty()) {
             intrinsicBindings[constant->name] = constant->intrinsicName;
             ruxImports.insert(constant->name);
+            externalIntrinsicTypes.erase(constant->name);
+            if (external) {
+                const StructDecl *type = nullptr;
+                const auto find = [&](this auto &&self, const std::vector<DeclPtr> &items) -> void {
+                    for (const auto &item : items) {
+                        if (const auto *structure = dynamic_cast<const StructDecl *>(item.get());
+                            structure && structure->name == constant->intrinsicName) {
+                            type = structure;
+                        }
+                        else if (const auto *nested = dynamic_cast<const ModuleDecl *>(item.get())) {
+                            self(nested->items);
+                        }
+                    }
+                };
+                for (const Module *module : modules) {
+                    find(module->items);
+                }
+                if (type) {
+                    externalIntrinsicTypes.emplace(constant->name, type);
+                }
+            }
         }
         else if (external && constant->value) {
             importedConstants.insert_or_assign(constant->name, ConstantBinding{constant, modules, &source});
@@ -187,6 +208,7 @@ std::optional<CompileTimeValue> ConditionalEvaluator::Impl::EvalDeclaredConstant
         owner.associatedDeclarations = associatedDeclarations;
         owner.importedConstants = importedConstants;
         owner.intrinsicBindings = intrinsicBindings;
+        owner.externalIntrinsicTypes = externalIntrinsicTypes;
         owner.constExprs = constExprs;
         owner.constSignedIntegerWidths = constSignedIntegerWidths;
         owner.constUnsignedIntegerWidths = constUnsignedIntegerWidths;

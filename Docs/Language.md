@@ -58,6 +58,8 @@ extend Buffer {
 }
 ```
 
+Field visibility is the same in a `when` condition as in an expression. A compiler-supplied value such as `#build` is declared with an ordinary struct, so `when #build.debugAssertions` reads the field only because Core declares it `pub`; a private field of another package's intrinsic struct is rejected in a condition just as it is when read as a value.
+
 An external struct initializer must be able to name every field, so a public struct with private representation fields is constructed through a public constructor or factory. Enum members and variant cases inherit their type's effective visibility; variant payload fields do not take individual `pub` markers. Interface requirements likewise inherit the interface's visibility. A concrete method may remain private while satisfying a public interface: dispatch through the public interface is allowed, but a direct call on the concrete type is not.
 
 Compiler-generated copy and move operations are available wherever their type is available. A custom copy or move implementation, like any other source operator, must be `pub` for cross-package source use. A canonical bodyless copy or move declaration still prohibits the capability everywhere regardless of visibility. Destructors are invoked by compiler glue regardless of visibility and normally remain private.

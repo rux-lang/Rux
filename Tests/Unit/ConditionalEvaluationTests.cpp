@@ -154,6 +154,57 @@ func Do() -> int {
     CHECK(literal->value == "64");
 }
 
+TEST_CASE("a when condition cannot read a private field of another package's intrinsic value") {
+    // A field the providing package keeps private is refused in a condition exactly as it is when read as a value.
+    // The same declaration inside the reading package stays readable, since a private field is private to a package.
+    auto provider = ParseSource(R"(
+pub struct Build {
+    debugAssertions: bool;
+    pub isTest: bool;
+}
+pub intrinsic #build: Build;
+)");
+    DepPackage dependency;
+    dependency.name = "Provider";
+    dependency.modules.push_back({"Provider", &provider.module});
+
+    auto parsed = ParseSource(R"(
+import Provider::{ #build };
+
+when #build.isTest {
+    func Public() -> int { return 1; }
+} else {
+    func Public() -> int { return 0; }
+}
+
+when #build.debugAssertions {
+    func Private() -> int { return 1; }
+}
+)");
+    std::vector<Module *> modules = {&parsed.module};
+    SemanticAnalyzer analyzer(modules, {dependency}, "test", CompileTimeContext{});
+    const auto model = analyzer.Analyze();
+    const auto privateRead = std::ranges::count_if(model.diagnostics, [](const auto &diagnostic) {
+        return diagnostic.message == "struct field 'debugAssertions' is private to the package that declares 'Build'";
+    });
+    CHECK(privateRead == 1);
+    CHECK(model.diagnostics.size() == 1);
+
+    auto local = ParseSource(R"(
+struct Build {
+    debugAssertions: bool;
+}
+intrinsic #build: Build;
+
+when #build.debugAssertions {
+    func Private() -> int { return 1; }
+} else {
+    func Private() -> int { return 0; }
+}
+)");
+    CHECK_FALSE(AnalyzeNoDeps(local.module, CompileTimeContext{}).HasErrors());
+}
+
 TEST_CASE("an enum shorthand is an error; the variant must be written in full") {
     auto parsed = ParseSource(R"(
 enum Mode { Fast, Small }
