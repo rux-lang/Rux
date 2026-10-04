@@ -502,6 +502,9 @@ func Do() -> int {
     REQUIRE(model.diagnostics.size() == 1);
     CHECK(model.diagnostics[0].severity == Diagnostic::Severity::Warning);
     CHECK(model.diagnostics[0].message == "deprecated path");
+    // The caret sits on the '#' that starts the directive, not on its '('.
+    CHECK(model.diagnostics[0].location.line == 5);
+    CHECK(model.diagnostics[0].location.column == 5);
 }
 
 TEST_CASE("a #Warn call leaves no runtime code behind") {

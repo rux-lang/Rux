@@ -85,8 +85,10 @@ std::string AnalysisContext::DecodeStringMessage(const std::string &text) {
 // branch that is not taken never fires. The message must be a string literal.
 void AnalysisContext::EmitDiagnosticIntrinsic(const std::string &intrinsicName, const CallExpr &call) {
     const bool isError = intrinsicName == "#Error";
+    // A call is located at its '(', so the diagnostic points at the callee's '#' instead, where the directive starts.
+    const SourceLocation location = call.callee ? call.callee->location : call.location;
     if (call.args.size() != 1 || !call.args[0]) {
-        EmitError(call.location, std::format("'{}' expects exactly one string argument", intrinsicName));
+        EmitError(location, std::format("'{}' expects exactly one string argument", intrinsicName));
         return;
     }
     const auto *literal = dynamic_cast<const LiteralExpr *>(call.args[0].get());
@@ -96,10 +98,10 @@ void AnalysisContext::EmitDiagnosticIntrinsic(const std::string &intrinsicName, 
     }
     std::string message = DecodeStringMessage(literal->token.text);
     if (isError) {
-        EmitError(call.location, std::move(message));
+        EmitError(location, std::move(message));
     }
     else {
-        EmitWarning(call.location, std::move(message));
+        EmitWarning(location, std::move(message));
     }
 }
 

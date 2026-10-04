@@ -776,7 +776,7 @@ documents in lessons are therefore built line by line with a `StringBuilder`.
   because 256 is truncated to a zero byte.
 
 **Minor:** the caret for an `#Error` or `#Warn` diagnostic points at the `(`, not at the `#` or
-the start of the call.
+the start of the call. **Fixed**; covered by `ConditionalFoldingTests.cpp`.
 
 **Stale test:** the TODO in `Tests/Packages/Core/Config/Src/Main.rux` says `#config.Has` and
 `#config.Get` crash with 0xC0000139. They now work in executables, so that test body can be
