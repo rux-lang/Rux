@@ -978,7 +978,9 @@ manifest put `Authors` first. As a result, `rux fmt --check` fails on every cour
 the formatter or the documented order should change. The course keeps its order until this is
 decided.
 
-## D55. A non-literal argument to `#config.Has` or `#config.Get` compiles and fails at load time
+## D55. A non-literal argument to `#config.Has` or `#config.Get` compiles and fails at load time (fixed)
+
+**Fixed**; covered by the `CompilerParameterArguments` golden.
 
 - **Reproducer:** `let name = "ANOTHER_UNDEFINED_NAME";`, then `#config.Has(name)` in an executable.
 - **Expected:** a compile error, because Core documents the argument as a string literal resolved while compiling.

@@ -529,6 +529,27 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
                 }
             }
 
+            // A compiler-parameter method such as `#config.Has(name)` is answered while compiling, so its argument
+            // must be written in the source; a value computed at run time has nothing to be looked up by.
+            if (!method->intrinsicName.empty() && e->args.size() == 1 && e->args[0]) {
+                const std::string root = NamedBaseTypeName(receiverType);
+                const Expr &argument = *e->args[0];
+                const auto *literal = dynamic_cast<const LiteralExpr *>(&argument);
+                const auto *path = dynamic_cast<const PathExpr *>(&argument);
+                const bool stringLiteral = literal && literal->token.kind == TokenKind::StringLiteral;
+                const bool caseName =
+                    dynamic_cast<const EnumShorthandExpr *>(&argument) || (path && path->segments.size() == 2);
+                const bool targetFeature = root == "Target";
+                if ((root == "Target" || root == "Compiler" || root == "Config") &&
+                    !(targetFeature ? caseName : stringLiteral)) {
+                    callAccepted = false;
+                    EmitError(argument.location,
+                              std::format("the argument to '{}' must be {} written in the source", field->field,
+                                          targetFeature ? "a feature case such as 'TargetFeature::AVX2'"
+                                                        : "a string literal"),
+                              {}, "the value is looked up while compiling, so it cannot come from a variable");
+                }
+            }
             callAccepted = CheckReceiverMutability(*e, *field->object, receiverType, *method) && callAccepted;
             if (callAccepted) {
                 ConsumeMethodReceiver(*e, *field->object, receiverType, *method);
