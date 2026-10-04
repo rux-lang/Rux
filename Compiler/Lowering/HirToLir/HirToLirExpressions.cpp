@@ -594,7 +594,22 @@ LirReg HirToLirContext::LowerAssign(const HirAssignExpr &e) {
         return ptr;
     }
 
-    LirReg val = LowerExpr(*e.value);
+    LirReg val = LirNoReg;
+    if (simpleAssignment && (e.type.kind == TypeRef::Kind::Array || e.type.kind == TypeRef::Kind::Tuple)) {
+        // An array or tuple expression can lower to the address of the slot it was built in rather than to its value,
+        // and a store of that address wrote the pointer itself into any place narrow enough for one register. Building
+        // the new value in its own slot and loading it gives the store a value, whatever produced it, and keeps a
+        // source that reads the target, such as `pair = (pair.1, pair.0)`, reading the old contents.
+        const LirReg scratch = EmitAlloca(e.type);
+        StoreExprIntoSlot(*e.value, scratch, e.type);
+        if (IsTerminated()) {
+            return LirNoReg;
+        }
+        val = EmitLoad(scratch, e.type);
+    }
+    else {
+        val = LowerExpr(*e.value);
+    }
     // Whatever the target held is destroyed once the new value exists and before it is stored, so an assignment from
     // a value the target itself owns part of still reads live storage. The store below then re-establishes ownership.
     if (e.overwriteCleanup) {

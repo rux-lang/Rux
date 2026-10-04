@@ -23,6 +23,11 @@ func makeNested() -> ((int16, int64), uint8) {
     return ((-123, 456), 255);
 }
 
+struct Holder {
+    pair: (int32, bool);
+    values: int32[2];
+}
+
 func Main() -> int {
     let pair: (int, float) = (1, 3.1415);
     Assert(sizeof((int, float)) == 16, "Expected size of pair to be 16 bytes");
@@ -62,6 +67,18 @@ func Main() -> int {
     let (failedQuotient, failedOk) = divide(10, 0);
     Assert(!failedOk, "Expected division by zero to fail");
     Assert(failedQuotient == 0, "Expected failed division quotient to be 0");
+
+    // A tuple or array as narrow as one register is still stored as its value, not as the address it was built at.
+    var holder = Holder { pair: (1i32, false), values: [1i32, 2i32] };
+    holder.pair = (9i32, true);
+    holder.values = [5i32, 6i32];
+    Assert(holder.pair.0 == 9i32 && holder.pair.1, "Expected a tuple literal to be stored into a field");
+    Assert(holder.values[0] == 5i32 && holder.values[1] == 6i32, "Expected an array literal to be stored into a field");
+    let place: *var (int32, bool) = @holder.pair;
+    *place = (7i32, false);
+    Assert(holder.pair.0 == 7i32 && !holder.pair.1, "Expected a tuple literal to be stored through a pointer");
+    holder.pair = (holder.pair.0 + 1i32, !holder.pair.1);
+    Assert(holder.pair.0 == 8i32 && holder.pair.1, "Expected a tuple built from its own target to read the old value");
 
     return 0;
 }
