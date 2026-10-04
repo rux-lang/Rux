@@ -323,7 +323,9 @@ let r = match b { true => 10i32 };
 - **Notes:** `ParsePatternImpl` in `Compiler/Syntax/Parser/ParserExpr.cpp` checks for a guard
   before it parses the range.
 
-## D21. A literal inside a variant field pattern reports the wrong construct
+## D21. A literal inside a variant field pattern reports the wrong construct (fixed)
+
+**Fixed**; covered by `Tests/Language/Match`.
 
 - **Reproducer:** `.Circle { radius: 0 } => ...` as a match arm.
 - **Actual:** `unsupported pattern in let binding`. The construct is a match arm, so the message

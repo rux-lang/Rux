@@ -962,6 +962,17 @@ void AnalysisContext::CheckPattern(const Pattern &pattern, const TypeRef &subjec
                                           ResolvedCasePattern{resolved->declaration, resolved->selectedCase,
                                                               resolved->form, subjectType, substitutions});
         }
+        // A payload binds like a `let`, but it sits inside a match arm, so a refutable sub-pattern such as a literal
+        // or a range is checked as a match pattern rather than refused as an unsupported binding.
+        const auto checkPayload = [&](const Pattern &payload, const TypeRef &type) {
+            if (dynamic_cast<const IdentPattern *>(&payload) || dynamic_cast<const WildcardPattern *>(&payload) ||
+                dynamic_cast<const TuplePattern *>(&payload)) {
+                CheckLetPattern(payload, type, false);
+            }
+            else {
+                CheckPattern(payload, type);
+            }
+        };
         std::unordered_set<std::string> namedArguments;
         for (const auto &argument : enumPattern->namedArgs) {
             if (!namedArguments.insert(argument.name).second) {
@@ -980,7 +991,7 @@ void AnalysisContext::CheckPattern(const Pattern &pattern, const TypeRef &subjec
             }
 
             if (field) {
-                CheckLetPattern(*argument.pattern, ResolveTypeWithSubstitution(*field->type, substitutions), false);
+                checkPayload(*argument.pattern, ResolveTypeWithSubstitution(*field->type, substitutions));
             }
             else {
                 if (variant) {
@@ -991,14 +1002,13 @@ void AnalysisContext::CheckPattern(const Pattern &pattern, const TypeRef &subjec
         }
         for (std::size_t index = 0; index < enumPattern->args.size(); ++index) {
             if (variant && index < variant->fields.size()) {
-                CheckLetPattern(*enumPattern->args[index],
-                                ResolveTypeWithSubstitution(*variant->fields[index], substitutions), false);
+                checkPayload(*enumPattern->args[index],
+                             ResolveTypeWithSubstitution(*variant->fields[index], substitutions));
             }
             else if (variant && index - variant->fields.size() < variant->namedFields.size()) {
-                CheckLetPattern(*enumPattern->args[index],
-                                ResolveTypeWithSubstitution(*variant->namedFields[index - variant->fields.size()].type,
-                                                            substitutions),
-                                false);
+                checkPayload(*enumPattern->args[index],
+                             ResolveTypeWithSubstitution(*variant->namedFields[index - variant->fields.size()].type,
+                                                         substitutions));
             }
             else {
                 CheckPattern(*enumPattern->args[index]);

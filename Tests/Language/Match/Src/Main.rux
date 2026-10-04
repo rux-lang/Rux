@@ -47,6 +47,22 @@ func Describe(value: int32) -> int32 {
     };
 }
 
+// A payload pattern may itself be refutable: a literal or a range in a field is tested before the arm is taken.
+variant Reading {
+    Gauge { level: int32; },
+    Pair(int32, int32)
+}
+
+func Classify(reading: Reading) -> int32 {
+    return match reading {
+        Reading::Gauge { level: 0 } => 1i32,
+        Reading::Gauge { level: level } => level,
+        Reading::Pair(0, second) => 100i32 + second,
+        Reading::Pair(1..=5, _) => 200i32,
+        Reading::Pair(_, _) => 300i32
+    };
+}
+
 // A guard applies to the whole pattern before it, a range included.
 func Bucket(value: int32, small: bool) -> int32 {
     return match value {
@@ -83,6 +99,13 @@ func Main() -> int {
     Assert(Opposite(Direction::East) == Direction::West, "and so does the next");
     Assert(Opposite(Direction::South) == Direction::North, "and the third");
     Assert(Opposite(Direction::West) == Direction::East, "and the fourth");
+
+    // A literal or range inside a payload is part of the test.
+    Assert(Classify(Reading::Gauge { level: 0i32 }) == 1i32, "a literal field pattern selects its arm");
+    Assert(Classify(Reading::Gauge { level: 7i32 }) == 7i32, "and a different value falls to the binding arm");
+    Assert(Classify(Reading::Pair(0i32, 9i32)) == 109i32, "a literal positional field selects its arm");
+    Assert(Classify(Reading::Pair(3i32, 9i32)) == 200i32, "a range positional field selects its arm");
+    Assert(Classify(Reading::Pair(8i32, 9i32)) == 300i32, "and a value outside both reaches the last arm");
 
     // A guard after a range pattern guards the range.
     Assert(Bucket(5i32, true) == 1i32, "a guarded range takes its arm when the guard holds");
