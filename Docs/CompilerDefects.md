@@ -156,18 +156,6 @@ func Main() -> int {
   compared at the wrong width. It is wrong only when a typed member is not `int`.
 - **Course workaround:** `Sequences/Tuple` compares against a typed binding.
 
-## D10. Chained tuple indexes do not parse
-
-```rux
-let nested = ((1, 2), 3);
-PrintLine("{}", nested.0.1);
-```
-
-- **Expected:** prints `2`.
-- **Actual:** a parse error, `expected a field name or tuple index after '.' before '0.1'`. The
-  lexer reads `0.1` as a float literal. `(nested.0).1` works.
-- **Course workaround:** `Sequences/Tuple` binds the inner tuple first.
-
 ## D11. A default argument that names an earlier parameter reads uninitialised memory
 
 ```rux

@@ -538,10 +538,13 @@ Token Lexer::ScanNumber(SourceLocation start) {
         EmitError(start, "numeric separator '_' must appear between digits", "write digit separators like '1_000'",
                   std::string(LiteralDocumentation));
     }
+    // A number right after '.' is a tuple index, so `pair.0.1` keeps its second '.' as an access instead of reading a
+    // float literal '0.1'.
+    const bool tupleIndex = !tokens.empty() && tokens.back().kind == TokenKind::Dot;
     // Check for floating-point  .  or  e/E
     const bool hasDot = Peek() == '.' && std::isdigit(static_cast<unsigned char>(Peek(1)));
     const bool hasExp = (Peek() == 'e' || Peek() == 'E');
-    if (hasDot || hasExp) {
+    if (!tupleIndex && (hasDot || hasExp)) {
         return ScanFloatSuffix(start, tokenStart);
     }
     ConsumeNumberSuffix(start);

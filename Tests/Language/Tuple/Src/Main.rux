@@ -52,6 +52,8 @@ func Main() -> int {
     Assert(inner.0 == -123, "Expected nested.0.0 to be -123");
     Assert(inner.1 == 456i64, "Expected nested.0.1 to be 456");
     Assert(nested.1 == 255, "Expected nested.1 to be 255");
+    Assert(nested.0.0 == -123, "Expected a chained tuple index to read nested.0.0");
+    Assert(nested.0.1 == 456i64, "Expected a chained tuple index to read nested.0.1");
 
     let (quotient, ok) = divide(10, 2);
     Assert(ok, "Expected division by non-zero to succeed");

@@ -24,6 +24,18 @@ TEST_CASE("Lexer tokenizes a simple function") {
     CHECK(result.tokens.back().IsEof());
 }
 
+TEST_CASE("Lexer reads a number after '.' as a tuple index, not a float") {
+    const auto result = Lex("nested.0.1 + 0.5");
+    REQUIRE(result.diagnostics.empty());
+    const std::vector<TokenKind> expected{TokenKind::Ident,        TokenKind::Dot,        TokenKind::IntLiteral,
+                                          TokenKind::Dot,          TokenKind::IntLiteral, TokenKind::Plus,
+                                          TokenKind::FloatLiteral, TokenKind::EndOfFile};
+    REQUIRE(result.tokens.size() == expected.size());
+    for (std::size_t i = 0; i < expected.size(); ++i) {
+        CHECK(result.tokens[i].Is(expected[i]));
+    }
+}
+
 TEST_CASE("Lexer classifies only exact documentation comment markers") {
     const auto result = Lex("// ordinary\n"
                             "//// decorative line\n"
