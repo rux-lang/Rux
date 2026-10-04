@@ -253,7 +253,7 @@ function Get-RuxPath {
 function Resolve-RuxPath {
     $rux = Get-RuxPath
     if (-not (Test-Path -LiteralPath $rux -PathType Leaf)) {
-        Stop-Script "rux executable '$rux' was not found; build it first or pass -RuxExecutable"
+        Stop-Script "rux executable '$(Format-DisplayPath $rux)' was not found; build it first or pass -RuxExecutable"
     }
     return $rux
 }
@@ -483,7 +483,7 @@ function Invoke-Build {
             return "$($Matches[1]) done in $elapsed"
         }
         if ($Line -match '^-- Build files have been written to: (.+)$') {
-            return "  Build files: '$($Matches[1])'"
+            return "  Build files: '$(Format-DisplayPath $Matches[1])'"
         }
         if ($Line -match '^-- (.*)$') {
             return $Matches[1]
@@ -499,11 +499,12 @@ function Invoke-Build {
             $progress = "($($Matches[1]))"
             $action = $Matches[2]
             if ($action -match '^Building CXX object (.*)$') {
-                $source = $Matches[1] -replace 'CMakeFiles/[^/]+\.dir/', '' -replace '\.(obj|o)$', '' -replace '__/', '../'
+                $source = (Format-DisplayPath $Matches[1]) -replace 'CMakeFiles/[^/]+\.dir/', '' `
+                    -replace '\.(obj|o)$', '' -replace '__/', '../'
                 return "Compiling $source $progress"
             }
             if ($action -match '^Linking CXX (?:executable|static library|shared library) (.*)$') {
-                return "Linking '$($Matches[1])' $progress"
+                return "Linking '$(Format-DisplayPath $Matches[1])' $progress"
             }
             return "$action $progress"
         }
@@ -525,11 +526,11 @@ function Invoke-Build {
     $ruxFileName = if ($runningOnWindows) { "rux.exe" } else { "rux" }
     $rux = Join-Path $repositoryRoot "Bin/$ruxFileName"
     if (-not (Test-Path -LiteralPath $rux -PathType Leaf)) {
-        Stop-Script "build completed without producing the expected compiler at '$rux'"
+        Stop-Script "build completed without producing the expected compiler at '$(Format-DisplayPath $rux)'"
     }
 
     Write-Finished "Finished build in $(Format-Duration -Duration ((Get-Date) - $startedAt))"
-    Write-Host "  Output: '$rux'"
+    Write-Host "  Output: '$(Format-DisplayPath $rux)'"
 }
 
 function Invoke-Format {
@@ -590,7 +591,7 @@ function Invoke-Tidy {
     }
     $compileCommands = Join-Path $buildPath "compile_commands.json"
     if (-not (Test-Path -LiteralPath $compileCommands -PathType Leaf)) {
-        Stop-Script "compilation database '$compileCommands' was not found; build the compiler first"
+        Stop-Script "compilation database '$(Format-DisplayPath $compileCommands)' was not found; build the compiler first"
     }
 
     $compilerRoot = (Join-Path $repositoryRoot "Compiler") + [System.IO.Path]::DirectorySeparatorChar
@@ -608,7 +609,7 @@ function Invoke-Tidy {
     )
 
     if ($sources.Count -eq 0) {
-        Stop-Script "no maintained C++ translation units were found in '$compileCommands'"
+        Stop-Script "no maintained C++ translation units were found in '$(Format-DisplayPath $compileCommands)'"
     }
 
     if ($ShardCount -gt 1) {
@@ -647,7 +648,7 @@ function Invoke-Tidy {
         # Files complete out of submission order, so the count is progress
         # through the run rather than the position of this file in the list.
         $label = "{0} ({1}/{2})" -f `
-            $result.Path.Substring($repositoryRoot.Length + 1), $completed, $sources.Count
+            (Format-DisplayPath $result.Path.Substring($repositoryRoot.Length + 1)), $completed, $sources.Count
         if ($result.ExitCode -ne 0) {
             [void]$failures.Add($result)
             Write-Failed $label
@@ -740,7 +741,7 @@ function Invoke-RuxSuite {
     $rux = Resolve-RuxPath
     $rootManifest = Join-Path $repositoryRoot "Rux.toml"
     if (-not (Test-Path -LiteralPath $rootManifest -PathType Leaf)) {
-        Stop-Script "workspace manifest '$rootManifest' was not found"
+        Stop-Script "workspace manifest '$(Format-DisplayPath $rootManifest)' was not found"
     }
 
     # `--target` follows the subcommand, while the global `--manifest` precedes
@@ -769,10 +770,10 @@ function Invoke-Clean {
     foreach ($path in @($buildPath, (Join-Path $repositoryRoot "Bin"))) {
         if (Test-Path -LiteralPath $path) {
             Remove-Item -LiteralPath $path -Recurse -Force
-            Write-Host "  Removed '$path'"
+            Write-Host "  Removed '$(Format-DisplayPath $path)'"
         }
         else {
-            Write-Host "  Skipped '$path' (not present)"
+            Write-Host "  Skipped '$(Format-DisplayPath $path)' (not present)"
         }
     }
 }
@@ -785,7 +786,7 @@ function Invoke-TestWorkflow {
     }
     else {
         Write-Step "Skipping compiler build"
-        Write-Host "  note: using the existing build in '$(Get-BuildPath)'"
+        Write-Host "  note: using the existing build in '$(Format-DisplayPath (Get-BuildPath))'"
     }
 
     if ($FixFormatting) {
