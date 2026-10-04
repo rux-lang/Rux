@@ -931,7 +931,9 @@ func Main() -> int {
 - **Actual:** the error is printed twice, and names the package `local:D:/…/Tally/Rux.toml` rather
   than `Tally`.
 
-## T1. `rux fmt` reorders manifest keys against the documented manifest order
+## T1. `rux fmt` reorders manifest keys against the documented manifest order (fixed)
+
+**Resolved** without a formatter change: `Docs/Manifest.md` and every repository manifest already put `Description` before `Authors`, the order `rux fmt` writes; the course manifests should follow it.
 
 `rux fmt` puts `Description` before `Authors`, while `Docs/Manifest.md` examples and every course
 manifest put `Authors` first. As a result, `rux fmt --check` fails on every course package. Either
