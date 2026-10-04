@@ -1,13 +1,102 @@
-import Allocator::{ Allocator, SystemAllocator };
-import Io::{ IoError, Print, PrintLine, ReadLine };
-import Text::StringBuilder;
-
 // The suite runs this with nothing on standard input, which is itself the contract worth holding: an ended
 // stream with nothing before it is EndOfStream, not an empty line, so an echo loop stops rather than spins.
+// The same reading over a scripted source checks what a console cannot be made to type: UTF-8 lines, a character
+// split across reads, and the bytes that are not text.
+
+import Allocator::{ Allocator, SystemAllocator };
+import Core::{ Assert, Panic };
+import Io::{ IoError, IoErrorKind, Print, PrintLine, ReadLine, ReadLineFrom, Reader };
+import Text::{ StringBuilder, StringView };
+
+// A source that serves a fixed byte string one byte at a time, as a console does.
+struct ScriptState {
+    bytes: char8[..];
+    offset: uint;
+}
+
+struct ScriptHandle {
+    state: *var ScriptState;
+}
+
+extend ScriptHandle : Reader {
+    func Read(self: &var ScriptHandle, into: var char8[..]) -> uint ! IoError {
+        let state = self.state;
+        if state.offset == state.bytes.length {
+            fail IoError::Of(IoErrorKind::EndOfStream);
+        }
+        into.data[0] = state.bytes.data[state.offset];
+        state.offset = state.offset + 1;
+        return 1;
+    }
+}
+
+// Reads the next line of `source` and checks the outcome: success when `expectedKind` is `none`, otherwise a
+// failure of that kind; either way the builder holds `expected`.
+func CheckLine(allocator: Allocator, source: &var ScriptHandle, expectedKind: IoErrorKind?, expected: char8[..]) {
+    var builder = StringBuilder(allocator);
+    let reported: IoErrorKind? = match ReadLineFrom(source, builder) {
+        .Success(_) => none,
+        .Failure(error) => .Some(error.kind)
+    };
+    Assert(reported == expectedKind, "the outcome names the reason");
+    let want = StringView::FromBytes(expected) ?? StringView();
+    Assert(builder.View().Equals(want), "and the builder holds the line, no more and no less");
+    builder.Release();
+}
+
+func CheckScript(allocator: Allocator) {
+    var bytes: char8[48];
+    var length: uint = 0;
+    // "héllo\n": six bytes of text, the é taking two of them.
+    for b in [0x68u8, 0xC3, 0xA9, 0x6C, 0x6C, 0x6F, 0x0A] {
+        bytes[length] = b as char8;
+        length = length + 1;
+    }
+    // "😀\r\n": a four-byte character, then an ending whose return belongs to it.
+    for b in [0xF0u8, 0x9F, 0x98, 0x80, 0x0D, 0x0A] {
+        bytes[length] = b as char8;
+        length = length + 1;
+    }
+    // "a\xFFb\n": a byte that starts no character fails the line, which is still read through its ending.
+    for b in [0x61u8, 0xFF, 0x62, 0x0A] {
+        bytes[length] = b as char8;
+        length = length + 1;
+    }
+    // "\xC3\n": a character cut short by the ending.
+    for b in [0xC3u8, 0x0A] {
+        bytes[length] = b as char8;
+        length = length + 1;
+    }
+    // "ok\n", which shows the failures left the source at the next line, then "\xE2\x82" cut by the end.
+    for b in [0x6Fu8, 0x6B, 0x0A, 0xE2, 0x82] {
+        bytes[length] = b as char8;
+        length = length + 1;
+    }
+    var state = ScriptState { bytes: bytes[0..length], offset: 0 };
+    var source = ScriptHandle { state: @state };
+
+    var accented: char8[6];
+    for index in 0..6 {
+        accented[index] = bytes[index];
+    }
+    CheckLine(allocator, source, none, accented[0..6]);
+    var face: char8[4];
+    for index in 0..4 {
+        face[index] = bytes[7 + index];
+    }
+    CheckLine(allocator, source, none, face[0..4]);
+    CheckLine(allocator, source, .Some(IoErrorKind::InvalidText), "a");
+    CheckLine(allocator, source, .Some(IoErrorKind::InvalidText), "");
+    CheckLine(allocator, source, none, "ok");
+    CheckLine(allocator, source, .Some(IoErrorKind::InvalidText), "");
+    CheckLine(allocator, source, .Some(IoErrorKind::EndOfStream), "");
+}
 
 func Main() -> int {
     var system = SystemAllocator();
     let allocator: Allocator = system;
+    CheckScript(allocator);
+
     var count: uint = 0;
     while count < 8 {
         var builder = StringBuilder(allocator);

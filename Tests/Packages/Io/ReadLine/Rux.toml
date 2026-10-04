@@ -9,6 +9,7 @@ Description = "Package test for Io: ReadLine"
 
 [Dependencies]
 Allocator = { Path = "../../../../Packages/Allocator" }
+Core = { Path = "../../../../Packages/Core" }
 Io = { Path = "../../../../Packages/Io" }
 Text = { Path = "../../../../Packages/Text" }
 

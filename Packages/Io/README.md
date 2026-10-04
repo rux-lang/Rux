@@ -12,16 +12,19 @@ rux add Rux/Io
 
 ## What it provides
 
-| Function       | Purpose                                      |
-| -------------- | -------------------------------------------- |
-| `Print`        | Write a value to standard output             |
-| `PrintLine`    | Write a value followed by a newline          |
-| `ReadLine`     | Append one line from standard input          |
-| `ReadExact`    | Fill a byte slice from any reader            |
-| `WriteAll`     | Send a byte slice to any writer              |
-| `ReadTextLine` | Append one validated line from a byte stream |
+| Function       | Purpose                                          |
+| -------------- | ------------------------------------------------ |
+| `Print`        | Write a value to standard output                 |
+| `PrintLine`    | Write a value followed by a newline              |
+| `ReadLine`     | Append one line from standard input              |
+| `ReadLineFrom` | Append one line from any reader, byte by byte    |
+| `ReadExact`    | Fill a byte slice from any reader                |
+| `WriteAll`     | Send a byte slice to any writer                  |
+| `ReadTextLine` | Append one validated line from a buffered reader |
 
 `Print` and `PrintLine` accept values implementing `Display` from [`Rux/Text`](../Text), along with their primitive and text overloads. They return the failure of the write as an `IoError?` — `none` when everything was written — rather than a fallible, so a bare `PrintLine("ready");` statement needs no handling while a caller who cares writes `if PrintLine(report) is IoError { ... }`.
+
+Both line readers hold the same contract: a line feed ends a line, a carriage return immediately before it belongs to the ending, the last line needs no ending, and the line must be UTF-8. A line that is not is `InvalidText`, reported once the line has been consumed through its ending, so the next call starts on the next line. `ReadLine` and `ReadLineFrom` read one byte at a time and never take a byte past the line, which is right for standard input or any stream shared with whatever reads next; `ReadTextLine` reads through a `BufferedReader` and also bounds the line's length.
 
 Every stream operation that can fail returns a native fallible with an `IoError` failure: `Read` succeeds with the number of bytes read, `Write` with the number taken, `Seek` with the new position, and `Flush`, `ReadExact`, `WriteAll`, and the line readers with `()`. The end of a stream is the `EndOfStream` failure, which `IsEnd` recognizes, and `IsTransient` names the interruptions worth retrying.
 

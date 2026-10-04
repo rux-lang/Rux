@@ -1,32 +1,57 @@
 // Reading a line typed at the process, through the standard input handle.
-// This is the console companion to `ReadTextLine`: the same line contract — a line feed ends the line, a
-// carriage return immediately before it belongs to the ending, the last line needs no ending — read byte by
-// byte from standard input, so nothing past the line is taken from a stream that may be shared. The bytes come
+// This is the console companion to `ReadTextLine`, with the same line contract: a line feed ends the line, a
+// carriage return immediately before it belongs to the ending, the last line needs no ending, and the line is
+// UTF-8. It is read byte by byte, so nothing past the line is taken from a stream that may be shared. The bytes come
 // through `StandardIn`, so typed input on a Windows console arrives as correct UTF-8 rather than code-page text.
+// `ReadLineFrom` is the same reading over any `Reader`, which is also what lets the contract be tested without a
+// console.
 
-
-import Text::StringBuilder;
+import Text::{ DecodeAt, StringBuilder, Utf8Error };
 
 /// Appends the next line of standard input to `builder`, without its ending.
 /// `EndOfStream` is reported only when the input ends with nothing before it; a stream failure is returned as
-/// itself, with whatever was read so far left in the builder. Reads one byte at a time on purpose: standard
-/// input may be shared with whatever runs next, and a buffer here would take bytes that were never this line's.
+/// itself, with whatever was read so far left in the builder. The line must be UTF-8: a byte that does not belong
+/// to a well-formed character, or a character cut short by the end of the input, is `InvalidText`, reported once
+/// the rest of the line has been read through its ending so that the next call starts on the next line; the text
+/// before the fault stays in the builder. Reads one byte at a time on purpose: standard input may be shared with
+/// whatever runs next, and a buffer here would take bytes that were never this line's.
 /// @param builder receives the line, appended to whatever it already holds
 /// @returns success when a line was read; `IsEnd` at the end of input with nothing appended
 /// @see https://rux-lang.dev/docs/api/io/read-line
 pub func ReadLine(builder: &var StringBuilder) -> ! IoError {
     var input = StandardIn::Acquire();
+    return ReadLineFrom(input, builder);
+}
+
+/// Appends the next line of `reader` to `builder`, without its ending, reading one byte at a time.
+/// This is `ReadLine` over any source: a line feed ends the line, a carriage return immediately before it belongs
+/// to the ending, and `EndOfStream` is reported only when the source ends with nothing before it. A stream failure
+/// is returned as itself, with whatever was read so far left in the builder. The line must be UTF-8: a byte that
+/// does not belong to a well-formed character, or a character cut short by the end of the source, is
+/// `InvalidText`, reported once the rest of the line has been read through its ending; the text before the fault
+/// stays in the builder. No byte past the line's ending is read, which is what makes it safe on a shared stream;
+/// a source that is not shared reads faster through `ReadTextLine` over a `BufferedReader`.
+/// @param reader where the bytes come from, borrowed for the call
+/// @param builder receives the line, appended to whatever it already holds
+/// @returns success when a line was read; `IsEnd` at the end of input with nothing appended
+/// @see https://rux-lang.dev/docs/api/io/read-line-from
+pub func ReadLineFrom(reader: &var Reader, builder: &var StringBuilder) -> ! IoError {
     var byte: char8[1];
     let room = (@byte[0])[..1];
+    // A character's leading bytes wait here until its last byte arrives, so only whole characters are appended.
+    var carry: char8[4];
+    var carryLength: uint = 0;
+    var invalid = false;
     var sawAnything = false;
     var pendingCarriageReturn = false;
     while true {
-        let filled = input.Read(room) catch {
+        let filled = reader.Read(room) catch {
             error if error.IsTransient() => continue,
             error if error.IsEnd() => 0,
             error => fail error
         };
         if filled == 0 {
+            if invalid || carryLength > 0 { fail IoError::Of(IoErrorKind::InvalidText); }
             if pendingCarriageReturn {
                 builder.AppendAscii(c8'\r') catch { else => fail IoError::Of(IoErrorKind::Other) };
             }
@@ -35,7 +60,36 @@ pub func ReadLine(builder: &var StringBuilder) -> ! IoError {
         }
         sawAnything = true;
         let ch = byte[0];
-        if ch == c8'\n' { return; }
+        if ch == c8'\n' {
+            // A character still waiting for its continuation bytes was cut by the ending.
+            if invalid || carryLength > 0 { fail IoError::Of(IoErrorKind::InvalidText); }
+            return;
+        }
+        // The rest of a line that is already known to be invalid is read only to reach its ending.
+        if invalid { continue; }
+        if carryLength > 0 {
+            carry[carryLength] = ch;
+            carryLength = carryLength + 1;
+            var reason = Utf8Error::InvalidStart;
+            var complete = false;
+            match DecodeAt(carry[0..carryLength], 0) {
+                .Success(_) => {
+                    complete = true;
+                },
+                .Failure(problem) => {
+                    reason = problem;
+                }
+            }
+            if complete {
+                builder.AppendValidated(carry[0..carryLength]) catch { else => fail IoError::Of(IoErrorKind::Other) };
+                carryLength = 0;
+            }
+            else if reason != Utf8Error::Truncated {
+                invalid = true;
+                carryLength = 0;
+            }
+            continue;
+        }
         if pendingCarriageReturn {
             builder.AppendAscii(c8'\r') catch { else => fail IoError::Of(IoErrorKind::Other) };
             pendingCarriageReturn = false;
@@ -43,8 +97,22 @@ pub func ReadLine(builder: &var StringBuilder) -> ! IoError {
         if ch == c8'\r' {
             pendingCarriageReturn = true;
         }
-        else {
+        else if (ch as uint8) < 0x80 {
             builder.AppendAscii(ch) catch { else => fail IoError::Of(IoErrorKind::Other) };
+        }
+        else {
+            // The first byte of a longer character. One that cannot start a character fails the line at once.
+            carry[0] = ch;
+            carryLength = 1;
+            match DecodeAt(carry[0..1], 0) {
+                .Success(_) => {},
+                .Failure(problem) => {
+                    if problem != Utf8Error::Truncated {
+                        invalid = true;
+                        carryLength = 0;
+                    }
+                }
+            }
         }
     }
 }

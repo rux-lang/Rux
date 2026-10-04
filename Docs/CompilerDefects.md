@@ -636,7 +636,9 @@ Defects in Packages/, found the same way.
 - **Actual:** `19`. Successive appends give capacities 16, 19, 26 and 35, so appending is quadratic.
 - **Course impact:** `Text/StringBuilder` does not print the capacity.
 
-## P2. `Io::ReadLine` refuses any non-ASCII input
+## P2. `Io::ReadLine` refuses any non-ASCII input (fixed)
+
+**Fixed**; covered by `Tests/Packages/Io/ReadLine`, which reads UTF-8 and invalid lines through the new `ReadLineFrom`.
 
 - **Where:** `Packages/Io/Src/ReadLine.rux`. It appends each byte with `builder.AppendAscii(ch)`,
   which fails for any byte above 0x7F. The failure surfaces as `IoErrorKind::Other`, although the
