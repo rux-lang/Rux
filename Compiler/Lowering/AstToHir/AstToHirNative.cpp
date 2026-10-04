@@ -942,6 +942,8 @@ HirFunc AstToHirContext::FallibleEntryWrapper(const HirFunc &body) {
     }
     entry.returnType = status;
     entry.location = location;
+    entry.sourceFile = body.sourceFile;
+    entry.sourceFunction = body.sourceFunction;
     entry.body = HirBlock{};
     entry.body->location = location;
     entry.body->stmts.push_back(std::move(returned));

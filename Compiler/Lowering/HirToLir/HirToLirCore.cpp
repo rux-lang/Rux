@@ -253,6 +253,41 @@ void HirToLirContext::Unreachable() const {
     Terminate(std::move(t));
 }
 
+void HirToLirContext::EmitRuntimeTrap(const std::string_view message, const SourceLocation &location) {
+    // The message travels as the same char8 view a `Panic` argument does, so both back ends print it through the
+    // one runtime-failure path they already have.
+    const TypeRef elementType = TypeRef::MakeChar8();
+    const TypeRef sliceType = TypeRef::MakeSlice(elementType);
+    const LirReg slot = EmitAlloca(sliceType);
+    const std::string text(message);
+    EmitStore(EmitStringAddr(text, elementType), EmitFieldPtr(slot, "data", TypeRef::MakePointer(elementType)),
+              TypeRef::MakePointer(elementType));
+    EmitStore(EmitConst(std::to_string(text.size()), TypeRef::MakeUInt64()),
+              EmitFieldPtr(slot, "length", TypeRef::MakeUInt64()), TypeRef::MakeUInt64());
+
+    LirInstr panic;
+    panic.op = LirOpcode::Panic;
+    panic.type = TypeRef::MakeOpaque();
+    panic.srcs = {slot};
+    panic.strArg = text;
+    panic.sourceFile = currentSourceFile;
+    panic.sourceFunction = currentSourceFunction;
+    panic.sourceLine = location.line;
+    panic.sourceColumn = location.column;
+    Emit(std::move(panic));
+    Unreachable();
+}
+
+void HirToLirContext::EmitTrapUnless(const LirReg condition, const std::string_view message,
+                                     const SourceLocation &location) {
+    const std::uint32_t passed = NewBlock("check.ok");
+    const std::uint32_t failed = NewBlock("check.fail");
+    Branch(condition, passed, failed);
+    SetBlock(failed);
+    EmitRuntimeTrap(message, location);
+    SetBlock(passed);
+}
+
 // Instruction builders
 
 LirReg HirToLirContext::EmitConst(std::string value, TypeRef type) {
@@ -750,6 +785,8 @@ void HirToLirContext::CollectConstContents(const HirConst &c, LirConstDecl &cd) 
 // Function lowering
 LirFunc HirToLirContext::LowerFunc(const HirFunc &hf, const std::string_view nameOverride) {
     currentFunction = nameOverride.empty() ? hf.name : std::string(nameOverride);
+    currentSourceFile = hf.sourceFile;
+    currentSourceFunction = hf.sourceFunction.empty() ? hf.name : hf.sourceFunction;
     locals.clear();
     localConsts.clear();
     enumPayloadSlots.clear();

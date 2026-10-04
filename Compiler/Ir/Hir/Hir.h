@@ -582,6 +582,10 @@ struct HirFunc {
     std::optional<HirBlock> body;  // absent for interface/extern signatures
     std::vector<AsmInstr> asmBody; // instructions when isAsm; body is absent
     SourceLocation location;
+    /// The logical source file and the user-facing function name a compiler-inserted runtime check reports, the same
+    /// pair a `Panic` call written in this body names.
+    std::string sourceFile;
+    std::string sourceFunction;
 };
 
 // struct Name { field: Type; ... }

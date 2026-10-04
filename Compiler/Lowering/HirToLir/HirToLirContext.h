@@ -72,6 +72,10 @@ private:
     std::unordered_map<std::string, std::string> externSymbols;
     std::vector<Diagnostic> &diagnostics;
     std::string currentFunction;
+    /// The logical file and user-facing function name a compiler-inserted runtime check in the current function
+    /// reports.
+    std::string currentSourceFile;
+    std::string currentSourceFunction;
 
     [[nodiscard]] const std::string &SymbolFor(const std::string &name) const;
     [[nodiscard]] static std::optional<TypeRef> CVariadicPromotion(const TypeRef &type);
@@ -90,6 +94,11 @@ private:
     void Branch(LirReg cond, std::uint32_t trueTarget, std::uint32_t falseTarget) const;
     void Return(std::optional<LirReg> value, TypeRef type) const;
     void Unreachable() const;
+    /// Stops the program with `Panic: <message>` and the current function's source location at `location`, exactly as
+    /// a lowered `Core::Panic` call does, and closes the current block.
+    void EmitRuntimeTrap(std::string_view message, const SourceLocation &location);
+    /// Continues in a fresh block when `condition` holds and traps with `message` when it does not.
+    void EmitTrapUnless(LirReg condition, std::string_view message, const SourceLocation &location);
 
     [[nodiscard]] LirReg EmitConst(std::string value, TypeRef type);
     [[nodiscard]] LirReg EmitAlloca(TypeRef type);

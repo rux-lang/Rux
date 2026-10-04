@@ -310,6 +310,8 @@ HirFunc AstToHirContext::LowerFunc(const FuncDecl &d, bool isMethod,
     hf.returnType = retType;
     hf.body = std::move(body);
     hf.location = d.location;
+    hf.sourceFile = LogicalCurrentFilePath();
+    hf.sourceFunction = currentFunctionName;
 
     cleanupPlanner.EndFunction(cleanupFunction);
     PopScope();
