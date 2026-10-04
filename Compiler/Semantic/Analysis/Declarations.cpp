@@ -527,9 +527,10 @@ void AnalysisContext::CheckConstDecl(const ConstDecl &d) {
     ValidateStoredType(constType, d.location, "constant");
     if (d.type && !valueType.IsUnknown() && !constType.IsUnknown() &&
         !CanAssignExprTo(*d.value, valueType, constType)) {
-        EmitError(d.value->location, AssignmentErrorMessage(*d.value, constType,
-                                                            std::format("cannot assign '{}' to constant of type '{}'",
-                                                                        valueType.ToString(), constType.ToString())));
+        EmitError(d.value->location,
+                  AssignmentErrorMessage(*d.value, constType,
+                                         std::format("cannot assign '{}' to constant of type '{}'",
+                                                     valueType.DisplayString(), constType.ToString())));
     }
     if (constType.IsSlice() || constType.kind == TypeRef::Kind::Array) {
         const auto *array = dynamic_cast<const ArrayExpr *>(d.value.get());

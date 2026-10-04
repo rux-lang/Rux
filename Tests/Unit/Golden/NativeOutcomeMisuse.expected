@@ -1,5 +1,5 @@
-21:5: error: conversion from 'int32 ! ParseError' to 'int32 | (int32 ! ParseError) ! ParseError' is ambiguous; write '.Success(...)', '.Some(...)', or '?' to choose one, or annotate an intermediate type
-26:5: error: conversion from 'int32 ! ParseError' to '(int32 ! ParseError) ! IoError | ParseError' is ambiguous; write '.Success(...)', '.Some(...)', or '?' to choose one, or annotate an intermediate type
+21:5: error: conversion from 'int32 ! ParseError' to '(int32 | (int32 ! ParseError)) ! ParseError' is ambiguous; write '.Success(...)', '.Some(...)', or '?' to choose one, or annotate an intermediate type
+26:5: error: conversion from 'int32 ! ParseError' to '(int32 ! ParseError) ! (IoError | ParseError)' is ambiguous; write '.Success(...)', '.Some(...)', or '?' to choose one, or annotate an intermediate type
 42:27: error: a block arm completes with '()', but 'catch' must recover a value of type 'int32'
 51:5: error: cannot assign '*(int32?)' to '(*int32)?'
 55:5: error: 'fail' needs an enclosing fallible function, but this function returns 'int32'

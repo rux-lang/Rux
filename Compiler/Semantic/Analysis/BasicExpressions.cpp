@@ -326,7 +326,7 @@ std::optional<TypeRef> AnalysisContext::CheckBasicExpression(const Expr &express
                     EmitError(assignment->location,
                               AssignmentErrorMessage(
                                   *assignment->value, target,
-                                  std::format("cannot assign '{}' to '{}'", value.ToString(), target.ToString())));
+                                  std::format("cannot assign '{}' to '{}'", value.DisplayString(), target.ToString())));
                     return TypeRef::MakeOpaque();
                 }
                 if (!copyOperation->body) {
@@ -348,7 +348,7 @@ std::optional<TypeRef> AnalysisContext::CheckBasicExpression(const Expr &express
                 EmitError(assignment->location,
                           AssignmentErrorMessage(
                               *assignment->value, target,
-                              std::format("cannot assign '{}' to '{}'", value.ToString(), target.ToString())));
+                              std::format("cannot assign '{}' to '{}'", value.DisplayString(), target.ToString())));
             }
             else if (simpleAssignment) {
                 const bool explicitMove = assignment->op == TokenKind::MoveArrow;

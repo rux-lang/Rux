@@ -172,8 +172,8 @@ TEST_CASE("forwarding versus nesting is an ambiguity the source must resolve") {
         func Nest(value: R) -> R ! F { return value; }
         func Forward(value: R) -> int32 ! (E | F) { return value; }
     )");
-    CHECK(Reports(*analyzed, "conversion from 'int32 ! E' to 'int32 | (int32 ! E) ! E' is ambiguous"));
-    CHECK(Reports(*analyzed, "conversion from 'int32 ! E' to '(int32 ! E) ! E | F' is ambiguous"));
+    CHECK(Reports(*analyzed, "conversion from 'int32 ! E' to '(int32 | (int32 ! E)) ! E' is ambiguous"));
+    CHECK(Reports(*analyzed, "conversion from 'int32 ! E' to '(int32 ! E) ! (E | F)' is ambiguous"));
     const auto routeOfReturn = [&](const std::string_view name) {
         const auto *returned = dynamic_cast<const ReturnStmt *>(Function(*analyzed, name).body->stmts.front().get());
         REQUIRE(returned != nullptr);
@@ -252,6 +252,6 @@ TEST_CASE("a match arm its expected type refuses is reported") {
     )");
     CHECK(Reports(*analyzed, "match arm type mismatch: expected 'int32?', found 'bool8?'"));
     CHECK(Reports(*analyzed, "'.Failure(...)' constructs a native fallible, but the expected type is 'int32?'"));
-    CHECK(Reports(*analyzed, "'return' value must have type 'int32?', but found 'opaque?'"));
+    CHECK(Reports(*analyzed, "'return' value must have type 'int32?', but found 'none'"));
     CHECK(Reports(*analyzed, "cannot infer the type of 'open' from a native constructor with an unknown channel"));
 }

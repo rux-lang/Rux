@@ -112,7 +112,7 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
         }
         EmitError(e->args[argumentIndex]->location,
                   std::format("argument {} to '{}' has type '{}', but {}{} requires '{}'", argumentIndex + 1, callable,
-                              argumentType.ToString(), variadic ? "variadic " : "", parameterName,
+                              argumentType.DisplayString(), variadic ? "variadic " : "", parameterName,
                               parameterType.ToString()),
                   std::move(notes));
     };

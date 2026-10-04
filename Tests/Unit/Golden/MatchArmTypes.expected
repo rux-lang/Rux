@@ -1,4 +1,6 @@
 4:9: error: match arm type mismatch: expected 'int32?', found 'bool8?'
 10:9: error: '.Failure(...)' constructs a native fallible, but the expected type is 'int32?'
-17:5: error: 'return' value must have type 'int32?', but found 'opaque?'
+17:5: error: 'return' value must have type 'int32?', but found 'none'
 24:5: error: cannot infer the type of 'open' from a native constructor with an unknown channel
+49:9: error: match on 'int ! (DigitError | RangeError)' is not exhaustive; missing .Failure(_: RangeError)
+53:9: error: match arm type mismatch: expected 'int', found '()'

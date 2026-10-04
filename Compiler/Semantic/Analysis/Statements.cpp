@@ -197,8 +197,8 @@ void AnalysisContext::CheckFunctionBody(const Block &block, const FuncDecl &func
 void AnalysisContext::CheckBooleanCondition(const TypeRef &type, const SourceLocation location,
                                             const std::string_view construct) const {
     if (!type.IsUnknown() && !type.IsBool()) {
-        EmitError(location,
-                  std::format("condition for '{}' must have type 'bool', but found '{}'", construct, type.ToString()));
+        EmitError(location, std::format("condition for '{}' must have type 'bool', but found '{}'", construct,
+                                        type.DisplayString()));
     }
 }
 
@@ -299,7 +299,7 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
             !initializerAccepted) {
             EmitError(letStatement->location,
                       AssignmentErrorMessage(*letStatement->init, declarationType,
-                                             std::format("cannot assign '{}' to '{}'", initializerType.ToString(),
+                                             std::format("cannot assign '{}' to '{}'", initializerType.DisplayString(),
                                                          declarationType.ToString())));
         }
         if (initializerAccepted && !nullReferenceInitializer && declarationType.kind != TypeRef::Kind::Reference) {
@@ -590,7 +590,7 @@ void AnalysisContext::CheckReturn(const Expr *value, const SourceLocation locati
             EmitError(location,
                       AssignmentErrorMessage(*value, currentReturnType,
                                              std::format("'return' value must have type '{}', but found '{}'",
-                                                         currentReturnType.ToString(), valueType.ToString())));
+                                                         currentReturnType.ToString(), valueType.DisplayString())));
         }
         else if (!valueType.IsUnknown() && !currentReturnType.IsUnknown()) {
             returnAccepted = true;
@@ -629,7 +629,7 @@ void AnalysisContext::CheckFail(const Expr *value, const SourceLocation location
         else {
             EmitError(location, AssignmentErrorMessage(*value, error,
                                                        std::format("'fail' value must have type '{}', but found '{}'",
-                                                                   error.ToString(), valueType.ToString())));
+                                                                   error.ToString(), valueType.DisplayString())));
         }
     }
     trackedFlowReachable = false;

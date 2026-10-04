@@ -333,7 +333,7 @@ TypeRef AnalysisContext::CheckMatchExpression(const MatchExpr &expression) {
     const auto reportMismatch = [&](const Expr &body, const TypeRef &armType, const SourceLocation location) {
         EmitError(location, AssignmentErrorMessage(body, resultType,
                                                    std::format("match arm type mismatch: expected '{}', found '{}'",
-                                                               resultType.ToString(), armType.ToString())));
+                                                               resultType.ToString(), armType.DisplayString())));
     };
 
     for (const auto &arm : expression.arms) {

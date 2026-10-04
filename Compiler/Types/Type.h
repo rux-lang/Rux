@@ -507,6 +507,20 @@ struct TypeRef {
     [[nodiscard]] std::optional<std::uint64_t> SizeInBytes() const noexcept;
     [[nodiscard]] std::string ToString() const;
 
+    /// The spelling a diagnostic shows for a value of this type. It is `ToString()`, except for the two internal
+    /// placeholders `opaque` stands in: "no value" (a call to a function without a return type, an assignment) reads
+    /// as the unit `()`, and the still-untyped absence of a bare `none` reads as `none`. Source writes `opaque` only
+    /// behind a pointer, so neither placeholder can be mistaken for a written type.
+    [[nodiscard]] std::string DisplayString() const {
+        if (IsOpaque()) {
+            return "()";
+        }
+        if (kind == Kind::Optional && inner.size() == 1 && inner[0].IsOpaque()) {
+            return "none";
+        }
+        return ToString();
+    }
+
     /// The name a generic instantiation is identified by: `Base<Arg, Arg>`, or plain `Base` with no arguments. One
     /// spelling, because a type is recorded, looked up, and compared by this string, and two spellings of it are two
     /// types as far as every table keyed by it is concerned.

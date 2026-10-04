@@ -533,12 +533,15 @@ std::string TypeRef::ToString() const {
         const TypeRef &error = inner[1];
         // One unparenthesized `!` per type: a nested fallible on either side is grouped, as is a function type, whose
         // return would otherwise extend over the `!`. A directly written optional error is grouped too, `T ! (E?)`.
-        const std::string errorSpelling =
-            Grouped(error.ToString(), error.IsFallible() || error.IsOptional() || error.kind == Kind::Func);
+        // A sum on either side binds tighter than `!` and needs no parentheses, but is grouped anyway, as the language
+        // reference writes it, because `int ! A | B` reads as a different grouping.
+        const std::string errorSpelling = Grouped(error.ToString(), error.IsFallible() || error.IsOptional() ||
+                                                                        error.kind == Kind::Func || error.IsSum());
         if (success.IsUnit()) {
             return "! " + errorSpelling;
         }
-        return Grouped(success.ToString(), success.IsFallible() || success.kind == Kind::Func) + " ! " + errorSpelling;
+        return Grouped(success.ToString(), success.IsFallible() || success.kind == Kind::Func || success.IsSum()) +
+               " ! " + errorSpelling;
     }
     case Kind::Tuple: {
         std::string s = "(";

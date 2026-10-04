@@ -110,7 +110,9 @@ func Main() -> int {
   Arms that call `Panic` or a `#NoReturn` function are rejected the same way.
 - **Course workaround:** none needed, because no lesson relies on it.
 
-## D6. Diagnostic wording for nested outcome types
+## D6. Diagnostic wording for nested outcome types (fixed)
+
+**Fixed**; covered by the `MatchArmTypes` and `NativeOutcomeMisuse` goldens and `NativeTypeIdentityTests.cpp`.
 
 - A non-exhaustive match on `int ! (DigitError | RangeError)` prints the type as
   `'int ! DigitError | RangeError'`. Without the parentheses, it reads as a different grouping.

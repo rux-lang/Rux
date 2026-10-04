@@ -93,7 +93,7 @@ TEST_CASE("fallible channels stay distinct even for one payload type") {
     CHECK_EQ(TypeRef::MakeFallible(TypeRef::MakeSum({options, Named("Defaults")}),
                                    TypeRef::MakeSum({parse, Named("IoError")}))
                  .ToString(),
-             "Defaults | Options ! IoError | ParseError");
+             "(Defaults | Options) ! (IoError | ParseError)");
 }
 
 TEST_CASE("a unit success is the type written ! E") {

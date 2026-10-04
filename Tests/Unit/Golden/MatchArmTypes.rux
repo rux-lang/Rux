@@ -37,3 +37,19 @@ func Accepted(value: int32) -> int32? {
         else => annotated
     };
 }
+
+struct DigitError {}
+struct RangeError {}
+
+func Nothing() {}
+
+func Spelled(outcome: int ! (DigitError | RangeError), value: int32) -> int {
+    let partial = match outcome {
+        .Success(number) => number,
+        .Failure(_: DigitError) => 0
+    };
+    return match value {
+        0 => partial,
+        else => Nothing()
+    };
+}
