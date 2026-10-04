@@ -857,7 +857,10 @@ void HirToLirContext::EmitCopyPlan(const HirCopyPlan &plan, const LirReg source,
 }
 
 void HirToLirContext::StoreCopyIntoSlot(const HirCopyExpr &expression, const LirReg slot) {
-    const LirReg source = LowerLValue(*expression.value);
+    // A custom `=` takes its source as `other: &T`, so a reference is a source as it stands: its value is already the
+    // address the copy reads, where the slot holding the reference is not.
+    const LirReg source = expression.value->type.kind == TypeRef::Kind::Reference ? LowerExpr(*expression.value)
+                                                                                  : LowerLValue(*expression.value);
     EmitCopyPlan(expression.plan, source, slot);
 }
 
