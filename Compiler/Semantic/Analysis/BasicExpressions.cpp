@@ -3,6 +3,7 @@
 
 #include "Numeric/IntegerLiteral.h"
 #include "Semantic/Analysis/AnalysisContext.h"
+#include "Syntax/Parser/Detail/AstDumpWriter.h"
 #include "Types/NativeLayout.h"
 #include "Types/PrimitiveCatalog.h"
 
@@ -249,10 +250,14 @@ std::optional<TypeRef> AnalysisContext::CheckBasicExpression(const Expr &express
             const auto *name = dynamic_cast<const IdentExpr *>(binary->right.get());
             const Symbol *symbol = name ? currentScope->Lookup(name->name) : nullptr;
             if (symbol && symbol->kind == Symbol::Kind::Type) {
-                const bool test = dynamic_cast<const IsExpr *>(binary->left.get()) != nullptr;
+                const auto *isTest = dynamic_cast<const IsExpr *>(binary->left.get());
+                const auto *cast = dynamic_cast<const CastExpr *>(binary->left.get());
+                const bool test = isTest != nullptr;
+                const std::string first =
+                    ParserDumpDetail::DeclarationPrinter::TypeString(test ? isTest->type.get() : cast->type.get());
                 static_cast<void>(CheckExpr(*binary->left));
                 EmitError(binary->location, std::format("a sum type after '{}' must be grouped", test ? "is" : "as"),
-                          {}, std::format("write 'value {} (A | {})'", test ? "is" : "as", name->name));
+                          {}, std::format("write 'value {} ({} | {})'", test ? "is" : "as", first, name->name));
                 return TypeRef::MakeUnknown();
             }
         }

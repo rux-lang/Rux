@@ -44,22 +44,6 @@ func Main() -> int {
 - **Course workaround:** `SumTypes/Is` binds each element first (`let a: Token = ...;`) and builds
   the array from those names.
 
-## D3. The help for an ungrouped sum after `is` names a placeholder instead of the member
-
-```rux
-func Main() -> int {
-    let x: int32 | bool = 1i32;
-    let ok = x is int32 | bool;
-    return 0;
-}
-```
-
-- **Expected:** `error: a sum type after 'is' must be grouped` with the help line
-  `write 'value is (int32 | bool)'`.
-- **Actual:** the help line reads `write 'value is (A | bool)'`. The left member is printed as
-  the placeholder `A`.
-- **Course workaround:** `SumTypes/Is` quotes only the error line.
-
 ## D4. A slice-typed `match` expression with a diverging arm produces invalid LIR
 
 ```rux

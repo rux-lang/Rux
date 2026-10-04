@@ -751,5 +751,16 @@ TEST_CASE("an ungrouped sum after is or as names the grouping") {
     REQUIRE_EQ(errors.size(), 1);
     CHECK_EQ(errors.front().message, "a sum type after 'is' must be grouped");
     REQUIRE(errors.front().help.has_value());
-    CHECK_EQ(*errors.front().help, "write 'value is (A | Defaults)'");
+    CHECK_EQ(*errors.front().help, "write 'value is (Options | Defaults)'");
+}
+
+TEST_CASE("the grouping help names a primitive first member as written") {
+    const auto errors = ErrorDiagnostics(R"(
+        func Test(value: int32 | bool) -> bool {
+            return value is int32 | bool;
+        }
+    )");
+    REQUIRE_EQ(errors.size(), 1);
+    REQUIRE(errors.front().help.has_value());
+    CHECK_EQ(*errors.front().help, "write 'value is (int32 | bool)'");
 }
