@@ -238,6 +238,10 @@ bool AnalysisContext::CanAssignExprTo(const Expr &expr, const TypeRef &exprType,
         }
     }
 
+    // `null` is the null pointer of the one pointer a native destination reaches through its levels and members.
+    if (IsNullLiteral(expr) && MentionsNativeType(targetType)) {
+        return NullLiteralReaches(targetType);
+    }
     if (MentionsNativeType(targetType) || MentionsNativeType(exprType)) {
         return CanConvertToNativeType(expr, exprType, targetType);
     }
@@ -288,6 +292,20 @@ bool AnalysisContext::CanConstructNative(const NativeConstructExpr &construct, c
         nativeConversions.insert_or_assign(&construct, std::move(route));
     }
     return true;
+}
+
+bool AnalysisContext::NullLiteralReaches(const TypeRef &target) {
+    if (target.kind == TypeRef::Kind::Pointer) {
+        return true;
+    }
+    if ((target.IsOptional() || target.IsFallible()) && !target.inner.empty()) {
+        return NullLiteralReaches(target.inner.front());
+    }
+    if (target.IsSum()) {
+        return std::ranges::count_if(target.inner,
+                                     [](const TypeRef &member) { return member.kind == TypeRef::Kind::Pointer; }) == 1;
+    }
+    return false;
 }
 
 bool AnalysisContext::CanConvertToNativeType(const Expr &expr, const TypeRef &exprType, const TypeRef &targetType) {

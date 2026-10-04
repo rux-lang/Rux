@@ -694,7 +694,9 @@ func Main() -> int {
 
 Note: `{:b}` on a negative signed integer prints a minus sign and the magnitude, not
 two's-complement bits. This may be intended, but it is undocumented.
-## D39. Initializing an optional pointer with `null` crashes the compiler
+## D39. Initializing an optional pointer with `null` crashes the compiler (fixed)
+
+**Fixed**; covered by the `NullNativeTargets` golden and `Tests/Language/Pointers`.
 
 ```rux
 func Main() -> int {

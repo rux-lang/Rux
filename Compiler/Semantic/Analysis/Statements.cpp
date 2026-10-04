@@ -317,6 +317,14 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
             EmitError(letStatement->init->location,
                       std::format("null cannot initialize non-null reference '{}'", declarationType.ToString()));
         }
+        // `null` has no type to report a mismatch with, so a destination it cannot reach is named here.
+        else if (letStatement->init && letStatement->type && IsNullLiteral(*letStatement->init) &&
+                 !declarationType.IsUnknown() && !NullLiteralReaches(declarationType)) {
+            EmitError(letStatement->init->location,
+                      std::format("'null' is not a value of type '{}'", declarationType.ToString()), {},
+                      declarationType.IsOptional() ? std::optional<std::string>("write 'none' for an absent optional")
+                                                   : std::nullopt);
+        }
         if (letStatement->init && letStatement->type && !initializerType.IsUnknown() && !declarationType.IsUnknown() &&
             !initializerAccepted) {
             EmitError(letStatement->location,

@@ -18,6 +18,15 @@
 
 namespace Rux::AstToHirDetail {
 namespace {
+/// The null value of `type`, a pointer, as a literal the compiler supplies.
+HirExprPtr NullPointer(const SourceLocation location, TypeRef type) {
+    auto literal = std::make_unique<HirLiteralExpr>();
+    literal->location = location;
+    literal->type = std::move(type);
+    literal->value = "0";
+    return literal;
+}
+
 [[nodiscard]] std::string NativeBindingName(const std::size_t ordinal) {
     return std::format("$native.payload.{}", ordinal);
 }
@@ -315,6 +324,27 @@ HirExprPtr AstToHirContext::LowerNativeAs(const Expr &expression, const TypeRef 
                 }
             }
             return LowerExprAs(expression, level);
+        };
+        return build(targetType);
+    }
+
+    // `null` has no type of its own either: it is the null pointer of the one pointer the destination reaches through
+    // presence and success levels and sum members, so `let q: (*int)? = null;` is a present null pointer.
+    if (IsNullLiteral(expression)) {
+        const std::function<HirExprPtr(const TypeRef &)> build = [&](const TypeRef &level) -> HirExprPtr {
+            if (level.IsOptional() || level.IsFallible()) {
+                return MakeNativeCase(level, level.IsOptional() ? NativePresentTag : NativeSuccessTag,
+                                      build(level.inner.front()), expression.location);
+            }
+            if (level.IsSum()) {
+                const auto member = std::ranges::find_if(
+                    level.inner, [](const TypeRef &candidate) { return candidate.kind == TypeRef::Kind::Pointer; });
+                if (member != level.inner.end()) {
+                    return MakeNativeCase(level, static_cast<std::uint64_t>(member - level.inner.begin()),
+                                          NullPointer(expression.location, *member), expression.location);
+                }
+            }
+            return NullPointer(expression.location, level);
         };
         return build(targetType);
     }

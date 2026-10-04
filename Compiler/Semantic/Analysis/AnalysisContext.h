@@ -1030,6 +1030,8 @@ private:
     static bool IsUnsuffixedIntegerLiteral(const Expr &expr);
     /// Whether `expr` converts to `targetType` under the native conversion rules, recording the accepted route. An
     /// unsuffixed numeric literal targets a sum by its literal kind: exactly one integer (or floating-point) member.
+    /// Whether `null` can be a value of `target`: a pointer, or a native form with exactly one pointer to reach.
+    [[nodiscard]] static bool NullLiteralReaches(const TypeRef &target);
     bool CanConvertToNativeType(const Expr &expr, const TypeRef &exprType, const TypeRef &targetType);
     /// Whether a native constructor builds a value of `targetType`, checking its operand against the channel it
     /// selects.
