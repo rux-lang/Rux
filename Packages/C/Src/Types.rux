@@ -13,7 +13,7 @@
 // currently supported target makes it signed, and that is what is declared; a binding that cares should say `c_schar`
 // or `c_uchar` rather than rely on it.
 
-import Core::{ OperatingSystem, #target, #Error };
+import Core::{ #Error, #target, OperatingSystem };
 
 /// C's `signed char`: the smallest addressable signed integer.
 ///

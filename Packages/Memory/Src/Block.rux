@@ -15,7 +15,7 @@
 // The comparisons treat a byte as unsigned, so ordering does not depend on whether the platform's plain `char` is
 // signed. None of them is constant-time: each stops at the first difference, so nothing here may compare a secret.
 
-import Core::{ Ordering, #target };
+import Core::{ #target, Ordering };
 
 when #target.os == .Windows {
     import Windows::{ RtlCompareMemory, RtlCopyMemory, RtlFillMemory, RtlZeroMemory };

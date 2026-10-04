@@ -15,8 +15,7 @@
 // bound, so the width a placeholder asks for is measured in one pass over the units and the padding is written
 // around the transcoding instead.
 
-import Text::{ Debug, Display, FormatError, FormatSpec, RejectStyle, TextWriter, WriteAscii, WriteFill,
-               WriteScalar };
+import Text::{ Debug, Display, FormatError, FormatSpec, RejectStyle, TextWriter, WriteAscii, WriteFill, WriteScalar };
 
 // One scalar out of the UTF-16 units at `index`: a unit outside the surrogate range, or a high-low pair.
 //

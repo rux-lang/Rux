@@ -12,7 +12,7 @@
 // these calls always do both — which is the behaviour every other system has and the one an allocator expects. A
 // caller wanting a large reservation cheaply has to reach for `Rux/Windows` directly.
 
-import Core::{ #target, #Error };
+import Core::{ #Error, #target };
 import Memory::AlignUp;
 
 when #target.os {

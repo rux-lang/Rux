@@ -4,7 +4,8 @@
 // that a narrow draw costs a whole word, and that the floats stay inside their half-open interval.
 
 import Core::{ Assert };
-import Random::{ FillBytes, NextFloat32, NextFloat64, NextUint128, NextUint16, NextUint32, NextUint8, RandomGenerator, SplitMix64 };
+import Random::{ FillBytes, NextFloat32, NextFloat64, NextUint128, NextUint16, NextUint32, NextUint8, RandomGenerator,
+                 SplitMix64 };
 
 func Main() -> int {
     // The published SplitMix64 sequence from a zero seed. These are the values the reference implementation

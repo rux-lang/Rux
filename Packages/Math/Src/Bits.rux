@@ -4,7 +4,7 @@
 // bit pattern, but which registers those are is the calling convention's business, so each architecture writes
 // its own pair.
 
-import Core::{ #target, #Error };
+import Core::{ #Error, #target };
 
 when #target.arch {
     .X86_64 => {

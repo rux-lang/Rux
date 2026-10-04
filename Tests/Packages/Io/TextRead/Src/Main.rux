@@ -3,7 +3,7 @@
 
 import Allocator::{ Allocator, SystemAllocator };
 import Core::{ Assert, Panic };
-import Io::{ BufferedReader, IoError, IoErrorKind, Reader, ReadTextLine };
+import Io::{ BufferedReader, IoError, IoErrorKind, ReadTextLine, Reader };
 import Text::{ String, StringBuilder, StringView };
 
 // The bytes a string spans, which is how a text overload reaches the slice one.

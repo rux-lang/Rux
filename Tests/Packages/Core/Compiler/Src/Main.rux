@@ -1,4 +1,4 @@
-import Core::{ Assert, SemanticVersion, #compiler };
+import Core::{ #compiler, Assert, SemanticVersion };
 
 const MinimumCompiler = SemanticVersion(0, 0, 0);
 

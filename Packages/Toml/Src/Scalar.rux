@@ -16,10 +16,9 @@
 // it copies, where that byte came from, and every offset reported below is mapped back through it. `1_0_x0` must
 // point at the `x`, not at the fourth character of something the caller never saw.
 
-import Format::{ ParseFloat64, ParseInt64, ParseError };
+import Format::{ ParseError, ParseFloat64, ParseInt64 };
 import Math::{ PositiveInfinity64, QuietNan64 };
-import Text::{ Debug, Display, FormatError, FormatSpec, ParseFailure, RejectStyle, TextWriter, WriteAscii,
-               WriteBytes };
+import Text::{ Debug, Display, FormatError, FormatSpec, ParseFailure, RejectStyle, TextWriter, WriteAscii, WriteBytes };
 import Time::{ Date, TimeOfDay, UtcOffset };
 
 /// Why a scalar could not be read, and where in it.

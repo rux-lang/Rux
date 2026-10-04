@@ -4,8 +4,8 @@
 // is valid until `Munmap` releases exactly the range that was mapped, and this package has no way to notice a caller
 // releasing a range it never mapped.
 
-import Linux::{ AtFdCwd, Close, EINVAL, ENOENT, IsError, OpenAt, OpenReadOnly, Read, SignExtendFd, SysBrk,
-                SysMadvise, SysMmap, SysMprotect, SysMunmap, Syscall1, Syscall2, Syscall3, Syscall6 };
+import Linux::{ AtFdCwd, Close, EINVAL, ENOENT, IsError, OpenAt, OpenReadOnly, Read, SignExtendFd, SysBrk, SysMadvise,
+                SysMmap, SysMprotect, SysMunmap, Syscall1, Syscall2, Syscall3, Syscall6 };
 
 /// `PROT_NONE`: the pages may not be touched at all.
 ///

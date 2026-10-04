@@ -6,12 +6,10 @@
 // The three descriptor constants are annotated `int32` rather than `FileDescriptor`, because a `const` cannot name a
 // type alias declared in another file of the package.
 
-import FreeBSD::{ FileDescriptor, FileMode, FileOffset, SignExtendFd, SysChdir, SysClose, SysDup2,
-                  SysFstat, SysGetcwd, SysReadlinkAt,
-                  SysFchmodAt, SysFstatAt, SysFsync, SysFtruncate, SysGetdirentries, SysLinkAt, SysLseek, SysMkdirAt,
-                  SysOpenAt, SysPipe2, SysRead,
-                  SysRenameAt, SysSymlinkAt, SysUnlinkAt, SysUtimensAt, SysWrite, Syscall1, Syscall2, Syscall3, Syscall4,
-                  Syscall5 };
+import FreeBSD::{ FileDescriptor, FileMode, FileOffset, SignExtendFd, SysChdir, SysClose, SysDup2, SysFchmodAt,
+                  SysFstat, SysFstatAt, SysFsync, SysFtruncate, SysGetcwd, SysGetdirentries, SysLinkAt, SysLseek,
+                  SysMkdirAt, SysOpenAt, SysPipe2, SysRead, SysReadlinkAt, SysRenameAt, SysSymlinkAt, SysUnlinkAt,
+                  SysUtimensAt, SysWrite, Syscall1, Syscall2, Syscall3, Syscall4, Syscall5 };
 
 /// The descriptor a process reads its input from, unless something reassigned it.
 ///

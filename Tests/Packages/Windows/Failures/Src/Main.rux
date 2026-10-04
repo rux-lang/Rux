@@ -13,15 +13,15 @@
 // number in it was read out of a probe rather than out of documentation. Two of them were surprises and are called
 // out where they appear.
 
-import Core::{ Assert, OperatingSystem, #target };
+import Core::{ #target, Assert, OperatingSystem };
 
 when #target.os == OperatingSystem::Windows {
     import Windows::{ CloseHandle, CreateFileW, CreationDisposition, ERROR_ACCESS_DENIED, ERROR_FILE_NOT_FOUND,
-                      ERROR_INVALID_ADDRESS, ERROR_INVALID_HANDLE, ERROR_INVALID_PARAMETER,
-                      ERROR_NOT_ENOUGH_MEMORY, ERROR_PATH_NOT_FOUND, ERROR_SUCCESS, FILE_ATTRIBUTE_NORMAL,
-                      FILE_SHARE_READ, GENERIC_READ, GetFileAttributesW, GetLastError, GetProcessHeap, GetRandom,
-                      HeapAlloc, INVALID_FILE_ATTRIBUTES, InvalidHandleValue, MEM_COMMIT, MEM_RELEASE, MEM_RESERVE,
-                      PAGE_READWRITE, STATUS_SUCCESS, VirtualAlloc, VirtualFree };
+                      ERROR_INVALID_ADDRESS, ERROR_INVALID_HANDLE, ERROR_INVALID_PARAMETER, ERROR_NOT_ENOUGH_MEMORY,
+                      ERROR_PATH_NOT_FOUND, ERROR_SUCCESS, FILE_ATTRIBUTE_NORMAL, FILE_SHARE_READ, GENERIC_READ,
+                      GetFileAttributesW, GetLastError, GetProcessHeap, GetRandom, HeapAlloc, INVALID_FILE_ATTRIBUTES,
+                      InvalidHandleValue, MEM_COMMIT, MEM_RELEASE, MEM_RESERVE, PAGE_READWRITE, STATUS_SUCCESS,
+                      VirtualAlloc, VirtualFree };
 
     /// Writes `name` as UTF-16 code units, NUL-terminated.
     ///

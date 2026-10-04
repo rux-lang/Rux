@@ -5,7 +5,7 @@
 // zero first exists without needing a wider source type than int64, so that is the cast worth writing down.
 
 import Core::Assert;
-import Core::{ bool32, bool8, bool64, int64 };
+import Core::{ bool32, bool64, bool8, int64 };
 
 func Echo(value: bool32) -> bool32 {
     return value;

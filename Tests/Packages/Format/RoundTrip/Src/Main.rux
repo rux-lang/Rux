@@ -1,5 +1,5 @@
 import Allocator::{ Allocator, SystemAllocator };
-import Format::{ IsNan, ParseFloat64, ParseInt64, ParseInt128, ParseUint64, ParseUint512, Render };
+import Format::{ IsNan, ParseFloat64, ParseInt128, ParseInt64, ParseUint512, ParseUint64, Render };
 import Text::{ FormatError, String };
 
 // The round trip is the contract the two halves owe each other: what formatting writes, parsing reads back to the

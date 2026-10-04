@@ -5,7 +5,8 @@ import Allocator::{ Allocator, SystemAllocator };
 import Core::{ Assert, Panic, Succeeded };
 import Io::{ IoError, IoErrorKind, ReadExact, Reader, SeekFrom, WriteAll, Writer };
 import Path::{ OsString, Path, PathBuffer };
-import FileSystem::{ DeleteFile, File, MetadataOf, OpenOptions, TemporaryDirectory, TemporaryDirectoryHandle, TemporaryFile };
+import FileSystem::{ DeleteFile, File, MetadataOf, OpenOptions, TemporaryDirectory, TemporaryDirectoryHandle,
+                     TemporaryFile };
 
 // The bytes a string spans, which is how a caller holding text reaches an entry point that takes bytes.
 func TextBytes(text: char8[..]) -> char8[..] {

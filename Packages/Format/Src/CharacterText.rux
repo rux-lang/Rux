@@ -19,8 +19,8 @@
 // reaches a `Display` implementation has already passed whatever check its own type applies; the replacement here
 // is presentation, and never a substitute for the check.
 
-import Text::{ Encode, FormatError, FormatSpec, IsScalarValue, PaddingAround, TextWriter, WriteAscii,
-               WriteBytes, WriteFill, WriteScalar };
+import Text::{ Encode, FormatError, FormatSpec, IsScalarValue, PaddingAround, TextWriter, WriteAscii, WriteBytes,
+               WriteFill, WriteScalar };
 
 /// The largest value a Unicode scalar can have, past which nothing is a character.
 ///

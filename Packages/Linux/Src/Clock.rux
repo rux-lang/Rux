@@ -4,8 +4,7 @@
 // and never jumps, while `ClockRealtime` tracks wall time and can move in either direction when something sets it.
 // A duration is measured with the first; a timestamp anyone else will see is taken from the second.
 
-import Linux::{ SysClockGetRes, SysClockGetTime, SysClockNanosleep, SysNanosleep, Syscall2,
-                Syscall4, Timespec };
+import Linux::{ SysClockGetRes, SysClockGetTime, SysClockNanosleep, SysNanosleep, Syscall2, Syscall4, Timespec };
 
 /// `CLOCK_REALTIME`: wall-clock time, which can jump when the system clock is set.
 ///

@@ -10,7 +10,7 @@
 // fraction counting up. Windows counts from 1601 in hundred-nanosecond ticks, and the conversion is one constant
 // the platform package already carries.
 
-import Core::{ #target, #Error, Ordering };
+import Core::{ #Error, #target, Ordering };
 
 when #target.os {
     .FreeBSD => import FreeBSD::{ ClockGetTime, ClockRealtime, Timespec },

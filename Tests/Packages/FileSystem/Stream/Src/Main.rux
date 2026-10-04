@@ -13,7 +13,7 @@
 
 import Allocator::{ Allocator, SystemAllocator };
 import Core::{ Assert, Panic };
-import Io::{ BufferedReader, IoError, IoErrorKind, ReadExact, Reader, ReadTextLine, SeekFrom, Writer, WriteAll };
+import Io::{ BufferedReader, IoError, IoErrorKind, ReadExact, ReadTextLine, Reader, SeekFrom, WriteAll, Writer };
 import Path::{ OsString, Path };
 import FileSystem::{ File, OpenOptions };
 import Text::{ String, StringBuilder, StringView };

@@ -18,7 +18,7 @@
 // must name the same one: on Windows the Universal CRT and the legacy `msvcrt.dll` are separate runtimes with
 // separate state, and a stream opened by one is not a stream the other knows.
 
-import Core::{ #target, #Error };
+import Core::{ #Error, #target };
 import C::{ c_double, c_float, c_int, c_long, c_longlong, c_uint, c_ulong, c_ulonglong, size_t };
 
 when #target.os {

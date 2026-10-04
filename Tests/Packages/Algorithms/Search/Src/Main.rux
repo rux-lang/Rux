@@ -1,5 +1,6 @@
 
-import Algorithms::{ BinarySearch, BinarySearchBy, EqualRange, EqualRangeBy, IsSorted, IsSortedBy, IsSortedUntil, IsSortedUntilBy, LowerBound, LowerBoundBy, UpperBound, UpperBoundBy };
+import Algorithms::{ BinarySearch, BinarySearchBy, EqualRange, EqualRangeBy, IsSorted, IsSortedBy, IsSortedUntil,
+                     IsSortedUntilBy, LowerBound, LowerBoundBy, UpperBound, UpperBoundBy };
 import Core::{ Assert, Ordering, Panic };
 
 // The ordered searches. A binary search is easy to write in a way that works on the cases anyone thinks to try and

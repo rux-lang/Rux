@@ -6,7 +6,8 @@ import Allocator::{ Allocator, SystemAllocator };
 import Core::{ Assert, Panic };
 import Io::{ IoError, IoErrorKind, WriteAll, Writer };
 import Path::{ OsString, Path };
-import FileSystem::{ CapabilitiesOfSystem, DeleteDirectory, DeleteFile, File, FileKind, MakeDirectory, Metadata, MetadataOf, OpenOptions, Permissions, SetPermissions, SetTimes };
+import FileSystem::{ CapabilitiesOfSystem, DeleteDirectory, DeleteFile, File, FileKind, MakeDirectory, Metadata,
+                     MetadataOf, OpenOptions, Permissions, SetPermissions, SetTimes };
 import Time::Timestamp;
 
 // The bytes a string spans, which is how a text overload reaches the slice one.

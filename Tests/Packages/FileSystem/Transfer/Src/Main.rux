@@ -3,9 +3,10 @@
 
 import Allocator::{ Allocator, SystemAllocator };
 import Core::{ Assert, Panic };
-import Io::{ IoError, IoErrorKind, Reader, ReadExact, WriteAll, Writer };
+import Io::{ IoError, IoErrorKind, ReadExact, Reader, WriteAll, Writer };
 import Path::{ OsString, Path };
-import FileSystem::{ CopyFile, CreateHardLink, CreateSymbolicLink, DeleteDirectory, DeleteFile, File, MakeDirectory, OpenOptions, Rename };
+import FileSystem::{ CopyFile, CreateHardLink, CreateSymbolicLink, DeleteDirectory, DeleteFile, File, MakeDirectory,
+                     OpenOptions, Rename };
 
 // The bytes a string spans, which is how a text overload reaches the slice one.
 func TextBytes(text: char8[..]) -> char8[..] {

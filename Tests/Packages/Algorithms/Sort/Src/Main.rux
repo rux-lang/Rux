@@ -3,7 +3,7 @@ import Algorithms::{ CopyTo, IsSorted, Reverse, SequenceEqual, Sort, SortDescend
 // API. They are exercised directly because the heapsort fallback is otherwise
 // unreachable from a test: it needs a recursion budget that only adversarial
 // input exhausts, and there is no supported way to force it from outside.
-import Algorithms::{ InsertionSortRange, HeapSortRange };
+import Algorithms::{ HeapSortRange, InsertionSortRange };
 
 pub struct Ranked {
     key: int32;

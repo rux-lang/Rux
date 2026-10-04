@@ -4,7 +4,7 @@
 // position calls take a `*fpos_t` whose contents belong to the runtime. Sizes are `size_t` and returns are `c_int`,
 // which is what makes these declarations right on a target where those are not what Rux would have chosen.
 
-import Core::{ #target, #Error };
+import Core::{ #Error, #target };
 import C::{ FILE, c_int, fpos_t, size_t };
 
 //

@@ -1,4 +1,5 @@
-import Algorithms::{ BinarySearch, IsHeap, IsSorted, LowerBound, MakeHeap, MaxIndex, MinIndex, Partition, RemoveValue, Reverse, Rotate, SequenceEqual, SortHeap, Sort, StableSort, Sum, Unique, UpperBound };
+import Algorithms::{ BinarySearch, IsHeap, IsSorted, LowerBound, MakeHeap, MaxIndex, MinIndex, Partition, RemoveValue,
+                     Reverse, Rotate, SequenceEqual, Sort, SortHeap, StableSort, Sum, Unique, UpperBound };
 import Core::{ Assert, Panic };
 
 // The phase gate for algorithms: every operation checked against a naive implementation of the same thing, over

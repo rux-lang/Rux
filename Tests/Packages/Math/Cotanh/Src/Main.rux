@@ -1,4 +1,4 @@
-import Core::{ Assert, #target, #Error };
+import Core::{ #Error, #target, Assert };
 import Math::Cotanh;
 
 // Reading a float's bits is one register-to-register move, but which registers

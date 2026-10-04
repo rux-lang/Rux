@@ -1,5 +1,5 @@
 import Core::Assert;
-import C::{ sprintf, sscanf, malloc, free, puts, putchar };
+import C::{ free, malloc, putchar, puts, sprintf, sscanf };
 
 func Main() -> int {
     let buf = malloc(64) as *char8;

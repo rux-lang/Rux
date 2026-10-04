@@ -1,5 +1,5 @@
 import Core::Assert;
-import C::{ malloc, free, calloc, realloc, abs, labs, llabs, atoi, atol, atoll, atof, rand, srand };
+import C::{ abs, atof, atoi, atol, atoll, calloc, free, labs, llabs, malloc, rand, realloc, srand };
 
 func Main() -> int {
     // malloc hands back a writable block; every byte reads back what was written.

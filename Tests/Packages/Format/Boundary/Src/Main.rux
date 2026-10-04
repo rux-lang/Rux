@@ -1,8 +1,8 @@
 import Allocator::{ Allocator, SystemAllocator };
 import Core::{ Assert, Failed, Panic, Succeeded, int32, int64, uint8 };
 import Format::{ Render, WriteFormat };
-import Text::{ BufferWriter, Debug, Display, FormatError, FormatSpec, ParseFormatSpec, String, StringView,
-               TextWriter, WriteDebugValue, WriteValue };
+import Text::{ BufferWriter, Debug, Display, FormatError, FormatSpec, ParseFormatSpec, String, StringView, TextWriter,
+               WriteDebugValue, WriteValue };
 
 // The arrangement the whole formatting design rests on: the type is declared in Core, the interface it implements is
 // declared in Text, and the implementation joining them lives in Format. Three packages, none of which contains

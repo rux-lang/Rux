@@ -1,7 +1,7 @@
 import Allocator::{ Allocator, SystemAllocator };
 import Core::Assert;
-import Text::{ BufferWriter, FormatError, String, StringBuilder, TextFailureKind, TextWriter, WriteAscii,
-               WriteBytes, WriteScalar };
+import Text::{ BufferWriter, FormatError, String, StringBuilder, TextFailureKind, TextWriter, WriteAscii, WriteBytes,
+               WriteScalar };
 
 // What a `TextWriter` promises, checked at the promises rather than at one happy path.
 //

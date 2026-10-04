@@ -1,8 +1,7 @@
 import Allocator::{ AllocError, Allocator, Layout, SystemAllocator };
 import Core::{ Assert, Failed, Succeeded };
 import Format::{ Render, WriteFormat };
-import Text::{ BufferWriter, Display, FormatError, FormatSpec, String, StringView, TextWriter, WriteAscii,
-               WriteBytes };
+import Text::{ BufferWriter, Display, FormatError, FormatSpec, String, StringView, TextWriter, WriteAscii, WriteBytes };
 
 // Placeholder filling, and what it refuses.
 //

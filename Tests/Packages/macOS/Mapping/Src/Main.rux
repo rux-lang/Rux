@@ -12,7 +12,7 @@
 // An errno is asserted only where POSIX names it and all three supported systems agree. `Mmap` and `Mprotect`
 // disagree about which number an unmapped or oversized request earns, so those cases assert the refusal alone.
 
-import Core::{ Assert, OperatingSystem, #target };
+import Core::{ #target, Assert, OperatingSystem };
 
 when #target.os == OperatingSystem::macOS {
     import macOS::{ AdviseDontNeed, AdviseWillNeed, EINVAL, Errno, IsError, Madvise, MapAnonymous, MapPrivate,

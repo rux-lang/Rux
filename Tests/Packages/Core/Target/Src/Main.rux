@@ -1,4 +1,4 @@
-import Core::{ Assert, #target, OperatingSystem, Architecture, Endianness, DataModel, ObjectFormat };
+import Core::{ #target, Architecture, Assert, DataModel, Endianness, ObjectFormat, OperatingSystem };
 // TargetFeature is imported by the commented-out HasFeature check at the end.
 
 func Main() -> int {

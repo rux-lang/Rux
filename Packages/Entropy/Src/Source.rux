@@ -14,13 +14,13 @@
 // reported, because a half-filled key looks exactly as random as a whole one, and a caller who ignores a return
 // value should get an obviously wrong buffer rather than a subtly weak one.
 
-import Core::{ #target, #Error };
+import Core::{ #Error, #target };
 import Entropy::EntropyError;
 import Memory::ZeroizeBlock;
 
 when #target.os {
-    .FreeBSD => import FreeBSD::{ Errno, GetRandom, IsError, EAGAIN, EINTR, ENOSYS },
-    .Linux => import Linux::{ Errno, GetRandom, IsError, EAGAIN, EINTR, ENOSYS },
+    .FreeBSD => import FreeBSD::{ EAGAIN, EINTR, ENOSYS, Errno, GetRandom, IsError },
+    .Linux => import Linux::{ EAGAIN, EINTR, ENOSYS, Errno, GetRandom, IsError },
     .macOS => import macOS::GetRandom,
     .Windows => import Windows::GetRandom,
     else => #Error("Unsupported operating system")

@@ -6,7 +6,7 @@
 // arrives in the register the result is returned in under every convention involved, so the whole body is the
 // instruction and no ABI override is needed.
 
-import Core::{ #target, #Error };
+import Core::{ #Error, #target };
 
 when #target.arch {
     .X86_64 => {

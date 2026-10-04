@@ -5,7 +5,7 @@
 // low two bytes are zero — 65536 — which a cast that truncated before testing would call false.
 
 import Core::Assert;
-import Core::{ bool16, bool8, bool64 };
+import Core::{ bool16, bool64, bool8 };
 
 func Echo(value: bool16) -> bool16 {
     return value;

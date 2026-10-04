@@ -5,7 +5,7 @@
 // caller's. That last one is the one callers get wrong — assigning the result over the original pointer
 // loses the allocation on every failure — and is why the failure is documented on every path here.
 
-import Core::{ #target, #Error };
+import Core::{ #Error, #target };
 
 when #target.os == .Windows {
     import Windows::{ GetProcessHeap, HeapAlloc, HeapFree, HeapReAlloc };

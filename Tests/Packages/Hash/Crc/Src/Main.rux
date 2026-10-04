@@ -1,6 +1,7 @@
 
 import Core::Assert;
-import Hash::{ Crc32, Crc32Of, Crc32Table, Crc32c, Crc32cOf, Crc32cPolynomial, Crc32cTable, Crc32Initial, Crc32Polynomial, HashBytes };
+import Hash::{ Crc32, Crc32Initial, Crc32Of, Crc32Polynomial, Crc32Table, Crc32c, Crc32cOf, Crc32cPolynomial,
+               Crc32cTable, HashBytes };
 
 // The bytes a string spans, which is how a text overload reaches the slice one.
 func TextBytes(text: char8[..]) -> char8[..] {

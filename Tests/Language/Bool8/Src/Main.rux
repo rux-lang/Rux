@@ -10,7 +10,7 @@
 // zero would show it.
 
 import Core::Assert;
-import Core::{ bool, bool8, bool64 };
+import Core::{ bool, bool64, bool8 };
 
 func Echo(value: bool8) -> bool8 {
     return value;

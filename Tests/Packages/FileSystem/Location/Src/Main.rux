@@ -5,7 +5,8 @@ import Allocator::{ Allocator, SystemAllocator };
 import Core::{ Assert, Panic };
 import Io::{ IoError, IoErrorKind };
 import Path::{ IsAbsolute, OsString, Path, PathBuffer };
-import FileSystem::{ Absolute, Canonicalize, CurrentDirectory, DeleteDirectory, DeleteFile, File, MakeDirectory, OpenOptions };
+import FileSystem::{ Absolute, Canonicalize, CurrentDirectory, DeleteDirectory, DeleteFile, File, MakeDirectory,
+                     OpenOptions };
 
 func PathOf(allocator: Allocator, text: char8[..], holder: *var OsString) -> Path {
     *holder = OsString::FromText(allocator, text) catch { else => Panic("the name converts") };

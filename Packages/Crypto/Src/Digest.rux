@@ -19,7 +19,7 @@
 // Clearing a secret with an ordinary loop is dead code to a compiler, since nothing reads the buffer afterwards,
 // and it is entitled to remove it.
 
-import Core::{ #target, #Error };
+import Core::{ #Error, #target };
 
 /// An incremental digest.
 ///

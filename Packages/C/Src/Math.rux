@@ -10,7 +10,7 @@
 // x87 value on x86-64 Unix, a 128-bit quad on AArch64 — so no one declaration is right everywhere.
 
 import Core::{ float32, float64 };
-import Core::{ #target, #Error };
+import Core::{ #Error, #target };
 import C::c_long;
 
 // C's `<math.h>`: the elementary functions, in the `double` form C names plainly and the `float` form it suffixes.

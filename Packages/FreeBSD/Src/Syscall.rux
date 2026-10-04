@@ -9,7 +9,7 @@
 // A raw result from these wrappers is already normalized to Linux's convention — a value, or a small negative error
 // number — which is what `Errors::IsError` and `Errors::Errno` read.
 
-import Core::{ #target, #Error };
+import Core::{ #Error, #target };
 
 // The call numbers, which both architectures share. FreeBSD assigns a call its number once, in `syscalls.master`,
 // and every architecture uses it — unlike Linux, where the two tables agree on nothing.

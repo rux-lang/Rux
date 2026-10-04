@@ -4,7 +4,8 @@
 
 import Core::{ Assert, Ordering };
 import Entropy::EntropyError;
-import Uuid::{ MillisecondOf, MonotonicUuid, Random, RandomFromBytes, SwapGuidOrder, TimeOrdered, TimeOrderedAt, Uuid, UuidVariant };
+import Uuid::{ MillisecondOf, MonotonicUuid, Random, RandomFromBytes, SwapGuidOrder, TimeOrdered, TimeOrderedAt, Uuid,
+               UuidVariant };
 
 func Main() -> ! EntropyError {
 

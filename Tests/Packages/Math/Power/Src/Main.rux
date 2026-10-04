@@ -3,7 +3,7 @@
 // everyone: anything to the zeroth power is one even for a NaN, and one to any power is one even for a NaN.
 
 import Core::Assert;
-import Math::{ IsNan, Pow, PowInteger, PositiveInfinity64, QuietNan64, SignBit, UlpDistance };
+import Math::{ IsNan, PositiveInfinity64, Pow, PowInteger, QuietNan64, SignBit, UlpDistance };
 
 func Main() -> int {
     let infinity = PositiveInfinity64();

@@ -12,7 +12,8 @@
 // because a weak diffusion changes far fewer than half the bits.
 
 import Core::{ Assert };
-import Crypto::{ Blake3, Blake3Of, Digest, Equal, LegacyMd5Of, LegacySha1Of, Sha256, Sha256Of, Sha3, Sha3Of256, Sha3Of512, Sha512, Sha512Of, Shake, Shake128Of, Sha224Of, Sha384Of };
+import Crypto::{ Blake3, Blake3Of, Digest, Equal, LegacyMd5Of, LegacySha1Of, Sha224Of, Sha256, Sha256Of, Sha3, Sha384Of,
+                 Sha3Of256, Sha3Of512, Sha512, Sha512Of, Shake, Shake128Of };
 
 // The bytes a string spans, which is how a text overload reaches the slice one.
 func TextBytes(text: char8[..]) -> char8[..] {

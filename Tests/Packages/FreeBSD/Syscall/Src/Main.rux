@@ -1,7 +1,11 @@
-import Core::{ OperatingSystem, #target };
+import Core::{ #target, OperatingSystem };
 
 when #target.os == OperatingSystem::FreeBSD {
-    import FreeBSD::{ AtFdCwd, ClockGetResolution, ClockGetTime, ClockMonotonic, EACCES, EAGAIN, EBADF, EBUSY, EEXIST, EFAULT, EINTR, EINVAL, EIO, EISDIR, ELOOP, EMFILE, ENAMETOOLONG, ENOENT, ENOMEM, ENOSPC, ENOSYS, ENOTDIR, ENXIO, EOVERFLOW, EPERM, EPIPE, EROFS, Errno, ESPIPE, ESRCH, ETIMEDOUT, EXDEV, FstatAt, GetPid, IsError, MapAnonymous, MapPrivate, Mmap, Munmap, Nanosleep, ProtectionRead, ProtectionWrite, Read, Syscall0, Syscall6, SysGetPid, SysMmap, Timespec, Write };
+    import FreeBSD::{ AtFdCwd, ClockGetResolution, ClockGetTime, ClockMonotonic, EACCES, EAGAIN, EBADF, EBUSY, EEXIST,
+                      EFAULT, EINTR, EINVAL, EIO, EISDIR, ELOOP, EMFILE, ENAMETOOLONG, ENOENT, ENOMEM, ENOSPC, ENOSYS,
+                      ENOTDIR, ENXIO, EOVERFLOW, EPERM, EPIPE, EROFS, ESPIPE, ESRCH, ETIMEDOUT, EXDEV, Errno, FstatAt,
+                      GetPid, IsError, MapAnonymous, MapPrivate, Mmap, Munmap, Nanosleep, ProtectionRead,
+                      ProtectionWrite, Read, SysGetPid, SysMmap, Syscall0, Syscall6, Timespec, Write };
 
     func Main() -> int {
         if GetPid() <= 0 {

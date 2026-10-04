@@ -14,11 +14,11 @@
 // Everywhere else the assertion is that the call failed, because a number this test guessed would be a number
 // nobody checked.
 
-import Core::{ Assert, OperatingSystem, #target };
+import Core::{ #target, Assert, OperatingSystem };
 
 when #target.os == OperatingSystem::macOS {
-    import macOS::{ AtFdCwd, Close, EBADF, EEXIST, EINVAL, ENOENT, Errno, FileMode, Fsync, Ftruncate, IsError, Lseek, MkdirAt,
-                    OpenAppend, OpenAt, OpenCreate, OpenExclusive, OpenReadOnly, OpenReadWrite, OpenTruncate,
+    import macOS::{ AtFdCwd, Close, EBADF, EEXIST, EINVAL, ENOENT, Errno, FileMode, Fsync, Ftruncate, IsError, Lseek,
+                    MkdirAt, OpenAppend, OpenAt, OpenCreate, OpenExclusive, OpenReadOnly, OpenReadWrite, OpenTruncate,
                     OpenWriteOnly, Read, RemoveDirectory, RenameAt, SeekCurrent, SeekEnd, SeekSet, StdErr, StdIn,
                     StdOut, UnlinkAt, Write };
 

@@ -1,4 +1,4 @@
-import Algorithms::{ SortBy, SortDescendingBy, NthElementBy, PartialSortBy };
+import Algorithms::{ NthElementBy, PartialSortBy, SortBy, SortDescendingBy };
 import Algorithms::{ IsSorted, IsSortedBy };
 import Core::Ordering;
 import Algorithms::{ CopyTo, Reverse, SequenceEqual };

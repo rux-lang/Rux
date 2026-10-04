@@ -1,7 +1,7 @@
 import Core::{ Assert, Failed, Succeeded };
 import Format::WriteFormat;
-import Io::{ ConsoleWriter, FromIoError, IoError, IoErrorKind, StreamWriter, ToIoError, WriteFormatLine,
-             WriteValueLine, Writer };
+import Io::{ ConsoleWriter, FromIoError, IoError, IoErrorKind, StreamWriter, ToIoError, WriteFormatLine, WriteValueLine,
+             Writer };
 import Text::{ BufferWriter, Display, FormatError, FormatSpec, TextFailureKind, TextWriter, WriteBytes };
 
 // The one place a stream and the text protocols have to agree, checked from both sides.

@@ -19,8 +19,8 @@
 import Core::Failed;
 import Allocator::Allocator;
 import Collections::Vector;
-import Text::{ Display, FormatError, FormatSpec, ParseFailure, RejectStyle, String, StringView,
-               TextError, TextWriter, WriteAscii, WriteBytes };
+import Text::{ Display, FormatError, FormatSpec, ParseFailure, RejectStyle, String, StringView, TextError, TextWriter,
+               WriteAscii, WriteBytes };
 import Time::{ Date, TimeOfDay, UtcOffset };
 
 /// Why parsing stopped.

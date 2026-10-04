@@ -3,8 +3,10 @@
 
 import Core::{ Assert, Panic };
 import Io::{ Endian, IoError, IoErrorKind, Reader, Writer };
-import Io::{ ReadFloat32, ReadFloat64, ReadInt16, ReadInt64, ReadInt8, ReadUint128, ReadUint16, ReadUint256, ReadUint32, ReadUint512, ReadUint64, ReadUint8 };
-import Io::{ WriteFloat32, WriteFloat64, WriteInt16, WriteInt64, WriteInt8, WriteUint128, WriteUint16, WriteUint256, WriteUint32, WriteUint512, WriteUint64, WriteUint8 };
+import Io::{ ReadFloat32, ReadFloat64, ReadInt16, ReadInt64, ReadInt8, ReadUint128, ReadUint16, ReadUint256, ReadUint32,
+             ReadUint512, ReadUint64, ReadUint8 };
+import Io::{ WriteFloat32, WriteFloat64, WriteInt16, WriteInt64, WriteInt8, WriteUint128, WriteUint16, WriteUint256,
+             WriteUint32, WriteUint512, WriteUint64, WriteUint8 };
 
 // A little memory stream: writes append, reads serve from the front.
 struct MemoryState {

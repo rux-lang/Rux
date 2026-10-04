@@ -19,7 +19,7 @@
 // against an injected one. A test for a hundred-day sleep must not take a hundred days, and a test for an
 // interrupted sleep cannot arrange a signal.
 
-import Core::{ #target, #Error };
+import Core::{ #Error, #target };
 import Time::Duration;
 
 when #target.os {

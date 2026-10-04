@@ -15,7 +15,7 @@
 // The notes below are plain comments rather than `///` documentation because an external block does not accept a doc
 // comment on its declarations, which is why every module of this package is written the same way.
 
-import Core::{ #target, #Error };
+import Core::{ #Error, #target };
 import C::{ c_int, size_t };
 
 // `#Link` accepts only a constant declared in this file, so the selection is repeated per module rather than taken

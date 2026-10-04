@@ -11,7 +11,7 @@
 // which is exactly the sort of thing a binding test should not step in.
 
 import Core::Assert;
-import Core::{ #target, #Error };
+import Core::{ #Error, #target };
 import Core::{ int32, uint };
 
 // `#Link` takes a constant declared in this file, so the runtime is selected while compiling.

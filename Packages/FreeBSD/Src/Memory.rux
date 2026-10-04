@@ -3,8 +3,8 @@
 // Nothing here tracks what it hands out: an address from `Mmap` is valid until `Munmap` releases exactly the range
 // that was mapped.
 
-import FreeBSD::{ EINVAL, IsError, SignExtendFd, SysBrk, SysMadvise, SysMmap, SysMprotect, SysMunmap,
-                  SysSysctl, Syscall1, Syscall2, Syscall3, Syscall6 };
+import FreeBSD::{ EINVAL, IsError, SignExtendFd, SysBrk, SysMadvise, SysMmap, SysMprotect, SysMunmap, SysSysctl,
+                  Syscall1, Syscall2, Syscall3, Syscall6 };
 
 /// `PROT_NONE`: the pages may not be touched at all.
 ///

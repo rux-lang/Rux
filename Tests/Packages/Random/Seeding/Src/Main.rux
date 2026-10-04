@@ -5,7 +5,7 @@
 
 import Core::Assert;
 import Entropy::EntropyError;
-import Random::{ PcgFromEntropy, PcgFromEntropyWithStream, Pcg64Dxsm, RandomGenerator, Xoshiro256, XoshiroFromEntropy };
+import Random::{ Pcg64Dxsm, PcgFromEntropy, PcgFromEntropyWithStream, RandomGenerator, Xoshiro256, XoshiroFromEntropy };
 
 func Main() -> ! EntropyError {
 

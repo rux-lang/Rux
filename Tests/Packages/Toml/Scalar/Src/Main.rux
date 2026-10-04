@@ -14,8 +14,7 @@
 import Core::{ Assert, Failed, Panic, Succeeded };
 import Text::{ BufferWriter, FormatSpec, TextWriter };
 import Time::{ Date, TimeOfDay, UtcOffset };
-import Toml::{ TomlDateTime, TomlDateTimeShape, TomlParseDateTime, TomlParseFloat, TomlParseInteger,
-               TomlScalarError };
+import Toml::{ TomlDateTime, TomlDateTimeShape, TomlParseDateTime, TomlParseFloat, TomlParseInteger, TomlScalarError };
 
 // The bytes a string spans, which is how a text overload reaches the slice one.
 func TextBytes(text: char8[..]) -> char8[..] {

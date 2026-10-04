@@ -8,7 +8,7 @@
 // A raw result is not yet an answer. It is either a value or a small negative error number, which `Errors::IsError`
 // and `Errors::Errno` are for.
 
-import Core::{ #target, #Error };
+import Core::{ #Error, #target };
 
 // Nothing here guards on the operating system. The declarations resolve for any target so that a program can import
 // them and put the `when #target.os == .Linux` around its own use, which is what a cross-platform caller needs; the

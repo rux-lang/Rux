@@ -8,7 +8,7 @@
 // `gmtime`, `localtime`, `asctime` and `ctime`. That is C's design and not something a binding can improve; copy
 // what you need before calling any of them again.
 
-import Core::{ #target, #Error };
+import Core::{ #Error, #target };
 import C::{ c_int, c_long, c_ulong };
 
 /// C's `time_t`: a calendar time as an arithmetic value.

@@ -1,4 +1,5 @@
-import NominalProvider::{ CheckProvider, DropInProvider, Echo, ExportedRecord, MakeRecord, ReadBound, ReadProvider, RoundTrip };
+import NominalProvider::{ CheckProvider, DropInProvider, Echo, ExportedRecord, MakeRecord, ReadBound, ReadProvider,
+                          RoundTrip };
 
 variant ParseError { Bad, Missing(int32) }
 struct Record { value: int32; }

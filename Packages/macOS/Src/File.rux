@@ -7,9 +7,9 @@
 // The descriptor constants are annotated `int32` rather than `FileDescriptor`, because a `const` cannot name a type
 // alias declared in another file of the package.
 
-import macOS::{ FileDescriptor, FileMode, FileOffset, Normalize, __getdirentries64, close, dup2, fsync, ftruncate,
-                chdir, fchmodat, fstat, fstatat, getcwd, linkat, lseek, mkdirat, openat, pipe, read, renameat, symlinkat,
-                readlinkat, unlinkat, utimensat, write };
+import macOS::{ FileDescriptor, FileMode, FileOffset, Normalize, __getdirentries64, chdir, close, dup2, fchmodat, fstat,
+                fstatat, fsync, ftruncate, getcwd, linkat, lseek, mkdirat, openat, pipe, read, readlinkat, renameat,
+                symlinkat, unlinkat, utimensat, write };
 
 /// The descriptor a process reads its input from, unless something reassigned it.
 ///

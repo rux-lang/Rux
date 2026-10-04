@@ -13,8 +13,8 @@
 import Allocator::Allocator;
 import Collections::CollectionError;
 
-import Text::{ Debug, Display, FormatError, FormatSpec, ParseFailure, RejectStyle, String, StringBuilder,
-               StringView, TextError, TextWriter, WriteAscii, WriteBytes };
+import Text::{ Debug, Display, FormatError, FormatSpec, ParseFailure, RejectStyle, String, StringBuilder, StringView,
+               TextError, TextWriter, WriteAscii, WriteBytes };
 
 /// What to do about an object containing the same name twice.
 ///

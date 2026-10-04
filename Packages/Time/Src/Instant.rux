@@ -8,7 +8,7 @@
 // Sleeping used to live here, because it is the same clock's other direction. It moved to `Sleep.rux` when it
 // grew a failure to report and a chunking loop to drive, which is more than a clock reading needs next to it.
 
-import Core::{ #target, #Error };
+import Core::{ #Error, #target };
 
 when #target.os {
     .FreeBSD => import FreeBSD::{ ClockGetTime, ClockMonotonic, Timespec },

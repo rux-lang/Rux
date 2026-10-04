@@ -7,7 +7,8 @@
 import Text::{ FormatSpec, ParseFormatSpec, TextWriter };
 import Allocator::{ Allocator, SystemAllocator };
 import Core::{ Assert, Failed, Panic, Succeeded };
-import Format::{ ByteCursor, Float128, Float256, Float512, Float80, FloatLayout, ParseError, ParseFloat128, ParseFloat256, ParseFloat512, ParseFloat80, ParseWideFloat, UnpackWide, WideClass, WriteWideFloat };
+import Format::{ ByteCursor, Float128, Float256, Float512, Float80, FloatLayout, ParseError, ParseFloat128,
+                 ParseFloat256, ParseFloat512, ParseFloat80, ParseWideFloat, UnpackWide, WideClass, WriteWideFloat };
 
 // The bytes a string spans, which is how a text overload reaches the slice one.
 func TextBytes(text: char8[..]) -> char8[..] {

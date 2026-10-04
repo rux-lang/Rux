@@ -1,4 +1,4 @@
-import Generic::{ Read, Nested };
+import Generic::{ Nested, Read };
 
 const Untyped = 100.0;
 const Typed: float64 = 200.0;

@@ -1,7 +1,7 @@
 import Core::{ Assert, Failed, Succeeded };
 import Text::{ BufferWriter, Display, FormatSpec };
-import Time::{ Date, DateTime, OffsetDateTime, ParseDate, ParseDateTime, ParseRfc3339, ParseTimeOfDay,
-               TimeOfDay, TimeParseError, UtcOffset };
+import Time::{ Date, DateTime, OffsetDateTime, ParseDate, ParseDateTime, ParseRfc3339, ParseTimeOfDay, TimeOfDay,
+               TimeParseError, UtcOffset };
 
 // Reading a moment out of text, and saying where the text went wrong.
 //

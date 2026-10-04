@@ -8,9 +8,8 @@
 // text to exist anywhere as one run. That matters: a number goes out as sign, then prefix, then zeros, then digits,
 // each straight to the writer, so the widest integer costs no more storage than its own digit buffer.
 
-import Text::{ Encode, FormatAlign, FormatBase, FormatError, FormatSpec, PaddingAround, RejectNonBaseStyle,
-               RejectStyle, TextFailureKind,
-               TextWriter, WriteAligned, WriteAscii, WriteFill };
+import Text::{ Encode, FormatAlign, FormatBase, FormatError, FormatSpec, PaddingAround, RejectNonBaseStyle, RejectStyle,
+               TextFailureKind, TextWriter, WriteAligned, WriteAscii, WriteFill };
 
 /// Writes an integer whose digits are already produced, applying sign, prefix, zero-padding and alignment.
 ///

@@ -13,8 +13,8 @@ import Path::{ OsString, OsStringView, OsUnit, Path };
 when #target.os {
     .FreeBSD => import FreeBSD::{ AtFdCwd, Close, Getdirentries, MkdirAt, OpenAt, OpenDirectory, OpenReadOnly,
                                   RemoveDirectory, UnlinkAt },
-    .Linux => import Linux::{ AtFdCwd, Close, Getdents64, MkdirAt, OpenAt, OpenDirectory, OpenReadOnly,
-                              RemoveDirectory, UnlinkAt },
+    .Linux => import Linux::{ AtFdCwd, Close, Getdents64, MkdirAt, OpenAt, OpenDirectory, OpenReadOnly, RemoveDirectory,
+                              UnlinkAt },
     .macOS => import macOS::{ AtFdCwd, Close, Getdirentries64, MkdirAt, OpenAt, OpenDirectory, OpenReadOnly,
                               RemoveDirectory, UnlinkAt },
     .Windows => import Windows::{ CreateDirectoryW, DeleteFileW, ERROR_NO_MORE_FILES, FindClose, FindFirstFileW,
