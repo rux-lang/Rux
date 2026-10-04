@@ -397,7 +397,8 @@ module Demo {
         }
     }
     CHECK(values["line"] != "0");
-    CHECK(values["column"] != "0");
+    // The column is that of the `#` that starts the reading expression, not of the `.` before the field.
+    CHECK(values["column"] == "22");
     CHECK(values["fileName"] == "test.rux");
     CHECK(values["filePath"] == "test.rux");
     CHECK(values["function"] == "Demo::Values");

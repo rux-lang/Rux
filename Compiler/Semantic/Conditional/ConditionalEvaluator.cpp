@@ -874,7 +874,7 @@ std::optional<CompileTimeValue> ConditionalEvaluator::Impl::Eval(const Expr &exp
             if (ident && !RequireRuxImport(ident->name, ident->location)) {
                 return std::nullopt;
             }
-            return EvalCompilerParamField(*root, e->field, e->location);
+            return EvalCompilerParamField(*root, e->field, e->object->location);
         }
         if (const auto *identifier = dynamic_cast<const IdentExpr *>(e->object.get());
             identifier && identifier->name.starts_with("#")) {

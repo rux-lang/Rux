@@ -20,7 +20,7 @@ func SliceEquals(a: char8[..], b: char8[..]) -> bool {
 func Main() -> int {
     // The location is one-based, so both coordinates sit past zero.
     Assert(#source.line > 0, "line");
-    Assert(#source.column > 0, "column");
+    Assert(#source.column == 12, "column is that of the reading expression's first character");
 
     // The file name and the name of the function reading the value are what the
     // compiler reports, exactly.

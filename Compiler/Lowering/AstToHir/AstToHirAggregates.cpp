@@ -316,7 +316,9 @@ HirExprPtr AstToHirContext::LowerCompilerParamIdentifier(const IdentExpr &expres
 
 HirExprPtr AstToHirContext::LowerCompilerParamFieldExpression(const FieldExpr &expression) {
     if (const auto root = CompilerParamRoot(*expression.object)) {
-        return LowerCompilerParamField(*root, expression.field, expression.location);
+        // The reading expression starts at its `#` root, not at the `.` before the field, which is where `#source`
+        // reports its column.
+        return LowerCompilerParamField(*root, expression.field, expression.object->location);
     }
     return nullptr;
 }

@@ -740,7 +740,9 @@ documents in lessons are therefore built line by line with a `StringBuilder`.
 - **Actual:** `expected a module path segment after '::' before '#'`, followed by three cascading
   errors. `Docs/NativeOutcomes.md` lists this as a pitfall; it would be better fixed.
 
-## D43. `#source.column` reports the column of `.column`, not of the expression
+## D43. `#source.column` reports the column of `.column`, not of the expression (fixed)
+
+**Fixed**; covered by `ConditionalEvaluationTests.cpp` and `Tests/Packages/Core/Source`.
 
 - **Reproducer:** `    let column = #source.column;`, where the `#` is at column 18.
 - **Expected:** `18`. Core documents the value as "the one-based column of the reading
