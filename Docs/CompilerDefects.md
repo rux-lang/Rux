@@ -5,7 +5,9 @@ minimal reproducer, the expected and actual behaviour, and the course lesson tha
 Compiler identity: `Rux 0.4.0 (2026-10-04 14:40:27 UTC)`, source `680ef68c`, Windows x86-64.
 An entry is marked **Fixed**, with its regression coverage, once a test covers its fix.
 
-## D1. Literal `match` arms ignore the expected type
+## D1. Literal `match` arms ignore the expected type (fixed)
+
+**Fixed**; covered by `Tests/Language/ExpectedTypeLiterals`.
 
 ```rux
 func F(b: bool) -> int32 {

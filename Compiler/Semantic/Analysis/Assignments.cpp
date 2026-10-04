@@ -159,11 +159,14 @@ bool AnalysisContext::CanAssignExprTo(const Expr &expr, const TypeRef &exprType,
         }
     }
 
-    // A match reaches a native expected type arm by arm, the way a ternary does, so `none` in one arm and `.Some(v)`
-    // in another both take the expected type. The match then has that type: converting its provisional type as a
-    // whole would treat an open `opaque?` as absence whichever arm ran.
+    // A match reaches a native or scalar expected type arm by arm, the way a ternary does, so `none` in one arm and
+    // `.Some(v)` in another both take the expected type, as does an unsuffixed `0` taking `int32`. The match then has
+    // that type: converting its provisional type as a whole would treat an open `opaque?` as absence whichever arm ran,
+    // and would read a literal arm at the default `int` width.
     if (const auto *match = dynamic_cast<const MatchExpr *>(&expr);
-        match && !targetType.IsUnknown() && (MentionsNativeType(targetType) || exprType.MentionsIncompleteNative())) {
+        match && !targetType.IsUnknown() &&
+        (MentionsNativeType(targetType) || exprType.MentionsIncompleteNative() || targetType.IsNumeric() ||
+         targetType.IsBool() || targetType.IsChar())) {
         bool accepted = true;
         for (const auto &arm : match->arms) {
             if (IsDivergingExpression(*arm.body)) {

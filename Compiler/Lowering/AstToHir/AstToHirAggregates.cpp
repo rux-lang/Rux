@@ -959,10 +959,24 @@ HirExprPtr AstToHirContext::LowerAggregateExpr(const Expr &expression) {
             patternBindingsOwnPayload = armsOwnPayload;
             loweredArm.pattern = LowerPattern(*arm.pattern, lowered->subject->type);
             patternBindingsOwnPayload = savedOwnership;
-            // An arm converts to the match's type the way analysis accepted it; a diverging arm yields nothing.
-            loweredArm.body = IsNativeType(lowered->type) && !dynamic_cast<const DivergeExpr *>(arm.body.get())
-                                ? LowerExprAs(*arm.body, lowered->type)
-                                : LowerExpr(*arm.body);
+            // An arm converts to the match's type the way analysis accepted it, which materializes a contextual
+            // literal at that width; a diverging arm yields nothing.
+            const bool scalar = lowered->type.IsNumeric() || lowered->type.IsBool() || lowered->type.IsChar();
+            if ((IsNativeType(lowered->type) || scalar) && !dynamic_cast<const DivergeExpr *>(arm.body.get())) {
+                loweredArm.body = LowerExprAs(*arm.body, lowered->type);
+                if (scalar && loweredArm.body->type != lowered->type && loweredArm.body->type.IsNumeric() &&
+                    lowered->type.IsNumeric()) {
+                    auto cast = std::make_unique<HirCastExpr>();
+                    cast->location = arm.body->location;
+                    cast->type = lowered->type;
+                    cast->targetType = lowered->type;
+                    cast->operand = std::move(loweredArm.body);
+                    loweredArm.body = std::move(cast);
+                }
+            }
+            else {
+                loweredArm.body = LowerExpr(*arm.body);
+            }
             loweredArm.cleanups = CurrentScopeCleanups();
             PopScope();
             lowered->arms.push_back(std::move(loweredArm));
