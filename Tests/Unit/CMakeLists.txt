@@ -147,6 +147,7 @@ set(RUX_TEST_SOURCES
     ReportingTests.cpp
     RcuModuleBuilderTests.cpp
     RcuTests.cpp
+    RuntimeCheckLoweringTests.cpp
     RuntimeFailureTests.cpp
     SemanticCoalescingDiagnosticsTests.cpp
     RegistryTests.cpp

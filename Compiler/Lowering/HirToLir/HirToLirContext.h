@@ -186,6 +186,9 @@ private:
     LirReg LowerPostfix(const HirPostfixExpr &expression);
     LirReg LowerUnary(const HirUnaryExpr &expression);
     LirReg LowerBinary(const HirBinaryExpr &expression);
+    /// Traps before an integer `/` or `%` whose divisor is zero, or whose signed quotient does not fit its type.
+    void EmitDivisionChecks(LirReg dividend, LirReg divisor, const HirExpr &divisorExpr, const TypeRef &type,
+                            const SourceLocation &location);
     LirReg LowerVariantEquality(const HirVariantEqualityExpr &expression);
     LirReg LowerAggregateEquality(const HirAggregateEqualityExpr &expression);
     LirReg EqualityOperandStorage(const HirExpr &operand, const TypeRef &type);

@@ -143,7 +143,9 @@ func Main() -> int {
 - **Actual:** `cannot assign 'opaque' to 'int32'`. The diagnostic names an internal type, as in
   D6.
 
-## D8. Integer division by zero ends the program silently with exit code 127
+## D8. Integer division by zero ends the program silently with exit code 127 (fixed)
+
+**Fixed**; covered by `RuntimeCheckLoweringTests.cpp`.
 
 - **Reproducer:** `var d = 0; let q = 10 / d;`, executed at run time.
 - **Expected:** a panic-style message naming the division by zero, as a failed `Assert` gives.

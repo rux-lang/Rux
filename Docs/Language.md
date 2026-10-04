@@ -16,6 +16,10 @@ Generic function calls may omit type arguments when the argument types determine
 
 Struct literals can appear inside parenthesized expressions and call arguments within conditions. An ordinary unparenthesized condition still leaves its following brace to the statement body.
 
+## Integer Division
+
+Integer `/` and `%`, and the compound `/=` and `%=`, stop the program when the divisor is zero, on every target and in every build profile. The report has the shape a `Panic` call prints — `Panic: division by zero` followed by the function, file, line, and column of the operator — and nothing is unwound. A signed division whose quotient does not fit its type, the type's minimum divided by `-1`, stops the same way with `Panic: division overflow`; the matching `%` is held to the same rule, because the machine instruction that computes it fails on the same operands. A divisor written as a nonzero literal needs no zero check, a release build removes a check whose operands it knows to pass, and constant folding never folds a division by zero away.
+
 ## Return and Deferred Cleanup
 
 A `return expr;` evaluates and preserves `expr` exactly once before running deferred statements. The accepted copy or move into the return value happens during this evaluation. Later changes to source locals do not change the captured value, including fields of an aggregate; a returned pointer still points to its original storage.

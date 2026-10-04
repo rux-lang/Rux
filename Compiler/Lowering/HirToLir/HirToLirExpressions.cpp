@@ -3,10 +3,93 @@
 #include "Lowering/HirToLir/HirToLirContext.h"
 
 #include <cassert>
+#include <cstdint>
 #include <format>
+#include <optional>
+#include <string>
+#include <string_view>
 #include <utility>
 
 namespace Rux::HirToLirDetail {
+
+namespace {
+/// What the spelling of a divisor already settles: whether it is not zero, and whether it is minus one. Only a plain
+/// decimal literal of the operation's own type, possibly negated, is read; anything else is answered at run time,
+/// where a release build still folds a check whose operands became constant.
+struct KnownDivisor {
+    bool nonZero = false;
+    bool minusOne = false;
+};
+
+std::optional<KnownDivisor> KnownDivisorOf(const HirExpr &divisor, const TypeRef &type) {
+    if (divisor.type != type) {
+        return std::nullopt;
+    }
+    const HirExpr *operand = &divisor;
+    bool negative = false;
+    if (const auto *unary = dynamic_cast<const HirUnaryExpr *>(operand); unary && unary->op == TokenKind::Minus) {
+        negative = true;
+        operand = unary->operand.get();
+    }
+    const auto *literal = dynamic_cast<const HirLiteralExpr *>(operand);
+    if (!literal) {
+        return std::nullopt;
+    }
+    std::string_view text = literal->value;
+    if (text.starts_with('-')) {
+        negative = !negative;
+        text.remove_prefix(1);
+    }
+    std::string digits;
+    for (const char c : text) {
+        if (c == '_') {
+            continue;
+        }
+        if (c < '0' || c > '9') {
+            return std::nullopt;
+        }
+        if (c != '0' || !digits.empty()) {
+            digits.push_back(c);
+        }
+    }
+    return KnownDivisor{.nonZero = !digits.empty(), .minusOne = negative && digits == "1"};
+}
+
+/// The most negative value of a signed integer type, spelled as a literal a `const` instruction of that type accepts.
+std::string SignedMinimumLiteral(const TypeRef &type) {
+    const std::uint64_t bits = type.SizeInBytes().value_or(8) * 8;
+    if (bits <= 64) {
+        return "-" + std::to_string(std::uint64_t{1} << (bits - 1));
+    }
+    return "-0x8" + std::string(static_cast<std::size_t>(bits / 4 - 1), '0');
+}
+} // namespace
+
+void HirToLirContext::EmitDivisionChecks(const LirReg dividend, const LirReg divisor, const HirExpr &divisorExpr,
+                                         const TypeRef &type, const SourceLocation &location) {
+    if (!type.IsInteger()) {
+        return;
+    }
+    const auto known = KnownDivisorOf(divisorExpr, type);
+    if (!known || !known->nonZero) {
+        const LirReg nonZero = EmitBinary(LirOpcode::CmpNe, divisor, EmitConst("0", type), TypeRef::MakeBool());
+        EmitTrapUnless(nonZero, "division by zero", location);
+    }
+    // The one signed quotient that does not fit its type, which x86-64 also faults on rather than wrapping. Its
+    // remainder is zero mathematically, but the instruction that would compute it faults the same way, so `%` is held
+    // to the same rule.
+    if (type.IsSigned() && (!known || known->minusOne)) {
+        const std::uint32_t minusOne = NewBlock("div.minus_one");
+        const std::uint32_t safe = NewBlock("div.safe");
+        Branch(EmitBinary(LirOpcode::CmpEq, divisor, EmitConst("-1", type), TypeRef::MakeBool()), minusOne, safe);
+        SetBlock(minusOne);
+        const LirReg fits =
+            EmitBinary(LirOpcode::CmpNe, dividend, EmitConst(SignedMinimumLiteral(type), type), TypeRef::MakeBool());
+        EmitTrapUnless(fits, "division overflow", location);
+        Jump(safe);
+        SetBlock(safe);
+    }
+}
 
 LirReg HirToLirContext::LowerExprValue(const HirExpr &expr) {
     if (auto *e = dynamic_cast<const HirLiteralExpr *>(&expr)) {
@@ -498,6 +581,9 @@ LirReg HirToLirContext::LowerBinary(const HirBinaryExpr &e) {
         return EmitPointerOffset(rhs, lhs, e.type);
     }
 
+    if (e.op == TK::Slash || e.op == TK::Percent) {
+        EmitDivisionChecks(lhs, rhs, *e.right, e.type, e.location);
+    }
     return EmitBinary(RequireOpcode(CheckedLirBuilder::BinaryOpcode(e.op)), lhs, rhs, e.type);
 }
 
@@ -527,12 +613,14 @@ LirReg HirToLirContext::LowerAssign(const HirAssignExpr &e) {
         }
         else {
             // The same widening the binary form does: `wide += 1` computes at the place's width, not the literal's.
-            val = EmitBinary(RequireOpcode(CheckedLirBuilder::CompoundOpcode(e.op)), current,
-                             e.op == TokenKind::LessLessAssign || e.op == TokenKind::GreaterGreaterAssign ||
-                                     e.op == TokenKind::GreaterGreaterGreaterAssign
-                                 ? val
-                                 : EmitCastIfNeeded(val, e.value->type, e.type),
-                             e.type);
+            const LirReg operand = e.op == TokenKind::LessLessAssign || e.op == TokenKind::GreaterGreaterAssign ||
+                                           e.op == TokenKind::GreaterGreaterGreaterAssign
+                                     ? val
+                                     : EmitCastIfNeeded(val, e.value->type, e.type);
+            if (e.op == TokenKind::SlashAssign || e.op == TokenKind::PercentAssign) {
+                EmitDivisionChecks(current, operand, *e.value, e.type, e.location);
+            }
+            val = EmitBinary(RequireOpcode(CheckedLirBuilder::CompoundOpcode(e.op)), current, operand, e.type);
         }
     }
     else {
