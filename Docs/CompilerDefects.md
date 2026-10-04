@@ -3,7 +3,7 @@
 Open defects found while writing the example course in `D:\Work\Examples`. Each entry has a
 minimal reproducer, the expected and actual behaviour, and the course lesson that works around it.
 Compiler identity: `Rux 0.4.0 (2026-10-04 14:40:27 UTC)`, source `680ef68c`, Windows x86-64.
-Remove an entry once a regression test covers its fix.
+An entry is marked **Fixed**, with its regression coverage, once a test covers its fix.
 
 ## D1. Literal `match` arms ignore the expected type
 
@@ -43,6 +43,24 @@ func Main() -> int {
   `let tokens: Token[3] = [Number { ... }, Plus {}, Minus {}];` is rejected too.
 - **Course workaround:** `SumTypes/Is` binds each element first (`let a: Token = ...;`) and builds
   the array from those names.
+
+## D3. The help for an ungrouped sum after `is` names a placeholder instead of the member (fixed)
+
+**Fixed**; covered by `NativePatternSemanticsTests.cpp`.
+
+```rux
+func Main() -> int {
+    let x: int32 | bool = 1i32;
+    let ok = x is int32 | bool;
+    return 0;
+}
+```
+
+- **Expected:** `error: a sum type after 'is' must be grouped` with the help line
+  `write 'value is (int32 | bool)'`.
+- **Actual:** the help line reads `write 'value is (A | bool)'`. The left member is printed as
+  the placeholder `A`.
+- **Course workaround:** `SumTypes/Is` quotes only the error line.
 
 ## D4. A slice-typed `match` expression with a diverging arm produces invalid LIR
 
@@ -98,6 +116,23 @@ func Main() -> int {
   `'int ! DigitError | RangeError'`. Without the parentheses, it reads as a different grouping.
 - Using a unit function without `#NoReturn` as a match arm reports `expected 'int', found
   'opaque'`. The found type should read `()`.
+## D7. Chained assignment reports an internal "opaque" type (fixed)
+
+**Fixed**; covered by the `SemanticOperatorsAndAssignments` golden.
+
+```rux
+func Main() -> int {
+    var a: int32 = 1;
+    var b: int32 = 2;
+    a = b = 7;
+    return 0;
+}
+```
+
+- **Expected:** an error saying that an assignment produces no value and cannot be chained.
+- **Actual:** `cannot assign 'opaque' to 'int32'`. The diagnostic names an internal type, as in
+  D6.
+
 ## D8. Integer division by zero ends the program silently with exit code 127
 
 - **Reproducer:** `var d = 0; let q = 10 / d;`, executed at run time.
@@ -124,6 +159,20 @@ func Main() -> int {
 - **Actual:** `false`, with exit code 0. The literal tuple seems to stay `(int, …)` and is
   compared at the wrong width. It is wrong only when a typed member is not `int`.
 - **Course workaround:** `Sequences/Tuple` compares against a typed binding.
+
+## D10. Chained tuple indexes do not parse (fixed)
+
+**Fixed**; covered by `LexerTests.cpp` and `Tests/Language/Tuple`.
+
+```rux
+let nested = ((1, 2), 3);
+PrintLine("{}", nested.0.1);
+```
+
+- **Expected:** prints `2`.
+- **Actual:** a parse error, `expected a field name or tuple index after '.' before '0.1'`. The
+  lexer reads `0.1` as a float literal. `(nested.0).1` works.
+- **Course workaround:** `Sequences/Tuple` binds the inner tuple first.
 
 ## D11. A default argument that names an earlier parameter reads uninitialised memory
 
@@ -261,6 +310,15 @@ let r = match b { true => 10i32 };
 - **Course workaround:** `Patterns/Exhaustive` always writes `else` and does not claim that the
   compiler checks integer matches.
 
+## D20. A guard after a range pattern does not parse (fixed)
+
+**Fixed**; covered by `Tests/Language/Match`.
+
+- **Reproducer:** `match n { 1..=9 if flag => "a", else => "b" }`.
+- **Actual:** `expected '=>' after the match arm pattern before 'if'`, followed by cascading errors.
+- **Notes:** `ParsePatternImpl` in `Compiler/Syntax/Parser/ParserExpr.cpp` checks for a guard
+  before it parses the range.
+
 ## D21. A literal inside a variant field pattern reports the wrong construct
 
 - **Reproducer:** `.Circle { radius: 0 } => ...` as a match arm.
@@ -310,6 +368,9 @@ func Main() -> int {
 - **`Io` placeholders.** `PrintLine("{{}}")` with no arguments prints `{{}}` literally, but with
   arguments `{{` collapses to `{`. A placeholder count mismatch, such as `PrintLine("{} {}", 1)`,
   prints nothing; the failure is reported only through the returned `IoError?`.
+- **`///` inside a function body** is refused with `expected an expression before '/// …'`. A
+  diagnostic saying documentation comments attach only to declarations would be clearer.
+  **Fixed**; covered by the `DocumentationInBlock` golden.
 - **Out-of-range float-to-integer conversion is unspecified in `Docs/Language.md`.**
   `1e20 as int32` gives `0`, while `1e20 as int64` gives `int64::Min`.
 ## D24. A tuple literal converted into an optional, fallible or sum holds garbage
@@ -658,6 +719,15 @@ documents in lessons are therefore built line by line with a `StringBuilder`.
 - **Course impact:** `CompileTime/BuildMode` uses the `when` form, and breaks if the leak is
   closed without making the field `pub`.
 
+## D42. A single-item import of a `#` name does not parse (fixed)
+
+**Fixed**; covered by `Tests/Language/Int`.
+
+- **Reproducer:** `import Core::#source;`.
+- **Expected:** accepted, the same as `import Core::{ #source };`.
+- **Actual:** `expected a module path segment after '::' before '#'`, followed by three cascading
+  errors. `Docs/NativeOutcomes.md` lists this as a pitfall; it would be better fixed.
+
 ## D43. `#source.column` reports the column of `.column`, not of the expression
 
 - **Reproducer:** `    let column = #source.column;`, where the `#` is at column 18.
@@ -697,6 +767,17 @@ the start of the call.
 **Stale test:** the TODO in `Tests/Packages/Core/Config/Src/Main.rux` says `#config.Has` and
 `#config.Get` crash with 0xC0000139. They now work in executables, so that test body can be
 re-enabled.
+## D47. The AArch64 assembler rejects the `ble` spelling of `b.le` (fixed)
+
+**Fixed**; covered by `AArch64AssemblerTests.cpp`, `AsmParserTests.cpp` and `Tests/Language/AsmAArch64`.
+
+- **Reproducer:** `asm func F(n: int64) -> int64 { cmp x0, #0 \n ble done \n done: \n ret }` inside
+  `when #target.arch { .AArch64 => {...}, else => {} }`, built with
+  `rux build --target linux-aarch64`.
+- **Expected:** builds. GNU as and LLVM accept `ble` as an alias of `b.le`.
+- **Actual:** `unknown instruction 'ble'; did you mean 'bl'?`.
+- **Course workaround:** `Platform/AsmArm` writes `b.le`.
+
 Related to D40: a `var int[..]` view, or a `buffer[..n]` view taken from a `*var char8`, is
 refused by `PrintLine`'s `{}` arguments in the same way as a writable `char8[..]`.
 
