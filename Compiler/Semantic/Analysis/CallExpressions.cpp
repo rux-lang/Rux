@@ -628,6 +628,14 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
                         for (const auto &typeArg : e->typeArgs) {
                             typeArgs.push_back(ResolveType(*typeArg));
                         }
+                        // With no type arguments written, an annotation or return type naming an instantiation of this
+                        // variant supplies them, so `let b: Reading<int32> = Reading::Exact(7)` gives `7` the type
+                        // `int32` instead of deducing `Reading<int>` from it.
+                        if (typeArgs.empty()) {
+                            if (auto expected = ExpectedCaseTypeArguments(*e, decl)) {
+                                typeArgs = std::move(*expected);
+                            }
+                        }
                         if (typeArgs.size() < decl.typeParams.size()) {
                             std::unordered_map<std::string, TypeRef> substitutions;
                             for (std::size_t i = 0; i < typeArgs.size(); ++i) {

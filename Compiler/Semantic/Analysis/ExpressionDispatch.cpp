@@ -87,6 +87,10 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
                     if (!variant->fields.empty() || !variant->namedFields.empty()) {
                         return EnumVariantConstructorType(*resolved->declaration, *variant);
                     }
+                    // A unit case of a generic variant takes its type arguments from where it goes.
+                    if (auto expected = ExpectedCaseTypeArguments(*e, *resolved->declaration)) {
+                        return EnumType(*resolved->declaration, *expected);
+                    }
                     return EnumType(*resolved->declaration);
                 }
             }

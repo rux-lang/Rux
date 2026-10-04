@@ -887,6 +887,10 @@ private:
     void RecordExternBinding(const CallExpr &call, const ExternFuncDecl &declaration);
     /// The element type the destination of `array` fixes, when it fixes one its elements can be converted to.
     [[nodiscard]] std::optional<TypeRef> ExpectedArrayElementType(const ArrayExpr &array) const;
+    /// The type arguments of a generic variant case written without them, when its destination names an instantiation
+    /// of the same variant.
+    [[nodiscard]] std::optional<std::vector<TypeRef>> ExpectedCaseTypeArguments(const Expr &expression,
+                                                                                const EnumDecl &declaration);
     [[nodiscard]] std::string GenericStructInitName(const StructInitExpr &expression);
     [[nodiscard]] std::pair<const EnumDecl *, const EnumDecl::Variant *>
     LookupEnumVariantInitializer(const std::string &typeName) const;

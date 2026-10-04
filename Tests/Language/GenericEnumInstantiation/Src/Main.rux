@@ -45,9 +45,36 @@ func Hold(counter: *var int32) {
     }
 }
 
+// A case written without type arguments takes them from where the value goes.
+variant Reading<T> {
+    Exact(T),
+    Missing
+}
+
+func ReadingValue(reading: Reading<int32>) -> int32 {
+    return match reading {
+        Reading::Exact(value) => value,
+        Reading::Missing => -1i32
+    };
+}
+
+func MakeReading(present: bool) -> Reading<int32> {
+    if present {
+        return Reading::Exact(9);
+    }
+    return Reading::Missing;
+}
+
 func Main() -> int {
     var counter = 0i32;
     Hold(@counter);
     Assert(counter == 1i32, "a generic variant payload receives destruction glue after substitution");
+
+    let exact: Reading<int32> = Reading::Exact(7);
+    let missing: Reading<int32> = Reading::Missing;
+    Assert(ReadingValue(exact) == 7i32, "an annotation supplies a case constructor's type arguments");
+    Assert(ReadingValue(missing) == -1i32, "and a unit case's");
+    Assert(ReadingValue(MakeReading(true)) == 9i32 && ReadingValue(MakeReading(false)) == -1i32,
+           "and so does a return type");
     return 0;
 }

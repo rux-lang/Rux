@@ -239,6 +239,23 @@ std::optional<TypeRef> AnalysisContext::IndexElementType(const TypeRef &type) {
     return std::nullopt;
 }
 
+std::optional<std::vector<TypeRef>> AnalysisContext::ExpectedCaseTypeArguments(const Expr &expression,
+                                                                               const EnumDecl &declaration) {
+    if (declaration.typeParams.empty()) {
+        return std::nullopt;
+    }
+    const auto expected = expectedExpressionTypes.find(&expression);
+    if (expected == expectedExpressionTypes.end() || expected->second.kind != TypeRef::Kind::Named ||
+        BaseTypeName(expected->second.name) != BaseTypeName(EnumType(declaration).name)) {
+        return std::nullopt;
+    }
+    std::vector<TypeRef> arguments = ParseTypeArgsFromTypeName(expected->second.name);
+    if (arguments.size() != declaration.typeParams.size()) {
+        return std::nullopt;
+    }
+    return arguments;
+}
+
 std::optional<TypeRef> AnalysisContext::ExpectedArrayElementType(const ArrayExpr &array) const {
     const auto expected = expectedExpressionTypes.find(&array);
     if (expected == expectedExpressionTypes.end() || array.elements.empty()) {

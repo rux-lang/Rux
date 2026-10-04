@@ -435,7 +435,9 @@ func Main() -> int {
   `T[..]` parameter is refused the same way. `let view: int32?[..] = readings;` and
   `Plain(readings[..])` both work.
 
-## D26. An annotation does not reach a generic variant's case constructor
+## D26. An annotation does not reach a generic variant's case constructor (fixed)
+
+**Fixed**; covered by `Tests/Language/GenericEnumInstantiation`.
 
 - **Reproducer:** `variant Reading<T> { Exact(T), Missing }`, then
   `let b: Reading<int32> = Reading::Exact(7);`.

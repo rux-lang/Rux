@@ -881,7 +881,8 @@ HirExprPtr AstToHirContext::LowerAggregateExpr(const Expr &expression) {
                         auto lowered = std::make_unique<HirEnumConstructExpr>();
                         lowered->location = path->location;
                         lowered->form = CaseTypeForm::Variant;
-                        lowered->type = EnumType(declaration);
+                        // A generic unit case has the instantiation analysis gave it from its destination.
+                        lowered->type = pathType.kind == TypeRef::Kind::Named ? pathType : EnumType(declaration);
                         lowered->discriminant = *discriminant;
                         return lowered;
                     }
