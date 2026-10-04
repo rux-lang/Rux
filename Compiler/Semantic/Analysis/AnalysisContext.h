@@ -831,9 +831,20 @@ private:
     [[nodiscard]] const FuncDecl *LookupInterfaceMethod(const TypeRef &receiverType,
                                                         const std::string &methodName) const;
 
-    /// Whether any written type of `method` names `Self`, which is what makes it callable only where the implementing
-    /// type is known.
+    /// Whether any written type of `method` other than its receiver names `Self`, which is what makes it callable only
+    /// where the implementing type is known. The receiver is the data half of the interface value, so `self: &Self`
+    /// pairs it with nothing.
     [[nodiscard]] static bool InterfaceMethodMentionsSelf(const FuncDecl &method);
+    /// Whether an interface requirement writes through its receiver. A requirement declaring `self: &var Self` does;
+    /// one declaring no receiver or `self: &Self` only reads it.
+    [[nodiscard]] static bool RequirementWritesReceiver(const FuncDecl &requirement);
+    /// Whether a method's declared receiver is written `&var T` or `*var T`.
+    [[nodiscard]] static bool DeclaresWritableReceiver(const FuncDecl &method);
+    /// Rejects a requirement receiver other than `self: &Self` or `self: &var Self`.
+    void ValidateRequirementReceiver(const FuncDecl &requirement, const std::string &interfaceName);
+    /// Rejects an implementation whose receiver is writable where the requirement it satisfies only reads.
+    void CheckImplementationReceiver(const FuncDecl &implementation, const FuncDecl &requirement,
+                                     const std::string &interfaceName, const std::string &typeName);
     /// An interface method's written types, with `Self` standing for `selfType`.
     ///
     /// An interface cannot name the type implementing it any other way -- there are no generic interfaces -- so a
@@ -932,6 +943,14 @@ private:
     void CheckMutability(const Expr &target);
     [[nodiscard]] bool CheckReceiverMutability(const CallExpr &call, const Expr &receiver, const TypeRef &receiverType,
                                                const FuncDecl &method);
+    /// The check `CheckReceiverMutability` applies once a method is known to write through `declared`: a reference or
+    /// pointer receiver has to be writable, and a receiver named as a place has to be a writable place.
+    [[nodiscard]] bool CheckWritableReceiver(const CallExpr &call, const Expr &receiver, const TypeRef &receiverType,
+                                             const std::string &methodName, const std::string &declared);
+    /// A call of an interface requirement that declares `self: &var Self`, through an interface view or a bounded
+    /// generic receiver, needs a receiver it may write.
+    [[nodiscard]] bool CheckRequirementReceiverMutability(const CallExpr &call, const Expr &receiver,
+                                                          const TypeRef &receiverType, const FuncDecl &requirement);
     /// The receiver the method declares, resolved for this call's receiver type. Empty for an associated function,
     /// which takes none.
     [[nodiscard]] std::optional<TypeRef> ResolveMethodReceiverType(const TypeRef &receiverType, const FuncDecl &method);

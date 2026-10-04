@@ -105,7 +105,7 @@ extend FixedBufferHandle : Allocator {
     /// @param layout the size and alignment wanted
     /// @returns the address of the storage, or why none was taken
     /// @see https://rux-lang.dev/docs/api/allocator/fixed-buffer-handle/allocate
-    pub func Allocate(self: &var FixedBufferHandle, layout: Layout) -> (*var opaque) ! AllocError {
+    pub func Allocate(self: &FixedBufferHandle, layout: Layout) -> (*var opaque) ! AllocError {
         if layout.size == 0 {
             return EmptyBlockAddress();
         }
@@ -132,7 +132,7 @@ extend FixedBufferHandle : Allocator {
     /// @param layout the layout it was allocated with
     /// @returns nothing when the release was accepted, or why it was refused
     /// @see https://rux-lang.dev/docs/api/allocator/fixed-buffer-handle/deallocate
-    pub func Deallocate(self: &var FixedBufferHandle, block: *var opaque, layout: Layout) -> ! AllocError {
+    pub func Deallocate(self: &FixedBufferHandle, block: *var opaque, layout: Layout) -> ! AllocError {
         if layout.size == 0 { if !IsEmptyBlock(block) { fail AllocError::InvalidBlock; } return; }
         if block == null { fail AllocError::InvalidBlock; }
         let address = block as uint;
@@ -155,7 +155,7 @@ extend FixedBufferHandle : Allocator {
     /// @param newLayout the layout wanted, which must have the same alignment
     /// @returns the address the block is at afterwards, or why it was not resized
     /// @see https://rux-lang.dev/docs/api/allocator/fixed-buffer-handle/reallocate
-    pub func Reallocate(self: &var FixedBufferHandle, block: *var opaque, oldLayout: Layout, newLayout: Layout)
+    pub func Reallocate(self: &FixedBufferHandle, block: *var opaque, oldLayout: Layout, newLayout: Layout)
         -> (*var opaque) ! AllocError {
         if oldLayout.alignment != newLayout.alignment { fail AllocError::Unsupported; }
         if oldLayout.size == newLayout.size {

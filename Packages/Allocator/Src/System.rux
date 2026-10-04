@@ -69,7 +69,7 @@ extend SystemAllocator : Allocator {
     /// @param layout the size and alignment wanted
     /// @returns the address of the storage, or why none was taken
     /// @see https://rux-lang.dev/docs/api/allocator/system-allocator/allocate
-    pub func Allocate(self: &var SystemAllocator, layout: Layout) -> (*var opaque) ! AllocError {
+    pub func Allocate(self: &SystemAllocator, layout: Layout) -> (*var opaque) ! AllocError {
         if layout.size == 0 {
             return EmptyBlockAddress();
         }
@@ -110,7 +110,7 @@ extend SystemAllocator : Allocator {
     /// @param layout the layout it was allocated with
     /// @returns nothing when the release was accepted, or why it was refused
     /// @see https://rux-lang.dev/docs/api/allocator/system-allocator/deallocate
-    pub func Deallocate(self: &var SystemAllocator, block: *var opaque, layout: Layout) -> ! AllocError {
+    pub func Deallocate(self: &SystemAllocator, block: *var opaque, layout: Layout) -> ! AllocError {
         if layout.size == 0 { if !IsEmptyBlock(block) { fail AllocError::InvalidBlock; } return; }
         if block == null || IsEmptyBlock(block) { fail AllocError::InvalidBlock; }
 
@@ -133,7 +133,7 @@ extend SystemAllocator : Allocator {
     /// @param newLayout the layout wanted, which must have the same alignment
     /// @returns the address the block is at afterwards, or why it was not resized
     /// @see https://rux-lang.dev/docs/api/allocator/system-allocator/reallocate
-    pub func Reallocate(self: &var SystemAllocator, block: *var opaque, oldLayout: Layout, newLayout: Layout)
+    pub func Reallocate(self: &SystemAllocator, block: *var opaque, oldLayout: Layout, newLayout: Layout)
         -> (*var opaque) ! AllocError {
         if oldLayout.alignment != newLayout.alignment { fail AllocError::Unsupported; }
         if oldLayout.size == newLayout.size {

@@ -473,7 +473,9 @@ func Main() -> int {
     provided`
   - nine spurious `type 'T' is not defined in this scope` errors at the declaration
   - `struct 'Pair' has no field 'first'` and the same for `'second'`
-## D28. A mutating interface method can be called through a read-only borrow
+## D28. A mutating interface method can be called through a read-only borrow (fixed)
+
+**Fixed**; covered by `Tests/Language/InterfaceReceivers`, the `InterfaceReceiverMutability` golden, and `InterfaceReferenceTests.cpp`.
 
 ```rux
 interface Gauge { func Adjust(amount: int32); }

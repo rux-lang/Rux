@@ -19,7 +19,7 @@ pub interface RandomGenerator {
     /// The next 64-bit word, and the state advanced past it.
     /// @returns the next 64 bits
     /// @see https://rux-lang.dev/docs/api/random/random-generator/next-uint64
-    func NextUint64(self: &var RandomGenerator) -> uint64;
+    func NextUint64(self: &var Self) -> uint64;
 }
 
 /// The seeding generator: a fast mixer with a 64-bit state, used to spread one seed over a larger one.

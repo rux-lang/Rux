@@ -152,17 +152,24 @@ bool AnalysisContext::CheckReceiverMutability(const CallExpr &call, const Expr &
     if (!requiresWrite) {
         return true;
     }
+    return CheckWritableReceiver(call, receiver, receiverType, method.name, declared->ToString());
+}
+
+bool AnalysisContext::CheckWritableReceiver(const CallExpr &call, const Expr &receiver, const TypeRef &receiverType,
+                                            const std::string &methodName, const std::string &declared) {
     if (receiverType.kind == TypeRef::Kind::Pointer || receiverType.kind == TypeRef::Kind::Reference) {
         if (!receiverType.inner.empty() && !receiverType.inner.front().isMut) {
             const bool isReferenceType = receiverType.kind == TypeRef::Kind::Reference;
+            TypeRef writable = receiverType;
+            writable.inner.front().isMut = true;
             EmitError(
                 call.location,
-                isReferenceType ? std::format("cannot call '{}' through immutable reference '{}'", method.name,
+                isReferenceType ? std::format("cannot call '{}' through immutable reference '{}'", methodName,
                                               receiverType.ToString())
-                                : std::format("cannot call '{}' through read-only pointer '{}'", method.name,
+                                : std::format("cannot call '{}' through read-only pointer '{}'", methodName,
                                               receiverType.ToString()),
-                {std::format("'{}' declares a writable receiver '{}'", method.name, declared->ToString())},
-                std::format("declare the {} as '{}'", isReferenceType ? "reference" : "pointer", declared->ToString()));
+                {std::format("'{}' declares a writable receiver '{}'", methodName, declared)},
+                std::format("declare the {} as '{}'", isReferenceType ? "reference" : "pointer", writable.ToString()));
             return false;
         }
         return true;
@@ -172,11 +179,69 @@ bool AnalysisContext::CheckReceiverMutability(const CallExpr &call, const Expr &
     }
     const auto *identifier = dynamic_cast<const IdentExpr *>(&receiver);
     EmitError(call.location,
-              identifier ? std::format("cannot call '{}' on immutable '{}'", method.name, identifier->name)
-                         : std::format("cannot call '{}' on an immutable receiver", method.name),
-              {std::format("'{}' declares a writable receiver '{}'", method.name, declared->ToString())},
+              identifier ? std::format("cannot call '{}' on immutable '{}'", methodName, identifier->name)
+                         : std::format("cannot call '{}' on an immutable receiver", methodName),
+              {std::format("'{}' declares a writable receiver '{}'", methodName, declared)},
               identifier ? std::format("declare '{}' with 'var' to make it mutable", identifier->name)
                          : std::optional<std::string>{});
     return false;
+}
+
+/// An interface value is borrowed or held whole, and its requirement decides what the call may do with it: one that
+/// declares `self: &var Self` writes the implementing value, so the view or storage it is called through has to be
+/// writable, exactly as for a concrete receiver.
+bool AnalysisContext::CheckRequirementReceiverMutability(const CallExpr &call, const Expr &receiver,
+                                                         const TypeRef &receiverType, const FuncDecl &requirement) {
+    if (!RequirementWritesReceiver(requirement)) {
+        return true;
+    }
+    return CheckWritableReceiver(call, receiver, receiverType, requirement.name, "&var Self");
+}
+
+/// A requirement is called through an interface view whose data half points at the implementing value, so its
+/// receiver can only be a borrow of that value: `&Self` to read it or `&var Self` to write it.
+void AnalysisContext::ValidateRequirementReceiver(const FuncDecl &requirement, const std::string &interfaceName) {
+    const Param *receiver = requirement.Receiver();
+    if (!receiver || !receiver->type || dynamic_cast<const SelfTypeExpr *>(receiver->type.get())) {
+        return;
+    }
+    // A legacy pointer receiver, and `self` written as the type, still name the implementing value during migration.
+    const TypeExpr *pointee = nullptr;
+    if (const auto *reference = dynamic_cast<const ReferenceTypeExpr *>(receiver->type.get())) {
+        pointee = reference->pointee.get();
+    }
+    else if (const auto *pointer = dynamic_cast<const PointerTypeExpr *>(receiver->type.get())) {
+        pointee = pointer->pointee.get();
+    }
+    const auto *named = dynamic_cast<const NamedTypeExpr *>(pointee);
+    if (dynamic_cast<const SelfTypeExpr *>(pointee) ||
+        (named && named->name == SelfTypeName && named->typeArgs.empty())) {
+        return;
+    }
+    EmitError(receiver->location,
+              std::format("receiver of requirement '{}' in interface '{}' must be '&Self' or '&var Self'",
+                          requirement.name, interfaceName),
+              {"a requirement reaches the implementing value through the data half of an interface view"},
+              std::format("write 'self: &var Self' if '{}' writes through its receiver, or 'self: &Self' if it only "
+                          "reads it",
+                          requirement.name));
+}
+
+/// An implementation may read through a receiver its requirement lets it write, but not the reverse: a requirement
+/// without a receiver, or with `self: &Self`, is callable through a read-only view, so a writable implementation would
+/// modify storage the caller only lent for reading.
+void AnalysisContext::CheckImplementationReceiver(const FuncDecl &implementation, const FuncDecl &requirement,
+                                                  const std::string &interfaceName, const std::string &typeName) {
+    if (!DeclaresWritableReceiver(implementation) || RequirementWritesReceiver(requirement)) {
+        return;
+    }
+    const Param *receiver = implementation.Receiver();
+    EmitError(receiver->location,
+              std::format("method '{}' of '{}' writes through its receiver, but requirement '{}' of interface '{}' "
+                          "only reads it",
+                          implementation.name, typeName, requirement.name, interfaceName),
+              {"a requirement without a receiver, or with 'self: &Self', is callable through a read-only view"},
+              std::format("declare 'self: &var Self' on requirement '{}' in interface '{}', or take 'self: &{}'",
+                          requirement.name, interfaceName, typeName));
 }
 } // namespace Rux::SemanticDetail

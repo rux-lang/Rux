@@ -25,7 +25,7 @@ pub interface EntropySource {
     /// @param length how many bytes to fill
     /// @returns nothing when every byte was written, or why not
     /// @see https://rux-lang.dev/docs/api/entropy/entropy-source/fill
-    func Fill(buffer: *var opaque, length: uint) -> ! EntropyError;
+    func Fill(self: &var Self, buffer: *var opaque, length: uint) -> ! EntropyError;
 }
 
 /// The operating system's generator, as an `EntropySource`.

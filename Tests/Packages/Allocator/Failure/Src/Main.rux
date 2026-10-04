@@ -24,7 +24,7 @@ struct FailingAllocator {
 }
 
 extend FailingAllocator : Allocator {
-    func Allocate(self: &var FailingAllocator, layout: Layout) -> (*var opaque) ! AllocError {
+    func Allocate(self: &FailingAllocator, layout: Layout) -> (*var opaque) ! AllocError {
         self.state.attempts = self.state.attempts + 1;
         if self.state.allowed == 0 {
             fail AllocError::OutOfMemory;
@@ -37,14 +37,14 @@ extend FailingAllocator : Allocator {
         return block;
     }
 
-    func Deallocate(self: &var FailingAllocator, block: *var opaque, layout: Layout) -> ! AllocError {
+    func Deallocate(self: &FailingAllocator, block: *var opaque, layout: Layout) -> ! AllocError {
         self.state.backing.Deallocate(block, layout)?;
         if layout.size != 0 && !IsEmptyBlock(block) {
             self.state.live = self.state.live - 1;
         }
     }
 
-    func Reallocate(self: &var FailingAllocator, block: *var opaque, oldLayout: Layout, newLayout: Layout)
+    func Reallocate(self: &FailingAllocator, block: *var opaque, oldLayout: Layout, newLayout: Layout)
         -> (*var opaque) ! AllocError {
         self.state.attempts = self.state.attempts + 1;
         if self.state.allowed == 0 {

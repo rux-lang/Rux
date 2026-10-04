@@ -1,0 +1,90 @@
+// A requirement with no receiver, or with `self: &Self`, reads the implementing value; one that writes it declares
+// `self: &var Self` and is reached only through a writable view or writable storage.
+
+interface Dial {
+    func Level() -> int32;
+    func Peek(self: &Self) -> int32;
+    func Turn(self: &var Self, amount: int32);
+}
+
+struct Knob {
+    level: int32;
+}
+
+extend Knob : Dial {
+    func Level(self: &Knob) -> int32 {
+        return self.level;
+    }
+
+    func Peek(self: &Knob) -> int32 {
+        return self.level;
+    }
+
+    func Turn(self: &var Knob, amount: int32) {
+        self.level += amount;
+    }
+}
+
+// An implementation may read through a receiver its requirement lets it write.
+struct Counter {
+    total: *var int32;
+}
+
+extend Counter : Dial {
+    func Level(self: &Counter) -> int32 {
+        return *self.total;
+    }
+
+    func Peek(self: &Counter) -> int32 {
+        return *self.total;
+    }
+
+    func Turn(self: &Counter, amount: int32) {
+        *self.total += amount;
+    }
+}
+
+func Observe(dial: &Dial) -> int32 {
+    return dial.Level() + dial.Peek();
+}
+
+func Advance(dial: &var Dial, amount: int32) -> int32 {
+    dial.Turn(amount);
+    return dial.Level();
+}
+
+func AdvanceBounded<T: Dial>(dial: &var T, amount: int32) {
+    dial.Turn(amount);
+}
+
+func ObserveBounded<T: Dial>(dial: &T) -> int32 {
+    return dial.Peek();
+}
+
+func Main() -> int {
+    var knob = Knob { level: 1i32 };
+    if Observe(knob) != 2i32 {
+        return 1;
+    }
+    if Advance(knob, 4i32) != 5i32 || knob.level != 5i32 {
+        return 2;
+    }
+    AdvanceBounded(knob, 10i32);
+    if knob.level != 15i32 || ObserveBounded(knob) != 15i32 {
+        return 3;
+    }
+
+    // An interface value holds its own copy, so turning it leaves the original alone.
+    var held: Dial = knob;
+    held.Turn(5i32);
+    if held.Level() != 20i32 || knob.level != 15i32 {
+        return 4;
+    }
+
+    var total = 7i32;
+    var counter = Counter { total: @total };
+    if Advance(counter, 3i32) != 10i32 || total != 10i32 {
+        return 5;
+    }
+    return 0;
+}

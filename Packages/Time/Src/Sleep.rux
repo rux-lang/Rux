@@ -88,7 +88,7 @@ pub interface Waiter {
     /// @param span how much time to wait for
     /// @returns what is left of `span`, or why the wait did not happen
     /// @see https://rux-lang.dev/docs/api/time/waiter/wait-for
-    func WaitFor(span: Duration) -> Duration ! TimeError;
+    func WaitFor(self: &var Self, span: Duration) -> Duration ! TimeError;
 }
 
 /// The wait every supported system actually provides. `Copy`.

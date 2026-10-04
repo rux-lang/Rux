@@ -24,7 +24,7 @@ pub interface Hasher {
     /// @param bytes the bytes to absorb
     /// @param length how many bytes; zero absorbs nothing
     /// @see https://rux-lang.dev/docs/api/hash/hasher/write
-    func Write(bytes: *byte, length: uint);
+    func Write(self: &var Self, bytes: *byte, length: uint);
 
     /// The hash of everything written so far.
     /// Returns the answer by value and leaves the hasher usable: asking twice gives the same answer, and writing
@@ -32,7 +32,7 @@ pub interface Hasher {
     /// Cannot fail. Runs in constant time and allocates nothing.
     /// @returns the hash of everything written since the last reset
     /// @see https://rux-lang.dev/docs/api/hash/hasher/finish
-    func Finish() -> uint64;
+    func Finish(self: &var Self) -> uint64;
 }
 
 /// Writes `length` bytes and returns the hash, for a caller with nothing else to add.

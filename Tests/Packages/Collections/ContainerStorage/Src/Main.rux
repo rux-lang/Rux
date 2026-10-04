@@ -39,7 +39,7 @@ struct RefusingAllocator {
 }
 
 extend RefusingAllocator : Allocator {
-    func Allocate(self: &var RefusingAllocator, layout: Layout) -> (*var opaque) ! AllocError {
+    func Allocate(self: &RefusingAllocator, layout: Layout) -> (*var opaque) ! AllocError {
         self.state.requests = self.state.requests + 1;
         if self.state.refusing { fail AllocError::OutOfMemory; }
         let block = self.state.backing.Allocate(layout)?;
@@ -47,12 +47,12 @@ extend RefusingAllocator : Allocator {
         return block;
     }
 
-    func Deallocate(self: &var RefusingAllocator, block: *var opaque, layout: Layout) -> ! AllocError {
+    func Deallocate(self: &RefusingAllocator, block: *var opaque, layout: Layout) -> ! AllocError {
         self.state.backing.Deallocate(block, layout)?;
         self.state.live = self.state.live - 1;
     }
 
-    func Reallocate(self: &var RefusingAllocator, block: *var opaque, oldLayout: Layout, newLayout: Layout)
+    func Reallocate(self: &RefusingAllocator, block: *var opaque, oldLayout: Layout, newLayout: Layout)
         -> (*var opaque) ! AllocError {
         self.state.requests = self.state.requests + 1;
         if self.state.refusing { fail AllocError::OutOfMemory; }

@@ -14,8 +14,8 @@
 
 
 /// Somewhere formatted text can be written.
-/// Implementations hold their state behind a pointer, as an allocator does, because an interface value is copied
-/// when it is passed and a writer that lost its position each time would write everything at the start.
+/// Writing advances the writer, so `Write` borrows its receiver mutably and is called through a `&var TextWriter`
+/// view, which refers to the caller's own writer rather than a copy that would lose its position.
 /// @see https://rux-lang.dev/docs/api/text/text-writer
 pub interface TextWriter {
     /// Writes `bytes`, which must be well-formed UTF-8 and must not end part-way through a character.
@@ -29,7 +29,7 @@ pub interface TextWriter {
     /// @param bytes the UTF-8 run to write, whole
     /// @returns success when the complete run was accepted
     /// @see https://rux-lang.dev/docs/api/text/text-writer/write
-    func Write(bytes: char8[..]) -> ! FormatError;
+    func Write(self: &var Self, bytes: char8[..]) -> ! FormatError;
 }
 
 /// Writes `bytes` to `writer`.

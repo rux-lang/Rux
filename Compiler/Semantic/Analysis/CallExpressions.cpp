@@ -482,6 +482,8 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
                     }
                 }
             }
+            callAccepted =
+                CheckRequirementReceiverMutability(*e, *field->object, receiverType, operation) && callAccepted;
             if (callAccepted) {
                 ConsumeCallArguments(*e, argTypes, &paramTypes);
             }
@@ -619,6 +621,8 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
                 }
             }
 
+            callAccepted =
+                CheckRequirementReceiverMutability(*e, *field->object, receiverType, *method) && callAccepted;
             if (callAccepted) {
                 ConsumeCallArguments(*e, argTypes, &paramTypes);
                 CheckFormatArguments(*e, *method, true);

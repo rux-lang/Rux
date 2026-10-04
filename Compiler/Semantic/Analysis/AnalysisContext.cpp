@@ -333,8 +333,26 @@ bool AnalysisContext::InterfaceMethodMentionsSelf(const FuncDecl &method) {
         return true;
     }
     return std::ranges::any_of(method.params, [](const Param &parameter) {
-        return !parameter.isVariadic && parameter.type && MentionsSelf(*parameter.type);
+        return !parameter.isVariadic && !parameter.IsReceiver() && parameter.type && MentionsSelf(*parameter.type);
     });
+}
+
+bool AnalysisContext::RequirementWritesReceiver(const FuncDecl &requirement) {
+    return DeclaresWritableReceiver(requirement);
+}
+
+bool AnalysisContext::DeclaresWritableReceiver(const FuncDecl &method) {
+    const Param *receiver = method.Receiver();
+    if (!receiver || !receiver->type) {
+        return false;
+    }
+    if (const auto *reference = dynamic_cast<const ReferenceTypeExpr *>(receiver->type.get())) {
+        return reference->pointeeMut;
+    }
+    if (const auto *pointer = dynamic_cast<const PointerTypeExpr *>(receiver->type.get())) {
+        return pointer->pointeeMut;
+    }
+    return false;
 }
 
 bool AnalysisContext::IsUnimplementedPrimitiveType(const std::string_view name) {

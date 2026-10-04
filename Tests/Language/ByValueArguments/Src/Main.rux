@@ -42,7 +42,7 @@ func SpanWidth(span: int..int, tail: int) -> int {
 }
 
 interface Sink {
-    func Put(bytes: char8[..]) -> uint;
+    func Put(self: &var Self, bytes: char8[..]) -> uint;
 }
 
 struct Counter {

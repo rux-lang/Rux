@@ -122,7 +122,7 @@ TEST_CASE("semantic model recursively classifies copy move-only and droppable ty
 TEST_CASE("an interface named Drop has no lifecycle semantics") {
     Lexer lexer(R"(
         interface Drop {
-            func Drop();
+            func Drop(self: &var Self);
         }
 
         struct Plain {

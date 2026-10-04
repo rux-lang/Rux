@@ -264,6 +264,7 @@ void AnalysisContext::CheckInterfaceDecl(const InterfaceDecl &d) {
         if (!seen.insert(method->name).second) {
             EmitError(method->location, std::format("duplicate method '{}' in interface '{}'", method->name, d.name));
         }
+        ValidateRequirementReceiver(*method, d.name);
         if (method->returnType) {
             ValidateStoredType(ResolveType(**method->returnType), method->returnType->get()->location,
                                "interface method return type");
@@ -406,6 +407,15 @@ void AnalysisContext::CheckImplDecl(const ImplDecl &d) {
                               std::format("implementation of interface '{}' for type '{}' is missing method '{}'",
                                           *d.interfaceName, d.typeName, required),
                               {std::format("interface '{}' requires method '{}'", *d.interfaceName, required)});
+                }
+            }
+            if (const auto *interface = dynamic_cast<const InterfaceDecl *>(ifaceSym->declaration)) {
+                for (const auto &requirement : interface->methods) {
+                    for (const auto &m : d.methods) {
+                        if (m->name == requirement->name) {
+                            CheckImplementationReceiver(*m, *requirement, *d.interfaceName, d.typeName);
+                        }
+                    }
                 }
             }
         }

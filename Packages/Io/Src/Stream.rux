@@ -19,7 +19,7 @@ pub interface Reader {
     /// @param into receives the bytes
     /// @returns how many bytes were read, which may be fewer than `into` holds; `IsEnd` at the end of the stream
     /// @see https://rux-lang.dev/docs/api/io/reader/read
-    func Read(into: var char8[..]) -> uint ! IoError;
+    func Read(self: &var Self, into: var char8[..]) -> uint ! IoError;
 }
 
 /// Somewhere bytes go.
@@ -29,12 +29,12 @@ pub interface Writer {
     /// @param bytes the bytes to write
     /// @returns how many bytes were taken, which may be fewer than offered
     /// @see https://rux-lang.dev/docs/api/io/writer/write
-    func Write(bytes: char8[..]) -> uint ! IoError;
+    func Write(self: &var Self, bytes: char8[..]) -> uint ! IoError;
 
     /// Pushes whatever is held toward the destination.
     /// @returns success when everything held reached the destination
     /// @see https://rux-lang.dev/docs/api/io/writer/flush
-    func Flush() -> ! IoError;
+    func Flush(self: &var Self) -> ! IoError;
 }
 
 /// Where a seek starts counting from.
@@ -56,7 +56,7 @@ pub interface Seeker {
     /// @param offset how far to move, which may be negative
     /// @returns the resulting offset from the start
     /// @see https://rux-lang.dev/docs/api/io/seeker/seek
-    func Seek(origin: SeekFrom, offset: int64) -> uint64 ! IoError;
+    func Seek(self: &var Self, origin: SeekFrom, offset: int64) -> uint64 ! IoError;
 }
 
 /// How many consecutive zero-progress rounds the looping helpers tolerate before refusing.
