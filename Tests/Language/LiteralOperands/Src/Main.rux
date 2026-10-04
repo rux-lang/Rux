@@ -1,0 +1,41 @@
+// Unsuffixed integer literals as operands: they take the integer type beside them, so no suffix is needed to write
+// `year % 4 != 0` against an `int32` or `count > 0` against a `uint64`.
+//
+// The interesting values are the ones a narrower or signed reading would get wrong: an unsigned value whose top bit is
+// set must still compare above a small literal, and a signed one below zero must compare below it. A literal the
+// operand's type cannot hold, such as `-1` beside an unsigned value, is a compile-time error rather than a comparison
+// of bits; Tests/Unit/Golden/IntegerLiteralRange covers that refusal.
+
+import Core::Assert;
+import Core::{ int, int128, int32, int8, uint128, uint16, uint512, uint64, uint8 };
+
+func IsLeapYear(year: int32) -> bool {
+    if year % 4 != 0 { return false; }
+    if year % 100 != 0 { return true; }
+    return year % 400 == 0;
+}
+
+func Main() -> int {
+    // Arithmetic and comparisons against a signed operand, in both orders.
+    Assert(IsLeapYear(2024) && !IsLeapYear(1900) && IsLeapYear(2000), "the leap-year rule needs no suffixes");
+    let below: int8 = -3;
+    Assert(below < 0 && 0 > below && below != -2 && below == -3, "a negative signed value compares below zero");
+    let negativeWide: int128 = -5;
+    Assert(negativeWide < 0 && negativeWide >= -5 && 1 + negativeWide == -4, "and so does a wide one");
+
+    // Unsigned values with the top bit set stay large: the literal is never what decides the signedness.
+    let top64: uint64 = 0x8000000000000000;
+    let all64: uint64 = 0xFFFFFFFFFFFFFFFF;
+    Assert(top64 > 5 && all64 > 0 && all64 != 0 && !(top64 < 100), "a 64-bit value past int64 compares as unsigned");
+    let top128: uint128 = 0x80000000000000000000000000000000;
+    Assert(top128 > 0 && top128 != 0, "and so does a 128-bit one");
+    let all512: uint512 = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
+    Assert(all512 > 5 && !(all512 < 7) && all512 != 5, "and a 512-bit one");
+
+    // Narrow values at both ends of their range.
+    let octet: uint8 = 255;
+    let half: uint16 = 0xFFFF;
+    Assert(octet == 255 && octet > 0 && (octet & 0x0F) == 0x0F, "a byte at its maximum compares and masks");
+    Assert(half == 65535 && half - 1 == 65534, "a 16-bit value too");
+    return 0;
+}

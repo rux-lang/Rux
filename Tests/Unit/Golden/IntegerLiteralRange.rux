@@ -16,4 +16,16 @@ func Main() {
     // An unsuffixed literal is checked against whatever it is assigned to.
     let target: uint8 = 256;
     let negativeTarget: uint16 = -1;
+
+    // A literal beside an integer operand takes that operand's type, so it is
+    // checked against that type on either side of the operator.
+    let count: uint64 = 7;
+    let narrow: uint8 = 3;
+    let negativeCompared = count == -1;
+    let negativeOnLeft = -1 < count;
+    let pastNarrowSum = narrow + 300;
+    let pastNarrowMask = 0x1FF & narrow;
+
+    // Values the operand's type holds are accepted at both of its ends.
+    let inRange = count > 0 && narrow == 255 && narrow != 0;
 }

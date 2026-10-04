@@ -5,3 +5,7 @@
 8:18: error: integer literal is out of range for type 'uint64'
 17:5: error: integer literal is out of range for type 'uint8'
 18:5: error: integer literal is out of range for type 'uint16'
+24:37: error: integer literal is out of range for type 'uint64'
+25:26: error: integer literal is out of range for type 'uint64'
+26:34: error: integer literal is out of range for type 'uint8'
+27:26: error: integer literal is out of range for type 'uint8'

@@ -266,12 +266,14 @@ pub func ReverseBytes<T>(value: T) -> T {
     let zero = value - value;
     let bytes = sizeof(T);
     if bytes <= 1u64 { return value; }
+    // Ones in the lowest byte only, shifted down from all ones rather than written as 255, which `int8` cannot hold.
+    let lowByte = ShiftRightLogical<T>(zero - 1, (bytes - 1u64) * 8u64);
     var result = zero;
     var index = 0u64;
     while index < bytes {
         // Each byte is read out at the bottom, where nothing an arithmetic shift replicated can reach it, and put
         // back at the position mirroring the one it came from.
-        let extracted = ShiftRightLogical<T>(value, index * 8u64) & (zero + 255);
+        let extracted = ShiftRightLogical<T>(value, index * 8u64) & lowByte;
         result = result | (extracted << ((bytes - index - 1u64) * 8u64));
         index = index + 1u64;
     }

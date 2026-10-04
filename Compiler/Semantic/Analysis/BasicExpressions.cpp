@@ -669,6 +669,47 @@ TypeRef AnalysisContext::CheckBinary(const TokenKind op, const TypeRef &leftType
     };
 
     using TK = TokenKind;
+    // An unsuffixed literal beside an integer operand takes that operand's type, so it has to be a value of that type.
+    // Without this, `count == -1` with an unsigned `count` compared the bits of `-1`, and `narrow + 300` wrapped the
+    // literal, both silently. A shift is left out: its amount is never converted to the shifted operand's type.
+    const auto literalOutOfRange = [&](const Expr &literal, const Expr &otherExpression, const TypeRef &otherType) {
+        if (IsUnsuffixedIntegerLiteral(otherExpression) || !IsIntegerLiteralOutOfRangeFor(literal, otherType)) {
+            return false;
+        }
+        EmitError(literal.location, std::format("integer literal is out of range for type '{}'", otherType.ToString()));
+        return true;
+    };
+    switch (operation) {
+    case TK::Plus:
+    case TK::Minus:
+    case TK::Star:
+    case TK::Slash:
+    case TK::Percent:
+    case TK::Amp:
+    case TK::Pipe:
+    case TK::Caret:
+        if (literalOutOfRange(rightExpression, leftExpression, left)) {
+            return left;
+        }
+        if (literalOutOfRange(leftExpression, rightExpression, right)) {
+            return right;
+        }
+        break;
+    case TK::Equal:
+    case TK::BangEqual:
+    case TK::Less:
+    case TK::LessEqual:
+    case TK::Greater:
+    case TK::GreaterEqual:
+        if (literalOutOfRange(rightExpression, leftExpression, left) ||
+            literalOutOfRange(leftExpression, rightExpression, right)) {
+            return TypeRef::MakeBool();
+        }
+        break;
+    default:
+        break;
+    }
+
     switch (operation) {
     case TK::Plus: {
         if (left.kind == TypeRef::Kind::Pointer && isIntegerOrChar(right)) {
