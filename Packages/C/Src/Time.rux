@@ -15,7 +15,6 @@ import C::{ c_int, c_long, c_ulong };
 ///
 /// What the value counts is implementation-defined by the standard, and is seconds since the Unix epoch on every
 /// supported target. `Rux/Time`'s `Timestamp` is the one that says so as a contract.
-///
 /// @see https://en.cppreference.com/c/chrono/time_t
 /// @see https://rux-lang.dev/docs/api/c/time-t
 #Allow("naming.type")
@@ -40,7 +39,6 @@ when #target.os {
         /// FreeBSD's definition is the one value here not confirmed against a running system; the eight-target fixture
         /// gate
         /// is what checks it.
-        ///
         /// @see https://en.cppreference.com/c/chrono/clock_t
         /// @see https://rux-lang.dev/docs/api/c/clock-t
         #Allow("naming.type")
@@ -62,7 +60,6 @@ when #target.os {
         /// FreeBSD's definition is the one value here not confirmed against a running system; the eight-target fixture
         /// gate
         /// is what checks it.
-        ///
         /// @see https://en.cppreference.com/c/chrono/clock_t
         /// @see https://rux-lang.dev/docs/api/c/clock-t
         #Allow("naming.type")
@@ -84,7 +81,6 @@ when #target.os {
         /// FreeBSD's definition is the one value here not confirmed against a running system; the eight-target fixture
         /// gate
         /// is what checks it.
-        ///
         /// @see https://en.cppreference.com/c/chrono/clock_t
         /// @see https://rux-lang.dev/docs/api/c/clock-t
         #Allow("naming.type")
@@ -106,7 +102,6 @@ when #target.os {
         /// Declared once per system because the field order and the trailing members differ; the nine standard fields
         /// are
         /// the same everywhere and are all this declares.
-        ///
         /// @see https://en.cppreference.com/c/chrono/tm
         /// @see https://rux-lang.dev/docs/api/c/tm
         #Allow("naming.type")
@@ -142,7 +137,6 @@ when #target.os {
         /// Declared once per system because the field order and the trailing members differ; the nine standard fields
         /// are
         /// the same everywhere and are all this declares.
-        ///
         /// @see https://en.cppreference.com/c/chrono/tm
         /// @see https://rux-lang.dev/docs/api/c/tm
         #Allow("naming.type")
@@ -180,7 +174,6 @@ when #target.os {
 // in by the runtime read four bytes of stale padding as its upper half.
 // https://en.cppreference.com/c/chrono/timespec
 /// The public `timespec` data layout.
-///
 /// @see https://rux-lang.dev/docs/api/c/timespec
 #Allow("naming.type")
 pub struct timespec {
@@ -212,27 +205,23 @@ extern {
     ///
     /// Returns storage the runtime owns and the next call overwrites, shared by the whole program rather than per
     /// thread. Copy the result before making another call, and do not use it from two threads at once.
-    ///
     /// @param time_ptr the time value to convert
     /// @returns a pointer to storage the C runtime owns and the next call may reuse
     /// @see https://en.cppreference.com/c/chrono/asctime
     func asctime(time_ptr: *tm) -> *char8;
 
     /// Returns the approximate processor time used by the program.
-    ///
     /// @returns the processor time used, or -1 when it is not available
     /// @see https://en.cppreference.com/c/chrono/clock
     pub func clock() -> clock_t;
 
     /// Converts a time_t object to a textual representation.
-    ///
     /// @param timer the time value, or null
     /// @returns a pointer to storage the C runtime owns and the next call may reuse
     /// @see https://en.cppreference.com/c/chrono/ctime
     func ctime(timer: *time_t) -> *char8;
 
     /// Computes the difference in seconds between two calendar times.
-    ///
     /// @param time_end the later clock reading
     /// @param time_beg the earlier clock reading
     /// @returns the seconds between the two readings
@@ -240,28 +229,24 @@ extern {
     pub func difftime(time_end: time_t, time_beg: time_t) -> float64;
 
     /// Converts a time_t object to calendar time expressed as UTC.
-    ///
     /// @param timer the time value, or null
     /// @returns a pointer to storage the C runtime owns and the next call may reuse, or null
     /// @see https://en.cppreference.com/c/chrono/gmtime
     pub func gmtime(timer: *time_t) -> *tm;
 
     /// Converts a time_t object to calendar time expressed as local time.
-    ///
     /// @param timer the time value, or null
     /// @returns a pointer to storage the C runtime owns and the next call may reuse, or null
     /// @see https://en.cppreference.com/c/chrono/localtime
     pub func localtime(timer: *time_t) -> *tm;
 
     /// Converts calendar time to a time_t object, normalizing the tm structure.
-    ///
     /// @param time_ptr the time value to convert
     /// @returns the time value, or -1 when the components cannot be represented
     /// @see https://en.cppreference.com/c/chrono/mktime
     pub func mktime(time_ptr: *tm) -> time_t;
 
     /// Converts a tm object to a custom textual representation.
-    ///
     /// @param str a null-terminated byte string
     /// @param count how many bytes or elements
     /// @param format the format string
@@ -271,7 +256,6 @@ extern {
     func strftime(str: *char8, count: uint, format: *char8, time_ptr: *tm) -> uint;
 
     /// Returns the current calendar time since the epoch.
-    ///
     /// @param timer the time value, or null
     /// @returns the current time, or -1 when it is not available
     /// @see https://en.cppreference.com/c/chrono/time
@@ -291,7 +275,6 @@ when #target.os {
         #Link(TimespecLib)
         extern {
             /// Fills a timespec with the current time on the given base.
-            ///
             /// @param ts the `timespec` to fill
             /// @param base the radix, 2 through 36, or zero to read a C integer prefix
             /// @returns `base` on success, or zero on failure
@@ -303,7 +286,6 @@ when #target.os {
         #Link(TimeLib)
         extern {
             /// Fills a timespec with the current time on the given base.
-            ///
             /// @param ts the `timespec` to fill
             /// @param base the radix, 2 through 36, or zero to read a C integer prefix
             /// @returns `base` on success, or zero on failure
@@ -314,7 +296,6 @@ when #target.os {
 }
 
 /// `TIME_UTC`: the time base naming seconds since the epoch, the only one C defines.
-///
 /// @see https://rux-lang.dev/docs/api/c/time-utc
 #Allow("naming.const")
 pub const TIME_UTC: int32 = 1;
@@ -324,14 +305,12 @@ pub const TIME_UTC: int32 = 1;
 when #target.os {
     .Windows => {
         /// `CLOCKS_PER_SEC`: how many `clock` ticks make one second on this target.
-        ///
         /// @see https://rux-lang.dev/docs/api/c/clocks-per-sec
         #Allow("naming.const")
         pub const CLOCKS_PER_SEC: int64 = 1000;
     }
     else => {
         /// `CLOCKS_PER_SEC`: how many `clock` ticks make one second on this target.
-        ///
         /// @see https://rux-lang.dev/docs/api/c/clocks-per-sec
         #Allow("naming.const")
         pub const CLOCKS_PER_SEC: int64 = 1000000;
@@ -344,7 +323,6 @@ when #target.os {
 /// only base C defines. Returns `base` on success and zero on failure, which is the one way this reports one.
 ///
 /// Runs in constant time and allocates nothing.
-///
 /// @param ts receives the reading
 /// @param base which time base to read; `TIME_UTC` is the only one C defines
 /// @returns `base` on success, or zero on failure

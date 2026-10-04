@@ -13,7 +13,6 @@
 /// The grapheme break class of a scalar value. `Copy`.
 ///
 /// The ordinals match the generated table and must not be reordered.
-///
 /// @see https://rux-lang.dev/docs/api/unicode/grapheme-break
 pub enum GraphemeBreak: int32 {
     /// Everything with no class of its own.
@@ -47,7 +46,6 @@ pub enum GraphemeBreak: int32 {
 }
 
 /// The break class of `scalar`.
-///
 /// @param scalar the scalar value to classify
 /// @returns its grapheme cluster break property
 /// @see https://rux-lang.dev/docs/api/unicode/grapheme-break-of
@@ -56,7 +54,6 @@ pub func GraphemeBreakOf(scalar: char32) -> GraphemeBreak {
 }
 
 /// Whether `scalar` is an extended pictograph: the emoji and everything reserved to become one.
-///
 /// @param scalar the scalar value to test
 /// @returns whether it has the Extended_Pictographic property
 /// @see https://rux-lang.dev/docs/api/unicode/is-pictographic
@@ -84,7 +81,6 @@ func IsConjunctExtend(scalar: char32) -> bool {
 /// lookback where a rule reaches further — the emoji join, the flag pairs, and the Indic conjuncts.
 ///
 /// Runs in time proportional to the lookback, which is the run of marks behind the position; allocates nothing.
-///
 /// @param text the scalar values to examine
 /// @param index the position to test, in scalar values
 /// @returns whether a grapheme cluster boundary falls before `index`
@@ -173,7 +169,6 @@ pub func IsGraphemeBoundary(text: char32[..], index: uint) -> bool {
 }
 
 /// How many grapheme clusters `text` holds.
-///
 /// @param text the scalar values to count
 /// @returns how many grapheme clusters `text` holds
 /// @see https://rux-lang.dev/docs/api/unicode/count-graphemes

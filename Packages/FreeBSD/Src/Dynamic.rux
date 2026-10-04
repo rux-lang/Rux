@@ -8,25 +8,21 @@
 const LoaderLib = "libc.so.7";
 
 /// `RTLD_LAZY`: resolve a function symbol the first time it is called rather than at load.
-///
 /// @see https://rux-lang.dev/docs/api/freebsd/rtld-lazy
 #Allow("naming.const")
 pub const RTLD_LAZY: int32 = 1;
 
 /// `RTLD_NOW`: resolve every symbol before `dlopen` returns.
-///
 /// @see https://rux-lang.dev/docs/api/freebsd/rtld-now
 #Allow("naming.const")
 pub const RTLD_NOW: int32 = 2;
 
 /// `RTLD_GLOBAL`: make this object's symbols available to objects loaded afterwards.
-///
 /// @see https://rux-lang.dev/docs/api/freebsd/rtld-global
 #Allow("naming.const")
 pub const RTLD_GLOBAL: int32 = 256;
 
 /// `RTLD_LOCAL`: keep this object's symbols to itself, which is the default.
-///
 /// @see https://rux-lang.dev/docs/api/freebsd/rtld-local
 #Allow("naming.const")
 pub const RTLD_LOCAL: int32 = 0;

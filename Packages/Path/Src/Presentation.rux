@@ -211,7 +211,6 @@ extend OsStringView : Display {
     /// # Failures
     /// Reports whatever the writer reported, and `UnsupportedRequest` for any style or precision. A precision is
     /// refused rather than applied because a truncated path is a different path, and may be one that exists.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole name was accepted
@@ -233,7 +232,6 @@ extend OsStringView : Debug {
     ///
     /// # Failures
     /// Reports whatever the writer reported, and `UnsupportedRequest` for any style or precision.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole name was accepted
@@ -249,7 +247,6 @@ extend OsString : Display {
     ///
     /// # Failures
     /// The failures `OsStringView::WriteDisplay` reports.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole name was accepted
@@ -265,7 +262,6 @@ extend OsString : Debug {
     ///
     /// # Failures
     /// The failures `OsStringView::WriteDebug` reports.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole name was accepted
@@ -284,7 +280,6 @@ extend Path : Display {
     ///
     /// # Failures
     /// The failures `OsStringView::WriteDisplay` reports.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole path was accepted
@@ -300,7 +295,6 @@ extend Path : Debug {
     ///
     /// # Failures
     /// The failures `OsStringView::WriteDebug` reports.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole path was accepted
@@ -316,7 +310,6 @@ extend PathBuffer : Display {
     ///
     /// # Failures
     /// The failures `OsStringView::WriteDisplay` reports.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole path was accepted
@@ -332,7 +325,6 @@ extend PathBuffer : Debug {
     ///
     /// # Failures
     /// The failures `OsStringView::WriteDebug` reports.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole path was accepted

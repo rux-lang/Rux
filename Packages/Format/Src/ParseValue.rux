@@ -13,7 +13,6 @@ import Text::{ DecodeAt, StringView };
 ///
 /// Reports `Empty` for no bytes and `InvalidCharacter` at the start for anything else, including a correct word
 /// with trailing bytes.
-///
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse-bool
@@ -28,7 +27,6 @@ pub func ParseBool(str: char8[..]) -> bool ! ParseError {
 }
 
 /// The same words for a view.
-///
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse-bool-view
@@ -40,7 +38,6 @@ pub func ParseBool(str: StringView) -> bool ! ParseError {
 ///
 /// Reports `Empty` for no bytes, and `InvalidCharacter` for bytes that are not one whole scalar value — ill-formed
 /// UTF-8 at zero, a second character at its own index.
-///
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse-char
@@ -56,7 +53,6 @@ pub func ParseChar(str: char8[..]) -> char32 ! ParseError {
 }
 
 /// The same single character for a view.
-///
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse-char-view

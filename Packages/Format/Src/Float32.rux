@@ -18,7 +18,6 @@ const ScientificFrom32 = 9;
 // Whether the value is a NaN, on the same terms as the float64 overload: a
 // NaN is the only value not equal to itself.
 /// Provides the public `IsNan` operation.
-///
 /// @param value the value to act on
 /// @returns whether the value is a NaN
 /// @see https://rux-lang.dev/docs/api/format/is-nan
@@ -28,7 +27,6 @@ pub func IsNan(value: float32) -> bool {
 
 // Whether the value is one of the two infinities.
 /// Provides the public `IsInfinite` operation.
-///
 /// @param value the value to act on
 /// @returns whether the value is either infinity
 /// @see https://rux-lang.dev/docs/api/format/is-infinite
@@ -38,7 +36,6 @@ pub func IsInfinite(value: float32) -> bool {
 
 // Whether the value is an ordinary number: neither a NaN nor an infinity.
 /// Provides the public `IsFinite` operation.
-///
 /// @param value the value to act on
 /// @returns whether the value is neither infinite nor a NaN
 /// @see https://rux-lang.dev/docs/api/format/is-finite
@@ -54,7 +51,6 @@ extend float32 : Display {
     ///
     /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
@@ -87,7 +83,6 @@ extend float32 : Debug {
     ///
     /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted

@@ -33,7 +33,6 @@
 /// # Failures
 /// Reports whatever the writer or the payload's implementation reported, stopping at the first refusal, so a
 /// destination that has already refused something is not written to again.
-///
 /// @typeParam T the payload type, which must know how to show itself
 /// @param writer the destination
 /// @param value the optional to show, borrowed for the call
@@ -63,7 +62,6 @@ pub func WriteOptionalDebug<T: Debug>(writer: &var TextWriter, value: &T?,
 ///
 /// # Failures
 /// Reports whatever the writer or the payload's implementation reported, stopping at the first refusal.
-///
 /// @typeParam T the success payload type, which must know how to show itself
 /// @typeParam E the failure payload type, which must know how to show itself
 /// @param writer the destination
@@ -102,7 +100,6 @@ pub func WriteFallibleDebug<T: Debug, E: Debug>(writer: &var TextWriter, value: 
 /// # Failures
 /// Reports whatever the writer or an element's implementation reported, stopping at the first refusal rather than
 /// continuing through the rest of the run.
-///
 /// @typeParam T the element type, which must know how to show itself
 /// @param writer the destination
 /// @param items the run of elements to show, borrowed for the call

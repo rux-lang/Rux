@@ -13,7 +13,6 @@ import Format::Display;
 import Text::{ String, StringView };
 
 /// Writes a newline to standard output.
-///
 /// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print-line
 pub func PrintLine() -> IoError? {
@@ -28,7 +27,6 @@ func Terminate(first: IoError?) -> IoError? {
 }
 
 /// Provides the public `PrintLine` operation.
-///
 /// @param value the value to write
 /// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print-line
@@ -37,7 +35,6 @@ pub func PrintLine(value: String) -> IoError? {
 }
 
 /// Provides the public `PrintLine` operation.
-///
 /// @param value the value to write
 /// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print-line
@@ -46,7 +43,6 @@ pub func PrintLine(value: char8[..]) -> IoError? {
 }
 
 /// Provides the public `PrintLine` operation.
-///
 /// @param value the value to write
 /// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print-line
@@ -55,7 +51,6 @@ pub func PrintLine(value: StringView) -> IoError? {
 }
 
 /// Provides the public `PrintLine` operation.
-///
 /// @param format the format string, with `{}` for each argument
 /// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print-line
@@ -64,7 +59,6 @@ pub func PrintLine(format: char8[..], args: Display...) -> IoError? {
 }
 
 /// Provides the public `PrintLine` operation.
-///
 /// @param value the value to write
 /// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print-line
@@ -73,7 +67,6 @@ pub func PrintLine(value: bool8) -> IoError? {
 }
 
 /// Provides the public `PrintLine` operation.
-///
 /// @param value the value to write
 /// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print-line
@@ -82,7 +75,6 @@ pub func PrintLine(value: bool16) -> IoError? {
 }
 
 /// Provides the public `PrintLine` operation.
-///
 /// @param value the value to write
 /// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print-line
@@ -91,7 +83,6 @@ pub func PrintLine(value: bool32) -> IoError? {
 }
 
 /// Provides the public `PrintLine` operation.
-///
 /// @param value the value to write
 /// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print-line
@@ -100,7 +91,6 @@ pub func PrintLine(value: char8) -> IoError? {
 }
 
 /// Provides the public `PrintLine` operation.
-///
 /// @param value the value to write
 /// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print-line
@@ -109,7 +99,6 @@ pub func PrintLine(value: char16) -> IoError? {
 }
 
 /// Provides the public `PrintLine` operation.
-///
 /// @param value the value to write
 /// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print-line
@@ -118,7 +107,6 @@ pub func PrintLine(value: char32) -> IoError? {
 }
 
 /// Provides the public `PrintLine` operation.
-///
 /// @param value the value to write
 /// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print-line
@@ -127,7 +115,6 @@ pub func PrintLine(value: int8) -> IoError? {
 }
 
 /// Provides the public `PrintLine` operation.
-///
 /// @param value the value to write
 /// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print-line
@@ -136,7 +123,6 @@ pub func PrintLine(value: int16) -> IoError? {
 }
 
 /// Provides the public `PrintLine` operation.
-///
 /// @param value the value to write
 /// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print-line
@@ -145,7 +131,6 @@ pub func PrintLine(value: int32) -> IoError? {
 }
 
 /// Provides the public `PrintLine` operation.
-///
 /// @param value the value to write
 /// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print-line
@@ -154,7 +139,6 @@ pub func PrintLine(value: int64) -> IoError? {
 }
 
 /// Provides the public `PrintLine` operation.
-///
 /// @param value the value to write
 /// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print-line
@@ -163,7 +147,6 @@ pub func PrintLine(value: uint8) -> IoError? {
 }
 
 /// Provides the public `PrintLine` operation.
-///
 /// @param value the value to write
 /// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print-line
@@ -172,7 +155,6 @@ pub func PrintLine(value: uint16) -> IoError? {
 }
 
 /// Provides the public `PrintLine` operation.
-///
 /// @param value the value to write
 /// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print-line
@@ -181,7 +163,6 @@ pub func PrintLine(value: uint32) -> IoError? {
 }
 
 /// Provides the public `PrintLine` operation.
-///
 /// @param value the value to write
 /// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print-line
@@ -190,7 +171,6 @@ pub func PrintLine(value: uint64) -> IoError? {
 }
 
 /// Provides the public `PrintLine` operation.
-///
 /// @param value the value to write
 /// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print-line
@@ -199,7 +179,6 @@ pub func PrintLine(value: int) -> IoError? {
 }
 
 /// Provides the public `PrintLine` operation.
-///
 /// @param value the value to write
 /// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print-line
@@ -208,7 +187,6 @@ pub func PrintLine(value: uint) -> IoError? {
 }
 
 /// Provides the public `PrintLine` operation.
-///
 /// @param value the value to write
 /// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print-line
@@ -217,7 +195,6 @@ pub func PrintLine(value: float32) -> IoError? {
 }
 
 /// Provides the public `PrintLine` operation.
-///
 /// @param value the value to write
 /// @returns the failure, or `none` when the whole value was written
 /// @see https://rux-lang.dev/docs/api/io/print-line

@@ -4,37 +4,28 @@
 // `long` questions that `Rux/C` has to answer arise here.
 
 /// A process identifier, as `getpid` and its relatives report one.
-///
 /// @see https://rux-lang.dev/docs/api/freebsd/process-id
 pub type ProcessId = int32;
 
 /// A file descriptor, as the kernel numbers one.
-///
 /// @see https://rux-lang.dev/docs/api/freebsd/file-descriptor
 pub type FileDescriptor = int32;
 
 /// A byte offset within a file, 64 bits on every supported target.
-///
 /// @see https://rux-lang.dev/docs/api/freebsd/file-offset
 pub type FileOffset = int64;
 
 /// A file's type and permission bits.
 ///
 /// Sixteen bits here, where Linux's `mode_t` is thirty-two. The bit meanings agree; the width does not.
-///
-///
 /// @see https://rux-lang.dev/docs/api/freebsd/file-mode
 pub type FileMode = uint16;
 
 /// A user identifier.
-///
-///
 /// @see https://rux-lang.dev/docs/api/freebsd/user-id
 pub type UserId = uint32;
 
 /// A group identifier.
-///
-///
 /// @see https://rux-lang.dev/docs/api/freebsd/group-id
 pub type GroupId = uint32;
 
@@ -42,7 +33,6 @@ pub type GroupId = uint32;
 ///
 /// `nanoseconds` is in `[0, 999999999]` for a value the kernel produced; a value the caller builds must normalize it,
 /// since a call given more than a second's worth reports `EINVAL` rather than carrying.
-///
 /// @see https://rux-lang.dev/docs/api/freebsd/timespec
 pub struct Timespec {
     /// Whole seconds.

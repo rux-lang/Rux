@@ -8,7 +8,6 @@
 /// The Unicode general category, one per scalar value. `Copy`.
 ///
 /// The ordinals match the generated table and must not be reordered: the table stores them as numbers.
-///
 /// @see https://rux-lang.dev/docs/api/unicode/general-category
 pub enum GeneralCategory: int32 {
     /// Unassigned, or outside every range.
@@ -76,7 +75,6 @@ pub enum GeneralCategory: int32 {
 /// The general category of `scalar`.
 ///
 /// Runs in a handful of comparisons and allocates nothing.
-///
 /// @param scalar the scalar value to classify
 /// @returns its general category
 /// @see https://rux-lang.dev/docs/api/unicode/category-of
@@ -85,7 +83,6 @@ pub func CategoryOf(scalar: char32) -> GeneralCategory {
 }
 
 /// The canonical combining class of `scalar`: zero for nearly everything, and the reordering key for marks.
-///
 /// @param scalar the scalar value to classify
 /// @returns its canonical combining class, zero for a starter
 /// @see https://rux-lang.dev/docs/api/unicode/combining-class-of
@@ -97,7 +94,6 @@ pub func CombiningClassOf(scalar: char32) -> uint32 {
 ///
 /// A superset of ASCII's six: the no-break spaces, the typographic spaces and the line and paragraph separators
 /// are all here, which is what separates this from `Text`'s deliberately ASCII-only trimming.
-///
 /// @param scalar the scalar value to test
 /// @returns whether it has the White_Space property
 /// @see https://rux-lang.dev/docs/api/unicode/is-white-space
@@ -106,7 +102,6 @@ pub func IsWhiteSpace(scalar: char32) -> bool {
 }
 
 /// Whether `scalar` is alphabetic by the derived `Alphabetic` property.
-///
 /// @param scalar the scalar value to test
 /// @returns whether it has the Alphabetic property
 /// @see https://rux-lang.dev/docs/api/unicode/is-alphabetic
@@ -115,7 +110,6 @@ pub func IsAlphabetic(scalar: char32) -> bool {
 }
 
 /// Whether `scalar` is numeric: a decimal digit, a letterlike number, or another number form.
-///
 /// @param scalar the scalar value to test
 /// @returns whether it has the Numeric_Type property
 /// @see https://rux-lang.dev/docs/api/unicode/is-numeric

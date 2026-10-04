@@ -9,170 +9,141 @@
 // FreeBSD's, which agree with Linux for the first thirty-four and then diverge.
 
 /// `EPERM`: the operation is not permitted to this caller.
-///
 /// @see https://rux-lang.dev/docs/api/freebsd/eperm
 #Allow("naming.const")
 pub const EPERM: int64 = 1;
 
 /// `ENOENT`: no such file or directory.
-///
 /// @see https://rux-lang.dev/docs/api/freebsd/enoent
 #Allow("naming.const")
 pub const ENOENT: int64 = 2;
 
 /// `ESRCH`: no such process.
-///
 /// @see https://rux-lang.dev/docs/api/freebsd/esrch
 #Allow("naming.const")
 pub const ESRCH: int64 = 3;
 
 /// `EINTR`: the call was interrupted by a signal before it did anything.
-///
 /// @see https://rux-lang.dev/docs/api/freebsd/eintr
 #Allow("naming.const")
 pub const EINTR: int64 = 4;
 
 /// `EIO`: a low-level input or output error.
-///
 /// @see https://rux-lang.dev/docs/api/freebsd/eio
 #Allow("naming.const")
 pub const EIO: int64 = 5;
 
 /// `ENXIO`: no such device or address.
-///
-///
 /// @see https://rux-lang.dev/docs/api/freebsd/enxio
 #Allow("naming.const")
 pub const ENXIO: int64 = 6;
 
 /// `EBADF`: the file descriptor is not open, or is not open for what was asked.
-///
 /// @see https://rux-lang.dev/docs/api/freebsd/ebadf
 #Allow("naming.const")
 pub const EBADF: int64 = 9;
 
 /// `EAGAIN`: the operation would block, and the descriptor was set not to.
-///
 /// @see https://rux-lang.dev/docs/api/freebsd/eagain
 #Allow("naming.const")
 pub const EAGAIN: int64 = 35;
 
 /// `ENOMEM`: not enough memory to satisfy the request.
-///
 /// @see https://rux-lang.dev/docs/api/freebsd/enomem
 #Allow("naming.const")
 pub const ENOMEM: int64 = 12;
 
 /// `EACCES`: permission denied.
-///
 /// @see https://rux-lang.dev/docs/api/freebsd/eacces
 #Allow("naming.const")
 pub const EACCES: int64 = 13;
 
 /// `EFAULT`: an address the call was given is outside the caller's address space.
-///
 /// @see https://rux-lang.dev/docs/api/freebsd/efault
 #Allow("naming.const")
 pub const EFAULT: int64 = 14;
 
 /// `EBUSY`: the resource is in use.
-///
 /// @see https://rux-lang.dev/docs/api/freebsd/ebusy
 #Allow("naming.const")
 pub const EBUSY: int64 = 16;
 
 /// `EEXIST`: the file already exists.
-///
 /// @see https://rux-lang.dev/docs/api/freebsd/eexist
 #Allow("naming.const")
 pub const EEXIST: int64 = 17;
 
 /// `EXDEV`: the two paths are on different file systems.
-///
 /// @see https://rux-lang.dev/docs/api/freebsd/exdev
 #Allow("naming.const")
 pub const EXDEV: int64 = 18;
 
 /// `ENOTDIR`: a path component that had to be a directory is not one.
-///
 /// @see https://rux-lang.dev/docs/api/freebsd/enotdir
 #Allow("naming.const")
 pub const ENOTDIR: int64 = 20;
 
 /// `EISDIR`: the target is a directory and the operation is not one a directory accepts.
-///
 /// @see https://rux-lang.dev/docs/api/freebsd/eisdir
 #Allow("naming.const")
 pub const EISDIR: int64 = 21;
 
 /// `EINVAL`: an argument is not valid.
-///
 /// @see https://rux-lang.dev/docs/api/freebsd/einval
 #Allow("naming.const")
 pub const EINVAL: int64 = 22;
 
 /// `EMFILE`: this process has too many descriptors open.
-///
 /// @see https://rux-lang.dev/docs/api/freebsd/emfile
 #Allow("naming.const")
 pub const EMFILE: int64 = 24;
 
 /// `ENOSPC`: the device has no room left.
-///
 /// @see https://rux-lang.dev/docs/api/freebsd/enospc
 #Allow("naming.const")
 pub const ENOSPC: int64 = 28;
 
 /// `ESPIPE`: the descriptor is a pipe or socket and cannot be seeked.
-///
 /// @see https://rux-lang.dev/docs/api/freebsd/espipe
 #Allow("naming.const")
 pub const ESPIPE: int64 = 29;
 
 /// `EROFS`: the file system is mounted read-only.
-///
 /// @see https://rux-lang.dev/docs/api/freebsd/erofs
 #Allow("naming.const")
 pub const EROFS: int64 = 30;
 
 /// `EPIPE`: the reading end of the pipe is closed.
-///
 /// @see https://rux-lang.dev/docs/api/freebsd/epipe
 #Allow("naming.const")
 pub const EPIPE: int64 = 32;
 
 /// `ENAMETOOLONG`: the path or a component of it is too long.
-///
 /// @see https://rux-lang.dev/docs/api/freebsd/enametoolong
 #Allow("naming.const")
 pub const ENAMETOOLONG: int64 = 63;
 
 /// `ELOOP`: too many symbolic links were followed resolving the path.
-///
 /// @see https://rux-lang.dev/docs/api/freebsd/eloop
 #Allow("naming.const")
 pub const ELOOP: int64 = 62;
 
 /// `ENOSYS`: the kernel does not implement this call.
-///
 /// @see https://rux-lang.dev/docs/api/freebsd/enosys
 #Allow("naming.const")
 pub const ENOSYS: int64 = 78;
 
 /// `EOVERFLOW`: a value is too large for the type the call reports it in.
-///
 /// @see https://rux-lang.dev/docs/api/freebsd/eoverflow
 #Allow("naming.const")
 pub const EOVERFLOW: int64 = 84;
 
 /// `ETIMEDOUT`: the operation timed out.
-///
 /// @see https://rux-lang.dev/docs/api/freebsd/etimedout
 #Allow("naming.const")
 pub const ETIMEDOUT: int64 = 60;
 
 /// The largest error number the normalized error range holds.
-///
 /// @see https://rux-lang.dev/docs/api/freebsd/maximum-errno
 pub const MaximumErrno: int64 = 4095;
 
@@ -182,7 +153,6 @@ pub const MaximumErrno: int64 = 4095;
 /// mapping address a memory call returns.
 ///
 /// Cannot fail. Runs in constant time and allocates nothing.
-///
 /// @param result the raw result to test
 /// @returns whether it is one of the reserved error values
 /// @see https://rux-lang.dev/docs/api/freebsd/is-error
@@ -195,7 +165,6 @@ pub func IsError(result: int64) -> bool {
 /// `result` is read by value; the number is returned by copy, positive, as a man page names it.
 ///
 /// Cannot fail. Runs in constant time and allocates nothing.
-///
 /// @param result the raw result to read
 /// @returns the error number, positive, or zero when the result carries none
 /// @see https://rux-lang.dev/docs/api/freebsd/errno

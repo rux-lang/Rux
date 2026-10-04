@@ -16,7 +16,6 @@
 
 
 /// The most blocks `Expand` can produce, since its counter is one byte.
-///
 /// @see https://rux-lang.dev/docs/api/crypto/hkdf-maximum-blocks
 pub const HkdfMaximumBlocks: uint = 255;
 
@@ -24,7 +23,6 @@ pub const HkdfMaximumBlocks: uint = 255;
 ///
 /// `into` must be exactly the digest's length. An empty salt is legal and means a string of that many zeros,
 /// which is what the specification says — so an absent salt is not the same as no salt at all.
-///
 /// @typeParam D the digest type
 /// @param prototype any value of the digest type, read only to select it
 /// @param salt the salt, which may be empty
@@ -54,7 +52,6 @@ pub func HkdfExtract<D: Digest>(prototype: D, salt: char8[..], material: char8[.
 /// Returns `false` when `into` is longer than 255 digests, which is the most the one-byte counter can address;
 /// nothing is written in that case. `info` names what the derived key is for, and two expansions of one key
 /// under different info strings are unrelated.
-///
 /// @typeParam D the digest type
 /// @param prototype any value of the digest type, read only to select it
 /// @param key the key
@@ -98,7 +95,6 @@ pub func HkdfExpand<D: Digest>(prototype: D, key: char8[..], info: char8[..],
 /// Extract and expand in one call: the whole of HKDF.
 ///
 /// Returns `false` for an output longer than 255 digests, exactly as `HkdfExpand` does.
-///
 /// @typeParam D the digest type
 /// @param prototype any value of the digest type, read only to select it
 /// @param salt the salt, which may be empty

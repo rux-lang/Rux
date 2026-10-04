@@ -4,6 +4,5 @@
 // ordinary code can say the short name and mean exactly the canonical one.
 
 /// The default alias of char32.
-///
 /// @see https://rux-lang.dev/docs/api/core/char
 pub type char = char32;

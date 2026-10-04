@@ -16,7 +16,6 @@
 
 
 /// The first Hangul syllable, LV and LVT composition's base.
-///
 /// @see https://rux-lang.dev/docs/api/unicode/hangul-base
 pub const HangulBase: uint32 = 0xAC00;
 
@@ -112,7 +111,6 @@ func CanonicalOrder(items: var char32[..], length: uint) {
 /// # Safety
 ///
 /// `written` must be non-null and writable.
-///
 /// @param text the scalar values to decompose
 /// @param into receives the decomposition
 /// @param written receives how many values were written
@@ -127,7 +125,6 @@ pub func DecomposeCanonical(text: char32[..], into: var char32[..], written: *va
 /// # Safety
 ///
 /// `written` must be non-null and writable.
-///
 /// @param text the scalar values to decompose
 /// @param into receives the decomposition
 /// @param written receives how many values were written
@@ -247,7 +244,6 @@ func Compose(items: var char32[..], length: uint) -> uint {
 /// # Safety
 ///
 /// `written` must be non-null and writable.
-///
 /// @param text the scalar values to normalize
 /// @param into receives the normalized form
 /// @param written receives how many values were written
@@ -265,7 +261,6 @@ pub func NormalizeCanonical(text: char32[..], into: var char32[..], written: *va
 /// # Safety
 ///
 /// `written` must be non-null and writable.
-///
 /// @param text the scalar values to normalize
 /// @param into receives the normalized form
 /// @param written receives how many values were written

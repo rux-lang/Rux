@@ -10,7 +10,6 @@
 //     sha256 e2d134d2c52919bace503ebb6a551c1855fe1a1faec18478c78fff254a1793ec
 
 /// Normalization vector index: five (offset, length) pairs per row, for the columns c1..c5.
-///
 /// @see https://rux-lang.dev/docs/api/unicode/tables
 pub const NormalizationVectorIndex: uint32[15300] = [
     0, 1, 1, 1, 2, 2, 4, 1, 5, 2, 7, 1,
@@ -1295,7 +1294,6 @@ pub const NormalizationVectorIndex: uint32[15300] = [
 /// `NormalizationVectorIndex` says where each vector's five forms start. These come from the Unicode
 /// Consortium's own NormalizationTest file, so a passing run means agreement with the standard's own
 /// expected output rather than with this implementation's idea of it.
-///
 /// @see https://rux-lang.dev/docs/api/unicode/tables
 pub const NormalizationVectorElements: uint32[15147] = [
     7690, 7690, 68, 775, 7690, 68, 775, 7692, 7692, 68, 803, 7692,
@@ -2564,7 +2562,6 @@ pub const NormalizationVectorElements: uint32[15147] = [
 ];
 
 /// Grapheme vector index: offset, length per row.
-///
 /// @see https://rux-lang.dev/docs/api/unicode/tables
 pub const GraphemeVectorIndex: uint32[1532] = [
     0, 2, 2, 3, 5, 2, 7, 3, 10, 2, 12, 3,
@@ -2698,7 +2695,6 @@ pub const GraphemeVectorIndex: uint32[1532] = [
 ];
 
 /// Grapheme vector code points.
-///
 /// @see https://rux-lang.dev/docs/api/unicode/tables
 pub const GraphemeVectorPoints: uint32[1990] = [
     13, 13, 13, 776, 13, 13, 10, 13, 776, 10, 13, 0,
@@ -2871,7 +2867,6 @@ pub const GraphemeVectorPoints: uint32[1990] = [
 
 /// Grapheme vector break masks: bit N set when a boundary precedes point N, the highest bit for the end of the row.
 /// No row is longer than thirty-one points.
-///
 /// @see https://rux-lang.dev/docs/api/unicode/tables
 pub const GraphemeVectorBreaks: uint32[766] = [
     7, 15, 5, 15, 7, 15, 7, 11, 7, 11, 7, 11,

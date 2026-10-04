@@ -32,7 +32,6 @@ Use one documentation form consistently within a short API description. Adjacent
 ///
 /// # Failures
 /// Returns an error when `input` is malformed.
-///
 /// @param input Source text.
 /// @returns The parsed value.
 func Parse(input: String) -> Value;

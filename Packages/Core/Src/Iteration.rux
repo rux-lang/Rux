@@ -24,7 +24,6 @@
 /// An iterator borrows whatever it walks over. Modifying that container while an iterator over it is alive — growing
 /// a vector, rehashing a map, freeing the storage — leaves the iterator pointing at storage that has moved or gone,
 /// and reading it afterwards is undefined. Finish with the iterator before touching the container.
-///
 /// @see https://rux-lang.dev/docs/api/core/iterator
 pub interface Iterator {}
 
@@ -41,6 +40,5 @@ pub interface Iterator {}
 ///
 /// The iterator handed out borrows the container, so the container must outlive it and must not be modified while it
 /// is alive. See `Iterator`.
-///
 /// @see https://rux-lang.dev/docs/api/core/iterable
 pub interface Iterable {}

@@ -19,7 +19,6 @@
 /// An implementation must give the same answer for the same sequence of bytes, whatever the writes were split into:
 /// writing eight bytes at once and writing them one at a time must agree. It must not read anything but the bytes it
 /// is given — no address, no counter, no clock.
-///
 /// @see https://rux-lang.dev/docs/api/hash/hasher
 pub interface Hasher {
     /// Adds `length` bytes at `bytes` to what is being hashed.
@@ -32,7 +31,6 @@ pub interface Hasher {
     /// # Safety
     ///
     /// `bytes` must be readable for `length` bytes.
-    ///
     /// @param bytes the bytes to absorb
     /// @param length how many bytes; zero absorbs nothing
     /// @see https://rux-lang.dev/docs/api/hash/hasher/write
@@ -44,7 +42,6 @@ pub interface Hasher {
     /// more afterwards continues from where the writes left off rather than starting over.
     ///
     /// Cannot fail. Runs in constant time and allocates nothing.
-    ///
     /// @returns the hash of everything written since the last reset
     /// @see https://rux-lang.dev/docs/api/hash/hasher/finish
     func Finish() -> uint64;
@@ -61,7 +58,6 @@ pub interface Hasher {
 /// # Safety
 ///
 /// `bytes` must be readable for `length` bytes.
-///
 /// @typeParam H the hasher's type
 /// @param hasher the hasher to use, which is reset first
 /// @param bytes the bytes to hash
@@ -78,7 +74,6 @@ pub func HashBytes<H: Hasher>(hasher: &var H, bytes: *byte, length: uint) -> uin
 /// `hasher` is borrowed mutably; `value` is read by value.
 ///
 /// Cannot fail. Runs in constant time and allocates nothing.
-///
 /// @typeParam H the hasher's type
 /// @param hasher the hasher to write to
 /// @param value the byte to write
@@ -94,7 +89,6 @@ pub func WriteByte<H: Hasher>(hasher: &var H, value: byte) {
 /// value hashes the same on every target — which is what makes a hash of a struct mean the same thing everywhere.
 ///
 /// Cannot fail. Runs in constant time and allocates nothing.
-///
 /// @typeParam H the hasher's type
 /// @param hasher the hasher to write to
 /// @param value the value, written as little-endian bytes
@@ -115,7 +109,6 @@ pub func WriteUint32<H: Hasher>(hasher: &var H, value: uint32) {
 /// the same reason as `WriteUint32`.
 ///
 /// Cannot fail. Runs in constant time and allocates nothing.
-///
 /// @typeParam H the hasher's type
 /// @param hasher the hasher to write to
 /// @param value the value, written as little-endian bytes

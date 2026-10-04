@@ -70,7 +70,6 @@ func RotateRight64(value: uint64, amount: uint64) -> uint64 {
 /// An incremental SHA-512, SHA-384, SHA-512/224 or SHA-512/256.
 ///
 /// Structural `Copy`; copying takes an independent snapshot of the digest state.
-///
 /// @see https://rux-lang.dev/docs/api/crypto/sha512
 pub struct Sha512 {
     /// The eight working words.
@@ -98,7 +97,6 @@ extend Sha512 {
     }
 
     /// A SHA-512 state.
-    ///
     /// @returns a hasher producing a 512-bit digest
     /// @see https://rux-lang.dev/docs/api/crypto/sha512/new
     pub func Sha512() -> Sha512 {
@@ -106,7 +104,6 @@ extend Sha512 {
     }
 
     /// A SHA-384 state.
-    ///
     /// @returns a hasher producing a 384-bit digest
     /// @see https://rux-lang.dev/docs/api/crypto/sha512/new-384
     pub func New384() -> Sha512 {
@@ -114,7 +111,6 @@ extend Sha512 {
     }
 
     /// A SHA-512/224 state.
-    ///
     /// @returns a hasher producing SHA-512/224
     /// @see https://rux-lang.dev/docs/api/crypto/sha512/new-trunc224
     pub func NewTrunc224() -> Sha512 {
@@ -122,7 +118,6 @@ extend Sha512 {
     }
 
     /// A SHA-512/256 state.
-    ///
     /// @returns a hasher producing SHA-512/256
     /// @see https://rux-lang.dev/docs/api/crypto/sha512/new-trunc256
     pub func NewTrunc256() -> Sha512 {
@@ -193,7 +188,6 @@ extend Sha512 {
 
 extend Sha512 : Digest {
     /// Adds `bytes` to the message.
-    ///
     /// @param bytes the bytes to absorb
     /// @see https://rux-lang.dev/docs/api/crypto/sha512/update
     pub func Update(self: &var Sha512, bytes: char8[..]) {
@@ -225,7 +219,6 @@ extend Sha512 : Digest {
     ///
     /// The padding carries a hundred and twenty eight bit length, so the final block needs seventeen free bytes
     /// rather than nine; a block with fewer takes a whole further block.
-    ///
     /// @param into receives the output
     /// @see https://rux-lang.dev/docs/api/crypto/sha512/finish
     pub func Finish(self: &var Sha512, into: var char8[..]) {
@@ -271,7 +264,6 @@ extend Sha512 : Digest {
     }
 
     /// Sixty-four, forty-eight, thirty-two or twenty-eight bytes, depending on which variant this is.
-    ///
     /// @returns how many bytes a digest occupies
     /// @see https://rux-lang.dev/docs/api/crypto/sha512/digest-length
     pub func DigestLength(self: &Sha512) -> uint {
@@ -279,7 +271,6 @@ extend Sha512 : Digest {
     }
 
     /// A hundred and twenty eight bytes, for every variant.
-    ///
     /// @returns how many bytes the compression function consumes at a time
     /// @see https://rux-lang.dev/docs/api/crypto/sha512/block-length
     pub func BlockLength(self: &Sha512) -> uint {
@@ -288,7 +279,6 @@ extend Sha512 : Digest {
 }
 
 /// The SHA-512 digest of `bytes`, in one call.
-///
 /// @param bytes the bytes to absorb
 /// @param into receives the output
 /// @see https://rux-lang.dev/docs/api/crypto/sha512-of
@@ -299,7 +289,6 @@ pub func Sha512Of(bytes: char8[..], into: var char8[..]) {
 }
 
 /// The SHA-384 digest of `bytes`, in one call.
-///
 /// @param bytes the bytes to absorb
 /// @param into receives the output
 /// @see https://rux-lang.dev/docs/api/crypto/sha384-of
@@ -310,7 +299,6 @@ pub func Sha384Of(bytes: char8[..], into: var char8[..]) {
 }
 
 /// The SHA-512/224 digest of `bytes`, in one call.
-///
 /// @param bytes the bytes to absorb
 /// @param into receives the output
 /// @see https://rux-lang.dev/docs/api/crypto/sha512-trunc224-of
@@ -321,7 +309,6 @@ pub func Sha512Trunc224Of(bytes: char8[..], into: var char8[..]) {
 }
 
 /// The SHA-512/256 digest of `bytes`, in one call.
-///
 /// @param bytes the bytes to absorb
 /// @param into receives the output
 /// @see https://rux-lang.dev/docs/api/crypto/sha512-trunc256-of

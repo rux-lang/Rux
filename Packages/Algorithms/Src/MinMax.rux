@@ -21,7 +21,6 @@ import Core::Ordering;
 /// Requires `<` on the element type.
 ///
 /// Cannot fail. Runs in time proportional to the length, comparing each element once, and allocates nothing.
-///
 /// @typeParam T the element type
 /// @param items the sequence to work on
 /// @returns the index of the smallest element, the first when several tie, or `none` when empty
@@ -47,7 +46,6 @@ pub func MinIndex<T>(items: T[..]) -> uint? {
 /// Requires `<` on the element type.
 ///
 /// Cannot fail. Runs in time proportional to the length and allocates nothing.
-///
 /// @typeParam T the element type
 /// @param items the sequence to work on
 /// @returns the index of the largest element, the first when several tie, or `none` when empty
@@ -71,7 +69,6 @@ pub func MaxIndex<T>(items: T[..]) -> uint? {
 /// slice, and the earliest index when several elements tie.
 ///
 /// Cannot fail. Runs in time proportional to the length and allocates nothing beyond whatever `compare` does.
-///
 /// @typeParam T the element type
 /// @param items the sequence to work on
 /// @param compare how two elements order against each other
@@ -96,7 +93,6 @@ pub func MinIndexBy<T>(items: T[..], compare: func(T, T) -> Ordering) -> uint? {
 /// slice, and the earliest index when several elements tie.
 ///
 /// Cannot fail. Runs in time proportional to the length and allocates nothing beyond whatever `compare` does.
-///
 /// @typeParam T the element type
 /// @param items the sequence to work on
 /// @param compare how two elements order against each other
@@ -131,7 +127,6 @@ pub func MaxIndexBy<T>(items: T[..], compare: func(T, T) -> Ordering) -> uint? {
 /// # Safety
 ///
 /// `smallest` and `largest` must be non-null and writable.
-///
 /// @typeParam T the element type
 /// @param items the sequence to work on
 /// @param smallest receives the index of the smallest element
@@ -167,7 +162,6 @@ pub func MinMaxIndex<T>(items: T[..], smallest: *var uint, largest: *var uint) -
 /// # Safety
 ///
 /// `smallest` and `largest` must be non-null and writable.
-///
 /// @typeParam T the element type
 /// @param items the sequence to work on
 /// @param compare how two elements order against each other
@@ -200,7 +194,6 @@ pub func MinMaxIndexBy<T>(items: T[..], compare: func(T, T) -> Ordering, smalles
 /// Both are read by value and one is returned by copy. Requires `<` on the type.
 ///
 /// Cannot fail. Runs in constant time and allocates nothing.
-///
 /// @typeParam T the element type
 /// @param left one of the two values
 /// @param right the other
@@ -216,7 +209,6 @@ pub func Min<T>(left: T, right: T) -> T {
 /// Both are read by value and one is returned by copy. Requires `<` on the type.
 ///
 /// Cannot fail. Runs in constant time and allocates nothing.
-///
 /// @typeParam T the element type
 /// @param left one of the two values
 /// @param right the other
@@ -235,7 +227,6 @@ pub func Max<T>(left: T, right: T) -> T {
 /// Requires `<` on the type.
 ///
 /// Cannot fail. Runs in constant time and allocates nothing.
-///
 /// @typeParam T the element type
 /// @param value the value to bring into range
 /// @param low the lowest allowed value
@@ -255,7 +246,6 @@ pub func Clamp<T>(value: T, low: T, high: T) -> T {
 /// above `high` returns `low`, exactly as `Clamp` does.
 ///
 /// Cannot fail. Runs in constant time and allocates nothing beyond whatever `compare` does.
-///
 /// @typeParam T the element type
 /// @param value the value to bring into range
 /// @param low the lowest allowed value

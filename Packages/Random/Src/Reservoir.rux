@@ -10,7 +10,6 @@
 /// Offer every item of the stream in turn and the reservoir ends holding a uniformly chosen subset of whatever
 /// arrived, each subset of that size equally likely. The caller owns the storage, and its length is the sample
 /// size.
-///
 /// @typeParam T the item type
 /// @see https://rux-lang.dev/docs/api/random/reservoir
 pub struct Reservoir<T> {
@@ -22,7 +21,6 @@ pub struct Reservoir<T> {
 
 extend Reservoir<T> {
     /// A reservoir that will fill `room`.
-    ///
     /// @param room how many items the reservoir keeps
     /// @returns an empty reservoir that will keep `room` items
     /// @see https://rux-lang.dev/docs/api/random/reservoir/new
@@ -32,7 +30,6 @@ extend Reservoir<T> {
 
     /// How many items the reservoir currently holds, which is the smaller of the sample size and the number
     /// offered.
-    ///
     /// @returns how many items it currently holds
     /// @see https://rux-lang.dev/docs/api/random/reservoir/length
     pub func Length(self: &Reservoir<T>) -> uint {
@@ -40,7 +37,6 @@ extend Reservoir<T> {
     }
 
     /// How many items have been offered.
-    ///
     /// @returns how many items have been offered to it in total
     /// @see https://rux-lang.dev/docs/api/random/reservoir/seen
     pub func Seen(self: &Reservoir<T>) -> uint {
@@ -54,7 +50,6 @@ extend Reservoir<T> {
 /// uniformly chosen existing entry with probability equal to the sample size over the number seen. That is what
 /// keeps every subset equally likely at every moment, not merely at the end — so a stream can be cut short and
 /// the sample is still uniform over what arrived.
-///
 /// @typeParam G the generator's type
 /// @typeParam T the item type
 /// @param generator where the bits come from

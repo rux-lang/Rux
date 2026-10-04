@@ -19,14 +19,12 @@ const SysWrite: uint64 = 4;
 const SysClose: uint64 = 6;
 const SysBrk: uint64 = 17;
 /// `getpid(2)`'s system-call number.
-///
 /// @see https://rux-lang.dev/docs/api/freebsd/sys-get-pid
 pub const SysGetPid: uint64 = 20;
 
 // FreeBSD 15.1's native syscall table. AArch64 and x86-64 share these numbers;
 // only the register/trap sequence below is architecture-owned.
 /// `mmap(2)`'s system-call number.
-///
 /// @see https://rux-lang.dev/docs/api/freebsd/sys-mmap
 pub const SysMmap: uint64 = 477;
 const SysMunmap: uint64 = 73;
@@ -76,7 +74,6 @@ const SysSysctl: uint64 = 202;
 when #target.arch {
     .X86_64 => {
         /// Executes a raw FreeBSD system call without arguments.
-        ///
         /// @param number the system call to make
         /// @returns the kernel's raw result
         /// @see https://rux-lang.dev/docs/api/freebsd/syscall-0
@@ -161,7 +158,6 @@ when #target.arch {
         }
 
         /// Executes a raw FreeBSD system call with six arguments.
-        ///
         /// @param number the system call to make
         /// @param arg0 the call's first argument
         /// @param arg1 the call's second argument
@@ -189,7 +185,6 @@ when #target.arch {
     },
     .AArch64 => {
         /// Executes a raw FreeBSD system call without arguments.
-        ///
         /// @param number the system call to make
         /// @returns the kernel's raw result
         /// @see https://rux-lang.dev/docs/api/freebsd/syscall-0
@@ -256,7 +251,6 @@ when #target.arch {
         }
 
         /// Executes a raw FreeBSD system call with six arguments.
-        ///
         /// @param number the system call to make
         /// @param arg0 the call's first argument
         /// @param arg1 the call's second argument
@@ -288,7 +282,6 @@ when #target.arch {
 /// as all ones rather than as a small positive number.
 ///
 /// Cannot fail. Runs in constant time and allocates nothing.
-///
 /// @param fd the descriptor to widen
 /// @returns it sign-extended, so a negative one stays negative
 /// @see https://rux-lang.dev/docs/api/freebsd/sign-extend-fd

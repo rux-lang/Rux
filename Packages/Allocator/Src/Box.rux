@@ -27,7 +27,6 @@ import Allocator::{ AllocError, Allocator, Layout };
 ///
 /// The storage is released when the box is destroyed, at whichever scope exit, return, `break`, `continue` or
 /// overwriting assignment the value's life ends at.
-///
 /// @typeParam T the type the box owns one of
 /// @see https://rux-lang.dev/docs/api/allocator/box
 pub struct Box<T> {
@@ -47,7 +46,6 @@ extend Box<T> {
     /// and on failure it is destroyed rather than leaked.
     ///
     /// Runs in whatever time the allocator takes, and allocates exactly one block.
-    ///
     /// @param allocator where the storage comes from
     /// @param value the value to move into it
     /// @returns the box, or why the allocator refused
@@ -70,7 +68,6 @@ extend Box<T> {
     /// # Safety
     ///
     /// The pointer dies with the box. Holding it past a move of the box is holding a pointer into released storage.
-    ///
     /// @returns the address of the held value, or null when the box is empty
     /// @see https://rux-lang.dev/docs/api/allocator/box/get
     pub func Get(self: &Box<T>) -> *var T {
@@ -83,7 +80,6 @@ extend Box<T> {
     /// nothing and releases nothing.
     ///
     /// Cannot fail. Runs in constant time and allocates nothing.
-    ///
     /// @returns whether the box holds nothing
     /// @see https://rux-lang.dev/docs/api/allocator/box/is-empty
     pub func IsEmpty(self: &Box<T>) -> bool {
@@ -99,7 +95,6 @@ extend Box<T> {
     /// value out does not have to keep the box alive afterwards.
     ///
     /// Runs in whatever time the allocator takes.
-    ///
     /// @param destination receives the held value
     /// @returns whether there was a value to take
     /// @see https://rux-lang.dev/docs/api/allocator/box/try-take
@@ -119,7 +114,6 @@ extend Box<T> {
     ///
     /// Runs when the box's life ends, and does nothing for a box whose value was taken out. A box that was moved
     /// away is not destroyed where it used to live, so the storage is released exactly once.
-    ///
     /// @see https://rux-lang.dev/docs/api/allocator/box/destructor
     func ~Box(self: &var Box<T>) {
         if self.pointer != null {

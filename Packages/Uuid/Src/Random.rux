@@ -18,7 +18,6 @@ import Entropy::{ EntropyError, Fill };
 ///
 /// Fails with why entropy was unavailable rather than producing a zero-filled UUID with the version bits set, which
 /// would be a valid-looking identifier that is entirely predictable.
-///
 /// @returns a version 4 value drawn from the system's generator, or why entropy was unavailable
 /// @see https://rux-lang.dev/docs/api/uuid/random
 pub func Random() -> Uuid ! EntropyError {
@@ -36,7 +35,6 @@ pub func Random() -> Uuid ! EntropyError {
 /// For reproducing a UUID from a recorded seed, or for drawing from a generator other than the system's. The
 /// version and variant bits are set regardless of what the bytes say, so the result is always a well-formed
 /// version 4 UUID.
-///
 /// @param bytes sixteen bytes to take as the value, in big-endian order
 /// @returns those bytes with the version and variant fields set for version 4
 /// @see https://rux-lang.dev/docs/api/uuid/random-from-bytes
@@ -53,7 +51,6 @@ pub func RandomFromBytes(bytes: byte[..]) -> Uuid {
 /// Windows API expects, and GUID bytes read from one become the UUID they represent. It must be called
 /// deliberately — applying it by accident, or failing to apply it when crossing the boundary, both produce a
 /// well-formed identifier that refers to something else entirely.
-///
 /// @param value the value to act on
 /// @returns the same sixteen bytes with the first three fields byte-swapped
 /// @see https://rux-lang.dev/docs/api/uuid/swap-guid-order

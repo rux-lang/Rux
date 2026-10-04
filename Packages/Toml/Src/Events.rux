@@ -14,7 +14,6 @@
 
 
 /// What just happened in the document.
-///
 /// @see https://rux-lang.dev/docs/api/toml/event
 pub enum TomlEvent: int32 {
     /// The document is finished.
@@ -62,7 +61,6 @@ enum TomlEventState: int32 {
 }
 
 /// Reads a document as events, in order, without building a tree.
-///
 /// @see https://rux-lang.dev/docs/api/toml/event-reader
 pub struct TomlEventReader {
     /// Where tokens come from.
@@ -92,7 +90,6 @@ pub struct TomlEventReader {
 
 extend TomlEventReader {
     /// A reader over `input`.
-    ///
     /// @param input the text to read
     /// @returns a reader positioned before the first event
     /// @see https://rux-lang.dev/docs/api/toml/event-reader/new
@@ -120,7 +117,6 @@ extend TomlEventReader {
     /// inside it rather than in a second call, so a caller holding the failure is holding all of it — and it is
     /// the same `TomlParseFailure` the tree parser answers, so the two ways of reading a document report a
     /// refusal in one vocabulary rather than two.
-    ///
     /// @returns the failure, positioned at the token the reader stopped on, or `none`
     /// @see https://rux-lang.dev/docs/api/toml/event-reader/failure
     pub func Failure(self: &TomlEventReader) -> TomlParseFailure? {
@@ -138,7 +134,6 @@ extend TomlEventReader {
 
     /// The bytes the current event's token spans, as written: a string is still escaped and a number is still
     /// text.
-    ///
     /// @returns the raw text the current event covers, borrowed from the input
     /// @see https://rux-lang.dev/docs/api/toml/event-reader/span
     pub func Span(self: &TomlEventReader) -> char8[..] {
@@ -146,7 +141,6 @@ extend TomlEventReader {
     }
 
     /// Which string form the current text event was written in, which decoding it needs.
-    ///
     /// @returns which quoting form the current text was written in
     /// @see https://rux-lang.dev/docs/api/toml/event-reader/form
     pub func Form(self: &TomlEventReader) -> TomlTextForm {
@@ -154,7 +148,6 @@ extend TomlEventReader {
     }
 
     /// Which line the current event is on, counting from one.
-    ///
     /// @returns the current event's line, counting from one
     /// @see https://rux-lang.dev/docs/api/toml/event-reader/line
     pub func Line(self: &TomlEventReader) -> uint {
@@ -162,7 +155,6 @@ extend TomlEventReader {
     }
 
     /// Which column the current event is at, counting from one, in bytes.
-    ///
     /// @returns the current event's column, counting from one
     /// @see https://rux-lang.dev/docs/api/toml/event-reader/column
     pub func Column(self: &TomlEventReader) -> uint {
@@ -170,7 +162,6 @@ extend TomlEventReader {
     }
 
     /// Whether the header being read was written `[[name]]` rather than `[name]`.
-    ///
     /// @returns whether the current header opens an array of tables rather than a table
     /// @see https://rux-lang.dev/docs/api/toml/event-reader/is-table-array
     pub func IsTableArray(self: &TomlEventReader) -> bool {
@@ -178,7 +169,6 @@ extend TomlEventReader {
     }
 
     /// How deep inside arrays and inline tables the reader is.
-    ///
     /// @returns how many tables are currently open
     /// @see https://rux-lang.dev/docs/api/toml/event-reader/depth
     pub func Depth(self: &TomlEventReader) -> uint {
@@ -262,7 +252,6 @@ extend TomlEventReader {
     ///
     /// After an `Error` every later call returns `End`: everything past a refusal would be read from a position
     /// the document never meant.
-    ///
     /// @returns the next event, or the end-of-input event
     /// @see https://rux-lang.dev/docs/api/toml/event-reader/next
     pub func Next(self: &var TomlEventReader) -> TomlEvent {

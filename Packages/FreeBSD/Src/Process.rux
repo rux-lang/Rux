@@ -9,7 +9,6 @@ import FreeBSD::{ ProcessId, SysExit, SysGetPid, Syscall0, Syscall1 };
 ///
 /// Only the low eight bits reach a waiting parent. Does not return, and nothing is flushed or destroyed on the way
 /// out.
-///
 /// @param code the status to report to the parent
 /// @see https://rux-lang.dev/docs/api/freebsd/exit
 pub func Exit(code: int32) {
@@ -19,7 +18,6 @@ pub func Exit(code: int32) {
 /// The calling process's own identifier.
 ///
 /// Cannot fail. Runs in constant time and allocates nothing.
-///
 /// @returns the calling process's identifier
 /// @see https://rux-lang.dev/docs/api/freebsd/get-pid
 pub func GetPid() -> ProcessId {

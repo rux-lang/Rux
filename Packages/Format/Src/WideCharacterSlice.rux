@@ -59,7 +59,6 @@ extend char16[..] : Display {
     ///
     /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal, and `UnsupportedRequest` for a style.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
@@ -96,7 +95,6 @@ extend char16[..] : Debug {
     ///
     /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal, and `UnsupportedRequest` for a style.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
@@ -129,7 +127,6 @@ extend char32[..] : Display {
     ///
     /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal, and `UnsupportedRequest` for a style.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
@@ -161,7 +158,6 @@ extend char32[..] : Debug {
     ///
     /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal, and `UnsupportedRequest` for a style.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted

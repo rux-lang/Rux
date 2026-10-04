@@ -14,7 +14,6 @@ import Allocator::Allocator;
 /// The text of `left` followed by the text of `right`.
 ///
 /// Fails with what went wrong; no partial text comes back.
-///
 /// @param allocator where the storage comes from
 /// @param left the first piece
 /// @param right the second
@@ -32,7 +31,6 @@ pub func Concat(allocator: Allocator, left: StringView, right: StringView) -> St
 ///
 /// A `count` of zero gives empty text, which is what makes repeating agree with joining: repeating twice is the
 /// same as joining a thing to itself.
-///
 /// @param allocator where the storage comes from
 /// @param view the borrowed text to act on
 /// @param count how many times
@@ -59,7 +57,6 @@ pub func Repeat(allocator: Allocator, view: StringView, count: uint) -> String !
 /// Occurrences are found left to right and never overlap, and what is put in their place is not searched again --
 /// so replacing `a` with `aa` terminates rather than growing forever. An empty `needle` matches nothing, since the
 /// alternative is a replacement between every pair of characters and before and after every one of them.
-///
 /// @param allocator where the storage comes from
 /// @param view the borrowed text to act on
 /// @param needle the text to look for
@@ -93,7 +90,6 @@ pub func Replace(allocator: Allocator, view: StringView, needle: StringView, rep
 }
 
 /// Whether `byte` is an ASCII letter.
-///
 /// @param byte the byte
 /// @returns whether the byte is an ASCII letter
 /// @see https://rux-lang.dev/docs/api/text/is-ascii-letter
@@ -106,7 +102,6 @@ pub func IsAsciiLetter(byte: char8) -> bool {
 ///
 /// ASCII only: every byte above 0x7F passes through untouched, which is why this cannot change the length and
 /// cannot produce anything that is not UTF-8.
-///
 /// @param allocator where the storage comes from
 /// @param view the borrowed text to act on
 /// @returns the text with its ASCII letters uppercased and everything else untouched
@@ -116,7 +111,6 @@ pub func ToAsciiUpper(allocator: Allocator, view: StringView) -> String ! TextEr
 }
 
 /// The text of `view` with every ASCII upper-case letter lowered.
-///
 /// @param allocator where the storage comes from
 /// @param view the borrowed text to act on
 /// @returns the text with its ASCII letters lowercased and everything else untouched

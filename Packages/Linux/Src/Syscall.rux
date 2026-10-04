@@ -25,14 +25,12 @@ when #target.arch {
         const SysWrite: uint64 = 1;
         const SysClose: uint64 = 3;
         /// `mmap(2)`'s system-call number.
-        ///
         /// @see https://rux-lang.dev/docs/api/linux/sys-mmap
         pub const SysMmap: uint64 = 9;
         const SysMunmap: uint64 = 11;
         const SysBrk: uint64 = 12;
         const SysNanosleep: uint64 = 35;
         /// `getpid(2)`'s system-call number.
-        ///
         /// @see https://rux-lang.dev/docs/api/linux/sys-get-pid
         pub const SysGetPid: uint64 = 39;
         const SysExit: uint64 = 60;
@@ -67,14 +65,12 @@ when #target.arch {
         const SysWrite: uint64 = 64;
         const SysClose: uint64 = 57;
         /// `mmap(2)`'s system-call number.
-        ///
         /// @see https://rux-lang.dev/docs/api/linux/sys-mmap
         pub const SysMmap: uint64 = 222;
         const SysMunmap: uint64 = 215;
         const SysBrk: uint64 = 214;
         const SysNanosleep: uint64 = 101;
         /// `getpid(2)`'s system-call number.
-        ///
         /// @see https://rux-lang.dev/docs/api/linux/sys-get-pid
         pub const SysGetPid: uint64 = 172;
         const SysExit: uint64 = 93;
@@ -124,7 +120,6 @@ when #target.arch {
     .X86_64 => {
         // Executes a raw Linux system call without arguments.
         /// Executes a raw Linux system call without arguments.
-        ///
         /// @param number the system call to make
         /// @returns the kernel's raw result
         /// @see https://rux-lang.dev/docs/api/linux/syscall-0
@@ -186,7 +181,6 @@ when #target.arch {
 
         // Executes a raw Linux system call with six arguments.
         /// Executes a raw Linux system call with six arguments.
-        ///
         /// @param number the system call to make
         /// @param arg0 the call's first argument
         /// @param arg1 the call's second argument
@@ -211,7 +205,6 @@ when #target.arch {
     .AArch64 => {
         // Executes a raw Linux system call without arguments.
         /// Executes a raw Linux system call without arguments.
-        ///
         /// @param number the system call to make
         /// @returns the kernel's raw result
         /// @see https://rux-lang.dev/docs/api/linux/syscall-0
@@ -273,7 +266,6 @@ when #target.arch {
 
         // Executes a raw Linux system call with six arguments.
         /// Executes a raw Linux system call with six arguments.
-        ///
         /// @param number the system call to make
         /// @param arg0 the call's first argument
         /// @param arg1 the call's second argument
@@ -304,7 +296,6 @@ when #target.arch {
 /// as all ones rather than as a small positive number, which is how `mmap` is told it has no backing descriptor.
 ///
 /// Cannot fail. Runs in constant time and allocates nothing.
-///
 /// @param fd the descriptor to widen
 /// @returns it sign-extended, so a negative one stays negative
 /// @see https://rux-lang.dev/docs/api/linux/sign-extend-fd

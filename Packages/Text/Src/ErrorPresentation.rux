@@ -80,7 +80,6 @@ extend TextError : Display {
     ///
     /// # Failures
     /// Reports whatever the writer reported, and `UnsupportedRequest` for any style or precision.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole description was accepted
@@ -101,7 +100,6 @@ extend TextError : Debug {
     ///
     /// # Failures
     /// Reports whatever the writer reported, and `UnsupportedRequest` for any style or precision.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole name was accepted
@@ -122,7 +120,6 @@ extend TextFailureKind : Display {
     ///
     /// # Failures
     /// Reports whatever the writer reported, and `UnsupportedRequest` for any style or precision.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole description was accepted
@@ -139,7 +136,6 @@ extend TextFailureKind : Debug {
     ///
     /// # Failures
     /// Reports whatever the writer reported, and `UnsupportedRequest` for any style or precision.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole name was accepted
@@ -160,7 +156,6 @@ extend FormatError : Display {
     ///
     /// # Failures
     /// Reports whatever the writer reported, and `UnsupportedRequest` for any style or precision.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole description was accepted
@@ -187,7 +182,6 @@ extend FormatError : Debug {
     ///
     /// # Failures
     /// Reports whatever the writer reported, and `UnsupportedRequest` for any style or precision.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole rendering was accepted
@@ -232,7 +226,6 @@ extend Utf8Error : Display {
     ///
     /// # Failures
     /// Reports whatever the writer reported, and `UnsupportedRequest` for any style or precision.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole description was accepted
@@ -252,7 +245,6 @@ extend Utf8Error : Debug {
     ///
     /// # Failures
     /// Reports whatever the writer reported, and `UnsupportedRequest` for any style or precision.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole name was accepted
@@ -276,7 +268,6 @@ extend AllocError : Display {
     ///
     /// # Failures
     /// Reports whatever the writer reported, and `UnsupportedRequest` for any style or precision.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole description was accepted
@@ -296,7 +287,6 @@ extend AllocError : Debug {
     ///
     /// # Failures
     /// Reports whatever the writer reported, and `UnsupportedRequest` for any style or precision.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole name was accepted
@@ -319,7 +309,6 @@ extend PageError : Display {
     ///
     /// # Failures
     /// Reports whatever the writer reported, and `UnsupportedRequest` for any style or precision.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole description was accepted
@@ -342,7 +331,6 @@ extend PageError : Debug {
     ///
     /// # Failures
     /// Reports whatever the writer reported, and `UnsupportedRequest` for any style or precision.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole name was accepted

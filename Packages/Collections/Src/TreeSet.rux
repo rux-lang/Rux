@@ -26,7 +26,6 @@ import Core::{ Iterator, Ordering };
 /// An ordered set of unique elements.
 ///
 /// Move-only: it owns every node and every element in them.
-///
 /// @typeParam T the element type
 /// @see https://rux-lang.dev/docs/api/collections/tree-set
 pub struct TreeSet<T> {
@@ -46,7 +45,6 @@ extend TreeSet<T> {
     /// call; a set whose comparison changes under it loses elements it still holds.
     ///
     /// Cannot fail. Runs in constant time and allocates nothing.
-    ///
     /// @param allocator where the storage comes from
     /// @param compare how two keys order against each other
     /// @returns an empty collection that has taken no storage yet
@@ -56,7 +54,6 @@ extend TreeSet<T> {
     }
 
     /// How many elements the set holds.
-    ///
     /// @returns how many elements it holds
     /// @see https://rux-lang.dev/docs/api/collections/tree-set/length
     pub func Length(self: &TreeSet<T>) -> uint {
@@ -64,7 +61,6 @@ extend TreeSet<T> {
     }
 
     /// Whether the set holds no elements.
-    ///
     /// @returns whether it holds nothing
     /// @see https://rux-lang.dev/docs/api/collections/tree-set/is-empty
     pub func IsEmpty(self: &TreeSet<T>) -> bool {
@@ -74,7 +70,6 @@ extend TreeSet<T> {
     /// Whether `value` is in the set.
     ///
     /// Runs in time proportional to the height, which is at most twice the logarithm of the length.
-    ///
     /// @param value the value to act on
     /// @returns whether the value is present
     /// @see https://rux-lang.dev/docs/api/collections/tree-set/contains
@@ -89,7 +84,6 @@ extend TreeSet<T> {
     /// number of distinct elements put into it.
     ///
     /// Reports `OutOfMemory` when the node cannot be allocated, having changed nothing.
-    ///
     /// @param value the value to act on
     /// @returns whether the value was new rather than already present
     /// @see https://rux-lang.dev/docs/api/collections/tree-set/insert
@@ -101,7 +95,6 @@ extend TreeSet<T> {
     /// Takes `value` out of the set, reporting whether it was there.
     ///
     /// Cannot fail. Runs in time proportional to the height and allocates nothing.
-    ///
     /// @param value the value to act on
     /// @returns whether the value was there to remove
     /// @see https://rux-lang.dev/docs/api/collections/tree-set/remove
@@ -113,7 +106,6 @@ extend TreeSet<T> {
     }
 
     /// Destroys every element, leaving an empty set that is still usable.
-    ///
     /// @see https://rux-lang.dev/docs/api/collections/tree-set/clear
     pub func Clear(self: &var TreeSet<T>) {
         self.tree.Clear();
@@ -122,7 +114,6 @@ extend TreeSet<T> {
     /// The smallest element, or `none` for an empty set.
     ///
     /// Runs in time proportional to the height and allocates nothing.
-    ///
     /// @returns the smallest element, or `none` when empty
     /// @see https://rux-lang.dev/docs/api/collections/tree-set/first
     pub func First(self: &TreeSet<T>) -> T? {
@@ -130,7 +121,6 @@ extend TreeSet<T> {
     }
 
     /// The largest element, or `none` for an empty set.
-    ///
     /// @returns the largest element, or `none` when empty
     /// @see https://rux-lang.dev/docs/api/collections/tree-set/last
     pub func Last(self: &TreeSet<T>) -> T? {
@@ -138,7 +128,6 @@ extend TreeSet<T> {
     }
 
     /// The largest element at or below `value`, or `none` when every element is above it.
-    ///
     /// @param value the value to act on
     /// @returns the largest element at or below `value`, or `none`
     /// @see https://rux-lang.dev/docs/api/collections/tree-set/floor
@@ -149,7 +138,6 @@ extend TreeSet<T> {
     }
 
     /// The smallest element at or above `value`, or `none` when every element is below it.
-    ///
     /// @param value the value to act on
     /// @returns the smallest element at or above `value`, or `none`
     /// @see https://rux-lang.dev/docs/api/collections/tree-set/ceiling
@@ -168,7 +156,6 @@ extend TreeSet<T> {
     /// A walk over this set, smallest element first, leaving it untouched.
     ///
     /// `self` is borrowed and must outlive the walk, which must not run across an insertion or a removal.
-    ///
     /// @returns a cursor over the elements in order
     /// @see https://rux-lang.dev/docs/api/collections/tree-set/iterate
     pub func Iterate(self: &TreeSet<T>) -> TreeSetIterator<T> {
@@ -179,7 +166,6 @@ extend TreeSet<T> {
     ///
     /// Half-open, so `Range(a, b)` and `Range(b, c)` together give exactly `Range(a, c)` with nothing repeated and
     /// nothing missed. A range whose `end` is not above its `start` hands back nothing.
-    ///
     /// @param start the first element, inclusive
     /// @param end the element one past the last, exclusive
     /// @returns a cursor over the elements that fall in `[start, end)`
@@ -195,7 +181,6 @@ extend TreeSet<T> {
     /// A walk that consumes this set, smallest element first.
     ///
     /// Takes ownership; the set is gone afterwards.
-    ///
     /// @returns a cursor that consumes the set as it goes, in order
     /// @see https://rux-lang.dev/docs/api/collections/tree-set/into-iterator
     pub func IntoIterator(self: TreeSet<T>) -> TreeSetIntoIterator<T> {
@@ -216,7 +201,6 @@ extend TreeSet<T> {
     /// The empty set is a subset of everything, including itself. Allocates nothing and cannot fail.
     ///
     /// Runs in time proportional to this set's length times the logarithm of `other`'s.
-    ///
     /// @param other the collection to compare or combine with
     /// @returns whether every element of this set is in `other`
     /// @see https://rux-lang.dev/docs/api/collections/tree-set/is-subset-of
@@ -238,7 +222,6 @@ extend TreeSet<T> {
     }
 
     /// Whether every element of `other` is in this set.
-    ///
     /// @param other the collection to compare or combine with
     /// @returns whether every element of `other` is in this set
     /// @see https://rux-lang.dev/docs/api/collections/tree-set/is-superset-of
@@ -250,7 +233,6 @@ extend TreeSet<T> {
     ///
     /// The empty set is disjoint from everything, including itself. The smaller set is the one walked, since either
     /// walk gives the same answer and one of them is shorter.
-    ///
     /// @param other the collection to compare or combine with
     /// @returns whether the two share no element
     /// @see https://rux-lang.dev/docs/api/collections/tree-set/is-disjoint-from
@@ -275,7 +257,6 @@ extend TreeSet<T> {
     ///
     /// Order is not part of the question — two sets are equal when each contains the other — but having an order
     /// makes the lengths enough to reject most pairs before looking at an element.
-    ///
     /// @param other the collection to compare or combine with
     /// @returns whether both hold exactly the same elements
     /// @see https://rux-lang.dev/docs/api/collections/tree-set/equals
@@ -290,7 +271,6 @@ extend TreeSet<T> {
     /// every element is a separate allocation, so there is no point at which the whole operation can be paid for in
     /// advance. What it gives back instead is that a partial union is still a set with every invariant intact, and
     /// running the same call again finishes it.
-    ///
     /// @param other the collection to compare or combine with
     /// @returns nothing when the operation succeeded, or why it did not
     /// @see https://rux-lang.dev/docs/api/collections/tree-set/union-with
@@ -318,7 +298,6 @@ extend TreeSet<T> {
     /// nodes around what was removed — including, when it has two children, the very node a pointer walk would
     /// have been about to visit. A key survives that; a pointer does not. The price is a descent per element rather
     /// than an edge.
-    ///
     /// @param other the collection to compare or combine with
     /// @see https://rux-lang.dev/docs/api/collections/tree-set/intersect-with
     pub func IntersectWith(self: &var TreeSet<T>, other: &TreeSet<T>) {
@@ -335,7 +314,6 @@ extend TreeSet<T> {
     /// Removes every element that is also in `other`.
     ///
     /// Allocates nothing and cannot fail, and walks the same way `IntersectWith` does and for the same reason.
-    ///
     /// @param other the collection to compare or combine with
     /// @see https://rux-lang.dev/docs/api/collections/tree-set/subtract
     pub func Subtract(self: &var TreeSet<T>, other: &TreeSet<T>) {
@@ -357,7 +335,6 @@ extend TreeSet<T> {
     /// The removals and the additions cannot be interleaved: an element removed from this set would then look
     /// absent when `other`'s copy of it arrived, and be added straight back. So what is shared is taken out first,
     /// and only then is what is left of `other` put in.
-    ///
     /// @param other the collection to compare or combine with
     /// @returns nothing when the operation succeeded, or why it did not
     /// @see https://rux-lang.dev/docs/api/collections/tree-set/symmetric-difference-with
@@ -399,7 +376,6 @@ extend TreeSet<T> {
     /// A set holding what this one holds, ordered the same way and allocating from the same allocator.
     ///
     /// A failed clone hands back nothing rather than half of a set.
-    ///
     /// @returns an independent copy
     /// @see https://rux-lang.dev/docs/api/collections/tree-set/clone
     pub func Clone(self: &TreeSet<T>) -> TreeSet<T> ! CollectionError {
@@ -410,7 +386,6 @@ extend TreeSet<T> {
 }
 
 /// A walk over a borrowed set, smallest element first.
-///
 /// @typeParam T the element type
 /// @see https://rux-lang.dev/docs/api/collections/tree-set-iterator
 pub struct TreeSetIterator<T> {
@@ -422,7 +397,6 @@ extend TreeSetIterator<T> : Iterator {
     /// The next element in order, or `none` when there are no more.
     ///
     /// Runs in constant amortized time: a whole walk crosses every edge of the tree exactly twice.
-    ///
     /// @returns the next element in order, or `none` at the end
     /// @see https://rux-lang.dev/docs/api/collections/tree-set-iterator/next
     pub func Next(self: &var TreeSetIterator<T>) -> T? {
@@ -434,7 +408,6 @@ extend TreeSetIterator<T> : Iterator {
 }
 
 /// A walk over a borrowed set that stops at a bound.
-///
 /// @typeParam T the element type
 /// @see https://rux-lang.dev/docs/api/collections/tree-set-range-iterator
 pub struct TreeSetRangeIterator<T> {
@@ -448,7 +421,6 @@ pub struct TreeSetRangeIterator<T> {
 
 extend TreeSetRangeIterator<T> : Iterator {
     /// The next element below the bound, or `none` once the walk reaches it.
-    ///
     /// @returns the next element in order, or `none` at the end
     /// @see https://rux-lang.dev/docs/api/collections/tree-set-range-iterator/next
     pub func Next(self: &var TreeSetRangeIterator<T>) -> T? {
@@ -467,7 +439,6 @@ extend TreeSetRangeIterator<T> : Iterator {
 ///
 /// Owns the nodes, and destroys whatever is left in them when it dies — so a walk stopped part-way destroys the
 /// rest exactly once, and nothing already handed out is destroyed twice.
-///
 /// @typeParam T the element type
 /// @see https://rux-lang.dev/docs/api/collections/tree-set-into-iterator
 pub struct TreeSetIntoIterator<T> {
@@ -484,7 +455,6 @@ extend TreeSetIntoIterator<T> : Iterator {
     /// The next element in order, or `none` when there are no more.
     ///
     /// Takes the smallest element out of the tree rather than reading past it, which is what makes it the caller's.
-    ///
     /// @returns the next element in order, or `none` at the end
     /// @see https://rux-lang.dev/docs/api/collections/tree-set-into-iterator/next
     pub func Next(self: &var TreeSetIntoIterator<T>) -> T? {

@@ -29,12 +29,10 @@ when #target.os {
 ///
 /// A link that points at itself, or at a chain that returns to it, would otherwise be followed forever. The
 /// limit is what every system uses for the same reason, and reaching it is reported as `LimitExceeded`.
-///
 /// @see https://rux-lang.dev/docs/api/filesystem/symbolic-link-limit
 pub const SymbolicLinkLimit: uint = 40;
 
 /// The process's working directory, as an absolute path.
-///
 /// @param allocator where the storage comes from
 /// @returns the working directory
 /// @see https://rux-lang.dev/docs/api/filesystem/current-directory
@@ -65,7 +63,6 @@ pub func CurrentDirectory(allocator: Allocator) -> OsString ! IoError {
 ///
 /// Process-wide and immediately visible to every thread, which invalidates every relative path any of them was
 /// about to resolve. Nothing in this package calls it.
-///
 /// @param allocator where the storage comes from
 /// @param path the path to act on
 /// @returns success when the working directory changed
@@ -91,7 +88,6 @@ pub func SetCurrentDirectory(allocator: Allocator, path: Path) -> ! IoError {
 /// Arithmetic, not a question for the filesystem: the path need not exist, nothing is opened, and no symbolic
 /// link is resolved — so a `..` that crosses one is simplified away as though it did not. `Canonicalize` is the
 /// operation that tells the truth about links, at the cost of requiring the file to be there.
-///
 /// @param allocator where the storage comes from
 /// @param path the path to act on
 /// @returns the path made absolute without touching the file system
@@ -224,7 +220,6 @@ when #target.os != .Windows {
 /// On Windows the answer arrives in the verbatim form and spelled as the filesystem stores it — the case the
 /// name actually has, short names expanded — because that is what the system reports, and rewriting it would be
 /// this package guessing.
-///
 /// @param allocator where the storage comes from
 /// @param path the path to act on
 /// @returns the path with every link and relative component resolved, which needs the file system and so can fail

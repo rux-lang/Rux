@@ -16,7 +16,6 @@ import Core::Ordering;
 /// The ordering of two `uint` values.
 ///
 /// Both are read by value. Cannot fail; runs in constant time and allocates nothing.
-///
 /// @param left one of the two values
 /// @param right the other
 /// @returns how `left` orders against `right`
@@ -28,7 +27,6 @@ pub func CompareUint(left: uint, right: uint) -> Ordering {
 }
 
 /// The ordering of two `uint64` values.
-///
 /// @param left one of the two values
 /// @param right the other
 /// @returns how `left` orders against `right`
@@ -40,7 +38,6 @@ pub func CompareUint64(left: uint64, right: uint64) -> Ordering {
 }
 
 /// The ordering of two `uint32` values.
-///
 /// @param left one of the two values
 /// @param right the other
 /// @returns how `left` orders against `right`
@@ -54,7 +51,6 @@ pub func CompareUint32(left: uint32, right: uint32) -> Ordering {
 /// The ordering of two `int64` values.
 ///
 /// Signed, so this is not the unsigned comparison of the same bits: a negative key sorts below every positive one.
-///
 /// @param left one of the two values
 /// @param right the other
 /// @returns how `left` orders against `right`
@@ -66,7 +62,6 @@ pub func CompareInt64(left: int64, right: int64) -> Ordering {
 }
 
 /// The ordering of two `int32` values.
-///
 /// @param left one of the two values
 /// @param right the other
 /// @returns how `left` orders against `right`
@@ -81,7 +76,6 @@ pub func CompareInt32(left: int32, right: int32) -> Ordering {
 ///
 /// By code unit, which for ASCII is alphabetical and for anything above it is UTF-8 byte order — which is the order
 /// of the code points, since UTF-8 is ordered that way by construction.
-///
 /// @param left one of the two values
 /// @param right the other
 /// @returns how `left` orders against `right`
@@ -98,7 +92,6 @@ pub func CompareChar8(left: char8, right: char8) -> Ordering {
 /// shorter one first — which is the ordering a dictionary uses, and the one `Rux/Algorithms` sorts by.
 ///
 /// Cannot fail. Runs in time proportional to the shorter length and allocates nothing.
-///
 /// @param left one of the two values
 /// @param right the other
 /// @returns how the two order byte by byte, then by length

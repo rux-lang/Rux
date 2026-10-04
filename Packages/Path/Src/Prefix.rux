@@ -12,7 +12,6 @@
 import Core::{ #target };
 
 /// The kind of prefix a path opens with.
-///
 /// @see https://rux-lang.dev/docs/api/path/prefix-kind
 pub enum PrefixKind: int32 {
     /// No prefix: the path is a plain name, rooted or not.
@@ -30,7 +29,6 @@ pub enum PrefixKind: int32 {
 /// Zero and `None` on the Unix systems always: a leading `//server` is just a path there, whatever tools make of
 /// it. On Windows the drive is two units, a share runs through the end of its share name, and the verbatim prefix
 /// covers its four units plus the drive or share inside it.
-///
 /// @param path the path to act on
 /// @param kind which prefix form to measure
 /// @returns how many leading units the prefix occupies, or zero when there is none
@@ -105,7 +103,6 @@ when #target.os == .Windows {
 }
 
 /// Whether `path` has a root: a separator standing where the segments begin.
-///
 /// @param path the path to act on
 /// @returns whether the path begins at a root
 /// @see https://rux-lang.dev/docs/api/path/has-root
@@ -124,7 +121,6 @@ pub func HasRoot(path: Path) -> bool {
 ///
 /// On the Unix systems, rooted is absolute. On Windows a rooted drive (`C:\x`), a share and a verbatim path are
 /// absolute; `C:name` is drive-relative and `\name` drive-absent, and neither names one place on its own.
-///
 /// @param path the path to act on
 /// @returns whether the path names a location without needing a working directory
 /// @see https://rux-lang.dev/docs/api/path/is-absolute

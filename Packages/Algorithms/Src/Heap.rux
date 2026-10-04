@@ -25,7 +25,6 @@ import Core::{ Ordering };
 ///
 /// Cannot fail. Runs in time proportional to the length — linear, not `n log n`, because sifting from the bottom up
 /// does most of its work on the short subtrees near the leaves. Allocates nothing.
-///
 /// @typeParam T the element type
 /// @param items the sequence to work on
 /// @see https://rux-lang.dev/docs/api/algorithms/make-heap
@@ -48,7 +47,6 @@ pub func MakeHeap<T>(items: var T[..]) {
 /// Requires `<` on the element type.
 ///
 /// Cannot fail. Runs in time proportional to the logarithm of the length and allocates nothing.
-///
 /// @typeParam T the element type
 /// @param items the sequence to work on
 /// @see https://rux-lang.dev/docs/api/algorithms/push-heap
@@ -66,7 +64,6 @@ pub func PushHeap<T>(items: var T[..]) {
 /// Requires `<` on the element type.
 ///
 /// Cannot fail. Runs in time proportional to the logarithm of the length and allocates nothing.
-///
 /// @typeParam T the element type
 /// @param items the sequence to work on
 /// @see https://rux-lang.dev/docs/api/algorithms/pop-heap
@@ -89,7 +86,6 @@ pub func PopHeap<T>(items: var T[..]) {
 /// Requires `<` on the element type.
 ///
 /// Cannot fail. Makes O(n log n) comparisons and allocates nothing. Equal elements may be reordered.
-///
 /// @typeParam T the element type
 /// @param items the sequence to work on
 /// @see https://rux-lang.dev/docs/api/algorithms/sort-heap
@@ -109,7 +105,6 @@ pub func SortHeap<T>(items: var T[..]) {
 /// Requires `<` on the element type.
 ///
 /// Cannot fail. Runs in time proportional to the length and allocates nothing.
-///
 /// @typeParam T the element type
 /// @param items the sequence to work on
 /// @returns whether the sequence satisfies the heap property throughout
@@ -126,7 +121,6 @@ pub func IsHeap<T>(items: T[..]) -> bool {
 /// Requires `<` on the element type.
 ///
 /// Cannot fail. Runs in time proportional to the answer and allocates nothing.
-///
 /// @typeParam T the element type
 /// @param items the sequence to work on
 /// @returns how many leading elements satisfy the heap property
@@ -178,7 +172,6 @@ func HeapSiftDown<T>(data: *var T, count: uint, root: uint) {
 /// already a heap.
 ///
 /// Cannot fail. Runs in time proportional to the length and allocates nothing beyond whatever `compare` does.
-///
 /// @typeParam T the element type
 /// @param items the sequence to work on
 /// @param compare how two elements order against each other
@@ -198,7 +191,6 @@ pub func MakeHeapBy<T>(items: var T[..], compare: func(T, T) -> Ordering) {
 ///
 /// Cannot fail. Runs in time proportional to the logarithm of the length and allocates nothing beyond whatever
 /// `compare` does.
-///
 /// @typeParam T the element type
 /// @param items the sequence to work on
 /// @param compare how two elements order against each other
@@ -214,7 +206,6 @@ pub func PushHeapBy<T>(items: var T[..], compare: func(T, T) -> Ordering) {
 ///
 /// Cannot fail. Runs in time proportional to the logarithm of the length and allocates nothing beyond whatever
 /// `compare` does.
-///
 /// @typeParam T the element type
 /// @param items the sequence to work on
 /// @param compare how two elements order against each other
@@ -234,7 +225,6 @@ pub func PopHeapBy<T>(items: var T[..], compare: func(T, T) -> Ordering) {
 ///
 /// Cannot fail. Makes O(n log n) comparisons and allocates nothing beyond whatever `compare` does. Equivalent
 /// elements may be reordered.
-///
 /// @typeParam T the element type
 /// @param items the sequence to work on
 /// @param compare how two elements order against each other
@@ -252,7 +242,6 @@ pub func SortHeapBy<T>(items: var T[..], compare: func(T, T) -> Ordering) {
 /// `items` is borrowed and read. An empty sequence and a single element are heaps.
 ///
 /// Cannot fail. Runs in time proportional to the length and allocates nothing beyond whatever `compare` does.
-///
 /// @typeParam T the element type
 /// @param items the sequence to work on
 /// @param compare how two elements order against each other
@@ -268,7 +257,6 @@ pub func IsHeapBy<T>(items: T[..], compare: func(T, T) -> Ordering) -> bool {
 /// the first element larger than its parent.
 ///
 /// Cannot fail. Runs in time proportional to the answer and allocates nothing beyond whatever `compare` does.
-///
 /// @typeParam T the element type
 /// @param items the sequence to work on
 /// @param compare how two elements order against each other

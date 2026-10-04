@@ -10,7 +10,6 @@
 /// those compare equal. Copy, owns nothing, and allocates nothing.
 ///
 /// Ordered by precedence, major component first, as semantic versioning defines it.
-///
 /// @see https://rux-lang.dev/docs/api/core/semantic-version
 pub struct SemanticVersion {
     /// The major component, which changes when compatibility does.
@@ -27,7 +26,6 @@ extend SemanticVersion {
     /// All three are read by value; the version is returned by copy and borrows nothing.
     ///
     /// Cannot fail: every triple of components is a version. Runs in constant time and allocates nothing.
-    ///
     /// @param major the major version
     /// @param minor the minor version
     /// @param patch the patch version
@@ -44,7 +42,6 @@ extend SemanticVersion {
     /// major first, and the first difference decides.
     ///
     /// Cannot fail. Runs in constant time and allocates nothing.
-    ///
     /// @param other the value to compare against
     /// @returns how this value orders against `other`
     /// @see https://rux-lang.dev/docs/api/core/semantic-version/compare
@@ -61,7 +58,6 @@ extend SemanticVersion {
     /// Whether the two versions have the same precedence.
     ///
     /// `self` is borrowed and `other` is read by value. Cannot fail. Runs in constant time and allocates nothing.
-    ///
     /// @param other the value to compare against
     /// @returns whether the two versions are the same
     /// @see https://rux-lang.dev/docs/api/core/semantic-version/is-equal-to
@@ -72,7 +68,6 @@ extend SemanticVersion {
     /// Whether this version precedes `other`.
     ///
     /// `self` is borrowed and `other` is read by value. Cannot fail. Runs in constant time and allocates nothing.
-    ///
     /// @param other the value to compare against
     /// @returns whether this version is older
     /// @see https://rux-lang.dev/docs/api/core/semantic-version/is-less-than
@@ -83,7 +78,6 @@ extend SemanticVersion {
     /// Whether this version precedes `other` or matches it.
     ///
     /// `self` is borrowed and `other` is read by value. Cannot fail. Runs in constant time and allocates nothing.
-    ///
     /// @param other the value to compare against
     /// @returns whether this version is the same or older
     /// @see https://rux-lang.dev/docs/api/core/semantic-version/is-at-most
@@ -94,7 +88,6 @@ extend SemanticVersion {
     /// Whether this version follows `other`.
     ///
     /// `self` is borrowed and `other` is read by value. Cannot fail. Runs in constant time and allocates nothing.
-    ///
     /// @param other the value to compare against
     /// @returns whether this version is newer
     /// @see https://rux-lang.dev/docs/api/core/semantic-version/is-greater-than
@@ -105,7 +98,6 @@ extend SemanticVersion {
     /// Whether this version follows `other` or matches it, which is how a minimum requirement is written.
     ///
     /// `self` is borrowed and `other` is read by value. Cannot fail. Runs in constant time and allocates nothing.
-    ///
     /// @param other the value to compare against
     /// @returns whether this version is the same or newer
     /// @see https://rux-lang.dev/docs/api/core/semantic-version/is-at-least
@@ -116,7 +108,6 @@ extend SemanticVersion {
     /// Equality by precedence, the operator spelling of `IsEqualTo`.
     ///
     /// Cannot fail. Runs in constant time and allocates nothing.
-    ///
     /// @param other the value to compare against
     /// @returns whether the two are equal
     /// @see https://rux-lang.dev/docs/api/core/semantic-version/equals
@@ -127,7 +118,6 @@ extend SemanticVersion {
     /// Inequality by precedence.
     ///
     /// Cannot fail. Runs in constant time and allocates nothing.
-    ///
     /// @param other the value to compare against
     /// @returns whether the two differ
     /// @see https://rux-lang.dev/docs/api/core/semantic-version/not-equals
@@ -138,7 +128,6 @@ extend SemanticVersion {
     /// Precedence ordering, the operator spelling of `IsLessThan`.
     ///
     /// Cannot fail. Runs in constant time and allocates nothing.
-    ///
     /// @param other the value to compare against
     /// @returns whether this one is less
     /// @see https://rux-lang.dev/docs/api/core/semantic-version/less-than
@@ -149,7 +138,6 @@ extend SemanticVersion {
     /// Precedence ordering, the operator spelling of `IsAtMost`.
     ///
     /// Cannot fail. Runs in constant time and allocates nothing.
-    ///
     /// @param other the value to compare against
     /// @returns whether this one is less or equal
     /// @see https://rux-lang.dev/docs/api/core/semantic-version/less-than-or-equal
@@ -160,7 +148,6 @@ extend SemanticVersion {
     /// Precedence ordering, the operator spelling of `IsGreaterThan`.
     ///
     /// Cannot fail. Runs in constant time and allocates nothing.
-    ///
     /// @param other the value to compare against
     /// @returns whether this one is greater
     /// @see https://rux-lang.dev/docs/api/core/semantic-version/greater-than
@@ -171,7 +158,6 @@ extend SemanticVersion {
     /// Precedence ordering, the operator spelling of `IsAtLeast`.
     ///
     /// Cannot fail. Runs in constant time and allocates nothing.
-    ///
     /// @param other the value to compare against
     /// @returns whether this one is greater or equal
     /// @see https://rux-lang.dev/docs/api/core/semantic-version/greater-than-or-equal
@@ -183,7 +169,6 @@ extend SemanticVersion {
 /// Properties of the compiler performing the build.
 ///
 /// Fixed when compiling begins. Reading a field produces no runtime code.
-///
 /// @see https://rux-lang.dev/docs/api/core/compiler
 pub struct Compiler {
     /// The compiler's own version.
@@ -198,7 +183,6 @@ extend Compiler {
     /// release the comparison did not anticipate.
     ///
     /// Cannot fail: an unknown name is absent rather than an error. Costs nothing in the built program.
-    ///
     /// @param feature the feature's name
     /// @returns whether this compiler reports that feature
     /// @see https://rux-lang.dev/docs/api/core/compiler/has-feature
@@ -206,6 +190,5 @@ extend Compiler {
 }
 
 /// The compiler performing the build, as a compile-time value.
-///
 /// @see https://rux-lang.dev/docs/api/core/compiler
 pub intrinsic #compiler: Compiler;

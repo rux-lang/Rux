@@ -11,7 +11,6 @@ import Allocator::AllocError;
 ///
 /// Every case is a failure. An operation that can fail returns its result, or nothing, through a native fallible
 /// `T ! TextError`, so success is the other channel rather than a case here.
-///
 /// @see https://rux-lang.dev/docs/api/text/text-error
 pub enum TextError: int32 {
     /// The allocator could not supply the storage.
@@ -29,7 +28,6 @@ pub enum TextError: int32 {
 /// Everything an allocator can refuse is a failure to supply storage as far as text is concerned; the distinctions
 /// the allocator draws are about the request, and this package makes no requests a caller could have made
 /// differently.
-///
 /// @param error why the allocator refused
 /// @returns the same failure as a text error
 /// @see https://rux-lang.dev/docs/api/text/from-alloc-error

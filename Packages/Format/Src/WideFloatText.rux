@@ -22,7 +22,6 @@ func KindOf(reason: WideDigitFailure) -> TextFailureKind {
 }
 
 /// Writes `bits`, read under `layout`, as text under `spec`.
-///
 /// @param allocator where the working storage comes from
 /// @param writer the destination
 /// @param spec what the placeholder asked for

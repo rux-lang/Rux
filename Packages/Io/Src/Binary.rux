@@ -14,7 +14,6 @@
 import Memory::Copy;
 
 /// A byte order: which end of a multi-byte value comes first.
-///
 /// @see https://rux-lang.dev/docs/api/io/endian
 pub enum Endian: int32 {
     /// The least significant byte first: x86-64, AArch64, and most formats born on them.
@@ -27,7 +26,6 @@ pub enum Endian: int32 {
 ///
 /// The word functions are the one implementation the typed surface below stands on; call those unless the width
 /// itself is a runtime quantity.
-///
 /// @param reader where the bytes come from
 /// @param endian which byte order the value is stored in
 /// @param width how many bytes the value occupies
@@ -49,7 +47,6 @@ pub func ReadWord(reader: &var Reader, endian: Endian, width: uint) -> uint512 !
 }
 
 /// Writes the low `width` bytes of `value` in the given order.
-///
 /// @param writer the destination
 /// @param endian which byte order the value is stored in
 /// @param width how many bytes the value occupies
@@ -71,7 +68,6 @@ pub func WriteWord(writer: &var Writer, endian: Endian, width: uint, value: uint
 }
 
 /// Reads a `uint8` in the given order.
-///
 /// @param reader where the bytes come from
 /// @param endian which byte order the value is stored in
 /// @returns the value read; `IsEnd` when the stream ended first
@@ -82,7 +78,6 @@ pub func ReadUint8(reader: &var Reader, endian: Endian) -> uint8 ! IoError {
 }
 
 /// Writes a `uint8` in the given order.
-///
 /// @param writer the destination
 /// @param endian which byte order the value is stored in
 /// @param value the value to write
@@ -93,7 +88,6 @@ pub func WriteUint8(writer: &var Writer, endian: Endian, value: uint8) -> ! IoEr
 }
 
 /// Reads an `int8`: the unsigned bytes, reinterpreted in two's complement.
-///
 /// @param reader where the bytes come from
 /// @param endian which byte order the value is stored in
 /// @returns the value read; `IsEnd` when the stream ended first
@@ -104,7 +98,6 @@ pub func ReadInt8(reader: &var Reader, endian: Endian) -> int8 ! IoError {
 }
 
 /// Writes an `int8`: its two's-complement bytes, unchanged.
-///
 /// @param writer the destination
 /// @param endian which byte order the value is stored in
 /// @param value the value to write
@@ -115,7 +108,6 @@ pub func WriteInt8(writer: &var Writer, endian: Endian, value: int8) -> ! IoErro
 }
 
 /// Reads a `uint16` in the given order.
-///
 /// @param reader where the bytes come from
 /// @param endian which byte order the value is stored in
 /// @returns the value read; `IsEnd` when the stream ended first
@@ -126,7 +118,6 @@ pub func ReadUint16(reader: &var Reader, endian: Endian) -> uint16 ! IoError {
 }
 
 /// Writes a `uint16` in the given order.
-///
 /// @param writer the destination
 /// @param endian which byte order the value is stored in
 /// @param value the value to write
@@ -137,7 +128,6 @@ pub func WriteUint16(writer: &var Writer, endian: Endian, value: uint16) -> ! Io
 }
 
 /// Reads an `int16`: the unsigned bytes, reinterpreted in two's complement.
-///
 /// @param reader where the bytes come from
 /// @param endian which byte order the value is stored in
 /// @returns the value read; `IsEnd` when the stream ended first
@@ -148,7 +138,6 @@ pub func ReadInt16(reader: &var Reader, endian: Endian) -> int16 ! IoError {
 }
 
 /// Writes an `int16`: its two's-complement bytes, unchanged.
-///
 /// @param writer the destination
 /// @param endian which byte order the value is stored in
 /// @param value the value to write
@@ -159,7 +148,6 @@ pub func WriteInt16(writer: &var Writer, endian: Endian, value: int16) -> ! IoEr
 }
 
 /// Reads a `uint32` in the given order.
-///
 /// @param reader where the bytes come from
 /// @param endian which byte order the value is stored in
 /// @returns the value read; `IsEnd` when the stream ended first
@@ -170,7 +158,6 @@ pub func ReadUint32(reader: &var Reader, endian: Endian) -> uint32 ! IoError {
 }
 
 /// Writes a `uint32` in the given order.
-///
 /// @param writer the destination
 /// @param endian which byte order the value is stored in
 /// @param value the value to write
@@ -181,7 +168,6 @@ pub func WriteUint32(writer: &var Writer, endian: Endian, value: uint32) -> ! Io
 }
 
 /// Reads an `int32`: the unsigned bytes, reinterpreted in two's complement.
-///
 /// @param reader where the bytes come from
 /// @param endian which byte order the value is stored in
 /// @returns the value read; `IsEnd` when the stream ended first
@@ -192,7 +178,6 @@ pub func ReadInt32(reader: &var Reader, endian: Endian) -> int32 ! IoError {
 }
 
 /// Writes an `int32`: its two's-complement bytes, unchanged.
-///
 /// @param writer the destination
 /// @param endian which byte order the value is stored in
 /// @param value the value to write
@@ -203,7 +188,6 @@ pub func WriteInt32(writer: &var Writer, endian: Endian, value: int32) -> ! IoEr
 }
 
 /// Reads a `uint64` in the given order.
-///
 /// @param reader where the bytes come from
 /// @param endian which byte order the value is stored in
 /// @returns the value read; `IsEnd` when the stream ended first
@@ -214,7 +198,6 @@ pub func ReadUint64(reader: &var Reader, endian: Endian) -> uint64 ! IoError {
 }
 
 /// Writes a `uint64` in the given order.
-///
 /// @param writer the destination
 /// @param endian which byte order the value is stored in
 /// @param value the value to write
@@ -225,7 +208,6 @@ pub func WriteUint64(writer: &var Writer, endian: Endian, value: uint64) -> ! Io
 }
 
 /// Reads an `int64`: the unsigned bytes, reinterpreted in two's complement.
-///
 /// @param reader where the bytes come from
 /// @param endian which byte order the value is stored in
 /// @returns the value read; `IsEnd` when the stream ended first
@@ -236,7 +218,6 @@ pub func ReadInt64(reader: &var Reader, endian: Endian) -> int64 ! IoError {
 }
 
 /// Writes an `int64`: its two's-complement bytes, unchanged.
-///
 /// @param writer the destination
 /// @param endian which byte order the value is stored in
 /// @param value the value to write
@@ -247,7 +228,6 @@ pub func WriteInt64(writer: &var Writer, endian: Endian, value: int64) -> ! IoEr
 }
 
 /// Reads a `uint128` in the given order.
-///
 /// @param reader where the bytes come from
 /// @param endian which byte order the value is stored in
 /// @returns the value read; `IsEnd` when the stream ended first
@@ -258,7 +238,6 @@ pub func ReadUint128(reader: &var Reader, endian: Endian) -> uint128 ! IoError {
 }
 
 /// Writes a `uint128` in the given order.
-///
 /// @param writer the destination
 /// @param endian which byte order the value is stored in
 /// @param value the value to write
@@ -269,7 +248,6 @@ pub func WriteUint128(writer: &var Writer, endian: Endian, value: uint128) -> ! 
 }
 
 /// Reads an `int128`: the unsigned bytes, reinterpreted in two's complement.
-///
 /// @param reader where the bytes come from
 /// @param endian which byte order the value is stored in
 /// @returns the value read; `IsEnd` when the stream ended first
@@ -280,7 +258,6 @@ pub func ReadInt128(reader: &var Reader, endian: Endian) -> int128 ! IoError {
 }
 
 /// Writes an `int128`: its two's-complement bytes, unchanged.
-///
 /// @param writer the destination
 /// @param endian which byte order the value is stored in
 /// @param value the value to write
@@ -291,7 +268,6 @@ pub func WriteInt128(writer: &var Writer, endian: Endian, value: int128) -> ! Io
 }
 
 /// Reads a `uint256` in the given order.
-///
 /// @param reader where the bytes come from
 /// @param endian which byte order the value is stored in
 /// @returns the value read; `IsEnd` when the stream ended first
@@ -302,7 +278,6 @@ pub func ReadUint256(reader: &var Reader, endian: Endian) -> uint256 ! IoError {
 }
 
 /// Writes a `uint256` in the given order.
-///
 /// @param writer the destination
 /// @param endian which byte order the value is stored in
 /// @param value the value to write
@@ -313,7 +288,6 @@ pub func WriteUint256(writer: &var Writer, endian: Endian, value: uint256) -> ! 
 }
 
 /// Reads an `int256`: the unsigned bytes, reinterpreted in two's complement.
-///
 /// @param reader where the bytes come from
 /// @param endian which byte order the value is stored in
 /// @returns the value read; `IsEnd` when the stream ended first
@@ -324,7 +298,6 @@ pub func ReadInt256(reader: &var Reader, endian: Endian) -> int256 ! IoError {
 }
 
 /// Writes an `int256`: its two's-complement bytes, unchanged.
-///
 /// @param writer the destination
 /// @param endian which byte order the value is stored in
 /// @param value the value to write
@@ -335,7 +308,6 @@ pub func WriteInt256(writer: &var Writer, endian: Endian, value: int256) -> ! Io
 }
 
 /// Reads a `uint512` in the given order.
-///
 /// @param reader where the bytes come from
 /// @param endian which byte order the value is stored in
 /// @returns the value read; `IsEnd` when the stream ended first
@@ -346,7 +318,6 @@ pub func ReadUint512(reader: &var Reader, endian: Endian) -> uint512 ! IoError {
 }
 
 /// Writes a `uint512` in the given order.
-///
 /// @param writer the destination
 /// @param endian which byte order the value is stored in
 /// @param value the value to write
@@ -357,7 +328,6 @@ pub func WriteUint512(writer: &var Writer, endian: Endian, value: uint512) -> ! 
 }
 
 /// Reads an `int512`: the unsigned bytes, reinterpreted in two's complement.
-///
 /// @param reader where the bytes come from
 /// @param endian which byte order the value is stored in
 /// @returns the value read; `IsEnd` when the stream ended first
@@ -368,7 +338,6 @@ pub func ReadInt512(reader: &var Reader, endian: Endian) -> int512 ! IoError {
 }
 
 /// Writes an `int512`: its two's-complement bytes, unchanged.
-///
 /// @param writer the destination
 /// @param endian which byte order the value is stored in
 /// @param value the value to write
@@ -379,7 +348,6 @@ pub func WriteInt512(writer: &var Writer, endian: Endian, value: int512) -> ! Io
 }
 
 /// Reads a `float32` as the IEEE 754 bit pattern of its width.
-///
 /// @param reader where the bytes come from
 /// @param endian which byte order the value is stored in
 /// @returns the value read; `IsEnd` when the stream ended first
@@ -392,7 +360,6 @@ pub func ReadFloat32(reader: &var Reader, endian: Endian) -> float32 ! IoError {
 }
 
 /// Writes a `float32` as the IEEE 754 bit pattern of its width.
-///
 /// @param writer the destination
 /// @param endian which byte order the value is stored in
 /// @param value the value to write
@@ -406,7 +373,6 @@ pub func WriteFloat32(writer: &var Writer, endian: Endian, value: float32) -> ! 
 }
 
 /// Reads a `float64` as the IEEE 754 bit pattern of its width.
-///
 /// @param reader where the bytes come from
 /// @param endian which byte order the value is stored in
 /// @returns the value read; `IsEnd` when the stream ended first
@@ -419,7 +385,6 @@ pub func ReadFloat64(reader: &var Reader, endian: Endian) -> float64 ! IoError {
 }
 
 /// Writes a `float64` as the IEEE 754 bit pattern of its width.
-///
 /// @param writer the destination
 /// @param endian which byte order the value is stored in
 /// @param value the value to write

@@ -9,34 +9,28 @@
 /// A process identifier, as `getpid` and its relatives report one.
 ///
 /// Signed, because several calls overload the negative range to mean a process group.
-///
 /// @see https://rux-lang.dev/docs/api/linux/process-id
 pub type ProcessId = int32;
 
 /// A file descriptor, as the kernel numbers one.
 ///
 /// Signed and small. A syscall taking one receives it sign-extended to a full register, which `SignExtendFd` does.
-///
 /// @see https://rux-lang.dev/docs/api/linux/file-descriptor
 pub type FileDescriptor = int32;
 
 /// A byte offset within a file, which the 64-bit ABI makes 64 bits everywhere.
-///
 /// @see https://rux-lang.dev/docs/api/linux/file-offset
 pub type FileOffset = int64;
 
 /// A file's type and permission bits, as `open` and `stat` carry them.
-///
 /// @see https://rux-lang.dev/docs/api/linux/file-mode
 pub type FileMode = uint32;
 
 /// A user identifier.
-///
 /// @see https://rux-lang.dev/docs/api/linux/user-id
 pub type UserId = uint32;
 
 /// A group identifier.
-///
 /// @see https://rux-lang.dev/docs/api/linux/group-id
 pub type GroupId = uint32;
 
@@ -47,7 +41,6 @@ pub type GroupId = uint32;
 /// second's worth of nanoseconds reports `EINVAL` rather than carrying.
 ///
 /// Passed by address to every call that reads or fills one.
-///
 /// @see https://rux-lang.dev/docs/api/linux/timespec
 pub struct Timespec {
     /// Whole seconds.

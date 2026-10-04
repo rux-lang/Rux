@@ -21,7 +21,6 @@ import Core::Ordering;
 /// `items` is borrowed and read; `value` is read by value. An empty slice contains nothing, so this is false.
 ///
 /// Cannot fail. Runs in time proportional to the length, stopping at the first match, and allocates nothing.
-///
 /// @typeParam T the element type
 /// @param items the sequence to work on
 /// @param value the value to look for
@@ -36,7 +35,6 @@ pub func Contains<T>(items: T[..], value: T) -> bool {
 /// `items` is borrowed and read; `value` is read by value. An empty slice gives zero.
 ///
 /// Cannot fail. Runs in time proportional to the length and allocates nothing.
-///
 /// @typeParam T the element type
 /// @param items the sequence to work on
 /// @param value the value to look for
@@ -60,7 +58,6 @@ pub func Count<T>(items: T[..], value: T) -> uint {
 /// empty slice.
 ///
 /// Cannot fail. Runs in time proportional to the length, stopping at the first match, and allocates nothing.
-///
 /// @typeParam T the element type
 /// @param items the sequence to work on
 /// @param value the value to look for
@@ -81,7 +78,6 @@ pub func IndexOf<T>(items: T[..], value: T) -> uint? {
 ///
 /// Cannot fail. Runs in time proportional to the length, stopping at the first match from the end, and allocates
 /// nothing.
-///
 /// @typeParam T the element type
 /// @param items the sequence to work on
 /// @param value the value to look for
@@ -102,7 +98,6 @@ pub func LastIndexOf<T>(items: T[..], value: T) -> uint? {
 /// it accepts none.
 ///
 /// Cannot fail. Runs in time proportional to the length and allocates nothing beyond whatever `predicate` does.
-///
 /// @typeParam T the element type
 /// @param items the sequence to work on
 /// @param predicate the test each element is put to
@@ -123,7 +118,6 @@ pub func IndexWhere<T>(items: T[..], predicate: func(T) -> bool) -> uint? {
 /// `none` when it accepts none.
 ///
 /// Cannot fail. Runs in time proportional to the length and allocates nothing beyond whatever `predicate` does.
-///
 /// @typeParam T the element type
 /// @param items the sequence to work on
 /// @param predicate the test each element is put to
@@ -143,7 +137,6 @@ pub func LastIndexWhere<T>(items: T[..], predicate: func(T) -> bool) -> uint? {
 /// `items` is borrowed and read; `predicate` is called once per element. An empty slice gives zero.
 ///
 /// Cannot fail. Runs in time proportional to the length and allocates nothing beyond whatever `predicate` does.
-///
 /// @typeParam T the element type
 /// @param items the sequence to work on
 /// @param predicate the test each element is put to
@@ -168,7 +161,6 @@ pub func CountWhere<T>(items: T[..], predicate: func(T) -> bool) -> uint {
 ///
 /// Cannot fail. Runs in time proportional to the length, stopping at the first rejection, and allocates nothing
 /// beyond whatever `predicate` does.
-///
 /// @typeParam T the element type
 /// @param items the sequence to work on
 /// @param predicate the test each element is put to
@@ -189,7 +181,6 @@ pub func AllOf<T>(items: T[..], predicate: func(T) -> bool) -> bool {
 ///
 /// Cannot fail. Runs in time proportional to the length, stopping at the first acceptance, and allocates nothing
 /// beyond whatever `predicate` does.
-///
 /// @typeParam T the element type
 /// @param items the sequence to work on
 /// @param predicate the test each element is put to
@@ -205,7 +196,6 @@ pub func AnyOf<T>(items: T[..], predicate: func(T) -> bool) -> bool {
 ///
 /// Cannot fail. Runs in time proportional to the length, stopping at the first acceptance, and allocates nothing
 /// beyond whatever `predicate` does.
-///
 /// @typeParam T the element type
 /// @param items the sequence to work on
 /// @param predicate the test each element is put to
@@ -222,7 +212,6 @@ pub func NoneOf<T>(items: T[..], predicate: func(T) -> bool) -> bool {
 /// the shorter length, and two identical slices report `none`.
 ///
 /// Cannot fail. Runs in time proportional to the shorter length and allocates nothing.
-///
 /// @typeParam T the element type
 /// @param left one of the two sequences
 /// @param right the other
@@ -245,7 +234,6 @@ pub func Mismatch<T>(left: T[..], right: T[..]) -> uint? {
 /// pointers hold.
 ///
 /// Cannot fail. Runs in time proportional to the shorter length and allocates nothing.
-///
 /// @typeParam T the element type
 /// @param left one of the two sequences
 /// @param right the other
@@ -266,7 +254,6 @@ pub func SequenceEqual<T>(left: T[..], right: T[..]) -> bool {
 /// wanted order is not its own.
 ///
 /// Cannot fail. Runs in time proportional to the shorter length and allocates nothing.
-///
 /// @typeParam T the element type
 /// @param left one of the two sequences
 /// @param right the other
@@ -292,7 +279,6 @@ pub func Compare<T>(left: T[..], right: T[..]) -> Ordering {
 /// by something other than their own.
 ///
 /// Cannot fail. Runs in time proportional to the shorter length and allocates nothing beyond whatever `compare` does.
-///
 /// @typeParam T the element type
 /// @param left one of the two sequences
 /// @param right the other

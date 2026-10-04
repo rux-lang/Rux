@@ -19,7 +19,6 @@ const ScientificFrom64 = 17;
 // Whether the value is a NaN. A NaN is the only value not equal to itself,
 // so this needs no bit pattern to recognise one.
 /// Provides the public `IsNan` operation.
-///
 /// @param value the value to act on
 /// @returns whether the value is a NaN
 /// @see https://rux-lang.dev/docs/api/format/is-nan
@@ -31,7 +30,6 @@ pub func IsNan(value: float64) -> bool {
 // NaN is false, so a NaN answers false here rather than being mistaken for
 // an infinity.
 /// Provides the public `IsInfinite` operation.
-///
 /// @param value the value to act on
 /// @returns whether the value is either infinity
 /// @see https://rux-lang.dev/docs/api/format/is-infinite
@@ -41,7 +39,6 @@ pub func IsInfinite(value: float64) -> bool {
 
 // Whether the value is an ordinary number: neither a NaN nor an infinity.
 /// Provides the public `IsFinite` operation.
-///
 /// @param value the value to act on
 /// @returns whether the value is neither infinite nor a NaN
 /// @see https://rux-lang.dev/docs/api/format/is-finite
@@ -57,7 +54,6 @@ extend float64 : Display {
     ///
     /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
@@ -90,7 +86,6 @@ extend float64 : Debug {
     ///
     /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted

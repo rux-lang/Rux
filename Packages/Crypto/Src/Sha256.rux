@@ -44,7 +44,6 @@ func RotateRight32(value: uint32, amount: uint32) -> uint32 {
 /// An incremental SHA-256 or SHA-224.
 ///
 /// Structural `Copy`; copying takes an independent snapshot of the digest state.
-///
 /// @see https://rux-lang.dev/docs/api/crypto/sha256
 pub struct Sha256 {
     /// The eight working words.
@@ -61,7 +60,6 @@ pub struct Sha256 {
 
 extend Sha256 {
     /// A SHA-256 state.
-    ///
     /// @returns a hasher producing a 256-bit digest
     /// @see https://rux-lang.dev/docs/api/crypto/sha256/new
     pub func Sha256() -> Sha256 {
@@ -75,7 +73,6 @@ extend Sha256 {
     }
 
     /// A SHA-224 state: the same compression function from a different start, keeping seven words of the result.
-    ///
     /// @returns a hasher producing a 224-bit digest
     /// @see https://rux-lang.dev/docs/api/crypto/sha256/new-224
     pub func New224() -> Sha256 {
@@ -151,7 +148,6 @@ extend Sha256 : Digest {
     ///
     /// Any split of the same bytes gives the same digest: whatever does not complete a block is buffered, and
     /// the buffer is only compressed once it is full.
-    ///
     /// @param bytes the bytes to absorb
     /// @see https://rux-lang.dev/docs/api/crypto/sha256/update
     pub func Update(self: &var Sha256, bytes: char8[..]) {
@@ -186,7 +182,6 @@ extend Sha256 : Digest {
     /// count. When fewer than nine bytes remain in the final block there is no room for that count, so the
     /// block is finished with zeros and a whole further block carries it — the case that separates a correct
     /// implementation from one that passes the short vectors.
-    ///
     /// @param into receives the output
     /// @see https://rux-lang.dev/docs/api/crypto/sha256/finish
     pub func Finish(self: &var Sha256, into: var char8[..]) {
@@ -225,7 +220,6 @@ extend Sha256 : Digest {
     }
 
     /// Thirty-two bytes for SHA-256, twenty-eight for SHA-224.
-    ///
     /// @returns how many bytes a digest occupies
     /// @see https://rux-lang.dev/docs/api/crypto/sha256/digest-length
     pub func DigestLength(self: &Sha256) -> uint {
@@ -233,7 +227,6 @@ extend Sha256 : Digest {
     }
 
     /// Sixty-four bytes, for both.
-    ///
     /// @returns how many bytes the compression function consumes at a time
     /// @see https://rux-lang.dev/docs/api/crypto/sha256/block-length
     pub func BlockLength(self: &Sha256) -> uint {
@@ -242,7 +235,6 @@ extend Sha256 : Digest {
 }
 
 /// The SHA-256 digest of `bytes`, in one call.
-///
 /// @param bytes the bytes to absorb
 /// @param into receives the output
 /// @see https://rux-lang.dev/docs/api/crypto/sha256-of
@@ -253,7 +245,6 @@ pub func Sha256Of(bytes: char8[..], into: var char8[..]) {
 }
 
 /// The SHA-224 digest of `bytes`, in one call.
-///
 /// @param bytes the bytes to absorb
 /// @param into receives the output
 /// @see https://rux-lang.dev/docs/api/crypto/sha224-of

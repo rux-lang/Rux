@@ -19,7 +19,6 @@ import Time::Timestamp;
 ///
 /// Fails with why entropy was unavailable rather than producing a timestamp-shaped value with no randomness — which
 /// would be guessable and would look fine.
-///
 /// @returns a version 7 value carrying the current time, or why entropy was unavailable
 /// @see https://rux-lang.dev/docs/api/uuid/time-ordered
 pub func TimeOrdered() -> Uuid ! EntropyError {
@@ -31,7 +30,6 @@ pub func TimeOrdered() -> Uuid ! EntropyError {
 /// A version 7 UUID for a given millisecond, with entropy in the rest.
 ///
 /// For reproducing an identifier from a recorded time, and for testing.
-///
 /// @param milliseconds the timestamp to embed, in milliseconds since the Unix epoch
 /// @returns a version 7 value carrying `milliseconds`, or why entropy was unavailable
 /// @see https://rux-lang.dev/docs/api/uuid/time-ordered-at
@@ -54,7 +52,6 @@ pub func TimeOrderedAt(milliseconds: uint64) -> Uuid ! EntropyError {
 /// The millisecond a version 7 UUID carries.
 ///
 /// Meaningless for any other version, which is why the version should be checked first.
-///
 /// @param value the value to act on
 /// @returns the timestamp a version 7 value carries; meaningless for any other version
 /// @see https://rux-lang.dev/docs/api/uuid/millisecond-of
@@ -77,7 +74,6 @@ pub func MillisecondOf(value: &Uuid) -> uint64 {
 ///
 /// A caller owns one of these rather than sharing a global, so two components generating identifiers do not
 /// serialize against each other or interleave into one sequence.
-///
 /// @see https://rux-lang.dev/docs/api/uuid/monotonic-uuid
 pub struct MonotonicUuid {
     /// The last value returned, or nil before the first.
@@ -88,7 +84,6 @@ pub struct MonotonicUuid {
 
 extend MonotonicUuid {
     /// A generator that has produced nothing yet.
-    ///
     /// @returns the generator, which has produced nothing yet
     /// @see https://rux-lang.dev/docs/api/uuid/monotonic-uuid/new
     pub func MonotonicUuid() -> MonotonicUuid {
@@ -96,7 +91,6 @@ extend MonotonicUuid {
     }
 
     /// The next identifier, strictly greater than the one before it.
-    ///
     /// @returns the next value, which sorts after every value this generator has produced, or why entropy was
     /// unavailable
     /// @see https://rux-lang.dev/docs/api/uuid/monotonic-uuid/next

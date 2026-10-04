@@ -26,7 +26,6 @@ import Text::{ Encode, FormatError, FormatSpec, IsScalarValue, PaddingAround, Te
 ///
 /// Named because a `char64` has room for a great deal more than this, and the check that it does not hold one has
 /// to happen at the full width: narrowing first would turn `0x100000041` into `A`.
-///
 /// @see https://rux-lang.dev/docs/api/format/maximum-scalar-value
 pub const MaximumScalarValue: uint64 = 0x10FFFF;
 
@@ -37,7 +36,6 @@ pub const MaximumScalarValue: uint64 = 0x10FFFF;
 /// applies at thirty-two bits.
 ///
 /// Cannot fail; runs in constant time and allocates nothing.
-///
 /// @param value the numeric value of a character, at its own width
 /// @returns true when a character of that value exists
 /// @see https://rux-lang.dev/docs/api/format/is-wide-scalar-value
@@ -65,7 +63,6 @@ func WriteHexDigits(writer: &var TextWriter, value: uint64, count: uint) -> ! Fo
 ///
 /// # Failures
 /// Reports whatever the writer reported, stopping at the first refusal.
-///
 /// @param writer the destination
 /// @param value the numeric value to spell
 /// @returns success when the whole escape was accepted
@@ -93,7 +90,6 @@ pub func WriteInvalidEscape(writer: &var TextWriter, value: uint64) -> ! FormatE
 ///
 /// # Failures
 /// Reports whatever the writer reported, stopping at the first refusal.
-///
 /// @param writer the destination
 /// @param value the numeric value of the character, at its own width
 /// @param whole whether the width this value came from calls it a whole character
@@ -118,7 +114,6 @@ pub func WriteCharacterDebug(writer: &var TextWriter, value: uint64, whole: bool
 /// # Failures
 /// Reports whatever the writer reported, and `TextFailure(InvalidUtf8)` for a value that is not a scalar, which a
 /// caller checks before calling.
-///
 /// @param writer the destination
 /// @param scalar the Unicode scalar value to write
 /// @returns success when the whole character was accepted
@@ -145,7 +140,6 @@ pub func WriteEscapedScalar(writer: &var TextWriter, scalar: uint32) -> ! Format
 /// rendering already fills the width, which is the common case and costs nothing.
 ///
 /// Cannot fail; runs in constant time and allocates nothing.
-///
 /// @param spec what the placeholder asked for
 /// @param occupied how many characters the rendering will occupy
 /// @param before receives the fill to write first

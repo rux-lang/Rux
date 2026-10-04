@@ -13,7 +13,6 @@
 import Core::Ordering;
 
 /// A universally unique identifier: sixteen bytes in the standard's own order.
-///
 /// @see https://rux-lang.dev/docs/api/uuid/uuid
 pub struct Uuid {
     /// The sixteen bytes, most significant first.
@@ -21,7 +20,6 @@ pub struct Uuid {
 }
 
 /// What layout a UUID's bytes follow.
-///
 /// @see https://rux-lang.dev/docs/api/uuid/variant
 pub enum UuidVariant: int32 {
     /// Apollo NCS, from before the standard — the layout the nil UUID also happens to match.
@@ -39,7 +37,6 @@ extend Uuid {
     ///
     /// A defined value rather than an absence, and worth having as one — the alternative is every caller
     /// inventing a sentinel of their own.
-    ///
     /// @returns the all-zero value
     /// @see https://rux-lang.dev/docs/api/uuid/uuid/nil
     pub func Nil() -> Uuid {
@@ -48,7 +45,6 @@ extend Uuid {
     }
 
     /// The max UUID: sixteen bytes of ones, which RFC 9562 defines as nil's counterpart.
-    ///
     /// @returns the all-ones value
     /// @see https://rux-lang.dev/docs/api/uuid/uuid/max
     pub func Max() -> Uuid {
@@ -65,7 +61,6 @@ extend Uuid {
     ///
     /// Fewer than sixteen leaves the rest zero; more are ignored. No structure is imposed — the version and
     /// variant fields are whatever the bytes say, which is what lets this read a UUID from somewhere else.
-    ///
     /// @param bytes sixteen bytes to take as the value, in big-endian order
     /// @returns those sixteen bytes as a value, with no field interpreted or corrected
     /// @see https://rux-lang.dev/docs/api/uuid/uuid/from-bytes
@@ -80,7 +75,6 @@ extend Uuid {
     }
 
     /// The sixteen bytes, in the standard's order.
-    ///
     /// @returns the sixteen bytes, in big-endian order
     /// @see https://rux-lang.dev/docs/api/uuid/uuid/bytes
     pub func Bytes(self: &Uuid) -> byte[..] {
@@ -88,7 +82,6 @@ extend Uuid {
     }
 
     /// Whether this is the nil UUID.
-    ///
     /// @returns whether every byte is zero
     /// @see https://rux-lang.dev/docs/api/uuid/uuid/is-nil
     pub func IsNil(self: &Uuid) -> bool {
@@ -101,7 +94,6 @@ extend Uuid {
     }
 
     /// Whether this is the max UUID.
-    ///
     /// @returns whether every byte is one
     /// @see https://rux-lang.dev/docs/api/uuid/uuid/is-max
     pub func IsMax(self: &Uuid) -> bool {
@@ -117,7 +109,6 @@ extend Uuid {
     ///
     /// Meaningful only for the standard variant; a nil or max UUID reports a number that means nothing, which
     /// is why `Variant` should be consulted first.
-    ///
     /// @returns the version nibble, 0 through 15; a value this package did not make may hold anything
     /// @see https://rux-lang.dev/docs/api/uuid/uuid/version
     pub func Version(self: &Uuid) -> uint8 {
@@ -128,7 +119,6 @@ extend Uuid {
     ///
     /// The encoding is variable-length rather than two fixed bits: a leading zero means the oldest layout, `10`
     /// the standard one, `110` Microsoft's, and `111` the reserved future.
-    ///
     /// @returns the variant the layout declares
     /// @see https://rux-lang.dev/docs/api/uuid/uuid/variant
     pub func Variant(self: &Uuid) -> UuidVariant {
@@ -140,7 +130,6 @@ extend Uuid {
     }
 
     /// Whether two UUIDs are the same.
-    ///
     /// @param other the value to compare against
     /// @returns whether all sixteen bytes match
     /// @see https://rux-lang.dev/docs/api/uuid/uuid/equals
@@ -158,7 +147,6 @@ extend Uuid {
     /// For a version 7 UUID this is chronological order, because its timestamp occupies the leading bytes in
     /// big-endian form. Reordering here — to match a platform's GUID layout, say — would destroy that, which
     /// is why the byte order is fixed rather than negotiable.
-    ///
     /// @param other the value to compare against
     /// @returns how the two order as sixteen big-endian bytes, which is lexicographic order for the text
     /// @see https://rux-lang.dev/docs/api/uuid/uuid/compare
@@ -176,7 +164,6 @@ extend Uuid {
     ///
     /// FNV-1a, which is not a cryptographic hash and does not need to be: a UUID is already the output of one,
     /// or of an entropy source, so what a table wants here is speed and an even spread over buckets.
-    ///
     /// @returns the value's hash
     /// @see https://rux-lang.dev/docs/api/uuid/uuid/hash
     pub func Hash(self: &Uuid) -> uint64 {

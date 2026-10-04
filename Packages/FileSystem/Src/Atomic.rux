@@ -31,7 +31,6 @@ func DotSegmentUnit() -> OsUnit {
 /// Move-only. `Commit` syncs the contents and moves them onto the target; `Abandon`, or destroying the value,
 /// deletes the partial file and leaves the target as it was. An early return therefore leaves the old contents
 /// in place, which is the behavior that makes this worth using.
-///
 /// @see https://rux-lang.dev/docs/api/filesystem/atomic-write
 pub struct AtomicWrite {
     /// The partial file, in the target's own directory.
@@ -50,7 +49,6 @@ extend AtomicWrite {
     ///
     /// The temporary is created in the target's own directory, which is what keeps the final rename atomic. The
     /// target need not exist; if it does, it is untouched until `Commit`.
-    ///
     /// @param allocator where the storage comes from
     /// @param target the path the finished contents will take
     /// @returns a write in progress against a temporary file
@@ -78,7 +76,6 @@ extend AtomicWrite {
     /// # Safety
     ///
     /// The `AtomicWrite` must outlive the result and must not be moved while it exists. See `FileStream`.
-    ///
     /// @returns a stream over the partial file, held by address
     /// @see https://rux-lang.dev/docs/api/filesystem/atomic-write/stream
     pub func Stream(self: &var AtomicWrite) -> FileStream {
@@ -86,7 +83,6 @@ extend AtomicWrite {
     }
 
     /// The name the finished file will take.
-    ///
     /// @returns the path the contents will take when committed
     /// @see https://rux-lang.dev/docs/api/filesystem/atomic-write/target
     pub func Target(self: &AtomicWrite) -> Path {
@@ -102,7 +98,6 @@ extend AtomicWrite {
     /// What this does not promise is that the directory entry survives a crash: that needs the containing
     /// directory synced too, which Windows does not offer, so the guarantee stops at atomicity on every system
     /// rather than being durable on some and pretending on the rest.
-    ///
     /// @param allocator where the storage comes from
     /// @returns success when the target now holds the contents; on failure it still holds the old ones
     /// @see https://rux-lang.dev/docs/api/filesystem/atomic-write/commit
@@ -120,7 +115,6 @@ extend AtomicWrite {
     }
 
     /// Throws the partial file away and leaves the target as it was.
-    ///
     /// @param allocator where the storage comes from
     /// @returns success when the temporary file was removed and the target left alone
     /// @see https://rux-lang.dev/docs/api/filesystem/atomic-write/abandon
@@ -131,7 +125,6 @@ extend AtomicWrite {
     }
 
     /// Gives the buffers back. The temporary's own destructor removes any partial file.
-    ///
     /// @see https://rux-lang.dev/docs/api/filesystem/atomic-write/release
     pub func Release(self: &var AtomicWrite) {
         self.pending = false;
@@ -141,7 +134,6 @@ extend AtomicWrite {
     ///
     /// This is the property that makes the type worth using: an early return or a failure part-way through
     /// writing leaves the old contents exactly where they were, with no partial file left behind.
-    ///
     /// @see https://rux-lang.dev/docs/api/filesystem/atomic-write/destructor
     func ~AtomicWrite(self: &var AtomicWrite) {
         self.pending = false;
@@ -157,7 +149,6 @@ extend AtomicWrite : Writer {
     /// beside it.
     ///
     /// One attempt, partial on purpose, exactly as the underlying file's is; `WriteAll` does the looping.
-    ///
     /// @param bytes the run to write
     /// @returns how much of it the file took
     /// @see https://rux-lang.dev/docs/api/filesystem/atomic-write/write
@@ -168,7 +159,6 @@ extend AtomicWrite : Writer {
     /// Flushes the partial file, which holds nothing back.
     ///
     /// `Commit` is what makes the contents durable, and it syncs before it renames.
-    ///
     /// @returns what the file reported
     /// @see https://rux-lang.dev/docs/api/filesystem/atomic-write/flush
     pub func Flush(self: &var AtomicWrite) -> ! IoError {
@@ -179,7 +169,6 @@ extend AtomicWrite : Writer {
 /// Replaces `target` with `contents`, atomically.
 ///
 /// The one-shot form of the type above, for the common case where the whole file is already in hand.
-///
 /// @param allocator where the storage comes from
 /// @param target the path the finished contents will take
 /// @param contents the bytes the file should end up holding

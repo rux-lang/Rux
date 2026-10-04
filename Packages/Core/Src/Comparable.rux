@@ -17,7 +17,6 @@
 ///
 /// A type implementing both this and `Equatable` must keep them agreeable: `Compare` reports `Equal` exactly when
 /// `Equals` reports true.
-///
 /// @see https://rux-lang.dev/docs/api/core/comparable
 pub interface Comparable {
     /// Compares this value against `other`.
@@ -26,7 +25,6 @@ pub interface Comparable {
     ///
     /// Returns `Less` when this value comes first, `Greater` when `other` does, and `Equal` when neither does. Cannot
     /// fail: a total order places every pair.
-    ///
     /// @param other the value to compare against
     /// @returns how this value orders against `other`
     /// @see https://rux-lang.dev/docs/api/core/comparable/compare

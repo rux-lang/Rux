@@ -32,7 +32,6 @@ extend Timestamp {
     /// here first; one that renders through a placeholder learns the same thing as `ValueOutOfRange`.
     ///
     /// Borrows the moment and leaves it untouched. Cannot fail; runs in constant time and allocates nothing.
-    ///
     /// @returns true when the calendar form exists for this moment
     /// @see https://rux-lang.dev/docs/api/time/timestamp/is-in-calendar-range
     pub func IsInCalendarRange(self: &Timestamp) -> bool {
@@ -91,7 +90,6 @@ extend Timestamp : Display {
     /// for a precision past nine, and `ValueOutOfRange` for a moment outside years 0000 through 9999, which RFC
     /// 3339's four year digits cannot spell. The range is checked before anything is written, so a refused moment
     /// leaves the destination as it was.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole moment was accepted
@@ -108,7 +106,6 @@ extend Timestamp : Debug {
     ///
     /// # Failures
     /// The failures `WriteDisplay` reports, including `ValueOutOfRange` before any output.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole moment was accepted

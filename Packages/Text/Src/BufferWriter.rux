@@ -25,7 +25,6 @@
 ///
 /// # Safety
 /// The room it was built over must outlive it. It stores the slice, and nothing here tracks that.
-///
 /// @see https://rux-lang.dev/docs/api/text/buffer-writer
 pub struct BufferWriter {
     /// The room available.
@@ -41,7 +40,6 @@ extend BufferWriter {
     /// reaches it.
     ///
     /// Cannot fail. Runs in constant time and allocates nothing.
-    ///
     /// @param room the storage to fill, which must outlive the writer
     /// @returns a writer holding no text yet
     /// @see https://rux-lang.dev/docs/api/text/buffer-writer/new
@@ -57,7 +55,6 @@ extend BufferWriter {
     /// The result borrows the writer's room and must not outlive it.
     ///
     /// Borrows the writer. Cannot fail; runs in constant time and allocates nothing.
-    ///
     /// @returns the bytes written, which are valid UTF-8
     /// @see https://rux-lang.dev/docs/api/text/buffer-writer/written
     pub func Written(self: &BufferWriter) -> char8[..] {
@@ -67,7 +64,6 @@ extend BufferWriter {
     /// How many bytes of text the writer holds.
     ///
     /// Borrows the writer. Cannot fail; runs in constant time and allocates nothing.
-    ///
     /// @returns the byte count, which is not a character count
     /// @see https://rux-lang.dev/docs/api/text/buffer-writer/length
     pub func Length(self: &BufferWriter) -> uint {
@@ -80,7 +76,6 @@ extend BufferWriter {
     /// truncated, so asking first is an optimization and never a correctness requirement.
     ///
     /// Borrows the writer. Cannot fail; runs in constant time and allocates nothing.
-    ///
     /// @returns the remaining capacity in bytes
     /// @see https://rux-lang.dev/docs/api/text/buffer-writer/remaining
     pub func Remaining(self: &BufferWriter) -> uint {
@@ -94,7 +89,6 @@ extend BufferWriter {
     /// `Rux/Memory` on the room itself.
     ///
     /// Borrows the writer exclusively. Cannot fail; runs in constant time and allocates nothing.
-    ///
     /// @see https://rux-lang.dev/docs/api/text/buffer-writer/clear
     pub func Clear(self: &var BufferWriter) {
         self.length = 0;
@@ -113,7 +107,6 @@ extend BufferWriter : TextWriter {
     /// These are the only two failures this writer produces. There is no destination beyond the buffer, so a
     /// `WriterFailure` cannot arise, and the other `TextFailure` reasons belong to allocation and to boundary
     /// arithmetic, neither of which a fixed buffer performs.
-    ///
     /// @param bytes the UTF-8 run to append, whole
     /// @returns success when the complete run was appended
     /// @see https://rux-lang.dev/docs/api/text/buffer-writer/write

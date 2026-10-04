@@ -30,7 +30,6 @@ when #target.os {
 ///
 /// The bytes are uninitialized. Reading any byte before writing it, accessing beyond `size`, or using the address
 /// after it is released is invalid.
-///
 /// @param size how many bytes to take; zero returns null
 /// @returns the address of the allocation, or null when the system refused
 /// @see https://rux-lang.dev/docs/api/memory/alloc

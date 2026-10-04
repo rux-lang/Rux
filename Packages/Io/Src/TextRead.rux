@@ -23,7 +23,6 @@ import Text::{ DecodeAt, StringBuilder, Utf8Error, Validate };
 /// either failure it is cleared and the offending line consumed through its ending, so the caller can report the
 /// line and read on. A scalar value split across the buffer's edge is completed from the next refill, not
 /// condemned: where the buffer happens to end is not a property of the text.
-///
 /// @param reader where the bytes come from
 /// @param builder receives the line, appended to whatever it already holds
 /// @param limit the most bytes to accept before reporting the line too long

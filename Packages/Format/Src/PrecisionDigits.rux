@@ -24,12 +24,10 @@
 /// its exact decimal has 1,074 fractional digits, the largest finite value has 309 integer ones, and no `float64`
 /// has anything to say past that. A request beyond this is refused rather than clamped, because a caller asking
 /// for five thousand digits has miscalculated something and answering with 3,900 zeros would hide it.
-///
 /// @see https://rux-lang.dev/docs/api/format/maximum-precision
 pub const MaximumPrecision: uint = 1100;
 
 /// The longest a fixed rendering can be: sign, integer digits, point and fraction.
-///
 /// @see https://rux-lang.dev/docs/api/format/maximum-fixed-length
 pub const MaximumFixedLength: uint = 1424;
 
@@ -96,7 +94,6 @@ func TakeDigit(state: &var Quotient) -> uint64 {
 /// Answers false when `precision` is past `MaximumPrecision`, when `into` is too short for the digits the value
 /// needs, or when the exact arithmetic could not run in the fixed workspace — which Docs/NarrowFloat.md proves the
 /// narrow widths do not reach.
-///
 /// @param significand the integer significand, which must not be zero
 /// @param exponent the power of two it is scaled by
 /// @param precision how many digits after the decimal point are wanted
@@ -183,7 +180,6 @@ pub func PrecisionDigits(significand: uint64, exponent: int, precision: uint, in
 /// # Failures
 /// Answers false when the precision is past `MaximumPrecision`, or when the exact arithmetic could not run in the
 /// fixed workspace. There is no fallback to another rendering: a refused request is refused.
-///
 /// @param cursor the destination
 /// @param parts the value taken apart
 /// @param precision how many digits after the decimal point
@@ -254,7 +250,6 @@ pub func WritePrecisionFloat(cursor: &var ByteCursor, parts: FloatParts, precisi
 /// # Failures
 /// Reports `UnsupportedRequest` for a precision past `MaximumPrecision`, and whatever the writer reported
 /// otherwise. There is no fallback: a refused precision produces no output.
-///
 /// @param writer the destination
 /// @param spec what the placeholder asked for, carrying a precision
 /// @param parts the value taken apart

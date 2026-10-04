@@ -13,7 +13,6 @@ import Io::{ IoError, IoErrorKind };
 /// The meaning of a platform error code on the platform this program was compiled for.
 ///
 /// Codes with no portable meaning translate to `Other`; the caller still has the raw code beside it.
-///
 /// @param raw the platform's own error number or code
 /// @returns the kind this package gives that platform code
 /// @see https://rux-lang.dev/docs/api/filesystem/native-kind
@@ -73,7 +72,6 @@ pub func NativeKind(raw: int32) -> IoErrorKind {
 }
 
 /// A platform error code as the structured error everything here reports.
-///
 /// @param raw the platform's own error number or code
 /// @returns the error this package gives that platform code, keeping the raw value
 /// @see https://rux-lang.dev/docs/api/filesystem/translate-native

@@ -24,7 +24,6 @@ extend Instant : Debug {
     /// # Failures
     /// Reports whatever the writer reported, and `UnsupportedRequest` for any style or precision — a reading has
     /// one form, and neither a style nor a fraction has anything to select here.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole reading was accepted

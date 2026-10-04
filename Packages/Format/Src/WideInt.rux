@@ -48,7 +48,6 @@ extend uint128 : Display {
     ///
     /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
@@ -63,7 +62,6 @@ extend uint128 : Debug {
     ///
     /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
@@ -78,7 +76,6 @@ extend int128 : Display {
     ///
     /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
@@ -95,7 +92,6 @@ extend int128 : Debug {
     ///
     /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
@@ -142,7 +138,6 @@ extend uint256 : Display {
     ///
     /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
@@ -157,7 +152,6 @@ extend uint256 : Debug {
     ///
     /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
@@ -172,7 +166,6 @@ extend int256 : Display {
     ///
     /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
@@ -189,7 +182,6 @@ extend int256 : Debug {
     ///
     /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
@@ -236,7 +228,6 @@ extend uint512 : Display {
     ///
     /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
@@ -251,7 +242,6 @@ extend uint512 : Debug {
     ///
     /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
@@ -266,7 +256,6 @@ extend int512 : Display {
     ///
     /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
@@ -283,7 +272,6 @@ extend int512 : Debug {
     ///
     /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted

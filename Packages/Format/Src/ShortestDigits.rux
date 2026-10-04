@@ -24,7 +24,6 @@
 /// Seventeen for a `float64` and nine for a `float32`: those are the counts at which every value of the width is
 /// distinguishable from every other, which is the theoretical bound on how long a shortest form can be. The buffer
 /// a caller supplies is checked against this rather than against a guess.
-///
 /// @see https://rux-lang.dev/docs/api/format/maximum-shortest-digits
 pub const MaximumShortestDigits: uint = 17;
 
@@ -145,7 +144,6 @@ func NextDigit(state: &var Ratio) -> uint64 {
 /// Answers false when `into` is shorter than `MaximumShortestDigits`, or when the workspace could not hold the
 /// arithmetic — which Docs/NarrowFloat.md proves the narrow widths do not reach, so a false from that cause is a
 /// defect in the bound rather than an input to handle. Nothing partial is reported: `count` is zero on failure.
-///
 /// @param significand the integer significand, which must not be zero
 /// @param exponent the power of two it is scaled by
 /// @param atBinadeBottom whether the lower gap is half the upper one

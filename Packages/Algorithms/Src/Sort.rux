@@ -44,7 +44,6 @@ import Core::{ Ordering };
 ///
 /// Cannot fail. Makes O(n log n) comparisons for every input, uses O(1) storage beyond the sequence, and recurses
 /// O(log n) deep.
-///
 /// @typeParam T the element type
 /// @param items the sequence to work on
 /// @see https://rux-lang.dev/docs/api/algorithms/sort
@@ -75,7 +74,6 @@ pub func Sort<T>(items: var T[..]) {
 /// Requires `<` on the element type. Equal elements may be reordered.
 ///
 /// Cannot fail. Makes O(n log n) comparisons and uses O(1) storage beyond the sequence.
-///
 /// @typeParam T the element type
 /// @param items the sequence to work on
 /// @see https://rux-lang.dev/docs/api/algorithms/sort-descending
@@ -98,7 +96,6 @@ pub func SortDescending<T>(items: var T[..]) {
 /// O(n log n), against O(n) on average.
 ///
 /// Requires `<` on the element type. Equal elements may be reordered.
-///
 /// @typeParam T the element type
 /// @param items the sequence to work on
 /// @param n the index whose element should end up in its sorted place
@@ -163,7 +160,6 @@ pub func NthElement<T>(items: var T[..], n: uint) -> bool {
 /// `count` is much smaller than the length and not otherwise.
 ///
 /// Requires `<` on the element type. Equal elements may be reordered.
-///
 /// @typeParam T the element type
 /// @param items the sequence to work on
 /// @param count how many of the smallest elements to place
@@ -279,7 +275,6 @@ func PartitionThreeWay<T>(data: *var T, low: uint, high: uint, pivot: T, lessEnd
 
 // Internal helper; not part of the package API.
 /// Provides the public `InsertionSortRange` operation.
-///
 /// @typeParam T the element type
 /// @param data the sequence to work on
 /// @param low the first index of the range
@@ -335,7 +330,6 @@ func SiftDown<T>(data: *var T, low: uint, start: uint, count: uint) {
 // O(1) space, at a larger constant factor than quicksort — which is why it is
 // reached only once the recursion budget is spent.
 /// Provides the public `HeapSortRange` operation.
-///
 /// @typeParam T the element type
 /// @param data the sequence to work on
 /// @param low the first index of the range
@@ -418,7 +412,6 @@ func IntroSortRange<T>(data: *var T, low: uint, high: uint, depth: uint) {
 ///
 /// Cannot fail. Makes O(n log n) comparisons for every input, uses O(1) storage beyond the sequence, and recurses
 /// O(log n) deep. Equal elements may be reordered: this is not stable.
-///
 /// @typeParam T the element type
 /// @param items the sequence to work on
 /// @param compare how two elements order against each other
@@ -442,7 +435,6 @@ pub func SortBy<T>(items: var T[..], compare: func(T, T) -> Ordering) {
 ///
 /// Cannot fail. Makes O(n log n) comparisons and uses O(1) storage beyond the sequence. Equal elements may be
 /// reordered.
-///
 /// @typeParam T the element type
 /// @param items the sequence to work on
 /// @param compare how two elements order against each other
@@ -460,7 +452,6 @@ pub func SortDescendingBy<T>(items: var T[..], compare: func(T, T) -> Ordering) 
 /// Reports false, changing nothing, when `n` is not an index into `items`.
 ///
 /// O(n) comparisons on average and O(n log n) at worst. Equivalent elements may be reordered.
-///
 /// @typeParam T the element type
 /// @param items the sequence to work on
 /// @param n the index whose element should end up in its sorted place
@@ -517,7 +508,6 @@ pub func NthElementBy<T>(items: var T[..], n: uint, compare: func(T, T) -> Order
 /// Reports false, changing nothing, when `count` is larger than the length.
 ///
 /// O(n log count) comparisons. Equivalent elements may be reordered.
-///
 /// @typeParam T the element type
 /// @param items the sequence to work on
 /// @param count how many of the smallest elements to place

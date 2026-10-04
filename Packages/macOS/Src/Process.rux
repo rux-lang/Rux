@@ -9,7 +9,6 @@ import macOS::{ ProcessId, _exit, getpid };
 /// This is `_exit` rather than `exit`: nothing registered with `atexit` runs and no stream is flushed, which matches
 /// what the Linux and FreeBSD packages do and is what a raw binding should do. A program wanting the other behaviour
 /// should call C's `exit` through `Rux/C`.
-///
 /// @param code the status to report to the parent
 /// @see https://rux-lang.dev/docs/api/macos/exit
 pub func Exit(code: int32) {
@@ -19,7 +18,6 @@ pub func Exit(code: int32) {
 /// The calling process's own identifier.
 ///
 /// Cannot fail. Runs in constant time and allocates nothing.
-///
 /// @returns the calling process's identifier
 /// @see https://rux-lang.dev/docs/api/macos/get-pid
 pub func GetPid() -> ProcessId {

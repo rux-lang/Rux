@@ -14,7 +14,6 @@ import Core::{ #target };
 ///
 /// A single dynamic library re-exporting libc, libm, libpthread and the rest; there is no separate `libc.dylib` to
 /// link on Apple platforms.
-///
 /// @see https://rux-lang.dev/docs/api/macos/system-lib
 pub const SystemLib = "libSystem.B.dylib";
 
@@ -148,7 +147,6 @@ extern {
     ///
     /// `Memory::QueryPageSize` is the wrapper to call; this is the raw entry point it binds, and is the only
     /// declaration in this block that is reachable from outside the package.
-    ///
     /// @returns the page size in bytes
     /// @see https://rux-lang.dev/docs/api/macos/getpagesize
     pub func getpagesize() -> int32;

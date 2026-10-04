@@ -27,7 +27,6 @@ import Core::Ordering;
 /// One node of a red-black tree.
 ///
 /// Its own allocation, so its address survives any rearrangement of the tree around it.
-///
 /// @typeParam K the key type
 /// @typeParam V the value type
 /// @see https://rux-lang.dev/docs/api/collections/tree-node
@@ -49,7 +48,6 @@ pub struct TreeNode<K, V> {
 /// An ordered collection of entries, kept balanced by colouring.
 ///
 /// Owns every node and everything in them, so it prohibits copying and destroys them with `~Tree`.
-///
 /// @typeParam K the key type
 /// @typeParam V the value type
 /// @see https://rux-lang.dev/docs/api/collections/tree
@@ -71,7 +69,6 @@ extend Tree<K, V> {
     /// `allocator` is borrowed for the call and kept for the tree's life.
     ///
     /// Cannot fail. Runs in constant time and allocates nothing.
-    ///
     /// @param allocator where the storage comes from
     /// @returns an empty tree that has taken no storage yet
     /// @see https://rux-lang.dev/docs/api/collections/tree/new
@@ -82,7 +79,6 @@ extend Tree<K, V> {
     /// How many entries the tree holds.
     ///
     /// `self` is borrowed. Cannot fail; runs in constant time and allocates nothing.
-    ///
     /// @returns how many nodes it holds
     /// @see https://rux-lang.dev/docs/api/collections/tree/length
     pub func Length(self: &Tree<K, V>) -> uint {
@@ -92,7 +88,6 @@ extend Tree<K, V> {
     /// Whether the tree holds no entries.
     ///
     /// `self` is borrowed. Cannot fail; runs in constant time and allocates nothing.
-    ///
     /// @returns whether it holds nothing
     /// @see https://rux-lang.dev/docs/api/collections/tree/is-empty
     pub func IsEmpty(self: &Tree<K, V>) -> bool {
@@ -163,7 +158,6 @@ extend Tree<K, V> {
     ///
     /// Runs in time proportional to the height, which the colouring holds to at most twice the logarithm of the
     /// length. Allocates nothing.
-    ///
     /// @param key the key to look up
     /// @param compare how two keys order against each other
     /// @returns the node with that key, or null when it is absent
@@ -195,7 +189,6 @@ extend Tree<K, V> {
     /// at the price of a descent per step rather than an edge.
     ///
     /// Runs in time proportional to the height and allocates nothing.
-    ///
     /// @param key the key to look up
     /// @param compare how two keys order against each other
     /// @returns the node with the smallest key above this one, or null
@@ -218,7 +211,6 @@ extend Tree<K, V> {
     /// The node holding the largest key strictly below `key`, or null when no key is below it.
     ///
     /// The mirror of `Above`, with the same costs and the same use.
-    ///
     /// @param key the key to look up
     /// @param compare how two keys order against each other
     /// @returns the node with the largest key below this one, or null
@@ -241,7 +233,6 @@ extend Tree<K, V> {
     /// The node holding the smallest key of the subtree at `from`, or null when `from` is null.
     ///
     /// Runs in time proportional to the height and allocates nothing.
-    ///
     /// @param from the subtree to search
     /// @returns the leftmost node of that subtree, or null when it is empty
     /// @see https://rux-lang.dev/docs/api/collections/tree/minimum
@@ -256,7 +247,6 @@ extend Tree<K, V> {
     /// The node holding the largest key of the subtree at `from`, or null when `from` is null.
     ///
     /// Runs in time proportional to the height and allocates nothing.
-    ///
     /// @param from the subtree to search
     /// @returns the rightmost node of that subtree, or null when it is empty
     /// @see https://rux-lang.dev/docs/api/collections/tree/maximum
@@ -275,7 +265,6 @@ extend Tree<K, V> {
     ///
     /// Runs in time proportional to the height for a single step, but a walk of the whole tree by successor is
     /// linear in the length: every edge is crossed exactly twice across the walk. Allocates nothing.
-    ///
     /// @param node the node to act on
     /// @returns the node with the next key in order, or null after the last
     /// @see https://rux-lang.dev/docs/api/collections/tree/successor
@@ -294,7 +283,6 @@ extend Tree<K, V> {
     /// The node holding the key before `node`'s, or null when `node` holds the smallest or is itself null.
     ///
     /// The mirror of `Successor`, with the same costs.
-    ///
     /// @param node the node to act on
     /// @returns the node with the previous key in order, or null before the first
     /// @see https://rux-lang.dev/docs/api/collections/tree/predecessor
@@ -378,7 +366,6 @@ extend Tree<K, V> {
     ///
     /// Runs in time proportional to the height, with at most two rotations. Allocates one node for a new key and
     /// nothing at all for one already present.
-    ///
     /// @param key the key to look up
     /// @param value the value to act on
     /// @param compare how two keys order against each other
@@ -547,7 +534,6 @@ extend Tree<K, V> {
     /// separate allocations, and it is why removal moves six pointers where copying two fields would do.
     ///
     /// Cannot fail. Runs in time proportional to the height, with at most three rotations, and allocates nothing.
-    ///
     /// @param node the node to act on
     /// @returns the entry the node held
     /// @see https://rux-lang.dev/docs/api/collections/tree/detach
@@ -607,7 +593,6 @@ extend Tree<K, V> {
     /// kept back to make that cheaper, since a tree has no capacity to keep.
     ///
     /// Cannot fail. Runs in time proportional to the length and allocates nothing.
-    ///
     /// @see https://rux-lang.dev/docs/api/collections/tree/clear
     pub func Clear(self: &var Tree<K, V>) {
         // Down the left, then the right, then free and step up — every node reached after both its subtrees are
@@ -647,7 +632,6 @@ extend Tree<K, V> {
     ///
     /// Runs when the tree dies. Never called directly; a tree is move-only, so there is exactly one of these per
     /// tree however many times it was passed along.
-    ///
     /// @see https://rux-lang.dev/docs/api/collections/tree/destructor
     func ~Tree(self: &var Tree<K, V>) {
         self.Clear();

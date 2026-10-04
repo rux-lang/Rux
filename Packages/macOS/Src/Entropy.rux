@@ -18,7 +18,6 @@ import macOS::arc4random_buf;
 /// # Safety
 ///
 /// `buffer` must be writable for `length` bytes.
-///
 /// @param buffer receives the bytes
 /// @param length how many bytes to write
 /// @see https://rux-lang.dev/docs/api/macos/get-random

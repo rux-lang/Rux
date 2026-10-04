@@ -24,7 +24,6 @@ when #target.os {
 ///
 /// An existing `to` is replaced, atomically within one volume: a reader sees the old file or the new, never a
 /// gap. Across volumes Windows copies and deletes instead — not atomic — and the Unix systems refuse.
-///
 /// @param allocator where the storage comes from
 /// @param from the path that exists now
 /// @param to the path it should have afterwards
@@ -53,7 +52,6 @@ pub func Rename(allocator: Allocator, from: Path, to: Path) -> ! IoError {
 /// The two names are then equals — neither is "the original" — and the content lives until the last name is
 /// deleted. A symbolic link at `existing` is not followed: the link is made to the name given. Directories
 /// cannot be hard-linked on any supported system.
-///
 /// @param allocator where the storage comes from
 /// @param existing the file that exists now
 /// @param link the link to create
@@ -83,7 +81,6 @@ pub func CreateHardLink(allocator: Allocator, existing: Path, link: Path) -> ! I
 /// matters only on Windows, which types its links; the Unix systems ignore it. Windows also gates creation
 /// behind a privilege unless the machine runs Developer Mode, so `PermissionDenied` here is an environment, not
 /// a bug.
-///
 /// @param allocator where the storage comes from
 /// @param target the path the link will point at, which need not exist
 /// @param link the link to create
@@ -116,7 +113,6 @@ pub func CreateSymbolicLink(allocator: Allocator, target: Path, link: Path, targ
 ///
 /// An existing `to` is replaced. The copy is the bytes and nothing else: permissions, timestamps and the rest of
 /// the metadata are the destination's own, fresh — carrying them is a policy the metadata work owns.
-///
 /// @param allocator where the storage comes from
 /// @param from the path that exists now
 /// @param to the path it should have afterwards

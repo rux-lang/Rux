@@ -108,7 +108,6 @@ extend Duration : Display {
     /// # Failures
     /// Reports whatever the writer reported, and `UnsupportedRequest` for a style other than `seconds` or for a
     /// precision past nine.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole rendering was accepted
@@ -130,7 +129,6 @@ extend Duration : Debug {
     ///
     /// # Failures
     /// The failures `WriteDisplay` reports.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole rendering was accepted
@@ -149,7 +147,6 @@ extend Duration : Debug {
 /// Reports `InvalidSyntax` with the byte offset where the shape stopped matching, and `ExcessiveFraction` at the
 /// first digit that a nanosecond cannot hold. A magnitude too large for the representation is `InvalidSyntax` at
 /// the digit that overflowed, since the text is well formed and the value simply is not one.
-///
 /// @param text the text to read
 /// @returns the span, or why the text is not one
 /// @see https://rux-lang.dev/docs/api/time/parse-duration

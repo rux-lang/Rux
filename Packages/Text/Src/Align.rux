@@ -19,7 +19,6 @@
 /// column of numbers line up its units and a column of names line up its first letters.
 ///
 /// Cannot fail. Runs in constant time and allocates nothing.
-///
 /// @param spec what the placeholder asked for
 /// @param occupied how many Unicode scalar values the rendering occupies
 /// @param numeric true when the value aligns like a number by default
@@ -49,7 +48,6 @@ pub func PaddingAround(spec: FormatSpec, occupied: uint, numeric: bool, before: 
 /// # Failures
 /// Reports whatever the writer reported, stopping at the first refusal rather than continuing to a destination
 /// that has already said no.
-///
 /// @param writer the destination
 /// @param spec the specification whose fill byte is written
 /// @param count how many copies to write
@@ -72,7 +70,6 @@ pub func WriteFill(writer: &var TextWriter, spec: FormatSpec, count: uint) -> ! 
 /// # Failures
 /// Reports whatever the writer reported. A failure part-way leaves whatever the destination had already accepted;
 /// what that means is the destination's own documented guarantee.
-///
 /// @param writer the destination
 /// @param spec what the placeholder asked for
 /// @param rendered the already-rendered text, which must be well-formed UTF-8

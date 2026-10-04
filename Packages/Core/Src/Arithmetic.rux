@@ -23,7 +23,6 @@
 /// `sample` is read by value and only its type matters; its value is never used. Returns the maximum by copy.
 ///
 /// Cannot fail. Runs in constant time and allocates nothing.
-///
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param sample any value of the type, read only to deduce it
 /// @returns the largest value the type can hold
@@ -43,7 +42,6 @@ pub func MaximumOf<T>(sample: T) -> T {
 /// the most negative value for a signed one.
 ///
 /// Cannot fail. Runs in constant time and allocates nothing.
-///
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param sample any value of the type, read only to deduce it
 /// @returns the smallest value the type can hold
@@ -65,7 +63,6 @@ pub func MinimumOf<T>(sample: T) -> T {
 /// Returns `true` when the sum overflowed. Never traps, so the caller decides what a sum too large to express means.
 ///
 /// Runs in constant time and allocates nothing.
-///
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param left the left operand
 /// @param right the right operand
@@ -92,7 +89,6 @@ pub func AddChecked<T>(left: T, right: T, result: *var T) -> bool {
 /// Returns `true` when the difference overflowed, which for an unsigned type means it was negative. Never traps.
 ///
 /// Runs in constant time and allocates nothing.
-///
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param left the left operand
 /// @param right the right operand
@@ -122,7 +118,6 @@ pub func SubChecked<T>(left: T, right: T, result: *var T) -> bool {
 /// used. Never traps, including for the one signed pair whose quotient cannot be taken.
 ///
 /// Runs in constant time and allocates nothing.
-///
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param left the left operand
 /// @param right the right operand
@@ -155,7 +150,6 @@ pub func MulChecked<T>(left: T, right: T, result: *var T) -> bool {
 /// wrapping on purpose reads differently from wrapping by accident.
 ///
 /// Cannot fail: every pair of operands has a wrapped sum. Runs in constant time and allocates nothing.
-///
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param left the left operand
 /// @param right the right operand
@@ -170,7 +164,6 @@ pub func AddWrapping<T>(left: T, right: T) -> T {
 /// `left` and `right` are read by value; the difference is returned by copy.
 ///
 /// Cannot fail. Runs in constant time and allocates nothing.
-///
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param left the left operand
 /// @param right the right operand
@@ -185,7 +178,6 @@ pub func SubWrapping<T>(left: T, right: T) -> T {
 /// `left` and `right` are read by value; the product is returned by copy.
 ///
 /// Cannot fail. Runs in constant time and allocates nothing.
-///
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param left the left operand
 /// @param right the right operand
@@ -202,7 +194,6 @@ pub func MulWrapping<T>(left: T, right: T) -> T {
 ///
 /// Cannot fail: the answer is always the nearest representable value to the true sum. Runs in constant time and
 /// allocates nothing.
-///
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param left the left operand
 /// @param right the right operand
@@ -225,7 +216,6 @@ pub func AddSaturating<T>(left: T, right: T) -> T {
 /// difference becomes zero; for a signed one the difference clamps to whichever limit it ran past.
 ///
 /// Cannot fail. Runs in constant time and allocates nothing.
-///
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param left the left operand
 /// @param right the right operand
@@ -248,7 +238,6 @@ pub func SubSaturating<T>(left: T, right: T) -> T {
 /// and for a signed type a product too small becomes the minimum.
 ///
 /// Cannot fail. Runs in constant time and allocates nothing.
-///
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param left the left operand
 /// @param right the right operand

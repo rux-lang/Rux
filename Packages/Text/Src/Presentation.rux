@@ -20,7 +20,6 @@ extend String : Display {
     ///
     /// # Failures
     /// Reports whatever the writer reported, and `UnsupportedRequest` for a style, since text has none.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the string's text was accepted
@@ -36,7 +35,6 @@ extend String : Debug {
     ///
     /// # Failures
     /// Reports whatever the writer reported, and `UnsupportedRequest` for a style.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the quoted string was accepted
@@ -55,7 +53,6 @@ extend StringView : Display {
     ///
     /// # Failures
     /// Reports whatever the writer reported, and `UnsupportedRequest` for a style, since text has none.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the view's text was accepted
@@ -76,7 +73,6 @@ extend StringView : Debug {
     /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal, so a failed opening quote is not
     /// followed by a body. Reports `UnsupportedRequest` for a style.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the quoted view was accepted
@@ -101,7 +97,6 @@ extend StringView : Debug {
 ///
 /// # Failures
 /// Reports whatever the writer reported, stopping at the first refusal.
-///
 /// @param writer the destination
 /// @param text the UTF-8 text to escape and write
 /// @returns success when the escaped text was accepted

@@ -26,7 +26,6 @@ import Time::{ Date, TimeOfDay, UtcOffset };
 /// Failure-only: there is no case meaning nothing went wrong, because a scalar that read hands back its value
 /// instead. Every offset is a zero-based byte offset into the scalar's own text, as the caller wrote it —
 /// underscores included — and reachable through `Text::ParseFailure`.
-///
 /// @see https://rux-lang.dev/docs/api/toml/scalar-error
 pub variant TomlScalarError {
     /// The text does not have the shape TOML defines, at the byte carried. That is the first character that
@@ -44,7 +43,6 @@ extend TomlScalarError : ParseFailure {
     /// Where in the scalar's text the failure was found.
     ///
     /// Borrows the failure and leaves it untouched. Cannot fail; runs in constant time and allocates nothing.
-    ///
     /// @returns the zero-based byte offset into the scalar's own text
     /// @see https://rux-lang.dev/docs/api/toml/scalar-error/offset
     pub func Offset(self: &TomlScalarError) -> uint {
@@ -64,7 +62,6 @@ extend TomlScalarError : Display {
     ///
     /// # Failures
     /// Reports whatever the writer reported, and `UnsupportedRequest` for any style or precision.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole description was accepted
@@ -86,7 +83,6 @@ extend TomlScalarError : Debug {
     ///
     /// # Failures
     /// Reports whatever the writer reported, and `UnsupportedRequest` for any style or precision.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole name was accepted
@@ -175,7 +171,6 @@ func IsBaseDigit(c: uint8) -> bool {
 /// `Malformed` at the first character that cannot be part of the integer, `TooLong` past the length bound, and
 /// `OutOfRange` at the start when the digits are a number `int64` cannot hold. Every offset is into `text` as
 /// written, underscores included.
-///
 /// @param text the scalar's own bytes
 /// @returns the integer, or why it could not be read and where
 /// @see https://rux-lang.dev/docs/api/toml/parse-integer
@@ -259,7 +254,6 @@ func DigitFits(c: uint8, radix: uint8) -> bool {
 /// `Malformed` at the first character that cannot be part of the float, `TooLong` past the length bound, and
 /// `OutOfRange` at the start when the digits are a number `float64` cannot hold. Every offset is into `text` as
 /// written, underscores included.
-///
 /// @param text the scalar's own bytes
 /// @returns the float, or why it could not be read and where
 /// @see https://rux-lang.dev/docs/api/toml/parse-float
@@ -378,7 +372,6 @@ func IsDecimal(c: uint8) -> bool {
 ///
 /// There is no case for "not a date-time": text that is none of the four is a failure with a position, not a
 /// fifth shape a caller has to remember to check for before reading the fields beside it.
-///
 /// @see https://rux-lang.dev/docs/api/toml/date-time-shape
 pub enum TomlDateTimeShape: int32 {
     /// A date and a time with an offset, which names a moment.
@@ -396,7 +389,6 @@ pub enum TomlDateTimeShape: int32 {
 /// The parts that the shape does not carry are present and meaningless — a `DateOnly` has a time of midnight
 /// because the fields have to hold something — so `shape` is what decides which of them to read. That is why the
 /// shape travels with the value rather than being returned beside it.
-///
 /// @see https://rux-lang.dev/docs/api/toml/date-time
 pub struct TomlDateTime {
     /// Which of the four forms the text was.
@@ -420,7 +412,6 @@ pub struct TomlDateTime {
 /// `Malformed` at the byte where the text stops being one of the four forms — the separator that is not one, the
 /// field the calendar rejects, or the end of the text when it stops early. The calendar's own refusals arrive
 /// here too: the thirty-first of February is four correct digit pairs and not a date.
-///
 /// @param text the scalar's own bytes
 /// @returns the date-time and which shape it is, or why it could not be read and where
 /// @see https://rux-lang.dev/docs/api/toml/parse-date-time

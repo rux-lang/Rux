@@ -21,7 +21,6 @@ when #target.os == .Windows {
 ///
 /// A non-null `ptr` must be the live base address returned by `Alloc` or an earlier `Realloc`. Interior, released,
 /// or foreign addresses are invalid. Bytes added beyond the old size are uninitialized.
-///
 /// @param ptr the allocation to resize, or null to allocate
 /// @param size the wanted size; zero releases and returns null
 /// @returns the address of the resized allocation, or null on failure

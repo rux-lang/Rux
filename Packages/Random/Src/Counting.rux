@@ -15,7 +15,6 @@ import Math::{ Exp, Floor, Log };
 /// trial's success probability has a beta distribution, and comparing it to `probability` says which side the
 /// answer falls on and leaves a strictly smaller problem. That halves the count each step, so a binomial over a
 /// billion trials costs about thirty draws rather than a billion.
-///
 /// @typeParam G the generator's type
 /// @param generator where the bits come from
 /// @param trials how many independent trials
@@ -51,7 +50,6 @@ pub func Binomial<G: RandomGenerator>(generator: &var G, trials: uint64, probabi
 /// draws that way, and the product would underflow to zero before the loop ended, so the mean is consumed in
 /// chunks: a gamma draw of integer shape is the waiting time for that many events, and either it overshoots the
 /// interval, in which case the count is a binomial of what is left, or it fits and the remainder carries on.
-///
 /// @typeParam G the generator's type
 /// @param generator where the bits come from
 /// @param mean the distribution's mean

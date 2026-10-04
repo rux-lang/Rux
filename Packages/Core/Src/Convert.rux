@@ -22,7 +22,6 @@
 /// it is the maximum. Nothing has to be told which it has.
 ///
 /// Cannot fail. Runs in constant time and allocates nothing.
-///
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param sample any value of the type, read only to deduce it
 /// @returns whether the type can hold a negative value
@@ -48,7 +47,6 @@ pub func IsSignedType<T>(sample: T) -> bool {
 /// # Safety
 ///
 /// `result` must be non-null. This is not checked.
-///
 /// @typeParam From the source type
 /// @typeParam To the destination type
 /// @param value the value to act on
@@ -76,7 +74,6 @@ pub func ConvertChecked<From, To>(value: From, result: *var To) -> bool {
 /// # Safety
 ///
 /// `result` must be non-null. This is not checked.
-///
 /// @typeParam From the source type
 /// @typeParam To the destination type
 /// @param value the value to act on
@@ -100,7 +97,6 @@ pub func ConvertWrapping<From, To>(value: From, result: *var To) {
 /// # Safety
 ///
 /// `result` must be non-null. This is not checked.
-///
 /// @typeParam From the source type
 /// @typeParam To the destination type
 /// @param value the value to act on

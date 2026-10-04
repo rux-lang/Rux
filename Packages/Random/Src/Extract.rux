@@ -10,7 +10,6 @@
 /// The words are consumed least significant byte first, and a partial final word contributes its low bytes and
 /// discards the rest — so the same `into.length` always consumes the same number of words, and two runs that
 /// fill buffers of the same size stay in step.
-///
 /// @typeParam G the generator's type
 /// @param generator where the bits come from
 /// @param into receives the bytes
@@ -34,7 +33,6 @@ pub func FillBytes<G: RandomGenerator>(generator: &var G, into: var char8[..]) {
 /// A whole word is consumed and half of it discarded, which costs nothing and keeps the word stream aligned --
 /// a generator that handed out the halves in turn would produce different sequences depending on how many
 /// narrow draws happened to precede a wide one.
-///
 /// @typeParam G the generator's type
 /// @param generator where the bits come from
 /// @returns the next 32 bits
@@ -44,7 +42,6 @@ pub func NextUint32<G: RandomGenerator>(generator: &var G) -> uint32 {
 }
 
 /// The next 16-bit word.
-///
 /// @typeParam G the generator's type
 /// @param generator where the bits come from
 /// @returns the next 16 bits
@@ -54,7 +51,6 @@ pub func NextUint16<G: RandomGenerator>(generator: &var G) -> uint16 {
 }
 
 /// The next 8-bit word.
-///
 /// @typeParam G the generator's type
 /// @param generator where the bits come from
 /// @returns the next 8 bits
@@ -64,7 +60,6 @@ pub func NextUint8<G: RandomGenerator>(generator: &var G) -> uint8 {
 }
 
 /// The next 128-bit word, high half drawn first.
-///
 /// @typeParam G the generator's type
 /// @param generator where the bits come from
 /// @returns the next 128 bits
@@ -81,7 +76,6 @@ pub func NextUint128<G: RandomGenerator>(generator: &var G) -> uint128 {
 /// value produced is a multiple of 2^-53, each equally likely, and none is ever exactly one. Dividing a whole
 /// word by 2^64 instead would round — and rounding upward at the top would produce exactly one, which callers
 /// scaling into an array index do not expect.
-///
 /// @typeParam G the generator's type
 /// @param generator where the bits come from
 /// @returns a value in `[0, 1)`, with 53 bits of significance
@@ -92,7 +86,6 @@ pub func NextFloat64<G: RandomGenerator>(generator: &var G) -> float64 {
 }
 
 /// A `float32` uniformly distributed in `[0, 1)`, from the top 24 bits.
-///
 /// @typeParam G the generator's type
 /// @param generator where the bits come from
 /// @returns a value in `[0, 1)`, with 24 bits of significance

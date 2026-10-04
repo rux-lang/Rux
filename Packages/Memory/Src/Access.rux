@@ -19,7 +19,6 @@ import Memory::Copy;
 /// hardware alignment is always a power of two.
 ///
 /// Cannot fail. Runs in constant time and allocates nothing.
-///
 /// @param address the address or offset to test
 /// @param alignment the boundary to test against; zero reports false
 /// @returns whether `address` is a multiple of `alignment`
@@ -35,7 +34,6 @@ pub func IsAligned(address: uint, alignment: uint) -> bool {
 /// a multiple of everything; a caller that means "usable" has to ask that separately.
 ///
 /// Cannot fail. Runs in constant time and allocates nothing.
-///
 /// @param pointer the address to test, never dereferenced
 /// @param alignment the boundary to test against
 /// @returns whether `pointer` is a multiple of `alignment`
@@ -56,7 +54,6 @@ pub func IsPointerAligned(pointer: *opaque, alignment: uint) -> bool {
 /// A `value` within `alignment - 1` of the maximum has no next multiple, and this wraps to a small number rather
 /// than reporting it. A caller sizing an allocation must check for that before trusting the result; `AlignUpChecked`
 /// does the checking.
-///
 /// @param value the value to round up
 /// @param alignment the boundary to round to; zero or one changes nothing
 /// @returns the next multiple of `alignment` at or above `value`
@@ -76,7 +73,6 @@ pub func AlignUp(value: uint, alignment: uint) -> uint {
 /// wrapped size is an allocation far smaller than the caller asked for.
 ///
 /// Runs in constant time and allocates nothing.
-///
 /// @param value the value to round up
 /// @param alignment the boundary to round to; zero or one changes nothing
 /// @param result receives the aligned value when this returns false
@@ -103,7 +99,6 @@ pub func AlignUpChecked(value: uint, alignment: uint, result: *var uint) -> bool
 /// `value` and `alignment` are read by value. An `alignment` of zero or one returns `value` unchanged.
 ///
 /// Cannot fail: rounding down never leaves the range.
-///
 /// @param value the value to round down
 /// @param alignment the boundary to round to; zero or one changes nothing
 /// @returns the previous multiple of `alignment` at or below `value`
@@ -127,7 +122,6 @@ pub func AlignDown(value: uint, alignment: uint) -> uint {
 ///
 /// `source` must be readable for `sizeof(T)` bytes. The bytes are taken as they are, so a value that is not a valid
 /// `T` stays invalid; this reinterprets rather than validating.
-///
 /// @typeParam T the type whose bytes are read
 /// @param source the address to read `sizeof(T)` bytes from, at any alignment
 /// @param destination receives the value
@@ -145,7 +139,6 @@ pub func LoadUnaligned<T>(source: *opaque, destination: *var T) {
 /// # Safety
 ///
 /// `destination` must be writable for `sizeof(T)` bytes.
-///
 /// @typeParam T the type whose bytes are written
 /// @param destination the address to write `sizeof(T)` bytes to, at any alignment
 /// @param value the value to write
@@ -166,7 +159,6 @@ pub func StoreUnaligned<T>(destination: *var opaque, value: *T) {
 /// # Safety
 ///
 /// `buffer` must be readable and writable for `length` bytes.
-///
 /// @param buffer the bytes to reverse in place
 /// @param length how many bytes; zero or one changes nothing
 /// @see https://rux-lang.dev/docs/api/memory/reverse-block
@@ -197,7 +189,6 @@ pub func ReverseBlock(buffer: *var opaque, length: uint) {
 /// # Safety
 ///
 /// `source` must be readable for `sizeof(T)` bytes.
-///
 /// @typeParam T the type whose bytes are read
 /// @param source the address to read `sizeof(T)` little-endian bytes from
 /// @param destination receives the value in the target's own order
@@ -219,7 +210,6 @@ pub func LoadLittleEndian<T>(source: *opaque, destination: *var T) {
 /// # Safety
 ///
 /// `source` must be readable for `sizeof(T)` bytes.
-///
 /// @typeParam T the type whose bytes are read
 /// @param source the address to read `sizeof(T)` big-endian bytes from
 /// @param destination receives the value in the target's own order
@@ -241,7 +231,6 @@ pub func LoadBigEndian<T>(source: *opaque, destination: *var T) {
 /// # Safety
 ///
 /// `destination` must be writable for `sizeof(T)` bytes.
-///
 /// @typeParam T the type whose bytes are written
 /// @param destination receives `sizeof(T)` little-endian bytes
 /// @param value the value to write
@@ -263,7 +252,6 @@ pub func StoreLittleEndian<T>(destination: *var opaque, value: *T) {
 /// # Safety
 ///
 /// `destination` must be writable for `sizeof(T)` bytes.
-///
 /// @typeParam T the type whose bytes are written
 /// @param destination receives `sizeof(T)` big-endian bytes
 /// @param value the value to write
@@ -295,7 +283,6 @@ pub func StoreBigEndian<T>(destination: *var opaque, value: *T) {
 /// It clears the storage it is given and nothing else. A copy the caller made beforehand, a value the compiler
 /// spilled to the stack, or bytes a reallocation left behind are all still there — so a secret has to be kept in
 /// one place from the start for this to be the whole of its erasure.
-///
 /// @param buffer the bytes to clear
 /// @param length how many bytes; zero writes nothing and accepts a null pointer
 /// @see https://rux-lang.dev/docs/api/memory/zeroize-block

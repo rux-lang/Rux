@@ -15,7 +15,6 @@
 /// it are entitled to assume it holds.
 ///
 /// A type that also implements `Hashable` must keep the two agreeable: equal values hash the same.
-///
 /// @see https://rux-lang.dev/docs/api/core/equatable
 pub interface Equatable {
     /// Reports whether this value and `other` are equal.
@@ -24,7 +23,6 @@ pub interface Equatable {
     /// The reference guarantees that `other` is present.
     ///
     /// Cannot fail: every pair of values of the type is either equal or not.
-    ///
     /// @param other the value to compare against
     /// @returns whether the two are equal
     /// @see https://rux-lang.dev/docs/api/core/equatable/equals

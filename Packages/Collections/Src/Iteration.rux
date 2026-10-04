@@ -24,7 +24,6 @@ import Core::Iterator;
 ///
 /// The element type must be copyable: a move-only element yielded by value would leave the container holding
 /// something it no longer owns. Use `ReferenceIterator` for those.
-///
 /// @typeParam T the element type
 /// @see https://rux-lang.dev/docs/api/collections/value-iterator
 pub struct ValueIterator<T> {
@@ -46,7 +45,6 @@ extend ValueIterator<T> {
     /// # Safety
     ///
     /// The storage must not be grown, freed or otherwise moved while this is alive.
-    ///
     /// @param items the elements to take
     /// @returns a cursor yielding copies of those elements
     /// @see https://rux-lang.dev/docs/api/collections/value-iterator/new
@@ -61,7 +59,6 @@ extend ValueIterator<T> : Iterator {
     /// `self` is borrowed mutably and advanced. An exhausted iterator keeps reporting `none`.
     ///
     /// Cannot fail. Runs in constant time and allocates nothing.
-    ///
     /// @returns the next element, or `none` at the end
     /// @see https://rux-lang.dev/docs/api/collections/value-iterator/next
     pub func Next(self: &var ValueIterator<T>) -> T? {
@@ -76,7 +73,6 @@ extend ValueIterator<T> : Iterator {
 ///
 /// Works for any element type, including one that owns something and may not be copied: the pointer borrows the
 /// element where it sits rather than taking it.
-///
 /// @typeParam T the element type
 /// @see https://rux-lang.dev/docs/api/collections/reference-iterator
 pub struct ReferenceIterator<T> {
@@ -99,7 +95,6 @@ extend ReferenceIterator<T> {
     ///
     /// Every pointer this yields points into the storage, so the storage must not be grown, freed or moved while
     /// this or any pointer it yielded is still in use.
-    ///
     /// @param items the elements to take
     /// @returns a cursor yielding those elements' addresses
     /// @see https://rux-lang.dev/docs/api/collections/reference-iterator/new
@@ -114,7 +109,6 @@ extend ReferenceIterator<T> : Iterator {
     /// `self` is borrowed mutably and advanced. The pointer borrows the element and takes ownership of nothing.
     ///
     /// Cannot fail. Runs in constant time and allocates nothing.
-    ///
     /// @returns the next element, or `none` at the end
     /// @see https://rux-lang.dev/docs/api/collections/reference-iterator/next
     pub func Next(self: &var ReferenceIterator<T>) -> (*T)? {
@@ -128,7 +122,6 @@ extend ReferenceIterator<T> : Iterator {
 /// An iterator that yields a writable pointer to each element of a run.
 ///
 /// Elements remain in their storage, so move-only elements can be modified without copying or moving them.
-///
 /// @typeParam T the element type
 /// @see https://rux-lang.dev/docs/api/collections/mutable-reference-iterator
 pub struct MutableReferenceIterator<T> {
@@ -149,7 +142,6 @@ extend MutableReferenceIterator<T> {
     ///
     /// The storage must outlive the iterator and every pointer it yields. Do not grow, shrink, free, or move the
     /// storage while any of them is in use. Coordinate access through aliases to the same elements.
-    ///
     /// @param items the elements to borrow for writing
     /// @returns a cursor yielding writable addresses
     /// @see https://rux-lang.dev/docs/api/collections/mutable-reference-iterator/new
@@ -163,7 +155,6 @@ extend MutableReferenceIterator<T> : Iterator {
     ///
     /// Advances the cursor without copying, moving, or destroying an element. An exhausted cursor stays exhausted.
     /// Cannot fail. Runs in constant time and allocates nothing.
-    ///
     /// @returns the next element's address, or `none` at the end
     /// @see https://rux-lang.dev/docs/api/collections/mutable-reference-iterator/next
     pub func Next(self: &var MutableReferenceIterator<T>) -> (*var T)? {

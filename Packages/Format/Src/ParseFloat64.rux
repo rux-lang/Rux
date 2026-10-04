@@ -23,7 +23,6 @@ import Text::{ ParseFailure, StringView };
 /// of the `T ! ParseError` a parser returns rather than a case here.
 ///
 /// Copy, carrying one offset.
-///
 /// @see https://rux-lang.dev/docs/api/format/parse-error
 pub variant ParseError {
     /// There were no bytes to read. The offset is zero, which is both the start of the text and its length.
@@ -44,7 +43,6 @@ extend ParseError : ParseFailure {
     /// Where in the input the failure was found.
     ///
     /// Borrows the error and leaves it untouched. Cannot fail; runs in constant time and allocates nothing.
-    ///
     /// @returns the zero-based UTF-8 byte offset, which is the text's length at end of input
     /// @see https://rux-lang.dev/docs/api/format/parse-error/offset
     pub func Offset(self: &ParseError) -> uint {
@@ -60,7 +58,6 @@ extend ParseError : ParseFailure {
 /// What a decimal spells, before any format decides what to do with it.
 ///
 /// Copy, holding the retained digits and the two flags the rounding needs.
-///
 /// @see https://rux-lang.dev/docs/api/format/decimal-reading
 pub struct DecimalReading {
     /// The retained significant digits, as an integer.
@@ -87,7 +84,6 @@ pub struct DecimalReading {
 /// # Failures
 /// Reports `Empty` for no bytes, `InvalidCharacter` at the byte where the shape stopped matching, and
 /// `OutOfMemory` where the retained digits would not fit the workspace.
-///
 /// @param str the text to read
 /// @param reading receives what the decimal spells
 /// @returns success when the whole text was the grammar
@@ -202,7 +198,6 @@ pub func ScanDecimal(str: char8[..], reading: *var DecimalReading) -> ! ParseErr
 /// length for a value past the largest finite `float64` — refused rather than rounded to an infinity, since that
 /// would turn a number the caller wrote into one they did not. A value below the smallest subnormal is the signed
 /// zero it rounds to.
-///
 /// @param str the text to read
 /// @returns the value, or why the text is not one
 /// @see https://rux-lang.dev/docs/api/format/parse-float64
@@ -244,7 +239,6 @@ pub func ParseFloat64(str: char8[..]) -> float64 ! ParseError {
 // Parses what a view spans, borrowing it. A view is the shape parsing wants: it copies nothing, owns
 // nothing, and the bytes are known to be text.
 /// Provides the public `ParseFloat64` operation.
-///
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse-float64
@@ -261,7 +255,6 @@ pub func ParseFloat64(str: StringView) -> float64 ! ParseError {
 /// # Failures
 /// The failures `ParseFloat64` reports, at this width's range: `Overflow` for a value past the largest finite
 /// `float32`, and the signed zero for one below the smallest subnormal.
-///
 /// @param str the text to read
 /// @returns the value, or why the text is not one
 /// @see https://rux-lang.dev/docs/api/format/parse-float32
@@ -298,7 +291,6 @@ pub func ParseFloat32(str: char8[..]) -> float32 ! ParseError {
 }
 
 /// The same grammar for a view.
-///
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse-float32-view

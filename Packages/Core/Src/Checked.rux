@@ -16,7 +16,6 @@
 ///
 /// Runs in constant time and allocates nothing. The compiler emits the arithmetic and the check where the call is
 /// written rather than calling out to a helper.
-///
 /// @param left the left operand
 /// @param right the right operand
 /// @param result receives the answer when this reports success
@@ -33,7 +32,6 @@ pub intrinsic func CheckedAdd(left: uint64, right: uint64, result: *var uint64) 
 ///
 /// Runs in constant time and allocates nothing. The compiler emits the arithmetic and the check where the call is
 /// written rather than calling out to a helper.
-///
 /// @param left the left operand
 /// @param right the right operand
 /// @param result receives the answer when this reports success
@@ -52,7 +50,6 @@ pub intrinsic func CheckedSub(left: uint64, right: uint64, result: *var uint64) 
 ///
 /// Runs in constant time and allocates nothing. The compiler emits the arithmetic and the check where the call is
 /// written rather than calling out to a helper.
-///
 /// @param left the left operand
 /// @param right the right operand
 /// @param result receives the answer when this reports success

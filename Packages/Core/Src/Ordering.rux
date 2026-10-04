@@ -10,7 +10,6 @@
 /// about must land on exactly one of these three.
 ///
 /// `Ordering` is a `Copy` value, so reading one never consumes it.
-///
 /// @see https://rux-lang.dev/docs/api/core/ordering
 pub enum Ordering: int8 {
     /// The left value comes before the right one.
@@ -27,7 +26,6 @@ extend Ordering {
     /// Borrows the ordering through `self` and leaves it untouched.
     ///
     /// Cannot fail. Runs in constant time and allocates nothing.
-    ///
     /// @returns whether this ordering is `Less`
     /// @see https://rux-lang.dev/docs/api/core/ordering/is-less
     pub func IsLess(self: &Ordering) -> bool {
@@ -42,7 +40,6 @@ extend Ordering {
     /// Borrows the ordering through `self` and leaves it untouched.
     ///
     /// Cannot fail. Runs in constant time and allocates nothing.
-    ///
     /// @returns whether this ordering is `Equal`
     /// @see https://rux-lang.dev/docs/api/core/ordering/is-equal
     pub func IsEqual(self: &Ordering) -> bool {
@@ -57,7 +54,6 @@ extend Ordering {
     /// Borrows the ordering through `self` and leaves it untouched.
     ///
     /// Cannot fail. Runs in constant time and allocates nothing.
-    ///
     /// @returns whether this ordering is `Greater`
     /// @see https://rux-lang.dev/docs/api/core/ordering/is-greater
     pub func IsGreater(self: &Ordering) -> bool {
@@ -73,7 +69,6 @@ extend Ordering {
     /// so a caller testing a bound does not have to negate one.
     ///
     /// Cannot fail. Runs in constant time and allocates nothing.
-    ///
     /// @returns whether this ordering is `Less` or `Equal`
     /// @see https://rux-lang.dev/docs/api/core/ordering/is-less-or-equal
     pub func IsLessOrEqual(self: &Ordering) -> bool {
@@ -88,7 +83,6 @@ extend Ordering {
     /// Borrows the ordering through `self` and leaves it untouched. This is the negation of `IsLess`.
     ///
     /// Cannot fail. Runs in constant time and allocates nothing.
-    ///
     /// @returns whether this ordering is `Greater` or `Equal`
     /// @see https://rux-lang.dev/docs/api/core/ordering/is-greater-or-equal
     pub func IsGreaterOrEqual(self: &Ordering) -> bool {
@@ -104,7 +98,6 @@ extend Ordering {
     /// own reverse. A `Copy` value, so the caller's own ordering is unaffected.
     ///
     /// Cannot fail. Runs in constant time and allocates nothing.
-    ///
     /// @returns the opposite ordering, with `Equal` unchanged
     /// @see https://rux-lang.dev/docs/api/core/ordering/reverse
     pub func Reverse(self: Ordering) -> Ordering {

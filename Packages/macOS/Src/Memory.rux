@@ -7,17 +7,14 @@
 import macOS::{ IsError, Normalize, getpagesize, madvise, mmap, mprotect, munmap };
 
 /// `PROT_NONE`: the pages may not be touched at all.
-///
 /// @see https://rux-lang.dev/docs/api/macos/protection-none
 pub const ProtectionNone: int32 = 0x00;
 
 /// `PROT_READ`: the pages may be read.
-///
 /// @see https://rux-lang.dev/docs/api/macos/protection-read
 pub const ProtectionRead: int32 = 0x01;
 
 /// `PROT_WRITE`: the pages may be written.
-///
 /// @see https://rux-lang.dev/docs/api/macos/protection-write
 pub const ProtectionWrite: int32 = 0x02;
 
@@ -25,42 +22,34 @@ pub const ProtectionWrite: int32 = 0x02;
 ///
 /// Apple Silicon refuses a mapping that is writable and executable at once unless the process carries the
 /// `com.apple.security.cs.allow-jit` entitlement and uses `MAP_JIT`, which this package does not wrap.
-///
 /// @see https://rux-lang.dev/docs/api/macos/protection-execute
 pub const ProtectionExecute: int32 = 0x04;
 
 /// `MAP_SHARED`: writes are visible to other mappings of the same object and reach it.
-///
 /// @see https://rux-lang.dev/docs/api/macos/map-shared
 pub const MapShared: int32 = 0x0001;
 
 /// `MAP_PRIVATE`: writes are private to this mapping and never reach the object.
-///
 /// @see https://rux-lang.dev/docs/api/macos/map-private
 pub const MapPrivate: int32 = 0x0002;
 
 /// `MAP_FIXED`: place the mapping exactly at the requested address, replacing whatever was there.
-///
 /// @see https://rux-lang.dev/docs/api/macos/map-fixed
 pub const MapFixed: int32 = 0x0010;
 
 /// `MAP_ANON`: the mapping is backed by zeroed pages rather than by a file.
-///
 /// @see https://rux-lang.dev/docs/api/macos/map-anonymous
 pub const MapAnonymous: int32 = 0x1000;
 
 /// `MADV_FREE`: the pages may be reclaimed, and read back as zero if they are.
-///
 /// @see https://rux-lang.dev/docs/api/macos/advise-free
 pub const AdviseFree: int32 = 5;
 
 /// `MADV_DONTNEED`: the pages are not needed soon. Advisory on Darwin, as on FreeBSD.
-///
 /// @see https://rux-lang.dev/docs/api/macos/advise-dont-need
 pub const AdviseDontNeed: int32 = 4;
 
 /// `MADV_WILLNEED`: the pages will be read soon.
-///
 /// @see https://rux-lang.dev/docs/api/macos/advise-will-need
 pub const AdviseWillNeed: int32 = 3;
 
@@ -75,7 +64,6 @@ pub const AdviseWillNeed: int32 = 3;
 /// # Safety
 ///
 /// `MapFixed` replaces whatever occupies the address, including a mapping this program depends on.
-///
 /// @param address a hint for where to map, or null to let the kernel choose
 /// @param length how many bytes, rounded up to whole pages
 /// @param protection what may be done with the pages, as `Protection*` flags
@@ -96,7 +84,6 @@ pub func Mmap(address: *opaque, length: uint, protection: int32, flags: int32, f
 /// # Safety
 ///
 /// Every pointer into the range becomes invalid.
-///
 /// @param address a page-aligned address to release from
 /// @param length how many bytes to release
 /// @returns zero, or a negative error number
@@ -112,7 +99,6 @@ pub func Munmap(address: *opaque, length: uint) -> int64 {
 /// # Safety
 ///
 /// Apple Silicon refuses to make a range writable and executable at once without the JIT entitlement.
-///
 /// @param address a page-aligned address
 /// @param length how many bytes, rounded up to whole pages
 /// @param protection what may be done with them afterwards
@@ -129,7 +115,6 @@ pub func Mprotect(address: *opaque, length: uint, protection: int32) -> int64 {
 /// # Safety
 ///
 /// `AdviseFree` loses whatever the range held.
-///
 /// @param address a page-aligned address
 /// @param length how many bytes the advice covers
 /// @param advice one of the `Advise*` values
@@ -144,7 +129,6 @@ pub func Madvise(address: *opaque, length: uint, advice: int32) -> int64 {
 /// is asked rather than assumed. The underlying call cannot fail, which is why this one cannot either — the
 /// negative-error return exists so that one call shape reaches all three POSIX systems, not because Darwin has a
 /// failure to report.
-///
 /// @returns the page size in bytes, always positive on this system
 /// @see https://rux-lang.dev/docs/api/macos/query-page-size
 pub func QueryPageSize() -> int64 {

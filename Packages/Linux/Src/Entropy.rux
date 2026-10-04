@@ -10,14 +10,12 @@
 import Linux::{ SysGetRandom, Syscall3 };
 
 /// `GRND_NONBLOCK`: report `EAGAIN` rather than waiting for the pool to be seeded.
-///
 /// @see https://rux-lang.dev/docs/api/linux/random-non-blocking
 pub const RandomNonBlocking: uint32 = 1;
 
 /// `GRND_RANDOM`: draw from the blocking pool, which is almost never what a caller wants.
 ///
 /// Kept for completeness. The default source is as unpredictable and does not stall.
-///
 /// @see https://rux-lang.dev/docs/api/linux/random-blocking-pool
 pub const RandomBlockingPool: uint32 = 2;
 
@@ -36,7 +34,6 @@ pub const RandomBlockingPool: uint32 = 2;
 ///
 /// `buffer` must be writable for `length` bytes. Treat a short count as bytes obtained, not as failure, or the
 /// unwritten tail stays whatever it held — which for a key is the worst possible outcome.
-///
 /// @param buffer receives the bytes
 /// @param length how many bytes to ask for
 /// @param flags zero, or one of the `Random*` values

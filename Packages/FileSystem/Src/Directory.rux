@@ -22,7 +22,6 @@ when #target.os {
 }
 
 /// Creates the directory `path` names. Its parent must already exist; `AlreadyExists` if the name is taken.
-///
 /// @param allocator where the storage comes from
 /// @param path the path to act on
 /// @returns success when the directory now exists
@@ -45,7 +44,6 @@ pub func MakeDirectory(allocator: Allocator, path: Path) -> ! IoError {
 }
 
 /// Deletes the empty directory `path` names; a directory with anything still in it is refused.
-///
 /// @param allocator where the storage comes from
 /// @param path the path to act on
 /// @returns success when the directory is gone
@@ -67,7 +65,6 @@ pub func DeleteDirectory(allocator: Allocator, path: Path) -> ! IoError {
 }
 
 /// Deletes the file `path` names. Removing the name does not disturb any handle still open on the file.
-///
 /// @param allocator where the storage comes from
 /// @param path the path to act on
 /// @returns success when the file is gone
@@ -92,7 +89,6 @@ pub func DeleteFile(allocator: Allocator, path: Path) -> ! IoError {
 ///
 /// Move-only: `Release` (or destruction) gives back the platform handle and the record buffer. `Next` hands each
 /// name over as a fresh `OsString` owned by the caller.
-///
 /// @see https://rux-lang.dev/docs/api/filesystem/directory-iterator
 pub struct DirectoryIterator {
     /// Where the record buffer came from, and where the names come from.
@@ -124,7 +120,6 @@ func DirectoryBufferSize() -> uint {
 }
 
 /// Begins enumerating the directory `path` names.
-///
 /// @param allocator where the storage comes from
 /// @param path the path to act on
 /// @returns a cursor over the directory's entries
@@ -197,7 +192,6 @@ extend DirectoryIterator {
     ///
     /// Succeeds with a name freshly owned by the caller, or with `none` at the end; a failure says what stopped the
     /// enumeration. The `.` and `..` entries are skipped.
-    ///
     /// @returns the next entry's name, or `none` when the directory is done
     /// @see https://rux-lang.dev/docs/api/filesystem/directory-iterator/next
     pub func Next(self: &var DirectoryIterator) -> OsString? ! IoError {
@@ -290,7 +284,6 @@ extend DirectoryIterator {
     }
 
     /// Gives back the handle and the buffer.
-    ///
     /// @see https://rux-lang.dev/docs/api/filesystem/directory-iterator/release
     pub func Release(self: &var DirectoryIterator) {
         if self.open {
@@ -311,7 +304,6 @@ extend DirectoryIterator {
     }
 
     /// `Release`, as the safety net.
-    ///
     /// @see https://rux-lang.dev/docs/api/filesystem/directory-iterator/destructor
     func ~DirectoryIterator(self: &var DirectoryIterator) {
         self.Release();

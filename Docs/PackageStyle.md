@@ -18,7 +18,7 @@ Three tools run before this checker and own rules it does not repeat.
 | `rux lint` | Documentation attachment, public-declaration documentation, and structured-tag validity |
 | `rux doc`  | Included documentation, generated routes, duplicate routes, and unsafe links            |
 
-`rux fmt` preserves authored tag order and does not insert the blank line required before a tag block, and `rux lint` does not require complete parameter or return coverage or an API URL. Those additional rules belong to the checker described here.
+`rux fmt` preserves authored tag order and blank lines, and `rux lint` does not require complete parameter or return coverage or an API URL. Those additional rules belong to the checker described here.
 
 ## File headers and spacing
 
@@ -90,7 +90,15 @@ Tags form one terminal block at the end of the documentation, in this order:
 3. `@returns`
 4. `@see`
 
-Exactly one empty `///` line precedes the block. Within it, prose does not resume; anything after the first tag is part of the tag block.
+The block follows the prose directly, with no empty `///` line before it: a tag is recognized by its leading `@`, so a separator would only spend a line. The one empty line that matters comes after the summary when more prose follows, because the summary is the first paragraph and a Markdown paragraph ends only at an empty line. Within the tag block, prose does not resume; anything after the first tag is part of it.
+
+```rux
+/// The clock, read now.
+///
+/// Cannot fail on any supported system: the monotonic clock exists from boot and needs no permission.
+/// @returns the monotonic clock, read now
+/// @see https://rux-lang.dev/docs/api/time/instant/now
+```
 
 - `@typeParam` is required for every declared type parameter.
 - `@param` is required for every named callable parameter except the `self` receiver. An unnamed variadic tail has no tag.

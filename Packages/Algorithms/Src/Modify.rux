@@ -21,7 +21,6 @@
 /// # Safety
 ///
 /// Both pointers must be non-null and writable.
-///
 /// @typeParam T the element type
 /// @param left one of the two elements
 /// @param right the other
@@ -38,7 +37,6 @@ pub func Swap<T>(left: *var T, right: *var T) {
 /// is a special case.
 ///
 /// Cannot fail. Runs in time proportional to the length, making half as many exchanges, and allocates nothing.
-///
 /// @typeParam T the element type
 /// @param items the sequence to work on
 /// @see https://rux-lang.dev/docs/api/algorithms/reverse
@@ -64,7 +62,6 @@ pub func Reverse<T>(items: var T[..]) {
 /// Reports false only for a `middle` past the length.
 ///
 /// Runs in time proportional to the length and allocates nothing.
-///
 /// @typeParam T the element type
 /// @param items the sequence to work on
 /// @param middle the index that becomes the new first element
@@ -85,7 +82,6 @@ pub func Rotate<T>(items: var T[..], middle: uint) -> bool {
 /// writes nothing.
 ///
 /// Cannot fail. Runs in time proportional to the length and allocates nothing.
-///
 /// @typeParam T the element type
 /// @param items the sequence to work on
 /// @param value the value to write to every element
@@ -111,7 +107,6 @@ pub func Fill<T>(items: var T[..], value: T) {
 /// # Safety
 ///
 /// Overlapping the wrong way silently copies elements that were already overwritten.
-///
 /// @typeParam T the element type
 /// @param destination where the results go
 /// @param source where the elements come from
@@ -136,7 +131,6 @@ pub func CopyTo<T>(destination: var T[..], source: T[..]) -> bool {
 /// shifting a run of elements along its own storage safe in either direction.
 ///
 /// Runs in time proportional to the length and allocates nothing.
-///
 /// @typeParam T the element type
 /// @param destination where the results go
 /// @param source where the elements come from
@@ -165,7 +159,6 @@ pub func MoveTo<T>(destination: var T[..], source: T[..]) -> bool {
 /// Requires `==` on the element type.
 ///
 /// Cannot fail. Runs in time proportional to the length and allocates nothing.
-///
 /// @typeParam T the element type
 /// @param items the sequence to work on
 /// @returns how many elements are left after collapsing each run of equal neighbours to one
@@ -192,7 +185,6 @@ pub func Unique<T>(items: var T[..]) -> uint {
 /// Requires `==` on the element type.
 ///
 /// Cannot fail. Runs in time proportional to the length and allocates nothing.
-///
 /// @typeParam T the element type
 /// @param items the sequence to work on
 /// @param value the value to remove every occurrence of
@@ -217,7 +209,6 @@ pub func RemoveValue<T>(items: var T[..], value: T) -> uint {
 /// the front in their original order, nothing is resized, and what lies past the reported length is unspecified.
 ///
 /// Cannot fail. Runs in time proportional to the length and allocates nothing beyond whatever `predicate` does.
-///
 /// @typeParam T the element type
 /// @param items the sequence to work on
 /// @param predicate the test each element is put to
@@ -246,7 +237,6 @@ pub func RemoveWhere<T>(items: var T[..], predicate: func(T) -> bool) -> uint {
 /// partition, which needs somewhere to put things.
 ///
 /// Cannot fail. Runs in time proportional to the length and allocates nothing beyond whatever `predicate` does.
-///
 /// @typeParam T the element type
 /// @param items the sequence to work on
 /// @param predicate the test each element is put to
@@ -277,7 +267,6 @@ pub func Partition<T>(items: var T[..], predicate: func(T) -> bool) -> uint {
 ///
 /// Cannot fail. Runs in time proportional to the logarithm of the length and allocates nothing beyond whatever
 /// `predicate` does.
-///
 /// @typeParam T the element type
 /// @param items the sequence to work on
 /// @param predicate the test each element is put to

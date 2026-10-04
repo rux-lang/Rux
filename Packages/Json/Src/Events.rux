@@ -18,7 +18,6 @@ import Allocator::{ AllocError, Allocator, Layout };
 import Io::{ IoError, IoErrorKind, Reader };
 
 /// What just happened in the document.
-///
 /// @see https://rux-lang.dev/docs/api/json/json-event
 pub enum JsonEvent: int32 {
     /// The document is finished.
@@ -48,7 +47,6 @@ pub enum JsonEvent: int32 {
 }
 
 /// Reads a document as events, pulling bytes as it needs them.
-///
 /// @see https://rux-lang.dev/docs/api/json/json-event-reader
 pub struct JsonEventReader {
     /// Where bytes come from.
@@ -94,7 +92,6 @@ extend JsonEventReader {
     func =(self: &var JsonEventReader, other: &JsonEventReader);
 
     /// A reader over `source` under `limits`.
-    ///
     /// @param allocator where the storage comes from
     /// @param source the text to read
     /// @param limits the bounds the parse refuses to exceed
@@ -119,7 +116,6 @@ extend JsonEventReader {
     ///
     /// This is what a caller asks after `Next` reports `Error`. A lexical refusal carries the lexer's own reason
     /// inside it rather than in a second call, so a caller holding the failure is holding all of it.
-    ///
     /// @returns the failure, positioned at the byte the reader stopped on, or `none`
     /// @see https://rux-lang.dev/docs/api/json/json-event-reader/failure
     pub func Failure(self: &JsonEventReader) -> JsonParseError? {
@@ -130,7 +126,6 @@ extend JsonEventReader {
     ///
     /// For a name, a string or a number. Escapes are left as written — resolving them would mean allocating,
     /// and a caller skipping past a field should not pay for its contents.
-    ///
     /// @returns the current event's text, borrowed from the input
     /// @see https://rux-lang.dev/docs/api/json/json-event-reader/text
     pub func Text(self: &JsonEventReader) -> char8[..] {
@@ -138,7 +133,6 @@ extend JsonEventReader {
     }
 
     /// Whether that text holds escapes a caller must resolve.
-    ///
     /// @returns whether the text still holds escape sequences a caller must decode
     /// @see https://rux-lang.dev/docs/api/json/json-event-reader/text-is-escaped
     pub func TextIsEscaped(self: &JsonEventReader) -> bool {
@@ -146,7 +140,6 @@ extend JsonEventReader {
     }
 
     /// How deeply nested the reader currently is.
-    ///
     /// @returns how many arrays and objects are currently open
     /// @see https://rux-lang.dev/docs/api/json/json-event-reader/depth
     pub func Depth(self: &JsonEventReader) -> uint {
@@ -207,7 +200,6 @@ extend JsonEventReader {
     }
 
     /// Gives the buffer back.
-    ///
     /// @see https://rux-lang.dev/docs/api/json/json-event-reader/release
     pub func Release(self: &var JsonEventReader) {
         if self.data != null {
@@ -219,7 +211,6 @@ extend JsonEventReader {
         }
     }
     /// Releases the buffer.
-    ///
     /// @see https://rux-lang.dev/docs/api/json/json-event-reader/destructor
     func ~JsonEventReader(self: &var JsonEventReader) {
         self.Release();
@@ -347,7 +338,6 @@ extend JsonEventReader {
     ///
     /// Separators are consumed silently: a caller sees values and structure, not commas and colons, which is
     /// the level a streaming reader is useful at.
-    ///
     /// @returns the next event, or the end-of-input event
     /// @see https://rux-lang.dev/docs/api/json/json-event-reader/next
     pub func Next(self: &var JsonEventReader) -> JsonEvent {

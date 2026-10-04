@@ -16,7 +16,6 @@ import Text::{ String, StringView, TextError };
 import Time::{ Date, TimeOfDay, UtcOffset };
 
 /// Which kind of TOML value this is.
-///
 /// @see https://rux-lang.dev/docs/api/toml/kind
 pub enum TomlKind: int32 {
     /// A string, whichever of the four forms it was written in.
@@ -42,7 +41,6 @@ pub enum TomlKind: int32 {
 }
 
 /// One entry of a table: its key and its value.
-///
 /// @see https://rux-lang.dev/docs/api/toml/entry
 pub struct TomlEntry {
     /// The key, already unquoted and unescaped.
@@ -55,7 +53,6 @@ pub struct TomlEntry {
 ///
 /// Move-only, because it owns strings and nested values. The allocator it was built with travels with it, so a
 /// subtree can be released without the caller having to remember where it came from.
-///
 /// @see https://rux-lang.dev/docs/api/toml/value
 pub struct TomlValue {
     /// Which of the ten kinds this is.
@@ -97,7 +94,6 @@ extend TomlValue {
     func =(self: &var TomlValue, other: &TomlValue);
 
     /// An empty table, which is also the shape every other kind is built from: TOML has no null to start from.
-    ///
     /// @param allocator where the storage comes from
     /// @returns an empty table
     /// @see https://rux-lang.dev/docs/api/toml/value/table
@@ -122,7 +118,6 @@ extend TomlValue {
     }
 
     /// An empty array.
-    ///
     /// @param allocator where the storage comes from
     /// @returns an empty array
     /// @see https://rux-lang.dev/docs/api/toml/value/array
@@ -133,7 +128,6 @@ extend TomlValue {
     }
 
     /// A string value, whose bytes are copied and validated as UTF-8.
-    ///
     /// @param allocator where the storage comes from
     /// @param value the value to act on
     /// @returns that text as a string value, or an empty table when the allocator refused
@@ -146,7 +140,6 @@ extend TomlValue {
     }
 
     /// A string value copying an already-built string.
-    ///
     /// @param allocator where the storage comes from
     /// @param value the value to act on
     /// @returns that owned string as a string value
@@ -160,7 +153,6 @@ extend TomlValue {
     }
 
     /// An integer value.
-    ///
     /// @param allocator where the storage comes from
     /// @param value the value to act on
     /// @returns that integer as a value
@@ -173,7 +165,6 @@ extend TomlValue {
     }
 
     /// A float value, which TOML — unlike JSON — allows to be an infinity or a NaN.
-    ///
     /// @param allocator where the storage comes from
     /// @param value the value to act on
     /// @returns that float as a value
@@ -186,7 +177,6 @@ extend TomlValue {
     }
 
     /// A boolean value.
-    ///
     /// @param allocator where the storage comes from
     /// @param value the value to act on
     /// @returns that boolean as a value
@@ -199,7 +189,6 @@ extend TomlValue {
     }
 
     /// A date and time with a known offset, which names a moment on the timeline.
-    ///
     /// @param allocator where the storage comes from
     /// @param date the calendar date
     /// @param time the time of day
@@ -216,7 +205,6 @@ extend TomlValue {
     }
 
     /// A date and time with no offset, which names a wall clock reading rather than a moment.
-    ///
     /// @param allocator where the storage comes from
     /// @param date the calendar date
     /// @param time the time of day
@@ -231,7 +219,6 @@ extend TomlValue {
     }
 
     /// A date with no time.
-    ///
     /// @param allocator where the storage comes from
     /// @param date the calendar date
     /// @returns a value carrying the date alone
@@ -244,7 +231,6 @@ extend TomlValue {
     }
 
     /// A time with no date.
-    ///
     /// @param allocator where the storage comes from
     /// @param time the time of day
     /// @returns a value carrying the time alone
@@ -257,7 +243,6 @@ extend TomlValue {
     }
 
     /// Which kind this value is.
-    ///
     /// @returns which of the TOML kinds this is
     /// @see https://rux-lang.dev/docs/api/toml/value/kind
     pub func Kind(self: &TomlValue) -> TomlKind {
@@ -266,7 +251,6 @@ extend TomlValue {
 
     /// The boolean payload, or `false` when this is not a boolean — which `Kind` distinguishes from a genuine
     /// `false`.
-    ///
     /// @param result receives the value when this reports true
     /// @returns whether this is a boolean
     /// @see https://rux-lang.dev/docs/api/toml/value/as-boolean
@@ -280,7 +264,6 @@ extend TomlValue {
     ///
     /// A float is not converted, even when its value happens to be whole: TOML distinguishes `1` from `1.0` and
     /// collapsing them here would throw away a distinction the document was making.
-    ///
     /// @param result receives the value when this reports true
     /// @returns whether this is an integer
     /// @see https://rux-lang.dev/docs/api/toml/value/as-integer
@@ -291,7 +274,6 @@ extend TomlValue {
     }
 
     /// The float payload, or `false` when this is not a float.
-    ///
     /// @param result receives the value when this reports true
     /// @returns whether this is a float
     /// @see https://rux-lang.dev/docs/api/toml/value/as-float
@@ -302,7 +284,6 @@ extend TomlValue {
     }
 
     /// The string payload, or an empty view when this is not a string.
-    ///
     /// @returns the string, or an empty view when this is not one
     /// @see https://rux-lang.dev/docs/api/toml/value/as-text
     pub func AsText(self: &TomlValue) -> StringView {
@@ -311,7 +292,6 @@ extend TomlValue {
     }
 
     /// The date part, or `false` when this kind has none.
-    ///
     /// @param result receives the value when this reports true
     /// @returns whether this carries a date
     /// @see https://rux-lang.dev/docs/api/toml/value/as-date
@@ -325,7 +305,6 @@ extend TomlValue {
     }
 
     /// The time part, or `false` when this kind has none.
-    ///
     /// @param result receives the value when this reports true
     /// @returns whether this carries a time
     /// @see https://rux-lang.dev/docs/api/toml/value/as-time
@@ -342,7 +321,6 @@ extend TomlValue {
     ///
     /// A local date-time deliberately has none: it names a wall clock reading, and inventing an offset for it is
     /// how a meeting ends up an hour out.
-    ///
     /// @param result receives the value when this reports true
     /// @returns whether this carries an offset from UTC
     /// @see https://rux-lang.dev/docs/api/toml/value/as-offset
@@ -353,7 +331,6 @@ extend TomlValue {
     }
 
     /// How many elements an array holds, or entries a table holds; zero for anything else.
-    ///
     /// @returns how many elements or entries this holds; zero for anything else
     /// @see https://rux-lang.dev/docs/api/toml/value/length
     pub func Length(self: &TomlValue) -> uint {
@@ -366,7 +343,6 @@ extend TomlValue {
     ///
     /// Reports `false` when this is not an array or the allocator refused; `value` is consumed either way, so a
     /// caller does not have to decide who owns it on failure.
-    ///
     /// @param value the value to act on
     /// @returns whether the element was appended
     /// @see https://rux-lang.dev/docs/api/toml/value/push
@@ -380,7 +356,6 @@ extend TomlValue {
     /// The order entries are added in is the order they are kept and written, which is what makes a document
     /// round-trip recognisably. Nothing here rejects a repeated key — that is the parser's business, where the
     /// three different ways of repeating one can be told apart.
-    ///
     /// @param key the key to look up
     /// @param value the value to act on
     /// @returns whether the entry was added
@@ -392,7 +367,6 @@ extend TomlValue {
     }
 
     /// The element at `index`, borrowed, or null when there is none.
-    ///
     /// @param index which one, counting from zero
     /// @returns the element at `index`, or null when there is none
     /// @see https://rux-lang.dev/docs/api/toml/value/at
@@ -406,7 +380,6 @@ extend TomlValue {
     ///
     /// This is how an array of tables grows: the header that opens a new one appends, and the lines under it
     /// are written into the last element in place.
-    ///
     /// @param index which one, counting from zero
     /// @returns the element at `index` for writing, or null when there is none
     /// @see https://rux-lang.dev/docs/api/toml/value/at-mutable
@@ -417,7 +390,6 @@ extend TomlValue {
     }
 
     /// The value under `key`, borrowed, or null when the table has none.
-    ///
     /// @param key the key to look up
     /// @returns the entry with that key, or null when there is none
     /// @see https://rux-lang.dev/docs/api/toml/value/find
@@ -434,7 +406,6 @@ extend TomlValue {
     }
 
     /// The value under `key`, borrowed for modification, or null when the table has none.
-    ///
     /// @param key the key to look up
     /// @returns the entry with that key for writing, or null when there is none
     /// @see https://rux-lang.dev/docs/api/toml/value/find-mutable
@@ -451,7 +422,6 @@ extend TomlValue {
     }
 
     /// The entry at `index`, borrowed, or null when there is none.
-    ///
     /// @param index which one, counting from zero
     /// @returns the entry at `index`, or null when there is none
     /// @see https://rux-lang.dev/docs/api/toml/value/entry-at
@@ -466,7 +436,6 @@ extend TomlValue {
     /// Written out rather than left to the compiler, because a value owns its string and its children own
     /// theirs: the recursion here is the shape of the document, and stating it makes the ownership of a nested
     /// tree something a reader can check.
-    ///
     /// @see https://rux-lang.dev/docs/api/toml/value/destructor
     func ~TomlValue(self: &var TomlValue) {
         self.text.Clear();
@@ -483,7 +452,6 @@ extend TomlEntry {
     func =(self: &var TomlEntry, other: &TomlEntry);
 
     /// Releases the key and the value.
-    ///
     /// @see https://rux-lang.dev/docs/api/toml/entry/destructor
     func ~TomlEntry(self: &var TomlEntry) {
         self.key.Clear();

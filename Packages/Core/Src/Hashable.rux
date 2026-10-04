@@ -18,7 +18,6 @@
 /// A hash is not a checksum and not a digest: it is not stable across program runs, across compiler versions, or
 /// across targets, and nothing that outlives the process should be keyed on one. `Rux/Hash` supplies the named,
 /// documented algorithms for that, and `Rux/Crypto` the ones that must resist an adversary.
-///
 /// @see https://rux-lang.dev/docs/api/core/hashable
 pub interface Hashable {
     /// The hash of this value.
@@ -26,7 +25,6 @@ pub interface Hashable {
     /// Borrows the value and takes ownership of nothing, so hashing leaves it usable.
     ///
     /// Cannot fail. Every value of the type has a hash, and the same value always gives the same one within a run.
-    ///
     /// @returns this value's hash
     /// @see https://rux-lang.dev/docs/api/core/hashable/hash
     func Hash() -> uint64;

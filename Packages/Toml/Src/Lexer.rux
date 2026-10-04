@@ -13,7 +13,6 @@ import Allocator::Allocator;
 import Text::{ String, StringBuilder, TextError };
 
 /// What kind of token this is.
-///
 /// @see https://rux-lang.dev/docs/api/toml/token-kind
 pub enum TomlTokenKind: int32 {
     /// The input is exhausted.
@@ -51,7 +50,6 @@ pub enum TomlTokenKind: int32 {
 }
 
 /// Which of the four string forms a text token was written in.
-///
 /// @see https://rux-lang.dev/docs/api/toml/text-form
 pub enum TomlTextForm: int32 {
     /// Not a text token.
@@ -70,7 +68,6 @@ pub enum TomlTextForm: int32 {
 }
 
 /// Why lexing stopped.
-///
 /// @see https://rux-lang.dev/docs/api/toml/lex-error
 pub enum TomlLexError: int32 {
     /// Nothing went wrong.
@@ -94,7 +91,6 @@ pub enum TomlLexError: int32 {
 }
 
 /// One token, and where it came from.
-///
 /// @see https://rux-lang.dev/docs/api/toml/token
 pub struct TomlToken {
     /// What kind of token this is.
@@ -114,7 +110,6 @@ pub struct TomlToken {
 }
 
 /// A TOML lexer over a byte slice.
-///
 /// @see https://rux-lang.dev/docs/api/toml/lexer
 pub struct TomlLexer {
     /// The document.
@@ -129,7 +124,6 @@ pub struct TomlLexer {
 
 extend TomlLexer {
     /// A lexer over `input`.
-    ///
     /// @param input the text to read
     /// @returns a lexer positioned at the start of the input
     /// @see https://rux-lang.dev/docs/api/toml/lexer/new
@@ -425,7 +419,6 @@ extend TomlLexer {
     }
 
     /// The next token, or `End` at the end of the input.
-    ///
     /// @returns the next token, or the end-of-input token
     /// @see https://rux-lang.dev/docs/api/toml/lexer/next
     pub func Next(self: &var TomlLexer) -> TomlToken {
@@ -497,7 +490,6 @@ extend TomlLexer {
     }
 
     /// The bytes a token spans, which for a text token excludes the quotes and is still escaped.
-    ///
     /// @param token the token to read
     /// @returns the token's text, borrowed from the input
     /// @see https://rux-lang.dev/docs/api/toml/lexer/text-of
@@ -511,7 +503,6 @@ extend TomlLexer {
 /// A literal string is copied unchanged — that is what makes it the right form for a Windows path — while a
 /// basic string has its escapes resolved, including the line-ending backslash that lets a multi-line string be
 /// wrapped in the source without the wrapping appearing in the value.
-///
 /// @param allocator where the storage comes from
 /// @param span the raw text the token covers
 /// @param form which quoting form the text was written in

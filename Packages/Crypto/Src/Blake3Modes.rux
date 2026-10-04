@@ -44,7 +44,6 @@ extend Blake3 {
     ///
     /// Unlike SHA-2, this needs no nested construction: BLAKE3 resists length extension, so starting the tree
     /// from the key is a sound MAC on its own.
-    ///
     /// @param key the key
     /// @returns a hasher keyed with those thirty-two bytes
     /// @see https://rux-lang.dev/docs/api/crypto/blake3/new-keyed
@@ -60,7 +59,6 @@ extend Blake3 {
     /// material so that two derivations from the same material under different contexts are unrelated. It
     /// should be a hard-coded, globally unique string — an application name, a purpose, and a date — and it
     /// must not be a variable, since two callers who accidentally share one lose the separation entirely.
-    ///
     /// @param context the application-specific context string, which must be a constant
     /// @returns a hasher in key-derivation mode for that context
     /// @see https://rux-lang.dev/docs/api/crypto/blake3/new-derive-key
@@ -77,7 +75,6 @@ extend Blake3 {
 }
 
 /// The keyed BLAKE3 hash of `bytes` under `key`, in one call.
-///
 /// @param key the key
 /// @param bytes the bytes to absorb
 /// @param into receives the output
@@ -89,7 +86,6 @@ pub func Blake3KeyedOf(key: char8[..], bytes: char8[..], into: var char8[..]) {
 }
 
 /// A key derived from `material` under `context`, at whatever length `into` asks for.
-///
 /// @param context the application-specific context string, which must be a constant
 /// @param material the input keying material
 /// @param into receives the output

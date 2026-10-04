@@ -77,7 +77,6 @@ func ParseIntegerMagnitude(str: char8[..], magnitude: *var uint512,
 ///
 /// Reports `Overflow` for a value the width cannot hold, `InvalidCharacter` at the first byte that is not
 /// part of the grammar — a `-` included, since no unsigned value is negative.
-///
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse-uint8
@@ -94,7 +93,6 @@ pub func ParseUint8(str: char8[..]) -> uint8 ! ParseError {
 ///
 /// The negative bound is one larger than the positive one, because the most negative value has no positive
 /// counterpart: the value one past the largest positive fits only with its sign.
-///
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse-int8
@@ -112,7 +110,6 @@ pub func ParseInt8(str: char8[..]) -> int8 ! ParseError {
 ///
 /// Reports `Overflow` for a value the width cannot hold, `InvalidCharacter` at the first byte that is not
 /// part of the grammar — a `-` included, since no unsigned value is negative.
-///
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse-uint16
@@ -129,7 +126,6 @@ pub func ParseUint16(str: char8[..]) -> uint16 ! ParseError {
 ///
 /// The negative bound is one larger than the positive one, because the most negative value has no positive
 /// counterpart: the value one past the largest positive fits only with its sign.
-///
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse-int16
@@ -147,7 +143,6 @@ pub func ParseInt16(str: char8[..]) -> int16 ! ParseError {
 ///
 /// Reports `Overflow` for a value the width cannot hold, `InvalidCharacter` at the first byte that is not
 /// part of the grammar — a `-` included, since no unsigned value is negative.
-///
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse-uint32
@@ -164,7 +159,6 @@ pub func ParseUint32(str: char8[..]) -> uint32 ! ParseError {
 ///
 /// The negative bound is one larger than the positive one, because the most negative value has no positive
 /// counterpart: the value one past the largest positive fits only with its sign.
-///
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse-int32
@@ -182,7 +176,6 @@ pub func ParseInt32(str: char8[..]) -> int32 ! ParseError {
 ///
 /// Reports `Overflow` for a value the width cannot hold, `InvalidCharacter` at the first byte that is not
 /// part of the grammar — a `-` included, since no unsigned value is negative.
-///
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse-uint64
@@ -201,7 +194,6 @@ pub func ParseUint64(str: char8[..]) -> uint64 ! ParseError {
 ///
 /// The negative bound is one larger than the positive one, because the most negative value has no positive
 /// counterpart: the value one past the largest positive fits only with its sign.
-///
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse-int64
@@ -219,7 +211,6 @@ pub func ParseInt64(str: char8[..]) -> int64 ! ParseError {
 ///
 /// Reports `Overflow` for a value the width cannot hold, `InvalidCharacter` at the first byte that is not
 /// part of the grammar — a `-` included, since no unsigned value is negative.
-///
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse-uint128
@@ -238,7 +229,6 @@ pub func ParseUint128(str: char8[..]) -> uint128 ! ParseError {
 ///
 /// The negative bound is one larger than the positive one, because the most negative value has no positive
 /// counterpart: the value one past the largest positive fits only with its sign.
-///
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse-int128
@@ -256,7 +246,6 @@ pub func ParseInt128(str: char8[..]) -> int128 ! ParseError {
 ///
 /// Reports `Overflow` for a value the width cannot hold, `InvalidCharacter` at the first byte that is not
 /// part of the grammar — a `-` included, since no unsigned value is negative.
-///
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse-uint256
@@ -275,7 +264,6 @@ pub func ParseUint256(str: char8[..]) -> uint256 ! ParseError {
 ///
 /// The negative bound is one larger than the positive one, because the most negative value has no positive
 /// counterpart: the value one past the largest positive fits only with its sign.
-///
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse-int256
@@ -293,7 +281,6 @@ pub func ParseInt256(str: char8[..]) -> int256 ! ParseError {
 ///
 /// Reports `Overflow` for a value the width cannot hold, `InvalidCharacter` at the first byte that is not
 /// part of the grammar — a `-` included, since no unsigned value is negative.
-///
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse-uint512
@@ -312,7 +299,6 @@ pub func ParseUint512(str: char8[..]) -> uint512 ! ParseError {
 ///
 /// The negative bound is one larger than the positive one, because the most negative value has no positive
 /// counterpart: the value one past the largest positive fits only with its sign.
-///
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse-int512
@@ -327,7 +313,6 @@ pub func ParseInt512(str: char8[..]) -> int512 ! ParseError {
 }
 
 /// The same grammar for a view, which is what a caller holding text has.
-///
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse-uint8-view
@@ -336,7 +321,6 @@ pub func ParseUint8(str: StringView) -> uint8 ! ParseError {
 }
 
 /// The same grammar for a view, which is what a caller holding text has.
-///
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse-int8-view
@@ -345,7 +329,6 @@ pub func ParseInt8(str: StringView) -> int8 ! ParseError {
 }
 
 /// The same grammar for a view, which is what a caller holding text has.
-///
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse-uint16-view
@@ -354,7 +337,6 @@ pub func ParseUint16(str: StringView) -> uint16 ! ParseError {
 }
 
 /// The same grammar for a view, which is what a caller holding text has.
-///
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse-int16-view
@@ -363,7 +345,6 @@ pub func ParseInt16(str: StringView) -> int16 ! ParseError {
 }
 
 /// The same grammar for a view, which is what a caller holding text has.
-///
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse-uint32-view
@@ -372,7 +353,6 @@ pub func ParseUint32(str: StringView) -> uint32 ! ParseError {
 }
 
 /// The same grammar for a view, which is what a caller holding text has.
-///
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse-int32-view
@@ -381,7 +361,6 @@ pub func ParseInt32(str: StringView) -> int32 ! ParseError {
 }
 
 /// The same grammar for a view, which is what a caller holding text has.
-///
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse-uint64-view
@@ -390,7 +369,6 @@ pub func ParseUint64(str: StringView) -> uint64 ! ParseError {
 }
 
 /// The same grammar for a view, which is what a caller holding text has.
-///
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse-int64-view
@@ -399,7 +377,6 @@ pub func ParseInt64(str: StringView) -> int64 ! ParseError {
 }
 
 /// The same grammar for a view, which is what a caller holding text has.
-///
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse-uint128-view
@@ -408,7 +385,6 @@ pub func ParseUint128(str: StringView) -> uint128 ! ParseError {
 }
 
 /// The same grammar for a view, which is what a caller holding text has.
-///
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse-int128-view
@@ -417,7 +393,6 @@ pub func ParseInt128(str: StringView) -> int128 ! ParseError {
 }
 
 /// The same grammar for a view, which is what a caller holding text has.
-///
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse-uint256-view
@@ -426,7 +401,6 @@ pub func ParseUint256(str: StringView) -> uint256 ! ParseError {
 }
 
 /// The same grammar for a view, which is what a caller holding text has.
-///
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse-int256-view
@@ -435,7 +409,6 @@ pub func ParseInt256(str: StringView) -> int256 ! ParseError {
 }
 
 /// The same grammar for a view, which is what a caller holding text has.
-///
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse-uint512-view
@@ -444,7 +417,6 @@ pub func ParseUint512(str: StringView) -> uint512 ! ParseError {
 }
 
 /// The same grammar for a view, which is what a caller holding text has.
-///
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
 /// @see https://rux-lang.dev/docs/api/format/parse-int512-view

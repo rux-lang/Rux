@@ -12,17 +12,14 @@ import FreeBSD::{ FileDescriptor, FileMode, FileOffset, SignExtendFd, SysChdir, 
                   SysUtimensAt, SysWrite, Syscall1, Syscall2, Syscall3, Syscall4, Syscall5 };
 
 /// The descriptor a process reads its input from, unless something reassigned it.
-///
 /// @see https://rux-lang.dev/docs/api/freebsd/std-in
 pub const StdIn: int32 = 0;
 
 /// The descriptor a process writes its output to.
-///
 /// @see https://rux-lang.dev/docs/api/freebsd/std-out
 pub const StdOut: int32 = 1;
 
 /// The descriptor a process writes its diagnostics to.
-///
 /// @see https://rux-lang.dev/docs/api/freebsd/std-err
 pub const StdErr: int32 = 2;
 
@@ -34,7 +31,6 @@ pub const StdErr: int32 = 2;
 /// # Safety
 ///
 /// `buffer` must be writable for `count` bytes.
-///
 /// @param fd an open descriptor
 /// @param buffer receives the bytes
 /// @param count how many bytes to ask for
@@ -52,7 +48,6 @@ pub func Read(fd: FileDescriptor, buffer: *var opaque, count: uint) -> int64 {
 /// # Safety
 ///
 /// `buffer` must be readable for `count` bytes.
-///
 /// @param fd an open descriptor
 /// @param buffer the bytes to write
 /// @param count how many bytes to offer
@@ -66,7 +61,6 @@ pub func Write(fd: FileDescriptor, buffer: *opaque, count: uint) -> int64 {
 ///
 /// Returns zero, or a negative error number. A failure does not mean the descriptor is still open, so retrying a
 /// failed close can close one another thread has since opened under the same number.
-///
 /// @param fd an open descriptor
 /// @returns zero, or a negative error number
 /// @see https://rux-lang.dev/docs/api/freebsd/close
@@ -77,22 +71,18 @@ pub func Close(fd: FileDescriptor) -> int64 {
 /// `AT_FDCWD`: resolve a relative path against the current directory rather than a descriptor.
 ///
 /// FreeBSD spells this `-100`, the same value Linux uses, which is one of the few places the two agree exactly.
-///
 /// @see https://rux-lang.dev/docs/api/freebsd/at-fd-cwd
 pub const AtFdCwd: int32 = -100;
 
 /// `O_RDONLY`: open for reading only.
-///
 /// @see https://rux-lang.dev/docs/api/freebsd/open-read-only
 pub const OpenReadOnly: int32 = 0x0000;
 
 /// `O_WRONLY`: open for writing only.
-///
 /// @see https://rux-lang.dev/docs/api/freebsd/open-write-only
 pub const OpenWriteOnly: int32 = 0x0001;
 
 /// `O_RDWR`: open for both reading and writing.
-///
 /// @see https://rux-lang.dev/docs/api/freebsd/open-read-write
 pub const OpenReadWrite: int32 = 0x0002;
 
@@ -100,57 +90,46 @@ pub const OpenReadWrite: int32 = 0x0002;
 ///
 /// FreeBSD's flag bits are the BSD ones and are not Linux's: `O_CREAT` is `0x0200` here and `0x40` there. A flag
 /// value must never be carried between the two packages.
-///
 /// @see https://rux-lang.dev/docs/api/freebsd/open-create
 pub const OpenCreate: int32 = 0x0200;
 
 /// `O_EXCL`: with `OpenCreate`, fail rather than open a file that already exists.
-///
 /// @see https://rux-lang.dev/docs/api/freebsd/open-exclusive
 pub const OpenExclusive: int32 = 0x0800;
 
 /// `O_TRUNC`: truncate the file to nothing when opening it for writing.
-///
 /// @see https://rux-lang.dev/docs/api/freebsd/open-truncate
 pub const OpenTruncate: int32 = 0x0400;
 
 /// `O_APPEND`: every write goes to the end.
-///
 /// @see https://rux-lang.dev/docs/api/freebsd/open-append
 pub const OpenAppend: int32 = 0x0008;
 
 /// `O_NONBLOCK`: reads and writes report `EAGAIN` rather than waiting.
-///
 /// @see https://rux-lang.dev/docs/api/freebsd/open-non-blocking
 pub const OpenNonBlocking: int32 = 0x0004;
 
 /// `O_CLOEXEC`: close this descriptor automatically when the process executes a new program.
-///
 /// @see https://rux-lang.dev/docs/api/freebsd/open-close-on-exec
 pub const OpenCloseOnExec: int32 = 0x00100000;
 
 /// `O_DIRECTORY`: fail unless the target is a directory.
-///
 /// @see https://rux-lang.dev/docs/api/freebsd/open-directory
 pub const OpenDirectory: int32 = 0x00020000;
 
 /// `SEEK_SET`: measure the new offset from the start of the file.
-///
 /// @see https://rux-lang.dev/docs/api/freebsd/seek-set
 pub const SeekSet: int32 = 0;
 
 /// `SEEK_CUR`: measure the new offset from the current one.
-///
 /// @see https://rux-lang.dev/docs/api/freebsd/seek-current
 pub const SeekCurrent: int32 = 1;
 
 /// `SEEK_END`: measure the new offset from the end of the file.
-///
 /// @see https://rux-lang.dev/docs/api/freebsd/seek-end
 pub const SeekEnd: int32 = 2;
 
 /// `AT_REMOVEDIR`: make `UnlinkAt` remove a directory rather than a file.
-///
 /// @see https://rux-lang.dev/docs/api/freebsd/remove-directory
 pub const RemoveDirectory: int32 = 0x0800;
 
@@ -161,7 +140,6 @@ pub const RemoveDirectory: int32 = 0x0800;
 /// # Safety
 ///
 /// `path` must be non-null and terminated. The mode is masked by the process umask.
-///
 /// @param directoryFd the directory `path` is relative to, or `AtFdCwd` for an ordinary path
 /// @param path the path to open, as a null-terminated byte string
 /// @param flags the access mode and the open flags, combined with `|`
@@ -176,7 +154,6 @@ pub func OpenAt(directoryFd: FileDescriptor, path: *char8, flags: int32, mode: F
 /// Moves the file offset of `fd` and returns where it ended up, or a negative error number.
 ///
 /// Seeking past the end creates a hole when something is later written there. A pipe reports `ESPIPE`.
-///
 /// @param fd an open descriptor
 /// @param offset how far to move, interpreted according to `whence`
 /// @param whence `SeekSet`, `SeekCurrent` or `SeekEnd`
@@ -194,7 +171,6 @@ pub func Lseek(fd: FileDescriptor, offset: FileOffset, whence: int32) -> int64 {
 /// # Safety
 ///
 /// `buffer` must be writable for `size` bytes.
-///
 /// @param buffer receives the working directory as a null-terminated path
 /// @param size how many bytes `buffer` holds
 /// @returns the bytes written including the terminator, or a negative error number
@@ -206,7 +182,6 @@ pub func Getcwd(buffer: *var char8, size: uint) -> int64 {
 /// Makes `path` the process's working directory.
 ///
 /// Returns zero, or a negative error number. The change is process-wide and immediately visible to every thread.
-///
 /// @param path the directory to move to
 /// @returns zero, or a negative error number
 /// @see https://rux-lang.dev/docs/api/freebsd/chdir
@@ -218,7 +193,6 @@ pub func Chdir(path: *char8) -> int64 {
 ///
 /// `directoryFd` is `AtFdCwd` for an ordinary path. Returns the number of bytes written, or a negative error
 /// number. The text is **not** NUL-terminated, and is silently truncated where it does not fit.
-///
 /// @param directoryFd the directory `path` is relative to, or `AtFdCwd` for an ordinary path
 /// @param path the symbolic link to read
 /// @param buffer receives the link's text, without a terminator
@@ -230,7 +204,6 @@ pub func ReadlinkAt(directoryFd: FileDescriptor, path: *char8, buffer: *var char
 }
 
 /// `AT_SYMLINK_NOFOLLOW`: act on a symbolic link itself rather than on what it points at.
-///
 /// @see https://rux-lang.dev/docs/api/freebsd/symlink-no-follow
 pub const SymlinkNoFollow: int32 = 0x0200;
 
@@ -243,7 +216,6 @@ pub const SymlinkNoFollow: int32 = 0x0200;
 ///
 /// `statBuffer` must be writable for the whole of `struct stat`, which is 224 bytes and whose layout this
 /// package does not model.
-///
 /// @param directoryFd the directory `path` is relative to, or `AtFdCwd` for an ordinary path
 /// @param path the path to describe
 /// @param statBuffer receives the architecture's `struct stat`
@@ -259,7 +231,6 @@ pub func FstatAt(directoryFd: FileDescriptor, path: *char8, statBuffer: *var opa
 ///
 /// `directoryFd` is `AtFdCwd` for an ordinary path. `flags` may carry `SymlinkNoFollow`. Returns zero, or a
 /// negative error number.
-///
 /// @param directoryFd the directory `path` is relative to, or `AtFdCwd` for an ordinary path
 /// @param path the path whose bits are set
 /// @param mode the permission bits to set
@@ -276,7 +247,6 @@ pub func FchmodAt(directoryFd: FileDescriptor, path: *char8, mode: FileMode, fla
 /// `times` is borrowed and holds two `timespec` values — access first, then modification — each a whole-second
 /// count and a nanosecond fraction, both 8 bytes. A null `times` sets both to now. `flags` may carry
 /// `SymlinkNoFollow`. Returns zero, or a negative error number.
-///
 /// @param directoryFd the directory `path` is relative to, or `AtFdCwd` for an ordinary path
 /// @param path the path whose times are set
 /// @param times two `timespec` values, or null for now
@@ -292,7 +262,6 @@ pub func UtimensAt(directoryFd: FileDescriptor, path: *char8, times: *opaque, fl
 ///
 /// Returns zero, or a negative error number. `flags` is zero to leave a symbolic link at `oldPath` unfollowed,
 /// or `FollowSymlinks` to link what it points at.
-///
 /// @param oldDirectoryFd the directory `oldPath` is relative to
 /// @param oldPath the existing name
 /// @param newDirectoryFd the directory `newPath` is relative to
@@ -307,7 +276,6 @@ pub func LinkAt(oldDirectoryFd: FileDescriptor, oldPath: *char8, newDirectoryFd:
 }
 
 /// `AT_SYMLINK_FOLLOW`: make `LinkAt` link a symbolic link's target rather than the link.
-///
 /// @see https://rux-lang.dev/docs/api/freebsd/follow-symlinks
 pub const FollowSymlinks: int32 = 0x0400;
 
@@ -315,7 +283,6 @@ pub const FollowSymlinks: int32 = 0x0400;
 ///
 /// Returns zero, or a negative error number. The target is stored, not checked: a dangling link is created as
 /// readily as a good one, which is a property callers rely on.
-///
 /// @param target the text the link will hold, which need not exist
 /// @param newDirectoryFd the directory `linkPath` is relative to
 /// @param linkPath the link to create
@@ -336,7 +303,6 @@ pub func SymlinkAt(target: *char8, newDirectoryFd: FileDescriptor, linkPath: *ch
 /// # Safety
 ///
 /// `buffer` must be writable for `count` bytes, and `position` must be null or writable for an `int64`.
-///
 /// @param fd an open directory descriptor
 /// @param buffer receives the packed records
 /// @param count how many bytes `buffer` holds
@@ -350,7 +316,6 @@ pub func Getdirentries(fd: FileDescriptor, buffer: *var opaque, count: uint, pos
 /// Flushes everything written to `fd` through to the storage device.
 ///
 /// Returns zero, or a negative error number. Without it, data a successful `Write` reported may still be lost.
-///
 /// @param fd an open descriptor
 /// @returns zero, or a negative error number
 /// @see https://rux-lang.dev/docs/api/freebsd/fsync
@@ -361,7 +326,6 @@ pub func Fsync(fd: FileDescriptor) -> int64 {
 /// Sets the length of the file behind `fd` to `length`.
 ///
 /// Growing creates a hole rather than allocating, so a later write into it can still fail with `ENOSPC`.
-///
 /// @param fd an open descriptor
 /// @param length the size the file should have afterwards
 /// @returns zero, or a negative error number
@@ -378,7 +342,6 @@ pub func Ftruncate(fd: FileDescriptor, length: FileOffset) -> int64 {
 /// # Safety
 ///
 /// `path` must be non-null and terminated.
-///
 /// @param directoryFd the directory `path` is relative to, or `AtFdCwd` for an ordinary path
 /// @param path the name to remove
 /// @param flags zero for a file, or `RemoveDirectory` for a directory
@@ -395,7 +358,6 @@ pub func UnlinkAt(directoryFd: FileDescriptor, path: *char8, flags: int32) -> in
 /// # Safety
 ///
 /// `path` must be non-null and terminated.
-///
 /// @param directoryFd the directory `path` is relative to, or `AtFdCwd` for an ordinary path
 /// @param path the directory to create
 /// @param mode the permission bits for it
@@ -413,7 +375,6 @@ pub func MkdirAt(directoryFd: FileDescriptor, path: *char8, mode: FileMode) -> i
 /// # Safety
 ///
 /// Both paths must be non-null and terminated.
-///
 /// @param oldDirectoryFd the directory `oldPath` is relative to
 /// @param oldPath the name to move
 /// @param newDirectoryFd the directory `newPath` is relative to
@@ -434,7 +395,6 @@ pub func RenameAt(oldDirectoryFd: FileDescriptor, oldPath: *char8, newDirectoryF
 /// # Safety
 ///
 /// `statBuffer` must be writable for the whole of FreeBSD's `struct stat`, which this does not check.
-///
 /// @param fd an open descriptor
 /// @param statBuffer receives the architecture's `struct stat`
 /// @returns zero, or a negative error number
@@ -449,7 +409,6 @@ pub func Fstat(fd: FileDescriptor, statBuffer: *var opaque) -> int64 {
 ///
 /// FreeBSD has `dup2` on both architectures, so this is the plain form rather than Linux's `dup3`; setting
 /// close-on-exec is a separate `fcntl` this package does not wrap.
-///
 /// @param oldFd the descriptor to duplicate
 /// @param newFd the number the duplicate should have
 /// @returns `newFd`, or a negative error number
@@ -466,7 +425,6 @@ pub func Dup2(oldFd: FileDescriptor, newFd: FileDescriptor) -> int64 {
 /// # Safety
 ///
 /// `descriptors` must be writable for two `int32` values.
-///
 /// @param descriptors receives the read end at index zero and the write end at index one
 /// @param flags zero, or `OpenCloseOnExec` for both ends
 /// @returns zero, or a negative error number

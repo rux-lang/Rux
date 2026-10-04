@@ -11,7 +11,6 @@ extend uint : Display {
     ///
     /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
@@ -26,7 +25,6 @@ extend uint : Debug {
     ///
     /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted

@@ -19,7 +19,6 @@ import Memory::AlignUpChecked;
 /// power of two, and the size rounded up to that alignment does not pass the end of the address space.
 ///
 /// A size of zero is valid and is not an allocation of nothing — see `Allocate` for what an allocator does with it.
-///
 /// @see https://rux-lang.dev/docs/api/allocator/layout
 pub struct Layout {
     /// The number of bytes asked for, before any rounding.
@@ -32,7 +31,6 @@ extend Layout {
     /// A layout for one value of `T`, using its actual size and alignment.
     ///
     /// No value is copied or consumed. Cannot fail, runs in constant time, and allocates nothing.
-    ///
     /// @typeParam T the type to describe
     /// @returns `T`'s own size and alignment
     /// @see https://rux-lang.dev/docs/api/allocator/layout/for-value
@@ -44,7 +42,6 @@ extend Layout {
     ///
     /// No value is copied or consumed. A zero count describes empty storage at `T`'s alignment.
     /// Runs in constant time and allocates nothing.
-    ///
     /// @typeParam T the element type
     /// @param count how many elements
     /// @returns the array layout, or `none` if its size cannot be represented
@@ -63,7 +60,6 @@ extend Layout {
     /// caught here.
     ///
     /// Runs in constant time and allocates nothing.
-    ///
     /// @param size how many bytes are wanted
     /// @param alignment the boundary the address must be a multiple of
     /// @returns the layout, or `none` when `alignment` is not a usable power of two
@@ -84,7 +80,6 @@ extend Layout {
     /// word suits anything the machine loads in one instruction.
     ///
     /// Runs in constant time and allocates nothing.
-    ///
     /// @param size how many bytes are wanted
     /// @returns a layout of that size at its natural alignment, or `none` when there is none
     /// @see https://rux-lang.dev/docs/api/allocator/layout/for-bytes
@@ -99,7 +94,6 @@ extend Layout {
     /// advances by. Cannot overflow, because `New` refused every size for which it would.
     ///
     /// Runs in constant time and allocates nothing.
-    ///
     /// @returns the size rounded up to a whole number of alignments
     /// @see https://rux-lang.dev/docs/api/allocator/layout/padded-size
     pub func PaddedSize(self: &Layout) -> uint {
@@ -113,7 +107,6 @@ extend Layout {
     /// `self` is borrowed and `address` is read by value and never dereferenced.
     ///
     /// Cannot fail. Runs in constant time and allocates nothing.
-    ///
     /// @param address the address to test
     /// @returns whether `address` meets this layout's alignment
     /// @see https://rux-lang.dev/docs/api/allocator/layout/is-satisfied-by
@@ -124,7 +117,6 @@ extend Layout {
     /// Whether two layouts ask for the same thing.
     ///
     /// `self` is borrowed and `other` is read by value.
-    ///
     /// @param other the layout to compare against
     /// @returns whether both the size and the alignment match
     /// @see https://rux-lang.dev/docs/api/allocator/layout/equals
@@ -133,7 +125,6 @@ extend Layout {
     }
 
     /// Whether two layouts ask for different things.
-    ///
     /// @param other the layout to compare against
     /// @returns whether either the size or the alignment differs
     /// @see https://rux-lang.dev/docs/api/allocator/layout/not-equals
@@ -150,7 +141,6 @@ extend Layout {
 /// A size of zero reports one, since a zero-sized value has nothing to align.
 ///
 /// Runs in time proportional to the word size and allocates nothing.
-///
 /// @param size the size to choose an alignment for
 /// @returns the largest useful power-of-two alignment for that size
 /// @see https://rux-lang.dev/docs/api/allocator/natural-alignment

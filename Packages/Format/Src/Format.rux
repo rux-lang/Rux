@@ -123,7 +123,6 @@ func ValidatePattern(format: char8[..]) -> uint ! FormatError {
 /// placeholders counted and the arguments supplied when the two differ; and otherwise whatever the destination or
 /// a value's own renderer reported, stopping at the first refusal. The first two are found before anything is
 /// written.
-///
 /// @param writer the destination
 /// @param format the pattern to write
 /// @returns success when the whole pattern and every argument were accepted
@@ -190,7 +189,6 @@ pub func WriteFormat(writer: &var TextWriter, format: char8[..], args: Display..
 /// Reports `TextFailure(OutOfMemory)` when the initial reservation fails, and otherwise whatever `WriteFormat`
 /// reported. On failure the partially built string is released rather than returned, so a caller never receives
 /// half a rendering that looks whole and the allocator gets its block back either way.
-///
 /// @param allocator what the returned string is built with and will give its block back to
 /// @param format the pattern to render
 /// @returns the rendered string, or why it could not be produced

@@ -22,7 +22,6 @@ import Hash::{ SipHash24, SipHash24Of, WriteUint64 };
 /// the same value differently.
 ///
 /// Cannot fail. Runs in constant time and allocates nothing.
-///
 /// @param value the value to act on
 /// @param low the first seed word
 /// @param high the second
@@ -35,7 +34,6 @@ pub func HashUint(value: uint, low: uint64, high: uint64) -> uint64 {
 }
 
 /// The seeded hash of a `uint64`.
-///
 /// @param value the value to act on
 /// @param low the first seed word
 /// @param high the second
@@ -48,7 +46,6 @@ pub func HashUint64(value: uint64, low: uint64, high: uint64) -> uint64 {
 }
 
 /// The seeded hash of a `uint32`.
-///
 /// @param value the value to act on
 /// @param low the first seed word
 /// @param high the second
@@ -61,7 +58,6 @@ pub func HashUint32(value: uint32, low: uint64, high: uint64) -> uint64 {
 }
 
 /// The seeded hash of an `int64`.
-///
 /// @param value the value to act on
 /// @param low the first seed word
 /// @param high the second
@@ -74,7 +70,6 @@ pub func HashInt64(value: int64, low: uint64, high: uint64) -> uint64 {
 }
 
 /// The seeded hash of an `int32`.
-///
 /// @param value the value to act on
 /// @param low the first seed word
 /// @param high the second
@@ -87,7 +82,6 @@ pub func HashInt32(value: int32, low: uint64, high: uint64) -> uint64 {
 }
 
 /// The seeded hash of a `char8`.
-///
 /// @param value the value to act on
 /// @param low the first seed word
 /// @param high the second
@@ -105,7 +99,6 @@ pub func HashChar8(value: char8, low: uint64, high: uint64) -> uint64 {
 /// is what makes a text key usable at all.
 ///
 /// Runs in time proportional to the length and allocates nothing.
-///
 /// @param text the bytes to hash
 /// @param low the first seed word
 /// @param high the second
@@ -116,7 +109,6 @@ pub func HashSlice(text: char8[..], low: uint64, high: uint64) -> uint64 {
 }
 
 /// Whether two `uint` keys are the same.
-///
 /// @param left one of the two values
 /// @param right the other
 /// @returns whether the two are equal
@@ -126,7 +118,6 @@ pub func EqualsUint(left: uint, right: uint) -> bool {
 }
 
 /// Whether two `uint64` keys are the same.
-///
 /// @param left one of the two values
 /// @param right the other
 /// @returns whether the two are equal
@@ -136,7 +127,6 @@ pub func EqualsUint64(left: uint64, right: uint64) -> bool {
 }
 
 /// Whether two `uint32` keys are the same.
-///
 /// @param left one of the two values
 /// @param right the other
 /// @returns whether the two are equal
@@ -146,7 +136,6 @@ pub func EqualsUint32(left: uint32, right: uint32) -> bool {
 }
 
 /// Whether two `int64` keys are the same.
-///
 /// @param left one of the two values
 /// @param right the other
 /// @returns whether the two are equal
@@ -156,7 +145,6 @@ pub func EqualsInt64(left: int64, right: int64) -> bool {
 }
 
 /// Whether two `int32` keys are the same.
-///
 /// @param left one of the two values
 /// @param right the other
 /// @returns whether the two are equal
@@ -166,7 +154,6 @@ pub func EqualsInt32(left: int32, right: int32) -> bool {
 }
 
 /// Whether two `char8` keys are the same.
-///
 /// @param left one of the two values
 /// @param right the other
 /// @returns whether the two are equal
@@ -179,7 +166,6 @@ pub func EqualsChar8(left: char8, right: char8) -> bool {
 ///
 /// Both are borrowed and read. Different lengths are never equal, and two empty slices are, whatever their data
 /// pointers hold.
-///
 /// @param left one of the two values
 /// @param right the other
 /// @returns whether both hold the same bytes

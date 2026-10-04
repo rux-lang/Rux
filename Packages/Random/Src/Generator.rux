@@ -17,11 +17,9 @@ import Core::MinimumOf;
 /// The single operation every generator supplies. Implementations must advance their own state, so the receiver
 /// is a mutable reference. Borrowed interface views and generic bounds both keep it the caller's state that
 /// advances.
-///
 /// @see https://rux-lang.dev/docs/api/random/random-generator
 pub interface RandomGenerator {
     /// The next 64-bit word, and the state advanced past it.
-    ///
     /// @returns the next 64 bits
     /// @see https://rux-lang.dev/docs/api/random/random-generator/next-uint64
     func NextUint64(self: &var RandomGenerator) -> uint64;
@@ -34,7 +32,6 @@ pub interface RandomGenerator {
 /// one or a timestamp, into a full-entropy state for a generator that deserves better input than that. Seeding
 /// a 256-bit generator by copying a small integer into one word and leaving the rest zero is a classic way to
 /// get correlated streams out of an excellent algorithm.
-///
 /// @see https://rux-lang.dev/docs/api/random/split-mix64
 pub struct SplitMix64 {
     /// The whole of the state.
@@ -43,7 +40,6 @@ pub struct SplitMix64 {
 
 extend SplitMix64 {
     /// A mixer starting from `seed`. Every seed is acceptable, including zero.
-    ///
     /// @param seed the value the generator starts from
     /// @returns a generator seeded with that value
     /// @see https://rux-lang.dev/docs/api/random/split-mix64/new
@@ -58,7 +54,6 @@ extend SplitMix64 : RandomGenerator {
     ///
     /// The additive step guarantees the full period of 2^64 whatever the seed, and the mixing afterwards is
     /// what turns a counter into something that looks random. Both constants are Steele, Lea and Flood's.
-    ///
     /// @returns the next 64 bits
     /// @see https://rux-lang.dev/docs/api/random/split-mix64/next-uint64
     pub func NextUint64(self: &var SplitMix64) -> uint64 {

@@ -4,42 +4,32 @@
 // not vary by architecture.
 
 /// A process identifier, as `getpid` reports one.
-///
 /// @see https://rux-lang.dev/docs/api/macos/process-id
 pub type ProcessId = int32;
 
 /// A file descriptor, as the kernel numbers one.
-///
 /// @see https://rux-lang.dev/docs/api/macos/file-descriptor
 pub type FileDescriptor = int32;
 
 /// A byte offset within a file, 64 bits on every supported Apple target.
-///
 /// @see https://rux-lang.dev/docs/api/macos/file-offset
 pub type FileOffset = int64;
 
 /// A file's type and permission bits.
 ///
 /// Sixteen bits here, where Linux's `mode_t` is thirty-two. The bit meanings agree; the width does not.
-///
-///
 /// @see https://rux-lang.dev/docs/api/macos/file-mode
 pub type FileMode = uint16;
 
 /// A user identifier.
-///
-///
 /// @see https://rux-lang.dev/docs/api/macos/user-id
 pub type UserId = uint32;
 
 /// A group identifier.
-///
-///
 /// @see https://rux-lang.dev/docs/api/macos/group-id
 pub type GroupId = uint32;
 
 /// A duration or an instant, as seconds and nanoseconds.
-///
 /// @see https://rux-lang.dev/docs/api/macos/timespec
 pub struct Timespec {
     /// Whole seconds.
@@ -53,7 +43,6 @@ pub struct Timespec {
 /// Darwin's x86-64 layout is an eight-byte `time_t` followed by a four-byte `suseconds_t`, and four bytes of trailing
 /// padding. The padding is why this is not two 64-bit fields, and why writing it as though it were corrupts nothing
 /// but reads back a microsecond count that is half stale.
-///
 /// @see https://rux-lang.dev/docs/api/macos/timeval
 pub struct Timeval {
     /// Whole seconds.

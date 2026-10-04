@@ -9,7 +9,6 @@
 import Text::{ Debug, Display, FormatError, FormatSpec, RejectStyle, TextWriter };
 
 /// The character written in place of anything that is not one.
-///
 /// @see https://rux-lang.dev/docs/api/format/replacement-character
 pub const ReplacementCharacter: char32 = 0xFFFDu32 as char32;
 
@@ -18,7 +17,6 @@ extend char8 : Display {
     ///
     /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
@@ -41,7 +39,6 @@ extend char8 : Debug {
     ///
     /// # Failures
     /// Reports whatever the writer reported, stopping at the first refusal.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted

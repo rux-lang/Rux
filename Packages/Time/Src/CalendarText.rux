@@ -22,7 +22,6 @@ import Text::{ Debug, Display, FormatError, FormatSpec, RejectStyle, TextWriter,
 /// interchange, where the offset is part of what was recorded and losing it changes the meaning.
 ///
 /// `Copy`, and exactly as wide as its two halves.
-///
 /// @see https://rux-lang.dev/docs/api/time/offset-date-time
 pub struct OffsetDateTime {
     /// The local date and time, as stated in `offset`.
@@ -36,7 +35,6 @@ extend OffsetDateTime {
     ///
     /// Cannot fail: both halves are already valid, and no combination of a valid date-time and a valid offset is
     /// invalid. Runs in constant time and allocates nothing.
-    ///
     /// @param dateTime the local date and time
     /// @param offset the offset from UTC that `dateTime` is stated in
     /// @returns the pairing
@@ -48,7 +46,6 @@ extend OffsetDateTime {
     /// The moment this names in UTC.
     ///
     /// Cannot fail; runs in constant time and allocates nothing.
-    ///
     /// @returns the instant, as a timestamp
     /// @see https://rux-lang.dev/docs/api/time/offset-date-time/to-timestamp
     pub func ToTimestamp(self: &OffsetDateTime) -> Timestamp {
@@ -162,7 +159,6 @@ extend Date : Display {
     /// # Failures
     /// Reports whatever the writer reported, and `UnsupportedRequest` for a style other than `iso8601` or
     /// `rfc3339`, or for a precision, which a date has nothing to apply one to.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole date was accepted
@@ -183,7 +179,6 @@ extend Date : Debug {
     ///
     /// # Failures
     /// The failures `WriteDisplay` reports.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole date was accepted
@@ -202,7 +197,6 @@ extend TimeOfDay : Display {
     /// # Failures
     /// Reports whatever the writer reported, `UnsupportedRequest` for a style other than `iso8601` or `rfc3339`,
     /// and `UnsupportedRequest` for a precision past nine, which no fraction has.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole time was accepted
@@ -223,7 +217,6 @@ extend TimeOfDay : Debug {
     ///
     /// # Failures
     /// The failures `WriteDisplay` reports.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole time was accepted
@@ -243,7 +236,6 @@ extend UtcOffset : Display {
     /// # Failures
     /// Reports whatever the writer reported, and `UnsupportedRequest` for a style other than `iso8601` or
     /// `rfc3339`, or for a precision, which an offset has nothing to apply one to.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole offset was accepted
@@ -267,7 +259,6 @@ extend UtcOffset : Debug {
     ///
     /// # Failures
     /// The failures `WriteDisplay` reports.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole offset was accepted
@@ -288,7 +279,6 @@ extend DateTime : Display {
     /// # Failures
     /// Reports whatever the writer reported, `UnsupportedRequest` for a style other than `iso8601` or `rfc3339`,
     /// and `UnsupportedRequest` for a precision past nine.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole date and time were accepted
@@ -306,7 +296,6 @@ extend DateTime : Debug {
     ///
     /// # Failures
     /// The failures `WriteDisplay` reports.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole date and time were accepted
@@ -336,7 +325,6 @@ extend OffsetDateTime : Display {
     /// # Failures
     /// Reports whatever the writer reported, `UnsupportedRequest` for a style other than `iso8601` or `rfc3339`,
     /// and `UnsupportedRequest` for a precision past nine.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole moment was accepted
@@ -354,7 +342,6 @@ extend OffsetDateTime : Debug {
     ///
     /// # Failures
     /// The failures `WriteDisplay` reports.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole moment was accepted

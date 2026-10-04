@@ -19,7 +19,6 @@
 /// wrong".
 ///
 /// Copy, carrying no payload and owning nothing.
-///
 /// @see https://rux-lang.dev/docs/api/text/text-failure-kind
 pub variant TextFailureKind {
     /// The allocator could not supply the storage a write needed.
@@ -39,7 +38,6 @@ pub variant TextFailureKind {
 /// categories are not interchangeable and a writer may not invent the ones that belong to the parser or the value.
 ///
 /// Copy, and cheap to return: the widest payload is a pair of counts.
-///
 /// @see https://rux-lang.dev/docs/api/text/format-error
 pub variant FormatError {
     /// The pattern or specification was malformed, at the zero-based UTF-8 byte offset carried here. The offset is
@@ -70,7 +68,6 @@ extend FormatError {
     /// worth retrying elsewhere and the second never is.
     ///
     /// Borrows the error and leaves it untouched. Cannot fail; runs in constant time and allocates nothing.
-    ///
     /// @returns true for `WriterFailure`, false for every other case
     /// @see https://rux-lang.dev/docs/api/text/format-error/is-writer-failure
     pub func IsWriterFailure(self: &FormatError) -> bool {
@@ -82,7 +79,6 @@ extend FormatError {
 }
 
 /// The failure-only kind corresponding to `error`.
-///
 /// @param error the text status to narrow, which must be a failure
 /// @returns the matching failure kind
 /// @see https://rux-lang.dev/docs/api/text/text-failure-of
@@ -98,7 +94,6 @@ pub func TextFailureOf(error: TextError) -> TextFailureKind {
 /// This is the only sanctioned crossing: every text failure becomes a `TextFailure` carrying the reason. It is the
 /// mapper a formatting operation hands a text operation's failure to, as in `builder.Append(view)? else (e =>
 /// FromTextError(e))`.
-///
 /// @param error why the storage or validation operation failed
 /// @returns the matching formatting failure
 /// @see https://rux-lang.dev/docs/api/text/from-text-error
@@ -115,11 +110,9 @@ pub func FromTextError(error: TextError) -> FormatError {
 /// The offset is a zero-based UTF-8 byte offset into the text that was handed to the parser. End of input is the
 /// text's length, which is a position and not a failure to have one. A parser embedded in a larger grammar adds the
 /// offset of the token it was given, so positions compose.
-///
 /// @see https://rux-lang.dev/docs/api/text/parse-failure
 pub interface ParseFailure {
     /// Where in the input the failure was found.
-    ///
     /// @returns the zero-based UTF-8 byte offset, which is the text's length at end of input
     /// @see https://rux-lang.dev/docs/api/text/parse-failure/offset
     func Offset() -> uint;

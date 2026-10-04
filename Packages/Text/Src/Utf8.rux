@@ -19,22 +19,18 @@
 // Every function here works on borrowed bytes and allocates nothing.
 
 /// The largest Unicode scalar value.
-///
 /// @see https://rux-lang.dev/docs/api/text/max-scalar-value
 pub const MaxScalarValue: uint32 = 0x10FFFF;
 
 /// The first value of the surrogate range, which holds no scalar values.
-///
 /// @see https://rux-lang.dev/docs/api/text/first-surrogate
 pub const FirstSurrogate: uint32 = 0xD800;
 
 /// The last value of the surrogate range.
-///
 /// @see https://rux-lang.dev/docs/api/text/last-surrogate
 pub const LastSurrogate: uint32 = 0xDFFF;
 
 /// The most bytes any one scalar value takes in UTF-8.
-///
 /// @see https://rux-lang.dev/docs/api/text/max-encoded-length
 pub const MaxEncodedLength: uint = 4;
 
@@ -44,7 +40,6 @@ pub const MaxEncodedLength: uint = 4;
 /// what a buffer boundary looks like and may just mean read more; the rest mean the bytes are not UTF-8 and no
 /// amount of reading will change that. Every case is a failure: the functions here report success through the other
 /// channel of the native fallible they return.
-///
 /// @see https://rux-lang.dev/docs/api/text/utf8-error
 pub enum Utf8Error: int32 {
     /// A sequence starts but the bytes run out before it ends.
@@ -57,7 +52,6 @@ pub enum Utf8Error: int32 {
 }
 
 /// One scalar value decoded from UTF-8, with the number of bytes it occupied.
-///
 /// @see https://rux-lang.dev/docs/api/text/decoded-scalar
 pub struct DecodedScalar {
     /// The Unicode scalar value.
@@ -67,7 +61,6 @@ pub struct DecodedScalar {
 }
 
 /// Where and why a byte sequence stopped being well-formed UTF-8.
-///
 /// @see https://rux-lang.dev/docs/api/text/utf8-failure
 pub struct Utf8Failure {
     /// What was wrong.
@@ -79,7 +72,6 @@ pub struct Utf8Failure {
 /// Whether `value` is a Unicode scalar value: at most `MaxScalarValue`, and not a surrogate half.
 ///
 /// Cannot fail. Runs in constant time and allocates nothing.
-///
 /// @param value the value to act on
 /// @returns whether the value is a Unicode scalar value, which excludes the surrogates
 /// @see https://rux-lang.dev/docs/api/text/is-scalar-value
@@ -90,7 +82,6 @@ pub func IsScalarValue(value: uint32) -> bool {
 /// How many bytes `scalar` takes in UTF-8, or zero when it is not a scalar value.
 ///
 /// Cannot fail. Runs in constant time and allocates nothing.
-///
 /// @param scalar the Unicode scalar value
 /// @returns how many bytes the scalar's encoding occupies, one through four
 /// @see https://rux-lang.dev/docs/api/text/encoded-length
@@ -104,7 +95,6 @@ pub func EncodedLength(scalar: char32) -> uint {
 }
 
 /// Whether `byte` is a continuation byte, the `10xxxxxx` shape every byte after a leading one has.
-///
 /// @param byte the byte
 /// @returns whether the byte continues a sequence rather than starting one
 /// @see https://rux-lang.dev/docs/api/text/is-continuation
@@ -119,7 +109,6 @@ pub func IsContinuation(byte: char8) -> bool {
 /// written in either case.
 ///
 /// Cannot allocate. Runs in constant time.
-///
 /// @param scalar the Unicode scalar value
 /// @param into receives the bytes
 /// @returns how many bytes were written, or why none were
@@ -205,7 +194,6 @@ func SecondByteRange(leading: uint32, low: *var uint32, high: *var uint32) -> ui
 /// advances one byte and carries on, and one rejecting it stops.
 ///
 /// Cannot allocate. Runs in constant time.
-///
 /// @param bytes the bytes to act on
 /// @param index the byte offset
 /// @returns the scalar and its width, or why the bytes there are not one
@@ -246,7 +234,6 @@ pub func DecodeAt(bytes: char8[..], index: uint) -> DecodedScalar ! Utf8Error {
 /// `bytes` is borrowed. A failure carries the index of the byte that starts the offending sequence.
 ///
 /// Cannot allocate. Runs in time proportional to the length.
-///
 /// @param bytes the bytes to act on
 /// @returns nothing when every byte is part of a valid sequence, or where and why the first one is not
 /// @see https://rux-lang.dev/docs/api/text/validate
@@ -263,7 +250,6 @@ pub func Validate(bytes: char8[..]) -> ! Utf8Failure {
 /// The length counts as a boundary, so the end of a string is always a legal cut. An index past the length is not.
 ///
 /// Cannot fail. Runs in constant time and allocates nothing.
-///
 /// @param bytes the bytes to act on
 /// @param index the byte offset
 /// @returns whether `index` falls between two scalar values rather than inside one
@@ -280,7 +266,6 @@ pub func IsBoundary(bytes: char8[..], index: uint) -> bool {
 /// count that means nothing; `Validate` is what answers whether they are.
 ///
 /// Cannot fail. Runs in time proportional to the length and allocates nothing.
-///
 /// @param bytes the bytes to act on
 /// @returns how many scalar values the bytes encode
 /// @see https://rux-lang.dev/docs/api/text/count-scalars
@@ -300,7 +285,6 @@ pub func CountScalars(bytes: char8[..]) -> uint {
 ///
 /// An index inside a sequence is walked back to the start of that sequence, which is what a caller cutting at an
 /// arbitrary byte offset needs. An index at or past the length gives the length.
-///
 /// @param bytes the bytes to act on
 /// @param index the byte offset
 /// @returns the largest boundary at or below `index`, so a truncation splits nothing

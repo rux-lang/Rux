@@ -14,7 +14,6 @@
 import Math::{ Exp, Log, Pow, Sqrt };
 
 /// Below this the direct methods are cheaper than the reductions, and above it they stop being practical.
-///
 /// @see https://rux-lang.dev/docs/api/random/direct-method-limit
 pub const DirectMethodLimit: float64 = 30.0;
 
@@ -25,7 +24,6 @@ pub const DirectMethodLimit: float64 = 30.0;
 /// shape one larger and scaled down, since the density is unbounded at zero there and the squeeze does not hold.
 ///
 /// A shape at or below zero has no distribution and gives zero.
-///
 /// @typeParam G the generator's type
 /// @param generator where the bits come from
 /// @param shape the distribution's shape parameter
@@ -70,7 +68,6 @@ pub func Gamma<G: RandomGenerator>(generator: &var G, shape: float64) -> float64
 }
 
 /// A value from the gamma distribution with the given shape and scale.
-///
 /// @typeParam G the generator's type
 /// @param generator where the bits come from
 /// @param shape the distribution's shape parameter
@@ -86,7 +83,6 @@ pub func GammaWithScale<G: RandomGenerator>(generator: &var G, shape: float64, s
 ///
 /// Built from two gamma draws, which is the definition rather than an approximation of it. Two shapes that are
 /// both zero leave nothing to divide and give a half.
-///
 /// @typeParam G the generator's type
 /// @param generator where the bits come from
 /// @param first the first shape parameter

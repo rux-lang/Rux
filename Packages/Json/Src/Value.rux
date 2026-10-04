@@ -18,7 +18,6 @@ import Format::{ ParseFloat64, ParseInt64, ParseUint64 };
 import Text::{ String, StringView, TextError };
 
 /// Which kind of JSON value this is.
-///
 /// @see https://rux-lang.dev/docs/api/json/value-kind
 pub enum JsonKind: int32 {
     /// The literal `null`.
@@ -40,7 +39,6 @@ pub enum JsonKind: int32 {
 /// JSON does not say what precision a number has, so nothing here decides on the caller's behalf. Ask for the
 /// shape wanted — `AsInt64`, `AsUint64`, `AsFloat64` — and each reports whether the value fits. Keeping the
 /// text is also what lets a document round-trip exactly, which a parser converting to a double cannot do.
-///
 /// @see https://rux-lang.dev/docs/api/json/json-number
 pub struct JsonNumber {
     /// The number exactly as it was written.
@@ -49,7 +47,6 @@ pub struct JsonNumber {
 
 extend JsonNumber {
     /// A number from its text, which is copied.
-    ///
     /// @param allocator where the storage comes from
     /// @param text the text to act on
     /// @returns the number, holding the text it was given
@@ -62,7 +59,6 @@ extend JsonNumber {
     }
 
     /// The number exactly as written.
-    ///
     /// @returns the number's text, exactly as the input spelled it
     /// @see https://rux-lang.dev/docs/api/json/json-number/text
     pub func Text(self: &JsonNumber) -> StringView {
@@ -73,7 +69,6 @@ extend JsonNumber {
     ///
     /// A number with a fraction or an exponent does not fit, even when its value happens to be whole: `1.0` is
     /// not an integer in JSON's grammar and pretending otherwise loses the distinction a document was making.
-    ///
     /// @param result receives the value when this reports true
     /// @returns whether the text is an integer that fits
     /// @see https://rux-lang.dev/docs/api/json/json-number/as-int64
@@ -83,7 +78,6 @@ extend JsonNumber {
     }
 
     /// The value as an unsigned integer, or `false` if it does not fit one.
-    ///
     /// @param result receives the value when this reports true
     /// @returns whether the text is a non-negative integer that fits
     /// @see https://rux-lang.dev/docs/api/json/json-number/as-uint64
@@ -96,7 +90,6 @@ extend JsonNumber {
     ///
     /// Succeeds for values a float cannot hold exactly, since that is what a float is for; a caller who needs
     /// exactness should ask for an integer or read the text.
-    ///
     /// @param result receives the value when this reports true
     /// @returns whether the text converted; the value is the nearest representable one
     /// @see https://rux-lang.dev/docs/api/json/json-number/as-float64
@@ -106,7 +99,6 @@ extend JsonNumber {
     }
 
     /// Whether the text has no fraction and no exponent, so it denotes an integer.
-    ///
     /// @returns whether the text has no fraction and no exponent
     /// @see https://rux-lang.dev/docs/api/json/json-number/is-integral
     pub func IsIntegral(self: &JsonNumber) -> bool {
@@ -121,7 +113,6 @@ extend JsonNumber {
     }
 
     /// Gives the text back.
-    ///
     /// @see https://rux-lang.dev/docs/api/json/json-number/release
     pub func Release(self: &var JsonNumber) {
         self.text.Clear();
@@ -129,7 +120,6 @@ extend JsonNumber {
 }
 
 /// A name-value pair inside an object.
-///
 /// @see https://rux-lang.dev/docs/api/json/json-member
 pub struct JsonMember {
     /// The member's name.
@@ -146,7 +136,6 @@ pub struct JsonMember {
 ///
 /// The tag is inspected with `Kind` and the payload read with the matching accessor; asking for the wrong one
 /// reports failure rather than reinterpreting the bytes.
-///
 /// @see https://rux-lang.dev/docs/api/json/json-value
 pub struct JsonValue {
     /// Which of the six kinds this is.
@@ -170,7 +159,6 @@ extend JsonValue {
     func =(self: &var JsonValue, other: &JsonValue);
 
     /// The literal `null`.
-    ///
     /// @param allocator where the storage comes from
     /// @returns the null value
     /// @see https://rux-lang.dev/docs/api/json/json-value/null
@@ -187,7 +175,6 @@ extend JsonValue {
     }
 
     /// A boolean value.
-    ///
     /// @param allocator where the storage comes from
     /// @param value the value to act on
     /// @returns that boolean as a value
@@ -200,7 +187,6 @@ extend JsonValue {
     }
 
     /// A number, from the text it was written with.
-    ///
     /// @param allocator where the storage comes from
     /// @param text the text to act on
     /// @returns that text as a number value, or the null value when the allocator refused
@@ -213,7 +199,6 @@ extend JsonValue {
     }
 
     /// A string value.
-    ///
     /// @param allocator where the storage comes from
     /// @param value the value to act on
     /// @returns that text as a string value, or the null value when the allocator refused
@@ -226,7 +211,6 @@ extend JsonValue {
     }
 
     /// An empty array.
-    ///
     /// @param allocator where the storage comes from
     /// @returns an empty array
     /// @see https://rux-lang.dev/docs/api/json/json-value/array
@@ -237,7 +221,6 @@ extend JsonValue {
     }
 
     /// An empty object.
-    ///
     /// @param allocator where the storage comes from
     /// @returns an empty object
     /// @see https://rux-lang.dev/docs/api/json/json-value/object
@@ -248,7 +231,6 @@ extend JsonValue {
     }
 
     /// Which kind this value is.
-    ///
     /// @returns which of the six JSON kinds this is
     /// @see https://rux-lang.dev/docs/api/json/json-value/kind
     pub func Kind(self: &JsonValue) -> JsonKind {
@@ -256,7 +238,6 @@ extend JsonValue {
     }
 
     /// Whether this is `null`.
-    ///
     /// @returns whether this is the null value
     /// @see https://rux-lang.dev/docs/api/json/json-value/is-null
     pub func IsNull(self: &JsonValue) -> bool {
@@ -265,7 +246,6 @@ extend JsonValue {
 
     /// The boolean payload, or `false` when this is not a boolean — which `Kind` distinguishes from a genuine
     /// `false`.
-    ///
     /// @param result receives the value when this reports true
     /// @returns whether this is a boolean
     /// @see https://rux-lang.dev/docs/api/json/json-value/as-boolean
@@ -276,7 +256,6 @@ extend JsonValue {
     }
 
     /// The number payload, borrowed.
-    ///
     /// @returns the number, or null when this is not one
     /// @see https://rux-lang.dev/docs/api/json/json-value/as-number
     pub func AsNumber(self: &JsonValue) -> *JsonNumber {
@@ -284,7 +263,6 @@ extend JsonValue {
     }
 
     /// The string payload, or an empty view when this is not a string.
-    ///
     /// @returns the string, or an empty view when this is not one
     /// @see https://rux-lang.dev/docs/api/json/json-value/as-text
     pub func AsText(self: &JsonValue) -> StringView {
@@ -293,7 +271,6 @@ extend JsonValue {
     }
 
     /// How many elements an array holds, or members an object holds; zero for anything else.
-    ///
     /// @returns how many elements or members this holds; zero for anything else
     /// @see https://rux-lang.dev/docs/api/json/json-value/length
     pub func Length(self: &JsonValue) -> uint {
@@ -306,7 +283,6 @@ extend JsonValue {
     ///
     /// Reports `false` when this is not an array or the allocator refused; `value` is consumed either way, so
     /// a caller does not have to decide who owns it on failure.
-    ///
     /// @param value the value to act on
     /// @returns whether the element was appended
     /// @see https://rux-lang.dev/docs/api/json/json-value/push
@@ -320,7 +296,6 @@ extend JsonValue {
     /// The order members are added in is the order they are kept and written, which is what makes a document
     /// round-trip recognisably. Nothing here rejects a duplicate name — that policy lives in the parser, where
     /// the caller can choose it.
-    ///
     /// @param name the member's name
     /// @param value the value to act on
     /// @returns whether the member was added
@@ -332,7 +307,6 @@ extend JsonValue {
     }
 
     /// The element at `index`, borrowed, or null when there is none.
-    ///
     /// @param index which one, counting from zero
     /// @returns the element at `index`, or null when there is none
     /// @see https://rux-lang.dev/docs/api/json/json-value/at
@@ -346,7 +320,6 @@ extend JsonValue {
     ///
     /// With duplicate names present — which only a permissive parser policy allows — this finds the first,
     /// since that is the one a reader encounters.
-    ///
     /// @param name the member's name
     /// @returns the first member with that name, or null when there is none
     /// @see https://rux-lang.dev/docs/api/json/json-value/find
@@ -363,7 +336,6 @@ extend JsonValue {
     }
 
     /// The member at `index`, borrowed, or null when there is none.
-    ///
     /// @param index which one, counting from zero
     /// @returns the member at `index`, or null when there is none
     /// @see https://rux-lang.dev/docs/api/json/json-value/member-at
@@ -381,7 +353,6 @@ extend JsonValue {
     /// The members after it are popped and pushed back rather than shifted, because shifting would move
     /// owning values around inside the vector, and a move out of a container is the one thing the ownership
     /// rules will not allow silently. Duplicates are rare enough that the cost never matters.
-    ///
     /// @param name the member's name
     /// @returns whether a member with that name was removed
     /// @see https://rux-lang.dev/docs/api/json/json-value/remove-first
@@ -423,7 +394,6 @@ extend JsonValue {
     /// Written out rather than left to the compiler, because a value owns its strings and its children own
     /// theirs: the recursion here is the shape of the document, and stating it makes the ownership of a nested
     /// tree something a reader can check.
-    ///
     /// @see https://rux-lang.dev/docs/api/json/json-value/destructor
     func ~JsonValue(self: &var JsonValue) {
         self.number.text.Clear();
@@ -438,7 +408,6 @@ extend JsonMember {
     func =(self: &var JsonMember, other: &JsonMember);
 
     /// Releases the member's name and value.
-    ///
     /// @see https://rux-lang.dev/docs/api/json/json-member/destructor
     func ~JsonMember(self: &var JsonMember) {
         self.name.Clear();

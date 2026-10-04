@@ -44,7 +44,6 @@ func RotateLeftLane(value: uint64, amount: uint64) -> uint64 {
 /// Twenty-four rounds of five steps: theta mixes each column into its neighbours, rho rotates each lane by its
 /// own offset, pi moves the lanes around, chi is the only non-linear step, and iota breaks the symmetry that
 /// would otherwise make every round identical.
-///
 /// @param lanes the state's twenty-five lanes, permuted in place
 /// @see https://rux-lang.dev/docs/api/crypto/keccak-permute
 pub func KeccakPermute(lanes: *var uint64) {
@@ -106,7 +105,6 @@ pub func KeccakPermute(lanes: *var uint64) {
 /// An incremental SHA-3 hash at any of its four sizes.
 ///
 /// Structural `Copy`; copying takes an independent snapshot of the sponge state.
-///
 /// @see https://rux-lang.dev/docs/api/crypto/sha3
 pub struct Sha3 {
     /// The state, as twenty-five sixty-four bit lanes.
@@ -139,7 +137,6 @@ extend Sha3 {
     }
 
     /// A SHA3-224 state.
-    ///
     /// @returns a hasher producing a 224-bit digest
     /// @see https://rux-lang.dev/docs/api/crypto/sha3/new-224
     pub func New224() -> Sha3 {
@@ -147,7 +144,6 @@ extend Sha3 {
     }
 
     /// A SHA3-256 state.
-    ///
     /// @returns a hasher producing a 256-bit digest
     /// @see https://rux-lang.dev/docs/api/crypto/sha3/new-256
     pub func New256() -> Sha3 {
@@ -155,7 +151,6 @@ extend Sha3 {
     }
 
     /// A SHA3-384 state.
-    ///
     /// @returns a hasher producing a 384-bit digest
     /// @see https://rux-lang.dev/docs/api/crypto/sha3/new-384
     pub func New384() -> Sha3 {
@@ -163,7 +158,6 @@ extend Sha3 {
     }
 
     /// A SHA3-512 state.
-    ///
     /// @returns a hasher producing a 512-bit digest
     /// @see https://rux-lang.dev/docs/api/crypto/sha3/new-512
     pub func New512() -> Sha3 {
@@ -181,7 +175,6 @@ extend Sha3 {
 
 extend Sha3 : Digest {
     /// Absorbs `bytes` into the state.
-    ///
     /// @param bytes the bytes to absorb
     /// @see https://rux-lang.dev/docs/api/crypto/sha3/update
     pub func Update(self: &var Sha3, bytes: char8[..]) {
@@ -202,7 +195,6 @@ extend Sha3 : Digest {
     /// The padding is the domain byte, then zeros, then a final bit at the top of the rate — so a rate with
     /// only one byte free receives both in the same byte, which is the case that separates a correct padding
     /// from one that works at every other length.
-    ///
     /// @param into receives the output
     /// @see https://rux-lang.dev/docs/api/crypto/sha3/finish
     pub func Finish(self: &var Sha3, into: var char8[..]) {
@@ -229,7 +221,6 @@ extend Sha3 : Digest {
     }
 
     /// Twenty-eight, thirty-two, forty-eight or sixty-four bytes.
-    ///
     /// @returns how many bytes a digest occupies
     /// @see https://rux-lang.dev/docs/api/crypto/sha3/digest-length
     pub func DigestLength(self: &Sha3) -> uint {
@@ -237,7 +228,6 @@ extend Sha3 : Digest {
     }
 
     /// The rate, which differs per size — unlike the SHA-2 family, whose block is fixed.
-    ///
     /// @returns how many bytes the compression function consumes at a time
     /// @see https://rux-lang.dev/docs/api/crypto/sha3/block-length
     pub func BlockLength(self: &Sha3) -> uint {
@@ -246,7 +236,6 @@ extend Sha3 : Digest {
 }
 
 /// The SHA3-224 digest of `bytes`, in one call.
-///
 /// @param bytes the bytes to absorb
 /// @param into receives the output
 /// @see https://rux-lang.dev/docs/api/crypto/sha3-of-224
@@ -257,7 +246,6 @@ pub func Sha3Of224(bytes: char8[..], into: var char8[..]) {
 }
 
 /// The SHA3-256 digest of `bytes`, in one call.
-///
 /// @param bytes the bytes to absorb
 /// @param into receives the output
 /// @see https://rux-lang.dev/docs/api/crypto/sha3-of-256
@@ -268,7 +256,6 @@ pub func Sha3Of256(bytes: char8[..], into: var char8[..]) {
 }
 
 /// The SHA3-384 digest of `bytes`, in one call.
-///
 /// @param bytes the bytes to absorb
 /// @param into receives the output
 /// @see https://rux-lang.dev/docs/api/crypto/sha3-of-384
@@ -279,7 +266,6 @@ pub func Sha3Of384(bytes: char8[..], into: var char8[..]) {
 }
 
 /// The SHA3-512 digest of `bytes`, in one call.
-///
 /// @param bytes the bytes to absorb
 /// @param into receives the output
 /// @see https://rux-lang.dev/docs/api/crypto/sha3-of-512

@@ -12,7 +12,6 @@ import Allocator::Allocator;
 ///
 /// Overflow is refused rather than rounded to infinity, as `ParseFloat64` refuses it; a value too small for the
 /// format becomes the signed zero. `NaN`, `Inf` and `-Inf` are read exactly as formatting writes them.
-///
 /// @param allocator where the working storage comes from
 /// @param str the text to parse
 /// @param layout which wide floating-point format the bits are in
@@ -204,7 +203,6 @@ func RoundRatio(allocator: Allocator, digits: &var BigNat, decimalExponent: int,
 }
 
 /// Reads `str` as an x87 extended value.
-///
 /// @param allocator where the working storage comes from
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
@@ -216,7 +214,6 @@ pub func ParseFloat80(allocator: Allocator, str: char8[..]) -> Float80 ! ParseEr
 }
 
 /// Reads `str` as a binary128 value.
-///
 /// @param allocator where the working storage comes from
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
@@ -228,7 +225,6 @@ pub func ParseFloat128(allocator: Allocator, str: char8[..]) -> Float128 ! Parse
 }
 
 /// Reads `str` as a binary256 value.
-///
 /// @param allocator where the working storage comes from
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at
@@ -240,7 +236,6 @@ pub func ParseFloat256(allocator: Allocator, str: char8[..]) -> Float256 ! Parse
 }
 
 /// Reads `str` as a binary512 value.
-///
 /// @param allocator where the working storage comes from
 /// @param str the text to parse
 /// @returns the value, or the failure and the byte offset it was found at

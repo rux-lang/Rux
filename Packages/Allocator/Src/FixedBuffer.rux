@@ -16,7 +16,6 @@ import Memory::{ AlignUp, Copy };
 ///
 /// Owns no storage and has no destructor, but prohibits copying because duplicated bump state could hand the same
 /// bytes to two callers. Use `Handle` when a storable `Allocator` adapter is needed.
-///
 /// @see https://rux-lang.dev/docs/api/allocator/fixed-buffer
 pub struct FixedBuffer {
     /// The first byte of the storage, or null for a buffer with no storage at all.
@@ -45,7 +44,6 @@ extend FixedBuffer {
     ///
     /// The storage must stay valid and untouched by anything else for as long as this allocator or any handle to it
     /// is used. Nothing here tracks that.
-    ///
     /// @param storage the caller's bytes to hand out of
     /// @param capacity how many bytes `storage` holds
     /// @returns the buffer, having handed out nothing
@@ -68,7 +66,6 @@ extend FixedBuffer {
     /// # Safety
     ///
     /// The handle borrows the allocator and must not outlive it or survive it being moved.
-    ///
     /// @returns a copyable adapter pointing at this buffer
     /// @see https://rux-lang.dev/docs/api/allocator/fixed-buffer/handle
     pub func Handle(self: *var FixedBuffer) -> FixedBufferHandle {
@@ -84,7 +81,6 @@ extend FixedBuffer {
     /// # Safety
     ///
     /// Nothing may be read from or written to any earlier allocation afterwards.
-    ///
     /// @see https://rux-lang.dev/docs/api/allocator/fixed-buffer/reset
     pub func Reset(self: &var FixedBuffer) {
         self.used = 0;
@@ -94,7 +90,6 @@ extend FixedBuffer {
     /// How many bytes have been handed out, including alignment padding.
     ///
     /// `self` is borrowed.
-    ///
     /// @returns how many bytes have been handed out
     /// @see https://rux-lang.dev/docs/api/allocator/fixed-buffer/bytes-used
     pub func BytesUsed(self: &FixedBuffer) -> uint {
@@ -104,7 +99,6 @@ extend FixedBuffer {
     /// How many bytes remain, before any alignment padding the next request needs.
     ///
     /// `self` is borrowed. A request of exactly this size succeeds only when it needs no padding.
-    ///
     /// @returns how many bytes are left to hand out
     /// @see https://rux-lang.dev/docs/api/allocator/fixed-buffer/bytes-remaining
     pub func BytesRemaining(self: &FixedBuffer) -> uint {
@@ -113,7 +107,6 @@ extend FixedBuffer {
 }
 
 /// A copyable interface adapter pointing at a `FixedBuffer`.
-///
 /// @see https://rux-lang.dev/docs/api/allocator/fixed-buffer-handle
 pub struct FixedBufferHandle {
     /// The allocator this borrows. Never null for a handle `FixedBuffer::Handle` produced.
@@ -134,7 +127,6 @@ extend FixedBufferHandle : Allocator {
     /// # Safety
     ///
     /// The storage lives until the allocator is reset, and no longer.
-    ///
     /// @param layout the size and alignment wanted
     /// @returns the address of the storage, or why none was taken
     /// @see https://rux-lang.dev/docs/api/allocator/fixed-buffer-handle/allocate
@@ -162,7 +154,6 @@ extend FixedBufferHandle : Allocator {
     /// Everything else is reclaimed by `Reset` rather than one block at a time, so an ordinary release reports
     /// `None` having done nothing. Accepting rather than refusing lets this allocator stand in for any other in
     /// generic code that releases what it takes.
-    ///
     /// @param block an address this allocator returned
     /// @param layout the layout it was allocated with
     /// @returns nothing when the release was accepted, or why it was refused
@@ -187,8 +178,6 @@ extend FixedBufferHandle : Allocator {
     ///
     /// Shrinking to a zero-sized layout releases the block and reports the shared empty address rather than the one
     /// it rewound off of, so the result is releasable with the layout it was asked for.
-    ///
-    ///
     /// @param block the existing allocation's address
     /// @param oldLayout the layout `block` was allocated with
     /// @param newLayout the layout wanted, which must have the same alignment

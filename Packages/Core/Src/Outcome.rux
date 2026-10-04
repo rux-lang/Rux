@@ -12,7 +12,6 @@
 ///
 /// `outcome` is consumed; its payload is destroyed after the question is answered. Runs in constant time and
 /// allocates nothing.
-///
 /// @typeParam T the success type
 /// @typeParam E the error type
 /// @param outcome the fallible to ask
@@ -29,7 +28,6 @@ pub func Succeeded<T, E>(outcome: T ! E) -> bool {
 ///
 /// `outcome` is consumed; its payload is destroyed after the question is answered. Runs in constant time and
 /// allocates nothing.
-///
 /// @typeParam T the success type
 /// @typeParam E the error type
 /// @param outcome the fallible to ask

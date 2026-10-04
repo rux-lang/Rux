@@ -6,7 +6,6 @@
 // Code page identifiers
 // https://learn.microsoft.com/en-us/windows/win32/Intl/code-page-identifiers
 /// The `CodePage` values exposed by this package.
-///
 /// @see https://rux-lang.dev/docs/api/windows/code-page
 pub enum CodePage: uint32 {
     /// `37`: EBCDIC US and Canada.
@@ -294,7 +293,6 @@ pub enum CodePage: uint32 {
 // An action to take on a file or device that exists or does not exist.
 // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilea
 /// The `CreationDisposition` values exposed by this package.
-///
 /// @see https://rux-lang.dev/docs/api/windows/creation-disposition
 pub enum CreationDisposition: uint32 {
     /// Create the file, and fail with `ERROR_FILE_EXISTS` if the name is taken.

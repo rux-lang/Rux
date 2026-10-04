@@ -29,7 +29,6 @@ when #target.os {
 }
 
 /// What kind of thing a name refers to.
-///
 /// @see https://rux-lang.dev/docs/api/filesystem/file-kind
 pub enum FileKind: int32 {
     /// An ordinary file of bytes.
@@ -48,7 +47,6 @@ pub enum FileKind: int32 {
 /// Windows' one portable attribute. Both are always filled: on Windows the mode is synthesized from the
 /// attribute (`0o444` when read-only, `0o666` otherwise) so a program that reasons in Unix terms is not blocked,
 /// and on Unix `readOnly` reports whether the owner-write bit is clear. `Capabilities` says which one is real.
-///
 /// @see https://rux-lang.dev/docs/api/filesystem/permissions
 pub struct Permissions {
     /// The Unix permission bits.
@@ -59,7 +57,6 @@ pub struct Permissions {
 
 extend Permissions {
     /// Permissions from Unix mode bits, with `readOnly` derived from the owner-write bit.
-    ///
     /// @param mode the permission bits
     /// @returns permissions carrying those bits
     /// @see https://rux-lang.dev/docs/api/filesystem/permissions/from-mode
@@ -68,7 +65,6 @@ extend Permissions {
     }
 
     /// Permissions from the read-only flag alone, with the mode synthesized from it.
-    ///
     /// @param readOnly whether the file may only be read
     /// @returns permissions that are writable or not, which is all Windows records
     /// @see https://rux-lang.dev/docs/api/filesystem/permissions/from-read-only
@@ -77,7 +73,6 @@ extend Permissions {
     }
 
     /// Whether the owner may write.
-    ///
     /// @returns whether the owner may write the file
     /// @see https://rux-lang.dev/docs/api/filesystem/permissions/is-writable
     pub func IsWritable(self: &Permissions) -> bool {
@@ -86,7 +81,6 @@ extend Permissions {
 }
 
 /// Everything a single query can say about a file.
-///
 /// @see https://rux-lang.dev/docs/api/filesystem/metadata
 pub struct Metadata {
     /// What the name refers to.
@@ -108,7 +102,6 @@ pub struct Metadata {
 }
 
 /// What the running system can actually answer, so a caller can ask before it assumes.
-///
 /// @see https://rux-lang.dev/docs/api/filesystem/capabilities
 pub struct Capabilities {
     /// Whether `Permissions::mode` is the system's own answer rather than one synthesized from a flag.
@@ -122,7 +115,6 @@ pub struct Capabilities {
 }
 
 /// What this system can answer.
-///
 /// @returns what this system's metadata actually carries, so a caller can tell an absent value from a false one
 /// @see https://rux-lang.dev/docs/api/filesystem/capabilities-of-system
 pub func CapabilitiesOfSystem() -> Capabilities {
@@ -367,7 +359,6 @@ when #target.os == .Windows {
 ///
 /// `followLinks` decides what a symbolic link at the end of the path means: following it describes the target,
 /// and not following it describes the link, which is the only way `SymbolicLink` is ever reported.
-///
 /// @param allocator where the storage comes from
 /// @param path the path to act on
 /// @param followLinks whether a final symbolic link is followed rather than described
@@ -401,7 +392,6 @@ extend File {
     ///
     /// Answers about the file the handle holds, so nothing can rename or replace the name out from under the
     /// query the way a path-based one can.
-    ///
     /// @returns what the system knows about the open file
     /// @see https://rux-lang.dev/docs/api/filesystem/file/metadata
     pub func Metadata(self: &File) -> Metadata ! IoError {
@@ -426,7 +416,6 @@ extend File {
 /// On the Unix systems the mode bits are written as given. On Windows only the read-only attribute exists, so
 /// that alone is written and the rest of `permissions` is ignored — ask `CapabilitiesOfSystem` first if the
 /// difference matters. A symbolic link is always followed: its own bits mean nothing on any supported system.
-///
 /// @param allocator where the storage comes from
 /// @param path the path to act on
 /// @param permissions the permissions to apply
@@ -465,7 +454,6 @@ pub func SetPermissions(allocator: Allocator, path: Path, permissions: Permissio
 ///
 /// Creation time is not settable here: Windows would allow it and the Unix systems would not, and an operation
 /// that silently means different things on different systems is worse than one that is not offered.
-///
 /// @param allocator where the storage comes from
 /// @param path the path to act on
 /// @param accessed the access time to set, or `None` to leave it

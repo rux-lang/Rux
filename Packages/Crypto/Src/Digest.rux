@@ -25,14 +25,12 @@ import Core::{ #Error, #target };
 ///
 /// Take one by generic bound and mutable reference — `func Sum<D: Digest>(digest: &var D)` — so work applies to
 /// the caller's state without copying it.
-///
 /// @see https://rux-lang.dev/docs/api/crypto/digest
 pub interface Digest {
     /// Adds `bytes` to what is being hashed.
     ///
     /// Any split of the same byte sequence across any number of calls gives the same digest. An empty slice is
     /// legal and changes nothing.
-    ///
     /// @param bytes the bytes to absorb
     /// @see https://rux-lang.dev/docs/api/crypto/digest/update
     func Update(self: &var Digest, bytes: char8[..]);
@@ -42,13 +40,11 @@ pub interface Digest {
     /// `into` must be at least `DigestLength` bytes; anything beyond that is untouched. Finishing twice is a
     /// caller error rather than a supported operation — a digest is a one-shot summary of everything fed to it,
     /// and an implementation is free to consume its state producing one.
-    ///
     /// @param into receives the output
     /// @see https://rux-lang.dev/docs/api/crypto/digest/finish
     func Finish(self: &var Digest, into: var char8[..]);
 
     /// How many bytes `Finish` writes.
-    ///
     /// @returns how many bytes a digest occupies
     /// @see https://rux-lang.dev/docs/api/crypto/digest/digest-length
     func DigestLength(self: &Digest) -> uint;
@@ -57,7 +53,6 @@ pub interface Digest {
     ///
     /// Needed by the constructions built on digests — HMAC pads its key to exactly this — and by callers
     /// choosing a buffer size that avoids splitting work.
-    ///
     /// @returns how many bytes the compression function consumes at a time
     /// @see https://rux-lang.dev/docs/api/crypto/digest/block-length
     func BlockLength(self: &Digest) -> uint;
@@ -72,7 +67,6 @@ pub interface Digest {
 ///
 /// Sequences of different lengths are unequal, and that answer is immediate: a length is not a secret, and
 /// pretending otherwise would mean reading past one of them.
-///
 /// @param left one of the two byte runs
 /// @param right the other
 /// @returns whether the two runs match, compared in time that does not depend on where they differ
@@ -112,7 +106,6 @@ when #target.arch {
 /// it — which is how a key a program believed it had erased stays in memory, in a core dump, or in a page
 /// written to swap. The barrier below is handed the buffer's address and its body is opaque, so the writes must
 /// have happened before it runs and the call cannot be dropped.
-///
 /// @param bytes the bytes to clear
 /// @see https://rux-lang.dev/docs/api/crypto/wipe
 pub func Wipe(bytes: var char8[..]) {

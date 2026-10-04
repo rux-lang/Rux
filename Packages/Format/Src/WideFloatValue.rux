@@ -14,7 +14,6 @@ import Allocator::Allocator;
 import Text::{ FormatError, FormatSpec, RejectStyle, TextFailureKind, TextWriter, WriteAligned };
 
 /// An x87 extended-precision value, held as its eighty bits.
-///
 /// @see https://rux-lang.dev/docs/api/format/float80
 pub struct Float80 {
     /// The bits, in the low eighty of a `uint128`; the top forty-eight are padding and stay zero.
@@ -23,7 +22,6 @@ pub struct Float80 {
 
 extend Float80 {
     /// The value these bits encode.
-    ///
     /// @param bits the value's bit pattern
     /// @returns the value that bit pattern stands for
     /// @see https://rux-lang.dev/docs/api/format/float80/from-bits
@@ -32,7 +30,6 @@ extend Float80 {
     }
 
     /// The bits.
-    ///
     /// @returns the value's bit pattern
     /// @see https://rux-lang.dev/docs/api/format/float80/bits
     pub func Bits(self: &Float80) -> uint128 {
@@ -40,7 +37,6 @@ extend Float80 {
     }
 
     /// The format these bits are read under.
-    ///
     /// @returns which format the bits are in
     /// @see https://rux-lang.dev/docs/api/format/float80/layout
     pub func Layout() -> FloatLayout {
@@ -53,7 +49,6 @@ extend Float80 {
     }
 
     /// Whether this is not a number.
-    ///
     /// @returns whether the value is a NaN
     /// @see https://rux-lang.dev/docs/api/format/float80/is-nan
     pub func IsNan(self: &Float80) -> bool {
@@ -61,7 +56,6 @@ extend Float80 {
     }
 
     /// Whether this is an infinity of either sign.
-    ///
     /// @returns whether the value is either infinity
     /// @see https://rux-lang.dev/docs/api/format/float80/is-infinite
     pub func IsInfinite(self: &Float80) -> bool {
@@ -69,7 +63,6 @@ extend Float80 {
     }
 
     /// Whether this is an ordinary value: neither a NaN nor an infinity.
-    ///
     /// @returns whether the value is neither infinite nor a NaN
     /// @see https://rux-lang.dev/docs/api/format/float80/is-finite
     pub func IsFinite(self: &Float80) -> bool {
@@ -78,7 +71,6 @@ extend Float80 {
     }
 
     /// Whether the sign bit is set, which a negative zero answers yes to.
-    ///
     /// @returns whether the sign bit is set
     /// @see https://rux-lang.dev/docs/api/format/float80/is-negative
     pub func IsNegative(self: &Float80) -> bool {
@@ -95,7 +87,6 @@ extend Float80 {
     /// # Failures
     /// Reports whatever the writer reported, `UnsupportedRequest` for any style, and `TextFailure(OutOfMemory)`
     /// where `allocator` could not supply the working storage.
-    ///
     /// @param allocator where the working storage comes from
     /// @param writer the destination
     /// @param spec what the placeholder asked for
@@ -110,7 +101,6 @@ extend Float80 {
 }
 
 /// An IEEE binary128 value, held as its bits.
-///
 /// @see https://rux-lang.dev/docs/api/format/float128
 pub struct Float128 {
     /// The bits, all hundred and twenty-eight of them.
@@ -119,7 +109,6 @@ pub struct Float128 {
 
 extend Float128 {
     /// The value these bits encode.
-    ///
     /// @param bits the value's bit pattern
     /// @returns the value that bit pattern stands for
     /// @see https://rux-lang.dev/docs/api/format/float128/from-bits
@@ -128,7 +117,6 @@ extend Float128 {
     }
 
     /// The bits.
-    ///
     /// @returns the value's bit pattern
     /// @see https://rux-lang.dev/docs/api/format/float128/bits
     pub func Bits(self: &Float128) -> uint128 {
@@ -136,7 +124,6 @@ extend Float128 {
     }
 
     /// The format these bits are read under.
-    ///
     /// @returns which format the bits are in
     /// @see https://rux-lang.dev/docs/api/format/float128/layout
     pub func Layout() -> FloatLayout {
@@ -149,7 +136,6 @@ extend Float128 {
     }
 
     /// Whether this is not a number.
-    ///
     /// @returns whether the value is a NaN
     /// @see https://rux-lang.dev/docs/api/format/float128/is-nan
     pub func IsNan(self: &Float128) -> bool {
@@ -157,7 +143,6 @@ extend Float128 {
     }
 
     /// Whether this is an infinity of either sign.
-    ///
     /// @returns whether the value is either infinity
     /// @see https://rux-lang.dev/docs/api/format/float128/is-infinite
     pub func IsInfinite(self: &Float128) -> bool {
@@ -165,7 +150,6 @@ extend Float128 {
     }
 
     /// Whether this is an ordinary value: neither a NaN nor an infinity.
-    ///
     /// @returns whether the value is neither infinite nor a NaN
     /// @see https://rux-lang.dev/docs/api/format/float128/is-finite
     pub func IsFinite(self: &Float128) -> bool {
@@ -174,7 +158,6 @@ extend Float128 {
     }
 
     /// Whether the sign bit is set, which a negative zero answers yes to.
-    ///
     /// @returns whether the sign bit is set
     /// @see https://rux-lang.dev/docs/api/format/float128/is-negative
     pub func IsNegative(self: &Float128) -> bool {
@@ -191,7 +174,6 @@ extend Float128 {
     /// # Failures
     /// Reports whatever the writer reported, `UnsupportedRequest` for any style, and `TextFailure(OutOfMemory)`
     /// where `allocator` could not supply the working storage.
-    ///
     /// @param allocator where the working storage comes from
     /// @param writer the destination
     /// @param spec what the placeholder asked for
@@ -206,7 +188,6 @@ extend Float128 {
 }
 
 /// An IEEE binary256 value, held as its bits.
-///
 /// @see https://rux-lang.dev/docs/api/format/float256
 pub struct Float256 {
     /// The bits, all two hundred and fifty-six of them.
@@ -215,7 +196,6 @@ pub struct Float256 {
 
 extend Float256 {
     /// The value these bits encode.
-    ///
     /// @param bits the value's bit pattern
     /// @returns the value that bit pattern stands for
     /// @see https://rux-lang.dev/docs/api/format/float256/from-bits
@@ -224,7 +204,6 @@ extend Float256 {
     }
 
     /// The bits.
-    ///
     /// @returns the value's bit pattern
     /// @see https://rux-lang.dev/docs/api/format/float256/bits
     pub func Bits(self: &Float256) -> uint256 {
@@ -232,7 +211,6 @@ extend Float256 {
     }
 
     /// The format these bits are read under.
-    ///
     /// @returns which format the bits are in
     /// @see https://rux-lang.dev/docs/api/format/float256/layout
     pub func Layout() -> FloatLayout {
@@ -245,7 +223,6 @@ extend Float256 {
     }
 
     /// Whether this is not a number.
-    ///
     /// @returns whether the value is a NaN
     /// @see https://rux-lang.dev/docs/api/format/float256/is-nan
     pub func IsNan(self: &Float256) -> bool {
@@ -253,7 +230,6 @@ extend Float256 {
     }
 
     /// Whether this is an infinity of either sign.
-    ///
     /// @returns whether the value is either infinity
     /// @see https://rux-lang.dev/docs/api/format/float256/is-infinite
     pub func IsInfinite(self: &Float256) -> bool {
@@ -261,7 +237,6 @@ extend Float256 {
     }
 
     /// Whether this is an ordinary value: neither a NaN nor an infinity.
-    ///
     /// @returns whether the value is neither infinite nor a NaN
     /// @see https://rux-lang.dev/docs/api/format/float256/is-finite
     pub func IsFinite(self: &Float256) -> bool {
@@ -270,7 +245,6 @@ extend Float256 {
     }
 
     /// Whether the sign bit is set, which a negative zero answers yes to.
-    ///
     /// @returns whether the sign bit is set
     /// @see https://rux-lang.dev/docs/api/format/float256/is-negative
     pub func IsNegative(self: &Float256) -> bool {
@@ -287,7 +261,6 @@ extend Float256 {
     /// # Failures
     /// Reports whatever the writer reported, `UnsupportedRequest` for any style, and `TextFailure(OutOfMemory)`
     /// where `allocator` could not supply the working storage.
-    ///
     /// @param allocator where the working storage comes from
     /// @param writer the destination
     /// @param spec what the placeholder asked for
@@ -302,7 +275,6 @@ extend Float256 {
 }
 
 /// An IEEE binary512 value, held as its bits.
-///
 /// @see https://rux-lang.dev/docs/api/format/float512
 pub struct Float512 {
     /// The bits, all five hundred and twelve of them.
@@ -311,7 +283,6 @@ pub struct Float512 {
 
 extend Float512 {
     /// The value these bits encode.
-    ///
     /// @param bits the value's bit pattern
     /// @returns the value that bit pattern stands for
     /// @see https://rux-lang.dev/docs/api/format/float512/from-bits
@@ -320,7 +291,6 @@ extend Float512 {
     }
 
     /// The bits.
-    ///
     /// @returns the value's bit pattern
     /// @see https://rux-lang.dev/docs/api/format/float512/bits
     pub func Bits(self: &Float512) -> uint512 {
@@ -328,7 +298,6 @@ extend Float512 {
     }
 
     /// The format these bits are read under.
-    ///
     /// @returns which format the bits are in
     /// @see https://rux-lang.dev/docs/api/format/float512/layout
     pub func Layout() -> FloatLayout {
@@ -341,7 +310,6 @@ extend Float512 {
     }
 
     /// Whether this is not a number.
-    ///
     /// @returns whether the value is a NaN
     /// @see https://rux-lang.dev/docs/api/format/float512/is-nan
     pub func IsNan(self: &Float512) -> bool {
@@ -349,7 +317,6 @@ extend Float512 {
     }
 
     /// Whether this is an infinity of either sign.
-    ///
     /// @returns whether the value is either infinity
     /// @see https://rux-lang.dev/docs/api/format/float512/is-infinite
     pub func IsInfinite(self: &Float512) -> bool {
@@ -357,7 +324,6 @@ extend Float512 {
     }
 
     /// Whether this is an ordinary value: neither a NaN nor an infinity.
-    ///
     /// @returns whether the value is neither infinite nor a NaN
     /// @see https://rux-lang.dev/docs/api/format/float512/is-finite
     pub func IsFinite(self: &Float512) -> bool {
@@ -366,7 +332,6 @@ extend Float512 {
     }
 
     /// Whether the sign bit is set, which a negative zero answers yes to.
-    ///
     /// @returns whether the sign bit is set
     /// @see https://rux-lang.dev/docs/api/format/float512/is-negative
     pub func IsNegative(self: &Float512) -> bool {
@@ -383,7 +348,6 @@ extend Float512 {
     /// # Failures
     /// Reports whatever the writer reported, `UnsupportedRequest` for any style, and `TextFailure(OutOfMemory)`
     /// where `allocator` could not supply the working storage.
-    ///
     /// @param allocator where the working storage comes from
     /// @param writer the destination
     /// @param spec what the placeholder asked for

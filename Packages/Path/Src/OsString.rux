@@ -16,13 +16,11 @@ import Text::{ DecodeAt, FromAllocError, String, StringBuilder, TextError };
 
 when #target.os == .Windows {
     /// The unit a native string is made of: a UTF-16 code unit on Windows.
-    ///
     /// @see https://rux-lang.dev/docs/api/path/os-unit
     pub type OsUnit = uint16;
 }
 else {
     /// The unit a native string is made of: a byte on the Unix systems.
-    ///
     /// @see https://rux-lang.dev/docs/api/path/os-unit
     pub type OsUnit = char8;
 }
@@ -30,7 +28,6 @@ else {
 /// A borrowed run of native units.
 ///
 /// `Copy`, owning nothing. The units it names must outlive it.
-///
 /// @see https://rux-lang.dev/docs/api/path/os-string-view
 pub struct OsStringView {
     /// The units, exactly as the system holds them.
@@ -39,7 +36,6 @@ pub struct OsStringView {
 
 extend OsStringView {
     /// A view over nothing.
-    ///
     /// @returns an empty view
     /// @see https://rux-lang.dev/docs/api/path/os-string-view/new
     pub func OsStringView() -> OsStringView {
@@ -47,7 +43,6 @@ extend OsStringView {
     }
 
     /// A view over `units` as they stand: no validation, because there is nothing to validate against.
-    ///
     /// @param units the borrowed units to view
     /// @returns a view over those units, which it does not copy
     /// @see https://rux-lang.dev/docs/api/path/os-string-view/from-units
@@ -56,7 +51,6 @@ extend OsStringView {
     }
 
     /// How many native units the view spans — bytes or code units, not characters.
-    ///
     /// @returns how many units the value holds
     /// @see https://rux-lang.dev/docs/api/path/os-string-view/length
     pub func Length(self: &OsStringView) -> uint {
@@ -64,7 +58,6 @@ extend OsStringView {
     }
 
     /// Whether the view spans nothing.
-    ///
     /// @returns whether it holds no units at all
     /// @see https://rux-lang.dev/docs/api/path/os-string-view/is-empty
     pub func IsEmpty(self: &OsStringView) -> bool {
@@ -72,7 +65,6 @@ extend OsStringView {
     }
 
     /// The units themselves.
-    ///
     /// @returns the units, borrowed
     /// @see https://rux-lang.dev/docs/api/path/os-string-view/units
     pub func Units(self: &OsStringView) -> OsUnit[..] {
@@ -83,7 +75,6 @@ extend OsStringView {
     ///
     /// Unit equality and nothing smarter: no case folding, no normalization. Two names the filesystem treats as
     /// one are still two names here, because which names those are is the filesystem's opinion, not the string's.
-    ///
     /// @param other the value to compare against
     /// @returns whether both hold the same units in the same order
     /// @see https://rux-lang.dev/docs/api/path/os-string-view/equals
@@ -103,7 +94,6 @@ extend OsStringView {
     /// UTF-8, and Windows units may hold an unpaired surrogate, which no UTF-8 sequence can spell. It fails with
     /// `InvalidUtf8` for both, because both mean the same thing to the caller — this name is not text, and a
     /// program that must show it anyway shows it lossily by its own policy, knowingly.
-    ///
     /// @param allocator where the storage comes from
     /// @returns the units converted to text, or a failure when they are not valid in it
     /// @see https://rux-lang.dev/docs/api/path/os-string-view/to-text
@@ -147,7 +137,6 @@ extend OsStringView {
 /// Native text that owns its units.
 ///
 /// Copyable with value semantics: each copy owns an independent native-unit block.
-///
 /// @see https://rux-lang.dev/docs/api/path/os-string
 pub struct OsString {
     /// The units, or null for no length.
@@ -160,7 +149,6 @@ pub struct OsString {
 
 extend OsString {
     /// Deep-copies native units into independent storage from the same allocator.
-    ///
     /// @param other the value to compare against
     /// @see https://rux-lang.dev/docs/api/path/os-string/copy
     pub func =(self: &var OsString, other: &OsString) {
@@ -177,7 +165,6 @@ extend OsString {
     }
 
     /// Native text of no length, which has allocated nothing.
-    ///
     /// @param allocator where the storage comes from
     /// @returns an empty owned string that has taken no storage yet
     /// @see https://rux-lang.dev/docs/api/path/os-string/new
@@ -189,7 +176,6 @@ extend OsString {
     ///
     /// This is the lossless direction: whatever the system handed over survives, valid text or not. It fails with
     /// `OutOfMemory` when the copy cannot be made.
-    ///
     /// @param allocator where the storage comes from
     /// @param view the borrowed text to copy
     /// @returns a copy of `view` this string owns, or an empty one when the allocator refused
@@ -215,7 +201,6 @@ extend OsString {
     }
 
     /// How many native units the text holds.
-    ///
     /// @returns how many units the value holds
     /// @see https://rux-lang.dev/docs/api/path/os-string/length
     pub func Length(self: &OsString) -> uint {
@@ -223,7 +208,6 @@ extend OsString {
     }
 
     /// Whether the text holds nothing.
-    ///
     /// @returns whether it holds no units at all
     /// @see https://rux-lang.dev/docs/api/path/os-string/is-empty
     pub func IsEmpty(self: &OsString) -> bool {
@@ -231,7 +215,6 @@ extend OsString {
     }
 
     /// A view over this text, which is what everything read-only takes.
-    ///
     /// @returns a borrowed view of the owned units
     /// @see https://rux-lang.dev/docs/api/path/os-string/view
     pub func View(self: &OsString) -> OsStringView {
@@ -239,7 +222,6 @@ extend OsString {
     }
 
     /// Gives the block back and leaves text of no length.
-    ///
     /// @see https://rux-lang.dev/docs/api/path/os-string/clear
     pub func Clear(self: &var OsString) {
         if self.data != null {
@@ -253,7 +235,6 @@ extend OsString {
     }
 
     /// Gives the block back.
-    ///
     /// @see https://rux-lang.dev/docs/api/path/os-string/destructor
     func ~OsString(self: &var OsString) {
         self.Clear();
@@ -267,7 +248,6 @@ extend OsString {
     /// # Safety
     ///
     /// The bytes must be well-formed UTF-8, which everything in `Rux/Text` produces and vouches for.
-    ///
     /// @param allocator where the storage comes from
     /// @param text the text to act on
     /// @returns the text converted to the platform's own units, or why it could not be

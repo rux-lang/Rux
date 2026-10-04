@@ -13,14 +13,12 @@
 
 
 /// Somewhere bytes come from.
-///
 /// @see https://rux-lang.dev/docs/api/io/reader
 pub interface Reader {
     /// Fills what it can of `into` and succeeds with how much.
     ///
     /// A success of zero does not happen for a non-empty buffer: the end of the stream is the `EndOfStream` failure,
     /// so a caller never mistakes silence for data.
-    ///
     /// @param into receives the bytes
     /// @returns how many bytes were read, which may be fewer than `into` holds; `IsEnd` at the end of the stream
     /// @see https://rux-lang.dev/docs/api/io/reader/read
@@ -28,25 +26,21 @@ pub interface Reader {
 }
 
 /// Somewhere bytes go.
-///
 /// @see https://rux-lang.dev/docs/api/io/writer
 pub interface Writer {
     /// Takes what it can of `bytes` and succeeds with how much.
-    ///
     /// @param bytes the bytes to write
     /// @returns how many bytes were taken, which may be fewer than offered
     /// @see https://rux-lang.dev/docs/api/io/writer/write
     func Write(bytes: char8[..]) -> uint ! IoError;
 
     /// Pushes whatever is held toward the destination.
-    ///
     /// @returns success when everything held reached the destination
     /// @see https://rux-lang.dev/docs/api/io/writer/flush
     func Flush() -> ! IoError;
 }
 
 /// Where a seek starts counting from.
-///
 /// @see https://rux-lang.dev/docs/api/io/seek-from
 pub enum SeekFrom: int32 {
     /// The start of the stream; the offset must not be negative.
@@ -58,11 +52,9 @@ pub enum SeekFrom: int32 {
 }
 
 /// A stream whose position can be moved.
-///
 /// @see https://rux-lang.dev/docs/api/io/seeker
 pub interface Seeker {
     /// Moves the position `offset` bytes from `origin` and succeeds with where it landed.
-    ///
     /// @param origin where the offset is measured from
     /// @param offset how far to move, which may be negative
     /// @returns the resulting offset from the start
@@ -74,7 +66,6 @@ pub interface Seeker {
 ///
 /// A transient report is retried without counting; this counts only rounds where the stream reported success and
 /// moved nothing, which is a stream that will never finish the job.
-///
 /// @see https://rux-lang.dev/docs/api/io/zero-progress-limit
 pub const ZeroProgressLimit: uint = 3;
 
@@ -82,7 +73,6 @@ pub const ZeroProgressLimit: uint = 3;
 ///
 /// Transient reports are retried; the end of the stream before the buffer fills is `EndOfStream` with the buffer
 /// partly written — how much is not reported, because a caller who needs the count reads incrementally.
-///
 /// @param reader where the bytes come from
 /// @param into receives the bytes
 /// @returns success only when `into` was filled completely; `IsEnd` when the stream ran out first
@@ -107,7 +97,6 @@ pub func ReadExact(reader: &var Reader, into: var char8[..]) -> ! IoError {
 ///
 /// A writer that accepts nothing while reporting success is refused with `WriteZero` after a few rounds: a loop
 /// that spins on it would hang the caller on a stream that will never take the rest.
-///
 /// @param writer the destination
 /// @param bytes the bytes to write
 /// @returns success only when every byte was written, looping over short writes

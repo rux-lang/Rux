@@ -13,7 +13,6 @@
 ///
 /// Every case is a failure: nothing was written that a caller may rely on. A filled buffer is the success channel of
 /// the `! EntropyError` the fill returns.
-///
 /// @see https://rux-lang.dev/docs/api/entropy/entropy-error
 pub enum EntropyError {
     /// This system has no entropy source this package can reach.
@@ -41,7 +40,6 @@ extend EntropyError {
     /// refusal.
     ///
     /// Cannot fail. Runs in constant time and allocates nothing.
-    ///
     /// @returns whether asking again could succeed
     /// @see https://rux-lang.dev/docs/api/entropy/entropy-error/is-transient
     pub func IsTransient(self: *EntropyError) -> bool {

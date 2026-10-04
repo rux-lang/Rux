@@ -16,7 +16,6 @@ extend Date {
     /// The date `days` later, negative for earlier, or `None` outside the years the calendar spells.
     ///
     /// Exact: a day is a day, and the round trip through the epoch count neither loses nor invents one.
-    ///
     /// @param days how many days
     /// @returns the date that many days later, or `None` when it leaves the range
     /// @see https://rux-lang.dev/docs/api/time/date/plus-days
@@ -32,7 +31,6 @@ extend Date {
     /// The date `months` later, clamped to the month's end where the day is missing.
     ///
     /// January 31st plus one month is the last day of February; the clamp is the policy the module header states.
-    ///
     /// @param months how many months
     /// @returns the date that many months later, clamped to the month's last day, or `None` when it leaves the range
     /// @see https://rux-lang.dev/docs/api/time/date/plus-months
@@ -53,7 +51,6 @@ extend Date {
     }
 
     /// The date `years` later, with February 29th clamping to the 28th where the year is not leap.
-    ///
     /// @param years how many years
     /// @returns the date that many years later, clamped for 29 February, or `None` when it leaves the range
     /// @see https://rux-lang.dev/docs/api/time/date/plus-years
@@ -67,7 +64,6 @@ extend Date {
     }
 
     /// The whole days from `earlier` to this date, negative when it is the later one.
-    ///
     /// @param earlier the earlier reading
     /// @returns how many days `earlier` is before this date, negative if it is after
     /// @see https://rux-lang.dev/docs/api/time/date/days-since

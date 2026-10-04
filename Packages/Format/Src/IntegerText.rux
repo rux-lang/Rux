@@ -19,7 +19,6 @@ import Text::{ Encode, FormatAlign, FormatBase, FormatError, FormatSpec, Padding
 ///
 /// # Failures
 /// Reports whatever the writer reported, stopping at the first refusal.
-///
 /// @param writer the destination
 /// @param spec what the placeholder asked for
 /// @param digits the decimal or based digits, least significant first
@@ -79,7 +78,6 @@ pub func WriteIntegerDigits(writer: &var TextWriter, spec: FormatSpec, digits: c
 ///
 /// # Failures
 /// Reports whatever the writer reported.
-///
 /// @param writer the destination
 /// @param spec what the placeholder asked for
 /// @param magnitude the absolute value to render
@@ -120,7 +118,6 @@ pub func WriteIntegerSpec(writer: &var TextWriter, spec: FormatSpec, magnitude: 
 /// # Failures
 /// Reports `TextFailure(InvalidUtf8)` when `scalar` is not a Unicode scalar value, and otherwise whatever the
 /// writer reported.
-///
 /// @param writer the destination
 /// @param spec what the placeholder asked for
 /// @param scalar the Unicode scalar value to render

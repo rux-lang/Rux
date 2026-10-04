@@ -22,7 +22,6 @@ import Memory::{ AlignUp, AlignUpChecked, PageAlign, PageAllocate, PageRead, Pag
 ///
 /// Never constructed by a caller. The magic is checked on release, which is what turns a mismatched or foreign
 /// pointer into a reported `InvalidBlock` rather than a corrupted heap.
-///
 /// @see https://rux-lang.dev/docs/api/allocator/system-block-header
 pub struct SystemBlockHeader {
     /// A fixed pattern, checked on release.
@@ -39,7 +38,6 @@ pub struct SystemBlockHeader {
 ///
 /// Chosen to be unlikely in ordinary data, so a pointer that was never one of these is very unlikely to look like
 /// one. This is a check against a mistake, not against an adversary.
-///
 /// @see https://rux-lang.dev/docs/api/allocator/system-block-magic
 pub const SystemBlockMagic: uint64 = 0x52757841_6C6C6F63;
 
@@ -50,7 +48,6 @@ pub const SystemBlockMagic: uint64 = 0x52757841_6C6C6F63;
 ///
 /// Page-granular, so a small allocation costs a whole page. Use it as the backing store for an arena or a pool
 /// rather than for many small values directly.
-///
 /// @see https://rux-lang.dev/docs/api/allocator/system-allocator
 pub struct SystemAllocator {
     /// Present so the type is not empty; carries nothing and is never read.
@@ -82,7 +79,6 @@ extend SystemAllocator : Allocator {
     /// # Safety
     ///
     /// The storage is the caller's until `Deallocate` takes it back with an equal layout.
-    ///
     /// @param layout the size and alignment wanted
     /// @returns the address of the storage, or why none was taken
     /// @see https://rux-lang.dev/docs/api/allocator/system-allocator/allocate
@@ -127,7 +123,6 @@ extend SystemAllocator : Allocator {
     /// # Safety
     ///
     /// Every pointer into the block becomes invalid.
-    ///
     /// @param block an address this allocator returned
     /// @param layout the layout it was allocated with
     /// @returns nothing when the release was accepted, or why it was refused
@@ -155,7 +150,6 @@ extend SystemAllocator : Allocator {
     /// # Safety
     ///
     /// The old pointer is invalid once this succeeds. On failure it is untouched and still the caller's.
-    ///
     /// @param block the existing allocation's address
     /// @param oldLayout the layout `block` was allocated with
     /// @param newLayout the layout wanted, which must have the same alignment

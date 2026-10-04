@@ -37,7 +37,6 @@ import Text::{ Display, FormatError, FormatSpec, TextFailureKind, TextWriter };
 ///
 /// The end of a stream is a failure here. Nothing is being read, so a write that reports it is a destination that
 /// cannot take the bytes, whatever it calls that.
-///
 /// @param outcome what the stream reported
 /// @returns success for a success, and `WriterFailure` for any failure
 /// @see https://rux-lang.dev/docs/api/io/from-io-error
@@ -54,7 +53,6 @@ pub func FromIoError(outcome: ! IoError) -> ! FormatError {
 /// `WriterFailure` should not arrive: an adapter records the stream's own error and its caller reports that
 /// instead. It maps to `Other` rather than being ignored, so an adapter that forgets to keep the original is
 /// visibly wrong rather than quietly reporting success.
-///
 /// @param error the formatting failure to translate
 /// @returns the closest I/O meaning, with no platform code, since none applies
 /// @see https://rux-lang.dev/docs/api/io/to-io-error
@@ -90,7 +88,6 @@ func KindOf(kind: &TextFailureKind) -> IoError {
 ///
 /// # Safety
 /// The slot must outlive the writer. It is a stored address, so nothing here tracks that.
-///
 /// @see https://rux-lang.dev/docs/api/io/console-writer
 pub struct ConsoleWriter {
     /// Where the first stream failure is recorded.
@@ -102,7 +99,6 @@ extend ConsoleWriter {
     ///
     /// The slot is read before every write as well as written on failure, so a writer built over a slot that
     /// already holds a failure writes nothing at all.
-    ///
     /// @param failure where the first stream failure is recorded, `none` until there is one
     /// @returns a writer over standard output
     /// @see https://rux-lang.dev/docs/api/io/console-writer/new
@@ -120,7 +116,6 @@ extend ConsoleWriter : TextWriter {
     /// part-way through rendering does not go on writing into a handle that has already failed, and a trailing
     /// newline is not emitted after a failed line. This is the only case this writer can produce: the bytes are not
     /// revalidated, and standard output is not a bounded destination.
-    ///
     /// @param bytes the UTF-8 run to write
     /// @returns success when the stream accepted the whole run
     /// @see https://rux-lang.dev/docs/api/io/console-writer/write
@@ -147,7 +142,6 @@ extend ConsoleWriter : TextWriter {
 ///
 /// # Safety
 /// The slot must outlive the writer. It is a stored address, so nothing here tracks that.
-///
 /// @see https://rux-lang.dev/docs/api/io/stream-writer
 pub struct StreamWriter {
     /// Where the bytes go.
@@ -161,7 +155,6 @@ extend StreamWriter {
     ///
     /// `sink` is borrowed for the call and kept. The slot is read before every write as well as written on failure,
     /// so a writer built over a slot that already holds a failure writes nothing at all.
-    ///
     /// @param sink where the bytes go
     /// @param failure where the first stream failure is recorded, `none` until there is one
     /// @returns a text writer over that stream
@@ -178,7 +171,6 @@ extend StreamWriter : TextWriter {
     /// Reports `WriterFailure` when the stream refuses, having recorded the original `IoError` in the slot. Once a
     /// failure has been recorded every later write is refused without touching the stream, so a value part-way
     /// through rendering does not go on writing into a destination that has already failed.
-    ///
     /// @param bytes the UTF-8 run to write
     /// @returns success when the stream accepted the whole run
     /// @see https://rux-lang.dev/docs/api/io/stream-writer/write
@@ -209,7 +201,6 @@ extend StreamWriter : TextWriter {
 /// # Failures
 /// Reports the value's own failure when it has one, without attempting the newline. Otherwise reports whatever the
 /// newline's write reported.
-///
 /// @typeParam T the value's type, which must know how to show itself
 /// @param writer the destination
 /// @param value the value to write, borrowed for the call
@@ -230,7 +221,6 @@ pub func WriteValueLine<T: Display>(writer: &var TextWriter, value: &T) -> ! For
 /// # Failures
 /// Reports the formatting failure when there is one, without attempting the newline. Otherwise reports whatever the
 /// newline's write reported.
-///
 /// @param writer the destination
 /// @param format the pattern, whose placeholders are filled from the arguments that follow it
 /// @returns success when the whole line was accepted

@@ -14,7 +14,6 @@
 import Text::{ FormatError, TextWriter };
 
 /// A fixed buffer being filled from the front.
-///
 /// @see https://rux-lang.dev/docs/api/format/byte-cursor
 pub struct ByteCursor {
     /// The room available.
@@ -27,7 +26,6 @@ pub struct ByteCursor {
 
 extend ByteCursor {
     /// A cursor over `room`, filling from its start.
-    ///
     /// @param room how many bytes the buffer holds
     /// @returns a cursor over that storage, having written nothing
     /// @see https://rux-lang.dev/docs/api/format/byte-cursor/new
@@ -36,7 +34,6 @@ extend ByteCursor {
     }
 
     /// Appends one byte, or records an overrun when there is no room.
-    ///
     /// @param byte the byte
     /// @see https://rux-lang.dev/docs/api/format/byte-cursor/push
     pub func Push(self: &var ByteCursor, byte: char8) {
@@ -49,7 +46,6 @@ extend ByteCursor {
     }
 
     /// Appends every byte of `bytes`, or records an overrun when they do not all fit.
-    ///
     /// @param bytes the bytes
     /// @see https://rux-lang.dev/docs/api/format/byte-cursor/push-bytes
     pub func PushBytes(self: &var ByteCursor, bytes: char8[..]) {
@@ -61,7 +57,6 @@ extend ByteCursor {
     }
 
     /// What has been written.
-    ///
     /// @returns the bytes written so far, borrowed
     /// @see https://rux-lang.dev/docs/api/format/byte-cursor/written
     pub func Written(self: &ByteCursor) -> char8[..] {
@@ -69,7 +64,6 @@ extend ByteCursor {
     }
 
     /// Whether a write was refused for want of room.
-    ///
     /// @returns whether more was pushed than the buffer holds, which silently dropped the excess
     /// @see https://rux-lang.dev/docs/api/format/byte-cursor/overran
     pub func Overran(self: &ByteCursor) -> bool {
@@ -87,7 +81,6 @@ extend ByteCursor : TextWriter {
     ///
     /// Unlike a builder, a cursor that overruns keeps whatever fitted rather than leaving itself unchanged: the
     /// buffer is the caller's, the partial content is visible through `Written`, and `Overran` says it is partial.
-    ///
     /// @param bytes the UTF-8 run to write
     /// @returns success when every byte fitted
     /// @see https://rux-lang.dev/docs/api/format/byte-cursor/write

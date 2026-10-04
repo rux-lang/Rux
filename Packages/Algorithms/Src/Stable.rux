@@ -29,7 +29,6 @@ import Core::{ Ordering };
 /// and so that it stays right if it ever stops being the whole length.
 ///
 /// Cannot fail. Runs in constant time and allocates nothing.
-///
 /// @param length how many elements are to be sorted
 /// @returns how many elements of working storage a stable sort of that length needs
 /// @see https://rux-lang.dev/docs/api/algorithms/required-scratch
@@ -48,7 +47,6 @@ pub func RequiredScratch(length: uint) -> uint {
 /// Requires `<` on the element type, as a strict weak ordering.
 ///
 /// Makes O(n log n) comparisons and moves for every input — there is no bad case — and allocates nothing.
-///
 /// @typeParam T the element type
 /// @param items the sequence to work on
 /// @param scratch working storage of at least `RequiredScratch(items.length)` elements
@@ -111,7 +109,6 @@ pub func StableSort<T>(items: var T[..], scratch: var T[..]) -> bool {
 /// Reports false, changing nothing, when `scratch` is shorter than `RequiredScratch(items.length)`.
 ///
 /// Makes O(n log n) comparisons and moves for every input, and allocates nothing.
-///
 /// @typeParam T the element type
 /// @param items the sequence to work on
 /// @param scratch working storage of at least `RequiredScratch(items.length)` elements

@@ -28,14 +28,12 @@ import Core::Iterator;
 ///
 /// Four elements rather than one: the first few appends are the common case, and three reallocations to reach four
 /// elements is three more than the work is worth.
-///
 /// @see https://rux-lang.dev/docs/api/collections/minimum-vector-capacity
 pub const MinimumVectorCapacity: uint = 4;
 
 /// A growable contiguous run of elements on storage this vector owns.
 ///
 /// Move-only: it owns its elements and storage, prohibits copying, and destroys both with `~Vector`.
-///
 /// @typeParam T the element type
 /// @see https://rux-lang.dev/docs/api/collections/vector
 pub struct Vector<T> {
@@ -59,7 +57,6 @@ extend Vector<T> {
     /// allocates, which is what makes one cheap to have and to return.
     ///
     /// Cannot fail. Runs in constant time.
-    ///
     /// @param allocator where the storage comes from
     /// @returns an empty collection that has taken no storage yet
     /// @see https://rux-lang.dev/docs/api/collections/vector/new
@@ -70,7 +67,6 @@ extend Vector<T> {
     /// An empty vector with room for `capacity` elements already taken.
     ///
     /// `allocator` is borrowed for the call and kept. The vector starts empty — capacity is not length.
-    ///
     /// @param allocator where the storage comes from
     /// @param capacity how many elements to make room for
     /// @returns an empty vector with room for that many elements already taken
@@ -88,7 +84,6 @@ extend Vector<T> {
     ///
     /// `allocator` is borrowed for the call and kept; `items` is borrowed and read. Copies its elements, so a move-only
     /// element type is built with `Push` instead.
-    ///
     /// @param allocator where the storage comes from
     /// @param items the elements to take
     /// @returns a vector holding a copy of those elements
@@ -113,7 +108,6 @@ extend Vector<T> {
     ///
     /// `self` is borrowed and left alone. The copy takes exactly the room it needs rather than matching this one's
     /// capacity, since the spare holds nothing worth reproducing.
-    ///
     /// @returns an independent copy
     /// @see https://rux-lang.dev/docs/api/collections/vector/clone
     pub func Clone(self: &Vector<T>) -> Vector<T> ! CollectionError {
@@ -123,7 +117,6 @@ extend Vector<T> {
     /// How many elements the vector holds.
     ///
     /// `self` is borrowed.
-    ///
     /// @returns how many elements it holds
     /// @see https://rux-lang.dev/docs/api/collections/vector/length
     pub func Length(self: &Vector<T>) -> uint {
@@ -133,7 +126,6 @@ extend Vector<T> {
     /// How many elements the storage could hold without growing.
     ///
     /// `self` is borrowed. Never below the length, and never reduced except by `ShrinkToFit`.
-    ///
     /// @returns how many elements fit before the next growth
     /// @see https://rux-lang.dev/docs/api/collections/vector/capacity
     pub func Capacity(self: &Vector<T>) -> uint {
@@ -143,7 +135,6 @@ extend Vector<T> {
     /// Whether the vector holds no elements.
     ///
     /// `self` is borrowed. A vector with capacity and no elements is empty: capacity is not length.
-    ///
     /// @returns whether it holds nothing
     /// @see https://rux-lang.dev/docs/api/collections/vector/is-empty
     pub func IsEmpty(self: &Vector<T>) -> bool {
@@ -176,7 +167,6 @@ extend Vector<T> {
     ///
     /// Reports `CapacityOverflow` when the current length plus `additional` cannot be represented, which is what
     /// turns a `Reserve(uint::Max)` on a non-empty vector into a reported error rather than a silently tiny capacity.
-    ///
     /// @param additional how many more elements to make room for
     /// @returns nothing when the operation succeeded, or why it did not
     /// @see https://rux-lang.dev/docs/api/collections/vector/reserve
@@ -190,7 +180,6 @@ extend Vector<T> {
     /// `self` is borrowed mutably. A vector with nothing in it gives up its storage entirely and becomes as cheap as
     /// a new one. A failure leaves the vector usable at its current capacity, since failing to hand memory back is
     /// never a reason to stop working.
-    ///
     /// @returns nothing when the operation succeeded, or why it did not
     /// @see https://rux-lang.dev/docs/api/collections/vector/shrink-to-fit
     pub func ShrinkToFit(self: &var Vector<T>) -> ! CollectionError {
@@ -215,7 +204,6 @@ extend Vector<T> {
     /// `self` is borrowed mutably. The vector is empty afterwards and can be refilled without allocating again.
     ///
     /// Runs in time proportional to the length.
-    ///
     /// @see https://rux-lang.dev/docs/api/collections/vector/clear
     pub func Clear(self: &var Vector<T>) {
         self.Truncate(0);
@@ -230,7 +218,6 @@ extend Vector<T> {
     /// a vector is told about it.
     ///
     /// Runs in time proportional to how many elements go.
-    ///
     /// @param length how many elements
     /// @see https://rux-lang.dev/docs/api/collections/vector/truncate
     pub func Truncate(self: &var Vector<T>, length: uint) {
@@ -250,7 +237,6 @@ extend Vector<T> {
     /// Runs when the vector's life ends. The spare capacity past the length holds nothing and is not touched; the
     /// elements go first and the block second, since an element destroyed after its storage was released would be
     /// read from freed memory.
-    ///
     /// @see https://rux-lang.dev/docs/api/collections/vector/destructor
     func ~Vector(self: &var Vector<T>) {
         self.Truncate(0);
@@ -267,7 +253,6 @@ extend Vector<T> {
     /// exactly as it was and the value with the caller.
     ///
     /// Amortized constant time: the doubling is what spreads the cost of growing across the appends that caused it.
-    ///
     /// @param value the value to act on
     /// @returns nothing when the operation succeeded, or why it did not
     /// @see https://rux-lang.dev/docs/api/collections/vector/push
@@ -285,7 +270,6 @@ extend Vector<T> {
     ///
     /// `self` is borrowed mutably; `items` is borrowed and read. Room for all of them is taken first, so this either
     /// appends every element or none of them.
-    ///
     /// @param items the elements to take
     /// @returns nothing when the operation succeeded, or why it did not
     /// @see https://rux-lang.dev/docs/api/collections/vector/push-slice
@@ -308,7 +292,6 @@ extend Vector<T> {
     /// when the vector is empty.
     ///
     /// The storage is kept, so a vector emptied this way costs nothing to refill.
-    ///
     /// @param value receives the removed element
     /// @returns whether there was an element to remove
     /// @see https://rux-lang.dev/docs/api/collections/vector/try-pop
@@ -322,7 +305,6 @@ extend Vector<T> {
     /// The element at `index`, or `none` when there is no such index.
     ///
     /// `self` is borrowed; the element is returned by copy.
-    ///
     /// @param index which one, counting from zero
     /// @returns a copy of the element, or `none` when the index is out of range
     /// @see https://rux-lang.dev/docs/api/collections/vector/get
@@ -338,7 +320,6 @@ extend Vector<T> {
     /// # Safety
     ///
     /// The pointer is valid until the vector grows, shrinks, or is destroyed.
-    ///
     /// @param index which one, counting from zero
     /// @returns the address of the element, or `none` when the index is out of range
     /// @see https://rux-lang.dev/docs/api/collections/vector/reference
@@ -354,7 +335,6 @@ extend Vector<T> {
     /// # Safety
     ///
     /// The old element is overwritten rather than destroyed. For an element that owns something, take it out first.
-    ///
     /// @param index which one, counting from zero
     /// @param value the value to act on
     /// @returns nothing when the element was written, or `IndexOutOfRange`
@@ -372,7 +352,6 @@ extend Vector<T> {
     /// # Safety
     ///
     /// The view is valid until the vector grows, shrinks, or is destroyed.
-    ///
     /// @returns the elements, borrowed
     /// @see https://rux-lang.dev/docs/api/collections/vector/as-slice
     pub func AsSlice(self: &Vector<T>) -> T[..] {
@@ -386,7 +365,6 @@ extend Vector<T> {
     /// # Safety
     ///
     /// The view is valid until the vector grows, shrinks, or is destroyed.
-    ///
     /// @returns the elements, borrowed for writing
     /// @see https://rux-lang.dev/docs/api/collections/vector/as-mutable-slice
     pub func AsMutableSlice(self: &var Vector<T>) -> var T[..] {
@@ -400,7 +378,6 @@ extend Vector<T> {
     /// # Safety
     ///
     /// The vector must not grow or shrink while the iterator is alive.
-    ///
     /// @returns a cursor yielding copies of the elements
     /// @see https://rux-lang.dev/docs/api/collections/vector/iterate
     pub func Iterate(self: &Vector<T>) -> ValueIterator<T> {
@@ -410,7 +387,6 @@ extend Vector<T> {
     /// An iterator over pointers to the elements.
     ///
     /// `self` is borrowed and must outlive the iterator.
-    ///
     /// @returns a cursor yielding the elements' addresses
     /// @see https://rux-lang.dev/docs/api/collections/vector/references
     pub func References(self: &Vector<T>) -> ReferenceIterator<T> {
@@ -423,7 +399,6 @@ extend Vector<T> {
     ///
     /// The vector's storage must outlive the iterator and every yielded pointer. Do not grow, shrink, destroy, or
     /// move the vector while any of them is in use, and coordinate aliases that access the same elements.
-    ///
     /// @returns a cursor yielding writable element addresses
     /// @see https://rux-lang.dev/docs/api/collections/vector/mutable-references
     pub func MutableReferences(self: &var Vector<T>) -> MutableReferenceIterator<T> {
@@ -437,7 +412,6 @@ extend Vector<T> {
     /// `IndexOutOfRange` and changes nothing.
     ///
     /// Runs in time proportional to how many elements follow the insertion point.
-    ///
     /// @param index which one, counting from zero
     /// @param value the value to act on
     /// @returns nothing when the operation succeeded, or why it did not
@@ -465,7 +439,6 @@ extend Vector<T> {
     ///
     /// Order is preserved, which is what separates this from `SwapRemoveAt`. Runs in time proportional to how many
     /// elements follow the one removed.
-    ///
     /// @param index which one, counting from zero
     /// @returns the element removed, or `none` when the index is out of range
     /// @see https://rux-lang.dev/docs/api/collections/vector/remove-at
@@ -489,7 +462,6 @@ extend Vector<T> {
     /// Order is *not* preserved — whatever was last now sits where the removed element was — and that is the whole
     /// point: this is constant time where `RemoveAt` is linear, and for a sequence nobody is reading in order the
     /// difference is free.
-    ///
     /// @param index which one, counting from zero
     /// @returns the element removed, or `none` when the index is out of range
     /// @see https://rux-lang.dev/docs/api/collections/vector/swap-remove-at
@@ -507,7 +479,6 @@ extend Vector<T> {
     /// A pointer to the first element, or `none` for an empty vector.
     ///
     /// `self` is borrowed; the pointer borrows the element where it sits.
-    ///
     /// @returns the address of the first element, or `none` when empty
     /// @see https://rux-lang.dev/docs/api/collections/vector/first
     pub func First(self: &Vector<T>) -> (*T)? {
@@ -517,7 +488,6 @@ extend Vector<T> {
     /// A pointer to the last element, or `none` for an empty vector.
     ///
     /// `self` is borrowed; the pointer borrows the element where it sits.
-    ///
     /// @returns the address of the last element, or `none` when empty
     /// @see https://rux-lang.dev/docs/api/collections/vector/last
     pub func Last(self: &Vector<T>) -> (*T)? {
@@ -533,7 +503,6 @@ extend Vector<T> {
     /// # Safety
     ///
     /// The view is valid until the vector grows, shrinks, or is destroyed.
-    ///
     /// @param start the first element, inclusive
     /// @param count how many elements
     /// @returns that run of elements, borrowed; empty when the range is out of bounds
@@ -555,7 +524,6 @@ extend Vector<T> {
     /// # Safety
     ///
     /// The view is valid until the vector grows, shrinks, or is destroyed.
-    ///
     /// @param start the first element, inclusive
     /// @param count how many elements
     /// @returns that run borrowed for writing; empty when the range is out of bounds
@@ -578,7 +546,6 @@ extend Vector<T> {
     /// Whatever is not taken is destroyed when the iterator's life ends.
     ///
     /// Cannot fail. Runs in constant time and allocates nothing.
-    ///
     /// @returns a cursor that consumes the vector as it goes
     /// @see https://rux-lang.dev/docs/api/collections/vector/into-iterator
     pub func IntoIterator(self: Vector<T>) -> VectorIntoIterator<T> {
@@ -603,7 +570,6 @@ extend Vector<T> {
     ///
     /// `self` is borrowed and keeps its own storage, so both are released independently. Copies its elements, so this
     /// is for element types where copying means what it says — `IntoArray` is what moves them.
-    ///
     /// @returns an array holding a copy of the elements
     /// @see https://rux-lang.dev/docs/api/collections/vector/to-array
     pub func ToArray(self: &Vector<T>) -> Array<T> ! CollectionError {
@@ -620,7 +586,6 @@ extend Vector<T> {
     /// its elements are destroyed and an empty array comes back. That costs the elements, which is why it is
     /// reported rather than silent; a shrink refused by an allocator is close to impossible, since it asks for less
     /// than it already holds.
-    ///
     /// @returns an array taking the vector's storage rather than copying it
     /// @see https://rux-lang.dev/docs/api/collections/vector/into-array
     pub func IntoArray(self: Vector<T>) -> Array<T> ! CollectionError {
@@ -641,7 +606,6 @@ extend Vector<T> {
 /// This is how a vector of elements that
 /// own something is emptied into somewhere else — each element is moved out rather than copied, and whatever is
 /// left when the iterator's life ends is destroyed with it.
-///
 /// @typeParam T the element type
 /// @see https://rux-lang.dev/docs/api/collections/vector-into-iterator
 pub struct VectorIntoIterator<T> {
@@ -665,7 +629,6 @@ extend VectorIntoIterator<T> {
     ///
     /// Runs when the iterator's life ends. Everything already yielded belongs to whoever took it and is not touched
     /// here, which is what makes stopping part-way through safe.
-    ///
     /// @see https://rux-lang.dev/docs/api/collections/vector-into-iterator/destructor
     func ~VectorIntoIterator(self: &var VectorIntoIterator<T>) {
         var index = self.position;
@@ -689,7 +652,6 @@ extend VectorIntoIterator<T> : Iterator {
     /// keep or destroy; an exhausted iterator keeps reporting `none`.
     ///
     /// Cannot fail. Runs in constant time and allocates nothing.
-    ///
     /// @returns the next element, or `none` at the end
     /// @see https://rux-lang.dev/docs/api/collections/vector-into-iterator/next
     pub func Next(self: &var VectorIntoIterator<T>) -> T? {

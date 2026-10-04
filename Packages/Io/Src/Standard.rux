@@ -118,7 +118,6 @@ func WriteRaw(handle: RawStream, console: bool, bytes: char8[..]) -> uint ! IoEr
 /// whether its input is typed or piped; a redirected stream is read as the bytes it is. The value carries the
 /// few bytes of a converted character that did not fit the caller's buffer, and a surrogate half waiting for the
 /// other, so no reading pattern can tear a character.
-///
 /// @see https://rux-lang.dev/docs/api/io/standard-in
 pub struct StandardIn {
     /// The platform's handle for the stream.
@@ -139,7 +138,6 @@ extend StandardIn {
     /// The process's standard input.
     ///
     /// Asks the platform once whether the stream is a console; nothing is opened, and nothing needs closing.
-    ///
     /// @returns the stream, which the process owns for its whole life
     /// @see https://rux-lang.dev/docs/api/io/standard-in/acquire
     pub func Acquire() -> StandardIn {
@@ -161,7 +159,6 @@ extend StandardIn {
 
 extend StandardIn : Reader {
     /// Fills what it can of `into` from standard input.
-    ///
     /// @param into receives the bytes
     /// @returns how many bytes were read; `IsEnd` at the end of input
     /// @see https://rux-lang.dev/docs/api/io/standard-in/read
@@ -271,7 +268,6 @@ when #target.os == .Windows {
 }
 
 /// Standard output: a byte `Writer` whose encoding matches where the bytes land.
-///
 /// @see https://rux-lang.dev/docs/api/io/standard-out
 pub struct StandardOut {
     /// The platform's handle for the stream.
@@ -282,7 +278,6 @@ pub struct StandardOut {
 
 extend StandardOut {
     /// The process's standard output.
-    ///
     /// @returns the stream, which the process owns for its whole life
     /// @see https://rux-lang.dev/docs/api/io/standard-out/acquire
     pub func Acquire() -> StandardOut {
@@ -300,7 +295,6 @@ extend StandardOut {
 
 extend StandardOut : Writer {
     /// Writes what it can of `bytes` to standard output.
-    ///
     /// @param bytes the bytes to write
     /// @returns how many bytes were taken
     /// @see https://rux-lang.dev/docs/api/io/standard-out/write
@@ -309,7 +303,6 @@ extend StandardOut : Writer {
     }
 
     /// Nothing: these writes hold nothing back.
-    ///
     /// @returns success, since everything written already reached the system
     /// @see https://rux-lang.dev/docs/api/io/standard-out/flush
     pub func Flush(self: &var StandardOut) -> ! IoError {
@@ -317,7 +310,6 @@ extend StandardOut : Writer {
 }
 
 /// Standard error: the same contract as standard output, on the stream reports belong to.
-///
 /// @see https://rux-lang.dev/docs/api/io/standard-error
 pub struct StandardError {
     /// The platform's handle for the stream.
@@ -328,7 +320,6 @@ pub struct StandardError {
 
 extend StandardError {
     /// The process's standard error.
-    ///
     /// @returns the stream, which the process owns for its whole life
     /// @see https://rux-lang.dev/docs/api/io/standard-error/acquire
     pub func Acquire() -> StandardError {
@@ -346,7 +337,6 @@ extend StandardError {
 
 extend StandardError : Writer {
     /// Writes what it can of `bytes` to standard error.
-    ///
     /// @param bytes the bytes to write
     /// @returns how many bytes were taken
     /// @see https://rux-lang.dev/docs/api/io/standard-error/write
@@ -355,7 +345,6 @@ extend StandardError : Writer {
     }
 
     /// Nothing: these writes hold nothing back.
-    ///
     /// @returns success, since everything written already reached the system
     /// @see https://rux-lang.dev/docs/api/io/standard-error/flush
     pub func Flush(self: &var StandardError) -> ! IoError {

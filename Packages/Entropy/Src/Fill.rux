@@ -17,7 +17,6 @@ import Memory::ZeroizeBlock;
 ///
 /// Implemented by `SystemEntropy` for the operating system's generator, and by a test for a source that fails on
 /// demand. An implementation either fills the whole buffer and succeeds, or fails with why it did not.
-///
 /// @see https://rux-lang.dev/docs/api/entropy/entropy-source
 pub interface EntropySource {
     /// Fills `length` bytes of `buffer` with unpredictable bytes.
@@ -29,7 +28,6 @@ pub interface EntropySource {
     /// # Safety
     ///
     /// `buffer` must be writable for `length` bytes.
-    ///
     /// @param buffer receives the bytes
     /// @param length how many bytes to fill
     /// @returns nothing when every byte was written, or why not
@@ -41,7 +39,6 @@ pub interface EntropySource {
 ///
 /// Holds nothing: the system's generator needs no handle, no seed and no shutdown. It exists so that code taking a
 /// source can be handed the real one.
-///
 /// @see https://rux-lang.dev/docs/api/entropy/system-entropy
 pub struct SystemEntropy {
 }
@@ -53,7 +50,6 @@ extend SystemEntropy {
     /// making one where it is needed.
     ///
     /// Runs in constant time and allocates nothing.
-    ///
     /// @returns the source, which holds no state of its own
     /// @see https://rux-lang.dev/docs/api/entropy/system-entropy/new
     pub func SystemEntropy() -> SystemEntropy {
@@ -72,7 +68,6 @@ extend SystemEntropy : EntropySource {
     /// # Safety
     ///
     /// `buffer` must be writable for `length` bytes.
-    ///
     /// @param buffer receives the bytes
     /// @param length how many bytes to fill
     /// @returns nothing when every byte was written, or why not
@@ -97,7 +92,6 @@ extend SystemEntropy : EntropySource {
 ///
 /// `buffer` must be writable for `length` bytes. On any failure the whole buffer is zeroized, including the parts an
 /// earlier call filled successfully.
-///
 /// @param source where the bytes come from
 /// @param buffer receives the bytes
 /// @param length how many bytes to fill
@@ -137,7 +131,6 @@ pub func FillFrom(source: &var EntropySource, buffer: *var opaque, length: uint)
 ///
 /// `buffer` must be writable for `length` bytes. Every failed attempt zeroizes the buffer, so a failure that
 /// exhausts the attempts leaves zeros.
-///
 /// @param source where the bytes come from
 /// @param buffer receives the bytes
 /// @param length how many bytes to fill
@@ -172,7 +165,6 @@ pub func FillWithRetries(source: &var EntropySource, buffer: *var opaque, length
 /// # Safety
 ///
 /// `buffer` must be writable for `length` bytes. On any failure the whole buffer is zeroized.
-///
 /// @param buffer receives the bytes
 /// @param length how many bytes to fill
 /// @returns nothing when every byte was written, or why not
@@ -188,7 +180,6 @@ pub func Fill(buffer: *var opaque, length: uint) -> ! EntropyError {
 /// A failed draw scrubs its local copy before failing, so nothing of a partial draw is left behind on the stack.
 ///
 /// Runs in constant time and allocates nothing.
-///
 /// @returns eight unpredictable bytes as a value, or why the draw failed
 /// @see https://rux-lang.dev/docs/api/entropy/next-uint64
 pub func NextUint64() -> uint64 ! EntropyError {

@@ -70,7 +70,6 @@ func Blake3Round(state: *var uint32, message: *uint32) {
 /// The compression function: sixteen words of state over seven rounds, producing sixteen words of output.
 ///
 /// The first eight output words are the chaining value; all sixteen are used when the output is being extended.
-///
 /// @param chaining the chaining value going in
 /// @param message the message to authenticate
 /// @param counter the chunk counter
@@ -133,7 +132,6 @@ pub func Blake3Compress(chaining: *uint32, message: *uint32, counter: uint64, bl
 /// The state of one chunk being filled.
 ///
 /// Structural `Copy`; used as an independent snapshot within the enclosing hasher.
-///
 /// @see https://rux-lang.dev/docs/api/crypto/blake3-chunk
 pub struct Blake3Chunk {
     /// The chaining value carried between the chunk's blocks.
@@ -199,7 +197,6 @@ extend Blake3Chunk {
     /// A block is only compressed once the *next* byte arrives, never when it merely becomes full: the last
     /// block of a chunk carries the end flag, and which block is last is not known until the chunk stops
     /// growing. Compressing eagerly is the classic way to get the flags wrong.
-    ///
     /// @param bytes the bytes to absorb
     /// @returns how many bytes were absorbed
     /// @see https://rux-lang.dev/docs/api/crypto/blake3-chunk/update
@@ -230,7 +227,6 @@ extend Blake3Chunk {
     /// The chunk's chaining value, with the end flag applied to its final block.
     ///
     /// `extraFlags` carries the root flag when this chunk is the whole message.
-    ///
     /// @param extraFlags the domain flags to add for this output
     /// @param into receives the output
     /// @see https://rux-lang.dev/docs/api/crypto/blake3-chunk/output
@@ -257,7 +253,6 @@ extend Blake3Chunk {
 /// An incremental BLAKE3 hash.
 ///
 /// Structural `Copy`; copying takes an independent snapshot of the hash tree state.
-///
 /// @see https://rux-lang.dev/docs/api/crypto/blake3
 pub struct Blake3 {
     /// The chunk currently being filled.
@@ -290,7 +285,6 @@ extend Blake3 {
     }
 
     /// An unkeyed BLAKE3 hash.
-    ///
     /// @returns a hasher with nothing absorbed
     /// @see https://rux-lang.dev/docs/api/crypto/blake3/new
     pub func Blake3() -> Blake3 {
@@ -343,7 +337,6 @@ extend Blake3 {
 
 extend Blake3 : Digest {
     /// Adds `bytes` to the message.
-    ///
     /// @param bytes the bytes to absorb
     /// @see https://rux-lang.dev/docs/api/crypto/blake3/update
     pub func Update(self: &var Blake3, bytes: char8[..]) {
@@ -366,7 +359,6 @@ extend Blake3 : Digest {
     ///
     /// BLAKE3's output is extendable like SHAKE's: the root compression repeats with an increasing counter to
     /// produce as many bytes as asked. Thirty-two is the usual choice and is what `DigestLength` reports.
-    ///
     /// @param into receives the output
     /// @see https://rux-lang.dev/docs/api/crypto/blake3/finish
     pub func Finish(self: &var Blake3, into: var char8[..]) {
@@ -451,7 +443,6 @@ extend Blake3 : Digest {
     }
 
     /// Thirty-two bytes, the conventional length; `Finish` writes any length asked of it.
-    ///
     /// @returns how many bytes a digest occupies
     /// @see https://rux-lang.dev/docs/api/crypto/blake3/digest-length
     pub func DigestLength(self: &Blake3) -> uint {
@@ -459,7 +450,6 @@ extend Blake3 : Digest {
     }
 
     /// Sixty-four bytes.
-    ///
     /// @returns how many bytes the compression function consumes at a time
     /// @see https://rux-lang.dev/docs/api/crypto/blake3/block-length
     pub func BlockLength(self: &Blake3) -> uint {
@@ -468,7 +458,6 @@ extend Blake3 : Digest {
 }
 
 /// The BLAKE3 hash of `bytes`, at whatever length `into` asks for.
-///
 /// @param bytes the bytes to absorb
 /// @param into receives the output
 /// @see https://rux-lang.dev/docs/api/crypto/blake3-of

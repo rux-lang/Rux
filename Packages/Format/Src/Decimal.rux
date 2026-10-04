@@ -7,7 +7,6 @@
 // decimal exponent. `significant` is how many digits to generate before
 // rounding: fifteen for a float64, seven for a float32.
 /// Provides the public `WriteDecimal` operation.
-///
 /// @param cursor the buffer the digits are written into
 /// @param value the value to act on
 /// @param significant how many significant digits to write

@@ -22,7 +22,6 @@ when #target.os {
 ///
 /// `Copy`. Meaningful only against another reading from the same process: there is no epoch and no calendar here,
 /// which is the point — nothing anybody does to the wall clock changes what `Since` answers.
-///
 /// @see https://rux-lang.dev/docs/api/time/instant
 pub struct Instant {
     /// Nanoseconds since some origin fixed for the life of the process.
@@ -33,7 +32,6 @@ extend Instant {
     /// The clock, read now.
     ///
     /// Cannot fail on any supported system: the monotonic clock exists from boot and needs no permission.
-    ///
     /// @returns the monotonic clock, read now
     /// @see https://rux-lang.dev/docs/api/time/instant/now
     pub func Now() -> Instant {
@@ -61,7 +59,6 @@ extend Instant {
     ///
     /// Refusing the reversed pair rather than answering with garbage is what makes a mixed-up argument order a
     /// visible bug instead of a wildly large duration.
-    ///
     /// @param earlier the earlier reading
     /// @returns the time between the two readings, or `None` when `earlier` is not earlier
     /// @see https://rux-lang.dev/docs/api/time/instant/since
@@ -74,7 +71,6 @@ extend Instant {
     }
 
     /// The time from this reading to now.
-    ///
     /// @returns the time from this reading to now
     /// @see https://rux-lang.dev/docs/api/time/instant/elapsed
     pub func Elapsed(self: &Instant) -> Duration {

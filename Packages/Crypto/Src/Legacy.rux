@@ -53,7 +53,6 @@ func Md5Rotate(value: uint32, amount: uint32) -> uint32 {
 /// An incremental MD5. **Broken; see the note at the top of this file.**
 ///
 /// Structural `Copy`; copying takes an independent snapshot of the digest state.
-///
 /// @see https://rux-lang.dev/docs/api/crypto/legacy-md5
 pub struct LegacyMd5 {
     /// The four working words.
@@ -68,7 +67,6 @@ pub struct LegacyMd5 {
 
 extend LegacyMd5 {
     /// An MD5 state.
-    ///
     /// @returns an MD5 hasher, which is broken and is here only to read what already exists
     /// @see https://rux-lang.dev/docs/api/crypto/legacy-md5/new
     pub func LegacyMd5() -> LegacyMd5 {
@@ -142,7 +140,6 @@ extend LegacyMd5 {
     }
 
     /// Adds `bytes` to the message.
-    ///
     /// @param bytes the bytes to absorb
     /// @see https://rux-lang.dev/docs/api/crypto/legacy-md5/update
     pub func Update(self: &var LegacyMd5, bytes: char8[..]) {
@@ -162,7 +159,6 @@ extend LegacyMd5 {
     /// Writes the sixteen-byte digest into `into`.
     ///
     /// The length is appended little-endian, unlike the SHA family's big-endian count.
-    ///
     /// @param into receives the output
     /// @see https://rux-lang.dev/docs/api/crypto/legacy-md5/finish
     pub func Finish(self: &var LegacyMd5, into: var char8[..]) {
@@ -199,7 +195,6 @@ extend LegacyMd5 {
 }
 
 /// The MD5 digest of `bytes`. **Broken; see the note at the top of this file.**
-///
 /// @param bytes the bytes to absorb
 /// @param into receives the output
 /// @see https://rux-lang.dev/docs/api/crypto/legacy-md5-of
@@ -212,7 +207,6 @@ pub func LegacyMd5Of(bytes: char8[..], into: var char8[..]) {
 /// An incremental SHA-1. **Broken for collision resistance; see the note at the top of this file.**
 ///
 /// Structural `Copy`; copying takes an independent snapshot of the digest state.
-///
 /// @see https://rux-lang.dev/docs/api/crypto/legacy-sha1
 pub struct LegacySha1 {
     /// The five working words.
@@ -227,7 +221,6 @@ pub struct LegacySha1 {
 
 extend LegacySha1 {
     /// A SHA-1 state.
-    ///
     /// @returns a SHA-1 hasher, which is broken and is here only to read what already exists
     /// @see https://rux-lang.dev/docs/api/crypto/legacy-sha1/new
     pub func LegacySha1() -> LegacySha1 {
@@ -305,7 +298,6 @@ extend LegacySha1 {
     }
 
     /// Adds `bytes` to the message.
-    ///
     /// @param bytes the bytes to absorb
     /// @see https://rux-lang.dev/docs/api/crypto/legacy-sha1/update
     pub func Update(self: &var LegacySha1, bytes: char8[..]) {
@@ -323,7 +315,6 @@ extend LegacySha1 {
     }
 
     /// Writes the twenty-byte digest into `into`.
-    ///
     /// @param into receives the output
     /// @see https://rux-lang.dev/docs/api/crypto/legacy-sha1/finish
     pub func Finish(self: &var LegacySha1, into: var char8[..]) {
@@ -361,7 +352,6 @@ extend LegacySha1 {
 }
 
 /// The SHA-1 digest of `bytes`. **Broken for collision resistance; see the note at the top of this file.**
-///
 /// @param bytes the bytes to absorb
 /// @param into receives the output
 /// @see https://rux-lang.dev/docs/api/crypto/legacy-sha1-of

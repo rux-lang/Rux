@@ -38,12 +38,10 @@ when #target.os {
 /// A protection of `PageNone` reserves the address space and refuses every access to it, which is how a guard page
 /// is made. Combining write and execute is refused outright by some systems and by policy on others, so a caller
 /// that needs both should write through one protection and execute through another.
-///
 /// @see https://rux-lang.dev/docs/api/memory/page-none
 pub const PageNone: uint32 = 0;
 
 /// The page may be read.
-///
 /// @see https://rux-lang.dev/docs/api/memory/page-read
 pub const PageRead: uint32 = 1;
 
@@ -51,12 +49,10 @@ pub const PageRead: uint32 = 1;
 ///
 /// Implies readability on every supported system: none of them can make a page write-only, whatever their flags
 /// suggest.
-///
 /// @see https://rux-lang.dev/docs/api/memory/page-write
 pub const PageWrite: uint32 = 2;
 
 /// The page may be executed.
-///
 /// @see https://rux-lang.dev/docs/api/memory/page-execute
 pub const PageExecute: uint32 = 4;
 
@@ -66,7 +62,6 @@ pub const PageExecute: uint32 = 4;
 /// and a sentinel address. A reason the mapping does not cover arrives as `Failed`, which is not a promise that
 /// nothing went wrong — only that this module could not name it. Every case is a failure: a call that succeeds
 /// reports its success channel instead.
-///
 /// @see https://rux-lang.dev/docs/api/memory/page-error
 pub enum PageError: uint8 {
     /// The length was zero, or too large for the address space to hold.
@@ -93,7 +88,6 @@ pub enum PageError: uint8 {
 /// always safe — the system rounds again, up to whatever its pages actually are — and because asking the system on
 /// every call would put a file read or a system call inside an allocator's inner loop. A caller that needs the real
 /// granularity asks `PageSize` once and keeps the answer.
-///
 /// @see https://rux-lang.dev/docs/api/memory/minimum-page-size
 pub const MinimumPageSize: uint = 4096;
 
@@ -117,7 +111,6 @@ pub const MinimumPageSize: uint = 4096;
 ///
 /// Allocates nothing. Runs in constant time on three systems and performs one open, read and close on Linux, so a
 /// caller that needs the size more than once should keep it.
-///
 /// @returns the page size in bytes, or the reason the system would not answer
 /// @see https://rux-lang.dev/docs/api/memory/page-size
 pub func PageSize() -> uint ! PageError {
@@ -155,7 +148,6 @@ pub func PageSize() -> uint ! PageError {
 ///
 /// The pages are the caller's until `PageRelease` takes exactly this length back. Releasing a different length, or
 /// an address this did not return, is undefined on Windows and silently partial elsewhere.
-///
 /// @param length how many bytes of address space to take, rounded up to whole pages by the system
 /// @param protection what may be done with the pages, as `Page*` flags
 /// @returns the base address of the pages, or the reason the address space was not taken
@@ -189,7 +181,6 @@ pub func PageAllocate(length: uint, protection: uint32) -> (*var opaque) ! PageE
 /// Every pointer into the range becomes invalid, and the address space may be handed to the next allocation at once.
 /// Windows requires the exact base address and ignores the length entirely; the other systems accept a sub-range and
 /// release only that, so a wrong length there silently releases the wrong amount.
-///
 /// @param address a base address `PageAllocate` returned
 /// @param length the length it was given
 /// @returns nothing on success, or the reason the system refused the release
@@ -221,7 +212,6 @@ pub func PageRelease(address: *var opaque, length: uint) -> ! PageError {
 ///
 /// Nothing here checks that the range was ever allocated. Asking for write and execute together is refused on Apple
 /// Silicon without an entitlement and by policy on hardened systems elsewhere, which arrives as `PermissionDenied`.
-///
 /// @param address a page-aligned address
 /// @param length how many bytes, rounded up to whole pages
 /// @param protection what may be done with the pages afterwards
@@ -258,7 +248,6 @@ pub func PageProtect(address: *var opaque, length: uint, protection: uint32) -> 
 /// sizing an allocation should notice, since the system will refuse such a length anyway.
 ///
 /// Cannot fail. Runs in constant time and allocates nothing.
-///
 /// @param length the byte count to round up
 /// @returns the rounded length
 /// @see https://rux-lang.dev/docs/api/memory/page-align

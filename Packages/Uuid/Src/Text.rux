@@ -29,12 +29,10 @@
 import Text::{ Debug, Display, FormatError, FormatSpec, ParseFailure, StringView, TextWriter, WriteBytes };
 
 /// How long the canonical text form is: thirty-two digits and four hyphens.
-///
 /// @see https://rux-lang.dev/docs/api/uuid/text-length
 pub const UuidTextLength: uint = 36;
 
 /// How long the URN form is: the canonical form after `urn:uuid:`.
-///
 /// @see https://rux-lang.dev/docs/api/uuid/urn-length
 pub const UuidUrnLength: uint = 45;
 
@@ -45,7 +43,6 @@ pub const UuidUrnLength: uint = 45;
 /// wrong.
 ///
 /// Copy, carrying one offset and owning nothing.
-///
 /// @see https://rux-lang.dev/docs/api/uuid/parse-error
 pub variant UuidParseError {
     /// The text is neither thirty-six characters nor forty-five with the URN prefix. The offset is the text's
@@ -66,7 +63,6 @@ extend UuidParseError : ParseFailure {
     /// Where in the input the failure was found.
     ///
     /// Borrows the error and leaves it untouched. Cannot fail; runs in constant time and allocates nothing.
-    ///
     /// @returns the zero-based UTF-8 byte offset, which is the text's length at end of input
     /// @see https://rux-lang.dev/docs/api/uuid/parse-error/offset
     pub func Offset(self: &UuidParseError) -> uint {
@@ -103,7 +99,6 @@ func IsHyphenPosition(index: uint) -> bool {
 /// `Misplaced` for a hyphen that is missing or one that stands where a digit belongs, and `NotHexadecimal` for any
 /// other character that is not a digit. Each carries the byte offset into `text` where it was found. A refused
 /// parse produces no value at all rather than a half-filled one.
-///
 /// @param text the text to read
 /// @returns the identifier, or why the text is not one
 /// @see https://rux-lang.dev/docs/api/uuid/parse
@@ -176,7 +171,6 @@ pub func Parse(text: char8[..]) -> Uuid ! UuidParseError {
 ///
 /// # Failures
 /// The failures the slice form reports, with offsets into the borrowed text.
-///
 /// @param text the text to read
 /// @returns the identifier, or why the text is not one
 /// @see https://rux-lang.dev/docs/api/uuid/parse
@@ -214,7 +208,6 @@ func WriteCanonicalInto(value: &Uuid, into: var char8[..]) {
 /// Reports `InsufficientCapacity` when `into` is shorter than `UuidTextLength`, leaving it exactly as it was. A
 /// short destination is refused rather than filled with what fits, because a truncated UUID is a different string
 /// rather than a shorter one. Room past the thirty-six characters is not touched.
-///
 /// @param value the identifier to write
 /// @param into the destination, at least `UuidTextLength` bytes
 /// @returns success when the whole form was written
@@ -231,7 +224,6 @@ pub func Format(value: &Uuid, into: var char8[..]) -> ! FormatError {
 ///
 /// # Failures
 /// The failure `Format` reports, for the same reason and with the same guarantee.
-///
 /// @param value the identifier to write
 /// @param into the destination, at least `UuidTextLength` bytes
 /// @returns success when the whole form was written
@@ -255,7 +247,6 @@ pub func FormatUpper(value: &Uuid, into: var char8[..]) -> ! FormatError {
 /// # Failures
 /// Reports `InsufficientCapacity` when `into` is shorter than `UuidUrnLength`, leaving it exactly as it was. The
 /// form is refused whole, so a destination never receives a prefix with nothing after it.
-///
 /// @param value the identifier to write
 /// @param into the destination, at least `UuidUrnLength` bytes
 /// @returns success when the whole form was written
@@ -292,7 +283,6 @@ extend Uuid : Display {
     /// # Failures
     /// Reports whatever the writer reported, and `UnsupportedRequest` for any other style or for a precision, which
     /// a value of exactly one length has nothing to apply.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole form was accepted
@@ -311,7 +301,6 @@ extend Uuid : Debug {
     ///
     /// # Failures
     /// The failures `WriteDisplay` reports.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole form was accepted

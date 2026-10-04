@@ -14,7 +14,6 @@ import Core::{ #target };
 /// Whether `unit` separates path segments on this system.
 ///
 /// Both slashes on Windows, the forward one alone elsewhere.
-///
 /// @param unit the unit to test
 /// @returns whether the unit separates components on this system
 /// @see https://rux-lang.dev/docs/api/path/is-separator
@@ -28,7 +27,6 @@ pub func IsSeparator(unit: OsUnit) -> bool {
 }
 
 /// The separator this system prefers when one has to be written.
-///
 /// @returns the separator this system writes, which is not the only one it accepts
 /// @see https://rux-lang.dev/docs/api/path/preferred-separator
 pub func PreferredSeparator() -> OsUnit {
@@ -43,7 +41,6 @@ pub func PreferredSeparator() -> OsUnit {
 /// A borrowed path.
 ///
 /// `Copy`, owning nothing: structure over an `OsStringView`'s units.
-///
 /// @see https://rux-lang.dev/docs/api/path/path
 pub struct Path {
     /// The name, exactly as the system would hold it.
@@ -52,7 +49,6 @@ pub struct Path {
 
 extend Path {
     /// A path over nothing.
-    ///
     /// @returns an empty path
     /// @see https://rux-lang.dev/docs/api/path/path/new
     pub func Path() -> Path {
@@ -60,7 +56,6 @@ extend Path {
     }
 
     /// A path over `view`'s units as they stand.
-    ///
     /// @param view the borrowed text to copy
     /// @returns a path over those units, which it does not copy
     /// @see https://rux-lang.dev/docs/api/path/path/from-view
@@ -69,7 +64,6 @@ extend Path {
     }
 
     /// How many native units the path spans.
-    ///
     /// @returns how many units the path holds
     /// @see https://rux-lang.dev/docs/api/path/path/length
     pub func Length(self: &Path) -> uint {
@@ -77,7 +71,6 @@ extend Path {
     }
 
     /// Whether the path is empty, which names nothing at all.
-    ///
     /// @returns whether the path holds no units
     /// @see https://rux-lang.dev/docs/api/path/path/is-empty
     pub func IsEmpty(self: &Path) -> bool {
@@ -85,7 +78,6 @@ extend Path {
     }
 
     /// The name under the structure.
-    ///
     /// @returns the path's units, borrowed
     /// @see https://rux-lang.dev/docs/api/path/path/as-view
     pub func AsView(self: &Path) -> OsStringView {
@@ -96,7 +88,6 @@ extend Path {
     ///
     /// Lexical, not semantic: `a/b` and `a//b` name the same file and are different paths here. Making them equal
     /// is normalization's job, asked for by name.
-    ///
     /// @param other the value to compare against
     /// @returns whether both hold the same units in the same order, without normalizing either
     /// @see https://rux-lang.dev/docs/api/path/path/equals
@@ -106,7 +97,6 @@ extend Path {
     }
 
     /// A walk over the path's components, first to last.
-    ///
     /// @returns a cursor over the path's components
     /// @see https://rux-lang.dev/docs/api/path/path/components
     pub func Components(self: &Path) -> ComponentIterator {
@@ -119,7 +109,6 @@ extend Path {
 /// Runs of separators count as one, and a trailing separator ends the walk rather than yielding an empty segment:
 /// `a//b/` walks as `a`, `b`. A leading separator is the root, which the walk reports as an empty first component
 /// so that an absolute path is distinguishable from a relative one holding the same segments.
-///
 /// @see https://rux-lang.dev/docs/api/path/component-iterator
 pub struct ComponentIterator {
     /// The units being walked.
@@ -130,7 +119,6 @@ pub struct ComponentIterator {
 
 extend ComponentIterator {
     /// The next component, or `none` when the walk is done.
-    ///
     /// @returns the next component, or `none` at the end
     /// @see https://rux-lang.dev/docs/api/path/component-iterator/next
     pub func Next(self: &var ComponentIterator) -> OsStringView? {

@@ -23,7 +23,6 @@
 /// An implementation writes into the destination it is handed and allocates no working storage of its own. A value
 /// whose rendering genuinely requires scratch space takes an allocator through a separate, explicit conversion
 /// instead of implementing this.
-///
 /// @see https://rux-lang.dev/docs/api/text/display
 pub interface Display {
     /// Writes this value's text under `spec`.
@@ -33,7 +32,6 @@ pub interface Display {
     /// not support, or `ValueOutOfRange` when the value cannot be represented in the form requested. An
     /// implementation stops at the first failed write rather than continuing to a destination that has already
     /// refused something.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the value's complete text was accepted
@@ -45,14 +43,12 @@ pub interface Display {
 ///
 /// Debug output is diagnostic, not a serialization format: it may quote, escape, name fields, and show an invalid
 /// value by its numeric form where `Display` would replace it. Nothing promises it can be parsed back.
-///
 /// @see https://rux-lang.dev/docs/api/text/debug
 pub interface Debug {
     /// Writes this value's inspection text under `spec`.
     ///
     /// # Failures
     /// The same failures `WriteDisplay` may report, for the same reasons.
-    ///
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the value's complete text was accepted
@@ -64,7 +60,6 @@ pub interface Debug {
 ///
 /// A named entry point for rendering one value, so a caller with a value and a writer needs no placeholder pattern
 /// to put them together.
-///
 /// @param writer the destination
 /// @param value the value to render, borrowed for the call
 /// @param spec what to render it under
@@ -75,7 +70,6 @@ pub func WriteValue(writer: &var TextWriter, value: Display, spec: FormatSpec) -
 }
 
 /// Writes `value` under `spec` through its `Debug` implementation.
-///
 /// @param writer the destination
 /// @param value the value to render, borrowed for the call
 /// @param spec what to render it under

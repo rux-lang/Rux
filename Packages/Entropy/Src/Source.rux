@@ -31,7 +31,6 @@ when #target.os {
 /// A signal arriving during the call is ordinary and retrying is correct, but a process taking signals steadily
 /// must not spin forever inside what its caller believes is one operation. Reaching this reports `Interrupted`,
 /// which says exactly that and leaves trying again to the caller, who knows whether it is worth it.
-///
 /// @see https://rux-lang.dev/docs/api/entropy/max-entropy-attempts
 pub const MaxEntropyAttempts: uint = 16;
 
@@ -39,7 +38,6 @@ pub const MaxEntropyAttempts: uint = 16;
 ///
 /// Windows takes a 32-bit count, so this is what a portable caller may ask for at once. A larger buffer is filled by
 /// asking more than once, which `Fill` does.
-///
 /// @see https://rux-lang.dev/docs/api/entropy/max-entropy-request
 pub const MaxEntropyRequest: uint = 0xFFFFFFFF;
 
@@ -61,7 +59,6 @@ pub const MaxEntropyRequest: uint = 0xFFFFFFFF;
 ///
 /// `buffer` must be writable for `length` bytes. On any failure the buffer is zeroized, so a caller who ignores the
 /// result gets zeros rather than a partly random buffer that would pass a glance.
-///
 /// @param buffer receives the bytes
 /// @param length how many bytes to fill
 /// @returns nothing when every byte was written in this one pass, or why not

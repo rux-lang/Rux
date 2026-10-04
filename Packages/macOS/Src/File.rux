@@ -12,17 +12,14 @@ import macOS::{ FileDescriptor, FileMode, FileOffset, Normalize, __getdirentries
                 symlinkat, unlinkat, utimensat, write };
 
 /// The descriptor a process reads its input from, unless something reassigned it.
-///
 /// @see https://rux-lang.dev/docs/api/macos/std-in
 pub const StdIn: int32 = 0;
 
 /// The descriptor a process writes its output to.
-///
 /// @see https://rux-lang.dev/docs/api/macos/std-out
 pub const StdOut: int32 = 1;
 
 /// The descriptor a process writes its diagnostics to.
-///
 /// @see https://rux-lang.dev/docs/api/macos/std-err
 pub const StdErr: int32 = 2;
 
@@ -30,77 +27,62 @@ pub const StdErr: int32 = 2;
 ///
 /// Darwin spells this `-2`, where Linux and FreeBSD both use `-100`. Carrying the value between packages produces a
 /// descriptor number, not an error.
-///
 /// @see https://rux-lang.dev/docs/api/macos/at-fd-cwd
 pub const AtFdCwd: int32 = -2;
 
 /// `O_RDONLY`: open for reading only.
-///
 /// @see https://rux-lang.dev/docs/api/macos/open-read-only
 pub const OpenReadOnly: int32 = 0x0000;
 
 /// `O_WRONLY`: open for writing only.
-///
 /// @see https://rux-lang.dev/docs/api/macos/open-write-only
 pub const OpenWriteOnly: int32 = 0x0001;
 
 /// `O_RDWR`: open for both reading and writing.
-///
 /// @see https://rux-lang.dev/docs/api/macos/open-read-write
 pub const OpenReadWrite: int32 = 0x0002;
 
 /// `O_CREAT`: create the file when it does not exist, which is when the mode argument is read.
-///
 /// @see https://rux-lang.dev/docs/api/macos/open-create
 pub const OpenCreate: int32 = 0x0200;
 
 /// `O_EXCL`: with `OpenCreate`, fail rather than open a file that already exists.
-///
 /// @see https://rux-lang.dev/docs/api/macos/open-exclusive
 pub const OpenExclusive: int32 = 0x0800;
 
 /// `O_TRUNC`: truncate the file to nothing when opening it for writing.
-///
 /// @see https://rux-lang.dev/docs/api/macos/open-truncate
 pub const OpenTruncate: int32 = 0x0400;
 
 /// `O_APPEND`: every write goes to the end.
-///
 /// @see https://rux-lang.dev/docs/api/macos/open-append
 pub const OpenAppend: int32 = 0x0008;
 
 /// `O_NONBLOCK`: reads and writes report `EAGAIN` rather than waiting.
-///
 /// @see https://rux-lang.dev/docs/api/macos/open-non-blocking
 pub const OpenNonBlocking: int32 = 0x0004;
 
 /// `O_CLOEXEC`: close this descriptor automatically when the process executes a new program.
-///
 /// @see https://rux-lang.dev/docs/api/macos/open-close-on-exec
 pub const OpenCloseOnExec: int32 = 0x01000000;
 
 /// `O_DIRECTORY`: fail unless the target is a directory.
-///
 /// @see https://rux-lang.dev/docs/api/macos/open-directory
 pub const OpenDirectory: int32 = 0x00100000;
 
 /// `SEEK_SET`: measure the new offset from the start of the file.
-///
 /// @see https://rux-lang.dev/docs/api/macos/seek-set
 pub const SeekSet: int32 = 0;
 
 /// `SEEK_CUR`: measure the new offset from the current one.
-///
 /// @see https://rux-lang.dev/docs/api/macos/seek-current
 pub const SeekCurrent: int32 = 1;
 
 /// `SEEK_END`: measure the new offset from the end of the file.
-///
 /// @see https://rux-lang.dev/docs/api/macos/seek-end
 pub const SeekEnd: int32 = 2;
 
 /// `AT_REMOVEDIR`: make `UnlinkAt` remove a directory rather than a file.
-///
 /// @see https://rux-lang.dev/docs/api/macos/remove-directory
 pub const RemoveDirectory: int32 = 0x0080;
 
@@ -112,7 +94,6 @@ pub const RemoveDirectory: int32 = 0x0080;
 /// # Safety
 ///
 /// `buffer` must be writable for `count` bytes.
-///
 /// @param fd an open descriptor
 /// @param buffer receives the bytes
 /// @param count how many bytes to ask for
@@ -130,7 +111,6 @@ pub func Read(fd: FileDescriptor, buffer: *var opaque, count: uint) -> int64 {
 /// # Safety
 ///
 /// `buffer` must be readable for `count` bytes.
-///
 /// @param fd an open descriptor
 /// @param buffer the bytes to write
 /// @param count how many bytes to offer
@@ -143,7 +123,6 @@ pub func Write(fd: FileDescriptor, buffer: *opaque, count: uint) -> int64 {
 /// Closes `fd` and releases what the kernel held for it.
 ///
 /// Returns zero, or a negative error number. A failure does not mean the descriptor is still open.
-///
 /// @param fd an open descriptor
 /// @returns zero, or a negative error number
 /// @see https://rux-lang.dev/docs/api/macos/close
@@ -158,7 +137,6 @@ pub func Close(fd: FileDescriptor) -> int64 {
 /// # Safety
 ///
 /// `path` must be non-null and terminated. The mode is masked by the process umask.
-///
 /// @param directoryFd the directory `path` is relative to, or `AtFdCwd` for an ordinary path
 /// @param path the path to open, as a null-terminated byte string
 /// @param flags the access mode and the open flags, combined with `|`
@@ -170,7 +148,6 @@ pub func OpenAt(directoryFd: FileDescriptor, path: *char8, flags: int32, mode: F
 }
 
 /// Moves the file offset of `fd` and returns where it ended up, or a negative error number.
-///
 /// @param fd an open descriptor
 /// @param offset how far to move, interpreted according to `whence`
 /// @param whence `SeekSet`, `SeekCurrent` or `SeekEnd`
@@ -187,7 +164,6 @@ pub func Lseek(fd: FileDescriptor, offset: FileOffset, whence: int32) -> int64 {
 /// # Safety
 ///
 /// `buffer` must be writable for `size` bytes.
-///
 /// @param buffer receives the working directory as a null-terminated path
 /// @param size how many bytes `buffer` holds
 /// @returns the bytes written including the terminator, or a negative error number
@@ -200,7 +176,6 @@ pub func Getcwd(buffer: *var char8, size: uint) -> int64 {
 /// Makes `path` the process's working directory.
 ///
 /// Returns zero, or a negative error number. The change is process-wide and immediately visible to every thread.
-///
 /// @param path the directory to move to
 /// @returns zero, or a negative error number
 /// @see https://rux-lang.dev/docs/api/macos/chdir
@@ -212,7 +187,6 @@ pub func Chdir(path: *char8) -> int64 {
 ///
 /// `directoryFd` is `AtFdCwd` for an ordinary path. Returns the number of bytes written, or a negative error
 /// number. The text is **not** NUL-terminated, and is silently truncated where it does not fit.
-///
 /// @param directoryFd the directory `path` is relative to, or `AtFdCwd` for an ordinary path
 /// @param path the symbolic link to read
 /// @param buffer receives the link's text, without a terminator
@@ -224,7 +198,6 @@ pub func ReadlinkAt(directoryFd: FileDescriptor, path: *char8, buffer: *var char
 }
 
 /// `AT_SYMLINK_NOFOLLOW`: act on a symbolic link itself rather than on what it points at.
-///
 /// @see https://rux-lang.dev/docs/api/macos/symlink-no-follow
 pub const SymlinkNoFollow: int32 = 0x0020;
 
@@ -235,7 +208,6 @@ pub const SymlinkNoFollow: int32 = 0x0020;
 /// # Safety
 ///
 /// `statBuffer` must be writable for the whole of the 64-bit-inode `struct stat`, which is 144 bytes.
-///
 /// @param fd an open descriptor
 /// @param statBuffer receives the architecture's `struct stat`
 /// @returns zero, or a negative error number
@@ -253,7 +225,6 @@ pub func Fstat(fd: FileDescriptor, statBuffer: *var opaque) -> int64 {
 ///
 /// `statBuffer` must be writable for the whole of the 64-bit-inode `struct stat`, which is 144 bytes and whose
 /// layout this package does not model.
-///
 /// @param directoryFd the directory `path` is relative to, or `AtFdCwd` for an ordinary path
 /// @param path the path to describe
 /// @param statBuffer receives the architecture's `struct stat`
@@ -268,7 +239,6 @@ pub func FstatAt(directoryFd: FileDescriptor, path: *char8, statBuffer: *var opa
 ///
 /// `directoryFd` is `AtFdCwd` for an ordinary path. `flags` may carry `SymlinkNoFollow`. Returns zero, or a
 /// negative error number.
-///
 /// @param directoryFd the directory `path` is relative to, or `AtFdCwd` for an ordinary path
 /// @param path the path whose bits are set
 /// @param mode the permission bits to set
@@ -284,7 +254,6 @@ pub func FchmodAt(directoryFd: FileDescriptor, path: *char8, mode: FileMode, fla
 /// `times` is borrowed and holds two `timespec` values — access first, then modification — each a whole-second
 /// count and a nanosecond fraction, both 8 bytes. A null `times` sets both to now. `flags` may carry
 /// `SymlinkNoFollow`. Returns zero, or a negative error number.
-///
 /// @param directoryFd the directory `path` is relative to, or `AtFdCwd` for an ordinary path
 /// @param path the path whose times are set
 /// @param times two `timespec` values, or null for now
@@ -299,7 +268,6 @@ pub func UtimensAt(directoryFd: FileDescriptor, path: *char8, times: *opaque, fl
 ///
 /// Returns zero, or a negative error number. `flags` is zero to leave a symbolic link at `oldPath` unfollowed,
 /// or `FollowSymlinks` to link what it points at.
-///
 /// @param oldDirectoryFd the directory `oldPath` is relative to
 /// @param oldPath the existing name
 /// @param newDirectoryFd the directory `newPath` is relative to
@@ -313,7 +281,6 @@ pub func LinkAt(oldDirectoryFd: FileDescriptor, oldPath: *char8, newDirectoryFd:
 }
 
 /// `AT_SYMLINK_FOLLOW`: make `LinkAt` link a symbolic link's target rather than the link.
-///
 /// @see https://rux-lang.dev/docs/api/macos/follow-symlinks
 pub const FollowSymlinks: int32 = 0x0040;
 
@@ -321,7 +288,6 @@ pub const FollowSymlinks: int32 = 0x0040;
 ///
 /// Returns zero, or a negative error number. The target is stored, not checked: a dangling link is created as
 /// readily as a good one, which is a property callers rely on.
-///
 /// @param target the text the link will hold, which need not exist
 /// @param newDirectoryFd the directory `linkPath` is relative to
 /// @param linkPath the link to create
@@ -337,7 +303,6 @@ pub func SymlinkAt(target: *char8, newDirectoryFd: FileDescriptor, linkPath: *ch
 /// The buffer holds packed 64-bit-inode `dirent` records: the inode at offset 0 (8 bytes), a seek cookie at 8
 /// (8 bytes), the record's length at 16 (2 bytes), the name's length at 18 (2 bytes), the entry type at 20
 /// (1 byte), and the name from 21. The kernel writes as many whole records as fit.
-///
 /// @param fd an open descriptor
 /// @param buffer receives the packed directory records
 /// @param count how many bytes `buffer` holds
@@ -357,7 +322,6 @@ pub func Getdirentries64(fd: FileDescriptor, buffer: *var opaque, count: uint, p
 /// This is weaker on Darwin than everywhere else: it hands the data to the device without waiting for the device to
 /// commit it, so a power failure can still lose a write this reported as flushed. `F_FULLFSYNC` through `fcntl` is
 /// what actually waits, and this package does not wrap it.
-///
 /// @param fd an open descriptor
 /// @returns zero, or a negative error number
 /// @see https://rux-lang.dev/docs/api/macos/fsync
@@ -368,7 +332,6 @@ pub func Fsync(fd: FileDescriptor) -> int64 {
 /// Sets the length of the file behind `fd` to `length`.
 ///
 /// Growing creates a hole rather than allocating, so a later write into it can still fail with `ENOSPC`.
-///
 /// @param fd an open descriptor
 /// @param length the size the file should have afterwards
 /// @returns zero, or a negative error number
@@ -384,7 +347,6 @@ pub func Ftruncate(fd: FileDescriptor, length: FileOffset) -> int64 {
 /// # Safety
 ///
 /// `path` must be non-null and terminated.
-///
 /// @param directoryFd the directory `path` is relative to, or `AtFdCwd` for an ordinary path
 /// @param path the name to remove
 /// @param flags zero for a file, or `RemoveDirectory` for a directory
@@ -401,7 +363,6 @@ pub func UnlinkAt(directoryFd: FileDescriptor, path: *char8, flags: int32) -> in
 /// # Safety
 ///
 /// `path` must be non-null and terminated.
-///
 /// @param directoryFd the directory `path` is relative to, or `AtFdCwd` for an ordinary path
 /// @param path the directory to create
 /// @param mode the permission bits for it
@@ -418,7 +379,6 @@ pub func MkdirAt(directoryFd: FileDescriptor, path: *char8, mode: FileMode) -> i
 /// # Safety
 ///
 /// Both paths must be non-null and terminated.
-///
 /// @param oldDirectoryFd the directory `oldPath` is relative to
 /// @param oldPath the name to move
 /// @param newDirectoryFd the directory `newPath` is relative to
@@ -433,7 +393,6 @@ pub func RenameAt(oldDirectoryFd: FileDescriptor, oldPath: *char8, newDirectoryF
 /// Makes `newFd` a copy of `oldFd`, closing whatever `newFd` was.
 ///
 /// Returns `newFd`, or a negative error number.
-///
 /// @param oldFd the descriptor to duplicate
 /// @param newFd the number the duplicate should have
 /// @returns `newFd`, or a negative error number
@@ -450,7 +409,6 @@ pub func Dup2(oldFd: FileDescriptor, newFd: FileDescriptor) -> int64 {
 /// # Safety
 ///
 /// `descriptors` must be writable for two `int32` values.
-///
 /// @param descriptors receives the read end at index zero and the write end at index one
 /// @returns zero, or a negative error number
 /// @see https://rux-lang.dev/docs/api/macos/pipe

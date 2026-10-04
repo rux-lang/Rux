@@ -12,12 +12,10 @@
 ///
 /// Pointer-sized and owned by the kernel. A handle is valid until `CloseHandle` takes it, after which the number may
 /// be reused by the next object opened — so a stale handle does not fail, it addresses something else.
-///
 /// @see https://rux-lang.dev/docs/api/windows/handle
 pub type Handle = *var opaque;
 
 /// A module reference, as `LoadLibraryW` returns one.
-///
 /// @see https://rux-lang.dev/docs/api/windows/module-handle
 pub type ModuleHandle = *var opaque;
 
@@ -25,19 +23,16 @@ pub type ModuleHandle = *var opaque;
 ///
 /// Not a one-byte boolean, and not `bool`. A call returning one reports failure as zero and success as anything
 /// else, which is why comparing against `1` is wrong.
-///
 /// @see https://rux-lang.dev/docs/api/windows/bool
 pub type Bool = int32;
 
 /// Win32's `DWORD`: a 32-bit unsigned integer.
-///
 /// @see https://rux-lang.dev/docs/api/windows/dword
 pub type Dword = uint32;
 
 /// A UTF-16 code unit, which is what every `*W` entry point takes.
 ///
 /// Not a character: a scalar outside the basic plane occupies two of these.
-///
 /// @see https://rux-lang.dev/docs/api/windows/wide-char
 pub type WideChar = char16;
 
@@ -45,7 +40,6 @@ pub type WideChar = char16;
 ///
 /// Zero and above is success; below zero is failure. This is a different scheme from `GetLastError`, and a value of
 /// one must never be read as the other.
-///
 /// @see https://rux-lang.dev/docs/api/windows/nt-status
 pub type NtStatus = int32;
 
@@ -53,7 +47,6 @@ pub type NtStatus = int32;
 ///
 /// `-1` cast to a pointer, which is not null. `CreateFileW` and `FindFirstFileW` report failure this way; a
 /// memory-returning call such as `VirtualAlloc` reports null instead.
-///
 /// @see https://rux-lang.dev/docs/api/windows/invalid-handle-value
 pub const InvalidHandleValue: uint64 = 0xFFFFFFFFFFFFFFFF;
 
@@ -63,7 +56,6 @@ pub const InvalidHandleValue: uint64 = 0xFFFFFFFFFFFFFFFF;
 /// not aligned as one — `FileTimeTicks` joins them, and reading the pair as a `uint64` is what a caller must not do.
 ///
 /// The epoch is not the Unix one. `FileTimeToUnixEpochSeconds` is the difference.
-///
 /// @see https://learn.microsoft.com/windows/win32/api/minwinbase/ns-minwinbase-filetime
 /// @see https://rux-lang.dev/docs/api/windows/file-time
 pub struct FileTime {
@@ -76,21 +68,18 @@ pub struct FileTime {
 // The standard input device. Initially, this is the console input buffer
 // https://learn.microsoft.com/en-us/windows/console/getstdhandle
 /// The public `StdInputHandle` value.
-///
 /// @see https://rux-lang.dev/docs/api/windows/std-input-handle
 pub const StdInputHandle: uint32 = 0xFFFFFFF6;
 
 // The standard output device. Initially, this is the active console screen buffer
 // https://learn.microsoft.com/en-us/windows/console/getstdhandle
 /// The public `StdOutputHandle` value.
-///
 /// @see https://rux-lang.dev/docs/api/windows/std-output-handle
 pub const StdOutputHandle: uint32 = 0xFFFFFFF5;
 
 // The standard error device. Initially, this is the active console screen buffer
 // https://learn.microsoft.com/en-us/windows/console/getstdhandle
 /// The public `StdErrorHandle` value.
-///
 /// @see https://rux-lang.dev/docs/api/windows/std-error-handle
 pub const StdErrorHandle: uint32 = 0xFFFFFFF4;
 
@@ -101,7 +90,6 @@ pub const StdErrorHandle: uint32 = 0xFFFFFFF4;
 ///
 /// The fields are private: `Rux/Time` is the calendar interface, and this exists so a Win32 signature can name the
 /// record it takes.
-///
 /// @see https://learn.microsoft.com/windows/win32/api/minwinbase/ns-minwinbase-systemtime
 /// @see https://rux-lang.dev/docs/api/windows/system-time
 pub struct SystemTime {
@@ -122,7 +110,6 @@ pub struct SystemTime {
 /// for the `A` family directly can name the record they take.
 ///
 /// The fields are private: the layout is Microsoft's and reading it is the enumerating code's business.
-///
 /// @see https://learn.microsoft.com/windows/win32/api/minwinbase/ns-minwinbase-win32_find_dataa
 /// @see https://rux-lang.dev/docs/api/windows/win32-find-data-a
 pub struct Win32FindDataA {
@@ -143,7 +130,6 @@ pub struct Win32FindDataA {
 /// The two granularities are not the same and the difference matters: `pageSize` is what protection is applied at,
 /// while `allocationGranularity` is what a reservation's base address is rounded to, and on every Windows release it
 /// is 64 KiB rather than a page. A reservation therefore wastes address space that a page-granular system would not.
-///
 /// @see https://rux-lang.dev/docs/api/windows/system-info
 pub struct SystemInfo {
     /// The processor architecture, or a union member on the oldest releases; not read by this package.

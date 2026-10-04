@@ -18,7 +18,6 @@
 ///
 /// Runs in time proportional to `length` and allocates nothing. It clears the storage it is given and nothing else --
 /// a value copied elsewhere beforehand, or spilled to a register or the stack by the caller, is not reached.
-///
 /// @param memory the bytes to clear
 /// @param length how many bytes
 /// @see https://rux-lang.dev/docs/api/core/zeroize

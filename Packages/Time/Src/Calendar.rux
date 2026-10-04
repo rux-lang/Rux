@@ -13,7 +13,6 @@ import Core::{ AddChecked, MulChecked, Ordering };
 /// A calendar date that exists.
 ///
 /// `Copy`. Only constructible through the fallible `New` factory, which lets everything downstream assume validity.
-///
 /// @see https://rux-lang.dev/docs/api/time/date
 pub struct Date {
     /// The year, astronomically numbered: year 0 exists and is 1 BCE.
@@ -25,7 +24,6 @@ pub struct Date {
 }
 
 /// Whether `year` is a leap year: every fourth, except every hundredth, except every four-hundredth.
-///
 /// @param year the year, as a signed count from year zero
 /// @returns whether that year has 366 days under the proleptic Gregorian calendar
 /// @see https://rux-lang.dev/docs/api/time/is-leap-year
@@ -38,7 +36,6 @@ pub func IsLeapYear(year: int32) -> bool {
 /// How many days `month` holds in `year`.
 ///
 /// Zero for a month that does not exist, which is what lets `Date::New` use it as the validator.
-///
 /// @param year the year, as a signed count from year zero
 /// @param month the month, 1 through 12
 /// @returns how many days that month has in that year
@@ -52,7 +49,6 @@ pub func DaysInMonth(year: int32, month: uint8) -> uint8 {
 
 extend Date {
     /// The date, when it exists.
-    ///
     /// @param year the year, as a signed count from year zero
     /// @param month the month, 1 through 12
     /// @param day the day of the month, counting from one
@@ -67,7 +63,6 @@ extend Date {
     ///
     /// The civil-calendar formula: the year is shifted so March opens it, which puts the leap day at the end where
     /// it cannot disturb the month arithmetic.
-    ///
     /// @returns days since 1970-01-01, negative before it
     /// @see https://rux-lang.dev/docs/api/time/date/days-from-epoch
     pub func DaysFromEpoch(self: &Date) -> int64 {
@@ -86,7 +81,6 @@ extend Date {
     /// The date `days` after 1970-01-01, negative before it.
     ///
     /// The inverse of `DaysFromEpoch`, exactly: the pair round-trips every day of every representable year.
-    ///
     /// @param days how many days
     /// @returns the date that many days after 1970-01-01
     /// @see https://rux-lang.dev/docs/api/time/date/from-epoch-days
@@ -105,7 +99,6 @@ extend Date {
     }
 
     /// The day of the week, 0 for Sunday through 6 for Saturday.
-    ///
     /// @returns the day of the week, with Monday as one
     /// @see https://rux-lang.dev/docs/api/time/date/day-of-week
     pub func DayOfWeek(self: &Date) -> uint8 {
@@ -116,7 +109,6 @@ extend Date {
     }
 
     /// The day of the year, 1 through 365 or 366.
-    ///
     /// @returns the day of the year, counting from one
     /// @see https://rux-lang.dev/docs/api/time/date/day-of-year
     pub func DayOfYear(self: &Date) -> uint16 {
@@ -125,7 +117,6 @@ extend Date {
     }
 
     /// Whether two dates are the same day.
-    ///
     /// @param other the value to compare against
     /// @returns whether the two are the same
     /// @see https://rux-lang.dev/docs/api/time/date/equals
@@ -134,7 +125,6 @@ extend Date {
     }
 
     /// How this date orders against `other`.
-    ///
     /// @param other the value to compare against
     /// @returns how this one orders against `other`
     /// @see https://rux-lang.dev/docs/api/time/date/compare
@@ -151,7 +141,6 @@ extend Date {
 ///
 /// `Copy`, and only constructible valid. The second stops at 59: leap seconds are a policy for the text boundary,
 /// not a representable value here.
-///
 /// @see https://rux-lang.dev/docs/api/time/time-of-day
 pub struct TimeOfDay {
     /// The hour, 0 through 23.
@@ -166,7 +155,6 @@ pub struct TimeOfDay {
 
 extend TimeOfDay {
     /// The time, when it exists.
-    ///
     /// @param hour the hour, 0 through 23
     /// @param minute the minute, 0 through 59
     /// @param second the second, 0 through 59
@@ -186,7 +174,6 @@ extend TimeOfDay {
     }
 
     /// Midnight exactly.
-    ///
     /// @returns the first instant of a day
     /// @see https://rux-lang.dev/docs/api/time/time-of-day/midnight
     pub func Midnight() -> TimeOfDay {
@@ -194,7 +181,6 @@ extend TimeOfDay {
     }
 
     /// The seconds from midnight to this time, ignoring the fraction.
-    ///
     /// @returns how many whole seconds into the day this is
     /// @see https://rux-lang.dev/docs/api/time/time-of-day/seconds-from-midnight
     pub func SecondsFromMidnight(self: &TimeOfDay) -> uint32 {
@@ -206,7 +192,6 @@ extend TimeOfDay {
 ///
 /// Fixed is the word doing the work: this names what an offset is at one moment, and never which zone produced it
 /// or when that zone changes its mind. Zone rules are a database with a release cycle, and belong to a later phase.
-///
 /// @see https://rux-lang.dev/docs/api/time/utc-offset
 pub struct UtcOffset {
     /// The shift in seconds east of UTC, negative west, within a day either way.
@@ -215,7 +200,6 @@ pub struct UtcOffset {
 
 extend UtcOffset {
     /// UTC itself.
-    ///
     /// @returns the zero offset
     /// @see https://rux-lang.dev/docs/api/time/utc-offset/utc
     pub func Utc() -> UtcOffset {
@@ -227,7 +211,6 @@ extend UtcOffset {
     /// The two carry the same sign — minus five thirty is `Of(-5, -30)` — and the whole must stay within a day.
     /// Real offsets stop at eighteen hours, but text may carry any legal-looking one and refusing to represent it
     /// would turn parsing into policy.
-    ///
     /// @param hours how many hours
     /// @param minutes how many minutes
     /// @returns the offset, or `None` when it is outside the range UTC offsets take
@@ -240,7 +223,6 @@ extend UtcOffset {
     }
 
     /// The whole seconds east of UTC, negative west.
-    ///
     /// @returns the offset in seconds, negative west of Greenwich
     /// @see https://rux-lang.dev/docs/api/time/utc-offset/total-seconds
     pub func TotalSeconds(self: &UtcOffset) -> int32 {
@@ -252,7 +234,6 @@ extend UtcOffset {
 ///
 /// `Copy`. What offset the pair is in is the caller's knowledge, carried beside it where it matters — attaching
 /// one permanently would make every arithmetic answer depend on a field that is usually UTC anyway.
-///
 /// @see https://rux-lang.dev/docs/api/time/date-time
 pub struct DateTime {
     /// The day.
@@ -266,7 +247,6 @@ extend DateTime {
     ///
     /// The shift subtracts: half past nine at plus two is half past seven in UTC. The range of a timestamp dwarfs
     /// the calendar's, so the conversion cannot overflow for any date `Date::New` accepts.
-    ///
     /// @param offset the offset from UTC
     /// @returns the moment this local time names at that offset
     /// @see https://rux-lang.dev/docs/api/time/date-time/to-timestamp
@@ -278,7 +258,6 @@ extend DateTime {
     }
 
     /// The date and time `moment` names, shifted into `offset`.
-    ///
     /// @param moment the moment to convert
     /// @param offset the offset from UTC
     /// @returns the local date and time that moment names at that offset
@@ -306,7 +285,6 @@ extend DateTime {
     ///
     /// Same field values — two pairs in different offsets naming one moment are different here, which is what
     /// carrying the offset beside the pair means.
-    ///
     /// @param other the value to compare against
     /// @returns whether the two are the same
     /// @see https://rux-lang.dev/docs/api/time/date-time/equals

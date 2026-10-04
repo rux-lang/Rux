@@ -29,7 +29,6 @@ import Allocator::{ AllocError, Layout };
 ///
 /// Written as an interface so a generic can require it — `func Build<A: Allocator>(allocator: &var A)` borrows the
 /// caller's allocator and resolves calls at each instantiation with nothing dispatched at run time.
-///
 /// @see https://rux-lang.dev/docs/api/allocator/allocator
 pub interface Allocator {
     /// Takes storage matching `layout` and reports where it landed.
@@ -41,7 +40,6 @@ pub interface Allocator {
     /// # Safety
     ///
     /// The storage is the caller's until `Deallocate` takes it back with an equal layout.
-    ///
     /// @param layout the size and alignment wanted
     /// @returns the address of the storage, or why none was taken
     /// @see https://rux-lang.dev/docs/api/allocator/allocator/allocate
@@ -55,7 +53,6 @@ pub interface Allocator {
     /// # Safety
     ///
     /// Every pointer into the block becomes invalid, and the storage may be handed to the next allocation at once.
-    ///
     /// @param block an address this allocator returned
     /// @param layout the layout it was allocated with
     /// @returns nothing when the release was accepted, or why it was refused
@@ -79,8 +76,6 @@ pub interface Allocator {
     /// # Safety
     ///
     /// The old pointer is invalid once this succeeds, whether or not the address changed.
-    ///
-    ///
     /// @param block the existing allocation's address
     /// @param oldLayout the layout `block` was allocated with
     /// @param newLayout the layout wanted, which must have the same alignment
@@ -96,7 +91,6 @@ pub interface Allocator {
 ///
 /// Every allocator in this package returns exactly this for a zero-sized layout, which makes a zero-sized block
 /// recognizable and its release free.
-///
 /// @see https://rux-lang.dev/docs/api/allocator/empty-block
 pub const EmptyBlock: uint = 0xFFFFFFFFFFFF0000;
 
@@ -105,7 +99,6 @@ pub const EmptyBlock: uint = 0xFFFFFFFFFFFF0000;
 /// Takes nothing and returns the same value every time.
 ///
 /// Cannot fail. Runs in constant time and allocates nothing.
-///
 /// @returns the address every zero-sized allocation reports
 /// @see https://rux-lang.dev/docs/api/allocator/empty-block-address
 pub func EmptyBlockAddress() -> *var opaque {
@@ -117,7 +110,6 @@ pub func EmptyBlockAddress() -> *var opaque {
 /// `block` is read by value and never dereferenced.
 ///
 /// Cannot fail. Runs in constant time and allocates nothing.
-///
 /// @param block the address to test, never dereferenced
 /// @returns whether it is the address a zero-sized allocation reports
 /// @see https://rux-lang.dev/docs/api/allocator/is-empty-block

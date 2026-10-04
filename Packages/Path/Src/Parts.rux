@@ -12,7 +12,6 @@ extend Path {
     ///
     /// The parent of `/a` is `/`, and the root's parent is `none`: the root is not inside anything. The parent of
     /// a bare segment is the empty path, which is what lets a loop walk parents to a fixed end.
-    ///
     /// @returns the path without its last component, or `none` when there is none to remove
     /// @see https://rux-lang.dev/docs/api/path/path/parent
     pub func Parent(self: &Path) -> Path? {
@@ -39,7 +38,6 @@ extend Path {
     ///
     /// Trailing separators are ignored: `a/b/` names `b`, because that is what everything from shells to
     /// libraries has always meant by it.
-    ///
     /// @returns the last component, or `none` for a root or a path ending in a separator
     /// @see https://rux-lang.dev/docs/api/path/path/file-name
     pub func FileName(self: &Path) -> OsStringView? {
@@ -61,7 +59,6 @@ extend Path {
     ///
     /// A leading dot is part of the name, not an extension marker: the stem of `.bashrc` is `.bashrc`. Of
     /// `a.tar.gz` it is `a.tar` — one extension comes off, the last.
-    ///
     /// @returns the file name without its extension, or `none` when there is no file name
     /// @see https://rux-lang.dev/docs/api/path/path/stem
     pub func Stem(self: &Path) -> OsStringView? {
@@ -77,7 +74,6 @@ extend Path {
     /// The extension after the last dot, without the dot, or `none` where there is none.
     ///
     /// `none` for `.bashrc` and for `Makefile` alike: a name that is all extension has none.
-    ///
     /// @returns the file name's extension without the dot, or `none` when it has none
     /// @see https://rux-lang.dev/docs/api/path/path/extension
     pub func Extension(self: &Path) -> OsStringView? {

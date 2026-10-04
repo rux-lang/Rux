@@ -15,7 +15,6 @@
 /// biased, and it is the version almost everyone writes first.
 ///
 /// Runs in time proportional to the length and allocates nothing.
-///
 /// @typeParam G the generator's type
 /// @typeParam T the item type
 /// @param generator where the bits come from
@@ -40,7 +39,6 @@ pub func Shuffle<G: RandomGenerator, T>(generator: &var G, items: var T[..]) {
 ///
 /// Returning the count for an empty collection gives the caller a value that cannot be mistaken for a valid
 /// index, which a zero would be.
-///
 /// @typeParam G the generator's type
 /// @param generator where the bits come from
 /// @param count how many there are to choose among
@@ -59,7 +57,6 @@ pub func ChooseIndex<G: RandomGenerator>(generator: &var G, count: uint) -> uint
 /// out-of-range answer `ChooseIndex` gives for an empty collection.
 ///
 /// Runs in time proportional to the length, reading the weights twice: once to total them and once to select.
-///
 /// @typeParam G the generator's type
 /// @param generator where the bits come from
 /// @param weights the relative weight of each index; they need not sum to one

@@ -24,7 +24,6 @@
 /// Seven hundred and sixty-eight, which is the longest exact decimal expansion any midpoint between two adjacent
 /// `float64` values has. Keeping that many means a tie is detected exactly, and a nonzero digit beyond them means
 /// the value cannot be a tie at all — so the bound is where the two arguments meet rather than a round number.
-///
 /// @see https://rux-lang.dev/docs/api/format/retained-decimal-digits
 pub const RetainedDecimalDigits: uint = 768;
 
@@ -77,7 +76,6 @@ func BuildRatio(state: &var Reading, digits: &FixedNat, exponent: int) -> bool {
 /// Answers false for a value past the format's range, or where the exact arithmetic could not run in the fixed
 /// workspace. `overflowed` distinguishes the two: true for a value too large, false for a workspace failure, which
 /// Docs/NarrowFloat.md proves the narrow widths do not reach.
-///
 /// @param digits the retained significant digits, as an integer
 /// @param exponent the power of ten they are scaled by
 /// @param truncated whether a nonzero digit was dropped past the retained bound
@@ -209,7 +207,6 @@ func ReadNarrowDecimal(digits: &FixedNat, exponent: int, truncated: bool, layout
 }
 
 /// Assembles the bits of a `float64` from a significand and a power of two.
-///
 /// @param significand the integer significand, or zero
 /// @param exponent the power of two it is scaled by
 /// @param negative whether the value is negative
@@ -233,7 +230,6 @@ func PackFloat64(significand: uint64, exponent: int, negative: bool) -> uint64 {
 }
 
 /// Assembles the bits of a `float32` from a significand and a power of two.
-///
 /// @param significand the integer significand, or zero
 /// @param exponent the power of two it is scaled by
 /// @param negative whether the value is negative
@@ -260,7 +256,6 @@ func PackFloat32(significand: uint64, exponent: int, negative: bool) -> uint32 {
 ///
 /// Writes the value's storage from an integer of the same width through a raw pointer, which is the inverse of
 /// `BitsOfFloat64` and unsafe for the same reason: there is no conversion that preserves a representation.
-///
 /// @param bits the sixty-four bits to read as a value
 /// @returns the value they spell
 /// @see https://rux-lang.dev/docs/api/format/float64-from-bits
@@ -274,7 +269,6 @@ pub func Float64FromBits(bits: uint64) -> float64 {
 /// # Safety
 ///
 /// As `Float64FromBits`, at the narrower width.
-///
 /// @param bits the thirty-two bits to read as a value
 /// @returns the value they spell
 /// @see https://rux-lang.dev/docs/api/format/float32-from-bits
@@ -287,7 +281,6 @@ pub func Float32FromBits(bits: uint32) -> float32 {
 ///
 /// # Failures
 /// Answers false for a value past the format's range or a workspace failure, with `overflowed` saying which.
-///
 /// @param digits the retained significant digits
 /// @param exponent the power of ten they are scaled by
 /// @param truncated whether a nonzero digit was dropped past the retained bound
@@ -315,7 +308,6 @@ pub func ExactFloat64(digits: &FixedNat, exponent: int, truncated: bool, negativ
 ///
 /// # Failures
 /// Answers false for a value past the format's range or a workspace failure, with `overflowed` saying which.
-///
 /// @param digits the retained significant digits
 /// @param exponent the power of ten they are scaled by
 /// @param truncated whether a nonzero digit was dropped past the retained bound

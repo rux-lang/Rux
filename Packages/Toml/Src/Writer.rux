@@ -33,7 +33,6 @@ import Text::{ FormatError, TextWriter };
 /// A header is written as text, so the path is assembled into a fixed buffer rather than a list of names, and this
 /// is that buffer. It is far past any path a person writes: reaching it takes a nesting of tables whose names add
 /// up to a kilobyte, which a document built in memory can do and one that was parsed effectively cannot.
-///
 /// @see https://rux-lang.dev/docs/api/toml/maximum-header-path
 pub const MaximumHeaderPath: uint = 1024;
 
@@ -400,7 +399,6 @@ func KeyIntoPath(path: &var TomlPath, name: char8[..]) -> ! FormatError {
 /// from a stream that has died — and stops at the first refusal rather than writing the rest of a document into a
 /// destination that has already said no. Reports `ValueOutOfRange` for a table whose header path is longer than
 /// `MaximumHeaderPath`.
-///
 /// @param writer the destination
 /// @param table the document to write, borrowed for the call
 /// @returns success when the whole document was accepted

@@ -15,7 +15,6 @@ import Allocator::AllocError;
 /// Why a collection operation could not be completed.
 ///
 /// Every case means the operation did not happen and the collection is as it was.
-///
 /// @see https://rux-lang.dev/docs/api/collections/collection-error
 pub enum CollectionError: uint8 {
     /// The allocator had no storage to give.
@@ -47,7 +46,6 @@ extend CollectionError {
     /// again.
     ///
     /// Cannot fail. Runs in constant time and allocates nothing.
-    ///
     /// @returns whether trying again could succeed
     /// @see https://rux-lang.dev/docs/api/collections/collection-error/is-transient
     pub func IsTransient(self: CollectionError) -> bool {
@@ -62,7 +60,6 @@ extend CollectionError {
 /// serve this, and asking again will not change that.
 ///
 /// Cannot fail. Runs in constant time and allocates nothing.
-///
 /// @param error why the allocator refused
 /// @returns the same failure as a collection error
 /// @see https://rux-lang.dev/docs/api/collections/from-alloc-error

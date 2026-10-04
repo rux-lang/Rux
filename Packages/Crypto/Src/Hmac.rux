@@ -24,7 +24,6 @@ const HmacOuterPad: uint8 = 0x5C;
 /// SHAKE128's rate is the largest at a hundred and sixty eight bytes; SHA-512's block is a hundred and twenty
 /// eight and SHA-256's sixty four. The buffers below are written as that literal because an array length must
 /// be a compile-time integer and a constant does not satisfy that yet.
-///
 /// @see https://rux-lang.dev/docs/api/crypto/hmac-maximum-block
 pub const HmacMaximumBlock: uint = 168;
 
@@ -34,7 +33,6 @@ pub const HmacMaximumBlock: uint = 168;
 /// prototype can start any number of authentications.
 ///
 /// Structural `Copy` whenever `D` is copyable; copying snapshots both digest states independently.
-///
 /// @typeParam D the digest type
 /// @see https://rux-lang.dev/docs/api/crypto/hmac
 pub struct Hmac<D: Digest> {
@@ -52,7 +50,6 @@ extend Hmac<D> {
     /// A key longer than the digest's block is replaced by its own digest, which is what the specification says
     /// and is worth knowing: two keys differing only past the block length authenticate identically, because
     /// they are the same key after this step. A shorter key is padded with zeros.
-    ///
     /// @param prototype any value of the digest type, read only to select it
     /// @param key the key
     /// @returns an authenticator keyed with those bytes
@@ -104,7 +101,6 @@ extend Hmac<D> {
     }
 
     /// Adds `bytes` to the message being authenticated.
-    ///
     /// @typeParam D the digest type
     /// @param bytes the bytes to absorb
     /// @see https://rux-lang.dev/docs/api/crypto/hmac/update
@@ -113,7 +109,6 @@ extend Hmac<D> {
     }
 
     /// Writes the authentication tag into `into`.
-    ///
     /// @typeParam D the digest type
     /// @param into receives the output
     /// @see https://rux-lang.dev/docs/api/crypto/hmac/finish
@@ -125,7 +120,6 @@ extend Hmac<D> {
     }
 
     /// How many bytes `Finish` writes: the underlying digest's length.
-    ///
     /// @typeParam D the digest type
     /// @returns how many bytes a tag occupies, which is the digest's length
     /// @see https://rux-lang.dev/docs/api/crypto/hmac/tag-length
@@ -135,7 +129,6 @@ extend Hmac<D> {
 }
 
 /// The HMAC of `message` under `key`, in one call.
-///
 /// @typeParam D the digest type
 /// @param prototype any value of the digest type, read only to select it
 /// @param key the key

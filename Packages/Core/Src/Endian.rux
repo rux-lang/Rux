@@ -16,7 +16,6 @@
 /// back the first one, so it is right on any target rather than on a list of known ones.
 ///
 /// Cannot fail. Runs in constant time and allocates nothing.
-///
 /// @returns whether the target stores the least significant byte first
 /// @see https://rux-lang.dev/docs/api/core/target-is-little-endian
 pub func TargetIsLittleEndian() -> bool {
@@ -32,7 +31,6 @@ pub func TargetIsLittleEndian() -> bool {
 ///
 /// Cannot fail. Costs nothing on a little-endian target and one byte reversal on a big-endian one, so it runs in time
 /// linear in the type's width at worst and allocates nothing.
-///
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param value the value to act on
 /// @returns the value with its bytes in little-endian order
@@ -47,7 +45,6 @@ pub func ToLittleEndian<T>(value: T) -> T {
 /// operation — a byte reversal is its own inverse.
 ///
 /// Cannot fail. Costs exactly what `ToLittleEndian` costs and allocates nothing.
-///
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param value the value to act on
 /// @returns the value read from little-endian bytes, in the target's own order
@@ -63,7 +60,6 @@ pub func FromLittleEndian<T>(value: T) -> T {
 ///
 /// Cannot fail. Costs nothing on a big-endian target and one byte reversal on a little-endian one, so it runs in time
 /// linear in the type's width at worst and allocates nothing.
-///
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param value the value to act on
 /// @returns the value with its bytes in big-endian order
@@ -78,7 +74,6 @@ pub func ToBigEndian<T>(value: T) -> T {
 /// operation.
 ///
 /// Cannot fail. Costs exactly what `ToBigEndian` costs and allocates nothing.
-///
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param value the value to act on
 /// @returns the value read from big-endian bytes, in the target's own order
@@ -97,7 +92,6 @@ pub func FromBigEndian<T>(value: T) -> T {
 /// # Safety
 ///
 /// `destination` must be non-null and must have room for `sizeof(T)` bytes. Neither is checked.
-///
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param value the value to act on
 /// @param destination receives the bytes
@@ -124,7 +118,6 @@ pub func StoreLittleEndian<T>(value: T, destination: *var byte) {
 /// # Safety
 ///
 /// `destination` must be non-null and must have room for `sizeof(T)` bytes. Neither is checked.
-///
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param value the value to act on
 /// @param destination receives the bytes
@@ -151,7 +144,6 @@ pub func StoreBigEndian<T>(value: T, destination: *var byte) {
 ///
 /// `source` must be non-null and readable for `sizeof(T)` bytes, and `destination` must be non-null. Neither is
 /// checked.
-///
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param source the bytes to read
 /// @param destination receives the bytes
@@ -177,7 +169,6 @@ pub func LoadLittleEndian<T>(source: *byte, destination: *var T) {
 ///
 /// `source` must be non-null and readable for `sizeof(T)` bytes, and `destination` must be non-null. Neither is
 /// checked.
-///
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param source the bytes to read
 /// @param destination receives the bytes
