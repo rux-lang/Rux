@@ -186,6 +186,16 @@ when #target.arch {
             ret
         }
 
+        // The undotted conditional-branch spelling GNU as and LLVM accept.
+        asm func ClampPositive(n: int64) -> int64 {
+            cmp x0, #0
+            ble zero
+            ret
+        zero:
+            mov x0, #0
+            ret
+        }
+
         // A call to another body: the link register is this function's to
         // preserve, which a leaf never has to.
         asm func Twice(x: int64) -> int64 {
@@ -333,7 +343,7 @@ when #target.arch {
             if LowBit(5i64) != 1i64 || LowBit(2i64) != 2i64 || LowBit(4i64) != 0i64 {
                 return 17;
             }
-            if Ladder(1i64, 2i64) != -1i64 {
+            if Ladder(1i64, 2i64) != -1i64 || ClampPositive(-3i64) != 0i64 || ClampPositive(4i64) != 4i64 {
                 return 18;
             }
             if Ladder(2i64, 1i64) != 1i64 {

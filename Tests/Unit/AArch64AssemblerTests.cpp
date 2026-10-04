@@ -328,6 +328,11 @@ TEST_CASE("AArch64 assembler answers to every mnemonic the architecture names") 
         INFO(condition);
         CHECK(FirstError(assembled) == "");
         REQUIRE(assembled.Words() == 2);
+        // GNU as and LLVM also accept the undotted spelling, which encodes the same word.
+        const Assembled undotted = Assemble(std::format("    b{} here\nhere:\n    ret\n", condition));
+        CHECK(FirstError(undotted) == "");
+        REQUIRE(undotted.Words() == 2);
+        CHECK(HexWord(undotted.Word(0)) == HexWord(assembled.Word(0)));
     }
 }
 

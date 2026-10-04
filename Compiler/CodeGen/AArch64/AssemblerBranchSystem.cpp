@@ -346,8 +346,13 @@ void BranchSystemAssemblerContext::Unsupported(const AsmInstr &in) {
 void BranchSystemAssemblerContext::Dispatch(const AsmInstr &in) {
     const std::string &m = in.mnemonic;
 
-    // A conditional branch carries its condition in its name.
+    // A conditional branch carries its condition in its name, as `b.le` or `ble`.
+    if (const std::string_view condition = AArch64BranchCondition(m); !condition.empty()) {
+        EncodeCondBranch(in, condition);
+        return;
+    }
     if (const std::string_view base = AsmBaseMnemonic(m); base.size() != m.size()) {
+        // `b.zz` names an unknown condition rather than an unknown instruction.
         if (base == "b") {
             EncodeCondBranch(in, std::string_view(m).substr(base.size() + 1));
             return;

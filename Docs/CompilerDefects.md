@@ -730,15 +730,6 @@ the start of the call.
 **Stale test:** the TODO in `Tests/Packages/Core/Config/Src/Main.rux` says `#config.Has` and
 `#config.Get` crash with 0xC0000139. They now work in executables, so that test body can be
 re-enabled.
-## D47. The AArch64 assembler rejects the `ble` spelling of `b.le`
-
-- **Reproducer:** `asm func F(n: int64) -> int64 { cmp x0, #0 \n ble done \n done: \n ret }` inside
-  `when #target.arch { .AArch64 => {...}, else => {} }`, built with
-  `rux build --target linux-aarch64`.
-- **Expected:** builds. GNU as and LLVM accept `ble` as an alias of `b.le`.
-- **Actual:** `unknown instruction 'ble'; did you mean 'bl'?`.
-- **Course workaround:** `Platform/AsmArm` writes `b.le`.
-
 Related to D40: a `var int[..]` view, or a `buffer[..n]` view taken from a `*var char8`, is
 refused by `PrintLine`'s `{}` arguments in the same way as a writable `char8[..]`.
 
