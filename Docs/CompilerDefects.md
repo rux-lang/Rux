@@ -623,7 +623,9 @@ move-only fields therefore has no way to hand out a single field.
 
 Defects in Packages/, found the same way.
 
-## P1. `Text::StringBuilder` grows by exactly what is needed instead of doubling
+## P1. `Text::StringBuilder` grows by exactly what is needed instead of doubling (fixed)
+
+**Fixed**; covered by `Tests/Packages/Text/StringBuilder`.
 
 - **Where:** `Packages/Text/Src/StringBuilder.rux`, in `ReserveBuilderStorage`, at
   `if MulChecked<uint>(*capacity, 2, @doubled) && doubled > required`.

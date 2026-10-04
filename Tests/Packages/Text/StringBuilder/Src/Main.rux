@@ -61,6 +61,13 @@ func Main() -> int {
     Assert(builder.Length() == 208, "the builder holds everything appended");
     Assert(builder.Capacity() > firstCapacity, "having taken more room to do it");
 
+    // A full builder doubles its room rather than taking only what the append needs.
+    var doubling = StringBuilder(allocator);
+    doubling.Append("0123456789abcdef") catch { else => Panic("sixteen bytes are appended") };
+    Assert(doubling.Capacity() == 16, "filling the first block exactly");
+    doubling.Append("xyz") catch { else => Panic("and three more") };
+    Assert(doubling.Capacity() == 32, "the next append doubles the room");
+
     // Clearing keeps the room, which is what makes a builder used in a loop allocate once.
     let kept = builder.Capacity();
     builder.Clear();

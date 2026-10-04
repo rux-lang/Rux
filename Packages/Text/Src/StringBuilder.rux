@@ -243,7 +243,7 @@ func ReserveBuilderStorage(data: *var *var char8, length: uint, capacity: *var u
         // requirement itself.
         var doubled: uint = 0;
         var wanted = required;
-        if MulChecked<uint>(*capacity, 2, @doubled) && doubled > required {
+        if !MulChecked<uint>(*capacity, 2, @doubled) && doubled > required {
             wanted = doubled;
         }
         if wanted < MinimumBuilderCapacity {
