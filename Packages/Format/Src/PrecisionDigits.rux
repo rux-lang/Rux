@@ -119,6 +119,15 @@ pub func PrecisionDigits(significand: uint64, exponent: int, precision: uint, in
         }
     }
 
+    if !RoundGenerated(state, into, @produced, @scaled) { return false; }
+    *count = produced;
+    *power = scaled;
+    return true;
+}
+
+// Rounds the `produced` digits at the front of `into` on the remainder left in `state`, to nearest with ties to
+// even, adjusting the count and the power when a carry runs off the front.
+func RoundGenerated(state: &Quotient, into: var char8[..], produced: *var uint, scaled: *var int) -> bool {
     // Round on what is left. Twice the remainder against the denominator is the exact "more than half", and a tie
     // goes to the even digit, which is what reading the result back would do with it. With no digits produced the
     // implicit last digit is a zero, which is even, so a tie stays down.
@@ -127,40 +136,36 @@ pub func PrecisionDigits(significand: uint64, exponent: int, precision: uint, in
     if !twice.ShiftLeft(1) { return false; }
     let order = twice.Compare(state.denominator);
     var roundUp = order > 0;
-    if order == 0 && produced > 0 {
-        roundUp = ((into.data[produced - 1] as uint32) - 0x30) % 2 == 1;
+    if order == 0 && *produced > 0 {
+        roundUp = ((into.data[*produced - 1] as uint32) - 0x30) % 2 == 1;
     }
+    if !roundUp { return true; }
 
-    if roundUp {
-        var index = produced;
-        var carry = true;
-        while carry && index > 0 {
-            index = index - 1;
-            if into.data[index] == c8'9' {
-                into.data[index] = c8'0';
-            }
-            else {
-                into.data[index] = ((into.data[index] as uint32) + 1) as char8;
-                carry = false;
-            }
+    var index = *produced;
+    var carry = true;
+    while carry && index > 0 {
+        index = index - 1;
+        if into.data[index] == c8'9' {
+            into.data[index] = c8'0';
         }
-        if carry {
-            // The carry ran off the front: every digit was a nine, so the value rounds up to a one in the place
-            // above them. 9.99 at one decimal is 10.0.
-            if produced + 1 > into.length { return false; }
-            var back = produced;
-            while back > 0 {
-                into.data[back] = into.data[back - 1];
-                back = back - 1;
-            }
-            into.data[0] = c8'1';
-            produced = produced + 1;
-            scaled = scaled + 1;
+        else {
+            into.data[index] = ((into.data[index] as uint32) + 1) as char8;
+            carry = false;
         }
     }
-
-    *count = produced;
-    *power = scaled;
+    if carry {
+        // The carry ran off the front: every digit was a nine, so the value rounds up to a one in the place above
+        // them. 9.99 at one decimal is 10.0.
+        if *produced + 1 > into.length { return false; }
+        var back = *produced;
+        while back > 0 {
+            into.data[back] = into.data[back - 1];
+            back = back - 1;
+        }
+        into.data[0] = c8'1';
+        *produced = *produced + 1;
+        *scaled = *scaled + 1;
+    }
     return true;
 }
 

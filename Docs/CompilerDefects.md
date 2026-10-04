@@ -681,7 +681,9 @@ func Main() -> int {
   `Compiler/Types/Type.cpp` lists widening widths only up to 64.
 - **Course workaround:** `Numbers/WideInteger` teaches an explicit `as` as the rule.
 
-## P3. A precision placeholder on NaN or infinity prints a 309-digit number
+## P3. A precision placeholder on NaN or infinity prints a 309-digit number (fixed)
+
+**Fixed**; covered by `Tests/Packages/Format/Scientific`, which also covers the new `{:e}` and `{:E}` scientific notation.
 
 - **Reproducer:** `PrintLine("{:.3} {:.3}", nan, inf);` where `nan = 0.0 / 0.0` and
   `inf = 1.0 / 0.0`.
@@ -699,7 +701,7 @@ func Main() -> int {
   behaviour, write `result` in both cases.
 
 Note: `{:b}` on a negative signed integer prints a minus sign and the magnitude, not
-two's-complement bits. This may be intended, but it is undocumented.
+two's-complement bits. This may be intended, but it is undocumented. **Fixed** (documented as intended in `FormatBase` and the Text and Format READMEs); covered by `Tests/Packages/Format/Integers`.
 ## D39. Initializing an optional pointer with `null` crashes the compiler (fixed)
 
 **Fixed**; covered by the `NullNativeTargets` golden and `Tests/Language/Pointers`.

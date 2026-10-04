@@ -1,0 +1,181 @@
+// Scientific notation on request, and the two renderings a narrow float has that are not numbers.
+// `{:e}` and `{:E}` are the only styles a float understands. Each writes one digit before the point, the rest of
+// the digits after it, the mark, and the decimal exponent with its sign and at least two digits: `1.2345e+05`,
+// `2.5E-03`. That is the spelling `{}` already falls back to for a value too large or too small for fixed notation,
+// so a reader meets one scientific form whichever placeholder produced it. Without a precision the digits are the
+// shortest that read back as the same value, and a lone digit keeps a `.0` after it so the text still reads as a
+// float. With one, the precision counts the digits after the point, exactly, rounded to nearest with ties to even
+// by the same exact generator fixed precision uses; `.0` writes the single digit with no point.
+// A NaN or an infinity has no digits to place, so it renders as `NaN`, `Inf` or `-Inf` whatever the placeholder
+// asked for, and only the sign, width, fill and alignment of the specification apply to it.
+
+import Text::{ FormatError, FormatSpec, TextWriter, WriteAligned };
+
+// Whether the specification asks for scientific notation, and with which exponent mark. Any style but `e` and
+// `E` is refused, as `RejectStyle` refuses a style on a value that has none.
+func ScientificMark(spec: FormatSpec, mark: *var char8) -> bool ! FormatError {
+    if !spec.HasStyle() { return false; }
+    if spec.StyleIs("e") {
+        *mark = c8'e';
+        return true;
+    }
+    if spec.StyleIs("E") {
+        *mark = c8'E';
+        return true;
+    }
+    fail FormatError::UnsupportedRequest;
+}
+
+// Writes a NaN or an infinity under the specification's sign, width, fill and alignment. A NaN carries no sign to
+// show, and a negative infinity already shows its own.
+func WriteNonFinite(writer: &var TextWriter, spec: FormatSpec, isNan: bool, negative: bool) -> ! FormatError {
+    if isNan { return WriteAligned(writer, spec, "NaN", true); }
+    if negative { return WriteAligned(writer, spec, "-Inf", true); }
+    return WriteAligned(writer, spec, spec.ShowsSign() ? "+Inf" : "Inf", true);
+}
+
+// Exactly `wanted` significant digits of `significand * 2^exponent`, rounded to nearest with ties to even, and the
+// power of ten that places them: the value is `0.d1d2...dn * 10^power`. `into` must hold one digit more than is
+// wanted, which a carry off the front briefly needs. Answers false when the exact arithmetic could not run in the
+// fixed workspace, which Docs/NarrowFloat.md proves the narrow widths do not reach.
+func SignificantDigits(significand: uint64, exponent: int, wanted: uint, into: var char8[..], count: *var uint,
+                       power: *var int) -> bool {
+    *count = 0;
+    *power = 0;
+    if significand == 0 || wanted == 0 || wanted >= into.length { return false; }
+
+    var state = Quotient { numerator: FixedNat(), denominator: FixedNat() };
+    var scaled: int = 0;
+    if !PrepareQuotient(state, significand, exponent, @scaled) { return false; }
+    var produced: uint = 0;
+    while produced < wanted {
+        if !state.numerator.MultiplySmall(10) { return false; }
+        into.data[produced] = (TakeDigit(state) + 0x30) as char8;
+        produced = produced + 1;
+    }
+    if !RoundGenerated(state, into, @produced, @scaled) { return false; }
+    // A carry off the front leaves a one followed by zeros, one digit more than was asked for; the extra digit is
+    // a zero and the power has already moved up to account for it.
+    if produced > wanted {
+        produced = wanted;
+    }
+    *count = produced;
+    *power = scaled;
+    return true;
+}
+
+// The exponent: its sign, always written, and at least two digits.
+func WriteExponent(cursor: &var ByteCursor, exponent10: int) {
+    var magnitude: uint = 0;
+    if exponent10 < 0 {
+        cursor.Push(c8'-');
+        magnitude = (0 - exponent10) as uint;
+    }
+    else {
+        cursor.Push(c8'+');
+        magnitude = exponent10 as uint;
+    }
+    var digits: char8[8];
+    var length: uint = 0;
+    while magnitude > 0 || length < 2 {
+        digits[length] = ((magnitude % 10) + 0x30) as char8;
+        length = length + 1;
+        magnitude = magnitude / 10;
+    }
+    while length > 0 {
+        length = length - 1;
+        cursor.Push(digits[length]);
+    }
+}
+
+// Writes a finite float in scientific notation, with the sign from `parts`. Without a precision the digits are the
+// shortest that read back as the same value; with one, `precision` digits follow the point. Answers false for a
+// precision past `MaximumPrecision`, or when the exact arithmetic could not run in the fixed workspace.
+func WriteScientificFloat(cursor: &var ByteCursor, parts: FloatParts, hasPrecision: bool, precision: uint,
+                          mark: char8) -> bool {
+    if hasPrecision && precision > MaximumPrecision { return false; }
+    if parts.negative { cursor.Push(c8'-'); }
+    var digits: char8[1104];
+    var count: uint = 0;
+    var exponent10: int = 0;
+    if parts.significand == 0 {
+        // A zero has no first significant digit to place, so it is a zero digit at the exponent zero.
+        digits[0] = c8'0';
+        count = 1;
+    }
+    else if hasPrecision {
+        var power: int = 0;
+        if !SignificantDigits(parts.significand, parts.exponent, precision + 1, (@digits[0])[..1104], @count,
+                              @power) {
+            return false;
+        }
+        exponent10 = power - 1;
+    }
+    else if !ShortestDigits(parts.significand, parts.exponent, parts.atBinadeBottom, (@digits[0])[..24], @count,
+                            @exponent10) {
+        return false;
+    }
+
+    cursor.Push(digits[0]);
+    if hasPrecision {
+        if precision > 0 {
+            cursor.Push(c8'.');
+            var index: uint = 1;
+            while index <= precision {
+                cursor.Push(index < count ? digits[index] : c8'0');
+                index = index + 1;
+            }
+        }
+    }
+    else {
+        cursor.Push(c8'.');
+        if count == 1 {
+            cursor.Push(c8'0');
+        }
+        else {
+            var index: uint = 1;
+            while index < count {
+                cursor.Push(digits[index]);
+                index = index + 1;
+            }
+        }
+    }
+    cursor.Push(mark);
+    WriteExponent(cursor, exponent10);
+    return true;
+}
+
+/// Renders a finite float in scientific notation under `spec`, and applies the specification's sign, width, fill and
+/// alignment to the result.
+/// One digit comes before the point and the rest after it, then `mark` and the decimal exponent with its sign and at
+/// least two digits: `1.2345e+05`. Without a precision the digits are the shortest that read back as the same
+/// value, with `.0` after a lone digit; with one, the precision counts the digits after the point, rounded to
+/// nearest with ties to even, and `.0` writes no point at all. A zero is `0.0e+00`, keeping the sign of a negative
+/// zero.
+/// Reports `UnsupportedRequest` for a precision past `MaximumPrecision`, and whatever the writer reported otherwise.
+/// There is no fallback: a refused precision produces no output.
+/// @param writer the destination
+/// @param spec what the placeholder asked for
+/// @param parts the finite value taken apart
+/// @param mark the exponent mark, `e` or `E`
+/// @returns success when the whole rendering was accepted
+/// @see https://rux-lang.dev/docs/api/format/write-scientific-notation
+pub func WriteScientificNotation(writer: &var TextWriter, spec: FormatSpec, parts: FloatParts,
+                                 mark: char8) -> ! FormatError {
+    if spec.HasPrecision() && spec.Precision() > MaximumPrecision {
+        fail FormatError::UnsupportedRequest;
+    }
+    // Sign, one digit, the point, the largest precision, the mark, the exponent's sign and its digits fit with
+    // room to spare; two bytes in front leave space for a requested sign.
+    var storage: char8[1120];
+    var cursor = ByteCursor((@storage[2])[..1118]);
+    if !WriteScientificFloat(cursor, parts, spec.HasPrecision(), spec.Precision(), mark) || cursor.Overran() {
+        fail FormatError::UnsupportedRequest;
+    }
+    var rendered = cursor.Written();
+    if spec.ShowsSign() && rendered.length > 0 && rendered.data[0] != c8'-' {
+        storage[1] = c8'+';
+        rendered = (@storage[1])[..rendered.length + 1];
+    }
+    return WriteAligned(writer, spec, rendered, true);
+}

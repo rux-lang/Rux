@@ -1,7 +1,8 @@
 // What a placeholder may ask for, parsed once and handed to the value.
 // The grammar inside `{}` after the colon is `[[fill]align][sign][#][0][width][.precision][base]`, each piece
 // optional: `{:>8}` right-aligns in eight columns, `{:+}` shows a positive sign, `{:08x}` zero-pads eight hex
-// digits, `{:#b}` prefixes binary with `0b`, `{:.3}` keeps three characters of text. The spec belongs to the
+// digits, `{:#b}` prefixes binary with `0b`, `{:.3}` keeps three characters of text, `{:.2e}` writes a float in
+// scientific notation with two digits after the point. The spec belongs to the
 // placeholder and not to the value — the same value renders differently under different placeholders — but it is
 // the value that applies it, because base and sign need the bits and not the rendered text.
 // The representation is private and read through accessors. That is not ceremony: a spec is what a placeholder
@@ -26,7 +27,9 @@ pub enum FormatAlign: int32 {
 }
 
 /// The base an integer renders in.
-/// Copy, carrying no payload.
+/// Copy, carrying no payload. A negative signed integer renders in every base as a minus sign followed by the
+/// digits of its magnitude, not as its two's-complement bits: `{:b}` of `-5` is `-101` and `{:#x}` of `-255` is
+/// `-0xff`. That keeps the text of a value independent of the width of the type it happens to be stored in.
 /// @see https://rux-lang.dev/docs/api/text/format-base
 pub enum FormatBase: int32 {
     /// Base ten, the default.
@@ -280,8 +283,8 @@ func ReadNumber(text: char8[..], start: uint, value: *var uint, end: *var uint) 
 /// The grammar is `[[fill]align][+][#][0][width][.precision][style]`, every piece optional, so the empty
 /// specification is well-formed and asks for nothing. A style is an identifier: an ASCII letter followed by
 /// letters, digits, `_` or `-`. That covers the single-letter integer bases `b`, `o`, `x` and `X`, which also set
-/// `Base` so an integer need not inspect the style text, and the domain styles such as `iso8601` and `hyphenated`
-/// that a value interprets for itself.
+/// `Base` so an integer need not inspect the style text, the float styles `e` and `E` for scientific notation, and
+/// the domain styles such as `iso8601` and `hyphenated` that a value interprets for itself.
 /// Syntax is recognized here once; whether a style or flag *applies* is the value's question, since only the value
 /// knows whether a precision means digits, characters or nothing at all. A specification this accepts may still be
 /// refused with `UnsupportedRequest` by the value it is handed to.

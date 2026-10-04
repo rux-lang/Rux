@@ -185,6 +185,7 @@ func Main() -> int {
                      127u),
            "and the int512 minimum, at one hundred and twenty-eight digits");
     Assert(Same(Render(allocator, "{:b}", -2i8), "-10"), "a small negative value in binary is its magnitude, signed");
+    Assert(Same(Render(allocator, "{:#x}", -255i32), "-0xff"), "and a prefix follows the sign, as documented");
 
     // The two shape helpers refuse a wrong length rather than answering yes to any run, which is what makes the
     // checks above about the digits rather than about the helper.

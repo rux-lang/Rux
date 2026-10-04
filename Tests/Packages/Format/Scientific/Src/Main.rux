@@ -1,0 +1,82 @@
+import Allocator::{ Allocator, SystemAllocator };
+import Core::{ Assert, Panic };
+import Format::Render;
+import Text::{ FormatError, String, StringView };
+
+// `{:e}` and `{:E}` write one digit before the point, the rest after it, the mark, and the exponent with its sign
+// and at least two digits. Without a precision the digits are the shortest that read back as the same value, as
+// `{}` gives; with one, the precision counts the digits after the point and rounds to nearest with ties to even.
+// A NaN or an infinity has no digits to place, so every placeholder renders it the same way. Before this, a
+// precision on one printed the 309 integer digits of a value it did not have, and `{:e}` printed nothing at all.
+
+func Same(outcome: String ! FormatError, expected: char8[..]) -> bool {
+    let wanted = StringView::FromValidated(expected);
+    return match <-outcome {
+        .Success(text) => text.View().Equals(wanted),
+        .Failure(_) => false
+    };
+}
+
+func Refused(outcome: String ! FormatError) -> bool {
+    return match <-outcome {
+        .Success(_) => false,
+        .Failure(reason) => match reason {
+            .UnsupportedRequest => true,
+            else => false
+        }
+    };
+}
+
+func Main() -> int {
+    var system = SystemAllocator();
+    let allocator: Allocator = system;
+
+    // The shortest digits, placed after one leading digit.
+    Assert(Same(Render(allocator, "{:e}", 123456.0), "1.23456e+05"), "the shortest digits, in scientific form");
+    Assert(Same(Render(allocator, "{:E}", 123456.0), "1.23456E+05"), "and with the upper-case mark");
+    Assert(Same(Render(allocator, "{:e}", 1.0), "1.0e+00"), "a lone digit keeps a fraction, and the exponent two digits");
+    Assert(Same(Render(allocator, "{:e}", -0.00025), "-2.5e-04"), "a negative value keeps its sign");
+    Assert(Same(Render(allocator, "{:e}", 0.0), "0.0e+00"), "a zero is a zero digit at the exponent zero");
+    Assert(Same(Render(allocator, "{:e}", -0.0), "-0.0e+00"), "and a negative zero keeps its sign");
+    Assert(Same(Render(allocator, "{:E}", 1e300), "1.0E+300"), "a very large exponent takes three digits");
+    Assert(Same(Render(allocator, "{:e}", 1.7976931348623157e308), "1.7976931348623157e+308"), "the largest float64");
+    Assert(Same(Render(allocator, "{:e}", 5e-324), "5.0e-324"), "and the smallest subnormal");
+    Assert(Same(Render(allocator, "{:e}", 0.1f32), "1.0e-01"), "a float32 at its own width's shortest digits");
+    Assert(Same(Render(allocator, "{:e}", 3.4028235e38f32), "3.4028235e+38"), "and the largest float32");
+
+    // A precision counts the digits after the point, exactly, with ties to even.
+    Assert(Same(Render(allocator, "{:.3e}", 1234.5678), "1.235e+03"), "a precision rounds the mantissa");
+    Assert(Same(Render(allocator, "{:.2e}", -1.5), "-1.50e+00"), "and pads it with zeros");
+    Assert(Same(Render(allocator, "{:.2e}", 0.0), "0.00e+00"), "a zero at a precision is all zeros");
+    Assert(Same(Render(allocator, "{:.0e}", 8.5), "8e+00"), "no digits drops the point, and a tie rounds to even");
+    Assert(Same(Render(allocator, "{:.0e}", 9.5), "1e+01"), "a carry off the front moves the exponent up");
+    Assert(Same(Render(allocator, "{:.2e}", 1.7976931348623157e308), "1.80e+308"), "the largest value rounds");
+    Assert(Same(Render(allocator, "{:.3e}", 5e-324), "4.941e-324"), "the smallest is its exact expansion");
+    Assert(Same(Render(allocator, "{:.20e}", 0.1), "1.00000000000000005551e-01"), "and a tenth is the float's own");
+    Assert(Same(Render(allocator, "{:.2e}", 3.14159f32), "3.14e+00"), "a float32 takes a precision too");
+
+    // Sign, width, fill and alignment apply to the whole rendering.
+    Assert(Same(Render(allocator, "{:+e}", 1.5), "+1.5e+00"), "a requested sign goes in front");
+    Assert(Same(Render(allocator, "{:>12e}", 1.5), "     1.5e+00"), "a number aligns right by default");
+    Assert(Same(Render(allocator, "{:*<10E}", 2.5), "2.5E+00***"), "and wherever it is asked to");
+
+    // A NaN or an infinity renders the same under every placeholder.
+    let nan = 0.0 / 0.0;
+    let inf = 1.0 / 0.0;
+    Assert(Same(Render(allocator, "{:.3} {:.3}", nan, inf), "NaN Inf"), "a precision does not apply to them");
+    Assert(Same(Render(allocator, "{:.3}", -inf), "-Inf"), "and a negative infinity keeps its sign");
+    Assert(Same(Render(allocator, "{:e} {:E} {:.2e}", nan, inf, -inf), "NaN Inf -Inf"), "nor does an exponent");
+    Assert(Same(Render(allocator, "{:+.2} {:+}", inf, nan), "+Inf NaN"), "a sign is shown where it has meaning");
+    Assert(Same(Render(allocator, "{:>6.2}", -inf), "  -Inf"), "and the alignment still applies");
+    let narrowNan = nan as float32;
+    let narrowInf = inf as float32;
+    Assert(Same(Render(allocator, "{:.1} {:.1e}", narrowNan, narrowInf), "NaN Inf"), "for a float32 as well");
+
+    // Any other style, and a precision past the bound, are refused rather than answered differently.
+    Assert(Refused(Render(allocator, "{:f}", 1.0)), "a style a float does not have is refused");
+    Assert(Refused(Render(allocator, "{:.1101e}", 1.0)), "and so is a precision past the bound");
+    let longest = Render(allocator, "{:.1100e}", 1.0) catch { else => Panic("the largest precision is accepted") };
+    Assert(longest.Length() == 1106, "and honoured in full");
+
+    return 0;
+}

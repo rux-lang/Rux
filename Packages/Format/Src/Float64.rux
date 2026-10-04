@@ -2,9 +2,10 @@
 // The shortest decimal that reads back as the same value, so 0.1 prints as "0.1" rather than as the seventeen
 // digits its binary value really is — and it is the shortest one exactly, found by the digit generator in
 // ShortestDigits.rux rather than by rounding to a fixed count and hoping. A precision in the placeholder asks for
-// fixed notation instead, which is still the older engine until task 24 replaces it.
+// fixed notation instead, and the `e` and `E` styles for scientific notation, both written in Scientific.rux and
+// PrecisionDigits.rux.
 
-import Text::{ Debug, Display, FormatError, FormatSpec, RejectStyle, TextWriter };
+import Text::{ Debug, Display, FormatError, FormatSpec, TextWriter };
 
 // The largest finite float64. Anything past it is an infinity, which is how
 // the tests below classify a value without reading its bits.
@@ -49,13 +50,26 @@ extend float64 : Display {
     /// Writes this value's decimal text.
     /// Allocates nothing: the digits go into a buffer on the stack and reach the writer in one call. Fifty bytes is
     /// more than the longest rendering — sign, digits, point and exponent — can need.
-    /// Reports whatever the writer reported, stopping at the first refusal.
+    /// A precision asks for that many digits after the point in fixed notation. The style `e` or `E` asks for
+    /// scientific notation, `1.2345e+05`, where a precision counts the digits after the mantissa's point. A NaN or an
+    /// infinity renders as `NaN`, `Inf` or `-Inf` under every placeholder.
+    /// Reports `UnsupportedRequest` for any other style or a precision past `MaximumPrecision`, and otherwise
+    /// whatever the writer reported, stopping at the first refusal.
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
     /// @see https://rux-lang.dev/docs/api/format/float64/write-display
     pub func WriteDisplay(self: &float64, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
-        RejectStyle(spec)?;
+        var mark = c8'e';
+        let scientific = ScientificMark(spec, @mark)?;
+        // A NaN or an infinity has no digits for a precision or an exponent to place, so it renders the same under
+        // every placeholder, with only the sign and the alignment applied.
+        if IsNan(self) || IsInfinite(self) {
+            return WriteNonFinite(writer, spec, IsNan(self), self < 0.0);
+        }
+        if scientific {
+            return WriteScientificNotation(writer, spec, DecomposeFloat64(self), mark);
+        }
         // Two bytes of head room in front, so that a requested sign can be put where the rendering starts
         // without moving it.
         var storage: char8[52];
