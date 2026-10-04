@@ -341,8 +341,6 @@ func Main() -> int {
 - **`Io` placeholders.** `PrintLine("{{}}")` with no arguments prints `{{}}` literally, but with
   arguments `{{` collapses to `{`. A placeholder count mismatch, such as `PrintLine("{} {}", 1)`,
   prints nothing; the failure is reported only through the returned `IoError?`.
-- **`///` inside a function body** is refused with `expected an expression before '/// …'`. A
-  diagnostic saying documentation comments attach only to declarations would be clearer.
 - **Out-of-range float-to-integer conversion is unspecified in `Docs/Language.md`.**
   `1e20 as int32` gives `0`, while `1e20 as int64` gives `int64::Min`.
 ## D24. A tuple literal converted into an optional, fallible or sum holds garbage

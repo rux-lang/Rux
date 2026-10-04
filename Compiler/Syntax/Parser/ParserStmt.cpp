@@ -19,6 +19,16 @@ std::unique_ptr<Block> Parser::ParseBlock(const std::string_view role) {
     block->location = loc;
 
     while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
+        // Documentation attaches only to declarations, so a '///' run inside a block is reported once and skipped
+        // rather than misread as the start of an expression.
+        if (Check(TokenKind::DocComment)) {
+            EmitError(CurrentLocation(), "documentation comment inside a block is not attached to a declaration",
+                      "write an ordinary '//' comment here; '///' documents the declaration that follows it");
+            while (Check(TokenKind::DocComment)) {
+                Advance();
+            }
+            continue;
+        }
         if (auto stmt = ParseStmt()) {
             block->stmts.push_back(std::move(stmt));
         }

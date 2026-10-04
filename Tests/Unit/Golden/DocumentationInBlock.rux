@@ -1,0 +1,7 @@
+// A documentation comment inside a function body attaches to nothing and is reported once.
+func Main() -> int {
+    /// Not documentation of anything.
+    /// The second line belongs to the same run.
+    let value = 1;
+    return value;
+}
