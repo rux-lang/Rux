@@ -274,8 +274,10 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
                     const bool isSingleSpread = (argTypes.size() == paramCount + 1 &&
                                                  dynamic_cast<const SpreadExpr *>(e->args[paramCount].get()));
                     if (isSingleSpread) {
+                        // The spread operand converts to the variadic slice by the ordinary argument rules, so an
+                        // array or a writable slice of the element type is spread as the read-only slice.
                         if (!argTypes[paramCount].IsUnknown() && !sliceType.IsUnknown() &&
-                            argTypes[paramCount] != sliceType) {
+                            !canPassArgument(paramCount, argTypes[paramCount], sliceType)) {
                             callAccepted = false;
                             emitArgumentTypeError(ident->name, paramCount, argTypes[paramCount], sliceType,
                                                   &decl->params.back(), decl, true);

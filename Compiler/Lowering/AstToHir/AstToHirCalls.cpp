@@ -165,7 +165,9 @@ std::vector<HirExprPtr> AstToHirContext::LowerBoundArguments(const CallExpr &cal
     const bool singleSpread =
         call.args.size() == fixedCount + 1 && dynamic_cast<const SpreadExpr *>(call.args[fixedCount].get()) != nullptr;
     if (singleSpread) {
-        HirExprPtr slice = LowerExpr(*call.args[fixedCount]);
+        // The operand is converted to the slice the way analysis accepted it, which views an array as one.
+        const auto &spread = static_cast<const SpreadExpr &>(*call.args[fixedCount]);
+        HirExprPtr slice = LowerExprAs(*spread.operand, TypeRef::MakeSlice(elementType));
         slice->type = TypeRef::MakeSlice(elementType);
         arguments.push_back(std::move(slice));
         return arguments;

@@ -226,7 +226,9 @@ func Main() -> int {
 - **Expected:** besides the error in the body, a note naming the call that set `T = P`.
 - **Actual:** only `operator '>' is not defined for 'P'`, pointing inside `Larger`.
 
-## D14. Spreading an array into a variadic parameter needs an explicit slice
+## D14. Spreading an array into a variadic parameter needs an explicit slice (fixed)
+
+**Fixed**; covered by `Tests/Language/Variadic`.
 
 - **Reproducer:** `Sum(scores...)` where `scores: int32[3]` and `func Sum(args: int32...)`.
 - **Expected:** accepted, because an array converts to `int32[..]` everywhere else.
