@@ -459,6 +459,16 @@ void AnalysisContext::ReportNonExhaustiveMatchExpression(const MatchExpr &expres
             expression.location,
             std::format("match on '{}' is not exhaustive; its arms do not cover every value", subjectType.ToString()),
             {}, "add an 'else' arm");
+        return;
+    }
+    if (subjectType.kind == TypeRef::Kind::Tuple && !patterns.empty()) {
+        if (const auto found = tupleMatchMissing.find(patterns.front());
+            found != tupleMatchMissing.end() && found->second) {
+            EmitError(
+                expression.location,
+                std::format("match on '{}' is not exhaustive; missing {}", subjectType.ToString(), *found->second), {},
+                "add arms for the missing values, or an 'else' arm");
+        }
     }
 }
 

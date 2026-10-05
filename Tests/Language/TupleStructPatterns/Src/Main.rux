@@ -121,6 +121,29 @@ func MakePoint(x: int32, y: int32) -> Point {
     return Point { x: x, y: y };
 }
 
+enum Light {
+    Red,
+    Green
+}
+
+// A match expression on a tuple covers every combination of its elements without an `else` arm.
+func Both(flags: (bool, bool)) -> int32 {
+    return match flags {
+        (true, true) => 3,
+        (true, false) => 2,
+        (false, true) => 1,
+        (false, false) => 0
+    };
+}
+
+func Signal(state: (Light, bool)) -> int32 {
+    return match state {
+        (Light::Red, _) => 0,
+        (Light::Green, true) => 2,
+        (Light::Green, false) => 1
+    };
+}
+
 func Main() -> int {
     // The reproducer: a pair that is neither the origin nor on the x axis, and a sum over both elements.
     let pair: (int32, int32) = (1, 2);
@@ -180,5 +203,17 @@ func Main() -> int {
         }
     }
     Assert(taken == 2, "a temporary tuple subject matched as a statement");
+
+    Assert(Both((true, true)) == 3 && Both((true, false)) == 2, "complete bool pair, first element true");
+    Assert(Both((false, true)) == 1 && Both((false, false)) == 0, "complete bool pair, first element false");
+    Assert(Signal((Light::Red, true)) == 0 && Signal((Light::Red, false)) == 0, "enum element covered by a wildcard");
+    Assert(Signal((Light::Green, true)) == 2 && Signal((Light::Green, false)) == 1, "enum and bool elements");
+    var seen = 0i32;
+    match (1i32, 2i32) {
+        (0, _) => {
+            seen = 1;
+        }
+    }
+    Assert(seen == 0, "a tuple match statement may leave values unmatched");
     return 0;
 }

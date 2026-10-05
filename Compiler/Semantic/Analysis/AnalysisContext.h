@@ -368,6 +368,9 @@ private:
                              const std::unordered_map<std::string, TypeRef> &substitutions,
                              std::vector<PatternIssue> *issues);
     void ValidateNativeMatch(const std::vector<const Pattern *> &patterns, const TypeRef &subjectType);
+    /// The values no unguarded arm matches, spelled as patterns and joined, or nothing when the arms cover the subject.
+    [[nodiscard]] std::optional<std::string> MissingMatchValues(const std::vector<const Pattern *> &patterns,
+                                                                const TypeRef &subjectType);
     [[nodiscard]] static bool PatternContains(const Pattern &pattern, const Pattern &target);
     void ValidateDeferredPatternChecks(const FuncDecl &declaration,
                                        const std::unordered_map<std::string, TypeRef> &substitutions);
@@ -552,6 +555,8 @@ private:
     /// Whether each native match, keyed by its first arm's pattern, covers its subject, so control flow can ask after
     /// the arms are checked.
     std::unordered_map<const Pattern *, bool> nativeMatchExhaustive;
+    /// What each tuple match, keyed by its first arm's pattern, leaves uncovered, or nothing when its arms cover it.
+    std::unordered_map<const Pattern *, std::optional<std::string>> tupleMatchMissing;
     std::unordered_map<const BinaryExpr *, ResolvedVariantEquality> &variantEqualities;
     std::unordered_map<std::string, VariantEqualityPlan> &variantEqualityPlans;
     std::unordered_map<const BinaryExpr *, bool> &aggregateEqualities;

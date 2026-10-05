@@ -1,0 +1,4 @@
+6:16: error: match on '(int32, int32)' is not exhaustive; missing (_, _)
+8:19: error: match on '(bool8, bool8)' is not exhaustive; missing (true, false)
+10:19: error: match on '(bool8, bool8)' is not exhaustive; missing (false, false), (false, true)
+12:15: error: match on '(Light, bool8)' is not exhaustive; missing (Light::Green, false)

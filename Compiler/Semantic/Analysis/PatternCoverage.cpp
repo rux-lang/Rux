@@ -1084,6 +1084,29 @@ bool AnalysisContext::NativeMatchCoverage(const std::vector<const Pattern *> &pa
     return missing.empty();
 }
 
+std::optional<std::string> AnalysisContext::MissingMatchValues(const std::vector<const Pattern *> &patterns,
+                                                               const TypeRef &subjectType) {
+    CoverageSolver solver([this](const TypeRef &type) { return CoverageConstructors(type); });
+    const std::unordered_map<std::string, TypeRef> noSubstitutions;
+    NativePatternTranslator translator(*this, noSubstitutions, nullptr);
+    std::vector<Row> rows;
+    for (const Pattern *pattern : patterns) {
+        // A guarded arm may refuse any value it matches, so it covers nothing.
+        if (pattern && !dynamic_cast<const GuardedPattern *>(pattern)) {
+            rows.push_back(Row{translator.Translate(*pattern, subjectType)});
+        }
+    }
+    const std::vector<WitnessRow> missing = solver.Useful(rows, Row{Space{}}, {subjectType}, 8);
+    if (missing.empty()) {
+        return std::nullopt;
+    }
+    std::string names;
+    for (const WitnessRow &witness : missing) {
+        names += (names.empty() ? "" : ", ") + translator.Describe(witness.front(), subjectType);
+    }
+    return names;
+}
+
 void AnalysisContext::ValidateNativeMatch(const std::vector<const Pattern *> &patterns, const TypeRef &subjectType) {
     const auto mentionsParameter = [&] {
         if (MentionsTypeParameter(subjectType)) {

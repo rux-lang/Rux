@@ -1160,6 +1160,11 @@ void AnalysisContext::ValidateMatchPatterns(const std::vector<const Pattern *> &
         ValidateNativeMatch(patterns, subjectType);
         return;
     }
+    // A tuple's values are the combinations of its elements' values, so its coverage is decided over the whole pattern
+    // rather than case by case.
+    if (subjectType.kind == TypeRef::Kind::Tuple && !patterns.empty() && patterns.front()) {
+        tupleMatchMissing.insert_or_assign(patterns.front(), MissingMatchValues(patterns, subjectType));
+    }
     std::unordered_set<std::string> seen;
     std::unordered_set<std::string> coveredVariants;
     bool coveredAll = false;
@@ -1242,6 +1247,10 @@ bool AnalysisContext::MatchPatternsAreExhaustive(const std::vector<const Pattern
             hasFalse = hasFalse || (literal && literal->value.text == "false");
         }
         return hasTrue && hasFalse;
+    }
+    if (subjectType.kind == TypeRef::Kind::Tuple) {
+        const auto found = patterns.empty() ? tupleMatchMissing.end() : tupleMatchMissing.find(patterns.front());
+        return found != tupleMatchMissing.end() && !found->second;
     }
     if (subjectType.kind != TypeRef::Kind::Named) {
         return false;
