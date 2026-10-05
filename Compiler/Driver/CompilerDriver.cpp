@@ -198,7 +198,7 @@ CompileResult CompilerDriver::Impl::Compile() {
                                           {"[Manifest].MinRux names the oldest compiler that can build the package"},
                                           "install a newer Rux release to build this package");
         diagnostic.sourceName = opts.manifestPath.string();
-        Emit(std::move(diagnostic));
+        Emit(diagnostic);
         finish();
         return result;
     }
