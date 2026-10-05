@@ -389,7 +389,18 @@ struct IndexExpr : Expr {
 struct FieldExpr : Expr {
     ExprPtr object;
     std::string field;
+    /// Where the member name starts; `location` is the '.' before it.
+    std::optional<SourceLocation> memberLocation;
 };
+
+/// Where a call is named in the source, for diagnostics about using the callee: the callee's start for `Name(...)`, the
+/// method name for `value.Method(...)`. The call's own location is the token after the callee.
+[[nodiscard]] inline SourceLocation CallSiteLocation(const CallExpr &call) {
+    if (const auto *member = dynamic_cast<const FieldExpr *>(call.callee.get())) {
+        return member->memberLocation.value_or(member->location);
+    }
+    return call.callee ? call.callee->location : call.location;
+}
 
 // Point { x: 1.0, y: 2.0 }
 struct StructInitExpr : Expr {

@@ -520,6 +520,7 @@ ExprPtr Parser::ParsePostfix() {
         const auto loc = CurrentLocation();
         // Method/field/tuple-index: expr.field  expr.method(args)  expr.0
         if (Match(TokenKind::Dot)) {
+            const SourceLocation memberLocation = CurrentLocation();
             std::string name;
             if (Check(TokenKind::IntLiteral)) {
                 name = Advance().text;
@@ -537,6 +538,7 @@ ExprPtr Parser::ParsePostfix() {
                 // Desugar to CallExpr with FieldExpr callee
                 auto field = std::make_unique<FieldExpr>();
                 field->location = loc;
+                field->memberLocation = memberLocation;
                 field->object = std::move(left);
                 field->field = name;
                 auto call = std::make_unique<CallExpr>();
@@ -548,6 +550,7 @@ ExprPtr Parser::ParsePostfix() {
             else {
                 auto e = std::make_unique<FieldExpr>();
                 e->location = loc;
+                e->memberLocation = memberLocation;
                 e->object = std::move(left);
                 e->field = name;
                 left = std::move(e);

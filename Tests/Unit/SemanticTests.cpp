@@ -115,6 +115,32 @@ TEST_CASE("extern function call attributes emit direct and qualified diagnostics
     CHECK_EQ(diagnostics[1].message, "qualified extern call is discouraged");
 }
 
+TEST_CASE("Error and Warn attributes report the use where the callee is named") {
+    const auto diagnostics = AnalyzeSource(R"(
+#Warn("use Mean")
+func Average(a: int32, b: int32) -> int32 { return (a + b) / 2i32; }
+struct Meter { value: int32; }
+extend Meter {
+    #Error("read the value directly")
+    func Read(self: &Meter) -> int32 { return self.value; }
+}
+func Main() -> int {
+    let meter = Meter { value: 1i32 };
+    let mean = Average(1i32, 3i32) + meter.Read();
+    return mean as int;
+}
+)");
+
+    // The caret sits on the callee's name, not on the '(' after it or the '.' before a method name.
+    REQUIRE_EQ(diagnostics.size(), 2);
+    CHECK_EQ(diagnostics[0].message, "use Mean");
+    CHECK_EQ(diagnostics[0].location.line, 11);
+    CHECK_EQ(diagnostics[0].location.column, 16);
+    CHECK_EQ(diagnostics[1].message, "read the value directly");
+    CHECK_EQ(diagnostics[1].location.line, 11);
+    CHECK_EQ(diagnostics[1].location.column, 44);
+}
+
 TEST_CASE("one-argument Link applies a library to every function in an extern block") {
     const auto diagnostics = AnalyzeSource(R"(
         #Link("Kernel32.dll")

@@ -436,8 +436,10 @@ HirExprPtr AstToHirContext::LowerCallExpr(const CallExpr &call) {
         lowered->type = TypeRef::MakeOpaque();
         lowered->sourceFile = LogicalCurrentFilePath();
         lowered->sourceFunction = currentFunctionName;
-        lowered->sourceLine = call.location.line;
-        lowered->sourceColumn = call.location.column;
+        // The report names where the program called the check, which starts at its name rather than its '('.
+        const SourceLocation callSite = CallSiteLocation(call);
+        lowered->sourceLine = callSite.line;
+        lowered->sourceColumn = callSite.column;
 
         const TypeRef stringType = TypeRef::MakeSlice(TypeRef::MakeChar8());
         auto callee = std::make_unique<HirVarExpr>();

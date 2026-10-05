@@ -430,7 +430,7 @@ Type = "Executable"
                                               (end == std::string::npos ? normalized.size() : end + 1) - row);
                 CHECK(report.contains("note: test '" + std::string(names[index]) + "' exited with code"));
                 const std::string failure =
-                    "Panic: " + std::string(messages[index]) + "\n  at Main (Src/Main.rux:2:27)\n";
+                    "Panic: " + std::string(messages[index]) + "\n  at Main (Src/Main.rux:2:22)\n";
                 CHECK(report.contains("  Output:\n" + Reporting::Indent(failure, 2)));
             }
             CHECK(normalized.contains("Failed 5 tests in "));

@@ -278,10 +278,10 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
                 }
             }
             if (!decl->warnMessage.empty()) {
-                EmitWarning(e->location, decl->warnMessage);
+                EmitWarning(CallSiteLocation(*e), decl->warnMessage);
             }
             if (!decl->errorMessage.empty()) {
-                EmitError(e->location, decl->errorMessage);
+                EmitError(CallSiteLocation(*e), decl->errorMessage);
             }
             CheckTypeArgumentConstraints(decl->typeParams, substitutions, e->location,
                                          std::format("function '{}'", ident->name));
@@ -530,10 +530,10 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
                 LookupMethodCall(receiverType, field->field, *e, argTypes, 0, methodSubstitutions)) {
             bool callAccepted = true;
             if (!method->warnMessage.empty()) {
-                EmitWarning(e->location, method->warnMessage);
+                EmitWarning(CallSiteLocation(*e), method->warnMessage);
             }
             if (!method->errorMessage.empty()) {
-                EmitError(e->location, method->errorMessage);
+                EmitError(CallSiteLocation(*e), method->errorMessage);
             }
             std::vector<TypeRef> paramTypes = ResolveMethodParamTypes(receiverType, *method, methodSubstitutions);
             // A method of a generic type is an instantiation like any other: its body was checked with the type's
@@ -887,7 +887,7 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
 
     Symbol *calleeSymbol = LookupCalleeSymbol(*e->callee);
     if (calleeSymbol && calleeSymbol->externDecl) {
-        EmitCallSiteDiagnostics(*calleeSymbol->externDecl, e->location);
+        EmitCallSiteDiagnostics(*calleeSymbol->externDecl, CallSiteLocation(*e));
     }
 
     TypeRef calleeType = CheckExpr(*e->callee);

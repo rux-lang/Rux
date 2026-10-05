@@ -200,9 +200,9 @@ TEST_CASE("runtime failure lowering preserves qualified function, logical path, 
     CHECK_EQ(assertion->sourceFile, "Src/Runtime.rux");
     CHECK_EQ(panic->sourceFile, "Src/Runtime.rux");
     CHECK_EQ(assertion->sourceLine, 8);
-    CHECK_EQ(assertion->sourceColumn, 15);
+    CHECK_EQ(assertion->sourceColumn, 9);
     CHECK_EQ(panic->sourceLine, 12);
-    CHECK_EQ(panic->sourceColumn, 14);
+    CHECK_EQ(panic->sourceColumn, 9);
 }
 
 TEST_CASE("ELF, PE, and Mach-O images preserve runtime failure text on both backends") {
@@ -214,8 +214,8 @@ TEST_CASE("ELF, PE, and Mach-O images preserve runtime failure text on both back
             CHECK(ContainsText(bytes, "Assertion failed: "));
             CHECK(ContainsText(bytes, "Panic: "));
             CHECK(ContainsText(bytes, "Помилка 🚨"));
-            CHECK(ContainsText(bytes, "\n  at Main (Src/Runtime.rux:17:11)\n"));
-            CHECK(ContainsText(bytes, "\n  at Main (Src/Runtime.rux:18:10)\n"));
+            CHECK(ContainsText(bytes, "\n  at Main (Src/Runtime.rux:17:5)\n"));
+            CHECK(ContainsText(bytes, "\n  at Main (Src/Runtime.rux:18:5)\n"));
         }
     }
 }
@@ -258,7 +258,7 @@ TEST_CASE("Windows runtime failures renew stack arguments between output writes"
         CHECK(result->exitCode == static_cast<int>(0xc000001dU));
         const bool panic = statement.starts_with("Panic");
         const auto layout = BuildRuntimeFailureLayout(panic ? RuntimeFailureKind::Panic : RuntimeFailureKind::Assertion,
-                                                      "Main", "Src/Runtime.rux", 3, panic ? 27 : 28);
+                                                      "Main", "Src/Runtime.rux", 3, 22);
         CHECK(result->output == layout.Join(panic ? "first line\nsecond line" : ""));
     }
 }
