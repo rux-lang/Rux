@@ -420,18 +420,26 @@ bool AnalysisContext::CheckFreeBindingName(const std::string &name, const Source
     if (symbol->kind == Symbol::Kind::Type && symbol->type.kind == TypeRef::Kind::TypeParam) {
         kind = "generic parameter";
     }
+    std::string help;
+    if (symbol->kind == Symbol::Kind::Const) {
+        // A pattern compares only with values written in it, so a named constant is neither a test nor a binding.
+        help = std::format("a pattern compares with literal values; write the value of '{0}', or bind the value and "
+                           "compare it with '{0}' in a guard such as 'value if value >= {0}'",
+                           name);
+    }
+    else if (symbol->kind == Symbol::Kind::Type) {
+        std::string lowered = name;
+        lowered.front() = static_cast<char>(std::tolower(static_cast<unsigned char>(name.front())));
+        help = std::format("write '{0}: {1}' to select the member, '{1} {{ ... }}' to destructure it, or 'Type::Case' "
+                           "to select a case",
+                           lowered == name ? lowered + "Value" : lowered, name);
+    }
+    else {
+        help = std::format("choose a binding name that does not already name a {}", kind);
+    }
     EmitError(location,
               std::format("pattern '{}' cannot bind a new variable because '{}' already names a {}", name, name, kind),
-              {DeclarationNote(*symbol)},
-              std::format(
-                  "write '{0}: {1}' to select the member, '{1} {{ ... }}' to destructure it, or 'Type::Case' "
-                  "to select a case",
-                  [&] {
-                      std::string lowered = name;
-                      lowered.front() = static_cast<char>(std::tolower(static_cast<unsigned char>(name.front())));
-                      return lowered == name ? lowered + "Value" : lowered;
-                  }(),
-                  name));
+              {DeclarationNote(*symbol)}, std::move(help));
     return false;
 }
 

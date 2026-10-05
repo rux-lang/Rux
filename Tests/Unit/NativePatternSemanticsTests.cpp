@@ -536,6 +536,12 @@ TEST_CASE("a binding pattern must introduce a free name") {
                 Helper => 1i32
             };
         }
+        func RangeEnd(value: int32) -> int32 {
+            return match value {
+                Limit..=9 => 1i32,
+                else => 2i32
+            };
+        }
         func Parameter<T>(value: int32) -> int32 {
             return match value {
                 T => 1i32
@@ -563,7 +569,7 @@ TEST_CASE("a binding pattern must introduce a free name") {
     };
     CHECK_EQ(messageCount("pattern 'Options' cannot bind a new variable because 'Options' already names a type"), 1);
     CHECK_EQ(messageCount("pattern 'Settings' cannot bind a new variable because 'Settings' already names a type"), 1);
-    CHECK_EQ(messageCount("pattern 'Limit' cannot bind a new variable because 'Limit' already names a constant"), 1);
+    CHECK_EQ(messageCount("pattern 'Limit' cannot bind a new variable because 'Limit' already names a constant"), 2);
     CHECK_EQ(messageCount("pattern 'Helper' cannot bind a new variable because 'Helper' already names a function"), 1);
     CHECK_EQ(messageCount("pattern 'T' cannot bind a new variable because 'T' already names a"), 1);
     CHECK_EQ(messageCount("pattern 'Missing' cannot bind a new variable because 'Missing' is a case of variant "
@@ -578,6 +584,19 @@ TEST_CASE("a binding pattern must introduce a free name") {
                              "'Type::Case' to select a case");
     REQUIRE_EQ(options->notes.size(), 1);
     CHECK(options->notes.front().contains("'Options' was declared as a type"));
+
+    // A constant, alone or as the end of a range, is neither a field to select nor a type to destructure.
+    for (const auto &error : errors) {
+        if (error.message.starts_with("pattern 'Limit'")) {
+            REQUIRE(error.help.has_value());
+            CHECK_EQ(*error.help, "a pattern compares with literal values; write the value of 'Limit', or bind the "
+                                  "value and compare it with 'Limit' in a guard such as 'value if value >= Limit'");
+        }
+        if (error.message.starts_with("pattern 'Helper'")) {
+            REQUIRE(error.help.has_value());
+            CHECK_EQ(*error.help, "choose a binding name that does not already name a function");
+        }
+    }
 
     // Shadowing a variable or a parameter stays legal, and so does a free lowercase binding.
     CHECK(Errors(declarations + R"(
