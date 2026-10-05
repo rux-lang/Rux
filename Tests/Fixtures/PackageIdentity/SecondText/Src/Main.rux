@@ -3,7 +3,7 @@ func Main() -> int {
 }
 
 func Inner<T>(value: T) -> int {
-    return Main() + sizeof(T);
+    return Main() + (sizeof(T) as int);
 }
 
 pub func Compute<T>(value: T) -> int {

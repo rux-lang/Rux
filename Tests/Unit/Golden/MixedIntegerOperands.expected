@@ -1,0 +1,6 @@
+15:5: error: cannot assign 'int64' to 'int32'
+17:11: error: operator '+=' produces 'int64', which cannot be stored in target type 'int32'
+20:19: error: operator '+' cannot combine left operand 'uint64' with right operand 'int64'
+21:22: error: operator '<' cannot compare left operand 'uint64' with right operand 'int64'
+23:7: error: operator '*=' cannot combine left operand 'uint128' with right operand 'int64'
+7:18: error: operator '*' widens 'int32' to 'int64' for these type arguments, but the generic expression has type 'int32'

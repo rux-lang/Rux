@@ -569,9 +569,21 @@ void AnalysisContext::ValidateDeferredBasicExpressionChecks(
     }
     if (const auto it = deferredBinaryChecks.find(&declaration); it != deferredBinaryChecks.end()) {
         for (const DeferredBinaryCheck &check : it->second) {
-            static_cast<void>(CheckBinary(check.op, SubstituteTypeParameters(check.left, substitutions),
-                                          SubstituteTypeParameters(check.right, substitutions), *check.leftExpression,
-                                          *check.rightExpression, check.location, check.binaryExpression));
+            const TypeRef left = SubstituteTypeParameters(check.left, substitutions);
+            const TypeRef right = SubstituteTypeParameters(check.right, substitutions);
+            const TypeRef result = CheckBinary(check.op, left, right, *check.leftExpression, *check.rightExpression,
+                                               check.location, check.binaryExpression);
+            // The generic expression has the type of its operand written in the type parameters. An instantiation in
+            // which the other operand is wider would widen the result, and every instantiation shares one type.
+            const TypeRef &kept =
+                MentionsTypeParameter(check.left) || !MentionsTypeParameter(check.right) ? left : right;
+            if (result.IsInteger() && kept.IsInteger() && result != kept) {
+                EmitError(check.location,
+                          std::format("operator '{}' widens '{}' to '{}' for these type arguments, but the generic "
+                                      "expression has type '{}'",
+                                      OperatorName(check.op), kept.ToString(), result.ToString(), kept.ToString()),
+                          {}, "convert the wider operand with 'as' to the type parameter's type");
+            }
         }
     }
     if (const auto it = deferredCastChecks.find(&declaration); it != deferredCastChecks.end()) {
@@ -728,7 +740,9 @@ TypeRef AnalysisContext::CheckBinary(const TokenKind op, const TypeRef &leftType
         case TokenKind::GreaterEqual:
             return TypeRef::MakeBool();
         default:
-            return left;
+            // The operand written in the type parameters is the one whose type the expression keeps in every
+            // instantiation, as `1 + value` keeps the type of `value`.
+            return MentionsTypeParameter(left) || !MentionsTypeParameter(right) ? left : right;
         }
     }
 
@@ -760,16 +774,30 @@ TypeRef AnalysisContext::CheckBinary(const TokenKind op, const TypeRef &leftType
             return leftType;
         }
         if (leftType.IsInteger() && rightType.IsInteger()) {
-            // Two integers normally settle on the left operand's type. An unsuffixed literal carries the default
-            // `int`, though, so that rule made `2 * count` an `int` while `count * 2` was a `uint` — the same
-            // expression mirrored, one spelling compiling and the other not. A literal takes the other operand's
-            // type whichever side it is written on. The guard is narrow: an `int`-typed expression that is not a
-            // literal is not assignable to another width, so only a literal can flip the result.
+            // An unsuffixed literal or a constant expression carries the default `int`, and takes the other operand's
+            // type when its value fits there, whichever side it is written on: `2 * count` and `count * 2` are both
+            // the type of `count`.
             if (leftType.kind == TypeRef::Kind::Int && rightType.kind != TypeRef::Kind::Int &&
                 CanAssignExprTo(leftExpr, leftType, rightType)) {
                 return rightType;
             }
-            return leftType;
+            if (rightType.kind == TypeRef::Kind::Int && leftType.kind != TypeRef::Kind::Int &&
+                CanAssignExprTo(rightExpr, rightType, leftType)) {
+                return leftType;
+            }
+            // Otherwise the narrower operand widens to the wider one's type, exactly as an assignment would widen it,
+            // so `small + big` is as wide as `big + small`. Operands of different signedness have no such type: one
+            // of them would change value.
+            if (leftType.IsSigned() != rightType.IsSigned()) {
+                return std::nullopt;
+            }
+            if (rightType.IsAssignableTo(leftType)) {
+                return leftType;
+            }
+            if (leftType.IsAssignableTo(rightType)) {
+                return rightType;
+            }
+            return std::nullopt;
         }
         if (CanAssignExprTo(rightExpr, rightType, leftType)) {
             return leftType;
@@ -778,6 +806,21 @@ TypeRef AnalysisContext::CheckBinary(const TokenKind op, const TypeRef &leftType
             return rightType;
         }
         return std::nullopt;
+    };
+
+    // Two integers of different signedness are the one pair the operators cannot widen to a common type, so the error
+    // says why and how to choose one.
+    const auto reportIncompatible = [&](const std::string_view verb) {
+        std::vector<std::string> notes;
+        std::optional<std::string> help;
+        if (left.IsInteger() && right.IsInteger() && left.IsSigned() != right.IsSigned()) {
+            notes.emplace_back("the operands differ in signedness, so neither converts to the other's type");
+            help = "convert one operand with 'as' to the type the operation should use";
+        }
+        EmitError(location,
+                  std::format("operator '{}' cannot {} left operand '{}' with right operand '{}'", operatorName, verb,
+                              left.ToString(), right.ToString()),
+                  std::move(notes), std::move(help));
     };
 
     using TK = TokenKind;
@@ -835,8 +878,7 @@ TypeRef AnalysisContext::CheckBinary(const TokenKind op, const TypeRef &leftType
                 return *result;
             }
         }
-        EmitError(location, std::format("operator '{}' cannot combine left operand '{}' with right operand '{}'",
-                                        operatorName, left.ToString(), right.ToString()));
+        reportIncompatible("combine");
         return left;
     }
     case TK::Minus: {
@@ -848,8 +890,7 @@ TypeRef AnalysisContext::CheckBinary(const TokenKind op, const TypeRef &leftType
                 return *result;
             }
         }
-        EmitError(location, std::format("operator '{}' cannot combine left operand '{}' with right operand '{}'",
-                                        operatorName, left.ToString(), right.ToString()));
+        reportIncompatible("combine");
         return left;
     }
     case TK::Star:
@@ -860,8 +901,7 @@ TypeRef AnalysisContext::CheckBinary(const TokenKind op, const TypeRef &leftType
                 return *result;
             }
         }
-        EmitError(location, std::format("operator '{}' cannot combine left operand '{}' with right operand '{}'",
-                                        operatorName, left.ToString(), right.ToString()));
+        reportIncompatible("combine");
         return left;
     }
     case TK::Amp:
@@ -884,8 +924,7 @@ TypeRef AnalysisContext::CheckBinary(const TokenKind op, const TypeRef &leftType
             return *result;
         }
         else {
-            EmitError(location, std::format("operator '{}' cannot combine left operand '{}' with right operand '{}'",
-                                            operatorName, left.ToString(), right.ToString()));
+            reportIncompatible("combine");
         }
         return left;
     }
@@ -1103,8 +1142,7 @@ TypeRef AnalysisContext::CheckBinary(const TokenKind op, const TypeRef &leftType
             (operation == TK::Equal || operation == TK::BangEqual) &&
             ((left.IsBool() && right.IsInteger()) || (left.IsInteger() && right.IsBool()));
         if (!boolIntegerComparison && !compatibleType(leftExpression, left, rightExpression, right)) {
-            EmitError(location, std::format("operator '{}' cannot compare left operand '{}' with right operand '{}'",
-                                            operatorName, left.ToString(), right.ToString()));
+            reportIncompatible("compare");
         }
         return TypeRef::MakeBool();
     }

@@ -8,11 +8,9 @@ func Main() -> int {
         return 1;
     }
 
-    // Two integer operands normally settle on the left one's type. An
-    // unsuffixed literal carries the default `int`, so that rule used to make
-    // `2 * count` an `int` while `count * 2` was a `uint` — the same
-    // expression mirrored, one spelling compiling and the other rejected. A
-    // literal takes the other operand's type whichever side it is written on.
+    // An unsuffixed literal carries the default `int`, and takes the other
+    // operand's type whichever side it is written on, so `2 * count` and
+    // `count * 2` are both a `uint`.
     let count: uint = 5;
     let doubledLeft: uint = 2 * count;
     let doubledRight: uint = count * 2;
@@ -56,6 +54,34 @@ func Main() -> int {
     let scaled: int = 2 * plain;
     if both != 6 || scaled != 8 {
         return 10;
+    }
+
+    // Operands of one signedness and different widths widen to the wider
+    // type, as an assignment would, so neither order wraps the narrow one.
+    let small: int32 = 1;
+    let big: int64 = 5000000000;
+    let sum: int64 = small + big;
+    let mirrored: int64 = big + small;
+    if sum != 5000000001 || mirrored != 5000000001 {
+        return 12;
+    }
+    var running: int64 = 0;
+    running += small;
+    running = running * big;
+    if running != 5000000000 || !(small < big) || small == big {
+        return 13;
+    }
+    let byte: uint8 = 200;
+    let word: uint32 = 100000;
+    let masked: uint32 = byte | word;
+    let added: uint32 = byte + word;
+    if masked != 100072 || added != 100200 {
+        return 14;
+    }
+    let tiny: int8 = -100;
+    let huge: int128 = 170141183460469231731687303715884105727;
+    if tiny + huge != 170141183460469231731687303715884105627 {
+        return 15;
     }
 
     // Adjacent stars have no exponent meaning. They are the same ordinary
