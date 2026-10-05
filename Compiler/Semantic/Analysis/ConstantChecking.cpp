@@ -378,6 +378,24 @@ std::string AnalysisContext::ImmutableAddressOfHint(const Expr &expr, const Type
     return {};
 }
 
+// An unprefixed character takes a narrow character destination only when it fits one code unit there, so a refusal
+// names the character the way the prefixed form's own diagnostic does rather than reporting its default 'char32'.
+std::optional<std::string> AnalysisContext::UnfitCharacterLiteralMessage(const Expr &expression,
+                                                                         const TypeRef &targetType) {
+    const auto *literal = dynamic_cast<const LiteralExpr *>(&expression);
+    if (!literal || literal->token.kind != TokenKind::CharLiteral || !literal->token.text.starts_with('\'') ||
+        !targetType.IsChar()) {
+        return std::nullopt;
+    }
+    const std::optional<std::uint32_t> codePoint = Lexer::DecodeCharLiteralCodePoint(literal->token.text);
+    if (!codePoint || IsOneCharacterOf(targetType.kind, *codePoint)) {
+        return std::nullopt;
+    }
+    const std::string_view text = literal->token.text;
+    return std::format("character '{}' (U+{:04X}) does not fit one '{}' code unit", text.substr(1, text.size() - 2),
+                       *codePoint, targetType.ToString());
+}
+
 // Picks the diagnostic for a rejected assignment/conversion. An
 // unsuffixed integer literal that does not fit the target gets a
 // dedicated "out of range" message; taking the address of an immutable
@@ -387,6 +405,9 @@ std::string AnalysisContext::ImmutableAddressOfHint(const Expr &expr, const Type
 std::string AnalysisContext::AssignmentErrorMessage(const Expr &expr, const TypeRef &targetType, std::string fallback) {
     if (IsIntegerLiteralOutOfRangeFor(expr, targetType)) {
         return std::format("integer literal is out of range for type '{}'", targetType.ToString());
+    }
+    if (std::optional<std::string> message = UnfitCharacterLiteralMessage(expr, targetType)) {
+        return std::move(*message);
     }
     // A literal's code units live in the read-only section the linker places them in, so the one view that can name
     // them is a read-only one; the refusal says why rather than reporting a mismatch of writability.

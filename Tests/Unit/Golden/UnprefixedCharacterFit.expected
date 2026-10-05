@@ -1,0 +1,5 @@
+8:5: error: character '😀' (U+1F600) does not fit one 'char16' code unit
+13:5: error: character 'é' (U+00E9) does not fit one 'char8' code unit
+15:12: error: character 'ß' (U+00DF) does not fit one 'char8' code unit
+16:22: error: character 'ü' (U+00FC) does not fit one 'char8' code unit
+16:5: warning: cannot infer type of 'taken'

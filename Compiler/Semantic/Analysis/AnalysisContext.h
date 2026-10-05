@@ -917,6 +917,8 @@ private:
                                        const TypeRef &targetType);
     [[nodiscard]] std::string AssignmentErrorMessage(const Expr &expression, const TypeRef &targetType,
                                                      std::string fallback);
+    [[nodiscard]] static std::optional<std::string> UnfitCharacterLiteralMessage(const Expr &expression,
+                                                                                 const TypeRef &targetType);
     [[nodiscard]] std::string BaseTypeName(const std::string &name) const;
 
     [[nodiscard]] TypeRef ParseTypeRefFromString(std::string typeName) const;

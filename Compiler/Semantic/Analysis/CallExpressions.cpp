@@ -110,6 +110,13 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
         if (parameter && declaration) {
             notes.push_back(parameterNote(*parameter, *declaration));
         }
+        if (std::optional<std::string> message = UnfitCharacterLiteralMessage(*e->args[argumentIndex], parameterType)) {
+            notes.push_back(std::format("argument {} to '{}' is passed to {}{} of type '{}'", argumentIndex + 1,
+                                        callable, variadic ? "variadic " : "", parameterName,
+                                        parameterType.ToString()));
+            EmitError(e->args[argumentIndex]->location, std::move(*message), std::move(notes));
+            return;
+        }
         EmitError(e->args[argumentIndex]->location,
                   std::format("argument {} to '{}' has type '{}', but {}{} requires '{}'", argumentIndex + 1, callable,
                               argumentType.DisplayString(), variadic ? "variadic " : "", parameterName,

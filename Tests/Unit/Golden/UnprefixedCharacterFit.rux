@@ -1,0 +1,19 @@
+// An unprefixed character takes 'char8' or 'char16' from its destination when it fits one code unit there; one that
+// does not is reported by the character, as the prefixed form is, wherever the destination comes from.
+func Take(letter: char8) -> char8 {
+    return letter;
+}
+
+func Wide() -> char16 {
+    return '😀';
+}
+
+func Main() -> int {
+    let plain: char8 = 'a';
+    let accent: char8 = 'é';
+    var letter: char8 = 'b';
+    letter = 'ß';
+    let taken = Take('ü');
+    let wide: char16 = 'é';
+    return 0;
+}
