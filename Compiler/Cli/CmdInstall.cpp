@@ -131,6 +131,15 @@ std::optional<std::vector<PackageRequirement>> SeedFromProject(const GlobalOptio
                                                                const CliSupport::Reporter &output,
                                                                const CliSupport::Reporter &diagnostics) {
     std::vector<PackageRequirement> seeds;
+    // A package whose `MinRux` is newer than this compiler cannot be built, so its dependencies are not installed.
+    const auto compilerTooOld = [&](const Manifest &package) {
+        auto message = Packages::CompilerTooOldMessage(package.package.name.Text(), package.header.minRux);
+        if (message) {
+            diagnostics.Error(*message);
+            diagnostics.Help("install a newer Rux release to install this package's dependencies");
+        }
+        return message.has_value();
+    };
     std::optional<std::filesystem::path> manifestPath;
     if (!opts.manifest.empty()) {
         manifestPath = RequireManifest(opts.manifest);
@@ -160,6 +169,9 @@ std::optional<std::vector<PackageRequirement>> SeedFromProject(const GlobalOptio
                 diagnostics.Help("replace the member with a package manifest, then retry");
                 return std::nullopt;
             }
+            if (compilerTooOld(*memberManifest)) {
+                return std::nullopt;
+            }
             auto requirements = CollectPackageRequirements(*memberManifest, target);
             seeds.insert(seeds.end(), requirements.begin(), requirements.end());
         }
@@ -171,6 +183,9 @@ std::optional<std::vector<PackageRequirement>> SeedFromProject(const GlobalOptio
         return std::nullopt;
     }
     if (!manifest->IsWorkspace()) {
+        if (compilerTooOld(*manifest)) {
+            return std::nullopt;
+        }
         return CollectPackageRequirements(*manifest, target);
     }
 
@@ -191,6 +206,9 @@ std::optional<std::vector<PackageRequirement>> SeedFromProject(const GlobalOptio
         if (memberManifest->IsWorkspace() || memberManifest->package.name.Empty()) {
             diagnostics.Error(std::format("workspace member '{}' is not a package", member));
             diagnostics.Help("replace the member with a package manifest, then retry");
+            return std::nullopt;
+        }
+        if (compilerTooOld(*memberManifest)) {
             return std::nullopt;
         }
         auto requirements = CollectPackageRequirements(*memberManifest, target);

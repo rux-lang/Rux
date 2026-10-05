@@ -93,6 +93,15 @@ func Main() -> int {
         application.build.defines[std::move(name)] = DefineValue{DefineValue::Kind::String, std::move(value)};
     }
 
+    void SetApplicationMinRux(const std::string_view version) {
+        application.header.minRux = *SemanticVersion::Parse(version);
+    }
+
+    void SetDependencyMinRux(const std::string_view version) {
+        dependency.header.minRux = *SemanticVersion::Parse(version);
+        REQUIRE(dependency.Save(depRoot / "Rux.toml"));
+    }
+
     void SetDependencyTargets(std::vector<Target::OS> targetOS) {
         application.dependencies.front().targetOS = std::move(targetOS);
     }

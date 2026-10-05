@@ -377,4 +377,15 @@ SemanticVersion CompilerVersion() {
     auto parsed = SemanticVersion::Parse(CompilerBuild::compilerVersion);
     return parsed ? std::move(*parsed) : SemanticVersion{};
 }
+
+std::optional<std::string> CompilerTooOldMessage(const std::string_view package,
+                                                 const std::optional<SemanticVersion> &minRux) {
+    // A compiler without a readable release of its own cannot tell, so it does not refuse.
+    const auto compiler = SemanticVersion::Parse(CompilerBuild::compilerVersion);
+    if (!minRux || !compiler || SemanticVersion::ComparePrecedence(*minRux, *compiler) <= 0) {
+        return std::nullopt;
+    }
+    return std::format("package '{}' requires Rux '{}' or newer, but this is Rux '{}'", package, minRux->Text(),
+                       compiler->Text());
+}
 } // namespace Rux::Packages

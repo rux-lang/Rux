@@ -1,5 +1,8 @@
 #include "CliProcessTestSupport.h"
 #include "CompilerDriverTestSupport.h"
+#include "Package/Registry.h"
+
+#include <format>
 
 using namespace Rux;
 using namespace Rux::Testing::CompilerDriverTestSupport;
@@ -116,6 +119,46 @@ TEST_CASE("compiler driver loads path dependencies when checking") {
     CHECK(result.ok);
     CHECK(diagnostics.empty());
     CHECK(result.stats.dependencyFiles == 1);
+}
+
+TEST_CASE("compiler driver refuses a package whose MinRux is newer than the compiler") {
+    DependencyFixture fixture;
+    fixture.SetApplicationMinRux("9.0.0");
+    std::vector<Diagnostic> diagnostics;
+
+    const auto result = CompilerDriver(fixture.Options(true, diagnostics)).Compile();
+
+    CHECK_FALSE(result.ok);
+    REQUIRE(diagnostics.size() == 1);
+    CHECK(diagnostics.front().message ==
+          std::format("package 'App' requires Rux '9.0.0' or newer, but this is Rux '{}'",
+                      Packages::CompilerVersion().Text()));
+    CHECK(diagnostics.front().sourceName.ends_with("Rux.toml"));
+}
+
+TEST_CASE("compiler driver accepts a MinRux no newer than the compiler") {
+    DependencyFixture fixture;
+    fixture.SetApplicationMinRux(Packages::CompilerVersion().Text());
+    fixture.SetDependencyMinRux("0.4.0");
+    std::vector<Diagnostic> diagnostics;
+
+    const auto result = CompilerDriver(fixture.Options(true, diagnostics)).Compile();
+
+    CHECK(result.ok);
+    CHECK(diagnostics.empty());
+}
+
+TEST_CASE("compiler driver refuses a dependency whose MinRux is newer than the compiler") {
+    DependencyFixture fixture;
+    fixture.SetDependencyMinRux("9.0.0");
+    std::vector<Diagnostic> diagnostics;
+
+    const auto result = CompilerDriver(fixture.Options(true, diagnostics)).Compile();
+
+    CHECK_FALSE(result.ok);
+    CHECK(std::ranges::any_of(diagnostics, [](const Diagnostic &diagnostic) {
+        return diagnostic.message.starts_with("package 'Dependency' requires Rux '9.0.0' or newer");
+    }));
 }
 
 TEST_CASE("compiler driver exposes already-loaded source text while emitting semantic diagnostics") {

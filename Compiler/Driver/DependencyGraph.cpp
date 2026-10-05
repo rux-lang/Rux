@@ -1,6 +1,7 @@
 #include "Driver/DependencyGraph.h"
 
 #include "Package/Cache.h"
+#include "Package/Registry.h"
 
 #include <algorithm>
 #include <format>
@@ -165,6 +166,12 @@ const SourcePackage *DependencyGraph::Resolve(const SourcePackage &owner, const 
         Fail(owner,
              std::format("cannot load dependency package '{}' from '{}'", importName, path.parent_path().string()),
              {"the dependency manifest is missing or invalid"}, "check the dependency path and its Rux.toml manifest");
+        return nullptr;
+    }
+    if (auto tooOld = Packages::CompilerTooOldMessage(manifest->package.name.Text(), manifest->header.minRux)) {
+        Fail(owner, std::move(*tooOld),
+             {std::format("'{}' is the dependency '{}' of this package", manifest->package.name.Text(), importName)},
+             "install a newer Rux release, or depend on a version of the package this compiler can build");
         return nullptr;
     }
     const std::string id = Identity(*manifest, path);

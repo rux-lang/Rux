@@ -16,6 +16,7 @@
 #include "Object/Rcu/RcuDumper.h"
 #include "Object/Rcu/RcuWriter.h"
 #include "Optimization/Pipeline.h"
+#include "Package/Registry.h"
 #include "Semantic/Conditional/ConditionalCompilation.h"
 #include "Semantic/Model/SemanticPrinter.h"
 #include "Semantic/SemanticAnalyzer.h"
@@ -191,6 +192,16 @@ CompileResult CompilerDriver::Impl::Compile() {
         result.inspectionOutputs = inspectionOutputs;
     };
     BeginPhase(CompilePhase::Configuring, opts.manifest.package.name.Text(), opts.manifestPath);
+    // `MinRux` names the oldest compiler that can build the package, so an older one stops before reading a source.
+    if (auto tooOld = Packages::CompilerTooOldMessage(opts.manifest.package.name.Text(), opts.manifest.header.minRux)) {
+        auto diagnostic = ErrorDiagnostic(std::move(*tooOld),
+                                          {"[Manifest].MinRux names the oldest compiler that can build the package"},
+                                          "install a newer Rux release to build this package");
+        diagnostic.sourceName = opts.manifestPath.string();
+        Emit(std::move(diagnostic));
+        finish();
+        return result;
+    }
     if (invalidSourceDateEpoch) {
         const auto epoch = System::GetEnv("SOURCE_DATE_EPOCH");
         Emit(ErrorDiagnostic(
