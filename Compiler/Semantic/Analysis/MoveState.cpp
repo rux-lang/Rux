@@ -2,8 +2,12 @@
 #include "Semantic/Analysis/MovePlace.h"
 
 #include <algorithm>
+#include <charconv>
 #include <format>
 #include <ranges>
+#include <span>
+#include <string>
+#include <string_view>
 #include <utility>
 
 namespace Rux::SemanticDetail {
@@ -71,10 +75,22 @@ Symbol *AnalysisContext::DefineTrackedLocal(Symbol symbol, const bool initialize
         // a written element would never be destroyed, so it is tracked like any other local declared without a value.
         const bool fillableArray = defined->type.kind == TypeRef::Kind::Array && !MayNeedDestruction(defined->type);
         const bool hasInitialStorage = initialized || fillableArray;
-        moveStates.Declare(MoveStateTracker::Local(defined),
-                           hasInitialStorage ? MoveStateTracker::State::Initialized
-                                             : MoveStateTracker::State::Uninitialized,
-                           defined->location);
+        const MoveStateTracker::Identity identity = MoveStateTracker::Local(defined);
+        moveStates.Declare(
+            identity, hasInitialStorage ? MoveStateTracker::State::Initialized : MoveStateTracker::State::Uninitialized,
+            defined->location);
+        // The same holds for such an array inside a value written one part at a time.
+        if (!hasInitialStorage && !MayNeedDestruction(defined->type)) {
+            std::vector<std::string> arrays;
+            FillableArrayParts(defined->type, "", arrays);
+            for (std::string &array : arrays) {
+                moveStates.AssignPart(identity, std::move(array));
+            }
+            if (const MoveStateTracker::Record *record = moveStates.TryGet(identity);
+                record && !record->writtenParts.empty() && PartsMakeWhole(defined->type, record->writtenParts, "")) {
+                moveStates.Assign(identity, defined->location);
+            }
+        }
     }
     return defined;
 }
@@ -121,29 +137,52 @@ void AnalysisContext::EndTrackedFunction(const FuncDecl *previousFunction) {
     savedBorrowStatements.pop_back();
 }
 
-void AnalysisContext::CheckTrackedRead(const Symbol &symbol, const SourceLocation location) {
+void AnalysisContext::CheckTrackedRead(const Symbol &symbol, const SourceLocation location,
+                                       const std::optional<std::string_view> part) {
     if (!trackedFlowReachable) {
         return;
     }
     if (!checkingBorrowProjectionRoot) {
         CheckBorrowedRead(symbol, location);
     }
-    const std::optional<MoveStateTracker::Issue> issue = moveStates.Read(MoveStateTracker::Local(&symbol));
+    const MoveStateTracker::Identity identity = MoveStateTracker::Local(&symbol);
+    const std::optional<MoveStateTracker::Issue> issue =
+        part ? moveStates.ReadPart(identity, *part) : moveStates.Read(identity);
     if (!issue) {
         return;
     }
 
+    // A local written one part at a time says which parts it holds, since those alone may be read so far.
+    std::optional<std::string> partsNote;
+    if (const MoveStateTracker::Record *record = moveStates.TryGet(identity); record && !record->writtenParts.empty()) {
+        std::string written;
+        for (const std::string &writtenPart : record->writtenParts) {
+            written += std::format("{}'{}.{}'", written.empty() ? "" : ", ", symbol.name, writtenPart);
+        }
+        partsNote = std::format("only {} {} been written", written, record->writtenParts.size() == 1 ? "has" : "have");
+        if (part) {
+            *partsNote += std::format(", not '{}.{}'", symbol.name, *part);
+        }
+    }
+    const auto withParts = [&](std::string note) {
+        std::vector<std::string> notes{std::move(note)};
+        if (partsNote) {
+            notes.push_back(*partsNote);
+        }
+        return notes;
+    };
+
     if (issue->kind == MoveStateTracker::IssueKind::Uninitialized) {
         EmitError(location, std::format("variable '{}' is used before it is initialized", symbol.name),
-                  {std::format("'{}' was declared without an initializer at {}:{}", symbol.name,
-                               issue->previousTransition.line, issue->previousTransition.column)},
+                  withParts(std::format("'{}' was declared without an initializer at {}:{}", symbol.name,
+                                        issue->previousTransition.line, issue->previousTransition.column)),
                   std::format("assign a value to '{}' before this use", symbol.name));
         return;
     }
     if (issue->kind == MoveStateTracker::IssueKind::Moved) {
         EmitError(location, std::format("value '{}' is used after it was moved", symbol.name),
-                  {std::format("'{}' was moved at {}:{}", symbol.name, issue->previousTransition.line,
-                               issue->previousTransition.column)},
+                  withParts(std::format("'{}' was moved at {}:{}", symbol.name, issue->previousTransition.line,
+                                        issue->previousTransition.column)),
                   std::format("clone '{}' before moving it if both uses are required", symbol.name));
         return;
     }
@@ -156,9 +195,64 @@ void AnalysisContext::CheckTrackedRead(const Symbol &symbol, const SourceLocatio
         condition = "may have been moved";
     }
     EmitError(location, std::format("value '{}' {} on some control-flow paths", symbol.name, condition),
-              {std::format("one unavailable path for '{}' originates at {}:{}", symbol.name,
-                           issue->previousTransition.line, issue->previousTransition.column)},
+              withParts(std::format("one unavailable path for '{}' originates at {}:{}", symbol.name,
+                                    issue->previousTransition.line, issue->previousTransition.column)),
               std::format("initialize or preserve '{}' on every path before this use", symbol.name));
+}
+
+void AnalysisContext::FillableArrayParts(const TypeRef &type, const std::string &prefix,
+                                         std::vector<std::string> &parts) {
+    const auto child = [&](const std::string &name) { return prefix.empty() ? name : prefix + "." + name; };
+    if (type.kind == TypeRef::Kind::Array) {
+        if (!prefix.empty()) {
+            parts.push_back(prefix);
+        }
+        return;
+    }
+    if (type.kind == TypeRef::Kind::Tuple) {
+        for (std::size_t index = 0; index < type.inner.size(); ++index) {
+            FillableArrayParts(type.inner[index], child(std::to_string(index)), parts);
+        }
+        return;
+    }
+    if (const auto structure = structDecls.find(NamedBaseTypeName(type)); structure != structDecls.end()) {
+        for (const StructDecl::Field &field : structure->second->fields) {
+            FillableArrayParts(StructFieldType(type, field.name), child(field.name), parts);
+        }
+    }
+}
+
+bool AnalysisContext::PartsMakeWhole(const TypeRef &type, const std::span<const std::string> parts,
+                                     const std::string &prefix) {
+    if (!prefix.empty() && MoveStateTracker::PartsCover(parts, prefix)) {
+        return true;
+    }
+    const auto child = [&](const std::string &name) { return prefix.empty() ? name : prefix + "." + name; };
+    if (type.kind == TypeRef::Kind::Tuple) {
+        if (type.inner.empty()) {
+            return false;
+        }
+        for (std::size_t index = 0; index < type.inner.size(); ++index) {
+            if (!PartsMakeWhole(type.inner[index], parts, child(std::to_string(index)))) {
+                return false;
+            }
+        }
+        return true;
+    }
+    const std::string name = NamedBaseTypeName(type);
+    if (const auto structure = structDecls.find(name); structure != structDecls.end()) {
+        const auto &fields = structure->second->fields;
+        return !fields.empty() && std::ranges::all_of(fields, [&](const StructDecl::Field &field) {
+            return PartsMakeWhole(StructFieldType(type, field.name), parts, child(field.name));
+        });
+    }
+    // The members of a union share their storage, so writing one writes the union.
+    if (const auto unionType = unionDecls.find(name); unionType != unionDecls.end()) {
+        return std::ranges::any_of(unionType->second->fields, [&](const UnionDecl::Field &field) {
+            return MoveStateTracker::PartsCover(parts, child(field.name));
+        });
+    }
+    return false;
 }
 
 AnalysisContext::TrackedFlow AnalysisContext::SaveTrackedFlow() const {
@@ -247,8 +341,14 @@ AnalysisContext::TrackedLoop AnalysisContext::CheckTrackedLoopBody(const Block &
         const auto after = std::ranges::find(head.entries, before.identity, &MoveStateTracker::SnapshotEntry::identity);
         // Only a local the loop entered with a value and a later pass may find without one is new: anything already
         // unavailable on entry was reported by the first pass.
-        return before.record.state == MoveStateTracker::State::Initialized && after != head.entries.end() &&
-               after->record.state != MoveStateTracker::State::Initialized;
+        if (after == head.entries.end() || after->record.state == MoveStateTracker::State::Initialized) {
+            return false;
+        }
+        // A local written one part at a time is also worse when a later pass finds fewer of its parts written.
+        return before.record.state == MoveStateTracker::State::Initialized ||
+               std::ranges::any_of(before.record.writtenParts, [&](const std::string &part) {
+                   return !MoveStateTracker::PartsCover(after->record.writtenParts, part);
+               });
     });
     if (!worsened) {
         return loop;
@@ -569,12 +669,14 @@ TypeRef AnalysisContext::CheckMatchExpression(const MatchExpr &expression) {
 }
 
 TypeRef AnalysisContext::ReadTrackedSymbol(const Symbol &symbol, const SourceLocation location) {
+    // The path belongs to this read alone, so it is taken before anything else can be read.
+    const std::optional<std::string> part = std::exchange(partReadPath, std::nullopt);
     if (symbol.kind == Symbol::Kind::Const && symbol.declaration) {
         return CheckNamedConstant(*static_cast<const ConstDecl *>(symbol.declaration));
     }
     if (symbol.kind == Symbol::Kind::Var && !checkingPlainAssignmentTarget) {
         readSymbols.insert(&symbol);
-        CheckTrackedRead(symbol, location);
+        CheckTrackedRead(symbol, location, part ? std::optional<std::string_view>(*part) : std::nullopt);
         ExpireBorrowAtLastUse(symbol, location);
     }
     return symbol.type;
@@ -599,9 +701,21 @@ void AnalysisContext::RecordCheckedExpression(const Expr &expression, const Type
 }
 
 void AnalysisContext::MarkTrackedAssignment(const Expr &target, const SourceLocation location) {
+    // Walk out to the local, collecting the fields between it and the place, innermost first. An element write writes
+    // the array it is in, so the path stops at the first index from the local.
+    std::vector<std::string> fields;
+    bool leavesStorage = false;
+    const auto leaves = [&](const Expr &object) {
+        const auto objectType = expressionTypes.find(&object);
+        return objectType != expressionTypes.end() &&
+               (objectType->second.kind == TypeRef::Kind::Pointer ||
+                objectType->second.kind == TypeRef::Kind::Reference || SliceElementType(objectType->second));
+    };
     const Expr *root = &target;
     while (true) {
         if (const auto *field = dynamic_cast<const FieldExpr *>(root)) {
+            leavesStorage = leavesStorage || leaves(*field->object);
+            fields.push_back(field->field);
             root = field->object.get();
             continue;
         }
@@ -610,6 +724,8 @@ void AnalysisContext::MarkTrackedAssignment(const Expr &target, const SourceLoca
             if (IsIndexOperatorCall(*index)) {
                 return;
             }
+            leavesStorage = leavesStorage || leaves(*index->object);
+            fields.clear();
             root = index->object.get();
             continue;
         }
@@ -620,8 +736,57 @@ void AnalysisContext::MarkTrackedAssignment(const Expr &target, const SourceLoca
     if (!identifier) {
         return;
     }
-    if (Symbol *symbol = currentScope->Lookup(identifier->name); symbol && symbol->kind == Symbol::Kind::Var) {
-        moveStates.Assign(MoveStateTracker::Local(symbol), location);
+    Symbol *symbol = currentScope->Lookup(identifier->name);
+    if (!symbol || symbol->kind != Symbol::Kind::Var) {
+        return;
+    }
+    const MoveStateTracker::Identity identity = MoveStateTracker::Local(symbol);
+    if (root == &target) {
+        moveStates.Assign(identity, location);
+        return;
+    }
+    // A write through a reference, a pointer, or a slice lands outside the local's own storage.
+    if (leavesStorage) {
+        return;
+    }
+    // A part write into a type that needs destruction is already an error, and an element write into a local array
+    // writes the array; either way the local is taken as written whole.
+    if (fields.empty() || MayNeedDestruction(symbol->type)) {
+        moveStates.Assign(identity, location);
+        return;
+    }
+    // Each enclosing part, from the local out to the written one, with its type: a part whose own parts are now all
+    // written counts as written whole, so `s.start` reads once `s.start.x` and `s.start.y` do.
+    std::vector<std::pair<std::string, TypeRef>> enclosing;
+    std::string path;
+    TypeRef partType = symbol->type;
+    for (const std::string &field : std::views::reverse(fields)) {
+        enclosing.emplace_back(path, partType);
+        path += (path.empty() ? "" : ".") + field;
+        if (partType.kind == TypeRef::Kind::Tuple) {
+            std::size_t index = 0;
+            const auto [end, error] = std::from_chars(field.data(), field.data() + field.size(), index);
+            partType = error == std::errc{} && end == field.data() + field.size() && index < partType.inner.size()
+                         ? partType.inner[index]
+                         : TypeRef::MakeUnknown();
+        }
+        else {
+            partType = StructFieldType(partType, field);
+        }
+    }
+    moveStates.AssignPart(identity, std::move(path));
+    for (const auto &[prefix, type] : std::views::reverse(enclosing)) {
+        const MoveStateTracker::Record *record = moveStates.TryGet(identity);
+        if (!record || record->state == MoveStateTracker::State::Initialized ||
+            !PartsMakeWhole(type, record->writtenParts, prefix)) {
+            break;
+        }
+        if (prefix.empty()) {
+            moveStates.Assign(identity, location);
+        }
+        else {
+            moveStates.AssignPart(identity, prefix);
+        }
     }
 }
 

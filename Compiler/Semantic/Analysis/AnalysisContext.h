@@ -105,7 +105,16 @@ private:
     [[nodiscard]] bool MayNeedDestruction(const TypeRef &type);
     [[nodiscard]] const FuncDecl *BeginTrackedFunction(const FuncDecl &function);
     void EndTrackedFunction(const FuncDecl *previousFunction);
-    void CheckTrackedRead(const Symbol &symbol, SourceLocation location);
+    /// Reports reading `symbol`, or with `part` only that part of it, while it may hold no value there.
+    void CheckTrackedRead(const Symbol &symbol, SourceLocation location,
+                          std::optional<std::string_view> part = std::nullopt);
+    /// Whether `parts`, written into a value of `type` below `prefix`, make up all of it: every field of a structure
+    /// and every element of a tuple, at any depth, or one member of a union.
+    [[nodiscard]] bool PartsMakeWhole(const TypeRef &type, std::span<const std::string> parts,
+                                      const std::string &prefix);
+    /// The fixed arrays with nothing to destroy inside a value of `type`, by path below `prefix`. Like such an array
+    /// local, each holds its storage from the declaration, so a loop can fill it.
+    void FillableArrayParts(const TypeRef &type, const std::string &prefix, std::vector<std::string> &parts);
     [[nodiscard]] TypeRef ReadTrackedSymbol(const Symbol &symbol, SourceLocation location);
     void RecordCheckedExpression(const Expr &expression, const TypeRef &type);
     void ReportUntypedExpression(const Expr &expression) const;
@@ -673,6 +682,9 @@ private:
     std::unordered_set<std::string> referenceStorageChecks;
     bool checkingPlainAssignmentTarget = false;
     bool checkingBorrowProjectionRoot = false;
+    /// The field path, such as `start.x`, that the local about to be read is read through, so a part written on its
+    /// own is readable before the whole local is. Set by the outermost field read and taken by the local's read.
+    std::optional<std::string> partReadPath;
 
     [[nodiscard]] static bool IsUnimplementedPrimitiveType(std::string_view name);
 

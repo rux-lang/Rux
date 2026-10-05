@@ -1,8 +1,10 @@
 // Writing a part of a local that holds no value.
 // A local declared without a value, or moved from, owns nothing, and its drop flag covers it whole. A value with
-// nothing to destroy cannot leak, so it may still be initialized one field, tuple element, or array element at a time,
-// and the local counts as initialized afterwards. A droppable local has to be assigned whole first — writing one of its
-// parts before that is refused — and from then on a part write replaces the value there. Each tracked value appends
+// nothing to destroy cannot leak, so it may still be initialized one field, tuple element, or array element at a time:
+// a written part can be read at once, and the local counts as initialized once every part is written on every path. An
+// array, alone or as a field, holds its storage from the declaration, so a loop can fill it. A droppable local has to
+// be assigned whole first — writing one of its parts before that is refused — and from then on a part write replaces
+// the value there. Each tracked value appends
 // its id to a log as it is destroyed, and each check appends a 0 where it stands, so the log is the exact order of
 // events.
 
@@ -34,6 +36,11 @@ struct Holder {
 struct Point {
     x: int32;
     y: int32;
+}
+
+struct Buffer {
+    items: int32[4];
+    used: int32;
 }
 
 struct Segment {
@@ -83,6 +90,32 @@ func PlainParts() {
     moved.x = 9i32;
     moved.y = 10i32;
     Assert(taken.x == 7i32 && moved.x == 9i32 && moved.y == 10i32, "a plain struct moved from is initialized again");
+
+    var partial: Point;
+    partial.x = 11i32;
+    Assert(partial.x == 11i32, "a written field is read before the other one is written");
+    partial.y = 12i32;
+    let copied = partial;
+    Assert(copied.y == 12i32, "the local is whole once its last field is written");
+
+    var branched: Point;
+    if copied.x > 0i32 {
+        branched.x = 1i32;
+        branched.y = 2i32;
+    }
+    else {
+        branched.y = 3i32;
+        branched.x = 4i32;
+    }
+    Assert(branched.x + branched.y == 3i32, "every path writes every field");
+
+    var buffer: Buffer;
+    for i in 0..4 {
+        buffer.items[i] = i as int32;
+    }
+    buffer.used = 4i32;
+    let filled = buffer;
+    Assert(filled.items[3] == 3i32 && filled.used == 4i32, "an array field is filled by a loop");
 }
 
 // A local declared without a value and then assigned whole replaces its parts from then on.

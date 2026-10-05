@@ -1,5 +1,6 @@
 #include "Semantic/Analysis/MoveStateTracker.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <functional>
 #include <ranges>
@@ -71,6 +72,35 @@ void MoveStateTracker::Assign(const Identity identity, const SourceLocation loca
     }
 }
 
+void MoveStateTracker::AssignPart(const Identity identity, std::string path) {
+    const auto record = records.find(identity);
+    if (record == records.end() || record->second.state == State::Initialized ||
+        PartsCover(record->second.writtenParts, path)) {
+        return;
+    }
+    // A part the new one contains is now written as part of it.
+    std::erase_if(record->second.writtenParts, [&](const std::string &written) {
+        return written.starts_with(path) && written.size() > path.size() && written[path.size()] == '.';
+    });
+    record->second.writtenParts.push_back(std::move(path));
+}
+
+std::optional<MoveStateTracker::Issue> MoveStateTracker::ReadPart(const Identity identity,
+                                                                  const std::string_view path) const {
+    const Record *record = TryGet(identity);
+    if (!record || PartsCover(record->writtenParts, path)) {
+        return std::nullopt;
+    }
+    return IssueFor(*record);
+}
+
+bool MoveStateTracker::PartsCover(const std::span<const std::string> parts, const std::string_view path) {
+    return std::ranges::any_of(parts, [&](const std::string &written) {
+        return path == written ||
+               (path.starts_with(written) && path.size() > written.size() && path[written.size()] == '.');
+    });
+}
+
 const MoveStateTracker::Record *MoveStateTracker::TryGet(const Identity identity) const {
     const auto record = records.find(identity);
     return record == records.end() ? nullptr : &record->second;
@@ -124,10 +154,12 @@ MoveStateTracker::Snapshot MoveStateTracker::Merge(const std::span<const Snapsho
                 continue;
             }
             const State merged = MergeStates(entry.record.state, other->record.state);
+            std::vector<std::string> parts = MergeParts(entry.record, other->record);
             if (entry.record.state == State::Initialized && other->record.state != State::Initialized) {
                 entry.record.previousTransition = other->record.previousTransition;
             }
             entry.record.state = merged;
+            entry.record.writtenParts = merged == State::Initialized ? std::vector<std::string>{} : std::move(parts);
         }
     }
     return result;
@@ -167,6 +199,29 @@ std::optional<MoveStateTracker::Issue> MoveStateTracker::IssueFor(const Record &
         return Issue{IssueKind::PossiblyUnavailable, record.previousTransition};
     }
     return std::nullopt;
+}
+
+/// The parts written on every path: a whole value holds them all, so it keeps what the other path wrote, and otherwise
+/// a part survives where the other path wrote it or a part containing it.
+std::vector<std::string> MoveStateTracker::MergeParts(const Record &left, const Record &right) {
+    if (left.state == State::Initialized) {
+        return right.writtenParts;
+    }
+    if (right.state == State::Initialized) {
+        return left.writtenParts;
+    }
+    std::vector<std::string> merged;
+    for (const std::string &part : left.writtenParts) {
+        if (PartsCover(right.writtenParts, part)) {
+            merged.push_back(part);
+        }
+    }
+    for (const std::string &part : right.writtenParts) {
+        if (PartsCover(left.writtenParts, part) && !PartsCover(merged, part)) {
+            merged.push_back(part);
+        }
+    }
+    return merged;
 }
 
 MoveStateTracker::State MoveStateTracker::MergeStates(const State left, const State right) {

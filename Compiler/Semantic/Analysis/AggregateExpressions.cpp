@@ -768,7 +768,22 @@ std::optional<TypeRef> AnalysisContext::CheckAggregateExpression(const Expr &exp
     if (const auto *field = dynamic_cast<const FieldExpr *>(&expression)) {
         const bool wasProjectionRoot = checkingBorrowProjectionRoot;
         checkingBorrowProjectionRoot = true;
+        // The outermost field of a chain that starts at a local names the part read, which may have been written on
+        // its own before the whole local was.
+        std::optional<std::string> enclosingPart = partReadPath;
+        if (!partReadPath) {
+            std::string path = field->field;
+            const Expr *object = field->object.get();
+            while (const auto *inner = dynamic_cast<const FieldExpr *>(object)) {
+                path = inner->field + "." + path;
+                object = inner->object.get();
+            }
+            if (dynamic_cast<const IdentExpr *>(object)) {
+                partReadPath = std::move(path);
+            }
+        }
         const TypeRef objectType = CheckExpr(*field->object);
+        partReadPath = std::move(enclosingPart);
         checkingBorrowProjectionRoot = wasProjectionRoot;
         if (!wasProjectionRoot && !checkingPlainAssignmentTarget) {
             CheckBorrowedPlaceRead(*field, field->location);

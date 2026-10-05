@@ -1,0 +1,85 @@
+// A plain local written one part at a time holds only the parts written so far: a part may be read once it, or a part
+// containing it, is written on every path, and the whole value once every field is. An array field holds its storage
+// from the declaration, like an array local, so a loop can fill it.
+struct Point {
+    x: int32;
+    y: int32;
+}
+
+struct Segment {
+    start: Point;
+    end: Point;
+}
+
+struct Holder {
+    target: *var Point;
+    count: int32;
+}
+
+struct Buffer {
+    items: int32[4];
+    used: int32;
+}
+
+func Use(point: Point) -> int32 {
+    return point.x;
+}
+
+func Main() -> int {
+    var q: Point;
+    q.x = 1;
+    let early = q.y;
+    let copy = q;
+    let passed = Use(q);
+    let written = q.x;
+
+    var segment: Segment;
+    segment.start.x = 1;
+    segment.start.y = 2;
+    let start = segment.start;
+    let missing = segment.end.x;
+    segment.end = Point { x: 3, y: 4 };
+    let whole = segment;
+
+    var branch: Point;
+    if written > 0 {
+        branch.x = 1;
+        branch.y = 2;
+    }
+    else {
+        branch.x = 3;
+    }
+    let both = branch.x;
+    let one = branch.y;
+
+    var looped: Point;
+    looped.x = 1;
+    var turns = 0i32;
+    while turns < 2 {
+        let seen = looped.x;
+        looped.y = seen;
+        let moved <- looped;
+        turns += 1;
+    }
+
+    var other = Point { x: 0, y: 0 };
+    var holder: Holder;
+    holder.target = @other;
+    holder.target.x = 5;
+    let count = holder.count;
+
+    var buffer: Buffer;
+    var index = 0i32;
+    while index < 4 {
+        buffer.items[index] = index;
+        index += 1;
+    }
+    buffer.used = 4;
+    let filled = buffer;
+
+    var pair: (int32, int32);
+    pair.0 = 1;
+    pair.1 = 2;
+    let tuple = pair;
+    return (early + copy.x + passed + start.x + missing + whole.end.y + both + one + count + filled.used + tuple.0) as int;
+}

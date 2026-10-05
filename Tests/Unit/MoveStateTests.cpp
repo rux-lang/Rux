@@ -240,3 +240,34 @@ func Main(holder: Holder) {
     REQUIRE(moved.help.has_value());
     CHECK_EQ(*moved.help, "initialize 'moved' whole, as in 'moved = Holder { ... }'");
 }
+
+TEST_CASE("a part read of a plain local names the parts written so far") {
+    Lexer lexer(R"(
+struct Point { x: int32; y: int32; }
+
+func Main() -> int32 {
+    var q: Point;
+    q.x = 1;
+    let early = q.y;
+    return early + q.x;
+}
+)",
+                "part_read.rux");
+    auto lexed = lexer.Tokenize();
+    REQUIRE_FALSE(lexed.HasErrors());
+    Parser parser(std::move(lexed.tokens), "part_read.rux");
+    auto parsed = parser.Parse();
+    REQUIRE_FALSE(parsed.HasErrors());
+
+    SemanticAnalyzer analyzer({&parsed.module}, {}, "test", "Windows");
+    const SemanticModel model = analyzer.Analyze();
+    REQUIRE_EQ(model.diagnostics.size(), 1);
+
+    const SemanticDiagnostic &read = model.diagnostics[0];
+    CHECK(read.IsError());
+    CHECK_EQ(read.location.line, 7);
+    CHECK_EQ(read.message, "variable 'q' is used before it is initialized");
+    REQUIRE_EQ(read.notes.size(), 2);
+    CHECK_EQ(read.notes[0], "'q' was declared without an initializer at 5:5");
+    CHECK_EQ(read.notes[1], "only 'q.x' has been written, not 'q.y'");
+}

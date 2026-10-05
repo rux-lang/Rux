@@ -5,6 +5,8 @@
 #include <cstddef>
 #include <optional>
 #include <span>
+#include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -49,6 +51,9 @@ public:
     struct Record {
         State state;
         SourceLocation previousTransition;
+        /// The parts written into storage that does not hold a whole value, as dotted field and element paths such as
+        /// `x` or `start.0`, none of which contains another. Empty once the whole value is written.
+        std::vector<std::string> writtenParts = {};
     };
 
     struct SnapshotEntry {
@@ -71,6 +76,13 @@ public:
     [[nodiscard]] std::optional<Issue> Read(Identity identity) const;
     [[nodiscard]] std::optional<Issue> Move(Identity identity, SourceLocation location);
     void Assign(Identity identity, SourceLocation location);
+    /// Records a write of the part at `path` of a local that does not hold a whole value. One that does is unchanged.
+    void AssignPart(Identity identity, std::string path);
+    /// Reading the part at `path` finds a value when the whole local holds one, or that part or one containing it was
+    /// written.
+    [[nodiscard]] std::optional<Issue> ReadPart(Identity identity, std::string_view path) const;
+    /// Whether `parts` include `path` or a part that contains it.
+    [[nodiscard]] static bool PartsCover(std::span<const std::string> parts, std::string_view path);
     [[nodiscard]] const Record *TryGet(Identity identity) const;
     [[nodiscard]] Snapshot Save() const;
     void Restore(const Snapshot &snapshot);
@@ -87,5 +99,6 @@ private:
 
     [[nodiscard]] static std::optional<Issue> IssueFor(const Record &record);
     [[nodiscard]] static State MergeStates(State left, State right);
+    [[nodiscard]] static std::vector<std::string> MergeParts(const Record &left, const Record &right);
 };
 } // namespace Rux::SemanticDetail
