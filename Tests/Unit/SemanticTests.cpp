@@ -124,20 +124,28 @@ extend Meter {
     #Error("read the value directly")
     func Read(self: &Meter) -> int32 { return self.value; }
 }
+module Stats {
+    #Warn("use Stats::Mean")
+    pub func Median(a: int32) -> int32 { return a; }
+}
 func Main() -> int {
     let meter = Meter { value: 1i32 };
     let mean = Average(1i32, 3i32) + meter.Read();
-    return mean as int;
+    return (mean + Stats::Median(2i32)) as int;
 }
 )");
 
-    // The caret sits on the callee's name, not on the '(' after it or the '.' before a method name.
-    REQUIRE_EQ(diagnostics.size(), 2);
+    // The caret sits on the callee's name, not on the '(' after it or the '.' before a method name, and a qualified
+    // name starts at its first segment.
+    REQUIRE_EQ(diagnostics.size(), 3);
+    CHECK_EQ(diagnostics[2].message, "use Stats::Mean");
+    CHECK_EQ(diagnostics[2].location.line, 16);
+    CHECK_EQ(diagnostics[2].location.column, 20);
     CHECK_EQ(diagnostics[0].message, "use Mean");
-    CHECK_EQ(diagnostics[0].location.line, 11);
+    CHECK_EQ(diagnostics[0].location.line, 15);
     CHECK_EQ(diagnostics[0].location.column, 16);
     CHECK_EQ(diagnostics[1].message, "read the value directly");
-    CHECK_EQ(diagnostics[1].location.line, 11);
+    CHECK_EQ(diagnostics[1].location.line, 15);
     CHECK_EQ(diagnostics[1].location.column, 44);
 }
 

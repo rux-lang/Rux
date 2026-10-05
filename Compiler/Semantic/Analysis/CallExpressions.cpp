@@ -952,6 +952,7 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
                 if (arityOk) {
                     CheckFormatArguments(*e, *decl, false);
                 }
+                EmitCallSiteDiagnostics(*decl, CallSiteLocation(*e));
                 RecordFunctionBinding(*e, *decl, ResolvedCallableBinding::DispatchKind::Direct,
                                       std::move(substitutions));
             }
