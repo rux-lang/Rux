@@ -253,6 +253,12 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
             if (e->typeArgs.empty()) {
                 if (!decl->typeParams.empty()) {
                     DeduceTypeArguments(*decl, argTypes, substitutions);
+                    // An argument whose type is unknown has been reported already, and could not have determined a
+                    // type argument, so the call is unknown too rather than a second error.
+                    if (substitutions.size() != decl->typeParams.size() &&
+                        std::ranges::any_of(argTypes, &TypeRef::IsUnknown)) {
+                        return TypeRef::MakeUnknown();
+                    }
                     if (substitutions.size() != decl->typeParams.size()) {
                         callAccepted = false;
                         EmitError(e->location,

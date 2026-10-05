@@ -1,2 +1,1 @@
 4:33: error: conditional branch type mismatch: expected 'char8[..]', found 'int'
-4:5: warning: cannot infer type of 'mixed'

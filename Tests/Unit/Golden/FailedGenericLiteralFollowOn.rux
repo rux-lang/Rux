@@ -1,0 +1,17 @@
+// A generic struct literal whose type argument cannot be inferred is one error. The variable it initializes, a generic
+// call that takes it, and later uses of that call's result add nothing.
+struct Pair<T> {
+    first: T;
+    second: T;
+}
+
+func Swapped<T>(pair: Pair<T>) -> Pair<T> {
+    return Pair<T> { first: pair.second, second: pair.first };
+}
+
+func Main() -> int {
+    let point = Pair { first: 3, second: 4 };
+    let flipped = Swapped(point);
+    let total: int32 = flipped.first + flipped.second;
+    return total as int;
+}

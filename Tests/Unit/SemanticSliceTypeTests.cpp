@@ -156,9 +156,9 @@ TEST_CASE("a pointer is sliced only with an end bound") {
             let bounded = pointer[1..3];
         }
     )");
-    REQUIRE_EQ(messages.size(), 4);
+    REQUIRE_EQ(messages.size(), 2);
     CHECK_EQ(messages[0], "cannot slice pointer '*int' without an end bound");
-    CHECK_EQ(messages[2], "cannot slice pointer '*int' without an end bound");
+    CHECK_EQ(messages[1], "cannot slice pointer '*int' without an end bound");
 }
 
 TEST_CASE("a literal is never a writable view") {

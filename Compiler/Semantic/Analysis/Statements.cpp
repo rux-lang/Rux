@@ -336,7 +336,10 @@ void AnalysisContext::CheckStatement(const Stmt &statement) {
             EmitError(letStatement->location, "destructuring declaration requires an initializer");
         }
 
-        if (!letStatement->type && declarationType.IsUnknown() && !letStatement->pattern && !incompleteNative) {
+        // An initializer without a type has already been reported, so the variable's missing type follows from it.
+        const bool initializerFailed = letStatement->init && initializerType.IsUnknown();
+        if (!letStatement->type && declarationType.IsUnknown() && !letStatement->pattern && !incompleteNative &&
+            !initializerFailed) {
             EmitWarning(letStatement->location, std::format("cannot infer type of '{}'", letStatement->name));
         }
 

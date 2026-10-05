@@ -5,7 +5,6 @@
 46:25: error: '?' propagates error type 'ParseError', but the enclosing function fails with 'IoError'
 51:25: error: '?' propagates native fallible 'int32 ! ParseError', but the enclosing function returns nothing
 55:21: error: 'int32' cannot be propagated with '?' because it is neither a native fallible nor an optional
-55:5: warning: cannot infer type of 'value'
 65:5: error: iterator method 'Next' on 'Cursor' must take a mutable receiver
 72:17: error: cannot iterate over 'Plain'
 77:11: error: checked arithmetic intrinsic 'CheckedAdd' must be declared as 'func CheckedAdd(left: uint64, right: uint64, result: *var uint64) -> bool'
