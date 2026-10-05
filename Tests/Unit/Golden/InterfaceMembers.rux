@@ -1,0 +1,24 @@
+// An interface value is used through its methods: neither the concrete type's fields nor the data and vtable pair
+// behind the value are members of it.
+interface Shape {
+    func Area(self: &Self) -> int32;
+}
+
+struct Tile {
+    side: int32;
+}
+
+extend Tile : Shape {
+    func Area(self: &Tile) -> int32 {
+        return self.side * self.side;
+    }
+}
+
+func Main() -> int {
+    let tile = Tile { side: 3i32 };
+    let shape: Shape = tile;
+    let side = shape.side;
+    let table = shape.vtable;
+    let data = shape.data;
+    return shape.Area() as int;
+}

@@ -826,17 +826,12 @@ std::optional<TypeRef> AnalysisContext::CheckAggregateExpression(const Expr &exp
             return TypeRef::MakeUnknown();
         }
 
-        // Interface fat-pointer fields: data -> *opaque, vtable -> *opaque.
+        // An interface value is used through its methods; its data and vtable pair is not part of the language.
         if (const std::string interfaceName = NamedBaseTypeName(objectType);
             !interfaceName.empty() && currentScope->Lookup(interfaceName) &&
             currentScope->Lookup(interfaceName)->kind == Symbol::Kind::Interface) {
-            const TypeRef opaquePointer = TypeRef::MakePointer(TypeRef::MakeOpaque());
-            if (field->field == "data" || field->field == "vtable") {
-                return opaquePointer;
-            }
             EmitError(field->location,
-                      std::format("interface type '{}' has no member '{}'", objectType.ToString(), field->field),
-                      {"available interface representation members are 'data' and 'vtable'"});
+                      std::format("interface type '{}' has no member '{}'", objectType.ToString(), field->field));
             return TypeRef::MakeUnknown();
         }
 
