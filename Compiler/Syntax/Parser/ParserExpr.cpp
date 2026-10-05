@@ -568,8 +568,10 @@ ExprPtr Parser::ParsePostfix() {
                 // Wrap existing expression in a path — treat the left side
                 // as a segment This handles IDENT::IDENT::... chains
                 auto p = std::make_unique<PathExpr>();
+                // A path starts where its first segment does, so a diagnostic about the whole name points there.
                 p->location = loc;
                 if (auto *ident = dynamic_cast<IdentExpr *>(left.get())) {
+                    p->location = ident->location;
                     p->segments.push_back(ident->name);
                 }
                 p->segments.push_back(seg);

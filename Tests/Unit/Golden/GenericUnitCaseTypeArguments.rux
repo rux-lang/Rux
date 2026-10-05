@@ -1,0 +1,21 @@
+// A payload-less case of a generic variant takes its type arguments from its destination. With none, the use is one
+// error at the case, and neither the declaration nor a later use of the variable reports anything.
+variant Reading<T> {
+    Exact(T),
+    Missing
+}
+
+func Describe(reading: Reading<int32>) -> int32 {
+    return match reading {
+        .Exact(value) => value,
+        .Missing => 0i32
+    };
+}
+
+func Main() -> int {
+    let lost = Reading::Missing;
+    let known: Reading<int32> = Reading::Missing;
+    let explicit = Reading::Missing<int32>();
+    let exact = Reading::Exact(5i32);
+    return (Describe(lost) + Describe(known) + Describe(explicit) + Describe(exact)) as int;
+}

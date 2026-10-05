@@ -100,6 +100,18 @@ TypeRef AnalysisContext::CheckExprImpl(const Expr &expr) {
                     if (auto expected = ExpectedCaseTypeArguments(*e, *resolved->declaration)) {
                         return EnumType(*resolved->declaration, *expected);
                     }
+                    // Without a destination naming them, nothing determines them; the bare variant is no type.
+                    if (const std::size_t count = resolved->declaration->typeParams.size(); count != 0) {
+                        EmitError(e->location,
+                                  std::format("variant case '{}::{}' requires {} type argument{}, but 0 were provided",
+                                              first->name, variantName, count, count == 1 ? "" : "s"),
+                                  {"a case without a payload takes its type arguments from the type it is assigned, "
+                                   "passed, or returned as"},
+                                  std::format("annotate the destination, as in 'let value: {0}<...> = {0}::{1};', or "
+                                              "write '{0}::{1}<...>()'",
+                                              first->name, variantName));
+                        return TypeRef::MakeUnknown();
+                    }
                     return EnumType(*resolved->declaration);
                 }
             }

@@ -3,7 +3,7 @@
 5:9: error: intrinsic associated constants support only floating-point Infinity and NaN
 5:9: error: intrinsic associated constant must have its owning floating-point type
 7:9: error: associated constant 'Bits' is already declared
-10:23: error: 'Min' not found in extend for type 'int8'
+10:19: error: 'Min' not found in extend for type 'int8'
 19:11: error: field 'wordSize' of 'Target' is not one the compiler supplies for '#target'
 20:11: error: 'Machine' is not a value the compiler supplies for '#machine'
 21:11: error: 'Frobnicate' is not a supported intrinsic function
