@@ -103,12 +103,14 @@ bool CasePatternCoversCase(const EnumPattern &pattern, const EnumDecl::Variant &
                            const EnumDecl::Form form) {
     const std::size_t fieldCount = selectedCase.fields.size() + selectedCase.namedFields.size();
     const std::size_t patternFieldCount = pattern.args.size() + pattern.namedArgs.size();
+    // A payload with the wrong number of fields is already an error at the pattern. Counting the case as covered keeps
+    // that one mistake from also reporting the case as missing.
     if (form == EnumDecl::Form::Enumeration && patternFieldCount != 0) {
-        return false;
+        return true;
     }
     // A field a named payload pattern leaves out matches anything.
     if (!pattern.braced && patternFieldCount != fieldCount) {
-        return false;
+        return true;
     }
     return std::ranges::all_of(pattern.args,
                                [](const auto &argument) { return PatternMatchesEveryValue(*argument); }) &&

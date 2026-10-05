@@ -110,14 +110,41 @@ TypeRef AnalysisContext::CheckCallExpression(const CallExpr &expression) {
         if (parameter && declaration) {
             notes.push_back(parameterNote(*parameter, *declaration));
         }
-        if (std::optional<std::string> message = UnfitCharacterLiteralMessage(*e->args[argumentIndex], parameterType)) {
+        // A value of the right type in storage the call may not write is refused for its binding, not its type.
+        const Expr &argument = *e->args[argumentIndex];
+        if (parameterType.kind == TypeRef::Kind::Reference && !parameterType.inner.empty() &&
+            parameterType.inner.front().isMut && argumentType.kind != TypeRef::Kind::Reference &&
+            argumentType.kind != TypeRef::Kind::Pointer) {
+            TypeRef shared = parameterType;
+            shared.inner.front().isMut = false;
+            if (CanAssignExprTo(argument, argumentType, shared) && PlaceIsImmutable(argument)) {
+                const Expr *root = &argument;
+                while (const auto *field = dynamic_cast<const FieldExpr *>(root)) {
+                    root = field->object.get();
+                }
+                const auto *identifier = dynamic_cast<const IdentExpr *>(root);
+                const Symbol *binding = identifier ? currentScope->Lookup(identifier->name) : nullptr;
+                const std::string subject = !identifier ? std::string("an immutable value")
+                                          : root == &argument
+                                              ? std::format("immutable '{}'", identifier->name)
+                                              : std::format("a part of immutable '{}'", identifier->name);
+                EmitError(argument.location,
+                          std::format("argument {} to '{}' cannot borrow {} as '{}'", argumentIndex + 1, callable,
+                                      subject, parameterType.ToString()),
+                          std::move(notes),
+                          binding && binding->kind == Symbol::Kind::Var ? ImmutableBindingHelp(*binding)
+                                                                        : std::optional<std::string>{});
+                return;
+            }
+        }
+        if (std::optional<std::string> message = UnfitCharacterLiteralMessage(argument, parameterType)) {
             notes.push_back(std::format("argument {} to '{}' is passed to {}{} of type '{}'", argumentIndex + 1,
                                         callable, variadic ? "variadic " : "", parameterName,
                                         parameterType.ToString()));
-            EmitError(e->args[argumentIndex]->location, std::move(*message), std::move(notes));
+            EmitError(argument.location, std::move(*message), std::move(notes));
             return;
         }
-        EmitError(e->args[argumentIndex]->location,
+        EmitError(argument.location,
                   std::format("argument {} to '{}' has type '{}', but {}{} requires '{}'", argumentIndex + 1, callable,
                               argumentType.DisplayString(), variadic ? "variadic " : "", parameterName,
                               parameterType.ToString()),

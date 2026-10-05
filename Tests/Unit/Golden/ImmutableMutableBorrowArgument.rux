@@ -1,0 +1,36 @@
+// A '&var T' parameter needs writable storage: an immutable binding of the right type is refused for its binding, with
+// a pointer to 'var', rather than reported as a type mismatch. A case pattern with the wrong number of fields is one
+// mistake, not also a missing case.
+struct Account {
+    balance: int32;
+}
+
+struct Ledger {
+    main: Account;
+}
+
+variant Shape {
+    Circle(int32),
+    Rectangle(int32, int32)
+}
+
+func Deposit(account: &var Account, amount: int32) {
+    account.balance += amount;
+}
+
+func Area(shape: Shape) -> int32 {
+    return match shape {
+        .Circle(radius) => radius * radius,
+        .Rectangle(width) => width
+    };
+}
+
+func Main() -> int {
+    let account = Account { balance: 0i32 };
+    Deposit(account, 5i32);
+    let ledger = Ledger { main: Account { balance: 0i32 } };
+    Deposit(ledger.main, 5i32);
+    var open = Account { balance: 0i32 };
+    Deposit(open, 5i32);
+    return Area(Shape::Circle(2i32)) as int;
+}

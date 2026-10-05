@@ -1,0 +1,3 @@
+24:9: error: pattern for 'Shape::Rectangle' expects 2 fields, but found 1
+30:13: error: argument 1 to 'Deposit' cannot borrow immutable 'account' as '&var Account'
+32:19: error: argument 1 to 'Deposit' cannot borrow a part of immutable 'ledger' as '&var Account'

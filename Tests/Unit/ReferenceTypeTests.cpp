@@ -419,7 +419,15 @@ TEST_CASE("exclusive borrows require writable places") {
         }
     )");
 
-    CHECK(HasErrorContaining(diagnostics, "requires '&var Item'"));
+    // The binding, not the type, is what the call refuses, so the error names it and points at 'var'.
+    const auto refused = std::ranges::find_if(diagnostics, [](const SemanticDiagnostic &diagnostic) {
+        return diagnostic.message == "argument 1 to 'Write' cannot borrow immutable 'item' as '&var Item'";
+    });
+    REQUIRE(refused != diagnostics.end());
+    REQUIRE_EQ(refused->notes.size(), 1);
+    CHECK(refused->notes.front().starts_with("parameter 'item' declared at"));
+    REQUIRE(refused->help.has_value());
+    CHECK_EQ(*refused->help, "declare 'item' with 'var' to make it mutable");
 }
 
 TEST_CASE("references reject pointer-only operations") {
