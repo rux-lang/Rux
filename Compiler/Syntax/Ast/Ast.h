@@ -191,6 +191,8 @@ struct EnumPattern : Pattern {
     std::vector<std::string> path;
     std::vector<PatternPtr> args; // bound positions
     std::vector<NamedArg> namedArgs;
+    /// The payload is written with field names, `{ ... }`, so it may leave fields out.
+    bool braced = false;
 };
 
 // Point { x: 0, y: 0 }

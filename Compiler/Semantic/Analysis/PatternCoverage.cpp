@@ -950,9 +950,10 @@ private:
             return {};
         }
         const std::vector<TypeRef> &fieldTypes = (*constructors)[index];
-        if (pattern.args.size() + pattern.namedArgs.size() != fieldTypes.size()) {
+        if (!pattern.braced && pattern.args.size() != fieldTypes.size()) {
             return {};
         }
+        // A field a named payload pattern leaves out stays a wildcard.
         std::vector<Space> fields(fieldTypes.size());
         for (std::size_t field = 0; field < pattern.args.size(); ++field) {
             if (pattern.args[field]) {

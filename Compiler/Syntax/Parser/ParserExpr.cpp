@@ -1210,6 +1210,7 @@ PatternPtr Parser::ParsePrimaryPattern() {
             ExpectBefore(TokenKind::RightParen, "')' to close the variant pattern");
         }
         else if (Match(TokenKind::LeftBrace)) {
+            pattern->braced = true;
             while (!Check(TokenKind::RightBrace) && !IsAtEnd()) {
                 EnumPattern::NamedArg arg;
                 arg.location = CurrentLocation();
@@ -1360,8 +1361,16 @@ PatternPtr Parser::ParsePrimaryPattern() {
                 StructPattern::Field f;
                 f.location = CurrentLocation();
                 f.name = ExpectBefore(TokenKind::Ident, "a field name in the structure pattern").text;
-                ExpectBefore(TokenKind::Colon, "':' after the structure pattern field name");
-                f.pattern = ParseRequiredPattern("after ':' in the structure field pattern");
+                if (Match(TokenKind::Colon)) {
+                    f.pattern = ParseRequiredPattern("after ':' in the structure field pattern");
+                }
+                else if (!f.name.empty()) {
+                    // The shorthand `Point { x }` binds the field to a variable of the same name.
+                    auto binding = std::make_unique<IdentPattern>();
+                    binding->location = f.location;
+                    binding->name = f.name;
+                    f.pattern = std::move(binding);
+                }
                 const bool validField = !f.name.empty() && f.pattern != nullptr;
                 p->fields.push_back(std::move(f));
                 if (!validField) {

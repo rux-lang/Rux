@@ -103,7 +103,11 @@ bool CasePatternCoversCase(const EnumPattern &pattern, const EnumDecl::Variant &
                            const EnumDecl::Form form) {
     const std::size_t fieldCount = selectedCase.fields.size() + selectedCase.namedFields.size();
     const std::size_t patternFieldCount = pattern.args.size() + pattern.namedArgs.size();
-    if ((form == EnumDecl::Form::Enumeration && patternFieldCount != 0) || patternFieldCount != fieldCount) {
+    if (form == EnumDecl::Form::Enumeration && patternFieldCount != 0) {
+        return false;
+    }
+    // A field a named payload pattern leaves out matches anything.
+    if (!pattern.braced && patternFieldCount != fieldCount) {
         return false;
     }
     return std::ranges::all_of(pattern.args,
@@ -1067,7 +1071,9 @@ void AnalysisContext::CheckPattern(const Pattern &pattern, const TypeRef &subjec
                       "remove the payload pattern; enums contain constants, while variants carry data");
             return;
         }
-        if (resolved && resolved->form == EnumDecl::Form::Variant) {
+        // A positional payload lists every field; one written with field names may leave some out, as a structure
+        // pattern may.
+        if (resolved && resolved->form == EnumDecl::Form::Variant && !enumPattern->braced) {
             const std::size_t expectedFields = variant->fields.size() + variant->namedFields.size();
             if (actualFields != expectedFields) {
                 EmitError(enumPattern->location,

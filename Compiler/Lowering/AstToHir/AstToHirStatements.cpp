@@ -585,6 +585,14 @@ HirPatternPtr AstToHirContext::LowerPattern(const Pattern &pattern, const TypeRe
                     lowered->args.push_back(
                         LowerLetPattern(*it->second, ResolveTypeWithSubstitution(*field.type, substitutions), false));
                 }
+                else if (enumPattern->braced) {
+                    // A named field the pattern leaves out matches anything. Spelled as a wildcard, it is destroyed
+                    // with the other unbound payloads when the arm takes over a consumed subject.
+                    auto wildcard = std::make_unique<HirWildcardPattern>();
+                    wildcard->location = enumPattern->location;
+                    lowered->argIndices.push_back(&field - variant->namedFields.data());
+                    lowered->args.push_back(std::move(wildcard));
+                }
             }
         }
         else {

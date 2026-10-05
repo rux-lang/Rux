@@ -1,0 +1,106 @@
+// Field shorthand and omitted fields in structure and case patterns.
+// `Point { x, y }` binds each field to a variable of the same name, in a match arm and in `let`, as `.Circle { radius }`
+// does for a case payload. A payload written with field names may leave fields out, as a structure pattern may; an
+// omitted field matches anything, and over a consumed subject it is destroyed at the top of the arm.
+
+import Core::Assert;
+
+struct Point {
+    x: int32;
+    y: int32;
+}
+
+variant Shape {
+    Point,
+    Circle { radius: int32; },
+    Rectangle { width: int32; height: int32; }
+}
+
+struct Log {
+    count: int32;
+    order: int64;
+}
+
+struct Tracked {
+    log: *var Log;
+    id: int32;
+}
+
+extend Tracked {
+    func =(self: &var Tracked, other: &Tracked);
+
+    func ~Tracked(self: &var Tracked) {
+        self.log.count = self.log.count + 1;
+        self.log.order = self.log.order * 10 + (self.id as int64);
+    }
+}
+
+variant Parcel {
+    Empty,
+    Boxed { label: Tracked; contents: Tracked; }
+}
+
+func Mark(log: *var Log) {
+    log.order = log.order * 10;
+}
+
+func Track(log: *var Log, id: int32) -> Tracked {
+    return Tracked { log: log, id: id };
+}
+
+func OnAxis(p: Point) -> int32 {
+    return match p {
+        Point { x: 0, y } => y,
+        Point { x, y: 0 } => x,
+        else => -1i32
+    };
+}
+
+func Width(shape: Shape) -> int32 {
+    return match shape {
+        .Rectangle { width } => width,
+        .Circle { radius } => radius * 2i32,
+        .Point => 0i32
+    };
+}
+
+func Tall(shape: Shape) -> bool {
+    return match shape {
+        .Rectangle { height: 0 } => false,
+        .Rectangle { } => true,
+        else => false
+    };
+}
+
+func MatchOmitsCaseField(log: *var Log) {
+    let parcel = Parcel::Boxed { label: Track(log, 1), contents: Track(log, 2) };
+    match <-parcel {
+        .Boxed { label } => {
+            Mark(log);
+            Assert(label.id == 1, "the arm binds the label");
+        },
+        .Empty => {}
+    }
+}
+
+func Main() -> int {
+    Assert(OnAxis(Point { x: 0, y: 7 }) == 7, "the shorthand binds y beside a tested x");
+    Assert(OnAxis(Point { x: 5, y: 0 }) == 5, "the shorthand binds x beside a tested y");
+    Assert(OnAxis(Point { x: 1, y: 1 }) == -1, "a point off both axes takes the else arm");
+
+    let p = Point { x: 3, y: 4 };
+    let Point { x, y } = p;
+    Assert(x == 3 && y == 4, "a destructuring let binds both fields by shorthand");
+    let Point { y: height } = p;
+    Assert(height == 4, "a destructuring let may leave a field out");
+
+    Assert(Width(Shape::Rectangle { width: 6, height: 2 }) == 6, "a case pattern may leave a named field out");
+    Assert(Width(Shape::Circle { radius: 3 }) == 6, "the case shorthand still binds its field");
+    Assert(Tall(Shape::Rectangle { width: 1, height: 2 }), "a case pattern may test one named field");
+    Assert(!Tall(Shape::Rectangle { width: 1, height: 0 }), "the tested field selects the first arm");
+
+    var log = Log { count: 0, order: 0 };
+    MatchOmitsCaseField(@log);
+    Assert(log.count == 2 && log.order == 201, "an omitted payload field is destroyed at the top of the arm");
+    return 0;
+}
