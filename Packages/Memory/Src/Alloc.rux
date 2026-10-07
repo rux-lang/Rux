@@ -25,7 +25,7 @@ when #target.os {
 /// after it is released is invalid.
 /// @param size how many bytes to take; zero returns null
 /// @returns the address of the allocation, or null when the system refused
-/// @see https://rux-lang.dev/docs/api/memory/alloc
+/// @see https://rux-lang.dev/docs/api/memory/allocation#alloc
 pub func Alloc(size: uint) -> *var opaque {
     when #target.os {
         .FreeBSD, .Linux, .macOS => {
