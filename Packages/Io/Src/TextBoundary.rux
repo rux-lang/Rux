@@ -32,7 +32,7 @@ import Text::{ Display, FormatError, FormatSpec, TextFailureKind, TextWriter };
 /// cannot take the bytes, whatever it calls that.
 /// @param outcome what the stream reported
 /// @returns success for a success, and `WriterFailure` for any failure
-/// @see https://rux-lang.dev/docs/api/io/from-io-error
+/// @see https://rux-lang.dev/docs/api/io/io-error#from-io-error
 pub func FromIoError(outcome: ! IoError) -> ! FormatError {
     outcome catch { else => fail FormatError::WriterFailure };
 }
@@ -46,7 +46,7 @@ pub func FromIoError(outcome: ! IoError) -> ! FormatError {
 /// visibly wrong rather than quietly reporting success.
 /// @param error the formatting failure to translate
 /// @returns the closest I/O meaning, with no platform code, since none applies
-/// @see https://rux-lang.dev/docs/api/io/to-io-error
+/// @see https://rux-lang.dev/docs/api/io/io-error#to-io-error
 pub func ToIoError(error: &FormatError) -> IoError {
     return match error {
         .InvalidSpecification(_) => IoError::Of(IoErrorKind::InvalidInput),
@@ -88,7 +88,7 @@ extend ConsoleWriter {
     /// already holds a failure writes nothing at all.
     /// @param failure where the first stream failure is recorded, `none` until there is one
     /// @returns a writer over standard output
-    /// @see https://rux-lang.dev/docs/api/io/console-writer/new
+    /// @see https://rux-lang.dev/docs/api/io/console-writer#new
     pub func ConsoleWriter(failure: *var IoError?) -> ConsoleWriter {
         return ConsoleWriter { failure: failure };
     }
@@ -103,7 +103,7 @@ extend ConsoleWriter : TextWriter {
     /// revalidated, and standard output is not a bounded destination.
     /// @param bytes the UTF-8 run to write
     /// @returns success when the stream accepted the whole run
-    /// @see https://rux-lang.dev/docs/api/io/console-writer/write
+    /// @see https://rux-lang.dev/docs/api/io/console-writer#write
     pub func Write(self: &var ConsoleWriter, bytes: char8[..]) -> ! FormatError {
         if (*self.failure) is IoError { fail FormatError::WriterFailure; }
         PrintBytes(bytes) catch {
@@ -138,7 +138,7 @@ extend StreamWriter {
     /// @param sink where the bytes go
     /// @param failure where the first stream failure is recorded, `none` until there is one
     /// @returns a text writer over that stream
-    /// @see https://rux-lang.dev/docs/api/io/stream-writer/new
+    /// @see https://rux-lang.dev/docs/api/io/stream-writer#new
     pub func StreamWriter(sink: Writer, failure: *var IoError?) -> StreamWriter {
         return StreamWriter { sink: sink, failure: failure };
     }
@@ -151,7 +151,7 @@ extend StreamWriter : TextWriter {
     /// through rendering does not go on writing into a destination that has already failed.
     /// @param bytes the UTF-8 run to write
     /// @returns success when the stream accepted the whole run
-    /// @see https://rux-lang.dev/docs/api/io/stream-writer/write
+    /// @see https://rux-lang.dev/docs/api/io/stream-writer#write
     pub func Write(self: &var StreamWriter, bytes: char8[..]) -> ! FormatError {
         if (*self.failure) is IoError { fail FormatError::WriterFailure; }
         WriteAll(self.sink, bytes) catch {
@@ -179,7 +179,7 @@ extend StreamWriter : TextWriter {
 /// @param writer the destination
 /// @param value the value to write, borrowed for the call
 /// @returns success when both the value and the newline were accepted
-/// @see https://rux-lang.dev/docs/api/io/write-value-line
+/// @see https://rux-lang.dev/docs/api/io/print-line#write-value-line
 pub func WriteValueLine<T: Display>(writer: &var TextWriter, value: &T) -> ! FormatError {
     value.WriteDisplay(writer, FormatSpec::Plain())?;
     return writer.Write("\n");
@@ -196,7 +196,7 @@ pub func WriteValueLine<T: Display>(writer: &var TextWriter, value: &T) -> ! For
 /// @param writer the destination
 /// @param format the pattern, whose placeholders are filled from the arguments that follow it
 /// @returns success when the whole line was accepted
-/// @see https://rux-lang.dev/docs/api/io/write-format-line
+/// @see https://rux-lang.dev/docs/api/io/print-line#write-format-line
 pub func WriteFormatLine(writer: &var TextWriter, #Format() format: char8[..],
                          args: Display...) -> ! FormatError {
     WriteFormat(writer, format, args...)?;

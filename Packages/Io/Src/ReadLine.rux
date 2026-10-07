@@ -34,7 +34,7 @@ pub func ReadLine(builder: &var StringBuilder) -> ! IoError {
 /// @param reader where the bytes come from, borrowed for the call
 /// @param builder receives the line, appended to whatever it already holds
 /// @returns success when a line was read; `IsEnd` at the end of input with nothing appended
-/// @see https://rux-lang.dev/docs/api/io/read-line-from
+/// @see https://rux-lang.dev/docs/api/io/read-line#read-line-from
 pub func ReadLineFrom(reader: &var Reader, builder: &var StringBuilder) -> ! IoError {
     var byte: char8[1];
     let room = (@byte[0])[..1];

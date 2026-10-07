@@ -104,7 +104,7 @@ extend Duration : Display {
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole rendering was accepted
-    /// @see https://rux-lang.dev/docs/api/time/duration/write-display
+    /// @see https://rux-lang.dev/docs/api/time/duration#write-display
     pub func WriteDisplay(self: &Duration, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         RejectDurationStyle(spec)?;
         var whole: uint64 = 0;
@@ -123,7 +123,7 @@ extend Duration : Debug {
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole rendering was accepted
-    /// @see https://rux-lang.dev/docs/api/time/duration/write-debug
+    /// @see https://rux-lang.dev/docs/api/time/duration#write-debug
     pub func WriteDebug(self: &Duration, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         return self.WriteDisplay(writer, spec);
     }
@@ -137,7 +137,7 @@ extend Duration : Debug {
 /// the digit that overflowed, since the text is well formed and the value simply is not one.
 /// @param text the text to read
 /// @returns the span, or why the text is not one
-/// @see https://rux-lang.dev/docs/api/time/parse-duration
+/// @see https://rux-lang.dev/docs/api/time/duration#parse-duration
 pub func ParseDuration(text: char8[..]) -> Duration ! TimeParseError {
     var at: uint = 0;
     var negative = false;

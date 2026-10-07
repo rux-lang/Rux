@@ -28,7 +28,7 @@ pub func TimeOrdered() -> Uuid ! EntropyError {
 /// For reproducing an identifier from a recorded time, and for testing.
 /// @param milliseconds the timestamp to embed, in milliseconds since the Unix epoch
 /// @returns a version 7 value carrying `milliseconds`, or why entropy was unavailable
-/// @see https://rux-lang.dev/docs/api/uuid/time-ordered-at
+/// @see https://rux-lang.dev/docs/api/uuid/time-ordered#time-ordered-at
 pub func TimeOrderedAt(milliseconds: uint64) -> Uuid ! EntropyError {
     var bytes: byte[16];
     Fill(@bytes[0] as *var opaque, 16)?;
@@ -49,7 +49,7 @@ pub func TimeOrderedAt(milliseconds: uint64) -> Uuid ! EntropyError {
 /// Meaningless for any other version, which is why the version should be checked first.
 /// @param value the value to act on
 /// @returns the timestamp a version 7 value carries; meaningless for any other version
-/// @see https://rux-lang.dev/docs/api/uuid/millisecond-of
+/// @see https://rux-lang.dev/docs/api/uuid/time-ordered#millisecond-of
 pub func MillisecondOf(value: &Uuid) -> uint64 {
     var milliseconds: uint64 = 0;
     var index: uint = 0;
@@ -78,7 +78,7 @@ pub struct MonotonicUuid {
 extend MonotonicUuid {
     /// A generator that has produced nothing yet.
     /// @returns the generator, which has produced nothing yet
-    /// @see https://rux-lang.dev/docs/api/uuid/monotonic-uuid/new
+    /// @see https://rux-lang.dev/docs/api/uuid/monotonic-uuid#new
     pub func MonotonicUuid() -> MonotonicUuid {
         return MonotonicUuid { previous: Uuid::Nil(), started: false };
     }
@@ -86,7 +86,7 @@ extend MonotonicUuid {
     /// The next identifier, strictly greater than the one before it.
     /// @returns the next value, which sorts after every value this generator has produced, or why entropy was
     ///   unavailable
-    /// @see https://rux-lang.dev/docs/api/uuid/monotonic-uuid/next
+    /// @see https://rux-lang.dev/docs/api/uuid/monotonic-uuid#next
     pub func Next(self: &var MonotonicUuid) -> Uuid ! EntropyError {
         let candidate = TimeOrdered()?;
         if !self.started {

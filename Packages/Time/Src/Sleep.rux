@@ -28,7 +28,7 @@ when #target.os {
 /// Why a wait did not happen. `Copy`.
 /// Every case is a failure. An interruption is not one: a waiter that was cut short succeeds with the part of the span
 /// still to wait, and `SleepFor` goes back for it, because a caller that asked for a span asked for the whole span.
-/// @see https://rux-lang.dev/docs/api/time/time-error
+/// @see https://rux-lang.dev/docs/api/time/sleep#time-error
 pub enum TimeError: uint8 {
     /// The system refused the request itself, rather than being unable to finish it.
     InvalidDuration = 2,
@@ -41,7 +41,7 @@ pub enum TimeError: uint8 {
 /// one less. Every system's wait is chunked to this so that the loop is the same everywhere and so that a test of
 /// the chunking is a test of what actually runs.
 /// About 49.7 days. A span longer than this is waited for in more than one chunk.
-/// @see https://rux-lang.dev/docs/api/time/maximum-wait-milliseconds
+/// @see https://rux-lang.dev/docs/api/time/sleep#maximum-wait-milliseconds
 pub const MaximumWaitMilliseconds: int64 = 4294967294;
 
 /// How long the next single wait should be asked for, given how much of the span is left.
@@ -54,7 +54,7 @@ pub const MaximumWaitMilliseconds: int64 = 4294967294;
 /// Cannot fail. Runs in constant time and allocates nothing.
 /// @param span how much of the wait is left
 /// @returns the milliseconds to ask the system for
-/// @see https://rux-lang.dev/docs/api/time/wait-chunk-milliseconds
+/// @see https://rux-lang.dev/docs/api/time/sleep#wait-chunk-milliseconds
 pub func WaitChunkMilliseconds(span: Duration) -> int64 {
     if span.IsNegative() || span.IsZero() { return 0; }
 
@@ -87,14 +87,14 @@ pub interface Waiter {
     /// elapsed.
     /// @param span how much time to wait for
     /// @returns what is left of `span`, or why the wait did not happen
-    /// @see https://rux-lang.dev/docs/api/time/waiter/wait-for
+    /// @see https://rux-lang.dev/docs/api/time/waiter#wait-for
     func WaitFor(self: &var Self, span: Duration) -> Duration ! TimeError;
 }
 
 /// The wait every supported system actually provides. `Copy`.
 /// Holds nothing: the system is the state. Construct one with `SystemWaiter()` and hand it to `SleepUsing`, or use
 /// `SleepFor`, which does that.
-/// @see https://rux-lang.dev/docs/api/time/system-waiter
+/// @see https://rux-lang.dev/docs/api/time/waiter#system-waiter
 pub struct SystemWaiter {
     /// Present because a struct with no fields has no address to distinguish two of, and this type is passed by
     /// reference to a generic. It is never read.
@@ -105,7 +105,7 @@ extend SystemWaiter {
     /// A waiter that reaches the operating system.
     /// Cannot fail. Runs in constant time and allocates nothing.
     /// @returns the waiter
-    /// @see https://rux-lang.dev/docs/api/time/system-waiter/new
+    /// @see https://rux-lang.dev/docs/api/time/waiter#system-waiter-new
     pub func SystemWaiter() -> SystemWaiter {
         return SystemWaiter { reserved: 0 };
     }
@@ -155,7 +155,7 @@ extend SystemWaiter : Waiter {
 /// How many waits `SleepFor` will make before giving up on a span that never shrinks.
 /// A `Waiter` that reports success without waiting and without reducing the remainder would spin forever. This is
 /// not a limit any real wait reaches: the system waiter always either advances or fails.
-/// @see https://rux-lang.dev/docs/api/time/maximum-wait-attempts
+/// @see https://rux-lang.dev/docs/api/time/sleep#maximum-wait-attempts
 pub const MaximumWaitAttempts: uint = 4096;
 
 /// Waits out `span` through `waiter`, retrying interruptions and chunking what one wait cannot express.
@@ -169,7 +169,7 @@ pub const MaximumWaitAttempts: uint = 4096;
 /// @param waiter how to reach the wait
 /// @param span how long to wait for
 /// @returns nothing when the whole span was waited out, or why it was not
-/// @see https://rux-lang.dev/docs/api/time/sleep-using
+/// @see https://rux-lang.dev/docs/api/time/sleep#sleep-using
 pub func SleepUsing<W: Waiter>(waiter: &var W, span: Duration) -> ! TimeError {
     if span.IsNegative() || span.IsZero() { return; }
 

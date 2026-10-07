@@ -26,13 +26,13 @@ when #target.os {
 /// How many symbolic links one canonicalization will follow before giving up.
 /// A link that points at itself, or at a chain that returns to it, would otherwise be followed forever. The
 /// limit is what every system uses for the same reason, and reaching it is reported as `LimitExceeded`.
-/// @see https://rux-lang.dev/docs/api/filesystem/symbolic-link-limit
+/// @see https://rux-lang.dev/docs/api/filesystem/location#symbolic-link-limit
 pub const SymbolicLinkLimit: uint = 40;
 
 /// The process's working directory, as an absolute path.
 /// @param allocator where the storage comes from
 /// @returns the working directory
-/// @see https://rux-lang.dev/docs/api/filesystem/current-directory
+/// @see https://rux-lang.dev/docs/api/filesystem/location#current-directory
 pub func CurrentDirectory(allocator: Allocator) -> OsString ! IoError {
     var units: OsUnit[4096];
     when #target.os == .Windows {
@@ -62,7 +62,7 @@ pub func CurrentDirectory(allocator: Allocator) -> OsString ! IoError {
 /// @param allocator where the storage comes from
 /// @param path the path to act on
 /// @returns success when the working directory changed
-/// @see https://rux-lang.dev/docs/api/filesystem/set-current-directory
+/// @see https://rux-lang.dev/docs/api/filesystem/location#set-current-directory
 pub func SetCurrentDirectory(allocator: Allocator, path: Path) -> ! IoError {
     let native = NativePath(allocator, path)?;
     defer ReleaseNativePath(allocator, native, path.name.units.length);
@@ -86,7 +86,7 @@ pub func SetCurrentDirectory(allocator: Allocator, path: Path) -> ! IoError {
 /// @param allocator where the storage comes from
 /// @param path the path to act on
 /// @returns the path made absolute without touching the file system
-/// @see https://rux-lang.dev/docs/api/filesystem/absolute
+/// @see https://rux-lang.dev/docs/api/filesystem/location#absolute
 pub func Absolute(allocator: Allocator, path: Path) -> PathBuffer ! IoError {
     if IsAbsolute(path) {
         return Normalize(allocator, path) catch { else => fail IoError::Of(IoErrorKind::Other) };
@@ -214,7 +214,7 @@ when #target.os != .Windows {
 /// @param allocator where the storage comes from
 /// @param path the path to act on
 /// @returns the path with every link and relative component resolved, which needs the file system and so can fail
-/// @see https://rux-lang.dev/docs/api/filesystem/canonicalize
+/// @see https://rux-lang.dev/docs/api/filesystem/location#canonicalize
 pub func Canonicalize(allocator: Allocator, path: Path) -> PathBuffer ! IoError {
     when #target.os == .Windows {
         // Windows resolves the whole path itself, given a handle to what stands at the end of it. A query handle

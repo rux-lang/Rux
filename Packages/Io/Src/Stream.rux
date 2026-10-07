@@ -18,7 +18,7 @@ pub interface Reader {
     /// so a caller never mistakes silence for data.
     /// @param into receives the bytes
     /// @returns how many bytes were read, which may be fewer than `into` holds; `IsEnd` at the end of the stream
-    /// @see https://rux-lang.dev/docs/api/io/reader/read
+    /// @see https://rux-lang.dev/docs/api/io/reader#read
     func Read(self: &var Self, into: var char8[..]) -> uint ! IoError;
 }
 
@@ -28,17 +28,17 @@ pub interface Writer {
     /// Takes what it can of `bytes` and succeeds with how much.
     /// @param bytes the bytes to write
     /// @returns how many bytes were taken, which may be fewer than offered
-    /// @see https://rux-lang.dev/docs/api/io/writer/write
+    /// @see https://rux-lang.dev/docs/api/io/writer#write
     func Write(self: &var Self, bytes: char8[..]) -> uint ! IoError;
 
     /// Pushes whatever is held toward the destination.
     /// @returns success when everything held reached the destination
-    /// @see https://rux-lang.dev/docs/api/io/writer/flush
+    /// @see https://rux-lang.dev/docs/api/io/writer#flush
     func Flush(self: &var Self) -> ! IoError;
 }
 
 /// Where a seek starts counting from.
-/// @see https://rux-lang.dev/docs/api/io/seek-from
+/// @see https://rux-lang.dev/docs/api/io/seeker#seek-from
 pub enum SeekFrom: int32 {
     /// The start of the stream; the offset must not be negative.
     Start = 0,
@@ -55,14 +55,14 @@ pub interface Seeker {
     /// @param origin where the offset is measured from
     /// @param offset how far to move, which may be negative
     /// @returns the resulting offset from the start
-    /// @see https://rux-lang.dev/docs/api/io/seeker/seek
+    /// @see https://rux-lang.dev/docs/api/io/seeker#seek
     func Seek(self: &var Self, origin: SeekFrom, offset: int64) -> uint64 ! IoError;
 }
 
 /// How many consecutive zero-progress rounds the looping helpers tolerate before refusing.
 /// A transient report is retried without counting; this counts only rounds where the stream reported success and
 /// moved nothing, which is a stream that will never finish the job.
-/// @see https://rux-lang.dev/docs/api/io/zero-progress-limit
+/// @see https://rux-lang.dev/docs/api/io/reader#zero-progress-limit
 pub const ZeroProgressLimit: uint = 3;
 
 /// Fills all of `into`, looping over partial reads, or says why it could not.
@@ -71,7 +71,7 @@ pub const ZeroProgressLimit: uint = 3;
 /// @param reader where the bytes come from
 /// @param into receives the bytes
 /// @returns success only when `into` was filled completely; `IsEnd` when the stream ran out first
-/// @see https://rux-lang.dev/docs/api/io/read-exact
+/// @see https://rux-lang.dev/docs/api/io/reader#read-exact
 pub func ReadExact(reader: &var Reader, into: var char8[..]) -> ! IoError {
     var at: uint = 0;
     while at < into.length {
@@ -94,7 +94,7 @@ pub func ReadExact(reader: &var Reader, into: var char8[..]) -> ! IoError {
 /// @param writer the destination
 /// @param bytes the bytes to write
 /// @returns success only when every byte was written, looping over short writes
-/// @see https://rux-lang.dev/docs/api/io/write-all
+/// @see https://rux-lang.dev/docs/api/io/writer#write-all
 pub func WriteAll(writer: &var Writer, bytes: char8[..]) -> ! IoError {
     var at: uint = 0;
     var stalled: uint = 0;

@@ -204,7 +204,7 @@ extend OsStringView : Display {
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole name was accepted
-    /// @see https://rux-lang.dev/docs/api/path/os-string-view/write-display
+    /// @see https://rux-lang.dev/docs/api/path/os-string-view#write-display
     pub func WriteDisplay(self: &OsStringView, writer: &var TextWriter,
                           spec: FormatSpec) -> ! FormatError {
         AcceptsNameSpec(spec)?;
@@ -222,7 +222,7 @@ extend OsStringView : Debug {
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole name was accepted
-    /// @see https://rux-lang.dev/docs/api/path/os-string-view/write-debug
+    /// @see https://rux-lang.dev/docs/api/path/os-string-view#write-debug
     pub func WriteDebug(self: &OsStringView, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         AcceptsNameSpec(spec)?;
         return WriteQuoted(writer, self.units);
@@ -235,7 +235,7 @@ extend OsString : Display {
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole name was accepted
-    /// @see https://rux-lang.dev/docs/api/path/os-string/write-display
+    /// @see https://rux-lang.dev/docs/api/path/os-string#write-display
     pub func WriteDisplay(self: &OsString, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         AcceptsNameSpec(spec)?;
         return WriteLossy(writer, self.View().Units());
@@ -248,7 +248,7 @@ extend OsString : Debug {
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole name was accepted
-    /// @see https://rux-lang.dev/docs/api/path/os-string/write-debug
+    /// @see https://rux-lang.dev/docs/api/path/os-string#write-debug
     pub func WriteDebug(self: &OsString, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         AcceptsNameSpec(spec)?;
         return WriteQuoted(writer, self.View().Units());
@@ -263,7 +263,7 @@ extend Path : Display {
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole path was accepted
-    /// @see https://rux-lang.dev/docs/api/path/path/write-display
+    /// @see https://rux-lang.dev/docs/api/path/path#write-display
     pub func WriteDisplay(self: &Path, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         AcceptsNameSpec(spec)?;
         return WriteLossy(writer, self.name.Units());
@@ -276,7 +276,7 @@ extend Path : Debug {
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole path was accepted
-    /// @see https://rux-lang.dev/docs/api/path/path/write-debug
+    /// @see https://rux-lang.dev/docs/api/path/path#write-debug
     pub func WriteDebug(self: &Path, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         AcceptsNameSpec(spec)?;
         return WriteQuoted(writer, self.name.Units());
@@ -289,7 +289,7 @@ extend PathBuffer : Display {
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole path was accepted
-    /// @see https://rux-lang.dev/docs/api/path/path-buffer/write-display
+    /// @see https://rux-lang.dev/docs/api/path/path-buffer#write-display
     pub func WriteDisplay(self: &PathBuffer, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         AcceptsNameSpec(spec)?;
         return WriteLossy(writer, self.AsPath().AsView().Units());
@@ -302,7 +302,7 @@ extend PathBuffer : Debug {
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole path was accepted
-    /// @see https://rux-lang.dev/docs/api/path/path-buffer/write-debug
+    /// @see https://rux-lang.dev/docs/api/path/path-buffer#write-debug
     pub func WriteDebug(self: &PathBuffer, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         AcceptsNameSpec(spec)?;
         return WriteQuoted(writer, self.AsPath().AsView().Units());

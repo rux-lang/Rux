@@ -10,7 +10,7 @@
 import Core::{ #target };
 
 /// The kind of prefix a path opens with.
-/// @see https://rux-lang.dev/docs/api/path/prefix-kind
+/// @see https://rux-lang.dev/docs/api/path/syntax#prefix-kind
 pub enum PrefixKind: int32 {
     /// No prefix: the path is a plain name, rooted or not.
     None = 0,
@@ -29,7 +29,7 @@ pub enum PrefixKind: int32 {
 /// @param path the path to act on
 /// @param kind which prefix form to measure
 /// @returns how many leading units the prefix occupies, or zero when there is none
-/// @see https://rux-lang.dev/docs/api/path/prefix-length
+/// @see https://rux-lang.dev/docs/api/path/syntax#prefix-length
 pub func PrefixLength(path: Path, kind: *var PrefixKind) -> uint {
     *kind = PrefixKind::None;
     when #target.os == .Windows {
@@ -102,7 +102,7 @@ when #target.os == .Windows {
 /// Whether `path` has a root: a separator standing where the segments begin.
 /// @param path the path to act on
 /// @returns whether the path begins at a root
-/// @see https://rux-lang.dev/docs/api/path/has-root
+/// @see https://rux-lang.dev/docs/api/path/syntax#has-root
 pub func HasRoot(path: Path) -> bool {
     var kind = PrefixKind::None;
     let prefix = PrefixLength(path, @kind);
@@ -119,7 +119,7 @@ pub func HasRoot(path: Path) -> bool {
 /// absolute; `C:name` is drive-relative and `\name` drive-absent, and neither names one place on its own.
 /// @param path the path to act on
 /// @returns whether the path names a location without needing a working directory
-/// @see https://rux-lang.dev/docs/api/path/is-absolute
+/// @see https://rux-lang.dev/docs/api/path/syntax#is-absolute
 pub func IsAbsolute(path: Path) -> bool {
     when #target.os == .Windows {
         var kind = PrefixKind::None;
