@@ -29,7 +29,7 @@ extend Instant {
     /// The clock, read now.
     /// Cannot fail on any supported system: the monotonic clock exists from boot and needs no permission.
     /// @returns the monotonic clock, read now
-    /// @see https://rux-lang.dev/docs/api/time/instant/now
+    /// @see https://rux-lang.dev/docs/api/time/instant#now
     pub func Now() -> Instant {
         when #target.os == .Windows {
             // The counter runs in units the machine chooses, so the frequency turns it into nanoseconds. Splitting
@@ -56,7 +56,7 @@ extend Instant {
     /// visible bug instead of a wildly large duration.
     /// @param earlier the earlier reading
     /// @returns the time between the two readings, or `None` when `earlier` is not earlier
-    /// @see https://rux-lang.dev/docs/api/time/instant/since
+    /// @see https://rux-lang.dev/docs/api/time/instant#since
     pub func Since(self: &Instant, earlier: Instant) -> Duration? {
         if self.ticks < earlier.ticks { return none; }
         let gap = self.ticks - earlier.ticks;
@@ -67,7 +67,7 @@ extend Instant {
 
     /// The time from this reading to now.
     /// @returns the time from this reading to now
-    /// @see https://rux-lang.dev/docs/api/time/instant/elapsed
+    /// @see https://rux-lang.dev/docs/api/time/instant#elapsed
     pub func Elapsed(self: &Instant) -> Duration {
         let now = Instant::Now();
         return now.Since(Instant { ticks: self.ticks }) ?? Duration::Zero();

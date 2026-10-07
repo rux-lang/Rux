@@ -42,7 +42,7 @@ extend TimeParseError : ParseFailure {
     /// Where in the input the failure was found.
     /// Borrows the error. Cannot fail; runs in constant time and allocates nothing.
     /// @returns the zero-based UTF-8 byte offset, which is the text's length at end of input
-    /// @see https://rux-lang.dev/docs/api/time/time-parse-error/offset
+    /// @see https://rux-lang.dev/docs/api/time/time-parse-error#offset
     pub func Offset(self: &TimeParseError) -> uint {
         return match self {
             .InvalidSyntax(at) => at,
@@ -229,7 +229,7 @@ func AtEnd(reader: &Reader) -> ! TimeParseError {
 /// `NonexistentDay` for a day the month does not have. Each carries the byte offset where it was found.
 /// @param text the text to read
 /// @returns the date, or why the text is not one
-/// @see https://rux-lang.dev/docs/api/time/parse-date
+/// @see https://rux-lang.dev/docs/api/time/date#parse-date
 pub func ParseDate(text: char8[..]) -> Date ! TimeParseError {
     var reader = Reader { text: text, at: 0 };
     let date = ReadDate(reader)?;
@@ -242,7 +242,7 @@ pub func ParseDate(text: char8[..]) -> Date ! TimeParseError {
 /// `ExcessiveFraction` for more fraction digits than a nanosecond holds. Second 60 folds rather than failing.
 /// @param text the text to read
 /// @returns the time of day, or why the text is not one
-/// @see https://rux-lang.dev/docs/api/time/parse-time-of-day
+/// @see https://rux-lang.dev/docs/api/time/time-of-day#parse-time-of-day
 pub func ParseTimeOfDay(text: char8[..]) -> TimeOfDay ! TimeParseError {
     var reader = Reader { text: text, at: 0 };
     let time = ReadTime(reader)?;
@@ -257,7 +257,7 @@ pub func ParseTimeOfDay(text: char8[..]) -> TimeOfDay ! TimeParseError {
 /// The failures `ParseDate` and `ParseTimeOfDay` report, at their offsets within this text.
 /// @param text the text to read
 /// @returns the local date and time, or why the text is not one
-/// @see https://rux-lang.dev/docs/api/time/parse-date-time
+/// @see https://rux-lang.dev/docs/api/time/date-time#parse-date-time
 pub func ParseDateTime(text: char8[..]) -> DateTime ! TimeParseError {
     var reader = Reader { text: text, at: 0 };
     let date = ReadDate(reader)?;
@@ -276,7 +276,7 @@ pub func ParseDateTime(text: char8[..]) -> DateTime ! TimeParseError {
 /// carries the byte offset where it was found.
 /// @param text the text to read
 /// @returns the moment with the offset it was stated in, or why the text is not one
-/// @see https://rux-lang.dev/docs/api/time/parse-rfc3339
+/// @see https://rux-lang.dev/docs/api/time/offset-date-time#parse-rfc3339
 pub func ParseRfc3339(text: char8[..]) -> OffsetDateTime ! TimeParseError {
     var reader = Reader { text: text, at: 0 };
     let date = ReadDate(reader)?;

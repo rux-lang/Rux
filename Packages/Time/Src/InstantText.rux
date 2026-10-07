@@ -22,7 +22,7 @@ extend Instant : Debug {
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole reading was accepted
-    /// @see https://rux-lang.dev/docs/api/time/instant/write-debug
+    /// @see https://rux-lang.dev/docs/api/time/instant#write-debug
     pub func WriteDebug(self: &Instant, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         RejectStyle(spec)?;
         if spec.HasPrecision() { return .Failure(FormatError::UnsupportedRequest); }

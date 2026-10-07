@@ -32,7 +32,7 @@ extend OffsetDateTime {
     /// @param dateTime the local date and time
     /// @param offset the offset from UTC that `dateTime` is stated in
     /// @returns the pairing
-    /// @see https://rux-lang.dev/docs/api/time/offset-date-time/new
+    /// @see https://rux-lang.dev/docs/api/time/offset-date-time#new
     pub func OffsetDateTime(dateTime: DateTime, offset: UtcOffset) -> OffsetDateTime {
         return OffsetDateTime { dateTime: dateTime, offset: offset };
     }
@@ -40,7 +40,7 @@ extend OffsetDateTime {
     /// The moment this names in UTC.
     /// Cannot fail; runs in constant time and allocates nothing.
     /// @returns the instant, as a timestamp
-    /// @see https://rux-lang.dev/docs/api/time/offset-date-time/to-timestamp
+    /// @see https://rux-lang.dev/docs/api/time/offset-date-time#to-timestamp
     pub func ToTimestamp(self: &OffsetDateTime) -> Timestamp {
         return self.dateTime.ToTimestamp(self.offset);
     }
@@ -150,7 +150,7 @@ extend Date : Display {
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole date was accepted
-    /// @see https://rux-lang.dev/docs/api/time/date/write-display
+    /// @see https://rux-lang.dev/docs/api/time/date#write-display
     pub func WriteDisplay(self: &Date, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         RejectCalendarStyle(spec)?;
         if spec.HasPrecision() { return .Failure(FormatError::UnsupportedRequest); }
@@ -168,7 +168,7 @@ extend Date : Debug {
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole date was accepted
-    /// @see https://rux-lang.dev/docs/api/time/date/write-debug
+    /// @see https://rux-lang.dev/docs/api/time/date#write-debug
     pub func WriteDebug(self: &Date, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         return self.WriteDisplay(writer, spec);
     }
@@ -183,7 +183,7 @@ extend TimeOfDay : Display {
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole time was accepted
-    /// @see https://rux-lang.dev/docs/api/time/time-of-day/write-display
+    /// @see https://rux-lang.dev/docs/api/time/time-of-day#write-display
     pub func WriteDisplay(self: &TimeOfDay, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         RejectCalendarStyle(spec)?;
         WriteFixed(writer, self.hour as uint32, 2)?;
@@ -201,7 +201,7 @@ extend TimeOfDay : Debug {
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole time was accepted
-    /// @see https://rux-lang.dev/docs/api/time/time-of-day/write-debug
+    /// @see https://rux-lang.dev/docs/api/time/time-of-day#write-debug
     pub func WriteDebug(self: &TimeOfDay, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         return self.WriteDisplay(writer, spec);
     }
@@ -217,7 +217,7 @@ extend UtcOffset : Display {
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole offset was accepted
-    /// @see https://rux-lang.dev/docs/api/time/utc-offset/write-display
+    /// @see https://rux-lang.dev/docs/api/time/utc-offset#write-display
     pub func WriteDisplay(self: &UtcOffset, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         RejectCalendarStyle(spec)?;
         if spec.HasPrecision() { return .Failure(FormatError::UnsupportedRequest); }
@@ -238,7 +238,7 @@ extend UtcOffset : Debug {
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole offset was accepted
-    /// @see https://rux-lang.dev/docs/api/time/utc-offset/write-debug
+    /// @see https://rux-lang.dev/docs/api/time/utc-offset#write-debug
     pub func WriteDebug(self: &UtcOffset, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         return self.WriteDisplay(writer, spec);
     }
@@ -255,7 +255,7 @@ extend DateTime : Display {
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole date and time were accepted
-    /// @see https://rux-lang.dev/docs/api/time/date-time/write-display
+    /// @see https://rux-lang.dev/docs/api/time/date-time#write-display
     pub func WriteDisplay(self: &DateTime, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         RejectCalendarStyle(spec)?;
         WriteDateOnly(writer, self.date)?;
@@ -270,7 +270,7 @@ extend DateTime : Debug {
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole date and time were accepted
-    /// @see https://rux-lang.dev/docs/api/time/date-time/write-debug
+    /// @see https://rux-lang.dev/docs/api/time/date-time#write-debug
     pub func WriteDebug(self: &DateTime, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         return self.WriteDisplay(writer, spec);
     }
@@ -296,7 +296,7 @@ extend OffsetDateTime : Display {
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole moment was accepted
-    /// @see https://rux-lang.dev/docs/api/time/offset-date-time/write-display
+    /// @see https://rux-lang.dev/docs/api/time/offset-date-time#write-display
     pub func WriteDisplay(self: &OffsetDateTime, writer: &var TextWriter,
                           spec: FormatSpec) -> ! FormatError {
         RejectCalendarStyle(spec)?;
@@ -311,7 +311,7 @@ extend OffsetDateTime : Debug {
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole moment was accepted
-    /// @see https://rux-lang.dev/docs/api/time/offset-date-time/write-debug
+    /// @see https://rux-lang.dev/docs/api/time/offset-date-time#write-debug
     pub func WriteDebug(self: &OffsetDateTime, writer: &var TextWriter,
                         spec: FormatSpec) -> ! FormatError {
         return self.WriteDisplay(writer, spec);
