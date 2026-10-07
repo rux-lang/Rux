@@ -15,7 +15,7 @@ import Core::Ordering;
 /// @param left one of the two values
 /// @param right the other
 /// @returns how `left` orders against `right`
-/// @see https://rux-lang.dev/docs/api/collections/compare-uint
+/// @see https://rux-lang.dev/docs/api/collections/comparing#compare-uint
 pub func CompareUint(left: uint, right: uint) -> Ordering {
     if left < right { return Ordering::Less; }
     if left > right { return Ordering::Greater; }
@@ -26,7 +26,7 @@ pub func CompareUint(left: uint, right: uint) -> Ordering {
 /// @param left one of the two values
 /// @param right the other
 /// @returns how `left` orders against `right`
-/// @see https://rux-lang.dev/docs/api/collections/compare-uint64
+/// @see https://rux-lang.dev/docs/api/collections/comparing#compare-uint64
 pub func CompareUint64(left: uint64, right: uint64) -> Ordering {
     if left < right { return Ordering::Less; }
     if left > right { return Ordering::Greater; }
@@ -37,7 +37,7 @@ pub func CompareUint64(left: uint64, right: uint64) -> Ordering {
 /// @param left one of the two values
 /// @param right the other
 /// @returns how `left` orders against `right`
-/// @see https://rux-lang.dev/docs/api/collections/compare-uint32
+/// @see https://rux-lang.dev/docs/api/collections/comparing#compare-uint32
 pub func CompareUint32(left: uint32, right: uint32) -> Ordering {
     if left < right { return Ordering::Less; }
     if left > right { return Ordering::Greater; }
@@ -49,7 +49,7 @@ pub func CompareUint32(left: uint32, right: uint32) -> Ordering {
 /// @param left one of the two values
 /// @param right the other
 /// @returns how `left` orders against `right`
-/// @see https://rux-lang.dev/docs/api/collections/compare-int64
+/// @see https://rux-lang.dev/docs/api/collections/comparing#compare-int64
 pub func CompareInt64(left: int64, right: int64) -> Ordering {
     if left < right { return Ordering::Less; }
     if left > right { return Ordering::Greater; }
@@ -60,7 +60,7 @@ pub func CompareInt64(left: int64, right: int64) -> Ordering {
 /// @param left one of the two values
 /// @param right the other
 /// @returns how `left` orders against `right`
-/// @see https://rux-lang.dev/docs/api/collections/compare-int32
+/// @see https://rux-lang.dev/docs/api/collections/comparing#compare-int32
 pub func CompareInt32(left: int32, right: int32) -> Ordering {
     if left < right { return Ordering::Less; }
     if left > right { return Ordering::Greater; }
@@ -73,7 +73,7 @@ pub func CompareInt32(left: int32, right: int32) -> Ordering {
 /// @param left one of the two values
 /// @param right the other
 /// @returns how `left` orders against `right`
-/// @see https://rux-lang.dev/docs/api/collections/compare-char8
+/// @see https://rux-lang.dev/docs/api/collections/comparing#compare-char8
 pub func CompareChar8(left: char8, right: char8) -> Ordering {
     if left < right { return Ordering::Less; }
     if left > right { return Ordering::Greater; }
@@ -87,7 +87,7 @@ pub func CompareChar8(left: char8, right: char8) -> Ordering {
 /// @param left one of the two values
 /// @param right the other
 /// @returns how the two order byte by byte, then by length
-/// @see https://rux-lang.dev/docs/api/collections/compare-slice
+/// @see https://rux-lang.dev/docs/api/collections/comparing#compare-slice
 pub func CompareSlice(left: char8[..], right: char8[..]) -> Ordering {
     let shared = left.length < right.length ? left.length : right.length;
     var index: uint = 0;

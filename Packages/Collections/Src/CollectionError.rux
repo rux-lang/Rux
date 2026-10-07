@@ -39,7 +39,7 @@ extend CollectionError {
     /// again.
     /// Cannot fail. Runs in constant time and allocates nothing.
     /// @returns whether trying again could succeed
-    /// @see https://rux-lang.dev/docs/api/collections/collection-error/is-transient
+    /// @see https://rux-lang.dev/docs/api/collections/collection-error#is-transient
     pub func IsTransient(self: CollectionError) -> bool {
         return self == CollectionError::OutOfMemory;
     }
@@ -52,7 +52,7 @@ extend CollectionError {
 /// Cannot fail. Runs in constant time and allocates nothing.
 /// @param error why the allocator refused
 /// @returns the same failure as a collection error
-/// @see https://rux-lang.dev/docs/api/collections/from-alloc-error
+/// @see https://rux-lang.dev/docs/api/collections/collection-error#from-alloc-error
 pub func FromAllocError(error: AllocError) -> CollectionError {
     if error == AllocError::OutOfMemory { return CollectionError::OutOfMemory; }
     return CollectionError::Unsupported;

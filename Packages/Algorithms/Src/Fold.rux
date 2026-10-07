@@ -25,7 +25,7 @@
 /// @param initial the value to start from
 /// @param combine how to fold an element into the running value
 /// @returns the value left after folding every element into it
-/// @see https://rux-lang.dev/docs/api/algorithms/fold
+/// @see https://rux-lang.dev/docs/api/algorithms/folding#fold
 pub func Fold<T, A>(items: T[..], initial: A, combine: func(A, T) -> A) -> A {
     var total = initial;
     var index: uint = 0;
@@ -47,7 +47,7 @@ pub func Fold<T, A>(items: T[..], initial: A, combine: func(A, T) -> A) -> A {
 /// @param initial the value to start from
 /// @param combine how to fold an element into the running value
 /// @returns the value left after folding every element into it, from the end
-/// @see https://rux-lang.dev/docs/api/algorithms/fold-right
+/// @see https://rux-lang.dev/docs/api/algorithms/folding#fold-right
 pub func FoldRight<T, A>(items: T[..], initial: A, combine: func(A, T) -> A) -> A {
     var total = initial;
     var remaining = items.length;
@@ -68,7 +68,7 @@ pub func FoldRight<T, A>(items: T[..], initial: A, combine: func(A, T) -> A) -> 
 /// @param items the sequence to work on
 /// @param initial the value to start from
 /// @returns `initial` plus every element
-/// @see https://rux-lang.dev/docs/api/algorithms/sum
+/// @see https://rux-lang.dev/docs/api/algorithms/folding#sum
 pub func Sum<T>(items: T[..], initial: T) -> T {
     var total = initial;
     var index: uint = 0;
@@ -88,7 +88,7 @@ pub func Sum<T>(items: T[..], initial: T) -> T {
 /// @param items the sequence to work on
 /// @param initial the value to start from
 /// @returns `initial` times every element
-/// @see https://rux-lang.dev/docs/api/algorithms/product
+/// @see https://rux-lang.dev/docs/api/algorithms/folding#product
 pub func Product<T>(items: T[..], initial: T) -> T {
     var total = initial;
     var index: uint = 0;
@@ -111,7 +111,7 @@ pub func Product<T>(items: T[..], initial: T) -> T {
 /// @param source where the elements come from
 /// @param transform how to turn a source element into a destination one
 /// @returns whether `destination` was long enough to hold every result
-/// @see https://rux-lang.dev/docs/api/algorithms/transform
+/// @see https://rux-lang.dev/docs/api/algorithms/folding#transform
 pub func Transform<T, U>(destination: var U[..], source: T[..], transform: func(T) -> U) -> bool {
     if destination.length != source.length { return false; }
     var index: uint = 0;

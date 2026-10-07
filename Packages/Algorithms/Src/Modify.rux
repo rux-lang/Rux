@@ -16,7 +16,7 @@
 /// @typeParam T the element type
 /// @param left one of the two elements
 /// @param right the other
-/// @see https://rux-lang.dev/docs/api/algorithms/swap
+/// @see https://rux-lang.dev/docs/api/algorithms/modifying#swap
 pub func Swap<T>(left: *var T, right: *var T) {
     let held = *left;
     *left = *right;
@@ -29,7 +29,7 @@ pub func Swap<T>(left: *var T, right: *var T) {
 /// Cannot fail. Runs in time proportional to the length, making half as many exchanges, and allocates nothing.
 /// @typeParam T the element type
 /// @param items the sequence to work on
-/// @see https://rux-lang.dev/docs/api/algorithms/reverse
+/// @see https://rux-lang.dev/docs/api/algorithms/modifying#reverse
 pub func Reverse<T>(items: var T[..]) {
     if items.length < 2 { return; }
     var low: uint = 0;
@@ -52,7 +52,7 @@ pub func Reverse<T>(items: var T[..]) {
 /// @param items the sequence to work on
 /// @param middle the index that becomes the new first element
 /// @returns whether `middle` was a usable index
-/// @see https://rux-lang.dev/docs/api/algorithms/rotate
+/// @see https://rux-lang.dev/docs/api/algorithms/modifying#rotate
 pub func Rotate<T>(items: var T[..], middle: uint) -> bool {
     if middle > items.length { return false; }
     if middle == 0 || middle == items.length { return true; }
@@ -69,7 +69,7 @@ pub func Rotate<T>(items: var T[..], middle: uint) -> bool {
 /// @typeParam T the element type
 /// @param items the sequence to work on
 /// @param value the value to write to every element
-/// @see https://rux-lang.dev/docs/api/algorithms/fill
+/// @see https://rux-lang.dev/docs/api/algorithms/modifying#fill
 pub func Fill<T>(items: var T[..], value: T) {
     var index: uint = 0;
     while index < items.length {
@@ -89,7 +89,7 @@ pub func Fill<T>(items: var T[..], value: T) {
 /// @param destination where the results go
 /// @param source where the elements come from
 /// @returns whether `destination` was long enough
-/// @see https://rux-lang.dev/docs/api/algorithms/copy-to
+/// @see https://rux-lang.dev/docs/api/algorithms/modifying#copy-to
 pub func CopyTo<T>(destination: var T[..], source: T[..]) -> bool {
     if destination.length != source.length { return false; }
     var index: uint = 0;
@@ -110,7 +110,7 @@ pub func CopyTo<T>(destination: var T[..], source: T[..]) -> bool {
 /// @param destination where the results go
 /// @param source where the elements come from
 /// @returns whether `destination` was long enough
-/// @see https://rux-lang.dev/docs/api/algorithms/move-to
+/// @see https://rux-lang.dev/docs/api/algorithms/modifying#move-to
 pub func MoveTo<T>(destination: var T[..], source: T[..]) -> bool {
     if destination.length != source.length { return false; }
     if (destination.data as uint) <= (source.data as uint) { return CopyTo<T>(destination, source); }
@@ -133,7 +133,7 @@ pub func MoveTo<T>(destination: var T[..], source: T[..]) -> bool {
 /// @typeParam T the element type
 /// @param items the sequence to work on
 /// @returns how many elements are left after collapsing each run of equal neighbours to one
-/// @see https://rux-lang.dev/docs/api/algorithms/unique
+/// @see https://rux-lang.dev/docs/api/algorithms/modifying#unique
 pub func Unique<T>(items: var T[..]) -> uint {
     if items.length < 2 { return items.length; }
     var kept: uint = 1;
@@ -157,7 +157,7 @@ pub func Unique<T>(items: var T[..]) -> uint {
 /// @param items the sequence to work on
 /// @param value the value to remove every occurrence of
 /// @returns how many elements are left
-/// @see https://rux-lang.dev/docs/api/algorithms/remove-value
+/// @see https://rux-lang.dev/docs/api/algorithms/modifying#remove-value
 pub func RemoveValue<T>(items: var T[..], value: T) -> uint {
     var kept: uint = 0;
     var index: uint = 0;
@@ -179,7 +179,7 @@ pub func RemoveValue<T>(items: var T[..], value: T) -> uint {
 /// @param items the sequence to work on
 /// @param predicate the test each element is put to
 /// @returns how many elements are left
-/// @see https://rux-lang.dev/docs/api/algorithms/remove-where
+/// @see https://rux-lang.dev/docs/api/algorithms/modifying#remove-where
 pub func RemoveWhere<T>(items: var T[..], predicate: func(T) -> bool) -> uint {
     var kept: uint = 0;
     var index: uint = 0;
@@ -204,7 +204,7 @@ pub func RemoveWhere<T>(items: var T[..], predicate: func(T) -> bool) -> uint {
 /// @param items the sequence to work on
 /// @param predicate the test each element is put to
 /// @returns the index of the first element that fails `predicate`
-/// @see https://rux-lang.dev/docs/api/algorithms/partition
+/// @see https://rux-lang.dev/docs/api/algorithms/modifying#partition
 pub func Partition<T>(items: var T[..], predicate: func(T) -> bool) -> uint {
     var low: uint = 0;
     var high = items.length;
@@ -231,7 +231,7 @@ pub func Partition<T>(items: var T[..], predicate: func(T) -> bool) -> uint {
 /// @param items the sequence to work on
 /// @param predicate the test each element is put to
 /// @returns the index of the first element that fails `predicate`, assuming the sequence is partitioned
-/// @see https://rux-lang.dev/docs/api/algorithms/partition-point
+/// @see https://rux-lang.dev/docs/api/algorithms/modifying#partition-point
 pub func PartitionPoint<T>(items: T[..], predicate: func(T) -> bool) -> uint {
     var low: uint = 0;
     var high = items.length;
