@@ -59,7 +59,7 @@ func WriteRun<T: Debug>(writer: &var TextWriter, items: T[..], spec: FormatSpec,
 /// @param value the vector to show, borrowed for the call
 /// @param spec what to show each element under
 /// @returns success when the whole rendering was accepted
-/// @see https://rux-lang.dev/docs/api/collections/write-vector-debug
+/// @see https://rux-lang.dev/docs/api/collections/vector#write-vector-debug
 pub func WriteVectorDebug<T: Debug>(writer: &var TextWriter, value: &Vector<T>,
                                     spec: FormatSpec) -> ! FormatError {
     return WriteSliceDebug<T>(writer, value.AsSlice(), spec);
@@ -75,7 +75,7 @@ pub func WriteVectorDebug<T: Debug>(writer: &var TextWriter, value: &Vector<T>,
 /// @param value the array to show, borrowed for the call
 /// @param spec what to show each element under
 /// @returns success when the whole rendering was accepted
-/// @see https://rux-lang.dev/docs/api/collections/write-array-debug
+/// @see https://rux-lang.dev/docs/api/collections/array#write-array-debug
 pub func WriteArrayDebug<T: Debug>(writer: &var TextWriter, value: &Array<T>,
                                    spec: FormatSpec) -> ! FormatError {
     return WriteSliceDebug<T>(writer, value.AsSlice(), spec);
@@ -94,7 +94,7 @@ pub func WriteArrayDebug<T: Debug>(writer: &var TextWriter, value: &Array<T>,
 /// @param value the deque to show, borrowed for the call
 /// @param spec what to show each element under
 /// @returns success when the whole rendering was accepted
-/// @see https://rux-lang.dev/docs/api/collections/write-deque-debug
+/// @see https://rux-lang.dev/docs/api/collections/deque#write-deque-debug
 pub func WriteDequeDebug<T: Debug>(writer: &var TextWriter, value: &Deque<T>,
                                    spec: FormatSpec) -> ! FormatError {
     var front: T[..];
@@ -123,7 +123,7 @@ pub func WriteDequeDebug<T: Debug>(writer: &var TextWriter, value: &Deque<T>,
 /// @param value the map to show, borrowed for the call
 /// @param spec what to show each key and value under
 /// @returns success when the whole rendering was accepted
-/// @see https://rux-lang.dev/docs/api/collections/write-hash-map-debug
+/// @see https://rux-lang.dev/docs/api/collections/hash-map#write-hash-map-debug
 pub func WriteHashMapDebug<K: Debug, V: Debug>(writer: &var TextWriter, value: &HashMap<K, V>,
                                                spec: FormatSpec) -> ! FormatError {
     WriteAscii(writer, c8'{')?;
@@ -155,7 +155,7 @@ pub func WriteHashMapDebug<K: Debug, V: Debug>(writer: &var TextWriter, value: &
 /// @param value the set to show, borrowed for the call
 /// @param spec what to show each element under
 /// @returns success when the whole rendering was accepted
-/// @see https://rux-lang.dev/docs/api/collections/write-hash-set-debug
+/// @see https://rux-lang.dev/docs/api/collections/hash-set#write-hash-set-debug
 pub func WriteHashSetDebug<T: Debug>(writer: &var TextWriter, value: &HashSet<T>,
                                      spec: FormatSpec) -> ! FormatError {
     WriteAscii(writer, c8'{')?;
@@ -187,7 +187,7 @@ pub func WriteHashSetDebug<T: Debug>(writer: &var TextWriter, value: &HashSet<T>
 /// @param value the map to show, borrowed for the call
 /// @param spec what to show each key and value under
 /// @returns success when the whole rendering was accepted
-/// @see https://rux-lang.dev/docs/api/collections/write-tree-map-debug
+/// @see https://rux-lang.dev/docs/api/collections/tree-map#write-tree-map-debug
 pub func WriteTreeMapDebug<K: Debug, V: Debug>(writer: &var TextWriter, value: &TreeMap<K, V>,
                                                spec: FormatSpec) -> ! FormatError {
     WriteAscii(writer, c8'{')?;
@@ -216,7 +216,7 @@ pub func WriteTreeMapDebug<K: Debug, V: Debug>(writer: &var TextWriter, value: &
 /// @param value the set to show, borrowed for the call
 /// @param spec what to show each element under
 /// @returns success when the whole rendering was accepted
-/// @see https://rux-lang.dev/docs/api/collections/write-tree-set-debug
+/// @see https://rux-lang.dev/docs/api/collections/tree-set#write-tree-set-debug
 pub func WriteTreeSetDebug<T: Debug>(writer: &var TextWriter, value: &TreeSet<T>,
                                      spec: FormatSpec) -> ! FormatError {
     WriteAscii(writer, c8'{')?;
@@ -251,7 +251,7 @@ extend CollectionError : Display {
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole description was accepted
-    /// @see https://rux-lang.dev/docs/api/collections/collection-error/write-display
+    /// @see https://rux-lang.dev/docs/api/collections/collection-error#write-display
     pub func WriteDisplay(self: &CollectionError, writer: &var TextWriter,
                           spec: FormatSpec) -> ! FormatError {
         AcceptsErrorSpec(spec)?;
@@ -270,7 +270,7 @@ extend CollectionError : Debug {
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole name was accepted
-    /// @see https://rux-lang.dev/docs/api/collections/collection-error/write-debug
+    /// @see https://rux-lang.dev/docs/api/collections/collection-error#write-debug
     pub func WriteDebug(self: &CollectionError, writer: &var TextWriter,
                         spec: FormatSpec) -> ! FormatError {
         AcceptsErrorSpec(spec)?;

@@ -19,7 +19,7 @@ import Core::Iterator;
 /// The element type must be copyable: a move-only element yielded by value would leave the container holding
 /// something it no longer owns. Use `ReferenceIterator` for those.
 /// @typeParam T the element type
-/// @see https://rux-lang.dev/docs/api/collections/value-iterator
+/// @see https://rux-lang.dev/docs/api/collections/iterators#value-iterator
 pub struct ValueIterator<T> {
     /// The run being walked. Borrowed, never owned.
     data: *T;
@@ -36,7 +36,7 @@ extend ValueIterator<T> {
     /// The storage must not be grown, freed or otherwise moved while this is alive.
     /// @param items the elements to take
     /// @returns a cursor yielding copies of those elements
-    /// @see https://rux-lang.dev/docs/api/collections/value-iterator/new
+    /// @see https://rux-lang.dev/docs/api/collections/iterators#value-iterator-new
     pub func ValueIterator(items: T[..]) -> ValueIterator<T> {
         return ValueIterator<T> { data: items.data, length: items.length, position: 0 };
     }
@@ -47,7 +47,7 @@ extend ValueIterator<T> : Iterator {
     /// `self` is borrowed mutably and advanced. An exhausted iterator keeps reporting `none`.
     /// Cannot fail. Runs in constant time and allocates nothing.
     /// @returns the next element, or `none` at the end
-    /// @see https://rux-lang.dev/docs/api/collections/value-iterator/next
+    /// @see https://rux-lang.dev/docs/api/collections/iterators#value-iterator-next
     pub func Next(self: &var ValueIterator<T>) -> T? {
         if self.position >= self.length { return none; }
         let value = self.data[self.position];
@@ -60,7 +60,7 @@ extend ValueIterator<T> : Iterator {
 /// Works for any element type, including one that owns something and may not be copied: the pointer borrows the
 /// element where it sits rather than taking it.
 /// @typeParam T the element type
-/// @see https://rux-lang.dev/docs/api/collections/reference-iterator
+/// @see https://rux-lang.dev/docs/api/collections/iterators#reference-iterator
 pub struct ReferenceIterator<T> {
     /// The run being walked. Borrowed, never owned.
     data: *T;
@@ -78,7 +78,7 @@ extend ReferenceIterator<T> {
     /// this or any pointer it yielded is still in use.
     /// @param items the elements to take
     /// @returns a cursor yielding those elements' addresses
-    /// @see https://rux-lang.dev/docs/api/collections/reference-iterator/new
+    /// @see https://rux-lang.dev/docs/api/collections/iterators#reference-iterator-new
     pub func ReferenceIterator(items: T[..]) -> ReferenceIterator<T> {
         return ReferenceIterator<T> { data: items.data, length: items.length, position: 0 };
     }
@@ -89,7 +89,7 @@ extend ReferenceIterator<T> : Iterator {
     /// `self` is borrowed mutably and advanced. The pointer borrows the element and takes ownership of nothing.
     /// Cannot fail. Runs in constant time and allocates nothing.
     /// @returns the next element, or `none` at the end
-    /// @see https://rux-lang.dev/docs/api/collections/reference-iterator/next
+    /// @see https://rux-lang.dev/docs/api/collections/iterators#reference-iterator-next
     pub func Next(self: &var ReferenceIterator<T>) -> (*T)? {
         if self.position >= self.length { return none; }
         let element = @self.data[self.position];
@@ -101,7 +101,7 @@ extend ReferenceIterator<T> : Iterator {
 /// An iterator that yields a writable pointer to each element of a run.
 /// Elements remain in their storage, so move-only elements can be modified without copying or moving them.
 /// @typeParam T the element type
-/// @see https://rux-lang.dev/docs/api/collections/mutable-reference-iterator
+/// @see https://rux-lang.dev/docs/api/collections/iterators#mutable-reference-iterator
 pub struct MutableReferenceIterator<T> {
     /// The run being walked. Borrowed, never owned.
     data: *var T;
@@ -118,7 +118,7 @@ extend MutableReferenceIterator<T> {
     /// storage while any of them is in use. Coordinate access through aliases to the same elements.
     /// @param items the elements to borrow for writing
     /// @returns a cursor yielding writable addresses
-    /// @see https://rux-lang.dev/docs/api/collections/mutable-reference-iterator/new
+    /// @see https://rux-lang.dev/docs/api/collections/iterators#mutable-reference-iterator-new
     pub func MutableReferenceIterator(items: var T[..]) -> MutableReferenceIterator<T> {
         return MutableReferenceIterator<T> { data: items.data, length: items.length, position: 0 };
     }
@@ -129,7 +129,7 @@ extend MutableReferenceIterator<T> : Iterator {
     /// Advances the cursor without copying, moving, or destroying an element. An exhausted cursor stays exhausted.
     /// Cannot fail. Runs in constant time and allocates nothing.
     /// @returns the next element's address, or `none` at the end
-    /// @see https://rux-lang.dev/docs/api/collections/mutable-reference-iterator/next
+    /// @see https://rux-lang.dev/docs/api/collections/iterators#mutable-reference-iterator-next
     pub func Next(self: &var MutableReferenceIterator<T>) -> (*var T)? {
         if self.position >= self.length { return none; }
         let element = @self.data[self.position];

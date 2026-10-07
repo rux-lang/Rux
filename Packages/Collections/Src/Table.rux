@@ -26,19 +26,19 @@ import Entropy::NextUint64;
 
 /// The state byte of a slot that has never held an entry, and does not now.
 /// Distances are stored one higher than they are, so zero can mean empty and nothing else has to.
-/// @see https://rux-lang.dev/docs/api/collections/slot-empty
+/// @see https://rux-lang.dev/docs/api/collections/table#slot-empty
 pub const SlotEmpty: uint8 = 0;
 
 /// The furthest an entry may sit from home before the table gives up and grows.
 /// A byte holds the distance plus one, so 254 is what fits. Reaching it means the hash is doing nothing useful for
 /// these keys, and a table that grew would only spread the same collisions over more slots — so the insertion is
 /// refused rather than looped on.
-/// @see https://rux-lang.dev/docs/api/collections/maximum-probe-distance
+/// @see https://rux-lang.dev/docs/api/collections/table#maximum-probe-distance
 pub const MaximumProbeDistance: uint = 254;
 
 /// Eight slots is where a table starts.
 /// Below that the load factor rounds away to nothing useful.
-/// @see https://rux-lang.dev/docs/api/collections/minimum-table-capacity
+/// @see https://rux-lang.dev/docs/api/collections/table#minimum-table-capacity
 pub const MinimumTableCapacity: uint = 8;
 
 /// A hash seed, drawn once and shared by every table that wants one.
@@ -58,7 +58,7 @@ extend TableSeed {
     /// keyed on adversarial input on such a system is as attackable as an unseeded one.
     /// Runs in constant time and allocates nothing.
     /// @returns a seed drawn from the system, so two tables in one process iterate differently
-    /// @see https://rux-lang.dev/docs/api/collections/table-seed/random
+    /// @see https://rux-lang.dev/docs/api/collections/table-seed#random
     pub func Random() -> TableSeed {
         let low = NextUint64() catch { else => 0x9E3779B97F4A7C15 };
         let high = NextUint64() catch { else => 0xBF58476D1CE4E5B9 };
@@ -71,7 +71,7 @@ extend TableSeed {
     /// @param low the first seed word
     /// @param high the second
     /// @returns a seed made of those two words, which makes the iteration order reproducible
-    /// @see https://rux-lang.dev/docs/api/collections/table-seed/of
+    /// @see https://rux-lang.dev/docs/api/collections/table-seed#of
     pub func Of(low: uint64, high: uint64) -> TableSeed {
         return TableSeed { low: low, high: high };
     }
@@ -111,7 +111,7 @@ extend Table<K, V> {
     /// @param allocator where the storage comes from
     /// @param seed the two words that key the hash, which decide the iteration order
     /// @returns an empty table that has taken no storage yet
-    /// @see https://rux-lang.dev/docs/api/collections/table/new
+    /// @see https://rux-lang.dev/docs/api/collections/table#new
     pub func Table(allocator: Allocator, seed: TableSeed) -> Table<K, V> {
         return Table<K, V> {
             keys: null,
@@ -127,7 +127,7 @@ extend Table<K, V> {
     /// How many entries the table holds.
     /// `self` is borrowed.
     /// @returns how many entries it holds
-    /// @see https://rux-lang.dev/docs/api/collections/table/length
+    /// @see https://rux-lang.dev/docs/api/collections/table#length
     pub func Length(self: &Table<K, V>) -> uint {
         return self.length;
     }
@@ -136,7 +136,7 @@ extend Table<K, V> {
     /// `self` is borrowed. A power of two, or zero. Not how many entries fit: the load factor keeps a quarter of
     /// them free, because a table run fuller than that spends its time displacing entries rather than storing them.
     /// @returns how many slots it has
-    /// @see https://rux-lang.dev/docs/api/collections/table/capacity
+    /// @see https://rux-lang.dev/docs/api/collections/table#capacity
     pub func Capacity(self: &Table<K, V>) -> uint {
         return self.capacity;
     }
@@ -144,7 +144,7 @@ extend Table<K, V> {
     /// Whether the table holds no entries.
     /// `self` is borrowed.
     /// @returns whether it holds nothing
-    /// @see https://rux-lang.dev/docs/api/collections/table/is-empty
+    /// @see https://rux-lang.dev/docs/api/collections/table#is-empty
     pub func IsEmpty(self: &Table<K, V>) -> bool {
         return self.length == 0;
     }
@@ -153,7 +153,7 @@ extend Table<K, V> {
     /// `self` is borrowed. This is what an iteration over the slots asks of each one.
     /// @param index which one, counting from zero
     /// @returns whether that slot holds an entry
-    /// @see https://rux-lang.dev/docs/api/collections/table/is-occupied
+    /// @see https://rux-lang.dev/docs/api/collections/table#is-occupied
     pub func IsOccupied(self: &Table<K, V>, index: uint) -> bool {
         return index < self.capacity && self.states[index] != SlotEmpty;
     }
@@ -178,7 +178,7 @@ extend Table<K, V> {
     /// @param hash how a key is hashed, taking the key and the two seed words
     /// @param equals whether two keys are the same
     /// @returns the slot the key belongs in, occupied or not
-    /// @see https://rux-lang.dev/docs/api/collections/table/find
+    /// @see https://rux-lang.dev/docs/api/collections/table#find
     pub func Find(self: &Table<K, V>, key: K, hash: func(K, uint64, uint64) -> uint64,
               equals: func(K, K) -> bool) -> uint? {
         if self.capacity == 0 || self.length == 0 { return none; }
@@ -270,7 +270,7 @@ extend Table<K, V> {
     /// covers growing and settling alike.
     /// @param length how many elements
     /// @returns the table size that holds that many entries, or `CapacityOverflow` when there is none
-    /// @see https://rux-lang.dev/docs/api/collections/table/capacity-for
+    /// @see https://rux-lang.dev/docs/api/collections/table#capacity-for
     pub func CapacityFor(length: uint) -> uint ! CollectionError {
         if length == 0 {
             return MinimumTableCapacity;
@@ -290,7 +290,7 @@ extend Table<K, V> {
     /// @param capacity how many elements to make room for
     /// @param hash how a key is hashed, taking the key and the two seed words
     /// @returns nothing when the operation succeeded, or why it did not
-    /// @see https://rux-lang.dev/docs/api/collections/table/rehash
+    /// @see https://rux-lang.dev/docs/api/collections/table#rehash
     pub func Rehash(self: &var Table<K, V>, capacity: uint,
                 hash: func(K, uint64, uint64) -> uint64) -> ! CollectionError {
         var keys = AllocateBlock<K>(self.allocator, capacity)?;
@@ -346,7 +346,7 @@ extend Table<K, V> {
     /// `self` is borrowed mutably; `hash` must be the one the table was filled with.
     /// @param hash how a key is hashed, taking the key and the two seed words
     /// @returns nothing when the operation succeeded, or why it did not
-    /// @see https://rux-lang.dev/docs/api/collections/table/ensure-room
+    /// @see https://rux-lang.dev/docs/api/collections/table#ensure-room
     pub func EnsureRoom(self: &var Table<K, V>, hash: func(K, uint64, uint64) -> uint64) -> ! CollectionError {
         var required = AddLength(self.length, 1)?;
         var wanted = Table::CapacityFor<K, V>(required)?;
@@ -359,7 +359,7 @@ extend Table<K, V> {
     /// @param additional how many more elements to make room for
     /// @param hash how a key is hashed, taking the key and the two seed words
     /// @returns nothing when the operation succeeded, or why it did not
-    /// @see https://rux-lang.dev/docs/api/collections/table/reserve
+    /// @see https://rux-lang.dev/docs/api/collections/table#reserve
     pub func Reserve(self: &var Table<K, V>, additional: uint,
                  hash: func(K, uint64, uint64) -> uint64) -> ! CollectionError {
         var required = AddLength(self.length, additional)?;
@@ -373,7 +373,7 @@ extend Table<K, V> {
     /// at its current capacity, since failing to hand memory back is never a reason to stop working.
     /// @param hash how a key is hashed, taking the key and the two seed words
     /// @returns nothing when the operation succeeded, or why it did not
-    /// @see https://rux-lang.dev/docs/api/collections/table/shrink-to-fit
+    /// @see https://rux-lang.dev/docs/api/collections/table#shrink-to-fit
     pub func ShrinkToFit(self: &var Table<K, V>, hash: func(K, uint64, uint64) -> uint64) -> ! CollectionError {
         if self.length == 0 {
             self.Release();
@@ -386,7 +386,7 @@ extend Table<K, V> {
 
     /// Destroys every entry, keeping the storage.
     /// `self` is borrowed mutably. Runs in time proportional to the capacity.
-    /// @see https://rux-lang.dev/docs/api/collections/table/clear
+    /// @see https://rux-lang.dev/docs/api/collections/table#clear
     pub func Clear(self: &var Table<K, V>) {
         var index: uint = 0;
         while index < self.capacity {
@@ -418,7 +418,7 @@ extend Table<K, V> {
     /// Destroys every entry and releases the storage.
     /// Runs when the table's life ends. The entries go first and the runs second, since one destroyed after its
     /// storage was released would be read from freed memory.
-    /// @see https://rux-lang.dev/docs/api/collections/table/destructor
+    /// @see https://rux-lang.dev/docs/api/collections/table#destructor
     func ~Table(self: &var Table<K, V>) {
         self.Clear();
         self.Release();
