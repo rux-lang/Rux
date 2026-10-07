@@ -37,6 +37,7 @@ extern {
     /// @param ch the character, as an `int` holding an `unsigned char` value or `EOF`
     /// @param count how many bytes to search
     /// @returns the address of the first matching byte, or null
+    /// @see https://rux-lang.dev/docs/api/c/string#memchr
     /// @see https://en.cppreference.com/c/string/byte/memchr
     pub func memchr(ptr: *opaque, ch: c_int, count: size_t) -> *opaque;
 
@@ -51,6 +52,7 @@ extern {
     /// @param rhs the right operand
     /// @param count how many bytes to compare
     /// @returns negative, zero or positive as the first differing byte orders
+    /// @see https://rux-lang.dev/docs/api/c/string#memcmp
     /// @see https://en.cppreference.com/c/string/byte/memcmp
     pub func memcmp(lhs: *opaque, rhs: *opaque, count: size_t) -> c_int;
 
@@ -63,6 +65,7 @@ extern {
     /// @param src where the bytes come from
     /// @param count how many bytes to copy
     /// @returns `dest`
+    /// @see https://rux-lang.dev/docs/api/c/string#memcpy
     /// @see https://en.cppreference.com/c/string/byte/memcpy
     pub func memcpy(dest: *var opaque, src: *opaque, count: size_t) -> *var opaque;
 
@@ -75,6 +78,7 @@ extern {
     /// @param src where the bytes come from
     /// @param count how many bytes to move
     /// @returns `dest`
+    /// @see https://rux-lang.dev/docs/api/c/string#memmove
     /// @see https://en.cppreference.com/c/string/byte/memmove
     pub func memmove(dest: *var opaque, src: *opaque, count: size_t) -> *var opaque;
 
@@ -88,6 +92,7 @@ extern {
     /// @param ch the character, as an `int` holding an `unsigned char` value or `EOF`
     /// @param count how many bytes to write
     /// @returns `dest`
+    /// @see https://rux-lang.dev/docs/api/c/string#memset
     /// @see https://en.cppreference.com/c/string/byte/memset
     pub func memset(dest: *var opaque, ch: c_int, count: size_t) -> *var opaque;
 
@@ -97,6 +102,7 @@ extern {
     /// `str` must be non-null and must contain a zero byte. Without one this reads until it faults or wraps.
     /// @param str a null-terminated byte string
     /// @returns how many bytes precede the terminator
+    /// @see https://rux-lang.dev/docs/api/c/string#strlen
     /// @see https://en.cppreference.com/c/string/byte/strlen
     pub func strlen(str: *char8) -> size_t;
 
@@ -108,6 +114,7 @@ extern {
     /// @param lhs the left operand
     /// @param rhs the right operand
     /// @returns negative, zero or positive as the first differing byte orders
+    /// @see https://rux-lang.dev/docs/api/c/string#strcmp
     /// @see https://en.cppreference.com/c/string/byte/strcmp
     pub func strcmp(lhs: *char8, rhs: *char8) -> c_int;
 
@@ -120,6 +127,7 @@ extern {
     /// @param rhs the right operand
     /// @param count how many bytes to compare at most
     /// @returns negative, zero or positive as the first differing byte orders
+    /// @see https://rux-lang.dev/docs/api/c/string#strncmp
     /// @see https://en.cppreference.com/c/string/byte/strncmp
     pub func strncmp(lhs: *char8, rhs: *char8, count: size_t) -> c_int;
 
@@ -131,6 +139,7 @@ extern {
     /// @param dest where the bytes go
     /// @param src where the bytes come from
     /// @returns `dest`
+    /// @see https://rux-lang.dev/docs/api/c/string#strcpy
     /// @see https://en.cppreference.com/c/string/byte/strcpy
     pub func strcpy(dest: *var char8, src: *char8) -> *var char8;
 
@@ -144,6 +153,7 @@ extern {
     /// @param src where the bytes come from
     /// @param count how many bytes to write, terminator included
     /// @returns `dest`, which is not terminated when `src` filled the count
+    /// @see https://rux-lang.dev/docs/api/c/string#strncpy
     /// @see https://en.cppreference.com/c/string/byte/strncpy
     pub func strncpy(dest: *var char8, src: *char8, count: size_t) -> *var char8;
 
@@ -155,6 +165,7 @@ extern {
     /// @param dest where the bytes go
     /// @param src where the bytes come from
     /// @returns `dest`
+    /// @see https://rux-lang.dev/docs/api/c/string#strcat
     /// @see https://en.cppreference.com/c/string/byte/strcat
     pub func strcat(dest: *var char8, src: *char8) -> *var char8;
 
@@ -168,6 +179,7 @@ extern {
     /// @param src where the bytes come from
     /// @param count how many bytes to take from `src` at most
     /// @returns `dest`
+    /// @see https://rux-lang.dev/docs/api/c/string#strncat
     /// @see https://en.cppreference.com/c/string/byte/strncat
     pub func strncat(dest: *var char8, src: *char8, count: size_t) -> *var char8;
 
@@ -179,6 +191,7 @@ extern {
     /// @param str a null-terminated byte string
     /// @param ch the character, as an `int` holding an `unsigned char` value or `EOF`
     /// @returns the address of the first matching byte, or null; the terminator counts as a byte
+    /// @see https://rux-lang.dev/docs/api/c/string#strchr
     /// @see https://en.cppreference.com/c/string/byte/strchr
     pub func strchr(str: *char8, ch: c_int) -> *char8;
 
@@ -190,6 +203,7 @@ extern {
     /// @param str a null-terminated byte string
     /// @param ch the character, as an `int` holding an `unsigned char` value or `EOF`
     /// @returns the address of the last matching byte, or null
+    /// @see https://rux-lang.dev/docs/api/c/string#strrchr
     /// @see https://en.cppreference.com/c/string/byte/strrchr
     pub func strrchr(str: *char8, ch: c_int) -> *char8;
 
@@ -201,6 +215,7 @@ extern {
     /// @param haystack the string to search
     /// @param needle the substring to look for
     /// @returns the address where `needle` starts in `haystack`, or null
+    /// @see https://rux-lang.dev/docs/api/c/string#strstr
     /// @see https://en.cppreference.com/c/string/byte/strstr
     pub func strstr(haystack: *char8, needle: *char8) -> *char8;
 
@@ -212,6 +227,7 @@ extern {
     /// @param str a null-terminated byte string
     /// @param accept the set of bytes to accept
     /// @returns how many leading bytes are all in `accept`
+    /// @see https://rux-lang.dev/docs/api/c/string#strspn
     /// @see https://en.cppreference.com/c/string/byte/strspn
     pub func strspn(str: *char8, accept: *char8) -> size_t;
 
@@ -222,6 +238,7 @@ extern {
     /// @param str a null-terminated byte string
     /// @param reject the set of bytes to reject
     /// @returns how many leading bytes are none of `reject`
+    /// @see https://rux-lang.dev/docs/api/c/string#strcspn
     /// @see https://en.cppreference.com/c/string/byte/strcspn
     pub func strcspn(str: *char8, reject: *char8) -> size_t;
 
@@ -231,6 +248,7 @@ extern {
     /// @param str a null-terminated byte string
     /// @param accept the set of bytes to accept
     /// @returns the address of the first byte that is in `accept`, or null
+    /// @see https://rux-lang.dev/docs/api/c/string#strpbrk
     /// @see https://en.cppreference.com/c/string/byte/strpbrk
     pub func strpbrk(str: *char8, accept: *char8) -> *char8;
 
@@ -277,6 +295,7 @@ extern {
     /// @param str a null-terminated byte string
     /// @param delimiters the set of bytes that separate tokens
     /// @returns the next token, or null; the position is kept in storage shared by the whole program
+    /// @see https://rux-lang.dev/docs/api/c/string#strtok
     /// @see https://en.cppreference.com/c/string/byte/strtok
     pub func strtok(str: *var char8, delimiters: *char8) -> *char8;
 }

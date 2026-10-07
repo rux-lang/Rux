@@ -13,64 +13,64 @@
 import Core::{ #Error, #target, OperatingSystem };
 
 /// C's `signed char`: the smallest addressable signed integer.
-/// @see https://rux-lang.dev/docs/api/c/c-schar
+/// @see https://rux-lang.dev/docs/api/c/types#c-schar
 #Allow("naming.type")
 pub type c_schar = int8;
 
 /// C's `unsigned char`, which is also the type a byte of arbitrary storage is read through.
-/// @see https://rux-lang.dev/docs/api/c/c-uchar
+/// @see https://rux-lang.dev/docs/api/c/types#c-uchar
 #Allow("naming.type")
 pub type c_uchar = uint8;
 
 /// C's plain `char`, whose signedness the standard leaves to the implementation.
 /// Signed on every currently supported target. A binding whose meaning depends on the sign should name `c_schar` or
 /// `c_uchar` instead of relying on this.
-/// @see https://rux-lang.dev/docs/api/c/c-char
+/// @see https://rux-lang.dev/docs/api/c/types#c-char
 #Allow("naming.type")
 pub type c_char = int8;
 
 /// C's `short`.
-/// @see https://rux-lang.dev/docs/api/c/c-short
+/// @see https://rux-lang.dev/docs/api/c/types#c-short
 #Allow("naming.type")
 pub type c_short = int16;
 
 /// C's `unsigned short`.
-/// @see https://rux-lang.dev/docs/api/c/c-ushort
+/// @see https://rux-lang.dev/docs/api/c/types#c-ushort
 #Allow("naming.type")
 pub type c_ushort = uint16;
 
 /// C's `int`, which is 32 bits on every currently supported target.
-/// @see https://rux-lang.dev/docs/api/c/c-int
+/// @see https://rux-lang.dev/docs/api/c/types#c-int
 #Allow("naming.type")
 pub type c_int = int32;
 
 /// C's `unsigned int`.
-/// @see https://rux-lang.dev/docs/api/c/c-uint
+/// @see https://rux-lang.dev/docs/api/c/types#c-uint
 #Allow("naming.type")
 pub type c_uint = uint32;
 
 /// C's `long long`.
-/// @see https://rux-lang.dev/docs/api/c/c-longlong
+/// @see https://rux-lang.dev/docs/api/c/types#c-longlong
 #Allow("naming.type")
 pub type c_longlong = int64;
 
 /// C's `unsigned long long`.
-/// @see https://rux-lang.dev/docs/api/c/c-ulonglong
+/// @see https://rux-lang.dev/docs/api/c/types#c-ulonglong
 #Allow("naming.type")
 pub type c_ulonglong = uint64;
 
 /// C's `float`.
-/// @see https://rux-lang.dev/docs/api/c/c-float
+/// @see https://rux-lang.dev/docs/api/c/types#c-float
 #Allow("naming.type")
 pub type c_float = float32;
 
 /// C's `double`.
-/// @see https://rux-lang.dev/docs/api/c/c-double
+/// @see https://rux-lang.dev/docs/api/c/types#c-double
 #Allow("naming.type")
 pub type c_double = float64;
 
 /// C's `_Bool`, which occupies one byte and holds zero or one.
-/// @see https://rux-lang.dev/docs/api/c/c-bool
+/// @see https://rux-lang.dev/docs/api/c/types#c-bool
 #Allow("naming.type")
 pub type c_bool = bool8;
 
@@ -80,33 +80,33 @@ pub type c_bool = bool8;
 when #target.dataModel {
     .LLP64 => {
         /// C's `long`, 32 bits under this target's LLP64 data model.
-        /// @see https://rux-lang.dev/docs/api/c/c-long
+        /// @see https://rux-lang.dev/docs/api/c/types#c-long
         #Allow("naming.type")
         pub type c_long = int32;
 
         /// C's `unsigned long`, 32 bits under this target's LLP64 data model.
-        /// @see https://rux-lang.dev/docs/api/c/c-ulong
+        /// @see https://rux-lang.dev/docs/api/c/types#c-ulong
         #Allow("naming.type")
         pub type c_ulong = uint32;
 
         /// C's `wchar_t`, a 16-bit UTF-16 code unit on Windows rather than a whole scalar value.
-        /// @see https://rux-lang.dev/docs/api/c/wchar-t
+        /// @see https://rux-lang.dev/docs/api/c/types#wchar-t
         #Allow("naming.type")
         pub type wchar_t = char16;
     }
     .LP64 => {
         /// C's `long`, 64 bits under this target's LP64 data model.
-        /// @see https://rux-lang.dev/docs/api/c/c-long
+        /// @see https://rux-lang.dev/docs/api/c/types#c-long
         #Allow("naming.type")
         pub type c_long = int64;
 
         /// C's `unsigned long`, 64 bits under this target's LP64 data model.
-        /// @see https://rux-lang.dev/docs/api/c/c-ulong
+        /// @see https://rux-lang.dev/docs/api/c/types#c-ulong
         #Allow("naming.type")
         pub type c_ulong = uint64;
 
         /// C's `wchar_t`, a 32-bit Unicode scalar value on this target.
-        /// @see https://rux-lang.dev/docs/api/c/wchar-t
+        /// @see https://rux-lang.dev/docs/api/c/types#wchar-t
         #Allow("naming.type")
         pub type wchar_t = char32;
     }
@@ -115,29 +115,29 @@ when #target.dataModel {
 
 /// C's `size_t`: the type of a size, a count of bytes, and the result of `sizeof`.
 /// Pointer-sized and unsigned on every supported target.
-/// @see https://rux-lang.dev/docs/api/c/size-t
+/// @see https://rux-lang.dev/docs/api/c/types#size-t
 #Allow("naming.type")
 pub type size_t = uint;
 
 /// POSIX's `ssize_t`: a size that can also report `-1` for failure.
 /// Declared on every target for the sake of bindings that share a signature, though Windows has no such type of its
 /// own and its C runtime spells the same thing `int` or `__int64` depending on the call.
-/// @see https://rux-lang.dev/docs/api/c/ssize-t
+/// @see https://rux-lang.dev/docs/api/c/types#ssize-t
 #Allow("naming.type")
 pub type ssize_t = int;
 
 /// C's `ptrdiff_t`: the signed difference between two pointers into one object.
-/// @see https://rux-lang.dev/docs/api/c/ptrdiff-t
+/// @see https://rux-lang.dev/docs/api/c/types#ptrdiff-t
 #Allow("naming.type")
 pub type ptrdiff_t = int;
 
 /// C's `intptr_t`: a signed integer wide enough to hold any pointer.
-/// @see https://rux-lang.dev/docs/api/c/intptr-t
+/// @see https://rux-lang.dev/docs/api/c/types#intptr-t
 #Allow("naming.type")
 pub type intptr_t = int;
 
 /// C's `uintptr_t`: an unsigned integer wide enough to hold any pointer.
-/// @see https://rux-lang.dev/docs/api/c/uintptr-t
+/// @see https://rux-lang.dev/docs/api/c/types#uintptr-t
 #Allow("naming.type")
 pub type uintptr_t = uint;
 
@@ -146,14 +146,14 @@ pub type uintptr_t = uint;
 /// it; a stream is only ever handled through `*FILE` and the calls that take one. Naming the type rather than using
 /// `*opaque` is what keeps a stream from being passed where some other handle was meant.
 /// A `*FILE` is valid only between the call that produced it and the `fclose` that ends it. Nothing here tracks that.
-/// @see https://rux-lang.dev/docs/api/c/file
+/// @see https://rux-lang.dev/docs/api/c/stdio#file
 #Allow("naming.type")
 pub struct FILE {}
 
 /// C's `fpos_t`: an opaque record of a position within a stream.
 /// Declared with no fields for the same reason `FILE` is: its contents belong to the C runtime, and it is only ever
 /// produced by `fgetpos` and consumed by `fsetpos`. It is not a byte offset and must not be arithmetic on.
-/// @see https://rux-lang.dev/docs/api/c/fpos-t
+/// @see https://rux-lang.dev/docs/api/c/stdio#fpos-t
 #Allow("naming.type")
 pub struct fpos_t {}
 
@@ -167,53 +167,53 @@ pub struct fpos_t {}
 when #target.os {
     .FreeBSD => {
         /// The shared object this target's C runtime lives in.
-        /// @see https://rux-lang.dev/docs/api/c/c-runtime
+        /// @see https://rux-lang.dev/docs/api/c/errno#c-runtime
         pub const CRuntime = "libc.so.7";
 
         /// The shared object `C::StdIo` and `C::Time` are bound to, which on this target is the same one.
         /// Named separately because Windows splits the package across two runtimes; everywhere else the two
         /// constants are equal and `SeparateStreamRuntime` is false.
-        /// @see https://rux-lang.dev/docs/api/c/stream-runtime
+        /// @see https://rux-lang.dev/docs/api/c/errno#stream-runtime
         pub const StreamRuntime = "libc.so.7";
 
         const CRuntimeLink = "libc.so.7";
     }
     .Linux => {
         /// The shared object this target's C runtime lives in.
-        /// @see https://rux-lang.dev/docs/api/c/c-runtime
+        /// @see https://rux-lang.dev/docs/api/c/errno#c-runtime
         pub const CRuntime = "libc.so.6";
 
         /// The shared object `C::StdIo` and `C::Time` are bound to, which on this target is the same one.
         /// Named separately because Windows splits the package across two runtimes; everywhere else the two
         /// constants are equal and `SeparateStreamRuntime` is false.
-        /// @see https://rux-lang.dev/docs/api/c/stream-runtime
+        /// @see https://rux-lang.dev/docs/api/c/errno#stream-runtime
         pub const StreamRuntime = "libc.so.6";
 
         const CRuntimeLink = "libc.so.6";
     }
     .macOS => {
         /// The shared object this target's C runtime lives in.
-        /// @see https://rux-lang.dev/docs/api/c/c-runtime
+        /// @see https://rux-lang.dev/docs/api/c/errno#c-runtime
         pub const CRuntime = "libSystem.B.dylib";
 
         /// The shared object `C::StdIo` and `C::Time` are bound to, which on this target is the same one.
         /// Named separately because Windows splits the package across two runtimes; everywhere else the two
         /// constants are equal and `SeparateStreamRuntime` is false.
-        /// @see https://rux-lang.dev/docs/api/c/stream-runtime
+        /// @see https://rux-lang.dev/docs/api/c/errno#stream-runtime
         pub const StreamRuntime = "libSystem.B.dylib";
 
         const CRuntimeLink = "libSystem.B.dylib";
     }
     .Windows => {
         /// The shared object this target's C runtime lives in.
-        /// @see https://rux-lang.dev/docs/api/c/c-runtime
+        /// @see https://rux-lang.dev/docs/api/c/errno#c-runtime
         pub const CRuntime = "ucrtbase.dll";
 
         /// The shared object `C::StdIo` and `C::Time` are bound to, which on Windows is a different one.
         /// The Universal CRT does not export the formatted-output family, so those two modules bind the legacy
         /// runtime. It keeps its own `errno`, its own stream table and its own locale, so a failure reported by a
         /// call through either module is readable only through `ErrnoFor(CRuntimeArea::Streams)`.
-        /// @see https://rux-lang.dev/docs/api/c/stream-runtime
+        /// @see https://rux-lang.dev/docs/api/c/errno#stream-runtime
         pub const StreamRuntime = "msvcrt.dll";
 
         const CRuntimeLink = "ucrtbase.dll";
@@ -279,7 +279,7 @@ when #target.os {
 /// entirely.
 /// Everywhere else there is one runtime and both cases name it, so a caller that always passes the area matching
 /// the module it called is right on all four systems and needs no target branch of its own.
-/// @see https://rux-lang.dev/docs/api/c/c-runtime-area
+/// @see https://rux-lang.dev/docs/api/c/errno#c-runtime-area
 pub enum CRuntimeArea: uint8 {
     /// Where `C::StdLib` and `C::Math` are bound, and what plain `Errno` reads.
     General = 0,
@@ -291,7 +291,7 @@ pub enum CRuntimeArea: uint8 {
 /// True on Windows and false everywhere else. A caller that passes the right area never needs to read this; it is
 /// here so that a program can say why it is being careful, and so that a test can assert the split exists where it
 /// is supposed to and does not where it is not.
-/// @see https://rux-lang.dev/docs/api/c/separate-stream-runtime
+/// @see https://rux-lang.dev/docs/api/c/errno#separate-stream-runtime
 pub const SeparateStreamRuntime: bool = #target.os == OperatingSystem::Windows;
 
 /// The address of the calling thread's `errno`, in the runtime `area` names.
@@ -304,7 +304,7 @@ pub const SeparateStreamRuntime: bool = #target.os == OperatingSystem::Windows;
 /// The address belongs to the calling thread and must not be handed to another one.
 /// @param area which runtime's storage to reach
 /// @returns the address of that runtime's `errno` for this thread
-/// @see https://rux-lang.dev/docs/api/c/errno-location-for
+/// @see https://rux-lang.dev/docs/api/c/errno#errno-location-for
 pub func ErrnoLocationFor(area: CRuntimeArea) -> *var c_int {
     when #target.os {
         .Linux => { return __errno_location(); }
@@ -321,7 +321,7 @@ pub func ErrnoLocationFor(area: CRuntimeArea) -> *var c_int {
 /// Cannot fail. Runs in constant time and allocates nothing.
 /// @param area which runtime's storage to read
 /// @returns that runtime's `errno` for this thread
-/// @see https://rux-lang.dev/docs/api/c/errno-for
+/// @see https://rux-lang.dev/docs/api/c/errno#errno-for
 pub func ErrnoFor(area: CRuntimeArea) -> c_int {
     return *ErrnoLocationFor(area);
 }
@@ -335,7 +335,7 @@ pub func ErrnoFor(area: CRuntimeArea) -> c_int {
 /// Cannot fail. Runs in constant time and allocates nothing.
 /// The address belongs to the calling thread and must not be handed to another one.
 /// @returns the address of the general runtime's `errno` for this thread
-/// @see https://rux-lang.dev/docs/api/c/errno-location
+/// @see https://rux-lang.dev/docs/api/c/errno#errno-location
 pub func ErrnoLocation() -> *var c_int {
     return ErrnoLocationFor(CRuntimeArea::General);
 }
@@ -351,17 +351,17 @@ pub func ErrnoLocation() -> *var c_int {
 /// `__stdio_common_*` entry points declared first.
 /// Cannot fail. Runs in constant time and allocates nothing.
 /// @returns the general runtime's `errno` for this thread
-/// @see https://rux-lang.dev/docs/api/c/errno
+/// @see https://rux-lang.dev/docs/api/c/errno#errno
 pub func Errno() -> c_int {
     return *ErrnoLocation();
 }
 
 /// `EDOM`: an argument outside the domain over which a math function is defined.
-/// @see https://rux-lang.dev/docs/api/c/edom
+/// @see https://rux-lang.dev/docs/api/c/errno#edom
 pub const EDOM: c_int = 33;
 
 /// `ERANGE`: a result too large or too small for the return type to express.
-/// @see https://rux-lang.dev/docs/api/c/erange
+/// @see https://rux-lang.dev/docs/api/c/errno#erange
 pub const ERANGE: c_int = 34;
 
 // `EILSEQ` is the third value C mandates, and the one the platforms disagree about: it was added after each had
@@ -369,22 +369,22 @@ pub const ERANGE: c_int = 34;
 when #target.os {
     .Linux => {
         /// `EILSEQ`: a byte sequence that does not form a valid character.
-        /// @see https://rux-lang.dev/docs/api/c/eilseq
+        /// @see https://rux-lang.dev/docs/api/c/errno#eilseq
         pub const EILSEQ: c_int = 84;
     }
     .FreeBSD => {
         /// `EILSEQ`: a byte sequence that does not form a valid character.
-        /// @see https://rux-lang.dev/docs/api/c/eilseq
+        /// @see https://rux-lang.dev/docs/api/c/errno#eilseq
         pub const EILSEQ: c_int = 86;
     }
     .macOS => {
         /// `EILSEQ`: a byte sequence that does not form a valid character.
-        /// @see https://rux-lang.dev/docs/api/c/eilseq
+        /// @see https://rux-lang.dev/docs/api/c/errno#eilseq
         pub const EILSEQ: c_int = 92;
     }
     .Windows => {
         /// `EILSEQ`: a byte sequence that does not form a valid character.
-        /// @see https://rux-lang.dev/docs/api/c/eilseq
+        /// @see https://rux-lang.dev/docs/api/c/errno#eilseq
         pub const EILSEQ: c_int = 42;
     }
     else => #Error("Unsupported operating system")

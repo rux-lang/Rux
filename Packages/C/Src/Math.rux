@@ -126,6 +126,7 @@ extern {
     /// Computes cube root.
     /// @param x the argument
     /// @returns the computed value; the linked reference lists every special case
+    /// @see https://rux-lang.dev/docs/api/c/math#cbrt
     /// @see https://en.cppreference.com/c/numeric/math/cbrt
     pub func cbrt(x: float64) -> float64;
 
@@ -138,6 +139,7 @@ extern {
     /// Computes smallest integer not less than the given value.
     /// @param x the argument
     /// @returns the computed value; the linked reference lists every special case
+    /// @see https://rux-lang.dev/docs/api/c/math#ceil
     /// @see https://en.cppreference.com/c/numeric/math/ceil
     pub func ceil(x: float64) -> float64;
 
@@ -152,6 +154,7 @@ extern {
     /// @param x the argument
     /// @param y the second argument
     /// @returns the computed value; the linked reference lists every special case
+    /// @see https://rux-lang.dev/docs/api/c/math#copysign
     /// @see https://en.cppreference.com/c/numeric/math/copysign
     pub func copysign(x: float64, y: float64) -> float64;
 
@@ -164,6 +167,7 @@ extern {
     /// Computes cosine.
     /// @param x the argument
     /// @returns the computed value; the linked reference lists every special case
+    /// @see https://rux-lang.dev/docs/api/c/math#cos
     /// @see https://en.cppreference.com/c/numeric/math/cos
     pub func cos(x: float64) -> float64;
 
@@ -212,6 +216,7 @@ extern {
     /// Computes e raised to the given power.
     /// @param x the argument
     /// @returns the computed value; the linked reference lists every special case
+    /// @see https://rux-lang.dev/docs/api/c/math#exp
     /// @see https://en.cppreference.com/c/numeric/math/exp
     pub func exp(x: float64) -> float64;
 
@@ -242,6 +247,7 @@ extern {
     /// Computes the absolute value of a floating-point value.
     /// @param x the argument
     /// @returns the computed value; the linked reference lists every special case
+    /// @see https://rux-lang.dev/docs/api/c/math#fabs
     /// @see https://en.cppreference.com/c/numeric/math/fabs
     pub func fabs(x: float64) -> float64;
 
@@ -256,6 +262,7 @@ extern {
     /// @param x the argument
     /// @param y the second argument
     /// @returns the computed value; the linked reference lists every special case
+    /// @see https://rux-lang.dev/docs/api/c/math#fdim
     /// @see https://en.cppreference.com/c/numeric/math/fdim
     pub func fdim(x: float64, y: float64) -> float64;
 
@@ -268,6 +275,7 @@ extern {
     /// Computes largest integer not greater than the given value.
     /// @param x the argument
     /// @returns the computed value; the linked reference lists every special case
+    /// @see https://rux-lang.dev/docs/api/c/math#floor
     /// @see https://en.cppreference.com/c/numeric/math/floor
     pub func floor(x: float64) -> float64;
 
@@ -298,6 +306,7 @@ extern {
     /// @param x the argument
     /// @param y the second argument
     /// @returns the computed value; the linked reference lists every special case
+    /// @see https://rux-lang.dev/docs/api/c/math#fmax
     /// @see https://en.cppreference.com/c/numeric/math/fmax
     pub func fmax(x: float64, y: float64) -> float64;
 
@@ -312,6 +321,7 @@ extern {
     /// @param x the argument
     /// @param y the second argument
     /// @returns the computed value; the linked reference lists every special case
+    /// @see https://rux-lang.dev/docs/api/c/math#fmin
     /// @see https://en.cppreference.com/c/numeric/math/fmin
     pub func fmin(x: float64, y: float64) -> float64;
 
@@ -326,6 +336,7 @@ extern {
     /// @param x the argument
     /// @param y the second argument
     /// @returns the computed value; the linked reference lists every special case
+    /// @see https://rux-lang.dev/docs/api/c/math#fmod
     /// @see https://en.cppreference.com/c/numeric/math/fmod
     pub func fmod(x: float64, y: float64) -> float64;
 
@@ -340,6 +351,7 @@ extern {
     /// @param x the argument
     /// @param y the second argument
     /// @returns the computed value; the linked reference lists every special case
+    /// @see https://rux-lang.dev/docs/api/c/math#hypot
     /// @see https://en.cppreference.com/c/numeric/math/hypot
     pub func hypot(x: float64, y: float64) -> float64;
 
@@ -359,6 +371,7 @@ extern {
     /// @param x the argument
     /// @param exp the power of two to multiply by
     /// @returns the computed value; the linked reference lists every special case
+    /// @see https://rux-lang.dev/docs/api/c/math#ldexp
     /// @see https://en.cppreference.com/c/numeric/math/ldexp
     pub func ldexp(x: float64, exp: int32) -> float64;
 
@@ -407,6 +420,7 @@ extern {
     /// Computes natural (base e) logarithm.
     /// @param x the argument
     /// @returns the computed value; the linked reference lists every special case
+    /// @see https://rux-lang.dev/docs/api/c/math#log
     /// @see https://en.cppreference.com/c/numeric/math/log
     pub func log(x: float64) -> float64;
 
@@ -443,6 +457,7 @@ extern {
     /// Computes base 2 logarithm.
     /// @param x the argument
     /// @returns the computed value; the linked reference lists every special case
+    /// @see https://rux-lang.dev/docs/api/c/math#log2
     /// @see https://en.cppreference.com/c/numeric/math/log2
     pub func log2(x: float64) -> float64;
 
@@ -545,6 +560,7 @@ extern {
     /// @param base the value to raise
     /// @param exponent the power to raise it to
     /// @returns the computed value; the linked reference lists every special case
+    /// @see https://rux-lang.dev/docs/api/c/math#pow
     /// @see https://en.cppreference.com/c/numeric/math/pow
     pub func pow(base: float64, exponent: float64) -> float64;
 
@@ -599,6 +615,7 @@ extern {
     /// Rounds to nearest integer, rounding away from zero in halfway cases.
     /// @param x the argument
     /// @returns the computed value; the linked reference lists every special case
+    /// @see https://rux-lang.dev/docs/api/c/math#round
     /// @see https://en.cppreference.com/c/numeric/math/round
     pub func round(x: float64) -> float64;
 
@@ -622,6 +639,7 @@ extern {
     /// @param arg the value to convert
     /// @param exp the exponent
     /// @returns the computed value; the linked reference lists every special case
+    /// @see https://rux-lang.dev/docs/api/c/math#scalbln
     /// @see https://en.cppreference.com/c/numeric/math/scalbn
     pub func scalbln(arg: float64, exp: c_long) -> float64;
 
@@ -629,6 +647,7 @@ extern {
     /// @param arg the value to convert
     /// @param exp the exponent
     /// @returns the computed value; the linked reference lists every special case
+    /// @see https://rux-lang.dev/docs/api/c/math#scalblnf
     /// @see https://en.cppreference.com/c/numeric/math/scalbn
     pub func scalblnf(arg: float32, exp: c_long) -> float32;
 
@@ -637,6 +656,7 @@ extern {
     /// Computes sine.
     /// @param x the argument
     /// @returns the computed value; the linked reference lists every special case
+    /// @see https://rux-lang.dev/docs/api/c/math#sin
     /// @see https://en.cppreference.com/c/numeric/math/sin
     pub func sin(x: float64) -> float64;
 
@@ -655,12 +675,14 @@ extern {
     /// Computes square root.
     /// @param x the argument
     /// @returns the computed value; the linked reference lists every special case
+    /// @see https://rux-lang.dev/docs/api/c/math#sqrtf
     /// @see https://en.cppreference.com/c/numeric/math/sqrt
     pub func sqrtf(x: float32) -> float32;
 
     /// Computes square root.
     /// @param x the argument
     /// @returns the computed value; the linked reference lists every special case
+    /// @see https://rux-lang.dev/docs/api/c/math#sqrt
     /// @see https://en.cppreference.com/c/numeric/math/sqrt
     pub func sqrt(x: float64) -> float64;
 
@@ -673,6 +695,7 @@ extern {
     /// Computes tangent.
     /// @param x the argument
     /// @returns the computed value; the linked reference lists every special case
+    /// @see https://rux-lang.dev/docs/api/c/math#tan
     /// @see https://en.cppreference.com/c/numeric/math/tan
     pub func tan(x: float64) -> float64;
 
@@ -709,6 +732,7 @@ extern {
     /// Rounds to nearest integer not greater in magnitude than the given value.
     /// @param x the argument
     /// @returns the computed value; the linked reference lists every special case
+    /// @see https://rux-lang.dev/docs/api/c/math#trunc
     /// @see https://en.cppreference.com/c/numeric/math/trunc
     pub func trunc(x: float64) -> float64;
 }
@@ -718,25 +742,25 @@ extern {
 
 /// `HUGE_VAL`: what a `double` function returns when the true result is too large to express.
 /// An infinity on every supported target, which is what the standard permits and what every one of them chooses.
-/// @see https://rux-lang.dev/docs/api/c/huge-val
+/// @see https://rux-lang.dev/docs/api/c/math#huge-val
 #Allow("naming.const")
 pub const HUGE_VAL: float64 = float64::Infinity;
 
 /// `HUGE_VALF`: the `float` form of `HUGE_VAL`.
-/// @see https://rux-lang.dev/docs/api/c/huge-valf
+/// @see https://rux-lang.dev/docs/api/c/math#huge-valf
 #Allow("naming.const")
 pub const HUGE_VALF: float32 = float32::Infinity;
 
 /// `INFINITY`: a positive infinity, for building a value rather than for testing one.
 /// Comparing against it is not how a caller asks whether a result overflowed; `Core::IsInfinite` answers that without
 /// naming a width.
-/// @see https://rux-lang.dev/docs/api/c/infinity
+/// @see https://rux-lang.dev/docs/api/c/math#infinity
 #Allow("naming.const")
 pub const INFINITY: float32 = float32::Infinity;
 
 /// `NAN`: a quiet not-a-number, for building a value rather than for testing one.
 /// It equals nothing, itself included, so `value == NAN` is always false and is never the test a caller wants;
 /// `Core::IsNaN` is.
-/// @see https://rux-lang.dev/docs/api/c/nan
+/// @see https://rux-lang.dev/docs/api/c/math#nan
 #Allow("naming.const")
 pub const NAN: float32 = float32::NaN;
