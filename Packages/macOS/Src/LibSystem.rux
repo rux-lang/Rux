@@ -11,7 +11,7 @@ import Core::{ #target };
 /// The library every Darwin interface is reached through.
 /// A single dynamic library re-exporting libc, libm, libpthread and the rest; there is no separate `libc.dylib` to
 /// link on Apple platforms.
-/// @see https://rux-lang.dev/docs/api/macos/system-lib
+/// @see https://rux-lang.dev/docs/api/macos/dynamic#system-lib
 pub const SystemLib = "libSystem.B.dylib";
 
 #Link(SystemLib)
@@ -138,7 +138,7 @@ extern {
     /// `Memory::QueryPageSize` is the wrapper to call; this is the raw entry point it binds, and is the only
     /// declaration in this block that is reachable from outside the package.
     /// @returns the page size in bytes
-    /// @see https://rux-lang.dev/docs/api/macos/getpagesize
+    /// @see https://rux-lang.dev/docs/api/macos/memory#getpagesize
     pub func getpagesize() -> int32;
 
     // Returns the calling process's identifier; cannot fail
