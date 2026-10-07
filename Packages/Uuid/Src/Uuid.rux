@@ -18,7 +18,7 @@ pub struct Uuid {
 }
 
 /// What layout a UUID's bytes follow.
-/// @see https://rux-lang.dev/docs/api/uuid/variant
+/// @see https://rux-lang.dev/docs/api/uuid/uuid#uuid-variant
 pub enum UuidVariant: int32 {
     /// Apollo NCS, from before the standard — the layout the nil UUID also happens to match.
     NetworkComputingSystem = 0,
@@ -35,7 +35,7 @@ extend Uuid {
     /// A defined value rather than an absence, and worth having as one — the alternative is every caller
     /// inventing a sentinel of their own.
     /// @returns the all-zero value
-    /// @see https://rux-lang.dev/docs/api/uuid/uuid/nil
+    /// @see https://rux-lang.dev/docs/api/uuid/uuid#nil
     pub func Nil() -> Uuid {
         var value = Uuid { bytes: [0; 16] };
         return value;
@@ -43,7 +43,7 @@ extend Uuid {
 
     /// The max UUID: sixteen bytes of ones, which RFC 9562 defines as nil's counterpart.
     /// @returns the all-ones value
-    /// @see https://rux-lang.dev/docs/api/uuid/uuid/max
+    /// @see https://rux-lang.dev/docs/api/uuid/uuid#max
     pub func Max() -> Uuid {
         var value = Uuid::Nil();
         var index: uint = 0;
@@ -59,7 +59,7 @@ extend Uuid {
     /// variant fields are whatever the bytes say, which is what lets this read a UUID from somewhere else.
     /// @param bytes sixteen bytes to take as the value, in big-endian order
     /// @returns those sixteen bytes as a value, with no field interpreted or corrected
-    /// @see https://rux-lang.dev/docs/api/uuid/uuid/from-bytes
+    /// @see https://rux-lang.dev/docs/api/uuid/uuid#from-bytes
     pub func FromBytes(bytes: byte[..]) -> Uuid {
         var value = Uuid::Nil();
         var index: uint = 0;
@@ -72,14 +72,14 @@ extend Uuid {
 
     /// The sixteen bytes, in the standard's order.
     /// @returns the sixteen bytes, in big-endian order
-    /// @see https://rux-lang.dev/docs/api/uuid/uuid/bytes
+    /// @see https://rux-lang.dev/docs/api/uuid/uuid#bytes
     pub func Bytes(self: &Uuid) -> byte[..] {
         return (@self.bytes[0])[..16];
     }
 
     /// Whether this is the nil UUID.
     /// @returns whether every byte is zero
-    /// @see https://rux-lang.dev/docs/api/uuid/uuid/is-nil
+    /// @see https://rux-lang.dev/docs/api/uuid/uuid#is-nil
     pub func IsNil(self: &Uuid) -> bool {
         var index: uint = 0;
         while index < 16 {
@@ -91,7 +91,7 @@ extend Uuid {
 
     /// Whether this is the max UUID.
     /// @returns whether every byte is one
-    /// @see https://rux-lang.dev/docs/api/uuid/uuid/is-max
+    /// @see https://rux-lang.dev/docs/api/uuid/uuid#is-max
     pub func IsMax(self: &Uuid) -> bool {
         var index: uint = 0;
         while index < 16 {
@@ -105,7 +105,7 @@ extend Uuid {
     /// Meaningful only for the standard variant; a nil or max UUID reports a number that means nothing, which
     /// is why `Variant` should be consulted first.
     /// @returns the version nibble, 0 through 15; a value this package did not make may hold anything
-    /// @see https://rux-lang.dev/docs/api/uuid/uuid/version
+    /// @see https://rux-lang.dev/docs/api/uuid/uuid#version
     pub func Version(self: &Uuid) -> uint8 {
         return (self.bytes[6] >> 4) & 0x0F;
     }
@@ -114,7 +114,7 @@ extend Uuid {
     /// The encoding is variable-length rather than two fixed bits: a leading zero means the oldest layout, `10`
     /// the standard one, `110` Microsoft's, and `111` the reserved future.
     /// @returns the variant the layout declares
-    /// @see https://rux-lang.dev/docs/api/uuid/uuid/variant
+    /// @see https://rux-lang.dev/docs/api/uuid/uuid#variant
     pub func Variant(self: &Uuid) -> UuidVariant {
         let octet = self.bytes[8];
         if (octet & 0x80) == 0 { return UuidVariant::NetworkComputingSystem; }
@@ -126,7 +126,7 @@ extend Uuid {
     /// Whether two UUIDs are the same.
     /// @param other the value to compare against
     /// @returns whether all sixteen bytes match
-    /// @see https://rux-lang.dev/docs/api/uuid/uuid/equals
+    /// @see https://rux-lang.dev/docs/api/uuid/uuid#equals
     pub func Equals(self: &Uuid, other: &Uuid) -> bool {
         var index: uint = 0;
         while index < 16 {
@@ -142,7 +142,7 @@ extend Uuid {
     /// is why the byte order is fixed rather than negotiable.
     /// @param other the value to compare against
     /// @returns how the two order as sixteen big-endian bytes, which is lexicographic order for the text
-    /// @see https://rux-lang.dev/docs/api/uuid/uuid/compare
+    /// @see https://rux-lang.dev/docs/api/uuid/uuid#compare
     pub func Compare(self: &Uuid, other: &Uuid) -> Ordering {
         var index: uint = 0;
         while index < 16 {
@@ -157,7 +157,7 @@ extend Uuid {
     /// FNV-1a, which is not a cryptographic hash and does not need to be: a UUID is already the output of one,
     /// or of an entropy source, so what a table wants here is speed and an even spread over buckets.
     /// @returns the value's hash
-    /// @see https://rux-lang.dev/docs/api/uuid/uuid/hash
+    /// @see https://rux-lang.dev/docs/api/uuid/uuid#hash
     pub func Hash(self: &Uuid) -> uint64 {
         var accumulated: uint64 = 0xCBF29CE484222325;
         var index: uint = 0;

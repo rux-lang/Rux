@@ -24,11 +24,11 @@
 import Text::{ Debug, Display, FormatError, FormatSpec, ParseFailure, StringView, TextWriter, WriteBytes };
 
 /// How long the canonical text form is: thirty-two digits and four hyphens.
-/// @see https://rux-lang.dev/docs/api/uuid/text-length
+/// @see https://rux-lang.dev/docs/api/uuid/text#uuid-text-length
 pub const UuidTextLength: uint = 36;
 
 /// How long the URN form is: the canonical form after `urn:uuid:`.
-/// @see https://rux-lang.dev/docs/api/uuid/urn-length
+/// @see https://rux-lang.dev/docs/api/uuid/text#uuid-urn-length
 pub const UuidUrnLength: uint = 45;
 
 /// Why text could not be read as a UUID.
@@ -36,7 +36,7 @@ pub const UuidUrnLength: uint = 45;
 /// was found. Success is the other channel of `Uuid ! UuidParseError`, so there is no case here meaning nothing went
 /// wrong.
 /// Copy, carrying one offset and owning nothing.
-/// @see https://rux-lang.dev/docs/api/uuid/parse-error
+/// @see https://rux-lang.dev/docs/api/uuid/text#uuid-parse-error
 pub variant UuidParseError {
     /// The text is neither thirty-six characters nor forty-five with the URN prefix. The offset is the text's
     /// length when it is too short, which is where the missing character would have gone, and the first character
@@ -56,7 +56,7 @@ extend UuidParseError : ParseFailure {
     /// Where in the input the failure was found.
     /// Borrows the error and leaves it untouched. Cannot fail; runs in constant time and allocates nothing.
     /// @returns the zero-based UTF-8 byte offset, which is the text's length at end of input
-    /// @see https://rux-lang.dev/docs/api/uuid/parse-error/offset
+    /// @see https://rux-lang.dev/docs/api/uuid/text#uuid-parse-error-offset
     pub func Offset(self: &UuidParseError) -> uint {
         return match self {
             .WrongLength(at) => at,
@@ -90,7 +90,7 @@ func IsHyphenPosition(index: uint) -> bool {
 /// parse produces no value at all rather than a half-filled one.
 /// @param text the text to read
 /// @returns the identifier, or why the text is not one
-/// @see https://rux-lang.dev/docs/api/uuid/parse
+/// @see https://rux-lang.dev/docs/api/uuid/text#parse
 pub func Parse(text: char8[..]) -> Uuid ! UuidParseError {
     var start: uint = 0;
     if text.length == UuidUrnLength {
@@ -159,7 +159,7 @@ pub func Parse(text: char8[..]) -> Uuid ! UuidParseError {
 /// The failures the slice form reports, with offsets into the borrowed text.
 /// @param text the text to read
 /// @returns the identifier, or why the text is not one
-/// @see https://rux-lang.dev/docs/api/uuid/parse
+/// @see https://rux-lang.dev/docs/api/uuid/text#parse
 pub func Parse(text: StringView) -> Uuid ! UuidParseError {
     return Parse(text.Bytes());
 }
@@ -194,7 +194,7 @@ func WriteCanonicalInto(value: &Uuid, into: var char8[..]) {
 /// @param value the identifier to write
 /// @param into the destination, at least `UuidTextLength` bytes
 /// @returns success when the whole form was written
-/// @see https://rux-lang.dev/docs/api/uuid/format
+/// @see https://rux-lang.dev/docs/api/uuid/text#format
 pub func Format(value: &Uuid, into: var char8[..]) -> ! FormatError {
     if into.length < UuidTextLength { return .Failure(FormatError::InsufficientCapacity); }
     WriteCanonicalInto(value, into);
@@ -207,7 +207,7 @@ pub func Format(value: &Uuid, into: var char8[..]) -> ! FormatError {
 /// @param value the identifier to write
 /// @param into the destination, at least `UuidTextLength` bytes
 /// @returns success when the whole form was written
-/// @see https://rux-lang.dev/docs/api/uuid/format-upper
+/// @see https://rux-lang.dev/docs/api/uuid/text#format-upper
 pub func FormatUpper(value: &Uuid, into: var char8[..]) -> ! FormatError {
     if into.length < UuidTextLength { return .Failure(FormatError::InsufficientCapacity); }
     WriteCanonicalInto(value, into);
@@ -228,7 +228,7 @@ pub func FormatUpper(value: &Uuid, into: var char8[..]) -> ! FormatError {
 /// @param value the identifier to write
 /// @param into the destination, at least `UuidUrnLength` bytes
 /// @returns success when the whole form was written
-/// @see https://rux-lang.dev/docs/api/uuid/format-urn
+/// @see https://rux-lang.dev/docs/api/uuid/text#format-urn
 pub func FormatUrn(value: &Uuid, into: var char8[..]) -> ! FormatError {
     if into.length < UuidUrnLength { return .Failure(FormatError::InsufficientCapacity); }
     let prefix = "urn:uuid:";
@@ -261,7 +261,7 @@ extend Uuid : Display {
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole form was accepted
-    /// @see https://rux-lang.dev/docs/api/uuid/uuid/write-display
+    /// @see https://rux-lang.dev/docs/api/uuid/uuid#write-display
     pub func WriteDisplay(self: &Uuid, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         AcceptsUuidSpec(spec)?;
         if spec.StyleIs("urn") { WriteBytes(writer, "urn:uuid:")?; }
@@ -277,7 +277,7 @@ extend Uuid : Debug {
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole form was accepted
-    /// @see https://rux-lang.dev/docs/api/uuid/uuid/write-debug
+    /// @see https://rux-lang.dev/docs/api/uuid/uuid#write-debug
     pub func WriteDebug(self: &Uuid, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         return self.WriteDisplay(writer, spec);
     }
