@@ -15,7 +15,7 @@ import Math::{ Cos, Log, Sin, Sqrt, Tau };
 /// @param generator where the bits come from
 /// @param probability the chance of success, in `[0, 1]`
 /// @returns true with the given probability
-/// @see https://rux-lang.dev/docs/api/random/bernoulli
+/// @see https://rux-lang.dev/docs/api/random/distributions#bernoulli
 pub func Bernoulli<G: RandomGenerator>(generator: &var G, probability: float64) -> bool {
     if !(probability > 0.0) { return false; }
     if probability >= 1.0 { return true; }
@@ -30,7 +30,7 @@ pub func Bernoulli<G: RandomGenerator>(generator: &var G, probability: float64) 
 /// @typeParam G the generator's type
 /// @param generator where the bits come from
 /// @returns a draw from the exponential distribution with rate one
-/// @see https://rux-lang.dev/docs/api/random/exponential
+/// @see https://rux-lang.dev/docs/api/random/distributions#exponential
 pub func Exponential<G: RandomGenerator>(generator: &var G) -> float64 {
     return 0.0 - Log(1.0 - NextFloat64<G>(generator));
 }
@@ -41,7 +41,7 @@ pub func Exponential<G: RandomGenerator>(generator: &var G) -> float64 {
 /// @param generator where the bits come from
 /// @param rate the distribution's rate, which is the reciprocal of its mean
 /// @returns a draw from the exponential distribution with that rate
-/// @see https://rux-lang.dev/docs/api/random/exponential-with-rate
+/// @see https://rux-lang.dev/docs/api/random/distributions#exponential-with-rate
 pub func ExponentialWithRate<G: RandomGenerator>(generator: &var G, rate: float64) -> float64 {
     if !(rate > 0.0) { return 0.0; }
     return Exponential<G>(generator) / rate;
@@ -58,7 +58,7 @@ pub func ExponentialWithRate<G: RandomGenerator>(generator: &var G, rate: float6
 /// @param generator where the bits come from
 /// @param first receives the first of the two draws
 /// @param second receives the second of the two draws
-/// @see https://rux-lang.dev/docs/api/random/normal-pair
+/// @see https://rux-lang.dev/docs/api/random/distributions#normal-pair
 pub func NormalPair<G: RandomGenerator>(generator: &var G, first: *var float64, second: *var float64) {
     let radius = Sqrt(-2.0 * Log(1.0 - NextFloat64<G>(generator)));
     let angle = Tau * NextFloat64<G>(generator);
@@ -72,7 +72,7 @@ pub func NormalPair<G: RandomGenerator>(generator: &var G, first: *var float64, 
 /// @typeParam G the generator's type
 /// @param generator where the bits come from
 /// @returns a draw from the standard normal distribution
-/// @see https://rux-lang.dev/docs/api/random/normal
+/// @see https://rux-lang.dev/docs/api/random/distributions#normal
 pub func Normal<G: RandomGenerator>(generator: &var G) -> float64 {
     var first = 0.0;
     var second = 0.0;
@@ -88,7 +88,7 @@ pub func Normal<G: RandomGenerator>(generator: &var G) -> float64 {
 /// @param mean the distribution's mean
 /// @param deviation the distribution's standard deviation
 /// @returns a draw from the normal distribution with that mean and deviation
-/// @see https://rux-lang.dev/docs/api/random/normal-with
+/// @see https://rux-lang.dev/docs/api/random/distributions#normal-with
 pub func NormalWith<G: RandomGenerator>(generator: &var G, mean: float64, deviation: float64) -> float64 {
     return mean + Normal<G>(generator) * deviation;
 }

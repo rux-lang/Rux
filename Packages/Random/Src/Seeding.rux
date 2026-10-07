@@ -14,7 +14,7 @@ import Entropy::{ EntropyError, NextUint64 };
 /// Fails with why the entropy could not be obtained. A caller that is content with a predictable generator when
 /// the system has no entropy recovers explicitly, as in `XoshiroFromEntropy() catch { else => Xoshiro256(0u64) }`.
 /// @returns a generator seeded from the system, or why it could not be seeded
-/// @see https://rux-lang.dev/docs/api/random/xoshiro-from-entropy
+/// @see https://rux-lang.dev/docs/api/random/xoshiro256#xoshiro-from-entropy
 pub func XoshiroFromEntropy() -> Xoshiro256 ! EntropyError {
     return Xoshiro256(NextUint64()?);
 }
@@ -22,7 +22,7 @@ pub func XoshiroFromEntropy() -> Xoshiro256 ! EntropyError {
 /// A `Pcg64Dxsm` seeded from the operating system's entropy, on the default stream.
 /// Fails and recovers exactly as `XoshiroFromEntropy` does.
 /// @returns a generator seeded from the system, or why it could not be seeded
-/// @see https://rux-lang.dev/docs/api/random/pcg-from-entropy
+/// @see https://rux-lang.dev/docs/api/random/pcg64-dxsm#pcg-from-entropy
 pub func PcgFromEntropy() -> Pcg64Dxsm ! EntropyError {
     return Pcg64Dxsm(NextUint64()?);
 }
@@ -32,7 +32,7 @@ pub func PcgFromEntropy() -> Pcg64Dxsm ! EntropyError {
 /// independent by construction and the whole run is reproducible from the one seed if it is recorded.
 /// @param stream which of the generator's independent sequences to draw from
 /// @returns a generator on that stream seeded from the system, or why it could not be seeded
-/// @see https://rux-lang.dev/docs/api/random/pcg-from-entropy-with-stream
+/// @see https://rux-lang.dev/docs/api/random/pcg64-dxsm#pcg-from-entropy-with-stream
 pub func PcgFromEntropyWithStream(stream: uint64) -> Pcg64Dxsm ! EntropyError {
     return Pcg64Dxsm::WithStream(NextUint64()?, stream);
 }

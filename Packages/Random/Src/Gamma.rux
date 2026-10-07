@@ -12,7 +12,7 @@
 import Math::{ Exp, Log, Pow, Sqrt };
 
 /// Below this the direct methods are cheaper than the reductions, and above it they stop being practical.
-/// @see https://rux-lang.dev/docs/api/random/direct-method-limit
+/// @see https://rux-lang.dev/docs/api/random/distributions#direct-method-limit
 pub const DirectMethodLimit: float64 = 30.0;
 
 /// A value from the gamma distribution with the given shape and unit scale.
@@ -24,7 +24,7 @@ pub const DirectMethodLimit: float64 = 30.0;
 /// @param generator where the bits come from
 /// @param shape the distribution's shape parameter
 /// @returns a draw from the gamma distribution with that shape and scale one
-/// @see https://rux-lang.dev/docs/api/random/gamma
+/// @see https://rux-lang.dev/docs/api/random/distributions#gamma
 pub func Gamma<G: RandomGenerator>(generator: &var G, shape: float64) -> float64 {
     if !(shape > 0.0) { return 0.0; }
     if shape < 1.0 {
@@ -69,7 +69,7 @@ pub func Gamma<G: RandomGenerator>(generator: &var G, shape: float64) -> float64
 /// @param shape the distribution's shape parameter
 /// @param scale the distribution's scale parameter
 /// @returns a draw from the gamma distribution with that shape and scale
-/// @see https://rux-lang.dev/docs/api/random/gamma-with-scale
+/// @see https://rux-lang.dev/docs/api/random/distributions#gamma-with-scale
 pub func GammaWithScale<G: RandomGenerator>(generator: &var G, shape: float64, scale: float64) -> float64 {
     if !(scale > 0.0) { return 0.0; }
     return Gamma<G>(generator, shape) * scale;
@@ -83,7 +83,7 @@ pub func GammaWithScale<G: RandomGenerator>(generator: &var G, shape: float64, s
 /// @param first the first shape parameter
 /// @param second the second shape parameter
 /// @returns a draw from the beta distribution with those two shape parameters
-/// @see https://rux-lang.dev/docs/api/random/beta
+/// @see https://rux-lang.dev/docs/api/random/distributions#beta
 pub func Beta<G: RandomGenerator>(generator: &var G, first: float64, second: float64) -> float64 {
     let a = Gamma<G>(generator, first);
     let b = Gamma<G>(generator, second);

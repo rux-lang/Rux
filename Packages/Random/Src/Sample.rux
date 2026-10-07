@@ -16,7 +16,7 @@
 /// @typeParam T the item type
 /// @param generator where the bits come from
 /// @param items the sequence to shuffle in place
-/// @see https://rux-lang.dev/docs/api/random/shuffle
+/// @see https://rux-lang.dev/docs/api/random/sampling#shuffle
 pub func Shuffle<G: RandomGenerator, T>(generator: &var G, items: var T[..]) {
     if items.length < 2 { return; }
     var index = items.length - 1u;
@@ -39,7 +39,7 @@ pub func Shuffle<G: RandomGenerator, T>(generator: &var G, items: var T[..]) {
 /// @param generator where the bits come from
 /// @param count how many there are to choose among
 /// @returns an index in `[0, count)`, each equally likely
-/// @see https://rux-lang.dev/docs/api/random/choose-index
+/// @see https://rux-lang.dev/docs/api/random/sampling#choose-index
 pub func ChooseIndex<G: RandomGenerator>(generator: &var G, count: uint) -> uint {
     if count == 0 { return 0u; }
     return UniformBelow<G>(generator, count as uint64) as uint;
@@ -55,7 +55,7 @@ pub func ChooseIndex<G: RandomGenerator>(generator: &var G, count: uint) -> uint
 /// @param generator where the bits come from
 /// @param weights the relative weight of each index; they need not sum to one
 /// @returns an index chosen in proportion to its weight
-/// @see https://rux-lang.dev/docs/api/random/weighted-index
+/// @see https://rux-lang.dev/docs/api/random/sampling#weighted-index
 pub func WeightedIndex<G: RandomGenerator>(generator: &var G, weights: float64[..]) -> uint {
     var total = 0.0;
     var index: uint = 0;

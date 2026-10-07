@@ -21,7 +21,7 @@ extend Reservoir<T> {
     /// A reservoir that will fill `room`.
     /// @param room how many items the reservoir keeps
     /// @returns an empty reservoir that will keep `room` items
-    /// @see https://rux-lang.dev/docs/api/random/reservoir/new
+    /// @see https://rux-lang.dev/docs/api/random/reservoir#new
     pub func Reservoir(room: var T[..]) -> Reservoir<T> {
         return Reservoir<T> { room: room, seen: 0 };
     }
@@ -29,14 +29,14 @@ extend Reservoir<T> {
     /// How many items the reservoir currently holds, which is the smaller of the sample size and the number
     /// offered.
     /// @returns how many items it currently holds
-    /// @see https://rux-lang.dev/docs/api/random/reservoir/length
+    /// @see https://rux-lang.dev/docs/api/random/reservoir#length
     pub func Length(self: &Reservoir<T>) -> uint {
         return self.seen < self.room.length ? self.seen : self.room.length;
     }
 
     /// How many items have been offered.
     /// @returns how many items have been offered to it in total
-    /// @see https://rux-lang.dev/docs/api/random/reservoir/seen
+    /// @see https://rux-lang.dev/docs/api/random/reservoir#seen
     pub func Seen(self: &Reservoir<T>) -> uint {
         return self.seen;
     }
@@ -52,7 +52,7 @@ extend Reservoir<T> {
 /// @param generator where the bits come from
 /// @param reservoir the reservoir to offer the item to
 /// @param item the item being offered
-/// @see https://rux-lang.dev/docs/api/random/offer
+/// @see https://rux-lang.dev/docs/api/random/reservoir#offer
 pub func Offer<G: RandomGenerator, T>(generator: &var G, reservoir: &var Reservoir<T>, item: T) {
     if reservoir.room.length == 0 {
         reservoir.seen = reservoir.seen + 1u;
