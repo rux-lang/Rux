@@ -21,7 +21,7 @@ const ScientificFrom64 = 17;
 /// Provides the public `IsNan` operation.
 /// @param value the value to act on
 /// @returns whether the value is a NaN
-/// @see https://rux-lang.dev/docs/api/format/is-nan
+/// @see https://rux-lang.dev/docs/api/format/float-bits#is-nan
 pub func IsNan(value: float64) -> bool {
     return value != value;
 }
@@ -32,7 +32,7 @@ pub func IsNan(value: float64) -> bool {
 /// Provides the public `IsInfinite` operation.
 /// @param value the value to act on
 /// @returns whether the value is either infinity
-/// @see https://rux-lang.dev/docs/api/format/is-infinite
+/// @see https://rux-lang.dev/docs/api/format/float-bits#is-infinite
 pub func IsInfinite(value: float64) -> bool {
     return value > MaxFinite64 || value < -MaxFinite64;
 }
@@ -41,7 +41,7 @@ pub func IsInfinite(value: float64) -> bool {
 /// Provides the public `IsFinite` operation.
 /// @param value the value to act on
 /// @returns whether the value is neither infinite nor a NaN
-/// @see https://rux-lang.dev/docs/api/format/is-finite
+/// @see https://rux-lang.dev/docs/api/format/float-bits#is-finite
 pub func IsFinite(value: float64) -> bool {
     return value >= -MaxFinite64 && value <= MaxFinite64;
 }
@@ -58,7 +58,7 @@ extend float64 : Display {
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
-    /// @see https://rux-lang.dev/docs/api/format/float64/write-display
+    /// @see https://rux-lang.dev/docs/api/format/float-text#float64-write-display
     pub func WriteDisplay(self: &float64, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         var mark = c8'e';
         let scientific = ScientificMark(spec, @mark)?;
@@ -97,7 +97,7 @@ extend float64 : Debug {
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
-    /// @see https://rux-lang.dev/docs/api/format/float64/write-debug
+    /// @see https://rux-lang.dev/docs/api/format/float-text#float64-write-debug
     pub func WriteDebug(self: &float64, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         return self.WriteDisplay(writer, spec);
     }

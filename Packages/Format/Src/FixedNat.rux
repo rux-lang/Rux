@@ -24,11 +24,11 @@
 /// How many sixty-four-bit limbs a `FixedNat` holds.
 /// Sixty-four, which is 4,096 bits: the 3,681 the narrow conversion reaches at worst, and 415 bits of headroom
 /// over it. See Docs/NarrowFloat.md for where the 3,681 comes from.
-/// @see https://rux-lang.dev/docs/api/format/fixed-nat-limbs
+/// @see https://rux-lang.dev/docs/api/format/fixed-nat#fixed-nat-limbs
 pub const FixedNatLimbs: uint = 64;
 
 /// How many bits a `FixedNat` holds in total.
-/// @see https://rux-lang.dev/docs/api/format/fixed-nat-bits
+/// @see https://rux-lang.dev/docs/api/format/fixed-nat#fixed-nat-bits
 pub const FixedNatBits: uint = 4096;
 
 /// An unsigned integer of fixed capacity, holding no storage of its own.
@@ -99,7 +99,7 @@ extend FixedNat {
     /// Zero.
     /// Cannot fail; runs in constant time and allocates nothing.
     /// @returns the value zero
-    /// @see https://rux-lang.dev/docs/api/format/fixed-nat/new
+    /// @see https://rux-lang.dev/docs/api/format/fixed-nat#new
     pub func FixedNat() -> FixedNat {
         return FixedNat { limbs: [0; 64], length: 0 };
     }
@@ -108,7 +108,7 @@ extend FixedNat {
     /// Cannot fail: one limb always fits. Runs in constant time and allocates nothing.
     /// @param initial the value to hold
     /// @returns a `FixedNat` equal to `initial`
-    /// @see https://rux-lang.dev/docs/api/format/fixed-nat/from-uint64
+    /// @see https://rux-lang.dev/docs/api/format/fixed-nat#from-uint64
     pub func FromUint64(initial: uint64) -> FixedNat {
         var made = FixedNat();
         if initial != 0 {
@@ -121,7 +121,7 @@ extend FixedNat {
     /// Whether this is zero.
     /// Borrows the value. Cannot fail; runs in constant time and allocates nothing.
     /// @returns true when no limb is in use
-    /// @see https://rux-lang.dev/docs/api/format/fixed-nat/is-zero
+    /// @see https://rux-lang.dev/docs/api/format/fixed-nat#is-zero
     pub func IsZero(self: &FixedNat) -> bool {
         return self.length == 0;
     }
@@ -129,7 +129,7 @@ extend FixedNat {
     /// How many bits the value occupies, counting from its highest set bit.
     /// Zero has no bits. Borrows the value; runs in time proportional to one limb and allocates nothing.
     /// @returns the position one past the highest set bit
-    /// @see https://rux-lang.dev/docs/api/format/fixed-nat/bit-length
+    /// @see https://rux-lang.dev/docs/api/format/fixed-nat#bit-length
     pub func BitLength(self: &FixedNat) -> uint {
         if self.length == 0 { return 0; }
         let top = self.limbs[self.length - 1];
@@ -146,7 +146,7 @@ extend FixedNat {
     /// Borrows both. Cannot fail; runs in time proportional to the length and allocates nothing.
     /// @param other the value to compare against
     /// @returns -1 when this is smaller, 0 when they are equal, and 1 when this is larger
-    /// @see https://rux-lang.dev/docs/api/format/fixed-nat/compare
+    /// @see https://rux-lang.dev/docs/api/format/fixed-nat#compare
     pub func Compare(self: &FixedNat, other: &FixedNat) -> int32 {
         if self.length != other.length { return self.length < other.length ? -1 : 1; }
         var index = self.length;
@@ -162,7 +162,7 @@ extend FixedNat {
     /// Replaces this value with `other`.
     /// Cannot fail: both have the same capacity. Runs in time proportional to the capacity and allocates nothing.
     /// @param other the value to copy
-    /// @see https://rux-lang.dev/docs/api/format/fixed-nat/assign
+    /// @see https://rux-lang.dev/docs/api/format/fixed-nat#assign
     pub func Assign(self: &var FixedNat, other: &FixedNat) {
         var index: uint = 0;
         while index < FixedNatLimbs {
@@ -180,7 +180,7 @@ extend FixedNat {
     /// @param factor what to multiply by
     /// @param addend what to add afterwards
     /// @returns true when the result fits
-    /// @see https://rux-lang.dev/docs/api/format/fixed-nat/multiply-add-small
+    /// @see https://rux-lang.dev/docs/api/format/fixed-nat#multiply-add-small
     pub func MultiplyAddSmall(self: &var FixedNat, factor: uint64, addend: uint64) -> bool {
         // A full workspace is the only one whose product can pass the capacity, so it is the only one that pays
         // for a copy to roll back from.
@@ -198,7 +198,7 @@ extend FixedNat {
     /// Answers false when the product does not fit, leaving the value as it was.
     /// @param factor what to multiply by
     /// @returns true when the result fits
-    /// @see https://rux-lang.dev/docs/api/format/fixed-nat/multiply-small
+    /// @see https://rux-lang.dev/docs/api/format/fixed-nat#multiply-small
     pub func MultiplySmall(self: &var FixedNat, factor: uint64) -> bool {
         return self.MultiplyAddSmall(factor, 0);
     }
@@ -207,7 +207,7 @@ extend FixedNat {
     /// Answers false when the sum does not fit, leaving the value as it was.
     /// @param addend what to add
     /// @returns true when the result fits
-    /// @see https://rux-lang.dev/docs/api/format/fixed-nat/add-small
+    /// @see https://rux-lang.dev/docs/api/format/fixed-nat#add-small
     pub func AddSmall(self: &var FixedNat, addend: uint64) -> bool {
         return self.MultiplyAddSmall(1, addend);
     }
@@ -217,7 +217,7 @@ extend FixedNat {
     /// width a shift needs is known before any of it happens.
     /// @param bits how far to shift
     /// @returns true when the result fits
-    /// @see https://rux-lang.dev/docs/api/format/fixed-nat/shift-left
+    /// @see https://rux-lang.dev/docs/api/format/fixed-nat#shift-left
     pub func ShiftLeft(self: &var FixedNat, bits: uint) -> bool {
         if self.length == 0 || bits == 0 { return true; }
         let limbShift = bits / 64;
@@ -254,7 +254,7 @@ extend FixedNat {
     /// Answers false when the sum needs more limbs than the capacity holds, leaving the value as it was.
     /// @param other what to add
     /// @returns true when the result fits
-    /// @see https://rux-lang.dev/docs/api/format/fixed-nat/add
+    /// @see https://rux-lang.dev/docs/api/format/fixed-nat#add
     pub func Add(self: &var FixedNat, other: &FixedNat) -> bool {
         let wider = self.length > other.length ? self.length : other.length;
         if wider >= FixedNatLimbs {
@@ -271,7 +271,7 @@ extend FixedNat {
     /// The caller establishes `other <= self` first, by `Compare` or by construction. Subtracting a larger value
     /// has no answer in an unsigned type, and this borrows past the top rather than reporting it.
     /// @param other what to subtract
-    /// @see https://rux-lang.dev/docs/api/format/fixed-nat/subtract
+    /// @see https://rux-lang.dev/docs/api/format/fixed-nat#subtract
     pub func Subtract(self: &var FixedNat, other: &FixedNat) {
         var borrow: uint64 = 0;
         var index: uint = 0;
@@ -301,7 +301,7 @@ extend FixedNat {
     /// it is reached only past a bound that is proved not to be.
     /// @param power the exponent to apply
     /// @returns true when the result fits
-    /// @see https://rux-lang.dev/docs/api/format/fixed-nat/multiply-power-of-ten
+    /// @see https://rux-lang.dev/docs/api/format/fixed-nat#multiply-power-of-ten
     pub func MultiplyPowerOfTen(self: &var FixedNat, power: uint) -> bool {
         var remaining = power;
         while remaining >= 19 {
@@ -322,7 +322,7 @@ extend FixedNat {
     /// Answers false when `bits` is past the capacity, leaving the value as it was.
     /// @param bits the exponent to apply
     /// @returns true when the result fits
-    /// @see https://rux-lang.dev/docs/api/format/fixed-nat/set-power-of-two
+    /// @see https://rux-lang.dev/docs/api/format/fixed-nat#set-power-of-two
     pub func SetPowerOfTwo(self: &var FixedNat, bits: uint) -> bool {
         if bits >= FixedNatBits { return false; }
         var index: uint = 0;
@@ -339,7 +339,7 @@ extend FixedNat {
     /// Useful where a caller has already established the value is small, such as a quotient digit. Borrows the
     /// value; cannot fail, runs in constant time and allocates nothing.
     /// @returns the least significant limb, or zero
-    /// @see https://rux-lang.dev/docs/api/format/fixed-nat/low64
+    /// @see https://rux-lang.dev/docs/api/format/fixed-nat#low64
     pub func Low64(self: &FixedNat) -> uint64 {
         return self.length == 0 ? 0 : self.limbs[0];
     }

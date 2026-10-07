@@ -12,7 +12,7 @@
 
 /// A finite float taken apart: the value is `significand * 2^exponent`.
 /// Copy, carrying no reference to the value it came from.
-/// @see https://rux-lang.dev/docs/api/format/float-parts
+/// @see https://rux-lang.dev/docs/api/format/float-text#float-parts
 pub struct FloatParts {
     /// The integer significand, including the implicit bit for a normal value. Zero only for a zero.
     pub significand: uint64;
@@ -29,7 +29,7 @@ pub struct FloatParts {
 /// rather than the value: there is no conversion that preserves the bits, since a cast asks for the number.
 /// @param value the float to read
 /// @returns its sixty-four bits
-/// @see https://rux-lang.dev/docs/api/format/bits-of-float64
+/// @see https://rux-lang.dev/docs/api/format/float-bits#bits-of-float64
 pub func BitsOfFloat64(value: float64) -> uint64 {
     let address = (@value) as *uint64;
     return *address;
@@ -39,7 +39,7 @@ pub func BitsOfFloat64(value: float64) -> uint64 {
 /// As `BitsOfFloat64`, at the narrower width.
 /// @param value the float to read
 /// @returns its thirty-two bits
-/// @see https://rux-lang.dev/docs/api/format/bits-of-float32
+/// @see https://rux-lang.dev/docs/api/format/float-bits#bits-of-float32
 pub func BitsOfFloat32(value: float32) -> uint32 {
     let address = (@value) as *uint32;
     return *address;
@@ -52,7 +52,7 @@ pub func BitsOfFloat32(value: float32) -> uint32 {
 /// Cannot fail; runs in constant time and allocates nothing.
 /// @param value the finite float to take apart
 /// @returns its significand, exponent, binade position and sign
-/// @see https://rux-lang.dev/docs/api/format/decompose-float64
+/// @see https://rux-lang.dev/docs/api/format/float-text#decompose-float64
 pub func DecomposeFloat64(value: float64) -> FloatParts {
     let bits = BitsOfFloat64(value);
     let mantissa = bits & 0xFFFFFFFFFFFFF;
@@ -78,7 +78,7 @@ pub func DecomposeFloat64(value: float64) -> FloatParts {
 /// time and allocates nothing.
 /// @param value the finite float to take apart
 /// @returns its significand, exponent, binade position and sign
-/// @see https://rux-lang.dev/docs/api/format/decompose-float32
+/// @see https://rux-lang.dev/docs/api/format/float-text#decompose-float32
 pub func DecomposeFloat32(value: float32) -> FloatParts {
     let bits = BitsOfFloat32(value);
     let mantissa = (bits & 0x7FFFFF) as uint64;
@@ -104,7 +104,7 @@ pub func DecomposeFloat32(value: float32) -> FloatParts {
 /// @param parts the value taken apart
 /// @param scientificFrom the decimal exponent at or above which scientific notation is used
 /// @returns true when the whole rendering was written
-/// @see https://rux-lang.dev/docs/api/format/write-shortest-float
+/// @see https://rux-lang.dev/docs/api/format/float-text#write-shortest-float
 pub func WriteShortestFloat(cursor: &var ByteCursor, parts: FloatParts, scientificFrom: int) -> bool {
     if parts.negative { cursor.Push(c8'-'); }
     if parts.significand == 0 {

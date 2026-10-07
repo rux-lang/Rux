@@ -21,7 +21,7 @@ import Text::{ Encode, FormatError, FormatSpec, IsScalarValue, PaddingAround, Te
 /// The largest value a Unicode scalar can have, past which nothing is a character.
 /// Named because a `char64` has room for a great deal more than this, and the check that it does not hold one has
 /// to happen at the full width: narrowing first would turn `0x100000041` into `A`.
-/// @see https://rux-lang.dev/docs/api/format/maximum-scalar-value
+/// @see https://rux-lang.dev/docs/api/format/character-text#maximum-scalar-value
 pub const MaximumScalarValue: uint64 = 0x10FFFF;
 
 /// Whether `value`, at whatever width it was read from, is a Unicode scalar value.
@@ -31,7 +31,7 @@ pub const MaximumScalarValue: uint64 = 0x10FFFF;
 /// Cannot fail; runs in constant time and allocates nothing.
 /// @param value the numeric value of a character, at its own width
 /// @returns true when a character of that value exists
-/// @see https://rux-lang.dev/docs/api/format/is-wide-scalar-value
+/// @see https://rux-lang.dev/docs/api/format/character-text#is-wide-scalar-value
 pub func IsWideScalarValue(value: uint64) -> bool {
     if value > MaximumScalarValue { return false; }
     return IsScalarValue(value as uint32);
@@ -56,7 +56,7 @@ func WriteHexDigits(writer: &var TextWriter, value: uint64, count: uint) -> ! Fo
 /// @param writer the destination
 /// @param value the numeric value to spell
 /// @returns success when the whole escape was accepted
-/// @see https://rux-lang.dev/docs/api/format/write-invalid-escape
+/// @see https://rux-lang.dev/docs/api/format/character-text#write-invalid-escape
 pub func WriteInvalidEscape(writer: &var TextWriter, value: uint64) -> ! FormatError {
     if value <= 0xFF {
         WriteBytes(writer, "\\x{")?;
@@ -81,7 +81,7 @@ pub func WriteInvalidEscape(writer: &var TextWriter, value: uint64) -> ! FormatE
 /// @param value the numeric value of the character, at its own width
 /// @param whole whether the width this value came from calls it a whole character
 /// @returns success when the whole rendering was accepted
-/// @see https://rux-lang.dev/docs/api/format/write-character-debug
+/// @see https://rux-lang.dev/docs/api/format/character-text#write-character-debug
 pub func WriteCharacterDebug(writer: &var TextWriter, value: uint64, whole: bool) -> ! FormatError {
     WriteAscii(writer, c8'\'')?;
     if whole {
@@ -101,7 +101,7 @@ pub func WriteCharacterDebug(writer: &var TextWriter, value: uint64, whole: bool
 /// @param writer the destination
 /// @param scalar the Unicode scalar value to write
 /// @returns success when the whole character was accepted
-/// @see https://rux-lang.dev/docs/api/format/write-escaped-scalar
+/// @see https://rux-lang.dev/docs/api/format/character-text#write-escaped-scalar
 pub func WriteEscapedScalar(writer: &var TextWriter, scalar: uint32) -> ! FormatError {
     if scalar == 0x27 { return WriteBytes(writer, "\\'"); }
     if scalar == 0x22 { return WriteBytes(writer, "\\\""); }
@@ -126,7 +126,7 @@ pub func WriteEscapedScalar(writer: &var TextWriter, scalar: uint32) -> ! Format
 /// @param occupied how many characters the rendering will occupy
 /// @param before receives the fill to write first
 /// @param after receives the fill to write last
-/// @see https://rux-lang.dev/docs/api/format/measure-padding
+/// @see https://rux-lang.dev/docs/api/format/character-text#measure-padding
 pub func MeasurePadding(spec: FormatSpec, occupied: uint, before: *var uint, after: *var uint) {
     *before = 0;
     *after = 0;

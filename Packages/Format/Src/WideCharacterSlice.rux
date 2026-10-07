@@ -55,7 +55,7 @@ extend char16[..] : Display {
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
-    /// @see https://rux-lang.dev/docs/api/format/wide-character-slice/write-display-16
+    /// @see https://rux-lang.dev/docs/api/format/character-text#char16-slice-write-display
     pub func WriteDisplay(self: &char16[..], writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         RejectStyle(spec)?;
         let units = (self.data)[..self.length];
@@ -88,7 +88,7 @@ extend char16[..] : Debug {
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
-    /// @see https://rux-lang.dev/docs/api/format/wide-character-slice/write-debug-16
+    /// @see https://rux-lang.dev/docs/api/format/character-text#char16-slice-write-debug
     pub func WriteDebug(self: &char16[..], writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         RejectStyle(spec)?;
         let units = (self.data)[..self.length];
@@ -117,7 +117,7 @@ extend char32[..] : Display {
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
-    /// @see https://rux-lang.dev/docs/api/format/wide-character-slice/write-display-32
+    /// @see https://rux-lang.dev/docs/api/format/character-text#char32-slice-write-display
     pub func WriteDisplay(self: &char32[..], writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         RejectStyle(spec)?;
         let units = (self.data)[..self.length];
@@ -146,7 +146,7 @@ extend char32[..] : Debug {
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
-    /// @see https://rux-lang.dev/docs/api/format/wide-character-slice/write-debug-32
+    /// @see https://rux-lang.dev/docs/api/format/character-text#char32-slice-write-debug
     pub func WriteDebug(self: &char32[..], writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         RejectStyle(spec)?;
         let units = (self.data)[..self.length];

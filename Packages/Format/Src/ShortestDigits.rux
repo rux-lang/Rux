@@ -20,7 +20,7 @@
 /// Seventeen for a `float64` and nine for a `float32`: those are the counts at which every value of the width is
 /// distinguishable from every other, which is the theoretical bound on how long a shortest form can be. The buffer
 /// a caller supplies is checked against this rather than against a guess.
-/// @see https://rux-lang.dev/docs/api/format/maximum-shortest-digits
+/// @see https://rux-lang.dev/docs/api/format/float-text#maximum-shortest-digits
 pub const MaximumShortestDigits: uint = 17;
 
 // The four exact integers the method runs on: the value as `numerator / denominator`, and half the distance to
@@ -140,7 +140,7 @@ func NextDigit(state: &var Ratio) -> uint64 {
 /// @param count receives how many digits were written
 /// @param exponent10 receives the power of ten the first digit stands for
 /// @returns true when the digits were produced
-/// @see https://rux-lang.dev/docs/api/format/shortest-digits
+/// @see https://rux-lang.dev/docs/api/format/float-text#shortest-digits
 pub func ShortestDigits(significand: uint64, exponent: int, atBinadeBottom: bool, into: var char8[..],
                         count: *var uint, exponent10: *var int) -> bool {
     *count = 0;

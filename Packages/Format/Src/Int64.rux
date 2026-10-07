@@ -11,7 +11,7 @@ extend int64 : Display {
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
-    /// @see https://rux-lang.dev/docs/api/format/int64/write-display
+    /// @see https://rux-lang.dev/docs/api/format/integer-text#int64-write-display
     pub func WriteDisplay(self: &int64, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         let wide = self;
         // The magnitude is taken in uint64 rather than by negating in int64, because the most negative value has
@@ -28,7 +28,7 @@ extend int64 : Debug {
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
-    /// @see https://rux-lang.dev/docs/api/format/int64/write-debug
+    /// @see https://rux-lang.dev/docs/api/format/integer-text#int64-write-debug
     pub func WriteDebug(self: &int64, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         return self.WriteDisplay(writer, spec);
     }

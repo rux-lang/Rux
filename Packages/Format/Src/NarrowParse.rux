@@ -20,7 +20,7 @@
 /// Seven hundred and sixty-eight, which is the longest exact decimal expansion any midpoint between two adjacent
 /// `float64` values has. Keeping that many means a tie is detected exactly, and a nonzero digit beyond them means
 /// the value cannot be a tie at all — so the bound is where the two arguments meet rather than a round number.
-/// @see https://rux-lang.dev/docs/api/format/retained-decimal-digits
+/// @see https://rux-lang.dev/docs/api/format/parse-float#retained-decimal-digits
 pub const RetainedDecimalDigits: uint = 768;
 
 // What a float format needs to be read into: how many bits its significand has, and the exponent range those bits
@@ -76,7 +76,7 @@ func BuildRatio(state: &var Reading, digits: &FixedNat, exponent: int) -> bool {
 /// @param binaryExponent receives the power of two it is scaled by
 /// @param overflowed receives whether the failure was the value being too large
 /// @returns true when the value was read
-/// @see https://rux-lang.dev/docs/api/format/read-narrow-decimal
+/// @see https://rux-lang.dev/docs/api/format/parse-float#read-narrow-decimal
 func ReadNarrowDecimal(digits: &FixedNat, exponent: int, truncated: bool, layout: NarrowLayout,
                        significand: *var uint64, binaryExponent: *var int, overflowed: *var bool) -> bool {
     *significand = 0;
@@ -203,7 +203,7 @@ func ReadNarrowDecimal(digits: &FixedNat, exponent: int, truncated: bool, layout
 /// @param exponent the power of two it is scaled by
 /// @param negative whether the value is negative
 /// @returns the sixty-four bits of the value
-/// @see https://rux-lang.dev/docs/api/format/pack-float64
+/// @see https://rux-lang.dev/docs/api/format/parse-float#pack-float64
 func PackFloat64(significand: uint64, exponent: int, negative: bool) -> uint64 {
     var bits: uint64 = 0;
     if significand != 0 {
@@ -226,7 +226,7 @@ func PackFloat64(significand: uint64, exponent: int, negative: bool) -> uint64 {
 /// @param exponent the power of two it is scaled by
 /// @param negative whether the value is negative
 /// @returns the thirty-two bits of the value
-/// @see https://rux-lang.dev/docs/api/format/pack-float32
+/// @see https://rux-lang.dev/docs/api/format/parse-float#pack-float32
 func PackFloat32(significand: uint64, exponent: int, negative: bool) -> uint32 {
     var bits: uint32 = 0;
     if significand != 0 {
@@ -247,7 +247,7 @@ func PackFloat32(significand: uint64, exponent: int, negative: bool) -> uint32 {
 /// `BitsOfFloat64` and unsafe for the same reason: there is no conversion that preserves a representation.
 /// @param bits the sixty-four bits to read as a value
 /// @returns the value they spell
-/// @see https://rux-lang.dev/docs/api/format/float64-from-bits
+/// @see https://rux-lang.dev/docs/api/format/float-bits#float64-from-bits
 pub func Float64FromBits(bits: uint64) -> float64 {
     let address = (@bits) as *float64;
     return *address;
@@ -257,7 +257,7 @@ pub func Float64FromBits(bits: uint64) -> float64 {
 /// As `Float64FromBits`, at the narrower width.
 /// @param bits the thirty-two bits to read as a value
 /// @returns the value they spell
-/// @see https://rux-lang.dev/docs/api/format/float32-from-bits
+/// @see https://rux-lang.dev/docs/api/format/float-bits#float32-from-bits
 pub func Float32FromBits(bits: uint32) -> float32 {
     let address = (@bits) as *float32;
     return *address;
@@ -272,7 +272,7 @@ pub func Float32FromBits(bits: uint32) -> float32 {
 /// @param value receives the float
 /// @param overflowed receives whether the failure was the value being too large
 /// @returns true when the value was read
-/// @see https://rux-lang.dev/docs/api/format/exact-float64
+/// @see https://rux-lang.dev/docs/api/format/parse-float#exact-float64
 pub func ExactFloat64(digits: &FixedNat, exponent: int, truncated: bool, negative: bool, value: *var float64,
                       overflowed: *var bool) -> bool {
     var significand: uint64 = 0;
@@ -296,7 +296,7 @@ pub func ExactFloat64(digits: &FixedNat, exponent: int, truncated: bool, negativ
 /// @param value receives the float
 /// @param overflowed receives whether the failure was the value being too large
 /// @returns true when the value was read
-/// @see https://rux-lang.dev/docs/api/format/exact-float32
+/// @see https://rux-lang.dev/docs/api/format/parse-float#exact-float32
 pub func ExactFloat32(digits: &FixedNat, exponent: int, truncated: bool, negative: bool, value: *var float32,
                       overflowed: *var bool) -> bool {
     var significand: uint64 = 0;

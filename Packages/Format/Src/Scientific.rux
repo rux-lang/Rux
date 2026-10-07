@@ -159,7 +159,7 @@ func WriteScientificFloat(cursor: &var ByteCursor, parts: FloatParts, hasPrecisi
 /// @param parts the finite value taken apart
 /// @param mark the exponent mark, `e` or `E`
 /// @returns success when the whole rendering was accepted
-/// @see https://rux-lang.dev/docs/api/format/write-scientific-notation
+/// @see https://rux-lang.dev/docs/api/format/float-text#write-scientific-notation
 pub func WriteScientificNotation(writer: &var TextWriter, spec: FormatSpec, parts: FloatParts,
                                  mark: char8) -> ! FormatError {
     if spec.HasPrecision() && spec.Precision() > MaximumPrecision {

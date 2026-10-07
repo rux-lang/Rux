@@ -14,7 +14,7 @@ extend char8[..] : Display {
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
-    /// @see https://rux-lang.dev/docs/api/format/character-slice/write-display
+    /// @see https://rux-lang.dev/docs/api/format/character-text#char8-slice-write-display
     pub func WriteDisplay(self: &char8[..], writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         RejectStyle(spec)?;
         return WriteAligned(writer, spec, (self.data)[..self.length], false);
@@ -29,7 +29,7 @@ extend char8[..] : Debug {
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
-    /// @see https://rux-lang.dev/docs/api/format/character-slice/write-debug
+    /// @see https://rux-lang.dev/docs/api/format/character-text#char8-slice-write-debug
     pub func WriteDebug(self: &char8[..], writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         WriteAscii(writer, c8'"')?;
         self.WriteDisplay(writer, spec)?;

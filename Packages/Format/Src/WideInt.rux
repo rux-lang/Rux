@@ -46,7 +46,7 @@ extend uint128 : Display {
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
-    /// @see https://rux-lang.dev/docs/api/format/uint128/write-display
+    /// @see https://rux-lang.dev/docs/api/format/integer-text#uint128-write-display
     pub func WriteDisplay(self: &uint128, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         return WriteDigits128(writer, spec, self, false);
     }
@@ -58,7 +58,7 @@ extend uint128 : Debug {
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
-    /// @see https://rux-lang.dev/docs/api/format/uint128/write-debug
+    /// @see https://rux-lang.dev/docs/api/format/integer-text#uint128-write-debug
     pub func WriteDebug(self: &uint128, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         return self.WriteDisplay(writer, spec);
     }
@@ -70,7 +70,7 @@ extend int128 : Display {
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
-    /// @see https://rux-lang.dev/docs/api/format/int128/write-display
+    /// @see https://rux-lang.dev/docs/api/format/integer-text#int128-write-display
     pub func WriteDisplay(self: &int128, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         let negative = self < 0;
         let magnitude = negative ? ~(self as uint128) + 1 : self as uint128;
@@ -84,7 +84,7 @@ extend int128 : Debug {
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
-    /// @see https://rux-lang.dev/docs/api/format/int128/write-debug
+    /// @see https://rux-lang.dev/docs/api/format/integer-text#int128-write-debug
     pub func WriteDebug(self: &int128, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         return self.WriteDisplay(writer, spec);
     }
@@ -127,7 +127,7 @@ extend uint256 : Display {
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
-    /// @see https://rux-lang.dev/docs/api/format/uint256/write-display
+    /// @see https://rux-lang.dev/docs/api/format/integer-text#uint256-write-display
     pub func WriteDisplay(self: &uint256, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         return WriteDigits256(writer, spec, self, false);
     }
@@ -139,7 +139,7 @@ extend uint256 : Debug {
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
-    /// @see https://rux-lang.dev/docs/api/format/uint256/write-debug
+    /// @see https://rux-lang.dev/docs/api/format/integer-text#uint256-write-debug
     pub func WriteDebug(self: &uint256, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         return self.WriteDisplay(writer, spec);
     }
@@ -151,7 +151,7 @@ extend int256 : Display {
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
-    /// @see https://rux-lang.dev/docs/api/format/int256/write-display
+    /// @see https://rux-lang.dev/docs/api/format/integer-text#int256-write-display
     pub func WriteDisplay(self: &int256, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         let negative = self < 0;
         let magnitude = negative ? ~(self as uint256) + 1 : self as uint256;
@@ -165,7 +165,7 @@ extend int256 : Debug {
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
-    /// @see https://rux-lang.dev/docs/api/format/int256/write-debug
+    /// @see https://rux-lang.dev/docs/api/format/integer-text#int256-write-debug
     pub func WriteDebug(self: &int256, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         return self.WriteDisplay(writer, spec);
     }
@@ -208,7 +208,7 @@ extend uint512 : Display {
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
-    /// @see https://rux-lang.dev/docs/api/format/uint512/write-display
+    /// @see https://rux-lang.dev/docs/api/format/integer-text#uint512-write-display
     pub func WriteDisplay(self: &uint512, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         return WriteDigits512(writer, spec, self, false);
     }
@@ -220,7 +220,7 @@ extend uint512 : Debug {
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
-    /// @see https://rux-lang.dev/docs/api/format/uint512/write-debug
+    /// @see https://rux-lang.dev/docs/api/format/integer-text#uint512-write-debug
     pub func WriteDebug(self: &uint512, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         return self.WriteDisplay(writer, spec);
     }
@@ -232,7 +232,7 @@ extend int512 : Display {
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
-    /// @see https://rux-lang.dev/docs/api/format/int512/write-display
+    /// @see https://rux-lang.dev/docs/api/format/integer-text#int512-write-display
     pub func WriteDisplay(self: &int512, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         let negative = self < 0;
         let magnitude = negative ? ~(self as uint512) + 1 : self as uint512;
@@ -246,7 +246,7 @@ extend int512 : Debug {
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
-    /// @see https://rux-lang.dev/docs/api/format/int512/write-debug
+    /// @see https://rux-lang.dev/docs/api/format/integer-text#int512-write-debug
     pub func WriteDebug(self: &int512, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         return self.WriteDisplay(writer, spec);
     }

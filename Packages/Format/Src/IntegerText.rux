@@ -20,7 +20,7 @@ import Text::{ Encode, FormatAlign, FormatBase, FormatError, FormatSpec, Padding
 /// @param count how many entries of `digits` are meaningful
 /// @param negative whether a minus sign precedes the digits
 /// @returns success when the complete rendering was accepted
-/// @see https://rux-lang.dev/docs/api/format/write-integer-digits
+/// @see https://rux-lang.dev/docs/api/format/integer-text#write-integer-digits
 pub func WriteIntegerDigits(writer: &var TextWriter, spec: FormatSpec, digits: char8[..], count: uint,
                             negative: bool) -> ! FormatError {
     // Every integer width, narrow and wide, reaches the writer through here, so this is where an integer says
@@ -75,7 +75,7 @@ pub func WriteIntegerDigits(writer: &var TextWriter, spec: FormatSpec, digits: c
 /// @param magnitude the absolute value to render
 /// @param negative whether the value is negative
 /// @returns success when the complete rendering was accepted
-/// @see https://rux-lang.dev/docs/api/format/write-integer-spec
+/// @see https://rux-lang.dev/docs/api/format/integer-text#write-integer-spec
 pub func WriteIntegerSpec(writer: &var TextWriter, spec: FormatSpec, magnitude: uint64,
                           negative: bool) -> ! FormatError {
     var digits: char8[64];
@@ -112,7 +112,7 @@ pub func WriteIntegerSpec(writer: &var TextWriter, spec: FormatSpec, magnitude: 
 /// @param spec what the placeholder asked for
 /// @param scalar the Unicode scalar value to render
 /// @returns success when the padded character was accepted
-/// @see https://rux-lang.dev/docs/api/format/format-scalar
+/// @see https://rux-lang.dev/docs/api/format/character-text#format-scalar
 pub func FormatScalar(writer: &var TextWriter, spec: FormatSpec, scalar: char32) -> ! FormatError {
     RejectStyle(spec)?;
     var encoded: char8[4];
