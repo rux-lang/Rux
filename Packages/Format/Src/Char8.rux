@@ -8,7 +8,7 @@
 import Text::{ Debug, Display, FormatError, FormatSpec, RejectStyle, TextWriter };
 
 /// The character written in place of anything that is not one.
-/// @see https://rux-lang.dev/docs/api/format/replacement-character
+/// @see https://rux-lang.dev/docs/api/format/character-text#replacement-character
 pub const ReplacementCharacter: char32 = 0xFFFDu32 as char32;
 
 extend char8 : Display {
@@ -17,7 +17,7 @@ extend char8 : Display {
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
-    /// @see https://rux-lang.dev/docs/api/format/char8/write-display
+    /// @see https://rux-lang.dev/docs/api/format/character-text#char8-write-display
     pub func WriteDisplay(self: &char8, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         RejectStyle(spec)?;
         if (self as uint32) > 0x7F { return FormatScalar(writer, spec, ReplacementCharacter); }
@@ -36,7 +36,7 @@ extend char8 : Debug {
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
-    /// @see https://rux-lang.dev/docs/api/format/char8/write-debug
+    /// @see https://rux-lang.dev/docs/api/format/character-text#char8-write-debug
     pub func WriteDebug(self: &char8, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         return WriteCharacterDebug(writer, self as uint64, (self as uint32) <= 0x7F);
     }

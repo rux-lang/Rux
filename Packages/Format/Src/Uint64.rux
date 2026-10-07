@@ -9,7 +9,7 @@ extend uint64 : Display {
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
-    /// @see https://rux-lang.dev/docs/api/format/uint64/write-display
+    /// @see https://rux-lang.dev/docs/api/format/integer-text#uint64-write-display
     pub func WriteDisplay(self: &uint64, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         return WriteIntegerSpec(writer, spec, self, false);
     }
@@ -21,7 +21,7 @@ extend uint64 : Debug {
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
-    /// @see https://rux-lang.dev/docs/api/format/uint64/write-debug
+    /// @see https://rux-lang.dev/docs/api/format/integer-text#uint64-write-debug
     pub func WriteDebug(self: &uint64, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         return self.WriteDisplay(writer, spec);
     }

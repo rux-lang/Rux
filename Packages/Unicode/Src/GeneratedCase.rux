@@ -10,7 +10,7 @@
 //     sha256 efc25faf19de21b92c1194c111c932e03d2a5eaf18194e33f1156e96de4c9588
 
 /// Simple uppercase pairs: code point, its uppercase. Sorted; absence means the point maps to itself.
-/// @see https://rux-lang.dev/docs/api/unicode/tables
+/// @see https://rux-lang.dev/docs/api/unicode/tables#simple-upper-pairs
 pub const SimpleUpperPairs: uint32[3010] = [
     97, 65, 98, 66, 99, 67, 100, 68, 101, 69, 102, 70,
     103, 71, 104, 72, 105, 73, 106, 74, 107, 75, 108, 76,
@@ -266,7 +266,7 @@ pub const SimpleUpperPairs: uint32[3010] = [
 ];
 
 /// Simple lowercase pairs: code point, its lowercase.
-/// @see https://rux-lang.dev/docs/api/unicode/tables
+/// @see https://rux-lang.dev/docs/api/unicode/tables#simple-lower-pairs
 pub const SimpleLowerPairs: uint32[2976] = [
     65, 97, 66, 98, 67, 99, 68, 100, 69, 101, 70, 102,
     71, 103, 72, 104, 73, 105, 74, 106, 75, 107, 76, 108,
@@ -519,7 +519,7 @@ pub const SimpleLowerPairs: uint32[2976] = [
 ];
 
 /// Simple titlecase pairs, for the points whose titlecase differs from their uppercase.
-/// @see https://rux-lang.dev/docs/api/unicode/tables
+/// @see https://rux-lang.dev/docs/api/unicode/tables#simple-title-pairs
 pub const SimpleTitlePairs: uint32[2918] = [
     97, 65, 98, 66, 99, 67, 100, 68, 101, 69, 102, 70,
     103, 71, 104, 72, 105, 73, 106, 74, 107, 75, 108, 76,
@@ -769,7 +769,7 @@ pub const SimpleTitlePairs: uint32[2918] = [
 
 /// Full case folding index: code point, offset, length. C and F entries only, so the folding is the same in every
 /// locale.
-/// @see https://rux-lang.dev/docs/api/unicode/tables
+/// @see https://rux-lang.dev/docs/api/unicode/tables#full-fold-index
 pub const FullFoldIndex: uint32[4755] = [
     65, 0, 1, 66, 1, 1, 67, 2, 1, 68, 3, 1,
     69, 4, 1, 70, 5, 1, 71, 6, 1, 72, 7, 1,
@@ -1171,7 +1171,7 @@ pub const FullFoldIndex: uint32[4755] = [
 ];
 
 /// Full case folding elements, indexed by FullFoldIndex.
-/// @see https://rux-lang.dev/docs/api/unicode/tables
+/// @see https://rux-lang.dev/docs/api/unicode/tables#full-fold-elements
 pub const FullFoldElements: uint32[1705] = [
     97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108,
     109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120,
@@ -1320,7 +1320,7 @@ pub const FullFoldElements: uint32[1705] = [
 
 /// Unconditional full uppercase index: code point, offset, length. The conditional mappings are deliberately absent
 /// — they depend on locale or context.
-/// @see https://rux-lang.dev/docs/api/unicode/tables
+/// @see https://rux-lang.dev/docs/api/unicode/tables#full-upper-index
 pub const FullUpperIndex: uint32[309] = [
     223, 0, 2, 304, 2, 1, 329, 3, 2, 496, 5, 2,
     912, 7, 3, 944, 10, 3, 1415, 13, 2, 7830, 15, 2,
@@ -1351,7 +1351,7 @@ pub const FullUpperIndex: uint32[309] = [
 ];
 
 /// Unconditional full uppercase elements.
-/// @see https://rux-lang.dev/docs/api/unicode/tables
+/// @see https://rux-lang.dev/docs/api/unicode/tables#full-upper-elements
 pub const FullUpperElements: uint32[221] = [
     83, 83, 304, 700, 78, 74, 780, 921, 776, 769, 933, 776,
     769, 1333, 1362, 72, 817, 84, 776, 87, 778, 89, 778, 65,
@@ -1375,7 +1375,7 @@ pub const FullUpperElements: uint32[221] = [
 ];
 
 /// Unconditional full lowercase index: code point, offset, length.
-/// @see https://rux-lang.dev/docs/api/unicode/tables
+/// @see https://rux-lang.dev/docs/api/unicode/tables#full-lower-index
 pub const FullLowerIndex: uint32[309] = [
     223, 0, 1, 304, 1, 2, 329, 3, 1, 496, 4, 1,
     912, 5, 1, 944, 6, 1, 1415, 7, 1, 7830, 8, 1,
@@ -1406,7 +1406,7 @@ pub const FullLowerIndex: uint32[309] = [
 ];
 
 /// Unconditional full lowercase elements.
-/// @see https://rux-lang.dev/docs/api/unicode/tables
+/// @see https://rux-lang.dev/docs/api/unicode/tables#full-lower-elements
 pub const FullLowerElements: uint32[104] = [
     223, 105, 775, 329, 496, 912, 944, 1415, 7830, 7831, 7832, 7833,
     7834, 8016, 8018, 8020, 8022, 8064, 8065, 8066, 8067, 8068, 8069, 8070,

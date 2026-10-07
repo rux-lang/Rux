@@ -9,7 +9,7 @@
 
 /// Canonical decomposition index: code point, offset, length. Fully expanded, so lookup never recurses. Hangul is
 /// absent: its decomposition is arithmetic and computed instead.
-/// @see https://rux-lang.dev/docs/api/unicode/tables
+/// @see https://rux-lang.dev/docs/api/unicode/tables#canonical-decomposition-index
 pub const CanonicalDecompositionIndex: uint32[6243] = [
     192, 0, 2, 193, 2, 2, 194, 4, 2, 195, 6, 2,
     196, 8, 2, 197, 10, 2, 199, 12, 2, 200, 14, 2,
@@ -537,7 +537,7 @@ pub const CanonicalDecompositionIndex: uint32[6243] = [
 /// The scalar values every canonical decomposition expands to, run together end to end.
 /// `CanonicalDecompositionIndex` says where each point's run starts and how long it is; this holds the
 /// runs themselves, so a decomposition is a slice of it rather than a table lookup per value.
-/// @see https://rux-lang.dev/docs/api/unicode/tables
+/// @see https://rux-lang.dev/docs/api/unicode/tables#canonical-decomposition-elements
 pub const CanonicalDecompositionElements: uint32[3450] = [
     65, 768, 65, 769, 65, 770, 65, 771, 65, 776, 65, 778,
     67, 807, 69, 768, 69, 769, 69, 770, 69, 776, 73, 768,
@@ -830,7 +830,7 @@ pub const CanonicalDecompositionElements: uint32[3450] = [
 ];
 
 /// Compatibility decomposition index: code point, offset, length.
-/// @see https://rux-lang.dev/docs/api/unicode/tables
+/// @see https://rux-lang.dev/docs/api/unicode/tables#compatibility-decomposition-index
 pub const CompatibilityDecompositionIndex: uint32[17742] = [
     160, 0, 1, 168, 1, 2, 170, 3, 1, 175, 4, 2,
     178, 6, 1, 179, 7, 1, 180, 8, 2, 181, 10, 1,
@@ -2316,7 +2316,7 @@ pub const CompatibilityDecompositionIndex: uint32[17742] = [
 /// The scalar values every compatibility decomposition expands to, run together end to end.
 /// `CompatibilityDecompositionIndex` says where each point's run starts and how long it is. These are the
 /// decompositions that change appearance rather than preserving it, which is what separates NFKD from NFD.
-/// @see https://rux-lang.dev/docs/api/unicode/tables
+/// @see https://rux-lang.dev/docs/api/unicode/tables#compatibility-decomposition-elements
 pub const CompatibilityDecompositionElements: uint32[9193] = [
     32, 32, 776, 97, 32, 772, 50, 51, 32, 769, 956, 32,
     807, 49, 111, 49, 8260, 52, 49, 8260, 50, 51, 8260, 52,
@@ -3089,7 +3089,7 @@ pub const CompatibilityDecompositionElements: uint32[9193] = [
 
 /// Primary composite triples: starter, combining, composed. Sorted by starter then combining, for binary search.
 /// The exclusions and non-starter decompositions are already left out.
-/// @see https://rux-lang.dev/docs/api/unicode/tables
+/// @see https://rux-lang.dev/docs/api/unicode/tables#composition-triples
 pub const CompositionTriples: uint32[2883] = [
     60, 824, 8814, 61, 824, 8800, 62, 824, 8815, 65, 768, 192,
     65, 769, 193, 65, 770, 194, 65, 771, 195, 65, 772, 256,

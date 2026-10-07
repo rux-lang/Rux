@@ -14,7 +14,7 @@ import Core::uint;
 
 /// Where the padding goes when the rendering is narrower than the width.
 /// Copy, carrying no payload.
-/// @see https://rux-lang.dev/docs/api/text/format-align
+/// @see https://rux-lang.dev/docs/api/text/format-spec#format-align
 pub enum FormatAlign: int32 {
     /// The type's own default: numbers to the right, text to the left.
     Default = 0,
@@ -30,7 +30,7 @@ pub enum FormatAlign: int32 {
 /// Copy, carrying no payload. A negative signed integer renders in every base as a minus sign followed by the
 /// digits of its magnitude, not as its two's-complement bits: `{:b}` of `-5` is `-101` and `{:#x}` of `-255` is
 /// `-0xff`. That keeps the text of a value independent of the width of the type it happens to be stored in.
-/// @see https://rux-lang.dev/docs/api/text/format-base
+/// @see https://rux-lang.dev/docs/api/text/format-spec#format-base
 pub enum FormatBase: int32 {
     /// Base ten, the default.
     Decimal = 0,
@@ -80,7 +80,7 @@ extend FormatSpec {
     /// What a bare `{}` asks for: nothing at all.
     /// Cannot fail. Runs in constant time and allocates nothing.
     /// @returns a spec with no width, no precision, default alignment and base ten
-    /// @see https://rux-lang.dev/docs/api/text/format-spec/plain
+    /// @see https://rux-lang.dev/docs/api/text/format-spec#plain
     pub func Plain() -> FormatSpec {
         return FormatSpec {
             fill: c8' ',
@@ -99,7 +99,7 @@ extend FormatSpec {
     /// The byte that pads a rendering narrower than the width.
     /// Borrows the spec. Cannot fail; runs in constant time and allocates nothing.
     /// @returns the fill byte, a space unless the placeholder named one
-    /// @see https://rux-lang.dev/docs/api/text/format-spec/fill
+    /// @see https://rux-lang.dev/docs/api/text/format-spec#fill
     pub func Fill(self: &FormatSpec) -> char8 {
         return self.fill;
     }
@@ -109,7 +109,7 @@ extend FormatSpec {
     /// the left and text on the right, and only the value knows which it is.
     /// Borrows the spec. Cannot fail; runs in constant time and allocates nothing.
     /// @returns the requested alignment, or `Default` when the placeholder named none
-    /// @see https://rux-lang.dev/docs/api/text/format-spec/alignment
+    /// @see https://rux-lang.dev/docs/api/text/format-spec#alignment
     pub func Alignment(self: &FormatSpec) -> FormatAlign {
         return self.align;
     }
@@ -117,7 +117,7 @@ extend FormatSpec {
     /// Whether a non-negative number should carry a `+`.
     /// Borrows the spec. Cannot fail; runs in constant time and allocates nothing.
     /// @returns true when the placeholder wrote `+`
-    /// @see https://rux-lang.dev/docs/api/text/format-spec/shows-sign
+    /// @see https://rux-lang.dev/docs/api/text/format-spec#shows-sign
     pub func ShowsSign(self: &FormatSpec) -> bool {
         return self.showSign;
     }
@@ -125,7 +125,7 @@ extend FormatSpec {
     /// Whether a based integer should carry its `0b`, `0o` or `0x` prefix.
     /// Borrows the spec. Cannot fail; runs in constant time and allocates nothing.
     /// @returns true when the placeholder wrote `#`
-    /// @see https://rux-lang.dev/docs/api/text/format-spec/is-alternate
+    /// @see https://rux-lang.dev/docs/api/text/format-spec#is-alternate
     pub func IsAlternate(self: &FormatSpec) -> bool {
         return self.alternate;
     }
@@ -133,7 +133,7 @@ extend FormatSpec {
     /// Whether a number pads with zeros inside itself rather than with fill outside itself.
     /// Borrows the spec. Cannot fail; runs in constant time and allocates nothing.
     /// @returns true when the placeholder wrote a leading `0`
-    /// @see https://rux-lang.dev/docs/api/text/format-spec/zero-pads
+    /// @see https://rux-lang.dev/docs/api/text/format-spec#zero-pads
     pub func ZeroPads(self: &FormatSpec) -> bool {
         return self.zeroPad;
     }
@@ -142,7 +142,7 @@ extend FormatSpec {
     /// Counted in scalars rather than bytes, so an accented name pads the same as an unaccented one.
     /// Borrows the spec. Cannot fail; runs in constant time and allocates nothing.
     /// @returns the requested width, or zero when the placeholder asked for none
-    /// @see https://rux-lang.dev/docs/api/text/format-spec/width
+    /// @see https://rux-lang.dev/docs/api/text/format-spec#width
     pub func Width(self: &FormatSpec) -> uint {
         return self.width;
     }
@@ -152,7 +152,7 @@ extend FormatSpec {
     /// cannot say whether one was asked for.
     /// Borrows the spec. Cannot fail; runs in constant time and allocates nothing.
     /// @returns the requested precision, meaningful only alongside `HasPrecision`
-    /// @see https://rux-lang.dev/docs/api/text/format-spec/precision
+    /// @see https://rux-lang.dev/docs/api/text/format-spec#precision
     pub func Precision(self: &FormatSpec) -> uint {
         return self.precision;
     }
@@ -160,7 +160,7 @@ extend FormatSpec {
     /// Whether the placeholder named a precision at all.
     /// Borrows the spec. Cannot fail; runs in constant time and allocates nothing.
     /// @returns true when a precision was written, including `.0`
-    /// @see https://rux-lang.dev/docs/api/text/format-spec/has-precision
+    /// @see https://rux-lang.dev/docs/api/text/format-spec#has-precision
     pub func HasPrecision(self: &FormatSpec) -> bool {
         return self.hasPrecision;
     }
@@ -168,7 +168,7 @@ extend FormatSpec {
     /// The base an integer should render in.
     /// Borrows the spec. Cannot fail; runs in constant time and allocates nothing.
     /// @returns the requested base, or `Decimal` when the placeholder named none
-    /// @see https://rux-lang.dev/docs/api/text/format-spec/base
+    /// @see https://rux-lang.dev/docs/api/text/format-spec#base
     pub func Base(self: &FormatSpec) -> FormatBase {
         return self.base;
     }
@@ -179,7 +179,7 @@ extend FormatSpec {
     /// The result borrows the specification text this was parsed from and must not outlive it.
     /// Borrows the spec. Cannot fail; runs in constant time and allocates nothing.
     /// @returns the style bytes, empty when no style was written
-    /// @see https://rux-lang.dev/docs/api/text/format-spec/style
+    /// @see https://rux-lang.dev/docs/api/text/format-spec#style
     pub func Style(self: &FormatSpec) -> char8[..] {
         return self.style;
     }
@@ -187,7 +187,7 @@ extend FormatSpec {
     /// Whether the specification named a style at all.
     /// Borrows the spec. Cannot fail; runs in constant time and allocates nothing.
     /// @returns true when a style was written
-    /// @see https://rux-lang.dev/docs/api/text/format-spec/has-style
+    /// @see https://rux-lang.dev/docs/api/text/format-spec#has-style
     pub func HasStyle(self: &FormatSpec) -> bool {
         return self.style.length > 0;
     }
@@ -198,7 +198,7 @@ extend FormatSpec {
     /// Borrows the spec. Cannot fail; runs in time proportional to `name`, and allocates nothing.
     /// @param name the style to compare against
     /// @returns true when the specification named exactly that style
-    /// @see https://rux-lang.dev/docs/api/text/format-spec/style-is
+    /// @see https://rux-lang.dev/docs/api/text/format-spec#style-is
     pub func StyleIs(self: &FormatSpec, name: char8[..]) -> bool {
         if self.style.length != name.length { return false; }
         var index: uint = 0;
@@ -296,7 +296,7 @@ func ReadNumber(text: char8[..], start: uint, value: *var uint, end: *var uint) 
 /// specification escapes.
 /// @param text the specification body, without the surrounding braces or the colon
 /// @returns the parsed specification, or where it was malformed
-/// @see https://rux-lang.dev/docs/api/text/parse-format-spec
+/// @see https://rux-lang.dev/docs/api/text/format-spec#parse-format-spec
 pub func ParseFormatSpec(text: char8[..]) -> FormatSpec ! FormatError {
     var spec = FormatSpec::Plain();
     var index: uint = 0;
@@ -379,7 +379,7 @@ func BaseOfStyle(style: char8[..]) -> FormatBase {
 /// Reports `UnsupportedRequest` when a style was written.
 /// @param spec the specification to check
 /// @returns success when no style was named
-/// @see https://rux-lang.dev/docs/api/text/reject-style
+/// @see https://rux-lang.dev/docs/api/text/format-spec#reject-style
 pub func RejectStyle(spec: FormatSpec) -> ! FormatError {
     if spec.HasStyle() { fail FormatError::UnsupportedRequest; }
     return;
@@ -392,7 +392,7 @@ pub func RejectStyle(spec: FormatSpec) -> ! FormatError {
 /// Reports `UnsupportedRequest` for a style that names no base.
 /// @param spec the specification to check
 /// @returns success when no style was named, or the style named a base
-/// @see https://rux-lang.dev/docs/api/text/reject-non-base-style
+/// @see https://rux-lang.dev/docs/api/text/format-spec#reject-non-base-style
 pub func RejectNonBaseStyle(spec: FormatSpec) -> ! FormatError {
     if spec.HasStyle() && spec.Base() == FormatBase::Decimal {
         fail FormatError::UnsupportedRequest;

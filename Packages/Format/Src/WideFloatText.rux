@@ -26,7 +26,7 @@ func KindOf(reason: WideDigitFailure) -> TextFailureKind {
 /// @param bits the value's bit pattern
 /// @param layout which wide floating-point format the bits are in
 /// @returns success when the whole rendering was accepted
-/// @see https://rux-lang.dev/docs/api/format/write-wide-float
+/// @see https://rux-lang.dev/docs/api/format/float-layout#write-wide-float
 pub func WriteWideFloat(allocator: Allocator, writer: &var TextWriter, spec: FormatSpec, bits: uint512,
                     layout: &FloatLayout) -> ! FormatError {
     let value = UnpackWide(bits, layout);

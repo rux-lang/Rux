@@ -19,7 +19,7 @@
 /// @param numeric true when the value aligns like a number by default
 /// @param before receives the count of fill characters that precede the rendering
 /// @param after receives the count that follow it
-/// @see https://rux-lang.dev/docs/api/text/padding-around
+/// @see https://rux-lang.dev/docs/api/text/format-spec#padding-around
 pub func PaddingAround(spec: FormatSpec, occupied: uint, numeric: bool, before: *var uint, after: *var uint) {
     *before = 0;
     *after = 0;
@@ -45,7 +45,7 @@ pub func PaddingAround(spec: FormatSpec, occupied: uint, numeric: bool, before: 
 /// @param spec the specification whose fill byte is written
 /// @param count how many copies to write
 /// @returns success when every copy was accepted
-/// @see https://rux-lang.dev/docs/api/text/write-fill
+/// @see https://rux-lang.dev/docs/api/text/format-spec#write-fill
 pub func WriteFill(writer: &var TextWriter, spec: FormatSpec, count: uint) -> ! FormatError {
     var written: uint = 0;
     while written < count {
@@ -65,7 +65,7 @@ pub func WriteFill(writer: &var TextWriter, spec: FormatSpec, count: uint) -> ! 
 /// @param rendered the already-rendered text, which must be well-formed UTF-8
 /// @param numeric true when the value aligns like a number by default
 /// @returns success when the padded rendering was accepted in full
-/// @see https://rux-lang.dev/docs/api/text/write-aligned
+/// @see https://rux-lang.dev/docs/api/text/format-spec#write-aligned
 pub func WriteAligned(writer: &var TextWriter, spec: FormatSpec, rendered: char8[..],
                       numeric: bool) -> ! FormatError {
     let occupied = CountScalars(rendered);

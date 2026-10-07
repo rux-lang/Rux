@@ -10,7 +10,7 @@ extend char32 : Display {
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
-    /// @see https://rux-lang.dev/docs/api/format/char32/write-display
+    /// @see https://rux-lang.dev/docs/api/format/character-text#char32-write-display
     pub func WriteDisplay(self: &char32, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         RejectStyle(spec)?;
         let value = self as uint32;
@@ -27,7 +27,7 @@ extend char32 : Debug {
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the complete rendering was accepted
-    /// @see https://rux-lang.dev/docs/api/format/char32/write-debug
+    /// @see https://rux-lang.dev/docs/api/format/character-text#char32-write-debug
     pub func WriteDebug(self: &char32, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         return WriteCharacterDebug(writer, self as uint32 as uint64, IsScalarValue(self as uint32));
     }

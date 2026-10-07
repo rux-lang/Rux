@@ -15,7 +15,7 @@ import Allocator::Allocator;
 /// @param left the first piece
 /// @param right the second
 /// @returns the two joined, or why they could not be
-/// @see https://rux-lang.dev/docs/api/text/concat
+/// @see https://rux-lang.dev/docs/api/text/transform#concat
 pub func Concat(allocator: Allocator, left: StringView, right: StringView) -> String ! TextError {
     var builder = StringBuilder(allocator);
     builder.Reserve(left.bytes.length + right.bytes.length)?;
@@ -31,7 +31,7 @@ pub func Concat(allocator: Allocator, left: StringView, right: StringView) -> St
 /// @param view the borrowed text to act on
 /// @param count how many times
 /// @returns the text repeated that many times, or why it could not be
-/// @see https://rux-lang.dev/docs/api/text/repeat
+/// @see https://rux-lang.dev/docs/api/text/transform#repeat
 pub func Repeat(allocator: Allocator, view: StringView, count: uint) -> String ! TextError {
     var builder = StringBuilder(allocator);
     if count != 0 && view.bytes.length != 0 {
@@ -57,7 +57,7 @@ pub func Repeat(allocator: Allocator, view: StringView, count: uint) -> String !
 /// @param needle the text to look for
 /// @param replacement the text to put in its place
 /// @returns the text with every occurrence replaced, or why it could not be
-/// @see https://rux-lang.dev/docs/api/text/replace
+/// @see https://rux-lang.dev/docs/api/text/transform#replace
 pub func Replace(allocator: Allocator, view: StringView, needle: StringView, replacement: StringView) -> String ! TextError {
     var builder = StringBuilder(allocator);
     if needle.bytes.length == 0 {
@@ -87,7 +87,7 @@ pub func Replace(allocator: Allocator, view: StringView, needle: StringView, rep
 /// Whether `byte` is an ASCII letter.
 /// @param byte the byte
 /// @returns whether the byte is an ASCII letter
-/// @see https://rux-lang.dev/docs/api/text/is-ascii-letter
+/// @see https://rux-lang.dev/docs/api/text/transform#is-ascii-letter
 pub func IsAsciiLetter(byte: char8) -> bool {
     let value = byte as uint32;
     return (value >= 0x41 && value <= 0x5A) || (value >= 0x61 && value <= 0x7A);
@@ -99,7 +99,7 @@ pub func IsAsciiLetter(byte: char8) -> bool {
 /// @param allocator where the storage comes from
 /// @param view the borrowed text to act on
 /// @returns the text with its ASCII letters uppercased and everything else untouched
-/// @see https://rux-lang.dev/docs/api/text/to-ascii-upper
+/// @see https://rux-lang.dev/docs/api/text/transform#to-ascii-upper
 pub func ToAsciiUpper(allocator: Allocator, view: StringView) -> String ! TextError {
     return MapAscii(allocator, view, 0x61, 0x7A, 0x20);
 }
@@ -108,7 +108,7 @@ pub func ToAsciiUpper(allocator: Allocator, view: StringView) -> String ! TextEr
 /// @param allocator where the storage comes from
 /// @param view the borrowed text to act on
 /// @returns the text with its ASCII letters lowercased and everything else untouched
-/// @see https://rux-lang.dev/docs/api/text/to-ascii-lower
+/// @see https://rux-lang.dev/docs/api/text/transform#to-ascii-lower
 pub func ToAsciiLower(allocator: Allocator, view: StringView) -> String ! TextError {
     return MapAscii(allocator, view, 0x41, 0x5A, 0x20);
 }

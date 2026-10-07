@@ -76,7 +76,7 @@ extend TextError : Display {
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole description was accepted
-    /// @see https://rux-lang.dev/docs/api/text/text-error/write-display
+    /// @see https://rux-lang.dev/docs/api/text/text-error#write-display
     pub func WriteDisplay(self: &TextError, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         AcceptsErrorSpec(spec)?;
         return match self {
@@ -94,7 +94,7 @@ extend TextError : Debug {
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole name was accepted
-    /// @see https://rux-lang.dev/docs/api/text/text-error/write-debug
+    /// @see https://rux-lang.dev/docs/api/text/text-error#write-debug
     pub func WriteDebug(self: &TextError, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         AcceptsErrorSpec(spec)?;
         return match self {
@@ -112,7 +112,7 @@ extend TextFailureKind : Display {
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole description was accepted
-    /// @see https://rux-lang.dev/docs/api/text/text-failure-kind/write-display
+    /// @see https://rux-lang.dev/docs/api/text/format-error#text-failure-kind-write-display
     pub func WriteDisplay(self: &TextFailureKind, writer: &var TextWriter,
                           spec: FormatSpec) -> ! FormatError {
         AcceptsErrorSpec(spec)?;
@@ -126,7 +126,7 @@ extend TextFailureKind : Debug {
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole name was accepted
-    /// @see https://rux-lang.dev/docs/api/text/text-failure-kind/write-debug
+    /// @see https://rux-lang.dev/docs/api/text/format-error#text-failure-kind-write-debug
     pub func WriteDebug(self: &TextFailureKind, writer: &var TextWriter,
                         spec: FormatSpec) -> ! FormatError {
         AcceptsErrorSpec(spec)?;
@@ -143,7 +143,7 @@ extend FormatError : Display {
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole description was accepted
-    /// @see https://rux-lang.dev/docs/api/text/format-error/write-display
+    /// @see https://rux-lang.dev/docs/api/text/format-error#write-display
     pub func WriteDisplay(self: &FormatError, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         AcceptsErrorSpec(spec)?;
         return match self {
@@ -166,7 +166,7 @@ extend FormatError : Debug {
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole rendering was accepted
-    /// @see https://rux-lang.dev/docs/api/text/format-error/write-debug
+    /// @see https://rux-lang.dev/docs/api/text/format-error#write-debug
     pub func WriteDebug(self: &FormatError, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         AcceptsErrorSpec(spec)?;
         return match self {
@@ -208,7 +208,7 @@ extend Utf8Error : Display {
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole description was accepted
-    /// @see https://rux-lang.dev/docs/api/text/utf8-error/write-display
+    /// @see https://rux-lang.dev/docs/api/text/utf8-error#write-display
     pub func WriteDisplay(self: &Utf8Error, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         AcceptsErrorSpec(spec)?;
         return match self {
@@ -225,7 +225,7 @@ extend Utf8Error : Debug {
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole name was accepted
-    /// @see https://rux-lang.dev/docs/api/text/utf8-error/write-debug
+    /// @see https://rux-lang.dev/docs/api/text/utf8-error#write-debug
     pub func WriteDebug(self: &Utf8Error, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         AcceptsErrorSpec(spec)?;
         return match self {
@@ -245,7 +245,7 @@ extend AllocError : Display {
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole description was accepted
-    /// @see https://rux-lang.dev/docs/api/text/alloc-error/write-display
+    /// @see https://rux-lang.dev/docs/api/text/display#alloc-error-write-display
     pub func WriteDisplay(self: &AllocError, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         AcceptsErrorSpec(spec)?;
         return match self {
@@ -262,7 +262,7 @@ extend AllocError : Debug {
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole name was accepted
-    /// @see https://rux-lang.dev/docs/api/text/alloc-error/write-debug
+    /// @see https://rux-lang.dev/docs/api/text/display#alloc-error-write-debug
     pub func WriteDebug(self: &AllocError, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         AcceptsErrorSpec(spec)?;
         return match self {
@@ -281,7 +281,7 @@ extend PageError : Display {
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole description was accepted
-    /// @see https://rux-lang.dev/docs/api/text/page-error/write-display
+    /// @see https://rux-lang.dev/docs/api/text/display#page-error-write-display
     pub func WriteDisplay(self: &PageError, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         AcceptsErrorSpec(spec)?;
         return match self {
@@ -301,7 +301,7 @@ extend PageError : Debug {
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole name was accepted
-    /// @see https://rux-lang.dev/docs/api/text/page-error/write-debug
+    /// @see https://rux-lang.dev/docs/api/text/display#page-error-write-debug
     pub func WriteDebug(self: &PageError, writer: &var TextWriter, spec: FormatSpec) -> ! FormatError {
         AcceptsErrorSpec(spec)?;
         return match self {
