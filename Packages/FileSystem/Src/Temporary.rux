@@ -22,7 +22,7 @@ when #target.os == .Windows {
 /// How many names are tried before a temporary file gives up.
 /// With 128 bits of name, one collision is already a surprise and three in a row is not chance; failing is the
 /// honest response to an entropy source that has stopped being one.
-/// @see https://rux-lang.dev/docs/api/filesystem/temporary-name-attempts
+/// @see https://rux-lang.dev/docs/api/filesystem/temporary-file#temporary-name-attempts
 pub const TemporaryNameAttempts: uint = 4;
 
 /// The directory the system sets aside for temporary files.
@@ -31,7 +31,7 @@ pub const TemporaryNameAttempts: uint = 4;
 /// caller who must honor it passes the directory to the functions below instead.
 /// @param allocator where the storage comes from
 /// @returns the system's directory for temporary files
-/// @see https://rux-lang.dev/docs/api/filesystem/temporary-directory
+/// @see https://rux-lang.dev/docs/api/filesystem/temporary-file#temporary-directory
 pub func TemporaryDirectory(allocator: Allocator) -> PathBuffer ! IoError {
     when #target.os == .Windows {
         var units: OsUnit[512];
@@ -101,7 +101,7 @@ extend TemporaryFile {
     /// @param directory the directory to create it in
     /// @param prefix the text the generated name starts with
     /// @returns the created file, which is removed when closed unless kept
-    /// @see https://rux-lang.dev/docs/api/filesystem/temporary-file/create
+    /// @see https://rux-lang.dev/docs/api/filesystem/temporary-file#create
     pub func Create(allocator: Allocator, directory: Path, prefix: char8[..]) -> TemporaryFile ! IoError {
         var options = OpenOptions();
         options.read = true;
@@ -132,7 +132,7 @@ extend TemporaryFile {
 
     /// The file's path, for handing to something that needs a name.
     /// @returns the path it was created at
-    /// @see https://rux-lang.dev/docs/api/filesystem/temporary-file/path
+    /// @see https://rux-lang.dev/docs/api/filesystem/temporary-file#path
     pub func AsPath(self: &TemporaryFile) -> Path {
         return self.path.AsPath();
     }
@@ -140,7 +140,7 @@ extend TemporaryFile {
     /// Closes the file and deletes it, reporting the first thing that went wrong.
     /// @param allocator where the storage comes from
     /// @returns success when it was removed
-    /// @see https://rux-lang.dev/docs/api/filesystem/temporary-file/close
+    /// @see https://rux-lang.dev/docs/api/filesystem/temporary-file#close
     pub func Close(self: &var TemporaryFile, allocator: Allocator) -> ! IoError {
         let closed = self.file.Close();
         var deleted: ! IoError = .Success(());
@@ -155,7 +155,7 @@ extend TemporaryFile {
 
     /// Closes the file and leaves it where it is, giving up the name.
     /// @returns success when it will be left in place rather than removed
-    /// @see https://rux-lang.dev/docs/api/filesystem/temporary-file/keep
+    /// @see https://rux-lang.dev/docs/api/filesystem/temporary-file#keep
     pub func Keep(self: &var TemporaryFile) -> ! IoError {
         self.owned = false;
         return self.file.Close();
@@ -165,7 +165,7 @@ extend TemporaryFile {
     /// A destructor has nowhere to report a failed deletion, so a caller who needs to know calls `Close`. What
     /// this guarantees is that a temporary file is never left behind by an early return or a failure path, which
     /// is the reason the type exists.
-    /// @see https://rux-lang.dev/docs/api/filesystem/temporary-file/destructor
+    /// @see https://rux-lang.dev/docs/api/filesystem/temporary-file#destructor
     func ~TemporaryFile(self: &var TemporaryFile) {
         self.file.Close() catch { else => {} };
         if self.owned {
@@ -198,7 +198,7 @@ extend TemporaryDirectoryHandle {
     /// @param directory the directory to create it in
     /// @param prefix the text the generated name starts with
     /// @returns the created directory, which is removed when closed unless kept
-    /// @see https://rux-lang.dev/docs/api/filesystem/temporary-directory-handle/create
+    /// @see https://rux-lang.dev/docs/api/filesystem/temporary-directory-handle#create
     pub func Create(allocator: Allocator, directory: Path, prefix: char8[..]) -> TemporaryDirectoryHandle ! IoError {
         var attempt: uint = 0;
         while attempt < TemporaryNameAttempts {
@@ -224,7 +224,7 @@ extend TemporaryDirectoryHandle {
 
     /// The directory's path, for building names inside it.
     /// @returns the path it was created at
-    /// @see https://rux-lang.dev/docs/api/filesystem/temporary-directory-handle/path
+    /// @see https://rux-lang.dev/docs/api/filesystem/temporary-directory-handle#path
     pub func AsPath(self: &TemporaryDirectoryHandle) -> Path {
         return self.path.AsPath();
     }
@@ -232,7 +232,7 @@ extend TemporaryDirectoryHandle {
     /// Removes the directory and reports what the removal said.
     /// @param allocator where the storage comes from
     /// @returns success when it was removed
-    /// @see https://rux-lang.dev/docs/api/filesystem/temporary-directory-handle/close
+    /// @see https://rux-lang.dev/docs/api/filesystem/temporary-directory-handle#close
     pub func Close(self: &var TemporaryDirectoryHandle, allocator: Allocator) -> ! IoError {
         var removed: ! IoError = .Success(());
         if self.owned {
@@ -244,13 +244,13 @@ extend TemporaryDirectoryHandle {
     }
 
     /// Leaves the directory where it is, giving up the name.
-    /// @see https://rux-lang.dev/docs/api/filesystem/temporary-directory-handle/keep
+    /// @see https://rux-lang.dev/docs/api/filesystem/temporary-directory-handle#keep
     pub func Keep(self: &var TemporaryDirectoryHandle) {
         self.owned = false;
     }
 
     /// Removes the directory with the outcome discarded: the safety net, not the contract.
-    /// @see https://rux-lang.dev/docs/api/filesystem/temporary-directory-handle/destructor
+    /// @see https://rux-lang.dev/docs/api/filesystem/temporary-directory-handle#destructor
     func ~TemporaryDirectoryHandle(self: &var TemporaryDirectoryHandle) {
         if self.owned {
             self.owned = false;

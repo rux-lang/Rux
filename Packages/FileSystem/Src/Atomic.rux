@@ -47,7 +47,7 @@ extend AtomicWrite {
     /// @param allocator where the storage comes from
     /// @param target the path the finished contents will take
     /// @returns a write in progress against a temporary file
-    /// @see https://rux-lang.dev/docs/api/filesystem/atomic-write/begin
+    /// @see https://rux-lang.dev/docs/api/filesystem/atomic-write#begin
     pub func Begin(allocator: Allocator, target: Path) -> AtomicWrite ! IoError {
         // A target with no parent is a bare name in the working directory, whose parent is that directory.
         let parent = target.Parent();
@@ -68,14 +68,14 @@ extend AtomicWrite {
     /// duration of a call borrows the `AtomicWrite` itself, which is a `Writer`.
     /// The `AtomicWrite` must outlive the result and must not be moved while it exists. See `FileStream`.
     /// @returns a stream over the partial file, held by address
-    /// @see https://rux-lang.dev/docs/api/filesystem/atomic-write/stream
+    /// @see https://rux-lang.dev/docs/api/filesystem/atomic-write#stream
     pub func Stream(self: &var AtomicWrite) -> FileStream {
         return self.scratch.file.Stream();
     }
 
     /// The name the finished file will take.
     /// @returns the path the contents will take when committed
-    /// @see https://rux-lang.dev/docs/api/filesystem/atomic-write/target
+    /// @see https://rux-lang.dev/docs/api/filesystem/atomic-write#target
     pub func Target(self: &AtomicWrite) -> Path {
         return self.target.AsPath();
     }
@@ -89,7 +89,7 @@ extend AtomicWrite {
     /// rather than being durable on some and pretending on the rest.
     /// @param allocator where the storage comes from
     /// @returns success when the target now holds the contents; on failure it still holds the old ones
-    /// @see https://rux-lang.dev/docs/api/filesystem/atomic-write/commit
+    /// @see https://rux-lang.dev/docs/api/filesystem/atomic-write#commit
     pub func Commit(self: &var AtomicWrite, allocator: Allocator) -> ! IoError {
         if !self.pending { fail IoError::Of(IoErrorKind::InvalidInput); }
         self.scratch.file.Sync()?;
@@ -106,7 +106,7 @@ extend AtomicWrite {
     /// Throws the partial file away and leaves the target as it was.
     /// @param allocator where the storage comes from
     /// @returns success when the temporary file was removed and the target left alone
-    /// @see https://rux-lang.dev/docs/api/filesystem/atomic-write/abandon
+    /// @see https://rux-lang.dev/docs/api/filesystem/atomic-write#abandon
     pub func Abandon(self: &var AtomicWrite, allocator: Allocator) -> ! IoError {
         if !self.pending { return; }
         self.pending = false;
@@ -114,7 +114,7 @@ extend AtomicWrite {
     }
 
     /// Gives the buffers back. The temporary's own destructor removes any partial file.
-    /// @see https://rux-lang.dev/docs/api/filesystem/atomic-write/release
+    /// @see https://rux-lang.dev/docs/api/filesystem/atomic-write#release
     pub func Release(self: &var AtomicWrite) {
         self.pending = false;
         self.target.Release();
@@ -122,7 +122,7 @@ extend AtomicWrite {
     /// Discards an uncommitted replacement, leaving the target untouched.
     /// This is the property that makes the type worth using: an early return or a failure part-way through
     /// writing leaves the old contents exactly where they were, with no partial file left behind.
-    /// @see https://rux-lang.dev/docs/api/filesystem/atomic-write/destructor
+    /// @see https://rux-lang.dev/docs/api/filesystem/atomic-write#destructor
     func ~AtomicWrite(self: &var AtomicWrite) {
         self.pending = false;
         self.target.Release();
@@ -137,7 +137,7 @@ extend AtomicWrite : Writer {
     /// One attempt, partial on purpose, exactly as the underlying file's is; `WriteAll` does the looping.
     /// @param bytes the run to write
     /// @returns how much of it the file took
-    /// @see https://rux-lang.dev/docs/api/filesystem/atomic-write/write
+    /// @see https://rux-lang.dev/docs/api/filesystem/atomic-write#write
     pub func Write(self: &var AtomicWrite, bytes: char8[..]) -> uint ! IoError {
         return self.scratch.file.Write(bytes);
     }
@@ -145,7 +145,7 @@ extend AtomicWrite : Writer {
     /// Flushes the partial file, which holds nothing back.
     /// `Commit` is what makes the contents durable, and it syncs before it renames.
     /// @returns what the file reported
-    /// @see https://rux-lang.dev/docs/api/filesystem/atomic-write/flush
+    /// @see https://rux-lang.dev/docs/api/filesystem/atomic-write#flush
     pub func Flush(self: &var AtomicWrite) -> ! IoError {
         return self.scratch.file.Flush();
     }
@@ -157,7 +157,7 @@ extend AtomicWrite : Writer {
 /// @param target the path the finished contents will take
 /// @param contents the bytes the file should end up holding
 /// @returns success when the target now holds exactly `contents`
-/// @see https://rux-lang.dev/docs/api/filesystem/write-atomically
+/// @see https://rux-lang.dev/docs/api/filesystem/atomic-write#write-atomically
 pub func WriteAtomically(allocator: Allocator, target: Path, contents: char8[..]) -> ! IoError {
     var replacement = AtomicWrite::Begin(allocator, target)?;
     WriteAll(replacement, contents) catch {

@@ -37,7 +37,7 @@ else {
 /// `read`, `write` and `append` say what may happen through the handle; `create`, `createNew` and `truncate` say
 /// what happens to the file itself. `append` positions every write at the end, whatever was written in between,
 /// which is the property log writers need and `write` alone does not have.
-/// @see https://rux-lang.dev/docs/api/filesystem/open-options
+/// @see https://rux-lang.dev/docs/api/filesystem/file#open-options
 pub struct OpenOptions {
     /// The handle may read.
     read: bool;
@@ -57,14 +57,14 @@ pub struct OpenOptions {
 extend OpenOptions {
     /// Nothing at all: the caller states every intention.
     /// @returns options that permit nothing, which must be added to before opening
-    /// @see https://rux-lang.dev/docs/api/filesystem/open-options/new
+    /// @see https://rux-lang.dev/docs/api/filesystem/file#open-options-new
     pub func OpenOptions() -> OpenOptions {
         return OpenOptions { read: false, write: false, append: false, truncate: false, create: false, createNew: false };
     }
 
     /// Reading an existing file.
     /// @returns options that open an existing file for reading
-    /// @see https://rux-lang.dev/docs/api/filesystem/open-options/reading
+    /// @see https://rux-lang.dev/docs/api/filesystem/file#open-options-reading
     pub func Reading() -> OpenOptions {
         var options = OpenOptions();
         options.read = true;
@@ -73,7 +73,7 @@ extend OpenOptions {
 
     /// Writing a file from its beginning: created if missing, emptied if not.
     /// @returns options that create or truncate a file for writing
-    /// @see https://rux-lang.dev/docs/api/filesystem/open-options/writing
+    /// @see https://rux-lang.dev/docs/api/filesystem/file#open-options-writing
     pub func Writing() -> OpenOptions {
         var options = OpenOptions();
         options.write = true;
@@ -84,7 +84,7 @@ extend OpenOptions {
 
     /// Adding to a file's end: created if missing, appended to if not.
     /// @returns options that create or open a file and write at its end
-    /// @see https://rux-lang.dev/docs/api/filesystem/open-options/appending
+    /// @see https://rux-lang.dev/docs/api/filesystem/file#open-options-appending
     pub func Appending() -> OpenOptions {
         var options = OpenOptions();
         options.append = true;
@@ -161,7 +161,7 @@ extend File {
     /// @param path the path to act on
     /// @param options what may be done with the file, and what to do about existence
     /// @returns the open file
-    /// @see https://rux-lang.dev/docs/api/filesystem/file/open
+    /// @see https://rux-lang.dev/docs/api/filesystem/file#open
     pub func Open(allocator: Allocator, path: Path, options: OpenOptions) -> File ! IoError {
         options.Validate()?;
         let native = NativePath(allocator, path)?;
@@ -230,7 +230,7 @@ extend File {
 
     /// Whether the handle is still open.
     /// @returns whether the file is open
-    /// @see https://rux-lang.dev/docs/api/filesystem/file/is-open
+    /// @see https://rux-lang.dev/docs/api/filesystem/file#is-open
     pub func IsOpen(self: &File) -> bool {
         return self.open;
     }
@@ -239,7 +239,7 @@ extend File {
     /// Closing twice is not an error here: the second call is a no-op reporting success, because the first already
     /// gave the handle back. This is the error-visible path; a written file deserves it.
     /// @returns success when the descriptor was released; closing twice is not an error
-    /// @see https://rux-lang.dev/docs/api/filesystem/file/close
+    /// @see https://rux-lang.dev/docs/api/filesystem/file#close
     pub func Close(self: &var File) -> ! IoError {
         if !self.open { return; }
         self.open = false;
@@ -252,7 +252,7 @@ extend File {
         }
     }
     /// Closes with the outcome discarded: the safety net, not the contract.
-    /// @see https://rux-lang.dev/docs/api/filesystem/file/destructor
+    /// @see https://rux-lang.dev/docs/api/filesystem/file#destructor
     func ~File(self: &var File) {
         self.Close() catch { else => {} };
     }

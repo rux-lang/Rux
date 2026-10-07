@@ -24,7 +24,7 @@ when #target.os {
 /// @param allocator where the storage comes from
 /// @param path the path to act on
 /// @returns success when the directory now exists
-/// @see https://rux-lang.dev/docs/api/filesystem/make-directory
+/// @see https://rux-lang.dev/docs/api/filesystem/directories#make-directory
 pub func MakeDirectory(allocator: Allocator, path: Path) -> ! IoError {
     let native = NativePath(allocator, path)?;
     defer ReleaseNativePath(allocator, native, path.name.units.length);
@@ -46,7 +46,7 @@ pub func MakeDirectory(allocator: Allocator, path: Path) -> ! IoError {
 /// @param allocator where the storage comes from
 /// @param path the path to act on
 /// @returns success when the directory is gone
-/// @see https://rux-lang.dev/docs/api/filesystem/delete-directory
+/// @see https://rux-lang.dev/docs/api/filesystem/directories#delete-directory
 pub func DeleteDirectory(allocator: Allocator, path: Path) -> ! IoError {
     let native = NativePath(allocator, path)?;
     defer ReleaseNativePath(allocator, native, path.name.units.length);
@@ -67,7 +67,7 @@ pub func DeleteDirectory(allocator: Allocator, path: Path) -> ! IoError {
 /// @param allocator where the storage comes from
 /// @param path the path to act on
 /// @returns success when the file is gone
-/// @see https://rux-lang.dev/docs/api/filesystem/delete-file
+/// @see https://rux-lang.dev/docs/api/filesystem/file-operations#delete-file
 pub func DeleteFile(allocator: Allocator, path: Path) -> ! IoError {
     let native = NativePath(allocator, path)?;
     defer ReleaseNativePath(allocator, native, path.name.units.length);
@@ -87,7 +87,7 @@ pub func DeleteFile(allocator: Allocator, path: Path) -> ! IoError {
 /// A directory read one entry at a time.
 /// Move-only: `Release` (or destruction) gives back the platform handle and the record buffer. `Next` hands each
 /// name over as a fresh `OsString` owned by the caller.
-/// @see https://rux-lang.dev/docs/api/filesystem/directory-iterator
+/// @see https://rux-lang.dev/docs/api/filesystem/directories#directory-iterator
 pub struct DirectoryIterator {
     /// Where the record buffer came from, and where the names come from.
     allocator: Allocator;
@@ -121,7 +121,7 @@ func DirectoryBufferSize() -> uint {
 /// @param allocator where the storage comes from
 /// @param path the path to act on
 /// @returns a cursor over the directory's entries
-/// @see https://rux-lang.dev/docs/api/filesystem/read-directory
+/// @see https://rux-lang.dev/docs/api/filesystem/directories#read-directory
 pub func ReadDirectory(allocator: Allocator, path: Path) -> DirectoryIterator ! IoError {
     var iterator = DirectoryIterator {
         allocator: allocator,
@@ -190,7 +190,7 @@ extend DirectoryIterator {
     /// Succeeds with a name freshly owned by the caller, or with `none` at the end; a failure says what stopped the
     /// enumeration. The `.` and `..` entries are skipped.
     /// @returns the next entry's name, or `none` when the directory is done
-    /// @see https://rux-lang.dev/docs/api/filesystem/directory-iterator/next
+    /// @see https://rux-lang.dev/docs/api/filesystem/directories#directory-iterator-next
     pub func Next(self: &var DirectoryIterator) -> OsString? ! IoError {
         if !self.open { fail IoError::Of(IoErrorKind::InvalidHandle); }
         when #target.os == .Windows {
@@ -281,7 +281,7 @@ extend DirectoryIterator {
     }
 
     /// Gives back the handle and the buffer.
-    /// @see https://rux-lang.dev/docs/api/filesystem/directory-iterator/release
+    /// @see https://rux-lang.dev/docs/api/filesystem/directories#directory-iterator-release
     pub func Release(self: &var DirectoryIterator) {
         if self.open {
             self.open = false;
@@ -301,7 +301,7 @@ extend DirectoryIterator {
     }
 
     /// `Release`, as the safety net.
-    /// @see https://rux-lang.dev/docs/api/filesystem/directory-iterator/destructor
+    /// @see https://rux-lang.dev/docs/api/filesystem/directories#directory-iterator-destructor
     func ~DirectoryIterator(self: &var DirectoryIterator) {
         self.Release();
     }
