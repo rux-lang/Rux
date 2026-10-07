@@ -19,6 +19,6 @@ pub interface Hashable {
     /// Borrows the value and takes ownership of nothing, so hashing leaves it usable.
     /// Cannot fail. Every value of the type has a hash, and the same value always gives the same one within a run.
     /// @returns this value's hash
-    /// @see https://rux-lang.dev/docs/api/core/hashable/hash
+    /// @see https://rux-lang.dev/docs/api/core/hashable#hash
     func Hash() -> uint64;
 }

@@ -7,7 +7,7 @@
 
 /// An operating system a build can target.
 /// Named per system rather than per family, so a package can tell FreeBSD from Linux where their interfaces differ.
-/// @see https://rux-lang.dev/docs/api/core/operating-system
+/// @see https://rux-lang.dev/docs/api/core/target#operating-system
 #Allow("naming.type")
 pub enum OperatingSystem: uint8 {
     /// A target the compiler has no name for, which no supported build produces.
@@ -23,7 +23,7 @@ pub enum OperatingSystem: uint8 {
 }
 
 /// A processor architecture a build can target.
-/// @see https://rux-lang.dev/docs/api/core/architecture
+/// @see https://rux-lang.dev/docs/api/core/target#architecture
 #Allow("naming.type")
 pub enum Architecture: uint8 {
     /// An architecture the compiler has no name for, which no supported build produces.
@@ -37,7 +37,7 @@ pub enum Architecture: uint8 {
 /// The calling and layout conventions a target's code follows.
 /// This is what decides how arguments are passed and how aggregates are laid out, so a declaration that has to match
 /// a foreign interface branches on it rather than on the operating system.
-/// @see https://rux-lang.dev/docs/api/core/application-binary-interface
+/// @see https://rux-lang.dev/docs/api/core/target#application-binary-interface
 pub enum ApplicationBinaryInterface: uint8 {
     /// An ABI the compiler has no name for, which no supported build produces.
     Unknown = 0,
@@ -52,7 +52,7 @@ pub enum ApplicationBinaryInterface: uint8 {
 /// A processor feature a target may be built with.
 /// Presence is asked about with `Target::HasFeature` rather than read as a field, because a build enables a set
 /// rather than a single one.
-/// @see https://rux-lang.dev/docs/api/core/target-feature
+/// @see https://rux-lang.dev/docs/api/core/target#target-feature
 pub enum TargetFeature: uint8 {
     /// x86 Advanced Vector Extensions.
     AVX = 0,
@@ -77,7 +77,7 @@ pub enum TargetFeature: uint8 {
 }
 
 /// The order a target stores a multi-byte value's bytes in.
-/// @see https://rux-lang.dev/docs/api/core/endianness
+/// @see https://rux-lang.dev/docs/api/core/target#endianness
 pub enum Endianness: uint8 {
     /// Most significant byte first, which is network byte order.
     Big = 0,
@@ -87,7 +87,7 @@ pub enum Endianness: uint8 {
 
 /// The widths a target's C environment assigns to `long` and to a pointer.
 /// This is what a raw C declaration needs to get `long` right, since the two models disagree about it.
-/// @see https://rux-lang.dev/docs/api/core/data-model
+/// @see https://rux-lang.dev/docs/api/core/target#data-model
 pub enum DataModel: uint8 {
     /// A model the compiler has no name for, which no supported build produces.
     Unknown = 0,
@@ -98,7 +98,7 @@ pub enum DataModel: uint8 {
 }
 
 /// The object-file format a target's compiled code is emitted in.
-/// @see https://rux-lang.dev/docs/api/core/object-format
+/// @see https://rux-lang.dev/docs/api/core/target#object-format
 pub enum ObjectFormat: uint8 {
     /// A format the compiler has no name for, which no supported build produces.
     Unknown = 0,
@@ -141,12 +141,12 @@ extend Target {
     /// program.
     /// @param feature the target feature to ask about
     /// @returns whether the target being built for has it
-    /// @see https://rux-lang.dev/docs/api/core/target/has-feature
+    /// @see https://rux-lang.dev/docs/api/core/target#has-feature
     pub intrinsic func HasFeature(self: &Target, feature: TargetFeature) -> bool;
 }
 
 /// The machine being compiled for, as a compile-time value.
 /// Reading a field produces no runtime code. A `when` on one keeps only the branch that applies, so the untaken side
 /// is never resolved or type-checked and may name declarations this target does not have.
-/// @see https://rux-lang.dev/docs/api/core/target
+/// @see https://rux-lang.dev/docs/api/core/target#target-constant
 pub intrinsic #target: Target;

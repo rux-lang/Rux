@@ -3,20 +3,20 @@
 // trapping. Core's checked arithmetic is what reports instead of wrapping.
 
 /// The compiler representation of uint8.
-/// @see https://rux-lang.dev/docs/api/core/uint8
+/// @see https://rux-lang.dev/docs/api/core/integers#uint8
 pub intrinsic type uint8;
 
 extend uint8 {
     /// The number of bits in the representation.
-    /// @see https://rux-lang.dev/docs/api/core/uint8/bits
+    /// @see https://rux-lang.dev/docs/api/core/integers#uint8-bits
     pub const Bits: uint = 8;
     /// The number of bytes in the representation.
-    /// @see https://rux-lang.dev/docs/api/core/uint8/bytes
+    /// @see https://rux-lang.dev/docs/api/core/integers#uint8-bytes
     pub const Bytes: uint = 1;
     /// The smallest representable value.
-    /// @see https://rux-lang.dev/docs/api/core/uint8/min
+    /// @see https://rux-lang.dev/docs/api/core/integers#uint8-min
     pub const Min: uint8 = 0;
     /// The largest representable value.
-    /// @see https://rux-lang.dev/docs/api/core/uint8/max
+    /// @see https://rux-lang.dev/docs/api/core/integers#uint8-max
     pub const Max: uint8 = 255;
 }

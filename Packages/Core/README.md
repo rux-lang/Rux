@@ -115,7 +115,7 @@ func Main() -> int {
 
 ## Documentation
 
-<https://rux-lang.dev/docs/api/rux>
+<https://rux-lang.dev/docs/api/core>
 
 ## License
 

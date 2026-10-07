@@ -3,20 +3,20 @@
 // is behind nearly every edge case in checked arithmetic.
 
 /// The compiler representation of int256.
-/// @see https://rux-lang.dev/docs/api/core/int256
+/// @see https://rux-lang.dev/docs/api/core/integers#int256
 pub intrinsic type int256;
 
 extend int256 {
     /// The number of bits in the representation.
-    /// @see https://rux-lang.dev/docs/api/core/int256/bits
+    /// @see https://rux-lang.dev/docs/api/core/integers#int256-bits
     pub const Bits: uint = 256u;
     /// The number of bytes in the representation.
-    /// @see https://rux-lang.dev/docs/api/core/int256/bytes
+    /// @see https://rux-lang.dev/docs/api/core/integers#int256-bytes
     pub const Bytes: uint = 32u;
     /// The smallest representable value.
-    /// @see https://rux-lang.dev/docs/api/core/int256/min
+    /// @see https://rux-lang.dev/docs/api/core/integers#int256-min
     pub const Min: int256 = -57896044618658097711785492504343953926634992332820282019728792003956564819968i256;
     /// The largest representable value.
-    /// @see https://rux-lang.dev/docs/api/core/int256/max
+    /// @see https://rux-lang.dev/docs/api/core/integers#int256-max
     pub const Max: int256 = 57896044618658097711785492504343953926634992332820282019728792003956564819967i256;
 }

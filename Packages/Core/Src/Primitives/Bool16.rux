@@ -3,14 +3,14 @@
 // value is non-zero rather than truncating to the width first.
 
 /// The compiler representation of bool16.
-/// @see https://rux-lang.dev/docs/api/core/bool16
+/// @see https://rux-lang.dev/docs/api/core/booleans#bool16
 pub intrinsic type bool16;
 
 extend bool16 {
     /// The number of bits in the representation.
-    /// @see https://rux-lang.dev/docs/api/core/bool16/bits
+    /// @see https://rux-lang.dev/docs/api/core/booleans#bool16-bits
     pub const Bits: uint = 16;
     /// The number of bytes in the representation.
-    /// @see https://rux-lang.dev/docs/api/core/bool16/bytes
+    /// @see https://rux-lang.dev/docs/api/core/booleans#bool16-bytes
     pub const Bytes: uint = 2;
 }

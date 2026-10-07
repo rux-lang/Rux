@@ -3,5 +3,5 @@
 // ordinary code can say the short name and mean exactly the canonical one.
 
 /// The default alias of uint8.
-/// @see https://rux-lang.dev/docs/api/core/byte
+/// @see https://rux-lang.dev/docs/api/core/integers#byte
 pub type byte = uint8;

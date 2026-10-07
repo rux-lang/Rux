@@ -19,6 +19,6 @@ pub interface Equatable {
     /// Cannot fail: every pair of values of the type is either equal or not.
     /// @param other the value to compare against
     /// @returns whether the two are equal
-    /// @see https://rux-lang.dev/docs/api/core/equatable/equals
+    /// @see https://rux-lang.dev/docs/api/core/equatable#equals
     func Equals(other: &Self) -> bool;
 }

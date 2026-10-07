@@ -3,20 +3,20 @@
 // trapping. Core's checked arithmetic is what reports instead of wrapping.
 
 /// The compiler representation of uint64.
-/// @see https://rux-lang.dev/docs/api/core/uint64
+/// @see https://rux-lang.dev/docs/api/core/integers#uint64
 pub intrinsic type uint64;
 
 extend uint64 {
     /// The number of bits in the representation.
-    /// @see https://rux-lang.dev/docs/api/core/uint64/bits
+    /// @see https://rux-lang.dev/docs/api/core/integers#uint64-bits
     pub const Bits: uint = 64;
     /// The number of bytes in the representation.
-    /// @see https://rux-lang.dev/docs/api/core/uint64/bytes
+    /// @see https://rux-lang.dev/docs/api/core/integers#uint64-bytes
     pub const Bytes: uint = 8;
     /// The smallest representable value.
-    /// @see https://rux-lang.dev/docs/api/core/uint64/min
+    /// @see https://rux-lang.dev/docs/api/core/integers#uint64-min
     pub const Min: uint64 = 0;
     /// The largest representable value.
-    /// @see https://rux-lang.dev/docs/api/core/uint64/max
+    /// @see https://rux-lang.dev/docs/api/core/integers#uint64-max
     pub const Max: uint64 = 18446744073709551615;
 }

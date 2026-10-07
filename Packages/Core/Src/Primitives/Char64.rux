@@ -3,20 +3,20 @@
 // rejected, because a scalar value is what this carries. There is no `c64` literal prefix.
 
 /// The compiler representation of char64.
-/// @see https://rux-lang.dev/docs/api/core/char64
+/// @see https://rux-lang.dev/docs/api/core/characters#char64
 pub intrinsic type char64;
 
 extend char64 {
     /// The number of bits in the representation.
-    /// @see https://rux-lang.dev/docs/api/core/char64/bits
+    /// @see https://rux-lang.dev/docs/api/core/characters#char64-bits
     pub const Bits: uint = 64;
     /// The number of bytes in the representation.
-    /// @see https://rux-lang.dev/docs/api/core/char64/bytes
+    /// @see https://rux-lang.dev/docs/api/core/characters#char64-bytes
     pub const Bytes: uint = 8;
     /// The first code unit or Unicode scalar value.
-    /// @see https://rux-lang.dev/docs/api/core/char64/min
+    /// @see https://rux-lang.dev/docs/api/core/characters#char64-min
     pub const Min: char64 = 0u32 as char64;
     /// The last code unit or Unicode scalar value.
-    /// @see https://rux-lang.dev/docs/api/core/char64/max
+    /// @see https://rux-lang.dev/docs/api/core/characters#char64-max
     pub const Max: char64 = 1114111u32 as char64;
 }

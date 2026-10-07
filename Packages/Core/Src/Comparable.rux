@@ -21,6 +21,6 @@ pub interface Comparable {
     /// fail: a total order places every pair.
     /// @param other the value to compare against
     /// @returns how this value orders against `other`
-    /// @see https://rux-lang.dev/docs/api/core/comparable/compare
+    /// @see https://rux-lang.dev/docs/api/core/comparable#compare
     func Compare(other: &Self) -> Ordering;
 }

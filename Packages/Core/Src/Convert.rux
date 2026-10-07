@@ -19,7 +19,7 @@
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param sample any value of the type, read only to deduce it
 /// @returns whether the type can hold a negative value
-/// @see https://rux-lang.dev/docs/api/core/is-signed-type
+/// @see https://rux-lang.dev/docs/api/core/conversion#is-signed-type
 pub func IsSignedType<T>(sample: T) -> bool {
     let zero = sample - sample;
     return (zero - 1) < zero;
@@ -40,7 +40,7 @@ pub func IsSignedType<T>(sample: T) -> bool {
 /// @param value the value to act on
 /// @param result receives the conversion the machine produced, exact or lossy; never null
 /// @returns true when the value does not fit the destination; `result` then holds the lossy conversion
-/// @see https://rux-lang.dev/docs/api/core/convert-checked
+/// @see https://rux-lang.dev/docs/api/core/conversion#convert-checked
 pub func ConvertChecked<From, To>(value: From, result: *var To) -> bool {
     *result = value as To;
     // Converting back lands on the value it started from exactly when nothing was lost on the way out — with one
@@ -61,7 +61,7 @@ pub func ConvertChecked<From, To>(value: From, result: *var To) -> bool {
 /// @typeParam To the destination type
 /// @param value the value to act on
 /// @param result receives the wrapped, truncated or rounded conversion; never null
-/// @see https://rux-lang.dev/docs/api/core/convert-wrapping
+/// @see https://rux-lang.dev/docs/api/core/conversion#convert-wrapping
 pub func ConvertWrapping<From, To>(value: From, result: *var To) {
     *result = value as To;
 }
@@ -78,7 +78,7 @@ pub func ConvertWrapping<From, To>(value: From, result: *var To) {
 /// @typeParam To the destination type
 /// @param value the value to act on
 /// @param result receives the nearest representable value; never null
-/// @see https://rux-lang.dev/docs/api/core/convert-saturating
+/// @see https://rux-lang.dev/docs/api/core/conversion#convert-saturating
 pub func ConvertSaturating<From, To>(value: From, result: *var To) {
     if !ConvertChecked<From, To>(value, result) { return; }
     // A NaN is not above or below the range; it is outside the ordering entirely, so neither limit is nearer.

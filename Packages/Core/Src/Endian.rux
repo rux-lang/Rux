@@ -13,7 +13,7 @@
 /// back the first one, so it is right on any target rather than on a list of known ones.
 /// Cannot fail. Runs in constant time and allocates nothing.
 /// @returns whether the target stores the least significant byte first
-/// @see https://rux-lang.dev/docs/api/core/target-is-little-endian
+/// @see https://rux-lang.dev/docs/api/core/byte-order#target-is-little-endian
 pub func TargetIsLittleEndian() -> bool {
     var probe: uint16 = 1;
     let raw = @probe as *byte;
@@ -28,7 +28,7 @@ pub func TargetIsLittleEndian() -> bool {
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param value the value to act on
 /// @returns the value with its bytes in little-endian order
-/// @see https://rux-lang.dev/docs/api/core/to-little-endian
+/// @see https://rux-lang.dev/docs/api/core/byte-order#to-little-endian
 pub func ToLittleEndian<T>(value: T) -> T {
     return TargetIsLittleEndian() ? value : ReverseBytes<T>(value);
 }
@@ -40,7 +40,7 @@ pub func ToLittleEndian<T>(value: T) -> T {
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param value the value to act on
 /// @returns the value read from little-endian bytes, in the target's own order
-/// @see https://rux-lang.dev/docs/api/core/from-little-endian
+/// @see https://rux-lang.dev/docs/api/core/byte-order#from-little-endian
 pub func FromLittleEndian<T>(value: T) -> T {
     return ToLittleEndian<T>(value);
 }
@@ -53,7 +53,7 @@ pub func FromLittleEndian<T>(value: T) -> T {
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param value the value to act on
 /// @returns the value with its bytes in big-endian order
-/// @see https://rux-lang.dev/docs/api/core/to-big-endian
+/// @see https://rux-lang.dev/docs/api/core/byte-order#to-big-endian
 pub func ToBigEndian<T>(value: T) -> T {
     return TargetIsLittleEndian() ? ReverseBytes<T>(value) : value;
 }
@@ -65,7 +65,7 @@ pub func ToBigEndian<T>(value: T) -> T {
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param value the value to act on
 /// @returns the value read from big-endian bytes, in the target's own order
-/// @see https://rux-lang.dev/docs/api/core/from-big-endian
+/// @see https://rux-lang.dev/docs/api/core/byte-order#from-big-endian
 pub func FromBigEndian<T>(value: T) -> T {
     return ToBigEndian<T>(value);
 }
@@ -78,7 +78,7 @@ pub func FromBigEndian<T>(value: T) -> T {
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param value the value to act on
 /// @param destination receives the bytes
-/// @see https://rux-lang.dev/docs/api/core/store-little-endian
+/// @see https://rux-lang.dev/docs/api/core/byte-order#store-little-endian
 pub func StoreLittleEndian<T>(value: T, destination: *var byte) {
     var ordered = ToLittleEndian<T>(value);
     // Reading the ordered value back as bytes is what makes this work at any width without knowing the type: the
@@ -99,7 +99,7 @@ pub func StoreLittleEndian<T>(value: T, destination: *var byte) {
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param value the value to act on
 /// @param destination receives the bytes
-/// @see https://rux-lang.dev/docs/api/core/store-big-endian
+/// @see https://rux-lang.dev/docs/api/core/byte-order#store-big-endian
 pub func StoreBigEndian<T>(value: T, destination: *var byte) {
     var ordered = ToBigEndian<T>(value);
     let source = @ordered as *byte;
@@ -120,7 +120,7 @@ pub func StoreBigEndian<T>(value: T, destination: *var byte) {
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param source the bytes to read
 /// @param destination receives the bytes
-/// @see https://rux-lang.dev/docs/api/core/load-little-endian
+/// @see https://rux-lang.dev/docs/api/core/byte-order#load-little-endian
 pub func LoadLittleEndian<T>(source: *byte, destination: *var T) {
     let raw = destination as *var byte;
     var index: uint64 = 0;
@@ -140,7 +140,7 @@ pub func LoadLittleEndian<T>(source: *byte, destination: *var T) {
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param source the bytes to read
 /// @param destination receives the bytes
-/// @see https://rux-lang.dev/docs/api/core/load-big-endian
+/// @see https://rux-lang.dev/docs/api/core/byte-order#load-big-endian
 pub func LoadBigEndian<T>(source: *byte, destination: *var T) {
     let raw = destination as *var byte;
     var index: uint64 = 0;

@@ -15,7 +15,7 @@
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param sample any value of the type, read only to deduce it
 /// @returns how many bits the type occupies
-/// @see https://rux-lang.dev/docs/api/core/bit-width-of
+/// @see https://rux-lang.dev/docs/api/core/bits#bit-width-of
 pub func BitWidthOf<T>(sample: T) -> uint64 {
     return sizeof(T) * 8u64;
 }
@@ -29,7 +29,7 @@ pub func BitWidthOf<T>(sample: T) -> uint64 {
 /// @param value the value to act on
 /// @param amount how many bits
 /// @returns the value shifted right with zero bits shifted in, whatever its signedness
-/// @see https://rux-lang.dev/docs/api/core/shift-right-logical
+/// @see https://rux-lang.dev/docs/api/core/bits#shift-right-logical
 pub func ShiftRightLogical<T>(value: T, amount: uint64) -> T {
     let zero = value - value;
     if amount == 0 { return value; }
@@ -49,7 +49,7 @@ pub func ShiftRightLogical<T>(value: T, amount: uint64) -> T {
 /// @param value the value to act on
 /// @param index which bit, counting from the least significant
 /// @returns whether the bit at `index` is set
-/// @see https://rux-lang.dev/docs/api/core/bit-at
+/// @see https://rux-lang.dev/docs/api/core/bits#bit-at
 pub func BitAt<T>(value: T, index: uint64) -> bool {
     let zero = value - value;
     if index >= sizeof(T) * 8 { return false; }
@@ -63,7 +63,7 @@ pub func BitAt<T>(value: T, index: uint64) -> bool {
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param value the value to act on
 /// @returns how many bits are set
-/// @see https://rux-lang.dev/docs/api/core/count-ones
+/// @see https://rux-lang.dev/docs/api/core/bits#count-ones
 pub func CountOnes<T>(value: T) -> uint32 {
     let bits = sizeof(T) * 8;
     var count: uint32 = 0;
@@ -83,7 +83,7 @@ pub func CountOnes<T>(value: T) -> uint32 {
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param value the value to act on
 /// @returns how many bits are clear
-/// @see https://rux-lang.dev/docs/api/core/count-zeros
+/// @see https://rux-lang.dev/docs/api/core/bits#count-zeros
 pub func CountZeros<T>(value: T) -> uint32 {
     return (sizeof(T) * 8u64) as uint32 - CountOnes<T>(value);
 }
@@ -94,7 +94,7 @@ pub func CountZeros<T>(value: T) -> uint32 {
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param value the value to act on
 /// @returns how many clear bits precede the most significant set one
-/// @see https://rux-lang.dev/docs/api/core/leading-zeros
+/// @see https://rux-lang.dev/docs/api/core/bits#leading-zeros
 pub func LeadingZeros<T>(value: T) -> uint32 {
     var count: uint32 = 0;
     var index = sizeof(T) * 8u64;
@@ -112,7 +112,7 @@ pub func LeadingZeros<T>(value: T) -> uint32 {
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param value the value to act on
 /// @returns how many clear bits follow the least significant set one
-/// @see https://rux-lang.dev/docs/api/core/trailing-zeros
+/// @see https://rux-lang.dev/docs/api/core/bits#trailing-zeros
 pub func TrailingZeros<T>(value: T) -> uint32 {
     let bits = sizeof(T) * 8u64;
     var index: uint64 = 0;
@@ -129,7 +129,7 @@ pub func TrailingZeros<T>(value: T) -> uint32 {
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param value the value to act on
 /// @returns how many set bits precede the most significant clear one
-/// @see https://rux-lang.dev/docs/api/core/leading-ones
+/// @see https://rux-lang.dev/docs/api/core/bits#leading-ones
 pub func LeadingOnes<T>(value: T) -> uint32 {
     var count: uint32 = 0;
     var index = sizeof(T) * 8u64;
@@ -147,7 +147,7 @@ pub func LeadingOnes<T>(value: T) -> uint32 {
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param value the value to act on
 /// @returns how many set bits follow the least significant clear one
-/// @see https://rux-lang.dev/docs/api/core/trailing-ones
+/// @see https://rux-lang.dev/docs/api/core/bits#trailing-ones
 pub func TrailingOnes<T>(value: T) -> uint32 {
     let bits = sizeof(T) * 8u64;
     var index: uint64 = 0;
@@ -166,7 +166,7 @@ pub func TrailingOnes<T>(value: T) -> uint32 {
 /// @param value the value to act on
 /// @param amount how many bits
 /// @returns the value rotated left, with the bits that leave the top re-entering at the bottom
-/// @see https://rux-lang.dev/docs/api/core/rotate-left
+/// @see https://rux-lang.dev/docs/api/core/bits#rotate-left
 pub func RotateLeft<T>(value: T, amount: uint64) -> T {
     let bits = sizeof(T) * 8u64;
     let shift = amount % bits;
@@ -182,7 +182,7 @@ pub func RotateLeft<T>(value: T, amount: uint64) -> T {
 /// @param value the value to act on
 /// @param amount how many bits
 /// @returns the value rotated right, with the bits that leave the bottom re-entering at the top
-/// @see https://rux-lang.dev/docs/api/core/rotate-right
+/// @see https://rux-lang.dev/docs/api/core/bits#rotate-right
 pub func RotateRight<T>(value: T, amount: uint64) -> T {
     let bits = sizeof(T) * 8u64;
     let shift = amount % bits;
@@ -196,7 +196,7 @@ pub func RotateRight<T>(value: T, amount: uint64) -> T {
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param value the value to act on
 /// @returns the value with its bit order reversed
-/// @see https://rux-lang.dev/docs/api/core/reverse-bits
+/// @see https://rux-lang.dev/docs/api/core/bits#reverse-bits
 pub func ReverseBits<T>(value: T) -> T {
     let zero = value - value;
     let one = zero + 1;
@@ -219,7 +219,7 @@ pub func ReverseBits<T>(value: T) -> T {
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param value the value to act on
 /// @returns the value with its byte order reversed
-/// @see https://rux-lang.dev/docs/api/core/reverse-bytes
+/// @see https://rux-lang.dev/docs/api/core/bits#reverse-bytes
 pub func ReverseBytes<T>(value: T) -> T {
     let zero = value - value;
     let bytes = sizeof(T);
@@ -245,7 +245,7 @@ pub func ReverseBytes<T>(value: T) -> T {
 /// @typeParam T the integer or floating-point type, deduced from the arguments
 /// @param value the value to act on
 /// @returns whether exactly one bit is set; false for zero
-/// @see https://rux-lang.dev/docs/api/core/is-power-of-two
+/// @see https://rux-lang.dev/docs/api/core/bits#is-power-of-two
 pub func IsPowerOfTwo<T>(value: T) -> bool {
     return CountOnes<T>(value) == 1;
 }

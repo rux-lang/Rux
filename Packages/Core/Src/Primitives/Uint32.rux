@@ -3,20 +3,20 @@
 // trapping. Core's checked arithmetic is what reports instead of wrapping.
 
 /// The compiler representation of uint32.
-/// @see https://rux-lang.dev/docs/api/core/uint32
+/// @see https://rux-lang.dev/docs/api/core/integers#uint32
 pub intrinsic type uint32;
 
 extend uint32 {
     /// The number of bits in the representation.
-    /// @see https://rux-lang.dev/docs/api/core/uint32/bits
+    /// @see https://rux-lang.dev/docs/api/core/integers#uint32-bits
     pub const Bits: uint = 32;
     /// The number of bytes in the representation.
-    /// @see https://rux-lang.dev/docs/api/core/uint32/bytes
+    /// @see https://rux-lang.dev/docs/api/core/integers#uint32-bytes
     pub const Bytes: uint = 4;
     /// The smallest representable value.
-    /// @see https://rux-lang.dev/docs/api/core/uint32/min
+    /// @see https://rux-lang.dev/docs/api/core/integers#uint32-min
     pub const Min: uint32 = 0;
     /// The largest representable value.
-    /// @see https://rux-lang.dev/docs/api/core/uint32/max
+    /// @see https://rux-lang.dev/docs/api/core/integers#uint32-max
     pub const Max: uint32 = 4294967295;
 }

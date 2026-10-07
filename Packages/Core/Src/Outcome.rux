@@ -13,7 +13,7 @@
 /// @typeParam E the error type
 /// @param outcome the fallible to ask
 /// @returns whether it holds a success
-/// @see https://rux-lang.dev/docs/api/core/succeeded
+/// @see https://rux-lang.dev/docs/api/core/outcomes#succeeded
 pub func Succeeded<T, E>(outcome: T ! E) -> bool {
     return match outcome {
         .Success(_) => true,
@@ -28,7 +28,7 @@ pub func Succeeded<T, E>(outcome: T ! E) -> bool {
 /// @typeParam E the error type
 /// @param outcome the fallible to ask
 /// @returns whether it holds a failure
-/// @see https://rux-lang.dev/docs/api/core/failed
+/// @see https://rux-lang.dev/docs/api/core/outcomes#failed
 pub func Failed<T, E>(outcome: T ! E) -> bool {
     return match outcome {
         .Success(_) => false,

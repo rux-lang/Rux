@@ -25,5 +25,5 @@ pub struct Source {
 }
 
 /// The reading expression's own location, as a compile-time value.
-/// @see https://rux-lang.dev/docs/api/core/source
+/// @see https://rux-lang.dev/docs/api/core/source#source-constant
 pub intrinsic #source: Source;
