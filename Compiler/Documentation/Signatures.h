@@ -2,6 +2,7 @@
 
 #include "Syntax/Ast/Ast.h"
 
+#include <filesystem>
 #include <string>
 #include <unordered_set>
 #include <vector>
@@ -36,4 +37,10 @@ namespace Rux::Documentation {
 /// `Visible` can tell an extension of a public type from one of a private type.
 void CollectPublicTypes(const Decl &decl, bool containingModulesPublic, std::unordered_set<std::string> &publicTypes,
                         const std::string &prefix = {});
+
+/// The source path a page shows for a module. A name that is already relative is shown as written: measuring it against
+/// the root would drag the working directory into the result. An absolute path is shown relative to the package root,
+/// and one the root does not contain keeps only its file name rather than a chain of parent steps.
+[[nodiscard]] std::string SourceDisplayName(const std::filesystem::path &sourcePath,
+                                            const std::filesystem::path &packageRoot);
 } // namespace Rux::Documentation

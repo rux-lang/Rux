@@ -299,4 +299,16 @@ void CollectPublicTypes(const Decl &decl, const bool containingModulesPublic,
         publicTypes.insert(prefix + "::" + name);
     }
 }
+
+std::string SourceDisplayName(const std::filesystem::path &sourcePath, const std::filesystem::path &packageRoot) {
+    if (!sourcePath.is_absolute()) {
+        return sourcePath.generic_string();
+    }
+    std::error_code ec;
+    const auto relative = std::filesystem::relative(sourcePath, packageRoot, ec);
+    if (!ec && !relative.empty() && *relative.begin() != "..") {
+        return relative.generic_string();
+    }
+    return sourcePath.filename().generic_string();
+}
 } // namespace Rux::Documentation

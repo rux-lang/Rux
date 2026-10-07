@@ -1,27 +1,22 @@
 #include "Documentation/Generator.h"
 
 #include "Diagnostics/Diagnostics.h"
+#include "Documentation/Install.h"
 #include "Documentation/Signatures.h"
 
 #include <algorithm>
 #include <array>
 #include <cctype>
-#include <cerrno>
-#include <chrono>
 #include <format>
-#include <fstream>
 #include <map>
 #include <sstream>
 #include <string_view>
-#include <system_error>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
 namespace Rux::Documentation {
 namespace {
-constexpr std::string_view MarkerName = ".rux-docs";
-
 struct SearchEntry {
     std::string name;
     std::string kind;
@@ -481,28 +476,6 @@ void RenderDecl(std::ostringstream &html, const Decl &decl, const std::string &m
     }
 }
 
-/// Build an operational diagnostic that carries the system error, so a permission or disk-full failure says what
-/// actually went wrong rather than only that generation failed.
-Diagnostic FilesystemFailure(std::string message, const std::error_code error, std::optional<std::string> help = {}) {
-    return ErrorDiagnostic(std::move(message), {std::format("filesystem error {}: {}", error.value(), error.message())},
-                           std::move(help));
-}
-
-bool WriteFile(const std::filesystem::path &path, const std::string_view value, Diagnostic &error) {
-    errno = 0;
-    std::ofstream output(path, std::ios::binary | std::ios::trunc);
-    output << value;
-    if (!output) {
-        std::error_code writeError(errno, std::generic_category());
-        if (!writeError) {
-            writeError = std::make_error_code(std::errc::io_error);
-        }
-        error = FilesystemFailure(std::format("could not write generated documentation file '{}'", path.string()),
-                                  writeError, "check that the output path is writable and has enough free space");
-        return false;
-    }
-    return true;
-}
 } // namespace
 
 bool GenerateResult::HasErrors() const {
@@ -513,50 +486,6 @@ bool GenerateResult::HasErrors() const {
 GenerateResult Generate(const Manifest &manifest, const std::span<const ParseResult> modules,
                         const GenerateOptions &options) {
     GenerateResult result;
-    Diagnostic error;
-    auto Fail = [&](Diagnostic diagnostic) {
-        result.diagnostics.push_back(std::move(diagnostic));
-        return result;
-    };
-    std::error_code ec;
-    const auto output = std::filesystem::absolute(options.outputDirectory, ec).lexically_normal();
-    if (ec) {
-        return Fail(FilesystemFailure(
-            std::format("could not resolve documentation output directory '{}'", options.outputDirectory.string()), ec,
-            "choose a valid path with '--output <dir>'"));
-    }
-    const bool outputExists = std::filesystem::exists(output, ec);
-    if (ec) {
-        return Fail(FilesystemFailure(
-            std::format("could not inspect documentation output directory '{}'", output.string()), ec));
-    }
-    if (outputExists) {
-        const bool outputEmpty = std::filesystem::is_empty(output, ec);
-        if (ec) {
-            return Fail(FilesystemFailure(
-                std::format("could not inspect documentation output directory '{}'", output.string()), ec));
-        }
-        const bool managed = outputEmpty || std::filesystem::exists(output / MarkerName, ec);
-        if (ec) {
-            return Fail(FilesystemFailure(
-                std::format("could not inspect documentation marker '{}'", (output / MarkerName).string()), ec));
-        }
-        if (!managed) {
-            return Fail(
-                ErrorDiagnostic(std::format("refusing to replace non-empty unmarked directory '{}'", output.string()),
-                                {}, "choose an empty output directory or remove its contents"));
-        }
-    }
-
-    const auto nonce = std::chrono::steady_clock::now().time_since_epoch().count();
-    const auto temporary = output.parent_path() / std::format(".rux-docs-tmp-{}", nonce);
-    std::filesystem::create_directories(temporary, ec);
-    if (ec) {
-        return Fail(FilesystemFailure(
-            std::format("could not create temporary documentation directory '{}'", temporary.string()), ec,
-            "check that the output directory's parent is writable"));
-    }
-
     std::ostringstream content;
     std::vector<SearchEntry> search;
     Findings findings;
@@ -566,20 +495,9 @@ GenerateResult Generate(const Manifest &manifest, const std::span<const ParseRes
             CollectPublicTypes(*declaration, true, publicTypes);
         }
     }
-    auto SourceDisplayName = [&](const std::filesystem::path &sourcePath) {
-        if (!sourcePath.is_absolute()) {
-            return sourcePath.generic_string();
-        }
-        const auto relative = std::filesystem::relative(sourcePath, options.packageRoot, ec);
-        if (!ec && !relative.empty() && *relative.begin() != "..") {
-            return relative.generic_string();
-        }
-        ec.clear();
-        return sourcePath.filename().generic_string();
-    };
     for (const auto &module : modules) {
         const std::filesystem::path sourcePath(module.module.name);
-        const std::string source = SourceDisplayName(sourcePath);
+        const std::string source = SourceDisplayName(sourcePath, options.packageRoot);
         const std::string moduleName = sourcePath.stem().string();
         for (const auto &declaration : module.module.items) {
             PlanRoutes(*declaration, moduleName, source, options.includePrivate, findings, publicTypes);
@@ -587,10 +505,7 @@ GenerateResult Generate(const Manifest &manifest, const std::span<const ParseRes
     }
     for (const auto &module : modules) {
         const std::filesystem::path sourcePath(module.module.name);
-        // A name that is already relative is shown as written: measuring it against the root would drag the working
-        // directory into the result. An absolute path is shown relative to the package root, and one the root does
-        // not contain keeps only its file name rather than a chain of parent steps.
-        const std::string source = SourceDisplayName(sourcePath);
+        const std::string source = SourceDisplayName(sourcePath, options.packageRoot);
         const std::string moduleName = sourcePath.stem().string();
         content << "<section class=\"module\"><h2>Module " << EscapeHtml(moduleName) << "</h2>";
         for (const auto &declaration : module.module.items) {
@@ -602,7 +517,6 @@ GenerateResult Generate(const Manifest &manifest, const std::span<const ParseRes
     std::ranges::sort(search, {}, &SearchEntry::name);
     result.diagnostics.insert(result.diagnostics.end(), findings.diagnostics.begin(), findings.diagnostics.end());
     if (result.HasErrors()) {
-        std::filesystem::remove_all(temporary, ec);
         return result;
     }
 
@@ -650,28 +564,9 @@ GenerateResult Generate(const Manifest &manifest, const std::span<const ParseRes
     }
     searchJson << "]\n";
 
-    bool written = WriteFile(temporary / MarkerName, "rux-docs-v1\n", error) &&
-                   WriteFile(temporary / "index.html", html, error) && WriteFile(temporary / "style.css", css, error) &&
-                   WriteFile(temporary / "search.js", script, error) &&
-                   WriteFile(temporary / "search-index.json", searchJson.str(), error);
-    if (!written) {
-        std::filesystem::remove_all(temporary, ec);
-        return Fail(std::move(error));
-    }
-    if (std::filesystem::exists(output, ec)) {
-        std::filesystem::remove_all(output, ec);
-    }
-    if (ec) {
-        return Fail(
-            FilesystemFailure(std::format("could not replace managed documentation directory '{}'", output.string()),
-                              ec, "close programs using the generated documentation and try again"));
-    }
-    std::filesystem::rename(temporary, output, ec);
-    if (ec) {
-        return Fail(FilesystemFailure(std::format("could not install generated documentation at '{}'", output.string()),
-                                      ec, "check that the output directory's parent is writable"));
-    }
-    result.ok = true;
-    return result;
+    const std::array files{OutputFile{"index.html", html}, OutputFile{"style.css", std::string(css)},
+                           OutputFile{"search.js", std::string(script)},
+                           OutputFile{"search-index.json", searchJson.str()}};
+    return InstallManagedDirectory(options.outputDirectory, files);
 }
 } // namespace Rux::Documentation
