@@ -28,7 +28,7 @@ extend PathBuffer {
     /// An empty buffer that has allocated nothing.
     /// @param allocator where the storage comes from
     /// @returns an empty buffer that has taken no storage yet
-    /// @see https://rux-lang.dev/docs/api/path/path-buffer/new
+    /// @see https://rux-lang.dev/docs/api/path/path-buffer#new
     pub func PathBuffer(allocator: Allocator) -> PathBuffer {
         return PathBuffer { data: null, length: 0, capacity: 0, allocator: allocator };
     }
@@ -37,7 +37,7 @@ extend PathBuffer {
     /// @param allocator where the storage comes from
     /// @param path the path to act on
     /// @returns a copy of `path` this buffer owns, or an empty one when the allocator refused
-    /// @see https://rux-lang.dev/docs/api/path/path-buffer/from-path
+    /// @see https://rux-lang.dev/docs/api/path/path-buffer#from-path
     pub func FromPath(allocator: Allocator, path: Path) -> PathBuffer ! TextError {
         var buffer = PathBuffer(allocator);
         buffer.AppendUnits(path.AsView().Units())?;
@@ -46,14 +46,14 @@ extend PathBuffer {
 
     /// How many units the buffer holds.
     /// @returns how many units the buffer holds
-    /// @see https://rux-lang.dev/docs/api/path/path-buffer/length
+    /// @see https://rux-lang.dev/docs/api/path/path-buffer#length
     pub func Length(self: &PathBuffer) -> uint {
         return self.length;
     }
 
     /// Whether the buffer holds nothing.
     /// @returns whether the buffer holds no units
-    /// @see https://rux-lang.dev/docs/api/path/path-buffer/is-empty
+    /// @see https://rux-lang.dev/docs/api/path/path-buffer#is-empty
     pub func IsEmpty(self: &PathBuffer) -> bool {
         return self.length == 0;
     }
@@ -61,7 +61,7 @@ extend PathBuffer {
     /// The buffer as a borrowed path, which is what every reading operation takes.
     /// The path borrows the buffer and must not outlive it or survive a push.
     /// @returns a borrowed path over the buffer's units
-    /// @see https://rux-lang.dev/docs/api/path/path-buffer/as-path
+    /// @see https://rux-lang.dev/docs/api/path/path-buffer#as-path
     pub func AsPath(self: &PathBuffer) -> Path {
         return Path::FromView(OsStringView::FromUnits((self.data)[..self.length]));
     }
@@ -108,7 +108,7 @@ extend PathBuffer {
     /// it, which is what joining means everywhere paths are joined: `join(a, /b)` is `/b`.
     /// @param segment the component to append
     /// @returns nothing when the component was appended, or why not
-    /// @see https://rux-lang.dev/docs/api/path/path-buffer/push
+    /// @see https://rux-lang.dev/docs/api/path/path-buffer#push
     pub func Push(self: &var PathBuffer, segment: OsStringView) -> ! TextError {
         let units = segment.Units();
         if units.length == 0 { return; }
@@ -125,7 +125,7 @@ extend PathBuffer {
     }
 
     /// Gives the block back and leaves an empty buffer.
-    /// @see https://rux-lang.dev/docs/api/path/path-buffer/release
+    /// @see https://rux-lang.dev/docs/api/path/path-buffer#release
     pub func Release(self: &var PathBuffer) {
         if self.data != null {
             let unitSize = sizeof(OsUnit) as uint;
@@ -140,7 +140,7 @@ extend PathBuffer {
     }
 
     /// Gives the block back.
-    /// @see https://rux-lang.dev/docs/api/path/path-buffer/destructor
+    /// @see https://rux-lang.dev/docs/api/path/path-buffer#destructor
     func ~PathBuffer(self: &var PathBuffer) {
         self.Release();
     }
@@ -153,7 +153,7 @@ extend PathBuffer {
 /// @param base the path to extend
 /// @param segment the component to append
 /// @returns `base` with `segment` appended, or why it could not be
-/// @see https://rux-lang.dev/docs/api/path/join
+/// @see https://rux-lang.dev/docs/api/path/path-buffer#join
 pub func Join(allocator: Allocator, base: Path, segment: OsStringView) -> PathBuffer ! TextError {
     var buffer = PathBuffer::FromPath(allocator, base)?;
     buffer.Push(segment)?;
@@ -169,7 +169,7 @@ pub func Join(allocator: Allocator, base: Path, segment: OsStringView) -> PathBu
 /// @param allocator where the storage comes from
 /// @param path the path to act on
 /// @returns the path with its redundant components resolved, or why it could not be
-/// @see https://rux-lang.dev/docs/api/path/normalize
+/// @see https://rux-lang.dev/docs/api/path/path-buffer#normalize
 pub func Normalize(allocator: Allocator, path: Path) -> PathBuffer ! TextError {
     var buffer = PathBuffer(allocator);
 
