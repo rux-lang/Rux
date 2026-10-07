@@ -13,12 +13,12 @@ import Memory::Copy;
 import Text::{ DecodeAt, FromAllocError, String, StringBuilder, TextError };
 
 when #target.os == .Windows {
-    /// The unit a native string is made of: a UTF-16 code unit on Windows.
+    /// The unit a native string is made of: a UTF-16 code unit on Windows, and a byte on the Unix systems.
     /// @see https://rux-lang.dev/docs/api/path/os-string#os-unit
     pub type OsUnit = uint16;
 }
 else {
-    /// The unit a native string is made of: a byte on the Unix systems.
+    /// The unit a native string is made of: a UTF-16 code unit on Windows, and a byte on the Unix systems.
     /// @see https://rux-lang.dev/docs/api/path/os-string#os-unit
     pub type OsUnit = char8;
 }
