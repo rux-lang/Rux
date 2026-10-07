@@ -85,7 +85,7 @@ extend MonotonicUuid {
 
     /// The next identifier, strictly greater than the one before it.
     /// @returns the next value, which sorts after every value this generator has produced, or why entropy was
-    /// unavailable
+    ///   unavailable
     /// @see https://rux-lang.dev/docs/api/uuid/monotonic-uuid/next
     pub func Next(self: &var MonotonicUuid) -> Uuid ! EntropyError {
         let candidate = TimeOrdered()?;
