@@ -20,7 +20,7 @@ import Core::{ Ordering };
 /// does most of its work on the short subtrees near the leaves. Allocates nothing.
 /// @typeParam T the element type
 /// @param items the sequence to work on
-/// @see https://rux-lang.dev/docs/api/algorithms/make-heap
+/// @see https://rux-lang.dev/docs/api/algorithms/heaps#make-heap
 pub func MakeHeap<T>(items: var T[..]) {
     if items.length < 2 { return; }
     var root = items.length / 2;
@@ -38,7 +38,7 @@ pub func MakeHeap<T>(items: var T[..]) {
 /// Cannot fail. Runs in time proportional to the logarithm of the length and allocates nothing.
 /// @typeParam T the element type
 /// @param items the sequence to work on
-/// @see https://rux-lang.dev/docs/api/algorithms/push-heap
+/// @see https://rux-lang.dev/docs/api/algorithms/heaps#push-heap
 pub func PushHeap<T>(items: var T[..]) {
     if items.length < 2 { return; }
     HeapSiftUp<T>(items.data, items.length - 1);
@@ -52,7 +52,7 @@ pub func PushHeap<T>(items: var T[..]) {
 /// Cannot fail. Runs in time proportional to the logarithm of the length and allocates nothing.
 /// @typeParam T the element type
 /// @param items the sequence to work on
-/// @see https://rux-lang.dev/docs/api/algorithms/pop-heap
+/// @see https://rux-lang.dev/docs/api/algorithms/heaps#pop-heap
 pub func PopHeap<T>(items: var T[..]) {
     if items.length < 2 { return; }
     let last = items.length - 1;
@@ -70,7 +70,7 @@ pub func PopHeap<T>(items: var T[..]) {
 /// Cannot fail. Makes O(n log n) comparisons and allocates nothing. Equal elements may be reordered.
 /// @typeParam T the element type
 /// @param items the sequence to work on
-/// @see https://rux-lang.dev/docs/api/algorithms/sort-heap
+/// @see https://rux-lang.dev/docs/api/algorithms/heaps#sort-heap
 pub func SortHeap<T>(items: var T[..]) {
     var remaining = items.length;
     while remaining > 1 {
@@ -87,7 +87,7 @@ pub func SortHeap<T>(items: var T[..]) {
 /// @typeParam T the element type
 /// @param items the sequence to work on
 /// @returns whether the sequence satisfies the heap property throughout
-/// @see https://rux-lang.dev/docs/api/algorithms/is-heap
+/// @see https://rux-lang.dev/docs/api/algorithms/heaps#is-heap
 pub func IsHeap<T>(items: T[..]) -> bool {
     return IsHeapUntil<T>(items) == items.length;
 }
@@ -100,7 +100,7 @@ pub func IsHeap<T>(items: T[..]) -> bool {
 /// @typeParam T the element type
 /// @param items the sequence to work on
 /// @returns how many leading elements satisfy the heap property
-/// @see https://rux-lang.dev/docs/api/algorithms/is-heap-until
+/// @see https://rux-lang.dev/docs/api/algorithms/heaps#is-heap-until
 pub func IsHeapUntil<T>(items: T[..]) -> uint {
     var child: uint = 1;
     while child < items.length {
@@ -149,7 +149,7 @@ func HeapSiftDown<T>(data: *var T, count: uint, root: uint) {
 /// @typeParam T the element type
 /// @param items the sequence to work on
 /// @param compare how two elements order against each other
-/// @see https://rux-lang.dev/docs/api/algorithms/make-heap-by
+/// @see https://rux-lang.dev/docs/api/algorithms/heaps#make-heap-by
 pub func MakeHeapBy<T>(items: var T[..], compare: func(T, T) -> Ordering) {
     if items.length < 2 { return; }
     var root = items.length / 2;
@@ -166,7 +166,7 @@ pub func MakeHeapBy<T>(items: var T[..], compare: func(T, T) -> Ordering) {
 /// @typeParam T the element type
 /// @param items the sequence to work on
 /// @param compare how two elements order against each other
-/// @see https://rux-lang.dev/docs/api/algorithms/push-heap-by
+/// @see https://rux-lang.dev/docs/api/algorithms/heaps#push-heap-by
 pub func PushHeapBy<T>(items: var T[..], compare: func(T, T) -> Ordering) {
     if items.length < 2 { return; }
     HeapSiftUpBy<T>(items.data, items.length - 1, compare);
@@ -179,7 +179,7 @@ pub func PushHeapBy<T>(items: var T[..], compare: func(T, T) -> Ordering) {
 /// @typeParam T the element type
 /// @param items the sequence to work on
 /// @param compare how two elements order against each other
-/// @see https://rux-lang.dev/docs/api/algorithms/pop-heap-by
+/// @see https://rux-lang.dev/docs/api/algorithms/heaps#pop-heap-by
 pub func PopHeapBy<T>(items: var T[..], compare: func(T, T) -> Ordering) {
     if items.length < 2 { return; }
     let last = items.length - 1;
@@ -196,7 +196,7 @@ pub func PopHeapBy<T>(items: var T[..], compare: func(T, T) -> Ordering) {
 /// @typeParam T the element type
 /// @param items the sequence to work on
 /// @param compare how two elements order against each other
-/// @see https://rux-lang.dev/docs/api/algorithms/sort-heap-by
+/// @see https://rux-lang.dev/docs/api/algorithms/heaps#sort-heap-by
 pub func SortHeapBy<T>(items: var T[..], compare: func(T, T) -> Ordering) {
     var remaining = items.length;
     while remaining > 1 {
@@ -212,7 +212,7 @@ pub func SortHeapBy<T>(items: var T[..], compare: func(T, T) -> Ordering) {
 /// @param items the sequence to work on
 /// @param compare how two elements order against each other
 /// @returns whether the sequence satisfies the heap property throughout under `compare`
-/// @see https://rux-lang.dev/docs/api/algorithms/is-heap-by
+/// @see https://rux-lang.dev/docs/api/algorithms/heaps#is-heap-by
 pub func IsHeapBy<T>(items: T[..], compare: func(T, T) -> Ordering) -> bool {
     return IsHeapUntilBy<T>(items, compare) == items.length;
 }
@@ -225,7 +225,7 @@ pub func IsHeapBy<T>(items: T[..], compare: func(T, T) -> Ordering) -> bool {
 /// @param items the sequence to work on
 /// @param compare how two elements order against each other
 /// @returns how many leading elements satisfy the heap property under `compare`
-/// @see https://rux-lang.dev/docs/api/algorithms/is-heap-until-by
+/// @see https://rux-lang.dev/docs/api/algorithms/heaps#is-heap-until-by
 pub func IsHeapUntilBy<T>(items: T[..], compare: func(T, T) -> Ordering) -> uint {
     var child: uint = 1;
     while child < items.length {

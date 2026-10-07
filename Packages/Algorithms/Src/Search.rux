@@ -23,7 +23,7 @@ import Core::Ordering;
 /// @typeParam T the element type
 /// @param items the sequence to work on
 /// @returns whether the sequence is in non-descending order
-/// @see https://rux-lang.dev/docs/api/algorithms/is-sorted
+/// @see https://rux-lang.dev/docs/api/algorithms/sorted-slices#is-sorted
 pub func IsSorted<T>(items: T[..]) -> bool {
     return IsSortedUntil<T>(items) == items.length;
 }
@@ -37,7 +37,7 @@ pub func IsSorted<T>(items: T[..]) -> bool {
 /// @typeParam T the element type
 /// @param items the sequence to work on
 /// @returns how many leading elements are in non-descending order
-/// @see https://rux-lang.dev/docs/api/algorithms/is-sorted-until
+/// @see https://rux-lang.dev/docs/api/algorithms/sorted-slices#is-sorted-until
 pub func IsSortedUntil<T>(items: T[..]) -> uint {
     if items.length == 0 { return 0; }
     var index: uint = 1;
@@ -58,7 +58,7 @@ pub func IsSortedUntil<T>(items: T[..]) -> uint {
 /// @param items the sequence to work on
 /// @param value the value to place
 /// @returns the first index where `value` could be inserted and keep the order
-/// @see https://rux-lang.dev/docs/api/algorithms/lower-bound
+/// @see https://rux-lang.dev/docs/api/algorithms/sorted-slices#lower-bound
 pub func LowerBound<T>(items: T[..], value: T) -> uint {
     var low: uint = 0;
     var high = items.length;
@@ -83,7 +83,7 @@ pub func LowerBound<T>(items: T[..], value: T) -> uint {
 /// @param items the sequence to work on
 /// @param value the value to place
 /// @returns the last index where `value` could be inserted and keep the order
-/// @see https://rux-lang.dev/docs/api/algorithms/upper-bound
+/// @see https://rux-lang.dev/docs/api/algorithms/sorted-slices#upper-bound
 pub func UpperBound<T>(items: T[..], value: T) -> uint {
     var low: uint = 0;
     var high = items.length;
@@ -111,7 +111,7 @@ pub func UpperBound<T>(items: T[..], value: T) -> uint {
 /// @param items the sequence to work on
 /// @param value the value to look for
 /// @returns the index of a matching element, or `none`; which one is unspecified when several match
-/// @see https://rux-lang.dev/docs/api/algorithms/binary-search
+/// @see https://rux-lang.dev/docs/api/algorithms/sorted-slices#binary-search
 pub func BinarySearch<T>(items: T[..], value: T) -> uint? {
     let at = LowerBound<T>(items, value);
     if at < items.length && !(value < items.data[at]) { return at; }
@@ -128,7 +128,7 @@ pub func BinarySearch<T>(items: T[..], value: T) -> uint? {
 /// @param items the sequence to work on
 /// @param value the value to bracket
 /// @returns the range of indices holding elements equal to `value`, empty when none does
-/// @see https://rux-lang.dev/docs/api/algorithms/equal-range
+/// @see https://rux-lang.dev/docs/api/algorithms/sorted-slices#equal-range
 pub func EqualRange<T>(items: T[..], value: T) -> uint..uint {
     return LowerBound<T>(items, value)..UpperBound<T>(items, value);
 }
@@ -141,7 +141,7 @@ pub func EqualRange<T>(items: T[..], value: T) -> uint..uint {
 /// @param items the sequence to work on
 /// @param compare how two elements order against each other
 /// @returns whether the sequence is in non-descending order under `compare`
-/// @see https://rux-lang.dev/docs/api/algorithms/is-sorted-by
+/// @see https://rux-lang.dev/docs/api/algorithms/sorted-slices#is-sorted-by
 pub func IsSortedBy<T>(items: T[..], compare: func(T, T) -> Ordering) -> bool {
     return IsSortedUntilBy<T>(items, compare) == items.length;
 }
@@ -154,7 +154,7 @@ pub func IsSortedBy<T>(items: T[..], compare: func(T, T) -> Ordering) -> bool {
 /// @param items the sequence to work on
 /// @param compare how two elements order against each other
 /// @returns how many leading elements are in non-descending order under `compare`
-/// @see https://rux-lang.dev/docs/api/algorithms/is-sorted-until-by
+/// @see https://rux-lang.dev/docs/api/algorithms/sorted-slices#is-sorted-until-by
 pub func IsSortedUntilBy<T>(items: T[..], compare: func(T, T) -> Ordering) -> uint {
     if items.length == 0 { return 0; }
     var index: uint = 1;
@@ -174,7 +174,7 @@ pub func IsSortedUntilBy<T>(items: T[..], compare: func(T, T) -> Ordering) -> ui
 /// @param value the value to place
 /// @param compare how two elements order against each other
 /// @returns the first index where `value` could be inserted and keep the order under `compare`
-/// @see https://rux-lang.dev/docs/api/algorithms/lower-bound-by
+/// @see https://rux-lang.dev/docs/api/algorithms/sorted-slices#lower-bound-by
 pub func LowerBoundBy<T>(items: T[..], value: T, compare: func(T, T) -> Ordering) -> uint {
     var low: uint = 0;
     var high = items.length;
@@ -199,7 +199,7 @@ pub func LowerBoundBy<T>(items: T[..], value: T, compare: func(T, T) -> Ordering
 /// @param value the value to place
 /// @param compare how two elements order against each other
 /// @returns the last index where `value` could be inserted and keep the order under `compare`
-/// @see https://rux-lang.dev/docs/api/algorithms/upper-bound-by
+/// @see https://rux-lang.dev/docs/api/algorithms/sorted-slices#upper-bound-by
 pub func UpperBoundBy<T>(items: T[..], value: T, compare: func(T, T) -> Ordering) -> uint {
     var low: uint = 0;
     var high = items.length;
@@ -225,7 +225,7 @@ pub func UpperBoundBy<T>(items: T[..], value: T, compare: func(T, T) -> Ordering
 /// @param value the value to look for
 /// @param compare how two elements order against each other
 /// @returns the index of a matching element under `compare`, or `none`
-/// @see https://rux-lang.dev/docs/api/algorithms/binary-search-by
+/// @see https://rux-lang.dev/docs/api/algorithms/sorted-slices#binary-search-by
 pub func BinarySearchBy<T>(items: T[..], value: T, compare: func(T, T) -> Ordering) -> uint? {
     let at = LowerBoundBy<T>(items, value, compare);
     if at < items.length && !compare(value, items.data[at]).IsLess() { return at; }
@@ -242,7 +242,7 @@ pub func BinarySearchBy<T>(items: T[..], value: T, compare: func(T, T) -> Orderi
 /// @param value the value to bracket
 /// @param compare how two elements order against each other
 /// @returns the range of indices holding elements equal to `value` under `compare`
-/// @see https://rux-lang.dev/docs/api/algorithms/equal-range-by
+/// @see https://rux-lang.dev/docs/api/algorithms/sorted-slices#equal-range-by
 pub func EqualRangeBy<T>(items: T[..], value: T, compare: func(T, T) -> Ordering) -> uint..uint {
     return LowerBoundBy<T>(items, value, compare)..UpperBoundBy<T>(items, value, compare);
 }
