@@ -27,7 +27,7 @@ import Time::{ Date, TimeOfDay, UtcOffset };
 /// a key was defined twice would have to work out which rule they had met.
 /// The two cases that have something more to say carry it rather than reporting it beside themselves, so a caller
 /// holding the failure cannot be holding half of one.
-/// @see https://rux-lang.dev/docs/api/toml/parse-error
+/// @see https://rux-lang.dev/docs/api/toml/toml-parse-failure#toml-parse-error
 pub variant TomlParseError {
     /// The lexer refused the input, for the reason carried.
     Lexical(TomlLexError),
@@ -61,7 +61,7 @@ pub variant TomlParseError {
 /// Why a document was refused, and where in it.
 /// Three positions for one place, because the three are wanted by different readers: `offset` is what a program
 /// slices the input with, and `line` and `column` are what a person is shown. They always name the same byte.
-/// @see https://rux-lang.dev/docs/api/toml/parse-failure
+/// @see https://rux-lang.dev/docs/api/toml/toml-parse-failure
 pub struct TomlParseFailure {
     /// Why parsing stopped.
     pub reason: TomlParseError;
@@ -77,7 +77,7 @@ extend TomlParseFailure : ParseFailure {
     /// Where in the document parsing stopped.
     /// Borrows the failure and leaves it untouched. Cannot fail; runs in constant time and allocates nothing.
     /// @returns the zero-based byte offset into the document
-    /// @see https://rux-lang.dev/docs/api/toml/parse-failure/offset
+    /// @see https://rux-lang.dev/docs/api/toml/toml-parse-failure#offset
     pub func Offset(self: &TomlParseFailure) -> uint {
         return self.offset;
     }
@@ -106,7 +106,7 @@ extend TomlParseFailure : Display {
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole description was accepted
-    /// @see https://rux-lang.dev/docs/api/toml/parse-failure/write-display
+    /// @see https://rux-lang.dev/docs/api/toml/toml-parse-failure#write-display
     pub func WriteDisplay(self: &TomlParseFailure, writer: &var TextWriter,
                           spec: FormatSpec) -> ! FormatError {
         RejectStyle(spec)?;
@@ -187,7 +187,7 @@ extend TomlParseFailure : Debug {
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole rendering was accepted
-    /// @see https://rux-lang.dev/docs/api/toml/parse-failure/write-debug
+    /// @see https://rux-lang.dev/docs/api/toml/toml-parse-failure#write-debug
     pub func WriteDebug(self: &TomlParseFailure, writer: &var TextWriter,
                         spec: FormatSpec) -> ! FormatError {
         RejectStyle(spec)?;
@@ -223,7 +223,7 @@ enum TomlStop: int32 {
 }
 
 /// What a parse will accept.
-/// @see https://rux-lang.dev/docs/api/toml/limits
+/// @see https://rux-lang.dev/docs/api/toml/toml-parser#toml-limits
 pub struct TomlLimits {
     /// How deeply arrays and inline tables may nest.
     maximumDepth: uint;
@@ -233,14 +233,14 @@ extend TomlLimits {
     /// Limits that suit a configuration file: deep enough for anything written by hand, shallow enough that a
     /// document built to exhaust the stack does not.
     /// @returns the limits an ordinary parse uses
-    /// @see https://rux-lang.dev/docs/api/toml/limits/default
+    /// @see https://rux-lang.dev/docs/api/toml/toml-parser#toml-limits-default
     pub func Default() -> TomlLimits {
         return TomlLimits { maximumDepth: 64 };
     }
 
     /// Limits that refuse nothing, for input already known to be trustworthy.
     /// @returns limits that refuse nothing, for input that is already trusted
-    /// @see https://rux-lang.dev/docs/api/toml/limits/unlimited
+    /// @see https://rux-lang.dev/docs/api/toml/toml-parser#toml-limits-unlimited
     pub func Unlimited() -> TomlLimits {
         return TomlLimits { maximumDepth: 18446744073709551615 };
     }
@@ -282,7 +282,7 @@ func BuiltFailure(stopped: &TomlStopped) -> TomlParseFailure {
 }
 
 /// A parser over a document.
-/// @see https://rux-lang.dev/docs/api/toml/parser
+/// @see https://rux-lang.dev/docs/api/toml/toml-parser
 pub struct TomlParser {
     /// Where tokens come from.
     lexer: TomlLexer;
@@ -306,7 +306,7 @@ extend TomlParser {
     /// @param input the text to read
     /// @param limits the bounds the parse refuses to exceed
     /// @returns a parser ready to read the input
-    /// @see https://rux-lang.dev/docs/api/toml/parser/new
+    /// @see https://rux-lang.dev/docs/api/toml/toml-parser#new
     pub func TomlParser(allocator: Allocator, input: char8[..], limits: TomlLimits) -> TomlParser {
         var lexer = TomlLexer(input);
         let first = lexer.Next();
@@ -331,7 +331,7 @@ extend TomlParser {
     /// Why parsing stopped, positioned, or `none` while nothing has gone wrong.
     /// A caller using `Parse` never needs this: the failure comes back in the result.
     /// @returns the failure, or `none`
-    /// @see https://rux-lang.dev/docs/api/toml/parser/failure
+    /// @see https://rux-lang.dev/docs/api/toml/toml-parser#failure
     pub func Failure(self: &TomlParser) -> TomlParseFailure? {
         if self.outcome.stop == TomlStop::None { return none; }
         return BuiltFailure(self.outcome);
@@ -339,7 +339,7 @@ extend TomlParser {
 
     /// Whether parsing has failed.
     /// @returns whether the parse stopped on a failure
-    /// @see https://rux-lang.dev/docs/api/toml/parser/failed
+    /// @see https://rux-lang.dev/docs/api/toml/toml-parser#failed
     pub func Failed(self: &TomlParser) -> bool {
         return self.outcome.stop != TomlStop::None;
     }
@@ -826,7 +826,7 @@ extend TomlParser {
     /// blank line someone put between two sections or the fact that a number was written in hexadecimal. This
     /// reads configuration; it does not edit files.
     /// @returns the document, or the failure and where it was found
-    /// @see https://rux-lang.dev/docs/api/toml/parser/parse
+    /// @see https://rux-lang.dev/docs/api/toml/toml-parser#parse
     pub func Parse(self: &var TomlParser) -> TomlValue ! TomlParseFailure {
         var root = TomlValue::Table(self.allocator);
         root.defined = true;
@@ -866,11 +866,11 @@ extend TomlParser {
 /// A refusal gives back no document at all. Whatever had been read when the parser stopped is released here,
 /// which is the only place it can be done once — and handing it back would be worse than useless, because a
 /// program configured from half a file runs with some settings applied and some defaulted.
-/// Every case of `TomlParseError`, positioned at the byte, line and column where parsing stopped.
+/// Fails with any case of `TomlParseError`, positioned at the byte, line and column where parsing stopped.
 /// @param allocator where the document is built
 /// @param input the document, as UTF-8 bytes
 /// @returns the document, or the failure that stopped it
-/// @see https://rux-lang.dev/docs/api/toml/parse
+/// @see https://rux-lang.dev/docs/api/toml/toml-parse
 pub func TomlParse(allocator: Allocator, input: char8[..]) -> TomlValue ! TomlParseFailure {
     var parser = TomlParser(allocator, input, TomlLimits::Default());
     return parser.Parse();

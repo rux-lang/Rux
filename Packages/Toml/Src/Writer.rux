@@ -27,7 +27,7 @@ import Text::{ FormatError, TextWriter };
 /// A header is written as text, so the path is assembled into a fixed buffer rather than a list of names, and this
 /// is that buffer. It is far past any path a person writes: reaching it takes a nesting of tables whose names add
 /// up to a kilobyte, which a document built in memory can do and one that was parsed effectively cannot.
-/// @see https://rux-lang.dev/docs/api/toml/maximum-header-path
+/// @see https://rux-lang.dev/docs/api/toml/toml-write-document#maximum-header-path
 pub const MaximumHeaderPath: uint = 1024;
 
 // The key path of the table being written, as the bytes a header would spell it with. Kept as text rather than
@@ -391,7 +391,7 @@ func KeyIntoPath(path: &var TomlPath, name: char8[..]) -> ! FormatError {
 /// @param writer the destination
 /// @param table the document to write, borrowed for the call
 /// @returns success when the whole document was accepted
-/// @see https://rux-lang.dev/docs/api/toml/write-document
+/// @see https://rux-lang.dev/docs/api/toml/toml-write-document
 pub func TomlWriteDocument(writer: &var TextWriter, table: &TomlValue) -> ! FormatError {
     if table.Kind() != TomlKind::Table { return EmitValue(writer, table); }
     var storage: char8[1024];

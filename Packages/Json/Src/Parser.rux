@@ -15,7 +15,7 @@ import Text::{ Debug, Display, FormatError, FormatSpec, ParseFailure, RejectStyl
                TextError, TextWriter, WriteAscii, WriteBytes };
 
 /// What to do about an object containing the same name twice.
-/// @see https://rux-lang.dev/docs/api/json/duplicate-key-policy
+/// @see https://rux-lang.dev/docs/api/json/parse#duplicate-key-policy
 pub enum DuplicateKeyPolicy: int32 {
     /// Refuse the document. The default, and the only policy that cannot be used to make two readers disagree.
     Reject = 0,
@@ -32,7 +32,7 @@ pub enum DuplicateKeyPolicy: int32 {
 /// document instead. Every case carries the zero-based byte offset into the input where the parser stopped, which
 /// is the first thing anybody debugging a document asks for and used to live in a separate structure that a caller
 /// had to remember to read.
-/// @see https://rux-lang.dev/docs/api/json/parse-error
+/// @see https://rux-lang.dev/docs/api/json/json-parse-error
 pub variant JsonParseError {
     /// The lexer refused the input, for the reason carried. Nested rather than reported beside this, so a caller
     /// holding the failure cannot be holding half of it.
@@ -63,7 +63,7 @@ extend JsonParseError : ParseFailure {
     /// Where in the input parsing stopped.
     /// Borrows the failure and leaves it untouched. Cannot fail; runs in constant time and allocates nothing.
     /// @returns the zero-based byte offset into the document
-    /// @see https://rux-lang.dev/docs/api/json/parse-error/offset
+    /// @see https://rux-lang.dev/docs/api/json/json-parse-error#offset
     pub func Offset(self: &JsonParseError) -> uint {
         return match self {
             .Lexical(_, at) => at,
@@ -106,7 +106,7 @@ extend JsonParseError : Display {
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole description was accepted
-    /// @see https://rux-lang.dev/docs/api/json/parse-error/write-display
+    /// @see https://rux-lang.dev/docs/api/json/json-parse-error#write-display
     pub func WriteDisplay(self: &JsonParseError, writer: &var TextWriter,
                           spec: FormatSpec) -> ! FormatError {
         RejectStyle(spec)?;
@@ -162,7 +162,7 @@ extend JsonParseError : Debug {
     /// @param writer the destination
     /// @param spec what the placeholder asked for
     /// @returns success when the whole name was accepted
-    /// @see https://rux-lang.dev/docs/api/json/parse-error/write-debug
+    /// @see https://rux-lang.dev/docs/api/json/json-parse-error#write-debug
     pub func WriteDebug(self: &JsonParseError, writer: &var TextWriter,
                         spec: FormatSpec) -> ! FormatError {
         RejectStyle(spec)?;
@@ -238,7 +238,7 @@ extend JsonParser {
     /// @param input the text to read
     /// @param limits the bounds the parse refuses to exceed
     /// @returns a parser ready to read the input
-    /// @see https://rux-lang.dev/docs/api/json/json-parser/new
+    /// @see https://rux-lang.dev/docs/api/json/json-parser#new
     pub func JsonParser(allocator: Allocator, input: char8[..], limits: JsonLimits) -> JsonParser {
         return JsonParser {
             lexer: JsonLexer(input, limits),
@@ -255,7 +255,7 @@ extend JsonParser {
 
     /// Chooses what to do about duplicate object names.
     /// @param policy what to do when a name appears twice
-    /// @see https://rux-lang.dev/docs/api/json/json-parser/set-duplicate-policy
+    /// @see https://rux-lang.dev/docs/api/json/json-parser#set-duplicate-policy
     pub func SetDuplicatePolicy(self: &var JsonParser, policy: DuplicateKeyPolicy) {
         self.duplicates = policy;
     }
@@ -264,7 +264,7 @@ extend JsonParser {
     /// `none` while nothing has gone wrong, which for a parser that has finished means the document was read.
     /// A caller using `Parse` never needs this: the failure comes back in the result.
     /// @returns the failure, positioned, or `none`
-    /// @see https://rux-lang.dev/docs/api/json/json-parser/failure
+    /// @see https://rux-lang.dev/docs/api/json/json-parser#failure
     pub func Failure(self: &JsonParser) -> JsonParseError? {
         return BuildFailure(self.stop, self.lexical, self.position);
     }
@@ -545,9 +545,9 @@ extend JsonParser {
     /// A failure gives back nothing at all. Whatever had been built when the parser stopped is released here, which
     /// is the only place that can be done once: an array that failed at its third element owns two, and handing
     /// those back beside an error would leave a caller holding a document that is not one.
-    /// Every case of `JsonParseError`, positioned at the byte where parsing stopped.
+    /// Fails with any case of `JsonParseError`, positioned at the byte where parsing stopped.
     /// @returns the document, or the failure that stopped it
-    /// @see https://rux-lang.dev/docs/api/json/json-parser/parse
+    /// @see https://rux-lang.dev/docs/api/json/json-parser#parse
     pub func Parse(self: &var JsonParser) -> JsonValue ! JsonParseError {
         var value = self.ParseValue(self.lexer.Next());
         if self.stop == JsonStop::None {
@@ -618,7 +618,7 @@ func BuildFailure(stop: JsonStop, lexical: JsonLexError, position: uint) -> Json
 /// The default limits apply. A failure gives back the reason and its position and no value at all, so a document
 /// that is not a document cannot be mistaken for one that is — which the old shape allowed, since it answered a
 /// refused parse with `null`, and `null` is a document.
-/// Every case of `JsonParseError`, positioned at the byte where parsing stopped.
+/// Fails with any case of `JsonParseError`, positioned at the byte where parsing stopped.
 /// @param allocator where the value is built
 /// @param input the document, as UTF-8 bytes
 /// @returns the document, or the failure that stopped it
@@ -632,15 +632,15 @@ pub func Parse(allocator: Allocator, input: char8[..]) -> JsonValue ! JsonParseE
 /// The long form of `Parse`, for a caller who needs something other than the defaults. The policy is a
 /// parameter rather than a mutable setting on a shared parser, so two documents read under different policies
 /// in the same program cannot influence one another.
-/// Every case of `JsonParseError`, positioned at the byte where parsing stopped. A limit that the document exceeds
-/// arrives as `TooDeep` or `TooManyEntries` from the parser, or nested inside `Lexical` when it was the lexer that
-/// measured it.
+/// Fails with any case of `JsonParseError`, positioned at the byte where parsing stopped. A limit that the document
+/// exceeds arrives as `TooDeep` or `TooManyEntries` from the parser, or nested inside `Lexical` when it was the
+/// lexer that measured it.
 /// @param allocator where the value is built
 /// @param input the document, as UTF-8 bytes
 /// @param limits what to accept
 /// @param duplicates what to do about an object naming the same member twice
 /// @returns the document, or the failure that stopped it
-/// @see https://rux-lang.dev/docs/api/json/parse-with
+/// @see https://rux-lang.dev/docs/api/json/parse#parse-with
 pub func ParseWith(allocator: Allocator, input: char8[..], limits: JsonLimits,
                    duplicates: DuplicateKeyPolicy) -> JsonValue ! JsonParseError {
     var parser = JsonParser(allocator, input, limits);
