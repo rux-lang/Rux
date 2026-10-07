@@ -7,6 +7,7 @@
 #include "Cli/ManifestInput.h"
 #include "Cli/Reporter.h"
 #include "Documentation/Generator.h"
+#include "Documentation/JsonExport.h"
 #include "Driver/BuildTarget.h"
 #include "Driver/CompilerDriver.h"
 #include "Reporting/Reporting.h"
@@ -33,6 +34,7 @@ int Cli::RunDoc(std::span<const std::string_view> args, const GlobalOptions &opt
     const CliSupport::Reporter diagnostics(stderr, {.color = opts.color, .quiet = opts.quiet, .verbose = opts.verbose});
     bool openAfter = false;
     bool includePrivate = false;
+    bool json = false;
     std::filesystem::path requestedOutput;
     std::string_view target;
     std::map<std::string, std::string> defines;
@@ -44,6 +46,16 @@ int Cli::RunDoc(std::span<const std::string_view> args, const GlobalOptions &opt
         }
         if (arg == "--document-private-items") {
             includePrivate = true;
+            continue;
+        }
+        if (arg == "--format" && i + 1 < args.size()) {
+            const auto format = args[++i];
+            if (format != "html" && format != "json") {
+                diagnostics.Error(std::format("value '{}' is not supported by option '--format'", format));
+                diagnostics.Note("supported documentation formats are 'html' and 'json'");
+                return 2;
+            }
+            json = format == "json";
             continue;
         }
         if ((arg == "-o" || arg == "--output") && i + 1 < args.size()) {
@@ -93,12 +105,12 @@ int Cli::RunDoc(std::span<const std::string_view> args, const GlobalOptions &opt
     if (output.empty()) {
         output = ResolveRawOutputRoot(root, *rootManifest) / "Docs";
     }
-    const std::size_t packageCount = rootManifest->IsWorkspace() ? rootManifest->workspace.packages.size() : 1;
+    const bool workspace = rootManifest->IsWorkspace();
+    const std::size_t packageCount = workspace ? rootManifest->workspace.packages.size() : 1;
     const std::string subject =
-        rootManifest->IsWorkspace()
-            ? std::format("workspace {}", FormatBuildContext(*targetTriple))
-            : std::format("{} v{} {}", rootManifest->package.name.Text(), rootManifest->package.version.Text(),
-                          FormatBuildContext(*targetTriple));
+        workspace ? std::format("workspace {}", FormatBuildContext(*targetTriple))
+                  : std::format("{} v{} {}", rootManifest->package.name.Text(), rootManifest->package.version.Text(),
+                                FormatBuildContext(*targetTriple));
     diagnostics.Progress("Generating", std::format("documentation for {}", subject));
     diagnostics.Verbose(std::format("Output directory: {}", output.string()));
     if (includePrivate) {
@@ -107,7 +119,7 @@ int Cli::RunDoc(std::span<const std::string_view> args, const GlobalOptions &opt
 
     std::vector<std::filesystem::path> localPackages;
     std::set<std::string> localNamespaces;
-    if (rootManifest->IsWorkspace()) {
+    if (workspace) {
         for (const auto &member : rootManifest->workspace.packages) {
             const auto memberPath = root / member / "Rux.toml";
             auto memberManifest = LoadManifest(memberPath);
@@ -119,6 +131,13 @@ int Cli::RunDoc(std::span<const std::string_view> args, const GlobalOptions &opt
         }
     }
 
+    const auto Report = [&](const std::span<const Diagnostic> problems) {
+        for (const auto &problem : problems) {
+            diagnostics.Write(RenderDiagnostic(problem, diagnostics.Style().enabled), MessageVisibility::Always);
+        }
+    };
+    // A workspace's JSON snapshots are gathered here and installed together, as one managed directory.
+    std::vector<Documentation::OutputFile> snapshots;
     auto CompileAndGenerate = [&](const std::filesystem::path &packageManifestPath, Manifest packageManifest,
                                   const std::filesystem::path &packageOutput) {
         diagnostics.Verbose(std::format("Package: {} v{}", packageManifest.package.name.Text(),
@@ -146,15 +165,22 @@ int Cli::RunDoc(std::span<const std::string_view> args, const GlobalOptions &opt
 
         const Documentation::GenerateOptions generateOptions{.packageRoot = packageManifestPath.parent_path(),
                                                              .outputDirectory = packageOutput,
-                                                             .includePrivate = includePrivate};
-        auto generated = Documentation::Generate(generatorManifest, result.modules, generateOptions);
-        for (const auto &problem : generated.diagnostics) {
-            diagnostics.Write(RenderDiagnostic(problem, diagnostics.Style().enabled), MessageVisibility::Always);
+                                                             .includePrivate = includePrivate,
+                                                             .target = targetName};
+        if (json && workspace) {
+            auto snapshot = Documentation::RenderJson(generatorManifest, result.modules, generateOptions);
+            Report(snapshot.diagnostics);
+            snapshots.push_back(std::move(snapshot.file));
+            return !snapshot.HasErrors();
         }
+        auto generated = json ? Documentation::GenerateJson(generatorManifest, result.modules, generateOptions)
+                              : Documentation::Generate(generatorManifest, result.modules, generateOptions);
+        Report(generated.diagnostics);
         return generated.ok;
     };
 
-    if (rootManifest->IsWorkspace()) {
+    std::filesystem::path reported = output / "index.html";
+    if (workspace) {
         std::error_code ec;
         if (std::filesystem::exists(output, ec) && !std::filesystem::is_empty(output, ec) &&
             !std::filesystem::exists(output / ".rux-docs", ec)) {
@@ -162,6 +188,22 @@ int Cli::RunDoc(std::span<const std::string_view> args, const GlobalOptions &opt
             diagnostics.Help("choose an empty output directory or remove its contents");
             return DocumentationFailed();
         }
+    }
+    if (workspace && json) {
+        reported = output;
+        for (const auto &member : rootManifest->workspace.packages) {
+            const auto memberPath = root / member / "Rux.toml";
+            auto memberManifest = LoadManifest(memberPath);
+            if (!memberManifest || !CompileAndGenerate(memberPath, std::move(*memberManifest), output))
+                return DocumentationFailed();
+        }
+        const auto installed = Documentation::InstallManagedDirectory(output, snapshots);
+        Report(installed.diagnostics);
+        if (!installed.ok)
+            return DocumentationFailed();
+    }
+    else if (workspace) {
+        std::error_code ec;
         const auto temporary = output.parent_path() / ".rux-docs-workspace-tmp";
         std::filesystem::remove_all(temporary, ec);
         std::filesystem::create_directories(temporary, ec);
@@ -204,20 +246,23 @@ int Cli::RunDoc(std::span<const std::string_view> args, const GlobalOptions &opt
             return DocumentationFailed();
         }
     }
-    else if (!CompileAndGenerate(*manifestPath, std::move(*rootManifest), output)) {
-        return DocumentationFailed();
+    else {
+        if (json) {
+            reported = output / (rootManifest->package.name.Text() + ".json");
+        }
+        if (!CompileAndGenerate(*manifestPath, std::move(*rootManifest), output))
+            return DocumentationFailed();
     }
 
-    const auto index = output / "index.html";
-    if (openAfter && !System::OpenInDefaultApplication(index)) {
+    if (openAfter && !System::OpenInDefaultApplication(reported)) {
         diagnostics.Warning("documentation was generated but Rux could not open a browser");
-        diagnostics.Detail(std::format("Output: {}", index.string()), CliSupport::MessageVisibility::Always);
-        diagnostics.Help(std::format("open '{}' in a browser", index.string()));
+        diagnostics.Detail(std::format("Output: {}", reported.string()), CliSupport::MessageVisibility::Always);
+        diagnostics.Help(std::format("open '{}' in a browser", reported.string()));
         return 1;
     }
     result.Success("Generated",
                    std::format("documentation for {} in {}", Reporting::FormatCount(packageCount, "package"),
                                Reporting::FormatDuration(ElapsedMs(started))));
-    result.Detail(std::format("Output: {}", index.string()));
+    result.Detail(std::format("Output: {}", reported.string()));
     return 0;
 }

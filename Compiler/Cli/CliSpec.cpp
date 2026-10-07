@@ -72,10 +72,15 @@ constexpr std::array doc_usage = {"[options]"sv};
 constexpr std::array doc_opts = {
     OptionDoc{.flags = "--define <name[=value]>"sv, .desc = "Set or override a config compile-time value"sv},
     OptionDoc{.flags = "--document-private-items"sv, .desc = "Include private declarations and members"sv},
+    OptionDoc{.flags = "--format <html|json>"sv,
+              .desc = "Write an HTML site (default) or one JSON API snapshot per package"sv},
     OptionDoc{.flags = "-o, --output <dir>"sv, .desc = "Write the generated site to this directory"sv},
     OptionDoc{.flags = "--open"sv, .desc = "Open the generated documentation index in a browser"sv},
     OptionDoc{.flags = "--target <triple>"sv, .desc = "Document APIs enabled for a supported target"sv}};
-constexpr std::array doc_exs = {""sv, "--open"sv};
+constexpr std::array doc_conflicts = {
+    OptionConflict{.left = "--format"sv, .right = "--open"sv},
+};
+constexpr std::array doc_exs = {""sv, "--open"sv, "--format json --output Docs/Api"sv};
 
 // Fmt
 constexpr std::array fmt_usage = {"[options]"sv};
@@ -278,7 +283,7 @@ constexpr std::array G_COMMAND_HELP_MAPS = {
                .footer = {},
                .examples = Data::doc_exs,
                .options = Data::doc_opts,
-               .conflicts = {}},
+               .conflicts = Data::doc_conflicts},
 
     CommandDoc{.name = "fmt"sv,
                .shortDesc = "Format source files and manifests"sv,

@@ -163,6 +163,8 @@ rux doc --target linux-aarch64 --output Temp/Docs
 rux --manifest Tests/Language/Arithmetic/Rux.toml build --release --target linux-aarch64
 ```
 
+The API reference on `rux-lang.dev` is rendered from JSON snapshots rather than from the HTML site. `rux doc --format json --output Temp/ApiJson` at the workspace root writes one `<Package>.json` per member, and each package's `@see` URLs decide which page of that reference an item or member lands on.
+
 ## Package Layout and Tests
 
 Each package has a versioned [`Rux.toml` manifest](Manifest.md) and source directory. `Executable` package tests are centralized under `Tests/Packages/` and use local first-party path dependencies:

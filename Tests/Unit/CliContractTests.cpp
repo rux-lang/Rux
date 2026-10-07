@@ -59,6 +59,19 @@ TEST_CASE("CLI contract is the source of build option conflicts") {
     CHECK(allConflicts == 4);
 }
 
+TEST_CASE("CLI contract lists the documentation format and refuses to open a JSON snapshot") {
+    const auto *doc = FindCommand("doc");
+    REQUIRE(doc != nullptr);
+    const auto *format = FindOption(*doc, "--format");
+    REQUIRE(format != nullptr);
+    CHECK(OptionTakesValue(*format));
+    CHECK(format->flags == "--format <html|json>");
+    REQUIRE(doc->conflicts.size() == 1);
+    CHECK(doc->conflicts.front().left == "--format");
+    CHECK(doc->conflicts.front().right == "--open");
+    CHECK(FindOption(*doc, doc->conflicts.front().right) != nullptr);
+}
+
 TEST_CASE("CLI help rendering independently controls wrapping color and examples") {
     const auto *check = FindCommand("check");
     const auto *build = FindCommand("build");
