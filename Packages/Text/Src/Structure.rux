@@ -30,7 +30,7 @@
 /// @param value the optional to show, borrowed for the call
 /// @param spec what to show the payload under
 /// @returns success when the whole rendering was accepted
-/// @see https://rux-lang.dev/docs/api/text/write-optional-debug
+/// @see https://rux-lang.dev/docs/api/text/debug#write-optional-debug
 pub func WriteOptionalDebug<T: Debug>(writer: &var TextWriter, value: &T?,
                                     spec: FormatSpec) -> ! FormatError {
     match value {
@@ -56,7 +56,7 @@ pub func WriteOptionalDebug<T: Debug>(writer: &var TextWriter, value: &T?,
 /// @param value the fallible to show, borrowed for the call
 /// @param spec what to show the payload under
 /// @returns success when the whole rendering was accepted
-/// @see https://rux-lang.dev/docs/api/text/write-fallible-debug
+/// @see https://rux-lang.dev/docs/api/text/debug#write-fallible-debug
 pub func WriteFallibleDebug<T: Debug, E: Debug>(writer: &var TextWriter, value: &(T ! E),
                                                 spec: FormatSpec) -> ! FormatError {
     match value {
@@ -88,7 +88,7 @@ pub func WriteFallibleDebug<T: Debug, E: Debug>(writer: &var TextWriter, value: 
 /// @param items the run of elements to show, borrowed for the call
 /// @param spec what to show each element under
 /// @returns success when the whole rendering was accepted
-/// @see https://rux-lang.dev/docs/api/text/write-slice-debug
+/// @see https://rux-lang.dev/docs/api/text/debug#write-slice-debug
 pub func WriteSliceDebug<T: Debug>(writer: &var TextWriter, items: T[..],
                                    spec: FormatSpec) -> ! FormatError {
     WriteAscii(writer, c8'[')?;

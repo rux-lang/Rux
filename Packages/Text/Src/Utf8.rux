@@ -15,19 +15,19 @@
 // Every function here works on borrowed bytes and allocates nothing.
 
 /// The largest Unicode scalar value.
-/// @see https://rux-lang.dev/docs/api/text/max-scalar-value
+/// @see https://rux-lang.dev/docs/api/text/utf8#max-scalar-value
 pub const MaxScalarValue: uint32 = 0x10FFFF;
 
 /// The first value of the surrogate range, which holds no scalar values.
-/// @see https://rux-lang.dev/docs/api/text/first-surrogate
+/// @see https://rux-lang.dev/docs/api/text/utf8#first-surrogate
 pub const FirstSurrogate: uint32 = 0xD800;
 
 /// The last value of the surrogate range.
-/// @see https://rux-lang.dev/docs/api/text/last-surrogate
+/// @see https://rux-lang.dev/docs/api/text/utf8#last-surrogate
 pub const LastSurrogate: uint32 = 0xDFFF;
 
 /// The most bytes any one scalar value takes in UTF-8.
-/// @see https://rux-lang.dev/docs/api/text/max-encoded-length
+/// @see https://rux-lang.dev/docs/api/text/utf8#max-encoded-length
 pub const MaxEncodedLength: uint = 4;
 
 /// What was wrong with a byte sequence.
@@ -47,7 +47,7 @@ pub enum Utf8Error: int32 {
 }
 
 /// One scalar value decoded from UTF-8, with the number of bytes it occupied.
-/// @see https://rux-lang.dev/docs/api/text/decoded-scalar
+/// @see https://rux-lang.dev/docs/api/text/utf8#decoded-scalar
 pub struct DecodedScalar {
     /// The Unicode scalar value.
     pub scalar: char32;
@@ -56,7 +56,7 @@ pub struct DecodedScalar {
 }
 
 /// Where and why a byte sequence stopped being well-formed UTF-8.
-/// @see https://rux-lang.dev/docs/api/text/utf8-failure
+/// @see https://rux-lang.dev/docs/api/text/utf8#utf8-failure
 pub struct Utf8Failure {
     /// What was wrong.
     pub reason: Utf8Error;
@@ -68,7 +68,7 @@ pub struct Utf8Failure {
 /// Cannot fail. Runs in constant time and allocates nothing.
 /// @param value the value to act on
 /// @returns whether the value is a Unicode scalar value, which excludes the surrogates
-/// @see https://rux-lang.dev/docs/api/text/is-scalar-value
+/// @see https://rux-lang.dev/docs/api/text/utf8#is-scalar-value
 pub func IsScalarValue(value: uint32) -> bool {
     return value <= MaxScalarValue && (value < FirstSurrogate || value > LastSurrogate);
 }
@@ -77,7 +77,7 @@ pub func IsScalarValue(value: uint32) -> bool {
 /// Cannot fail. Runs in constant time and allocates nothing.
 /// @param scalar the Unicode scalar value
 /// @returns how many bytes the scalar's encoding occupies, one through four
-/// @see https://rux-lang.dev/docs/api/text/encoded-length
+/// @see https://rux-lang.dev/docs/api/text/utf8#encoded-length
 pub func EncodedLength(scalar: char32) -> uint {
     let value = scalar as uint32;
     if !IsScalarValue(value) { return 0; }
@@ -90,7 +90,7 @@ pub func EncodedLength(scalar: char32) -> uint {
 /// Whether `byte` is a continuation byte, the `10xxxxxx` shape every byte after a leading one has.
 /// @param byte the byte
 /// @returns whether the byte continues a sequence rather than starting one
-/// @see https://rux-lang.dev/docs/api/text/is-continuation
+/// @see https://rux-lang.dev/docs/api/text/utf8#is-continuation
 pub func IsContinuation(byte: char8) -> bool {
     return ((byte as uint32) & 0xC0) == 0x80;
 }
@@ -103,7 +103,7 @@ pub func IsContinuation(byte: char8) -> bool {
 /// @param scalar the Unicode scalar value
 /// @param into receives the bytes
 /// @returns how many bytes were written, or why none were
-/// @see https://rux-lang.dev/docs/api/text/encode
+/// @see https://rux-lang.dev/docs/api/text/utf8#encode
 pub func Encode(scalar: char32, into: var char8[..]) -> uint ! Utf8Error {
     let value = scalar as uint32;
     let width = EncodedLength(scalar);
@@ -186,7 +186,7 @@ func SecondByteRange(leading: uint32, low: *var uint32, high: *var uint32) -> ui
 /// @param bytes the bytes to act on
 /// @param index the byte offset
 /// @returns the scalar and its width, or why the bytes there are not one
-/// @see https://rux-lang.dev/docs/api/text/decode-at
+/// @see https://rux-lang.dev/docs/api/text/utf8#decode-at
 pub func DecodeAt(bytes: char8[..], index: uint) -> DecodedScalar ! Utf8Error {
     if index >= bytes.length { fail Utf8Error::Truncated; }
 
@@ -223,7 +223,7 @@ pub func DecodeAt(bytes: char8[..], index: uint) -> DecodedScalar ! Utf8Error {
 /// Cannot allocate. Runs in time proportional to the length.
 /// @param bytes the bytes to act on
 /// @returns nothing when every byte is part of a valid sequence, or where and why the first one is not
-/// @see https://rux-lang.dev/docs/api/text/validate
+/// @see https://rux-lang.dev/docs/api/text/utf8#validate
 pub func Validate(bytes: char8[..]) -> ! Utf8Failure {
     var index: uint = 0;
     while index < bytes.length {
@@ -238,7 +238,7 @@ pub func Validate(bytes: char8[..]) -> ! Utf8Failure {
 /// @param bytes the bytes to act on
 /// @param index the byte offset
 /// @returns whether `index` falls between two scalar values rather than inside one
-/// @see https://rux-lang.dev/docs/api/text/is-boundary
+/// @see https://rux-lang.dev/docs/api/text/utf8#is-boundary
 pub func IsBoundary(bytes: char8[..], index: uint) -> bool {
     if index > bytes.length { return false; }
     if index == bytes.length { return true; }
@@ -251,7 +251,7 @@ pub func IsBoundary(bytes: char8[..], index: uint) -> bool {
 /// Cannot fail. Runs in time proportional to the length and allocates nothing.
 /// @param bytes the bytes to act on
 /// @returns how many scalar values the bytes encode
-/// @see https://rux-lang.dev/docs/api/text/count-scalars
+/// @see https://rux-lang.dev/docs/api/text/utf8#count-scalars
 pub func CountScalars(bytes: char8[..]) -> uint {
     var counted: uint = 0;
     var index: uint = 0;
@@ -270,7 +270,7 @@ pub func CountScalars(bytes: char8[..]) -> uint {
 /// @param bytes the bytes to act on
 /// @param index the byte offset
 /// @returns the largest boundary at or below `index`, so a truncation splits nothing
-/// @see https://rux-lang.dev/docs/api/text/boundary-at-or-below
+/// @see https://rux-lang.dev/docs/api/text/utf8#boundary-at-or-below
 pub func BoundaryAtOrBelow(bytes: char8[..], index: uint) -> uint {
     if index >= bytes.length { return bytes.length; }
     var walk = index;

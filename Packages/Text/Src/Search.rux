@@ -18,7 +18,7 @@ extend StringView {
     /// Runs in time proportional to the prefix and allocates nothing.
     /// @param prefix the text to look for at the start
     /// @returns whether the text begins with `prefix`
-    /// @see https://rux-lang.dev/docs/api/text/string-view/starts-with
+    /// @see https://rux-lang.dev/docs/api/text/string-view#starts-with
     pub func StartsWith(self: &StringView, prefix: StringView) -> bool {
         if prefix.bytes.length > self.bytes.length { return false; }
         var index: uint = 0;
@@ -32,7 +32,7 @@ extend StringView {
     /// Whether this view ends with `suffix`.
     /// @param suffix the text to look for at the end
     /// @returns whether the text ends with `suffix`
-    /// @see https://rux-lang.dev/docs/api/text/string-view/ends-with
+    /// @see https://rux-lang.dev/docs/api/text/string-view#ends-with
     pub func EndsWith(self: &StringView, suffix: StringView) -> bool {
         if suffix.bytes.length > self.bytes.length { return false; }
         let offset = self.bytes.length - suffix.bytes.length;
@@ -50,7 +50,7 @@ extend StringView {
     /// is used with is the same as proportional to the text.
     /// @param needle the text to look for
     /// @returns the byte offset of the first occurrence, or `none`
-    /// @see https://rux-lang.dev/docs/api/text/string-view/index-of
+    /// @see https://rux-lang.dev/docs/api/text/string-view#index-of
     pub func IndexOf(self: &StringView, needle: StringView) -> uint? {
         if needle.bytes.length == 0 { return 0; }
         if needle.bytes.length > self.bytes.length { return none; }
@@ -77,7 +77,7 @@ extend StringView {
     /// The byte index where `needle` last occurs, or `none`.
     /// @param needle the text to look for
     /// @returns the byte offset of the last occurrence, or `none`
-    /// @see https://rux-lang.dev/docs/api/text/string-view/last-index-of
+    /// @see https://rux-lang.dev/docs/api/text/string-view#last-index-of
     pub func LastIndexOf(self: &StringView, needle: StringView) -> uint? {
         if needle.bytes.length == 0 { return self.bytes.length; }
         if needle.bytes.length > self.bytes.length { return none; }
@@ -103,7 +103,7 @@ extend StringView {
     /// Whether `needle` occurs anywhere in this view.
     /// @param needle the text to look for
     /// @returns whether `needle` occurs anywhere in the text
-    /// @see https://rux-lang.dev/docs/api/text/string-view/contains
+    /// @see https://rux-lang.dev/docs/api/text/string-view#contains
     pub func Contains(self: &StringView, needle: StringView) -> bool {
         return self.IndexOf(needle) != none;
     }
@@ -111,7 +111,7 @@ extend StringView {
     /// This view without the ASCII whitespace at its start.
     /// Borrows: what comes back names the same bytes, further in.
     /// @returns the text without its leading ASCII spaces
-    /// @see https://rux-lang.dev/docs/api/text/string-view/trim-start
+    /// @see https://rux-lang.dev/docs/api/text/string-view#trim-start
     pub func TrimStart(self: &StringView) -> StringView {
         var start: uint = 0;
         while start < self.bytes.length && IsAsciiSpace(self.bytes.data[start]) {
@@ -122,7 +122,7 @@ extend StringView {
 
     /// This view without the ASCII whitespace at its end.
     /// @returns the text without its trailing ASCII spaces
-    /// @see https://rux-lang.dev/docs/api/text/string-view/trim-end
+    /// @see https://rux-lang.dev/docs/api/text/string-view#trim-end
     pub func TrimEnd(self: &StringView) -> StringView {
         var end = self.bytes.length;
         while end > 0 && IsAsciiSpace(self.bytes.data[end - 1]) {
@@ -133,7 +133,7 @@ extend StringView {
 
     /// This view without the ASCII whitespace at either end.
     /// @returns the text without its leading and trailing ASCII spaces
-    /// @see https://rux-lang.dev/docs/api/text/string-view/trim
+    /// @see https://rux-lang.dev/docs/api/text/string-view#trim
     pub func Trim(self: &StringView) -> StringView {
         let front = self.TrimStart();
         return front.TrimEnd();
@@ -143,7 +143,7 @@ extend StringView {
     /// `self` is borrowed and must outlive the walk, as must `separator`.
     /// @param separator the text that separates the pieces
     /// @returns a cursor over the pieces between separators
-    /// @see https://rux-lang.dev/docs/api/text/string-view/split
+    /// @see https://rux-lang.dev/docs/api/text/string-view#split
     pub func Split(self: &StringView, separator: StringView) -> SplitIterator {
         return SplitIterator {
             rest: StringView::FromValidated(self.bytes),
@@ -158,7 +158,7 @@ extend StringView {
 /// the tables; every one of them is multi-byte, so trimming by this rule never cuts a character in half.
 /// @param byte the byte
 /// @returns whether the byte is one of ASCII's five space characters
-/// @see https://rux-lang.dev/docs/api/text/is-ascii-space
+/// @see https://rux-lang.dev/docs/api/text/string-view#is-ascii-space
 pub func IsAsciiSpace(byte: char8) -> bool {
     let value = byte as uint32;
     return value == 0x20 || (value >= 0x09 && value <= 0x0D);
@@ -166,7 +166,7 @@ pub func IsAsciiSpace(byte: char8) -> bool {
 
 /// A walk over the parts of a view between occurrences of a separator.
 /// Every part is a borrow of the original, so splitting allocates nothing however many parts there are.
-/// @see https://rux-lang.dev/docs/api/text/split-iterator
+/// @see https://rux-lang.dev/docs/api/text/string-view#split-iterator
 pub struct SplitIterator {
     /// What is left to walk.
     rest: StringView;
@@ -184,7 +184,7 @@ extend SplitIterator : Iterator {
     /// gives what was split. An empty separator gives the whole view as one part, since anything else would be an
     /// endless walk.
     /// @returns the next piece, or `none` at the end
-    /// @see https://rux-lang.dev/docs/api/text/split-iterator/next
+    /// @see https://rux-lang.dev/docs/api/text/string-view#split-iterator-next
     pub func Next(self: &var SplitIterator) -> StringView? {
         if self.finished { return none; }
         if self.separator.bytes.length == 0 {

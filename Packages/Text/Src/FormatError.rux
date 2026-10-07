@@ -15,7 +15,7 @@
 /// this is what a `FormatError::TextFailure` carries and a failure payload must not be able to say "nothing went
 /// wrong".
 /// Copy, carrying no payload and owning nothing.
-/// @see https://rux-lang.dev/docs/api/text/text-failure-kind
+/// @see https://rux-lang.dev/docs/api/text/format-error#text-failure-kind
 pub variant TextFailureKind {
     /// The allocator could not supply the storage a write needed.
     OutOfMemory,
@@ -61,7 +61,7 @@ extend FormatError {
     /// worth retrying elsewhere and the second never is.
     /// Borrows the error and leaves it untouched. Cannot fail; runs in constant time and allocates nothing.
     /// @returns true for `WriterFailure`, false for every other case
-    /// @see https://rux-lang.dev/docs/api/text/format-error/is-writer-failure
+    /// @see https://rux-lang.dev/docs/api/text/format-error#is-writer-failure
     pub func IsWriterFailure(self: &FormatError) -> bool {
         return match self {
             .WriterFailure => true,
@@ -73,7 +73,7 @@ extend FormatError {
 /// The failure-only kind corresponding to `error`.
 /// @param error the text status to narrow, which must be a failure
 /// @returns the matching failure kind
-/// @see https://rux-lang.dev/docs/api/text/text-failure-of
+/// @see https://rux-lang.dev/docs/api/text/format-error#text-failure-of
 pub func TextFailureOf(error: TextError) -> TextFailureKind {
     if error == TextError::OutOfMemory { return TextFailureKind::OutOfMemory; }
     if error == TextError::LengthOverflow { return TextFailureKind::LengthOverflow; }
@@ -87,7 +87,7 @@ pub func TextFailureOf(error: TextError) -> TextFailureKind {
 /// FromTextError(e))`.
 /// @param error why the storage or validation operation failed
 /// @returns the matching formatting failure
-/// @see https://rux-lang.dev/docs/api/text/from-text-error
+/// @see https://rux-lang.dev/docs/api/text/format-error#from-text-error
 pub func FromTextError(error: TextError) -> FormatError {
     return FormatError::TextFailure(TextFailureOf(error));
 }
@@ -103,6 +103,6 @@ pub func FromTextError(error: TextError) -> FormatError {
 pub interface ParseFailure {
     /// Where in the input the failure was found.
     /// @returns the zero-based UTF-8 byte offset, which is the text's length at end of input
-    /// @see https://rux-lang.dev/docs/api/text/parse-failure/offset
+    /// @see https://rux-lang.dev/docs/api/text/parse-failure#offset
     func Offset() -> uint;
 }

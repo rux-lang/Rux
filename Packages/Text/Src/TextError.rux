@@ -27,7 +27,7 @@ pub enum TextError: int32 {
 /// differently.
 /// @param error why the allocator refused
 /// @returns the same failure as a text error
-/// @see https://rux-lang.dev/docs/api/text/from-alloc-error
+/// @see https://rux-lang.dev/docs/api/text/text-error#from-alloc-error
 pub func FromAllocError(error: AllocError) -> TextError {
     return TextError::OutOfMemory;
 }

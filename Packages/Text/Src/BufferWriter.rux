@@ -33,7 +33,7 @@ extend BufferWriter {
     /// Cannot fail. Runs in constant time and allocates nothing.
     /// @param room the storage to fill, which must outlive the writer
     /// @returns a writer holding no text yet
-    /// @see https://rux-lang.dev/docs/api/text/buffer-writer/new
+    /// @see https://rux-lang.dev/docs/api/text/buffer-writer#new
     pub func BufferWriter(room: var char8[..]) -> BufferWriter {
         return BufferWriter { room: room, length: 0 };
     }
@@ -43,7 +43,7 @@ extend BufferWriter {
     /// The result borrows the writer's room and must not outlive it.
     /// Borrows the writer. Cannot fail; runs in constant time and allocates nothing.
     /// @returns the bytes written, which are valid UTF-8
-    /// @see https://rux-lang.dev/docs/api/text/buffer-writer/written
+    /// @see https://rux-lang.dev/docs/api/text/buffer-writer#written
     pub func Written(self: &BufferWriter) -> char8[..] {
         return (self.room.data)[..self.length];
     }
@@ -51,7 +51,7 @@ extend BufferWriter {
     /// How many bytes of text the writer holds.
     /// Borrows the writer. Cannot fail; runs in constant time and allocates nothing.
     /// @returns the byte count, which is not a character count
-    /// @see https://rux-lang.dev/docs/api/text/buffer-writer/length
+    /// @see https://rux-lang.dev/docs/api/text/buffer-writer#length
     pub func Length(self: &BufferWriter) -> uint {
         return self.length;
     }
@@ -61,7 +61,7 @@ extend BufferWriter {
     /// truncated, so asking first is an optimization and never a correctness requirement.
     /// Borrows the writer. Cannot fail; runs in constant time and allocates nothing.
     /// @returns the remaining capacity in bytes
-    /// @see https://rux-lang.dev/docs/api/text/buffer-writer/remaining
+    /// @see https://rux-lang.dev/docs/api/text/buffer-writer#remaining
     pub func Remaining(self: &BufferWriter) -> uint {
         return self.room.length - self.length;
     }
@@ -71,7 +71,7 @@ extend BufferWriter {
     /// nothing can reach them: `Written` stops at the length. A caller clearing secrets wants `ZeroizeBlock` from
     /// `Rux/Memory` on the room itself.
     /// Borrows the writer exclusively. Cannot fail; runs in constant time and allocates nothing.
-    /// @see https://rux-lang.dev/docs/api/text/buffer-writer/clear
+    /// @see https://rux-lang.dev/docs/api/text/buffer-writer#clear
     pub func Clear(self: &var BufferWriter) {
         self.length = 0;
     }
@@ -88,7 +88,7 @@ extend BufferWriter : TextWriter {
     /// arithmetic, neither of which a fixed buffer performs.
     /// @param bytes the UTF-8 run to append, whole
     /// @returns success when the complete run was appended
-    /// @see https://rux-lang.dev/docs/api/text/buffer-writer/write
+    /// @see https://rux-lang.dev/docs/api/text/buffer-writer#write
     pub func Write(self: &var BufferWriter, bytes: char8[..]) -> ! FormatError {
         if bytes.length > self.room.length - self.length {
             fail FormatError::InsufficientCapacity;
