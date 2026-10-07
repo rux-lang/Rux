@@ -22,7 +22,7 @@ import Core::float64;
 /// real logarithm and gives a NaN.
 /// @param x value added to one before taking the logarithm
 /// @returns the natural logarithm of `1 + x`
-/// @see https://rux-lang.dev/docs/api/math/log1p
+/// @see https://rux-lang.dev/docs/api/math/exponential#log1p
 pub func Log1p(x: float64) -> float64 {
     let ln2Hi = 6.93147180369123816490e-01;
     let ln2Lo = 1.90821492927058770002e-10;
@@ -63,7 +63,7 @@ pub func Log1p(x: float64) -> float64 {
 /// Computes `Log(1 + x)` at `float32` precision without losing precision near zero.
 /// @param x value added to one before taking the logarithm
 /// @returns the natural logarithm of `1 + x`
-/// @see https://rux-lang.dev/docs/api/math/log1p
+/// @see https://rux-lang.dev/docs/api/math/exponential#log1p
 pub func Log1p(x: float32) -> float32 {
     return Log1p(x as float64) as float32;
 }

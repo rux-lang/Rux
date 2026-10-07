@@ -11,7 +11,7 @@ import Core::float64;
 /// remains a NaN.
 /// @param x angle in radians
 /// @returns the tangent of `x`, or a NaN when `x` is not finite
-/// @see https://rux-lang.dev/docs/api/math/tan
+/// @see https://rux-lang.dev/docs/api/math/trigonometry#tan
 pub func Tan(x: float64) -> float64 {
     // NaN is the only value that differs from itself, and it propagates.
     if IsNan(x) { return x; }
@@ -39,7 +39,7 @@ pub func Tan(x: float64) -> float64 {
 /// The wide computation carries more precision than the result requires before being rounded to `float32`.
 /// @param x angle in radians
 /// @returns the tangent of `x`, or a NaN when `x` is not finite
-/// @see https://rux-lang.dev/docs/api/math/tan
+/// @see https://rux-lang.dev/docs/api/math/trigonometry#tan
 pub func Tan(x: float32) -> float32 {
     return Tan(x as float64) as float32;
 }

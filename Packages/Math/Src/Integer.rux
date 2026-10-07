@@ -20,7 +20,7 @@ import Core::{ MaximumOf, MinimumOf, MulChecked };
 /// @param value value whose magnitude is computed
 /// @param result receives the magnitude or its wrapped representation
 /// @returns `true` when the mathematical magnitude is not representable as `T`
-/// @see https://rux-lang.dev/docs/api/math/abschecked
+/// @see https://rux-lang.dev/docs/api/math/integer#abs-checked
 pub func AbsChecked<T>(value: T, result: *var T) -> bool {
     let zero = value - value;
     if value < zero {
@@ -39,7 +39,7 @@ pub func AbsChecked<T>(value: T, result: *var T) -> bool {
 /// @typeParam T integer type
 /// @param value value whose magnitude is computed
 /// @returns the magnitude of `value`, wrapping when necessary
-/// @see https://rux-lang.dev/docs/api/math/abswrapping
+/// @see https://rux-lang.dev/docs/api/math/integer#abs-wrapping
 pub func AbsWrapping<T>(value: T) -> T {
     var magnitude = value;
     AbsChecked<T>(value, @magnitude);
@@ -52,7 +52,7 @@ pub func AbsWrapping<T>(value: T) -> T {
 /// @param left first value to compare
 /// @param right second value to compare
 /// @returns the smaller value
-/// @see https://rux-lang.dev/docs/api/math/minimum
+/// @see https://rux-lang.dev/docs/api/math/integer#minimum
 pub func Minimum<T>(left: T, right: T) -> T {
     return left < right ? left : right;
 }
@@ -62,7 +62,7 @@ pub func Minimum<T>(left: T, right: T) -> T {
 /// @param left first value to compare
 /// @param right second value to compare
 /// @returns the larger value
-/// @see https://rux-lang.dev/docs/api/math/maximum
+/// @see https://rux-lang.dev/docs/api/math/integer#maximum
 pub func Maximum<T>(left: T, right: T) -> T {
     return left < right ? right : left;
 }
@@ -76,7 +76,7 @@ pub func Maximum<T>(left: T, right: T) -> T {
 /// @param low inclusive lower bound
 /// @param high inclusive upper bound
 /// @returns `value` constrained to `[low, high]`, or `low` when the bounds contradict each other
-/// @see https://rux-lang.dev/docs/api/math/clamp
+/// @see https://rux-lang.dev/docs/api/math/integer#clamp
 pub func Clamp<T>(value: T, low: T, high: T) -> T {
     if value < low { return low; }
     if high < value { return high; }
@@ -94,7 +94,7 @@ pub func Clamp<T>(value: T, low: T, high: T) -> T {
 /// @param right second integer
 /// @param result receives the greatest common divisor or its unrepresentable bit pattern
 /// @returns `true` when the non-negative divisor is not representable as `T`
-/// @see https://rux-lang.dev/docs/api/math/gcdchecked
+/// @see https://rux-lang.dev/docs/api/math/integer#gcd-checked
 pub func GcdChecked<T>(left: T, right: T, result: *var T) -> bool {
     let zero = left - left;
     // Euclid on magnitudes. The magnitudes are taken with the wrapping form on purpose: the most negative value comes
@@ -127,7 +127,7 @@ pub func GcdChecked<T>(left: T, right: T, result: *var T) -> bool {
 /// @param right second integer
 /// @param result receives the least common multiple or a wrapped intermediate
 /// @returns `true` when the least common multiple is not representable as `T`
-/// @see https://rux-lang.dev/docs/api/math/lcmchecked
+/// @see https://rux-lang.dev/docs/api/math/integer#lcm-checked
 pub func LcmChecked<T>(left: T, right: T, result: *var T) -> bool {
     let zero = left - left;
     *result = zero;
@@ -154,7 +154,7 @@ pub func LcmChecked<T>(left: T, right: T, result: *var T) -> bool {
 /// @param exponent non-negative exponent
 /// @param result receives the power, wrapping on overflow
 /// @returns `true` when the mathematical power is not representable as `T`
-/// @see https://rux-lang.dev/docs/api/math/powchecked
+/// @see https://rux-lang.dev/docs/api/math/integer#pow-checked
 pub func PowChecked<T>(base: T, exponent: uint, result: *var T) -> bool {
     let zero = base - base;
     let one = zero + 1;

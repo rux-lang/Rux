@@ -9,7 +9,7 @@
 /// itself, positive infinity returns positive infinity, negative infinity returns `-1.0`, and a NaN remains a NaN.
 /// @param x exponent
 /// @returns `e` raised to `x`, minus one
-/// @see https://rux-lang.dev/docs/api/math/expm1
+/// @see https://rux-lang.dev/docs/api/math/exponential#expm1
 pub func Expm1(x: float64) -> float64 {
     let q1 = -3.33333333333331316428e-02;
     let q2 = 1.58730158725481460165e-03;
@@ -109,7 +109,7 @@ pub func Expm1(x: float64) -> float64 {
 /// Computes `Exp(x) - 1` at `float32` precision without losing precision near zero.
 /// @param x exponent
 /// @returns `e` raised to `x`, minus one
-/// @see https://rux-lang.dev/docs/api/math/expm1
+/// @see https://rux-lang.dev/docs/api/math/exponential#expm1
 pub func Expm1(x: float32) -> float32 {
     return Expm1(x as float64) as float32;
 }

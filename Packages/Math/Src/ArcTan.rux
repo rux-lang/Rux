@@ -9,7 +9,7 @@
 /// a NaN remains a NaN.
 /// @param x tangent value to invert
 /// @returns the angle in radians whose tangent is `x`
-/// @see https://rux-lang.dev/docs/api/math/arctan
+/// @see https://rux-lang.dev/docs/api/math/trigonometry#arc-tan
 pub func ArcTan(x: float64) -> float64 {
     let atanhi0 = 4.63647609000806093515e-01; // atan(0.5), high
     let atanhi1 = 7.85398163397448278999e-01; // atan(1.0), high
@@ -85,7 +85,7 @@ pub func ArcTan(x: float64) -> float64 {
 /// Computes the inverse tangent of `x` in radians at `float32` precision.
 /// @param x tangent value to invert
 /// @returns the angle in radians whose tangent is `x`
-/// @see https://rux-lang.dev/docs/api/math/arctan
+/// @see https://rux-lang.dev/docs/api/math/trigonometry#arc-tan
 pub func ArcTan(x: float32) -> float32 {
     return ArcTan(x as float64) as float32;
 }

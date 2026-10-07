@@ -8,7 +8,7 @@
 /// infinity maps to `Pi`. A NaN remains a NaN.
 /// @param x cotangent value to invert
 /// @returns the angle in radians whose cotangent is `x`
-/// @see https://rux-lang.dev/docs/api/math/arccot
+/// @see https://rux-lang.dev/docs/api/math/trigonometry#arc-cot
 pub func ArcCot(x: float64) -> float64 {
     if IsNan(x) { return x; }
     return HalfPi - ArcTan(x);
@@ -18,7 +18,7 @@ pub func ArcCot(x: float64) -> float64 {
 /// The input widens exactly to `float64`; the wide result is then rounded back to `float32`.
 /// @param x cotangent value to invert
 /// @returns the angle in radians whose cotangent is `x`
-/// @see https://rux-lang.dev/docs/api/math/arccot
+/// @see https://rux-lang.dev/docs/api/math/trigonometry#arc-cot
 pub func ArcCot(x: float32) -> float32 {
     return ArcCot(x as float64) as float32;
 }

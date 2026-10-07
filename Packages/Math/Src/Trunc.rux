@@ -7,7 +7,7 @@
 /// The sign of zero is preserved, so `Trunc(-0.4)` is `-0.0`. A NaN or infinity passes through unchanged.
 /// @param x value to truncate
 /// @returns the integral part of `x`
-/// @see https://rux-lang.dev/docs/api/math/trunc
+/// @see https://rux-lang.dev/docs/api/math/rounding#trunc
 pub func Trunc(x: float64) -> float64 {
     let bits = FloatBits(x);
     let e = (((bits >> 52) & 0x7FF) as int64) - 1023;
@@ -26,7 +26,7 @@ pub func Trunc(x: float64) -> float64 {
 /// The wide result is exactly representable at the input width, so narrowing it back to `float32` loses nothing.
 /// @param x value to truncate
 /// @returns the integral part of `x`
-/// @see https://rux-lang.dev/docs/api/math/trunc
+/// @see https://rux-lang.dev/docs/api/math/rounding#trunc
 pub func Trunc(x: float32) -> float32 {
     return Trunc(x as float64) as float32;
 }

@@ -8,7 +8,7 @@
 /// a NaN remains a NaN.
 /// @param x value whose cube root is computed
 /// @returns the real cube root of `x`
-/// @see https://rux-lang.dev/docs/api/math/cbrt
+/// @see https://rux-lang.dev/docs/api/math/powers#cbrt
 pub func Cbrt(x: float64) -> float64 {
     // 1023 - 1023/3 - 0.03306235651, in the top 20 bits of the significand.
     let b1: uint64 = 715094163;
@@ -55,7 +55,7 @@ pub func Cbrt(x: float64) -> float64 {
 /// Computes the real cube root of `x` at `float32` precision.
 /// @param x value whose cube root is computed
 /// @returns the real cube root of `x`
-/// @see https://rux-lang.dev/docs/api/math/cbrt
+/// @see https://rux-lang.dev/docs/api/math/powers#cbrt
 pub func Cbrt(x: float32) -> float32 {
     return Cbrt(x as float64) as float32;
 }

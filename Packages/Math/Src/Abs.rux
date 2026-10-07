@@ -9,7 +9,7 @@
 /// infinity becomes positive infinity, and a NaN remains a NaN.
 /// @param x value whose magnitude is returned
 /// @returns `x` without its sign
-/// @see https://rux-lang.dev/docs/api/math/abs
+/// @see https://rux-lang.dev/docs/api/math/abs-min-max#abs
 pub func Abs(x: float64) -> float64 {
     return FromBits(FloatBits(x) & 0x7FFFFFFFFFFFFFFF);
 }
@@ -19,7 +19,7 @@ pub func Abs(x: float64) -> float64 {
 /// either signed zero becomes `+0.0`, either infinity becomes positive infinity, and a NaN remains a NaN.
 /// @param x value whose magnitude is returned
 /// @returns `x` without its sign
-/// @see https://rux-lang.dev/docs/api/math/abs
+/// @see https://rux-lang.dev/docs/api/math/abs-min-max#abs
 pub func Abs(x: float32) -> float32 {
     return Abs(x as float64) as float32;
 }

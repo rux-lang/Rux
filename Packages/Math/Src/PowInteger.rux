@@ -13,7 +13,7 @@
 /// @param base value to raise
 /// @param exponent integer power
 /// @returns `base` raised to `exponent`
-/// @see https://rux-lang.dev/docs/api/math/powinteger
+/// @see https://rux-lang.dev/docs/api/math/powers#pow-integer
 pub func PowInteger(base: float64, exponent: int64) -> float64 {
     if exponent == 0 { return 1.0; }
     if IsNan(base) { return base; }
@@ -38,7 +38,7 @@ pub func PowInteger(base: float64, exponent: int64) -> float64 {
 /// @param base value to raise
 /// @param exponent integer power
 /// @returns `base` raised to `exponent`
-/// @see https://rux-lang.dev/docs/api/math/powinteger
+/// @see https://rux-lang.dev/docs/api/math/powers#pow-integer
 pub func PowInteger(base: float32, exponent: int64) -> float32 {
     // Accumulating at the wide width and narrowing once is more accurate than squaring in the narrow type, where every
     // intermediate would round.

@@ -10,7 +10,7 @@ import Core::float64;
 /// of the result range, an input outside `[-1, 1]` returns a NaN, and a NaN remains a NaN.
 /// @param x sine value to invert
 /// @returns the angle in radians whose sine is `x`, or a NaN when `x` is outside the function's domain
-/// @see https://rux-lang.dev/docs/api/math/arcsin
+/// @see https://rux-lang.dev/docs/api/math/trigonometry#arc-sin
 pub func ArcSin(x: float64) -> float64 {
     if IsNan(x) { return x; }
     if x == 1.0 { return HalfPi; }
@@ -24,7 +24,7 @@ pub func ArcSin(x: float64) -> float64 {
 /// Computes the inverse sine of `x` in radians at `float32` precision.
 /// @param x sine value to invert
 /// @returns the angle in radians whose sine is `x`, or a NaN when `x` is outside the function's domain
-/// @see https://rux-lang.dev/docs/api/math/arcsin
+/// @see https://rux-lang.dev/docs/api/math/trigonometry#arc-sin
 pub func ArcSin(x: float32) -> float32 {
     return ArcSin(x as float64) as float32;
 }
