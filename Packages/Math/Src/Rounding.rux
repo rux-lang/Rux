@@ -12,7 +12,7 @@ import Core::MaximumOf;
 
 /// Which way a value that falls between two integers should go.
 /// `Copy`.
-/// @see https://rux-lang.dev/docs/api/math/roundingmode
+/// @see https://rux-lang.dev/docs/api/math/rounding#rounding-mode
 pub enum RoundingMode: int32 {
     /// Toward zero, discarding the fraction: `Trunc`.
     TowardZero = 0,
@@ -34,7 +34,7 @@ pub enum RoundingMode: int32 {
 /// preserved, and a NaN or infinity passes through unchanged.
 /// @param value value to round
 /// @returns the nearest integral value, resolving halfway cases toward the even neighbour
-/// @see https://rux-lang.dev/docs/api/math/roundtiestoeven
+/// @see https://rux-lang.dev/docs/api/math/rounding#round-ties-to-even
 pub func RoundTiesToEven(value: float64) -> float64 {
     let whole = Trunc(value);
     let fraction = value - whole;
@@ -53,7 +53,7 @@ pub func RoundTiesToEven(value: float64) -> float64 {
 /// Rounds `value` to the nearest integral `float32`, with halfway cases going to the even neighbour.
 /// @param value value to round
 /// @returns the nearest integral value, resolving halfway cases toward the even neighbour
-/// @see https://rux-lang.dev/docs/api/math/roundtiestoeven
+/// @see https://rux-lang.dev/docs/api/math/rounding#round-ties-to-even
 pub func RoundTiesToEven(value: float32) -> float32 {
     // Widening is exact and the answer is an integer a float32 holds whenever the input was one, so the single
     // narrowing at the end cannot move it.
@@ -64,7 +64,7 @@ pub func RoundTiesToEven(value: float32) -> float32 {
 /// @param value value to round
 /// @param mode direction and halfway rule to use
 /// @returns the integral value selected by `mode`
-/// @see https://rux-lang.dev/docs/api/math/roundto
+/// @see https://rux-lang.dev/docs/api/math/rounding#round-to
 pub func RoundTo(value: float64, mode: RoundingMode) -> float64 {
     if mode == RoundingMode::TowardZero { return Trunc(value); }
     if mode == RoundingMode::TowardNegative { return Floor(value); }
@@ -77,7 +77,7 @@ pub func RoundTo(value: float64, mode: RoundingMode) -> float64 {
 /// @param value value to round
 /// @param mode direction and halfway rule to use
 /// @returns the integral value selected by `mode`
-/// @see https://rux-lang.dev/docs/api/math/roundto
+/// @see https://rux-lang.dev/docs/api/math/rounding#round-to
 pub func RoundTo(value: float32, mode: RoundingMode) -> float32 {
     if mode == RoundingMode::TowardZero { return Trunc(value); }
     if mode == RoundingMode::TowardNegative { return Floor(value); }
@@ -98,7 +98,7 @@ pub func RoundTo(value: float32, mode: RoundingMode) -> float32 {
 /// @param mode rounding rule applied before conversion
 /// @param result receives the converted integer or zero on failure
 /// @returns `true` when the rounded value is not representable as `T`
-/// @see https://rux-lang.dev/docs/api/math/tointegerchecked
+/// @see https://rux-lang.dev/docs/api/math/rounding#to-integer-checked
 pub func ToIntegerChecked<T>(value: float64, sample: T, mode: RoundingMode, result: *var T) -> bool {
     let zero = sample - sample;
     *result = zero;

@@ -18,7 +18,7 @@ import Core::MinimumOf;
 pub interface RandomGenerator {
     /// The next 64-bit word, and the state advanced past it.
     /// @returns the next 64 bits
-    /// @see https://rux-lang.dev/docs/api/random/random-generator/next-uint64
+    /// @see https://rux-lang.dev/docs/api/random/random-generator#next-uint64
     func NextUint64(self: &var Self) -> uint64;
 }
 
@@ -38,7 +38,7 @@ extend SplitMix64 {
     /// A mixer starting from `seed`. Every seed is acceptable, including zero.
     /// @param seed the value the generator starts from
     /// @returns a generator seeded with that value
-    /// @see https://rux-lang.dev/docs/api/random/split-mix64/new
+    /// @see https://rux-lang.dev/docs/api/random/split-mix64#new
     pub func SplitMix64(seed: uint64) -> SplitMix64 {
         return SplitMix64 { state: seed };
     }
@@ -50,7 +50,7 @@ extend SplitMix64 : RandomGenerator {
     /// The additive step guarantees the full period of 2^64 whatever the seed, and the mixing afterwards is
     /// what turns a counter into something that looks random. Both constants are Steele, Lea and Flood's.
     /// @returns the next 64 bits
-    /// @see https://rux-lang.dev/docs/api/random/split-mix64/next-uint64
+    /// @see https://rux-lang.dev/docs/api/random/split-mix64#next-uint64
     pub func NextUint64(self: &var SplitMix64) -> uint64 {
         self.state = self.state + 0x9E3779B97F4A7C15;
         var z = self.state;

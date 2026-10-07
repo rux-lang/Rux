@@ -17,7 +17,7 @@ import Core::float64;
 /// Returns `(sine, cosine)`. Equivalent to calling `Sin` and `Cos` separately, at roughly half the cost.
 /// @param angle angle in radians
 /// @returns `(sine, cosine)` for `angle`
-/// @see https://rux-lang.dev/docs/api/math/sincos
+/// @see https://rux-lang.dev/docs/api/math/trigonometry#sin-cos
 pub func SinCos(angle: float64) -> (float64, float64) {
     // NaN propagates into both.
     if IsNan(angle) { return (angle, angle); }
@@ -63,7 +63,7 @@ pub func SinCos(angle: float64) -> (float64, float64) {
 /// Returns `(sine, cosine)`.
 /// @param angle angle in radians
 /// @returns `(sine, cosine)` for `angle`
-/// @see https://rux-lang.dev/docs/api/math/sincos
+/// @see https://rux-lang.dev/docs/api/math/trigonometry#sin-cos
 pub func SinCos(angle: float32) -> (float32, float32) {
     let (wideSine, wideCosine) = SinCos(angle as float64);
     return (wideSine as float32, wideCosine as float32);

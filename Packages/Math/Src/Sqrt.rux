@@ -14,7 +14,7 @@ when #target.arch {
         /// A signed zero, positive infinity, or NaN passes through; a negative finite value returns a NaN.
         /// @param x value whose square root is computed
         /// @returns the non-negative square root of `x`, or a NaN when `x` is negative
-        /// @see https://rux-lang.dev/docs/api/math/sqrt
+        /// @see https://rux-lang.dev/docs/api/math/powers#sqrt
         pub asm func Sqrt(x: float32) -> float32 {
             sqrtss xmm0, xmm0
             ret
@@ -24,7 +24,7 @@ when #target.arch {
         /// A signed zero, positive infinity, or NaN passes through; a negative finite value returns a NaN.
         /// @param x value whose square root is computed
         /// @returns the non-negative square root of `x`, or a NaN when `x` is negative
-        /// @see https://rux-lang.dev/docs/api/math/sqrt
+        /// @see https://rux-lang.dev/docs/api/math/powers#sqrt
         pub asm func Sqrt(x: float64) -> float64 {
             sqrtsd xmm0, xmm0
             ret
@@ -37,7 +37,7 @@ when #target.arch {
         /// A signed zero, positive infinity, or NaN passes through; a negative finite value returns a NaN.
         /// @param x value whose square root is computed
         /// @returns the non-negative square root of `x`, or a NaN when `x` is negative
-        /// @see https://rux-lang.dev/docs/api/math/sqrt
+        /// @see https://rux-lang.dev/docs/api/math/powers#sqrt
         pub asm func Sqrt(x: float32) -> float32 {
             fsqrt s0, s0
             ret
@@ -47,7 +47,7 @@ when #target.arch {
         /// A signed zero, positive infinity, or NaN passes through; a negative finite value returns a NaN.
         /// @param x value whose square root is computed
         /// @returns the non-negative square root of `x`, or a NaN when `x` is negative
-        /// @see https://rux-lang.dev/docs/api/math/sqrt
+        /// @see https://rux-lang.dev/docs/api/math/powers#sqrt
         pub asm func Sqrt(x: float64) -> float64 {
             fsqrt d0, d0
             ret

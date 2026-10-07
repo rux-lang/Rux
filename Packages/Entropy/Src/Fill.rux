@@ -24,7 +24,7 @@ pub interface EntropySource {
     /// @param buffer receives the bytes
     /// @param length how many bytes to fill
     /// @returns nothing when every byte was written, or why not
-    /// @see https://rux-lang.dev/docs/api/entropy/entropy-source/fill
+    /// @see https://rux-lang.dev/docs/api/entropy/entropy-source#fill
     func Fill(self: &var Self, buffer: *var opaque, length: uint) -> ! EntropyError;
 }
 
@@ -41,7 +41,7 @@ extend SystemEntropy {
     /// making one where it is needed.
     /// Runs in constant time and allocates nothing.
     /// @returns the source, which holds no state of its own
-    /// @see https://rux-lang.dev/docs/api/entropy/system-entropy/new
+    /// @see https://rux-lang.dev/docs/api/entropy/system-entropy#new
     pub func SystemEntropy() -> SystemEntropy {
         return SystemEntropy {};
     }
@@ -56,7 +56,7 @@ extend SystemEntropy : EntropySource {
     /// @param buffer receives the bytes
     /// @param length how many bytes to fill
     /// @returns nothing when every byte was written, or why not
-    /// @see https://rux-lang.dev/docs/api/entropy/system-entropy/fill
+    /// @see https://rux-lang.dev/docs/api/entropy/system-entropy#fill
     pub func Fill(self: &var SystemEntropy, buffer: *var opaque, length: uint) -> ! EntropyError {
         return FillFromSource(buffer, length);
     }
@@ -75,7 +75,7 @@ extend SystemEntropy : EntropySource {
 /// @param buffer receives the bytes
 /// @param length how many bytes to fill
 /// @returns nothing when every byte was written, or why not
-/// @see https://rux-lang.dev/docs/api/entropy/fill-from
+/// @see https://rux-lang.dev/docs/api/entropy/entropy-source#fill-from
 pub func FillFrom(source: &var EntropySource, buffer: *var opaque, length: uint) -> ! EntropyError {
     if length == 0 { return; }
     if buffer == null { fail EntropyError::Failed; }
@@ -109,7 +109,7 @@ pub func FillFrom(source: &var EntropySource, buffer: *var opaque, length: uint)
 /// @param length how many bytes to fill
 /// @param attempts how many times to go back to an interrupted source before giving up
 /// @returns nothing when every byte was written, or why not — `Interrupted` after `attempts` tries
-/// @see https://rux-lang.dev/docs/api/entropy/fill-with-retries
+/// @see https://rux-lang.dev/docs/api/entropy/entropy-source#fill-with-retries
 pub func FillWithRetries(source: &var EntropySource, buffer: *var opaque, length: uint, attempts: uint)
     -> ! EntropyError {
     var remaining = attempts;

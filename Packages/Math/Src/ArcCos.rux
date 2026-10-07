@@ -10,7 +10,7 @@ import Core::float64;
 /// input outside `[-1, 1]` returns a NaN, and a NaN remains a NaN.
 /// @param x cosine value to invert
 /// @returns the angle in radians whose cosine is `x`, or a NaN when `x` is outside the function's domain
-/// @see https://rux-lang.dev/docs/api/math/arccos
+/// @see https://rux-lang.dev/docs/api/math/trigonometry#arc-cos
 pub func ArcCos(x: float64) -> float64 {
     if IsNan(x) { return x; }
     if x == 1.0 { return 0.0; }
@@ -26,7 +26,7 @@ pub func ArcCos(x: float64) -> float64 {
 /// The input widens exactly to `float64`; the wide result is then rounded back to `float32`.
 /// @param x cosine value to invert
 /// @returns the angle in radians whose cosine is `x`, or a NaN when `x` is outside the function's domain
-/// @see https://rux-lang.dev/docs/api/math/arccos
+/// @see https://rux-lang.dev/docs/api/math/trigonometry#arc-cos
 pub func ArcCos(x: float32) -> float32 {
     return ArcCos(x as float64) as float32;
 }

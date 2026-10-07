@@ -8,7 +8,7 @@
 /// infinity, negative infinity returns zero, and a NaN remains a NaN.
 /// @param x binary exponent
 /// @returns two raised to `x`
-/// @see https://rux-lang.dev/docs/api/math/exp2
+/// @see https://rux-lang.dev/docs/api/math/exponential#exp2
 pub func Exp2(x: float64) -> float64 {
     if IsNan(x) { return x; }
     // 2^1024 overflows, and 2^-1075 sits exactly halfway to zero, so it and everything below it round to zero. Both
@@ -43,7 +43,7 @@ pub func Exp2(x: float64) -> float64 {
 /// Computes two raised to `x` at `float32` precision.
 /// @param x binary exponent
 /// @returns two raised to `x`
-/// @see https://rux-lang.dev/docs/api/math/exp2
+/// @see https://rux-lang.dev/docs/api/math/exponential#exp2
 pub func Exp2(x: float32) -> float32 {
     return Exp2(x as float64) as float32;
 }

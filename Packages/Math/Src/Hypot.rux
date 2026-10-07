@@ -9,7 +9,7 @@
 /// @param x first Cartesian component
 /// @param y second Cartesian component
 /// @returns the non-negative length of `(x, y)`
-/// @see https://rux-lang.dev/docs/api/math/hypot
+/// @see https://rux-lang.dev/docs/api/math/powers#hypot
 pub func Hypot(x: float64, y: float64) -> float64 {
     var a = Abs(x);
     var b = Abs(y);
@@ -88,7 +88,7 @@ pub func Hypot(x: float64, y: float64) -> float64 {
 /// @param x first Cartesian component
 /// @param y second Cartesian component
 /// @returns the non-negative length of `(x, y)`
-/// @see https://rux-lang.dev/docs/api/math/hypot
+/// @see https://rux-lang.dev/docs/api/math/powers#hypot
 pub func Hypot(x: float32, y: float32) -> float32 {
     return Hypot(x as float64, y as float64) as float32;
 }

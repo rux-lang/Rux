@@ -160,7 +160,7 @@ func Pow2(pHigh: float64, pLow: float64, z: float64) -> float64 {
 /// @param x base
 /// @param y exponent
 /// @returns `x` raised to `y`
-/// @see https://rux-lang.dev/docs/api/math/pow
+/// @see https://rux-lang.dev/docs/api/math/powers#pow
 pub func Pow(x: float64, y: float64) -> float64 {
     let ovt = 8.008566259537294e-17; // 1024 - log2(overflow + half an ulp)
     let huge = 1.0e300;
@@ -324,7 +324,7 @@ pub func Pow(x: float64, y: float64) -> float64 {
 /// @param x base
 /// @param y exponent
 /// @returns `x` raised to `y`
-/// @see https://rux-lang.dev/docs/api/math/pow
+/// @see https://rux-lang.dev/docs/api/math/powers#pow
 pub func Pow(x: float32, y: float32) -> float32 {
     return Pow(x as float64, y as float64) as float32;
 }

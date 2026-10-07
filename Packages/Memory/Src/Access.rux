@@ -18,7 +18,7 @@ import Memory::Copy;
 /// @param address the address or offset to test
 /// @param alignment the boundary to test against; zero reports false
 /// @returns whether `address` is a multiple of `alignment`
-/// @see https://rux-lang.dev/docs/api/memory/is-aligned
+/// @see https://rux-lang.dev/docs/api/memory/alignment#is-aligned
 pub func IsAligned(address: uint, alignment: uint) -> bool {
     if alignment == 0 { return false; }
     return address % alignment == 0;
@@ -31,7 +31,7 @@ pub func IsAligned(address: uint, alignment: uint) -> bool {
 /// @param pointer the address to test, never dereferenced
 /// @param alignment the boundary to test against
 /// @returns whether `pointer` is a multiple of `alignment`
-/// @see https://rux-lang.dev/docs/api/memory/is-pointer-aligned
+/// @see https://rux-lang.dev/docs/api/memory/alignment#is-pointer-aligned
 pub func IsPointerAligned(pointer: *opaque, alignment: uint) -> bool {
     return IsAligned(pointer as uint, alignment);
 }
@@ -46,7 +46,7 @@ pub func IsPointerAligned(pointer: *opaque, alignment: uint) -> bool {
 /// @param value the value to round up
 /// @param alignment the boundary to round to; zero or one changes nothing
 /// @returns the next multiple of `alignment` at or above `value`
-/// @see https://rux-lang.dev/docs/api/memory/align-up
+/// @see https://rux-lang.dev/docs/api/memory/alignment#align-up
 pub func AlignUp(value: uint, alignment: uint) -> uint {
     if alignment <= 1 { return value; }
     let remainder = value % alignment;
@@ -63,7 +63,7 @@ pub func AlignUp(value: uint, alignment: uint) -> uint {
 /// @param alignment the boundary to round to; zero or one changes nothing
 /// @param result receives the aligned value when this returns false
 /// @returns true when rounding up would pass the maximum
-/// @see https://rux-lang.dev/docs/api/memory/align-up-checked
+/// @see https://rux-lang.dev/docs/api/memory/alignment#align-up-checked
 pub func AlignUpChecked(value: uint, alignment: uint, result: *var uint) -> bool {
     if alignment <= 1 {
         *result = value;
@@ -86,7 +86,7 @@ pub func AlignUpChecked(value: uint, alignment: uint, result: *var uint) -> bool
 /// @param value the value to round down
 /// @param alignment the boundary to round to; zero or one changes nothing
 /// @returns the previous multiple of `alignment` at or below `value`
-/// @see https://rux-lang.dev/docs/api/memory/align-down
+/// @see https://rux-lang.dev/docs/api/memory/alignment#align-down
 pub func AlignDown(value: uint, alignment: uint) -> uint {
     if alignment <= 1 { return value; }
     return value - (value % alignment);
@@ -103,7 +103,7 @@ pub func AlignDown(value: uint, alignment: uint) -> uint {
 /// @typeParam T the type whose bytes are read
 /// @param source the address to read `sizeof(T)` bytes from, at any alignment
 /// @param destination receives the value
-/// @see https://rux-lang.dev/docs/api/memory/load-unaligned
+/// @see https://rux-lang.dev/docs/api/memory/unaligned-access#load-unaligned
 pub func LoadUnaligned<T>(source: *opaque, destination: *var T) {
     Copy(destination as *var opaque, source, sizeof(T));
 }
@@ -115,7 +115,7 @@ pub func LoadUnaligned<T>(source: *opaque, destination: *var T) {
 /// @typeParam T the type whose bytes are written
 /// @param destination the address to write `sizeof(T)` bytes to, at any alignment
 /// @param value the value to write
-/// @see https://rux-lang.dev/docs/api/memory/store-unaligned
+/// @see https://rux-lang.dev/docs/api/memory/unaligned-access#store-unaligned
 pub func StoreUnaligned<T>(destination: *var opaque, value: *T) {
     Copy(destination, value as *opaque, sizeof(T));
 }
@@ -128,7 +128,7 @@ pub func StoreUnaligned<T>(destination: *var opaque, value: *T) {
 /// `buffer` must be readable and writable for `length` bytes.
 /// @param buffer the bytes to reverse in place
 /// @param length how many bytes; zero or one changes nothing
-/// @see https://rux-lang.dev/docs/api/memory/reverse-block
+/// @see https://rux-lang.dev/docs/api/memory/unaligned-access#reverse-block
 pub func ReverseBlock(buffer: *var opaque, length: uint) {
     if length < 2 { return; }
     let bytes = buffer as *var byte;
@@ -153,7 +153,7 @@ pub func ReverseBlock(buffer: *var opaque, length: uint) {
 /// @typeParam T the type whose bytes are read
 /// @param source the address to read `sizeof(T)` little-endian bytes from
 /// @param destination receives the value in the target's own order
-/// @see https://rux-lang.dev/docs/api/memory/load-little-endian
+/// @see https://rux-lang.dev/docs/api/memory/unaligned-access#load-little-endian
 pub func LoadLittleEndian<T>(source: *opaque, destination: *var T) {
     LoadUnaligned<T>(source, destination);
     if !TargetIsLittleEndian() {
@@ -169,7 +169,7 @@ pub func LoadLittleEndian<T>(source: *opaque, destination: *var T) {
 /// @typeParam T the type whose bytes are read
 /// @param source the address to read `sizeof(T)` big-endian bytes from
 /// @param destination receives the value in the target's own order
-/// @see https://rux-lang.dev/docs/api/memory/load-big-endian
+/// @see https://rux-lang.dev/docs/api/memory/unaligned-access#load-big-endian
 pub func LoadBigEndian<T>(source: *opaque, destination: *var T) {
     LoadUnaligned<T>(source, destination);
     if TargetIsLittleEndian() {
@@ -185,7 +185,7 @@ pub func LoadBigEndian<T>(source: *opaque, destination: *var T) {
 /// @typeParam T the type whose bytes are written
 /// @param destination receives `sizeof(T)` little-endian bytes
 /// @param value the value to write
-/// @see https://rux-lang.dev/docs/api/memory/store-little-endian
+/// @see https://rux-lang.dev/docs/api/memory/unaligned-access#store-little-endian
 pub func StoreLittleEndian<T>(destination: *var opaque, value: *T) {
     StoreUnaligned<T>(destination, value);
     if !TargetIsLittleEndian() {
@@ -201,7 +201,7 @@ pub func StoreLittleEndian<T>(destination: *var opaque, value: *T) {
 /// @typeParam T the type whose bytes are written
 /// @param destination receives `sizeof(T)` big-endian bytes
 /// @param value the value to write
-/// @see https://rux-lang.dev/docs/api/memory/store-big-endian
+/// @see https://rux-lang.dev/docs/api/memory/unaligned-access#store-big-endian
 pub func StoreBigEndian<T>(destination: *var opaque, value: *T) {
     StoreUnaligned<T>(destination, value);
     if TargetIsLittleEndian() {
@@ -223,7 +223,7 @@ pub func StoreBigEndian<T>(destination: *var opaque, value: *T) {
 /// one place from the start for this to be the whole of its erasure.
 /// @param buffer the bytes to clear
 /// @param length how many bytes; zero writes nothing and accepts a null pointer
-/// @see https://rux-lang.dev/docs/api/memory/zeroize-block
+/// @see https://rux-lang.dev/docs/api/memory/blocks#zeroize-block
 pub func ZeroizeBlock(buffer: *var opaque, length: uint) {
     if length == 0 { return; }
     Zeroize(buffer as *var uint8, length as uint64);

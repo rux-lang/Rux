@@ -7,7 +7,7 @@
 /// The result is at least one. Either infinity returns positive infinity, and a NaN remains a NaN.
 /// @param x hyperbolic angle
 /// @returns the hyperbolic cosine of `x`
-/// @see https://rux-lang.dev/docs/api/math/cosh
+/// @see https://rux-lang.dev/docs/api/math/hyperbolic#cosh
 pub func Cosh(x: float64) -> float64 {
     let halfLn2 = 0.5 * Ln2;
     let overflow = 710.4758600739439; // ln(2 * maxfloat)
@@ -32,7 +32,7 @@ pub func Cosh(x: float64) -> float64 {
 /// Computes the hyperbolic cosine of `x` at `float32` precision.
 /// @param x hyperbolic angle
 /// @returns the hyperbolic cosine of `x`
-/// @see https://rux-lang.dev/docs/api/math/cosh
+/// @see https://rux-lang.dev/docs/api/math/hyperbolic#cosh
 pub func Cosh(x: float32) -> float32 {
     return Cosh(x as float64) as float32;
 }

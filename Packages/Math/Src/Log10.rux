@@ -10,7 +10,7 @@ import Core::float64;
 /// negative infinity, a negative value returns a NaN, positive infinity returns itself, and a NaN remains a NaN.
 /// @param x positive value whose logarithm is computed
 /// @returns the base-ten logarithm of `x`
-/// @see https://rux-lang.dev/docs/api/math/log10
+/// @see https://rux-lang.dev/docs/api/math/exponential#log10
 pub func Log10(x: float64) -> float64 {
     let ivln10Hi = 4.34294481878168880939e-01;
     let ivln10Lo = 2.50829467116452752298e-11;
@@ -41,7 +41,7 @@ pub func Log10(x: float64) -> float64 {
 /// Computes the base-ten logarithm of `x` at `float32` precision.
 /// @param x positive value whose logarithm is computed
 /// @returns the base-ten logarithm of `x`
-/// @see https://rux-lang.dev/docs/api/math/log10
+/// @see https://rux-lang.dev/docs/api/math/exponential#log10
 pub func Log10(x: float32) -> float32 {
     return Log10(x as float64) as float32;
 }

@@ -16,7 +16,7 @@ when #target.os {
 /// A non-null `ptr` must be the live base address returned by `Alloc` or `Realloc`. Every pointer into the block
 /// becomes invalid immediately; releasing an interior, foreign, or already released address is invalid.
 /// @param ptr an address `Alloc` or `Realloc` returned, or null
-/// @see https://rux-lang.dev/docs/api/memory/free
+/// @see https://rux-lang.dev/docs/api/memory/allocation#free
 pub func Free(ptr: *opaque) {
     when #target.os {
         .FreeBSD, .Linux, .macOS => {

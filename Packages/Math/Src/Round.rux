@@ -9,7 +9,7 @@
 /// rounding the largest representable value below `0.5` up to `1.0`.
 /// @param x value to round
 /// @returns the nearest integral value
-/// @see https://rux-lang.dev/docs/api/math/round
+/// @see https://rux-lang.dev/docs/api/math/rounding#round
 pub func Round(x: float64) -> float64 {
     let t = Trunc(x);
     let frac = x - t;
@@ -22,7 +22,7 @@ pub func Round(x: float64) -> float64 {
 /// Rounds `x` to the nearest integral value at `float32` precision, with halfway cases away from zero.
 /// @param x value to round
 /// @returns the nearest integral value
-/// @see https://rux-lang.dev/docs/api/math/round
+/// @see https://rux-lang.dev/docs/api/math/rounding#round
 pub func Round(x: float32) -> float32 {
     return Round(x as float64) as float32;
 }

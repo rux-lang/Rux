@@ -65,7 +65,7 @@ func LogNormalize(x: float64) -> LogReduction {
 /// infinity returns itself, and a NaN remains a NaN.
 /// @param x positive value whose logarithm is computed
 /// @returns the base-`e` logarithm of `x`
-/// @see https://rux-lang.dev/docs/api/math/log
+/// @see https://rux-lang.dev/docs/api/math/exponential#log
 pub func Log(x: float64) -> float64 {
     let ln2Hi = 6.93147180369123816490e-01;
     let ln2Lo = 1.90821492927058770002e-10;
@@ -87,7 +87,7 @@ pub func Log(x: float64) -> float64 {
 /// Computes the natural logarithm of `x` at `float32` precision.
 /// @param x positive value whose logarithm is computed
 /// @returns the base-`e` logarithm of `x`
-/// @see https://rux-lang.dev/docs/api/math/log
+/// @see https://rux-lang.dev/docs/api/math/exponential#log
 pub func Log(x: float32) -> float32 {
     return Log(x as float64) as float32;
 }

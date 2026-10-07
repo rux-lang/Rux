@@ -27,13 +27,13 @@ when #target.os {
 /// A signal arriving during the call is ordinary and retrying is correct, but a process taking signals steadily
 /// must not spin forever inside what its caller believes is one operation. Reaching this reports `Interrupted`,
 /// which says exactly that and leaves trying again to the caller, who knows whether it is worth it.
-/// @see https://rux-lang.dev/docs/api/entropy/max-entropy-attempts
+/// @see https://rux-lang.dev/docs/api/entropy/system-entropy#max-entropy-attempts
 pub const MaxEntropyAttempts: uint = 16;
 
 /// The largest request the source accepts in a single call.
 /// Windows takes a 32-bit count, so this is what a portable caller may ask for at once. A larger buffer is filled by
 /// asking more than once, which `Fill` does.
-/// @see https://rux-lang.dev/docs/api/entropy/max-entropy-request
+/// @see https://rux-lang.dev/docs/api/entropy/system-entropy#max-entropy-request
 pub const MaxEntropyRequest: uint = 0xFFFFFFFF;
 
 /// Fills `length` bytes of `buffer` from the system's generator, in one pass.
@@ -51,7 +51,7 @@ pub const MaxEntropyRequest: uint = 0xFFFFFFFF;
 /// @param buffer receives the bytes
 /// @param length how many bytes to fill
 /// @returns nothing when every byte was written in this one pass, or why not
-/// @see https://rux-lang.dev/docs/api/entropy/fill-from-source
+/// @see https://rux-lang.dev/docs/api/entropy/system-entropy#fill-from-source
 pub func FillFromSource(buffer: *var opaque, length: uint) -> ! EntropyError {
     if length == 0 { return; }
     if length > MaxEntropyRequest { fail EntropyError::TooLarge; }

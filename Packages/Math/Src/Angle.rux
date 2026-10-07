@@ -8,7 +8,7 @@
 /// keeps its sign, infinities keep their sign, and a NaN remains a NaN.
 /// @param x angle in degrees
 /// @returns the equivalent angle in radians
-/// @see https://rux-lang.dev/docs/api/math/degtorad
+/// @see https://rux-lang.dev/docs/api/math/trigonometry#deg-to-rad
 pub func DegToRad(x: float64) -> float64 {
     return x * RadPerDeg;
 }
@@ -17,7 +17,7 @@ pub func DegToRad(x: float64) -> float64 {
 /// The input widens exactly to `float64`; the wide conversion is then rounded back to `float32`.
 /// @param x angle in degrees
 /// @returns the equivalent angle in radians
-/// @see https://rux-lang.dev/docs/api/math/degtorad
+/// @see https://rux-lang.dev/docs/api/math/trigonometry#deg-to-rad
 pub func DegToRad(x: float32) -> float32 {
     return DegToRad(x as float64) as float32;
 }
@@ -27,7 +27,7 @@ pub func DegToRad(x: float32) -> float32 {
 /// keeps its sign, infinities keep their sign, and a NaN remains a NaN.
 /// @param x angle in radians
 /// @returns the equivalent angle in degrees
-/// @see https://rux-lang.dev/docs/api/math/radtodeg
+/// @see https://rux-lang.dev/docs/api/math/trigonometry#rad-to-deg
 pub func RadToDeg(x: float64) -> float64 {
     return x * DegPerRad;
 }
@@ -36,7 +36,7 @@ pub func RadToDeg(x: float64) -> float64 {
 /// The input widens exactly to `float64`; the wide conversion is then rounded back to `float32`.
 /// @param x angle in radians
 /// @returns the equivalent angle in degrees
-/// @see https://rux-lang.dev/docs/api/math/radtodeg
+/// @see https://rux-lang.dev/docs/api/math/trigonometry#rad-to-deg
 pub func RadToDeg(x: float32) -> float32 {
     return RadToDeg(x as float64) as float32;
 }

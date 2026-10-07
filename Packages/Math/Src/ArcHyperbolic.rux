@@ -11,7 +11,7 @@
 /// infinity of the same sign.
 /// @param x hyperbolic sine value to invert
 /// @returns the inverse hyperbolic sine of `x`
-/// @see https://rux-lang.dev/docs/api/math/arcsinh
+/// @see https://rux-lang.dev/docs/api/math/hyperbolic#arc-sinh
 pub func ArcSinh(x: float64) -> float64 {
     if IsNan(x) || IsInfinite(x) { return x; }
     let magnitude = Abs(x);
@@ -39,7 +39,7 @@ pub func ArcSinh(x: float64) -> float64 {
 /// Computes the inverse hyperbolic sine of `x` at `float32` precision.
 /// @param x hyperbolic sine value to invert
 /// @returns the inverse hyperbolic sine of `x`
-/// @see https://rux-lang.dev/docs/api/math/arcsinh
+/// @see https://rux-lang.dev/docs/api/math/hyperbolic#arc-sinh
 pub func ArcSinh(x: float32) -> float32 {
     return ArcSinh(x as float64) as float32;
 }
@@ -49,7 +49,7 @@ pub func ArcSinh(x: float32) -> float32 {
 /// negative, since the hyperbolic cosine is even and this returns the branch above zero.
 /// @param x hyperbolic cosine value to invert
 /// @returns the non-negative inverse hyperbolic cosine of `x`, or a NaN when `x < 1`
-/// @see https://rux-lang.dev/docs/api/math/arccosh
+/// @see https://rux-lang.dev/docs/api/math/hyperbolic#arc-cosh
 pub func ArcCosh(x: float64) -> float64 {
     if IsNan(x) { return x; }
     if x < 1.0 { return QuietNan64(); }
@@ -66,7 +66,7 @@ pub func ArcCosh(x: float64) -> float64 {
 /// Computes the inverse hyperbolic cosine of `x` at `float32` precision.
 /// @param x hyperbolic cosine value to invert
 /// @returns the non-negative inverse hyperbolic cosine of `x`, or a NaN when `x < 1`
-/// @see https://rux-lang.dev/docs/api/math/arccosh
+/// @see https://rux-lang.dev/docs/api/math/hyperbolic#arc-cosh
 pub func ArcCosh(x: float32) -> float32 {
     return ArcCosh(x as float64) as float32;
 }
@@ -76,7 +76,7 @@ pub func ArcCosh(x: float32) -> float32 {
 /// anything beyond them has no real answer and gives a NaN.
 /// @param x hyperbolic tangent value to invert
 /// @returns the inverse hyperbolic tangent of `x`, an infinity at either endpoint, or a NaN outside `[-1, 1]`
-/// @see https://rux-lang.dev/docs/api/math/arctanh
+/// @see https://rux-lang.dev/docs/api/math/hyperbolic#arc-tanh
 pub func ArcTanh(x: float64) -> float64 {
     if IsNan(x) { return x; }
     let magnitude = Abs(x);
@@ -100,7 +100,7 @@ pub func ArcTanh(x: float64) -> float64 {
 /// Computes the inverse hyperbolic tangent of `x` at `float32` precision.
 /// @param x hyperbolic tangent value to invert
 /// @returns the inverse hyperbolic tangent of `x`, an infinity at either endpoint, or a NaN outside `[-1, 1]`
-/// @see https://rux-lang.dev/docs/api/math/arctanh
+/// @see https://rux-lang.dev/docs/api/math/hyperbolic#arc-tanh
 pub func ArcTanh(x: float32) -> float32 {
     return ArcTanh(x as float64) as float32;
 }

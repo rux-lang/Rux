@@ -18,29 +18,29 @@ import Core::RotateLeft;
 import Hash::Hasher;
 
 /// The first xxHash64 prime, which every round multiplies by.
-/// @see https://rux-lang.dev/docs/api/hash/xx-prime1
+/// @see https://rux-lang.dev/docs/api/hash/xx-hash64#xx-prime1
 pub const XxPrime1: uint64 = 0x9E3779B185EBCA87;
 
 /// The second xxHash64 prime, which scales each input lane before it is rotated in.
-/// @see https://rux-lang.dev/docs/api/hash/xx-prime2
+/// @see https://rux-lang.dev/docs/api/hash/xx-hash64#xx-prime2
 pub const XxPrime2: uint64 = 0xC2B2AE3D27D4EB4F;
 
 /// The third xxHash64 prime, used in the four-byte tail step and the avalanche.
-/// @see https://rux-lang.dev/docs/api/hash/xx-prime3
+/// @see https://rux-lang.dev/docs/api/hash/xx-hash64#xx-prime3
 pub const XxPrime3: uint64 = 0x165667B19E3779F9;
 
 /// The fourth xxHash64 prime, added after each merge and after each eight-byte tail step.
-/// @see https://rux-lang.dev/docs/api/hash/xx-prime4
+/// @see https://rux-lang.dev/docs/api/hash/xx-hash64#xx-prime4
 pub const XxPrime4: uint64 = 0x85EBCA77C2B2AE63;
 
 /// The fifth xxHash64 prime, which seeds an input too short to fill a block and mixes each trailing byte.
-/// @see https://rux-lang.dev/docs/api/hash/xx-prime5
+/// @see https://rux-lang.dev/docs/api/hash/xx-hash64#xx-prime5
 pub const XxPrime5: uint64 = 0x27D4EB2F165667C5;
 
 /// How many bytes one xxHash64 round consumes: four lanes of eight.
 /// An input shorter than this never touches the accumulators at all, which is why the short and long paths give
 /// different-looking code for the same algorithm.
-/// @see https://rux-lang.dev/docs/api/hash/xx-block-size
+/// @see https://rux-lang.dev/docs/api/hash/xx-hash64#xx-block-size
 pub const XxBlockSize: uint = 32;
 
 /// The eight bytes at `bytes` as a 64-bit value, least significant byte first.
@@ -51,7 +51,7 @@ pub const XxBlockSize: uint = 32;
 /// `bytes` must be readable for eight bytes.
 /// @param bytes eight bytes to read
 /// @returns them as a little-endian word
-/// @see https://rux-lang.dev/docs/api/hash/read-little-endian64
+/// @see https://rux-lang.dev/docs/api/hash/xx-hash64#read-little-endian64
 pub func ReadLittleEndian64(bytes: *byte) -> uint64 {
     var value: uint64 = 0;
     var index: uint = 0;
@@ -68,7 +68,7 @@ pub func ReadLittleEndian64(bytes: *byte) -> uint64 {
 /// `bytes` must be readable for four bytes.
 /// @param bytes four bytes to read
 /// @returns them as a little-endian half word
-/// @see https://rux-lang.dev/docs/api/hash/read-little-endian32
+/// @see https://rux-lang.dev/docs/api/hash/xx-hash64#read-little-endian32
 pub func ReadLittleEndian32(bytes: *byte) -> uint32 {
     var value: uint32 = 0;
     var index: uint = 0;
@@ -86,7 +86,7 @@ pub func ReadLittleEndian32(bytes: *byte) -> uint32 {
 /// @param accumulator the lane's running value
 /// @param lane the input word to fold into it
 /// @returns the lane's new value
-/// @see https://rux-lang.dev/docs/api/hash/xx-round
+/// @see https://rux-lang.dev/docs/api/hash/xx-hash64#xx-round
 pub func XxRound(accumulator: uint64, lane: uint64) -> uint64 {
     return RotateLeft<uint64>(accumulator + lane * XxPrime2, 31) * XxPrime1;
 }
@@ -98,7 +98,7 @@ pub func XxRound(accumulator: uint64, lane: uint64) -> uint64 {
 /// @param hash the running hash
 /// @param accumulator the lane to merge into it
 /// @returns the merged hash
-/// @see https://rux-lang.dev/docs/api/hash/xx-merge
+/// @see https://rux-lang.dev/docs/api/hash/xx-hash64#xx-merge
 pub func XxMerge(hash: uint64, accumulator: uint64) -> uint64 {
     let mixed = XxRound(0, accumulator);
     return (hash ^ mixed) * XxPrime1 + XxPrime4;
@@ -110,7 +110,7 @@ pub func XxMerge(hash: uint64, accumulator: uint64) -> uint64 {
 /// Cannot fail. Runs in constant time and allocates nothing.
 /// @param hash the value to mix
 /// @returns it with every input bit spread across the output
-/// @see https://rux-lang.dev/docs/api/hash/xx-avalanche
+/// @see https://rux-lang.dev/docs/api/hash/xx-hash64#xx-avalanche
 pub func XxAvalanche(hash: uint64) -> uint64 {
     var value = hash;
     value = value ^ (value >> 33);
@@ -144,7 +144,7 @@ pub struct XxHash64 {
 extend XxHash64 {
     /// Constructs an unseeded hasher with nothing written into it yet.
     /// @returns a hasher with a seed of zero
-    /// @see https://rux-lang.dev/docs/api/hash/xx-hash64
+    /// @see https://rux-lang.dev/docs/api/hash/xx-hash64#new
     pub func XxHash64() -> XxHash64 {
         return XxHash64::WithSeed(0);
     }
@@ -156,7 +156,7 @@ extend XxHash64 {
     /// Cannot fail. Runs in constant time and allocates nothing.
     /// @param seed the seed to start from
     /// @returns a hasher seeded with it
-    /// @see https://rux-lang.dev/docs/api/hash/xx-hash64/with-seed
+    /// @see https://rux-lang.dev/docs/api/hash/xx-hash64#with-seed
     pub func WithSeed(seed: uint64) -> XxHash64 {
         return XxHash64 {
             seed: seed,
@@ -173,7 +173,7 @@ extend XxHash64 {
     /// Puts the hasher back to where it started, keeping its seed.
     /// `self` is borrowed mutably. Everything written so far is forgotten; the seed is not.
     /// Cannot fail. Runs in constant time and allocates nothing.
-    /// @see https://rux-lang.dev/docs/api/hash/xx-hash64/reset
+    /// @see https://rux-lang.dev/docs/api/hash/xx-hash64#reset
     pub func Reset(self: &var XxHash64) {
         let seed = self.seed;
         self.first = seed + XxPrime1 + XxPrime2;
@@ -202,7 +202,7 @@ extend XxHash64 : Hasher {
     /// `bytes` must be readable for `length` bytes.
     /// @param bytes the bytes to absorb
     /// @param length how many bytes; zero absorbs nothing
-    /// @see https://rux-lang.dev/docs/api/hash/xx-hash64/write
+    /// @see https://rux-lang.dev/docs/api/hash/xx-hash64#write
     pub func Write(self: &var XxHash64, bytes: *byte, length: uint) {
         if length == 0 { return; }
         self.total = self.total + (length as uint64);
@@ -251,7 +251,7 @@ extend XxHash64 : Hasher {
     /// where the writes left off rather than starting over.
     /// Cannot fail. Runs in time proportional to what is held pending, which is under one block. Allocates nothing.
     /// @returns the hash of everything written since the last reset
-    /// @see https://rux-lang.dev/docs/api/hash/xx-hash64/finish
+    /// @see https://rux-lang.dev/docs/api/hash/xx-hash64#finish
     pub func Finish(self: &var XxHash64) -> uint64 {
         var hash: uint64 = 0;
         if self.total >= (XxBlockSize as uint64) {
@@ -300,7 +300,7 @@ extend XxHash64 : Hasher {
 /// @param length how many bytes
 /// @param seed the seed to start from
 /// @returns their seeded hash
-/// @see https://rux-lang.dev/docs/api/hash/xx-hash64-seeded-of
+/// @see https://rux-lang.dev/docs/api/hash/xx-hash64#xx-hash64-seeded-of
 pub func XxHash64SeededOf(bytes: *byte, length: uint, seed: uint64) -> uint64 {
     var hasher = XxHash64::WithSeed(seed);
     hasher.Write(bytes, length);
@@ -315,7 +315,7 @@ pub func XxHash64SeededOf(bytes: *byte, length: uint, seed: uint64) -> uint64 {
 /// @param bytes the bytes to hash
 /// @param length how many bytes
 /// @returns their hash, seeded with zero
-/// @see https://rux-lang.dev/docs/api/hash/xx-hash64-of
+/// @see https://rux-lang.dev/docs/api/hash/xx-hash64#xx-hash64-of
 pub func XxHash64Of(bytes: *byte, length: uint) -> uint64 {
     return XxHash64SeededOf(bytes, length, 0);
 }

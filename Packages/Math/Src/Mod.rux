@@ -10,7 +10,7 @@
 /// @param x dividend
 /// @param y divisor
 /// @returns the exact remainder, or a NaN when no remainder is defined
-/// @see https://rux-lang.dev/docs/api/math/mod
+/// @see https://rux-lang.dev/docs/api/math/rounding#mod
 pub func Mod(x: float64, y: float64) -> float64 {
     var uxi = FloatBits(x);
     let uyi = FloatBits(y);
@@ -93,7 +93,7 @@ pub func Mod(x: float64, y: float64) -> float64 {
 /// @param x dividend
 /// @param y divisor
 /// @returns the exact remainder, or a NaN when no remainder is defined
-/// @see https://rux-lang.dev/docs/api/math/mod
+/// @see https://rux-lang.dev/docs/api/math/rounding#mod
 pub func Mod(x: float32, y: float32) -> float32 {
     return Mod(x as float64, y as float64) as float32;
 }

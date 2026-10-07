@@ -8,7 +8,7 @@
 /// remains a NaN.
 /// @param x hyperbolic angle
 /// @returns the hyperbolic tangent of `x`
-/// @see https://rux-lang.dev/docs/api/math/tanh
+/// @see https://rux-lang.dev/docs/api/math/hyperbolic#tanh
 pub func Tanh(x: float64) -> float64 {
     if IsNan(x) { return x; }
     let negative = SignBit(x);
@@ -29,7 +29,7 @@ pub func Tanh(x: float64) -> float64 {
 /// Computes the hyperbolic tangent of `x` at `float32` precision.
 /// @param x hyperbolic angle
 /// @returns the hyperbolic tangent of `x`
-/// @see https://rux-lang.dev/docs/api/math/tanh
+/// @see https://rux-lang.dev/docs/api/math/hyperbolic#tanh
 pub func Tanh(x: float32) -> float32 {
     return Tanh(x as float64) as float32;
 }

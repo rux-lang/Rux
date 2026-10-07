@@ -31,7 +31,7 @@ Most floating-point functions provide both `float64` and `float32` overloads. Th
 - **Radicals** — `Sqrt2` and `InvSqrt2`.
 - **Angle conversion** — `RadPerDeg`, `DegPerRad`, `DegToRad`, and `RadToDeg`.
 
-All constants are `float64` values rounded to the nearest representable value. See the [constants reference](https://rux-lang.dev/docs/api/math#constants) for the complete list.
+All constants are `float64` values rounded to the nearest representable value. See the [constants reference](https://rux-lang.dev/docs/api/math/constants) for the complete list.
 
 ### Elementary functions
 
