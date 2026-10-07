@@ -14,7 +14,7 @@
 /// The simple uppercase of `scalar`: one value to one, itself when it has no mapping.
 /// @param scalar the scalar value to map
 /// @returns its single-scalar uppercase, or `scalar` itself when there is none
-/// @see https://rux-lang.dev/docs/api/unicode/to-upper-simple
+/// @see https://rux-lang.dev/docs/api/unicode/case#to-upper-simple
 pub func ToUpperSimple(scalar: char32) -> char32 {
     return PairValue(SimpleUpperPairs[..], scalar as uint32) as char32;
 }
@@ -22,7 +22,7 @@ pub func ToUpperSimple(scalar: char32) -> char32 {
 /// The simple lowercase of `scalar`.
 /// @param scalar the scalar value to map
 /// @returns its single-scalar lowercase, or `scalar` itself when there is none
-/// @see https://rux-lang.dev/docs/api/unicode/to-lower-simple
+/// @see https://rux-lang.dev/docs/api/unicode/case#to-lower-simple
 pub func ToLowerSimple(scalar: char32) -> char32 {
     return PairValue(SimpleLowerPairs[..], scalar as uint32) as char32;
 }
@@ -30,7 +30,7 @@ pub func ToLowerSimple(scalar: char32) -> char32 {
 /// The simple titlecase of `scalar`: the uppercase, except for the few dozen characters whose titlecase differs.
 /// @param scalar the scalar value to map
 /// @returns its single-scalar titlecase, or `scalar` itself when there is none
-/// @see https://rux-lang.dev/docs/api/unicode/to-title-simple
+/// @see https://rux-lang.dev/docs/api/unicode/case#to-title-simple
 pub func ToTitleSimple(scalar: char32) -> char32 {
     let titled = PairValue(SimpleTitlePairs[..], scalar as uint32);
     if titled != scalar as uint32 { return titled as char32; }
@@ -73,7 +73,7 @@ func WriteMapping(index: uint32[..], elements: uint32[..], scalar: char32, fallb
 /// @param into receives the mapping; three values always suffice
 /// @param written receives how many values were written
 /// @returns false without writing when `into` is too short
-/// @see https://rux-lang.dev/docs/api/unicode/to-upper-full
+/// @see https://rux-lang.dev/docs/api/unicode/case#to-upper-full
 pub func ToUpperFull(scalar: char32, into: var char32[..], written: *var uint) -> bool {
     return WriteMapping(FullUpperIndex[..], FullUpperElements[..], scalar, ToUpperSimple(scalar), into, written);
 }
@@ -84,7 +84,7 @@ pub func ToUpperFull(scalar: char32, into: var char32[..], written: *var uint) -
 /// @param into receives the mapping; three values always suffice
 /// @param written receives how many values were written
 /// @returns false without writing when `into` is too short
-/// @see https://rux-lang.dev/docs/api/unicode/to-lower-full
+/// @see https://rux-lang.dev/docs/api/unicode/case#to-lower-full
 pub func ToLowerFull(scalar: char32, into: var char32[..], written: *var uint) -> bool {
     return WriteMapping(FullLowerIndex[..], FullLowerElements[..], scalar, ToLowerSimple(scalar), into, written);
 }
@@ -98,7 +98,7 @@ pub func ToLowerFull(scalar: char32, into: var char32[..], written: *var uint) -
 /// @param into receives the folding; three values always suffice
 /// @param written receives how many values were written
 /// @returns false without writing when `into` is too short
-/// @see https://rux-lang.dev/docs/api/unicode/fold
+/// @see https://rux-lang.dev/docs/api/unicode/case#fold
 pub func Fold(scalar: char32, into: var char32[..], written: *var uint) -> bool {
     return WriteMapping(FullFoldIndex[..], FullFoldElements[..], scalar, scalar, into, written);
 }

@@ -13,7 +13,7 @@
 
 
 /// The first Hangul syllable, LV and LVT composition's base.
-/// @see https://rux-lang.dev/docs/api/unicode/hangul-base
+/// @see https://rux-lang.dev/docs/api/unicode/normalization#hangul-base
 pub const HangulBase: uint32 = 0xAC00;
 
 // The jamo bases and counts the arithmetic runs on.
@@ -108,7 +108,7 @@ func CanonicalOrder(items: var char32[..], length: uint) {
 /// @param into receives the decomposition
 /// @param written receives how many values were written
 /// @returns false without writing when `into` is too short
-/// @see https://rux-lang.dev/docs/api/unicode/decompose-canonical
+/// @see https://rux-lang.dev/docs/api/unicode/normalization#decompose-canonical
 pub func DecomposeCanonical(text: char32[..], into: var char32[..], written: *var uint) -> bool {
     return Decompose(text, false, into, written);
 }
@@ -119,7 +119,7 @@ pub func DecomposeCanonical(text: char32[..], into: var char32[..], written: *va
 /// @param into receives the decomposition
 /// @param written receives how many values were written
 /// @returns false without writing when `into` is too short
-/// @see https://rux-lang.dev/docs/api/unicode/decompose-compatibility
+/// @see https://rux-lang.dev/docs/api/unicode/normalization#decompose-compatibility
 pub func DecomposeCompatibility(text: char32[..], into: var char32[..], written: *var uint) -> bool {
     return Decompose(text, true, into, written);
 }
@@ -234,7 +234,7 @@ func Compose(items: var char32[..], length: uint) -> uint {
 /// @param into receives the normalized form
 /// @param written receives how many values were written
 /// @returns false without writing when `into` is too short
-/// @see https://rux-lang.dev/docs/api/unicode/normalize-canonical
+/// @see https://rux-lang.dev/docs/api/unicode/normalization#normalize-canonical
 pub func NormalizeCanonical(text: char32[..], into: var char32[..], written: *var uint) -> bool {
     var length: uint = 0;
     if !DecomposeCanonical(text, into, @length) { return false; }
@@ -248,7 +248,7 @@ pub func NormalizeCanonical(text: char32[..], into: var char32[..], written: *va
 /// @param into receives the normalized form
 /// @param written receives how many values were written
 /// @returns false without writing when `into` is too short
-/// @see https://rux-lang.dev/docs/api/unicode/normalize-compatibility
+/// @see https://rux-lang.dev/docs/api/unicode/normalization#normalize-compatibility
 pub func NormalizeCompatibility(text: char32[..], into: var char32[..], written: *var uint) -> bool {
     var length: uint = 0;
     if !DecomposeCompatibility(text, into, @length) { return false; }
