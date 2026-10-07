@@ -44,6 +44,7 @@ extern {
     /// Closes the given file stream.
     /// @param stream the stream to act on
     /// @returns zero, or `EOF` on failure
+    /// @see https://rux-lang.dev/docs/api/c/stdio#fclose
     /// @see https://en.cppreference.com/c/io/fclose
     pub func fclose(stream: *FILE) -> c_int;
 
@@ -68,6 +69,7 @@ extern {
     /// Reads the next character from the given stream.
     /// @param stream the stream to act on
     /// @returns the byte as an `unsigned char`, or `EOF` at the end or on error
+    /// @see https://rux-lang.dev/docs/api/c/stdio#fgetc
     /// @see https://en.cppreference.com/c/io/fgetc
     pub func fgetc(stream: *FILE) -> c_int;
 
@@ -90,6 +92,7 @@ extern {
     /// @param filename the path, as a null-terminated byte string
     /// @param mode the open mode, such as `"rb"`
     /// @returns the stream, or null with the reason in `errno`
+    /// @see https://rux-lang.dev/docs/api/c/stdio#fopen
     /// @see https://en.cppreference.com/c/io/fopen
     pub func fopen(filename: *char8, mode: *char8) -> *FILE;
 
@@ -143,6 +146,7 @@ extern {
     /// @param offset how far to move
     /// @param origin where the move is measured from
     /// @returns zero, or non-zero on failure
+    /// @see https://rux-lang.dev/docs/api/c/stdio#fseek
     /// @see https://en.cppreference.com/c/io/fseek
     pub func fseek(stream: *FILE, offset: int64, origin: c_int) -> c_int;
 
@@ -156,6 +160,7 @@ extern {
     /// Returns the current file position of the stream.
     /// @param stream the stream to act on
     /// @returns the current position, or -1 with the reason in `errno`
+    /// @see https://rux-lang.dev/docs/api/c/stdio#ftell
     /// @see https://en.cppreference.com/c/io/ftell
     pub func ftell(stream: *FILE) -> int64;
 
@@ -165,6 +170,7 @@ extern {
     /// @param count how many elements to write
     /// @param stream the stream to act on
     /// @returns how many whole elements were written, which is short only on error
+    /// @see https://rux-lang.dev/docs/api/c/stdio#fwrite
     /// @see https://en.cppreference.com/c/io/fwrite
     pub func fwrite(buffer: *opaque, size: size_t, count: size_t, stream: *FILE) -> size_t;
 
@@ -200,18 +206,21 @@ extern {
     /// Writes a character to stdout.
     /// @param ch the character, as an `int` holding an `unsigned char` value or `EOF`
     /// @returns the byte written, or `EOF` on failure
+    /// @see https://rux-lang.dev/docs/api/c/stdio#putchar
     /// @see https://en.cppreference.com/c/io/putchar
     pub func putchar(ch: c_int) -> c_int;
 
     /// Writes a string followed by a newline to stdout.
     /// @param str a null-terminated byte string
     /// @returns a non-negative value, or `EOF` on failure
+    /// @see https://rux-lang.dev/docs/api/c/stdio#puts
     /// @see https://en.cppreference.com/c/io/puts
     pub func puts(str: *char8) -> c_int;
 
     /// Deletes the file identified by the given path.
     /// @param pathname the path, as a null-terminated byte string
     /// @returns zero, or non-zero on failure
+    /// @see https://rux-lang.dev/docs/api/c/stdio#remove
     /// @see https://en.cppreference.com/c/io/remove
     pub func remove(pathname: *char8) -> c_int;
 
@@ -256,6 +265,7 @@ extern {
     /// @param buffer the bytes
     /// @param format the format string
     /// @returns how many bytes were written, not counting the terminator, or a negative value on failure
+    /// @see https://rux-lang.dev/docs/api/c/stdio#sprintf
     /// @see https://en.cppreference.com/c/io/sprintf
     pub func sprintf(buffer: *char8, format: *char8, ...) -> c_int;
 
@@ -265,6 +275,7 @@ extern {
     /// @param buffer the bytes
     /// @param format the format string
     /// @returns how many items were assigned, which may be fewer than asked for, or `EOF` before any were
+    /// @see https://rux-lang.dev/docs/api/c/stdio#sscanf
     /// @see https://en.cppreference.com/c/io/sscanf
     pub func sscanf(buffer: *char8, format: *char8, ...) -> c_int;
 
@@ -295,22 +306,22 @@ extern {
 /// `EOF`: what a character-reading call returns instead of a character when the stream has ended or failed.
 /// Negative, and distinct from every `unsigned char` value, which is why those calls return a `c_int` rather than a
 /// character type. It does not say which of the two happened: `feof` and `ferror` do.
-/// @see https://rux-lang.dev/docs/api/c/eof
+/// @see https://rux-lang.dev/docs/api/c/stdio#eof
 #Allow("naming.const")
 pub const EOF: int32 = -1;
 
 /// `SEEK_SET`: measure the new stream position from the beginning.
-/// @see https://rux-lang.dev/docs/api/c/seek-set
+/// @see https://rux-lang.dev/docs/api/c/stdio#seek-set
 #Allow("naming.const")
 pub const SEEK_SET: int32 = 0;
 
 /// `SEEK_CUR`: measure the new stream position from the current one.
-/// @see https://rux-lang.dev/docs/api/c/seek-cur
+/// @see https://rux-lang.dev/docs/api/c/stdio#seek-cur
 #Allow("naming.const")
 pub const SEEK_CUR: int32 = 1;
 
 /// `SEEK_END`: measure the new stream position from the end.
-/// @see https://rux-lang.dev/docs/api/c/seek-end
+/// @see https://rux-lang.dev/docs/api/c/stdio#seek-end
 #Allow("naming.const")
 pub const SEEK_END: int32 = 2;
 
@@ -319,124 +330,124 @@ pub const SEEK_END: int32 = 2;
 when #target.os {
     .Windows => {
         /// `_IOFBF`: buffer fully, flushing when the buffer fills.
-        /// @see https://rux-lang.dev/docs/api/c/iofbf
+        /// @see https://rux-lang.dev/docs/api/c/stdio#iofbf
         #Allow("naming.const")
         pub const _IOFBF: int32 = 0;
 
         /// `_IOLBF`: buffer by line.
-        /// @see https://rux-lang.dev/docs/api/c/iolbf
+        /// @see https://rux-lang.dev/docs/api/c/stdio#iolbf
         #Allow("naming.const")
         pub const _IOLBF: int32 = 64;
 
         /// `_IONBF`: do not buffer.
-        /// @see https://rux-lang.dev/docs/api/c/ionbf
+        /// @see https://rux-lang.dev/docs/api/c/stdio#ionbf
         #Allow("naming.const")
         pub const _IONBF: int32 = 4;
 
         /// `BUFSIZ`: the buffer size `setbuf` uses.
-        /// @see https://rux-lang.dev/docs/api/c/bufsiz
+        /// @see https://rux-lang.dev/docs/api/c/stdio#bufsiz
         #Allow("naming.const")
         pub const BUFSIZ: int32 = 512;
 
         /// `FOPEN_MAX`: how many streams the implementation guarantees can be open at once.
-        /// @see https://rux-lang.dev/docs/api/c/fopen-max
+        /// @see https://rux-lang.dev/docs/api/c/stdio#fopen-max
         #Allow("naming.const")
         pub const FOPEN_MAX: int32 = 20;
 
         /// `FILENAME_MAX`: the length of the longest file name the implementation guarantees it can open.
-        /// @see https://rux-lang.dev/docs/api/c/filename-max
+        /// @see https://rux-lang.dev/docs/api/c/stdio#filename-max
         #Allow("naming.const")
         pub const FILENAME_MAX: int32 = 260;
 
         /// `L_tmpnam`: the buffer size `tmpnam` needs.
-        /// @see https://rux-lang.dev/docs/api/c/l-tmpnam
+        /// @see https://rux-lang.dev/docs/api/c/stdio#l-tmpnam
         #Allow("naming.const")
         pub const L_tmpnam: int32 = 260;
 
         /// `TMP_MAX`: how many distinct names `tmpnam` guarantees before it repeats.
-        /// @see https://rux-lang.dev/docs/api/c/tmp-max
+        /// @see https://rux-lang.dev/docs/api/c/stdio#tmp-max
         #Allow("naming.const")
         pub const TMP_MAX: int32 = 32767;
     }
     .Linux => {
         /// `_IOFBF`: buffer fully, flushing when the buffer fills.
-        /// @see https://rux-lang.dev/docs/api/c/iofbf
+        /// @see https://rux-lang.dev/docs/api/c/stdio#iofbf
         #Allow("naming.const")
         pub const _IOFBF: int32 = 0;
 
         /// `_IOLBF`: buffer by line.
-        /// @see https://rux-lang.dev/docs/api/c/iolbf
+        /// @see https://rux-lang.dev/docs/api/c/stdio#iolbf
         #Allow("naming.const")
         pub const _IOLBF: int32 = 1;
 
         /// `_IONBF`: do not buffer.
-        /// @see https://rux-lang.dev/docs/api/c/ionbf
+        /// @see https://rux-lang.dev/docs/api/c/stdio#ionbf
         #Allow("naming.const")
         pub const _IONBF: int32 = 2;
 
         /// `BUFSIZ`: the buffer size `setbuf` uses.
-        /// @see https://rux-lang.dev/docs/api/c/bufsiz
+        /// @see https://rux-lang.dev/docs/api/c/stdio#bufsiz
         #Allow("naming.const")
         pub const BUFSIZ: int32 = 8192;
 
         /// `FOPEN_MAX`: how many streams the implementation guarantees can be open at once.
-        /// @see https://rux-lang.dev/docs/api/c/fopen-max
+        /// @see https://rux-lang.dev/docs/api/c/stdio#fopen-max
         #Allow("naming.const")
         pub const FOPEN_MAX: int32 = 16;
 
         /// `FILENAME_MAX`: the length of the longest file name the implementation guarantees it can open.
-        /// @see https://rux-lang.dev/docs/api/c/filename-max
+        /// @see https://rux-lang.dev/docs/api/c/stdio#filename-max
         #Allow("naming.const")
         pub const FILENAME_MAX: int32 = 4096;
 
         /// `L_tmpnam`: the buffer size `tmpnam` needs.
-        /// @see https://rux-lang.dev/docs/api/c/l-tmpnam
+        /// @see https://rux-lang.dev/docs/api/c/stdio#l-tmpnam
         #Allow("naming.const")
         pub const L_tmpnam: int32 = 20;
 
         /// `TMP_MAX`: how many distinct names `tmpnam` guarantees before it repeats.
-        /// @see https://rux-lang.dev/docs/api/c/tmp-max
+        /// @see https://rux-lang.dev/docs/api/c/stdio#tmp-max
         #Allow("naming.const")
         pub const TMP_MAX: int32 = 238328;
     }
     else => {
         /// `_IOFBF`: buffer fully, flushing when the buffer fills.
-        /// @see https://rux-lang.dev/docs/api/c/iofbf
+        /// @see https://rux-lang.dev/docs/api/c/stdio#iofbf
         #Allow("naming.const")
         pub const _IOFBF: int32 = 0;
 
         /// `_IOLBF`: buffer by line.
-        /// @see https://rux-lang.dev/docs/api/c/iolbf
+        /// @see https://rux-lang.dev/docs/api/c/stdio#iolbf
         #Allow("naming.const")
         pub const _IOLBF: int32 = 1;
 
         /// `_IONBF`: do not buffer.
-        /// @see https://rux-lang.dev/docs/api/c/ionbf
+        /// @see https://rux-lang.dev/docs/api/c/stdio#ionbf
         #Allow("naming.const")
         pub const _IONBF: int32 = 2;
 
         /// `BUFSIZ`: the buffer size `setbuf` uses.
-        /// @see https://rux-lang.dev/docs/api/c/bufsiz
+        /// @see https://rux-lang.dev/docs/api/c/stdio#bufsiz
         #Allow("naming.const")
         pub const BUFSIZ: int32 = 1024;
 
         /// `FOPEN_MAX`: how many streams the implementation guarantees can be open at once.
-        /// @see https://rux-lang.dev/docs/api/c/fopen-max
+        /// @see https://rux-lang.dev/docs/api/c/stdio#fopen-max
         #Allow("naming.const")
         pub const FOPEN_MAX: int32 = 20;
 
         /// `FILENAME_MAX`: the length of the longest file name the implementation guarantees it can open.
-        /// @see https://rux-lang.dev/docs/api/c/filename-max
+        /// @see https://rux-lang.dev/docs/api/c/stdio#filename-max
         #Allow("naming.const")
         pub const FILENAME_MAX: int32 = 1024;
 
         /// `L_tmpnam`: the buffer size `tmpnam` needs.
-        /// @see https://rux-lang.dev/docs/api/c/l-tmpnam
+        /// @see https://rux-lang.dev/docs/api/c/stdio#l-tmpnam
         #Allow("naming.const")
         pub const L_tmpnam: int32 = 1024;
 
         /// `TMP_MAX`: how many distinct names `tmpnam` guarantees before it repeats.
-        /// @see https://rux-lang.dev/docs/api/c/tmp-max
+        /// @see https://rux-lang.dev/docs/api/c/stdio#tmp-max
         #Allow("naming.const")
         pub const TMP_MAX: int32 = 308915776;
     }

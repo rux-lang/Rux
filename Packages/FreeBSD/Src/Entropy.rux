@@ -6,11 +6,11 @@
 import FreeBSD::{ SysGetRandom, Syscall3 };
 
 /// `GRND_NONBLOCK`: report rather than wait. Present for parity; FreeBSD's generator does not block.
-/// @see https://rux-lang.dev/docs/api/freebsd/random-non-blocking
+/// @see https://rux-lang.dev/docs/api/freebsd/get-random#random-non-blocking
 pub const RandomNonBlocking: uint32 = 1;
 
 /// `GRND_RANDOM`: accepted and ignored, which is what FreeBSD does with it.
-/// @see https://rux-lang.dev/docs/api/freebsd/random-blocking-pool
+/// @see https://rux-lang.dev/docs/api/freebsd/get-random#random-blocking-pool
 pub const RandomBlockingPool: uint32 = 2;
 
 /// Fills up to `length` bytes of `buffer` with unpredictable bytes.

@@ -6,43 +6,43 @@ import FreeBSD::{ EINVAL, IsError, SignExtendFd, SysBrk, SysMadvise, SysMmap, Sy
                   Syscall1, Syscall2, Syscall3, Syscall6 };
 
 /// `PROT_NONE`: the pages may not be touched at all.
-/// @see https://rux-lang.dev/docs/api/freebsd/protection-none
+/// @see https://rux-lang.dev/docs/api/freebsd/memory#protection-none
 pub const ProtectionNone: int32 = 0x00;
 
 /// `PROT_READ`: the pages may be read.
-/// @see https://rux-lang.dev/docs/api/freebsd/protection-read
+/// @see https://rux-lang.dev/docs/api/freebsd/memory#protection-read
 pub const ProtectionRead: int32 = 0x01;
 
 /// `PROT_WRITE`: the pages may be written.
-/// @see https://rux-lang.dev/docs/api/freebsd/protection-write
+/// @see https://rux-lang.dev/docs/api/freebsd/memory#protection-write
 pub const ProtectionWrite: int32 = 0x02;
 
 /// `PROT_EXEC`: the pages may be executed.
-/// @see https://rux-lang.dev/docs/api/freebsd/protection-execute
+/// @see https://rux-lang.dev/docs/api/freebsd/memory#protection-execute
 pub const ProtectionExecute: int32 = 0x04;
 
 /// `MAP_SHARED`: writes are visible to other mappings of the same object and reach it.
-/// @see https://rux-lang.dev/docs/api/freebsd/map-shared
+/// @see https://rux-lang.dev/docs/api/freebsd/memory#map-shared
 pub const MapShared: int32 = 0x0001;
 
 /// `MAP_PRIVATE`: writes are private to this mapping and never reach the object.
-/// @see https://rux-lang.dev/docs/api/freebsd/map-private
+/// @see https://rux-lang.dev/docs/api/freebsd/memory#map-private
 pub const MapPrivate: int32 = 0x0002;
 
 /// `MAP_FIXED`: place the mapping exactly at the requested address, replacing whatever was there.
-/// @see https://rux-lang.dev/docs/api/freebsd/map-fixed
+/// @see https://rux-lang.dev/docs/api/freebsd/memory#map-fixed
 pub const MapFixed: int32 = 0x0010;
 
 /// `MAP_EXCL`: with `MapFixed`, refuse the address rather than replace what occupies it.
 /// The one way to ask whether a range is free: a fixed, exclusive request over anything already mapped fails with
 /// `ENOMEM`, and one over a hole takes it. `Mprotect` cannot answer that question, since it skips the holes in a
 /// range rather than refusing them.
-/// @see https://rux-lang.dev/docs/api/freebsd/map-exclusive
+/// @see https://rux-lang.dev/docs/api/freebsd/memory#map-exclusive
 pub const MapExclusive: int32 = 0x4000;
 
 /// `MAP_ANON`: the mapping is backed by zeroed pages rather than by a file.
 /// FreeBSD numbers this differently from Linux, which is one of the reasons the two packages are separate.
-/// @see https://rux-lang.dev/docs/api/freebsd/map-anonymous
+/// @see https://rux-lang.dev/docs/api/freebsd/memory#map-anonymous
 pub const MapAnonymous: int32 = 0x1000;
 
 /// Creates a mapping and returns its address, or a negative error number.
@@ -57,7 +57,7 @@ pub const MapAnonymous: int32 = 0x1000;
 /// @param fd the file to map, or -1 with `MapAnonymous`
 /// @param offset where in the file the mapping starts
 /// @returns the mapping's address, or a negative error number
-/// @see https://rux-lang.dev/docs/api/freebsd/mmap
+/// @see https://rux-lang.dev/docs/api/freebsd/memory#mmap
 pub func Mmap(address: *opaque, length: uint, protection: int32, flags: int32, fd: int32, offset: uint64) -> int64 {
     return Syscall6(
         SysMmap,
@@ -76,7 +76,7 @@ pub func Mmap(address: *opaque, length: uint, protection: int32, flags: int32, f
 /// @param address a page-aligned address to release from
 /// @param length how many bytes to release
 /// @returns zero, or a negative error number
-/// @see https://rux-lang.dev/docs/api/freebsd/munmap
+/// @see https://rux-lang.dev/docs/api/freebsd/memory#munmap
 pub func Munmap(address: *opaque, length: uint) -> int64 {
     return Syscall2(SysMunmap, address as uint64, length as uint64);
 }
@@ -85,36 +85,36 @@ pub func Munmap(address: *opaque, length: uint) -> int64 {
 /// Reports failure by not moving rather than by an error number. The break is a single process-wide value.
 /// @param address where to move the program break, or null to read it
 /// @returns the resulting break, or a negative error number
-/// @see https://rux-lang.dev/docs/api/freebsd/brk
+/// @see https://rux-lang.dev/docs/api/freebsd/memory#brk
 pub func Brk(address: *opaque) -> int64 {
     return Syscall1(SysBrk, address as uint64);
 }
 
 /// `MADV_NORMAL`: no advice; the default.
-/// @see https://rux-lang.dev/docs/api/freebsd/advise-normal
+/// @see https://rux-lang.dev/docs/api/freebsd/memory#advise-normal
 pub const AdviseNormal: int32 = 0;
 
 /// `MADV_RANDOM`: the pages will be touched in no useful order.
-/// @see https://rux-lang.dev/docs/api/freebsd/advise-random
+/// @see https://rux-lang.dev/docs/api/freebsd/memory#advise-random
 pub const AdviseRandom: int32 = 1;
 
 /// `MADV_SEQUENTIAL`: the pages will be touched in order.
-/// @see https://rux-lang.dev/docs/api/freebsd/advise-sequential
+/// @see https://rux-lang.dev/docs/api/freebsd/memory#advise-sequential
 pub const AdviseSequential: int32 = 2;
 
 /// `MADV_WILLNEED`: the pages will be read soon.
-/// @see https://rux-lang.dev/docs/api/freebsd/advise-will-need
+/// @see https://rux-lang.dev/docs/api/freebsd/memory#advise-will-need
 pub const AdviseWillNeed: int32 = 3;
 
 /// `MADV_DONTNEED`: the pages are not needed soon.
 /// FreeBSD's meaning is weaker than Linux's: it does not discard the pages, so an anonymous page does not read back
 /// as zero afterwards. `MADV_FREE` is the one that lets the kernel take the storage, and that difference is exactly
 /// why an advice value must not be carried between the two packages.
-/// @see https://rux-lang.dev/docs/api/freebsd/advise-dont-need
+/// @see https://rux-lang.dev/docs/api/freebsd/memory#advise-dont-need
 pub const AdviseDontNeed: int32 = 4;
 
 /// `MADV_FREE`: the pages may be reclaimed, and read back as zero if they are.
-/// @see https://rux-lang.dev/docs/api/freebsd/advise-free
+/// @see https://rux-lang.dev/docs/api/freebsd/memory#advise-free
 pub const AdviseFree: int32 = 5;
 
 /// Changes what may be done with the pages covering a range.
@@ -125,7 +125,7 @@ pub const AdviseFree: int32 = 5;
 /// @param length how many bytes, rounded up to whole pages
 /// @param protection what may be done with them afterwards
 /// @returns zero, or a negative error number
-/// @see https://rux-lang.dev/docs/api/freebsd/mprotect
+/// @see https://rux-lang.dev/docs/api/freebsd/memory#mprotect
 pub func Mprotect(address: *opaque, length: uint, protection: int32) -> int64 {
     return Syscall3(SysMprotect, address as uint64, length as uint64, (protection as int64) as uint64);
 }
@@ -137,16 +137,16 @@ pub func Mprotect(address: *opaque, length: uint, protection: int32) -> int64 {
 /// @param length how many bytes the advice covers
 /// @param advice one of the `Advise*` values
 /// @returns zero, or a negative error number
-/// @see https://rux-lang.dev/docs/api/freebsd/madvise
+/// @see https://rux-lang.dev/docs/api/freebsd/memory#madvise
 pub func Madvise(address: *opaque, length: uint, advice: int32) -> int64 {
     return Syscall3(SysMadvise, address as uint64, length as uint64, (advice as int64) as uint64);
 }
 /// `CTL_HW`: the sysctl branch describing the machine.
-/// @see https://rux-lang.dev/docs/api/freebsd/ctl-hw
+/// @see https://rux-lang.dev/docs/api/freebsd/memory#ctl-hw
 pub const CtlHardware: int32 = 6;
 
 /// `HW_PAGESIZE`: the leaf under `CtlHardware` holding the page size, in bytes.
-/// @see https://rux-lang.dev/docs/api/freebsd/hw-pagesize
+/// @see https://rux-lang.dev/docs/api/freebsd/memory#hw-pagesize
 pub const HardwarePageSize: int32 = 7;
 
 /// The size of a page, asked of the kernel.
@@ -156,7 +156,7 @@ pub const HardwarePageSize: int32 = 7;
 /// A caller that cannot use a failure has no business asking: the whole point of returning one is that a system
 /// which will not answer is not a system to guess about.
 /// @returns the page size in bytes, or a negative error number
-/// @see https://rux-lang.dev/docs/api/freebsd/query-page-size
+/// @see https://rux-lang.dev/docs/api/freebsd/memory#query-page-size
 pub func QueryPageSize() -> int64 {
     var name: int32[2] = [CtlHardware, HardwarePageSize];
     var value: int32 = 0;

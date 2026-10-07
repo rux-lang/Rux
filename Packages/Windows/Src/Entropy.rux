@@ -11,12 +11,12 @@ import Windows::NtStatus;
 /// `BCRYPT_USE_SYSTEM_PREFERRED_RNG`: draw from the system's preferred generator rather than a named algorithm.
 /// Passed with a null algorithm handle, which is what makes this a one-call interface: nothing has to be opened,
 /// configured, or closed.
-/// @see https://rux-lang.dev/docs/api/windows/bcrypt-use-system-preferred-rng
+/// @see https://rux-lang.dev/docs/api/windows/get-random#bcrypt-use-system-preferred-rng
 #Allow("naming.const")
 pub const BCRYPT_USE_SYSTEM_PREFERRED_RNG: uint32 = 0x00000002;
 
 /// `STATUS_SUCCESS`: the status an `NtStatus`-reporting call gives when it worked.
-/// @see https://rux-lang.dev/docs/api/windows/status-success
+/// @see https://rux-lang.dev/docs/api/windows/get-random#status-success
 #Allow("naming.const")
 pub const STATUS_SUCCESS: int32 = 0;
 

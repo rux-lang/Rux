@@ -3,28 +3,28 @@
 // `long` questions that `Rux/C` has to answer arise here.
 
 /// A process identifier, as `getpid` and its relatives report one.
-/// @see https://rux-lang.dev/docs/api/freebsd/process-id
+/// @see https://rux-lang.dev/docs/api/freebsd/types#process-id
 pub type ProcessId = int32;
 
 /// A file descriptor, as the kernel numbers one.
-/// @see https://rux-lang.dev/docs/api/freebsd/file-descriptor
+/// @see https://rux-lang.dev/docs/api/freebsd/types#file-descriptor
 pub type FileDescriptor = int32;
 
 /// A byte offset within a file, 64 bits on every supported target.
-/// @see https://rux-lang.dev/docs/api/freebsd/file-offset
+/// @see https://rux-lang.dev/docs/api/freebsd/types#file-offset
 pub type FileOffset = int64;
 
 /// A file's type and permission bits.
 /// Sixteen bits here, where Linux's `mode_t` is thirty-two. The bit meanings agree; the width does not.
-/// @see https://rux-lang.dev/docs/api/freebsd/file-mode
+/// @see https://rux-lang.dev/docs/api/freebsd/types#file-mode
 pub type FileMode = uint16;
 
 /// A user identifier.
-/// @see https://rux-lang.dev/docs/api/freebsd/user-id
+/// @see https://rux-lang.dev/docs/api/freebsd/types#user-id
 pub type UserId = uint32;
 
 /// A group identifier.
-/// @see https://rux-lang.dev/docs/api/freebsd/group-id
+/// @see https://rux-lang.dev/docs/api/freebsd/types#group-id
 pub type GroupId = uint32;
 
 /// A duration or an instant, as seconds and nanoseconds.

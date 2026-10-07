@@ -34,6 +34,7 @@ extern {
     /// Computes the absolute value of an integer value.
     /// @param n the value to act on
     /// @returns the magnitude; the most negative value has none and the result is undefined
+    /// @see https://rux-lang.dev/docs/api/c/stdlib#abs
     /// @see https://en.cppreference.com/c/numeric/math/abs
     pub func abs(n: c_int) -> c_int;
 
@@ -42,6 +43,7 @@ extern {
     /// than reported. Use strtod, which reports both.
     /// @param str a null-terminated byte string
     /// @returns the value, or zero when nothing was read; there is no way to tell the two apart
+    /// @see https://rux-lang.dev/docs/api/c/stdlib#atof
     /// @see https://en.cppreference.com/c/string/byte/atof
     pub func atof(str: *char8) -> c_double;
 
@@ -49,6 +51,7 @@ extern {
     /// Cannot report failure, and a value out of range is undefined rather than reported. Use strtol.
     /// @param str a null-terminated byte string
     /// @returns the value, or zero when nothing was read; there is no way to tell the two apart
+    /// @see https://rux-lang.dev/docs/api/c/stdlib#atoi
     /// @see https://en.cppreference.com/c/string/byte/atoi
     pub func atoi(str: *char8) -> c_int;
 
@@ -56,6 +59,7 @@ extern {
     /// Cannot report failure. Use strtol.
     /// @param str a null-terminated byte string
     /// @returns the value, or zero when nothing was read; there is no way to tell the two apart
+    /// @see https://rux-lang.dev/docs/api/c/stdlib#atol
     /// @see https://en.cppreference.com/c/string/byte/atoi
     pub func atol(str: *char8) -> int64;
 
@@ -63,6 +67,7 @@ extern {
     /// Cannot report failure. Use strtoll.
     /// @param str a null-terminated byte string
     /// @returns the value, or zero when nothing was read; there is no way to tell the two apart
+    /// @see https://rux-lang.dev/docs/api/c/stdlib#atoll
     /// @see https://en.cppreference.com/c/string/byte/atoi
     pub func atoll(str: *char8) -> int64;
 
@@ -70,6 +75,7 @@ extern {
     /// @param num how many objects
     /// @param size how many bytes one object occupies
     /// @returns the address of the zeroed block, or null
+    /// @see https://rux-lang.dev/docs/api/c/stdlib#calloc
     /// @see https://en.cppreference.com/c/memory/calloc
     pub func calloc(num: size_t, size: size_t) -> *var opaque;
 
@@ -80,6 +86,7 @@ extern {
 
     /// Deallocates the memory previously allocated by malloc, calloc or realloc.
     /// @param ptr the block to act on
+    /// @see https://rux-lang.dev/docs/api/c/stdlib#free
     /// @see https://en.cppreference.com/c/memory/free
     pub func free(ptr: *var opaque);
 
@@ -94,18 +101,21 @@ extern {
     /// Computes the absolute value of a long integer value.
     /// @param n the value to act on
     /// @returns the magnitude; the most negative value has none and the result is undefined
+    /// @see https://rux-lang.dev/docs/api/c/stdlib#labs
     /// @see https://en.cppreference.com/c/numeric/math/abs
     pub func labs(n: int64) -> int64;
 
     /// Computes the absolute value of a long long integer value.
     /// @param n the value to act on
     /// @returns the magnitude; the most negative value has none and the result is undefined
+    /// @see https://rux-lang.dev/docs/api/c/stdlib#llabs
     /// @see https://en.cppreference.com/c/numeric/math/abs
     pub func llabs(n: int64) -> int64;
 
     /// Allocates size bytes of uninitialized memory.
     /// @param size a size in bytes
     /// @returns the address of the block, or null
+    /// @see https://rux-lang.dev/docs/api/c/stdlib#malloc
     /// @see https://en.cppreference.com/c/memory/malloc
     pub func malloc(size: size_t) -> *var opaque;
 
@@ -113,6 +123,7 @@ extern {
     /// Nothing about the sequence is guaranteed, and it must never produce a key, a token, or anything an adversary
     /// would like to predict. Rux/Random names its generators; Rux/Entropy reaches the operating system.
     /// @returns a value in `[0, RAND_MAX]`, from a sequence that guarantees nothing
+    /// @see https://rux-lang.dev/docs/api/c/stdlib#rand
     /// @see https://en.cppreference.com/c/numeric/random/rand
     pub func rand() -> c_int;
 
@@ -120,11 +131,13 @@ extern {
     /// @param ptr the block to act on
     /// @param size a size in bytes
     /// @returns the address of the resized block, or null with the original still valid
+    /// @see https://rux-lang.dev/docs/api/c/stdlib#realloc
     /// @see https://en.cppreference.com/c/memory/realloc
     pub func realloc(ptr: *var opaque, size: size_t) -> *var opaque;
 
     /// Seeds the pseudo-random number generator used by rand.
     /// @param seed the value to seed the generator with
+    /// @see https://rux-lang.dev/docs/api/c/stdlib#srand
     /// @see https://en.cppreference.com/c/numeric/random/srand
     pub func srand(seed: c_uint);
 
@@ -133,6 +146,7 @@ extern {
     /// @param endptr receives the address where parsing stopped, or null
     /// @param base the radix, 2 through 36, or zero to read a C integer prefix
     /// @returns the value, zero when nothing was read, or a saturated limit with `errno` set to `ERANGE`
+    /// @see https://rux-lang.dev/docs/api/c/stdlib#strtol
     /// @see https://en.cppreference.com/c/string/byte/strtol
     pub func strtol(str: *char8, endptr: *var *char8, base: c_int) -> c_long;
 
@@ -141,6 +155,7 @@ extern {
     /// @param endptr receives the address where parsing stopped, or null
     /// @param base the radix, 2 through 36, or zero to read a C integer prefix
     /// @returns the value, zero when nothing was read, or a saturated limit with `errno` set to `ERANGE`
+    /// @see https://rux-lang.dev/docs/api/c/stdlib#strtoul
     /// @see https://en.cppreference.com/c/string/byte/strtoul
     pub func strtoul(str: *char8, endptr: *var *char8, base: c_int) -> c_ulong;
 
@@ -149,6 +164,7 @@ extern {
     /// @param endptr receives the address where parsing stopped, or null
     /// @param base the radix, 2 through 36, or zero to read a C integer prefix
     /// @returns the value, zero when nothing was read, or a saturated limit with `errno` set to `ERANGE`
+    /// @see https://rux-lang.dev/docs/api/c/stdlib#strtoll
     /// @see https://en.cppreference.com/c/string/byte/strtol
     pub func strtoll(str: *char8, endptr: *var *char8, base: c_int) -> c_longlong;
 
@@ -157,6 +173,7 @@ extern {
     /// @param endptr receives the address where parsing stopped, or null
     /// @param base the radix, 2 through 36, or zero to read a C integer prefix
     /// @returns the value, zero when nothing was read, or a saturated limit with `errno` set to `ERANGE`
+    /// @see https://rux-lang.dev/docs/api/c/stdlib#strtoull
     /// @see https://en.cppreference.com/c/string/byte/strtoul
     pub func strtoull(str: *char8, endptr: *var *char8, base: c_int) -> c_ulonglong;
 
@@ -164,6 +181,7 @@ extern {
     /// @param str a null-terminated byte string
     /// @param endptr receives the address where parsing stopped, or null
     /// @returns the value, zero when nothing was read, or a saturated value with `errno` set to `ERANGE`
+    /// @see https://rux-lang.dev/docs/api/c/stdlib#strtod
     /// @see https://en.cppreference.com/c/string/byte/strtof
     pub func strtod(str: *char8, endptr: *var *char8) -> c_double;
 
@@ -171,6 +189,7 @@ extern {
     /// @param str a null-terminated byte string
     /// @param endptr receives the address where parsing stopped, or null
     /// @returns the value, zero when nothing was read, or a saturated value with `errno` set to `ERANGE`
+    /// @see https://rux-lang.dev/docs/api/c/stdlib#strtof
     /// @see https://en.cppreference.com/c/string/byte/strtof
     pub func strtof(str: *char8, endptr: *var *char8) -> c_float;
 
@@ -179,6 +198,7 @@ extern {
     /// @param num how many elements it holds
     /// @param size how many bytes one element occupies
     /// @param compare how two elements order against each other
+    /// @see https://rux-lang.dev/docs/api/c/stdlib#qsort
     /// @see https://en.cppreference.com/c/algorithm/qsort
     pub func qsort(base: *var opaque, num: size_t, size: size_t, compare: func(*opaque, *opaque) -> c_int);
 
@@ -189,6 +209,7 @@ extern {
     /// @param size how many bytes one element occupies
     /// @param compare how two elements order against each other
     /// @returns the address of a matching element, or null
+    /// @see https://rux-lang.dev/docs/api/c/stdlib#bsearch
     /// @see https://en.cppreference.com/c/algorithm/bsearch
     pub func bsearch(key: *opaque, base: *opaque, num: size_t, size: size_t,
                  compare: func(*opaque, *opaque) -> c_int) -> *opaque;
@@ -245,12 +266,12 @@ when #target.os {
 // alias declared in another file of the package, though a function signature in this very file can. `c_int` is
 // `int32` on every supported target, so nothing is lost but the spelling.
 /// `EXIT_SUCCESS`: the status a program returns to mean it did what it was asked.
-/// @see https://rux-lang.dev/docs/api/c/exit-success
+/// @see https://rux-lang.dev/docs/api/c/stdlib#exit-success
 #Allow("naming.const")
 pub const EXIT_SUCCESS: int32 = 0;
 
 /// `EXIT_FAILURE`: the status a program returns to mean it did not.
-/// @see https://rux-lang.dev/docs/api/c/exit-failure
+/// @see https://rux-lang.dev/docs/api/c/stdlib#exit-failure
 #Allow("naming.const")
 pub const EXIT_FAILURE: int32 = 1;
 
@@ -259,13 +280,13 @@ pub const EXIT_FAILURE: int32 = 1;
 when #target.os {
     .Windows => {
         /// `RAND_MAX`: the largest value `rand` can return on this target.
-        /// @see https://rux-lang.dev/docs/api/c/rand-max
+        /// @see https://rux-lang.dev/docs/api/c/stdlib#rand-max
         #Allow("naming.const")
         pub const RAND_MAX: int32 = 32767;
     }
     else => {
         /// `RAND_MAX`: the largest value `rand` can return on this target.
-        /// @see https://rux-lang.dev/docs/api/c/rand-max
+        /// @see https://rux-lang.dev/docs/api/c/stdlib#rand-max
         #Allow("naming.const")
         pub const RAND_MAX: int32 = 2147483647;
     }

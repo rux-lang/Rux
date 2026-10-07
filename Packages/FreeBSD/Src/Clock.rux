@@ -7,11 +7,11 @@
 import FreeBSD::{ SysClockGetRes, SysClockGetTime, SysNanosleep, Syscall2, Timespec };
 
 /// `CLOCK_REALTIME`: wall-clock time, which can jump when the system clock is set.
-/// @see https://rux-lang.dev/docs/api/freebsd/clock-realtime
+/// @see https://rux-lang.dev/docs/api/freebsd/clock#clock-realtime
 pub const ClockRealtime: int32 = 0;
 
 /// `CLOCK_MONOTONIC`: time since an unspecified point, which never goes backwards.
-/// @see https://rux-lang.dev/docs/api/freebsd/clock-monotonic
+/// @see https://rux-lang.dev/docs/api/freebsd/clock#clock-monotonic
 pub const ClockMonotonic: int32 = 4;
 
 /// Reads `clockId` into `time`.
@@ -20,7 +20,7 @@ pub const ClockMonotonic: int32 = 4;
 /// @param clockId which clock to read
 /// @param time receives the reading
 /// @returns zero, or a negative error number
-/// @see https://rux-lang.dev/docs/api/freebsd/clock-get-time
+/// @see https://rux-lang.dev/docs/api/freebsd/clock#clock-get-time
 pub func ClockGetTime(clockId: int32, time: *var Timespec) -> int64 {
     return Syscall2(SysClockGetTime, (clockId as int64) as uint64, time as uint64);
 }
@@ -32,22 +32,22 @@ pub func ClockGetTime(clockId: int32, time: *var Timespec) -> int64 {
 /// @param request how long to wait
 /// @param remaining receives the unslept time when a signal cut the wait short, and may be null
 /// @returns zero, or a negative error number
-/// @see https://rux-lang.dev/docs/api/freebsd/nanosleep
+/// @see https://rux-lang.dev/docs/api/freebsd/clock#nanosleep
 pub func Nanosleep(request: *Timespec, remaining: *var Timespec) -> int64 {
     return Syscall2(SysNanosleep, request as uint64, remaining as uint64);
 }
 
 /// `CLOCK_MONOTONIC_FAST`: like `ClockMonotonic`, read from a cached value rather than the hardware.
 /// Cheaper and coarser. FreeBSD offers this pairing where Linux offers a coarse clock under a different number.
-/// @see https://rux-lang.dev/docs/api/freebsd/clock-monotonic-fast
+/// @see https://rux-lang.dev/docs/api/freebsd/clock#clock-monotonic-fast
 pub const ClockMonotonicFast: int32 = 12;
 
 /// `CLOCK_REALTIME_FAST`: like `ClockRealtime`, read from a cached value.
-/// @see https://rux-lang.dev/docs/api/freebsd/clock-realtime-fast
+/// @see https://rux-lang.dev/docs/api/freebsd/clock#clock-realtime-fast
 pub const ClockRealtimeFast: int32 = 10;
 
 /// `CLOCK_PROCESS_CPUTIME_ID`: processor time this process has used.
-/// @see https://rux-lang.dev/docs/api/freebsd/clock-process-cpu-time
+/// @see https://rux-lang.dev/docs/api/freebsd/clock#clock-process-cpu-time
 pub const ClockProcessCpuTime: int32 = 15;
 
 /// Reads the resolution of `clockId` into `resolution`.
@@ -57,7 +57,7 @@ pub const ClockProcessCpuTime: int32 = 15;
 /// @param clockId which clock to describe
 /// @param resolution receives the granularity
 /// @returns zero, or a negative error number
-/// @see https://rux-lang.dev/docs/api/freebsd/clock-get-resolution
+/// @see https://rux-lang.dev/docs/api/freebsd/clock#clock-get-resolution
 pub func ClockGetResolution(clockId: int32, resolution: *var Timespec) -> int64 {
     return Syscall2(SysClockGetRes, (clockId as int64) as uint64, resolution as uint64);
 }

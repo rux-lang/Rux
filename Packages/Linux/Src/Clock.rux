@@ -6,13 +6,13 @@
 import Linux::{ SysClockGetRes, SysClockGetTime, SysClockNanosleep, SysNanosleep, Syscall2, Syscall4, Timespec };
 
 /// `CLOCK_REALTIME`: wall-clock time, which can jump when the system clock is set.
-/// @see https://rux-lang.dev/docs/api/linux/clock-realtime
+/// @see https://rux-lang.dev/docs/api/linux/clock#clock-realtime
 pub const ClockRealtime: int32 = 0;
 
 /// `CLOCK_MONOTONIC`: time since an unspecified point, which never goes backwards.
 /// Not comparable between boots, and not the clock to record a timestamp with. It is the one to measure a duration
 /// with, because setting the system clock cannot affect it.
-/// @see https://rux-lang.dev/docs/api/linux/clock-monotonic
+/// @see https://rux-lang.dev/docs/api/linux/clock#clock-monotonic
 pub const ClockMonotonic: int32 = 1;
 
 /// Reads `clockId` into `time`.
@@ -22,7 +22,7 @@ pub const ClockMonotonic: int32 = 1;
 /// @param clockId which clock to read
 /// @param time receives the reading
 /// @returns zero, or a negative error number
-/// @see https://rux-lang.dev/docs/api/linux/clock-get-time
+/// @see https://rux-lang.dev/docs/api/linux/clock#clock-get-time
 pub func ClockGetTime(clockId: int32, time: *var Timespec) -> int64 {
     return Syscall2(SysClockGetTime, (clockId as int64) as uint64, time as uint64);
 }
@@ -37,27 +37,27 @@ pub func ClockGetTime(clockId: int32, time: *var Timespec) -> int64 {
 /// @param request how long to wait
 /// @param remaining receives the unslept time when a signal cut the wait short, and may be null
 /// @returns zero, or a negative error number
-/// @see https://rux-lang.dev/docs/api/linux/nanosleep
+/// @see https://rux-lang.dev/docs/api/linux/clock#nanosleep
 pub func Nanosleep(request: *Timespec, remaining: *var Timespec) -> int64 {
     return Syscall2(SysNanosleep, request as uint64, remaining as uint64);
 }
 
 /// `CLOCK_PROCESS_CPUTIME_ID`: processor time this process has used.
-/// @see https://rux-lang.dev/docs/api/linux/clock-process-cpu-time
+/// @see https://rux-lang.dev/docs/api/linux/clock#clock-process-cpu-time
 pub const ClockProcessCpuTime: int32 = 2;
 
 /// `CLOCK_THREAD_CPUTIME_ID`: processor time this thread has used.
-/// @see https://rux-lang.dev/docs/api/linux/clock-thread-cpu-time
+/// @see https://rux-lang.dev/docs/api/linux/clock#clock-thread-cpu-time
 pub const ClockThreadCpuTime: int32 = 3;
 
 /// `CLOCK_MONOTONIC_RAW`: like `ClockMonotonic`, but not adjusted by time synchronization.
 /// Ticks at the hardware's own rate rather than a corrected one, which makes it the wrong clock for measuring a
 /// duration anyone will compare against a wall clock, and the right one for measuring the hardware.
-/// @see https://rux-lang.dev/docs/api/linux/clock-monotonic-raw
+/// @see https://rux-lang.dev/docs/api/linux/clock#clock-monotonic-raw
 pub const ClockMonotonicRaw: int32 = 4;
 
 /// `TIMER_ABSTIME`: `ClockNanosleep` should treat its time as an absolute deadline.
-/// @see https://rux-lang.dev/docs/api/linux/timer-absolute
+/// @see https://rux-lang.dev/docs/api/linux/clock#timer-absolute
 pub const TimerAbsolute: int32 = 1;
 
 /// Reads the resolution of `clockId` into `resolution`.
@@ -67,7 +67,7 @@ pub const TimerAbsolute: int32 = 1;
 /// @param clockId which clock to describe
 /// @param resolution receives the granularity
 /// @returns zero, or a negative error number
-/// @see https://rux-lang.dev/docs/api/linux/clock-get-resolution
+/// @see https://rux-lang.dev/docs/api/linux/clock#clock-get-resolution
 pub func ClockGetResolution(clockId: int32, resolution: *var Timespec) -> int64 {
     return Syscall2(SysClockGetRes, (clockId as int64) as uint64, resolution as uint64);
 }
@@ -84,7 +84,7 @@ pub func ClockGetResolution(clockId: int32, resolution: *var Timespec) -> int64 
 /// @param request how long to wait, or when to wake
 /// @param remaining receives the unslept time for a relative wait, and may be null
 /// @returns zero, or a positive error number
-/// @see https://rux-lang.dev/docs/api/linux/clock-nanosleep
+/// @see https://rux-lang.dev/docs/api/linux/clock#clock-nanosleep
 pub func ClockNanosleep(clockId: int32, flags: int32, request: *Timespec, remaining: *var Timespec) -> int64 {
     return Syscall4(SysClockNanosleep, (clockId as int64) as uint64, (flags as int64) as uint64,
                     request as uint64, remaining as uint64);
