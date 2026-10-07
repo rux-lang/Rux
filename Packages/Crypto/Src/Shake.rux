@@ -43,14 +43,14 @@ extend Shake {
 
     /// A SHAKE128 state: 128 bits of security, absorbing 168 bytes at a time.
     /// @returns a SHAKE128 sponge, which produces output of any length
-    /// @see https://rux-lang.dev/docs/api/crypto/shake/new-128
+    /// @see https://rux-lang.dev/docs/api/crypto/shake#new-128
     pub func New128() -> Shake {
         return Shake::Start(168);
     }
 
     /// A SHAKE256 state: 256 bits of security, absorbing 136 bytes at a time.
     /// @returns a SHAKE256 sponge, which produces output of any length
-    /// @see https://rux-lang.dev/docs/api/crypto/shake/new-256
+    /// @see https://rux-lang.dev/docs/api/crypto/shake#new-256
     pub func New256() -> Shake {
         return Shake::Start(136);
     }
@@ -60,7 +60,7 @@ extend Shake {
     /// before the first read, and adding to it afterwards would silently change what a caller already has. This
     /// ignores such a call rather than corrupting the stream.
     /// @param bytes the bytes to absorb
-    /// @see https://rux-lang.dev/docs/api/crypto/shake/update
+    /// @see https://rux-lang.dev/docs/api/crypto/shake#update
     pub func Update(self: &var Shake, bytes: char8[..]) {
         if self.reading { return; }
         var index: uint = 0;
@@ -96,7 +96,7 @@ extend Shake {
     /// Reading is continuous: any sequence of reads totalling the same number of bytes gives the same bytes.
     /// The first read applies the padding, after which `Update` does nothing.
     /// @param into receives the output
-    /// @see https://rux-lang.dev/docs/api/crypto/shake/read
+    /// @see https://rux-lang.dev/docs/api/crypto/shake#read
     pub func Read(self: &var Shake, into: var char8[..]) {
         if !self.reading {
             self.BeginReading();
@@ -118,7 +118,7 @@ extend Shake {
 
     /// How many bytes the state absorbs or squeezes before permuting.
     /// @returns how many bytes the sponge absorbs or squeezes per permutation
-    /// @see https://rux-lang.dev/docs/api/crypto/shake/rate
+    /// @see https://rux-lang.dev/docs/api/crypto/shake#rate
     pub func Rate(self: &Shake) -> uint {
         return self.rate;
     }
@@ -127,7 +127,7 @@ extend Shake {
 /// `into.length` bytes of SHAKE128 over `bytes`, in one call.
 /// @param bytes the bytes to absorb
 /// @param into receives the output
-/// @see https://rux-lang.dev/docs/api/crypto/shake128-of
+/// @see https://rux-lang.dev/docs/api/crypto/shake#shake128-of
 pub func Shake128Of(bytes: char8[..], into: var char8[..]) {
     var state = Shake::New128();
     state.Update(bytes);
@@ -137,7 +137,7 @@ pub func Shake128Of(bytes: char8[..], into: var char8[..]) {
 /// `into.length` bytes of SHAKE256 over `bytes`, in one call.
 /// @param bytes the bytes to absorb
 /// @param into receives the output
-/// @see https://rux-lang.dev/docs/api/crypto/shake256-of
+/// @see https://rux-lang.dev/docs/api/crypto/shake#shake256-of
 pub func Shake256Of(bytes: char8[..], into: var char8[..]) {
     var state = Shake::New256();
     state.Update(bytes);

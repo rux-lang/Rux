@@ -42,7 +42,7 @@ extend Blake3 {
     /// from the key is a sound MAC on its own.
     /// @param key the key
     /// @returns a hasher keyed with those thirty-two bytes
-    /// @see https://rux-lang.dev/docs/api/crypto/blake3/new-keyed
+    /// @see https://rux-lang.dev/docs/api/crypto/blake3#new-keyed
     pub func NewKeyed(key: char8[..]) -> Blake3 {
         var words: uint32[8];
         Blake3KeyWords(key, @words[0]);
@@ -56,7 +56,7 @@ extend Blake3 {
     /// must not be a variable, since two callers who accidentally share one lose the separation entirely.
     /// @param context the application-specific context string, which must be a constant
     /// @returns a hasher in key-derivation mode for that context
-    /// @see https://rux-lang.dev/docs/api/crypto/blake3/new-derive-key
+    /// @see https://rux-lang.dev/docs/api/crypto/blake3#new-derive-key
     pub func NewDeriveKey(context: char8[..]) -> Blake3 {
         // The first stage hashes the context under the unkeyed initial value, producing the key for the second.
         var contextHasher = Blake3::Start(Blake3InitialValue, Blake3DeriveKeyContext);
@@ -73,7 +73,7 @@ extend Blake3 {
 /// @param key the key
 /// @param bytes the bytes to absorb
 /// @param into receives the output
-/// @see https://rux-lang.dev/docs/api/crypto/blake3-keyed-of
+/// @see https://rux-lang.dev/docs/api/crypto/blake3#blake3-keyed-of
 pub func Blake3KeyedOf(key: char8[..], bytes: char8[..], into: var char8[..]) {
     var hasher = Blake3::NewKeyed(key);
     hasher.Update(bytes);
@@ -84,7 +84,7 @@ pub func Blake3KeyedOf(key: char8[..], bytes: char8[..], into: var char8[..]) {
 /// @param context the application-specific context string, which must be a constant
 /// @param material the input keying material
 /// @param into receives the output
-/// @see https://rux-lang.dev/docs/api/crypto/blake3-derive-key
+/// @see https://rux-lang.dev/docs/api/crypto/blake3#blake3-derive-key
 pub func Blake3DeriveKey(context: char8[..], material: char8[..], into: var char8[..]) {
     var hasher = Blake3::NewDeriveKey(context);
     hasher.Update(material);

@@ -13,7 +13,7 @@
 
 
 /// The most blocks `Expand` can produce, since its counter is one byte.
-/// @see https://rux-lang.dev/docs/api/crypto/hkdf-maximum-blocks
+/// @see https://rux-lang.dev/docs/api/crypto/hkdf#hkdf-maximum-blocks
 pub const HkdfMaximumBlocks: uint = 255;
 
 /// Extracts a pseudorandom key from `material`, salted with `salt`.
@@ -24,7 +24,7 @@ pub const HkdfMaximumBlocks: uint = 255;
 /// @param salt the salt, which may be empty
 /// @param material the input keying material
 /// @param into receives the output
-/// @see https://rux-lang.dev/docs/api/crypto/hkdf-extract
+/// @see https://rux-lang.dev/docs/api/crypto/hkdf#hkdf-extract
 pub func HkdfExtract<D: Digest>(prototype: D, salt: char8[..], material: char8[..], into: var char8[..]) {
     var probe = prototype;
     let digestLength = probe.DigestLength();
@@ -53,7 +53,7 @@ pub func HkdfExtract<D: Digest>(prototype: D, salt: char8[..], material: char8[.
 /// @param info the context and application-specific information
 /// @param into receives the output
 /// @returns whether `into` was a length this construction can produce
-/// @see https://rux-lang.dev/docs/api/crypto/hkdf-expand
+/// @see https://rux-lang.dev/docs/api/crypto/hkdf#hkdf-expand
 pub func HkdfExpand<D: Digest>(prototype: D, key: char8[..], info: char8[..],
                            into: var char8[..]) -> bool {
     var probe = prototype;
